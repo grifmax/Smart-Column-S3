@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <SPIFFS.h>
 #include <esp_task_wdt.h>
+#include <ESPmDNS.h>
 
 #include "config.h"
 #include "types.h"
@@ -283,9 +284,20 @@ void initNetwork() {
         WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
         LOG_I("AP started: %s, IP: %s", WIFI_AP_SSID, WiFi.softAPIP().toString().c_str());
     }
-    
-    // mDNS
-    // TODO: добавить mDNS
+
+    // mDNS - доступ по smart-column.local
+    if (MDNS.begin("smart-column")) {
+        LOG_I("mDNS responder started: smart-column.local");
+
+        // Объявление HTTP сервиса
+        MDNS.addService("http", "tcp", 80);
+
+        // Дополнительная информация
+        MDNS.addServiceTxt("http", "tcp", "version", FW_VERSION);
+        MDNS.addServiceTxt("http", "tcp", "board", "ESP32-S3");
+    } else {
+        LOG_E("mDNS initialization failed");
+    }
 }
 
 // =============================================================================
