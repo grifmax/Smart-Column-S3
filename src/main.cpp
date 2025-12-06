@@ -199,9 +199,29 @@ void loop() {
 
     // Обновление здоровья системы (раз в 5 секунд)
     static uint32_t lastHealthUpdate = 0;
+    static uint8_t lastHealthStatus = 100;
+    static bool healthAlertSent = false;
+
     if (now - lastHealthUpdate >= 5000) {
         lastHealthUpdate = now;
         Sensors::updateHealth(g_state.health);
+
+        // Telegram уведомление при падении здоровья ниже 80%
+        if (g_settings.telegram.enabled) {
+            if (g_state.health.overallHealth < 80 && !healthAlertSent) {
+                TelegramBot::notifyHealthAlert(g_state.health);
+                healthAlertSent = true;
+                LOG_W("Health alert sent to Telegram: %d%%", g_state.health.overallHealth);
+            }
+            // Сброс флага если здоровье восстановилось выше 90%
+            else if (g_state.health.overallHealth >= 90 && healthAlertSent) {
+                healthAlertSent = false;
+                TelegramBot::sendMessage("✅ System health restored");
+                LOG_I("Health restored: %d%%", g_state.health.overallHealth);
+            }
+        }
+
+        lastHealthStatus = g_state.health.overallHealth;
     }
 
     // Сброс WatchDog Timer (подтверждение работы)

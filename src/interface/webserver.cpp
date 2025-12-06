@@ -373,7 +373,7 @@ void broadcastState(const SystemState& state) {
     if (ws.count() == 0) return;
 
     // Сформировать JSON со состоянием
-    StaticJsonDocument<1024> doc;
+    StaticJsonDocument<1536> doc;
 
     doc["mode"] = static_cast<int>(state.mode);
     doc["phase"] = static_cast<int>(state.rectPhase);
@@ -393,6 +393,19 @@ void broadcastState(const SystemState& state) {
     mem["flash_used"] = ESP.getSketchSize();
     mem["flash_total"] = ESP.getFlashChipSize();
     mem["flash_used_pct"] = ESP.getSketchSize() * 100 / ESP.getFlashChipSize();
+
+    // Здоровье системы
+    JsonObject health = doc.createNestedObject("health");
+    health["overall"] = state.health.overallHealth;
+    health["tempSensorsOk"] = state.health.tempSensorsOk;
+    health["tempSensorsTotal"] = state.health.tempSensorsTotal;
+    health["bmp280"] = state.health.bmp280Ok;
+    health["ads1115"] = state.health.ads1115Ok;
+    health["pzem"] = state.health.pzemOk;
+    health["wifiRSSI"] = state.health.wifiRSSI;
+    health["pzemSpikes"] = state.health.pzemSpikeCount;
+    health["tempErrors"] = state.health.tempReadErrors;
+    health["cpuTemp"] = state.health.cpuTemp;
 
     String json;
     serializeJson(doc, json);

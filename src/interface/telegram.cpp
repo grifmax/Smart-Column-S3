@@ -117,4 +117,48 @@ void notifyFinish(const RunStats& stats) {
     sendMessage(msg);
 }
 
+void notifyHealthAlert(const SystemHealth& health) {
+    char msg[512];
+    int len = 0;
+
+    len += snprintf(msg + len, sizeof(msg) - len,
+                    "⚠️ System Health Alert!\n\n");
+    len += snprintf(msg + len, sizeof(msg) - len,
+                    "Overall Health: %d%%\n\n", health.overallHealth);
+
+    // Проблемные датчики
+    if (!health.pzemOk) {
+        len += snprintf(msg + len, sizeof(msg) - len, "❌ PZEM power meter\n");
+    }
+    if (!health.ads1115Ok) {
+        len += snprintf(msg + len, sizeof(msg) - len, "❌ ADS1115 ADC\n");
+    }
+    if (!health.bmp280Ok) {
+        len += snprintf(msg + len, sizeof(msg) - len, "❌ BMP280 sensor\n");
+    }
+    if (health.tempSensorsOk < health.tempSensorsTotal) {
+        len += snprintf(msg + len, sizeof(msg) - len,
+                       "⚠️ Temperature sensors: %d/%d OK\n",
+                       health.tempSensorsOk, health.tempSensorsTotal);
+    }
+
+    // Статистика ошибок
+    if (health.pzemSpikeCount > 0) {
+        len += snprintf(msg + len, sizeof(msg) - len,
+                       "\nPZEM spikes: %d\n", health.pzemSpikeCount);
+    }
+    if (health.tempReadErrors > 0) {
+        len += snprintf(msg + len, sizeof(msg) - len,
+                       "Temp errors: %d\n", health.tempReadErrors);
+    }
+
+    // WiFi
+    if (health.wifiConnected && health.wifiRSSI < -80) {
+        len += snprintf(msg + len, sizeof(msg) - len,
+                       "\n⚠️ Weak WiFi signal: %d dBm", health.wifiRSSI);
+    }
+
+    sendMessage(msg);
+}
+
 } // namespace TelegramBot
