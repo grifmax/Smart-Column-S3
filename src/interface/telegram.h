@@ -57,7 +57,13 @@ namespace TelegramBot {
      * @param stats Итоговая статистика
      */
     void notifyFinish(const RunStats& stats);
-    
+
+    /**
+     * Отправка уведомления о проблемах со здоровьем системы
+     * @param health Данные о здоровье системы
+     */
+    void notifyHealthAlert(const SystemHealth& health);
+
     /**
      * Отправка скриншота дисплея
      * @return true если успешно

@@ -1,0 +1,330 @@
+/* Charts page specific styles */
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.back-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.9em;
+    transition: opacity 0.3s;
+}
+
+.back-link:hover {
+    opacity: 0.7;
+}
+
+/* Chart Controls */
+.chart-controls {
+    background: var(--bg-card);
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px var(--shadow);
+}
+
+.control-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.control-group-inline {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.control-group-inline label {
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.period-btn {
+    min-width: 60px;
+}
+
+.period-btn.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+/* Chart Cards */
+.chart-card {
+    margin-bottom: 30px;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.chart-header h2 {
+    margin-bottom: 0;
+}
+
+.chart-checkboxes {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    font-size: 0.9em;
+}
+
+.chart-checkboxes label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-secondary);
+    transition: color 0.3s;
+}
+
+.chart-checkboxes label:hover {
+    color: var(--text-primary);
+}
+
+.chart-checkboxes input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+}
+
+/* Chart containers */
+.chart {
+    min-height: 350px;
+    width: 100%;
+}
+
+.chart-bar {
+    min-height: 300px;
+    width: 100%;
+}
+
+/* ApexCharts theme overrides */
+.apexcharts-tooltip {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+
+.apexcharts-tooltip-title {
+    background: var(--bg-primary) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+
+.apexcharts-xaxistooltip {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+
+.apexcharts-menu {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+.apexcharts-menu-item:hover {
+    background: var(--bg-primary) !important;
+}
+
+/* Mini chart on main page */
+.mini-chart {
+    height: 200px;
+    margin-top: 10px;
+}
+
+.mini-chart-container {
+    position: relative;
+}
+
+.mini-chart-link {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--accent);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 0.85em;
+    z-index: 10;
+    transition: opacity 0.3s;
+}
+
+.mini-chart-link:hover {
+    opacity: 0.8;
+}
+
+/* Anomaly detection controls */
+.anomaly-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.switch-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.switch-label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.switch-label span {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.select-sm {
+    padding: 6px 10px;
+    border-radius: 5px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+.select-sm:hover {
+    border-color: var(--accent);
+}
+
+.select-sm:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bg-secondary);
+    outline: none;
+    cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+    background: var(--accent-hover);
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+    transition: background 0.3s;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+    background: var(--accent-hover);
+}
+
+/* Dark theme adjustments for charts */
+[data-theme="dark"] .apexcharts-text {
+    fill: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .apexcharts-gridline {
+    stroke: var(--border-color) !important;
+}
+
+[data-theme="dark"] .apexcharts-legend-text {
+    color: var(--text-primary) !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .control-panel {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .control-group-inline {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .control-group-inline .btn {
+        width: 100%;
+    }
+
+    .chart-header {
+        flex-direction: column;
+    }
+
+    .chart-checkboxes {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .chart {
+        min-height: 250px;
+    }
+
+    .chart-bar {
+        min-height: 200px;
+    }
+}
+
+/* Loading state */
+.chart-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 350px;
+    color: var(--text-secondary);
+    font-size: 1.1em;
+}
+
+.chart-loading::after {
+    content: '...';
+    animation: dots 1.5s infinite;
+}
+
+@keyframes dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60%, 100% { content: '...'; }
+}

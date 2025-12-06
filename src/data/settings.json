@@ -1,0 +1,75 @@
+{
+  "system": {
+    "maxHeaterPower": 3000,
+    "powerControlMode": 0,
+    "pzemEnabled": false,
+    "soundEnabled": true,
+    "soundVolume": 75,
+    "displayEnabled": true,
+    "displayBrightness": 128
+  },
+  "rectification": {
+    "model": 0,
+    "maxCubeTemp": 100.0,
+    "headsTemp": 70.5,
+    "bodyTemp": 78.2,
+    "tailsTemp": 88.0,
+    "endTemp": 98.0,
+    "heatingPowerWatts": 3000,
+    "stabilizationPowerWatts": 2000,
+    "bodyPowerWatts": 1500,
+    "tailsPowerWatts": 2000,
+    "stabilizationTime": 30,
+    "headsVolume": 100,
+    "bodyVolume": 2000,
+    "refluxRatio": 3.0,
+    "refluxPeriod": 60,
+    "headsTargetTime": 30,
+    "postHeadsStabilizationTime": 10,
+    "bodyFlowRate": 500,
+    "tempDeltaEndBody": 0.2,
+    "tailsCubeTemp": 95.0,
+    "tailsFlowRate": 800,
+    "useSameFlowForTails": false
+  },
+  "distillation": {
+    "maxCubeTemp": 100.0,
+    "startCollectingTemp": 70.0,
+    "endTemp": 98.0,
+    "heatingPowerWatts": 3000,
+    "distillationPowerWatts": 2500,
+    "flowRate": 1000,
+    "separateHeads": false,
+    "headsVolume": 100,
+    "headsFlowRate": 500
+  },
+  "pump": {
+    "calibrationFactor": 1.5,
+    "headsFlowRate": 300,
+    "bodyFlowRate": 500,
+    "tailsFlowRate": 800,
+    "minFlowRate": 50,
+    "maxFlowRate": 2000,
+    "pumpPeriodMs": 1000
+  },
+  "sensors": [
+    {
+      "id": 0,
+      "name": "Куб",
+      "address": "",
+      "calibration": 0.0
+    },
+    {
+      "id": 1,
+      "name": "Колонна",
+      "address": "",
+      "calibration": 0.0
+    },
+    {
+      "id": 2,
+      "name": "Продукт",
+      "address": "",
+      "calibration": 0.0
+    }
+  ]
+}

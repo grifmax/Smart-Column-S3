@@ -9,6 +9,8 @@
 #include <Wire.h>
 #include <WiFi.h>
 #include <SPIFFS.h>
+#include <esp_task_wdt.h>
+#include <ESPmDNS.h>
 
 #include "config.h"
 #include "types.h"
@@ -29,6 +31,8 @@
 #include "interface/webserver.h"
 #include "interface/telegram.h"
 #include "interface/buttons.h"
+#include "interface/ota.h"
+#include "interface/mqtt.h"
 
 // Хранение
 #include "storage/nvs_manager.h"
@@ -40,6 +44,7 @@
 
 SystemState g_state;        // Текущее состояние системы
 Settings g_settings;        // Настройки (из NVS)
+EnergyHistory g_energyHistory;  // История энергопотребления
 
 // Таймеры задач
 uint32_t g_lastTempRead = 0;
@@ -67,7 +72,11 @@ void setup() {
     // Serial
     Serial.begin(115200);
     delay(100);
-    
+
+    // WatchDog Timer - защита от зависаний
+    esp_task_wdt_init(30, true);  // 30 сек таймаут, паника при срабатывании
+    esp_task_wdt_add(NULL);        // Регистрация главной задачи
+
     LOG_I("=================================");
     LOG_I("%s v%s", FW_NAME, FW_VERSION);
     LOG_I("Build: %s", FW_DATE);
@@ -78,6 +87,9 @@ void setup() {
     g_state.mode = Mode::IDLE;
     g_state.rectPhase = RectPhase::IDLE;
     g_state.safetyOk = true;
+
+    // Инициализация истории энергопотребления
+    memset(&g_energyHistory, 0, sizeof(g_energyHistory));
     
     // SPIFFS
     if (!SPIFFS.begin(true)) {
@@ -110,7 +122,26 @@ void setup() {
         LOG_I("Starting Telegram bot...");
         TelegramBot::init(g_settings.telegram.token, g_settings.telegram.chatId);
     }
-    
+
+    // OTA Updates (только если WiFi подключён)
+    if (WiFi.status() == WL_CONNECTED || g_settings.wifi.apMode) {
+        LOG_I("Starting OTA...");
+        OTA::init();
+        // Опционально: установить пароль для защиты
+        // OTA::setPassword("your_password_here");
+    }
+
+    // MQTT (только если включён и WiFi подключён)
+    if (g_settings.mqtt.enabled && WiFi.status() == WL_CONNECTED) {
+        LOG_I("Starting MQTT...");
+        MQTT::init(g_settings.mqtt.server, g_settings.mqtt.port,
+                   g_settings.mqtt.username[0] ? g_settings.mqtt.username : nullptr,
+                   g_settings.mqtt.password[0] ? g_settings.mqtt.password : nullptr);
+        if (g_settings.mqtt.baseTopic[0]) {
+            MQTT::setBaseTopic(g_settings.mqtt.baseTopic);
+        }
+    }
+
     // Логгер
     Logger::init();
     Logger::log(LogEvent{millis(), 0, "System started"});
@@ -133,7 +164,15 @@ void setup() {
 
 void loop() {
     uint32_t now = millis();
-    
+
+    // OTA Updates (наивысший приоритет)
+    OTA::handle();
+
+    // Если идёт обновление OTA - пропустить всё остальное
+    if (OTA::isUpdating()) {
+        return;
+    }
+
     // Проверка безопасности (высший приоритет)
     if (now - g_lastSafetyCheck >= INTERVAL_SAFETY_CHECK) {
         g_lastSafetyCheck = now;
@@ -181,17 +220,91 @@ void loop() {
         g_lastLogWrite = now;
         Logger::writeData(g_state);
     }
-    
+
+    // Запись истории энергопотребления (каждые 5 минут)
+    static uint32_t lastEnergyLog = 0;
+    if (now - lastEnergyLog >= 300000) {  // 5 минут
+        lastEnergyLog = now;
+
+        // Добавить точку данных в циклический буфер
+        EnergyDataPoint& point = g_energyHistory.points[g_energyHistory.writeIndex];
+        point.timestamp = now / 1000;  // Секунды с запуска
+        point.power = g_state.power.power;
+        point.energy = g_state.power.energy;
+        point.voltage = g_state.power.voltage;
+        point.current = g_state.power.current;
+
+        // Обновить индексы
+        g_energyHistory.writeIndex = (g_energyHistory.writeIndex + 1) % EnergyHistory::MAX_POINTS;
+        if (g_energyHistory.count < EnergyHistory::MAX_POINTS) {
+            g_energyHistory.count++;
+        }
+        g_energyHistory.lastUpdate = now;
+
+        LOG_D("Energy: %.1fW, %.3fkWh logged", point.power, point.energy);
+    }
+
     // Обработка кнопок
     Buttons::update();
-    
+
     // Telegram
     TelegramBot::update();
-    
+
+    // MQTT
+    if (g_settings.mqtt.enabled) {
+        MQTT::handle();
+    }
+
     // Обновление uptime
     g_state.uptime = now / 1000;
-    
-    // Yield для WiFi и watchdog
+
+    // Обновление здоровья системы (раз в 5 секунд)
+    static uint32_t lastHealthUpdate = 0;
+    static uint8_t lastHealthStatus = 100;
+    static bool healthAlertSent = false;
+
+    if (now - lastHealthUpdate >= 5000) {
+        lastHealthUpdate = now;
+        Sensors::updateHealth(g_state.health);
+
+        // Telegram уведомление при падении здоровья ниже 80%
+        if (g_settings.telegram.enabled) {
+            if (g_state.health.overallHealth < 80 && !healthAlertSent) {
+                TelegramBot::notifyHealthAlert(g_state.health);
+                healthAlertSent = true;
+                LOG_W("Health alert sent to Telegram: %d%%", g_state.health.overallHealth);
+            }
+            // Сброс флага если здоровье восстановилось выше 90%
+            else if (g_state.health.overallHealth >= 90 && healthAlertSent) {
+                healthAlertSent = false;
+                TelegramBot::sendMessage("✅ System health restored");
+                LOG_I("Health restored: %d%%", g_state.health.overallHealth);
+            }
+        }
+
+        lastHealthStatus = g_state.health.overallHealth;
+
+        // MQTT публикация здоровья (раз в 5 секунд)
+        if (g_settings.mqtt.enabled && MQTT::isConnected()) {
+            MQTT::publishHealth(g_state.health);
+        }
+    }
+
+    // MQTT публикация состояния (интервал из настроек)
+    if (g_settings.mqtt.enabled && MQTT::isConnected()) {
+        static uint32_t lastMqttPublish = 0;
+        uint32_t interval = g_settings.mqtt.publishInterval > 0 ? g_settings.mqtt.publishInterval : 10000;
+
+        if (now - lastMqttPublish >= interval) {
+            lastMqttPublish = now;
+            MQTT::publishState(g_state);
+        }
+    }
+
+    // Сброс WatchDog Timer (подтверждение работы)
+    esp_task_wdt_reset();
+
+    // Yield для WiFi
     yield();
 }
 
@@ -268,9 +381,20 @@ void initNetwork() {
         WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
         LOG_I("AP started: %s, IP: %s", WIFI_AP_SSID, WiFi.softAPIP().toString().c_str());
     }
-    
-    // mDNS
-    // TODO: добавить mDNS
+
+    // mDNS - доступ по smart-column.local
+    if (MDNS.begin("smart-column")) {
+        LOG_I("mDNS responder started: smart-column.local");
+
+        // Объявление HTTP сервиса
+        MDNS.addService("http", "tcp", 80);
+
+        // Дополнительная информация
+        MDNS.addServiceTxt("http", "tcp", "version", FW_VERSION);
+        MDNS.addServiceTxt("http", "tcp", "board", "ESP32-S3");
+    } else {
+        LOG_E("mDNS initialization failed");
+    }
 }
 
 // =============================================================================
@@ -292,13 +416,9 @@ void loadSettings() {
     g_settings.pumpCal.mlPerRevolution = DEFAULT_PUMP_ML_PER_REV;
     g_settings.pumpCal.stepsPerRevolution = PUMP_STEPS_PER_REV;
     g_settings.pumpCal.microsteps = PUMP_MICROSTEPS;
-    
-    // Датчики мощности
-    g_settings.powerCal.zmptCoeff = ZMPT_COEFFICIENT;
-    g_settings.powerCal.zmptOffset = ZMPT_OFFSET;
-    g_settings.powerCal.acs712Coeff = ACS712_SENSITIVITY;
-    g_settings.powerCal.acs712Offset = ACS712_OFFSET;
-    
+
+    // PZEM-004T не требует калибровки - уже откалиброван на заводе
+
     // Ректификация
     g_settings.rectParams.headsPercent = RECT_HEADS_PERCENT_DEFAULT;
     g_settings.rectParams.headsSpeedMlHKw = RECT_HEADS_SPEED_ML_H_KW;

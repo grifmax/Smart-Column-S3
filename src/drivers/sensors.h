@@ -68,6 +68,12 @@ namespace Sensors {
      * @return true если датчик отвечает
      */
     bool isTempSensorValid(uint8_t index);
+
+    /**
+     * Обновление информации о здоровье датчиков
+     * @param health Структура для записи результатов
+     */
+    void updateHealth(SystemHealth& health);
 }
 
 #endif // SENSORS_H

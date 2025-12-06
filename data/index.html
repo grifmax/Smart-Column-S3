@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart-Column S3</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="column-animation.css">
+    <link rel="stylesheet" href="schemes-animation.css">
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Заголовок -->
+        <header>
+            <h1>🏭 Smart-Column S3</h1>
+            <div class="status-bar">
+                <span id="connection-status" class="status-dot offline">●</span>
+                <span id="connection-text">Подключение...</span>
+                <span class="uptime">Uptime: <span id="uptime">--:--:--</span></span>
+            </div>
+        </header>
+
+        <!-- Навигация -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="monitor">📊 Мониторинг</button>
+            <button class="tab" data-tab="control">🎛️ Управление</button>
+            <button class="tab" data-tab="settings">⚙️ Настройки</button>
+            <button class="tab" data-tab="logs">📝 Логи</button>
+            <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
+            <a href="calibration.html" class="tab" style="text-decoration: none;">🔧 Калибровка</a>
+        </nav>
+
+        <!-- Вкладка: Мониторинг -->
+        <div id="monitor" class="tab-content active">
+            <div class="cards">
+                <!-- Режим и фаза -->
+                <div class="card">
+                    <h2>Статус</h2>
+                    <div class="big-value">
+                        <div class="label">Режим</div>
+                        <div id="mode" class="value mode-idle">IDLE</div>
+                    </div>
+                    <div class="big-value">
+                        <div class="label">Фаза</div>
+                        <div id="phase" class="value">—</div>
+                    </div>
+                </div>
+
+                <!-- Температуры -->
+                <div class="card">
+                    <h2>🌡️ Температуры</h2>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="metric-label">Куб</span>
+                            <span id="temp-cube" class="metric-value">--°C</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Царга низ</span>
+                            <span id="temp-column-bottom" class="metric-value">--°C</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Царга верх</span>
+                            <span id="temp-column-top" class="metric-value">--°C</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Дефлегматор</span>
+                            <span id="temp-reflux" class="metric-value">--°C</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">ТСА</span>
+                            <span id="temp-tsa" class="metric-value">--°C</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Давление -->
+                <div class="card">
+                    <h2>📈 Давление</h2>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="metric-label">Куб</span>
+                            <span id="pressure-cube" class="metric-value">-- мм рт.ст.</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Атмосферное</span>
+                            <span id="pressure-atm" class="metric-value">-- гПа</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Порог захлёба</span>
+                            <span id="pressure-flood" class="metric-value">-- мм</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Мощность -->
+                <div class="card">
+                    <h2>⚡ Электропитание (PZEM-004T)</h2>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="metric-label">Напряжение</span>
+                            <span id="power-voltage" class="metric-value">-- V</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Ток</span>
+                            <span id="power-current" class="metric-value">-- A</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Мощность</span>
+                            <span id="power-power" class="metric-value">-- W</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Энергия</span>
+                            <span id="power-energy" class="metric-value">-- кВт·ч</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Частота</span>
+                            <span id="power-frequency" class="metric-value">-- Гц</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Коэфф. мощности</span>
+                            <span id="power-pf" class="metric-value">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Насос и отбор -->
+                <div class="card">
+                    <h2>💧 Насос и отбор</h2>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="metric-label">Скорость</span>
+                            <span id="pump-speed" class="metric-value">-- мл/ч</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Объём</span>
+                            <span id="pump-volume" class="metric-value">-- мл</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Головы</span>
+                            <span id="volume-heads" class="metric-value">-- мл</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Тело</span>
+                            <span id="volume-body" class="metric-value">-- мл</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Хвосты</span>
+                            <span id="volume-tails" class="metric-value">-- мл</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ареометр -->
+                <div class="card">
+                    <h2>🍷 Ареометр</h2>
+                    <div class="big-value">
+                        <div class="label">Крепость</div>
+                        <div id="abv" class="value">--%</div>
+                    </div>
+                </div>
+
+                <!-- Анимированная схема колонны -->
+                <div class="card">
+                    <h2>🏭 Схема процесса</h2>
+                    <div class="scheme-container" style="display: flex; justify-content: center; padding: 10px;">
+                        <object data="schemes/column-animated.svg" type="image/svg+xml" style="width: 100%; max-width: 500px; height: auto;"></object>
+                    </div>
+                </div>
+
+                <!-- Мини-график температур -->
+                <div class="card">
+                    <h2>📈 Температуры (5 мин)</h2>
+                    <div id="mini-chart" style="width: 100%; height: 200px;"></div>
+                    <div style="text-align: center; margin-top: 10px;">
+                        <a href="charts.html" class="btn btn-primary btn-sm">📊 Все графики</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Управление -->
+        <div id="control" class="tab-content">
+            <div class="cards">
+                <div class="card">
+                    <h2>Запуск процесса</h2>
+                    <div class="controls">
+                        <button class="btn btn-success" onclick="startRectification()">▶️ Авто-ректификация</button>
+                        <button class="btn btn-warning" onclick="startManual()">🎛️ Ручная ректификация</button>
+                        <button class="btn btn-info" onclick="startDistillation()">🏺 Дистилляция</button>
+                    </div>
+                    <div class="controls">
+                        <button class="btn btn-danger" onclick="stopProcess()">⏹️ Остановить</button>
+                        <button class="btn" onclick="pauseProcess()">⏸️ Пауза</button>
+                        <button class="btn" onclick="resumeProcess()">⏯️ Продолжить</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Ручное управление</h2>
+                    <div class="control-group">
+                        <label for="heater-power">Мощность нагрева: <span id="heater-value">0</span>%</label>
+                        <input type="range" id="heater-power" min="0" max="100" value="0"
+                               oninput="updateHeater(this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label for="pump-speed-control">Скорость насоса: <span id="pump-value">0</span> мл/ч</label>
+                        <input type="range" id="pump-speed-control" min="0" max="500" value="0"
+                               oninput="updatePump(this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label>Клапаны</label>
+                        <div class="controls">
+                            <button class="btn btn-sm" onclick="toggleValve('water')">💧 Вода</button>
+                            <button class="btn btn-sm" onclick="toggleValve('heads')">🥃 Головы</button>
+                            <button class="btn btn-sm" onclick="toggleValve('uno')">🔄 УНО</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Настройки -->
+        <div id="settings" class="tab-content">
+            <div class="cards">
+                <div class="card">
+                    <h2>WiFi</h2>
+                    <div class="form-group">
+                        <label>SSID</label>
+                        <input type="text" id="wifi-ssid" placeholder="Имя сети">
+                    </div>
+                    <div class="form-group">
+                        <label>Пароль</label>
+                        <input type="password" id="wifi-password" placeholder="Пароль">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveWiFi()">💾 Сохранить</button>
+                </div>
+
+                <div class="card">
+                    <h2>Оборудование</h2>
+                    <div class="form-group">
+                        <label>Мощность ТЭНа (Вт)</label>
+                        <input type="number" id="heater-power-w" value="3000" min="1000" max="10000">
+                    </div>
+                    <div class="form-group">
+                        <label>Высота царги (мм)</label>
+                        <input type="number" id="column-height" value="1500" min="500" max="3000">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveEquipment()">💾 Сохранить</button>
+                </div>
+
+                <div class="card">
+                    <h2>Тема интерфейса</h2>
+                    <div class="controls">
+                        <button class="btn" onclick="setTheme('light')">☀️ Светлая</button>
+                        <button class="btn" onclick="setTheme('dark')">🌙 Тёмная</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Отображение</h2>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-memory-stats" onchange="toggleMemoryStats()">
+                            <span>Показывать статистику памяти в футере</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Логи -->
+        <div id="logs" class="tab-content">
+            <div class="card">
+                <h2>Последние события</h2>
+                <div id="log-container" class="log-container">
+                    <div class="log-entry">Подключение к системе...</div>
+                </div>
+                <button class="btn" onclick="clearLogs()">🗑️ Очистить</button>
+                <button class="btn btn-primary" onclick="downloadLogs()">💾 Скачать CSV</button>
+            </div>
+        </div>
+
+        <!-- Футер -->
+        <footer>
+            <p>Smart-Column S3 v1.1.0 | ESP32-S3 DevKitC-1 N16R8</p>
+            <div id="memory-stats" style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+                    <span>💾 SRAM: <span id="mem-heap-used">--</span> / <span id="mem-heap-total">--</span> (<span id="mem-heap-pct">--%</span>)</span>
+                    <span>🧠 PSRAM: <span id="mem-psram-free">--</span> / <span id="mem-psram-total">--</span></span>
+                    <span>📦 Flash: <span id="mem-flash-pct">--%</span></span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="column-animation.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

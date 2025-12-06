@@ -134,12 +134,15 @@ struct Pressure {
 };
 
 /**
- * Показания электрических параметров
+ * Показания электрических параметров (PZEM-004T)
  */
 struct Power {
     float voltage;          // Напряжение (V RMS)
     float current;          // Ток (A RMS)
-    float power;            // Мощность (W)
+    float power;            // Активная мощность (W)
+    float energy;           // Потреблённая энергия (кВт·ч)
+    float frequency;        // Частота сети (Гц)
+    float powerFactor;      // Коэффициент мощности (0.0-1.0)
     float powerTarget;      // Заданная мощность (%)
     uint32_t lastUpdate;
 };
@@ -247,6 +250,37 @@ struct DecrementState {
 };
 
 /**
+ * Здоровье системы (System Health)
+ */
+struct SystemHealth {
+    // Датчики температуры (DS18B20)
+    uint8_t tempSensorsOk;          // Количество рабочих датчиков температуры
+    uint8_t tempSensorsTotal;       // Всего обнаружено датчиков
+
+    // Датчики давления и другие
+    bool bmp280Ok;                  // Барометр работает
+    bool ads1115Ok;                 // АЦП работает
+    bool pzemOk;                    // PZEM-004T работает
+
+    // Связь
+    bool wifiConnected;             // WiFi подключен
+    int8_t wifiRSSI;                // Уровень сигнала WiFi (dBm)
+
+    // Системная информация
+    uint32_t uptime;                // Время работы (секунды)
+    uint32_t freeHeap;              // Свободная память (байты)
+    uint8_t cpuTemp;                // Температура CPU (°C)
+
+    // Счётчики ошибок
+    uint16_t pzemSpikeCount;        // Количество отброшенных выбросов PZEM
+    uint16_t tempReadErrors;        // Ошибки чтения температур
+
+    // Общая оценка здоровья (0-100%)
+    uint8_t overallHealth;
+    uint32_t lastUpdate;
+};
+
+/**
  * Полное состояние системы
  */
 struct SystemState {
@@ -269,7 +303,8 @@ struct SystemState {
     
     Alarm currentAlarm;
     RunStats stats;
-    
+    SystemHealth health;
+
     bool paused;
     bool safetyOk;
     uint32_t uptime;
@@ -298,6 +333,30 @@ struct TelegramSettings {
     bool notifyPhaseChange;
     bool notifyAlarm;
     bool notifyFinish;
+};
+
+/**
+ * Настройки MQTT
+ */
+struct MqttSettings {
+    char server[64];                    // Адрес брокера
+    uint16_t port;                      // Порт (1883)
+    char username[32];                  // Имя пользователя
+    char password[64];                  // Пароль
+    char baseTopic[32];                 // Базовый топик
+    bool enabled;                       // Включён
+    bool discovery;                     // Home Assistant Discovery
+    uint16_t publishInterval;           // Интервал публикации (мс)
+};
+
+/**
+ * Настройки безопасности
+ */
+struct SecuritySettings {
+    char webUsername[32];               // Имя для веб-доступа
+    char webPassword[64];               // Пароль для веб-доступа
+    bool authEnabled;                   // Включить аутентификацию
+    bool rateLimitEnabled;              // Включить rate limiting
 };
 
 /**
@@ -335,16 +394,6 @@ struct PumpCalibration {
     float mlPerRevolution;
     uint16_t stepsPerRevolution;
     uint8_t microsteps;
-};
-
-/**
- * Калибровка датчиков мощности
- */
-struct PowerCalibration {
-    float zmptCoeff;
-    int16_t zmptOffset;
-    float acs712Coeff;
-    int16_t acs712Offset;
 };
 
 /**
@@ -391,15 +440,16 @@ struct MashProfile {
 struct Settings {
     WiFiSettings wifi;
     TelegramSettings telegram;
+    MqttSettings mqtt;
+    SecuritySettings security;
     EquipmentSettings equipment;
     TempCalibration tempCal;
     HydrometerCalibration hydroCal;
     PumpCalibration pumpCal;
-    PowerCalibration powerCal;
     FractionatorSettings fractionator;
     RectificationParams rectParams;
     MashProfile mashProfiles[3];
-    
+
     uint8_t language;                   // 0=RU, 1=EN
     uint8_t theme;                      // 0=light, 1=dark
     bool soundEnabled;
@@ -425,6 +475,28 @@ struct LogEvent {
     uint32_t timestamp;
     uint8_t type;                       // 0=info, 1=warning, 2=error, 3=phase
     char message[48];
+};
+
+/**
+ * Точка данных для графика энергопотребления
+ */
+struct EnergyDataPoint {
+    uint32_t timestamp;                 // Время (секунды с запуска)
+    float power;                        // Мощность (Вт)
+    float energy;                       // Накопленная энергия (кВт·ч)
+    float voltage;                      // Напряжение (В)
+    float current;                      // Ток (А)
+};
+
+/**
+ * История энергопотребления
+ */
+struct EnergyHistory {
+    static const uint16_t MAX_POINTS = 288;  // 24 часа по 5 минут = 288 точек
+    EnergyDataPoint points[MAX_POINTS];
+    uint16_t count;                     // Текущее количество точек
+    uint16_t writeIndex;                // Индекс для записи (циклический буфер)
+    uint32_t lastUpdate;                // Время последнего обновления
 };
 
 #endif // TYPES_H
