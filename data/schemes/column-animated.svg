@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1200" id="column-scheme">
+  <defs>
+    <!-- Градиенты для эффектов -->
+    <linearGradient id="heatGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#ff0000;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff6600;stop-opacity:0.5" />
+    </linearGradient>
+
+    <linearGradient id="coolGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00bfff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0080ff;stop-opacity:0.5" />
+    </linearGradient>
+
+    <!-- Маска для жидкости в банках -->
+    <clipPath id="jarClip">
+      <rect x="0" y="0" width="80" height="120" rx="5" />
+    </clipPath>
+  </defs>
+
+  <!-- Куб (красный) -->
+  <g id="cube" class="cube">
+    <rect x="200" y="900" width="200" height="250" rx="10" fill="#dc3545" stroke="#004080" stroke-width="4"/>
+    <!-- Индикаторы нагрева -->
+    <line x1="220" y1="1120" x2="280" y2="1120" stroke="#fff" stroke-width="3" class="heat-indicator" opacity="0.7"/>
+    <line x1="220" y1="1140" x2="280" y2="1140" stroke="#fff" stroke-width="3" class="heat-indicator" opacity="0.7"/>
+    <line x1="320" y1="1120" x2="380" y2="1120" stroke="#fff" stroke-width="3" class="heat-indicator" opacity="0.7"/>
+    <line x1="320" y1="1140" x2="380" y2="1140" stroke="#fff" stroke-width="3" class="heat-indicator" opacity="0.7"/>
+  </g>
+
+  <!-- Царга (оранжевая колонна) -->
+  <g id="column">
+    <rect x="270" y="600" width="60" height="300" fill="#ff8c00" stroke="#004080" stroke-width="4"/>
+    <!-- Пар поднимается -->
+    <g class="vapor-particles">
+      <circle cx="285" cy="850" r="4" fill="#fff" opacity="0.6" class="vapor-bubble v1"/>
+      <circle cx="300" cy="820" r="5" fill="#fff" opacity="0.6" class="vapor-bubble v2"/>
+      <circle cx="315" cy="790" r="4" fill="#fff" opacity="0.6" class="vapor-bubble v3"/>
+      <circle cx="290" cy="760" r="5" fill="#fff" opacity="0.6" class="vapor-bubble v4"/>
+      <circle cx="305" cy="730" r="4" fill="#fff" opacity="0.6" class="vapor-bubble v5"/>
+    </g>
+  </g>
+
+  <!-- Дефлегматор (желтый с синими кольцами) -->
+  <g id="reflux">
+    <rect x="260" y="400" width="80" height="200" fill="#ffd700" stroke="#004080" stroke-width="4"/>
+    <!-- Охлаждающие кольца -->
+    <ellipse cx="300" cy="450" rx="45" ry="12" fill="none" stroke="#007bff" stroke-width="8" class="cooling-ring r1"/>
+    <ellipse cx="300" cy="490" rx="45" ry="12" fill="none" stroke="#007bff" stroke-width="8" class="cooling-ring r2"/>
+    <ellipse cx="300" cy="530" rx="45" ry="12" fill="none" stroke="#007bff" stroke-width="8" class="cooling-ring r3"/>
+    <ellipse cx="300" cy="570" rx="45" ry="12" fill="none" stroke="#007bff" stroke-width="8" class="cooling-ring r4"/>
+
+    <!-- Капли конденсата -->
+    <circle cx="280" cy="580" r="3" fill="#00bfff" class="condensation-drop d1" opacity="0"/>
+    <circle cx="300" cy="560" r="3" fill="#00bfff" class="condensation-drop d2" opacity="0"/>
+    <circle cx="320" cy="540" r="3" fill="#00bfff" class="condensation-drop d3" opacity="0"/>
+  </g>
+
+  <!-- Кнопка Power -->
+  <g id="power-button" class="power-btn">
+    <circle cx="300" cy="330" r="30" fill="#6c757d" stroke="#333" stroke-width="3" class="power-circle"/>
+    <path d="M 300 310 L 300 330 M 295 315 A 15 15 0 1 1 305 315"
+          stroke="#ffd700" stroke-width="4" fill="none" stroke-linecap="round" class="power-icon"/>
+  </g>
+
+  <!-- Трубка к крану -->
+  <line x1="340" y1="450" x2="400" y2="450" stroke="#004080" stroke-width="6"/>
+  <line x1="400" y1="450" x2="400" y2="500" stroke="#004080" stroke-width="6"/>
+
+  <!-- Кран с цифрой -->
+  <g id="tap" class="tap">
+    <circle cx="400" cy="520" r="12" fill="#fff" stroke="#004080" stroke-width="3"/>
+    <rect x="388" y="530" width="24" height="30" rx="3" fill="#004080"/>
+    <!-- Капли из крана -->
+    <circle cx="400" cy="565" r="4" fill="#00bfff" class="tap-drop" opacity="0"/>
+  </g>
+
+  <!-- Цифра фракции -->
+  <g id="fraction-indicator">
+    <circle cx="450" cy="520" r="20" fill="#ffd700" stroke="#004080" stroke-width="3" class="fraction-badge"/>
+    <text x="450" y="528" text-anchor="middle" font-size="20" font-weight="bold" fill="#004080" class="fraction-number">1</text>
+    <path d="M 465 525 L 475 520 L 475 530 Z" fill="#004080" class="fraction-arrow"/>
+  </g>
+
+  <!-- Помпа с колесом -->
+  <g id="pump" transform="translate(420, 600)">
+    <rect x="0" y="0" width="80" height="60" rx="8" fill="#28a745" stroke="#004080" stroke-width="3"/>
+    <!-- Вращающееся колесо -->
+    <g class="pump-wheel">
+      <circle cx="40" cy="30" r="20" fill="#fff" stroke="#004080" stroke-width="2"/>
+      <line x1="40" y1="10" x2="40" y2="50" stroke="#004080" stroke-width="2"/>
+      <line x1="20" y1="30" x2="60" y2="30" stroke="#004080" stroke-width="2"/>
+      <line x1="26" y1="16" x2="54" y2="44" stroke="#004080" stroke-width="2"/>
+      <line x1="54" y1="16" x2="26" y2="44" stroke="#004080" stroke-width="2"/>
+      <circle cx="40" cy="30" r="5" fill="#004080"/>
+    </g>
+    <text x="40" y="75" text-anchor="middle" font-size="12" fill="#004080" font-weight="bold">PUMP</text>
+  </g>
+
+  <!-- Трубка от крана к разветвлению -->
+  <line x1="400" y1="565" x2="400" y2="630" stroke="#004080" stroke-width="6" class="flow-pipe"/>
+  <line x1="400" y1="630" x2="420" y2="630" stroke="#004080" stroke-width="6" class="flow-pipe"/>
+
+  <!-- Трубка от помпы -->
+  <line x1="500" y1="630" x2="550" y2="630" stroke="#004080" stroke-width="6" class="flow-pipe"/>
+
+  <!-- Разветвление на 3 банки -->
+  <g id="splitter">
+    <circle cx="550" cy="630" r="10" fill="#004080"/>
+    <!-- Трубки к банкам -->
+    <line x1="550" y1="630" x2="550" y2="750" stroke="#004080" stroke-width="5" class="flow-pipe"/>
+    <line x1="550" y1="750" x2="520" y2="780" stroke="#004080" stroke-width="4" class="flow-pipe"/>
+    <line x1="550" y1="750" x2="550" y2="780" stroke="#004080" stroke-width="4" class="flow-pipe"/>
+    <line x1="550" y1="750" x2="580" y2="780" stroke="#004080" stroke-width="4" class="flow-pipe"/>
+  </g>
+
+  <!-- Банка 1: Головы -->
+  <g id="jar-heads" transform="translate(430, 800)">
+    <rect x="0" y="0" width="80" height="120" rx="5" fill="none" stroke="#dc3545" stroke-width="3"/>
+    <rect x="0" y="120" width="80" height="20" rx="5" fill="#dc3545" stroke="#004080" stroke-width="2"/>
+    <!-- Жидкость внутри -->
+    <rect x="2" y="20" width="76" height="0" fill="#dc3545" opacity="0.7" class="jar-liquid" id="liquid-heads" clip-path="url(#jarClip)"/>
+    <text x="40" y="145" text-anchor="middle" font-size="14" font-weight="bold" fill="#dc3545">HEADS</text>
+    <text x="40" y="160" text-anchor="middle" font-size="12" fill="#666" class="jar-volume" id="vol-heads">0ml</text>
+  </g>
+
+  <!-- Банка 2: Тело -->
+  <g id="jar-body" transform="translate(510, 800)">
+    <rect x="0" y="0" width="80" height="120" rx="5" fill="none" stroke="#28a745" stroke-width="3"/>
+    <rect x="0" y="120" width="80" height="20" rx="5" fill="#28a745" stroke="#004080" stroke-width="2"/>
+    <!-- Жидкость внутри -->
+    <rect x="2" y="20" width="76" height="0" fill="#28a745" opacity="0.7" class="jar-liquid" id="liquid-body" clip-path="url(#jarClip)"/>
+    <text x="40" y="145" text-anchor="middle" font-size="14" font-weight="bold" fill="#28a745">BODY</text>
+    <text x="40" y="160" text-anchor="middle" font-size="12" fill="#666" class="jar-volume" id="vol-body">0ml</text>
+  </g>
+
+  <!-- Банка 3: Хвосты -->
+  <g id="jar-tails" transform="translate(590, 800)">
+    <rect x="0" y="0" width="80" height="120" rx="5" fill="none" stroke="#ffc107" stroke-width="3"/>
+    <rect x="0" y="120" width="80" height="20" rx="5" fill="#ffc107" stroke="#004080" stroke-width="2"/>
+    <!-- Жидкость внутри -->
+    <rect x="2" y="20" width="76" height="0" fill="#ffc107" opacity="0.7" class="jar-liquid" id="liquid-tails" clip-path="url(#jarClip)"/>
+    <text x="40" y="145" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffc107">TAILS</text>
+    <text x="40" y="160" text-anchor="middle" font-size="12" fill="#666" class="jar-volume" id="vol-tails">0ml</text>
+  </g>
+
+  <!-- Подписи температур (опционально) -->
+  <text x="150" y="1050" font-size="14" fill="#666" class="temp-label">T: <tspan id="temp-cube">--°C</tspan></text>
+  <text x="150" y="750" font-size="14" fill="#666" class="temp-label">T: <tspan id="temp-column">--°C</tspan></text>
+  <text x="150" y="500" font-size="14" fill="#666" class="temp-label">T: <tspan id="temp-reflux">--°C</tspan></text>
+</svg>

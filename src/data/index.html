@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система управления ректификацией и дистилляцией</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+</head>
+<body>
+    <div class="wrapper">
+        <header>
+            <h1>Ректификация и Дистилляция</h1>
+            <div class="status-bar">
+                <div class="status-item" id="connection-status">
+                    <span class="status-indicator offline"></span>
+                    <span class="status-text">Отключено</span>
+                </div>
+                <div class="status-item" id="system-status">
+                    <span class="status-text">Статус: Остановлен</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-container">
+            <div class="sidebar">
+                <nav>
+                    <ul>
+                        <li><a href="#dashboard" class="active" data-section="dashboard">Панель управления</a></li>
+                        <li><a href="#settings" data-section="settings">Настройки</a></li>
+                        <li><a href="#chart" data-section="chart">Графики</a></li>
+                        <li><a href="#about" data-section="about">О системе</a></li>
+                    </ul>
+                </nav>
+
+                <div class="temperature-panel">
+                    <h3>Температуры</h3>
+                    <div class="temperature-item">
+                        <span class="temp-label">Куб:</span>
+                        <span class="temp-value" id="cube-temp">--.-°C</span>
+                    </div>
+                    <div class="temperature-item">
+                        <span class="temp-label">Колонна:</span>
+                        <span class="temp-value" id="reflux-temp">--.-°C</span>
+                    </div>
+                    <div class="temperature-item">
+                        <span class="temp-label">Продукт:</span>
+                        <span class="temp-value" id="product-temp">--.-°C</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content">
+                <!-- Панель управления -->
+                <section id="dashboard" class="content-section active">
+                    <div class="dashboard-header">
+                        <h2>Панель управления</h2>
+                        <div class="power-control">
+                            <label for="power-slider">Мощность:</label>
+                            <input type="range" id="power-slider" min="0" max="100" step="1" value="0">
+                            <span id="power-value">0%</span>
+                            <span id="power-watts">(0 Вт)</span>
+                        </div>
+                    </div>
+
+                    <div class="process-info">
+                        <div class="process-status">
+                            <h3>Статус процесса</h3>
+                            <div class="info-row">
+                                <span class="info-label">Режим:</span>
+                                <span class="info-value" id="mode-value">Не выбран</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Фаза:</span>
+                                <span class="info-value" id="phase-value">-</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Время работы:</span>
+                                <span class="info-value" id="uptime-value">00:00:00</span>
+                            </div>
+                        </div>
+
+                        <div class="volumes-collected">
+                            <h3>Объемы отбора</h3>
+                            <div class="info-row">
+                                <span class="info-label">Головы:</span>
+                                <span class="info-value" id="heads-value">0 мл</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Тело:</span>
+                                <span class="info-value" id="body-value">0 мл</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Хвосты:</span>
+                                <span class="info-value" id="tails-value">0 мл</span>
+                            </div>
+                            <div class="info-row total-row">
+                                <span class="info-label">Всего:</span>
+                                <span class="info-value" id="total-value">0 мл</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="control-buttons">
+                        <button id="start-rect-btn" class="btn btn-primary">Запустить ректификацию</button>
+                        <button id="start-dist-btn" class="btn btn-primary">Запустить дистилляцию</button>
+                        <button id="pause-btn" class="btn btn-warning" disabled>Пауза</button>
+                        <button id="stop-btn" class="btn btn-danger" disabled>Остановить</button>
+                    </div>
+                </section>
+
+                <!-- Настройки -->
+                <section id="settings" class="content-section">
+                    <h2>Настройки</h2>
+                    <div class="tabs">
+                        <div class="tab-buttons">
+                            <button class="tab-btn active" data-tab="system-settings">Системные</button>
+                            <button class="tab-btn" data-tab="rectification-settings">Ректификация</button>
+                            <button class="tab-btn" data-tab="distillation-settings">Дистилляция</button>
+                            <button class="tab-btn" data-tab="pump-settings">Насос</button>
+                            <button class="tab-btn" data-tab="sensor-settings">Датчики</button>
+                        </div>
+                        
+                        <div class="tab-content">
+                            <!-- Системные настройки -->
+                            <div id="system-settings" class="tab-pane active">
+                                <form id="system-settings-form">
+                                    <div class="form-group">
+                                        <label for="max-heater-power">Максимальная мощность нагревателя (Вт):</label>
+                                        <input type="number" id="max-heater-power" name="maxHeaterPower" min="100" max="10000" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="power-control-mode">Режим управления мощностью:</label>
+                                        <select id="power-control-mode" name="powerControlMode">
+                                            <option value="0">Ручной</option>
+                                            <option value="1">PI-регулятор</option>
+                                            <option value="2">По PZEM</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Использовать PZEM-004T:</label>
+                                        <div class="toggle-switch">
+                                            <input type="checkbox" id="pzem-enabled" name="pzemEnabled">
+                                            <label for="pzem-enabled"></label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Звук:</label>
+                                        <div class="toggle-switch">
+                                            <input type="checkbox" id="sound-enabled" name="soundEnabled">
+                                            <label for="sound-enabled"></label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="sound-volume">Громкость звука:</label>
+                                        <input type="range" id="sound-volume" name="soundVolume" min="0" max="100" step="1">
+                                        <span id="sound-volume-value">50%</span>
+                                    </div>
+
+                                    <h3>Настройки дисплея</h3>
+                                    <div class="form-group">
+                                        <label>Включить дисплей:</label>
+                                        <div class="toggle-switch">
+                                            <input type="checkbox" id="display-enabled" name="displayEnabled">
+                                            <label for="display-enabled"></label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="display-brightness">Яркость дисплея:</label>
+                                        <input type="range" id="display-brightness" name="displayBrightness" min="0" max="255" step="1">
+                                        <span id="display-brightness-value">128</span>
+                                    </div>
+                                    
+                                    <h3>Настройки WiFi</h3>
+                                    <div class="form-group">
+                                        <label for="wifi-ssid">SSID:</label>
+                                        <input type="text" id="wifi-ssid" name="wifiSSID" maxlength="32">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="wifi-password">Пароль:</label>
+                                        <input type="password" id="wifi-password" name="wifiPassword" maxlength="64">
+                                    </div>
+                                    
+                                    <div class="form-actions">
+                                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                                        <button type="reset" class="btn btn-secondary">Отмена</button>
+                                        <button type="button" id="reset-settings-btn" class="btn btn-danger">Сбросить настройки</button>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <!-- Настройки ректификации -->
+                            <div id="rectification-settings" class="tab-pane">
+                                <form id="rect-settings-form">
+                                    <div class="form-group">
+                                        <label for="rect-model">Модель ректификации:</label>
+                                        <select id="rect-model" name="model">
+                                            <option value="0">Классическая</option>
+                                            <option value="1">Альтернативная</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <h3>Температуры</h3>
+                                    <div class="form-group">
+                                        <label for="rect-max-cube-temp">Максимальная температура куба (°C):</label>
+                                        <input type="number" id="rect-max-cube-temp" name="maxCubeTemp" min="50" max="110" step="0.1" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-heads-temp">Температура голов (°C):</label>
+                                        <input type="number" id="rect-heads-temp" name="headsTemp" min="50" max="100" step="0.1" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-body-temp">Температура тела (°C):</label>
+                                        <input type="number" id="rect-body-temp" name="bodyTemp" min="50" max="100" step="0.1" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-tails-temp">Температура хвостов (°C):</label>
+                                        <input type="number" id="rect-tails-temp" name="tailsTemp" min="50" max="100" step="0.1" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-end-temp">Температура окончания (°C):</label>
+                                        <input type="number" id="rect-end-temp" name="endTemp" min="50" max="110" step="0.1" required>
+                                    </div>
+                                    
+                                    <h3>Мощность</h3>
+                                    <div class="form-group">
+                                        <label for="rect-heating-power">Мощность при нагреве (Вт):</label>
+                                        <input type="number" id="rect-heating-power" name="heatingPowerWatts" min="100" max="10000" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-stabilization-power">Мощность при стабилизации (Вт):</label>
+                                        <input type="number" id="rect-stabilization-power" name="stabilizationPowerWatts" min="100" max="10000" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-body-power">Мощность при отборе тела (Вт):</label>
+                                        <input type="number" id="rect-body-power" name="bodyPowerWatts" min="100" max="10000" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-tails-power">Мощность при отборе хвостов (Вт):</label>
+                                        <input type="number" id="rect-tails-power" name="tailsPowerWatts" min="100" max="10000" required>
+                                    </div>
+                                    
+                                    <h3>Параметры отбора</h3>
+                                    <div class="form-group">
+                                        <label for="rect-stabilization-time">Время стабилизации (мин):</label>
+                                        <input type="number" id="rect-stabilization-time" name="stabilizationTime" min="1" max="120" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-heads-volume">Объем голов (мл):</label>
+                                        <input type="number" id="rect-heads-volume" name="headsVolume" min="0" max="1000" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-body-volume">Объем тела (мл):</label>
+                                        <input type="number" id="rect-body-volume" name="bodyVolume" min="0" max="10000" required>
+                                    </div>
+                                    
+                                    <h3>Настройки орошения</h3>
+                                    <div class="form-group">
+                                        <label for="rect-reflux-ratio">Соотношение орошения:</label>
+                                        <input type="number" id="rect-reflux-ratio" name="refluxRatio" min="1" max="20" step="0.1" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rect-reflux-period">Период орошения (с):</label>
+                                        <input type="number" id="rect-reflux-period" name="refluxPeriod" min="10" max="300" required>
+                                    </div>
+                                    
+                                    <!-- Параметры альтернативной модели -->
+                                    <div id="alternative-model-settings">
+                                        <h3>Дополнительные параметры альтернативной модели</h3>
+                                        <div class="form-group">
+                                            <label for="rect-heads-target-time">Целевое время отбора голов (мин):</label>
+                                            <input type="number" id="rect-heads-target-time" name="headsTargetTime" min="1" max="120" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-post-heads-stab-time">Время стабилизации после голов (мин):</label>
+                                            <input type="number" id="rect-post-heads-stab-time" name="postHeadsStabilizationTime" min="0" max="60" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-body-flow-rate">Скорость отбора тела (мл/час):</label>
+                                            <input type="number" id="rect-body-flow-rate" name="bodyFlowRate" min="50" max="2000" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-temp-delta-end-body">Дельта температуры для окончания тела (°C):</label>
+                                            <input type="number" id="rect-temp-delta-end-body" name="tempDeltaEndBody" min="0.1" max="5" step="0.1" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-tails-cube-temp">Температура куба для перехода к хвостам (°C):</label>
+                                            <input type="number" id="rect-tails-cube-temp" name="tailsCubeTemp" min="50" max="110" step="0.1" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-tails-flow-rate">Скорость отбора хвостов (мл/час):</label>
+                                            <input type="number" id="rect-tails-flow-rate" name="tailsFlowRate" min="50" max="2000" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Использовать ту же скорость для хвостов:</label>
+                                            <div class="toggle-switch">
+                                                <input type="checkbox" id="rect-use-same-flow-for-tails" name="useSameFlowForTails">
+                                                <label for="rect-use-same-flow-for-tails"></label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-actions">
+                                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                                        <button type="reset" class="btn btn-secondary">Отмена</button>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <!-- Настройки дистилляции -->
+                            <div id="distillation-settings" class="tab-pane">
+                                <form id="dist-settings-form">
+                                    <h3>Температуры</h3>
+                                    <div class="form-group">
+                                        <label for="dist-max-cube-temp">Максимальная температура куба (°C):</label>
+                                        <input type="number" id="dist-max-cube-temp" name="maxCubeTemp" min="50" max="110" step="0.1" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="dist-start-collect-temp">Температура начала отбора (°C):</label>
+                                        <input type="number" id="dist-start-collect-temp" name="startCollectingTemp" min="50" max="100" step="0.1" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="dist-end-temp">Температура окончания (°C):</label>
+                                        <input type="number" id="dist-end-temp" name="endTemp" min="50" max="110" step="0.1" required>
+                                    </div>
+                                    
+                                    <h3>Мощность</h3>
+                                    <div class="form-group">
+                                        <label for="dist-heating-power">Мощность при нагреве (Вт):</label>
+                                        <input type="number" id="dist-heating-power" name="heatingPowerWatts" min="100" max="10000" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="dist-distillation-power">Мощность при дистилляции (Вт):</label>
+                                        <input type="number" id="dist-distillation-power" name="distillationPowerWatts" min="100" max="10000" required>
+                                    </div>
+                                    
+                                    <h3>Параметры отбора</h3>
+                                    <div class="form-group">
+                                        <label for="dist-flow-rate">Скорость отбора (мл/час):</label>
+                                        <input type="number" id="dist-flow-rate" name="flowRate" min="50" max="5000" required>
+                                    </div>
+                                    
+                                    <h3>Отбор голов</h3>
+                                    <div class="form-group">
+                                        <label>Отделять головы:</label>
+                                        <div class="toggle-switch">
+                                            <input type="checkbox" id="dist-separate-heads" name="separateHeads">
+                                            <label for="dist-separate-heads"></label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div id="dist-heads-settings">
+                                        <div class="form-group">
+                                            <label for="dist-heads-volume">Объем голов (мл):</label>
+                                            <input type="number" id="dist-heads-volume" name="headsVolume" min="0" max="1000" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dist-heads-flow-rate">Скорость отбора голов (мл/час):</label>
+                                            <input type="number" id="dist-heads-flow-rate" name="headsFlowRate" min="50" max="2000" required>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-actions">
+                                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                                        <button type="reset" class="btn btn-secondary">Отмена</button>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <!-- Настройки насоса -->
+                            <div id="pump-settings" class="tab-pane">
+                                <form id="pump-settings-form">
+                                    <h3>Калибровка насоса</h3>
+                                    <div class="form-group">
+                                        <label for="pump-calibration-factor">Калибровочный коэффициент (мл/с при 100% мощности):</label>
+                                        <input type="number" id="pump-calibration-factor" name="calibrationFactor" min="0.1" max="50" step="0.1" required>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <button type="button" id="calibrate-pump-btn" class="btn btn-warning">Калибровка насоса</button>
+                                    </div>
+                                    
+                                    <h3>Параметры скорости отбора</h3>
+                                    <div class="form-group">
+                                        <label for="pump-heads-flow-rate">Скорость отбора голов (мл/час):</label>
+                                        <input type="number" id="pump-heads-flow-rate" name="headsFlowRate" min="50" max="2000" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pump-body-flow-rate">Скорость отбора тела (мл/час):</label>
+                                        <input type="number" id="pump-body-flow-rate" name="bodyFlowRate" min="50" max="2000" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pump-tails-flow-rate">Скорость отбора хвостов (мл/час):</label>
+                                        <input type="number" id="pump-tails-flow-rate" name="tailsFlowRate" min="50" max="2000" required>
+                                    </div>
+                                    
+                                    <h3>Ограничения</h3>
+                                    <div class="form-group">
+                                        <label for="pump-min-flow-rate">Минимальная скорость отбора (мл/час):</label>
+                                        <input type="number" id="pump-min-flow-rate" name="minFlowRate" min="10" max="1000" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pump-max-flow-rate">Максимальная скорость отбора (мл/час):</label>
+                                        <input type="number" id="pump-max-flow-rate" name="maxFlowRate" min="100" max="10000" required>
+                                    </div>
+                                    
+                                    <h3>Расширенные настройки</h3>
+                                    <div class="form-group">
+                                        <label for="pump-period-ms">Период работы насоса (мс):</label>
+                                        <input type="number" id="pump-period-ms" name="pumpPeriodMs" min="100" max="10000" required>
+                                    </div>
+                                    
+                                    <div class="form-actions">
+                                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                                        <button type="reset" class="btn btn-secondary">Отмена</button>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <!-- Настройки датчиков -->
+                            <div id="sensor-settings" class="tab-pane">
+                                <div class="sensor-actions">
+                                    <button type="button" id="scan-sensors-btn" class="btn btn-primary">Сканировать датчики</button>
+                                </div>
+                                
+                                <div class="sensor-list" id="sensor-list">
+                                    <div class="sensor-item">
+                                        <div class="sensor-info">
+                                            <h3>Датчик 0 (Куб)</h3>
+                                            <p class="sensor-address">Адрес: <span id="sensor-0-address">Не подключен</span></p>
+                                            <p class="sensor-temp">Температура: <span id="sensor-0-temp">--.-°C</span></p>
+                                        </div>
+                                        <div class="sensor-controls">
+                                            <div class="form-group">
+                                                <label for="sensor-0-name">Название:</label>
+                                                <input type="text" id="sensor-0-name" data-sensor-id="0" value="Куб">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="sensor-0-calibration">Калибровка (±°C):</label>
+                                                <input type="number" id="sensor-0-calibration" data-sensor-id="0" step="0.1" value="0.0">
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-warning calibrate-sensor-btn" data-sensor-id="0">Калибровать</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="sensor-item">
+                                        <div class="sensor-info">
+                                            <h3>Датчик 1 (Колонна)</h3>
+                                            <p class="sensor-address">Адрес: <span id="sensor-1-address">Не подключен</span></p>
+                                            <p class="sensor-temp">Температура: <span id="sensor-1-temp">--.-°C</span></p>
+                                        </div>
+                                        <div class="sensor-controls">
+                                            <div class="form-group">
+                                                <label for="sensor-1-name">Название:</label>
+                                                <input type="text" id="sensor-1-name" data-sensor-id="1" value="Колонна">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="sensor-1-calibration">Калибровка (±°C):</label>
+                                                <input type="number" id="sensor-1-calibration" data-sensor-id="1" step="0.1" value="0.0">
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-warning calibrate-sensor-btn" data-sensor-id="1">Калибровать</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="sensor-item">
+                                        <div class="sensor-info">
+                                            <h3>Датчик 2 (Продукт)</h3>
+                                            <p class="sensor-address">Адрес: <span id="sensor-2-address">Не подключен</span></p>
+                                            <p class="sensor-temp">Температура: <span id="sensor-2-temp">--.-°C</span></p>
+                                        </div>
+                                        <div class="sensor-controls">
+                                            <div class="form-group">
+                                                <label for="sensor-2-name">Название:</label>
+                                                <input type="text" id="sensor-2-name" data-sensor-id="2" value="Продукт">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="sensor-2-calibration">Калибровка (±°C):</label>
+                                                <input type="number" id="sensor-2-calibration" data-sensor-id="2" step="0.1" value="0.0">
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-warning calibrate-sensor-btn" data-sensor-id="2">Калибровать</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-actions">
+                                    <button type="button" id="save-sensors-btn" class="btn btn-primary">Сохранить</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Графики -->
+                <section id="chart" class="content-section">
+                    <h2>Графики температуры и мощности</h2>
+                    <div class="chart-controls">
+                        <div class="chart-range">
+                            <label for="chart-range-select">Период:</label>
+                            <select id="chart-range-select">
+                                <option value="10">10 минут</option>
+                                <option value="30">30 минут</option>
+                                <option value="60" selected>1 час</option>
+                                <option value="180">3 часа</option>
+                                <option value="360">6 часов</option>
+                                <option value="720">12 часов</option>
+                            </select>
+                        </div>
+                        <div class="chart-series">
+                            <label>Показать:</label>
+                            <div class="chart-series-item">
+                                <input type="checkbox" id="show-cube-temp" checked>
+                                <label for="show-cube-temp">Куб</label>
+                            </div>
+                            <div class="chart-series-item">
+                                <input type="checkbox" id="show-reflux-temp" checked>
+                                <label for="show-reflux-temp">Колонна</label>
+                            </div>
+                            <div class="chart-series-item">
+                                <input type="checkbox" id="show-product-temp" checked>
+                                <label for="show-product-temp">Продукт</label>
+                            </div>
+                            <div class="chart-series-item">
+                                <input type="checkbox" id="show-power" checked>
+                                <label for="show-power">Мощность</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <canvas id="temp-chart"></canvas>
+                    </div>
+                </section>
+
+                <!-- О системе -->
+                <section id="about" class="content-section">
+                    <h2>О системе управления ректификацией и дистилляцией</h2>
+                    <div class="about-content">
+                        <div class="about-info">
+                            <p><strong>Версия:</strong> <span id="system-version">1.0.0</span></p>
+                            <p><strong>Дата сборки:</strong> <span id="build-date">01.01.2023</span></p>
+                            <p><strong>Разработчик:</strong> Команда любителей самогоноварения</p>
+                        </div>
+                        
+                        <div class="system-info">
+                            <h3>Информация об устройстве</h3>
+                            <p><strong>Модель устройства:</strong> <span id="device-model">ESP32 Controller</span></p>
+                            <p><strong>MAC-адрес:</strong> <span id="device-mac">XX:XX:XX:XX:XX:XX</span></p>
+                            <p><strong>IP-адрес:</strong> <span id="device-ip">192.168.1.100</span></p>
+                            <p><strong>Свободная память:</strong> <span id="free-memory">0 байт</span></p>
+                            <p><strong>Время работы:</strong> <span id="device-uptime">0 дней, 0 часов, 0 минут</span></p>
+                        </div>
+                        
+                        <div class="about-actions">
+                            <button type="button" id="reboot-device-btn" class="btn btn-warning">Перезагрузить устройство</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+        
+        <footer>
+            <p>&copy; 2023 Система управления ректификацией и дистилляцией. Все права защищены.</p>
+        </footer>
+    </div>
+    
+    <!-- Модальное окно для уведомлений -->
+    <div class="modal" id="notification-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="notification-title">Уведомление</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="notification-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="notification-ok-btn">ОК</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Модальное окно для калибровки насоса -->
+    <div class="modal" id="pump-calibration-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Калибровка насоса</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Калибровка позволяет системе точно определять объем отбираемого продукта.</p>
+                
+                <div class="calibration-steps">
+                    <div class="step" id="calibration-step-1">
+                        <h4>Шаг 1: Подготовка</h4>
+                        <p>Подготовьте мерный стакан объемом не менее 100 мл и разместите шланг от насоса в него.</p>
+                        <button class="btn btn-primary" id="calibration-next-1">Далее</button>
+                    </div>
+                    
+                    <div class="step" id="calibration-step-2" style="display: none;">
+                        <h4>Шаг 2: Калибровка</h4>
+                        <p>Насос будет работать на максимальной мощности в течение 30 секунд. Нажмите "Начать" для запуска.</p>
+                        <div id="calibration-timer">Готов к запуску</div>
+                        <button class="btn btn-primary" id="calibration-start">Начать</button>
+                    </div>
+                    
+                    <div class="step" id="calibration-step-3" style="display: none;">
+                        <h4>Шаг 3: Результат</h4>
+                        <p>Измерьте количество жидкости в мерном стакане и введите значение ниже:</p>
+                        <div class="form-group">
+                            <label for="calibration-volume">Объем (мл):</label>
+                            <input type="number" id="calibration-volume" min="1" max="1000" step="0.1">
+                        </div>
+                        <button class="btn btn-primary" id="calibration-finish">Завершить</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="calibration-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Модальное окно для запуска ректификации -->
+    <div class="modal" id="start-rect-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Запуск ректификации</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Вы собираетесь запустить процесс ректификации.</p>
+                <p>Убедитесь, что:</p>
+                <ul>
+                    <li>Подключены все необходимые датчики температуры</li>
+                    <li>Подключены насос отбора и клапан</li>
+                    <li>Все соединения герметичны</li>
+                    <li>Вода для охлаждения подключена и включена</li>
+                </ul>
+                <p>Текущие параметры:</p>
+                <ul>
+                    <li>Модель: <span id="rect-start-model">Классическая</span></li>
+                    <li>Мощность при нагреве: <span id="rect-start-heating-power">0 Вт</span></li>
+                    <li>Отбор голов: <span id="rect-start-heads-volume">0 мл</span></li>
+                    <li>Отбор тела: <span id="rect-start-body-volume">0 мл</span></li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="start-rect-confirm">Запустить</button>
+                <button class="btn btn-secondary close-modal">Отмена</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Модальное окно для запуска дистилляции -->
+    <div class="modal" id="start-dist-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Запуск дистилляции</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Вы собираетесь запустить процесс дистилляции.</p>
+                <p>Убедитесь, что:</p>
+                <ul>
+                    <li>Подключены все необходимые датчики температуры</li>
+                    <li>Подключены насос отбора и клапан</li>
+                    <li>Все соединения герметичны</li>
+                    <li>Вода для охлаждения подключена и включена</li>
+                </ul>
+                <p>Текущие параметры:</p>
+                <ul>
+                    <li>Мощность при нагреве: <span id="dist-start-heating-power">0 Вт</span></li>
+                    <li>Мощность при дистилляции: <span id="dist-start-dist-power">0 Вт</span></li>
+                    <li>Скорость отбора: <span id="dist-start-flow-rate">0 мл/час</span></li>
+                    <li>Отделять головы: <span id="dist-start-separate-heads">Нет</span></li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="start-dist-confirm">Запустить</button>
+                <button class="btn btn-secondary close-modal">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

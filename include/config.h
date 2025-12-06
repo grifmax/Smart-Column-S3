@@ -1,7 +1,7 @@
 /**
  * Smart-Column S3 - Конфигурация
- * 
- * Версия: 1.0
+ *
+ * Версия: 1.1
  * Платформа: ESP32-S3 DevKitC-1 N16R8
  */
 
@@ -14,7 +14,7 @@
 // ВЕРСИЯ
 // =============================================================================
 
-#define FW_VERSION      "1.0.0"
+#define FW_VERSION      "1.1.0"
 #define FW_NAME         "Smart-Column S3"
 #define FW_DATE         __DATE__
 
@@ -24,15 +24,19 @@
 
 // --- I2C шина (BMP280 x2, ADS1115) ---
 #define PIN_I2C_SDA         21
-#define PIN_I2C_SCL         22
+#define PIN_I2C_SCL         9       // GPIO9 (GPIO22 не существует на S3!)
 
 // --- OneWire (DS18B20 x7) ---
 #define PIN_ONEWIRE         4
 
 // --- Управление нагревом ---
 #define PIN_SSR_HEATER      5       // SSR через PC817
-#define PIN_ZMPT101B        1       // AC напряжение (ADC)
-#define PIN_ACS712          2       // AC ток (ADC)
+
+// --- PZEM-004T (измеритель мощности) ---
+#define PIN_PZEM_RX         44      // UART0 RX (подключить к TX PZEM)
+#define PIN_PZEM_TX         43      // UART0 TX (подключить к RX PZEM)
+#define PZEM_UART_NUM       0       // UART0 для PZEM-004T (аппаратный)
+#define PZEM_BAUD_RATE      9600    // Скорость PZEM-004T
 
 // --- Шаговый насос (TMC2209) ---
 #define PIN_PUMP_STEP       6
@@ -46,7 +50,7 @@
 
 // --- Опциональные выходы ---
 #define PIN_SERVO_FRACTION  8       // Фракционник (PWM 50Hz)
-#define PIN_VALVE_STARTSTOP 9       // Клапан старт-стоп (ШИМ)
+#define PIN_VALVE_STARTSTOP 14      // Клапан старт-стоп (ШИМ) (был 9 - конфликт с I2C SCL!)
 
 // --- Датчики ---
 #define PIN_FLOW_SENSOR     3       // YF-S201 (счётчик импульсов)
@@ -182,13 +186,10 @@
 // КАЛИБРОВКА (по умолчанию)
 // =============================================================================
 
-// ZMPT101B
-#define ZMPT_OFFSET                 2048    // Средняя точка ADC
-#define ZMPT_COEFFICIENT            0.17f   // Калибровочный коэфф.
-
-// ACS712-30A
-#define ACS712_OFFSET               2048    // Средняя точка ADC
-#define ACS712_SENSITIVITY          0.066f  // В/А
+// PZEM-004T (не требует калибровки - уже откалиброван)
+#define PZEM_VOLTAGE_ALARM_MIN      190.0f  // V - мин. напряжение
+#define PZEM_VOLTAGE_ALARM_MAX      250.0f  // V - макс. напряжение
+#define PZEM_CURRENT_MAX            30.0f   // A - максимальный ток
 
 // MPX5010DP
 #define MPX5010_OFFSET              0.2f    // В при 0 кПа
@@ -200,7 +201,7 @@
 
 #define INTERVAL_TEMP_READ          1000    // Чтение температур
 #define INTERVAL_PRESSURE_READ      500     // Чтение давления
-#define INTERVAL_POWER_READ         100     // Чтение мощности
+#define INTERVAL_POWER_READ         1000    // Чтение мощности (PZEM-004T)
 #define INTERVAL_FLOW_READ          1000    // Чтение потока воды
 #define INTERVAL_DISPLAY_UPDATE     250     // Обновление дисплея
 #define INTERVAL_WEB_BROADCAST      1000    // WebSocket broadcast

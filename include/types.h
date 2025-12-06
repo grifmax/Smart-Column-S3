@@ -134,12 +134,15 @@ struct Pressure {
 };
 
 /**
- * Показания электрических параметров
+ * Показания электрических параметров (PZEM-004T)
  */
 struct Power {
     float voltage;          // Напряжение (V RMS)
     float current;          // Ток (A RMS)
-    float power;            // Мощность (W)
+    float power;            // Активная мощность (W)
+    float energy;           // Потреблённая энергия (кВт·ч)
+    float frequency;        // Частота сети (Гц)
+    float powerFactor;      // Коэффициент мощности (0.0-1.0)
     float powerTarget;      // Заданная мощность (%)
     uint32_t lastUpdate;
 };
@@ -338,16 +341,6 @@ struct PumpCalibration {
 };
 
 /**
- * Калибровка датчиков мощности
- */
-struct PowerCalibration {
-    float zmptCoeff;
-    int16_t zmptOffset;
-    float acs712Coeff;
-    int16_t acs712Offset;
-};
-
-/**
  * Настройки фракционника
  */
 struct FractionatorSettings {
@@ -395,7 +388,6 @@ struct Settings {
     TempCalibration tempCal;
     HydrometerCalibration hydroCal;
     PumpCalibration pumpCal;
-    PowerCalibration powerCal;
     FractionatorSettings fractionator;
     RectificationParams rectParams;
     MashProfile mashProfiles[3];

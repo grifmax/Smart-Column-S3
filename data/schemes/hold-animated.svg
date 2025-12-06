@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 900" id="hold-scheme">
+  <defs>
+    <linearGradient id="holdHeatGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#ff4400;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#ff8800;stop-opacity:0.3" />
+    </linearGradient>
+
+    <radialGradient id="warmGlow">
+      <stop offset="0%" style="stop-color:#ff6600;stop-opacity:0.5" />
+      <stop offset="100%" style="stop-color:#ff0000;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Куб (средний размер) -->
+  <g id="hold-cube" class="cube">
+    <rect x="200" y="500" width="300" height="300" rx="15" fill="#dc3545" stroke="#004080" stroke-width="5"/>
+
+    <!-- Легкое свечение (поддержание тепла) -->
+    <rect x="205" y="505" width="290" height="290" rx="12" fill="url(#holdHeatGradient)" opacity="0" class="warm-glow" id="hold-glow"/>
+
+    <!-- Волны на поверхности -->
+    <path d="M 210 520 Q 260 515, 310 520 T 410 520 T 490 520"
+          stroke="#fff" stroke-width="2" fill="none" opacity="0.3" class="gentle-wave gw1"/>
+
+    <!-- Паровой клапан сверху -->
+    <g id="steam-valve">
+      <rect x="330" y="480" width="40" height="30" rx="5" fill="#666" stroke="#333" stroke-width="2"/>
+      <rect x="340" y="470" width="20" height="15" rx="3" fill="#888" stroke="#333" stroke-width="2"/>
+
+      <!-- Пар из клапана -->
+      <ellipse cx="350" cy="460" rx="12" ry="8" fill="#fff" opacity="0" class="steam-puff sp1"/>
+      <ellipse cx="350" cy="445" rx="14" ry="10" fill="#fff" opacity="0" class="steam-puff sp2"/>
+      <ellipse cx="350" cy="430" rx="16" ry="12" fill="#fff" opacity="0" class="steam-puff sp3"/>
+    </g>
+
+    <!-- Нагрев снизу (слабый) -->
+    <ellipse cx="350" cy="810" rx="140" ry="15" fill="url(#warmGlow)" opacity="0" class="gentle-heat" id="hold-heat"/>
+  </g>
+
+  <!-- ОГРОМНЫЙ термометр (главный элемент) -->
+  <g id="giant-thermometer">
+    <rect x="80" y="150" width="100" height="600" rx="50" fill="#fff" stroke="#333" stroke-width="5"/>
+    <rect x="100" y="170" width="60" height="560" rx="30" fill="#f0f0f0"/>
+
+    <!-- Ртуть -->
+    <rect x="105" y="680" width="50" height="0" rx="25" fill="#dc3545" class="mercury-rise" id="hold-mercury"/>
+
+    <circle cx="130" cy="725" r="40" fill="#dc3545" stroke="#333" stroke-width="4"/>
+
+    <!-- Целевая зона (зелёная полоса) -->
+    <rect x="100" y="400" width="60" height="80" fill="#28a745" opacity="0.2" class="target-zone"/>
+    <line x1="95" y1="400" x2="165" y2="400" stroke="#28a745" stroke-width="3" stroke-dasharray="5,5"/>
+    <line x1="95" y1="480" x2="165" y2="480" stroke="#28a745" stroke-width="3" stroke-dasharray="5,5"/>
+    <text x="70" y="445" font-size="18" font-weight="bold" fill="#28a745" text-anchor="end">ЦЕЛЬ</text>
+
+    <!-- Шкала -->
+    <g class="temp-scale">
+      <line x1="85" y1="200" x2="95" y2="200" stroke="#333" stroke-width="2"/>
+      <text x="75" y="205" font-size="16" fill="#333" text-anchor="end">100°C</text>
+
+      <line x1="85" y1="300" x2="95" y2="300" stroke="#333" stroke-width="2"/>
+      <text x="75" y="305" font-size="16" fill="#333" text-anchor="end">90°C</text>
+
+      <line x1="85" y1="400" x2="95" y2="400" stroke="#333" stroke-width="3"/>
+      <text x="75" y="405" font-size="18" font-weight="bold" fill="#28a745" text-anchor="end">80°C</text>
+
+      <line x1="85" y1="500" x2="95" y2="500" stroke="#333" stroke-width="2"/>
+      <text x="75" y="505" font-size="16" fill="#333" text-anchor="end">70°C</text>
+
+      <line x1="85" y1="600" x2="95" y2="600" stroke="#333" stroke-width="2"/>
+      <text x="75" y="605" font-size="16" fill="#333" text-anchor="end">60°C</text>
+
+      <line x1="85" y1="700" x2="95" y2="700" stroke="#333" stroke-width="2"/>
+      <text x="75" y="705" font-size="16" fill="#333" text-anchor="end">50°C</text>
+    </g>
+
+    <!-- Текущая температура (крупная цифра) -->
+    <text x="130" y="830" font-size="48" font-weight="bold" fill="#dc3545" text-anchor="middle" id="hold-temp-value">--°C</text>
+  </g>
+
+  <!-- Круговой таймер выдержки (ОГРОМНЫЙ) -->
+  <g id="circular-timer">
+    <circle cx="500" cy="300" r="120" fill="#f0f0f0" stroke="#333" stroke-width="5"/>
+
+    <!-- Прогресс-круг -->
+    <circle cx="500" cy="300" r="110" fill="none" stroke="#e0e0e0" stroke-width="20"/>
+    <circle cx="500" cy="300" r="110" fill="none" stroke="#28a745" stroke-width="20"
+            stroke-dasharray="691.15" stroke-dashoffset="691.15" class="timer-progress" id="hold-timer-circle"
+            transform="rotate(-90 500 300)" stroke-linecap="round"/>
+
+    <!-- Обратный отсчёт -->
+    <text x="500" y="280" font-size="20" font-weight="bold" fill="#666" text-anchor="middle">Осталось:</text>
+    <text x="500" y="320" font-size="42" font-weight="bold" fill="#28a745" text-anchor="middle" id="hold-timer-time">--:--:--</text>
+
+    <!-- Галочка при завершении -->
+    <text x="500" y="330" font-size="80" font-weight="bold" fill="#28a745" text-anchor="middle" opacity="0" class="completion-check" id="hold-complete">✓</text>
+  </g>
+
+  <!-- График температуры за час -->
+  <g id="temp-history-graph">
+    <text x="250" y="250" font-size="18" font-weight="bold" fill="#333">Стабильность температуры:</text>
+
+    <rect x="250" y="270" width="200" height="120" fill="#f9f9f9" stroke="#333" stroke-width="2"/>
+
+    <!-- Целевая зона на графике -->
+    <rect x="250" y="300" width="200" height="40" fill="#28a745" opacity="0.1"/>
+    <line x1="250" y1="320" x2="450" y2="320" stroke="#28a745" stroke-width="2" stroke-dasharray="5,5"/>
+
+    <!-- Линия температуры (будет обновляться через JS) -->
+    <polyline points="255,320 270,318 285,322 300,319 315,321 330,320 345,318 360,322 375,320 390,319 405,321 420,320 435,319 445,320"
+              fill="none" stroke="#dc3545" stroke-width="3" class="temp-line" id="hold-temp-line"/>
+
+    <!-- Оси -->
+    <line x1="250" y1="270" x2="250" y2="390" stroke="#666" stroke-width="2"/>
+    <line x1="250" y1="390" x2="450" y2="390" stroke="#666" stroke-width="2"/>
+
+    <text x="240" y="275" font-size="12" fill="#666" text-anchor="end">+2°C</text>
+    <text x="240" y="325" font-size="12" fill="#666" text-anchor="end">0</text>
+    <text x="240" y="395" font-size="12" fill="#666" text-anchor="end">-2°C</text>
+
+    <text x="260" y="405" font-size="12" fill="#666">0</text>
+    <text x="440" y="405" font-size="12" fill="#666">60 мин</text>
+  </g>
+
+  <!-- Индикатор стабильности -->
+  <g id="stability-indicator">
+    <text x="500" y="470" font-size="18" font-weight="bold" fill="#333">Стабильность:</text>
+    <circle cx="500" cy="510" r="30" fill="#6c757d" stroke="#333" stroke-width="3" class="stability-circle" id="hold-stability-dot"/>
+    <text x="500" y="560" font-size="16" font-weight="bold" fill="#666" text-anchor="middle" id="hold-stability-text">--</text>
+
+    <text x="400" y="600" font-size="12" fill="#666">🟢 Отлично (±0.5°C)</text>
+    <text x="400" y="620" font-size="12" fill="#666">🟡 Нормально (±1.0°C)</text>
+    <text x="400" y="640" font-size="12" fill="#666">🔴 Нестабильно (>±1.5°C)</text>
+  </g>
+
+  <!-- Кнопка Power -->
+  <g id="hold-power-btn" class="power-btn">
+    <circle cx="350" cy="100" r="35" fill="#6c757d" stroke="#333" stroke-width="3" class="power-circle"/>
+    <path d="M 350 75 L 350 100 M 343 85 A 18 18 0 1 1 357 85"
+          stroke="#ffd700" stroke-width="5" fill="none" stroke-linecap="round" class="power-icon"/>
+  </g>
+
+  <!-- Концентрические круги (фоновая анимация) -->
+  <g class="background-heat-waves" opacity="0.1">
+    <circle cx="350" cy="650" r="150" fill="none" stroke="#ff6600" stroke-width="2" class="heat-ring hr1"/>
+    <circle cx="350" cy="650" r="200" fill="none" stroke="#ff6600" stroke-width="2" class="heat-ring hr2"/>
+    <circle cx="350" cy="650" r="250" fill="none" stroke="#ff6600" stroke-width="2" class="heat-ring hr3"/>
+  </g>
+
+  <!-- Индикатор мощности -->
+  <g class="power-level-display">
+    <text x="550" y="700" font-size="16" font-weight="bold" fill="#666">Мощность ТЭНа:</text>
+    <rect x="550" y="710" width="100" height="30" rx="5" fill="#e0e0e0" stroke="#333" stroke-width="2"/>
+    <rect x="552" y="712" width="0" height="26" rx="4" fill="#ff6600" class="power-bar" id="hold-power-bar"/>
+    <text x="600" y="760" font-size="18" font-weight="bold" fill="#ff6600" text-anchor="middle" id="hold-power-pct">0%</text>
+  </g>
+</svg>

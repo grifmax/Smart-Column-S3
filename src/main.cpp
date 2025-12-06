@@ -292,13 +292,9 @@ void loadSettings() {
     g_settings.pumpCal.mlPerRevolution = DEFAULT_PUMP_ML_PER_REV;
     g_settings.pumpCal.stepsPerRevolution = PUMP_STEPS_PER_REV;
     g_settings.pumpCal.microsteps = PUMP_MICROSTEPS;
-    
-    // Датчики мощности
-    g_settings.powerCal.zmptCoeff = ZMPT_COEFFICIENT;
-    g_settings.powerCal.zmptOffset = ZMPT_OFFSET;
-    g_settings.powerCal.acs712Coeff = ACS712_SENSITIVITY;
-    g_settings.powerCal.acs712Offset = ACS712_OFFSET;
-    
+
+    // PZEM-004T не требует калибровки - уже откалиброван на заводе
+
     // Ректификация
     g_settings.rectParams.headsPercent = RECT_HEADS_PERCENT_DEFAULT;
     g_settings.rectParams.headsSpeedMlHKw = RECT_HEADS_SPEED_ML_H_KW;
