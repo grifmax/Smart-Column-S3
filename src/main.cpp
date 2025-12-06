@@ -196,6 +196,13 @@ void loop() {
     // Обновление uptime
     g_state.uptime = now / 1000;
 
+    // Обновление здоровья системы (раз в 5 секунд)
+    static uint32_t lastHealthUpdate = 0;
+    if (now - lastHealthUpdate >= 5000) {
+        lastHealthUpdate = now;
+        Sensors::updateHealth(g_state.health);
+    }
+
     // Сброс WatchDog Timer (подтверждение работы)
     esp_task_wdt_reset();
 

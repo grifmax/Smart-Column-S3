@@ -47,6 +47,46 @@ void init() {
         request->send(200, "application/json", "{\"status\":\"ok\"}");
     });
 
+    // GET /api/health - получить здоровье системы
+    server.on("/api/health", HTTP_GET, [](AsyncWebServerRequest *request) {
+        StaticJsonDocument<512> doc;
+
+        // Датчики температуры
+        JsonObject temps = doc.createNestedObject("temperatures");
+        temps["ok"] = g_state.health.tempSensorsOk;
+        temps["total"] = g_state.health.tempSensorsTotal;
+
+        // Другие датчики
+        JsonObject sensors = doc.createNestedObject("sensors");
+        sensors["bmp280"] = g_state.health.bmp280Ok;
+        sensors["ads1115"] = g_state.health.ads1115Ok;
+        sensors["pzem"] = g_state.health.pzemOk;
+
+        // WiFi
+        JsonObject wifi = doc.createNestedObject("wifi");
+        wifi["connected"] = g_state.health.wifiConnected;
+        wifi["rssi"] = g_state.health.wifiRSSI;
+
+        // Система
+        JsonObject system = doc.createNestedObject("system");
+        system["uptime"] = g_state.health.uptime;
+        system["freeHeap"] = g_state.health.freeHeap;
+        system["cpuTemp"] = g_state.health.cpuTemp;
+
+        // Ошибки
+        JsonObject errors = doc.createNestedObject("errors");
+        errors["pzemSpikes"] = g_state.health.pzemSpikeCount;
+        errors["tempErrors"] = g_state.health.tempReadErrors;
+
+        // Общая оценка
+        doc["overallHealth"] = g_state.health.overallHealth;
+        doc["lastUpdate"] = g_state.health.lastUpdate;
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
     server.on("/api/start", HTTP_POST, [](AsyncWebServerRequest *request) {
         // TODO: Запуск процесса
         request->send(200);

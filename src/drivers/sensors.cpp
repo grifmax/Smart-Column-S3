@@ -55,6 +55,10 @@ static bool pzemDataInitialized = false;
 #define PZEM_CURRENT_MAX_DELTA    5.0f    // ±5A за раз
 #define PZEM_POWER_MAX_DELTA      1000.0f // ±1000W за раз
 
+// Счётчики для мониторинга здоровья
+static uint16_t pzemSpikeCounter = 0;
+static uint16_t tempReadErrorCounter = 0;
+
 // Калибровка
 static TempCalibration tempCal;
 
@@ -390,6 +394,7 @@ void readPower(Power& power) {
         lastValidVoltage = rawVoltage;
     } else {
         power.voltage = lastValidVoltage; // Отбросить выброс
+        pzemSpikeCounter++;
         LOG_W("PZEM: Voltage spike rejected (%.1fV -> %.1fV)", lastValidVoltage, rawVoltage);
     }
 
@@ -398,6 +403,7 @@ void readPower(Power& power) {
         lastValidCurrent = rawCurrent;
     } else {
         power.current = lastValidCurrent; // Отбросить выброс
+        pzemSpikeCounter++;
         LOG_W("PZEM: Current spike rejected (%.2fA -> %.2fA)", lastValidCurrent, rawCurrent);
     }
 
@@ -406,6 +412,7 @@ void readPower(Power& power) {
         lastValidPower = rawPower;
     } else {
         power.power = lastValidPower; // Отбросить выброс
+        pzemSpikeCounter++;
         LOG_W("PZEM: Power spike rejected (%.1fW -> %.1fW)", lastValidPower, rawPower);
     }
 
@@ -510,6 +517,66 @@ bool isTempSensorValid(uint8_t index) {
     // Попробовать прочитать
     float temp = ds18b20.getTempC(ds18b20Addresses[index]);
     return (temp != DEVICE_DISCONNECTED_C && temp > -50 && temp < 150);
+}
+
+void updateHealth(SystemHealth& health) {
+    // Подсчёт работающих датчиков температуры
+    health.tempSensorsTotal = 0;
+    health.tempSensorsOk = 0;
+    for (uint8_t i = 0; i < TEMP_COUNT; i++) {
+        if (ds18b20Found[i]) {
+            health.tempSensorsTotal++;
+            if (isTempSensorValid(i)) {
+                health.tempSensorsOk++;
+            }
+        }
+    }
+
+    // Состояние других датчиков
+    health.bmp280Ok = bmp1_ok || bmp2_ok;
+    health.ads1115Ok = ads_ok;
+    health.pzemOk = pzem_ok;
+
+    // Счётчики ошибок
+    health.pzemSpikeCount = pzemSpikeCounter;
+    health.tempReadErrors = tempReadErrorCounter;
+
+    // WiFi
+    health.wifiConnected = (WiFi.status() == WL_CONNECTED);
+    health.wifiRSSI = WiFi.RSSI();
+
+    // Системная информация
+    health.uptime = millis() / 1000;
+    health.freeHeap = ESP.getFreeHeap();
+    health.cpuTemp = (uint8_t)temperatureRead(); // ESP32-S3 internal temp sensor
+
+    // Расчёт общего здоровья (0-100%)
+    uint8_t score = 100;
+
+    // Снижение за каждый неработающий критичный датчик
+    if (!health.pzemOk) score -= 20;
+    if (!health.ads1115Ok) score -= 10;
+    if (!health.bmp280Ok) score -= 5;
+
+    // Снижение за неработающие температурные датчики
+    if (health.tempSensorsTotal > 0) {
+        uint8_t tempFailures = health.tempSensorsTotal - health.tempSensorsOk;
+        score -= (tempFailures * 10);
+    }
+
+    // Снижение за проблемы с WiFi
+    if (!health.wifiConnected) score -= 15;
+    else if (health.wifiRSSI < -80) score -= 5;  // Слабый сигнал
+
+    // Снижение за высокий уровень ошибок
+    if (health.pzemSpikeCount > 100) score -= 10;
+    if (health.tempReadErrors > 50) score -= 10;
+
+    // Ограничение 0-100
+    if (score < 0) score = 0;
+    health.overallHealth = score;
+
+    health.lastUpdate = millis();
 }
 
 } // namespace Sensors

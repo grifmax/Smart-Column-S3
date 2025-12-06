@@ -250,6 +250,37 @@ struct DecrementState {
 };
 
 /**
+ * Здоровье системы (System Health)
+ */
+struct SystemHealth {
+    // Датчики температуры (DS18B20)
+    uint8_t tempSensorsOk;          // Количество рабочих датчиков температуры
+    uint8_t tempSensorsTotal;       // Всего обнаружено датчиков
+
+    // Датчики давления и другие
+    bool bmp280Ok;                  // Барометр работает
+    bool ads1115Ok;                 // АЦП работает
+    bool pzemOk;                    // PZEM-004T работает
+
+    // Связь
+    bool wifiConnected;             // WiFi подключен
+    int8_t wifiRSSI;                // Уровень сигнала WiFi (dBm)
+
+    // Системная информация
+    uint32_t uptime;                // Время работы (секунды)
+    uint32_t freeHeap;              // Свободная память (байты)
+    uint8_t cpuTemp;                // Температура CPU (°C)
+
+    // Счётчики ошибок
+    uint16_t pzemSpikeCount;        // Количество отброшенных выбросов PZEM
+    uint16_t tempReadErrors;        // Ошибки чтения температур
+
+    // Общая оценка здоровья (0-100%)
+    uint8_t overallHealth;
+    uint32_t lastUpdate;
+};
+
+/**
  * Полное состояние системы
  */
 struct SystemState {
@@ -272,7 +303,8 @@ struct SystemState {
     
     Alarm currentAlarm;
     RunStats stats;
-    
+    SystemHealth health;
+
     bool paused;
     bool safetyOk;
     uint32_t uptime;
