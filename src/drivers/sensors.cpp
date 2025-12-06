@@ -39,6 +39,11 @@ static HardwareSerial pzemSerial(PZEM_UART_NUM);
 static PZEM004Tv30 pzem(pzemSerial, PIN_PZEM_RX, PIN_PZEM_TX);
 static bool pzem_ok = false;
 
+// Защита от переполнения energy (PZEM может сбросить счётчик)
+static float lastEnergyReading = 0.0f;
+static float energyOffset = 0.0f;        // Накопленная энергия от предыдущих сбросов
+static bool energyInitialized = false;
+
 // Калибровка
 static TempCalibration tempCal;
 
@@ -162,13 +167,36 @@ void init() {
     pzemSerial.begin(PZEM_BAUD_RATE, SERIAL_8N1, PIN_PZEM_RX, PIN_PZEM_TX);
     delay(100); // Даём время на инициализацию
 
-    // Проверка связи с PZEM
-    float testVoltage = pzem.voltage();
-    if (!isnan(testVoltage) && testVoltage > 0) {
-        pzem_ok = true;
-        LOG_I("Sensors: PZEM-004T OK (V=%.1fV)", testVoltage);
-    } else {
-        LOG_E("Sensors: PZEM-004T NOT FOUND or NO AC POWER");
+    // Проверка связи с PZEM (3 попытки для надёжности)
+    pzem_ok = false;
+    for (uint8_t attempt = 0; attempt < 3; attempt++) {
+        float testVoltage = pzem.voltage();
+        float testFreq = pzem.frequency();
+
+        // Проверяем несколько параметров для уверенности
+        if (!isnan(testVoltage) && !isnan(testFreq)) {
+            // PZEM отвечает
+            if (testVoltage > 0 && testFreq >= 45 && testFreq <= 65) {
+                // AC питание подключено и корректно
+                pzem_ok = true;
+                LOG_I("Sensors: PZEM-004T OK (V=%.1fV, F=%.1fHz)", testVoltage, testFreq);
+                break;
+            } else if (testVoltage == 0) {
+                // PZEM работает, но нет AC питания
+                pzem_ok = true;
+                LOG_W("Sensors: PZEM-004T OK but NO AC POWER detected");
+                break;
+            }
+        }
+
+        // Пауза перед следующей попыткой
+        if (attempt < 2) {
+            delay(200);
+        }
+    }
+
+    if (!pzem_ok) {
+        LOG_E("Sensors: PZEM-004T communication FAILED after 3 attempts");
     }
 
     // Датчик потока воды
@@ -297,7 +325,7 @@ void readPower(Power& power) {
     power.voltage = pzem.voltage();
     power.current = pzem.current();
     power.power = pzem.power();
-    power.energy = pzem.energy();
+    float rawEnergy = pzem.energy();
     power.frequency = pzem.frequency();
     power.powerFactor = pzem.pf();
 
@@ -311,15 +339,35 @@ void readPower(Power& power) {
     if (isnan(power.power) || power.power < 0 || power.power > 10000) {
         power.power = 0;
     }
-    if (isnan(power.energy) || power.energy < 0) {
-        power.energy = 0;
-    }
     if (isnan(power.frequency) || power.frequency < 45 || power.frequency > 65) {
         power.frequency = 50; // По умолчанию 50 Гц
     }
     if (isnan(power.powerFactor) || power.powerFactor < 0 || power.powerFactor > 1) {
         power.powerFactor = 0;
     }
+
+    // Обработка energy с защитой от переполнения/сброса
+    if (isnan(rawEnergy) || rawEnergy < 0) {
+        rawEnergy = 0;
+    }
+
+    if (!energyInitialized) {
+        // Первое чтение - инициализация
+        lastEnergyReading = rawEnergy;
+        energyOffset = 0;
+        energyInitialized = true;
+    } else {
+        // Проверка на сброс счётчика (значение уменьшилось)
+        if (rawEnergy < lastEnergyReading - 0.01f) {  // -0.01 для защиты от флуктуаций
+            // Счётчик был сброшен - сохраняем предыдущее значение
+            energyOffset += lastEnergyReading;
+            LOG_W("Sensors: PZEM energy counter reset detected (was %.3f kWh)", lastEnergyReading);
+        }
+        lastEnergyReading = rawEnergy;
+    }
+
+    // Итоговая энергия = offset + текущее показание
+    power.energy = energyOffset + rawEnergy;
 
     power.lastUpdate = millis();
 }

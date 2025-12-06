@@ -9,6 +9,7 @@
 #include <Wire.h>
 #include <WiFi.h>
 #include <SPIFFS.h>
+#include <esp_task_wdt.h>
 
 #include "config.h"
 #include "types.h"
@@ -67,7 +68,11 @@ void setup() {
     // Serial
     Serial.begin(115200);
     delay(100);
-    
+
+    // WatchDog Timer - защита от зависаний
+    esp_task_wdt_init(30, true);  // 30 сек таймаут, паника при срабатывании
+    esp_task_wdt_add(NULL);        // Регистрация главной задачи
+
     LOG_I("=================================");
     LOG_I("%s v%s", FW_NAME, FW_VERSION);
     LOG_I("Build: %s", FW_DATE);
@@ -190,8 +195,11 @@ void loop() {
     
     // Обновление uptime
     g_state.uptime = now / 1000;
-    
-    // Yield для WiFi и watchdog
+
+    // Сброс WatchDog Timer (подтверждение работы)
+    esp_task_wdt_reset();
+
+    // Yield для WiFi
     yield();
 }
 
