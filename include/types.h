@@ -451,4 +451,26 @@ struct LogEvent {
     char message[48];
 };
 
+/**
+ * Точка данных для графика энергопотребления
+ */
+struct EnergyDataPoint {
+    uint32_t timestamp;                 // Время (секунды с запуска)
+    float power;                        // Мощность (Вт)
+    float energy;                       // Накопленная энергия (кВт·ч)
+    float voltage;                      // Напряжение (В)
+    float current;                      // Ток (А)
+};
+
+/**
+ * История энергопотребления
+ */
+struct EnergyHistory {
+    static const uint16_t MAX_POINTS = 288;  // 24 часа по 5 минут = 288 точек
+    EnergyDataPoint points[MAX_POINTS];
+    uint16_t count;                     // Текущее количество точек
+    uint16_t writeIndex;                // Индекс для записи (циклический буфер)
+    uint32_t lastUpdate;                // Время последнего обновления
+};
+
 #endif // TYPES_H

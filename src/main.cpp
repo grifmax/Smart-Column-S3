@@ -31,6 +31,7 @@
 #include "interface/webserver.h"
 #include "interface/telegram.h"
 #include "interface/buttons.h"
+#include "interface/ota.h"
 
 // Хранение
 #include "storage/nvs_manager.h"
@@ -42,6 +43,7 @@
 
 SystemState g_state;        // Текущее состояние системы
 Settings g_settings;        // Настройки (из NVS)
+EnergyHistory g_energyHistory;  // История энергопотребления
 
 // Таймеры задач
 uint32_t g_lastTempRead = 0;
@@ -84,6 +86,9 @@ void setup() {
     g_state.mode = Mode::IDLE;
     g_state.rectPhase = RectPhase::IDLE;
     g_state.safetyOk = true;
+
+    // Инициализация истории энергопотребления
+    memset(&g_energyHistory, 0, sizeof(g_energyHistory));
     
     // SPIFFS
     if (!SPIFFS.begin(true)) {
@@ -116,7 +121,15 @@ void setup() {
         LOG_I("Starting Telegram bot...");
         TelegramBot::init(g_settings.telegram.token, g_settings.telegram.chatId);
     }
-    
+
+    // OTA Updates (только если WiFi подключён)
+    if (WiFi.status() == WL_CONNECTED || g_settings.wifi.apMode) {
+        LOG_I("Starting OTA...");
+        OTA::init();
+        // Опционально: установить пароль для защиты
+        // OTA::setPassword("your_password_here");
+    }
+
     // Логгер
     Logger::init();
     Logger::log(LogEvent{millis(), 0, "System started"});
@@ -139,7 +152,15 @@ void setup() {
 
 void loop() {
     uint32_t now = millis();
-    
+
+    // OTA Updates (наивысший приоритет)
+    OTA::handle();
+
+    // Если идёт обновление OTA - пропустить всё остальное
+    if (OTA::isUpdating()) {
+        return;
+    }
+
     // Проверка безопасности (высший приоритет)
     if (now - g_lastSafetyCheck >= INTERVAL_SAFETY_CHECK) {
         g_lastSafetyCheck = now;
@@ -187,7 +208,30 @@ void loop() {
         g_lastLogWrite = now;
         Logger::writeData(g_state);
     }
-    
+
+    // Запись истории энергопотребления (каждые 5 минут)
+    static uint32_t lastEnergyLog = 0;
+    if (now - lastEnergyLog >= 300000) {  // 5 минут
+        lastEnergyLog = now;
+
+        // Добавить точку данных в циклический буфер
+        EnergyDataPoint& point = g_energyHistory.points[g_energyHistory.writeIndex];
+        point.timestamp = now / 1000;  // Секунды с запуска
+        point.power = g_state.power.power;
+        point.energy = g_state.power.energy;
+        point.voltage = g_state.power.voltage;
+        point.current = g_state.power.current;
+
+        // Обновить индексы
+        g_energyHistory.writeIndex = (g_energyHistory.writeIndex + 1) % EnergyHistory::MAX_POINTS;
+        if (g_energyHistory.count < EnergyHistory::MAX_POINTS) {
+            g_energyHistory.count++;
+        }
+        g_energyHistory.lastUpdate = now;
+
+        LOG_D("Energy: %.1fW, %.3fkWh logged", point.power, point.energy);
+    }
+
     // Обработка кнопок
     Buttons::update();
     

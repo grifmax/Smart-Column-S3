@@ -1,7 +1,7 @@
 /**
  * Smart-Column S3 - Конфигурация
  *
- * Версия: 1.1
+ * Версия: 1.2
  * Платформа: ESP32-S3 DevKitC-1 N16R8
  */
 
@@ -14,7 +14,7 @@
 // ВЕРСИЯ
 // =============================================================================
 
-#define FW_VERSION      "1.1.0"
+#define FW_VERSION      "1.2.0"
 #define FW_NAME         "Smart-Column S3"
 #define FW_DATE         __DATE__
 
