@@ -8,6 +8,12 @@
 #include <ESPAsyncWebServer.h>
 #include <AsyncWebSocket.h>
 #include <ArduinoJson.h>
+#include "storage/nvs_manager.h"
+#include "drivers/sensors.h"
+
+// Внешние переменные из main.cpp
+extern SystemState g_state;
+extern Settings g_settings;
 
 static AsyncWebServer server(WEB_SERVER_PORT);
 static AsyncWebSocket ws("/ws");
@@ -49,6 +55,210 @@ void init() {
     server.on("/api/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
         // TODO: Остановка процесса
         request->send(200);
+    });
+
+    // ==========================================================================
+    // КАЛИБРОВКА
+    // ==========================================================================
+
+    // GET /api/calibration - получить все данные калибровки
+    server.on("/api/calibration", HTTP_GET, [](AsyncWebServerRequest *request) {
+        StaticJsonDocument<1024> doc;
+
+        // Насос
+        JsonObject pump = doc.createNestedObject("pump");
+        pump["mlPerRev"] = g_settings.pumpCal.mlPerRevolution;
+        pump["stepsPerRev"] = g_settings.pumpCal.stepsPerRevolution;
+        pump["microsteps"] = g_settings.pumpCal.microsteps;
+
+        // Термометры
+        JsonArray temps = doc.createNestedArray("temperatures");
+        for (uint8_t i = 0; i < TEMP_COUNT; i++) {
+            JsonObject t = temps.createNestedObject();
+            t["index"] = i;
+            t["offset"] = g_settings.tempCal.offsets[i];
+
+            // Адрес датчика (hex string)
+            char addrStr[24];
+            snprintf(addrStr, sizeof(addrStr), "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+                g_settings.tempCal.addresses[i][0], g_settings.tempCal.addresses[i][1],
+                g_settings.tempCal.addresses[i][2], g_settings.tempCal.addresses[i][3],
+                g_settings.tempCal.addresses[i][4], g_settings.tempCal.addresses[i][5],
+                g_settings.tempCal.addresses[i][6], g_settings.tempCal.addresses[i][7]);
+            t["address"] = addrStr;
+
+            // Текущие показания
+            float currentTemp = 0;
+            switch(i) {
+                case TEMP_CUBE: currentTemp = g_state.temps.cube; break;
+                case TEMP_COLUMN_BOTTOM: currentTemp = g_state.temps.columnBottom; break;
+                case TEMP_COLUMN_TOP: currentTemp = g_state.temps.columnTop; break;
+                case TEMP_REFLUX: currentTemp = g_state.temps.reflux; break;
+                case TEMP_TSA: currentTemp = g_state.temps.tsa; break;
+                case TEMP_WATER_IN: currentTemp = g_state.temps.waterIn; break;
+                case TEMP_WATER_OUT: currentTemp = g_state.temps.waterOut; break;
+            }
+            t["current"] = currentTemp;
+            t["valid"] = g_state.temps.valid[i];
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    // POST /api/calibration/pump - калибровка насоса
+    server.on("/api/calibration/pump", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            StaticJsonDocument<256> doc;
+            DeserializationError error = deserializeJson(doc, data, len);
+
+            if (error) {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+
+            // Метод 1: Прямая калибровка (мл на оборот)
+            if (doc.containsKey("mlPerRev")) {
+                g_settings.pumpCal.mlPerRevolution = doc["mlPerRev"].as<float>();
+                NVSManager::saveSettings(g_settings);
+                LOG_I("Pump calibrated: %.3f ml/rev", g_settings.pumpCal.mlPerRevolution);
+                request->send(200, "application/json", "{\"status\":\"ok\",\"method\":\"direct\"}");
+                return;
+            }
+
+            // Метод 2: Калибровка по известному объёму
+            if (doc.containsKey("knownVolume") && doc.containsKey("steps")) {
+                float knownVolume = doc["knownVolume"].as<float>();  // мл
+                uint32_t steps = doc["steps"].as<uint32_t>();        // шагов выполнено
+
+                uint16_t stepsPerRev = g_settings.pumpCal.stepsPerRevolution * g_settings.pumpCal.microsteps;
+                float revolutions = (float)steps / stepsPerRev;
+
+                if (revolutions > 0) {
+                    g_settings.pumpCal.mlPerRevolution = knownVolume / revolutions;
+                    NVSManager::saveSettings(g_settings);
+
+                    LOG_I("Pump calibrated: %.3f ml/rev (from %.1f ml in %u steps)",
+                        g_settings.pumpCal.mlPerRevolution, knownVolume, steps);
+
+                    StaticJsonDocument<128> resp;
+                    resp["status"] = "ok";
+                    resp["method"] = "measured";
+                    resp["mlPerRev"] = g_settings.pumpCal.mlPerRevolution;
+
+                    String json;
+                    serializeJson(resp, json);
+                    request->send(200, "application/json", json);
+                } else {
+                    request->send(400, "application/json", "{\"error\":\"Invalid steps\"}");
+                }
+                return;
+            }
+
+            request->send(400, "application/json", "{\"error\":\"Missing parameters\"}");
+        }
+    );
+
+    // POST /api/calibration/temp - калибровка термометров
+    server.on("/api/calibration/temp", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            StaticJsonDocument<512> doc;
+            DeserializationError error = deserializeJson(doc, data, len);
+
+            if (error) {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+
+            uint8_t sensorIndex = doc["index"].as<uint8_t>();
+
+            if (sensorIndex >= TEMP_COUNT) {
+                request->send(400, "application/json", "{\"error\":\"Invalid sensor index\"}");
+                return;
+            }
+
+            // Метод 1: Прямое смещение
+            if (doc.containsKey("offset")) {
+                g_settings.tempCal.offsets[sensorIndex] = doc["offset"].as<float>();
+
+                // Применить калибровку к драйверу
+                Sensors::applyCalibration(g_settings.tempCal);
+                NVSManager::saveSettings(g_settings);
+
+                LOG_I("Temp[%d] calibrated: offset = %.2f°C",
+                    sensorIndex, g_settings.tempCal.offsets[sensorIndex]);
+
+                request->send(200, "application/json", "{\"status\":\"ok\",\"method\":\"offset\"}");
+                return;
+            }
+
+            // Метод 2: Калибровка по эталону
+            if (doc.containsKey("reference")) {
+                float reference = doc["reference"].as<float>();  // Эталонная температура
+
+                // Прочитать текущее значение
+                float currentTemp = 0;
+                switch(sensorIndex) {
+                    case TEMP_CUBE: currentTemp = g_state.temps.cube; break;
+                    case TEMP_COLUMN_BOTTOM: currentTemp = g_state.temps.columnBottom; break;
+                    case TEMP_COLUMN_TOP: currentTemp = g_state.temps.columnTop; break;
+                    case TEMP_REFLUX: currentTemp = g_state.temps.reflux; break;
+                    case TEMP_TSA: currentTemp = g_state.temps.tsa; break;
+                    case TEMP_WATER_IN: currentTemp = g_state.temps.waterIn; break;
+                    case TEMP_WATER_OUT: currentTemp = g_state.temps.waterOut; break;
+                }
+
+                // Вычислить смещение (без учёта старого смещения)
+                float rawTemp = currentTemp - g_settings.tempCal.offsets[sensorIndex];
+                g_settings.tempCal.offsets[sensorIndex] = reference - rawTemp;
+
+                Sensors::applyCalibration(g_settings.tempCal);
+                NVSManager::saveSettings(g_settings);
+
+                LOG_I("Temp[%d] calibrated to %.2f°C: offset = %.2f°C",
+                    sensorIndex, reference, g_settings.tempCal.offsets[sensorIndex]);
+
+                StaticJsonDocument<128> resp;
+                resp["status"] = "ok";
+                resp["method"] = "reference";
+                resp["offset"] = g_settings.tempCal.offsets[sensorIndex];
+
+                String json;
+                serializeJson(resp, json);
+                request->send(200, "application/json", json);
+                return;
+            }
+
+            request->send(400, "application/json", "{\"error\":\"Missing parameters\"}");
+        }
+    );
+
+    // GET /api/calibration/scan - сканирование DS18B20
+    server.on("/api/calibration/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
+        uint8_t addresses[TEMP_COUNT][8];
+        uint8_t count = Sensors::scanDS18B20(addresses);
+
+        StaticJsonDocument<768> doc;
+        doc["count"] = count;
+
+        JsonArray sensors = doc.createNestedArray("sensors");
+        for (uint8_t i = 0; i < count; i++) {
+            JsonObject s = sensors.createNestedObject();
+
+            char addrStr[24];
+            snprintf(addrStr, sizeof(addrStr), "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+                addresses[i][0], addresses[i][1], addresses[i][2], addresses[i][3],
+                addresses[i][4], addresses[i][5], addresses[i][6], addresses[i][7]);
+
+            s["index"] = i;
+            s["address"] = addrStr;
+            s["valid"] = Sensors::isTempSensorValid(i);
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
     });
 
     // 404
