@@ -32,6 +32,7 @@
 #include "interface/telegram.h"
 #include "interface/buttons.h"
 #include "interface/ota.h"
+#include "interface/mqtt.h"
 
 // Хранение
 #include "storage/nvs_manager.h"
@@ -128,6 +129,17 @@ void setup() {
         OTA::init();
         // Опционально: установить пароль для защиты
         // OTA::setPassword("your_password_here");
+    }
+
+    // MQTT (только если включён и WiFi подключён)
+    if (g_settings.mqtt.enabled && WiFi.status() == WL_CONNECTED) {
+        LOG_I("Starting MQTT...");
+        MQTT::init(g_settings.mqtt.server, g_settings.mqtt.port,
+                   g_settings.mqtt.username[0] ? g_settings.mqtt.username : nullptr,
+                   g_settings.mqtt.password[0] ? g_settings.mqtt.password : nullptr);
+        if (g_settings.mqtt.baseTopic[0]) {
+            MQTT::setBaseTopic(g_settings.mqtt.baseTopic);
+        }
     }
 
     // Логгер
@@ -234,10 +246,15 @@ void loop() {
 
     // Обработка кнопок
     Buttons::update();
-    
+
     // Telegram
     TelegramBot::update();
-    
+
+    // MQTT
+    if (g_settings.mqtt.enabled) {
+        MQTT::handle();
+    }
+
     // Обновление uptime
     g_state.uptime = now / 1000;
 
@@ -266,6 +283,22 @@ void loop() {
         }
 
         lastHealthStatus = g_state.health.overallHealth;
+
+        // MQTT публикация здоровья (раз в 5 секунд)
+        if (g_settings.mqtt.enabled && MQTT::isConnected()) {
+            MQTT::publishHealth(g_state.health);
+        }
+    }
+
+    // MQTT публикация состояния (интервал из настроек)
+    if (g_settings.mqtt.enabled && MQTT::isConnected()) {
+        static uint32_t lastMqttPublish = 0;
+        uint32_t interval = g_settings.mqtt.publishInterval > 0 ? g_settings.mqtt.publishInterval : 10000;
+
+        if (now - lastMqttPublish >= interval) {
+            lastMqttPublish = now;
+            MQTT::publishState(g_state);
+        }
     }
 
     // Сброс WatchDog Timer (подтверждение работы)

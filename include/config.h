@@ -14,7 +14,7 @@
 // ВЕРСИЯ
 // =============================================================================
 
-#define FW_VERSION      "1.2.0"
+#define FW_VERSION      "1.2.1"
 #define FW_NAME         "Smart-Column S3"
 #define FW_DATE         __DATE__
 

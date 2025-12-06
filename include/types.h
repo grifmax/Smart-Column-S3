@@ -336,6 +336,30 @@ struct TelegramSettings {
 };
 
 /**
+ * Настройки MQTT
+ */
+struct MqttSettings {
+    char server[64];                    // Адрес брокера
+    uint16_t port;                      // Порт (1883)
+    char username[32];                  // Имя пользователя
+    char password[64];                  // Пароль
+    char baseTopic[32];                 // Базовый топик
+    bool enabled;                       // Включён
+    bool discovery;                     // Home Assistant Discovery
+    uint16_t publishInterval;           // Интервал публикации (мс)
+};
+
+/**
+ * Настройки безопасности
+ */
+struct SecuritySettings {
+    char webUsername[32];               // Имя для веб-доступа
+    char webPassword[64];               // Пароль для веб-доступа
+    bool authEnabled;                   // Включить аутентификацию
+    bool rateLimitEnabled;              // Включить rate limiting
+};
+
+/**
  * Настройки оборудования
  */
 struct EquipmentSettings {
@@ -416,6 +440,8 @@ struct MashProfile {
 struct Settings {
     WiFiSettings wifi;
     TelegramSettings telegram;
+    MqttSettings mqtt;
+    SecuritySettings security;
     EquipmentSettings equipment;
     TempCalibration tempCal;
     HydrometerCalibration hydroCal;
@@ -423,7 +449,7 @@ struct Settings {
     FractionatorSettings fractionator;
     RectificationParams rectParams;
     MashProfile mashProfiles[3];
-    
+
     uint8_t language;                   // 0=RU, 1=EN
     uint8_t theme;                      // 0=light, 1=dark
     bool soundEnabled;
