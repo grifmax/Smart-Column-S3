@@ -44,6 +44,17 @@ static float lastEnergyReading = 0.0f;
 static float energyOffset = 0.0f;        // Накопленная энергия от предыдущих сбросов
 static bool energyInitialized = false;
 
+// Фильтрация выбросов PZEM (spike rejection)
+static float lastValidVoltage = 0.0f;
+static float lastValidCurrent = 0.0f;
+static float lastValidPower = 0.0f;
+static bool pzemDataInitialized = false;
+
+// Пороги для определения выбросов (допустимое изменение за одно чтение)
+#define PZEM_VOLTAGE_MAX_DELTA    30.0f   // ±30V за раз
+#define PZEM_CURRENT_MAX_DELTA    5.0f    // ±5A за раз
+#define PZEM_POWER_MAX_DELTA      1000.0f // ±1000W за раз
+
 // Калибровка
 static TempCalibration tempCal;
 
@@ -56,6 +67,11 @@ static float totalLiters = 0;
 static DeviceAddress ds18b20Addresses[TEMP_COUNT];
 static bool ds18b20Found[TEMP_COUNT] = {false};
 
+// Асинхронное чтение DS18B20
+static bool conversionInProgress = false;
+static uint32_t conversionStartTime = 0;
+static const uint16_t CONVERSION_TIME_MS = 750; // 12-бит разрешение
+
 // =============================================================================
 // ISR ДАТЧИКА ПОТОКА
 // =============================================================================
@@ -67,6 +83,19 @@ void IRAM_ATTR flowPulseISR() {
 // =============================================================================
 // ВНУТРЕННИЕ ФУНКЦИИ
 // =============================================================================
+
+/**
+ * Фильтрация выброса (spike rejection)
+ * Возвращает true если значение адекватное, false если выброс
+ */
+static bool validateReading(float newValue, float lastValue, float maxDelta, bool initialized) {
+    if (!initialized) {
+        return true; // Первое чтение - принимаем
+    }
+
+    float delta = fabs(newValue - lastValue);
+    return (delta <= maxDelta);
+}
 
 /**
  * Интерполяция крепости по таблице калибровки
@@ -210,10 +239,22 @@ void init() {
 }
 
 void readTemperatures(Temperatures& temps) {
-    // Запросить конвертацию
-    ds18b20.requestTemperatures();
+    uint32_t now = millis();
 
-    // Прочитать значения
+    // Фаза 1: Запуск конвертации (неблокирующий)
+    if (!conversionInProgress) {
+        ds18b20.requestTemperatures();
+        conversionInProgress = true;
+        conversionStartTime = now;
+        return; // Выходим, не блокируя выполнение
+    }
+
+    // Фаза 2: Чтение результатов (только если прошло достаточно времени)
+    if (now - conversionStartTime < CONVERSION_TIME_MS) {
+        return; // Конвертация ещё идёт, ждём
+    }
+
+    // Прочитать значения (конвертация завершена)
     float values[TEMP_COUNT];
     for (uint8_t i = 0; i < TEMP_COUNT; i++) {
         if (ds18b20Found[i]) {
@@ -241,7 +282,10 @@ void readTemperatures(Temperatures& temps) {
     temps.tsa = values[TEMP_TSA];
     temps.waterIn = values[TEMP_WATER_IN];
     temps.waterOut = values[TEMP_WATER_OUT];
-    temps.lastUpdate = millis();
+    temps.lastUpdate = now;
+
+    // Сброс флага для следующего цикла
+    conversionInProgress = false;
 }
 
 void readPressure(Pressure& pressure) {
@@ -322,29 +366,64 @@ void readPower(Power& power) {
     }
 
     // Читаем все параметры с PZEM-004T
-    power.voltage = pzem.voltage();
-    power.current = pzem.current();
-    power.power = pzem.power();
+    float rawVoltage = pzem.voltage();
+    float rawCurrent = pzem.current();
+    float rawPower = pzem.power();
     float rawEnergy = pzem.energy();
-    power.frequency = pzem.frequency();
-    power.powerFactor = pzem.pf();
+    float rawFrequency = pzem.frequency();
+    float rawPF = pzem.pf();
 
-    // Проверка на NaN и корректность
-    if (isnan(power.voltage) || power.voltage < 0 || power.voltage > 300) {
-        power.voltage = 0;
+    // Проверка на NaN и базовые диапазоны
+    if (isnan(rawVoltage) || rawVoltage < 0 || rawVoltage > 300) {
+        rawVoltage = lastValidVoltage;
     }
-    if (isnan(power.current) || power.current < 0 || power.current > PZEM_CURRENT_MAX) {
-        power.current = 0;
+    if (isnan(rawCurrent) || rawCurrent < 0 || rawCurrent > PZEM_CURRENT_MAX) {
+        rawCurrent = lastValidCurrent;
     }
-    if (isnan(power.power) || power.power < 0 || power.power > 10000) {
-        power.power = 0;
+    if (isnan(rawPower) || rawPower < 0 || rawPower > 10000) {
+        rawPower = lastValidPower;
     }
-    if (isnan(power.frequency) || power.frequency < 45 || power.frequency > 65) {
+
+    // Фильтрация выбросов (spike rejection)
+    if (validateReading(rawVoltage, lastValidVoltage, PZEM_VOLTAGE_MAX_DELTA, pzemDataInitialized)) {
+        power.voltage = rawVoltage;
+        lastValidVoltage = rawVoltage;
+    } else {
+        power.voltage = lastValidVoltage; // Отбросить выброс
+        LOG_W("PZEM: Voltage spike rejected (%.1fV -> %.1fV)", lastValidVoltage, rawVoltage);
+    }
+
+    if (validateReading(rawCurrent, lastValidCurrent, PZEM_CURRENT_MAX_DELTA, pzemDataInitialized)) {
+        power.current = rawCurrent;
+        lastValidCurrent = rawCurrent;
+    } else {
+        power.current = lastValidCurrent; // Отбросить выброс
+        LOG_W("PZEM: Current spike rejected (%.2fA -> %.2fA)", lastValidCurrent, rawCurrent);
+    }
+
+    if (validateReading(rawPower, lastValidPower, PZEM_POWER_MAX_DELTA, pzemDataInitialized)) {
+        power.power = rawPower;
+        lastValidPower = rawPower;
+    } else {
+        power.power = lastValidPower; // Отбросить выброс
+        LOG_W("PZEM: Power spike rejected (%.1fW -> %.1fW)", lastValidPower, rawPower);
+    }
+
+    // Частота и PF (без фильтрации, но с валидацией)
+    if (isnan(rawFrequency) || rawFrequency < 45 || rawFrequency > 65) {
         power.frequency = 50; // По умолчанию 50 Гц
+    } else {
+        power.frequency = rawFrequency;
     }
-    if (isnan(power.powerFactor) || power.powerFactor < 0 || power.powerFactor > 1) {
+
+    if (isnan(rawPF) || rawPF < 0 || rawPF > 1) {
         power.powerFactor = 0;
+    } else {
+        power.powerFactor = rawPF;
     }
+
+    // Отметить как инициализированные
+    pzemDataInitialized = true;
 
     // Обработка energy с защитой от переполнения/сброса
     if (isnan(rawEnergy) || rawEnergy < 0) {

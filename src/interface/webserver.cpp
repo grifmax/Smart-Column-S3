@@ -102,6 +102,20 @@ void init() {
             t["valid"] = g_state.temps.valid[i];
         }
 
+        // Ареометр (гидрометр)
+        JsonObject hydro = doc.createNestedObject("hydrometer");
+        hydro["pointCount"] = g_settings.hydroCal.pointCount;
+        JsonArray abvPoints = hydro.createNestedArray("abvPoints");
+        JsonArray pressurePoints = hydro.createNestedArray("pressurePoints");
+        for (uint8_t i = 0; i < g_settings.hydroCal.pointCount; i++) {
+            abvPoints.add(g_settings.hydroCal.abvPoints[i]);
+            pressurePoints.add(g_settings.hydroCal.pressurePoints[i]);
+        }
+        // Текущие показания
+        hydro["currentPressure"] = g_state.hydrometer.density; // TODO: использовать реальное давление
+        hydro["currentABV"] = g_state.hydrometer.abv;
+        hydro["valid"] = g_state.hydrometer.valid;
+
         String json;
         serializeJson(doc, json);
         request->send(200, "application/json", json);
@@ -231,6 +245,51 @@ void init() {
             }
 
             request->send(400, "application/json", "{\"error\":\"Missing parameters\"}");
+        }
+    );
+
+    // POST /api/calibration/hydrometer - калибровка ареометра
+    server.on("/api/calibration/hydrometer", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            StaticJsonDocument<512> doc;
+            DeserializationError error = deserializeJson(doc, data, len);
+
+            if (error) {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+
+            // Проверка наличия массивов калибровочных точек
+            if (!doc.containsKey("abvPoints") || !doc.containsKey("pressurePoints")) {
+                request->send(400, "application/json", "{\"error\":\"Missing abvPoints or pressurePoints\"}");
+                return;
+            }
+
+            JsonArray abvArray = doc["abvPoints"].as<JsonArray>();
+            JsonArray pressureArray = doc["pressurePoints"].as<JsonArray>();
+
+            if (abvArray.size() != pressureArray.size() || abvArray.size() > 5) {
+                request->send(400, "application/json", "{\"error\":\"Invalid point count (max 5, must match)\"}");
+                return;
+            }
+
+            // Сохранение калибровочных точек
+            g_settings.hydroCal.pointCount = abvArray.size();
+            for (uint8_t i = 0; i < g_settings.hydroCal.pointCount; i++) {
+                g_settings.hydroCal.abvPoints[i] = abvArray[i].as<float>();
+                g_settings.hydroCal.pressurePoints[i] = pressureArray[i].as<float>();
+            }
+
+            // Сохранить в NVS
+            NVSManager::saveSettings(g_settings);
+
+            StaticJsonDocument<128> resp;
+            resp["status"] = "ok";
+            resp["pointCount"] = g_settings.hydroCal.pointCount;
+
+            String json;
+            serializeJson(resp, json);
+            request->send(200, "application/json", json);
         }
     );
 
