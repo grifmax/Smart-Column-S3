@@ -421,7 +421,7 @@
 
         <!-- Футер -->
         <footer>
-            <p>Smart-Column S3 v1.2.4 | ESP32-S3 DevKitC-1 N16R8</p>
+            <p>Smart-Column S3 v1.2.5 | ESP32-S3 DevKitC-1 N16R8</p>
             <div id="memory-stats" style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
                 <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
                     <span>💾 SRAM: <span id="mem-heap-used">--</span> / <span id="mem-heap-total">--</span> (<span id="mem-heap-pct">--%</span>)</span>
@@ -477,6 +477,19 @@
                     <div class="modal-section-title">📊 Результаты</div>
                     <div class="modal-info-grid" id="modal-results-grid">
                         <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Действия с процессом -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📥 Экспорт данных</div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn-primary" id="modal-export-csv" style="flex: 1; min-width: 150px;">
+                            📊 Экспорт в CSV
+                        </button>
+                        <button class="btn-primary" id="modal-export-json" style="flex: 1; min-width: 150px;">
+                            📄 Экспорт в JSON
+                        </button>
                     </div>
                 </div>
             </div>

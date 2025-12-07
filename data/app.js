@@ -956,6 +956,18 @@ function showHistoryDetailsModal(process) {
         </div>
     `;
 
+    // Привязать обработчики к кнопкам экспорта
+    const exportCsvBtn = document.getElementById('modal-export-csv');
+    const exportJsonBtn = document.getElementById('modal-export-json');
+
+    if (exportCsvBtn) {
+        exportCsvBtn.onclick = () => exportHistoryCSV(process.id);
+    }
+
+    if (exportJsonBtn) {
+        exportJsonBtn.onclick = () => exportHistoryJSON(process.id);
+    }
+
     // Показать модальное окно
     document.getElementById('history-modal').classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -1171,16 +1183,30 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-async function exportHistory(id) {
+async function exportHistory(id, format = null) {
     try {
-        addLog(`📥 Экспорт процесса ${id}...`, 'info');
+        // Если формат не указан, спросить у пользователя
+        if (!format) {
+            const choice = confirm('Выберите формат экспорта:\n\nОК - CSV (таблица)\nОтмена - JSON (данные)');
+            format = choice ? 'csv' : 'json';
+        }
 
-        // Запрос на экспорт в CSV
-        window.open(`/api/history/${id}/export?format=csv`, '_blank');
+        addLog(`📥 Экспорт процесса ${id} в формате ${format.toUpperCase()}...`, 'info');
+
+        // Открыть экспорт в новой вкладке
+        window.open(`/api/history/${id}/export?format=${format}`, '_blank');
 
         addLog(`✅ Экспорт процесса ${id} начат`, 'info');
     } catch (error) {
         console.error('Error exporting history:', error);
         addLog('❌ Ошибка экспорта', 'error');
     }
+}
+
+async function exportHistoryCSV(id) {
+    await exportHistory(id, 'csv');
+}
+
+async function exportHistoryJSON(id) {
+    await exportHistory(id, 'json');
 }
