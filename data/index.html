@@ -237,6 +237,76 @@
                 </div>
 
                 <div class="card">
+                    <h2>📡 MQTT</h2>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="mqtt-enabled" onchange="toggleMqttFields()">
+                            <span>Включить MQTT</span>
+                        </label>
+                    </div>
+                    <div id="mqtt-fields">
+                        <div class="form-group">
+                            <label>Сервер MQTT</label>
+                            <input type="text" id="mqtt-server" placeholder="192.168.1.50 или homeassistant.local">
+                        </div>
+                        <div class="form-group">
+                            <label>Порт</label>
+                            <input type="number" id="mqtt-port" value="1883" min="1" max="65535">
+                        </div>
+                        <div class="form-group">
+                            <label>Имя пользователя (опционально)</label>
+                            <input type="text" id="mqtt-username" placeholder="mqtt_user">
+                        </div>
+                        <div class="form-group">
+                            <label>Пароль (опционально)</label>
+                            <input type="password" id="mqtt-password" placeholder="пароль">
+                        </div>
+                        <div class="form-group">
+                            <label>Базовый топик</label>
+                            <input type="text" id="mqtt-base-topic" value="smartcolumn">
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="mqtt-discovery" checked>
+                                <span>Home Assistant Discovery</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>Интервал публикации (мс)</label>
+                            <input type="number" id="mqtt-publish-interval" value="10000" min="1000" max="60000" step="1000">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveMqtt()">💾 Сохранить</button>
+                </div>
+
+                <div class="card">
+                    <h2>🔒 Безопасность</h2>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="auth-enabled" onchange="toggleAuthFields()">
+                            <span>Включить аутентификацию</span>
+                        </label>
+                    </div>
+                    <div id="auth-fields">
+                        <div class="form-group">
+                            <label>Имя пользователя</label>
+                            <input type="text" id="web-username" value="admin">
+                        </div>
+                        <div class="form-group">
+                            <label>Пароль</label>
+                            <input type="password" id="web-password" placeholder="новый пароль">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="rate-limit-enabled" checked>
+                            <span>Rate Limiting (60 req/min)</span>
+                        </label>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveSecurity()">💾 Сохранить</button>
+                </div>
+
+                <div class="card">
                     <h2>Оборудование</h2>
                     <div class="form-group">
                         <label>Мощность ТЭНа (Вт)</label>

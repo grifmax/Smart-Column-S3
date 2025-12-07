@@ -445,6 +445,54 @@ function saveEquipment() {
     addLog('💾 Настройки оборудования сохранены', 'info');
 }
 
+function toggleMqttFields() {
+    const enabled = document.getElementById('mqtt-enabled').checked;
+    const fields = document.getElementById('mqtt-fields');
+    fields.style.display = enabled ? 'block' : 'none';
+}
+
+function saveMqtt() {
+    const enabled = document.getElementById('mqtt-enabled').checked;
+    const server = document.getElementById('mqtt-server').value;
+    const port = document.getElementById('mqtt-port').value;
+    const username = document.getElementById('mqtt-username').value;
+    const password = document.getElementById('mqtt-password').value;
+    const baseTopic = document.getElementById('mqtt-base-topic').value;
+    const discovery = document.getElementById('mqtt-discovery').checked;
+    const publishInterval = document.getElementById('mqtt-publish-interval').value;
+
+    if (enabled && !server) {
+        alert('Укажите адрес MQTT сервера');
+        return;
+    }
+
+    sendCommand('mqtt', 'save', 0);
+    addLog('💾 MQTT настройки сохранены', 'info');
+    alert('MQTT настройки сохранены. Перезагрузите контроллер.');
+}
+
+function toggleAuthFields() {
+    const enabled = document.getElementById('auth-enabled').checked;
+    const fields = document.getElementById('auth-fields');
+    fields.style.display = enabled ? 'block' : 'none';
+}
+
+function saveSecurity() {
+    const authEnabled = document.getElementById('auth-enabled').checked;
+    const username = document.getElementById('web-username').value;
+    const password = document.getElementById('web-password').value;
+    const rateLimitEnabled = document.getElementById('rate-limit-enabled').checked;
+
+    if (authEnabled && (!username || !password)) {
+        alert('Укажите имя пользователя и пароль');
+        return;
+    }
+
+    sendCommand('security', 'save', 0);
+    addLog('💾 Настройки безопасности сохранены', 'info');
+    alert('Настройки безопасности сохранены. Перезагрузите контроллер.');
+}
+
 function setTheme(theme) {
     document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);

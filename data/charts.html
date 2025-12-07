@@ -6,6 +6,19 @@
     <title>Графики - Smart-Column S3</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="charts-style.css">
+    <script>
+        // Загрузить тему из localStorage перед отрисовкой страницы
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            if (document.body) {
+                document.body.setAttribute('data-theme', savedTheme);
+            } else {
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.body.setAttribute('data-theme', savedTheme);
+                });
+            }
+        })();
+    </script>
 </head>
 <body>
     <div class="container">
