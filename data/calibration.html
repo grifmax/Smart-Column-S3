@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калибровка - Smart Column S3</title>
     <link rel="stylesheet" href="style.css">
+    <script>
+        // Загрузить тему из localStorage
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.addEventListener('DOMContentLoaded', function() {
+                document.body.setAttribute('data-theme', savedTheme);
+            });
+        })();
+    </script>
     <style>
         .calibration-container {
             max-width: 1200px;
