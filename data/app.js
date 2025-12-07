@@ -368,6 +368,11 @@ function initTabs() {
             // Добавить активный класс к выбранной вкладке
             tab.classList.add('active');
             document.getElementById(targetId).classList.add('active');
+
+            // Загрузить историю при переключении на вкладку "История"
+            if (targetId === 'history') {
+                loadHistoryList();
+            }
         });
     });
 }
@@ -638,5 +643,268 @@ async function loadPumpInfo() {
 
         if (mlPerRevEl) mlPerRevEl.textContent = 'Ошибка загрузки';
         if (stepsPerRevEl) stepsPerRevEl.textContent = 'Ошибка загрузки';
+    }
+}
+
+// ============================================================================
+// История процессов
+// ============================================================================
+
+let historyData = [];
+
+async function loadHistoryList() {
+    try {
+        const response = await fetch('/api/history');
+        if (!response.ok) {
+            throw new Error('Failed to load history');
+        }
+
+        const data = await response.json();
+        historyData = data.processes || [];
+
+        // Применить фильтры
+        applyHistoryFilters();
+
+        addLog(`📚 Загружено процессов: ${historyData.length}`, 'info');
+    } catch (error) {
+        console.error('Error loading history:', error);
+        addLog('❌ Ошибка загрузки истории', 'error');
+
+        // Показать пустой список
+        const historyListEl = document.getElementById('history-list');
+        if (historyListEl) {
+            historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет данных или ошибка загрузки</div>';
+        }
+    }
+}
+
+function applyHistoryFilters() {
+    const typeFilter = document.getElementById('history-filter-type')?.value || 'all';
+    const sortBy = document.getElementById('history-sort')?.value || 'date-desc';
+
+    let filtered = [...historyData];
+
+    // Фильтр по типу
+    if (typeFilter !== 'all') {
+        filtered = filtered.filter(p => p.type === typeFilter);
+    }
+
+    // Сортировка
+    filtered.sort((a, b) => {
+        switch (sortBy) {
+            case 'date-desc':
+                return b.startTime - a.startTime;
+            case 'date-asc':
+                return a.startTime - b.startTime;
+            case 'duration-desc':
+                return b.duration - a.duration;
+            case 'duration-asc':
+                return a.duration - b.duration;
+            default:
+                return 0;
+        }
+    });
+
+    // Отрисовать список
+    renderHistoryList(filtered);
+
+    // Обновить статистику
+    updateHistoryStats(filtered);
+}
+
+function renderHistoryList(processes) {
+    const historyListEl = document.getElementById('history-list');
+    if (!historyListEl) return;
+
+    if (processes.length === 0) {
+        historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет процессов для отображения</div>';
+        return;
+    }
+
+    historyListEl.innerHTML = '';
+
+    processes.forEach(process => {
+        const itemEl = renderHistoryItem(process);
+        historyListEl.appendChild(itemEl);
+    });
+}
+
+function renderHistoryItem(process) {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+
+    const typeNames = {
+        rectification: 'Ректификация',
+        distillation: 'Дистилляция',
+        mashing: 'Затирка',
+        hold: 'Выдержка'
+    };
+
+    const statusNames = {
+        completed: 'Завершен',
+        stopped: 'Остановлен',
+        error: 'Ошибка'
+    };
+
+    const typeName = typeNames[process.type] || process.type;
+    const statusName = statusNames[process.status] || process.status;
+
+    const startDate = new Date(process.startTime * 1000);
+    const durationHours = (process.duration / 3600).toFixed(1);
+
+    div.innerHTML = `
+        <div class="history-header">
+            <div>
+                <span class="history-type history-type-${process.type}">${typeName}</span>
+                <span class="history-status history-status-${process.status}">${statusName}</span>
+            </div>
+            <div class="history-date">${startDate.toLocaleString('ru-RU')}</div>
+        </div>
+        <div class="history-info">
+            <div class="history-metric">
+                <span class="metric-label">⏱️ Длительность:</span>
+                <span class="metric-value">${durationHours} ч</span>
+            </div>
+            <div class="history-metric">
+                <span class="metric-label">💧 Объём:</span>
+                <span class="metric-value">${process.totalVolume || 0} мл</span>
+            </div>
+        </div>
+        <div class="history-actions">
+            <button class="btn-secondary" onclick="viewHistoryDetails('${process.id}')">👁️ Подробно</button>
+            <button class="btn-secondary" onclick="exportHistory('${process.id}')">📥 Экспорт</button>
+            <button class="btn-danger" onclick="deleteHistoryItem('${process.id}')">🗑️ Удалить</button>
+        </div>
+    `;
+
+    return div;
+}
+
+function updateHistoryStats(processes) {
+    const totalEl = document.getElementById('hist-stat-total');
+    const completedEl = document.getElementById('hist-stat-completed');
+    const timeEl = document.getElementById('hist-stat-time');
+    const energyEl = document.getElementById('hist-stat-energy');
+
+    if (!totalEl) return;
+
+    const total = processes.length;
+    const completed = processes.filter(p => p.status === 'completed').length;
+    const totalTime = processes.reduce((sum, p) => sum + (p.duration || 0), 0);
+    const totalEnergy = 0; // Будет реализовано позже, когда появится поле energy в процессах
+
+    totalEl.textContent = total;
+    completedEl.textContent = completed;
+    timeEl.textContent = (totalTime / 3600).toFixed(1) + ' ч';
+    energyEl.textContent = totalEnergy.toFixed(1) + ' кВт·ч';
+}
+
+async function clearHistory() {
+    if (!confirm('Удалить ВСЮ историю процессов? Это действие необратимо!')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/history', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to clear history');
+        }
+
+        addLog('🗑️ История полностью очищена', 'info');
+        await loadHistoryList();
+    } catch (error) {
+        console.error('Error clearing history:', error);
+        addLog('❌ Ошибка при очистке истории', 'error');
+        alert('Ошибка при очистке истории');
+    }
+}
+
+async function deleteHistoryItem(id) {
+    if (!confirm('Удалить этот процесс из истории?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/history/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete history item');
+        }
+
+        addLog(`🗑️ Процесс ${id} удален из истории`, 'info');
+        await loadHistoryList();
+    } catch (error) {
+        console.error('Error deleting history item:', error);
+        addLog('❌ Ошибка при удалении процесса', 'error');
+        alert('Ошибка при удалении процесса');
+    }
+}
+
+async function viewHistoryDetails(id) {
+    try {
+        const response = await fetch(`/api/history/${id}`);
+        if (!response.ok) {
+            throw new Error('Failed to load history details');
+        }
+
+        const process = await response.json();
+
+        // Создать модальное окно с деталями
+        showHistoryDetailsModal(process);
+
+        addLog(`👁️ Просмотр процесса ${id}`, 'info');
+    } catch (error) {
+        console.error('Error loading history details:', error);
+        addLog('❌ Ошибка загрузки деталей процесса', 'error');
+        alert('Ошибка загрузки деталей процесса');
+    }
+}
+
+function showHistoryDetailsModal(process) {
+    // TODO: Реализовать модальное окно с графиками и деталями
+    // Пока используем alert с основной информацией
+    const startDate = new Date(process.metadata.startTime * 1000);
+    const endDate = new Date(process.metadata.endTime * 1000);
+
+    const details = `
+Процесс: ${process.process.type}
+Начало: ${startDate.toLocaleString('ru-RU')}
+Окончание: ${endDate.toLocaleString('ru-RU')}
+Длительность: ${(process.metadata.duration / 3600).toFixed(1)} ч
+
+Собрано:
+- Головы: ${process.results.headsCollected} мл
+- Тело: ${process.results.bodyCollected} мл
+- Хвосты: ${process.results.tailsCollected} мл
+- Всего: ${process.results.totalCollected} мл
+
+Статус: ${process.results.status}
+    `.trim();
+
+    alert(details);
+}
+
+async function exportHistory(id) {
+    try {
+        addLog(`📥 Экспорт процесса ${id}...`, 'info');
+
+        // Запрос на экспорт в CSV
+        window.open(`/api/history/${id}/export?format=csv`, '_blank');
+
+        addLog(`✅ Экспорт процесса ${id} начат`, 'info');
+    } catch (error) {
+        console.error('Error exporting history:', error);
+        addLog('❌ Ошибка экспорта', 'error');
     }
 }
