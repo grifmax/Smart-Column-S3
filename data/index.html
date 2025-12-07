@@ -421,7 +421,7 @@
 
         <!-- Футер -->
         <footer>
-            <p>Smart-Column S3 v1.2.3 | ESP32-S3 DevKitC-1 N16R8</p>
+            <p>Smart-Column S3 v1.2.4 | ESP32-S3 DevKitC-1 N16R8</p>
             <div id="memory-stats" style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
                 <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
                     <span>💾 SRAM: <span id="mem-heap-used">--</span> / <span id="mem-heap-total">--</span> (<span id="mem-heap-pct">--%</span>)</span>
@@ -430,6 +430,57 @@
                 </div>
             </div>
         </footer>
+    </div>
+
+    <!-- Модальное окно для детального просмотра процесса -->
+    <div id="history-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="modal-title">Детали процесса</div>
+                <button class="modal-close" onclick="closeHistoryModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Основная информация -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📋 Основная информация</div>
+                    <div class="modal-info-grid" id="modal-info-grid">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Графики температур -->
+                <div class="modal-section">
+                    <div class="modal-section-title">🌡️ Температуры</div>
+                    <div class="modal-chart">
+                        <div id="modal-temp-chart"></div>
+                    </div>
+                </div>
+
+                <!-- График мощности -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⚡ Мощность</div>
+                    <div class="modal-chart">
+                        <div id="modal-power-chart"></div>
+                    </div>
+                </div>
+
+                <!-- Фазы процесса -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⏱️ Фазы процесса</div>
+                    <div class="modal-phases" id="modal-phases">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Результаты -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📊 Результаты</div>
+                    <div class="modal-info-grid" id="modal-results-grid">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="column-animation.js"></script>
