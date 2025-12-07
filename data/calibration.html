@@ -151,11 +151,30 @@
             border: 1px solid #f5c6cb;
             display: block;
         }
+
+        .back-link {
+            display: inline-block;
+            color: #4CAF50;
+            text-decoration: none;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+            transition: opacity 0.3s;
+        }
+
+        .back-link:hover {
+            opacity: 0.7;
+        }
+
+        /* Темная тема */
+        [data-theme="dark"] .back-link {
+            color: #66bb6a;
+        }
     </style>
 </head>
 <body>
     <div class="calibration-container">
         <h1>⚙️ Калибровка системы</h1>
+        <a href="index.html" class="back-link">← Вернуться в главное меню</a>
 
         <!-- Калибровка насоса -->
         <div class="cal-section">
