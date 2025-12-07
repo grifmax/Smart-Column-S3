@@ -1,9 +1,9 @@
 # Smart-Column S3 — Спецификация
 
-**Версия:** 1.1
-**Дата:** 2025-12-02
+**Версия:** 1.2
+**Дата:** 2025-12-06
 **Платформа:** ESP32-S3 DevKitC-1 N16R8
-**Бюджет:** ~12,000₽  
+**Бюджет:** ~11,250₽  
 
 ---
 
@@ -19,6 +19,8 @@ Smart-Column S3 — универсальный контроллер автома
 - Электронный ареометр на базе дифференциального датчика давления
 - Web UI с анимированной схемой оборудования
 - Telegram-бот с уведомлениями и удалённым управлением
+- MQTT интеграция с Home Assistant (MQTT Discovery)
+- HTTP Basic Auth и Rate Limiting для защиты веб-интерфейса
 - OTA-обновления прошивки
 - Логирование на SPIFFS с экспортом в CSV
 
@@ -43,10 +45,11 @@ Smart-Column S3 — универсальный контроллер автома
 | АЦП 16-бит | ADS1115 | 1 | 250₽ |
 | Атм. давление | BMP280 | 2 | 200₽ |
 | Термометры | DS18B20 водонепр. | 7 | 1000₽ |
-| Измеритель мощности | **PZEM-004T v3.0** (V, A, W, кВт·ч, Гц, PF) | 1 | **450₽** |
+| AC вольтметр | ZMPT101B | 1 | 250₽ |
+| AC амперметр | ACS712-30A | 1 | 150₽ |
 | Датчик потока воды | YF-S201 | 1 | 150₽ |
 | Датчик уровня | Оптический (опция) | 1 | 200₽ |
-| **Итого датчики** | | | **2850₽** |
+| **Итого датчики** | | | **2800₽** |
 
 ### 2.3 Силовая часть
 
@@ -87,7 +90,7 @@ Smart-Column S3 — универсальный контроллер автома
 | Мелочёвка | Провода, клеммы, стойки | 500₽ |
 | **Итого интерфейс** | | **2350₽** |
 
-### **ИТОГО BOM: ~11,980₽** (с опциями)
+### **ИТОГО BOM: ~11,930₽** (с опциями)
 
 ---
 
@@ -101,13 +104,13 @@ Smart-Column S3 — универсальный контроллер автома
 | I2C SCL | GPIO22 | BMP280 ×2, ADS1115 |
 | OneWire | GPIO4 | DS18B20 ×7 (подтяжка 4.7кОм) |
 
-### 3.2 Управление нагревом и мощностью
+### 3.2 Управление нагревом
 
 | Функция | GPIO | Примечание |
 |---------|------|------------|
 | SSR нагрев | GPIO5 | Через PC817 оптрон |
-| PZEM-004T RX | GPIO44 | UART0 RX (→ TX PZEM) |
-| PZEM-004T TX | GPIO43 | UART0 TX (→ RX PZEM) |
+| ZMPT101B (напряжение) | GPIO1 | Аналоговый вход |
+| ACS712 (ток) | GPIO2 | Аналоговый вход |
 
 ### 3.3 Перистальтический насос
 
@@ -391,28 +394,20 @@ valve.pwm_duty = map(speed, 0, max_speed, 0, 255)
 Точность: ±2%
 ```
 
-### 8.4 Измеритель мощности (PZEM-004T v3.0)
+### 8.4 Датчики мощности (ZMPT101B + ACS712)
 
 ```
-PZEM-004T не требует калибровки - уже откалиброван на заводе!
+Калибровка напряжения:
+1. Подключить мультиметр параллельно
+2. Измерить реальное U при нагрузке
+3. Подобрать k_voltage для совпадения
 
-Измеряемые параметры:
-- Напряжение: 80-260V AC
-- Ток: 0-100A (с внешним шунтом 0-10A встроенный)
-- Активная мощность: 0-23000W
-- Энергия: 0-9999.99 кВт·ч
-- Частота: 45-65 Гц
-- Коэффициент мощности: 0.0-1.0
+Калибровка тока:
+1. Подключить токовые клещи
+2. Измерить реальный I при нагрузке
+3. Подобрать k_current для совпадения
 
-Подключение:
-1. TX PZEM → GPIO44 (RX ESP32)
-2. RX PZEM → GPIO43 (TX ESP32)
-3. GND PZEM → GND ESP32
-4. VCC PZEM → 5V (изолированный источник!)
-
-⚠️ ВАЖНО: Изолировать питание PZEM от ESP32!
-
-Точность: ±0.5% (класс 1.0)
+Точность: ±2-3%
 ```
 
 ### 8.5 Давление захлёба
@@ -508,6 +503,89 @@ PZEM-004T не требует калибровки - уже откалибров
 - Завершение погона (статистика)
 - Низкая скорость отбора
 
+### 9.4 MQTT интеграция
+
+#### Home Assistant Discovery
+
+Автоматическое обнаружение устройства в Home Assistant через MQTT Discovery protocol.
+
+**Топики состояния:**
+```
+smartcolumn/{device_id}/state     - Полное состояние системы (JSON)
+smartcolumn/{device_id}/health    - Здоровье системы (0-100%)
+smartcolumn/{device_id}/status    - Статус подключения (online/offline)
+```
+
+**Discovery топики:**
+```
+homeassistant/sensor/{device_id}_cube_temp/config
+homeassistant/sensor/{device_id}_column_top/config
+homeassistant/sensor/{device_id}_voltage/config
+homeassistant/sensor/{device_id}_power/config
+homeassistant/sensor/{device_id}_energy/config
+homeassistant/sensor/{device_id}_health/config
+```
+
+#### Сущности в Home Assistant
+
+| Сущность | Класс устройства | Единица | Обновление |
+|----------|------------------|---------|------------|
+| Температура куба | temperature | °C | 10 сек |
+| Температура царги верх | temperature | °C | 10 сек |
+| Напряжение | voltage | V | 10 сек |
+| Мощность | power | W | 10 сек |
+| Энергия | energy | kWh | 10 сек |
+| Здоровье системы | None | % | 5 сек |
+
+#### Интеграция с Energy Dashboard
+
+Сенсор энергии использует `state_class: total_increasing` для корректной работы с Energy Dashboard Home Assistant, позволяя отслеживать потребление электроэнергии по дням/месяцам.
+
+#### LWT (Last Will and Testament)
+
+```
+Топик: smartcolumn/{device_id}/status
+Payload: online / offline
+Retain: true
+```
+
+При отключении контроллера статус автоматически меняется на `offline`, что отображается в HA как `unavailable`.
+
+### 9.5 Безопасность
+
+#### HTTP Basic Authentication
+
+```
+Заголовок: Authorization: Basic <base64(username:password)>
+```
+
+**Функции:**
+- Защита всех эндпоинтов веб-интерфейса и API
+- Настраиваемые username/password через Web UI
+- Возможность отключения для локальной сети
+
+#### Rate Limiting
+
+**Параметры:**
+- Максимум 60 запросов в минуту с одного IP
+- Автоматическая блокировка на 1 минуту при превышении
+- Циркулярный буфер на 20 IP-адресов
+
+**HTTP коды:**
+- `401 Unauthorized` - неверные credentials
+- `429 Too Many Requests` - превышен лимит запросов
+
+#### Security Headers
+
+```
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: geolocation=(), microphone=(), camera=()
+```
+
 ---
 
 ## 10. API Endpoints
@@ -557,6 +635,11 @@ PZEM-004T не требует калибровки - уже откалибров
 ```
 wifi_ssid, wifi_pass
 telegram_token, telegram_chat_id
+mqtt_server, mqtt_port, mqtt_username, mqtt_password
+mqtt_base_topic, mqtt_enabled, mqtt_discovery
+mqtt_publish_interval
+web_username, web_password
+auth_enabled, rate_limit_enabled
 language (RU/EN)
 theme (light/dark)
 sound_enabled
@@ -644,6 +727,8 @@ smart-column-s3/
 │   │   ├── webserver.cpp     # AsyncWebServer
 │   │   ├── api.cpp           # REST API
 │   │   ├── telegram.cpp      # Telegram-бот
+│   │   ├── mqtt.cpp          # MQTT клиент + HA Discovery
+│   │   ├── security.cpp      # Auth + Rate Limiting
 │   │   └── buttons.cpp       # Физические кнопки
 │   ├── storage/
 │   │   ├── nvs_manager.cpp   # Настройки
@@ -678,6 +763,7 @@ lib_deps =
     me-no-dev/ESPAsyncWebServer
     bblanchon/ArduinoJson
     witnessmenow/UniversalTelegramBot
+    knolleary/PubSubClient
     bodmer/TFT_eSPI
     waspinator/AccelStepper
 
@@ -740,6 +826,9 @@ upload_speed = 921600
 | Датчик уровня | ✓ | ✓ | — | ✓ (опция) |
 | Web UI | ✓ | — | — | ✓ анимация |
 | Telegram | — | — | — | ✓ |
+| MQTT / Home Assistant | — | — | — | ✓ Discovery |
+| Аутентификация | — | — | — | ✓ Basic Auth |
+| Rate Limiting | — | — | — | ✓ |
 | OTA | — | — | — | ✓ |
 | Логирование | — | — | — | ✓ SPIFFS |
 | Затирка солода | — | — | — | ✓ |
@@ -771,10 +860,10 @@ upload_speed = 921600
   Клапан УНО   ◄────┤ GPIO18 (MOSFET)                    │
                     │                                     │
   Серво MG996R ◄────┤ GPIO8 (PWM 50Hz) [опция]           │
-  Клапан старт ◄────┤ GPIO14 (ШИМ) [опция]               │
+  Клапан старт ◄────┤ GPIO9 (ШИМ) [опция]                │
                     │                                     │
-   PZEM-004T TX ────┤ GPIO44 (UART0 RX)                  │
-   PZEM-004T RX ◄───┤ GPIO43 (UART0 TX)                  │
+     ZMPT101B  ─────┤ GPIO1 (ADC напряжение)             │
+      ACS712   ─────┤ GPIO2 (ADC ток)                    │
      YF-S201   ─────┤ GPIO3 (счётчик импульсов)          │
                     │                                     │
       Зуммер   ◄────┤ GPIO38                             │
@@ -819,26 +908,23 @@ V = обороты × мл_на_оборот
 Скорость = ΔV / Δt (мл/час)
 ```
 
-### Реальная мощность (PZEM-004T v3.0)
+### Реальная мощность (ACS712 + ZMPT101B)
 
 ```
-PZEM-004T считывает по UART следующие параметры:
+U = (ADC_zmpt - 2048) × k_voltage  (среднеквадратичное)
+I = (ADC_acs - 2048) × k_current   (среднеквадратичное)
 
-U = pzem.voltage()      // Напряжение, V RMS
-I = pzem.current()      // Ток, A RMS
-P = pzem.power()        // Активная мощность, W
-E = pzem.energy()       // Потреблённая энергия, кВт·ч
-F = pzem.frequency()    // Частота сети, Гц
-PF = pzem.pf()          // Коэффициент мощности (0.0-1.0)
+P_real = U × I × cos(φ)
 
-Точность: ±0.5% (класс точности 1.0)
+где:
+  k_voltage ≈ 0.17 (калибруется)
+  k_current = 0.066 В/А для ACS712-30A
+  cos(φ) ≈ 1.0 для ТЭНа (резистивная нагрузка)
 
 Применение:
-  - Прецизионный контроль мощности
-  - Учёт потреблённой энергии (кВт·ч)
+  - Контроль реальной мощности vs заданной
+  - Детекция неисправности ТЭНа
   - Watt-Control с обратной связью
-  - Детекция проблем с сетью (частота, PF)
-  - Детекция неисправности ТЭНа (по току/PF)
 ```
 
 ---
