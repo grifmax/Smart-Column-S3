@@ -12,6 +12,7 @@
 #include "rectification.h"
 #include "distillation.h"
 #include "safety.h"
+#include "history.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <AsyncTCP.h>
@@ -747,6 +748,176 @@ void setupApiRoutes() {
         request->send(200, "application/json", "{\"status\":\"ok\"}");
         delay(1000);
         ESP.restart();
+    });
+
+    // ========================================================================
+    // API для работы с историей процессов
+    // ========================================================================
+
+    // GET /api/history - Получить список всех процессов
+    server.on("/api/history", HTTP_GET, [](AsyncWebServerRequest *request) {
+        std::vector<ProcessListItem> processes = getProcessList();
+
+        DynamicJsonDocument doc(4096);
+        doc["total"] = processes.size();
+
+        JsonArray procArray = doc.createNestedArray("processes");
+        for (const auto& proc : processes) {
+            JsonObject p = procArray.createNestedObject();
+            p["id"] = proc.id;
+            p["type"] = proc.type;
+            p["startTime"] = proc.startTime;
+            p["duration"] = proc.duration;
+            p["status"] = proc.status;
+            p["totalVolume"] = proc.totalVolume;
+        }
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    // GET /api/history/{id} - Получить полные данные процесса
+    server.on("^\\/api\\/history\\/([0-9]+)$", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+
+        ProcessHistory history;
+        if (loadProcessHistory(id, history)) {
+            // Создать полный JSON ответ
+            DynamicJsonDocument doc(32768);
+
+            doc["id"] = history.id;
+            doc["version"] = history.version;
+
+            JsonObject metadata = doc.createNestedObject("metadata");
+            metadata["startTime"] = history.metadata.startTime;
+            metadata["endTime"] = history.metadata.endTime;
+            metadata["duration"] = history.metadata.duration;
+            metadata["completedSuccessfully"] = history.metadata.completedSuccessfully;
+            metadata["deviceId"] = history.metadata.deviceId;
+
+            JsonObject process = doc.createNestedObject("process");
+            process["type"] = history.process.type;
+            process["mode"] = history.process.mode;
+            process["profile"] = history.process.profile;
+
+            JsonObject parameters = doc.createNestedObject("parameters");
+            parameters["targetPower"] = history.parameters.targetPower;
+            parameters["headVolume"] = history.parameters.headVolume;
+            parameters["bodyVolume"] = history.parameters.bodyVolume;
+            parameters["tailVolume"] = history.parameters.tailVolume;
+            parameters["pumpSpeedHead"] = history.parameters.pumpSpeedHead;
+            parameters["pumpSpeedBody"] = history.parameters.pumpSpeedBody;
+            parameters["stabilizationTime"] = history.parameters.stabilizationTime;
+            parameters["wattControlEnabled"] = history.parameters.wattControlEnabled;
+            parameters["smartDecrementEnabled"] = history.parameters.smartDecrementEnabled;
+
+            JsonObject metrics = doc.createNestedObject("metrics");
+            JsonObject temps = metrics.createNestedObject("temperatures");
+            JsonObject cube = temps.createNestedObject("cube");
+            cube["min"] = history.metrics.cube.min;
+            cube["max"] = history.metrics.cube.max;
+            cube["avg"] = history.metrics.cube.avg;
+            cube["final"] = history.metrics.cube.final;
+
+            JsonObject power = metrics.createNestedObject("power");
+            power["energyUsed"] = history.metrics.energyUsed;
+            power["avgPower"] = history.metrics.avgPower;
+            power["peakPower"] = history.metrics.peakPower;
+
+            JsonObject pump = metrics.createNestedObject("pump");
+            pump["totalVolume"] = history.metrics.totalVolume;
+            pump["avgSpeed"] = history.metrics.avgSpeed;
+
+            JsonArray phases = doc.createNestedArray("phases");
+            for (const auto& phase : history.phases) {
+                JsonObject p = phases.createNestedObject();
+                p["name"] = phase.name;
+                p["startTime"] = phase.startTime;
+                p["endTime"] = phase.endTime;
+                p["duration"] = phase.duration;
+                p["startTemp"] = phase.startTemp;
+                p["endTemp"] = phase.endTemp;
+                p["volume"] = phase.volume;
+                p["avgSpeed"] = phase.avgSpeed;
+            }
+
+            JsonObject timeseries = doc.createNestedObject("timeseries");
+            timeseries["interval"] = TIMESERIES_INTERVAL;
+            JsonArray data = timeseries.createNestedArray("data");
+            for (const auto& point : history.timeseries) {
+                JsonObject p = data.createNestedObject();
+                p["time"] = point.time;
+                p["cube"] = point.cube;
+                p["columnTop"] = point.columnTop;
+                p["power"] = point.power;
+                p["pumpSpeed"] = point.pumpSpeed;
+            }
+
+            JsonObject results = doc.createNestedObject("results");
+            results["headsCollected"] = history.results.headsCollected;
+            results["bodyCollected"] = history.results.bodyCollected;
+            results["tailsCollected"] = history.results.tailsCollected;
+            results["totalCollected"] = history.results.totalCollected;
+            results["status"] = history.results.status;
+
+            doc["notes"] = history.notes;
+
+            String response;
+            serializeJson(doc, response);
+            request->send(200, "application/json", response);
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Process not found\"}");
+        }
+    });
+
+    // GET /api/history/{id}/export - Экспорт процесса в CSV или JSON
+    server.on("^\\/api\\/history\\/([0-9]+)\\/export$", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+        String format = request->hasParam("format") ? request->getParam("format")->value() : "csv";
+
+        ProcessHistory history;
+        if (loadProcessHistory(id, history)) {
+            if (format == "csv") {
+                String csv = exportProcessToCSV(history);
+                request->send(200, "text/csv", csv);
+            } else if (format == "json") {
+                String json = exportProcessToJSON(history);
+                request->send(200, "application/json", json);
+            } else {
+                request->send(400, "application/json", "{\"error\":\"Invalid format. Use csv or json\"}");
+            }
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Process not found\"}");
+        }
+    });
+
+    // DELETE /api/history/{id} - Удалить процесс из истории
+    server.on("^\\/api\\/history\\/([0-9]+)$", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+
+        if (deleteProcess(id)) {
+            request->send(200, "application/json", "{\"success\":true,\"message\":\"Process deleted\"}");
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Process not found\"}");
+        }
+    });
+
+    // DELETE /api/history - Очистить всю историю
+    server.on("/api/history", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+        if (clearHistory()) {
+            request->send(200, "application/json", "{\"success\":true,\"message\":\"All history cleared\"}");
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Failed to clear history\"}");
+        }
+    });
+
+    // POST /api/history/{id}/compare - Сравнение процессов
+    server.on("^\\/api\\/history\\/([0-9]+)\\/compare$", HTTP_POST, [](AsyncWebServerRequest *request) {
+        // TODO: Реализовать сравнение процессов в следующей версии
+        request->send(501, "application/json", "{\"error\":\"Not implemented yet\"}");
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        // Body handler для получения списка ID процессов для сравнения
     });
 }
 
