@@ -232,6 +232,26 @@
         [data-theme="dark"] hr {
             border-color: #444;
         }
+
+        [data-theme="dark"] .info-text[style*="background: #fff3cd"] {
+            background: #3a3a1f !important;
+            color: #ffd54f !important;
+            border-left-color: #ffc107 !important;
+        }
+
+        [data-theme="dark"] #cal-progress-container {
+            background: #1f2a3a !important;
+            border-left-color: #2196F3 !important;
+            color: #e0e0e0 !important;
+        }
+
+        [data-theme="dark"] #cal-progress-container strong {
+            color: #e0e0e0 !important;
+        }
+
+        [data-theme="dark"] details summary {
+            color: #e0e0e0;
+        }
     </style>
 </head>
 <body>
@@ -248,31 +268,83 @@
                 <div class="info-text" id="pumpCurrent">Загрузка...</div>
             </div>
 
-            <h3>Метод 1: Прямая калибровка</h3>
-            <div class="form-group">
-                <label for="mlPerRev">мл на оборот:</label>
-                <input type="number" id="mlPerRev" step="0.001" min="0" placeholder="0.500">
-            </div>
-            <button class="btn" onclick="calibratePumpDirect()">Применить</button>
+            <p class="info-text" style="background: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ffc107;">
+                ⚠️ <strong>Важно:</strong> Точность налива может быть нелинейна на разных скоростях.
+                Рекомендуется выполнить минимум 2 калибровки: на скорости <strong>200 мл/час</strong> и <strong>1500 мл/час</strong>.
+            </p>
 
-            <hr style="margin: 20px 0;">
+            <h3>Параметры калибровки</h3>
 
-            <h3>Метод 2: Измерение</h3>
-            <p class="info-text">1. Запустите насос на известное количество шагов<br>
-               2. Измерьте реальный объём в мерной посуде<br>
-               3. Введите данные ниже</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div class="form-group">
+                    <label for="cal-speed">Скорость налива (мл/час)</label>
+                    <select id="cal-speed" onchange="updateCalibrationTime()">
+                        <option value="150">150 мл/час</option>
+                        <option value="200" selected>200 мл/час ⭐ рекомендуется</option>
+                        <option value="300">300 мл/час</option>
+                        <option value="750">750 мл/час</option>
+                        <option value="1000">1000 мл/час</option>
+                        <option value="1500">1500 мл/час ⭐ рекомендуется</option>
+                        <option value="2000">2000 мл/час</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="cal-volume">Объём тары (мл)</label>
+                    <select id="cal-volume" onchange="updateCalibrationTime()">
+                        <option value="50">50 мл</option>
+                        <option value="100" selected>100 мл</option>
+                        <option value="250">250 мл</option>
+                        <option value="500">500 мл</option>
+                        <option value="1000">1000 мл</option>
+                    </select>
+                </div>
+            </div>
 
             <div class="form-group">
-                <label for="knownVolume">Измеренный объём (мл):</label>
-                <input type="number" id="knownVolume" step="0.1" min="0" placeholder="100.0">
+                <label>Расчётное время налива:</label>
+                <div class="info-text" id="cal-time" style="font-size: 1.1em; font-weight: 600;">30 мин</div>
             </div>
-            <div class="form-group">
-                <label for="steps">Выполнено шагов:</label>
-                <input type="number" id="steps" min="1" placeholder="3200">
+
+            <div id="cal-progress-container" style="display: none; margin: 20px 0; padding: 15px; background: #f0f8ff; border-radius: 6px; border-left: 4px solid #2196F3;">
+                <div style="margin-bottom: 10px;">
+                    <strong>Калибровка в процессе...</strong>
+                </div>
+                <div style="background: #ddd; height: 30px; border-radius: 15px; overflow: hidden; margin-bottom: 10px;">
+                    <div id="cal-progress-bar" style="background: linear-gradient(90deg, #4CAF50, #66bb6a); height: 100%; width: 0%; transition: width 0.5s; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;"></div>
+                </div>
+                <div class="info-text">
+                    Прошло: <span id="cal-elapsed">0 мин 0 сек</span> / <span id="cal-total">0 мин</span>
+                </div>
             </div>
-            <button class="btn" onclick="calibratePumpMeasured()">Рассчитать и применить</button>
+
+            <div id="cal-manual-volume" style="display: none; margin: 20px 0;">
+                <div class="form-group">
+                    <label for="actual-volume">Фактически налитый объём (мл):</label>
+                    <input type="number" id="actual-volume" step="0.1" min="0" placeholder="Введите фактический объём">
+                    <p class="info-text">Если вы остановили калибровку досрочно, введите реальный объём, который был налит.</p>
+                </div>
+            </div>
+
+            <div class="controls" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn" id="btn-start-cal" onclick="startCalibration()">▶️ Старт калибровки</button>
+                <button class="btn" id="btn-stop-cal" onclick="stopCalibration()" style="display: none; background: #ff9800;">⏹️ Стоп</button>
+                <button class="btn btn-secondary" id="btn-apply-cal" onclick="applyCalibration()" style="display: none;">✅ Применить результат</button>
+                <button class="btn" id="btn-cancel-cal" onclick="cancelCalibration()" style="display: none; background: #f44336;">❌ Отмена</button>
+            </div>
 
             <div id="pumpResult" class="result-message"></div>
+
+            <hr style="margin: 30px 0;">
+
+            <details>
+                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 10px;">Прямая калибровка (для опытных пользователей)</summary>
+                <div class="form-group">
+                    <label for="mlPerRev">мл на оборот:</label>
+                    <input type="number" id="mlPerRev" step="0.001" min="0" placeholder="0.500">
+                </div>
+                <button class="btn" onclick="calibratePumpDirect()">Применить</button>
+            </details>
         </div>
 
         <!-- Калибровка термометров -->
@@ -477,8 +549,198 @@
             }, 5000);
         }
 
+        // ============================================================================
+        // Новая система калибровки насоса
+        // ============================================================================
+
+        let calibrationState = {
+            running: false,
+            startTime: null,
+            targetTime: 0,
+            targetVolume: 0,
+            speed: 0,
+            interval: null
+        };
+
+        // Обновить расчётное время
+        function updateCalibrationTime() {
+            const speed = parseInt(document.getElementById('cal-speed').value);
+            const volume = parseInt(document.getElementById('cal-volume').value);
+            const timeMinutes = (volume / speed) * 60;
+
+            document.getElementById('cal-time').textContent =
+                timeMinutes >= 1
+                    ? `${Math.floor(timeMinutes)} мин ${Math.round((timeMinutes % 1) * 60)} сек`
+                    : `${Math.round(timeMinutes * 60)} сек`;
+        }
+
+        // Запуск калибровки
+        async function startCalibration() {
+            const speed = parseInt(document.getElementById('cal-speed').value);
+            const volume = parseInt(document.getElementById('cal-volume').value);
+
+            calibrationState = {
+                running: true,
+                startTime: Date.now(),
+                targetTime: (volume / speed) * 3600000, // в миллисекундах
+                targetVolume: volume,
+                speed: speed,
+                interval: null
+            };
+
+            // Показать прогресс, скрыть кнопку старт
+            document.getElementById('btn-start-cal').style.display = 'none';
+            document.getElementById('btn-stop-cal').style.display = 'inline-block';
+            document.getElementById('btn-cancel-cal').style.display = 'inline-block';
+            document.getElementById('cal-progress-container').style.display = 'block';
+            document.getElementById('cal-total').textContent =
+                `${Math.floor(calibrationState.targetTime / 60000)} мин`;
+
+            // Запустить насос через API
+            try {
+                const response = await fetch('/api/pump/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ speed: speed })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to start pump');
+                }
+
+                showResult('pumpResult', `✓ Калибровка запущена: ${volume} мл при ${speed} мл/час`, 'success');
+
+                // Запустить обновление прогресса
+                calibrationState.interval = setInterval(updateCalibrationProgress, 1000);
+
+            } catch (error) {
+                showResult('pumpResult', 'Ошибка запуска насоса', 'error');
+                cancelCalibration();
+            }
+        }
+
+        // Обновление прогресса
+        function updateCalibrationProgress() {
+            if (!calibrationState.running) return;
+
+            const elapsed = Date.now() - calibrationState.startTime;
+            const progress = Math.min((elapsed / calibrationState.targetTime) * 100, 100);
+
+            document.getElementById('cal-progress-bar').style.width = progress + '%';
+            document.getElementById('cal-progress-bar').textContent = Math.round(progress) + '%';
+
+            const elapsedSec = Math.floor(elapsed / 1000);
+            const minutes = Math.floor(elapsedSec / 60);
+            const seconds = elapsedSec % 60;
+            document.getElementById('cal-elapsed').textContent = `${minutes} мин ${seconds} сек`;
+
+            // Автоостановка по завершении
+            if (elapsed >= calibrationState.targetTime) {
+                stopCalibration(true);
+            }
+        }
+
+        // Остановка калибровки
+        async function stopCalibration(autoStop = false) {
+            if (!calibrationState.running) return;
+
+            calibrationState.running = false;
+            clearInterval(calibrationState.interval);
+
+            // Остановить насос через API
+            try {
+                await fetch('/api/pump/stop', { method: 'POST' });
+            } catch (error) {
+                console.error('Error stopping pump:', error);
+            }
+
+            // Скрыть кнопку стоп, показать кнопки применить/отмена
+            document.getElementById('btn-stop-cal').style.display = 'none';
+            document.getElementById('btn-apply-cal').style.display = 'inline-block';
+
+            // Если досрочная остановка, показать поле для ввода объёма
+            if (!autoStop) {
+                document.getElementById('cal-manual-volume').style.display = 'block';
+                showResult('pumpResult', 'Калибровка остановлена. Введите фактический объём и нажмите "Применить результат"', 'info');
+            } else {
+                document.getElementById('actual-volume').value = calibrationState.targetVolume;
+                showResult('pumpResult', 'Калибровка завершена. Нажмите "Применить результат" для сохранения', 'success');
+            }
+        }
+
+        // Применить результат калибровки
+        async function applyCalibration() {
+            let actualVolume = parseFloat(document.getElementById('actual-volume').value);
+
+            if (isNaN(actualVolume) || actualVolume <= 0) {
+                showResult('pumpResult', 'Введите корректный фактический объём', 'error');
+                return;
+            }
+
+            const elapsed = Date.now() - calibrationState.startTime;
+            const elapsedHours = elapsed / 3600000;
+            const actualSpeed = actualVolume / elapsedHours;
+
+            // Рассчитать новое значение мл/оборот на основе фактических данных
+            // Это упрощённый расчёт, реальная логика должна быть на сервере
+            try {
+                const response = await fetch(`${API_BASE}/pump`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        knownVolume: actualVolume,
+                        elapsedMs: elapsed,
+                        targetSpeed: calibrationState.speed
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('pumpResult',
+                        `✓ Калибровка применена! Новое значение: ${data.mlPerRev?.toFixed(3) || 'обновлено'} мл/оборот`,
+                        'success');
+                    loadCalibration();
+                    resetCalibrationUI();
+                } else {
+                    showResult('pumpResult', 'Ошибка применения калибровки', 'error');
+                }
+            } catch (error) {
+                showResult('pumpResult', 'Ошибка соединения', 'error');
+            }
+        }
+
+        // Отмена калибровки
+        async function cancelCalibration() {
+            if (calibrationState.running) {
+                clearInterval(calibrationState.interval);
+                try {
+                    await fetch('/api/pump/stop', { method: 'POST' });
+                } catch (error) {
+                    console.error('Error stopping pump:', error);
+                }
+            }
+
+            resetCalibrationUI();
+            showResult('pumpResult', 'Калибровка отменена', 'info');
+        }
+
+        // Сброс UI
+        function resetCalibrationUI() {
+            calibrationState = { running: false, startTime: null, targetTime: 0, targetVolume: 0, speed: 0, interval: null };
+
+            document.getElementById('btn-start-cal').style.display = 'inline-block';
+            document.getElementById('btn-stop-cal').style.display = 'none';
+            document.getElementById('btn-apply-cal').style.display = 'none';
+            document.getElementById('btn-cancel-cal').style.display = 'none';
+            document.getElementById('cal-progress-container').style.display = 'none';
+            document.getElementById('cal-manual-volume').style.display = 'none';
+            document.getElementById('cal-progress-bar').style.width = '0%';
+            document.getElementById('actual-volume').value = '';
+        }
+
         // Загрузка при старте
         loadCalibration();
+        updateCalibrationTime();
     </script>
 </body>
 </html>

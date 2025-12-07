@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadTheme();
     initMiniChart();
     loadMemoryStatsPreference();
+    loadPumpInfo();
     connectWebSocket();
 });
 
@@ -602,5 +603,40 @@ function loadMemoryStatsPreference() {
 
     if (memStatsDiv) {
         memStatsDiv.style.display = showMemoryStats ? 'block' : 'none';
+    }
+}
+
+// ============================================================================
+// Загрузка информации о насосе
+// ============================================================================
+
+async function loadPumpInfo() {
+    try {
+        const response = await fetch('/api/calibration');
+        if (!response.ok) {
+            throw new Error('Failed to load calibration data');
+        }
+
+        const data = await response.json();
+
+        // Обновить информацию о насосе
+        const mlPerRevEl = document.getElementById('pump-ml-per-rev');
+        const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
+
+        if (mlPerRevEl && data.pump) {
+            mlPerRevEl.textContent = `${data.pump.mlPerRev.toFixed(3)} мл/оборот`;
+        }
+
+        if (stepsPerRevEl && data.pump) {
+            const totalSteps = data.pump.stepsPerRev * data.pump.microsteps;
+            stepsPerRevEl.textContent = `${totalSteps} шагов (${data.pump.stepsPerRev} × ${data.pump.microsteps} микрошагов)`;
+        }
+    } catch (error) {
+        console.error('Error loading pump info:', error);
+        const mlPerRevEl = document.getElementById('pump-ml-per-rev');
+        const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
+
+        if (mlPerRevEl) mlPerRevEl.textContent = 'Ошибка загрузки';
+        if (stepsPerRevEl) stepsPerRevEl.textContent = 'Ошибка загрузки';
     }
 }

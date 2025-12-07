@@ -318,6 +318,19 @@ header h1 {
     border-color: var(--accent);
 }
 
+.info-display {
+    padding: 10px;
+    background: var(--bg-primary);
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 1em;
+    font-weight: 600;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+
 /* Log Container */
 .log-container {
     background: var(--bg-primary);
