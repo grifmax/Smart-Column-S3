@@ -386,6 +386,7 @@
                         <option value="error">Ошибка</option>
                     </select>
                     <button class="btn btn-primary" onclick="loadHistoryList()">🔄 Обновить</button>
+                    <button id="compare-processes-btn" class="btn btn-primary" onclick="compareSelected()" disabled>📊 Сравнить выбранные (0)</button>
                     <button class="btn" onclick="clearHistory()">🗑️ Очистить историю</button>
                 </div>
 
@@ -421,7 +422,7 @@
 
         <!-- Футер -->
         <footer>
-            <p>Smart-Column S3 v1.3.0 | ESP32-S3 DevKitC-1 N16R8</p>
+            <p>Smart-Column S3 v1.3.1 | ESP32-S3 DevKitC-1 N16R8</p>
             <div id="memory-stats" style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
                 <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
                     <span>💾 SRAM: <span id="mem-heap-used">--</span> / <span id="mem-heap-total">--</span> (<span id="mem-heap-pct">--%</span>)</span>
@@ -490,6 +491,49 @@
                         <button class="btn-primary" id="modal-export-json" style="flex: 1; min-width: 150px;">
                             📄 Экспорт в JSON
                         </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для сравнения процессов -->
+    <div id="compare-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 1400px;">
+            <div class="modal-header">
+                <div class="modal-title" id="compare-modal-title">Сравнение процессов</div>
+                <button class="modal-close" onclick="closeCompareModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Список сравниваемых процессов -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📋 Сравниваемые процессы</div>
+                    <div id="compare-process-list" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- График сравнения температур -->
+                <div class="modal-section">
+                    <div class="modal-section-title">🌡️ Сравнение температур (куб)</div>
+                    <div class="modal-chart">
+                        <div id="compare-temp-chart"></div>
+                    </div>
+                </div>
+
+                <!-- График сравнения мощности -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⚡ Сравнение мощности</div>
+                    <div class="modal-chart">
+                        <div id="compare-power-chart"></div>
+                    </div>
+                </div>
+
+                <!-- Сравнительная таблица -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📊 Сравнительная таблица</div>
+                    <div id="compare-table" style="overflow-x: auto;">
+                        <!-- Будет заполнено JavaScript -->
                     </div>
                 </div>
             </div>
