@@ -426,3 +426,125 @@ footer {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-secondary);
 }
+
+/* History List */
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.history-item {
+    background: var(--bg-card);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 15px;
+    transition: all 0.3s;
+}
+
+.history-item:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 8px var(--shadow);
+}
+
+.history-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.history-item-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.history-item-type {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.history-type-rectification {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.history-type-distillation {
+    background: #fce4ec;
+    color: #c2185b;
+}
+
+.history-type-mashing {
+    background: #fff3e0;
+    color: #f57c00;
+}
+
+[data-theme="dark"] .history-type-rectification {
+    background: #1a237e;
+    color: #90caf9;
+}
+
+[data-theme="dark"] .history-type-distillation {
+    background: #4a148c;
+    color: #f48fb1;
+}
+
+[data-theme="dark"] .history-type-mashing {
+    background: #e65100;
+    color: #ffcc80;
+}
+
+.history-item-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 0.9em;
+}
+
+.history-info-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.history-info-label {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+}
+
+.history-info-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.history-item-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.history-status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.history-status-completed {
+    background: #4caf50;
+    color: white;
+}
+
+.history-status-stopped {
+    background: #ff9800;
+    color: white;
+}
+
+.history-status-error {
+    background: #f44336;
+    color: white;
+}

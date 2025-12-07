@@ -27,6 +27,7 @@
             <button class="tab" data-tab="control">🎛️ Управление</button>
             <button class="tab" data-tab="settings">⚙️ Настройки</button>
             <button class="tab" data-tab="logs">📝 Логи</button>
+            <button class="tab" data-tab="history">📚 История</button>
             <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
             <a href="calibration.html" class="tab" style="text-decoration: none;">🔧 Калибровка</a>
         </nav>
@@ -362,6 +363,59 @@
                 </div>
                 <button class="btn" onclick="clearLogs()">🗑️ Очистить</button>
                 <button class="btn btn-primary" onclick="downloadLogs()">💾 Скачать CSV</button>
+            </div>
+        </div>
+
+        <!-- Вкладка: История -->
+        <div id="history" class="tab-content">
+            <div class="card">
+                <h2>📚 История процессов</h2>
+
+                <!-- Фильтры и поиск -->
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <select id="history-filter-type" onchange="loadHistoryList()">
+                        <option value="all">Все типы</option>
+                        <option value="rectification">Ректификация</option>
+                        <option value="distillation">Дистилляция</option>
+                        <option value="mashing">Затирка</option>
+                    </select>
+                    <select id="history-filter-status" onchange="loadHistoryList()">
+                        <option value="all">Все статусы</option>
+                        <option value="completed">Завершено</option>
+                        <option value="stopped">Остановлено</option>
+                        <option value="error">Ошибка</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadHistoryList()">🔄 Обновить</button>
+                    <button class="btn" onclick="clearHistory()">🗑️ Очистить историю</button>
+                </div>
+
+                <!-- Список процессов -->
+                <div id="history-list" class="history-list">
+                    <p class="info-text">Загрузка истории процессов...</p>
+                </div>
+
+                <!-- Статистика -->
+                <div style="margin-top: 20px; padding: 15px; background: var(--bg-primary); border-radius: 6px;">
+                    <h3 style="margin-top: 0;">📊 Статистика</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Всего процессов</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="hist-stat-total">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Успешно завершено</div>
+                            <div style="font-size: 1.5em; font-weight: 600; color: #4CAF50;" id="hist-stat-completed">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Общее время</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="hist-stat-time">0 ч</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Энергия</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="hist-stat-energy">0 кВт·ч</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
