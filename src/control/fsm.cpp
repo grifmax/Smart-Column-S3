@@ -9,6 +9,7 @@
 #include "../drivers/pump.h"
 #include "../drivers/valves.h"
 #include "../drivers/sensors.h"
+#include "../interface/mqtt.h"
 
 namespace FSM {
 
@@ -42,6 +43,13 @@ void update(SystemState& state, const Settings& settings) {
                 LOG_I("FSM: HEATING → STABILIZATION");
                 state.rectPhase = RectPhase::STABILIZATION;
                 phaseStartTime = now;
+
+                // Отправка уведомления
+                MQTT::publishNotification(
+                    "Фаза: Стабилизация",
+                    "Разогрев завершён, начата стабилизация колонны",
+                    "info"
+                );
             }
             break;
 
@@ -51,6 +59,13 @@ void update(SystemState& state, const Settings& settings) {
                 LOG_I("FSM: STABILIZATION → HEADS");
                 state.rectPhase = RectPhase::HEADS;
                 phaseStartTime = now;
+
+                // Отправка уведомления
+                MQTT::publishNotification(
+                    "Фаза: Отбор голов",
+                    "Стабилизация завершена, начат отбор голов",
+                    "info"
+                );
             }
             break;
 
@@ -73,6 +88,13 @@ void update(SystemState& state, const Settings& settings) {
                 LOG_I("FSM: PURGE → BODY");
                 state.rectPhase = RectPhase::BODY;
                 phaseStartTime = now;
+
+                // Отправка уведомления
+                MQTT::publishNotification(
+                    "Фаза: Отбор тела",
+                    "Продувка завершена, начат отбор тела (основной продукт)",
+                    "success"
+                );
             }
             break;
 
@@ -96,6 +118,17 @@ void update(SystemState& state, const Settings& settings) {
                 state.rectPhase = RectPhase::IDLE;
                 state.mode = Mode::IDLE;
                 LOG_I("FSM: Process complete!");
+
+                // Отправка уведомления о завершении
+                char msg[128];
+                snprintf(msg, sizeof(msg),
+                         "Процесс завершён! Собрано: %.0f мл",
+                         state.pump.totalVolumeMl);
+                MQTT::publishNotification(
+                    "Процесс завершён",
+                    msg,
+                    "success"
+                );
             }
             break;
 
@@ -112,6 +145,13 @@ void start(SystemState& state, Mode mode) {
     if (mode == Mode::RECTIFICATION) {
         state.rectPhase = RectPhase::HEATING;
         phaseStartTime = millis();
+
+        // Отправка уведомления о старте
+        MQTT::publishNotification(
+            "Процесс запущен",
+            "Начат процесс ректификации - фаза разогрева",
+            "info"
+        );
     }
 }
 
@@ -124,6 +164,13 @@ void stop(SystemState& state) {
 
     state.mode = Mode::IDLE;
     state.rectPhase = RectPhase::IDLE;
+
+    // Отправка уведомления об остановке
+    MQTT::publishNotification(
+        "Процесс остановлен",
+        "Процесс остановлен пользователем",
+        "warning"
+    );
 }
 
 void pause(SystemState& state) {

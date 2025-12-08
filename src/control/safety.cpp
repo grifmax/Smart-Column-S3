@@ -8,6 +8,7 @@
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
 #include "../drivers/valves.h"
+#include "../interface/mqtt.h"
 
 namespace Safety {
 
@@ -22,6 +23,11 @@ void check(SystemState& state, const Settings& settings) {
         emergencyStop = true;
         alarmType = AlarmType::VAPOR_BREAKTHROUGH;
         alarmLevel = AlarmLevel::CRITICAL;
+
+        // Отправка критического уведомления
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Прорыв паров! Температура TSA: %.1f°C", state.temps.tsa);
+        MQTT::publishNotification("КРИТИЧЕСКАЯ ОШИБКА", msg, "error");
     }
 
     // Проверка перегрева воды (T_water_out > 70°C)
@@ -30,6 +36,11 @@ void check(SystemState& state, const Settings& settings) {
         Heater::emergencyStop();
         alarmType = AlarmType::WATER_OVERHEAT;
         alarmLevel = AlarmLevel::CRITICAL;
+
+        // Отправка критического уведомления
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Перегрев воды! Температура: %.1f°C", state.temps.waterOut);
+        MQTT::publishNotification("КРИТИЧЕСКАЯ ОШИБКА", msg, "error");
     }
 
     // Проверка захлёба колонны
@@ -38,6 +49,11 @@ void check(SystemState& state, const Settings& settings) {
         Heater::setPower(Heater::getPower() * 0.85); // Снизить мощность
         alarmType = AlarmType::COLUMN_FLOOD;
         alarmLevel = AlarmLevel::HIGH;
+
+        // Отправка предупреждения
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Захлёб колонны! Давление: %.1f mmHg. Мощность снижена", state.pressure.cube);
+        MQTT::publishNotification("ПРЕДУПРЕЖДЕНИЕ", msg, "warning");
     }
 
     // Проверка сбоя датчиков
@@ -47,6 +63,13 @@ void check(SystemState& state, const Settings& settings) {
         emergencyStop = true;
         alarmType = AlarmType::SENSOR_FAILURE;
         alarmLevel = AlarmLevel::CRITICAL;
+
+        // Отправка критического уведомления
+        MQTT::publishNotification(
+            "КРИТИЧЕСКАЯ ОШИБКА",
+            "Потеря связи с датчиками температуры! Система остановлена",
+            "error"
+        );
     }
 
     // Аварийная остановка

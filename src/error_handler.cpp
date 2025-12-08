@@ -4,6 +4,7 @@
  */
 
 #include "error_handler.h"
+#include "interface/mqtt.h"
 #include <vector>
 
 // История ошибок
@@ -91,13 +92,24 @@ void reportError(ErrorModule module, ErrorType type, int errorCode,
     if (type == ERROR_TYPE_CRITICAL || type == ERROR_TYPE_FATAL) {
         // Сохраняем лог
         saveErrorLog();
-        
+
+        // Отправка MQTT уведомления для критических и фатальных ошибок
+        String notifTitle = (type == ERROR_TYPE_FATAL) ? "ФАТАЛЬНАЯ ОШИБКА" : "КРИТИЧЕСКАЯ ОШИБКА";
+        String notifMessage = moduleStr + ": " + message;
+        MQTT::publishNotification(notifTitle.c_str(), notifMessage.c_str(), "error");
+
         // Для фатальных ошибок - перезагрузка через 5 секунд
         if (type == ERROR_TYPE_FATAL) {
             Serial.println("⚠️ ФАТАЛЬНАЯ ОШИБКА! Система будет перезагружена через 5 секунд...");
             delay(5000);
             ESP.restart();
         }
+    }
+
+    // Отправка MQTT уведомления для обычных ошибок
+    if (type == ERROR_TYPE_ERROR) {
+        String notifMessage = moduleStr + ": " + message;
+        MQTT::publishNotification("Ошибка", notifMessage.c_str(), "warning");
     }
 }
 
