@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // Версия прошивки
-#define FIRMWARE_VERSION "1.1.0"
+#define FIRMWARE_VERSION "1.3.3"
 
 // Включение функций
 #define DISPLAY_ENABLED          // Включить поддержку дисплея
