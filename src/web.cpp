@@ -1199,6 +1199,77 @@ void setupApiRoutes() {
             request->send(500, "application/json", "{\"error\":\"Failed to clear profiles\"}");
         }
     });
+
+    // GET /api/profiles/{id}/export - Экспорт одного профиля в JSON
+    server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/export$", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+
+        String json = exportProfileToJSON(id);
+        if (json.length() > 0) {
+            request->send(200, "application/json", json);
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Profile not found\"}");
+        }
+    });
+
+    // GET /api/profiles/export - Экспорт всех профилей в JSON
+    server.on("/api/profiles/export", HTTP_GET, [](AsyncWebServerRequest *request) {
+        bool includeBuiltin = request->hasParam("includeBuiltin") &&
+                              request->getParam("includeBuiltin")->value() == "true";
+
+        String json = exportAllProfilesToJSON(includeBuiltin);
+        if (json.length() > 0) {
+            request->send(200, "application/json", json);
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Export failed\"}");
+        }
+    });
+
+    // POST /api/profiles/import - Импорт профилей из JSON
+    server.on("/api/profiles/import", HTTP_POST, [](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"success\":true}");
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        static String body;
+
+        if (index == 0) {
+            body = "";
+        }
+
+        for (size_t i = 0; i < len; i++) {
+            body += (char)data[i];
+        }
+
+        if (index + len == total) {
+            // Парсим JSON
+            DynamicJsonDocument doc(32768);
+            DeserializationError error = deserializeJson(doc, body);
+
+            if (error) {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+
+            uint16_t imported = 0;
+
+            // Проверяем, массив это или один объект
+            if (doc.is<JsonArray>()) {
+                // Импорт нескольких профилей
+                imported = importProfilesFromJSON(body);
+            } else if (doc.is<JsonObject>()) {
+                // Импорт одного профиля
+                String id = importProfileFromJSON(body);
+                if (!id.isEmpty()) {
+                    imported = 1;
+                }
+            } else {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON format\"}");
+                return;
+            }
+
+            String response = "{\"success\":true,\"imported\":" + String(imported) + "}";
+            request->send(200, "application/json", response);
+        }
+    });
 }
 
 // Настройка маршрутов для статических файлов

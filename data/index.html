@@ -440,6 +440,8 @@
                     </select>
                     <button class="btn btn-primary" onclick="loadProfilesList()">🔄 Обновить</button>
                     <button class="btn btn-success" onclick="showCreateProfileModal()">➕ Создать профиль</button>
+                    <button class="btn" onclick="exportAllProfiles()">📤 Экспорт всех</button>
+                    <button class="btn" onclick="showImportModal()">📥 Импорт</button>
                     <button class="btn" onclick="clearUserProfiles()">🗑️ Очистить пользовательские</button>
                 </div>
 
@@ -475,7 +477,7 @@
 
         <!-- Футер -->
         <footer>
-            <p>Smart-Column S3 v1.4.1 | ESP32-S3 DevKitC-1 N16R8</p>
+            <p>Smart-Column S3 v1.4.2 | ESP32-S3 DevKitC-1 N16R8</p>
             <div id="memory-stats" style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
                 <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
                     <span>💾 SRAM: <span id="mem-heap-used">--</span> / <span id="mem-heap-total">--</span> (<span id="mem-heap-pct">--%</span>)</span>
@@ -662,6 +664,30 @@
             <div class="modal-footer">
                 <button class="btn" onclick="closeProfileViewModal()">Закрыть</button>
                 <button class="btn btn-primary" onclick="loadProfileToSettings()">📥 Загрузить в настройки</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для импорта профилей -->
+    <div id="profile-import-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <div class="modal-title">📥 Импорт профилей</div>
+                <button class="modal-close" onclick="closeImportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                    Загрузите JSON файл с профилями для импорта. Можно импортировать как один профиль, так и несколько сразу.
+                </p>
+                <input type="file" id="import-file-input" accept=".json" style="width: 100%; padding: 10px; border: 2px dashed var(--border-color); border-radius: 4px; cursor: pointer;">
+                <div id="import-preview" style="margin-top: 15px; padding: 10px; background: var(--bg-primary); border-radius: 4px; display: none;">
+                    <div style="font-weight: 500; margin-bottom: 5px;">Предпросмотр:</div>
+                    <div id="import-preview-text" style="color: var(--text-secondary); font-size: 0.9em;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeImportModal()">Отмена</button>
+                <button class="btn btn-success" onclick="doImportProfiles()" id="import-btn" disabled>📥 Импортировать</button>
             </div>
         </div>
     </div>

@@ -212,4 +212,32 @@ void updateProfileStatistics(const String& id, bool success, uint32_t duration, 
  */
 String createProfileFromSettings(const String& name, const String& description, const String& category);
 
+/**
+ * Экспорт профиля в JSON строку
+ * @param id ID профиля
+ * @return JSON строка профиля или пустая строка при ошибке
+ */
+String exportProfileToJSON(const String& id);
+
+/**
+ * Экспорт всех профилей в JSON массив
+ * @param includeBuiltin Включить встроенные рецепты
+ * @return JSON строка с массивом профилей
+ */
+String exportAllProfilesToJSON(bool includeBuiltin = false);
+
+/**
+ * Импорт профиля из JSON строки
+ * @param jsonStr JSON строка профиля
+ * @return ID импортированного профиля или пустая строка при ошибке
+ */
+String importProfileFromJSON(const String& jsonStr);
+
+/**
+ * Импорт нескольких профилей из JSON массива
+ * @param jsonStr JSON строка с массивом профилей
+ * @return Количество успешно импортированных профилей
+ */
+uint16_t importProfilesFromJSON(const String& jsonStr);
+
 #endif // PROFILES_H
