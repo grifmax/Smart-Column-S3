@@ -1524,6 +1524,380 @@ function renderCompareTable(processes) {
     tableEl.innerHTML = html;
 }
 
+// ============================================================================
+// PROFILES - Управление профилями процессов
+// ============================================================================
+
+let currentProfileId = null; // ID профиля для просмотра/редактирования
+
+// Загрузка списка профилей
+function loadProfilesList() {
+    const listEl = document.getElementById('profiles-list');
+    if (!listEl) return;
+
+    listEl.innerHTML = '<p class="info-text">Загрузка профилей...</p>';
+
+    fetch('/api/profiles')
+        .then(response => response.json())
+        .then(data => {
+            if (data.profiles && data.profiles.length > 0) {
+                renderProfilesList(data.profiles);
+                updateProfilesStats(data.profiles);
+            } else {
+                listEl.innerHTML = '<p class="info-text">📁 Профили не найдены. Создайте первый профиль!</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки профилей:', error);
+            listEl.innerHTML = '<p class="error-text">❌ Ошибка загрузки профилей</p>';
+        });
+}
+
+// Отрисовка списка профилей
+function renderProfilesList(profiles) {
+    const listEl = document.getElementById('profiles-list');
+    const filter = document.getElementById('profile-filter-category').value;
+
+    // Применить фильтр
+    const filtered = filter === 'all'
+        ? profiles
+        : profiles.filter(p => p.category === filter);
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = '<p class="info-text">📁 Профили не найдены для выбранной категории</p>';
+        return;
+    }
+
+    let html = '';
+    filtered.forEach(profile => {
+        html += renderProfileItem(profile);
+    });
+
+    listEl.innerHTML = html;
+}
+
+// Отрисовка элемента профиля
+function renderProfileItem(profile) {
+    const categoryIcons = {
+        'rectification': '🌀',
+        'distillation': '🔥',
+        'mashing': '🌾'
+    };
+
+    const categoryNames = {
+        'rectification': 'Ректификация',
+        'distillation': 'Дистилляция',
+        'mashing': 'Затирка'
+    };
+
+    const icon = categoryIcons[profile.category] || '📁';
+    const catName = categoryNames[profile.category] || profile.category;
+    const builtinBadge = profile.isBuiltin ? '<span style="background: #2196F3; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Встроенный</span>' : '';
+
+    const lastUsed = profile.lastUsed > 0
+        ? new Date(profile.lastUsed * 1000).toLocaleDateString('ru-RU')
+        : 'Не использовался';
+
+    return `
+        <div class="profile-item" style="background: var(--bg-primary); padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--accent-color);">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 1.1em; margin-bottom: 5px;">
+                        ${icon} ${profile.name}${builtinBadge}
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.9em;">
+                        ${catName} • Использований: ${profile.useCount} • Последнее: ${lastUsed}
+                    </div>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn-icon" onclick="viewProfile('${profile.id}')" title="Просмотр">👁️</button>
+                    <button class="btn-icon btn-success" onclick="quickLoadProfile('${profile.id}')" title="Загрузить">📥</button>
+                    ${!profile.isBuiltin ? `<button class="btn-icon btn-danger" onclick="deleteProfile('${profile.id}')" title="Удалить">🗑️</button>` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Обновление статистики профилей
+function updateProfilesStats(profiles) {
+    document.getElementById('prof-stat-total').textContent = profiles.length;
+
+    const builtin = profiles.filter(p => p.isBuiltin).length;
+    const user = profiles.length - builtin;
+
+    document.getElementById('prof-stat-builtin').textContent = builtin;
+    document.getElementById('prof-stat-user').textContent = user;
+
+    // Самый используемый
+    if (profiles.length > 0) {
+        const mostUsed = profiles.reduce((prev, current) =>
+            (prev.useCount > current.useCount) ? prev : current
+        );
+        document.getElementById('prof-stat-popular').textContent =
+            mostUsed.useCount > 0 ? mostUsed.name : '—';
+    } else {
+        document.getElementById('prof-stat-popular').textContent = '—';
+    }
+}
+
+// Показать модальное окно создания профиля
+function showCreateProfileModal() {
+    currentProfileId = null;
+    document.getElementById('profile-modal-title').textContent = 'Создание профиля';
+    document.getElementById('profile-name').value = '';
+    document.getElementById('profile-description').value = '';
+    document.getElementById('profile-category').value = 'rectification';
+    document.getElementById('profile-tags').value = '';
+    document.getElementById('profile-modal').style.display = 'flex';
+}
+
+// Закрыть модальное окно создания
+function closeProfileModal() {
+    document.getElementById('profile-modal').style.display = 'none';
+}
+
+// Сохранить профиль
+function saveProfile() {
+    const name = document.getElementById('profile-name').value.trim();
+    const description = document.getElementById('profile-description').value.trim();
+    const category = document.getElementById('profile-category').value;
+    const tagsStr = document.getElementById('profile-tags').value.trim();
+    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    if (!name) {
+        alert('Пожалуйста, введите название профиля');
+        return;
+    }
+
+    // TODO: Получить текущие параметры из формы управления
+    // Пока используем значения по умолчанию
+    const profile = {
+        metadata: {
+            name: name,
+            description: description,
+            category: category,
+            tags: tags,
+            author: 'user'
+        },
+        parameters: {
+            mode: category,
+            model: 'classic',
+            heater: {
+                maxPower: 3000,
+                autoMode: true,
+                pidKp: 2.0,
+                pidKi: 0.5,
+                pidKd: 1.0
+            },
+            rectification: {
+                stabilizationMin: 20,
+                headsVolume: 50,
+                bodyVolume: 2000,
+                tailsVolume: 100,
+                headsSpeed: 150,
+                bodySpeed: 300,
+                tailsSpeed: 400,
+                purgeMin: 5
+            },
+            distillation: {
+                headsVolume: 0,
+                targetVolume: 3000,
+                speed: 500,
+                endTemp: 96.0
+            },
+            temperatures: {
+                maxCube: 98.0,
+                maxColumn: 82.0,
+                headsEnd: 78.5,
+                bodyStart: 78.0,
+                bodyEnd: 85.0
+            },
+            safety: {
+                maxRuntime: 720,
+                waterFlowMin: 2.0,
+                pressureMax: 150
+            }
+        }
+    };
+
+    fetch('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeProfileModal();
+            loadProfilesList();
+            alert('✅ Профиль успешно создан!');
+        } else {
+            alert('❌ Ошибка создания профиля: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка сохранения профиля:', error);
+        alert('❌ Ошибка сохранения профиля');
+    });
+}
+
+// Просмотр профиля
+function viewProfile(id) {
+    fetch(`/api/profiles/${id}`)
+        .then(response => response.json())
+        .then(profile => {
+            showProfileViewModal(profile);
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки профиля:', error);
+            alert('❌ Ошибка загрузки профиля');
+        });
+}
+
+// Показать модальное окно просмотра профиля
+function showProfileViewModal(profile) {
+    currentProfileId = profile.id;
+    document.getElementById('profile-view-title').textContent = profile.metadata.name;
+
+    const body = document.getElementById('profile-view-body');
+    const catNames = {
+        'rectification': 'Ректификация',
+        'distillation': 'Дистилляция',
+        'mashing': 'Затирка'
+    };
+
+    let html = `
+        <div class="modal-section">
+            <div class="modal-section-title">📋 Метаданные</div>
+            <div class="modal-info-grid">
+                <div><strong>Название:</strong> ${profile.metadata.name}</div>
+                <div><strong>Категория:</strong> ${catNames[profile.metadata.category] || profile.metadata.category}</div>
+                <div><strong>Описание:</strong> ${profile.metadata.description || '—'}</div>
+                <div><strong>Автор:</strong> ${profile.metadata.author}</div>
+                <div><strong>Теги:</strong> ${profile.metadata.tags.join(', ') || '—'}</div>
+                <div><strong>Встроенный:</strong> ${profile.metadata.isBuiltin ? 'Да' : 'Нет'}</div>
+            </div>
+        </div>
+
+        <div class="modal-section">
+            <div class="modal-section-title">⚙️ Параметры ректификации</div>
+            <div class="modal-info-grid">
+                <div><strong>Стабилизация:</strong> ${profile.parameters.rectification.stabilizationMin} мин</div>
+                <div><strong>Объём голов:</strong> ${profile.parameters.rectification.headsVolume} мл</div>
+                <div><strong>Объём тела:</strong> ${profile.parameters.rectification.bodyVolume} мл</div>
+                <div><strong>Объём хвостов:</strong> ${profile.parameters.rectification.tailsVolume} мл</div>
+                <div><strong>Скорость голов:</strong> ${profile.parameters.rectification.headsSpeed} мл/ч/кВт</div>
+                <div><strong>Скорость тела:</strong> ${profile.parameters.rectification.bodySpeed} мл/ч/кВт</div>
+            </div>
+        </div>
+
+        <div class="modal-section">
+            <div class="modal-section-title">🌡️ Температурные пороги</div>
+            <div class="modal-info-grid">
+                <div><strong>Макс. куб:</strong> ${profile.parameters.temperatures.maxCube}°C</div>
+                <div><strong>Макс. колонна:</strong> ${profile.parameters.temperatures.maxColumn}°C</div>
+                <div><strong>Окончание голов:</strong> ${profile.parameters.temperatures.headsEnd}°C</div>
+                <div><strong>Начало тела:</strong> ${profile.parameters.temperatures.bodyStart}°C</div>
+                <div><strong>Окончание тела:</strong> ${profile.parameters.temperatures.bodyEnd}°C</div>
+            </div>
+        </div>
+
+        <div class="modal-section">
+            <div class="modal-section-title">📊 Статистика использования</div>
+            <div class="modal-info-grid">
+                <div><strong>Использований:</strong> ${profile.statistics.useCount}</div>
+                <div><strong>Средняя длительность:</strong> ${Math.round(profile.statistics.avgDuration / 60)} мин</div>
+                <div><strong>Средний выход:</strong> ${profile.statistics.avgYield} мл</div>
+                <div><strong>Успешность:</strong> ${profile.statistics.successRate.toFixed(1)}%</div>
+            </div>
+        </div>
+    `;
+
+    body.innerHTML = html;
+    document.getElementById('profile-view-modal').style.display = 'flex';
+}
+
+// Закрыть модальное окно просмотра
+function closeProfileViewModal() {
+    document.getElementById('profile-view-modal').style.display = 'none';
+    currentProfileId = null;
+}
+
+// Быстрая загрузка профиля
+function quickLoadProfile(id) {
+    if (!confirm('Загрузить этот профиль в текущие настройки?')) return;
+
+    fetch(`/api/profiles/${id}/load`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
+        } else {
+            alert('❌ Ошибка загрузки профиля: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка загрузки профиля:', error);
+        alert('❌ Ошибка загрузки профиля');
+    });
+}
+
+// Загрузка профиля в настройки (из модального окна)
+function loadProfileToSettings() {
+    if (!currentProfileId) return;
+    closeProfileViewModal();
+    quickLoadProfile(currentProfileId);
+}
+
+// Удаление профиля
+function deleteProfile(id) {
+    if (!confirm('Удалить этот профиль? Действие нельзя отменить.')) return;
+
+    fetch(`/api/profiles/${id}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadProfilesList();
+            alert('✅ Профиль удалён');
+        } else {
+            alert('❌ ' + (data.error || 'Ошибка удаления профиля'));
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка удаления профиля:', error);
+        alert('❌ Ошибка удаления профиля');
+    });
+}
+
+// Очистка пользовательских профилей
+function clearUserProfiles() {
+    if (!confirm('Удалить ВСЕ пользовательские профили? Встроенные рецепты останутся. Действие нельзя отменить!')) return;
+
+    fetch('/api/profiles', {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadProfilesList();
+            alert('✅ Все пользовательские профили удалены');
+        } else {
+            alert('❌ Ошибка очистки профилей');
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка очистки профилей:', error);
+        alert('❌ Ошибка очистки профилей');
+    });
+}
+
+// ============================================================================
+
 // Закрытие модального окна сравнения при клике на overlay
 document.addEventListener('DOMContentLoaded', function() {
     const compareOverlay = document.getElementById('compare-modal');
