@@ -7,7 +7,7 @@
 
 ---
 
-## [1.3.3] - 2025-12-12
+## [1.4.1] - 2025-12-12
 
 ### Добавлено
 - 📁 **Система профилей процессов**
@@ -215,7 +215,7 @@
 
 ---
 
-[1.3.3]: https://github.com/grifmax/Smart-Column-S3/releases/tag/v1.3.3
+[1.4.1]: https://github.com/grifmax/Smart-Column-S3/releases/tag/v1.4.1
 [1.3.2]: https://github.com/grifmax/Smart-Column-S3/releases/tag/v1.3.2
 [1.3.1]: https://github.com/grifmax/Smart-Column-S3/releases/tag/v1.3.1
 [1.3.0]: https://github.com/grifmax/Smart-Column-S3/releases/tag/v1.3.0
