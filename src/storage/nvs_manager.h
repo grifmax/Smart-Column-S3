@@ -59,10 +59,11 @@ namespace NVSManager {
     
     bool loadPumpCalibration(PumpCalibration& cal);
     bool savePumpCalibration(const PumpCalibration& cal);
-    
-    bool loadPowerCalibration(PowerCalibration& cal);
-    bool savePowerCalibration(const PowerCalibration& cal);
-    
+
+    // PowerCalibration removed - not used in new architecture
+    // bool loadPowerCalibration(PowerCalibration& cal);
+    // bool savePowerCalibration(const PowerCalibration& cal);
+
     bool loadFractionator(FractionatorSettings& frac);
     bool saveFractionator(const FractionatorSettings& frac);
     

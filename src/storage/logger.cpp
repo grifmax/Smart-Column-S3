@@ -14,12 +14,12 @@ static uint32_t sessionStart = 0;
 
 namespace Logger {
 
-void init() {
+bool init() {
     LOG_I("Logger: Initializing...");
 
     if (!SPIFFS.begin(true)) {
         LOG_E("Logger: SPIFFS mount failed!");
-        return;
+        return false;
     }
 
     // Создать директорию для логов
@@ -28,6 +28,7 @@ void init() {
     }
 
     LOG_I("Logger: Ready");
+    return true;
 }
 
 void startSession() {
@@ -151,11 +152,13 @@ String readLog(const char* filename) {
     return content;
 }
 
-void deleteLog(const char* filename) {
+bool deleteLog(const char* filename) {
     if (SPIFFS.remove(filename)) {
         LOG_I("Logger: Deleted %s", filename);
+        return true;
     } else {
         LOG_E("Logger: Failed to delete %s", filename);
+        return false;
     }
 }
 
