@@ -137,7 +137,7 @@ void init() {
                 mode = Mode::RECTIFICATION;
             } else if (strcmp(modeStr, "distillation") == 0) {
                 mode = Mode::DISTILLATION;
-            } else if (strcmp(modeStr, "manual") == 0) {
+            } else if (strcmp(modeStr, "manual") == 0 || strcmp(modeStr, "manual_rect") == 0) {
                 mode = Mode::MANUAL_RECT;
             } else {
                 request->send(400, "application/json", "{\"success\":false,\"message\":\"Unknown mode\"}");

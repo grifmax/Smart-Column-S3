@@ -383,6 +383,8 @@ function initTabs() {
 
 async function startRectification() {
     try {
+        addLog('📤 Отправка команды запуска авто-ректификации...', 'info');
+
         const response = await fetch('/api/process/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -390,14 +392,19 @@ async function startRectification() {
         });
 
         if (response.ok) {
+            const data = await response.json();
             addLog('✅ Авто-ректификация запущена', 'success');
+            if (data.warning) {
+                addLog('⚠️ ' + data.warning, 'warning');
+            }
             setTimeout(loadStatus, 500); // Обновить статус
         } else {
             const error = await response.text();
-            addLog('❌ Ошибка: ' + error, 'error');
+            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
         }
     } catch (e) {
-        addLog('❌ Ошибка запуска: ' + e.message, 'error');
+        addLog('❌ Ошибка сети: ' + e.message, 'error');
+        console.error('Start rectification error:', e);
     }
 }
 
@@ -408,6 +415,8 @@ function startManual() {
 
 async function startDistillation() {
     try {
+        addLog('📤 Отправка команды запуска дистилляции...', 'info');
+
         const response = await fetch('/api/process/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -415,14 +424,19 @@ async function startDistillation() {
         });
 
         if (response.ok) {
+            const data = await response.json();
             addLog('✅ Дистилляция запущена', 'success');
+            if (data.warning) {
+                addLog('⚠️ ' + data.warning, 'warning');
+            }
             setTimeout(loadStatus, 500); // Обновить статус
         } else {
             const error = await response.text();
-            addLog('❌ Ошибка: ' + error, 'error');
+            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
         }
     } catch (e) {
-        addLog('❌ Ошибка запуска: ' + e.message, 'error');
+        addLog('❌ Ошибка сети: ' + e.message, 'error');
+        console.error('Start distillation error:', e);
     }
 }
 
