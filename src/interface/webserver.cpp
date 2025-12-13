@@ -5,12 +5,28 @@
  */
 
 #include "webserver.h"
+#include <WiFi.h>
+#include <SPIFFS.h>
+#include <AsyncTCP.h>
+
+// Определение HTTP методов для ESPAsyncWebServer
+#ifndef HTTP_GET
+typedef enum {
+  HTTP_GET     = 0b00000001,
+  HTTP_POST    = 0b00000010,
+  HTTP_DELETE  = 0b00000100,
+  HTTP_PUT     = 0b00001000,
+  HTTP_PATCH   = 0b00010000,
+  HTTP_HEAD    = 0b00100000,
+  HTTP_OPTIONS = 0b01000000,
+  HTTP_ANY     = 0b01111111,
+} WebRequestMethod;
+#endif
+
 #include <ESPAsyncWebServer.h>
 #include <AsyncWebSocket.h>
 #include <ArduinoJson.h>
 #include <Update.h>
-#include <SPIFFS.h>
-#include <WiFi.h>
 #include "storage/nvs_manager.h"
 #include "drivers/sensors.h"
 
