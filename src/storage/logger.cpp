@@ -5,7 +5,7 @@
  */
 
 #include "logger.h"
-#include <SPIFFS.h>
+#include "../fs_compat.h"
 #include <time.h>
 
 static File currentLogFile;

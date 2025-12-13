@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initMiniChart();
     loadMemoryStatsPreference();
     loadPumpInfo();
+    loadVersionInfo(); // Загрузить информацию о версиях
     connectWebSocket();
 });
 
@@ -381,36 +382,116 @@ function initTabs() {
 // Control Functions
 // ============================================================================
 
-function startRectification() {
-    sendCommand('start', 'rectification');
-    addLog('▶️ Запуск авто-ректификации', 'info');
-}
+async function startRectification() {
+    try {
+        addLog('📤 Отправка команды запуска авто-ректификации...', 'info');
 
-function startManual() {
-    sendCommand('start', 'manual');
-    addLog('▶️ Запуск ручного режима', 'info');
-}
+        const response = await fetch('/api/process/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'rectification' })
+        });
 
-function startDistillation() {
-    sendCommand('start', 'distillation');
-    addLog('▶️ Запуск дистилляции', 'info');
-}
-
-function stopProcess() {
-    if (confirm('Остановить процесс?')) {
-        sendCommand('stop');
-        addLog('⏹️ Остановка процесса', 'warning');
+        if (response.ok) {
+            const data = await response.json();
+            addLog('✅ Авто-ректификация запущена', 'success');
+            if (data.warning) {
+                addLog('⚠️ ' + data.warning, 'warning');
+            }
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            const error = await response.text();
+            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка сети: ' + e.message, 'error');
+        console.error('Start rectification error:', e);
     }
 }
 
-function pauseProcess() {
-    sendCommand('pause');
-    addLog('⏸️ Пауза', 'info');
+function startManual() {
+    // Переход на страницу ручного управления
+    window.location.href = 'manual.html';
 }
 
-function resumeProcess() {
-    sendCommand('resume');
-    addLog('⏯️ Продолжение', 'info');
+async function startDistillation() {
+    try {
+        addLog('📤 Отправка команды запуска дистилляции...', 'info');
+
+        const response = await fetch('/api/process/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'distillation' })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            addLog('✅ Дистилляция запущена', 'success');
+            if (data.warning) {
+                addLog('⚠️ ' + data.warning, 'warning');
+            }
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            const error = await response.text();
+            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка сети: ' + e.message, 'error');
+        console.error('Start distillation error:', e);
+    }
+}
+
+async function stopProcess() {
+    if (!confirm('Остановить процесс?')) return;
+
+    try {
+        const response = await fetch('/api/process/stop', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            addLog('✅ Процесс остановлен', 'warning');
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            addLog('❌ Ошибка остановки', 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка: ' + e.message, 'error');
+    }
+}
+
+async function pauseProcess() {
+    try {
+        const response = await fetch('/api/process/pause', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            addLog('✅ Процесс приостановлен', 'info');
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            addLog('❌ Ошибка паузы', 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка: ' + e.message, 'error');
+    }
+}
+
+async function resumeProcess() {
+    try {
+        const response = await fetch('/api/process/resume', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            addLog('✅ Процесс возобновлен', 'info');
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            addLog('❌ Ошибка возобновления', 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка: ' + e.message, 'error');
+    }
 }
 
 function updateHeater(value) {
@@ -443,10 +524,48 @@ function saveWiFi() {
     }
 }
 
-function saveEquipment() {
+async function saveEquipment() {
     const heaterPower = document.getElementById('heater-power-w').value;
     const columnHeight = document.getElementById('column-height').value;
+    const mlPerRev = parseFloat(document.getElementById('pump-ml-per-rev').value);
+    const stepsPerRev = parseInt(document.getElementById('pump-steps-per-rev').value);
 
+    // Проверка и сохранение параметров насоса
+    const pumpData = {};
+    let hasPumpData = false;
+
+    if (mlPerRev && mlPerRev > 0) {
+        pumpData.mlPerRev = mlPerRev;
+        hasPumpData = true;
+    }
+
+    if (stepsPerRev && stepsPerRev > 0) {
+        pumpData.stepsPerRev = stepsPerRev;
+        hasPumpData = true;
+    }
+
+    if (hasPumpData) {
+        try {
+            const response = await fetch('/api/calibration/pump', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pumpData)
+            });
+
+            if (response.ok) {
+                let msg = '✓ Параметры насоса сохранены:';
+                if (pumpData.mlPerRev) msg += ' ' + pumpData.mlPerRev.toFixed(3) + ' мл/об';
+                if (pumpData.stepsPerRev) msg += ', ' + pumpData.stepsPerRev + ' шагов/об';
+                addLog(msg, 'success');
+            } else {
+                addLog('✗ Ошибка сохранения параметров насоса', 'error');
+            }
+        } catch (error) {
+            addLog('✗ Ошибка соединения при сохранении насоса', 'error');
+        }
+    }
+
+    // Сохранение других параметров оборудования (через WebSocket)
     sendCommand('equipment', 'save', 0);
     addLog('💾 Настройки оборудования сохранены', 'info');
 }
@@ -629,20 +748,63 @@ async function loadPumpInfo() {
         const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
 
         if (mlPerRevEl && data.pump) {
-            mlPerRevEl.textContent = `${data.pump.mlPerRev.toFixed(3)} мл/оборот`;
+            // Теперь это input поле, устанавливаем value
+            mlPerRevEl.value = data.pump.mlPerRev.toFixed(3);
         }
 
         if (stepsPerRevEl && data.pump) {
+            // Показываем общее количество шагов
             const totalSteps = data.pump.stepsPerRev * data.pump.microsteps;
-            stepsPerRevEl.textContent = `${totalSteps} шагов (${data.pump.stepsPerRev} × ${data.pump.microsteps} микрошагов)`;
+            stepsPerRevEl.value = totalSteps;
         }
     } catch (error) {
         console.error('Error loading pump info:', error);
         const mlPerRevEl = document.getElementById('pump-ml-per-rev');
         const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
 
-        if (mlPerRevEl) mlPerRevEl.textContent = 'Ошибка загрузки';
-        if (stepsPerRevEl) stepsPerRevEl.textContent = 'Ошибка загрузки';
+        if (mlPerRevEl) mlPerRevEl.placeholder = 'Ошибка загрузки';
+        if (stepsPerRevEl) stepsPerRevEl.placeholder = 'Ошибка загрузки';
+    }
+}
+
+// Загрузка информации о версиях
+async function loadVersionInfo() {
+    try {
+        const response = await fetch('/api/version');
+        if (!response.ok) {
+            throw new Error('Failed to load version info');
+        }
+
+        const data = await response.json();
+
+        // Обновить информацию о прошивке
+        if (data.firmware) {
+            document.getElementById('firmware-version').textContent = data.firmware.version || 'Unknown';
+            document.getElementById('firmware-build-date').textContent = data.firmware.buildDate || 'Unknown';
+            document.getElementById('firmware-build-time').textContent = data.firmware.buildTime || 'Unknown';
+        }
+
+        if (data.board) {
+            const flashMB = (data.board.flashSize / (1024 * 1024)).toFixed(0);
+            const psramMB = (data.board.psramSize / (1024 * 1024)).toFixed(0);
+            document.getElementById('board-chip').textContent =
+                `${data.board.chip} (Flash: ${flashMB}MB, PSRAM: ${psramMB}MB)`;
+        }
+
+        // Обновить информацию о фронтенде
+        if (data.frontend) {
+            document.getElementById('frontend-build-date').textContent =
+                data.frontend.buildDate || data.frontend.note || 'Unknown';
+            document.getElementById('frontend-build-time').textContent =
+                data.frontend.buildTime || '-';
+        }
+
+        addLog('✓ Информация о версиях обновлена', 'success');
+    } catch (error) {
+        console.error('Error loading version info:', error);
+        document.getElementById('firmware-version').textContent = 'Ошибка загрузки';
+        document.getElementById('frontend-build-date').textContent = 'Ошибка загрузки';
+        addLog('✗ Ошибка загрузки версий', 'error');
     }
 }
 

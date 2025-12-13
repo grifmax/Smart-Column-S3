@@ -31,6 +31,7 @@
             <button class="tab" data-tab="profiles">📁 Профили</button>
             <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
             <a href="calibration.html" class="tab" style="text-decoration: none;">🔧 Калибровка</a>
+            <a href="wifi.html" class="tab" style="text-decoration: none;">📶 WiFi</a>
         </nav>
 
         <!-- Вкладка: Мониторинг -->
@@ -226,16 +227,13 @@
         <div id="settings" class="tab-content">
             <div class="cards">
                 <div class="card">
-                    <h2>WiFi</h2>
-                    <div class="form-group">
-                        <label>SSID</label>
-                        <input type="text" id="wifi-ssid" placeholder="Имя сети">
-                    </div>
-                    <div class="form-group">
-                        <label>Пароль</label>
-                        <input type="password" id="wifi-password" placeholder="Пароль">
-                    </div>
-                    <button class="btn btn-primary" onclick="saveWiFi()">💾 Сохранить</button>
+                    <h2>📶 WiFi</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Настройка WiFi подключения доступна на отдельной странице с возможностью сканирования доступных сетей и просмотра статуса подключения.
+                    </p>
+                    <a href="wifi.html" class="btn btn-primary" style="text-decoration: none; display: inline-block; padding: 10px 20px;">
+                        📶 Открыть настройки WiFi
+                    </a>
                 </div>
 
                 <div class="card">
@@ -311,14 +309,20 @@
                 <div class="card">
                     <h2>Оборудование</h2>
 
-                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">💧 Насос (справка)</h3>
+                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">💧 Калибровка насоса</h3>
                     <div class="form-group">
                         <label>мл на оборот</label>
-                        <div class="info-display" id="pump-ml-per-rev">Загрузка...</div>
+                        <input type="number" id="pump-ml-per-rev" step="0.001" min="0" placeholder="Загрузка...">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                            Объём жидкости за один полный оборот двигателя насоса
+                        </small>
                     </div>
                     <div class="form-group">
                         <label>Шагов за полный оборот</label>
-                        <div class="info-display" id="pump-steps-per-rev">Загрузка...</div>
+                        <input type="number" id="pump-steps-per-rev" min="1" step="1" placeholder="Загрузка...">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                            Справочное значение для калибровки (шаги × микрошаги)
+                        </small>
                     </div>
 
                     <hr style="margin: 20px 0; border-color: var(--border);">
@@ -341,6 +345,40 @@
                         <button class="btn" onclick="setTheme('light')">☀️ Светлая</button>
                         <button class="btn" onclick="setTheme('dark')">🌙 Тёмная</button>
                     </div>
+                </div>
+
+                <div class="card">
+                    <h2>ℹ️ Информация о версиях</h2>
+
+                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">📱 Прошивка (Backend)</h3>
+                    <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; font-size: 14px;">
+                            <strong>Версия:</strong>
+                            <span id="firmware-version">Загрузка...</span>
+
+                            <strong>Дата сборки:</strong>
+                            <span id="firmware-build-date">Загрузка...</span>
+
+                            <strong>Время сборки:</strong>
+                            <span id="firmware-build-time">Загрузка...</span>
+
+                            <strong>Плата:</strong>
+                            <span id="board-chip">Загрузка...</span>
+                        </div>
+                    </div>
+
+                    <h3 style="color: var(--text-secondary); font-size: 0.95em;">🌐 Веб-интерфейс (Frontend)</h3>
+                    <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px;">
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; font-size: 14px;">
+                            <strong>Дата сборки:</strong>
+                            <span id="frontend-build-date">Загрузка...</span>
+
+                            <strong>Время сборки:</strong>
+                            <span id="frontend-build-time">Загрузка...</span>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-secondary" onclick="loadVersionInfo()" style="margin-top: 15px;">🔄 Обновить</button>
                 </div>
 
                 <div class="card">

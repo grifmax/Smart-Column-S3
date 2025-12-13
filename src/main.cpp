@@ -8,7 +8,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
-#include <SPIFFS.h>
+#include "fs_compat.h"
 #include <esp_task_wdt.h>
 #include <ESPmDNS.h>
 
@@ -63,6 +63,25 @@ void initHardware();
 void initNetwork();
 void loadSettings();
 void runTasks();
+
+// =============================================================================
+// BUZZER HELPER
+// =============================================================================
+
+namespace Buzzer {
+    void beep(uint8_t count, uint16_t duration) {
+        for (uint8_t i = 0; i < count; i++) {
+            digitalWrite(PIN_BUZZER, HIGH);
+            delay(duration);
+            digitalWrite(PIN_BUZZER, LOW);
+            if (i < count - 1) delay(duration);
+        }
+    }
+
+    void alarm() {
+        // Непрерывный сигнал - управляется в safety.cpp
+    }
+}
 
 // =============================================================================
 // SETUP
@@ -153,10 +172,9 @@ void setup() {
     LOG_I("=================================");
     
     // Звуковой сигнал готовности
-    // TODO: Implement Buzzer in new architecture
-    // if (g_settings.soundEnabled) {
-    //     Buzzer::beep(2, BUZZER_DURATION_SHORT);
-    // }
+    if (g_settings.soundEnabled) {
+        Buzzer::beep(2, BUZZER_DURATION_SHORT);
+    }
 }
 
 // =============================================================================
@@ -450,23 +468,4 @@ void loadSettings() {
     NVSManager::loadSettings(g_settings);
     
     LOG_I("Settings loaded");
-}
-
-// =============================================================================
-// BUZZER HELPER
-// =============================================================================
-
-namespace Buzzer {
-    void beep(uint8_t count, uint16_t duration) {
-        for (uint8_t i = 0; i < count; i++) {
-            digitalWrite(PIN_BUZZER, HIGH);
-            delay(duration);
-            digitalWrite(PIN_BUZZER, LOW);
-            if (i < count - 1) delay(duration);
-        }
-    }
-    
-    void alarm() {
-        // Непрерывный сигнал - управляется в safety.cpp
-    }
 }

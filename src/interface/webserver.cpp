@@ -6,7 +6,7 @@
 
 #include "webserver.h"
 #include <WiFi.h>
-#include <SPIFFS.h>
+#include "../fs_compat.h"
 #include <AsyncTCP.h>
 
 // Определение HTTP методов для ESPAsyncWebServer
@@ -29,6 +29,7 @@ typedef enum {
 #include <Update.h>
 #include "storage/nvs_manager.h"
 #include "drivers/sensors.h"
+#include "control/fsm.h"
 
 // Внешние переменные из main.cpp
 extern SystemState g_state;
@@ -107,14 +108,127 @@ void init() {
         request->send(200, "application/json", json);
     });
 
-    server.on("/api/start", HTTP_POST, [](AsyncWebServerRequest *request) {
-        // TODO: Запуск процесса
-        request->send(200);
+    // GET /api/version - получить информацию о версиях прошивки и фронтенда
+    server.on("/api/version", HTTP_GET, [](AsyncWebServerRequest *request) {
+        StaticJsonDocument<512> doc;
+
+        // Версия и дата компиляции прошивки
+        doc["firmware"]["version"] = FIRMWARE_VERSION;
+        doc["firmware"]["buildDate"] = __DATE__;
+        doc["firmware"]["buildTime"] = __TIME__;
+        doc["firmware"]["compiler"] = "GCC " __VERSION__;
+
+        // Информация о плате
+        doc["board"]["chip"] = "ESP32-S3";
+        doc["board"]["flashSize"] = ESP.getFlashChipSize();
+        doc["board"]["psramSize"] = ESP.getPsramSize();
+        doc["board"]["cpuFreq"] = ESP.getCpuFreqMHz();
+
+        // Попытка прочитать версию фронтенда из файла
+        #ifdef USE_LITTLEFS
+            File versionFile = LittleFS.open("/version.json", "r");
+        #else
+            File versionFile = SPIFFS.open("/version.json", "r");
+        #endif
+
+        if (versionFile) {
+            StaticJsonDocument<256> frontendDoc;
+            DeserializationError error = deserializeJson(frontendDoc, versionFile);
+            versionFile.close();
+
+            if (!error) {
+                doc["frontend"] = frontendDoc;
+            } else {
+                doc["frontend"]["error"] = "Failed to parse version.json";
+            }
+        } else {
+            doc["frontend"]["buildDate"] = "Unknown";
+            doc["frontend"]["note"] = "version.json not found";
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
     });
 
-    server.on("/api/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
-        // TODO: Остановка процесса
-        request->send(200);
+    // POST /api/process/start - запуск процесса
+    server.on("/api/process/start", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            // Ждем получения всех данных
+            if (index + len != total) {
+                return;
+            }
+
+            StaticJsonDocument<256> doc;
+            DeserializationError error = deserializeJson(doc, data, len);
+
+            if (error) {
+                LOG_E("Process start: JSON parse error");
+                request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
+                return;
+            }
+
+            const char* modeStr = doc["mode"];
+            if (!modeStr) {
+                request->send(400, "application/json", "{\"success\":false,\"message\":\"Mode required\"}");
+                return;
+            }
+
+            // Определяем режим
+            Mode mode = Mode::IDLE;
+            if (strcmp(modeStr, "rectification") == 0) {
+                mode = Mode::RECTIFICATION;
+            } else if (strcmp(modeStr, "distillation") == 0) {
+                mode = Mode::DISTILLATION;
+            } else if (strcmp(modeStr, "manual") == 0 || strcmp(modeStr, "manual_rect") == 0) {
+                mode = Mode::MANUAL_RECT;
+            } else {
+                request->send(400, "application/json", "{\"success\":false,\"message\":\"Unknown mode\"}");
+                return;
+            }
+
+            // Проверка термометров (только предупреждение, не блокируем запуск)
+            bool sensorsOk = g_state.health.tempSensorsTotal > 0 && g_state.health.tempSensorsOk;
+
+            if (!sensorsOk) {
+                LOG_W("Starting process without temperature sensors!");
+            }
+
+            // Запуск через FSM
+            FSM::startMode(g_state, g_settings, mode);
+
+            LOG_I("Process started: mode=%s, sensors=%s", modeStr, sensorsOk ? "OK" : "WARNING");
+
+            // Формируем ответ
+            String response = "{\"success\":true,\"message\":\"Process started\"";
+            if (!sensorsOk) {
+                response += ",\"warning\":\"No temperature sensors detected\"";
+            }
+            response += "}";
+
+            request->send(200, "application/json", response);
+        }
+    );
+
+    // POST /api/process/stop - остановка процесса
+    server.on("/api/process/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
+        FSM::stopMode(g_state);
+        LOG_I("Process stopped via API");
+        request->send(200, "application/json", "{\"success\":true,\"message\":\"Process stopped\"}");
+    });
+
+    // POST /api/process/pause - пауза
+    server.on("/api/process/pause", HTTP_POST, [](AsyncWebServerRequest *request) {
+        FSM::pause(g_state);
+        LOG_I("Process paused via API");
+        request->send(200, "application/json", "{\"success\":true,\"message\":\"Process paused\"}");
+    });
+
+    // POST /api/process/resume - возобновление
+    server.on("/api/process/resume", HTTP_POST, [](AsyncWebServerRequest *request) {
+        FSM::resume(g_state);
+        LOG_I("Process resumed via API");
+        request->send(200, "application/json", "{\"success\":true,\"message\":\"Process resumed\"}");
     });
 
     // ==========================================================================
@@ -192,11 +306,17 @@ void init() {
                 return;
             }
 
-            // Метод 1: Прямая калибровка (мл на оборот)
-            if (doc.containsKey("mlPerRev")) {
-                g_settings.pumpCal.mlPerRevolution = doc["mlPerRev"].as<float>();
+            // Метод 1: Прямая калибровка (мл на оборот и шаги)
+            if (doc.containsKey("mlPerRev") || doc.containsKey("stepsPerRev")) {
+                if (doc.containsKey("mlPerRev")) {
+                    g_settings.pumpCal.mlPerRevolution = doc["mlPerRev"].as<float>();
+                    LOG_I("Pump mlPerRev: %.3f", g_settings.pumpCal.mlPerRevolution);
+                }
+                if (doc.containsKey("stepsPerRev")) {
+                    g_settings.pumpCal.stepsPerRevolution = doc["stepsPerRev"].as<uint16_t>();
+                    LOG_I("Pump stepsPerRev: %u", g_settings.pumpCal.stepsPerRevolution);
+                }
                 NVSManager::saveSettings(g_settings);
-                LOG_I("Pump calibrated: %.3f ml/rev", g_settings.pumpCal.mlPerRevolution);
                 request->send(200, "application/json", "{\"status\":\"ok\",\"method\":\"direct\"}");
                 return;
             }
@@ -422,6 +542,112 @@ void init() {
         serializeJson(doc, json);
         request->send(200, "application/json", json);
     });
+
+    // ==========================================================================
+    // WIFI MANAGEMENT
+    // ==========================================================================
+
+    // GET /api/wifi/scan - сканирование доступных сетей
+    server.on("/api/wifi/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
+        LOG_I("WiFi: Scanning networks...");
+
+        int networksFound = WiFi.scanNetworks();
+
+        StaticJsonDocument<2048> doc;
+        doc["count"] = networksFound;
+
+        JsonArray networks = doc.createNestedArray("networks");
+        for (int i = 0; i < networksFound; i++) {
+            JsonObject net = networks.createNestedObject();
+            net["ssid"] = WiFi.SSID(i);
+            net["rssi"] = WiFi.RSSI(i);
+            net["encryption"] = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "open" : "secured";
+            net["channel"] = WiFi.channel(i);
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+
+        WiFi.scanDelete();  // Очистить результаты сканирования
+    });
+
+    // GET /api/wifi/status - текущий статус WiFi
+    server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+        StaticJsonDocument<512> doc;
+
+        doc["connected"] = (WiFi.status() == WL_CONNECTED);
+        doc["ssid"] = WiFi.SSID();
+        doc["ip"] = WiFi.localIP().toString();
+        doc["rssi"] = WiFi.RSSI();
+        doc["apMode"] = g_settings.wifi.apMode;
+
+        if (g_settings.wifi.apMode) {
+            doc["apSSID"] = WIFI_AP_SSID;
+            doc["apIP"] = WiFi.softAPIP().toString();
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    // POST /api/wifi/connect - подключение к сети
+    server.on("/api/wifi/connect", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            // Обрабатываем только когда получены все данные
+            if (index + len != total) {
+                return; // Ждем остальные chunks
+            }
+
+            StaticJsonDocument<256> doc;
+            DeserializationError error = deserializeJson(doc, data, len);
+
+            if (error) {
+                LOG_E("WiFi: JSON parse error: %s", error.c_str());
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+
+            const char* ssid = doc["ssid"];
+            const char* password = doc["password"];
+
+            if (!ssid || strlen(ssid) == 0) {
+                request->send(400, "application/json", "{\"error\":\"SSID required\"}");
+                return;
+            }
+
+            LOG_I("WiFi: Connect request for SSID: %s", ssid);
+
+            // Сохранить в настройки
+            strncpy(g_settings.wifi.ssid, ssid, sizeof(g_settings.wifi.ssid) - 1);
+            g_settings.wifi.ssid[sizeof(g_settings.wifi.ssid) - 1] = '\0';
+
+            strncpy(g_settings.wifi.password, password ? password : "", sizeof(g_settings.wifi.password) - 1);
+            g_settings.wifi.password[sizeof(g_settings.wifi.password) - 1] = '\0';
+
+            g_settings.wifi.apMode = false;
+
+            // Сохранить в NVS
+            if (NVSManager::saveSettings(g_settings)) {
+                LOG_I("WiFi: Settings saved, connecting to %s", ssid);
+
+                // Отправить ответ перед переподключением
+                request->send(200, "application/json", "{\"status\":\"connecting\",\"message\":\"Connecting to WiFi, please wait...\"}");
+
+                // Попытка подключения через небольшую задержку
+                // чтобы ответ успел уйти клиенту
+                delay(100);
+
+                WiFi.disconnect();
+                WiFi.mode(WIFI_STA);
+                WiFi.begin(g_settings.wifi.ssid, g_settings.wifi.password);
+            } else {
+                LOG_E("WiFi: Failed to save settings to NVS");
+                request->send(500, "application/json", "{\"error\":\"Failed to save settings\"}");
+            }
+        }
+    );
 
     // ==========================================================================
     // OTA UPDATE (Web UI)
