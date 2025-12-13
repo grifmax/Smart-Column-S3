@@ -11,13 +11,14 @@ static Preferences prefs;
 
 namespace NVSManager {
 
-void init() {
+bool init() {
     LOG_I("NVS: Initializing...");
     // Preferences автоматически инициализируется
     LOG_I("NVS: Ready");
+    return true;
 }
 
-void loadSettings(Settings& settings) {
+bool loadSettings(Settings& settings) {
     LOG_I("NVS: Loading settings...");
 
     prefs.begin(NVS_NAMESPACE, true); // Read-only
@@ -47,9 +48,10 @@ void loadSettings(Settings& settings) {
     prefs.end();
 
     LOG_I("NVS: Settings loaded");
+    return true;
 }
 
-void saveSettings(const Settings& settings) {
+bool saveSettings(const Settings& settings) {
     LOG_I("NVS: Saving settings...");
 
     prefs.begin(NVS_NAMESPACE, false); // Read-write
@@ -79,6 +81,7 @@ void saveSettings(const Settings& settings) {
     prefs.end();
 
     LOG_I("NVS: Settings saved");
+    return true;
 }
 
 void reset() {
