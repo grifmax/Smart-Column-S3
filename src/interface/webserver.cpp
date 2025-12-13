@@ -263,11 +263,17 @@ void init() {
                 return;
             }
 
-            // Метод 1: Прямая калибровка (мл на оборот)
-            if (doc.containsKey("mlPerRev")) {
-                g_settings.pumpCal.mlPerRevolution = doc["mlPerRev"].as<float>();
+            // Метод 1: Прямая калибровка (мл на оборот и шаги)
+            if (doc.containsKey("mlPerRev") || doc.containsKey("stepsPerRev")) {
+                if (doc.containsKey("mlPerRev")) {
+                    g_settings.pumpCal.mlPerRevolution = doc["mlPerRev"].as<float>();
+                    LOG_I("Pump mlPerRev: %.3f", g_settings.pumpCal.mlPerRevolution);
+                }
+                if (doc.containsKey("stepsPerRev")) {
+                    g_settings.pumpCal.stepsPerRevolution = doc["stepsPerRev"].as<uint16_t>();
+                    LOG_I("Pump stepsPerRev: %u", g_settings.pumpCal.stepsPerRevolution);
+                }
                 NVSManager::saveSettings(g_settings);
-                LOG_I("Pump calibrated: %.3f ml/rev", g_settings.pumpCal.mlPerRevolution);
                 request->send(200, "application/json", "{\"status\":\"ok\",\"method\":\"direct\"}");
                 return;
             }
