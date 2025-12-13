@@ -138,10 +138,11 @@ void update(SystemState& state, const Settings& settings) {
     }
 }
 
-void start(SystemState& state, Mode mode) {
+void startMode(SystemState& state, const Settings& settings, Mode mode) {
     LOG_I("FSM: Starting mode %d", static_cast<int>(mode));
 
     state.mode = mode;
+    state.paused = false;
 
     if (mode == Mode::RECTIFICATION) {
         state.rectPhase = RectPhase::HEATING;
@@ -153,10 +154,16 @@ void start(SystemState& state, Mode mode) {
             "Начат процесс ректификации - фаза разогрева",
             "info"
         );
+    } else if (mode == Mode::DISTILLATION) {
+        // TODO: Инициализация дистилляции
+        LOG_I("FSM: Distillation mode started");
+    } else if (mode == Mode::MANUAL_RECT) {
+        // TODO: Инициализация ручной ректификации
+        LOG_I("FSM: Manual rectification mode started");
     }
 }
 
-void stop(SystemState& state) {
+void stopMode(SystemState& state) {
     LOG_I("FSM: Stopping");
 
     Heater::setPower(0);
@@ -165,6 +172,7 @@ void stop(SystemState& state) {
 
     state.mode = Mode::IDLE;
     state.rectPhase = RectPhase::IDLE;
+    state.paused = false;
 
     // Отправка уведомления об остановке
     MQTT::publishNotification(
