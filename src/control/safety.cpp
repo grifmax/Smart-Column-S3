@@ -48,7 +48,7 @@ void check(SystemState& state, const Settings& settings) {
         LOG_E("SAFETY: Column flood! P=%.1f mmHg", state.pressure.cube);
         Heater::setPower(Heater::getPower() * 0.85); // Снизить мощность
         alarmType = AlarmType::COLUMN_FLOOD;
-        alarmLevel = AlarmLevel::HIGH;
+        alarmLevel = AlarmLevel::CRITICAL;
 
         // Отправка предупреждения
         char msg[128];

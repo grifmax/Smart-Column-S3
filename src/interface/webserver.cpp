@@ -9,6 +9,8 @@
 #include <AsyncWebSocket.h>
 #include <ArduinoJson.h>
 #include <Update.h>
+#include <SPIFFS.h>
+#include <WiFi.h>
 #include "storage/nvs_manager.h"
 #include "drivers/sensors.h"
 

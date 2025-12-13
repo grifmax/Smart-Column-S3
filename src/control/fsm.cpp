@@ -69,7 +69,7 @@ void update(SystemState& state, const Settings& settings) {
             }
             break;
 
-        case RectPhase::HEADS:
+        case RectPhase::HEADS: {
             // Отбор голов
             float headsSpeed = settings.rectParams.headsSpeedMlHKw *
                                (settings.equipment.heaterPowerW / 1000.0f);
@@ -78,6 +78,7 @@ void update(SystemState& state, const Settings& settings) {
 
             // TODO: Проверка завершения по объёму или T_column
             break;
+        }
 
         case RectPhase::PURGE:
             // Продувка

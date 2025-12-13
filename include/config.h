@@ -302,10 +302,14 @@
 
 #if DEBUG_SERIAL
     #define LOG_E(fmt, ...) if(DEBUG_LEVEL >= 1) Serial.printf("[E] " fmt "\n", ##__VA_ARGS__)
+    #define LOG_WARN(fmt, ...) if(DEBUG_LEVEL >= 2) Serial.printf("[W] " fmt "\n", ##__VA_ARGS__)
+    #define LOG_W(fmt, ...) LOG_WARN(fmt, ##__VA_ARGS__)  // Алиас для совместимости
     #define LOG_I(fmt, ...) if(DEBUG_LEVEL >= 2) Serial.printf("[I] " fmt "\n", ##__VA_ARGS__)
     #define LOG_D(fmt, ...) if(DEBUG_LEVEL >= 3) Serial.printf("[D] " fmt "\n", ##__VA_ARGS__)
 #else
     #define LOG_E(fmt, ...)
+    #define LOG_WARN(fmt, ...)
+    #define LOG_W(fmt, ...)
     #define LOG_I(fmt, ...)
     #define LOG_D(fmt, ...)
 #endif
