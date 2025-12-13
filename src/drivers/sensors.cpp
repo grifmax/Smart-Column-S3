@@ -15,6 +15,7 @@
 #include <Adafruit_BMP280.h>
 #include <Adafruit_ADS1X15.h>
 #include <PZEM004Tv30.h>
+#include <WiFi.h>
 
 // =============================================================================
 // ГЛОБАЛЬНЫЕ ОБЪЕКТЫ
@@ -217,7 +218,7 @@ void init() {
             } else if (testVoltage == 0) {
                 // PZEM работает, но нет AC питания
                 pzem_ok = true;
-                LOG_W("Sensors: PZEM-004T OK but NO AC POWER detected");
+                LOG_WARN("Sensors: PZEM-004T OK but NO AC POWER detected");
                 break;
             }
         }
@@ -305,7 +306,7 @@ void readPressure(Pressure& pressure) {
     // Давление в кубе (MPX5010DP через ADS1115)
     if (ads_ok) {
         int16_t adc = ads1115.readADC_SingleEnded(ADS_CHANNEL_PRESSURE);
-        float voltage = ads1115.computeVoltage(adc);
+        float voltage = ads1115.computeVolts(adc);
 
         // MPX5010DP: 0.2V @ 0kPa, 4.7V @ 10kPa
         // P = (V - offset) / sensitivity
@@ -335,7 +336,7 @@ void readHydrometer(Hydrometer& hydro, float temperature) {
     }
 
     int16_t adc = ads1115.readADC_SingleEnded(ADS_CHANNEL_PRESSURE);
-    float voltage = ads1115.computeVoltage(adc);
+    float voltage = ads1115.computeVolts(adc);
     float kPa = (voltage - MPX5010_OFFSET) / MPX5010_SENSITIVITY;
 
     // Плотность (упрощённо, без учёта высоты столба)
@@ -395,7 +396,7 @@ void readPower(Power& power) {
     } else {
         power.voltage = lastValidVoltage; // Отбросить выброс
         pzemSpikeCounter++;
-        LOG_W("PZEM: Voltage spike rejected (%.1fV -> %.1fV)", lastValidVoltage, rawVoltage);
+        LOG_WARN("PZEM: Voltage spike rejected (%.1fV -> %.1fV)", lastValidVoltage, rawVoltage);
     }
 
     if (validateReading(rawCurrent, lastValidCurrent, PZEM_CURRENT_MAX_DELTA, pzemDataInitialized)) {
@@ -404,7 +405,7 @@ void readPower(Power& power) {
     } else {
         power.current = lastValidCurrent; // Отбросить выброс
         pzemSpikeCounter++;
-        LOG_W("PZEM: Current spike rejected (%.2fA -> %.2fA)", lastValidCurrent, rawCurrent);
+        LOG_WARN("PZEM: Current spike rejected (%.2fA -> %.2fA)", lastValidCurrent, rawCurrent);
     }
 
     if (validateReading(rawPower, lastValidPower, PZEM_POWER_MAX_DELTA, pzemDataInitialized)) {
@@ -413,7 +414,7 @@ void readPower(Power& power) {
     } else {
         power.power = lastValidPower; // Отбросить выброс
         pzemSpikeCounter++;
-        LOG_W("PZEM: Power spike rejected (%.1fW -> %.1fW)", lastValidPower, rawPower);
+        LOG_WARN("PZEM: Power spike rejected (%.1fW -> %.1fW)", lastValidPower, rawPower);
     }
 
     // Частота и PF (без фильтрации, но с валидацией)
@@ -447,7 +448,7 @@ void readPower(Power& power) {
         if (rawEnergy < lastEnergyReading - 0.01f) {  // -0.01 для защиты от флуктуаций
             // Счётчик был сброшен - сохраняем предыдущее значение
             energyOffset += lastEnergyReading;
-            LOG_W("Sensors: PZEM energy counter reset detected (was %.3f kWh)", lastEnergyReading);
+            LOG_WARN("Sensors: PZEM energy counter reset detected (was %.3f kWh)", lastEnergyReading);
         }
         lastEnergyReading = rawEnergy;
     }
