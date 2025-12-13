@@ -348,6 +348,40 @@
                 </div>
 
                 <div class="card">
+                    <h2>ℹ️ Информация о версиях</h2>
+
+                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">📱 Прошивка (Backend)</h3>
+                    <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; font-size: 14px;">
+                            <strong>Версия:</strong>
+                            <span id="firmware-version">Загрузка...</span>
+
+                            <strong>Дата сборки:</strong>
+                            <span id="firmware-build-date">Загрузка...</span>
+
+                            <strong>Время сборки:</strong>
+                            <span id="firmware-build-time">Загрузка...</span>
+
+                            <strong>Плата:</strong>
+                            <span id="board-chip">Загрузка...</span>
+                        </div>
+                    </div>
+
+                    <h3 style="color: var(--text-secondary); font-size: 0.95em;">🌐 Веб-интерфейс (Frontend)</h3>
+                    <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px;">
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; font-size: 14px;">
+                            <strong>Дата сборки:</strong>
+                            <span id="frontend-build-date">Загрузка...</span>
+
+                            <strong>Время сборки:</strong>
+                            <span id="frontend-build-time">Загрузка...</span>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-secondary" onclick="loadVersionInfo()" style="margin-top: 15px;">🔄 Обновить</button>
+                </div>
+
+                <div class="card">
                     <h2>Отображение</h2>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">

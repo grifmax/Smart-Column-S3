@@ -108,6 +108,49 @@ void init() {
         request->send(200, "application/json", json);
     });
 
+    // GET /api/version - получить информацию о версиях прошивки и фронтенда
+    server.on("/api/version", HTTP_GET, [](AsyncWebServerRequest *request) {
+        StaticJsonDocument<512> doc;
+
+        // Версия и дата компиляции прошивки
+        doc["firmware"]["version"] = FIRMWARE_VERSION;
+        doc["firmware"]["buildDate"] = __DATE__;
+        doc["firmware"]["buildTime"] = __TIME__;
+        doc["firmware"]["compiler"] = "GCC " __VERSION__;
+
+        // Информация о плате
+        doc["board"]["chip"] = "ESP32-S3";
+        doc["board"]["flashSize"] = ESP.getFlashChipSize();
+        doc["board"]["psramSize"] = ESP.getPsramSize();
+        doc["board"]["cpuFreq"] = ESP.getCpuFreqMHz();
+
+        // Попытка прочитать версию фронтенда из файла
+        #ifdef USE_LITTLEFS
+            File versionFile = LittleFS.open("/version.json", "r");
+        #else
+            File versionFile = SPIFFS.open("/version.json", "r");
+        #endif
+
+        if (versionFile) {
+            StaticJsonDocument<256> frontendDoc;
+            DeserializationError error = deserializeJson(frontendDoc, versionFile);
+            versionFile.close();
+
+            if (!error) {
+                doc["frontend"] = frontendDoc;
+            } else {
+                doc["frontend"]["error"] = "Failed to parse version.json";
+            }
+        } else {
+            doc["frontend"]["buildDate"] = "Unknown";
+            doc["frontend"]["note"] = "version.json not found";
+        }
+
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
     // POST /api/process/start - запуск процесса
     server.on("/api/process/start", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
         [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
