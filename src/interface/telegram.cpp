@@ -7,7 +7,7 @@
 #include "telegram.h"
 #include <WiFiClientSecure.h>
 #include <UniversalTelegramBot.h>
-#include <TelegramCertificate.h>  // Используем сертификат из библиотеки
+// TelegramCertificate.h уже включён в UniversalTelegramBot.h
 
 static WiFiClientSecure client;
 static UniversalTelegramBot* bot = nullptr;
