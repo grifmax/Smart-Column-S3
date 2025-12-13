@@ -381,36 +381,102 @@ function initTabs() {
 // Control Functions
 // ============================================================================
 
-function startRectification() {
-    sendCommand('start', 'rectification');
-    addLog('▶️ Запуск авто-ректификации', 'info');
-}
+async function startRectification() {
+    try {
+        const response = await fetch('/api/process/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'rectification' })
+        });
 
-function startManual() {
-    sendCommand('start', 'manual');
-    addLog('▶️ Запуск ручного режима', 'info');
-}
-
-function startDistillation() {
-    sendCommand('start', 'distillation');
-    addLog('▶️ Запуск дистилляции', 'info');
-}
-
-function stopProcess() {
-    if (confirm('Остановить процесс?')) {
-        sendCommand('stop');
-        addLog('⏹️ Остановка процесса', 'warning');
+        if (response.ok) {
+            addLog('✅ Авто-ректификация запущена', 'success');
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            const error = await response.text();
+            addLog('❌ Ошибка: ' + error, 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка запуска: ' + e.message, 'error');
     }
 }
 
-function pauseProcess() {
-    sendCommand('pause');
-    addLog('⏸️ Пауза', 'info');
+function startManual() {
+    // Переход на страницу ручного управления
+    window.location.href = 'manual.html';
 }
 
-function resumeProcess() {
-    sendCommand('resume');
-    addLog('⏯️ Продолжение', 'info');
+async function startDistillation() {
+    try {
+        const response = await fetch('/api/process/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'distillation' })
+        });
+
+        if (response.ok) {
+            addLog('✅ Дистилляция запущена', 'success');
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            const error = await response.text();
+            addLog('❌ Ошибка: ' + error, 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка запуска: ' + e.message, 'error');
+    }
+}
+
+async function stopProcess() {
+    if (!confirm('Остановить процесс?')) return;
+
+    try {
+        const response = await fetch('/api/process/stop', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            addLog('✅ Процесс остановлен', 'warning');
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            addLog('❌ Ошибка остановки', 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка: ' + e.message, 'error');
+    }
+}
+
+async function pauseProcess() {
+    try {
+        const response = await fetch('/api/process/pause', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            addLog('✅ Процесс приостановлен', 'info');
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            addLog('❌ Ошибка паузы', 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка: ' + e.message, 'error');
+    }
+}
+
+async function resumeProcess() {
+    try {
+        const response = await fetch('/api/process/resume', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            addLog('✅ Процесс возобновлен', 'info');
+            setTimeout(loadStatus, 500); // Обновить статус
+        } else {
+            addLog('❌ Ошибка возобновления', 'error');
+        }
+    } catch (e) {
+        addLog('❌ Ошибка: ' + e.message, 'error');
+    }
 }
 
 function updateHeater(value) {
