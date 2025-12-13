@@ -65,6 +65,25 @@ void loadSettings();
 void runTasks();
 
 // =============================================================================
+// BUZZER HELPER
+// =============================================================================
+
+namespace Buzzer {
+    void beep(uint8_t count, uint16_t duration) {
+        for (uint8_t i = 0; i < count; i++) {
+            digitalWrite(PIN_BUZZER, HIGH);
+            delay(duration);
+            digitalWrite(PIN_BUZZER, LOW);
+            if (i < count - 1) delay(duration);
+        }
+    }
+
+    void alarm() {
+        // Непрерывный сигнал - управляется в safety.cpp
+    }
+}
+
+// =============================================================================
 // SETUP
 // =============================================================================
 
@@ -449,23 +468,4 @@ void loadSettings() {
     NVSManager::loadSettings(g_settings);
     
     LOG_I("Settings loaded");
-}
-
-// =============================================================================
-// BUZZER HELPER
-// =============================================================================
-
-namespace Buzzer {
-    void beep(uint8_t count, uint16_t duration) {
-        for (uint8_t i = 0; i < count; i++) {
-            digitalWrite(PIN_BUZZER, HIGH);
-            delay(duration);
-            digitalWrite(PIN_BUZZER, LOW);
-            if (i < count - 1) delay(duration);
-        }
-    }
-    
-    void alarm() {
-        // Непрерывный сигнал - управляется в safety.cpp
-    }
 }
