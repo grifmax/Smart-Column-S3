@@ -443,10 +443,31 @@ function saveWiFi() {
     }
 }
 
-function saveEquipment() {
+async function saveEquipment() {
     const heaterPower = document.getElementById('heater-power-w').value;
     const columnHeight = document.getElementById('column-height').value;
+    const mlPerRev = parseFloat(document.getElementById('pump-ml-per-rev').value);
 
+    // Проверка параметров насоса
+    if (mlPerRev && mlPerRev > 0) {
+        try {
+            const response = await fetch('/api/calibration/pump', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mlPerRev: mlPerRev })
+            });
+
+            if (response.ok) {
+                addLog('✓ Параметры насоса сохранены: ' + mlPerRev.toFixed(3) + ' мл/об', 'success');
+            } else {
+                addLog('✗ Ошибка сохранения параметров насоса', 'error');
+            }
+        } catch (error) {
+            addLog('✗ Ошибка соединения при сохранении насоса', 'error');
+        }
+    }
+
+    // Сохранение других параметров оборудования (через WebSocket)
     sendCommand('equipment', 'save', 0);
     addLog('💾 Настройки оборудования сохранены', 'info');
 }
@@ -629,20 +650,22 @@ async function loadPumpInfo() {
         const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
 
         if (mlPerRevEl && data.pump) {
-            mlPerRevEl.textContent = `${data.pump.mlPerRev.toFixed(3)} мл/оборот`;
+            // Теперь это input поле, устанавливаем value
+            mlPerRevEl.value = data.pump.mlPerRev.toFixed(3);
         }
 
         if (stepsPerRevEl && data.pump) {
+            // Показываем общее количество шагов
             const totalSteps = data.pump.stepsPerRev * data.pump.microsteps;
-            stepsPerRevEl.textContent = `${totalSteps} шагов (${data.pump.stepsPerRev} × ${data.pump.microsteps} микрошагов)`;
+            stepsPerRevEl.value = totalSteps;
         }
     } catch (error) {
         console.error('Error loading pump info:', error);
         const mlPerRevEl = document.getElementById('pump-ml-per-rev');
         const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
 
-        if (mlPerRevEl) mlPerRevEl.textContent = 'Ошибка загрузки';
-        if (stepsPerRevEl) stepsPerRevEl.textContent = 'Ошибка загрузки';
+        if (mlPerRevEl) mlPerRevEl.placeholder = 'Ошибка загрузки';
+        if (stepsPerRevEl) stepsPerRevEl.placeholder = 'Ошибка загрузки';
     }
 }
 

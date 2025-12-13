@@ -309,14 +309,20 @@
                 <div class="card">
                     <h2>Оборудование</h2>
 
-                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">💧 Насос (справка)</h3>
+                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">💧 Калибровка насоса</h3>
                     <div class="form-group">
                         <label>мл на оборот</label>
-                        <div class="info-display" id="pump-ml-per-rev">Загрузка...</div>
+                        <input type="number" id="pump-ml-per-rev" step="0.001" min="0" placeholder="Загрузка...">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                            Объём жидкости за один полный оборот двигателя насоса
+                        </small>
                     </div>
                     <div class="form-group">
                         <label>Шагов за полный оборот</label>
-                        <div class="info-display" id="pump-steps-per-rev">Загрузка...</div>
+                        <input type="number" id="pump-steps-per-rev" min="1" placeholder="Загрузка..." readonly>
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                            Только для справки (настраивается в калибровке)
+                        </small>
                     </div>
 
                     <hr style="margin: 20px 0; border-color: var(--border);">
