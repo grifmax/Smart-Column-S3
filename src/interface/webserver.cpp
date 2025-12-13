@@ -29,6 +29,7 @@ typedef enum {
 #include <Update.h>
 #include "storage/nvs_manager.h"
 #include "drivers/sensors.h"
+#include "control/fsm.h"
 
 // Внешние переменные из main.cpp
 extern SystemState g_state;
@@ -107,14 +108,84 @@ void init() {
         request->send(200, "application/json", json);
     });
 
-    server.on("/api/start", HTTP_POST, [](AsyncWebServerRequest *request) {
-        // TODO: Запуск процесса
-        request->send(200);
+    // POST /api/process/start - запуск процесса
+    server.on("/api/process/start", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            // Ждем получения всех данных
+            if (index + len != total) {
+                return;
+            }
+
+            StaticJsonDocument<256> doc;
+            DeserializationError error = deserializeJson(doc, data, len);
+
+            if (error) {
+                LOG_E("Process start: JSON parse error");
+                request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
+                return;
+            }
+
+            const char* modeStr = doc["mode"];
+            if (!modeStr) {
+                request->send(400, "application/json", "{\"success\":false,\"message\":\"Mode required\"}");
+                return;
+            }
+
+            // Определяем режим
+            Mode mode = Mode::IDLE;
+            if (strcmp(modeStr, "rectification") == 0) {
+                mode = Mode::RECTIFICATION;
+            } else if (strcmp(modeStr, "distillation") == 0) {
+                mode = Mode::DISTILLATION;
+            } else if (strcmp(modeStr, "manual") == 0) {
+                mode = Mode::MANUAL_RECT;
+            } else {
+                request->send(400, "application/json", "{\"success\":false,\"message\":\"Unknown mode\"}");
+                return;
+            }
+
+            // Проверка термометров (только предупреждение, не блокируем запуск)
+            bool sensorsOk = g_state.health.tempSensorsTotal > 0 && g_state.health.tempSensorsOk;
+
+            if (!sensorsOk) {
+                LOG_W("Starting process without temperature sensors!");
+            }
+
+            // Запуск через FSM
+            FSM::startMode(g_state, g_settings, mode);
+
+            LOG_I("Process started: mode=%s, sensors=%s", modeStr, sensorsOk ? "OK" : "WARNING");
+
+            // Формируем ответ
+            String response = "{\"success\":true,\"message\":\"Process started\"";
+            if (!sensorsOk) {
+                response += ",\"warning\":\"No temperature sensors detected\"";
+            }
+            response += "}";
+
+            request->send(200, "application/json", response);
+        }
+    );
+
+    // POST /api/process/stop - остановка процесса
+    server.on("/api/process/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
+        FSM::stopMode(g_state);
+        LOG_I("Process stopped via API");
+        request->send(200, "application/json", "{\"success\":true,\"message\":\"Process stopped\"}");
     });
 
-    server.on("/api/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
-        // TODO: Остановка процесса
-        request->send(200);
+    // POST /api/process/pause - пауза
+    server.on("/api/process/pause", HTTP_POST, [](AsyncWebServerRequest *request) {
+        FSM::pause(g_state);
+        LOG_I("Process paused via API");
+        request->send(200, "application/json", "{\"success\":true,\"message\":\"Process paused\"}");
+    });
+
+    // POST /api/process/resume - возобновление
+    server.on("/api/process/resume", HTTP_POST, [](AsyncWebServerRequest *request) {
+        FSM::resume(g_state);
+        LOG_I("Process resumed via API");
+        request->send(200, "application/json", "{\"success\":true,\"message\":\"Process resumed\"}");
     });
 
     // ==========================================================================
