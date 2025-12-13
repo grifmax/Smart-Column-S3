@@ -6,7 +6,7 @@
 
 #include "webserver.h"
 #include <WiFi.h>
-#include <SPIFFS.h>
+#include "../fs_compat.h"
 #include <AsyncTCP.h>
 
 // Определение HTTP методов для ESPAsyncWebServer

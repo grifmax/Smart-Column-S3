@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <SPIFFS.h>
+#include "fs_compat.h"
 #include <vector>
 
 // Константы для истории

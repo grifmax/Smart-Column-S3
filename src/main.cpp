@@ -8,7 +8,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
-#include <SPIFFS.h>
+#include "fs_compat.h"
 #include <esp_task_wdt.h>
 #include <ESPmDNS.h>
 

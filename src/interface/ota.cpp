@@ -7,7 +7,7 @@
 #include "ota.h"
 #include <ArduinoOTA.h>
 #include <WiFi.h>
-#include <SPIFFS.h>
+#include "../fs_compat.h"
 #include "config.h"
 
 static bool otaInProgress = false;
