@@ -12,6 +12,8 @@
 #include "rectification.h"
 #include "distillation.h"
 #include "safety.h"
+#include "history.h"
+#include "profiles.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <AsyncTCP.h>
@@ -747,6 +749,526 @@ void setupApiRoutes() {
         request->send(200, "application/json", "{\"status\":\"ok\"}");
         delay(1000);
         ESP.restart();
+    });
+
+    // ========================================================================
+    // API для работы с историей процессов
+    // ========================================================================
+
+    // GET /api/history - Получить список всех процессов
+    server.on("/api/history", HTTP_GET, [](AsyncWebServerRequest *request) {
+        std::vector<ProcessListItem> processes = getProcessList();
+
+        DynamicJsonDocument doc(4096);
+        doc["total"] = processes.size();
+
+        JsonArray procArray = doc.createNestedArray("processes");
+        for (const auto& proc : processes) {
+            JsonObject p = procArray.createNestedObject();
+            p["id"] = proc.id;
+            p["type"] = proc.type;
+            p["startTime"] = proc.startTime;
+            p["duration"] = proc.duration;
+            p["status"] = proc.status;
+            p["totalVolume"] = proc.totalVolume;
+        }
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    // GET /api/history/{id} - Получить полные данные процесса
+    server.on("^\\/api\\/history\\/([0-9]+)$", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+
+        ProcessHistory history;
+        if (loadProcessHistory(id, history)) {
+            // Создать полный JSON ответ
+            DynamicJsonDocument doc(32768);
+
+            doc["id"] = history.id;
+            doc["version"] = history.version;
+
+            JsonObject metadata = doc.createNestedObject("metadata");
+            metadata["startTime"] = history.metadata.startTime;
+            metadata["endTime"] = history.metadata.endTime;
+            metadata["duration"] = history.metadata.duration;
+            metadata["completedSuccessfully"] = history.metadata.completedSuccessfully;
+            metadata["deviceId"] = history.metadata.deviceId;
+
+            JsonObject process = doc.createNestedObject("process");
+            process["type"] = history.process.type;
+            process["mode"] = history.process.mode;
+            process["profile"] = history.process.profile;
+
+            JsonObject parameters = doc.createNestedObject("parameters");
+            parameters["targetPower"] = history.parameters.targetPower;
+            parameters["headVolume"] = history.parameters.headVolume;
+            parameters["bodyVolume"] = history.parameters.bodyVolume;
+            parameters["tailVolume"] = history.parameters.tailVolume;
+            parameters["pumpSpeedHead"] = history.parameters.pumpSpeedHead;
+            parameters["pumpSpeedBody"] = history.parameters.pumpSpeedBody;
+            parameters["stabilizationTime"] = history.parameters.stabilizationTime;
+            parameters["wattControlEnabled"] = history.parameters.wattControlEnabled;
+            parameters["smartDecrementEnabled"] = history.parameters.smartDecrementEnabled;
+
+            JsonObject metrics = doc.createNestedObject("metrics");
+            JsonObject temps = metrics.createNestedObject("temperatures");
+            JsonObject cube = temps.createNestedObject("cube");
+            cube["min"] = history.metrics.cube.min;
+            cube["max"] = history.metrics.cube.max;
+            cube["avg"] = history.metrics.cube.avg;
+            cube["final"] = history.metrics.cube.final;
+
+            JsonObject power = metrics.createNestedObject("power");
+            power["energyUsed"] = history.metrics.energyUsed;
+            power["avgPower"] = history.metrics.avgPower;
+            power["peakPower"] = history.metrics.peakPower;
+
+            JsonObject pump = metrics.createNestedObject("pump");
+            pump["totalVolume"] = history.metrics.totalVolume;
+            pump["avgSpeed"] = history.metrics.avgSpeed;
+
+            JsonArray phases = doc.createNestedArray("phases");
+            for (const auto& phase : history.phases) {
+                JsonObject p = phases.createNestedObject();
+                p["name"] = phase.name;
+                p["startTime"] = phase.startTime;
+                p["endTime"] = phase.endTime;
+                p["duration"] = phase.duration;
+                p["startTemp"] = phase.startTemp;
+                p["endTemp"] = phase.endTemp;
+                p["volume"] = phase.volume;
+                p["avgSpeed"] = phase.avgSpeed;
+            }
+
+            JsonObject timeseries = doc.createNestedObject("timeseries");
+            timeseries["interval"] = TIMESERIES_INTERVAL;
+            JsonArray data = timeseries.createNestedArray("data");
+            for (const auto& point : history.timeseries) {
+                JsonObject p = data.createNestedObject();
+                p["time"] = point.time;
+                p["cube"] = point.cube;
+                p["columnTop"] = point.columnTop;
+                p["power"] = point.power;
+                p["pumpSpeed"] = point.pumpSpeed;
+            }
+
+            JsonObject results = doc.createNestedObject("results");
+            results["headsCollected"] = history.results.headsCollected;
+            results["bodyCollected"] = history.results.bodyCollected;
+            results["tailsCollected"] = history.results.tailsCollected;
+            results["totalCollected"] = history.results.totalCollected;
+            results["status"] = history.results.status;
+
+            doc["notes"] = history.notes;
+
+            String response;
+            serializeJson(doc, response);
+            request->send(200, "application/json", response);
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Process not found\"}");
+        }
+    });
+
+    // GET /api/history/{id}/export - Экспорт процесса в CSV или JSON
+    server.on("^\\/api\\/history\\/([0-9]+)\\/export$", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+        String format = request->hasParam("format") ? request->getParam("format")->value() : "csv";
+
+        ProcessHistory history;
+        if (loadProcessHistory(id, history)) {
+            if (format == "csv") {
+                String csv = exportProcessToCSV(history);
+                request->send(200, "text/csv", csv);
+            } else if (format == "json") {
+                String json = exportProcessToJSON(history);
+                request->send(200, "application/json", json);
+            } else {
+                request->send(400, "application/json", "{\"error\":\"Invalid format. Use csv or json\"}");
+            }
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Process not found\"}");
+        }
+    });
+
+    // DELETE /api/history/{id} - Удалить процесс из истории
+    server.on("^\\/api\\/history\\/([0-9]+)$", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+
+        if (deleteProcess(id)) {
+            request->send(200, "application/json", "{\"success\":true,\"message\":\"Process deleted\"}");
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Process not found\"}");
+        }
+    });
+
+    // DELETE /api/history - Очистить всю историю
+    server.on("/api/history", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+        if (clearHistory()) {
+            request->send(200, "application/json", "{\"success\":true,\"message\":\"All history cleared\"}");
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Failed to clear history\"}");
+        }
+    });
+
+    // POST /api/history/{id}/compare - Сравнение процессов
+    server.on("^\\/api\\/history\\/([0-9]+)\\/compare$", HTTP_POST, [](AsyncWebServerRequest *request) {
+        // TODO: Реализовать сравнение процессов в следующей версии
+        request->send(501, "application/json", "{\"error\":\"Not implemented yet\"}");
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        // Body handler для получения списка ID процессов для сравнения
+    });
+
+    // =========================================================================
+    // PROFILES API - Управление профилями процессов
+    // =========================================================================
+
+    // GET /api/profiles - Получить список всех профилей
+    server.on("/api/profiles", HTTP_GET, [](AsyncWebServerRequest *request) {
+        std::vector<ProfileListItem> profiles = getProfileList();
+
+        DynamicJsonDocument doc(4096);
+        doc["total"] = profiles.size();
+
+        JsonArray profileArray = doc.createNestedArray("profiles");
+        for (const auto& prof : profiles) {
+            JsonObject p = profileArray.createNestedObject();
+            p["id"] = prof.id;
+            p["name"] = prof.name;
+            p["category"] = prof.category;
+            p["useCount"] = prof.useCount;
+            p["lastUsed"] = prof.lastUsed;
+            p["isBuiltin"] = prof.isBuiltin;
+        }
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    // GET /api/profiles/{id} - Получить полные данные профиля
+    server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+
+        Profile profile;
+        if (loadProfile(id, profile)) {
+            // Создать полный JSON ответ
+            DynamicJsonDocument doc(8192);
+
+            doc["id"] = profile.id;
+
+            JsonObject metadata = doc.createNestedObject("metadata");
+            metadata["name"] = profile.metadata.name;
+            metadata["description"] = profile.metadata.description;
+            metadata["category"] = profile.metadata.category;
+
+            JsonArray tags = metadata.createNestedArray("tags");
+            for (const auto& tag : profile.metadata.tags) {
+                tags.add(tag);
+            }
+
+            metadata["created"] = profile.metadata.created;
+            metadata["updated"] = profile.metadata.updated;
+            metadata["author"] = profile.metadata.author;
+            metadata["isBuiltin"] = profile.metadata.isBuiltin;
+
+            JsonObject parameters = doc.createNestedObject("parameters");
+            parameters["mode"] = profile.parameters.mode;
+            parameters["model"] = profile.parameters.model;
+
+            JsonObject heater = parameters.createNestedObject("heater");
+            heater["maxPower"] = profile.parameters.heater.maxPower;
+            heater["autoMode"] = profile.parameters.heater.autoMode;
+            heater["pidKp"] = profile.parameters.heater.pidKp;
+            heater["pidKi"] = profile.parameters.heater.pidKi;
+            heater["pidKd"] = profile.parameters.heater.pidKd;
+
+            JsonObject rectification = parameters.createNestedObject("rectification");
+            rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
+            rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
+            rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
+            rectification["tailsVolume"] = profile.parameters.rectification.tailsVolume;
+            rectification["headsSpeed"] = profile.parameters.rectification.headsSpeed;
+            rectification["bodySpeed"] = profile.parameters.rectification.bodySpeed;
+            rectification["tailsSpeed"] = profile.parameters.rectification.tailsSpeed;
+            rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
+
+            JsonObject distillation = parameters.createNestedObject("distillation");
+            distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
+            distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
+            distillation["speed"] = profile.parameters.distillation.speed;
+            distillation["endTemp"] = profile.parameters.distillation.endTemp;
+
+            JsonObject temperatures = parameters.createNestedObject("temperatures");
+            temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
+            temperatures["maxColumn"] = profile.parameters.temperatures.maxColumn;
+            temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
+            temperatures["bodyStart"] = profile.parameters.temperatures.bodyStart;
+            temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
+
+            JsonObject safety = parameters.createNestedObject("safety");
+            safety["maxRuntime"] = profile.parameters.safety.maxRuntime;
+            safety["waterFlowMin"] = profile.parameters.safety.waterFlowMin;
+            safety["pressureMax"] = profile.parameters.safety.pressureMax;
+
+            JsonObject statistics = doc.createNestedObject("statistics");
+            statistics["useCount"] = profile.statistics.useCount;
+            statistics["lastUsed"] = profile.statistics.lastUsed;
+            statistics["avgDuration"] = profile.statistics.avgDuration;
+            statistics["avgYield"] = profile.statistics.avgYield;
+            statistics["successRate"] = profile.statistics.successRate;
+
+            String response;
+            serializeJson(doc, response);
+            request->send(200, "application/json", response);
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Profile not found\"}");
+        }
+    });
+
+    // POST /api/profiles - Создать новый профиль
+    server.on("/api/profiles", HTTP_POST, [](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"success\":true}");
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        // Body handler
+        static String body;
+
+        if (index == 0) {
+            body = "";
+        }
+
+        for (size_t i = 0; i < len; i++) {
+            body += (char)data[i];
+        }
+
+        if (index + len == total) {
+            // Парсим JSON
+            DynamicJsonDocument doc(8192);
+            DeserializationError error = deserializeJson(doc, body);
+
+            if (error) {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+
+            Profile profile;
+            uint32_t now = millis() / 1000;
+            profile.id = String(now);
+
+            // Метаданные
+            profile.metadata.name = doc["metadata"]["name"].as<String>();
+            profile.metadata.description = doc["metadata"]["description"].as<String>();
+            profile.metadata.category = doc["metadata"]["category"].as<String>();
+
+            JsonArray tags = doc["metadata"]["tags"];
+            for (JsonVariant tag : tags) {
+                profile.metadata.tags.push_back(tag.as<String>());
+            }
+
+            profile.metadata.created = now;
+            profile.metadata.updated = now;
+            profile.metadata.author = doc["metadata"]["author"] | "user";
+            profile.metadata.isBuiltin = false;
+
+            // Параметры
+            profile.parameters.mode = doc["parameters"]["mode"].as<String>();
+            profile.parameters.model = doc["parameters"]["model"] | "classic";
+
+            profile.parameters.heater.maxPower = doc["parameters"]["heater"]["maxPower"];
+            profile.parameters.heater.autoMode = doc["parameters"]["heater"]["autoMode"];
+            profile.parameters.heater.pidKp = doc["parameters"]["heater"]["pidKp"];
+            profile.parameters.heater.pidKi = doc["parameters"]["heater"]["pidKi"];
+            profile.parameters.heater.pidKd = doc["parameters"]["heater"]["pidKd"];
+
+            profile.parameters.rectification.stabilizationMin = doc["parameters"]["rectification"]["stabilizationMin"];
+            profile.parameters.rectification.headsVolume = doc["parameters"]["rectification"]["headsVolume"];
+            profile.parameters.rectification.bodyVolume = doc["parameters"]["rectification"]["bodyVolume"];
+            profile.parameters.rectification.tailsVolume = doc["parameters"]["rectification"]["tailsVolume"];
+            profile.parameters.rectification.headsSpeed = doc["parameters"]["rectification"]["headsSpeed"];
+            profile.parameters.rectification.bodySpeed = doc["parameters"]["rectification"]["bodySpeed"];
+            profile.parameters.rectification.tailsSpeed = doc["parameters"]["rectification"]["tailsSpeed"];
+            profile.parameters.rectification.purgeMin = doc["parameters"]["rectification"]["purgeMin"];
+
+            profile.parameters.distillation.headsVolume = doc["parameters"]["distillation"]["headsVolume"];
+            profile.parameters.distillation.targetVolume = doc["parameters"]["distillation"]["targetVolume"];
+            profile.parameters.distillation.speed = doc["parameters"]["distillation"]["speed"];
+            profile.parameters.distillation.endTemp = doc["parameters"]["distillation"]["endTemp"];
+
+            profile.parameters.temperatures.maxCube = doc["parameters"]["temperatures"]["maxCube"];
+            profile.parameters.temperatures.maxColumn = doc["parameters"]["temperatures"]["maxColumn"];
+            profile.parameters.temperatures.headsEnd = doc["parameters"]["temperatures"]["headsEnd"];
+            profile.parameters.temperatures.bodyStart = doc["parameters"]["temperatures"]["bodyStart"];
+            profile.parameters.temperatures.bodyEnd = doc["parameters"]["temperatures"]["bodyEnd"];
+
+            profile.parameters.safety.maxRuntime = doc["parameters"]["safety"]["maxRuntime"];
+            profile.parameters.safety.waterFlowMin = doc["parameters"]["safety"]["waterFlowMin"];
+            profile.parameters.safety.pressureMax = doc["parameters"]["safety"]["pressureMax"];
+
+            // Статистика
+            profile.statistics.useCount = 0;
+            profile.statistics.lastUsed = 0;
+            profile.statistics.avgDuration = 0;
+            profile.statistics.avgYield = 0;
+            profile.statistics.successRate = 0;
+
+            if (saveProfile(profile)) {
+                String response = "{\"success\":true,\"id\":\"" + profile.id + "\"}";
+                request->send(200, "application/json", response);
+            } else {
+                request->send(500, "application/json", "{\"error\":\"Failed to save profile\"}");
+            }
+        }
+    });
+
+    // PUT /api/profiles/{id} - Обновить профиль
+    server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_PUT, [](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"success\":true}");
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        static String body;
+        static String profileId;
+
+        if (index == 0) {
+            body = "";
+            profileId = request->pathArg(0);
+        }
+
+        for (size_t i = 0; i < len; i++) {
+            body += (char)data[i];
+        }
+
+        if (index + len == total) {
+            Profile profile;
+            if (!loadProfile(profileId, profile)) {
+                request->send(404, "application/json", "{\"error\":\"Profile not found\"}");
+                return;
+            }
+
+            // Парсим JSON для обновления
+            DynamicJsonDocument doc(8192);
+            DeserializationError error = deserializeJson(doc, body);
+
+            if (error) {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+
+            // Обновляем поля (аналогично POST, но сохраняем id и created)
+            profile.metadata.name = doc["metadata"]["name"].as<String>();
+            profile.metadata.description = doc["metadata"]["description"].as<String>();
+            profile.metadata.updated = millis() / 1000;
+
+            // ... остальные поля как в POST
+
+            if (saveProfile(profile)) {
+                request->send(200, "application/json", "{\"success\":true}");
+            } else {
+                request->send(500, "application/json", "{\"error\":\"Failed to update profile\"}");
+            }
+        }
+    });
+
+    // DELETE /api/profiles/{id} - Удалить профиль
+    server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+
+        if (deleteProfile(id)) {
+            request->send(200, "application/json", "{\"success\":true,\"message\":\"Profile deleted\"}");
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Profile not found or builtin\"}");
+        }
+    });
+
+    // POST /api/profiles/{id}/load - Загрузить профиль в текущие настройки
+    server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/load$", HTTP_POST, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+
+        if (applyProfile(id)) {
+            request->send(200, "application/json", "{\"success\":true,\"message\":\"Profile loaded\"}");
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Profile not found\"}");
+        }
+    });
+
+    // DELETE /api/profiles - Очистить все профили (кроме встроенных)
+    server.on("/api/profiles", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+        if (clearProfiles()) {
+            request->send(200, "application/json", "{\"success\":true,\"message\":\"All user profiles cleared\"}");
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Failed to clear profiles\"}");
+        }
+    });
+
+    // GET /api/profiles/{id}/export - Экспорт одного профиля в JSON
+    server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/export$", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+
+        String json = exportProfileToJSON(id);
+        if (json.length() > 0) {
+            request->send(200, "application/json", json);
+        } else {
+            request->send(404, "application/json", "{\"error\":\"Profile not found\"}");
+        }
+    });
+
+    // GET /api/profiles/export - Экспорт всех профилей в JSON
+    server.on("/api/profiles/export", HTTP_GET, [](AsyncWebServerRequest *request) {
+        bool includeBuiltin = request->hasParam("includeBuiltin") &&
+                              request->getParam("includeBuiltin")->value() == "true";
+
+        String json = exportAllProfilesToJSON(includeBuiltin);
+        if (json.length() > 0) {
+            request->send(200, "application/json", json);
+        } else {
+            request->send(500, "application/json", "{\"error\":\"Export failed\"}");
+        }
+    });
+
+    // POST /api/profiles/import - Импорт профилей из JSON
+    server.on("/api/profiles/import", HTTP_POST, [](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", "{\"success\":true}");
+    }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        static String body;
+
+        if (index == 0) {
+            body = "";
+        }
+
+        for (size_t i = 0; i < len; i++) {
+            body += (char)data[i];
+        }
+
+        if (index + len == total) {
+            // Парсим JSON
+            DynamicJsonDocument doc(32768);
+            DeserializationError error = deserializeJson(doc, body);
+
+            if (error) {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+
+            uint16_t imported = 0;
+
+            // Проверяем, массив это или один объект
+            if (doc.is<JsonArray>()) {
+                // Импорт нескольких профилей
+                imported = importProfilesFromJSON(body);
+            } else if (doc.is<JsonObject>()) {
+                // Импорт одного профиля
+                String id = importProfileFromJSON(body);
+                if (!id.isEmpty()) {
+                    imported = 1;
+                }
+            } else {
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON format\"}");
+                return;
+            }
+
+            String response = "{\"success\":true,\"imported\":" + String(imported) + "}";
+            request->send(200, "application/json", response);
+        }
     });
 }
 

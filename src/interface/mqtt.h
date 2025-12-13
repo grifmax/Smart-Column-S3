@@ -55,6 +55,14 @@ namespace MQTT {
      * @param topic Базовый топик (напр. "smartcolumn")
      */
     void setBaseTopic(const char* topic);
+
+    /**
+     * Отправка push-уведомления в Home Assistant
+     * @param title Заголовок уведомления
+     * @param message Текст сообщения
+     * @param level Уровень важности (info, warning, error)
+     */
+    void publishNotification(const char* title, const char* message, const char* level = "info");
 }
 
 #endif // MQTT_H

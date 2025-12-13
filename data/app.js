@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadTheme();
     initMiniChart();
     loadMemoryStatsPreference();
+    loadPumpInfo();
     connectWebSocket();
 });
 
@@ -367,6 +368,11 @@ function initTabs() {
             // Добавить активный класс к выбранной вкладке
             tab.classList.add('active');
             document.getElementById(targetId).classList.add('active');
+
+            // Загрузить историю при переключении на вкладку "История"
+            if (targetId === 'history') {
+                loadHistoryList();
+            }
         });
     });
 }
@@ -604,3 +610,1434 @@ function loadMemoryStatsPreference() {
         memStatsDiv.style.display = showMemoryStats ? 'block' : 'none';
     }
 }
+
+// ============================================================================
+// Загрузка информации о насосе
+// ============================================================================
+
+async function loadPumpInfo() {
+    try {
+        const response = await fetch('/api/calibration');
+        if (!response.ok) {
+            throw new Error('Failed to load calibration data');
+        }
+
+        const data = await response.json();
+
+        // Обновить информацию о насосе
+        const mlPerRevEl = document.getElementById('pump-ml-per-rev');
+        const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
+
+        if (mlPerRevEl && data.pump) {
+            mlPerRevEl.textContent = `${data.pump.mlPerRev.toFixed(3)} мл/оборот`;
+        }
+
+        if (stepsPerRevEl && data.pump) {
+            const totalSteps = data.pump.stepsPerRev * data.pump.microsteps;
+            stepsPerRevEl.textContent = `${totalSteps} шагов (${data.pump.stepsPerRev} × ${data.pump.microsteps} микрошагов)`;
+        }
+    } catch (error) {
+        console.error('Error loading pump info:', error);
+        const mlPerRevEl = document.getElementById('pump-ml-per-rev');
+        const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
+
+        if (mlPerRevEl) mlPerRevEl.textContent = 'Ошибка загрузки';
+        if (stepsPerRevEl) stepsPerRevEl.textContent = 'Ошибка загрузки';
+    }
+}
+
+// ============================================================================
+// История процессов
+// ============================================================================
+
+let historyData = [];
+
+async function loadHistoryList() {
+    try {
+        const response = await fetch('/api/history');
+        if (!response.ok) {
+            throw new Error('Failed to load history');
+        }
+
+        const data = await response.json();
+        historyData = data.processes || [];
+
+        // Применить фильтры
+        applyHistoryFilters();
+
+        addLog(`📚 Загружено процессов: ${historyData.length}`, 'info');
+    } catch (error) {
+        console.error('Error loading history:', error);
+        addLog('❌ Ошибка загрузки истории', 'error');
+
+        // Показать пустой список
+        const historyListEl = document.getElementById('history-list');
+        if (historyListEl) {
+            historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет данных или ошибка загрузки</div>';
+        }
+    }
+}
+
+function applyHistoryFilters() {
+    const typeFilter = document.getElementById('history-filter-type')?.value || 'all';
+    const sortBy = document.getElementById('history-sort')?.value || 'date-desc';
+
+    let filtered = [...historyData];
+
+    // Фильтр по типу
+    if (typeFilter !== 'all') {
+        filtered = filtered.filter(p => p.type === typeFilter);
+    }
+
+    // Сортировка
+    filtered.sort((a, b) => {
+        switch (sortBy) {
+            case 'date-desc':
+                return b.startTime - a.startTime;
+            case 'date-asc':
+                return a.startTime - b.startTime;
+            case 'duration-desc':
+                return b.duration - a.duration;
+            case 'duration-asc':
+                return a.duration - b.duration;
+            default:
+                return 0;
+        }
+    });
+
+    // Отрисовать список
+    renderHistoryList(filtered);
+
+    // Обновить статистику
+    updateHistoryStats(filtered);
+}
+
+function renderHistoryList(processes) {
+    const historyListEl = document.getElementById('history-list');
+    if (!historyListEl) return;
+
+    if (processes.length === 0) {
+        historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет процессов для отображения</div>';
+        return;
+    }
+
+    historyListEl.innerHTML = '';
+
+    processes.forEach(process => {
+        const itemEl = renderHistoryItem(process);
+        historyListEl.appendChild(itemEl);
+    });
+}
+
+let selectedProcesses = new Set();
+
+function renderHistoryItem(process) {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    div.dataset.processId = process.id;
+
+    const typeNames = {
+        rectification: 'Ректификация',
+        distillation: 'Дистилляция',
+        mashing: 'Затирка',
+        hold: 'Выдержка'
+    };
+
+    const statusNames = {
+        completed: 'Завершен',
+        stopped: 'Остановлен',
+        error: 'Ошибка'
+    };
+
+    const typeName = typeNames[process.type] || process.type;
+    const statusName = statusNames[process.status] || process.status;
+
+    const startDate = new Date(process.startTime * 1000);
+    const durationHours = (process.duration / 3600).toFixed(1);
+    const isSelected = selectedProcesses.has(process.id);
+
+    div.innerHTML = `
+        <div class="history-header">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox"
+                       class="history-checkbox"
+                       data-process-id="${process.id}"
+                       ${isSelected ? 'checked' : ''}
+                       onchange="toggleProcessSelection('${process.id}')">
+                <div>
+                    <span class="history-type history-type-${process.type}">${typeName}</span>
+                    <span class="history-status history-status-${process.status}">${statusName}</span>
+                </div>
+            </div>
+            <div class="history-date">${startDate.toLocaleString('ru-RU')}</div>
+        </div>
+        <div class="history-info">
+            <div class="history-metric">
+                <span class="metric-label">⏱️ Длительность:</span>
+                <span class="metric-value">${durationHours} ч</span>
+            </div>
+            <div class="history-metric">
+                <span class="metric-label">💧 Объём:</span>
+                <span class="metric-value">${process.totalVolume || 0} мл</span>
+            </div>
+        </div>
+        <div class="history-actions">
+            <button class="btn-secondary" onclick="viewHistoryDetails('${process.id}')">👁️ Подробно</button>
+            <button class="btn-secondary" onclick="exportHistory('${process.id}')">📥 Экспорт</button>
+            <button class="btn-danger" onclick="deleteHistoryItem('${process.id}')">🗑️ Удалить</button>
+        </div>
+    `;
+
+    return div;
+}
+
+function toggleProcessSelection(processId) {
+    if (selectedProcesses.has(processId)) {
+        selectedProcesses.delete(processId);
+    } else {
+        selectedProcesses.add(processId);
+    }
+    updateCompareButton();
+}
+
+function updateCompareButton() {
+    const compareBtn = document.getElementById('compare-processes-btn');
+    if (compareBtn) {
+        compareBtn.disabled = selectedProcesses.size < 2;
+        compareBtn.textContent = `📊 Сравнить выбранные (${selectedProcesses.size})`;
+    }
+}
+
+function updateHistoryStats(processes) {
+    const totalEl = document.getElementById('hist-stat-total');
+    const completedEl = document.getElementById('hist-stat-completed');
+    const timeEl = document.getElementById('hist-stat-time');
+    const energyEl = document.getElementById('hist-stat-energy');
+
+    if (!totalEl) return;
+
+    const total = processes.length;
+    const completed = processes.filter(p => p.status === 'completed').length;
+    const totalTime = processes.reduce((sum, p) => sum + (p.duration || 0), 0);
+    const totalEnergy = 0; // Будет реализовано позже, когда появится поле energy в процессах
+
+    totalEl.textContent = total;
+    completedEl.textContent = completed;
+    timeEl.textContent = (totalTime / 3600).toFixed(1) + ' ч';
+    energyEl.textContent = totalEnergy.toFixed(1) + ' кВт·ч';
+}
+
+async function clearHistory() {
+    if (!confirm('Удалить ВСЮ историю процессов? Это действие необратимо!')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/history', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to clear history');
+        }
+
+        addLog('🗑️ История полностью очищена', 'info');
+        await loadHistoryList();
+    } catch (error) {
+        console.error('Error clearing history:', error);
+        addLog('❌ Ошибка при очистке истории', 'error');
+        alert('Ошибка при очистке истории');
+    }
+}
+
+async function deleteHistoryItem(id) {
+    if (!confirm('Удалить этот процесс из истории?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/history/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete history item');
+        }
+
+        addLog(`🗑️ Процесс ${id} удален из истории`, 'info');
+        await loadHistoryList();
+    } catch (error) {
+        console.error('Error deleting history item:', error);
+        addLog('❌ Ошибка при удалении процесса', 'error');
+        alert('Ошибка при удалении процесса');
+    }
+}
+
+async function viewHistoryDetails(id) {
+    try {
+        const response = await fetch(`/api/history/${id}`);
+        if (!response.ok) {
+            throw new Error('Failed to load history details');
+        }
+
+        const process = await response.json();
+
+        // Создать модальное окно с деталями
+        showHistoryDetailsModal(process);
+
+        addLog(`👁️ Просмотр процесса ${id}`, 'info');
+    } catch (error) {
+        console.error('Error loading history details:', error);
+        addLog('❌ Ошибка загрузки деталей процесса', 'error');
+        alert('Ошибка загрузки деталей процесса');
+    }
+}
+
+let tempChart = null;
+let powerChart = null;
+
+function showHistoryDetailsModal(process) {
+    const typeNames = {
+        rectification: 'Ректификация',
+        distillation: 'Дистилляция',
+        mashing: 'Затирка',
+        hold: 'Выдержка'
+    };
+
+    const startDate = new Date(process.metadata.startTime * 1000);
+    const endDate = new Date(process.metadata.endTime * 1000);
+    const typeName = typeNames[process.process.type] || process.process.type;
+
+    // Установить заголовок
+    document.getElementById('modal-title').textContent = `${typeName} - ${startDate.toLocaleDateString('ru-RU')}`;
+
+    // Заполнить основную информацию
+    const infoGrid = document.getElementById('modal-info-grid');
+    infoGrid.innerHTML = `
+        <div class="modal-info-item">
+            <div class="modal-info-label">Тип процесса</div>
+            <div class="modal-info-value">${typeName}</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Режим</div>
+            <div class="modal-info-value">${process.process.mode === 'auto' ? 'Авто' : 'Ручной'}</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Начало</div>
+            <div class="modal-info-value">${startDate.toLocaleString('ru-RU')}</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Окончание</div>
+            <div class="modal-info-value">${endDate.toLocaleString('ru-RU')}</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Длительность</div>
+            <div class="modal-info-value">${(process.metadata.duration / 3600).toFixed(1)} ч</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Статус</div>
+            <div class="modal-info-value">${process.metadata.completedSuccessfully ? '✅ Успешно' : '⚠️ Прервано'}</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Средняя мощность</div>
+            <div class="modal-info-value">${process.metrics?.power?.avgPower || 0} Вт</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Потреблено энергии</div>
+            <div class="modal-info-value">${(process.metrics?.power?.energyUsed || 0).toFixed(2)} кВт·ч</div>
+        </div>
+    `;
+
+    // Построить график температур
+    renderTempChart(process);
+
+    // Построить график мощности
+    renderPowerChart(process);
+
+    // Заполнить фазы
+    renderPhases(process);
+
+    // Заполнить результаты
+    const resultsGrid = document.getElementById('modal-results-grid');
+    resultsGrid.innerHTML = `
+        <div class="modal-info-item">
+            <div class="modal-info-label">Головы</div>
+            <div class="modal-info-value">${process.results.headsCollected || 0} мл</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Тело</div>
+            <div class="modal-info-value">${process.results.bodyCollected || 0} мл</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Хвосты</div>
+            <div class="modal-info-value">${process.results.tailsCollected || 0} мл</div>
+        </div>
+        <div class="modal-info-item">
+            <div class="modal-info-label">Всего собрано</div>
+            <div class="modal-info-value">${process.results.totalCollected || 0} мл</div>
+        </div>
+    `;
+
+    // Привязать обработчики к кнопкам экспорта
+    const exportCsvBtn = document.getElementById('modal-export-csv');
+    const exportJsonBtn = document.getElementById('modal-export-json');
+
+    if (exportCsvBtn) {
+        exportCsvBtn.onclick = () => exportHistoryCSV(process.id);
+    }
+
+    if (exportJsonBtn) {
+        exportJsonBtn.onclick = () => exportHistoryJSON(process.id);
+    }
+
+    // Показать модальное окно
+    document.getElementById('history-modal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeHistoryModal() {
+    document.getElementById('history-modal').classList.remove('active');
+    document.body.style.overflow = '';
+
+    // Уничтожить графики
+    if (tempChart) {
+        tempChart.destroy();
+        tempChart = null;
+    }
+    if (powerChart) {
+        powerChart.destroy();
+        powerChart = null;
+    }
+}
+
+function renderTempChart(process) {
+    const chartEl = document.getElementById('modal-temp-chart');
+    chartEl.innerHTML = '';
+
+    if (!process.timeseries || process.timeseries.data.length === 0) {
+        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';
+        return;
+    }
+
+    const data = process.timeseries.data;
+
+    const options = {
+        chart: {
+            type: 'line',
+            height: 350,
+            animations: {
+                enabled: false
+            },
+            toolbar: {
+                show: true
+            },
+            background: 'transparent'
+        },
+        theme: {
+            mode: document.body.getAttribute('data-theme') || 'light'
+        },
+        series: [
+            {
+                name: 'Куб',
+                data: data.map(p => ({ x: p.time * 1000, y: p.cube }))
+            },
+            {
+                name: 'Царга верх',
+                data: data.map(p => ({ x: p.time * 1000, y: p.columnTop }))
+            }
+        ],
+        xaxis: {
+            type: 'datetime',
+            labels: {
+                datetimeFormatter: {
+                    hour: 'HH:mm'
+                }
+            }
+        },
+        yaxis: {
+            title: {
+                text: 'Температура (°C)'
+            },
+            decimalsInFloat: 1
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        colors: ['#dc3545', '#007bff'],
+        legend: {
+            show: true,
+            position: 'top'
+        },
+        tooltip: {
+            x: {
+                format: 'dd MMM HH:mm'
+            }
+        }
+    };
+
+    tempChart = new ApexCharts(chartEl, options);
+    tempChart.render();
+}
+
+function renderPowerChart(process) {
+    const chartEl = document.getElementById('modal-power-chart');
+    chartEl.innerHTML = '';
+
+    if (!process.timeseries || process.timeseries.data.length === 0) {
+        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';
+        return;
+    }
+
+    const data = process.timeseries.data;
+
+    const options = {
+        chart: {
+            type: 'area',
+            height: 300,
+            animations: {
+                enabled: false
+            },
+            toolbar: {
+                show: true
+            },
+            background: 'transparent'
+        },
+        theme: {
+            mode: document.body.getAttribute('data-theme') || 'light'
+        },
+        series: [
+            {
+                name: 'Мощность',
+                data: data.map(p => ({ x: p.time * 1000, y: p.power }))
+            }
+        ],
+        xaxis: {
+            type: 'datetime',
+            labels: {
+                datetimeFormatter: {
+                    hour: 'HH:mm'
+                }
+            }
+        },
+        yaxis: {
+            title: {
+                text: 'Мощность (Вт)'
+            },
+            decimalsInFloat: 0
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        fill: {
+            type: 'gradient',
+            gradient: {
+                shadeIntensity: 1,
+                opacityFrom: 0.7,
+                opacityTo: 0.3
+            }
+        },
+        colors: ['#28a745'],
+        tooltip: {
+            x: {
+                format: 'dd MMM HH:mm'
+            }
+        }
+    };
+
+    powerChart = new ApexCharts(chartEl, options);
+    powerChart.render();
+}
+
+function renderPhases(process) {
+    const phasesEl = document.getElementById('modal-phases');
+
+    if (!process.phases || process.phases.length === 0) {
+        phasesEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет информации о фазах</p>';
+        return;
+    }
+
+    const phaseNames = {
+        heating: 'Нагрев',
+        stabilization: 'Стабилизация',
+        heads: 'Отбор голов',
+        body: 'Отбор тела',
+        tails: 'Отбор хвостов',
+        purge: 'Очистка',
+        finish: 'Завершение'
+    };
+
+    phasesEl.innerHTML = '';
+
+    process.phases.forEach(phase => {
+        const phaseEl = document.createElement('div');
+        phaseEl.className = 'modal-phase-item';
+
+        const phaseName = phaseNames[phase.name] || phase.name;
+        const startDate = new Date(phase.startTime * 1000);
+        const endDate = new Date(phase.endTime * 1000);
+
+        phaseEl.innerHTML = `
+            <div class="modal-phase-name">${phaseName}</div>
+            <div class="modal-phase-details">
+                <div class="modal-phase-detail">Начало: <strong>${startDate.toLocaleTimeString('ru-RU')}</strong></div>
+                <div class="modal-phase-detail">Окончание: <strong>${endDate.toLocaleTimeString('ru-RU')}</strong></div>
+                <div class="modal-phase-detail">Длительность: <strong>${(phase.duration / 60).toFixed(0)} мин</strong></div>
+                <div class="modal-phase-detail">Объём: <strong>${phase.volume || 0} мл</strong></div>
+                <div class="modal-phase-detail">Средняя скорость: <strong>${phase.avgSpeed || 0} мл/ч</strong></div>
+            </div>
+        `;
+
+        phasesEl.appendChild(phaseEl);
+    });
+}
+
+// Закрытие модального окна при клике на overlay
+document.addEventListener('DOMContentLoaded', function() {
+    const modalOverlay = document.getElementById('history-modal');
+    if (modalOverlay) {
+        modalOverlay.addEventListener('click', function(e) {
+            if (e.target === modalOverlay) {
+                closeHistoryModal();
+            }
+        });
+    }
+});
+
+async function exportHistory(id, format = null) {
+    try {
+        // Если формат не указан, спросить у пользователя
+        if (!format) {
+            const choice = confirm('Выберите формат экспорта:\n\nОК - CSV (таблица)\nОтмена - JSON (данные)');
+            format = choice ? 'csv' : 'json';
+        }
+
+        addLog(`📥 Экспорт процесса ${id} в формате ${format.toUpperCase()}...`, 'info');
+
+        // Открыть экспорт в новой вкладке
+        window.open(`/api/history/${id}/export?format=${format}`, '_blank');
+
+        addLog(`✅ Экспорт процесса ${id} начат`, 'info');
+    } catch (error) {
+        console.error('Error exporting history:', error);
+        addLog('❌ Ошибка экспорта', 'error');
+    }
+}
+
+async function exportHistoryCSV(id) {
+    await exportHistory(id, 'csv');
+}
+
+async function exportHistoryJSON(id) {
+    await exportHistory(id, 'json');
+}
+
+// ============================================================================
+// Сравнение процессов
+// ============================================================================
+
+let compareTempChart = null;
+let comparePowerChart = null;
+
+async function compareSelected() {
+    if (selectedProcesses.size < 2) {
+        alert('Выберите минимум 2 процесса для сравнения');
+        return;
+    }
+
+    if (selectedProcesses.size > 5) {
+        alert('Можно сравнить максимум 5 процессов одновременно');
+        return;
+    }
+
+    try {
+        addLog(`📊 Загрузка ${selectedProcesses.size} процессов для сравнения...`, 'info');
+
+        // Загрузить все выбранные процессы
+        const processes = [];
+        for (const processId of selectedProcesses) {
+            const response = await fetch(`/api/history/${processId}`);
+            if (response.ok) {
+                const process = await response.json();
+                processes.push(process);
+            }
+        }
+
+        if (processes.length < 2) {
+            alert('Не удалось загрузить процессы для сравнения');
+            return;
+        }
+
+        showCompareModal(processes);
+        addLog(`✅ Сравнение ${processes.length} процессов`, 'info');
+    } catch (error) {
+        console.error('Error comparing processes:', error);
+        addLog('❌ Ошибка при сравнении процессов', 'error');
+        alert('Ошибка при сравнении процессов');
+    }
+}
+
+function showCompareModal(processes) {
+    // Заполнить список процессов
+    const processList = document.getElementById('compare-process-list');
+    processList.innerHTML = '';
+
+    const colors = ['#dc3545', '#007bff', '#28a745', '#ffc107', '#6f42c1'];
+
+    processes.forEach((process, index) => {
+        const typeNames = {
+            rectification: 'Ректификация',
+            distillation: 'Дистилляция',
+            mashing: 'Затирка',
+            hold: 'Выдержка'
+        };
+
+        const badge = document.createElement('div');
+        badge.style.cssText = `
+            padding: 10px 15px;
+            background: ${colors[index]};
+            color: white;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9em;
+        `;
+        badge.textContent = `${typeNames[process.process.type] || process.process.type} - ${new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU')}`;
+        processList.appendChild(badge);
+    });
+
+    // Построить графики сравнения
+    renderCompareTempChart(processes, colors);
+    renderComparePowerChart(processes, colors);
+    renderCompareTable(processes);
+
+    // Показать модальное окно
+    document.getElementById('compare-modal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeCompareModal() {
+    document.getElementById('compare-modal').classList.remove('active');
+    document.body.style.overflow = '';
+
+    // Уничтожить графики
+    if (compareTempChart) {
+        compareTempChart.destroy();
+        compareTempChart = null;
+    }
+    if (comparePowerChart) {
+        comparePowerChart.destroy();
+        comparePowerChart = null;
+    }
+}
+
+function renderCompareTempChart(processes, colors) {
+    const chartEl = document.getElementById('compare-temp-chart');
+    chartEl.innerHTML = '';
+
+    const series = [];
+
+    processes.forEach((process, index) => {
+        if (process.timeseries && process.timeseries.data && process.timeseries.data.length > 0) {
+            const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
+            series.push({
+                name: `Процесс ${index + 1} (${startDate})`,
+                data: process.timeseries.data.map(p => ({
+                    x: p.time * 1000,
+                    y: p.cube
+                }))
+            });
+        }
+    });
+
+    if (series.length === 0) {
+        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';
+        return;
+    }
+
+    const options = {
+        chart: {
+            type: 'line',
+            height: 400,
+            animations: {
+                enabled: false
+            },
+            toolbar: {
+                show: true
+            },
+            background: 'transparent'
+        },
+        theme: {
+            mode: document.body.getAttribute('data-theme') || 'light'
+        },
+        series: series,
+        xaxis: {
+            type: 'datetime',
+            labels: {
+                datetimeFormatter: {
+                    hour: 'HH:mm'
+                }
+            }
+        },
+        yaxis: {
+            title: {
+                text: 'Температура куба (°C)'
+            },
+            decimalsInFloat: 1
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        colors: colors,
+        legend: {
+            show: true,
+            position: 'top'
+        },
+        tooltip: {
+            x: {
+                format: 'dd MMM HH:mm'
+            }
+        }
+    };
+
+    compareTempChart = new ApexCharts(chartEl, options);
+    compareTempChart.render();
+}
+
+function renderComparePowerChart(processes, colors) {
+    const chartEl = document.getElementById('compare-power-chart');
+    chartEl.innerHTML = '';
+
+    const series = [];
+
+    processes.forEach((process, index) => {
+        if (process.timeseries && process.timeseries.data && process.timeseries.data.length > 0) {
+            const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
+            series.push({
+                name: `Процесс ${index + 1} (${startDate})`,
+                data: process.timeseries.data.map(p => ({
+                    x: p.time * 1000,
+                    y: p.power
+                }))
+            });
+        }
+    });
+
+    if (series.length === 0) {
+        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';
+        return;
+    }
+
+    const options = {
+        chart: {
+            type: 'line',
+            height: 300,
+            animations: {
+                enabled: false
+            },
+            toolbar: {
+                show: true
+            },
+            background: 'transparent'
+        },
+        theme: {
+            mode: document.body.getAttribute('data-theme') || 'light'
+        },
+        series: series,
+        xaxis: {
+            type: 'datetime',
+            labels: {
+                datetimeFormatter: {
+                    hour: 'HH:mm'
+                }
+            }
+        },
+        yaxis: {
+            title: {
+                text: 'Мощность (Вт)'
+            },
+            decimalsInFloat: 0
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        colors: colors,
+        legend: {
+            show: true,
+            position: 'top'
+        },
+        tooltip: {
+            x: {
+                format: 'dd MMM HH:mm'
+            }
+        }
+    };
+
+    comparePowerChart = new ApexCharts(chartEl, options);
+    comparePowerChart.render();
+}
+
+function renderCompareTable(processes) {
+    const tableEl = document.getElementById('compare-table');
+
+    let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';
+    html += '<thead><tr style="background: var(--bg-secondary);">';
+    html += '<th style="padding: 10px; border: 1px solid var(--border-color);">Параметр</th>';
+
+    processes.forEach((process, index) => {
+        const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
+        html += `<th style="padding: 10px; border: 1px solid var(--border-color);">Процесс ${index + 1}<br><span style="font-size: 0.8em; font-weight: normal;">${startDate}</span></th>`;
+    });
+
+    html += '</tr></thead><tbody>';
+
+    // Строки таблицы
+    const rows = [
+        { label: 'Длительность', getValue: (p) => (p.metadata.duration / 3600).toFixed(1) + ' ч' },
+        { label: 'Средняя мощность', getValue: (p) => (p.metrics?.power?.avgPower || 0) + ' Вт' },
+        { label: 'Потреблено энергии', getValue: (p) => (p.metrics?.power?.energyUsed || 0).toFixed(2) + ' кВт·ч' },
+        { label: 'Головы', getValue: (p) => (p.results?.headsCollected || 0) + ' мл' },
+        { label: 'Тело', getValue: (p) => (p.results?.bodyCollected || 0) + ' мл' },
+        { label: 'Хвосты', getValue: (p) => (p.results?.tailsCollected || 0) + ' мл' },
+        { label: 'Всего собрано', getValue: (p) => (p.results?.totalCollected || 0) + ' мл' },
+        { label: 'Статус', getValue: (p) => p.metadata.completedSuccessfully ? '✅ Успешно' : '⚠️ Прервано' }
+    ];
+
+    rows.forEach(row => {
+        html += '<tr>';
+        html += `<td style="padding: 10px; border: 1px solid var(--border-color); font-weight: 600;">${row.label}</td>`;
+        processes.forEach(process => {
+            html += `<td style="padding: 10px; border: 1px solid var(--border-color);">${row.getValue(process)}</td>`;
+        });
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    tableEl.innerHTML = html;
+}
+
+// ============================================================================
+// PROFILES - Управление профилями процессов
+// ============================================================================
+
+let currentProfileId = null; // ID профиля для просмотра/редактирования
+
+// Загрузка списка профилей
+function loadProfilesList() {
+    const listEl = document.getElementById('profiles-list');
+    if (!listEl) return;
+
+    listEl.innerHTML = '<p class="info-text">Загрузка профилей...</p>';
+
+    fetch('/api/profiles')
+        .then(response => response.json())
+        .then(data => {
+            if (data.profiles && data.profiles.length > 0) {
+                renderProfilesList(data.profiles);
+                updateProfilesStats(data.profiles);
+            } else {
+                listEl.innerHTML = '<p class="info-text">📁 Профили не найдены. Создайте первый профиль!</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки профилей:', error);
+            listEl.innerHTML = '<p class="error-text">❌ Ошибка загрузки профилей</p>';
+        });
+}
+
+// Отрисовка списка профилей
+function renderProfilesList(profiles) {
+    const listEl = document.getElementById('profiles-list');
+    const filter = document.getElementById('profile-filter-category').value;
+
+    // Применить фильтр
+    const filtered = filter === 'all'
+        ? profiles
+        : profiles.filter(p => p.category === filter);
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = '<p class="info-text">📁 Профили не найдены для выбранной категории</p>';
+        return;
+    }
+
+    let html = '';
+    filtered.forEach(profile => {
+        html += renderProfileItem(profile);
+    });
+
+    listEl.innerHTML = html;
+}
+
+// Отрисовка элемента профиля
+function renderProfileItem(profile) {
+    const categoryIcons = {
+        'rectification': '🌀',
+        'distillation': '🔥',
+        'mashing': '🌾'
+    };
+
+    const categoryNames = {
+        'rectification': 'Ректификация',
+        'distillation': 'Дистилляция',
+        'mashing': 'Затирка'
+    };
+
+    const icon = categoryIcons[profile.category] || '📁';
+    const catName = categoryNames[profile.category] || profile.category;
+    const builtinBadge = profile.isBuiltin ? '<span style="background: #2196F3; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Встроенный</span>' : '';
+
+    const lastUsed = profile.lastUsed > 0
+        ? new Date(profile.lastUsed * 1000).toLocaleDateString('ru-RU')
+        : 'Не использовался';
+
+    return `
+        <div class="profile-item" style="background: var(--bg-primary); padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--accent-color);">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 1.1em; margin-bottom: 5px;">
+                        ${icon} ${profile.name}${builtinBadge}
+                    </div>
+                    <div style="color: var(--text-secondary); font-size: 0.9em;">
+                        ${catName} • Использований: ${profile.useCount} • Последнее: ${lastUsed}
+                    </div>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn-icon" onclick="viewProfile('${profile.id}')" title="Просмотр">👁️</button>
+                    <button class="btn-icon btn-success" onclick="quickLoadProfile('${profile.id}')" title="Загрузить">📥</button>
+                    <button class="btn-icon" onclick="exportProfile('${profile.id}')" title="Экспорт">📤</button>
+                    ${!profile.isBuiltin ? `<button class="btn-icon btn-danger" onclick="deleteProfile('${profile.id}')" title="Удалить">🗑️</button>` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Обновление статистики профилей
+function updateProfilesStats(profiles) {
+    document.getElementById('prof-stat-total').textContent = profiles.length;
+
+    const builtin = profiles.filter(p => p.isBuiltin).length;
+    const user = profiles.length - builtin;
+
+    document.getElementById('prof-stat-builtin').textContent = builtin;
+    document.getElementById('prof-stat-user').textContent = user;
+
+    // Самый используемый
+    if (profiles.length > 0) {
+        const mostUsed = profiles.reduce((prev, current) =>
+            (prev.useCount > current.useCount) ? prev : current
+        );
+        document.getElementById('prof-stat-popular').textContent =
+            mostUsed.useCount > 0 ? mostUsed.name : '—';
+    } else {
+        document.getElementById('prof-stat-popular').textContent = '—';
+    }
+}
+
+// Показать модальное окно создания профиля
+function showCreateProfileModal() {
+    currentProfileId = null;
+    document.getElementById('profile-modal-title').textContent = 'Создание профиля';
+    document.getElementById('profile-name').value = '';
+    document.getElementById('profile-description').value = '';
+    document.getElementById('profile-category').value = 'rectification';
+    document.getElementById('profile-tags').value = '';
+    document.getElementById('profile-modal').style.display = 'flex';
+}
+
+// Закрыть модальное окно создания
+function closeProfileModal() {
+    document.getElementById('profile-modal').style.display = 'none';
+}
+
+// Сохранить профиль
+function saveProfile() {
+    const name = document.getElementById('profile-name').value.trim();
+    const description = document.getElementById('profile-description').value.trim();
+    const category = document.getElementById('profile-category').value;
+    const tagsStr = document.getElementById('profile-tags').value.trim();
+    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    if (!name) {
+        alert('Пожалуйста, введите название профиля');
+        return;
+    }
+
+    // TODO: Получить текущие параметры из формы управления
+    // Пока используем значения по умолчанию
+    const profile = {
+        metadata: {
+            name: name,
+            description: description,
+            category: category,
+            tags: tags,
+            author: 'user'
+        },
+        parameters: {
+            mode: category,
+            model: 'classic',
+            heater: {
+                maxPower: 3000,
+                autoMode: true,
+                pidKp: 2.0,
+                pidKi: 0.5,
+                pidKd: 1.0
+            },
+            rectification: {
+                stabilizationMin: 20,
+                headsVolume: 50,
+                bodyVolume: 2000,
+                tailsVolume: 100,
+                headsSpeed: 150,
+                bodySpeed: 300,
+                tailsSpeed: 400,
+                purgeMin: 5
+            },
+            distillation: {
+                headsVolume: 0,
+                targetVolume: 3000,
+                speed: 500,
+                endTemp: 96.0
+            },
+            temperatures: {
+                maxCube: 98.0,
+                maxColumn: 82.0,
+                headsEnd: 78.5,
+                bodyStart: 78.0,
+                bodyEnd: 85.0
+            },
+            safety: {
+                maxRuntime: 720,
+                waterFlowMin: 2.0,
+                pressureMax: 150
+            }
+        }
+    };
+
+    fetch('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeProfileModal();
+            loadProfilesList();
+            alert('✅ Профиль успешно создан!');
+        } else {
+            alert('❌ Ошибка создания профиля: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка сохранения профиля:', error);
+        alert('❌ Ошибка сохранения профиля');
+    });
+}
+
+// Просмотр профиля
+function viewProfile(id) {
+    fetch(`/api/profiles/${id}`)
+        .then(response => response.json())
+        .then(profile => {
+            showProfileViewModal(profile);
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки профиля:', error);
+            alert('❌ Ошибка загрузки профиля');
+        });
+}
+
+// Показать модальное окно просмотра профиля
+function showProfileViewModal(profile) {
+    currentProfileId = profile.id;
+    document.getElementById('profile-view-title').textContent = profile.metadata.name;
+
+    const body = document.getElementById('profile-view-body');
+    const catNames = {
+        'rectification': 'Ректификация',
+        'distillation': 'Дистилляция',
+        'mashing': 'Затирка'
+    };
+
+    let html = `
+        <div class="modal-section">
+            <div class="modal-section-title">📋 Метаданные</div>
+            <div class="modal-info-grid">
+                <div><strong>Название:</strong> ${profile.metadata.name}</div>
+                <div><strong>Категория:</strong> ${catNames[profile.metadata.category] || profile.metadata.category}</div>
+                <div><strong>Описание:</strong> ${profile.metadata.description || '—'}</div>
+                <div><strong>Автор:</strong> ${profile.metadata.author}</div>
+                <div><strong>Теги:</strong> ${profile.metadata.tags.join(', ') || '—'}</div>
+                <div><strong>Встроенный:</strong> ${profile.metadata.isBuiltin ? 'Да' : 'Нет'}</div>
+            </div>
+        </div>
+
+        <div class="modal-section">
+            <div class="modal-section-title">⚙️ Параметры ректификации</div>
+            <div class="modal-info-grid">
+                <div><strong>Стабилизация:</strong> ${profile.parameters.rectification.stabilizationMin} мин</div>
+                <div><strong>Объём голов:</strong> ${profile.parameters.rectification.headsVolume} мл</div>
+                <div><strong>Объём тела:</strong> ${profile.parameters.rectification.bodyVolume} мл</div>
+                <div><strong>Объём хвостов:</strong> ${profile.parameters.rectification.tailsVolume} мл</div>
+                <div><strong>Скорость голов:</strong> ${profile.parameters.rectification.headsSpeed} мл/ч/кВт</div>
+                <div><strong>Скорость тела:</strong> ${profile.parameters.rectification.bodySpeed} мл/ч/кВт</div>
+            </div>
+        </div>
+
+        <div class="modal-section">
+            <div class="modal-section-title">🌡️ Температурные пороги</div>
+            <div class="modal-info-grid">
+                <div><strong>Макс. куб:</strong> ${profile.parameters.temperatures.maxCube}°C</div>
+                <div><strong>Макс. колонна:</strong> ${profile.parameters.temperatures.maxColumn}°C</div>
+                <div><strong>Окончание голов:</strong> ${profile.parameters.temperatures.headsEnd}°C</div>
+                <div><strong>Начало тела:</strong> ${profile.parameters.temperatures.bodyStart}°C</div>
+                <div><strong>Окончание тела:</strong> ${profile.parameters.temperatures.bodyEnd}°C</div>
+            </div>
+        </div>
+
+        <div class="modal-section">
+            <div class="modal-section-title">📊 Статистика использования</div>
+            <div class="modal-info-grid">
+                <div><strong>Использований:</strong> ${profile.statistics.useCount}</div>
+                <div><strong>Средняя длительность:</strong> ${Math.round(profile.statistics.avgDuration / 60)} мин</div>
+                <div><strong>Средний выход:</strong> ${profile.statistics.avgYield} мл</div>
+                <div><strong>Успешность:</strong> ${profile.statistics.successRate.toFixed(1)}%</div>
+            </div>
+        </div>
+    `;
+
+    body.innerHTML = html;
+    document.getElementById('profile-view-modal').style.display = 'flex';
+}
+
+// Закрыть модальное окно просмотра
+function closeProfileViewModal() {
+    document.getElementById('profile-view-modal').style.display = 'none';
+    currentProfileId = null;
+}
+
+// Быстрая загрузка профиля
+function quickLoadProfile(id) {
+    if (!confirm('Загрузить этот профиль в текущие настройки?')) return;
+
+    fetch(`/api/profiles/${id}/load`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
+        } else {
+            alert('❌ Ошибка загрузки профиля: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка загрузки профиля:', error);
+        alert('❌ Ошибка загрузки профиля');
+    });
+}
+
+// Загрузка профиля в настройки (из модального окна)
+function loadProfileToSettings() {
+    if (!currentProfileId) return;
+    closeProfileViewModal();
+    quickLoadProfile(currentProfileId);
+}
+
+// Удаление профиля
+function deleteProfile(id) {
+    if (!confirm('Удалить этот профиль? Действие нельзя отменить.')) return;
+
+    fetch(`/api/profiles/${id}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadProfilesList();
+            alert('✅ Профиль удалён');
+        } else {
+            alert('❌ ' + (data.error || 'Ошибка удаления профиля'));
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка удаления профиля:', error);
+        alert('❌ Ошибка удаления профиля');
+    });
+}
+
+// Очистка пользовательских профилей
+function clearUserProfiles() {
+    if (!confirm('Удалить ВСЕ пользовательские профили? Встроенные рецепты останутся. Действие нельзя отменить!')) return;
+
+    fetch('/api/profiles', {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadProfilesList();
+            alert('✅ Все пользовательские профили удалены');
+        } else {
+            alert('❌ Ошибка очистки профилей');
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка очистки профилей:', error);
+        alert('❌ Ошибка очистки профилей');
+    });
+}
+
+// Экспорт одного профиля
+function exportProfile(id) {
+    fetch(`/api/profiles/${id}/export`)
+        .then(response => response.json())
+        .then(data => {
+            // Создаем blob и скачиваем
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `profile_${data.metadata.name.replace(/\s+/g, '_')}_${id}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        })
+        .catch(error => {
+            console.error('Ошибка экспорта профиля:', error);
+            alert('❌ Ошибка экспорта профиля');
+        });
+}
+
+// Экспорт всех профилей
+function exportAllProfiles() {
+    const includeBuiltin = confirm('Включить встроенные рецепты в экспорт?');
+
+    fetch(`/api/profiles/export${includeBuiltin ? '?includeBuiltin=true' : ''}`)
+        .then(response => response.json())
+        .then(data => {
+            if (!data || data.length === 0) {
+                alert('Нет профилей для экспорта');
+                return;
+            }
+
+            // Создаем blob и скачиваем
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const timestamp = new Date().toISOString().split('T')[0];
+            a.download = `profiles_export_${timestamp}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            alert(`✅ Экспортировано профилей: ${data.length}`);
+        })
+        .catch(error => {
+            console.error('Ошибка экспорта профилей:', error);
+            alert('❌ Ошибка экспорта профилей');
+        });
+}
+
+// Показать модальное окно импорта
+let importFileData = null;
+
+function showImportModal() {
+    importFileData = null;
+    document.getElementById('import-file-input').value = '';
+    document.getElementById('import-preview').style.display = 'none';
+    document.getElementById('import-btn').disabled = true;
+    document.getElementById('profile-import-modal').style.display = 'flex';
+
+    // Добавляем обработчик выбора файла
+    document.getElementById('import-file-input').onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            try {
+                importFileData = JSON.parse(event.target.result);
+
+                // Показываем предпросмотр
+                let previewText = '';
+                if (Array.isArray(importFileData)) {
+                    previewText = `Массив из ${importFileData.length} профилей`;
+                } else if (importFileData.metadata) {
+                    previewText = `Профиль: ${importFileData.metadata.name}`;
+                } else {
+                    throw new Error('Неверный формат JSON');
+                }
+
+                document.getElementById('import-preview-text').textContent = previewText;
+                document.getElementById('import-preview').style.display = 'block';
+                document.getElementById('import-btn').disabled = false;
+            } catch (error) {
+                alert('❌ Ошибка чтения файла: неверный формат JSON');
+                importFileData = null;
+                document.getElementById('import-btn').disabled = true;
+            }
+        };
+        reader.readAsText(file);
+    };
+}
+
+// Закрыть модальное окно импорта
+function closeImportModal() {
+    document.getElementById('profile-import-modal').style.display = 'none';
+    importFileData = null;
+}
+
+// Выполнить импорт профилей
+function doImportProfiles() {
+    if (!importFileData) {
+        alert('Выберите файл для импорта');
+        return;
+    }
+
+    fetch('/api/profiles/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(importFileData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeImportModal();
+            loadProfilesList();
+            alert(`✅ Импортировано профилей: ${data.imported}`);
+        } else {
+            alert('❌ Ошибка импорта: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка импорта профилей:', error);
+        alert('❌ Ошибка импорта профилей');
+    });
+}
+
+// ============================================================================
+
+// Закрытие модального окна сравнения при клике на overlay
+document.addEventListener('DOMContentLoaded', function() {
+    const compareOverlay = document.getElementById('compare-modal');
+    if (compareOverlay) {
+        compareOverlay.addEventListener('click', function(e) {
+            if (e.target === compareOverlay) {
+                closeCompareModal();
+            }
+        });
+    }
+});

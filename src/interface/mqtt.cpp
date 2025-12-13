@@ -225,7 +225,25 @@ void publishDiscovery() {
         mqttClient.publish(topic.c_str(), payload.c_str(), true);
     }
 
-    LOG_I("MQTT: Discovery published");
+    // 5. Последнее уведомление (как sensor для автоматизаций)
+    {
+        String notifTopic = baseTopic + "/" + deviceId + "/notification";
+        String topic = "homeassistant/sensor/" + deviceId + "_notification/config";
+        String payload = String("{") +
+            "\"name\":\"Last Notification\"," +
+            "\"uniq_id\":\"" + deviceId + "_notification\"," +
+            "\"stat_t\":\"" + notifTopic + "\"," +
+            "\"val_tpl\":\"{{ value_json.title }}\"," +
+            "\"json_attr_t\":\"" + notifTopic + "\"," +
+            "\"json_attr_tpl\":\"{{ value_json | tojson }}\"," +
+            "\"icon\":\"mdi:bell-alert\"," +
+            "\"avty_t\":\"" + availTopic + "\"," +
+            "\"dev\":" + deviceInfo +
+            "}";
+        mqttClient.publish(topic.c_str(), payload.c_str(), true);
+    }
+
+    LOG_I("MQTT: Discovery published (5 entities)");
 }
 
 bool isConnected() {
@@ -234,6 +252,52 @@ bool isConnected() {
 
 void setBaseTopic(const char* topic) {
     baseTopic = String(topic);
+}
+
+void publishNotification(const char* title, const char* message, const char* level) {
+    if (!mqttClient.connected()) {
+        LOG_W("MQTT: Cannot send notification - not connected");
+        return;
+    }
+
+    // Публикация в топик уведомлений для sensor
+    String notifTopic = baseTopic + "/" + deviceId + "/notification";
+    StaticJsonDocument<512> doc;
+
+    doc["title"] = title;
+    doc["message"] = message;
+    doc["level"] = level;
+    doc["timestamp"] = millis() / 1000;  // Время в секундах
+
+    String json;
+    serializeJson(doc, json);
+    mqttClient.publish(notifTopic.c_str(), json.c_str(), false);
+
+    // Публикация в топик для Home Assistant notify service
+    // Формат для MQTT notify: {"title": "...", "message": "..."}
+    String notifyTopic = baseTopic + "/" + deviceId + "/notify";
+    StaticJsonDocument<384> notifyDoc;
+
+    // Добавляем эмодзи в зависимости от уровня
+    String titleWithIcon = String(title);
+    if (strcmp(level, "error") == 0) {
+        titleWithIcon = "❌ " + titleWithIcon;
+    } else if (strcmp(level, "warning") == 0) {
+        titleWithIcon = "⚠️ " + titleWithIcon;
+    } else if (strcmp(level, "success") == 0) {
+        titleWithIcon = "✅ " + titleWithIcon;
+    } else {
+        titleWithIcon = "ℹ️ " + titleWithIcon;
+    }
+
+    notifyDoc["title"] = titleWithIcon;
+    notifyDoc["message"] = message;
+
+    String notifyJson;
+    serializeJson(notifyDoc, notifyJson);
+    mqttClient.publish(notifyTopic.c_str(), notifyJson.c_str(), false);
+
+    LOG_I("MQTT: Notification sent - %s: %s", title, message);
 }
 
 } // namespace MQTT

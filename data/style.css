@@ -318,6 +318,19 @@ header h1 {
     border-color: var(--accent);
 }
 
+.info-display {
+    padding: 10px;
+    background: var(--bg-primary);
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 1em;
+    font-weight: 600;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+
 /* Log Container */
 .log-container {
     background: var(--bg-primary);
@@ -412,4 +425,315 @@ footer {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-secondary);
+}
+
+/* History List */
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.history-item {
+    background: var(--bg-card);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 15px;
+    transition: all 0.3s;
+}
+
+.history-item:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 8px var(--shadow);
+}
+
+.history-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.history-item-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.history-item-type {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.history-type-rectification {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.history-type-distillation {
+    background: #fce4ec;
+    color: #c2185b;
+}
+
+.history-type-mashing {
+    background: #fff3e0;
+    color: #f57c00;
+}
+
+[data-theme="dark"] .history-type-rectification {
+    background: #1a237e;
+    color: #90caf9;
+}
+
+[data-theme="dark"] .history-type-distillation {
+    background: #4a148c;
+    color: #f48fb1;
+}
+
+[data-theme="dark"] .history-type-mashing {
+    background: #e65100;
+    color: #ffcc80;
+}
+
+.history-item-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 0.9em;
+}
+
+.history-info-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.history-info-label {
+    color: var(--text-secondary);
+    font-size: 0.85em;
+}
+
+.history-info-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.history-item-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.history-status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.history-status-completed {
+    background: #4caf50;
+    color: white;
+}
+
+.history-status-stopped {
+    background: #ff9800;
+    color: white;
+}
+
+.history-status-error {
+    background: #f44336;
+    color: white;
+}
+
+/* ============================================================================
+   Модальное окно
+   ============================================================================ */
+
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 1000;
+    overflow-y: auto;
+}
+
+.modal-overlay.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.modal-content {
+    background: var(--bg-card);
+    border-radius: 12px;
+    max-width: 1200px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    position: relative;
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 2px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
+    z-index: 10;
+}
+
+.modal-title {
+    font-size: 1.5em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    font-size: 2em;
+    color: var(--text-secondary);
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.3s;
+}
+
+.modal-close:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-section {
+    margin-bottom: 30px;
+}
+
+.modal-section-title {
+    font-size: 1.2em;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.modal-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.modal-info-item {
+    background: var(--bg-secondary);
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.modal-info-label {
+    font-size: 0.9em;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+}
+
+.modal-info-value {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-chart {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border-color);
+}
+
+.modal-phases {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.modal-phase-item {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 15px;
+    border-left: 4px solid var(--accent);
+}
+
+.modal-phase-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.modal-phase-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    font-size: 0.9em;
+}
+
+.modal-phase-detail {
+    color: var(--text-secondary);
+}
+
+.modal-phase-detail strong {
+    color: var(--text-primary);
+}
+
+/* Темная тема для модального окна */
+[data-theme="dark"] .modal-overlay {
+    background: rgba(0, 0, 0, 0.85);
+}
+
+[data-theme="dark"] .modal-content {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Адаптивность модального окна */
+@media (max-width: 768px) {
+    .modal-content {
+        max-height: 95vh;
+    }
+
+    .modal-header {
+        padding: 15px;
+    }
+
+    .modal-body {
+        padding: 15px;
+    }
+
+    .modal-title {
+        font-size: 1.2em;
+    }
+
+    .modal-info-grid {
+        grid-template-columns: 1fr;
+    }
 }

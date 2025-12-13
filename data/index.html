@@ -27,6 +27,8 @@
             <button class="tab" data-tab="control">🎛️ Управление</button>
             <button class="tab" data-tab="settings">⚙️ Настройки</button>
             <button class="tab" data-tab="logs">📝 Логи</button>
+            <button class="tab" data-tab="history">📚 История</button>
+            <button class="tab" data-tab="profiles">📁 Профили</button>
             <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
             <a href="calibration.html" class="tab" style="text-decoration: none;">🔧 Калибровка</a>
         </nav>
@@ -308,6 +310,20 @@
 
                 <div class="card">
                     <h2>Оборудование</h2>
+
+                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">💧 Насос (справка)</h3>
+                    <div class="form-group">
+                        <label>мл на оборот</label>
+                        <div class="info-display" id="pump-ml-per-rev">Загрузка...</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Шагов за полный оборот</label>
+                        <div class="info-display" id="pump-steps-per-rev">Загрузка...</div>
+                    </div>
+
+                    <hr style="margin: 20px 0; border-color: var(--border);">
+
+                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">⚙️ Параметры оборудования</h3>
                     <div class="form-group">
                         <label>Мощность ТЭНа (Вт)</label>
                         <input type="number" id="heater-power-w" value="3000" min="1000" max="10000">
@@ -351,9 +367,117 @@
             </div>
         </div>
 
+        <!-- Вкладка: История -->
+        <div id="history" class="tab-content">
+            <div class="card">
+                <h2>📚 История процессов</h2>
+
+                <!-- Фильтры и поиск -->
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <select id="history-filter-type" onchange="loadHistoryList()">
+                        <option value="all">Все типы</option>
+                        <option value="rectification">Ректификация</option>
+                        <option value="distillation">Дистилляция</option>
+                        <option value="mashing">Затирка</option>
+                    </select>
+                    <select id="history-filter-status" onchange="loadHistoryList()">
+                        <option value="all">Все статусы</option>
+                        <option value="completed">Завершено</option>
+                        <option value="stopped">Остановлено</option>
+                        <option value="error">Ошибка</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadHistoryList()">🔄 Обновить</button>
+                    <button id="compare-processes-btn" class="btn btn-primary" onclick="compareSelected()" disabled>📊 Сравнить выбранные (0)</button>
+                    <button class="btn" onclick="clearHistory()">🗑️ Очистить историю</button>
+                </div>
+
+                <!-- Список процессов -->
+                <div id="history-list" class="history-list">
+                    <p class="info-text">Загрузка истории процессов...</p>
+                </div>
+
+                <!-- Статистика -->
+                <div style="margin-top: 20px; padding: 15px; background: var(--bg-primary); border-radius: 6px;">
+                    <h3 style="margin-top: 0;">📊 Статистика</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Всего процессов</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="hist-stat-total">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Успешно завершено</div>
+                            <div style="font-size: 1.5em; font-weight: 600; color: #4CAF50;" id="hist-stat-completed">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Общее время</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="hist-stat-time">0 ч</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Энергия</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="hist-stat-energy">0 кВт·ч</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Профили -->
+        <div id="profiles" class="tab-content">
+            <div class="card">
+                <h2>📁 Профили процессов</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                    Сохраняйте настройки процессов под именем для повторного использования.
+                    Встроенные рецепты помогут начать работу с готовыми параметрами.
+                </p>
+
+                <!-- Действия -->
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <select id="profile-filter-category" onchange="loadProfilesList()">
+                        <option value="all">Все категории</option>
+                        <option value="rectification">Ректификация</option>
+                        <option value="distillation">Дистилляция</option>
+                        <option value="mashing">Затирка</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadProfilesList()">🔄 Обновить</button>
+                    <button class="btn btn-success" onclick="showCreateProfileModal()">➕ Создать профиль</button>
+                    <button class="btn" onclick="exportAllProfiles()">📤 Экспорт всех</button>
+                    <button class="btn" onclick="showImportModal()">📥 Импорт</button>
+                    <button class="btn" onclick="clearUserProfiles()">🗑️ Очистить пользовательские</button>
+                </div>
+
+                <!-- Список профилей -->
+                <div id="profiles-list" class="profiles-list">
+                    <p class="info-text">Загрузка профилей...</p>
+                </div>
+
+                <!-- Статистика -->
+                <div style="margin-top: 20px; padding: 15px; background: var(--bg-primary); border-radius: 6px;">
+                    <h3 style="margin-top: 0;">📊 Статистика</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Всего профилей</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="prof-stat-total">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Встроенных рецептов</div>
+                            <div style="font-size: 1.5em; font-weight: 600; color: #2196F3;" id="prof-stat-builtin">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Пользовательских</div>
+                            <div style="font-size: 1.5em; font-weight: 600; color: #4CAF50;" id="prof-stat-user">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Самый используемый</div>
+                            <div style="font-size: 1.1em; font-weight: 600;" id="prof-stat-popular">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Футер -->
         <footer>
-            <p>Smart-Column S3 v1.1.0 | ESP32-S3 DevKitC-1 N16R8</p>
+            <p>Smart-Column S3 v1.4.2 | ESP32-S3 DevKitC-1 N16R8</p>
             <div id="memory-stats" style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
                 <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
                     <span>💾 SRAM: <span id="mem-heap-used">--</span> / <span id="mem-heap-total">--</span> (<span id="mem-heap-pct">--%</span>)</span>
@@ -362,6 +486,210 @@
                 </div>
             </div>
         </footer>
+    </div>
+
+    <!-- Модальное окно для детального просмотра процесса -->
+    <div id="history-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="modal-title">Детали процесса</div>
+                <button class="modal-close" onclick="closeHistoryModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Основная информация -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📋 Основная информация</div>
+                    <div class="modal-info-grid" id="modal-info-grid">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Графики температур -->
+                <div class="modal-section">
+                    <div class="modal-section-title">🌡️ Температуры</div>
+                    <div class="modal-chart">
+                        <div id="modal-temp-chart"></div>
+                    </div>
+                </div>
+
+                <!-- График мощности -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⚡ Мощность</div>
+                    <div class="modal-chart">
+                        <div id="modal-power-chart"></div>
+                    </div>
+                </div>
+
+                <!-- Фазы процесса -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⏱️ Фазы процесса</div>
+                    <div class="modal-phases" id="modal-phases">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Результаты -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📊 Результаты</div>
+                    <div class="modal-info-grid" id="modal-results-grid">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Действия с процессом -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📥 Экспорт данных</div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn-primary" id="modal-export-csv" style="flex: 1; min-width: 150px;">
+                            📊 Экспорт в CSV
+                        </button>
+                        <button class="btn-primary" id="modal-export-json" style="flex: 1; min-width: 150px;">
+                            📄 Экспорт в JSON
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для сравнения процессов -->
+    <div id="compare-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 1400px;">
+            <div class="modal-header">
+                <div class="modal-title" id="compare-modal-title">Сравнение процессов</div>
+                <button class="modal-close" onclick="closeCompareModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Список сравниваемых процессов -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📋 Сравниваемые процессы</div>
+                    <div id="compare-process-list" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- График сравнения температур -->
+                <div class="modal-section">
+                    <div class="modal-section-title">🌡️ Сравнение температур (куб)</div>
+                    <div class="modal-chart">
+                        <div id="compare-temp-chart"></div>
+                    </div>
+                </div>
+
+                <!-- График сравнения мощности -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⚡ Сравнение мощности</div>
+                    <div class="modal-chart">
+                        <div id="compare-power-chart"></div>
+                    </div>
+                </div>
+
+                <!-- Сравнительная таблица -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📊 Сравнительная таблица</div>
+                    <div id="compare-table" style="overflow-x: auto;">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для создания/редактирования профиля -->
+    <div id="profile-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <div class="modal-title" id="profile-modal-title">Создание профиля</div>
+                <button class="modal-close" onclick="closeProfileModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Метаданные -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📝 Основная информация</div>
+                    <div style="display: flex; flex-direction: column; gap: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Название профиля *</label>
+                            <input type="text" id="profile-name" placeholder="Например: Сахарная брага 40%" maxlength="50"
+                                   style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Описание</label>
+                            <textarea id="profile-description" placeholder="Краткое описание профиля..." maxlength="200" rows="3"
+                                      style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); resize: vertical;"></textarea>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Категория *</label>
+                            <select id="profile-category" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+                                <option value="rectification">Ректификация</option>
+                                <option value="distillation">Дистилляция</option>
+                                <option value="mashing">Затирка солода</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Теги (через запятую)</label>
+                            <input type="text" id="profile-tags" placeholder="сахар, классика, 40%"
+                                   style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Параметры процесса -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⚙️ Параметры</div>
+                    <p style="color: var(--text-secondary); font-size: 0.9em; margin-top: -10px; margin-bottom: 15px;">
+                        Профиль сохранит текущие настройки процесса из вкладки "Управление"
+                    </p>
+                    <div style="background: var(--bg-primary); padding: 10px; border-radius: 4px; font-size: 0.9em;">
+                        ℹ️ Будут сохранены: мощность нагревателя, объемы фракций, скорости отбора, температурные пороги, настройки безопасности
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeProfileModal()">Отмена</button>
+                <button class="btn btn-success" onclick="saveProfile()">💾 Сохранить профиль</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для просмотра профиля -->
+    <div id="profile-view-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <div class="modal-title" id="profile-view-title">Детали профиля</div>
+                <button class="modal-close" onclick="closeProfileViewModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="profile-view-body">
+                <!-- Будет заполнено JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeProfileViewModal()">Закрыть</button>
+                <button class="btn btn-primary" onclick="loadProfileToSettings()">📥 Загрузить в настройки</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для импорта профилей -->
+    <div id="profile-import-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <div class="modal-title">📥 Импорт профилей</div>
+                <button class="modal-close" onclick="closeImportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                    Загрузите JSON файл с профилями для импорта. Можно импортировать как один профиль, так и несколько сразу.
+                </p>
+                <input type="file" id="import-file-input" accept=".json" style="width: 100%; padding: 10px; border: 2px dashed var(--border-color); border-radius: 4px; cursor: pointer;">
+                <div id="import-preview" style="margin-top: 15px; padding: 10px; background: var(--bg-primary); border-radius: 4px; display: none;">
+                    <div style="font-weight: 500; margin-bottom: 5px;">Предпросмотр:</div>
+                    <div id="import-preview-text" style="color: var(--text-secondary); font-size: 0.9em;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeImportModal()">Отмена</button>
+                <button class="btn btn-success" onclick="doImportProfiles()" id="import-btn" disabled>📥 Импортировать</button>
+            </div>
+        </div>
     </div>
 
     <script src="column-animation.js"></script>
