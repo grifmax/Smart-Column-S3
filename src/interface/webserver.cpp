@@ -475,10 +475,16 @@ void init() {
     // POST /api/wifi/connect - подключение к сети
     server.on("/api/wifi/connect", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
         [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            // Обрабатываем только когда получены все данные
+            if (index + len != total) {
+                return; // Ждем остальные chunks
+            }
+
             StaticJsonDocument<256> doc;
             DeserializationError error = deserializeJson(doc, data, len);
 
             if (error) {
+                LOG_E("WiFi: JSON parse error: %s", error.c_str());
                 request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
                 return;
             }
@@ -491,22 +497,33 @@ void init() {
                 return;
             }
 
+            LOG_I("WiFi: Connect request for SSID: %s", ssid);
+
             // Сохранить в настройки
             strncpy(g_settings.wifi.ssid, ssid, sizeof(g_settings.wifi.ssid) - 1);
+            g_settings.wifi.ssid[sizeof(g_settings.wifi.ssid) - 1] = '\0';
+
             strncpy(g_settings.wifi.password, password ? password : "", sizeof(g_settings.wifi.password) - 1);
+            g_settings.wifi.password[sizeof(g_settings.wifi.password) - 1] = '\0';
+
             g_settings.wifi.apMode = false;
 
             // Сохранить в NVS
             if (NVSManager::saveSettings(g_settings)) {
                 LOG_I("WiFi: Settings saved, connecting to %s", ssid);
 
-                // Попытка подключения
+                // Отправить ответ перед переподключением
+                request->send(200, "application/json", "{\"status\":\"connecting\",\"message\":\"Connecting to WiFi, please wait...\"}");
+
+                // Попытка подключения через небольшую задержку
+                // чтобы ответ успел уйти клиенту
+                delay(100);
+
                 WiFi.disconnect();
                 WiFi.mode(WIFI_STA);
                 WiFi.begin(g_settings.wifi.ssid, g_settings.wifi.password);
-
-                request->send(200, "application/json", "{\"status\":\"connecting\",\"message\":\"Connecting to WiFi, please wait...\"}");
             } else {
+                LOG_E("WiFi: Failed to save settings to NVS");
                 request->send(500, "application/json", "{\"error\":\"Failed to save settings\"}");
             }
         }
