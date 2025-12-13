@@ -172,10 +172,9 @@ void setup() {
     LOG_I("=================================");
     
     // Звуковой сигнал готовности
-    // TODO: Fix buzzer - может конфликтовать с watchdog
-    // if (g_settings.soundEnabled) {
-    //     Buzzer::beep(2, BUZZER_DURATION_SHORT);
-    // }
+    if (g_settings.soundEnabled) {
+        Buzzer::beep(2, BUZZER_DURATION_SHORT);
+    }
 }
 
 // =============================================================================
