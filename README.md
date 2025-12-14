@@ -5,7 +5,7 @@
 [![Platform](https://img.shields.io/badge/platform-ESP32-blue.svg)](https://www.espressif.com/en/products/socs/esp32)
 [![Framework](https://img.shields.io/badge/framework-Arduino-00979D.svg)](https://www.arduino.cc/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.2-orange.svg)](https://github.com/grifmax/rectification-controller)
+[![Version](https://img.shields.io/badge/version-1.4.1-orange.svg)](https://github.com/grifmax/rectification-controller)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/API.md#mqtt-integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
 
@@ -13,7 +13,7 @@
 
 Полнофункциональная система автоматического управления процессами ректификации и дистилляции с веб-интерфейсом, множественными датчиками температуры, автоматическим управлением мощностью и развитой системой безопасности.
 
-### 🆕 Что нового в v1.2
+### 🆕 Что нового в v1.4.1
 
 - 🏠 **Home Assistant Integration** - автоматическое обнаружение через MQTT Discovery
 - 📡 **MQTT Client** - публикация состояния и метрик в реальном времени
@@ -236,7 +236,7 @@ help        # Справка
   - Интеграция с Energy Dashboard
   - Troubleshooting
 
-- **[Technical Specification](SPEC.md)** - Техническая спецификация v1.2
+- **[Technical Specification](SPEC.md)** - Техническая спецификация v1.4.1
   - Архитектура системы
   - Описание режимов работы
   - BOM (Bill of Materials)

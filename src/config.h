@@ -1,10 +1,10 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef SRC_CONFIG_H
+#define SRC_CONFIG_H
 
 #include <Arduino.h>
 
 // Версия прошивки
-#define FIRMWARE_VERSION "1.1.0"
+#define FIRMWARE_VERSION "1.4.1"
 
 // Включение функций
 #define DISPLAY_ENABLED          // Включить поддержку дисплея
@@ -53,6 +53,23 @@
 #define POWER_CONTROL_INTERVAL 1000    // Интервал обновления регулировки мощности (мс)
 #define SSR_PWM_FREQUENCY 5            // Частота ШИМ для симисторного регулятора (Гц)
 #define SSR_CONTROL_INTERVAL 200       // Интервал обновления ШИМ (мс)
+
+// Макросы логирования (если не определены)
+#ifndef LOG_E
+#define LOG_E(format, ...) Serial.printf("[ERROR] " format "\n", ##__VA_ARGS__)
+#endif
+#ifndef LOG_W
+#define LOG_W(format, ...) Serial.printf("[WARN] " format "\n", ##__VA_ARGS__)
+#endif
+#ifndef LOG_I
+#define LOG_I(format, ...) Serial.printf("[INFO] " format "\n", ##__VA_ARGS__)
+#endif
+#ifndef LOG_D
+#define LOG_D(format, ...) Serial.printf("[DEBUG] " format "\n", ##__VA_ARGS__)
+#endif
+#ifndef LOG_WARN
+#define LOG_WARN LOG_W
+#endif
 
 // Режимы работы системы
 enum OperationMode {
@@ -208,31 +225,31 @@ struct SystemSettings {
 struct RectificationParams {
     // Общие параметры
     RectificationModel model;        // Выбранная модель ректификации
-    
+
     // Температурные параметры
     float maxCubeTemp;              // Максимальная температура в кубе (°C)
     float headsTemp;                // Температура отбора голов (°C)
     float bodyTemp;                 // Температура начала отбора тела (°C)
     float tailsTemp;                // Температура начала отбора хвостов (°C)
     float endTemp;                  // Температура завершения процесса (°C)
-    
+
     // Параметры мощности
     int heatingPowerWatts;          // Мощность нагрева (Вт)
     int stabilizationPowerWatts;    // Мощность на стабилизации (Вт)
     int bodyPowerWatts;             // Мощность на отборе тела (Вт)
     int tailsPowerWatts;            // Мощность на отборе хвостов (Вт)
-    
+
     // Проценты мощности (для обратной совместимости)
     int heatingPower;               // Мощность нагрева (0-100%)
     int stabilizationPower;         // Мощность на стабилизации (0-100%)
     int bodyPower;                  // Мощность на отборе тела (0-100%)
     int tailsPower;                 // Мощность на отборе хвостов (0-100%)
-    
+
     // Параметры классической модели
     int stabilizationTime;          // Время стабилизации колонны (минуты)
     float headsVolume;              // Расчетный объем голов (мл)
     float bodyVolume;               // Расчетный объем тела (мл)
-    
+
     // Параметры альтернативной модели
     int headsTargetTimeMinutes;     // Целевое время отбора голов (минуты)
     int postHeadsStabilizationTime; // Время стабилизации после голов (минуты)
@@ -241,7 +258,7 @@ struct RectificationParams {
     float tailsCubeTemp;            // Температура куба для окончания отбора хвостов (°C)
     float tailsFlowRateMlPerHour;   // Скорость отбора хвостов (мл/час)
     bool useSameFlowRateForTails;   // Использовать ту же скорость отбора для хвостов
-    
+
     // Настройки орошения
     float refluxRatio;              // Соотношение орошения для тела (например, 5/1)
     int refluxPeriod;               // Период цикла орошения (секунды)
@@ -255,11 +272,11 @@ struct DistillationParams {
     int heatingPowerWatts;          // Мощность нагрева (Вт)
     int distillationPowerWatts;     // Мощность дистилляции (Вт)
     float flowRate;                 // Скорость отбора (мл/час)
-    
+
     // Проценты мощности (для обратной совместимости)
     int heatingPower;               // Мощность нагрева (0-100%)
     int distillationPower;          // Мощность дистилляции (0-100%)
-    
+
     // Дополнительные параметры
     bool separateHeads;             // Выделение голов отдельно
     float headsVolume;              // Объем голов (мл)
@@ -273,4 +290,4 @@ struct MenuItem {
     void (*action)();               // Функция, выполняемая при выборе элемента
 };
 
-#endif // CONFIG_H
+#endif // SRC_CONFIG_H
