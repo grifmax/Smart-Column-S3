@@ -108,7 +108,7 @@ enum class Fraction : uint8_t {
 /**
  * Показания температур
  */
-struct Temperatures {
+struct TemperatureData {
     float cube;             // Куб
     float columnBottom;     // Царга низ (T_base)
     float columnTop;        // Царга верх
@@ -119,11 +119,12 @@ struct Temperatures {
     bool valid[TEMP_COUNT]; // Валидность каждого датчика
     uint32_t lastUpdate;    // Время последнего обновления
 };
+typedef TemperatureData Temperatures;
 
 /**
  * Показания давления
  */
-struct Pressure {
+struct PressureData {
     float cube;             // Давление в кубе (мм рт.ст.)
     float atmosphere;       // Атмосферное давление (гПа)
     float floodThreshold;   // Порог захлёба (калибр.)
@@ -132,11 +133,12 @@ struct Pressure {
     float critThreshold;    // Критический порог
     uint32_t lastUpdate;
 };
+typedef PressureData Pressure;
 
 /**
  * Показания электрических параметров (PZEM-004T)
  */
-struct Power {
+struct PowerData {
     float voltage;          // Напряжение (V RMS)
     float current;          // Ток (A RMS)
     float power;            // Активная мощность (W)
@@ -146,17 +148,19 @@ struct Power {
     float powerTarget;      // Заданная мощность (%)
     uint32_t lastUpdate;
 };
+typedef PowerData Power;
 
 /**
  * Электронный ареометр
  */
-struct Hydrometer {
+struct HydrometerData {
     float abv;              // Крепость (%)
     float density;          // Плотность (г/мл)
     float temperature;      // Температура измерения
     bool valid;
     uint32_t lastUpdate;
 };
+typedef HydrometerData Hydrometer;
 
 /**
  * Состояние насоса
@@ -233,6 +237,7 @@ struct RunStats {
  */
 struct UnoParams {
     bool enabled;
+    bool motorEnabled;              // Мотор включен (для совместимости)
     uint16_t onSeconds;             // Время открытия
     uint16_t offSeconds;            // Время закрытия
     uint32_t lastToggle;            // Время последнего переключения
@@ -287,11 +292,11 @@ struct SystemState {
     Mode mode;
     RectPhase rectPhase;
     MashPhase mashPhase;
-    
-    Temperatures temps;
-    Pressure pressure;
-    Power power;
-    Hydrometer hydrometer;
+
+    TemperatureData temps;
+    PressureData pressure;
+    PowerData power;
+    HydrometerData hydrometer;
     
     PumpState pump;
     ValvesState valves;
