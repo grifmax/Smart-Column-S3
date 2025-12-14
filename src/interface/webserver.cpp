@@ -5,6 +5,8 @@
  */
 
 #include "webserver.h"
+#include "../config.h"
+#include "../types.h"
 #include <WiFi.h>
 #include "../fs_compat.h"
 #include <AsyncTCP.h>

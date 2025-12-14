@@ -89,6 +89,7 @@ struct EnergyHistory {
     EnergyDataPoint points[MAX_POINTS];
     uint8_t writeIndex = 0;
     uint8_t count = 0;
+    uint32_t lastUpdate = 0;
 };
 
 // Событие для логирования
@@ -222,5 +223,105 @@ struct Settings {
 // Глобальные переменные
 extern SystemState g_state;
 extern Settings g_settings;
+
+// ============================================================================
+// Aliases и дополнительные типы для совместимости с драйверами
+// ============================================================================
+
+// Короткие имена для структур данных (используются в драйверах)
+typedef TemperatureData Temperatures;
+typedef PressureData Pressure;
+typedef HydrometerData Hydrometer;
+typedef PowerData Power;
+
+// Дополнительные типы для драйверов
+struct WaterFlow {
+    float flowRate = 0.0f;      // л/мин
+    float totalVolume = 0.0f;   // л
+    bool ok = false;
+};
+
+// Фракции для фракционатора
+enum class Fraction : uint8_t {
+    HEADS = 0,
+    SUBHEADS,
+    BODY,
+    PRETAILS,
+    TAILS,
+    UNKNOWN
+};
+
+// Уровни тревоги
+enum class AlarmLevel : uint8_t {
+    NONE = 0,
+    INFO,
+    WARNING,
+    ERROR,
+    CRITICAL
+};
+
+// Тревога
+struct Alarm {
+    AlarmLevel level = AlarmLevel::NONE;
+    char message[128] = "";
+    uint32_t timestamp = 0;
+    bool active = false;
+};
+
+// Шаг температурной программы
+struct TempStep {
+    float temperature = 0.0f;
+    uint16_t duration = 0;      // минуты
+};
+
+// Калибровка температурных датчиков
+typedef Settings::tempCal TempCalibration;
+
+// Калибровка гидрометра
+struct HydrometerCalibration {
+    float densityOffset = 0.0f;
+    uint8_t abvPoints[10] = {0};
+    uint8_t pressurePoints[10] = {0};
+};
+
+// Калибровка насоса
+typedef Settings::pumpCal PumpCalibration;
+
+// Настройки WiFi
+typedef Settings::wifi WiFiSettings;
+
+// Настройки Telegram
+typedef Settings::telegram TelegramSettings;
+
+// Настройки оборудования
+typedef Settings::equipment EquipmentSettings;
+
+// Настройки фракционатора
+typedef Settings::fractionator FractionatorSettings;
+
+// Статистика запуска
+struct RunStats {
+    uint32_t startTime = 0;
+    uint32_t endTime = 0;
+    float headsVolume = 0.0f;
+    float bodyVolume = 0.0f;
+    float tailsVolume = 0.0f;
+    float totalEnergy = 0.0f;
+};
+
+// Параметры для Arduino Uno (фракционатор)
+struct UnoParams {
+    Fraction currentFraction = Fraction::UNKNOWN;
+    uint16_t targetAngle = 0;
+    bool motorEnabled = false;
+};
+
+// Состояние декремента (для контроля мощности)
+struct DecrementState {
+    float currentPower = 0.0f;
+    float targetPower = 0.0f;
+    uint32_t startTime = 0;
+    bool active = false;
+};
 
 #endif // TYPES_H
