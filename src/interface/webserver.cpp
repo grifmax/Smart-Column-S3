@@ -113,16 +113,18 @@ void init() {
         StaticJsonDocument<512> doc;
 
         // Версия и дата компиляции прошивки
-        doc["firmware"]["version"] = FIRMWARE_VERSION;
-        doc["firmware"]["buildDate"] = __DATE__;
-        doc["firmware"]["buildTime"] = __TIME__;
-        doc["firmware"]["compiler"] = "GCC " __VERSION__;
+        JsonObject firmware = doc["firmware"].to<JsonObject>();
+        firmware["version"] = FIRMWARE_VERSION;
+        firmware["buildDate"] = __DATE__;
+        firmware["buildTime"] = __TIME__;
+        firmware["compiler"] = "GCC " __VERSION__;
 
         // Информация о плате
-        doc["board"]["chip"] = "ESP32-S3";
-        doc["board"]["flashSize"] = ESP.getFlashChipSize();
-        doc["board"]["psramSize"] = ESP.getPsramSize();
-        doc["board"]["cpuFreq"] = ESP.getCpuFreqMHz();
+        JsonObject board = doc["board"].to<JsonObject>();
+        board["chip"] = "ESP32-S3";
+        board["flashSize"] = ESP.getFlashChipSize();
+        board["psramSize"] = ESP.getPsramSize();
+        board["cpuFreq"] = ESP.getCpuFreqMHz();
 
         // Попытка прочитать версию фронтенда из файла
         #ifdef USE_LITTLEFS
@@ -137,13 +139,15 @@ void init() {
             versionFile.close();
 
             if (!error) {
-                doc["frontend"] = frontendDoc;
+                doc["frontend"] = frontendDoc.as<JsonObject>();
             } else {
-                doc["frontend"]["error"] = "Failed to parse version.json";
+                JsonObject frontend = doc["frontend"].to<JsonObject>();
+                frontend["error"] = "Failed to parse version.json";
             }
         } else {
-            doc["frontend"]["buildDate"] = "Unknown";
-            doc["frontend"]["note"] = "version.json not found";
+            JsonObject frontend = doc["frontend"].to<JsonObject>();
+            frontend["buildDate"] = "Unknown";
+            frontend["note"] = "version.json not found";
         }
 
         String json;
