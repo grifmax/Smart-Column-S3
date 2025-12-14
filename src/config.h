@@ -273,4 +273,64 @@ struct MenuItem {
     void (*action)();               // Функция, выполняемая при выборе элемента
 };
 
+// ============================================================================
+// Дополнительные константы и макросы
+// ============================================================================
+
+// Альтернативные имена для информации о прошивке
+#define FW_NAME "Smart-Column-S3"
+#define FW_VERSION FIRMWARE_VERSION
+#define FW_DATE __DATE__
+
+// I2C пины (aliases для совместимости)
+#define PIN_I2C_SDA DISPLAY_SDA_PIN
+#define PIN_I2C_SCL DISPLAY_SCL_PIN
+
+// Интервалы обновления (мс)
+#define INTERVAL_SAFETY_CHECK 1000      // Проверка безопасности
+#define INTERVAL_TEMP_READ 1000         // Чтение температур
+#define INTERVAL_PRESSURE_READ 2000     // Чтение давления
+#define INTERVAL_POWER_READ 1000        // Чтение мощности
+#define INTERVAL_DISPLAY_UPDATE 500     // Обновление дисплея
+#define INTERVAL_WEB_BROADCAST 1000     // Отправка данных по WebSocket
+#define INTERVAL_LOG_WRITE 60000        // Запись в лог (1 мин)
+
+// WiFi настройки
+#define WIFI_CONNECT_TIMEOUT_MS 10000   // Таймаут подключения к WiFi
+#define WIFI_AP_SSID "Smart-Column-S3"  // SSID точки доступа
+#define WIFI_AP_PASS "12345678"         // Пароль точки доступа
+
+// Значения по умолчанию для оборудования
+#define DEFAULT_COLUMN_HEIGHT_MM 1000   // Высота колонны (мм)
+#define DEFAULT_PACKING_COEFF 3.5       // Коэффициент насадки
+#define DEFAULT_HEATER_POWER_W 2000     // Мощность нагревателя (Вт)
+#define DEFAULT_CUBE_VOLUME_L 20.0      // Объем куба (л)
+
+// Параметры насоса по умолчанию
+#define DEFAULT_PUMP_ML_PER_REV 0.1     // мл на оборот
+#define PUMP_STEPS_PER_REV 200          // Шагов на оборот
+#define PUMP_MICROSTEPS 32              // Микрошагов
+
+// Параметры ректификации по умолчанию
+#define RECT_HEADS_PERCENT_DEFAULT 3.0          // Процент голов (%)
+#define RECT_HEADS_SPEED_ML_H_KW 300.0          // Скорость отбора голов (мл/ч/кВт)
+#define RECT_STABILIZATION_TIME_MIN 30          // Время стабилизации (мин)
+#define RECT_PURGE_TIME_MIN 5                   // Время продувки (мин)
+
+// Углы фракционатора (градусы)
+#define FRACTION_ANGLE_HEADS 0          // Головы
+#define FRACTION_ANGLE_SUBHEADS 45      // Подголовники
+#define FRACTION_ANGLE_BODY 90          // Тело
+#define FRACTION_ANGLE_PRETAILS 135     // Предхвостье
+#define FRACTION_ANGLE_TAILS 180        // Хвосты
+
+// Параметры buzzer
+#define BUZZER_DURATION_SHORT 100       // Короткий сигнал (мс)
+
+// Макросы логирования
+#define LOG_I(format, ...) Serial.printf("[INFO] " format "\n", ##__VA_ARGS__)
+#define LOG_E(format, ...) Serial.printf("[ERROR] " format "\n", ##__VA_ARGS__)
+#define LOG_W(format, ...) Serial.printf("[WARN] " format "\n", ##__VA_ARGS__)
+#define LOG_D(format, ...) Serial.printf("[DEBUG] " format "\n", ##__VA_ARGS__)
+
 #endif // CONFIG_H
