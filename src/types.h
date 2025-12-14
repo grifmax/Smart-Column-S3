@@ -158,62 +158,72 @@ struct SystemState {
     } health;
 };
 
+// Структуры настроек (именованные для typedef)
+struct WiFiSettings {
+    char ssid[64] = "";
+    char password[64] = "";
+    bool apMode = true;
+};
+
+struct PumpCalibration {
+    float mlPerRevolution = 0.1f;
+    uint16_t stepsPerRevolution = 200;
+    uint8_t microsteps = 32;
+};
+
+struct TempCalibration {
+    float offsets[8] = {0};
+    uint8_t addresses[8][8] = {0};
+};
+
+struct MqttSettings {
+    bool enabled = false;
+    char server[64] = "";
+    uint16_t port = 1883;
+    char username[32] = "";
+    char password[64] = "";
+    char baseTopic[32] = "smart-column";
+    uint32_t publishInterval = 10000;
+};
+
+struct TelegramSettings {
+    bool enabled = false;
+    char token[64] = "";
+    char chatId[32] = "";
+};
+
+struct EquipmentSettings {
+    uint16_t columnHeightMm = 1000;
+    PackingType packingType = PackingType::SPN_3_5;
+    float packingCoeff = 3.5f;
+    uint16_t heaterPowerW = 2000;
+    float cubeVolumeL = 20.0f;
+};
+
+struct FractionatorSettings {
+    bool enabled = false;
+    uint16_t angles[5] = {0, 45, 90, 135, 180};
+    bool positionsEnabled[5] = {true, false, true, false, true};
+};
+
+struct RectParams {
+    float headsPercent = 3.0f;
+    float headsSpeedMlHKw = 300.0f;
+    float bodySpeedMlHKw = 600.0f;
+    uint16_t stabilizationMin = 30;
+    uint16_t purgeMin = 5;
+};
+
 // Настройки (полная версия)
 struct Settings {
-    struct {
-        char ssid[64] = "";
-        char password[64] = "";
-        bool apMode = true;
-    } wifi;
-
-    struct {
-        float mlPerRevolution = 0.1f;
-        uint16_t stepsPerRevolution = 200;
-        uint8_t microsteps = 32;
-    } pumpCal;
-
-    struct {
-        float offsets[8] = {0};
-        uint8_t addresses[8][8] = {0};
-    } tempCal;
-
-    struct {
-        bool enabled = false;
-        char server[64] = "";
-        uint16_t port = 1883;
-        char username[32] = "";
-        char password[64] = "";
-        char baseTopic[32] = "smart-column";
-        uint32_t publishInterval = 10000;
-    } mqtt;
-
-    struct {
-        bool enabled = false;
-        char token[64] = "";
-        char chatId[32] = "";
-    } telegram;
-
-    struct {
-        uint16_t columnHeightMm = 1000;
-        PackingType packingType = PackingType::SPN_3_5;
-        float packingCoeff = 3.5f;
-        uint16_t heaterPowerW = 2000;
-        float cubeVolumeL = 20.0f;
-    } equipment;
-
-    struct {
-        bool enabled = false;
-        uint16_t angles[5] = {0, 45, 90, 135, 180};
-        bool positionsEnabled[5] = {true, false, true, false, true};
-    } fractionator;
-
-    struct {
-        float headsPercent = 3.0f;
-        float headsSpeedMlHKw = 300.0f;
-        float bodySpeedMlHKw = 600.0f;
-        uint16_t stabilizationMin = 30;
-        uint16_t purgeMin = 5;
-    } rectParams;
+    WiFiSettings wifi;
+    PumpCalibration pumpCal;
+    TempCalibration tempCal;
+    MqttSettings mqtt;
+    TelegramSettings telegram;
+    EquipmentSettings equipment;
+    FractionatorSettings fractionator;
+    RectParams rectParams;
 
     uint8_t language = 0;           // 0=RU, 1=EN
     uint8_t theme = 0;              // 0=Light, 1=Dark
@@ -274,30 +284,12 @@ struct TempStep {
     uint16_t duration = 0;      // минуты
 };
 
-// Калибровка температурных датчиков
-typedef Settings::tempCal TempCalibration;
-
 // Калибровка гидрометра
 struct HydrometerCalibration {
     float densityOffset = 0.0f;
     uint8_t abvPoints[10] = {0};
     uint8_t pressurePoints[10] = {0};
 };
-
-// Калибровка насоса
-typedef Settings::pumpCal PumpCalibration;
-
-// Настройки WiFi
-typedef Settings::wifi WiFiSettings;
-
-// Настройки Telegram
-typedef Settings::telegram TelegramSettings;
-
-// Настройки оборудования
-typedef Settings::equipment EquipmentSettings;
-
-// Настройки фракционатора
-typedef Settings::fractionator FractionatorSettings;
 
 // Статистика запуска
 struct RunStats {
