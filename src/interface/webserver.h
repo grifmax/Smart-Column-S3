@@ -8,8 +8,8 @@
 #define WEBSERVER_H
 
 #include <Arduino.h>
-#include "config.h"
-#include "types.h"
+#include "../config.h"
+#include "../types.h"
 
 namespace WebServer {
     /**

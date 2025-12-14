@@ -109,23 +109,23 @@ struct MashProfile {
     } steps[10];
 };
 
-// Здоровье системы (для совместимости)
-typedef struct {
-    bool tempSensorsOk;
-    uint8_t tempSensorsTotal;
-    bool bmp280Ok;
-    bool ads1115Ok;
-    bool pzemOk;
-    bool wifiConnected;
-    int8_t wifiRSSI;
-    uint32_t uptime;
-    uint32_t freeHeap;
-    float cpuTemp;
-    uint16_t pzemSpikeCount;
-    uint16_t tempReadErrors;
-    uint8_t overallHealth;
-    uint32_t lastUpdate;
-} SystemHealth;
+// Здоровье системы
+struct SystemHealth {
+    bool tempSensorsOk = false;
+    uint8_t tempSensorsTotal = 0;
+    bool bmp280Ok = false;
+    bool ads1115Ok = false;
+    bool pzemOk = false;
+    bool wifiConnected = false;
+    int8_t wifiRSSI = 0;
+    uint32_t uptime = 0;
+    uint32_t freeHeap = 0;
+    float cpuTemp = 0;
+    uint16_t pzemSpikeCount = 0;
+    uint16_t tempReadErrors = 0;
+    uint8_t overallHealth = 100;
+    uint32_t lastUpdate = 0;
+};
 
 // Состояние системы (полная версия)
 struct SystemState {
@@ -140,22 +140,7 @@ struct SystemState {
     HydrometerData hydrometer;
     PowerData power;
 
-    struct {
-        bool tempSensorsOk = false;
-        uint8_t tempSensorsTotal = 0;
-        bool bmp280Ok = false;
-        bool ads1115Ok = false;
-        bool pzemOk = false;
-        bool wifiConnected = false;
-        int8_t wifiRSSI = 0;
-        uint32_t uptime = 0;
-        uint32_t freeHeap = 0;
-        float cpuTemp = 0;
-        uint16_t pzemSpikeCount = 0;
-        uint16_t tempReadErrors = 0;
-        uint8_t overallHealth = 100;
-        uint32_t lastUpdate = 0;
-    } health;
+    SystemHealth health;
 };
 
 // Структуры настроек (именованные для typedef)
