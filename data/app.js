@@ -12,15 +12,25 @@ let miniChartData = {
 };
 const MINI_CHART_MAX_POINTS = 60; // 5 минут при обновлении каждые 5 секунд
 
+// Состояние процесса
+let currentMode = 0;  // 0 = IDLE
+let currentPaused = false;
+let maxHeaterPower = 3000;  // Будет обновлено из настроек
+
 // Инициализация при загрузке страницы
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     initTabs();
     loadTheme();
+    loadDemoMode();  // Загрузить состояние демо-режима
     initMiniChart();
     loadMemoryStatsPreference();
     loadPumpInfo();
-    loadVersionInfo(); // Загрузить информацию о версиях
+    loadVersionInfo();
+    loadStatus();  // Загрузить начальный статус
     connectWebSocket();
+
+    // Периодический опрос статуса (резервный вариант если WebSocket отключён)
+    setInterval(loadStatus, 2000);
 });
 
 // ============================================================================
@@ -36,7 +46,7 @@ function connectWebSocket() {
     try {
         ws = new WebSocket(wsUrl);
 
-        ws.onopen = function() {
+        ws.onopen = function () {
             isConnected = true;
             updateConnectionStatus(true);
             addLog('✅ Подключено к контроллеру', 'info');
@@ -48,7 +58,7 @@ function connectWebSocket() {
             }
         };
 
-        ws.onmessage = function(event) {
+        ws.onmessage = function (event) {
             try {
                 const data = JSON.parse(event.data);
                 updateUI(data);
@@ -57,12 +67,12 @@ function connectWebSocket() {
             }
         };
 
-        ws.onerror = function(error) {
+        ws.onerror = function (error) {
             console.error('WebSocket error:', error);
             addLog('❌ Ошибка подключения', 'error');
         };
 
-        ws.onclose = function() {
+        ws.onclose = function () {
             isConnected = false;
             updateConnectionStatus(false);
             addLog('⚠️ Соединение разорвано. Переподключение...', 'warning');
@@ -510,6 +520,216 @@ function toggleValve(name) {
 }
 
 // ============================================================================
+// Загрузка статуса и обновление кнопок
+// ============================================================================
+
+async function loadStatus() {
+    try {
+        const response = await fetch('/api/status');
+        if (!response.ok) return;
+
+        const data = await response.json();
+
+        // Обновить состояние процесса
+        currentMode = data.mode || 0;
+        currentPaused = data.paused || false;
+
+        // Сохранить мощность ТЭНа из настроек
+        if (data.equipment && data.equipment.heaterPowerW) {
+            maxHeaterPower = data.equipment.heaterPowerW;
+            updateHeaterSlider();
+        }
+
+        // Обновить UI с новым форматом данных
+        updateUIFromStatus(data);
+
+        // Обновить состояние кнопок
+        updateButtonStates();
+
+    } catch (e) {
+        console.error('Ошибка загрузки статуса:', e);
+    }
+}
+
+function updateUIFromStatus(data) {
+    // Режим
+    if (data.modeStr !== undefined) {
+        const modeEl = document.getElementById('mode');
+        if (modeEl) {
+            modeEl.textContent = data.modeStr.toUpperCase();
+            modeEl.className = `value mode-${data.modeStr}`;
+        }
+    }
+
+    // Фаза
+    if (data.phaseStr !== undefined) {
+        const phaseEl = document.getElementById('phase');
+        if (phaseEl) {
+            phaseEl.textContent = data.phaseStr.toUpperCase() || '—';
+        }
+    }
+
+    // Температуры
+    if (data.temps) {
+        if (data.temps.cube !== undefined) {
+            const el = document.getElementById('temp-cube');
+            if (el) el.textContent = data.temps.cube.toFixed(1) + '°C';
+        }
+        if (data.temps.columnBottom !== undefined) {
+            const el = document.getElementById('temp-column-bottom');
+            if (el) el.textContent = data.temps.columnBottom.toFixed(1) + '°C';
+        }
+        if (data.temps.columnTop !== undefined) {
+            const el = document.getElementById('temp-column-top');
+            if (el) el.textContent = data.temps.columnTop.toFixed(1) + '°C';
+        }
+        if (data.temps.reflux !== undefined) {
+            const el = document.getElementById('temp-reflux');
+            if (el) el.textContent = data.temps.reflux.toFixed(1) + '°C';
+        }
+        if (data.temps.tsa !== undefined) {
+            const el = document.getElementById('temp-tsa');
+            if (el) el.textContent = data.temps.tsa.toFixed(1) + '°C';
+        }
+    }
+
+    // Давление
+    if (data.pressure) {
+        if (data.pressure.cube !== undefined) {
+            const el = document.getElementById('pressure-cube');
+            if (el) el.textContent = data.pressure.cube.toFixed(1) + ' мм рт.ст.';
+        }
+        if (data.pressure.atm !== undefined) {
+            const el = document.getElementById('pressure-atm');
+            if (el) el.textContent = data.pressure.atm.toFixed(1) + ' гПа';
+        }
+    }
+
+    // Мощность
+    if (data.power) {
+        if (data.power.voltage !== undefined) {
+            const el = document.getElementById('power-voltage');
+            if (el) el.textContent = data.power.voltage.toFixed(1) + ' V';
+        }
+        if (data.power.current !== undefined) {
+            const el = document.getElementById('power-current');
+            if (el) el.textContent = data.power.current.toFixed(2) + ' A';
+        }
+        if (data.power.power !== undefined) {
+            const el = document.getElementById('power-power');
+            if (el) el.textContent = data.power.power.toFixed(0) + ' W';
+        }
+        if (data.power.energy !== undefined) {
+            const el = document.getElementById('power-energy');
+            if (el) el.textContent = data.power.energy.toFixed(3) + ' кВт·ч';
+        }
+        if (data.power.frequency !== undefined) {
+            const el = document.getElementById('power-frequency');
+            if (el) el.textContent = data.power.frequency.toFixed(1) + ' Гц';
+        }
+        if (data.power.pf !== undefined) {
+            const el = document.getElementById('power-pf');
+            if (el) el.textContent = data.power.pf.toFixed(2);
+        }
+    }
+
+    // Насос
+    if (data.pump) {
+        if (data.pump.speedMlH !== undefined) {
+            const el = document.getElementById('pump-speed');
+            if (el) el.textContent = data.pump.speedMlH.toFixed(0) + ' мл/ч';
+        }
+        if (data.pump.totalMl !== undefined) {
+            const el = document.getElementById('pump-volume');
+            if (el) el.textContent = data.pump.totalMl.toFixed(0) + ' мл';
+        }
+    }
+
+    // Объёмы фракций
+    if (data.volumes) {
+        if (data.volumes.heads !== undefined) {
+            const el = document.getElementById('volume-heads');
+            if (el) el.textContent = data.volumes.heads.toFixed(0) + ' мл';
+        }
+        if (data.volumes.body !== undefined) {
+            const el = document.getElementById('volume-body');
+            if (el) el.textContent = data.volumes.body.toFixed(0) + ' мл';
+        }
+        if (data.volumes.tails !== undefined) {
+            const el = document.getElementById('volume-tails');
+            if (el) el.textContent = data.volumes.tails.toFixed(0) + ' мл';
+        }
+    }
+
+    // Ареометр
+    if (data.hydrometer && data.hydrometer.abv !== undefined) {
+        const el = document.getElementById('abv');
+        if (el) el.textContent = data.hydrometer.abv.toFixed(1) + '%';
+    }
+
+    // Uptime
+    if (data.uptime !== undefined) {
+        const el = document.getElementById('uptime');
+        if (el) el.textContent = formatUptime(data.uptime);
+    }
+}
+
+function updateButtonStates() {
+    const isIdle = currentMode === 0;
+
+    // Кнопки запуска режимов
+    const btnRect = document.querySelector('button[onclick="startRectification()"]');
+    const btnManual = document.querySelector('button[onclick="startManual()"]');
+    const btnDist = document.querySelector('button[onclick="startDistillation()"]');
+
+    // Кнопки управления
+    const btnStop = document.querySelector('button[onclick="stopProcess()"]');
+    const btnPause = document.querySelector('button[onclick="pauseProcess()"]');
+    const btnResume = document.querySelector('button[onclick="resumeProcess()"]');
+
+    // Настройка состояний
+    if (btnRect) {
+        btnRect.disabled = !isIdle;
+        btnRect.classList.toggle('btn-disabled', !isIdle);
+    }
+    if (btnManual) {
+        btnManual.disabled = !isIdle;
+        btnManual.classList.toggle('btn-disabled', !isIdle);
+    }
+    if (btnDist) {
+        btnDist.disabled = !isIdle;
+        btnDist.classList.toggle('btn-disabled', !isIdle);
+    }
+
+    if (btnStop) {
+        btnStop.disabled = isIdle;
+        btnStop.classList.toggle('btn-disabled', isIdle);
+    }
+    if (btnPause) {
+        btnPause.disabled = isIdle || currentPaused;
+        btnPause.classList.toggle('btn-disabled', isIdle || currentPaused);
+    }
+    if (btnResume) {
+        btnResume.disabled = isIdle || !currentPaused;
+        btnResume.classList.toggle('btn-disabled', isIdle || !currentPaused);
+    }
+}
+
+function updateHeaterSlider() {
+    const slider = document.getElementById('heater-power');
+    const label = document.querySelector('label[for="heater-power"]');
+
+    if (slider) {
+        slider.max = maxHeaterPower;
+        slider.step = 50;  // Шаг 50 Вт
+    }
+
+    if (label) {
+        label.innerHTML = `Мощность нагрева: <span id="heater-value">0</span> Вт (макс ${maxHeaterPower})`;
+    }
+}
+
+// ============================================================================
 // Settings
 // ============================================================================
 
@@ -616,6 +836,36 @@ function saveSecurity() {
     sendCommand('security', 'save', 0);
     addLog('💾 Настройки безопасности сохранены', 'info');
     alert('Настройки безопасности сохранены. Перезагрузите контроллер.');
+}
+
+function toggleDemoMode() {
+    const enabled = document.getElementById('demo-mode-enabled').checked;
+
+    // Сохранить в localStorage
+    localStorage.setItem('demoMode', enabled ? 'true' : 'false');
+
+    // Отправить на сервер
+    fetch('/api/settings/demo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: enabled })
+    }).then(response => {
+        if (response.ok) {
+            addLog(enabled ? '🧪 Демо-режим ВКЛЮЧЁН' : '✅ Демо-режим отключён', 'info');
+        } else {
+            addLog('⚠️ Ошибка сохранения демо-режима на сервер', 'warning');
+        }
+    }).catch(err => {
+        addLog('⚠️ Демо-режим сохранён локально (сервер недоступен)', 'warning');
+    });
+}
+
+function loadDemoMode() {
+    const saved = localStorage.getItem('demoMode');
+    const checkbox = document.getElementById('demo-mode-enabled');
+    if (checkbox && saved === 'true') {
+        checkbox.checked = true;
+    }
 }
 
 function setTheme(theme) {
@@ -1362,10 +1612,10 @@ function renderPhases(process) {
 }
 
 // Закрытие модального окна при клике на overlay
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     const modalOverlay = document.getElementById('history-modal');
     if (modalOverlay) {
-        modalOverlay.addEventListener('click', function(e) {
+        modalOverlay.addEventListener('click', function (e) {
             if (e.target === modalOverlay) {
                 closeHistoryModal();
             }
@@ -1889,20 +2139,20 @@ function saveProfile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profile)
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            closeProfileModal();
-            loadProfilesList();
-            alert('✅ Профиль успешно создан!');
-        } else {
-            alert('❌ Ошибка создания профиля: ' + (data.error || 'Неизвестная ошибка'));
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка сохранения профиля:', error);
-        alert('❌ Ошибка сохранения профиля');
-    });
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                closeProfileModal();
+                loadProfilesList();
+                alert('✅ Профиль успешно создан!');
+            } else {
+                alert('❌ Ошибка создания профиля: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка сохранения профиля:', error);
+            alert('❌ Ошибка сохранения профиля');
+        });
 }
 
 // Просмотр профиля
@@ -1994,18 +2244,18 @@ function quickLoadProfile(id) {
     fetch(`/api/profiles/${id}/load`, {
         method: 'POST'
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
-        } else {
-            alert('❌ Ошибка загрузки профиля: ' + (data.error || 'Неизвестная ошибка'));
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка загрузки профиля:', error);
-        alert('❌ Ошибка загрузки профиля');
-    });
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
+            } else {
+                alert('❌ Ошибка загрузки профиля: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки профиля:', error);
+            alert('❌ Ошибка загрузки профиля');
+        });
 }
 
 // Загрузка профиля в настройки (из модального окна)
@@ -2022,19 +2272,19 @@ function deleteProfile(id) {
     fetch(`/api/profiles/${id}`, {
         method: 'DELETE'
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadProfilesList();
-            alert('✅ Профиль удалён');
-        } else {
-            alert('❌ ' + (data.error || 'Ошибка удаления профиля'));
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка удаления профиля:', error);
-        alert('❌ Ошибка удаления профиля');
-    });
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadProfilesList();
+                alert('✅ Профиль удалён');
+            } else {
+                alert('❌ ' + (data.error || 'Ошибка удаления профиля'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка удаления профиля:', error);
+            alert('❌ Ошибка удаления профиля');
+        });
 }
 
 // Очистка пользовательских профилей
@@ -2044,19 +2294,19 @@ function clearUserProfiles() {
     fetch('/api/profiles', {
         method: 'DELETE'
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadProfilesList();
-            alert('✅ Все пользовательские профили удалены');
-        } else {
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadProfilesList();
+                alert('✅ Все пользовательские профили удалены');
+            } else {
+                alert('❌ Ошибка очистки профилей');
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка очистки профилей:', error);
             alert('❌ Ошибка очистки профилей');
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка очистки профилей:', error);
-        alert('❌ Ошибка очистки профилей');
-    });
+        });
 }
 
 // Экспорт одного профиля
@@ -2124,12 +2374,12 @@ function showImportModal() {
     document.getElementById('profile-import-modal').style.display = 'flex';
 
     // Добавляем обработчик выбора файла
-    document.getElementById('import-file-input').onchange = function(e) {
+    document.getElementById('import-file-input').onchange = function (e) {
         const file = e.target.files[0];
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = function(event) {
+        reader.onload = function (event) {
             try {
                 importFileData = JSON.parse(event.target.result);
 
@@ -2174,29 +2424,29 @@ function doImportProfiles() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(importFileData)
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            closeImportModal();
-            loadProfilesList();
-            alert(`✅ Импортировано профилей: ${data.imported}`);
-        } else {
-            alert('❌ Ошибка импорта: ' + (data.error || 'Неизвестная ошибка'));
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка импорта профилей:', error);
-        alert('❌ Ошибка импорта профилей');
-    });
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                closeImportModal();
+                loadProfilesList();
+                alert(`✅ Импортировано профилей: ${data.imported}`);
+            } else {
+                alert('❌ Ошибка импорта: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка импорта профилей:', error);
+            alert('❌ Ошибка импорта профилей');
+        });
 }
 
 // ============================================================================
 
 // Закрытие модального окна сравнения при клике на overlay
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     const compareOverlay = document.getElementById('compare-modal');
     if (compareOverlay) {
-        compareOverlay.addEventListener('click', function(e) {
+        compareOverlay.addEventListener('click', function (e) {
             if (e.target === compareOverlay) {
                 closeCompareModal();
             }

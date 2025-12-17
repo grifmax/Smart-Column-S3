@@ -248,6 +248,23 @@ header h1 {
     font-size: 0.9em;
 }
 
+.btn-disabled,
+.btn:disabled {
+    background: var(--border-color) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--border-color) !important;
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.btn-disabled:hover,
+.btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 /* Controls */
 .controls {
     display: flex;
