@@ -868,6 +868,32 @@ function loadDemoMode() {
     }
 }
 
+// Перезагрузка контроллера
+function rebootController() {
+    if (!confirm('Перезагрузить контроллер ESP32?\n\nВсе текущие процессы будут остановлены!')) {
+        return;
+    }
+
+    addLog('🔄 Отправка команды перезагрузки...', 'warning');
+
+    fetch('/api/reboot', {
+        method: 'POST'
+    }).then(response => {
+        if (response.ok) {
+            addLog('✅ Контроллер перезагружается...', 'success');
+            // Показать сообщение и попробовать переподключиться через 5 сек
+            setTimeout(() => {
+                addLog('🔌 Попытка переподключения...', 'info');
+                window.location.reload();
+            }, 5000);
+        } else {
+            addLog('❌ Ошибка перезагрузки', 'error');
+        }
+    }).catch(err => {
+        addLog('❌ Ошибка сети: ' + err.message, 'error');
+    });
+}
+
 function setTheme(theme) {
     document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);

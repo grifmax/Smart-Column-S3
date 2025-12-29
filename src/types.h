@@ -13,7 +13,9 @@ enum class Mode : uint8_t {
   IDLE = 0,
   RECTIFICATION,
   DISTILLATION,
-  MANUAL_RECT
+  MANUAL_RECT,
+  MASHING,    // Затирка солода
+  HOLD        // Температурные ступени (Hold режим)
 };
 
 // Фазы ректификации
@@ -125,13 +127,25 @@ struct LogEvent {
   char message[128];
 };
 
+// Фазы затирки солода
+enum class MashPhase : uint8_t {
+  IDLE = 0,
+  ACID_REST,       // Кислотная пауза (35-40°C)
+  PROTEIN_REST,    // Белковая пауза (45-52°C)
+  BETA_AMYLASE,    // Мальтозная пауза (62-65°C)
+  ALPHA_AMYLASE,   // Осахаривание (68-72°C)
+  MASH_OUT,        // Мэш-аут (75-78°C)
+  FINISH
+};
+
 // Профиль затирания
 struct MashProfile {
   char name[32];
   uint8_t stepCount;
   struct {
     float temperature;
-    uint16_t duration;
+    uint16_t duration; // минуты
+    char name[32];     // название паузы
   } steps[10];
 };
 
@@ -177,6 +191,26 @@ struct ProcessStats {
   float tailsVolume = 0.0f;
 };
 
+// Состояние затирки
+struct MashingState {
+  MashPhase phase = MashPhase::IDLE;
+  uint8_t currentStep = 0;
+  uint32_t stepStartTime = 0;
+  float targetTemp = 0.0f;
+  uint32_t stepDuration = 0; // секунды
+  bool active = false;
+};
+
+// Состояние Hold режима
+struct HoldState {
+  uint8_t currentStep = 0;
+  uint8_t stepCount = 0;
+  uint32_t stepStartTime = 0;
+  TempStep steps[10];
+  float targetTemp = 0.0f;
+  bool active = false;
+};
+
 // Состояние системы (полная версия)
 struct SystemState {
   Mode mode = Mode::IDLE;
@@ -194,6 +228,10 @@ struct SystemState {
   PumpState pump;
   CurrentAlarm currentAlarm;
   ProcessStats stats;
+  
+  // Состояния режимов
+  MashingState mashing;
+  HoldState hold;
 };
 
 // Структуры настроек (именованные для typedef)
@@ -275,6 +313,7 @@ struct Settings {
   uint8_t language = 0; // 0=RU, 1=EN
   uint8_t theme = 0;    // 0=Light, 1=Dark
   bool soundEnabled = true;
+  bool demoMode = false; // Демо-режим (симуляция данных)
 };
 
 // Глобальные переменные

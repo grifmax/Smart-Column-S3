@@ -749,7 +749,7 @@
                 document.getElementById('temp-product').textContent = data.temps?.product?.toFixed(1) || '--';
 
                 // Обновить состояние процесса
-                processRunning = data.mode !== 'idle';
+                processRunning = data.modeStr !== 'idle';
                 updateUI();
 
             } catch (e) {

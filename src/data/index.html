@@ -27,6 +27,7 @@
                 <nav>
                     <ul>
                         <li><a href="#dashboard" class="active" data-section="dashboard">Панель управления</a></li>
+                        <li><a href="#profiles" data-section="profiles">📚 Профили</a></li>
                         <li><a href="#settings" data-section="settings">Настройки</a></li>
                         <li><a href="#chart" data-section="chart">Графики</a></li>
                         <li><a href="#about" data-section="about">О системе</a></li>
@@ -106,6 +107,31 @@
                         <button id="start-dist-btn" class="btn btn-primary">Запустить дистилляцию</button>
                         <button id="pause-btn" class="btn btn-warning" disabled>Пауза</button>
                         <button id="stop-btn" class="btn btn-danger" disabled>Остановить</button>
+                    </div>
+                </section>
+
+                <!-- Профили -->
+                <section id="profiles" class="content-section">
+                    <div class="profiles-header">
+                        <h2>📚 Профили процессов</h2>
+                        <button id="create-profile-btn" class="btn btn-primary">+ Создать профиль</button>
+                    </div>
+                    
+                    <div class="profiles-container">
+                        <div class="profiles-filters">
+                            <select id="profile-category-filter">
+                                <option value="">Все категории</option>
+                                <option value="rectification">Ректификация</option>
+                                <option value="distillation">Дистилляция</option>
+                                <option value="mashing">Затирка</option>
+                            </select>
+                            <input type="text" id="profile-search" placeholder="Поиск по названию...">
+                        </div>
+                        
+                        <div id="profiles-list" class="profiles-list">
+                            <!-- Список профилей будет загружен динамически -->
+                            <div class="loading">Загрузка профилей...</div>
+                        </div>
                     </div>
                 </section>
 
@@ -563,6 +589,27 @@
         </footer>
     </div>
     
+    <!-- Модальное окно для профиля -->
+    <div class="modal" id="profile-modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3 id="profile-modal-title">Создать профиль</h3>
+                <span class="close-modal" id="profile-modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="profile-form-container">
+                    <!-- Форма будет загружена динамически -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="profile-save-btn" class="btn btn-primary">Сохранить</button>
+                <button id="profile-cancel-btn" class="btn btn-secondary">Отмена</button>
+                <button id="profile-load-btn" class="btn btn-success" style="display: none;">Загрузить профиль</button>
+                <button id="profile-delete-btn" class="btn btn-danger" style="display: none;">Удалить</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Модальное окно для уведомлений -->
     <div class="modal" id="notification-modal">
         <div class="modal-content">
@@ -684,5 +731,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/profiles.js"></script>
 </body>
 </html>

@@ -23,10 +23,10 @@
 // --- Основные пины управления ---
 #define PIN_HEATER 5                 // SSR нагреватель (через PC817)
 #define PIN_SSR_HEATER PIN_HEATER    // Алиас для совместимости
-#define PIN_PUMP 6                   // Шаговый насос (STEP)
+#define PIN_PUMP 6                   // Шаговый насос (STEP) - соответствует SPEC.md
 #define PIN_PUMP_STEP PIN_PUMP       // Алиас для совместимости
-#define PIN_PUMP_DIR 7               // Шаговый насос (DIR)
-#define PIN_PUMP_EN 15               // Шаговый насос (ENABLE)
+#define PIN_PUMP_DIR 7               // Шаговый насос (DIR) - соответствует SPEC.md
+#define PIN_PUMP_EN 15               // Шаговый насос (ENABLE) - соответствует SPEC.md (не GPIO33 - занят PSRAM!)
 #define PIN_VALVE 16                 // Клапан охлаждения
 #define PIN_BUZZER 38                // Пьезоизлучатель
 #define PIN_TEMP_SENSORS 4           // DS18B20 (OneWire)
@@ -42,7 +42,7 @@
 
 // --- I2C шина (BMP280, ADS1115, OLED) ---
 #define PIN_I2C_SDA 21
-#define PIN_I2C_SCL 9 // GPIO9 (GPIO22 не существует на S3!)
+#define PIN_I2C_SCL 9                // GPIO9 (GPIO22 не существует на ESP32-S3, используется GPIO9 вместо GPIO22)
 #define DISPLAY_SDA_PIN PIN_I2C_SDA
 #define DISPLAY_SCL_PIN PIN_I2C_SCL
 
@@ -52,15 +52,15 @@
 #define PIN_VALVE_UNO 18   // Непрерывный отбор
 
 // --- Опциональные выходы ---
-#define PIN_SERVO_FRACTION 8   // Фракционник (PWM 50Hz)
-#define PIN_VALVE_STARTSTOP 14 // Клапан старт-стоп (ШИМ)
+#define PIN_SERVO_FRACTION 8   // Фракционник (PWM 50Hz) - соответствует SPEC.md
+#define PIN_VALVE_STARTSTOP 14 // Клапан старт-стоп (ШИМ) - GPIO14 (SPEC.md указывает GPIO9, но GPIO9 используется для I2C SCL на ESP32-S3)
 
 // --- Датчики ---
-#define PIN_FLOW_SENSOR 3   // YF-S201 (счётчик импульсов)
-#define PIN_LEVEL_SENSOR 13 // Оптический датчик уровня (опция)
+#define PIN_FLOW_SENSOR 3   // YF-S201 (счётчик импульсов) - соответствует SPEC.md
+#define PIN_LEVEL_SENSOR 1  // Оптический датчик уровня (опция) - перенесён с GPIO13 (был конфликт с кнопкой)
 
 // --- Кнопки управления ---
-#define PIN_BUTTON_UP 13   // Кнопка "Вверх"
+#define PIN_BUTTON_UP 13   // Кнопка "Вверх" (SPEC.md указывает GPIO0 для Boot, но код использует GPIO13)
 #define PIN_BUTTON_DOWN 10 // Кнопка "Вниз"
 #define PIN_BUTTON_OK 11   // Кнопка "ОК/Выбор"
 #define PIN_BUTTON_BACK 12 // Кнопка "Назад/Отмена"

@@ -11,7 +11,7 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
-
+#include <Preferences.h>
 
 #include "config.h"
 #include "types.h"
@@ -23,12 +23,11 @@
 #include "drivers/sensors.h"
 #include "drivers/valves.h"
 
-
 // Управление
+// #include "control/demo_simulator.h" // ВРЕМЕННО ОТКЛЮЧЕНО ДЛЯ ДИАГНОСТИКИ
 #include "control/fsm.h"
 #include "control/safety.h"
 #include "control/watt_control.h"
-
 
 // Интерфейсы
 #include "interface/buttons.h"
@@ -37,11 +36,9 @@
 #include "interface/telegram.h"
 #include "interface/webserver.h"
 
-
 // Хранение
 #include "storage/logger.h"
 #include "storage/nvs_manager.h"
-
 
 // =============================================================================
 // ГЛОБАЛЬНЫЕ ОБЪЕКТЫ
@@ -68,6 +65,7 @@ void initHardware();
 void initNetwork();
 void loadSettings();
 void runTasks();
+void resetWiFiAndRestart(); // Сброс WiFi настроек и перезагрузка
 
 // =============================================================================
 // BUZZER HELPER
@@ -94,20 +92,32 @@ void alarm() {
 // =============================================================================
 
 void setup() {
-  // Serial - увеличиваем задержку для стабильности USB CDC
+  // Serial - инициализация USB CDC для ESP32-S3
   Serial.begin(115200);
-  while (!Serial && millis() < 3000) {
-    delay(10); // Ждём подключения USB CDC до 3 секунд
-  }
-  delay(500); // Дополнительная задержка для стабильности
-
+  
+  // Для ESP32-S3 USB CDC нужно подождать инициализацию USB
+  // На ESP32-S3 Serial всегда возвращает true, даже если USB не подключен
+  // Уменьшена задержка для более быстрого вывода
+  delay(500); // Минимальная задержка для инициализации USB CDC
+  
+  // Выводим стартовое сообщение сразу
   Serial.println("\n\n=============================");
   Serial.println("Smart-Column S3 - Starting...");
   Serial.println("=============================");
   Serial.flush();
 
+  // Проверка причины перезагрузки
+  esp_reset_reason_t resetReason = esp_reset_reason();
+  if (resetReason == ESP_RST_WDT || resetReason == ESP_RST_TASK_WDT || 
+      resetReason == ESP_RST_INT_WDT) {
+    Serial.println("WARNING: Previous reset was due to Watchdog!");
+    Serial.println("This may indicate a problem during initialization.");
+    delay(2000); // Дать время прочитать сообщение
+  }
+
   // WatchDog Timer - защита от зависаний
-  esp_task_wdt_init(30, true); // 30 сек таймаут, паника при срабатывании
+  // Увеличен таймаут до 60 сек для длительной инициализации
+  esp_task_wdt_init(60, true); // 60 сек таймаут, паника при срабатывании
   esp_task_wdt_add(NULL);      // Регистрация главной задачи
 
   LOG_I("=================================");
@@ -135,19 +145,37 @@ void setup() {
   // NVS - загрузка настроек
   LOG_I("Loading settings...");
   NVSManager::init();
+  
+  // Проверка сброса WiFi - если зажата кнопка BACK при загрузке
+  pinMode(PIN_BUTTON_BACK, INPUT_PULLUP);
+  delay(50); // Дать время на стабилизацию
+  if (!digitalRead(PIN_BUTTON_BACK)) {
+    // Кнопка зажата - сброс WiFi настроек
+    LOG_W("RESET: Button BACK pressed - resetting WiFi settings!");
+    resetWiFiAndRestart();
+  }
+  
   loadSettings();
 
   // Инициализация железа
   LOG_I("Initializing hardware...");
   initHardware();
+  
+  // ВРЕМЕННО ОТКЛЮЧЕНО: Насос отключен для диагностики перегрева
+  // Pump::init(); вызывается в initHardware(), но можно отключить здесь
+  // Если ESP не греется без насоса - проблема в подключении двигателя
+  
+  esp_task_wdt_reset(); // Сброс watchdog после инициализации железа
 
   // Сеть
   LOG_I("Initializing network...");
   initNetwork();
+  esp_task_wdt_reset(); // Сброс watchdog после инициализации сети
 
   // Веб-сервер
   LOG_I("Starting web server...");
   WebServer::init();
+  esp_task_wdt_reset(); // Сброс watchdog после инициализации веб-сервера
 
   // Telegram
   if (g_settings.telegram.enabled) {
@@ -178,6 +206,7 @@ void setup() {
   // Логгер
   Logger::init();
   Logger::log(LogEvent{millis(), 0, "System started"});
+  esp_task_wdt_reset(); // Сброс watchdog перед завершением setup()
 
   // Готово
   LOG_I("=================================");
@@ -197,6 +226,21 @@ void setup() {
 
 void loop() {
   uint32_t now = millis();
+
+  // Обработка команд через Serial (для сброса WiFi)
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    cmd.toUpperCase();
+    
+    if (cmd == "RESETWIFI" || cmd == "RESET WIFI") {
+      resetWiFiAndRestart();
+    } else if (cmd == "HELP" || cmd == "?") {
+      Serial.println("\n=== Available Commands ===");
+      Serial.println("RESETWIFI - Reset WiFi settings and restart");
+      Serial.println("HELP or ? - Show this help");
+    }
+  }
 
   // OTA Updates (наивысший приоритет)
   OTA::handle();
@@ -230,6 +274,12 @@ void loop() {
     g_lastPowerRead = now;
     Sensors::readPower(g_state.power);
   }
+
+  // Демо-симулятор (перезаписывает данные сенсоров если demoMode=true)
+  // ВРЕМЕННО ОТКЛЮЧЕНО ДЛЯ ДИАГНОСТИКИ
+  // if (g_settings.demoMode) {
+  //   DemoSimulator::update(g_state, g_settings);
+  // }
 
   // FSM - конечный автомат режимов
   if (g_state.safetyOk && !g_state.paused) {
@@ -278,6 +328,9 @@ void loop() {
 
     LOG_D("Energy: %.1fW, %.3fkWh logged", point.power, point.energy);
   }
+
+  // Обновление насоса (генерация шагов - ОБЯЗАТЕЛЬНО каждый цикл!)
+  Pump::update();
 
   // Обработка кнопок
   Buttons::update();
@@ -344,6 +397,11 @@ void loop() {
 
   // Yield для WiFi
   yield();
+
+  // Задержка для предотвращения перегрева CPU
+  // Увеличена задержка для снижения нагрузки на CPU и предотвращения перегрева
+  // Без этой задержки цикл работает на 100% CPU и ESP перегревается
+  delay(10); // 10 мс задержка для снижения частоты цикла до ~100 Гц
 }
 
 // =============================================================================
@@ -361,8 +419,10 @@ void initHardware() {
   // Нагреватель
   Heater::init();
 
-  // Насос
-  Pump::init();
+  // Насос - ВРЕМЕННО ОТКЛЮЧЕНО для диагностики перегрева
+  // Если ESP не греется без инициализации насоса - проблема в подключении двигателя
+  // Pump::init();
+  LOG_W("Pump: INIT DISABLED for overheating diagnosis");
 
   // Клапаны
   Valves::init();
@@ -400,6 +460,7 @@ void initNetwork() {
            millis() - startAttempt < WIFI_CONNECT_TIMEOUT_MS) {
       delay(100);
       Serial.print(".");
+      esp_task_wdt_reset(); // Сброс watchdog во время ожидания WiFi
     }
     Serial.println();
 
@@ -488,4 +549,25 @@ void loadSettings() {
   NVSManager::loadSettings(g_settings);
 
   LOG_I("Settings loaded");
+}
+
+// =============================================================================
+// СБРОС WiFi И ПЕРЕЗАГРУЗКА
+// =============================================================================
+
+void resetWiFiAndRestart() {
+  Serial.println("\n========================================");
+  Serial.println("WiFi RESET: Clearing WiFi settings...");
+  Serial.println("========================================");
+
+  // Очистить только WiFi настройки из NVS
+  Preferences prefs;
+  prefs.begin(NVS_NAMESPACE, false);
+  prefs.remove(NVS_KEY_WIFI_SSID);
+  prefs.remove(NVS_KEY_WIFI_PASS);
+  prefs.end();
+
+  Serial.println("WiFi settings cleared! Restarting...");
+  delay(1000);
+  ESP.restart();
 }

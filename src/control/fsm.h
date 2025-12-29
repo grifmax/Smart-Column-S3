@@ -120,8 +120,9 @@ namespace FSM {
     
     namespace Mashing {
         void update(SystemState& state, const Settings& settings);
-        void setProfile(uint8_t profileIndex);
+        void setProfile(const MashProfile* profile);
         void nextStep(SystemState& state);
+        void start(SystemState& state, const MashProfile* profile);
     }
     
     // =========================================================================
@@ -131,6 +132,7 @@ namespace FSM {
     namespace Hold {
         void update(SystemState& state, const Settings& settings);
         void setSteps(const TempStep* steps, uint8_t count);
+        void start(SystemState& state, const TempStep* steps, uint8_t count);
     }
     
     /**

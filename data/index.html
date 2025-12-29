@@ -32,7 +32,8 @@
             <button class="tab" data-tab="history">📚 История</button>
             <button class="tab" data-tab="profiles">📁 Профили</button>
             <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
-            <a href="calibration.html" class="tab" style="text-decoration: none;">🔧 Калибровка</a>
+            <a href="manual.html" class="tab" style="text-decoration: none;">🔧 Ручной режим</a>
+            <a href="calibration.html" class="tab" style="text-decoration: none;">⚙️ Калибровка</a>
             <a href="wifi.html" class="tab" style="text-decoration: none;">📶 WiFi</a>
         </nav>
 
@@ -246,6 +247,21 @@
                     <small style="color: var(--warning, #856404); display: block; margin-top: 10px;">
                         ⚠️ В демо-режиме все показания датчиков генерируются программно. Реальное оборудование не
                         управляется.
+                    </small>
+                </div>
+
+                <!-- Перезагрузка контроллера -->
+                <div class="card"
+                    style="border: 2px solid var(--danger, #dc3545); background: linear-gradient(135deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));">
+                    <h2>🔄 Перезагрузка</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Перезагрузка контроллера ESP32. Все текущие процессы будут остановлены.
+                    </p>
+                    <button class="btn btn-danger" onclick="rebootController()" style="width: 100%; padding: 12px;">
+                        🔄 Перезагрузить контроллер
+                    </button>
+                    <small style="color: var(--danger, #dc3545); display: block; margin-top: 10px;">
+                        ⚠️ Веб-интерфейс будет недоступен несколько секунд во время перезагрузки.
                     </small>
                 </div>
 

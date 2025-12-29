@@ -26,12 +26,16 @@ typedef enum {
 #endif
 
 #include "control/fsm.h"
+#include "drivers/pump.h"
 #include "drivers/sensors.h"
 #include "storage/nvs_manager.h"
+#include "../profiles.h"
 #include <ArduinoJson.h>
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
+#include <Preferences.h>
 #include <Update.h>
+
 
 // Внешние переменные из main.cpp
 extern SystemState g_state;
@@ -52,6 +56,10 @@ static const char *getModeString(Mode mode) {
     return "distillation";
   case Mode::MANUAL_RECT:
     return "manual";
+  case Mode::MASHING:
+    return "mashing";
+  case Mode::HOLD:
+    return "hold";
   default:
     return "unknown";
   }
@@ -355,6 +363,66 @@ void init() {
         request->send(200, "application/json",
                       "{\"success\":true,\"message\":\"Process resumed\"}");
       });
+
+  // ==========================================================================
+  // ДЕМО-РЕЖИМ
+  // ==========================================================================
+
+  // POST /api/settings/demo - включить/выключить демо-режим
+  server.on(
+      "/api/settings/demo", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        StaticJsonDocument<128> doc;
+        DeserializationError error = deserializeJson(doc, data, len);
+
+        if (error) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Invalid JSON\"}");
+          return;
+        }
+
+        bool enabled = doc["enabled"] | false;
+        g_settings.demoMode = enabled;
+
+        LOG_I("Demo mode %s", enabled ? "ENABLED" : "DISABLED");
+
+        // Сохраняем в NVS
+        Preferences prefs;
+        prefs.begin("settings", false);
+        prefs.putBool("demoMode", enabled);
+        prefs.end();
+
+        char response[128];
+        snprintf(response, sizeof(response),
+                 "{\"success\":true,\"demoMode\":%s}",
+                 enabled ? "true" : "false");
+        request->send(200, "application/json", response);
+      });
+
+  // GET /api/settings/demo - получить состояние демо-режима
+  server.on("/api/settings/demo", HTTP_GET, [](AsyncWebServerRequest *request) {
+    char response[64];
+    snprintf(response, sizeof(response), "{\"demoMode\":%s}",
+             g_settings.demoMode ? "true" : "false");
+    request->send(200, "application/json", response);
+  });
+
+  // ==========================================================================
+  // ПЕРЕЗАГРУЗКА
+  // ==========================================================================
+
+  // POST /api/reboot - перезагрузка контроллера
+  server.on("/api/reboot", HTTP_POST, [](AsyncWebServerRequest *request) {
+    LOG_W("Reboot requested via API");
+    request->send(200, "application/json",
+                  "{\"success\":true,\"message\":\"Rebooting...\"}");
+
+    // Небольшая задержка чтобы успеть отправить ответ
+    delay(500);
+    ESP.restart();
+  });
 
   // ==========================================================================
   // КАЛИБРОВКА
@@ -686,6 +754,65 @@ void init() {
             });
 
   // ==========================================================================
+  // PUMP CONTROL (для калибровки)
+  // ==========================================================================
+
+  // POST /api/pump/start - запуск насоса
+  server.on(
+      "/api/pump/start", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) {
+          return;
+        }
+
+        StaticJsonDocument<128> doc;
+        DeserializationError error = deserializeJson(doc, data, len);
+
+        if (error) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        float speed = doc["speed"] | 0.0f;
+
+        if (speed <= 0) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Speed must be > 0\"}");
+          return;
+        }
+
+        Pump::start(speed);
+        LOG_I("Pump started via API at %.1f ml/h", speed);
+
+        char response[128];
+        snprintf(response, sizeof(response),
+                 "{\"success\":true,\"speed\":%.1f}", speed);
+        request->send(200, "application/json", response);
+      });
+
+  // POST /api/pump/stop - остановка насоса
+  server.on("/api/pump/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
+    Pump::stop();
+    LOG_I("Pump stopped via API");
+    request->send(200, "application/json",
+                  "{\"success\":true,\"message\":\"Pump stopped\"}");
+  });
+
+  // GET /api/pump/status - статус насоса
+  server.on("/api/pump/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    StaticJsonDocument<128> doc;
+    doc["running"] = Pump::isRunning();
+    doc["speed"] = Pump::getSpeed();
+    doc["totalVolume"] = Pump::getTotalVolume();
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  // ==========================================================================
   // ENERGY CONSUMPTION GRAPH
   // ==========================================================================
 
@@ -975,6 +1102,134 @@ void init() {
         }
       });
 
+  // ==========================================================================
+  // PROFILES API
+  // ==========================================================================
+
+  // GET /api/profiles - Получить список всех профилей
+  server.on("/api/profiles", HTTP_GET, [](AsyncWebServerRequest *request) {
+    std::vector<ProfileListItem> profiles = getProfileList();
+    
+    DynamicJsonDocument doc(4096);
+    doc["total"] = profiles.size();
+    
+    JsonArray profileArray = doc.createNestedArray("profiles");
+    for (const auto& prof : profiles) {
+      JsonObject p = profileArray.createNestedObject();
+      p["id"] = prof.id;
+      p["name"] = prof.name;
+      p["category"] = prof.category;
+      p["useCount"] = prof.useCount;
+      p["lastUsed"] = prof.lastUsed;
+      p["isBuiltin"] = prof.isBuiltin;
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  // GET /api/profiles/{id} - Получить полные данные профиля
+  server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String id = request->pathArg(0);
+    
+    Profile profile;
+    if (loadProfile(id, profile)) {
+      DynamicJsonDocument doc(8192);
+      
+      doc["id"] = profile.id;
+      
+      JsonObject metadata = doc.createNestedObject("metadata");
+      metadata["name"] = profile.metadata.name;
+      metadata["description"] = profile.metadata.description;
+      metadata["category"] = profile.metadata.category;
+      
+      JsonArray tags = metadata.createNestedArray("tags");
+      for (const auto& tag : profile.metadata.tags) {
+        tags.add(tag);
+      }
+      
+      metadata["created"] = profile.metadata.created;
+      metadata["updated"] = profile.metadata.updated;
+      metadata["author"] = profile.metadata.author;
+      metadata["isBuiltin"] = profile.metadata.isBuiltin;
+      
+      JsonObject parameters = doc.createNestedObject("parameters");
+      parameters["mode"] = profile.parameters.mode;
+      parameters["model"] = profile.parameters.model;
+      
+      JsonObject heater = parameters.createNestedObject("heater");
+      heater["maxPower"] = profile.parameters.heater.maxPower;
+      heater["autoMode"] = profile.parameters.heater.autoMode;
+      heater["pidKp"] = profile.parameters.heater.pidKp;
+      heater["pidKi"] = profile.parameters.heater.pidKi;
+      heater["pidKd"] = profile.parameters.heater.pidKd;
+      
+      JsonObject rectification = parameters.createNestedObject("rectification");
+      rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
+      rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
+      rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
+      rectification["tailsVolume"] = profile.parameters.rectification.tailsVolume;
+      rectification["headsSpeed"] = profile.parameters.rectification.headsSpeed;
+      rectification["bodySpeed"] = profile.parameters.rectification.bodySpeed;
+      rectification["tailsSpeed"] = profile.parameters.rectification.tailsSpeed;
+      rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
+      
+      JsonObject distillation = parameters.createNestedObject("distillation");
+      distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
+      distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
+      distillation["speed"] = profile.parameters.distillation.speed;
+      distillation["endTemp"] = profile.parameters.distillation.endTemp;
+      
+      JsonObject temperatures = parameters.createNestedObject("temperatures");
+      temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
+      temperatures["maxColumn"] = profile.parameters.temperatures.maxColumn;
+      temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
+      temperatures["bodyStart"] = profile.parameters.temperatures.bodyStart;
+      temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
+      
+      JsonObject safety = parameters.createNestedObject("safety");
+      safety["maxRuntime"] = profile.parameters.safety.maxRuntime;
+      safety["waterFlowMin"] = profile.parameters.safety.waterFlowMin;
+      safety["pressureMax"] = profile.parameters.safety.pressureMax;
+      
+      JsonObject statistics = doc.createNestedObject("statistics");
+      statistics["useCount"] = profile.statistics.useCount;
+      statistics["lastUsed"] = profile.statistics.lastUsed;
+      statistics["avgDuration"] = profile.statistics.avgDuration;
+      statistics["avgYield"] = profile.statistics.avgYield;
+      statistics["successRate"] = profile.statistics.successRate;
+      
+      String response;
+      serializeJson(doc, response);
+      request->send(200, "application/json", response);
+    } else {
+      request->send(404, "application/json", "{\"error\":\"Profile not found\"}");
+    }
+  });
+
+  // POST /api/profiles/{id}/load - Загрузить профиль в текущие настройки
+  server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/load$", HTTP_POST, [](AsyncWebServerRequest *request) {
+    String id = request->pathArg(0);
+    
+    if (applyProfile(id)) {
+      request->send(200, "application/json", "{\"success\":true,\"message\":\"Profile loaded\"}");
+    } else {
+      request->send(404, "application/json", "{\"error\":\"Profile not found\"}");
+    }
+  });
+
+  // DELETE /api/profiles/{id} - Удалить профиль
+  server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+    String id = request->pathArg(0);
+    
+    if (deleteProfile(id)) {
+      request->send(200, "application/json", "{\"success\":true,\"message\":\"Profile deleted\"}");
+    } else {
+      request->send(404, "application/json", "{\"error\":\"Profile not found or builtin\"}");
+    }
+  });
+
   // 404
   server.onNotFound([](AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not Found");
@@ -989,15 +1244,41 @@ void broadcastState(const SystemState &state) {
     return;
 
   // Сформировать JSON со состоянием
-  StaticJsonDocument<1536> doc;
+  StaticJsonDocument<2048> doc;
 
   doc["mode"] = static_cast<int>(state.mode);
   doc["phase"] = static_cast<int>(state.rectPhase);
+  doc["uptime"] = state.uptime;
+
+  // Все температуры
   doc["t_cube"] = state.temps.cube;
-  doc["t_column"] = state.temps.columnTop;
+  doc["t_column_bottom"] = state.temps.columnBottom;
+  doc["t_column_top"] = state.temps.columnTop;
+  doc["t_reflux"] = state.temps.reflux;
+  doc["t_tsa"] = state.temps.tsa;
+  doc["t_water_in"] = state.temps.waterIn;
+  doc["t_water_out"] = state.temps.waterOut;
+
+  // Давление
+  doc["p_cube"] = state.pressure.cube;
+  doc["p_atm"] = state.pressure.atmosphere;
+
+  // Мощность (PZEM-004T)
+  doc["voltage"] = state.power.voltage;
+  doc["current"] = state.power.current;
   doc["power"] = state.power.power;
+  doc["energy"] = state.power.energy;
+  doc["frequency"] = state.power.frequency;
+  doc["pf"] = state.power.powerFactor;
+
+  // Насос
+  doc["pump_speed"] = state.pump.speedMlPerHour;
+  doc["pump_volume"] = state.pump.totalVolumeMl;
   doc["speed"] = state.pump.speedMlPerHour;
   doc["volume"] = state.pump.totalVolumeMl;
+
+  // Ареометр
+  doc["abv"] = state.hydrometer.abv;
 
   // Статистика памяти
   JsonObject mem = doc.createNestedObject("memory");

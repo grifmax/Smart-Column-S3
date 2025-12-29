@@ -1,0 +1,45 @@
+name: smart_column_s3
+description: Android приложение для управления ректификационной колонной Smart-Column S3
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.0
+
+  # HTTP & WebSocket
+  dio: ^5.4.0
+  web_socket_channel: ^2.4.0
+
+  # Local Storage
+  shared_preferences: ^2.2.0
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Charts
+  fl_chart: ^0.65.0
+
+  # UI
+  cupertino_icons: ^1.0.6
+
+  # Utils
+  intl: ^0.18.1
+  json_annotation: ^4.8.1
+  connectivity_plus: ^5.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.0
+  json_serializable: ^6.7.1
+
+flutter:
+  uses-material-design: true
+
