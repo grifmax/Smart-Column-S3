@@ -6,12 +6,18 @@
 
 **Начните здесь:** [GETTING_STARTED.md](GETTING_STARTED.md)
 
-### Основные инструкции
+### Развертывание на Railway.app
 
-- **[RAILWAY_STEP_BY_STEP.md](RAILWAY_STEP_BY_STEP.md)** ⭐ - Подробная пошаговая инструкция для Railway.app
-- **[RAILWAY_VISUAL_GUIDE.md](RAILWAY_VISUAL_GUIDE.md)** - Визуальное руководство (что вы увидите)
-- **[RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md)** - Полное руководство со всеми деталями
+- **[RAILWAY_STEP_BY_STEP.md](RAILWAY_STEP_BY_STEP.md)** ⭐ - Подробная пошаговая инструкция
+- **[RAILWAY_VISUAL_GUIDE.md](RAILWAY_VISUAL_GUIDE.md)** - Визуальное руководство
+- **[RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md)** - Полное руководство
 - **[QUICK_DEPLOY.md](QUICK_DEPLOY.md)** - Быстрое развертывание (5 минут)
+
+### Развертывание на Timeweb
+
+- **[TIMEWEB_STEP_BY_STEP.md](TIMEWEB_STEP_BY_STEP.md)** ⭐ - Пошаговые указания с проверками
+- **[TIMEWEB_DEPLOYMENT.md](TIMEWEB_DEPLOYMENT.md)** - Полное руководство
+- **[TIMEWEB_QUICK_START.md](TIMEWEB_QUICK_START.md)** - Быстрый старт (10 минут)
 
 ### Вспомогательные материалы
 

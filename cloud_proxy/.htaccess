@@ -1,0 +1,24 @@
+# Настройки для Apache на Timeweb
+
+# Включение CORS
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type"
+</IfModule>
+
+# Перенаправление API запросов на api.php
+RewriteEngine On
+RewriteBase /
+
+# Health check
+RewriteRule ^health$ api.php [L]
+
+# API endpoints
+RewriteRule ^api/devices$ api.php [L]
+RewriteRule ^api/device/([^/]+)/status$ api.php [L]
+RewriteRule ^api/device/([^/]+)/command$ api.php [L]
+
+# WebSocket будет обрабатываться отдельным процессом
+# Для этого нужен отдельный скрипт запуска
+

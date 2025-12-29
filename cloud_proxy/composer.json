@@ -1,0 +1,16 @@
+{
+    "name": "smart-column-s3/proxy",
+    "description": "Cloud proxy server for Smart-Column S3 (PHP version)",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "cboden/ratchet": "^0.4",
+        "react/socket": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "SmartColumn\\": "src/"
+        }
+    }
+}
+
