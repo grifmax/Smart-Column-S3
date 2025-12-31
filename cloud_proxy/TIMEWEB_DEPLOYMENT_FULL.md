@@ -23,6 +23,14 @@ Android App <--HTTPS/WSS--> Timeweb Hosting
 - ✅ FTP доступ (опционально)
 - ✅ Домен или поддомен
 
+## ⚠️ КРИТИЧЕСКИ ВАЖНО: Путь к файлам
+
+**Все файлы должны быть в папке `public_html` внутри `smart-column-proxy`!**
+
+**Полный путь:** `co111685/smart-column-proxy/public_html`
+
+📖 Подробности: [TIMEWEB_PATH_IMPORTANT.md](TIMEWEB_PATH_IMPORTANT.md)
+
 ## ⚠️ Важная информация
 
 **Node.js на виртуальном хостинге Timeweb:**
@@ -49,6 +57,9 @@ Android App <--HTTPS/WSS--> Timeweb Hosting
 # Перейдите в директорию прокси
 cd ~/smart-column-proxy
 
+# Создайте папку public_html (если нет)
+mkdir -p public_html
+
 # Удалите старые файлы если есть
 rm -rf temp 2>/dev/null || true
 
@@ -58,20 +69,23 @@ git clone -b claude/smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7 https://github.com/
 # Проверьте наличие cloud_proxy
 ls -la temp/cloud_proxy/
 
-# Скопируйте PHP файлы
-mv temp/cloud_proxy/*.php .
+# Скопируйте PHP файлы в public_html
+mv temp/cloud_proxy/*.php public_html/
 
-# Скопируйте конфигурационные файлы
-mv temp/cloud_proxy/composer.json .
-mv temp/cloud_proxy/.htaccess .
-mv temp/cloud_proxy/.env.example . 2>/dev/null || true
+# Скопируйте конфигурационные файлы в public_html
+mv temp/cloud_proxy/composer.json public_html/
+mv temp/cloud_proxy/.htaccess public_html/
+mv temp/cloud_proxy/.env.example public_html/ 2>/dev/null || true
 
 # Удалите временную папку
 rm -rf temp
 
 # Проверьте файлы
-ls -la
+ls -la public_html/
 ```
+
+**⚠️ ВАЖНО:** Все файлы должны быть в папке `public_html`!
+Полный путь: `co111685/smart-column-proxy/public_html`
 
 **Должны увидеть:**
 - `server.php` - WebSocket сервер
@@ -103,11 +117,11 @@ ls -la
    - **Протокол:** FTP или SFTP (рекомендуется SFTP)
 
 3. **Найдите директорию:**
-   - Перейдите в `~/smart-column-proxy` или `/home/c/co111685/smart-column-proxy`
+   - Перейдите в `~/smart-column-proxy/public_html` или `/home/c/co111685/smart-column-proxy/public_html`
    - Если папки нет - создайте её через панель управления или SSH
 
 4. **Загрузите файлы:**
-   Из локальной папки `cloud_proxy/` загрузите:
+   Из локальной папки `cloud_proxy/` загрузите в `public_html/`:
    - `server.php`
    - `api.php`
    - `config.php`
@@ -116,15 +130,18 @@ ls -la
    - `.htaccess`
 
 5. **Проверьте загрузку:**
-   - Убедитесь, что все файлы загружены
+   - Убедитесь, что все файлы загружены в `public_html/`
    - Проверьте права доступа (должны быть 644 для файлов, 755 для директорий)
 
 **Настройка прав через SSH (после загрузки):**
 ```bash
-cd ~/smart-column-proxy
+cd ~/smart-column-proxy/public_html
 chmod 644 *.php *.json .htaccess
 chmod 755 .
 ```
+
+**⚠️ ВАЖНО:** Все файлы должны быть в папке `public_html`!
+Полный путь: `co111685/smart-column-proxy/public_html`
 
 ## Этап 2: Установка зависимостей
 
@@ -152,9 +169,13 @@ composer --version
 **Установка зависимостей:**
 
 ```bash
-cd ~/smart-column-proxy
+cd ~/smart-column-proxy/public_html
+php ../composer.phar install --no-dev
+# Или если composer в глобальной директории:
 composer install --no-dev
 ```
+
+**⚠️ ВАЖНО:** Установка зависимостей создаст папку `vendor/` в `public_html/`
 
 **Ожидаемый результат:**
 ```
@@ -372,7 +393,7 @@ crontab -e
 
 **Добавьте строку:**
 ```cron
-@reboot cd ~/smart-column-proxy && screen -dmS smart-column-proxy php start_websocket.php
+@reboot cd ~/smart-column-proxy/public_html && screen -dmS smart-column-proxy php start_websocket.php
 ```
 
 **Сохранение:**

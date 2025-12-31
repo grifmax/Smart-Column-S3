@@ -26,7 +26,10 @@
 **Заполните форму:**
 - **Имя поддомена:** `smartcolumn` (или другое)
 - **Домен:** `spiritcontrol.ru`
-- **Директория:** `/smart-column-proxy` или `/public_html/smart-column-proxy`
+- **Директория:** `/smart-column-proxy/public_html` ⚠️ **ВАЖНО!**
+
+**Критически важно:** Файлы должны быть в папке `public_html` внутри `smart-column-proxy`!
+Полный путь: `co111685/smart-column-proxy/public_html`
 
 **Важно:** Убедитесь, что указали правильную директорию, где находятся файлы прокси!
 
@@ -59,8 +62,10 @@ dig smartcolumn.spiritcontrol.ru
 В SSH-консоли:
 
 ```bash
-# Проверьте, что файлы в правильной директории
-cd ~/smart-column-proxy
+# Перейдите в правильную директорию
+cd ~/smart-column-proxy/public_html
+
+# Проверьте файлы
 ls -la
 
 # Должны быть видны:
@@ -69,6 +74,22 @@ ls -la
 # - config.php
 # - .htaccess
 # - .env
+```
+
+**Важно:** Если файлы в `~/smart-column-proxy`, переместите их:
+```bash
+# Создайте папку public_html если нет
+mkdir -p ~/smart-column-proxy/public_html
+
+# Переместите файлы
+cd ~/smart-column-proxy
+mv *.php public_html/
+mv .htaccess public_html/
+mv .env public_html/ 2>/dev/null || true
+mv composer.json public_html/ 2>/dev/null || true
+
+# Проверьте
+ls -la public_html/
 ```
 
 ### Проверка .htaccess
