@@ -15,8 +15,9 @@
 
 ### Развертывание на Timeweb
 
-- **[TIMEWEB_STEP_BY_STEP.md](TIMEWEB_STEP_BY_STEP.md)** ⭐ - Пошаговые указания с проверками
-- **[TIMEWEB_DEPLOYMENT.md](TIMEWEB_DEPLOYMENT.md)** - Полное руководство
+- **[TIMEWEB_DEPLOYMENT_FULL.md](TIMEWEB_DEPLOYMENT_FULL.md)** ⭐ - Полное руководство с SSH+Git и FTP
+- **[TIMEWEB_STEP_BY_STEP.md](TIMEWEB_STEP_BY_STEP.md)** - Пошаговые указания с проверками
+- **[TIMEWEB_PHP_SETUP.md](TIMEWEB_PHP_SETUP.md)** - Краткая инструкция для PHP версии
 - **[TIMEWEB_QUICK_START.md](TIMEWEB_QUICK_START.md)** - Быстрый старт (10 минут)
 
 ### Вспомогательные материалы

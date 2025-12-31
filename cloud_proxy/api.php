@@ -30,7 +30,35 @@ function getDevices() {
 
 function saveDevices($devices) {
     global $devicesFile;
-    file_put_contents($devicesFile, json_encode($devices));
+    file_put_contents($devicesFile, json_encode($devices, JSON_PRETTY_PRINT));
+}
+
+function getCommands($deviceId) {
+    $commandsFile = __DIR__ . '/commands.json';
+    if (file_exists($commandsFile)) {
+        $commands = json_decode(file_get_contents($commandsFile), true) ?: [];
+        return $commands[$deviceId] ?? [];
+    }
+    return [];
+}
+
+function saveCommand($deviceId, $command) {
+    $commandsFile = __DIR__ . '/commands.json';
+    $commands = [];
+    if (file_exists($commandsFile)) {
+        $commands = json_decode(file_get_contents($commandsFile), true) ?: [];
+    }
+    
+    if (!isset($commands[$deviceId])) {
+        $commands[$deviceId] = [];
+    }
+    
+    $commands[$deviceId][] = $command;
+    // Оставляем только последние 10 команд
+    $commands[$deviceId] = array_slice($commands[$deviceId], -10);
+    
+    file_put_contents($commandsFile, json_encode($commands, JSON_PRETTY_PRINT));
+    return true;
 }
 
 // Маршрутизация
@@ -53,11 +81,12 @@ if ($path === '/api/devices' && $method === 'GET') {
     $devices = getDevices();
     $deviceList = [];
     foreach ($devices as $deviceId => $device) {
+        $isOnline = ($device['online'] ?? false) && ((time() - ($device['lastSeen'] ?? 0)) < 60);
         $deviceList[] = [
             'deviceId' => $deviceId,
             'lastSeen' => $device['lastSeen'] ?? 0,
-            'clientsCount' => count($device['clients'] ?? []),
-            'online' => (time() - ($device['lastSeen'] ?? 0)) < 60, // Онлайн если был активен за последнюю минуту
+            'clientsCount' => $device['clientsCount'] ?? 0,
+            'online' => $isOnline,
         ];
     }
     echo json_encode([
@@ -82,11 +111,13 @@ if (preg_match('#^/api/device/([^/]+)/status$#', $path, $matches) && $method ===
     }
     
     $device = $devices[$deviceId];
+    $isOnline = ($device['online'] ?? false) && ((time() - ($device['lastSeen'] ?? 0)) < 60);
     echo json_encode([
-        'status' => 'online',
+        'status' => $isOnline ? 'online' : 'offline',
         'deviceId' => $deviceId,
         'lastSeen' => $device['lastSeen'] ?? 0,
-        'clientsCount' => count($device['clients'] ?? [])
+        'clientsCount' => $device['clientsCount'] ?? 0,
+        'online' => $isOnline
     ]);
     exit;
 }
@@ -96,14 +127,9 @@ if (preg_match('#^/api/device/([^/]+)/command$#', $path, $matches) && $method ==
     $deviceId = $matches[1];
     $devices = getDevices();
     
-    if (!isset($devices[$deviceId])) {
-        http_response_code(503);
-        echo json_encode([
-            'error' => 'Device offline',
-            'deviceId' => $deviceId
-        ]);
-        exit;
-    }
+    // Проверяем, есть ли устройство (даже если offline, команда будет в очереди)
+    $device = $devices[$deviceId] ?? null;
+    $isOnline = $device && ($device['online'] ?? false) && ((time() - ($device['lastSeen'] ?? 0)) < 60);
     
     $input = json_decode(file_get_contents('php://input'), true);
     $command = [
@@ -113,12 +139,24 @@ if (preg_match('#^/api/device/([^/]+)/command$#', $path, $matches) && $method ==
         'timestamp' => time()
     ];
     
-    // В реальной реализации здесь нужно отправить команду через WebSocket
-    // Для упрощения просто возвращаем успех
-    echo json_encode([
-        'success' => true,
-        'message' => 'Command sent'
-    ]);
+    // Сохраняем команду в очередь
+    saveCommand($deviceId, $command);
+    
+    if (!$isOnline) {
+        // Устройство offline - команда в очереди
+        echo json_encode([
+            'success' => true,
+            'message' => 'Command queued (device offline)',
+            'queued' => true
+        ]);
+    } else {
+        // Устройство online - команда будет отправлена при следующем подключении или сразу если WebSocket активен
+        echo json_encode([
+            'success' => true,
+            'message' => 'Command sent',
+            'queued' => false
+        ]);
+    }
     exit;
 }
 

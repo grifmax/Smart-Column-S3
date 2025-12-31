@@ -22,6 +22,81 @@ use Ratchet\WebSocket\WsServer;
 class DeviceProxy implements MessageComponentInterface {
     protected $devices = [];
     protected $clients = [];
+    protected $devicesFile;
+    protected $commandsFile;
+    
+    public function __construct() {
+        $this->devicesFile = __DIR__ . '/devices.json';
+        $this->commandsFile = __DIR__ . '/commands.json';
+        // Загружаем существующие устройства из файла
+        $this->loadDevices();
+    }
+    
+    protected function loadDevices() {
+        if (file_exists($this->devicesFile)) {
+            $data = json_decode(file_get_contents($this->devicesFile), true);
+            if ($data) {
+                // Загружаем только метаданные, соединения будут установлены при подключении
+                foreach ($data as $deviceId => $device) {
+                    $this->devices[$deviceId] = [
+                        'conn' => null, // Будет установлено при подключении
+                        'deviceId' => $deviceId,
+                        'lastSeen' => $device['lastSeen'] ?? 0,
+                        'clients' => []
+                    ];
+                }
+            }
+        }
+    }
+    
+    protected function saveDevices() {
+        $data = [];
+        foreach ($this->devices as $deviceId => $device) {
+            $data[$deviceId] = [
+                'deviceId' => $deviceId,
+                'lastSeen' => $device['lastSeen'] ?? time(),
+                'clientsCount' => count($device['clients'] ?? []),
+                'online' => $device['conn'] !== null
+            ];
+        }
+        file_put_contents($this->devicesFile, json_encode($data, JSON_PRETTY_PRINT));
+    }
+    
+    protected function saveCommand($deviceId, $command) {
+        $commands = [];
+        if (file_exists($this->commandsFile)) {
+            $commands = json_decode(file_get_contents($this->commandsFile), true) ?: [];
+        }
+        
+        if (!isset($commands[$deviceId])) {
+            $commands[$deviceId] = [];
+        }
+        
+        $commands[$deviceId][] = $command;
+        // Оставляем только последние 10 команд
+        $commands[$deviceId] = array_slice($commands[$deviceId], -10);
+        
+        file_put_contents($this->commandsFile, json_encode($commands, JSON_PRETTY_PRINT));
+    }
+    
+    protected function getCommands($deviceId) {
+        if (!file_exists($this->commandsFile)) {
+            return [];
+        }
+        $commands = json_decode(file_get_contents($this->commandsFile), true) ?: [];
+        return $commands[$deviceId] ?? [];
+    }
+    
+    protected function clearCommands($deviceId) {
+        if (!file_exists($this->commandsFile)) {
+            return;
+        }
+        $commands = json_decode(file_get_contents($this->commandsFile), true) ?: [];
+        if (isset($commands[$deviceId])) {
+            unset($commands[$deviceId]);
+            file_put_contents($this->commandsFile, json_encode($commands, JSON_PRETTY_PRINT));
+        }
+    }
     
     public function onOpen(ConnectionInterface $conn) {
         $path = $conn->httpRequest->getUri()->getPath();
@@ -51,6 +126,20 @@ class DeviceProxy implements MessageComponentInterface {
                 'lastSeen' => time(),
                 'clients' => []
             ];
+            
+            // Сохраняем в файл
+            $this->saveDevices();
+            
+            // Отправляем накопленные команды (если есть)
+            $pendingCommands = $this->getCommands($deviceId);
+            foreach ($pendingCommands as $cmd) {
+                try {
+                    $conn->send(json_encode($cmd));
+                } catch (Exception $e) {
+                    error_log("[ESP32] Error sending pending command: " . $e->getMessage());
+                }
+            }
+            $this->clearCommands($deviceId);
             
             error_log("[ESP32] Device connected: $deviceId");
         } elseif ($path === '/client') {
@@ -114,6 +203,9 @@ class DeviceProxy implements MessageComponentInterface {
         if ($isDevice) {
             // Сообщение от ESP32 - пересылаем всем клиентам
             $device['lastSeen'] = time();
+            $this->devices[$deviceId]['lastSeen'] = time();
+            $this->saveDevices(); // Сохраняем обновление lastSeen
+            
             foreach ($device['clients'] as $client) {
                 if ($client !== $from) {
                     try {
@@ -154,6 +246,7 @@ class DeviceProxy implements MessageComponentInterface {
                     }
                 }
                 unset($this->devices[$deviceId]);
+                $this->saveDevices(); // Сохраняем удаление устройства
                 error_log("[ESP32] Device disconnected: $deviceId");
                 break;
             }
@@ -166,6 +259,7 @@ class DeviceProxy implements MessageComponentInterface {
                 $key = array_search($conn, $this->devices[$deviceId]['clients']);
                 if ($key !== false) {
                     unset($this->devices[$deviceId]['clients'][$key]);
+                    $this->saveDevices(); // Сохраняем обновление списка клиентов
                 }
             }
             unset($this->clients[$conn->resourceId]);
