@@ -18,10 +18,21 @@ Android App <--HTTPS/WSS--> Timeweb Hosting
 ## Требования
 
 - ✅ PHP 7.4+ (у вас PHP 8.2.28)
-- ✅ Composer (у вас версия 1.9.0)
+- ✅ Composer (требуется обновление до версии 2.x)
 - ✅ SSH доступ
 - ✅ FTP доступ (опционально)
 - ✅ Домен или поддомен
+
+## ⚠️ Важная информация
+
+**Node.js на виртуальном хостинге Timeweb:**
+- Node.js работает только как консольная утилита
+- Запуск Node.js серверов **не поддерживается** на виртуальном хостинге
+- Для Node.js серверов нужен VDS или другой хостинг (например, Railway.app)
+
+**Поэтому используем PHP версию прокси** - она работает на виртуальном хостинге!
+
+См. подробности: [TIMEWEB_NODEJS_LIMITATION.md](TIMEWEB_NODEJS_LIMITATION.md)
 
 ## Этап 1: Подготовка файлов
 
@@ -128,27 +139,71 @@ composer --version
 
 ### Установка зависимостей
 
+**Важно:** Если у вас Composer 1.9.0, сначала обновите его:
+
+```bash
+# Обновление Composer до версии 2
+composer self-update --2
+
+# Проверка версии
+composer --version
+```
+
+**Установка зависимостей:**
+
 ```bash
 cd ~/smart-column-proxy
-composer install
+composer install --no-dev
 ```
 
 **Ожидаемый результат:**
 ```
 Loading composer repositories with package information
-Installing dependencies (including require-dev) from lock file
+Installing dependencies from lock file
 Package operations: X installs, 0 updates, 0 removals
-  - Installing cboden/ratchet (v0.4.4)
+  - Installing ratchet/ratchet (v0.4.4)
   - Installing react/socket (v1.15.0)
+  - Installing react/stream (v1.3.0)
+  - Installing react/event-loop (v1.4.0)
   ...
 Writing lock file
 Generating autoload files
 ```
 
 **Если возникли ошибки:**
-- Проверьте версию PHP: `php --version` (должна быть 7.4+)
-- Проверьте права на запись: `chmod 755 .`
-- Попробуйте обновить Composer: `composer self-update`
+
+1. **Composer устарел (версия 1.9.0):**
+   ```bash
+   # Обновление до версии 2
+   composer self-update --2
+   
+   # Проверка версии
+   composer --version
+   ```
+
+2. **Пакеты не найдены:**
+   - Убедитесь, что используете обновленный `composer.json`
+   - Очистите кэш: `composer clear-cache`
+   - Попробуйте: `composer install --no-dev`
+
+3. **Проблемы с правами:**
+   ```bash
+   chmod 755 .
+   chmod 644 composer.json
+   ```
+
+4. **Подробная диагностика:**
+   ```bash
+   composer install -vvv
+   ```
+
+5. **Если Composer не обновляется:**
+   - Обратитесь в поддержку Timeweb для обновления Composer
+   - Или используйте Railway.app для Node.js версии
+
+**См. также:** 
+- [TIMEWEB_COMPOSER_FIX.md](TIMEWEB_COMPOSER_FIX.md) - Решение проблем с Composer
+- [TIMEWEB_NODEJS_LIMITATION.md](TIMEWEB_NODEJS_LIMITATION.md) - Ограничения Node.js на виртуальном хостинге
 
 ## Этап 3: Настройка конфигурации
 
@@ -219,7 +274,7 @@ cat .env
    - **Директория:** `/smart-column-proxy` или `/public_html/smart-column-proxy`
 6. Нажмите **"Создать"**
 
-**Результат:** Получите URL вида `smartcolumn.co111685.tw1.ru`
+**Результат:** Получите URL вида `smartcolumn.spiritcontrol.ru`
 
 ### Установка SSL сертификата
 
@@ -229,7 +284,7 @@ cat .env
 4. Дождитесь установки (обычно 1-2 минуты)
 
 **Проверка HTTPS:**
-Откройте в браузере: `https://smartcolumn.co111685.tw1.ru/health`
+Откройте в браузере: `https://smartcolumn.spiritcontrol.ru/health`
 
 Должен вернуться JSON (даже если сервер еще не запущен, Apache должен ответить).
 
@@ -347,7 +402,7 @@ curl https://smartcolumn.co111685.tw1.ru/health
 
 **Список устройств:**
 ```bash
-curl https://smartcolumn.co111685.tw1.ru/api/devices
+curl https://smartcolumn.spiritcontrol.ru/api/devices
 ```
 
 **Ожидаемый результат:**
@@ -366,7 +421,7 @@ screen -r smart-column-proxy
 
 **Проверка через онлайн инструмент:**
 1. Откройте https://www.websocket.org/echo.html
-2. Подключитесь к: `wss://smartcolumn.co111685.tw1.ru:3000/client?token=YOUR_CLIENT_TOKEN&device=TEST`
+2. Подключитесь к: `wss://smartcolumn.spiritcontrol.ru:3000/client?token=YOUR_CLIENT_TOKEN&device=TEST`
 
 **Примечание:** WebSocket через HTTPS требует проксирования или использования порта напрямую.
 
@@ -393,7 +448,7 @@ screen -r smart-column-proxy
 ```cpp
 CloudProxySettings proxy;
 proxy.enabled = true;
-proxy.url = "smartcolumn.co111685.tw1.ru";  // Ваш поддомен
+proxy.url = "smartcolumn.spiritcontrol.ru";  // Ваш поддомен
 proxy.deviceId = "esp32-001";  // Должен совпадать с приложением!
 proxy.token = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6";  // ESP32_TOKEN из .env
 ```
@@ -442,7 +497,7 @@ composer install --no-dev
 ### Проблема: "WebSocket не работает через HTTPS"
 
 **Решение:**
-- Используйте порт напрямую: `wss://smartcolumn.co111685.tw1.ru:3000`
+- Используйте порт напрямую: `wss://smartcolumn.spiritcontrol.ru:3000`
 - Или настройте Nginx проксирование (обратитесь в поддержку Timeweb)
 
 ### Проблема: "REST API возвращает 404"
@@ -544,7 +599,7 @@ ls -lh ~/smart-column-proxy/*.json
 - ✅ Готов к использованию из Android приложения
 - ✅ Готов к подключению ESP32 устройств
 
-**URL для использования:** `https://smartcolumn.co111685.tw1.ru`
+**URL для использования:** `https://smartcolumn.spiritcontrol.ru`
 
 ## Полезные команды
 
