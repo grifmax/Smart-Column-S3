@@ -205,9 +205,10 @@ class _DeviceSettingsScreenState extends ConsumerState<DeviceSettingsScreen> {
             const SizedBox(height: 16),
             SwitchListTile(
               title: const Text('Использовать HTTPS'),
-              subtitle: const Text('Включите для безопасного подключения через интернет'),
+              subtitle: Text(_useCloudProxy 
+                  ? 'Автоматически включено для облачного прокси'
+                  : 'Включите для безопасного подключения через интернет'),
               value: _useHttps,
-              enabled: !_useCloudProxy, // Автоматически включено для облачного прокси
               onChanged: _useCloudProxy ? null : (value) {
                 setState(() {
                   _useHttps = value;
