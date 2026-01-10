@@ -1,9 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:convert';
 import '../../../../core/api/api_client.dart';
 import '../../../../core/api/websocket_client.dart';
 import '../../../../core/api/endpoints.dart';
-import '../../../../core/api/models/device_info.dart';
 import '../../../../core/storage/local_storage.dart';
 import '../../../../core/utils/constants.dart';
 

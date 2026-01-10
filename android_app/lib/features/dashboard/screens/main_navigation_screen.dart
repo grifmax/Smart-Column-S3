@@ -4,7 +4,6 @@ import '../../monitoring/screens/monitoring_screen.dart';
 import '../../profiles/screens/profiles_screen.dart';
 import '../../history/screens/history_screen.dart';
 import '../../settings/screens/settings_screen.dart';
-import '../../calibration/screens/calibration_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});

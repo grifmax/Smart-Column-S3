@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калибровка - Smart Column S3</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        // Загрузить тему из localStorage
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.addEventListener('DOMContentLoaded', function() {
+                document.body.setAttribute('data-theme', savedTheme);
+            });
+        })();
+    </script>
+    <style>
+        .calibration-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        .cal-section {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .cal-section h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+
+        .btn:hover {
+            background: #45a049;
+        }
+
+        .btn-secondary {
+            background: #2196F3;
+        }
+
+        .btn-secondary:hover {
+            background: #0b7dda;
+        }
+
+        .sensor-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sensor-item {
+            background: #f9f9f9;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .sensor-item.invalid {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+
+        .sensor-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .sensor-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-ok {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .status-error {
+            background: #f44336;
+            color: white;
+        }
+
+        .info-text {
+            color: #666;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+
+        .result-message {
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .result-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .result-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: #4CAF50;
+            text-decoration: none;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+            transition: opacity 0.3s;
+        }
+
+        .back-link:hover {
+            opacity: 0.7;
+        }
+
+        /* Темная тема */
+        [data-theme="dark"] .back-link {
+            color: #66bb6a;
+        }
+
+        [data-theme="dark"] .calibration-container {
+            color: #e0e0e0;
+        }
+
+        [data-theme="dark"] .cal-section {
+            background: #1e1e1e;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        [data-theme="dark"] .cal-section h2 {
+            color: #e0e0e0;
+            border-bottom-color: #66bb6a;
+        }
+
+        [data-theme="dark"] .cal-section h3 {
+            color: #e0e0e0;
+        }
+
+        [data-theme="dark"] .form-group label {
+            color: #b0b0b0;
+        }
+
+        [data-theme="dark"] .form-group input,
+        [data-theme="dark"] .form-group select {
+            background: #2a2a2a;
+            border-color: #444;
+            color: #e0e0e0;
+        }
+
+        [data-theme="dark"] .sensor-item {
+            background: #2a2a2a;
+            border-left-color: #66bb6a;
+        }
+
+        [data-theme="dark"] .sensor-item.invalid {
+            background: #3a1f1f;
+            border-left-color: #f44336;
+        }
+
+        [data-theme="dark"] .sensor-info strong {
+            color: #e0e0e0;
+        }
+
+        [data-theme="dark"] .info-text {
+            color: #999;
+        }
+
+        [data-theme="dark"] .result-message.success {
+            background: #1b5e20;
+            color: #a5d6a7;
+            border-color: #2e7d32;
+        }
+
+        [data-theme="dark"] .result-message.error {
+            background: #5d1f1f;
+            color: #ef9a9a;
+            border-color: #c62828;
+        }
+
+        [data-theme="dark"] hr {
+            border-color: #444;
+        }
+
+        [data-theme="dark"] .info-text[style*="background: #fff3cd"] {
+            background: #3a3a1f !important;
+            color: #ffd54f !important;
+            border-left-color: #ffc107 !important;
+        }
+
+        [data-theme="dark"] #cal-progress-container {
+            background: #1f2a3a !important;
+            border-left-color: #2196F3 !important;
+            color: #e0e0e0 !important;
+        }
+
+        [data-theme="dark"] #cal-progress-container strong {
+            color: #e0e0e0 !important;
+        }
+
+        [data-theme="dark"] details summary {
+            color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="calibration-container">
+        <h1>⚙️ Калибровка системы</h1>
+        <a href="index.html" class="back-link">← Вернуться в главное меню</a>
+
+        <!-- Калибровка насоса -->
+        <div class="cal-section">
+            <h2>🔧 Калибровка насоса</h2>
+
+            <div class="form-group">
+                <label>Текущее значение:</label>
+                <div class="info-text" id="pumpCurrent">Загрузка...</div>
+            </div>
+
+            <p class="info-text" style="background: #fff3cd; padding: 10px; border-radius: 4px; border-left: 4px solid #ffc107;">
+                ⚠️ <strong>Важно:</strong> Точность налива может быть нелинейна на разных скоростях.
+                Рекомендуется выполнить минимум 2 калибровки: на скорости <strong>200 мл/час</strong> и <strong>1500 мл/час</strong>.
+            </p>
+
+            <h3>Параметры калибровки</h3>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div class="form-group">
+                    <label for="cal-speed">Скорость налива (мл/час)</label>
+                    <select id="cal-speed" onchange="updateCalibrationTime()">
+                        <option value="150">150 мл/час</option>
+                        <option value="200" selected>200 мл/час ⭐ рекомендуется</option>
+                        <option value="300">300 мл/час</option>
+                        <option value="750">750 мл/час</option>
+                        <option value="1000">1000 мл/час</option>
+                        <option value="1500">1500 мл/час ⭐ рекомендуется</option>
+                        <option value="2000">2000 мл/час</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="cal-volume">Объём тары (мл)</label>
+                    <select id="cal-volume" onchange="updateCalibrationTime()">
+                        <option value="50">50 мл</option>
+                        <option value="100" selected>100 мл</option>
+                        <option value="250">250 мл</option>
+                        <option value="500">500 мл</option>
+                        <option value="1000">1000 мл</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Расчётное время налива:</label>
+                <div class="info-text" id="cal-time" style="font-size: 1.1em; font-weight: 600;">30 мин</div>
+            </div>
+
+            <div id="cal-progress-container" style="display: none; margin: 20px 0; padding: 15px; background: #f0f8ff; border-radius: 6px; border-left: 4px solid #2196F3;">
+                <div style="margin-bottom: 10px;">
+                    <strong>Калибровка в процессе...</strong>
+                </div>
+                <div style="background: #ddd; height: 30px; border-radius: 15px; overflow: hidden; margin-bottom: 10px;">
+                    <div id="cal-progress-bar" style="background: linear-gradient(90deg, #4CAF50, #66bb6a); height: 100%; width: 0%; transition: width 0.5s; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;"></div>
+                </div>
+                <div class="info-text">
+                    Прошло: <span id="cal-elapsed">0 мин 0 сек</span> / <span id="cal-total">0 мин</span>
+                </div>
+            </div>
+
+            <div id="cal-manual-volume" style="display: none; margin: 20px 0;">
+                <div class="form-group">
+                    <label for="actual-volume">Фактически налитый объём (мл):</label>
+                    <input type="number" id="actual-volume" step="0.1" min="0" placeholder="Введите фактический объём">
+                    <p class="info-text">Если вы остановили калибровку досрочно, введите реальный объём, который был налит.</p>
+                </div>
+            </div>
+
+            <div class="controls" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="btn" id="btn-start-cal" onclick="startCalibration()">▶️ Старт калибровки</button>
+                <button class="btn" id="btn-stop-cal" onclick="stopCalibration()" style="display: none; background: #ff9800;">⏹️ Стоп</button>
+                <button class="btn btn-secondary" id="btn-apply-cal" onclick="applyCalibration()" style="display: none;">✅ Применить результат</button>
+                <button class="btn" id="btn-cancel-cal" onclick="cancelCalibration()" style="display: none; background: #f44336;">❌ Отмена</button>
+            </div>
+
+            <div id="pumpResult" class="result-message"></div>
+
+            <hr style="margin: 30px 0;">
+
+            <details>
+                <summary style="cursor: pointer; font-weight: 600; margin-bottom: 10px;">Прямая калибровка (для опытных пользователей)</summary>
+                <div class="form-group">
+                    <label for="mlPerRev">мл на оборот:</label>
+                    <input type="number" id="mlPerRev" step="0.001" min="0" placeholder="0.500">
+                </div>
+                <button class="btn" onclick="calibratePumpDirect()">Применить</button>
+            </details>
+        </div>
+
+        <!-- Калибровка термометров -->
+        <div class="cal-section">
+            <h2>🌡️ Калибровка термометров</h2>
+
+            <button class="btn btn-secondary" onclick="scanSensors()">🔍 Сканировать датчики</button>
+            <button class="btn btn-secondary" onclick="loadCalibration()">🔄 Обновить</button>
+
+            <div style="margin-top: 20px;">
+                <ul class="sensor-list" id="sensorList">
+                    <li>Загрузка...</li>
+                </ul>
+            </div>
+
+            <div id="tempResult" class="result-message"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/calibration';
+
+        // Загрузка текущей калибровки
+        async function loadCalibration() {
+            try {
+                const response = await fetch(API_BASE);
+                const data = await response.json();
+
+                // Насос
+                document.getElementById('pumpCurrent').textContent =
+                    `${data.pump.mlPerRev.toFixed(3)} мл/оборот ` +
+                    `(${data.pump.stepsPerRev} шагов/об × ${data.pump.microsteps} микрошагов)`;
+                document.getElementById('mlPerRev').value = data.pump.mlPerRev.toFixed(3);
+
+                // Термометры
+                const list = document.getElementById('sensorList');
+                list.innerHTML = '';
+
+                const tempNames = ['Куб', 'Царга низ', 'Царга верх', 'Дефлегматор', 'ТСА', 'Вода вход', 'Вода выход'];
+
+                data.temperatures.forEach((temp, i) => {
+                    const li = document.createElement('li');
+                    li.className = `sensor-item ${temp.valid ? '' : 'invalid'}`;
+                    li.innerHTML = `
+                        <div class="sensor-info">
+                            <div>
+                                <strong>${tempNames[temp.index] || 'Датчик ' + temp.index}</strong>
+                                <span class="status-badge ${temp.valid ? 'status-ok' : 'status-error'}">
+                                    ${temp.valid ? '✓ OK' : '✗ Ошибка'}
+                                </span>
+                                <div class="info-text">Адрес: ${temp.address}</div>
+                                <div class="info-text">Текущее: <strong>${temp.current.toFixed(2)}°C</strong>, Смещение: ${temp.offset.toFixed(2)}°C</div>
+                            </div>
+                        </div>
+                        <div class="sensor-actions">
+                            <input type="number" id="offset_${i}" value="${temp.offset.toFixed(2)}" step="0.01"
+                                   style="width: 100px;" placeholder="Смещение">
+                            <button class="btn" onclick="calibrateTempOffset(${i})">Применить смещение</button>
+                            <input type="number" id="ref_${i}" step="0.1" style="width: 100px;" placeholder="Эталон °C">
+                            <button class="btn btn-secondary" onclick="calibrateTempReference(${i})">По эталону</button>
+                        </div>
+                    `;
+                    list.appendChild(li);
+                });
+            } catch (error) {
+                console.error('Load error:', error);
+                showResult('tempResult', 'Ошибка загрузки данных', 'error');
+            }
+        }
+
+        // Калибровка насоса (прямая)
+        async function calibratePumpDirect() {
+            const mlPerRev = parseFloat(document.getElementById('mlPerRev').value);
+            if (isNaN(mlPerRev) || mlPerRev <= 0) {
+                showResult('pumpResult', 'Введите корректное значение мл/оборот', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/pump`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mlPerRev })
+                });
+
+                if (response.ok) {
+                    showResult('pumpResult', `✓ Насос откалиброван: ${mlPerRev.toFixed(3)} мл/оборот`, 'success');
+                    loadCalibration();
+                } else {
+                    showResult('pumpResult', 'Ошибка калибровки', 'error');
+                }
+            } catch (error) {
+                showResult('pumpResult', 'Ошибка соединения', 'error');
+            }
+        }
+
+        // Калибровка насоса (измерение)
+        async function calibratePumpMeasured() {
+            const knownVolume = parseFloat(document.getElementById('knownVolume').value);
+            const steps = parseInt(document.getElementById('steps').value);
+
+            if (isNaN(knownVolume) || knownVolume <= 0 || isNaN(steps) || steps <= 0) {
+                showResult('pumpResult', 'Введите корректные значения', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/pump`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ knownVolume, steps })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('pumpResult',
+                        `✓ Насос откалиброван: ${data.mlPerRev.toFixed(3)} мл/оборот (измерено ${knownVolume} мл за ${steps} шагов)`,
+                        'success');
+                    loadCalibration();
+                } else {
+                    showResult('pumpResult', 'Ошибка калибровки', 'error');
+                }
+            } catch (error) {
+                showResult('pumpResult', 'Ошибка соединения', 'error');
+            }
+        }
+
+        // Калибровка термометра (смещение)
+        async function calibrateTempOffset(index) {
+            const offset = parseFloat(document.getElementById(`offset_${index}`).value);
+            if (isNaN(offset)) {
+                showResult('tempResult', 'Введите корректное смещение', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/temp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index, offset })
+                });
+
+                if (response.ok) {
+                    showResult('tempResult', `✓ Датчик ${index} откалиброван: смещение ${offset.toFixed(2)}°C`, 'success');
+                    loadCalibration();
+                } else {
+                    showResult('tempResult', 'Ошибка калибровки', 'error');
+                }
+            } catch (error) {
+                showResult('tempResult', 'Ошибка соединения', 'error');
+            }
+        }
+
+        // Калибровка термометра (эталон)
+        async function calibrateTempReference(index) {
+            const reference = parseFloat(document.getElementById(`ref_${index}`).value);
+            if (isNaN(reference)) {
+                showResult('tempResult', 'Введите эталонную температуру', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/temp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index, reference })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('tempResult',
+                        `✓ Датчик ${index} откалиброван по эталону ${reference.toFixed(1)}°C, смещение: ${data.offset.toFixed(2)}°C`,
+                        'success');
+                    loadCalibration();
+                } else {
+                    showResult('tempResult', 'Ошибка калибровки', 'error');
+                }
+            } catch (error) {
+                showResult('tempResult', 'Ошибка соединения', 'error');
+            }
+        }
+
+        // Сканирование датчиков
+        async function scanSensors() {
+            try {
+                const response = await fetch(`${API_BASE}/scan`);
+                const data = await response.json();
+                showResult('tempResult', `✓ Найдено датчиков: ${data.count}`, 'success');
+                loadCalibration();
+            } catch (error) {
+                showResult('tempResult', 'Ошибка сканирования', 'error');
+            }
+        }
+
+        // Показать результат
+        function showResult(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = `result-message ${type}`;
+            setTimeout(() => {
+                el.className = 'result-message';
+            }, 5000);
+        }
+
+        // ============================================================================
+        // Новая система калибровки насоса
+        // ============================================================================
+
+        let calibrationState = {
+            running: false,
+            startTime: null,
+            targetTime: 0,
+            targetVolume: 0,
+            speed: 0,
+            interval: null
+        };
+
+        // Обновить расчётное время
+        function updateCalibrationTime() {
+            const speed = parseInt(document.getElementById('cal-speed').value);
+            const volume = parseInt(document.getElementById('cal-volume').value);
+            const timeMinutes = (volume / speed) * 60;
+
+            document.getElementById('cal-time').textContent =
+                timeMinutes >= 1
+                    ? `${Math.floor(timeMinutes)} мин ${Math.round((timeMinutes % 1) * 60)} сек`
+                    : `${Math.round(timeMinutes * 60)} сек`;
+        }
+
+        // Запуск калибровки
+        async function startCalibration() {
+            const speed = parseInt(document.getElementById('cal-speed').value);
+            const volume = parseInt(document.getElementById('cal-volume').value);
+
+            calibrationState = {
+                running: true,
+                startTime: Date.now(),
+                targetTime: (volume / speed) * 3600000, // в миллисекундах
+                targetVolume: volume,
+                speed: speed,
+                interval: null
+            };
+
+            // Показать прогресс, скрыть кнопку старт
+            document.getElementById('btn-start-cal').style.display = 'none';
+            document.getElementById('btn-stop-cal').style.display = 'inline-block';
+            document.getElementById('btn-cancel-cal').style.display = 'inline-block';
+            document.getElementById('cal-progress-container').style.display = 'block';
+            document.getElementById('cal-total').textContent =
+                `${Math.floor(calibrationState.targetTime / 60000)} мин`;
+
+            // Запустить насос через API
+            try {
+                const response = await fetch('/api/pump/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ speed: speed })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to start pump');
+                }
+
+                showResult('pumpResult', `✓ Калибровка запущена: ${volume} мл при ${speed} мл/час`, 'success');
+
+                // Запустить обновление прогресса
+                calibrationState.interval = setInterval(updateCalibrationProgress, 1000);
+
+            } catch (error) {
+                showResult('pumpResult', 'Ошибка запуска насоса', 'error');
+                cancelCalibration();
+            }
+        }
+
+        // Обновление прогресса
+        function updateCalibrationProgress() {
+            if (!calibrationState.running) return;
+
+            const elapsed = Date.now() - calibrationState.startTime;
+            const progress = Math.min((elapsed / calibrationState.targetTime) * 100, 100);
+
+            document.getElementById('cal-progress-bar').style.width = progress + '%';
+            document.getElementById('cal-progress-bar').textContent = Math.round(progress) + '%';
+
+            const elapsedSec = Math.floor(elapsed / 1000);
+            const minutes = Math.floor(elapsedSec / 60);
+            const seconds = elapsedSec % 60;
+            document.getElementById('cal-elapsed').textContent = `${minutes} мин ${seconds} сек`;
+
+            // Автоостановка по завершении
+            if (elapsed >= calibrationState.targetTime) {
+                stopCalibration(true);
+            }
+        }
+
+        // Остановка калибровки
+        async function stopCalibration(autoStop = false) {
+            if (!calibrationState.running) return;
+
+            calibrationState.running = false;
+            clearInterval(calibrationState.interval);
+
+            // Остановить насос через API
+            try {
+                await fetch('/api/pump/stop', { method: 'POST' });
+            } catch (error) {
+                console.error('Error stopping pump:', error);
+            }
+
+            // Скрыть кнопку стоп, показать кнопки применить/отмена
+            document.getElementById('btn-stop-cal').style.display = 'none';
+            document.getElementById('btn-apply-cal').style.display = 'inline-block';
+
+            // Если досрочная остановка, показать поле для ввода объёма
+            if (!autoStop) {
+                document.getElementById('cal-manual-volume').style.display = 'block';
+                showResult('pumpResult', 'Калибровка остановлена. Введите фактический объём и нажмите "Применить результат"', 'info');
+            } else {
+                document.getElementById('actual-volume').value = calibrationState.targetVolume;
+                showResult('pumpResult', 'Калибровка завершена. Нажмите "Применить результат" для сохранения', 'success');
+            }
+        }
+
+        // Применить результат калибровки
+        async function applyCalibration() {
+            let actualVolume = parseFloat(document.getElementById('actual-volume').value);
+
+            if (isNaN(actualVolume) || actualVolume <= 0) {
+                showResult('pumpResult', 'Введите корректный фактический объём', 'error');
+                return;
+            }
+
+            const elapsed = Date.now() - calibrationState.startTime;
+            const elapsedHours = elapsed / 3600000;
+            const actualSpeed = actualVolume / elapsedHours;
+
+            // Рассчитать новое значение мл/оборот на основе фактических данных
+            // Это упрощённый расчёт, реальная логика должна быть на сервере
+            try {
+                const response = await fetch(`${API_BASE}/pump`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        knownVolume: actualVolume,
+                        elapsedMs: elapsed,
+                        targetSpeed: calibrationState.speed
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showResult('pumpResult',
+                        `✓ Калибровка применена! Новое значение: ${data.mlPerRev?.toFixed(3) || 'обновлено'} мл/оборот`,
+                        'success');
+                    loadCalibration();
+                    resetCalibrationUI();
+                } else {
+                    showResult('pumpResult', 'Ошибка применения калибровки', 'error');
+                }
+            } catch (error) {
+                showResult('pumpResult', 'Ошибка соединения', 'error');
+            }
+        }
+
+        // Отмена калибровки
+        async function cancelCalibration() {
+            if (calibrationState.running) {
+                clearInterval(calibrationState.interval);
+                try {
+                    await fetch('/api/pump/stop', { method: 'POST' });
+                } catch (error) {
+                    console.error('Error stopping pump:', error);
+                }
+            }
+
+            resetCalibrationUI();
+            showResult('pumpResult', 'Калибровка отменена', 'info');
+        }
+
+        // Сброс UI
+        function resetCalibrationUI() {
+            calibrationState = { running: false, startTime: null, targetTime: 0, targetVolume: 0, speed: 0, interval: null };
+
+            document.getElementById('btn-start-cal').style.display = 'inline-block';
+            document.getElementById('btn-stop-cal').style.display = 'none';
+            document.getElementById('btn-apply-cal').style.display = 'none';
+            document.getElementById('btn-cancel-cal').style.display = 'none';
+            document.getElementById('cal-progress-container').style.display = 'none';
+            document.getElementById('cal-manual-volume').style.display = 'none';
+            document.getElementById('cal-progress-bar').style.width = '0%';
+            document.getElementById('actual-volume').value = '';
+        }
+
+        // Загрузка при старте
+        loadCalibration();
+        updateCalibrationTime();
+    </script>
+</body>
+</html>

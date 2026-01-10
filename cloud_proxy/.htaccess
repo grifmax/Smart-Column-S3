@@ -1,24 +1,88 @@
-# Настройки для Apache на Timeweb
+# Smart-Column S3 Web Proxy - Apache Configuration
+# Для правильной работы веб-интерфейса на spiritcontrol.ru
 
-# Включение CORS
+# Включаем mod_rewrite
+RewriteEngine On
+
+# Защита конфигурационных JSON файлов
+<FilesMatch "\.(json)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Разрешаем доступ к PHP файлам (с расширением и без)
+<FilesMatch "^(proxy|login|esp32_settings|auth_web|config|esp32_config|web_settings_api)(\.php)?$">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+</FilesMatch>
+
+# Обрабатываем файлы без расширения как PHP (должно быть ДО RewriteRule)
+<FilesMatch "^(proxy|login|auth_web|config|esp32_config|web_settings_api)$">
+    SetHandler application/x-httpd-php
+</FilesMatch>
+
+# ВАЖНО: Корневой путь (/) должен обрабатываться ПЕРВЫМ, до поиска index.html
+# Это правило должно быть ДО всех остальных правил, которые могут перехватить запрос
+# Пробуем proxy.php, если не найден - пробуем proxy
+RewriteCond %{REQUEST_URI} ^/$
+RewriteCond %{DOCUMENT_ROOT}/proxy.php -f
+RewriteRule ^$ proxy.php [QSA,L]
+
+RewriteCond %{REQUEST_URI} ^/$
+RewriteCond %{DOCUMENT_ROOT}/proxy -f
+RewriteRule ^$ proxy [QSA,L]
+
+# Если запрашивается login и файл существует - обрабатываем напрямую
+RewriteCond %{REQUEST_URI} ^/login$
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^login$ - [L]
+
+RewriteCond %{REQUEST_URI} ^/login\.php$
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^login\.php$ - [L]
+
+# Для HTML файлов - всегда через proxy.php (для проверки авторизации)
+RewriteCond %{REQUEST_URI} \.(html)$ [NC]
+RewriteRule ^(.*)$ proxy.php [QSA,L]
+
+# Для статических файлов (CSS, JS, изображения) - отдаем напрямую из web/
+# (HTML файлы уже обработаны выше и идут через proxy.php)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !\.(html)$ [NC]
+RewriteCond %{DOCUMENT_ROOT}/web/$1 -f
+RewriteRule ^(.*)$ web/$1 [L]
+
+# Перенаправляем все остальные запросы на proxy.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ proxy.php [QSA,L]
+
+# Настройки PHP
+php_value upload_max_filesize 10M
+php_value post_max_size 10M
+php_value max_execution_time 300
+php_value max_input_time 300
+
+# Заголовки безопасности
 <IfModule mod_headers.c>
-    Header set Access-Control-Allow-Origin "*"
-    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
-    Header set Access-Control-Allow-Headers "Content-Type"
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+    Header set X-XSS-Protection "1; mode=block"
 </IfModule>
 
-# Перенаправление API запросов на api.php
-RewriteEngine On
-RewriteBase /
-
-# Health check
-RewriteRule ^health$ api.php [L]
-
-# API endpoints
-RewriteRule ^api/devices$ api.php [L]
-RewriteRule ^api/device/([^/]+)/status$ api.php [L]
-RewriteRule ^api/device/([^/]+)/command$ api.php [L]
-
-# WebSocket будет обрабатываться отдельным процессом
-# Для этого нужен отдельный скрипт запуска
-
+# Кэширование для статических файлов
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType application/json "access plus 0 seconds"
+</IfModule>

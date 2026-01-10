@@ -18,7 +18,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
   final List<FlSpot> _cubeTempSpots = [];
   final List<FlSpot> _columnTempSpots = [];
   final List<FlSpot> _powerSpots = [];
-  int _maxPoints = 60; // 5 минут при обновлении каждые 5 секунд
+  final int _maxPoints = 60; // 5 минут при обновлении каждые 5 секунд
 
   @override
   void initState() {
@@ -94,7 +94,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                     child: LineChart(
                       LineChartData(
                         gridData: const FlGridData(show: true),
-                        titlesData: FlTitlesData(
+                        titlesData: const FlTitlesData(
                           leftTitles: AxisTitles(
                             sideTitles: SideTitles(
                               showTitles: true,
@@ -153,7 +153,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                     child: LineChart(
                       LineChartData(
                         gridData: const FlGridData(show: true),
-                        titlesData: FlTitlesData(
+                        titlesData: const FlTitlesData(
                           leftTitles: AxisTitles(
                             sideTitles: SideTitles(
                               showTitles: true,

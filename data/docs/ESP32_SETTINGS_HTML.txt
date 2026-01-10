@@ -1,0 +1,70 @@
+<!-- Добавить эту карточку в index.html после карточки WiFi (после строки 278) -->
+
+                <div class="card">
+                    <h2>🔌 Подключение к ESP32</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Настройка подключения к ESP32 для проксирования запросов через этот веб-сервер.
+                    </p>
+                    
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="esp32-enabled" onchange="toggleESP32Fields()">
+                            <span style="font-weight: 600;">Включить проксирование к ESP32</span>
+                        </label>
+                    </div>
+                    
+                    <div id="esp32-fields">
+                        <div class="form-group">
+                            <label>IP адрес или домен ESP32 *</label>
+                            <input type="text" id="esp32-host" placeholder="192.168.1.100 или esp32.local">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                                Например: 192.168.1.100 или esp32.local
+                            </small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Порт</label>
+                            <input type="number" id="esp32-port" value="80" min="1" max="65535">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                                Обычно 80 для HTTP или 443 для HTTPS
+                            </small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="esp32-use-https">
+                                <span>Использовать HTTPS</span>
+                            </label>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Логин (если требуется)</label>
+                            <input type="text" id="esp32-username" placeholder="Логин для HTTP Basic Auth">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                                Логин для HTTP Basic Authentication на ESP32
+                            </small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Пароль (если требуется)</label>
+                            <input type="password" id="esp32-password" placeholder="Пароль для HTTP Basic Auth">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                                Пароль для HTTP Basic Authentication на ESP32
+                            </small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Таймаут подключения (секунды)</label>
+                            <input type="number" id="esp32-timeout" value="5" min="1" max="30">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                                Максимальное время ожидания ответа от ESP32
+                            </small>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-primary" onclick="saveESP32Settings()">💾 Сохранить</button>
+                            <button class="btn" onclick="testESP32Connection()">🔍 Проверить подключение</button>
+                        </div>
+                    </div>
+                </div>
+

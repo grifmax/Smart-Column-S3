@@ -160,12 +160,8 @@ class _DeviceSettingsScreenState extends ConsumerState<DeviceSettingsScreen> {
               onChanged: (value) {
                 setState(() {
                   _useCloudProxy = value;
-                  if (value) {
-                    _useHttps = true;
-                    if (_portController.text == '80') {
-                      _portController.text = '443';
-                    }
-                  }
+                  // Не включаем HTTPS автоматически - пользователь может выбрать
+                  // Для локального тестирования нужно выключить HTTPS
                 });
               },
             ),
@@ -205,10 +201,9 @@ class _DeviceSettingsScreenState extends ConsumerState<DeviceSettingsScreen> {
             const SizedBox(height: 16),
             SwitchListTile(
               title: const Text('Использовать HTTPS'),
-              subtitle: const Text('Включите для безопасного подключения через интернет'),
+              subtitle: const Text('Включите для безопасного подключения через интернет (для локального тестирования выключите)'),
               value: _useHttps,
-              enabled: !_useCloudProxy, // Автоматически включено для облачного прокси
-              onChanged: _useCloudProxy ? null : (value) {
+              onChanged: (value) {
                 setState(() {
                   _useHttps = value;
                   if (value && _portController.text == '80') {

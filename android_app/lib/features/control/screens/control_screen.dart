@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../device_connection/providers/device_provider.dart';
-import '../../../../core/api/api_client.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 
 class ControlScreen extends ConsumerStatefulWidget {
