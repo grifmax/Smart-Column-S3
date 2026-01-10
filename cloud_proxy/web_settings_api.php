@@ -15,7 +15,12 @@ header('Content-Type: application/json; charset=utf-8');
 requireAuth();
 
 $method = $_SERVER['REQUEST_METHOD'];
-$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+// Используем путь из REQUEST_URI_API если передан из proxy.php, иначе парсим из REQUEST_URI
+if (isset($_SERVER['REQUEST_URI_API'])) {
+    $path = $_SERVER['REQUEST_URI_API'];
+} else {
+    $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+}
 
 // GET /api/web/esp32/config - получить настройки ESP32
 if ($path === '/api/web/esp32/config' && $method === 'GET') {
@@ -105,10 +110,183 @@ if ($path === '/api/web/user' && $method === 'GET') {
     if ($user) {
         // Не возвращаем пароль
         unset($user['password']);
+        // Права/подписка (задел под платные услуги)
+        $user['entitlements'] = getUserEntitlements($user['id']);
         echo json_encode($user, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     } else {
         http_response_code(401);
         echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+// GET /api/web/user/logout - выход из системы
+if ($path === '/api/web/user/logout' && $method === 'GET') {
+    logout();
+    echo json_encode(['success' => true, 'message' => 'Выполнен выход'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// GET /api/web/user/account - информация об аккаунте
+if ($path === '/api/web/user/account' && $method === 'GET') {
+    $user = getCurrentUser();
+    if ($user) {
+        echo json_encode([
+            'id' => $user['id'],
+            'username' => $user['username'],
+            'email' => $user['email'] ?? '',
+            'created' => $user['created'] ?? 0,
+            'lastLogin' => $user['lastLogin'] ?? 0
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } else {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+// GET /api/web/esp32/devices - список всех устройств пользователя
+if ($path === '/api/web/esp32/devices' && $method === 'GET') {
+    $user = getCurrentUser();
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    $devices = listUserDevices($user['id']);
+    echo json_encode(['devices' => $devices], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// GET /api/web/esp32/devices/{id} - получить устройство по ID
+if (preg_match('#^/api/web/esp32/devices/(\d+)$#', $path, $matches) && $method === 'GET') {
+    $user = getCurrentUser();
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    $deviceId = (int)$matches[1];
+    $device = getDeviceById($deviceId, $user['id']);
+    
+    if ($device) {
+        echo json_encode(['device' => $device], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'Устройство не найдено'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+// POST /api/web/esp32/devices - создать новое устройство
+if ($path === '/api/web/esp32/devices' && $method === 'POST') {
+    $user = getCurrentUser();
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!$input) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid JSON'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    $data = [
+        'name' => $input['name'] ?? 'ESP32 Device',
+        'host' => $input['host'] ?? '',
+        'port' => isset($input['port']) ? (int)$input['port'] : 80,
+        'useHttps' => isset($input['useHttps']) ? (bool)$input['useHttps'] : false,
+        'username' => $input['username'] ?? '',
+        'password' => $input['password'] ?? '',
+        'timeout' => isset($input['timeout']) ? (int)$input['timeout'] : 5,
+        'is_active' => isset($input['is_active']) ? (bool)$input['is_active'] : false
+    ];
+    
+    $deviceId = createDevice($user['id'], $data);
+    
+    if ($deviceId) {
+        if ($data['is_active']) {
+            setActiveDevice($deviceId, $user['id']);
+        }
+        echo json_encode(['success' => true, 'id' => $deviceId, 'message' => 'Устройство создано'], JSON_UNESCAPED_UNICODE);
+    } else {
+        http_response_code(500);
+        echo json_encode(['error' => 'Ошибка при создании устройства'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+// PUT /api/web/esp32/devices/{id} - обновить устройство
+if (preg_match('#^/api/web/esp32/devices/(\d+)$#', $path, $matches) && $method === 'PUT') {
+    $user = getCurrentUser();
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    $deviceId = (int)$matches[1];
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!$input) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid JSON'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    $result = updateDevice($deviceId, $user['id'], $input);
+    
+    if ($result) {
+        echo json_encode(['success' => true, 'message' => 'Устройство обновлено'], JSON_UNESCAPED_UNICODE);
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'Устройство не найдено'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+// DELETE /api/web/esp32/devices/{id} - удалить устройство
+if (preg_match('#^/api/web/esp32/devices/(\d+)$#', $path, $matches) && $method === 'DELETE') {
+    $user = getCurrentUser();
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    $deviceId = (int)$matches[1];
+    $result = deleteDevice($deviceId, $user['id']);
+    
+    if ($result) {
+        echo json_encode(['success' => true, 'message' => 'Устройство удалено'], JSON_UNESCAPED_UNICODE);
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'Устройство не найдено'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+// POST /api/web/esp32/devices/{id}/activate - установить активное устройство
+if (preg_match('#^/api/web/esp32/devices/(\d+)/activate$#', $path, $matches) && $method === 'POST') {
+    $user = getCurrentUser();
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    $deviceId = (int)$matches[1];
+    $result = setActiveDevice($deviceId, $user['id']);
+    
+    if ($result) {
+        echo json_encode(['success' => true, 'message' => 'Устройство активировано'], JSON_UNESCAPED_UNICODE);
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'Устройство не найдено'], JSON_UNESCAPED_UNICODE);
     }
     exit;
 }

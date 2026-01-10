@@ -33,20 +33,23 @@ if (!defined('CLIENT_TOKEN')) {
     define('CLIENT_TOKEN', 'change_me_in_production');
 }
 
-// Database configuration (для будущего использования)
+// Database configuration
 if (!defined('DB_HOST')) {
     define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
 }
 
 if (!defined('DB_NAME')) {
-    define('DB_NAME', getenv('DB_NAME') ?: '');
+    define('DB_NAME', getenv('DB_NAME') ?: 'co111685_proxy');
 }
 
 if (!defined('DB_USER')) {
-    define('DB_USER', getenv('DB_USER') ?: '');
+    define('DB_USER', getenv('DB_USER') ?: 'co111685_proxy');
 }
 
 if (!defined('DB_PASS')) {
-    define('DB_PASS', getenv('DB_PASS') ?: '');
+    define('DB_PASS', getenv('DB_PASS') ?: '4g6LSJuu');
 }
+
+// Подключение файла с функциями для работы с БД
+require_once __DIR__ . '/database.php';
 

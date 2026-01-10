@@ -7,7 +7,7 @@
 
 session_start();
 
-$usersFile = __DIR__ . '/users_web.json';
+require_once __DIR__ . '/database.php';
 
 /**
  * Нормализовать строку в UTF-8
@@ -81,54 +81,99 @@ function fixEncoding($data) {
 }
 
 /**
- * Загрузить пользователей
+ * Получить пользователя по имени
  */
-function loadWebUsers() {
-    global $usersFile;
-    
-    if (file_exists($usersFile)) {
-        $content = @file_get_contents($usersFile);
-        if ($content !== false) {
-            $data = @json_decode($content, true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                // Исправляем кодировку данных
-                return fixEncoding($data ?: []);
-            }
-        }
+function getUserByUsername($username) {
+    $pdo = getDB();
+    if ($pdo === null) {
+        return null;
     }
     
-    return [];
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ?");
+        $stmt->execute([normalizeToUtf8(trim($username))]);
+        $user = $stmt->fetch();
+        
+        if ($user) {
+            return [
+                'id' => (int)$user['id'],
+                'username' => $user['username'],
+                'password' => $user['password_hash'],
+                'email' => $user['email'],
+                'created' => strtotime($user['created_at']),
+                'lastLogin' => $user['last_login'] ? strtotime($user['last_login']) : 0
+            ];
+        }
+        
+        return null;
+    } catch (PDOException $e) {
+        error_log('Error getting user by username: ' . $e->getMessage());
+        return null;
+    }
 }
 
 /**
- * Сохранить пользователей
+ * Создать пользователя
  */
-function saveWebUsers($users) {
-    global $usersFile;
-    
-    // Нормализуем все данные перед сохранением
-    $normalizedUsers = [];
-    foreach ($users as $username => $userData) {
-        $normalizedUsername = normalizeToUtf8($username);
-        $normalizedUsers[$normalizedUsername] = fixEncoding($userData);
-        // Убеждаемся, что username есть в данных
-        if (!isset($normalizedUsers[$normalizedUsername]['username'])) {
-            $normalizedUsers[$normalizedUsername]['username'] = $normalizedUsername;
-        }
-    }
-    
-    // Кодируем в JSON с правильной кодировкой
-    $json = json_encode($normalizedUsers, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    
-    if ($json === false) {
-        error_log('JSON encode error: ' . json_last_error_msg());
+function createUser($username, $passwordHash, $email = '') {
+    $pdo = getDB();
+    if ($pdo === null) {
         return false;
     }
     
-    // Сохраняем файл
-    $result = @file_put_contents($usersFile, $json, LOCK_EX);
+    try {
+        $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)");
+        return $stmt->execute([
+            normalizeToUtf8(trim($username)),
+            $passwordHash,
+            normalizeToUtf8(trim($email))
+        ]);
+    } catch (PDOException $e) {
+        error_log('Error creating user: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Обновить пользователя
+ */
+function updateUser($userId, $data) {
+    $pdo = getDB();
+    if ($pdo === null) {
+        return false;
+    }
     
-    return $result !== false;
+    try {
+        $fields = [];
+        $values = [];
+        
+        if (isset($data['password_hash'])) {
+            $fields[] = 'password_hash = ?';
+            $values[] = $data['password_hash'];
+        }
+        
+        if (isset($data['email'])) {
+            $fields[] = 'email = ?';
+            $values[] = normalizeToUtf8(trim($data['email']));
+        }
+        
+        if (isset($data['last_login'])) {
+            $fields[] = 'last_login = ?';
+            $values[] = $data['last_login'] ? date('Y-m-d H:i:s', $data['last_login']) : null;
+        }
+        
+        if (empty($fields)) {
+            return false;
+        }
+        
+        $values[] = $userId;
+        $sql = "UPDATE users SET " . implode(', ', $fields) . " WHERE id = ?";
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute($values);
+    } catch (PDOException $e) {
+        error_log('Error updating user: ' . $e->getMessage());
+        return false;
+    }
 }
 
 /**
@@ -146,20 +191,155 @@ function getCurrentUser() {
         return null;
     }
     
-    $users = loadWebUsers();
-    $userId = normalizeToUtf8($_SESSION['user_id'] ?? '');
-    
-    if (empty($userId) || !isset($users[$userId])) {
+    $pdo = getDB();
+    if ($pdo === null) {
         return null;
     }
     
-    $user = $users[$userId];
-    // Убеждаемся, что username есть в данных пользователя
-    if (!isset($user['username'])) {
-        $user['username'] = $userId;
+    $userId = (int)($_SESSION['user_id'] ?? 0);
+    if ($userId <= 0) {
+        return null;
     }
     
-    return $user;
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
+        
+        if ($user) {
+            return [
+                'id' => (int)$user['id'],
+                'username' => $user['username'],
+                'email' => $user['email'],
+                'created' => strtotime($user['created_at']),
+                'lastLogin' => $user['last_login'] ? strtotime($user['last_login']) : 0
+            ];
+        }
+        
+        return null;
+    } catch (PDOException $e) {
+        error_log('Error getting current user: ' . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Получить права/подписку пользователя (задел под платные услуги)
+ *
+ * Важно: user_id берется из сессии, поэтому доверенный.
+ * deviceId НЕ является секретом и не используется как токен.
+ */
+function getUserEntitlements($userId) {
+    $default = [
+        'planTier' => 'free',
+        'expiresAt' => null,
+        'features' => []
+    ];
+
+    $pdo = getDB();
+    if ($pdo === null) {
+        return $default;
+    }
+
+    // Если таблица еще не создана (старые установки) — возвращаем дефолт.
+    if (!function_exists('tableExists') || !tableExists('user_entitlements')) {
+        return $default;
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT plan_tier, expires_at, features_json
+             FROM user_entitlements
+             WHERE user_id = ?
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([(int)$userId]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            return $default;
+        }
+
+        $planTier = $row['plan_tier'] ?: 'free';
+        $expiresAt = !empty($row['expires_at']) ? strtotime($row['expires_at']) : null;
+
+        // Если подписка истекла — считаем free (данные оставляем как подсказку).
+        if ($expiresAt !== null && $expiresAt > 0 && $expiresAt < time()) {
+            $planTier = 'free';
+        }
+
+        $features = [];
+        if (!empty($row['features_json'])) {
+            $decoded = json_decode($row['features_json'], true);
+            if (is_array($decoded)) {
+                $features = $decoded;
+            }
+        }
+
+        return [
+            'planTier' => $planTier,
+            'expiresAt' => $expiresAt,
+            'features' => $features
+        ];
+    } catch (PDOException $e) {
+        error_log('Error getting user entitlements: ' . $e->getMessage());
+        return $default;
+    }
+}
+
+/**
+ * Получить устройства пользователя
+ */
+function getUserDevices($userId) {
+    $pdo = getDB();
+    if ($pdo === null) {
+        return [];
+    }
+    
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM esp32_devices WHERE user_id = ? ORDER BY created_at DESC");
+        $stmt->execute([$userId]);
+        return $stmt->fetchAll();
+    } catch (PDOException $e) {
+        error_log('Error getting user devices: ' . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Получить активное устройство пользователя
+ */
+function getActiveDevice($userId) {
+    $pdo = getDB();
+    if ($pdo === null) {
+        return null;
+    }
+    
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM esp32_devices WHERE user_id = ? AND is_active = 1 LIMIT 1");
+        $stmt->execute([$userId]);
+        $device = $stmt->fetch();
+        
+        if ($device) {
+            return [
+                'id' => (int)$device['id'],
+                'name' => $device['name'],
+                'host' => $device['host'],
+                'port' => (int)$device['port'],
+                'useHttps' => (bool)$device['use_https'],
+                'username' => $device['username'],
+                'password' => $device['password_hash'] ? base64_decode($device['password_hash']) : '', // Раскодируем пароль
+                'timeout' => (int)$device['timeout'],
+                'enabled' => true
+            ];
+        }
+        
+        return null;
+    } catch (PDOException $e) {
+        error_log('Error getting active device: ' . $e->getMessage());
+        return null;
+    }
 }
 
 /**
@@ -169,19 +349,18 @@ function login($username, $password) {
     // Нормализуем username в UTF-8
     $username = normalizeToUtf8(trim($username));
     
-    $users = loadWebUsers();
+    $user = getUserByUsername($username);
     
-    if (!isset($users[$username])) {
+    if (!$user) {
         return ['success' => false, 'message' => 'Неверный логин или пароль'];
     }
     
-    if (!password_verify($password, $users[$username]['password'])) {
+    if (!password_verify($password, $user['password'])) {
         return ['success' => false, 'message' => 'Неверный логин или пароль'];
     }
     
-    $_SESSION['user_id'] = $username;
-    $users[$username]['lastLogin'] = time();
-    saveWebUsers($users);
+    $_SESSION['user_id'] = $user['id'];
+    updateUser($user['id'], ['last_login' => time()]);
     
     return ['success' => true];
 }
@@ -194,9 +373,8 @@ function register($username, $password, $email = '') {
     $username = normalizeToUtf8(trim($username));
     $email = normalizeToUtf8(trim($email));
     
-    $users = loadWebUsers();
-    
-    if (isset($users[$username])) {
+    // Проверяем существование пользователя
+    if (getUserByUsername($username)) {
         return ['success' => false, 'message' => 'Пользователь с таким логином уже существует'];
     }
     
@@ -208,19 +386,20 @@ function register($username, $password, $email = '') {
         return ['success' => false, 'message' => 'Пароль должен содержать минимум 6 символов'];
     }
     
-    $users[$username] = [
-        'username' => $username,  // Сохраняем username в данных для API
-        'password' => password_hash($password, PASSWORD_DEFAULT),
-        'email' => $email,
-        'created' => time(),
-        'lastLogin' => 0
-    ];
+    $passwordHash = password_hash($password, PASSWORD_DEFAULT);
     
-    saveWebUsers($users);
+    if (!createUser($username, $passwordHash, $email)) {
+        return ['success' => false, 'message' => 'Ошибка при создании пользователя'];
+    }
     
-    $_SESSION['user_id'] = $username;
+    // Получаем созданного пользователя
+    $user = getUserByUsername($username);
+    if ($user) {
+        $_SESSION['user_id'] = $user['id'];
+        return ['success' => true];
+    }
     
-    return ['success' => true];
+    return ['success' => false, 'message' => 'Ошибка при создании пользователя'];
 }
 
 /**
@@ -251,15 +430,20 @@ function requireAuth() {
 }
 
 // Инициализация: создать первого пользователя если нет пользователей
-$users = loadWebUsers();
-if (empty($users)) {
-    $users['admin'] = [
-        'username' => 'admin',  // Сохраняем username в данных
-        'password' => password_hash('admin', PASSWORD_DEFAULT),
-        'email' => '',
-        'created' => time(),
-        'lastLogin' => 0
-    ];
-    saveWebUsers($users);
+$pdo = getDB();
+if ($pdo !== null) {
+    try {
+        $stmt = $pdo->query("SELECT COUNT(*) as count FROM users");
+        $result = $stmt->fetch();
+        
+        if ($result && (int)$result['count'] === 0) {
+            // Создаем администратора по умолчанию
+            $adminPassword = password_hash('admin', PASSWORD_DEFAULT);
+            createUser('admin', $adminPassword, '');
+        }
+    } catch (PDOException $e) {
+        // Игнорируем ошибки при инициализации - возможно таблицы еще не созданы
+        error_log('Error during initial user check: ' . $e->getMessage());
+    }
 }
 

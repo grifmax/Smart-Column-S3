@@ -7,6 +7,7 @@ require_once __DIR__ . '/auth_web.php';
 
 $error = '';
 $success = '';
+$switchAccount = isset($_GET['switch']) && $_GET['switch'] == '1';
 
 // Обработка входа
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'login') {
@@ -197,6 +198,12 @@ if (isAuthenticated()) {
 <body>
     <div class="container">
         <h1>🏭 Smart-Column S3</h1>
+        
+        <?php if ($switchAccount): ?>
+            <div class="message" style="background: #d1ecf1; border: 1px solid #0c5460; color: #0c5460; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                🔄 Выберите другой аккаунт для входа
+            </div>
+        <?php endif; ?>
         
         <?php if ($error): ?>
             <div class="message error"><?php echo htmlspecialchars($error); ?></div>

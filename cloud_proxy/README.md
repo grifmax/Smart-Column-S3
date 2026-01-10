@@ -38,11 +38,13 @@
 
 ## 📋 Файлы для загрузки на сервер
 
-**В `smart-column-proxy/public_html/`:**
-- Все PHP файлы (proxy.php, login.php, auth_web.php, web_settings_api.php, esp32_config.php, config.php)
+**На сервер `spiritcontrol.ru` в корень веб-директории:**
+- Все PHP файлы (proxy.php, login.php, auth_web.php, web_settings_api.php, esp32_config.php, config.php, database.php, database_init.php)
 - `.htaccess`
 - Директория `web/` (все файлы)
 
-**В `smartcolumn/public_html/`:**
-- `.htaccess` (используйте main_site_redirect.htaccess)
-- ИЛИ `index.php` (используйте main_site_redirect.php)
+## 🔗 Полезные ссылки
+
+- Инициализация БД: `https://spiritcontrol.ru/database_init.php?confirm=yes`
+- Страница входа: `https://spiritcontrol.ru/login.php`
+- Главная страница: `https://spiritcontrol.ru/`

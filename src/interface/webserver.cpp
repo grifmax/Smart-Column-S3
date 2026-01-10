@@ -226,7 +226,7 @@ void init() {
 
   // GET /api/version - получить информацию о версиях прошивки и фронтенда
   server.on("/api/version", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<768> doc;
 
     // Версия и дата компиляции прошивки
     JsonObject firmware = doc["firmware"].to<JsonObject>();
@@ -241,6 +241,15 @@ void init() {
     board["flashSize"] = ESP.getFlashChipSize();
     board["psramSize"] = ESP.getPsramSize();
     board["cpuFreq"] = ESP.getCpuFreqMHz();
+    board["mac"] = WiFi.macAddress();
+
+    // Стабильный публичный идентификатор устройства (для облака/привязки).
+    // Важно: это НЕ секрет и не должен использоваться как "токен".
+    char deviceId[13] = {0}; // 12 hex + '\0'
+    uint64_t efuseMac = ESP.getEfuseMac();
+    snprintf(deviceId, sizeof(deviceId), "%012llX",
+             (unsigned long long)(efuseMac & 0xFFFFFFFFFFFFULL));
+    board["deviceId"] = deviceId;
 
 // Попытка прочитать версию фронтенда из файла
 #ifdef USE_LITTLEFS

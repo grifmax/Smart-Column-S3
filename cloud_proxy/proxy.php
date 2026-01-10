@@ -59,6 +59,15 @@ if (empty($path)) {
  * Проксировать запрос к ESP32
  */
 function proxyToESP32($path, $method = 'GET', $data = null, $headers = []) {
+    // Получаем активное устройство текущего пользователя
+    $user = getCurrentUser();
+    if (!$user) {
+        http_response_code(401);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
     $config = loadESP32Config();
     
     if (!$config['enabled'] || empty($config['host'])) {
@@ -145,6 +154,8 @@ function proxyToESP32($path, $method = 'GET', $data = null, $headers = []) {
 
 // API для настроек веб-интерфейса (требует авторизации)
 if (strpos($path, 'api/web/') === 0) {
+    // Передаем путь с начальным слешем для совместимости с web_settings_api.php
+    $_SERVER['REQUEST_URI_API'] = '/' . $path;
     require_once __DIR__ . '/web_settings_api.php';
     exit;
 }
