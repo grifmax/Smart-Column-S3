@@ -191,12 +191,23 @@ struct ProcessStats {
   float tailsVolume = 0.0f;
 };
 
+// Шаг температурной программы (Hold)
+struct TempStep {
+  float temperature = 0.0f;
+  uint16_t duration = 0; // минуты
+};
+
 // Состояние затирки
 struct MashingState {
   MashPhase phase = MashPhase::IDLE;
+  uint8_t stepCount = 0;
   uint8_t currentStep = 0;
   uint32_t stepStartTime = 0;
+  // Таймер выдержки считаем только когда температура в допуске
+  bool tempInRange = false;
+  uint32_t inRangeStartTime = 0;
   float targetTemp = 0.0f;
+  char stepName[32] = "";
   uint32_t stepDuration = 0; // секунды
   bool active = false;
 };
@@ -206,6 +217,9 @@ struct HoldState {
   uint8_t currentStep = 0;
   uint8_t stepCount = 0;
   uint32_t stepStartTime = 0;
+  // Таймер выдержки считаем только когда температура в допуске
+  bool tempInRange = false;
+  uint32_t inRangeStartTime = 0;
   TempStep steps[10];
   float targetTemp = 0.0f;
   bool active = false;
@@ -357,12 +371,6 @@ struct Alarm {
   char message[128] = "";
   uint32_t timestamp = 0;
   bool active = false;
-};
-
-// Шаг температурной программы
-struct TempStep {
-  float temperature = 0.0f;
-  uint16_t duration = 0; // минуты
 };
 
 // Статистика запуска

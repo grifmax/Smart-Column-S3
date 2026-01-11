@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.4.10"
+#define FIRMWARE_VERSION "1.4.11"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -318,8 +318,14 @@ struct SystemSettings {
   float tempSensorCalibration[MAX_TEMP_SENSORS];    // Калибровка датчиков
 };
 
-// Структура параметров ректификации
-struct RectificationParams {
+// -----------------------------------------------------------------------------
+// LEGACY TYPES (для старого UI/кода)
+// Важно: имена переименованы, чтобы не конфликтовать с Profile schema
+// (см. src/profiles.h, где есть RectificationParams/DistillationParams).
+// -----------------------------------------------------------------------------
+
+// Структура параметров ректификации (legacy)
+struct LegacyRectificationParams {
   // Общие параметры
   RectificationModel model; // Выбранная модель ректификации
 
@@ -363,8 +369,8 @@ struct RectificationParams {
   int refluxPeriod;  // Период цикла орошения (секунды)
 };
 
-// Структура параметров дистилляции
-struct DistillationParams {
+// Структура параметров дистилляции (legacy)
+struct LegacyDistillationParams {
   float maxCubeTemp;          // Максимальная температура в кубе (°C)
   float startCollectingTemp;  // Температура начала отбора (°C)
   float endTemp;              // Температура завершения процесса (°C)

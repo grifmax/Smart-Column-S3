@@ -41,6 +41,82 @@ enum RectPhase {
 }
 
 @JsonSerializable()
+class MashingStatus {
+  final bool active;
+  final int phase;
+  @JsonKey(name: 'phaseStr')
+  final String? phaseStr;
+  @JsonKey(name: 'stepCount')
+  final int stepCount;
+  @JsonKey(name: 'currentStep')
+  final int currentStep;
+  @JsonKey(name: 'targetTemp')
+  final double targetTemp;
+  @JsonKey(name: 'stepDurationSec')
+  final int stepDurationSec;
+  @JsonKey(name: 'tempInRange')
+  final bool tempInRange;
+  @JsonKey(name: 'elapsedSec')
+  final int elapsedSec;
+  @JsonKey(name: 'remainingSec')
+  final int remainingSec;
+  @JsonKey(name: 'stepName')
+  final String? stepName;
+
+  MashingStatus({
+    required this.active,
+    required this.phase,
+    this.phaseStr,
+    required this.stepCount,
+    required this.currentStep,
+    required this.targetTemp,
+    required this.stepDurationSec,
+    required this.tempInRange,
+    required this.elapsedSec,
+    required this.remainingSec,
+    this.stepName,
+  });
+
+  factory MashingStatus.fromJson(Map<String, dynamic> json) =>
+      _$MashingStatusFromJson(json);
+  Map<String, dynamic> toJson() => _$MashingStatusToJson(this);
+}
+
+@JsonSerializable()
+class HoldStatus {
+  final bool active;
+  @JsonKey(name: 'stepCount')
+  final int stepCount;
+  @JsonKey(name: 'currentStep')
+  final int currentStep;
+  @JsonKey(name: 'targetTemp')
+  final double targetTemp;
+  @JsonKey(name: 'stepDurationSec')
+  final int stepDurationSec;
+  @JsonKey(name: 'tempInRange')
+  final bool tempInRange;
+  @JsonKey(name: 'elapsedSec')
+  final int elapsedSec;
+  @JsonKey(name: 'remainingSec')
+  final int remainingSec;
+
+  HoldStatus({
+    required this.active,
+    required this.stepCount,
+    required this.currentStep,
+    required this.targetTemp,
+    required this.stepDurationSec,
+    required this.tempInRange,
+    required this.elapsedSec,
+    required this.remainingSec,
+  });
+
+  factory HoldStatus.fromJson(Map<String, dynamic> json) =>
+      _$HoldStatusFromJson(json);
+  Map<String, dynamic> toJson() => _$HoldStatusToJson(this);
+}
+
+@JsonSerializable()
 class TemperatureData {
   final double cube;
   @JsonKey(name: 'columnBottom')
@@ -185,6 +261,8 @@ class SystemState {
   final PumpData pump;
   final HydrometerData hydrometer;
   final VolumeData volumes;
+  final MashingStatus? mashing;
+  final HoldStatus? hold;
 
   SystemState({
     required this.mode,
@@ -200,6 +278,8 @@ class SystemState {
     required this.pump,
     required this.hydrometer,
     required this.volumes,
+    this.mashing,
+    this.hold,
   });
 
   factory SystemState.fromJson(Map<String, dynamic> json) =>

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../dashboard/providers/dashboard_provider.dart';
 import '../../device_connection/providers/device_provider.dart';
-import '../../device_connection/providers/device_provider.dart';
 import '../../../../core/utils/helpers.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 

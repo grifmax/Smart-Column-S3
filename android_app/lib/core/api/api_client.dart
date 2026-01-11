@@ -9,7 +9,6 @@ import 'models/models.dart';
 class ApiClient {
   late Dio _dio;
   final AuthInterceptor _authInterceptor = AuthInterceptor();
-  String? _baseUrl;
 
   ApiClient() {
     _dio = Dio(
@@ -28,8 +27,10 @@ class ApiClient {
     // Настройка SSL для HTTPS (для самоподписанных сертификатов)
     // ВНИМАНИЕ: В продакшене нужно использовать валидные сертификаты!
     if (_dio.httpClientAdapter is IOHttpClientAdapter) {
-      (_dio.httpClientAdapter as IOHttpClientAdapter).onHttpClientCreate = (client) {
-        client.badCertificateCallback = (X509Certificate cert, String host, int port) {
+      (_dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
+        final client = HttpClient();
+        client.badCertificateCallback =
+            (X509Certificate cert, String host, int port) {
           // Разрешаем самоподписанные сертификаты
           // В продакшене это должно быть false с валидными сертификатами
           return true; // ТОЛЬКО ДЛЯ РАЗРАБОТКИ!
@@ -47,7 +48,6 @@ class ApiClient {
   }
 
   void setBaseUrl(String baseUrl) {
-    _baseUrl = baseUrl;
     _dio.options.baseUrl = baseUrl;
   }
 

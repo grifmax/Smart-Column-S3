@@ -144,6 +144,12 @@ class WebSocketClient {
         body: 0.0,
         tails: 0.0,
       ),
+      mashing: json['mashing'] is Map<String, dynamic>
+          ? MashingStatus.fromJson(json['mashing'] as Map<String, dynamic>)
+          : null,
+      hold: json['hold'] is Map<String, dynamic>
+          ? HoldStatus.fromJson(json['hold'] as Map<String, dynamic>)
+          : null,
     );
   }
 

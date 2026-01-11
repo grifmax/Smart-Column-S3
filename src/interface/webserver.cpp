@@ -26,7 +26,9 @@ typedef enum {
 #endif
 
 #include "control/fsm.h"
+#include "drivers/heater.h"
 #include "drivers/pump.h"
+#include "drivers/valves.h"
 #include "drivers/sensors.h"
 #include "storage/nvs_manager.h"
 #include "../profiles.h"
@@ -92,6 +94,27 @@ static const char *getPhaseString(RectPhase phase) {
   }
 }
 
+static const char *getMashPhaseString(MashPhase phase) {
+  switch (phase) {
+  case MashPhase::IDLE:
+    return "idle";
+  case MashPhase::ACID_REST:
+    return "acid_rest";
+  case MashPhase::PROTEIN_REST:
+    return "protein_rest";
+  case MashPhase::BETA_AMYLASE:
+    return "beta_amylase";
+  case MashPhase::ALPHA_AMYLASE:
+    return "alpha_amylase";
+  case MashPhase::MASH_OUT:
+    return "mash_out";
+  case MashPhase::FINISH:
+    return "finish";
+  default:
+    return "unknown";
+  }
+}
+
 namespace WebServer {
 
 void init() {
@@ -118,7 +141,7 @@ void init() {
   // API endpoints
   // GET /api/status - полное состояние системы
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<1536> doc;
+    StaticJsonDocument<2048> doc;
 
     // Режим и состояние процесса
     doc["mode"] = static_cast<int>(g_state.mode);
@@ -178,6 +201,55 @@ void init() {
     JsonObject equipment = doc.createNestedObject("equipment");
     equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+
+    // -----------------------------------------------------------------------
+    // Режимы с температурными ступенями (mashing / hold)
+    // -----------------------------------------------------------------------
+    const uint32_t now = millis();
+
+    JsonObject mashing = doc.createNestedObject("mashing");
+    mashing["active"] = g_state.mashing.active;
+    mashing["phase"] = static_cast<int>(g_state.mashing.phase);
+    mashing["phaseStr"] = getMashPhaseString(g_state.mashing.phase);
+    mashing["stepCount"] = g_state.mashing.stepCount;
+    mashing["currentStep"] = g_state.mashing.currentStep;
+    mashing["targetTemp"] = g_state.mashing.targetTemp;
+    mashing["stepDurationSec"] = g_state.mashing.stepDuration;
+    mashing["tempInRange"] = g_state.mashing.tempInRange;
+    mashing["stepName"] = g_state.mashing.stepName;
+
+    uint32_t mashElapsedSec = 0;
+    if (g_state.mashing.tempInRange && g_state.mashing.inRangeStartTime > 0 &&
+        now >= g_state.mashing.inRangeStartTime) {
+      mashElapsedSec = (now - g_state.mashing.inRangeStartTime) / 1000UL;
+    }
+    mashing["elapsedSec"] = mashElapsedSec;
+    mashing["remainingSec"] =
+        (g_state.mashing.stepDuration > mashElapsedSec)
+            ? (g_state.mashing.stepDuration - mashElapsedSec)
+            : 0;
+
+    JsonObject hold = doc.createNestedObject("hold");
+    hold["active"] = g_state.hold.active;
+    hold["stepCount"] = g_state.hold.stepCount;
+    hold["currentStep"] = g_state.hold.currentStep;
+    hold["targetTemp"] = g_state.hold.targetTemp;
+    hold["tempInRange"] = g_state.hold.tempInRange;
+
+    uint32_t holdStepDurationSec = 0;
+    if (g_state.hold.stepCount > 0 && g_state.hold.currentStep < g_state.hold.stepCount) {
+      holdStepDurationSec = (uint32_t)g_state.hold.steps[g_state.hold.currentStep].duration * 60UL;
+    }
+    hold["stepDurationSec"] = holdStepDurationSec;
+
+    uint32_t holdElapsedSec = 0;
+    if (g_state.hold.tempInRange && g_state.hold.inRangeStartTime > 0 &&
+        now >= g_state.hold.inRangeStartTime) {
+      holdElapsedSec = (now - g_state.hold.inRangeStartTime) / 1000UL;
+    }
+    hold["elapsedSec"] = holdElapsedSec;
+    hold["remainingSec"] =
+        (holdStepDurationSec > holdElapsedSec) ? (holdStepDurationSec - holdElapsedSec) : 0;
 
     String json;
     serializeJson(doc, json);
@@ -291,7 +363,8 @@ void init() {
           return;
         }
 
-        StaticJsonDocument<256> doc;
+        // Важно: сюда могут приходить steps/profiles, поэтому нужен запас
+        DynamicJsonDocument doc(2048);
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -308,6 +381,8 @@ void init() {
           return;
         }
 
+        JsonObject params = doc["params"].as<JsonObject>();
+
         // Определяем режим
         Mode mode = Mode::IDLE;
         if (strcmp(modeStr, "rectification") == 0) {
@@ -317,6 +392,10 @@ void init() {
         } else if (strcmp(modeStr, "manual") == 0 ||
                    strcmp(modeStr, "manual_rect") == 0) {
           mode = Mode::MANUAL_RECT;
+        } else if (strcmp(modeStr, "mashing") == 0) {
+          mode = Mode::MASHING;
+        } else if (strcmp(modeStr, "hold") == 0) {
+          mode = Mode::HOLD;
         } else {
           request->send(400, "application/json",
                         "{\"success\":false,\"message\":\"Unknown mode\"}");
@@ -331,8 +410,114 @@ void init() {
           LOG_W("Starting process without temperature sensors!");
         }
 
-        // Запуск через FSM
-        FSM::startMode(g_state, g_settings, mode);
+        // Если уже что-то запущено — сначала остановим
+        if (g_state.mode != Mode::IDLE) {
+          FSM::stopMode(g_state);
+        }
+
+        // Запуск через FSM + разбор params (для некоторых режимов)
+        if (mode == Mode::DISTILLATION) {
+          // params: speed (ml/h), headsVolume (ml), targetVolume (ml), endTemp (°C)
+          float speed = params["speed"] | 500.0f;
+          float headsVol = params["headsVolume"] | 0.0f;
+          float targetVol = params["targetVolume"] | 0.0f;
+          float endTemp = params["endTemp"] | 96.0f;
+          FSM::Distillation::setParams(speed, headsVol, targetVol, endTemp);
+          FSM::startMode(g_state, g_settings, mode);
+        } else if (mode == Mode::MASHING) {
+          // params.profile: { name, steps:[{temperature,duration,name?}, ...] }
+          static MashProfile runtimeProfile;
+          memset(&runtimeProfile, 0, sizeof(runtimeProfile));
+
+          bool hasProfile = false;
+          if (!params.isNull() && params.containsKey("profile")) {
+            JsonObject profileObj = params["profile"].as<JsonObject>();
+            JsonArray steps = profileObj["steps"].as<JsonArray>();
+            if (!profileObj.isNull() && steps.size() > 0) {
+              const char *pName = profileObj["name"] | "Mashing";
+              strncpy(runtimeProfile.name, pName, sizeof(runtimeProfile.name) - 1);
+              runtimeProfile.name[sizeof(runtimeProfile.name) - 1] = '\0';
+
+              uint8_t count = 0;
+              for (JsonObject s : steps) {
+                if (count >= 10) break;
+                runtimeProfile.steps[count].temperature = s["temperature"] | 0.0f;
+                runtimeProfile.steps[count].duration = s["duration"] | 0;
+                const char *sName = s["name"] | "";
+                strncpy(runtimeProfile.steps[count].name, sName,
+                        sizeof(runtimeProfile.steps[count].name) - 1);
+                runtimeProfile.steps[count].name[sizeof(runtimeProfile.steps[count].name) - 1] = '\0';
+                count++;
+              }
+              runtimeProfile.stepCount = count;
+              hasProfile = (count > 0);
+            }
+          }
+
+          // Если профиль не передан — используем разумный дефолт
+          if (!hasProfile) {
+            strncpy(runtimeProfile.name, "Default Mashing",
+                    sizeof(runtimeProfile.name) - 1);
+            runtimeProfile.stepCount = 5;
+            // NB: у вложенной структуры нет operator= от initializer_list в GCC,
+            // поэтому заполняем поля вручную
+            runtimeProfile.steps[0].temperature = 38.0f;
+            runtimeProfile.steps[0].duration = 20;
+            strncpy(runtimeProfile.steps[0].name, "Кислотная пауза",
+                    sizeof(runtimeProfile.steps[0].name) - 1);
+
+            runtimeProfile.steps[1].temperature = 52.0f;
+            runtimeProfile.steps[1].duration = 20;
+            strncpy(runtimeProfile.steps[1].name, "Белковая пауза",
+                    sizeof(runtimeProfile.steps[1].name) - 1);
+
+            runtimeProfile.steps[2].temperature = 63.0f;
+            runtimeProfile.steps[2].duration = 40;
+            strncpy(runtimeProfile.steps[2].name, "Мальтозная пауза",
+                    sizeof(runtimeProfile.steps[2].name) - 1);
+
+            runtimeProfile.steps[3].temperature = 72.0f;
+            runtimeProfile.steps[3].duration = 20;
+            strncpy(runtimeProfile.steps[3].name, "Осахаривание",
+                    sizeof(runtimeProfile.steps[3].name) - 1);
+
+            runtimeProfile.steps[4].temperature = 78.0f;
+            runtimeProfile.steps[4].duration = 10;
+            strncpy(runtimeProfile.steps[4].name, "Мэш-аут",
+                    sizeof(runtimeProfile.steps[4].name) - 1);
+
+            // гарантируем '\0' для всех name
+            for (uint8_t i = 0; i < runtimeProfile.stepCount; i++) {
+              runtimeProfile.steps[i].name[sizeof(runtimeProfile.steps[i].name) - 1] = '\0';
+            }
+          }
+
+          FSM::Mashing::start(g_state, &runtimeProfile);
+        } else if (mode == Mode::HOLD) {
+          // params.steps: [{temperature, duration}, ...] (duration в минутах)
+          static TempStep runtimeSteps[10];
+          uint8_t count = 0;
+          if (!params.isNull() && params.containsKey("steps")) {
+            JsonArray steps = params["steps"].as<JsonArray>();
+            for (JsonObject s : steps) {
+              if (count >= 10) break;
+              runtimeSteps[count].temperature = s["temperature"] | 0.0f;
+              runtimeSteps[count].duration = s["duration"] | 0;
+              count++;
+            }
+          }
+
+          // Дефолт — одна ступень 65°C на 60 минут
+          if (count == 0) {
+            runtimeSteps[0].temperature = 65.0f;
+            runtimeSteps[0].duration = 60;
+            count = 1;
+          }
+
+          FSM::Hold::start(g_state, runtimeSteps, count);
+        } else {
+          FSM::startMode(g_state, g_settings, mode);
+        }
 
         LOG_I("Process started: mode=%s, sensors=%s", modeStr,
               sensorsOk ? "OK" : "WARNING");
@@ -371,6 +556,97 @@ void init() {
         LOG_I("Process resumed via API");
         request->send(200, "application/json",
                       "{\"success\":true,\"message\":\"Process resumed\"}");
+      });
+
+  // ==========================================================================
+  // MANUAL CONTROL API (для manual.html)
+  // ==========================================================================
+
+  // POST /api/manual/heater - установить мощность ТЭНа (0-100%)
+  server.on(
+      "/api/manual/heater", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<128> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        int power = doc["power"] | 0;
+        if (power < 0) power = 0;
+        if (power > 100) power = 100;
+        Heater::setPower((uint8_t)power);
+
+        char resp[96];
+        snprintf(resp, sizeof(resp), "{\"success\":true,\"power\":%d}", power);
+        request->send(200, "application/json", resp);
+      });
+
+  // POST /api/manual/pump - установить скорость насоса (мл/ч; 0 = стоп)
+  server.on(
+      "/api/manual/pump", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<128> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        float speed = doc["speed"] | 0.0f;
+        if (speed <= 0.0f) {
+          Pump::stop();
+          request->send(200, "application/json",
+                        "{\"success\":true,\"running\":false}");
+          return;
+        }
+
+        Pump::start(speed);
+        char resp[128];
+        snprintf(resp, sizeof(resp),
+                 "{\"success\":true,\"running\":true,\"speed\":%.1f}", speed);
+        request->send(200, "application/json", resp);
+      });
+
+  // POST /api/manual/valves - управление клапанами
+  // body: { "water":true/false, "heads":true/false, "uno":true/false, "allOff":true }
+  server.on(
+      "/api/manual/valves", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<192> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        bool allOff = doc["allOff"] | false;
+        if (allOff) {
+          Valves::closeAll();
+          request->send(200, "application/json", "{\"success\":true}");
+          return;
+        }
+
+        if (doc.containsKey("water")) {
+          Valves::setWater(doc["water"].as<bool>());
+        }
+        if (doc.containsKey("heads")) {
+          Valves::setHeads(doc["heads"].as<bool>());
+        }
+        if (doc.containsKey("uno")) {
+          Valves::setUno(doc["uno"].as<bool>());
+        }
+
+        request->send(200, "application/json", "{\"success\":true}");
       });
 
   // ==========================================================================
@@ -1253,7 +1529,7 @@ void broadcastState(const SystemState &state) {
     return;
 
   // Сформировать JSON со состоянием
-  StaticJsonDocument<2048> doc;
+  StaticJsonDocument<3072> doc;
 
   doc["mode"] = static_cast<int>(state.mode);
   doc["phase"] = static_cast<int>(state.rectPhase);
@@ -1288,6 +1564,56 @@ void broadcastState(const SystemState &state) {
 
   // Ареометр
   doc["abv"] = state.hydrometer.abv;
+
+  // -----------------------------------------------------------------------
+  // Режимы с температурными ступенями (mashing / hold)
+  // -----------------------------------------------------------------------
+  const uint32_t now = millis();
+
+  JsonObject mashing = doc.createNestedObject("mashing");
+  mashing["active"] = state.mashing.active;
+  mashing["phase"] = static_cast<int>(state.mashing.phase);
+  mashing["phaseStr"] = getMashPhaseString(state.mashing.phase);
+  mashing["stepCount"] = state.mashing.stepCount;
+  mashing["currentStep"] = state.mashing.currentStep;
+  mashing["targetTemp"] = state.mashing.targetTemp;
+  mashing["stepDurationSec"] = state.mashing.stepDuration;
+  mashing["tempInRange"] = state.mashing.tempInRange;
+  mashing["stepName"] = state.mashing.stepName;
+
+  uint32_t mashElapsedSec = 0;
+  if (state.mashing.tempInRange && state.mashing.inRangeStartTime > 0 &&
+      now >= state.mashing.inRangeStartTime) {
+    mashElapsedSec = (now - state.mashing.inRangeStartTime) / 1000UL;
+  }
+  mashing["elapsedSec"] = mashElapsedSec;
+  mashing["remainingSec"] =
+      (state.mashing.stepDuration > mashElapsedSec)
+          ? (state.mashing.stepDuration - mashElapsedSec)
+          : 0;
+
+  JsonObject hold = doc.createNestedObject("hold");
+  hold["active"] = state.hold.active;
+  hold["stepCount"] = state.hold.stepCount;
+  hold["currentStep"] = state.hold.currentStep;
+  hold["targetTemp"] = state.hold.targetTemp;
+  hold["tempInRange"] = state.hold.tempInRange;
+
+  uint32_t holdStepDurationSec = 0;
+  if (state.hold.stepCount > 0 && state.hold.currentStep < state.hold.stepCount) {
+    holdStepDurationSec =
+        (uint32_t)state.hold.steps[state.hold.currentStep].duration * 60UL;
+  }
+  hold["stepDurationSec"] = holdStepDurationSec;
+
+  uint32_t holdElapsedSec = 0;
+  if (state.hold.tempInRange && state.hold.inRangeStartTime > 0 &&
+      now >= state.hold.inRangeStartTime) {
+    holdElapsedSec = (now - state.hold.inRangeStartTime) / 1000UL;
+  }
+  hold["elapsedSec"] = holdElapsedSec;
+  hold["remainingSec"] =
+      (holdStepDurationSec > holdElapsedSec) ? (holdStepDurationSec - holdElapsedSec) : 0;
 
   // Статистика памяти
   JsonObject mem = doc.createNestedObject("memory");

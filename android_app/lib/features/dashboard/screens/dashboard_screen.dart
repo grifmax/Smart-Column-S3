@@ -109,6 +109,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   Text('Режим: ${_getModeString(systemState.mode)}'),
                   Text('Фаза: ${_getPhaseString(systemState.phase)}'),
                   Text('Время работы: ${Helpers.formatDuration(systemState.uptime)}'),
+                  if (systemState.mashing?.active == true) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Затирка: ${systemState.mashing?.stepName ?? ''}'.trim(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text('Цель: ${Helpers.formatTemperature(systemState.mashing?.targetTemp)}'),
+                    Text('Осталось: ${Helpers.formatDuration(systemState.mashing?.remainingSec ?? 0)}'),
+                    Text(
+                      'Ступень: ${(systemState.mashing?.currentStep ?? 0) + 1}/${systemState.mashing?.stepCount ?? 0}'
+                      '${systemState.mashing?.tempInRange == true ? ' (в допуске)' : ''}',
+                    ),
+                  ],
+                  if (systemState.hold?.active == true) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Hold (выдержка)',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text('Цель: ${Helpers.formatTemperature(systemState.hold?.targetTemp)}'),
+                    Text('Осталось: ${Helpers.formatDuration(systemState.hold?.remainingSec ?? 0)}'),
+                    Text(
+                      'Ступень: ${(systemState.hold?.currentStep ?? 0) + 1}/${systemState.hold?.stepCount ?? 0}'
+                      '${systemState.hold?.tempInRange == true ? ' (в допуске)' : ''}',
+                    ),
+                  ],
                 ],
               ),
             ),

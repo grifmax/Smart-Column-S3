@@ -332,6 +332,11 @@ void loop() {
   // Обновление насоса (генерация шагов - ОБЯЗАТЕЛЬНО каждый цикл!)
   Pump::update();
 
+  // Синхронизация состояния насоса в SystemState (для Web/API/UI)
+  g_state.pump.running = Pump::isRunning();
+  g_state.pump.speedMlPerHour = Pump::getSpeed();
+  g_state.pump.totalVolumeMl = Pump::getTotalVolume();
+
   // Обработка кнопок
   Buttons::update();
 
@@ -419,10 +424,8 @@ void initHardware() {
   // Нагреватель
   Heater::init();
 
-  // Насос - ВРЕМЕННО ОТКЛЮЧЕНО для диагностики перегрева
-  // Если ESP не греется без инициализации насоса - проблема в подключении двигателя
-  // Pump::init();
-  LOG_W("Pump: INIT DISABLED for overheating diagnosis");
+  // Насос
+  Pump::init();
 
   // Клапаны
   Valves::init();

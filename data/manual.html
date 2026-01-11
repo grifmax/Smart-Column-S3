@@ -545,7 +545,31 @@
         }
 
         function saveRectSettings() {
+            const settings = collectRectSettings();
+
+            // Сохранить в localStorage и отправить на сервер
+            localStorage.setItem('rectSettings', JSON.stringify(settings));
+
+            fetch('/api/settings/rectification', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            }).then(r => {
+                if (r.ok) {
+                    addLog('✅ Настройки ректификации сохранены');
+                } else {
+                    addLog('⚠️ Настройки сохранены локально (сервер недоступен)');
+                }
+            }).catch(() => {
+                addLog('⚠️ Настройки сохранены локально');
+            });
+        }
+
+        function collectRectSettings() {
+            const demoEl = document.getElementById('demo-mode-enabled');
+
             const settings = {
+                demoMode: demoEl ? demoEl.checked : undefined,
                 heads: {
                     volume: parseFloat(document.getElementById('heads-volume').value),
                     mode: document.getElementById('heads-mode').value,
@@ -570,23 +594,48 @@
                     pwmPeriod: parseFloat(document.getElementById('tails-pwm-period').value)
                 }
             };
+            // Удалить undefined (например demoMode если нет элемента)
+            Object.keys(settings).forEach((k) => settings[k] === undefined && delete settings[k]);
+            return settings;
+        }
 
+        async function persistRectSettings(settings, { silent = false } = {}) {
             // Сохранить в localStorage и отправить на сервер
             localStorage.setItem('rectSettings', JSON.stringify(settings));
 
-            fetch('/api/settings/rectification', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(settings)
-            }).then(r => {
-                if (r.ok) {
-                    addLog('✅ Настройки ректификации сохранены');
-                } else {
-                    addLog('⚠️ Настройки сохранены локально (сервер недоступен)');
+            try {
+                const r = await fetch('/api/settings/rectification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                if (!silent) {
+                    addLog(r.ok ? '✅ Настройки ректификации сохранены' : '⚠️ Настройки сохранены локально (сервер недоступен)');
                 }
-            }).catch(() => {
-                addLog('⚠️ Настройки сохранены локально');
-            });
+                return r.ok;
+            } catch (_) {
+                if (!silent) addLog('⚠️ Настройки сохранены локально');
+                return false;
+            }
+        }
+
+        function validateRectSettings() {
+            const ids = [
+                'heads-volume', 'heads-time', 'heads-speed', 'heads-temp',
+                'body-spike-threshold', 'body-speed-decrement', 'body-stabilize-timeout', 'body-to-tails-temp',
+                'tails-stop-temp', 'tails-stop-abv', 'tails-pwm-duty', 'tails-pwm-period'
+            ];
+
+            for (const id of ids) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+                if (typeof el.checkValidity === 'function' && !el.checkValidity()) {
+                    if (typeof el.reportValidity === 'function') el.reportValidity();
+                    addLog('⚠️ Проверьте введённые значения (диапазоны/формат).', 'warning');
+                    return false;
+                }
+            }
+            return true;
         }
 
         function loadRectSettings() {
@@ -596,7 +645,8 @@
                     const s = JSON.parse(saved);
 
                     // Демо-режим
-                    document.getElementById('demo-mode-enabled').checked = s.demoMode || false;
+                    const demoEl = document.getElementById('demo-mode-enabled');
+                    if (demoEl) demoEl.checked = s.demoMode || false;
 
                     if (s.heads) {
                         document.getElementById('heads-volume').value = s.heads.volume || 50;
@@ -638,12 +688,17 @@
         window.addEventListener('load', () => {
             loadRectSettings();  // Загрузить сохранённые настройки
             loadStatus();
-            startUpdates();
-            addLog('✅ Страница ручного управления загружена');
+            addLog('✅ Страница ручного управления загружена (запуск/обновление — только после ввода параметров и нажатия "Запустить")');
         });
 
         // Запуск процесса
         async function startManualProcess() {
+            if (!validateRectSettings()) return;
+
+            // Зафиксировать параметры перед стартом (чтобы запуск был "после ввода/настройки")
+            const settings = collectRectSettings();
+            await persistRectSettings(settings, { silent: true });
+
             try {
                 const response = await fetch('/api/process/start', {
                     method: 'POST',
@@ -655,6 +710,7 @@
                     processRunning = true;
                     updateUI();
                     addLog('✅ Ручной режим запущен', 'success');
+                    ensureUpdatesStarted();
                 } else {
                     const error = await response.text();
                     addLog('❌ Ошибка запуска: ' + error, 'error');
@@ -688,15 +744,31 @@
         // Обновление мощности нагревателя
         function updateHeaterManual(value) {
             document.getElementById('heater-display').textContent = value + '%';
-            // TODO: отправить команду на сервер
-            addLog(`🔥 Мощность нагревателя: ${value}%`);
+            fetch('/api/manual/heater', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ power: parseInt(value, 10) })
+            }).then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                addLog(`🔥 Мощность нагревателя: ${value}%`);
+            }).catch(e => {
+                addLog('⚠️ Ошибка установки мощности: ' + e.message, 'warning');
+            });
         }
 
         // Обновление скорости насоса
         function updatePumpManual(value) {
             document.getElementById('pump-display').textContent = value + ' мл/ч';
-            // TODO: отправить команду на сервер
-            addLog(`💧 Скорость насоса: ${value} мл/ч`);
+            fetch('/api/manual/pump', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ speed: parseFloat(value) })
+            }).then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                addLog(`💧 Скорость насоса: ${value} мл/ч`);
+            }).catch(e => {
+                addLog('⚠️ Ошибка управления насосом: ' + e.message, 'warning');
+            });
         }
 
         // Переключение клапана
@@ -711,8 +783,23 @@
             if (!isActive) {
                 btn.classList.add('active');
                 addLog(`🔀 Клапан "${valve}" открыт`);
+                let body = {};
+                if (valve === 'heads') body = { heads: true, uno: false };
+                if (valve === 'body') body = { heads: false, uno: false };
+                if (valve === 'tails') body = { heads: false, uno: true };
+                if (valve === 'waste') body = { allOff: true };
+                fetch('/api/manual/valves', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                }).catch(() => {});
             } else {
                 addLog(`🔀 Все клапаны закрыты`);
+                fetch('/api/manual/valves', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ allOff: true })
+                }).catch(() => {});
             }
         }
 
@@ -751,6 +838,8 @@
                 // Обновить состояние процесса
                 processRunning = data.modeStr !== 'idle';
                 updateUI();
+                // Если процесс уже запущен (не нами), включить обновление статуса
+                if (processRunning) ensureUpdatesStarted();
 
             } catch (e) {
                 console.error('Ошибка загрузки статуса:', e);
@@ -758,7 +847,8 @@
         }
 
         // Периодическое обновление
-        function startUpdates() {
+        function ensureUpdatesStarted() {
+            if (updateInterval) return;
             updateInterval = setInterval(loadStatus, 2000);
         }
 

@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../device_connection/providers/device_provider.dart';
@@ -14,6 +16,40 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
   String _selectedMode = 'rectification';
   bool _isLoading = false;
 
+  Map<String, dynamic>? _buildStartParams() {
+    switch (_selectedMode) {
+      case 'mashing':
+        return {
+          'profile': {
+            'name': 'Default Mashing',
+            'steps': [
+              {'temperature': 38.0, 'duration': 20, 'name': 'Кислотная пауза'},
+              {'temperature': 52.0, 'duration': 20, 'name': 'Белковая пауза'},
+              {'temperature': 63.0, 'duration': 40, 'name': 'Мальтозная пауза'},
+              {'temperature': 72.0, 'duration': 20, 'name': 'Осахаривание'},
+              {'temperature': 78.0, 'duration': 10, 'name': 'Мэш-аут'},
+            ],
+          },
+        };
+      case 'hold':
+        return {
+          'steps': [
+            {'temperature': 65.0, 'duration': 60},
+          ],
+        };
+      case 'distillation':
+        // Эти параметры сейчас обрабатываются прошивкой как дефолты
+        return {
+          'speed': 500.0,
+          'headsVolume': 0.0,
+          'targetVolume': 0.0,
+          'endTemp': 96.0,
+        };
+      default:
+        return null;
+    }
+  }
+
   Future<void> _startProcess() async {
     final apiClient = ref.read(currentApiClientProvider);
     if (apiClient == null) {
@@ -26,7 +62,10 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await apiClient.startProcess(mode: _selectedMode);
+      await apiClient.startProcess(
+        mode: _selectedMode,
+        params: _buildStartParams(),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Процесс запущен')),
@@ -169,6 +208,22 @@ class _ControlScreenState extends ConsumerState<ControlScreen> {
                   RadioListTile<String>(
                     title: const Text('Ручная ректификация'),
                     value: 'manual',
+                    groupValue: _selectedMode,
+                    onChanged: (value) {
+                      setState(() => _selectedMode = value!);
+                    },
+                  ),
+                  RadioListTile<String>(
+                    title: const Text('Затирание'),
+                    value: 'mashing',
+                    groupValue: _selectedMode,
+                    onChanged: (value) {
+                      setState(() => _selectedMode = value!);
+                    },
+                  ),
+                  RadioListTile<String>(
+                    title: const Text('Hold (выдержка)'),
+                    value: 'hold',
                     groupValue: _selectedMode,
                     onChanged: (value) {
                       setState(() => _selectedMode = value!);

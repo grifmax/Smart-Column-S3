@@ -67,8 +67,7 @@ namespace NVSManager {
     bool loadFractionator(FractionatorSettings& frac);
     bool saveFractionator(const FractionatorSettings& frac);
     
-    bool loadRectParams(RectificationParams& params);
-    bool saveRectParams(const RectificationParams& params);
+    // RectificationParams (legacy) removed from new architecture
     
     bool loadMashProfiles(MashProfile* profiles, uint8_t count);
     bool saveMashProfiles(const MashProfile* profiles, uint8_t count);

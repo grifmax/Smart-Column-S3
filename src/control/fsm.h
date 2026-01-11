@@ -111,6 +111,14 @@ namespace FSM {
     // =========================================================================
     
     namespace Distillation {
+        /**
+         * Установить параметры дистилляции (используются при старте/в процессе)
+         * @param speedMlH Скорость отбора (мл/ч)
+         * @param headsVolumeMl Объём голов (мл, может быть 0)
+         * @param targetVolumeMl Целевой объём отбора (мл, может быть 0)
+         * @param endTempC Температура завершения по кубу (°C, может быть 0)
+         */
+        void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC);
         void update(SystemState& state, const Settings& settings);
     }
     
