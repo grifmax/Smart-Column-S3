@@ -210,9 +210,55 @@
                         <button class="btn btn-info" onclick="startDistillation()">🏺 Дистилляция</button>
                     </div>
                     <div class="controls">
-                        <button class="btn btn-danger" onclick="stopProcess()">⏹️ Остановить</button>
+                        <button class="btn btn-danger" onclick="stopProcess()" disabled>⏹️ Остановить</button>
                         <button class="btn" onclick="pauseProcess()">⏸️ Пауза</button>
                         <button class="btn" onclick="resumeProcess()">⏯️ Продолжить</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Дополнительные режимы</h2>
+
+                    <div class="form-group">
+                        <label>Режим</label>
+                        <select id="extra-mode-select" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+                            <option value="none">Не выбран</option>
+                            <option value="mashing">Затирка</option>
+                            <option value="hold">Hold (выдержка)</option>
+                        </select>
+                    </div>
+
+                    <div id="mashing-controls" class="control-group" style="display: none;">
+                        <h3 style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 0.95em;">Затирка</h3>
+
+                        <div class="form-group">
+                            <label>Название профиля</label>
+                            <input type="text" id="mash-profile-name" placeholder="Например: Пшеничный солод">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Шаги затирки (температура °C, длительность мин)</label>
+                            <div id="mash-steps"></div>
+                        </div>
+
+                        <div class="controls" style="flex-wrap: wrap;">
+                            <button class="btn btn-sm" onclick="addMashStep()">➕ Добавить шаг</button>
+                            <button class="btn btn-success" onclick="startMashing()">▶️ Запустить затирку</button>
+                        </div>
+                    </div>
+
+                    <div id="hold-controls" class="control-group" style="display: none; margin-top: 15px;">
+                        <h3 style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 0.95em;">Hold (выдержка)</h3>
+
+                        <div class="form-group">
+                            <label>Шаги (температура °C, длительность мин)</label>
+                            <div id="hold-steps"></div>
+                        </div>
+
+                        <div class="controls" style="flex-wrap: wrap;">
+                            <button class="btn btn-sm" onclick="addHoldStep()">➕ Добавить шаг</button>
+                            <button class="btn btn-success" onclick="startHold()">▶️ Запустить Hold</button>
+                        </div>
                     </div>
                 </div>
 
@@ -243,6 +289,51 @@
         <!-- Вкладка: Настройки -->
         <div id="settings" class="tab-content">
             <div class="cards">
+                <!-- Облако (IoT tunnel) -->
+                <div class="card">
+                    <h2>☁️ Облако</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Привязка устройства к аккаунту через Device ID + PIN. Для работы из интернета используется
+                        исходящий WSS-туннель.
+                    </p>
+
+                    <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; font-size: 14px;">
+                            <strong>Device ID:</strong>
+                            <span id="device-id">Загрузка...</span>
+
+                            <strong>Туннель:</strong>
+                            <span id="cloud-conn-status">—</span>
+
+                            <strong>Auth:</strong>
+                            <span id="cloud-auth-status">—</span>
+
+                            <strong>PIN:</strong>
+                            <span id="cloud-claim-status">—</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="cloud-enabled">
+                            <span>Включить облако</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label>URL туннеля (WSS)</label>
+                        <input type="text" id="cloud-tunnel-url" placeholder="wss://tunnel.example.com/ws/device">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                            Пример: <code>wss://tunnel.example.com/ws/device</code>
+                        </small>
+                    </div>
+
+                    <div class="controls" style="flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="saveCloudConfig()">💾 Сохранить</button>
+                        <button class="btn btn-success" onclick="generateCloudClaim()">🔑 Сгенерировать PIN</button>
+                    </div>
+                </div>
+
                 <!-- Демо-режим -->
                 <div class="card"
                     style="border: 2px solid var(--warning, #ffc107); background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 193, 7, 0.05));">
@@ -284,6 +375,32 @@
                     <p style="color: var(--text-secondary); margin-bottom: 15px;">
                         Настройка подключения к физическому устройству ESP32. Если устройство не настроено, веб-интерфейс будет работать в демо-режиме.
                     </p>
+
+                    <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; background: var(--bg-secondary); margin-bottom: 15px;">
+                        <h3 style="margin: 0 0 10px 0; font-size: 1em;">🔗 Привязать устройство (ID + PIN)</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.9em; margin-bottom: 10px;">
+                            На устройстве сгенерируйте PIN (локально), затем введите Device ID и PIN сюда.
+                        </p>
+
+                        <div class="form-group">
+                            <label>Device ID</label>
+                            <input type="text" id="claim-device-id" placeholder="Например: A1B2C3D4E5F6">
+                        </div>
+
+                        <div class="form-group">
+                            <label>PIN</label>
+                            <input type="text" id="claim-device-pin" placeholder="6 цифр">
+                        </div>
+
+                        <div class="controls" style="flex-wrap: wrap;">
+                            <button class="btn btn-success" onclick="claimDeviceToAccount()">🔗 Привязать</button>
+                            <button class="btn" onclick="loadDiscoveredDevices()">🔄 Обновить список</button>
+                        </div>
+
+                        <div id="discovered-devices" style="margin-top: 10px;">
+                            <p class="info-text" style="margin: 0; color: var(--text-secondary);">Загрузка доступных устройств...</p>
+                        </div>
+                    </div>
                     
                     <div class="form-group">
                         <label>Выберите устройство</label>

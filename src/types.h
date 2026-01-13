@@ -282,6 +282,14 @@ struct TelegramSettings {
   char chatId[32] = "";
 };
 
+// Cloud tunnel (IoT модель, без входящих портов на ESP32)
+struct CloudSettings {
+  bool enabled = false;
+  char tunnelUrl[128] = ""; // например: wss://tunnel.example.com/ws/device
+  char token[96] = "";      // device token после привязки
+  char tokenId[64] = "";    // tokenId для отладки/ротации
+};
+
 struct EquipmentSettings {
   uint16_t columnHeightMm = 1000;
   PackingType packingType = PackingType::SPN_3_5;
@@ -320,6 +328,7 @@ struct Settings {
   HydrometerCalibration hydroCal; // Калибровка гидрометра
   MqttSettings mqtt;
   TelegramSettings telegram;
+  CloudSettings cloud;
   EquipmentSettings equipment;
   FractionatorSettings fractionator;
   RectParams rectParams;

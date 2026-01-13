@@ -1,1 +1,6 @@
 .pio/
+
+# cloud_tunnel_service build artifacts / dependencies
+cloud_tunnel_service/node_modules/
+cloud_tunnel_service/dist/
+cloud_tunnel_service/.env

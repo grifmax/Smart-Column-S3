@@ -69,7 +69,77 @@ function proxyToESP32($path, $method = 'GET', $data = null, $headers = []) {
     }
     
     $config = loadESP32Config();
-    
+
+    // Tunnel mode (IoT): если устройство привязано и подключено через tunnel service,
+    // не нужны host/port и пробросы.
+    $tunnelEnabled = !empty($config['tunnelEnabled']);
+    $deviceUid = $config['deviceUid'] ?? null;
+
+    if ($tunnelEnabled && !empty($deviceUid)) {
+        $base = rtrim(TUNNEL_SERVICE_URL, '/');
+        $url = $base . '/api/tunnel/request';
+
+        $payload = [
+            'userId' => (int)$user['id'],
+            'deviceId' => $deviceUid,
+            'method' => $method,
+            'path' => $path,
+        ];
+        if ($data !== null) {
+            $payload['bodyBase64'] = base64_encode(is_string($data) ? $data : json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        }
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json; charset=utf-8',
+            'x-service-key: ' . TUNNEL_SERVICE_KEY
+        ]);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        $resp = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($err) {
+            http_response_code(502);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['error' => 'Tunnel service connection error: ' . $err], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        if ($httpCode < 200 || $httpCode >= 300) {
+            http_response_code(502);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['error' => 'Tunnel service returned HTTP ' . $httpCode, 'details' => $resp], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $decoded = json_decode($resp, true);
+        if (!$decoded || !isset($decoded['status'])) {
+            http_response_code(502);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['error' => 'Invalid tunnel response', 'details' => $resp], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $status = (int)$decoded['status'];
+        $body = '';
+        if (!empty($decoded['bodyBase64'])) {
+            $body = base64_decode($decoded['bodyBase64']);
+        }
+
+        http_response_code($status);
+        header('Content-Type: application/json; charset=utf-8');
+        echo $body;
+        exit;
+    }
+
+    // Legacy direct mode
     if (!$config['enabled'] || empty($config['host'])) {
         http_response_code(503);
         header('Content-Type: application/json; charset=utf-8');

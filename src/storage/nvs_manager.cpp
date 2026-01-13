@@ -31,6 +31,12 @@ bool loadSettings(Settings& settings) {
     prefs.getString(NVS_KEY_TG_TOKEN, settings.telegram.token, sizeof(settings.telegram.token));
     prefs.getString(NVS_KEY_TG_CHAT, settings.telegram.chatId, sizeof(settings.telegram.chatId));
 
+    // Cloud tunnel
+    settings.cloud.enabled = prefs.getBool(NVS_KEY_CLOUD_ENABLED, false);
+    prefs.getString(NVS_KEY_CLOUD_URL, settings.cloud.tunnelUrl, sizeof(settings.cloud.tunnelUrl));
+    prefs.getString(NVS_KEY_CLOUD_TOKEN, settings.cloud.token, sizeof(settings.cloud.token));
+    prefs.getString(NVS_KEY_CLOUD_TOKEN_ID, settings.cloud.tokenId, sizeof(settings.cloud.tokenId));
+
     // Оборудование
     settings.equipment.columnHeightMm = prefs.getUShort(NVS_KEY_COLUMN_HEIGHT, DEFAULT_COLUMN_HEIGHT_MM);
     settings.equipment.heaterPowerW = prefs.getUShort(NVS_KEY_HEATER_POWER, DEFAULT_HEATER_POWER_W);
@@ -63,6 +69,12 @@ bool saveSettings(const Settings& settings) {
     // Telegram
     prefs.putString(NVS_KEY_TG_TOKEN, settings.telegram.token);
     prefs.putString(NVS_KEY_TG_CHAT, settings.telegram.chatId);
+
+    // Cloud tunnel
+    prefs.putBool(NVS_KEY_CLOUD_ENABLED, settings.cloud.enabled);
+    prefs.putString(NVS_KEY_CLOUD_URL, settings.cloud.tunnelUrl);
+    prefs.putString(NVS_KEY_CLOUD_TOKEN, settings.cloud.token);
+    prefs.putString(NVS_KEY_CLOUD_TOKEN_ID, settings.cloud.tokenId);
 
     // Оборудование
     prefs.putUShort(NVS_KEY_COLUMN_HEIGHT, settings.equipment.columnHeightMm);

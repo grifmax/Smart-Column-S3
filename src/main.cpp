@@ -35,6 +35,7 @@
 #include "interface/ota.h"
 #include "interface/telegram.h"
 #include "interface/webserver.h"
+#include "interface/cloud_tunnel.h"
 
 // Хранение
 #include "storage/logger.h"
@@ -177,6 +178,9 @@ void setup() {
   WebServer::init();
   esp_task_wdt_reset(); // Сброс watchdog после инициализации веб-сервера
 
+  // Cloud tunnel (IoT, исходящее соединение)
+  CloudTunnel::init();
+
   // Telegram
   if (g_settings.telegram.enabled) {
     LOG_I("Starting Telegram bot...");
@@ -297,6 +301,9 @@ void loop() {
     g_lastWebBroadcast = now;
     WebServer::broadcastState(g_state);
   }
+
+  // Cloud tunnel loop
+  CloudTunnel::loop();
 
   // Логирование
   if (g_state.mode != Mode::IDLE &&

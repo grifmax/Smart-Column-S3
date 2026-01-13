@@ -324,6 +324,7 @@ function getActiveDevice($userId) {
         if ($device) {
             return [
                 'id' => (int)$device['id'],
+                'deviceUid' => $device['device_uid'] ?? null,
                 'name' => $device['name'],
                 'host' => $device['host'],
                 'port' => (int)$device['port'],
@@ -331,6 +332,9 @@ function getActiveDevice($userId) {
                 'username' => $device['username'],
                 'password' => $device['password_hash'] ? base64_decode($device['password_hash']) : '', // Раскодируем пароль
                 'timeout' => (int)$device['timeout'],
+                'tunnelEnabled' => !empty($device['tunnel_enabled']),
+                'tunnelStatus' => $device['tunnel_status'] ?? null,
+                'lastSeenAt' => $device['last_seen_at'] ?? null,
                 'enabled' => true
             ];
         }

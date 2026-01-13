@@ -7,6 +7,7 @@
 #include "display.h"
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include "../interface/cloud_tunnel.h"
 
 // OLED дисплей 0.96" (резервный)
 static Adafruit_SSD1306 oled(128, 64, &Wire, -1);
@@ -73,6 +74,12 @@ void update(const SystemState& state) {
         oled.print("Pump: ");
         oled.print(state.pump.speedMlPerHour, 0);
         oled.println(" ml/h");
+    }
+
+    // Cloud claim PIN (если активен)
+    if (CloudTunnel::hasActiveClaim()) {
+        oled.print("PIN: ");
+        oled.println(CloudTunnel::getClaimCode());
     }
 
     oled.display();

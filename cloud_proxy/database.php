@@ -70,16 +70,28 @@ function createTables() {
         "CREATE TABLE IF NOT EXISTS `esp32_devices` (
             `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
             `user_id` INT UNSIGNED NOT NULL,
+            -- Уникальный идентификатор устройства (Device ID с ESP32, например 12 hex)
+            `device_uid` VARCHAR(32) DEFAULT NULL,
             `name` VARCHAR(100) NOT NULL,
-            `host` VARCHAR(255) NOT NULL,
+            -- Для legacy direct-proxy режима (host/port). Для tunnel режима может быть пустым.
+            `host` VARCHAR(255) DEFAULT '',
             `port` INT UNSIGNED DEFAULT 80,
             `use_https` BOOLEAN DEFAULT FALSE,
             `username` VARCHAR(100) DEFAULT NULL,
             `password_hash` VARCHAR(255) DEFAULT NULL,
             `timeout` INT UNSIGNED DEFAULT 5,
             `is_active` BOOLEAN DEFAULT FALSE,
+            -- Tunnel режим (как IoT): device держит исходящее соединение, входящих портов не нужно
+            `tunnel_enabled` BOOLEAN DEFAULT FALSE,
+            `tunnel_status` VARCHAR(32) DEFAULT 'offline',
+            `claimed_at` TIMESTAMP NULL DEFAULT NULL,
+            `last_seen_at` TIMESTAMP NULL DEFAULT NULL,
+            `firmware_version` VARCHAR(64) DEFAULT NULL,
+            `device_token_hash` VARCHAR(128) DEFAULT NULL,
+            `device_token_id` VARCHAR(64) DEFAULT NULL,
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (`id`),
+            UNIQUE KEY `idx_device_uid` (`device_uid`),
             KEY `idx_user_id` (`user_id`),
             CONSTRAINT `fk_esp32_devices_user_id` 
                 FOREIGN KEY (`user_id`) 
@@ -111,6 +123,34 @@ function createTables() {
                 REFERENCES `users` (`id`)
                 ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        ,
+        // Claim-коды привязки устройства (одноразовый/короткоживущий PIN)
+        "CREATE TABLE IF NOT EXISTS `esp32_device_claims` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            `device_uid` VARCHAR(32) NOT NULL,
+            `claim_salt` VARCHAR(64) NOT NULL,
+            `claim_hash` VARCHAR(128) NOT NULL,
+            `issued_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `expires_at` TIMESTAMP NOT NULL,
+            `ws_session_id` VARCHAR(64) DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `idx_claim_device_uid` (`device_uid`),
+            KEY `idx_claim_expires_at` (`expires_at`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        // Сессии туннеля (device online/offline + lastSeen)
+        "CREATE TABLE IF NOT EXISTS `esp32_device_sessions` (
+            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            `device_uid` VARCHAR(32) NOT NULL,
+            `ws_session_id` VARCHAR(64) NOT NULL,
+            `connected_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            `last_seen_at` TIMESTAMP NULL DEFAULT NULL,
+            `fw_version` VARCHAR(64) DEFAULT NULL,
+            `ip_info` VARCHAR(255) DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `idx_session_device_uid` (`device_uid`),
+            KEY `idx_session_ws_session_id` (`ws_session_id`),
+            KEY `idx_session_last_seen_at` (`last_seen_at`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     ];
 }
 
@@ -133,7 +173,14 @@ function initDatabase() {
     $errors = [];
     $messages = [];
     $tables = createTables();
-    $tableNames = ['users', 'esp32_devices', 'schema_version', 'user_entitlements'];
+    $tableNames = [
+        'users',
+        'esp32_devices',
+        'schema_version',
+        'user_entitlements',
+        'esp32_device_claims',
+        'esp32_device_sessions'
+    ];
     
     try {
         foreach ($tables as $index => $sql) {

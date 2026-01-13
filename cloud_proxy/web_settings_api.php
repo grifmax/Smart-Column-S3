@@ -7,6 +7,7 @@
 
 require_once __DIR__ . '/auth_web.php';
 require_once __DIR__ . '/esp32_config.php';
+require_once __DIR__ . '/database.php';
 
 // Устанавливаем кодировку UTF-8 для ответа
 header('Content-Type: application/json; charset=utf-8');
@@ -20,6 +21,194 @@ if (isset($_SERVER['REQUEST_URI_API'])) {
     $path = $_SERVER['REQUEST_URI_API'];
 } else {
     $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+}
+
+/**
+ * Вызов tunnel service (VPS) из cloud_proxy.
+ */
+function callTunnelService($path, $payload) {
+    $base = rtrim(TUNNEL_SERVICE_URL, '/');
+    $url = $base . $path;
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json; charset=utf-8',
+        'x-service-key: ' . TUNNEL_SERVICE_KEY
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    return [$code, $resp, $err];
+}
+
+// GET /api/web/devices/discovered - устройства, которые недавно «засветились» (есть активный claim)
+if ($path === '/api/web/devices/discovered' && $method === 'GET') {
+    $pdo = getDB();
+    if ($pdo === null) {
+        http_response_code(500);
+        echo json_encode(['error' => 'DB unavailable'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        $stmt = $pdo->query(
+            "SELECT c.device_uid,
+                    MAX(c.expires_at) AS expires_at,
+                    MAX(s.last_seen_at) AS last_seen_at
+             FROM esp32_device_claims c
+             LEFT JOIN esp32_device_sessions s ON s.device_uid = c.device_uid
+             WHERE c.expires_at > NOW()
+             GROUP BY c.device_uid
+             ORDER BY last_seen_at DESC, expires_at DESC
+             LIMIT 50"
+        );
+        $rows = $stmt->fetchAll();
+
+        $devices = [];
+        foreach ($rows as $r) {
+            $devices[] = [
+                'deviceId' => $r['device_uid'],
+                'expiresAt' => $r['expires_at'],
+                'lastSeenAt' => $r['last_seen_at']
+            ];
+        }
+
+        echo json_encode(['devices' => $devices], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'DB error'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
+// POST /api/web/devices/claim - привязать устройство по Device ID + PIN
+if ($path === '/api/web/devices/claim' && $method === 'POST') {
+    $user = getCurrentUser();
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!$input) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid JSON'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $deviceId = strtoupper(trim($input['deviceId'] ?? ''));
+    $claimCode = trim($input['claimCode'] ?? '');
+
+    if ($deviceId === '' || $claimCode === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'deviceId and claimCode required'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $pdo = getDB();
+    if ($pdo === null) {
+        http_response_code(500);
+        echo json_encode(['error' => 'DB unavailable'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        // Берём самый свежий активный claim
+        $stmt = $pdo->prepare(
+            "SELECT id, claim_salt, claim_hash, expires_at
+             FROM esp32_device_claims
+             WHERE device_uid = ? AND expires_at > NOW()
+             ORDER BY issued_at DESC, id DESC
+             LIMIT 1"
+        );
+        $stmt->execute([$deviceId]);
+        $claim = $stmt->fetch();
+
+        if (!$claim) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Claim not found or expired'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $expected = hash('sha256', $claim['claim_salt'] . $claimCode);
+        if (!hash_equals($claim['claim_hash'], $expected)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Invalid claim code'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        // Проверим, не привязано ли устройство к другому пользователю
+        $stmt = $pdo->prepare("SELECT id, user_id FROM esp32_devices WHERE device_uid = ? LIMIT 1");
+        $stmt->execute([$deviceId]);
+        $existing = $stmt->fetch();
+        if ($existing && (int)$existing['user_id'] !== (int)$user['id']) {
+            http_response_code(409);
+            echo json_encode(['error' => 'Device already claimed by another user'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        // Деактивировать остальные устройства пользователя
+        $stmt = $pdo->prepare("UPDATE esp32_devices SET is_active = 0 WHERE user_id = ?");
+        $stmt->execute([(int)$user['id']]);
+
+        if ($existing) {
+            $stmt = $pdo->prepare(
+                "UPDATE esp32_devices
+                 SET tunnel_enabled = 1,
+                     tunnel_status = 'online',
+                     is_active = 1,
+                     claimed_at = COALESCE(claimed_at, NOW()),
+                     name = COALESCE(NULLIF(name,''), 'ESP32 Device')
+                 WHERE id = ? AND user_id = ?"
+            );
+            $stmt->execute([(int)$existing['id'], (int)$user['id']]);
+        } else {
+            $stmt = $pdo->prepare(
+                "INSERT INTO esp32_devices (user_id, device_uid, name, host, port, use_https, username, password_hash, timeout, is_active, tunnel_enabled, tunnel_status, claimed_at)
+                 VALUES (?, ?, ?, '', 80, 0, '', NULL, 5, 1, 1, 'online', NOW())"
+            );
+            $stmt->execute([(int)$user['id'], $deviceId, 'ESP32 Device']);
+        }
+
+        // Удалить claim (одноразовый)
+        $stmt = $pdo->prepare("DELETE FROM esp32_device_claims WHERE id = ?");
+        $stmt->execute([(int)$claim['id']]);
+
+        // Попросить tunnel service выдать токен устройству
+        [$code, $resp, $err] = callTunnelService('/api/tunnel/claim/commit', [
+            'userId' => (int)$user['id'],
+            'deviceId' => $deviceId
+        ]);
+
+        if ($err) {
+            http_response_code(502);
+            echo json_encode(['error' => 'Tunnel service error: ' . $err], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        if ($code < 200 || $code >= 300) {
+            http_response_code(502);
+            echo json_encode(['error' => 'Tunnel service returned HTTP ' . $code, 'details' => $resp], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        echo json_encode(['success' => true, 'deviceId' => $deviceId], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'DB error'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 }
 
 // GET /api/web/esp32/config - получить настройки ESP32

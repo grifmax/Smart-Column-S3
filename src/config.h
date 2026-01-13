@@ -531,6 +531,12 @@ struct MenuItem {
 #define NVS_KEY_FRACTION_ANGLES "frac_ang"
 #define NVS_KEY_FRACTION_ENABLED "frac_en"
 
+// Cloud tunnel settings
+#define NVS_KEY_CLOUD_ENABLED "cl_en"
+#define NVS_KEY_CLOUD_URL "cl_url"
+#define NVS_KEY_CLOUD_TOKEN "cl_tok"
+#define NVS_KEY_CLOUD_TOKEN_ID "cl_tid"
+
 // =============================================================================
 // ЗУММЕР
 // =============================================================================

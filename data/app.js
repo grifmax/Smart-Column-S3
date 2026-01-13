@@ -82,6 +82,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     initTabs();
 
+    initMashingHoldControls();
+
     loadTheme();
 
     loadDemoMode();  // Загрузить состояние демо-режима
@@ -101,6 +103,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (isCloudProxyMode) {
         loadUserInfo();  // Загрузить информацию о пользователе
         loadESP32Devices();  // Загрузить список устройств ESP32
+        loadDiscoveredDevices(); // Устройства с активным PIN
+        setInterval(loadDiscoveredDevices, 30000);
     }
 
     loadStatus();  // Загрузить начальный статус
@@ -961,6 +965,343 @@ async function startDistillation() {
 
 
 
+// ============================================================================
+// Дополнительные режимы: Затирка / Hold
+// ============================================================================
+
+function initMashingHoldControls() {
+    try {
+        const select = document.getElementById('extra-mode-select');
+        const mashingControls = document.getElementById('mashing-controls');
+        const holdControls = document.getElementById('hold-controls');
+
+        const setExtraMode = (mode) => {
+            const normalized = mode || 'none';
+
+            if (mashingControls) {
+                mashingControls.style.display = normalized === 'mashing' ? '' : 'none';
+            }
+            if (holdControls) {
+                holdControls.style.display = normalized === 'hold' ? '' : 'none';
+            }
+
+            try {
+                localStorage.setItem('control.extraMode', normalized);
+            } catch (_) {
+                // ignore
+            }
+        };
+
+        const mashName = document.getElementById('mash-profile-name');
+        if (mashName && !mashName.value) {
+            mashName.value = 'Default Mashing';
+        }
+
+        const mashStepsEl = document.getElementById('mash-steps');
+        if (mashStepsEl && mashStepsEl.children.length === 0) {
+            // По умолчанию — шаги как в backend-дефолте
+            addMashStep({ temperature: 38.0, duration: 20, name: 'Кислотная пауза' });
+            addMashStep({ temperature: 52.0, duration: 20, name: 'Белковая пауза' });
+            addMashStep({ temperature: 63.0, duration: 40, name: 'Мальтозная пауза' });
+            addMashStep({ temperature: 72.0, duration: 20, name: 'Осахаривание' });
+            addMashStep({ temperature: 78.0, duration: 10, name: 'Мэш-аут' });
+        }
+
+        const holdStepsEl = document.getElementById('hold-steps');
+        if (holdStepsEl && holdStepsEl.children.length === 0) {
+            // Дефолт — одна ступень 65°C на 60 минут
+            addHoldStep({ temperature: 65.0, duration: 60 });
+        }
+
+        if (select) {
+            select.addEventListener('change', () => setExtraMode(select.value));
+
+            let saved = 'none';
+            try {
+                saved = localStorage.getItem('control.extraMode') || 'none';
+            } catch (_) {
+                // ignore
+            }
+
+            // Если разметка обновилась и select ещё не выставлен — восстановим
+            if (!select.value || select.value === 'none') {
+                select.value = saved;
+            }
+            setExtraMode(select.value);
+        } else {
+            // Если селектора нет (старый HTML), просто скрываем блоки по умолчанию
+            if (mashingControls) mashingControls.style.display = 'none';
+            if (holdControls) holdControls.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('initMashingHoldControls error:', e);
+    }
+}
+
+function createStepRow({ mode, temperature, duration, name }) {
+    const row = document.createElement('div');
+    row.dataset.stepRow = mode;
+    row.style.display = 'flex';
+    row.style.gap = '10px';
+    row.style.flexWrap = 'wrap';
+    row.style.alignItems = 'center';
+    row.style.marginBottom = '8px';
+
+    const tempInput = document.createElement('input');
+    tempInput.type = 'number';
+    tempInput.step = '0.1';
+    tempInput.min = '0';
+    tempInput.placeholder = 'Темп, °C';
+    tempInput.value = (temperature ?? '') === '' ? '' : String(temperature);
+    tempInput.dataset.field = 'temperature';
+    tempInput.style.width = '140px';
+
+    const durInput = document.createElement('input');
+    durInput.type = 'number';
+    durInput.step = '1';
+    durInput.min = '1';
+    durInput.placeholder = 'Мин';
+    durInput.value = (duration ?? '') === '' ? '' : String(duration);
+    durInput.dataset.field = 'duration';
+    durInput.style.width = '110px';
+
+    row.appendChild(tempInput);
+    row.appendChild(durInput);
+
+    if (mode === 'mash') {
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.placeholder = 'Имя шага (опц.)';
+        nameInput.value = name || '';
+        nameInput.dataset.field = 'name';
+        nameInput.style.flex = '1';
+        nameInput.style.minWidth = '180px';
+        row.appendChild(nameInput);
+    }
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn btn-sm';
+    removeBtn.textContent = '✖';
+    removeBtn.title = 'Удалить шаг';
+    removeBtn.onclick = () => row.remove();
+    row.appendChild(removeBtn);
+
+    return row;
+}
+
+function addMashStep(step = {}) {
+    const el = document.getElementById('mash-steps');
+    if (!el) return;
+    el.appendChild(createStepRow({
+        mode: 'mash',
+        temperature: step.temperature,
+        duration: step.duration,
+        name: step.name
+    }));
+}
+
+function addHoldStep(step = {}) {
+    const el = document.getElementById('hold-steps');
+    if (!el) return;
+    el.appendChild(createStepRow({
+        mode: 'hold',
+        temperature: step.temperature,
+        duration: step.duration
+    }));
+}
+
+function readStepsFromUI(containerId, mode) {
+    const el = document.getElementById(containerId);
+    if (!el) return [];
+
+    const rows = Array.from(el.querySelectorAll(`div[data-step-row="${mode}"]`));
+    const steps = [];
+
+    for (const row of rows) {
+        const tempStr = row.querySelector('input[data-field="temperature"]')?.value ?? '';
+        const durStr = row.querySelector('input[data-field="duration"]')?.value ?? '';
+        const temperature = Number.parseFloat(tempStr);
+        const duration = Number.parseInt(durStr, 10);
+
+        if (!Number.isFinite(temperature) || temperature <= 0) continue;
+        if (!Number.isFinite(duration) || duration <= 0) continue;
+
+        const step = { temperature, duration };
+        if (mode === 'mash') {
+            const name = (row.querySelector('input[data-field="name"]')?.value ?? '').trim();
+            if (name) step.name = name;
+        }
+        steps.push(step);
+    }
+
+    return steps;
+}
+
+async function startMashing() {
+    try {
+        const profileName = (document.getElementById('mash-profile-name')?.value ?? '').trim() || 'Mashing';
+        const steps = readStepsFromUI('mash-steps', 'mash');
+
+        if (!steps.length) {
+            addLog('✗ Затирка: добавьте хотя бы один корректный шаг (температура и длительность)', 'error');
+            return;
+        }
+
+        addLog('📤 Отправка команды запуска затирки...', 'info');
+
+        const response = await fetch('/api/process/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mode: 'mashing',
+                params: {
+                    profile: {
+                        name: profileName,
+                        steps
+                    }
+                }
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            addLog('✓ Затирка запущена', 'success');
+            if (data.warning) addLog('⚠️ ' + data.warning, 'warning');
+            setTimeout(loadStatus, 500);
+        } else {
+            const error = await response.text();
+            addLog('✗ Ошибка (' + response.status + '): ' + error, 'error');
+        }
+    } catch (e) {
+        addLog('✗ Ошибка сети: ' + e.message, 'error');
+        console.error('Start mashing error:', e);
+    }
+}
+
+async function startHold() {
+    try {
+        const steps = readStepsFromUI('hold-steps', 'hold');
+
+        if (!steps.length) {
+            addLog('✗ Hold: добавьте хотя бы один корректный шаг (температура и длительность)', 'error');
+            return;
+        }
+
+        addLog('📤 Отправка команды запуска Hold...', 'info');
+
+        const response = await fetch('/api/process/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mode: 'hold',
+                params: { steps }
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            addLog('✓ Hold запущен', 'success');
+            if (data.warning) addLog('⚠️ ' + data.warning, 'warning');
+            setTimeout(loadStatus, 500);
+        } else {
+            const error = await response.text();
+            addLog('✗ Ошибка (' + response.status + '): ' + error, 'error');
+        }
+    } catch (e) {
+        addLog('✗ Ошибка сети: ' + e.message, 'error');
+        console.error('Start hold error:', e);
+    }
+}
+
+// ============================================================================
+// Cloud (IoT tunnel)
+// ============================================================================
+
+function updateCloudUiFromStatus(data) {
+    const deviceIdEl = document.getElementById('device-id');
+    if (deviceIdEl && data.deviceId) {
+        deviceIdEl.textContent = String(data.deviceId);
+    }
+
+    const enabledEl = document.getElementById('cloud-enabled');
+    const urlEl = document.getElementById('cloud-tunnel-url');
+    const connEl = document.getElementById('cloud-conn-status');
+    const authEl = document.getElementById('cloud-auth-status');
+    const claimEl = document.getElementById('cloud-claim-status');
+
+    if (data.cloud) {
+        if (enabledEl && typeof data.cloud.enabled === 'boolean') {
+            enabledEl.checked = data.cloud.enabled;
+        }
+        if (urlEl && typeof data.cloud.tunnelUrl === 'string' && document.activeElement !== urlEl) {
+            if (!urlEl.value) urlEl.value = data.cloud.tunnelUrl;
+        }
+        if (connEl) connEl.textContent = data.cloud.connected ? 'online' : 'offline';
+        if (authEl) authEl.textContent = data.cloud.authenticated ? 'ok' : 'no';
+
+        if (claimEl) {
+            if (data.cloud.claimActive && data.cloud.claimCode) {
+                let remaining = null;
+                if (data.cloud.claimExpiresAt !== undefined && data.uptime !== undefined) {
+                    remaining = Math.max(0, Math.round(Number(data.cloud.claimExpiresAt) - Number(data.uptime)));
+                }
+                claimEl.textContent = remaining !== null
+                    ? `${data.cloud.claimCode} (ещё ~${remaining}с)`
+                    : String(data.cloud.claimCode);
+            } else {
+                claimEl.textContent = 'нет';
+            }
+        }
+    }
+}
+
+async function saveCloudConfig() {
+    const enabledEl = document.getElementById('cloud-enabled');
+    const urlEl = document.getElementById('cloud-tunnel-url');
+
+    const enabled = !!enabledEl?.checked;
+    const tunnelUrl = (urlEl?.value || '').trim();
+
+    try {
+        addLog('📤 Сохранение настроек облака...', 'info');
+        const resp = await fetch('/api/cloud/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, tunnelUrl })
+        });
+        if (!resp.ok) {
+            const t = await resp.text();
+            addLog('✗ Ошибка сохранения облака: ' + t, 'error');
+            return;
+        }
+        addLog('✓ Настройки облака сохранены', 'success');
+        setTimeout(loadStatus, 500);
+    } catch (e) {
+        addLog('✗ Ошибка сети: ' + e.message, 'error');
+    }
+}
+
+async function generateCloudClaim() {
+    try {
+        addLog('📤 Генерация PIN для привязки...', 'info');
+        const resp = await fetch('/api/cloud/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ttlSeconds: 600 })
+        });
+        if (!resp.ok) {
+            const t = await resp.text();
+            addLog('✗ Ошибка генерации PIN: ' + t, 'error');
+            return;
+        }
+        const data = await resp.json();
+        addLog('✓ PIN сгенерирован: ' + (data.claimCode || ''), 'success');
+        setTimeout(loadStatus, 200);
+    } catch (e) {
+        addLog('✗ Ошибка сети: ' + e.message, 'error');
+    }
+}
+
 async function stopProcess() {
 
     if (!confirm('Остановить процесс?')) return;
@@ -1111,7 +1452,18 @@ async function loadStatus() {
 
         const response = await fetch('/api/status');
 
-        if (!response.ok) return;
+        if (!response.ok) {
+            // Если статус недоступен (401/404/5xx) — не оставляем UI в "случайном" состоянии.
+            // Делаем безопасный фолбэк: считаем процесс остановленным и отключаем управляющие кнопки по state.
+            const msg = `✗ Статус недоступен (/api/status): HTTP ${response.status}`;
+            addLog(msg, 'error');
+
+            // Сбросить состояние, чтобы кнопки не выглядели как "процесс запущен"
+            currentMode = 0;
+            currentPaused = false;
+            updateButtonStates();
+            return;
+        }
 
 
 
@@ -1121,7 +1473,19 @@ async function loadStatus() {
 
         // Обновить состояние процесса
 
-        currentMode = data.mode || 0;
+        // Нормализуем mode: ожидаем число (0=IDLE), но на прокси/кастомных сборках
+        // может прилететь строка. Для кнопок достаточно корректно определить IDLE.
+        {
+            const modeNum = Number(data.mode);
+            if (Number.isFinite(modeNum)) {
+                currentMode = modeNum;
+            } else if (typeof data.modeStr === 'string') {
+                const s = data.modeStr.toLowerCase();
+                currentMode = (s === 'idle' || s === '0') ? 0 : 1;
+            } else {
+                currentMode = 0;
+            }
+        }
 
         currentPaused = data.paused || false;
 
@@ -1139,14 +1503,16 @@ async function loadStatus() {
 
 
 
-        // Обновить UI с новым форматом данных
-
-        updateUIFromStatus(data);
+        // Обновить UI с новым форматом данных (не должен ломать обновление кнопок)
+        try {
+            updateUIFromStatus(data);
+        } catch (e) {
+            console.error('updateUIFromStatus error:', e);
+        }
 
 
 
         // Обновить состояние кнопок
-
         updateButtonStates();
 
 
@@ -1194,6 +1560,9 @@ function updateUIFromStatus(data) {
         }
 
     }
+
+    // Cloud (IoT tunnel)
+    updateCloudUiFromStatus(data);
 
 
 
@@ -1421,6 +1790,10 @@ function updateButtonStates() {
 
     const btnDist = document.querySelector('button[onclick="startDistillation()"]');
 
+    const btnMashing = document.querySelector('button[onclick="startMashing()"]');
+
+    const btnHold = document.querySelector('button[onclick="startHold()"]');
+
 
 
     // Кнопки управления
@@ -1456,6 +1829,22 @@ function updateButtonStates() {
         btnDist.disabled = !isIdle;
 
         btnDist.classList.toggle('btn-disabled', !isIdle);
+
+    }
+
+    if (btnMashing) {
+
+        btnMashing.disabled = !isIdle;
+
+        btnMashing.classList.toggle('btn-disabled', !isIdle);
+
+    }
+
+    if (btnHold) {
+
+        btnHold.disabled = !isIdle;
+
+        btnHold.classList.toggle('btn-disabled', !isIdle);
 
     }
 
@@ -5198,6 +5587,131 @@ async function switchAccount() {
 
 
 // ============================================================================
+// Облако: привязка устройства по ID + PIN (cloud-proxy кабинет)
+// ============================================================================
+
+async function loadDiscoveredDevices() {
+    const container = document.getElementById('discovered-devices');
+    if (!container) return;
+
+    container.innerHTML = '<p class="info-text" style="margin: 0; color: var(--text-secondary);">Загрузка доступных устройств...</p>';
+
+    try {
+        const response = await fetch('/api/web/devices/discovered', { credentials: 'same-origin' });
+        if (!response.ok) {
+            const t = await response.text();
+            container.innerHTML = `<p class="info-text" style="margin: 0; color: var(--text-secondary);">Ошибка: ${response.status}</p>`;
+            console.error('Failed to load discovered devices:', response.status, t);
+            return;
+        }
+
+        const data = await response.json();
+        const devices = data.devices || [];
+
+        if (!devices.length) {
+            container.innerHTML = '<p class="info-text" style="margin: 0; color: var(--text-secondary);">Нет доступных устройств. Сгенерируйте PIN на устройстве и обновите.</p>';
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.style.display = 'flex';
+        list.style.flexDirection = 'column';
+        list.style.gap = '8px';
+
+        devices.forEach(d => {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '10px';
+            row.style.padding = '8px 10px';
+            row.style.border = '1px solid var(--border-color)';
+            row.style.borderRadius = '6px';
+            row.style.background = 'var(--bg-primary)';
+
+            const left = document.createElement('div');
+            left.style.display = 'flex';
+            left.style.flexDirection = 'column';
+
+            const idLine = document.createElement('div');
+            idLine.style.fontWeight = '600';
+            idLine.textContent = d.deviceId;
+
+            const meta = document.createElement('div');
+            meta.style.fontSize = '0.85em';
+            meta.style.color = 'var(--text-secondary)';
+            const lastSeen = d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString('ru-RU') : '—';
+            const expires = d.expiresAt ? new Date(d.expiresAt).toLocaleString('ru-RU') : '—';
+            meta.textContent = `lastSeen: ${lastSeen} | expires: ${expires}`;
+
+            left.appendChild(idLine);
+            left.appendChild(meta);
+
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-sm';
+            btn.textContent = 'Выбрать';
+            btn.onclick = () => {
+                const idInput = document.getElementById('claim-device-id');
+                const pinInput = document.getElementById('claim-device-pin');
+                if (idInput) idInput.value = d.deviceId || '';
+                if (pinInput) pinInput.focus();
+            };
+
+            row.appendChild(left);
+            row.appendChild(btn);
+            list.appendChild(row);
+        });
+
+        container.innerHTML = '';
+        container.appendChild(list);
+    } catch (e) {
+        console.error('loadDiscoveredDevices error:', e);
+        container.innerHTML = '<p class="info-text" style="margin: 0; color: var(--text-secondary);">Ошибка загрузки списка</p>';
+    }
+}
+
+async function claimDeviceToAccount() {
+    const idInput = document.getElementById('claim-device-id');
+    const pinInput = document.getElementById('claim-device-pin');
+    const deviceId = (idInput?.value || '').trim();
+    const claimCode = (pinInput?.value || '').trim();
+
+    if (!deviceId || !claimCode) {
+        alert('Введите Device ID и PIN');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/web/devices/claim', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ deviceId, claimCode })
+        });
+
+        const text = await response.text();
+        let payload = null;
+        try { payload = JSON.parse(text); } catch (_) {}
+
+        if (!response.ok) {
+            const msg = (payload && (payload.error || payload.message)) ? (payload.error || payload.message) : text;
+            alert(`Ошибка привязки: ${msg}`);
+            return;
+        }
+
+        alert('Устройство привязано и добавлено в аккаунт');
+        if (pinInput) pinInput.value = '';
+        await loadESP32Devices();
+        // Если активное устройство обновилось — форма откроется сама (loadESP32Devices вызывает loadESP32Device).
+        await loadDiscoveredDevices();
+    } catch (e) {
+        console.error('claimDeviceToAccount error:', e);
+        alert('Ошибка сети при привязке');
+    }
+}
+
+
+// ============================================================================
 
 // Настройки ESP32 (поддержка нескольких устройств)
 
@@ -5287,7 +5801,10 @@ async function loadESP32Devices() {
 
             option.value = device.id;
 
-            option.textContent = device.name + (device.is_active ? ' (активно)' : '');
+            const tunnelBadge = device.tunnelEnabled
+                ? ` ☁️${device.tunnelStatus ? ' ' + device.tunnelStatus : ''}`
+                : '';
+            option.textContent = device.name + (device.is_active ? ' (активно)' : '') + tunnelBadge;
 
             select.appendChild(option);
 

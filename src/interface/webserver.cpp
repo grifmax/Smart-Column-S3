@@ -31,6 +31,7 @@ typedef enum {
 #include "drivers/valves.h"
 #include "drivers/sensors.h"
 #include "storage/nvs_manager.h"
+#include "cloud_tunnel.h"
 #include "../profiles.h"
 #include <ArduinoJson.h>
 #include <AsyncWebSocket.h>
@@ -151,6 +152,7 @@ void init() {
     doc["paused"] = g_state.paused;
     doc["safetyOk"] = g_state.safetyOk;
     doc["uptime"] = g_state.uptime;
+    doc["deviceId"] = CloudTunnel::getDeviceId();
 
     // Температуры
     JsonObject temps = doc.createNestedObject("temps");
@@ -201,6 +203,18 @@ void init() {
     JsonObject equipment = doc.createNestedObject("equipment");
     equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+
+    // Cloud tunnel status (локально полезно для привязки)
+    JsonObject cloud = doc.createNestedObject("cloud");
+    cloud["enabled"] = g_settings.cloud.enabled;
+    cloud["tunnelUrl"] = g_settings.cloud.tunnelUrl;
+    cloud["connected"] = CloudTunnel::isConnected();
+    cloud["authenticated"] = CloudTunnel::isAuthenticated();
+    cloud["claimActive"] = CloudTunnel::hasActiveClaim();
+    if (CloudTunnel::hasActiveClaim()) {
+      cloud["claimCode"] = CloudTunnel::getClaimCode();
+      cloud["claimExpiresAt"] = CloudTunnel::getClaimExpiresAt();
+    }
 
     // -----------------------------------------------------------------------
     // Режимы с температурными ступенями (mashing / hold)
@@ -561,6 +575,67 @@ void init() {
   // ==========================================================================
   // MANUAL CONTROL API (для manual.html)
   // ==========================================================================
+
+  // --------------------------------------------------------------------------
+  // CLOUD TUNNEL API (локально, для привязки устройства в облако)
+  // --------------------------------------------------------------------------
+
+  // POST /api/cloud/claim - сгенерировать новый PIN для привязки
+  server.on(
+      "/api/cloud/claim", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        uint32_t ttl = 600;
+        if (len > 0) {
+          StaticJsonDocument<256> doc;
+          if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
+            ttl = doc["ttlSeconds"] | 600;
+            if (ttl < 60) ttl = 60;
+            if (ttl > 3600) ttl = 3600;
+          }
+        }
+
+        CloudTunnel::generateClaim(ttl);
+
+        StaticJsonDocument<256> out;
+        out["success"] = true;
+        out["deviceId"] = CloudTunnel::getDeviceId();
+        out["claimCode"] = CloudTunnel::getClaimCode();
+        out["claimExpiresAt"] = CloudTunnel::getClaimExpiresAt();
+
+        String json;
+        serializeJson(out, json);
+        request->send(200, "application/json", json);
+      });
+
+  // POST /api/cloud/config - включить/выключить облако и задать URL туннеля
+  server.on(
+      "/api/cloud/config", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<384> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        bool enabled = doc["enabled"] | g_settings.cloud.enabled;
+        const char* url = doc["tunnelUrl"] | g_settings.cloud.tunnelUrl;
+
+        g_settings.cloud.enabled = enabled;
+        strlcpy(g_settings.cloud.tunnelUrl, url, sizeof(g_settings.cloud.tunnelUrl));
+
+        NVSManager::saveSettings(g_settings);
+
+        request->send(200, "application/json", "{\"success\":true}");
+      });
 
   // POST /api/manual/heater - установить мощность ТЭНа (0-100%)
   server.on(
