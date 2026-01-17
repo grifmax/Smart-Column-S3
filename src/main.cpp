@@ -173,11 +173,14 @@ void setup() {
   initNetwork();
   esp_task_wdt_reset(); // Сброс watchdog после инициализации сети
 
+#if WEB_SERVER_ENABLED
   // Веб-сервер
   LOG_I("Starting web server...");
   WebServer::init();
   esp_task_wdt_reset(); // Сброс watchdog после инициализации веб-сервера
+#endif
 
+#if NETWORK_SERVICES_ENABLED
   // Cloud tunnel (IoT, исходящее соединение)
   CloudTunnel::init();
 
@@ -206,6 +209,7 @@ void setup() {
       MQTT::setBaseTopic(g_settings.mqtt.baseTopic);
     }
   }
+#endif
 
   // Логгер
   Logger::init();
@@ -228,8 +232,105 @@ void setup() {
 // LOOP
 // =============================================================================
 
+#if PUMP_TASK_ENABLED
+static TaskHandle_t g_pumpTaskHandle = nullptr;
+
+static void pumpTask(void *param) {
+  (void)param;
+  for (;;) {
+    Pump::update();
+    vTaskDelay(pdMS_TO_TICKS(PUMP_TASK_DELAY_MS));
+  }
+}
+#endif
+
 void loop() {
   uint32_t now = millis();
+
+#if PUMP_TEST_MODE
+  // Минимальный тест насоса: постоянные импульсы STEP без остальной логики
+  static bool pumpStarted = false;
+  if (!pumpStarted) {
+    Pump::start(Pump::getMaxSpeedMlH() * 0.5f);
+    pumpStarted = true;
+  }
+#if TEST_ENABLE_OTA
+  OTA::handle();
+  if (OTA::isUpdating()) {
+    return;
+  }
+#endif
+#if TEST_ENABLE_SAFETY
+  if (now - g_lastSafetyCheck >= INTERVAL_SAFETY_CHECK) {
+    g_lastSafetyCheck = now;
+    Safety::check(g_state, g_settings);
+  }
+#endif
+#if TEST_ENABLE_SENSORS
+#if TEST_ENABLE_TEMP_SENSORS
+  if (now - g_lastTempRead >= INTERVAL_TEMP_READ) {
+    g_lastTempRead = now;
+    Sensors::readTemperatures(g_state.temps);
+  }
+#endif
+#if TEST_ENABLE_PRESSURE
+  if (now - g_lastPressureRead >= INTERVAL_PRESSURE_READ) {
+    g_lastPressureRead = now;
+    Sensors::readPressure(g_state.pressure);
+  }
+#endif
+#if TEST_ENABLE_HYDROMETER
+  if (now - g_lastPressureRead >= INTERVAL_PRESSURE_READ) {
+    g_lastPressureRead = now;
+    Sensors::readHydrometer(g_state.hydrometer, g_state.temps.columnTop);
+  }
+#endif
+#if TEST_ENABLE_POWER
+  if (now - g_lastPowerRead >= INTERVAL_POWER_READ) {
+    g_lastPowerRead = now;
+    Sensors::readPower(g_state.power);
+  }
+#endif
+#endif
+#if TEST_ENABLE_DISPLAY
+  if (now - g_lastDisplayUpdate >= INTERVAL_DISPLAY_UPDATE) {
+    g_lastDisplayUpdate = now;
+    Display::update(g_state);
+  }
+#endif
+#if TEST_ENABLE_WEBSOCKET
+  if (now - g_lastWebBroadcast >= INTERVAL_WEB_BROADCAST) {
+    g_lastWebBroadcast = now;
+    WebServer::broadcastState(g_state);
+  }
+#endif
+#if TEST_ENABLE_CLOUD
+  CloudTunnel::loop();
+#endif
+#if TEST_ENABLE_LOGGER
+  if (g_state.mode != Mode::IDLE &&
+      now - g_lastLogWrite >= INTERVAL_LOG_WRITE) {
+    g_lastLogWrite = now;
+    Logger::writeData(g_state);
+  }
+#endif
+  Pump::update();
+#if TEST_ENABLE_BUTTONS
+  Buttons::update();
+#endif
+#if TEST_ENABLE_TELEGRAM
+  TelegramBot::update();
+#endif
+#if TEST_ENABLE_MQTT
+  if (g_settings.mqtt.enabled) {
+    MQTT::handle();
+  }
+#endif
+  g_state.uptime = now / 1000;
+  esp_task_wdt_reset();
+  delay(1);
+  return;
+#endif
 
   // Обработка команд через Serial (для сброса WiFi)
   if (Serial.available()) {
@@ -247,12 +348,14 @@ void loop() {
   }
 
   // OTA Updates (наивысший приоритет)
+#if NETWORK_SERVICES_ENABLED
   OTA::handle();
 
   // Если идёт обновление OTA - пропустить всё остальное
   if (OTA::isUpdating()) {
     return;
   }
+#endif
 
   // Проверка безопасности (высший приоритет)
   if (now - g_lastSafetyCheck >= INTERVAL_SAFETY_CHECK) {
@@ -297,13 +400,17 @@ void loop() {
   }
 
   // WebSocket broadcast
+#if WEB_SERVER_ENABLED
   if (now - g_lastWebBroadcast >= INTERVAL_WEB_BROADCAST) {
     g_lastWebBroadcast = now;
     WebServer::broadcastState(g_state);
   }
+#endif
 
   // Cloud tunnel loop
+#if NETWORK_SERVICES_ENABLED
   CloudTunnel::loop();
+#endif
 
   // Логирование
   if (g_state.mode != Mode::IDLE &&
@@ -337,7 +444,9 @@ void loop() {
   }
 
   // Обновление насоса (генерация шагов - ОБЯЗАТЕЛЬНО каждый цикл!)
+#if !PUMP_TASK_ENABLED
   Pump::update();
+#endif
 
   // Синхронизация состояния насоса в SystemState (для Web/API/UI)
   g_state.pump.running = Pump::isRunning();
@@ -348,12 +457,14 @@ void loop() {
   Buttons::update();
 
   // Telegram
+#if NETWORK_SERVICES_ENABLED
   TelegramBot::update();
 
   // MQTT
   if (g_settings.mqtt.enabled) {
     MQTT::handle();
   }
+#endif
 
   // Обновление uptime
   g_state.uptime = now / 1000;
@@ -433,6 +544,14 @@ void initHardware() {
 
   // Насос
   Pump::init();
+  Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
+
+#if PUMP_TASK_ENABLED
+  if (g_pumpTaskHandle == nullptr) {
+    xTaskCreatePinnedToCore(pumpTask, "PumpTask", 4096, nullptr, 3,
+                            &g_pumpTaskHandle, PUMP_TASK_CORE);
+  }
+#endif
 
   // Клапаны
   Valves::init();
@@ -458,6 +577,13 @@ void initHardware() {
 // =============================================================================
 
 void initNetwork() {
+#if FORCE_AP_MODE
+  g_settings.wifi.apMode = true;
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
+  LOG_I("AP started (diag): %s, IP: %s", WIFI_AP_SSID,
+        WiFi.softAPIP().toString().c_str());
+#else
   // Попытка подключения к WiFi
   if (strlen(g_settings.wifi.ssid) > 0) {
     LOG_I("Connecting to WiFi: %s", g_settings.wifi.ssid);
@@ -491,6 +617,7 @@ void initNetwork() {
     LOG_I("AP started: %s, IP: %s", WIFI_AP_SSID,
           WiFi.softAPIP().toString().c_str());
   }
+#endif
 
   // mDNS - доступ по smart-column.local
   if (MDNS.begin("smart-column")) {

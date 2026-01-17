@@ -159,6 +159,14 @@ float getTotalVolume() {
     return totalVolumeMl;
 }
 
+uint32_t getTotalSteps() {
+    return totalSteps;
+}
+
+float getMaxSpeedMlH() {
+    return stepsPerSecToMlPerHour(PUMP_MAX_SPEED);
+}
+
 void resetVolume() {
     totalSteps = 0;
     totalVolumeMl = 0;

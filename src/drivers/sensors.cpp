@@ -145,6 +145,9 @@ void init() {
 
     // DS18B20
     ds18b20.begin();
+    // Не блокировать цикл во время конвертации температуры
+    ds18b20.setWaitForConversion(false);
+    ds18b20.setCheckForConversion(false);
     uint8_t deviceCount = ds18b20.getDeviceCount();
     LOG_I("Sensors: Found %d DS18B20 devices", deviceCount);
 

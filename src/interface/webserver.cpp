@@ -48,6 +48,16 @@ extern EnergyHistory g_energyHistory;
 static AsyncWebServer server(WEB_SERVER_PORT);
 static AsyncWebSocket ws("/ws");
 
+struct PumpCalibrationSession {
+  bool active = false;
+  uint32_t startSteps = 0;
+  uint32_t stopSteps = 0;
+  uint32_t startMs = 0;
+  uint32_t stopMs = 0;
+};
+
+static PumpCalibrationSession g_pumpCalSession;
+
 // Вспомогательные функции для строковых представлений
 static const char *getModeString(Mode mode) {
   switch (mode) {
@@ -1117,6 +1127,142 @@ void init() {
   // PUMP CONTROL (для калибровки)
   // ==========================================================================
 
+  // POST /api/pump/calibrate/start - запуск калибровки насоса
+  server.on("/api/pump/calibrate/start", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              if (g_state.mode != Mode::IDLE) {
+                request->send(
+                    409, "application/json",
+                    "{\"success\":false,\"message\":\"Process is running\"}");
+                return;
+              }
+              if (g_pumpCalSession.active) {
+                request->send(
+                    409, "application/json",
+                    "{\"success\":false,\"message\":\"Calibration already active\"}");
+                return;
+              }
+
+              Pump::resetVolume();
+              g_pumpCalSession.active = true;
+              g_pumpCalSession.startSteps = Pump::getTotalSteps();
+              g_pumpCalSession.stopSteps = 0;
+              g_pumpCalSession.startMs = millis();
+              g_pumpCalSession.stopMs = 0;
+
+              const float speed = Pump::getMaxSpeedMlH();
+              Pump::start(speed);
+              LOG_I("Pump calibration started at %.1f ml/h", speed);
+
+              request->send(200, "application/json",
+                            "{\"success\":true,\"running\":true}");
+            });
+
+  // POST /api/pump/calibrate/stop - остановка калибровки насоса
+  server.on("/api/pump/calibrate/stop", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              if (!g_pumpCalSession.active) {
+                request->send(
+                    409, "application/json",
+                    "{\"success\":false,\"message\":\"Calibration not active\"}");
+                return;
+              }
+
+              Pump::stop();
+              g_pumpCalSession.stopSteps = Pump::getTotalSteps();
+              g_pumpCalSession.stopMs = millis();
+              LOG_I("Pump calibration stopped: %u steps",
+                    g_pumpCalSession.stopSteps);
+
+              request->send(200, "application/json",
+                            "{\"success\":true,\"running\":false}");
+            });
+
+  // POST /api/pump/calibrate/finish - завершение калибровки насоса
+  server.on(
+      "/api/pump/calibrate/finish", HTTP_POST,
+      [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) {
+          return;
+        }
+
+        StaticJsonDocument<128> doc;
+        DeserializationError error = deserializeJson(doc, data, len);
+        if (error) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Invalid JSON\"}");
+          return;
+        }
+
+        if (!g_pumpCalSession.active) {
+          request->send(
+              409, "application/json",
+              "{\"success\":false,\"message\":\"Calibration not active\"}");
+          return;
+        }
+
+        float volume = doc["volume"] | 0.0f;
+        if (volume <= 0.0f) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Volume must be > 0\"}");
+          return;
+        }
+
+        if (Pump::isRunning()) {
+          Pump::stop();
+        }
+        if (g_pumpCalSession.stopSteps == 0) {
+          g_pumpCalSession.stopSteps = Pump::getTotalSteps();
+          g_pumpCalSession.stopMs = millis();
+        }
+
+        const uint32_t steps = g_pumpCalSession.stopSteps -
+                               g_pumpCalSession.startSteps;
+        const uint32_t stepsPerRev =
+            (uint32_t)PUMP_STEPS_PER_REV * (uint32_t)PUMP_MICROSTEPS;
+
+        if (steps == 0 || stepsPerRev == 0) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"No steps captured\"}");
+          return;
+        }
+
+        const float revolutions = (float)steps / (float)stepsPerRev;
+        const float mlPerRev = volume / revolutions;
+
+        if (mlPerRev <= 0.0f) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Invalid calibration result\"}");
+          return;
+        }
+
+        g_settings.pumpCal.mlPerRevolution = mlPerRev;
+        NVSManager::saveSettings(g_settings);
+        Pump::setCalibration(mlPerRev);
+
+        const uint32_t elapsedMs =
+            (g_pumpCalSession.stopMs > g_pumpCalSession.startMs)
+                ? (g_pumpCalSession.stopMs - g_pumpCalSession.startMs)
+                : 30000;
+        const float elapsedSec = elapsedMs / 1000.0f;
+        const float calibrationFactor =
+            (elapsedSec > 0.0f) ? (volume / elapsedSec) : 0.0f;
+
+        g_pumpCalSession.active = false;
+
+        char response[160];
+        snprintf(response, sizeof(response),
+                 "{\"success\":true,\"mlPerRev\":%.4f,\"calibrationFactor\":%.3f}",
+                 mlPerRev, calibrationFactor);
+        request->send(200, "application/json", response);
+      });
+
   // POST /api/pump/start - запуск насоса
   server.on(
       "/api/pump/start", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
@@ -1603,14 +1749,55 @@ void broadcastState(const SystemState &state) {
   if (ws.count() == 0)
     return;
 
-  // Сформировать JSON со состоянием
-  StaticJsonDocument<3072> doc;
+  const uint32_t now = millis();
 
+  // Минимальный пакет для "лайв" (часто)
+  StaticJsonDocument<768> fastDoc;
+  fastDoc["mode"] = static_cast<int>(state.mode);
+  fastDoc["phase"] = static_cast<int>(state.rectPhase);
+  fastDoc["uptime"] = state.uptime;
+
+  fastDoc["t_cube"] = state.temps.cube;
+  fastDoc["t_column_bottom"] = state.temps.columnBottom;
+  fastDoc["t_column_top"] = state.temps.columnTop;
+  fastDoc["t_reflux"] = state.temps.reflux;
+  fastDoc["t_tsa"] = state.temps.tsa;
+  fastDoc["t_water_in"] = state.temps.waterIn;
+  fastDoc["t_water_out"] = state.temps.waterOut;
+
+  fastDoc["p_cube"] = state.pressure.cube;
+  fastDoc["p_atm"] = state.pressure.atmosphere;
+
+  fastDoc["voltage"] = state.power.voltage;
+  fastDoc["current"] = state.power.current;
+  fastDoc["power"] = state.power.power;
+  fastDoc["energy"] = state.power.energy;
+  fastDoc["frequency"] = state.power.frequency;
+  fastDoc["pf"] = state.power.powerFactor;
+
+  fastDoc["pump_speed"] = state.pump.speedMlPerHour;
+  fastDoc["pump_volume"] = state.pump.totalVolumeMl;
+  fastDoc["speed"] = state.pump.speedMlPerHour;
+  fastDoc["volume"] = state.pump.totalVolumeMl;
+
+  fastDoc["abv"] = state.hydrometer.abv;
+
+  String fastJson;
+  serializeJson(fastDoc, fastJson);
+  ws.textAll(fastJson);
+
+  // Полный пакет (редко)
+  static uint32_t lastFullBroadcast = 0;
+  if (now - lastFullBroadcast < INTERVAL_WEB_BROADCAST_FULL) {
+    return;
+  }
+  lastFullBroadcast = now;
+
+  StaticJsonDocument<3072> doc;
   doc["mode"] = static_cast<int>(state.mode);
   doc["phase"] = static_cast<int>(state.rectPhase);
   doc["uptime"] = state.uptime;
 
-  // Все температуры
   doc["t_cube"] = state.temps.cube;
   doc["t_column_bottom"] = state.temps.columnBottom;
   doc["t_column_top"] = state.temps.columnTop;
@@ -1619,11 +1806,9 @@ void broadcastState(const SystemState &state) {
   doc["t_water_in"] = state.temps.waterIn;
   doc["t_water_out"] = state.temps.waterOut;
 
-  // Давление
   doc["p_cube"] = state.pressure.cube;
   doc["p_atm"] = state.pressure.atmosphere;
 
-  // Мощность (PZEM-004T)
   doc["voltage"] = state.power.voltage;
   doc["current"] = state.power.current;
   doc["power"] = state.power.power;
@@ -1631,19 +1816,12 @@ void broadcastState(const SystemState &state) {
   doc["frequency"] = state.power.frequency;
   doc["pf"] = state.power.powerFactor;
 
-  // Насос
   doc["pump_speed"] = state.pump.speedMlPerHour;
   doc["pump_volume"] = state.pump.totalVolumeMl;
   doc["speed"] = state.pump.speedMlPerHour;
   doc["volume"] = state.pump.totalVolumeMl;
 
-  // Ареометр
   doc["abv"] = state.hydrometer.abv;
-
-  // -----------------------------------------------------------------------
-  // Режимы с температурными ступенями (mashing / hold)
-  // -----------------------------------------------------------------------
-  const uint32_t now = millis();
 
   JsonObject mashing = doc.createNestedObject("mashing");
   mashing["active"] = state.mashing.active;
@@ -1690,7 +1868,6 @@ void broadcastState(const SystemState &state) {
   hold["remainingSec"] =
       (holdStepDurationSec > holdElapsedSec) ? (holdStepDurationSec - holdElapsedSec) : 0;
 
-  // Статистика памяти
   JsonObject mem = doc.createNestedObject("memory");
   mem["heap_free"] = ESP.getFreeHeap();
   mem["heap_total"] = ESP.getHeapSize();
@@ -1702,7 +1879,6 @@ void broadcastState(const SystemState &state) {
   mem["flash_total"] = ESP.getFlashChipSize();
   mem["flash_used_pct"] = ESP.getSketchSize() * 100 / ESP.getFlashChipSize();
 
-  // Здоровье системы
   JsonObject health = doc.createNestedObject("health");
   health["overall"] = state.health.overallHealth;
   health["tempSensorsOk"] = state.health.tempSensorsOk;

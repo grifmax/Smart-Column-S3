@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.4.11"
+#define FIRMWARE_VERSION "1.4.12"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -15,6 +15,34 @@
 // Включение функций
 #define DISPLAY_ENABLED // Включить поддержку дисплея
 #define BUTTONS_ENABLED // Включить поддержку кнопок управления
+// Отдельная задача для генерации шагов насоса
+#define PUMP_TASK_ENABLED 1
+#define PUMP_TASK_CORE 0
+#define PUMP_TASK_DELAY_MS 1
+// Временное отключение сетевых сервисов (OTA/MQTT/Telegram/Cloud)
+#define NETWORK_SERVICES_ENABLED 1
+// Включить веб-интерфейс
+#define WEB_SERVER_ENABLED 1
+// Форсировать AP-режим для диагностики
+#define FORCE_AP_MODE 0
+// Тестовый режим насоса (отключает остальную логику)
+#define PUMP_TEST_MODE 0
+// В тестовом режиме можно включать блоки по одному
+#define TEST_ENABLE_OTA 0
+#define TEST_ENABLE_SAFETY 0
+#define TEST_ENABLE_SENSORS 0
+// Детализация по датчикам
+#define TEST_ENABLE_TEMP_SENSORS 0
+#define TEST_ENABLE_PRESSURE 0
+#define TEST_ENABLE_HYDROMETER 0
+#define TEST_ENABLE_POWER 0
+#define TEST_ENABLE_DISPLAY 0
+#define TEST_ENABLE_WEBSOCKET 0
+#define TEST_ENABLE_CLOUD 0
+#define TEST_ENABLE_LOGGER 0
+#define TEST_ENABLE_BUTTONS 0
+#define TEST_ENABLE_TELEGRAM 0
+#define TEST_ENABLE_MQTT 0
 
 // =============================================================================
 // КОНФИГУРАЦИЯ ПИНОВ (ESP32-S3 DevKitC-1 N16R8)
@@ -403,7 +431,8 @@ struct MenuItem {
 #define INTERVAL_PRESSURE_READ 2000 // Чтение давления
 #define INTERVAL_POWER_READ 1000    // Чтение мощности
 #define INTERVAL_DISPLAY_UPDATE 500 // Обновление дисплея
-#define INTERVAL_WEB_BROADCAST 1000 // Отправка данных по WebSocket
+#define INTERVAL_WEB_BROADCAST 2000 // Отправка данных по WebSocket
+#define INTERVAL_WEB_BROADCAST_FULL 10000 // Полный пакет данных
 #define INTERVAL_LOG_WRITE 60000    // Запись в лог (1 мин)
 
 // WiFi настройки
