@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.5.0"
+#define FIRMWARE_VERSION "1.5.1"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -598,12 +598,24 @@ struct MenuItem {
 #define NVS_KEY_HYDRO_POINTS "hydro_pts"
 #define NVS_KEY_FRACTION_ANGLES "frac_ang"
 #define NVS_KEY_FRACTION_ENABLED "frac_en"
+#define NVS_KEY_RECT_HEADS_PCT "rect_hpct"
+#define NVS_KEY_RECT_HEADS_SPEED "rect_hspd"
+#define NVS_KEY_RECT_BODY_SPEED "rect_bspd"
+#define NVS_KEY_RECT_STAB_MIN "rect_stab"
+#define NVS_KEY_RECT_PURGE_MIN "rect_prg"
 
 // Cloud tunnel settings
 #define NVS_KEY_CLOUD_ENABLED "cl_en"
 #define NVS_KEY_CLOUD_URL "cl_url"
 #define NVS_KEY_CLOUD_TOKEN "cl_tok"
 #define NVS_KEY_CLOUD_TOKEN_ID "cl_tid"
+
+// Touch calibration
+#define NVS_KEY_TOUCH_XMIN "tch_xmin"
+#define NVS_KEY_TOUCH_XMAX "tch_xmax"
+#define NVS_KEY_TOUCH_YMIN "tch_ymin"
+#define NVS_KEY_TOUCH_YMAX "tch_ymax"
+#define NVS_KEY_TOUCH_VALID "tch_valid"
 
 // =============================================================================
 // ЗУММЕР
