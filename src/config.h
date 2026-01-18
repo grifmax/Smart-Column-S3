@@ -7,22 +7,22 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.4.12"
+#define FIRMWARE_VERSION "1.5.0"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
 
 // Включение функций
 #define DISPLAY_ENABLED // Включить поддержку дисплея
-#define BUTTONS_ENABLED // Включить поддержку кнопок управления
+// #define BUTTONS_ENABLED // Включить поддержку кнопок управления
 // Отдельная задача для генерации шагов насоса
-#define PUMP_TASK_ENABLED 1
+#define PUMP_TASK_ENABLED 0
 #define PUMP_TASK_CORE 0
 #define PUMP_TASK_DELAY_MS 1
 // Временное отключение сетевых сервисов (OTA/MQTT/Telegram/Cloud)
-#define NETWORK_SERVICES_ENABLED 1
+#define NETWORK_SERVICES_ENABLED 0
 // Включить веб-интерфейс
-#define WEB_SERVER_ENABLED 1
+#define WEB_SERVER_ENABLED 0
 // Форсировать AP-режим для диагностики
 #define FORCE_AP_MODE 0
 // Тестовый режим насоса (отключает остальную логику)
@@ -88,10 +88,11 @@
 #define PIN_LEVEL_SENSOR 1  // Оптический датчик уровня (опция) - перенесён с GPIO13 (был конфликт с кнопкой)
 
 // --- Кнопки управления ---
-#define PIN_BUTTON_UP 13   // Кнопка "Вверх" (SPEC.md указывает GPIO0 для Boot, но код использует GPIO13)
-#define PIN_BUTTON_DOWN 10 // Кнопка "Вниз"
-#define PIN_BUTTON_OK 11   // Кнопка "ОК/Выбор"
-#define PIN_BUTTON_BACK 12 // Кнопка "Назад/Отмена"
+// Физические кнопки отключены: пины освобождены
+#define PIN_BUTTON_UP -1
+#define PIN_BUTTON_DOWN -1
+#define PIN_BUTTON_OK -1
+#define PIN_BUTTON_BACK -1
 
 // =============================================================================
 // OLED ДИСПЛЕЙ
@@ -102,6 +103,44 @@
 #define OLED_ADDRESS DISPLAY_ADDRESS // Алиас для совместимости
 #define DISPLAY_WIDTH 128
 #define DISPLAY_HEIGHT 64
+
+// =============================================================================
+// TFT ILI9488 3.5" 480x320 + Touch XPT2046 (LovyanGFX)
+// =============================================================================
+
+#define TFT_ENABLED 1        // Включить TFT дисплей (0 = только OLED)
+
+// TFT SPI пины (безопасные для ESP32-S3 N16R8 с OPI PSRAM)
+// GPIO35-37 заняты PSRAM, используем другие!
+#define TFT_SCLK   10        // SCK (бывший BUTTON_DOWN)
+#define TFT_MOSI   11        // MOSI (бывший BUTTON_OK)
+#define TFT_MISO   13        // MISO (бывший BUTTON_UP)
+#define TFT_CS     2         // CS (свободный GPIO)
+#define TFT_DC     39        // DC/RS
+#define TFT_RST    40        // RESET
+
+// Touch XPT2046 пины - ОТДЕЛЬНЫЙ программный SPI (не общий с TFT!)
+#define TOUCH_CLK  47        // T_CLK (отдельный от TFT)
+#define TOUCH_DIN  48        // T_DIN/MOSI (отдельный от TFT)
+#define TOUCH_DO   41        // T_DO/MISO (отдельный от TFT, без конфликта с I2C)
+#define TOUCH_CS   12        // T_CS (перенесён с USB D+, кнопки отключены)
+#define TOUCH_IRQ  42        // T_IRQ (без страп-пинов, безопаснее для загрузки)
+
+// Калибровка тача (определены после калибровки)
+#define TOUCH_CAL_X_MIN  472
+#define TOUCH_CAL_X_MAX  3726
+#define TOUCH_CAL_Y_MIN  528
+#define TOUCH_CAL_Y_MAX  3548
+
+// Параметры дисплея
+#define TFT_WIDTH  480
+#define TFT_HEIGHT 320
+
+// Диагностика тача: игнорировать IRQ и всегда пробовать читать координаты
+// (включи для проверки проводки/шумов)
+// #define TOUCH_IGNORE_IRQ 1
+// Диагностика тача: показывать сырые значения без фильтрации
+// #define TOUCH_DEBUG_RAW 1
 
 // =============================================================================
 // I2C АДРЕСА

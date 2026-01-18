@@ -67,6 +67,7 @@ void initNetwork();
 void loadSettings();
 void runTasks();
 void resetWiFiAndRestart(); // Сброс WiFi настроек и перезагрузка
+static void showBootStage(const char* message);
 
 // =============================================================================
 // BUZZER HELPER
@@ -148,12 +149,14 @@ void setup() {
   NVSManager::init();
   
   // Проверка сброса WiFi - если зажата кнопка BACK при загрузке
-  pinMode(PIN_BUTTON_BACK, INPUT_PULLUP);
-  delay(50); // Дать время на стабилизацию
-  if (!digitalRead(PIN_BUTTON_BACK)) {
-    // Кнопка зажата - сброс WiFi настроек
-    LOG_W("RESET: Button BACK pressed - resetting WiFi settings!");
-    resetWiFiAndRestart();
+  if (PIN_BUTTON_BACK >= 0) {
+    pinMode(PIN_BUTTON_BACK, INPUT_PULLUP);
+    delay(50); // Дать время на стабилизацию
+    if (!digitalRead(PIN_BUTTON_BACK)) {
+      // Кнопка зажата - сброс WiFi настроек
+      LOG_W("RESET: Button BACK pressed - resetting WiFi settings!");
+      resetWiFiAndRestart();
+    }
   }
   
   loadSettings();
@@ -161,6 +164,7 @@ void setup() {
   // Инициализация железа
   LOG_I("Initializing hardware...");
   initHardware();
+  showBootStage("Hardware initialized");
   
   // ВРЕМЕННО ОТКЛЮЧЕНО: Насос отключен для диагностики перегрева
   // Pump::init(); вызывается в initHardware(), но можно отключить здесь
@@ -170,13 +174,17 @@ void setup() {
 
   // Сеть
   LOG_I("Initializing network...");
+  showBootStage("Network init...");
   initNetwork();
+  showBootStage("Network ready");
   esp_task_wdt_reset(); // Сброс watchdog после инициализации сети
 
 #if WEB_SERVER_ENABLED
   // Веб-сервер
   LOG_I("Starting web server...");
+  showBootStage("Web server...");
   WebServer::init();
+  showBootStage("Web server ready");
   esp_task_wdt_reset(); // Сброс watchdog после инициализации веб-сервера
 #endif
 
@@ -219,6 +227,7 @@ void setup() {
   // Готово
   LOG_I("=================================");
   LOG_I("System ready!");
+  showBootStage("System ready");
   LOG_I("IP: %s", WiFi.localIP().toString().c_str());
   LOG_I("=================================");
 
@@ -226,6 +235,12 @@ void setup() {
   if (g_settings.soundEnabled) {
     Buzzer::beep(2, BUZZER_DURATION_SHORT);
   }
+}
+
+static void showBootStage(const char* message) {
+#ifdef DISPLAY_ENABLED
+  Display::showMessage("BOOT", message, 0);
+#endif
 }
 
 // =============================================================================
@@ -563,6 +578,9 @@ void initHardware() {
 
   // Дисплей
   Display::init();
+  // Показать первый экран сразу после инициализации,
+  // чтобы не оставаться на пустом чёрном экране во время загрузки.
+  Display::update(g_state);
 
   // Кнопки
   Buttons::init();

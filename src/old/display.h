@@ -1,58 +1,29 @@
-#ifndef DISPLAY_H
-#define DISPLAY_H
+#ifndef OLD_DISPLAY_H
+#define OLD_DISPLAY_H
 
 #include <Arduino.h>
 #include "config.h"
 
-// Инициализация дисплея
+// Инициализация дисплея (легаси-модуль, SSD1306 удален)
 void initDisplay();
 
-// Обновление дисплея
+// Обновление дисплея (без вывода)
 void updateDisplay();
 
-// Отображение начального экрана
+// Отображение начального экрана (заглушка)
 void showSplashScreen();
 
-// Отображение логотипа
-void showLogo();
-
-// Отображение уведомления
+// Отображение уведомления (логика без вывода)
 void showNotification(const char* message, NotificationType type, int durationMs = 3000);
 
 // Переход на определенный экран
-void goToScreen(DisplayScreen screen);
+void goToScreen(MenuScreen screen);
 
 // Получение текущего экрана
-DisplayScreen getCurrentScreen();
+MenuScreen getCurrentScreen();
 
-// Обработка кнопок на текущем экране
-bool handleDisplayButton(ButtonType button);
+// Управление (заглушки)
+void setDisplayBrightness(int brightness);
+void setDisplayEnabled(bool enabled);
 
-// Отрисовка главного экрана
-void drawMainScreen();
-
-// Отрисовка экрана процесса
-void drawProcessScreen();
-
-// Отрисовка экрана меню
-void drawMenuScreen();
-
-// Отрисовка экрана настроек
-void drawSettingsScreen();
-
-// Отрисовка экрана параметров
-void drawParametersScreen();
-
-// Обновление инверсии цветов дисплея
-void updateDisplayInversion(bool inverted);
-
-// Обновление яркости дисплея
-void updateDisplayBrightness(int brightness);
-
-// Обновление контрастности дисплея
-void updateDisplayContrast(int contrast);
-
-// Обновление поворота дисплея
-void updateDisplayRotation(int rotation);
-
-#endif // DISPLAY_H
+#endif // OLD_DISPLAY_H
