@@ -70,6 +70,21 @@ namespace Display {
      * @return Размер данных
      */
     size_t getScreenshot(uint8_t* buffer, size_t maxSize);
+
+    /**
+     * Нужно ли запускать калибровку тача
+     */
+    bool needsTouchCalibration();
+
+    /**
+     * Запустить мастер калибровки тача
+     */
+    void startTouchCalibration();
+
+    /**
+     * Идёт ли калибровка тача
+     */
+    bool isTouchCalibrating();
 }
 
 #endif // DISPLAY_H

@@ -11,6 +11,7 @@
 #include "../drivers/sensors.h"
 #include "watt_control.h"
 #include "../interface/mqtt.h"
+#include "../interface/localization.h"
 
 namespace FSM {
 
@@ -882,29 +883,29 @@ namespace ManualRect {
 
 const char* getModeName(Mode mode) {
     switch (mode) {
-        case Mode::IDLE: return "Ожидание";
-        case Mode::RECTIFICATION: return "Ректификация";
-        case Mode::DISTILLATION: return "Дистилляция";
-        case Mode::MANUAL_RECT: return "Ручная ректификация";
-        case Mode::MASHING: return "Затирка солода";
-        case Mode::HOLD: return "Hold режим";
-        default: return "Неизвестно";
+        case Mode::IDLE: return msg(Msg::MODE_IDLE);
+        case Mode::RECTIFICATION: return msg(Msg::MODE_RECTIFICATION);
+        case Mode::DISTILLATION: return msg(Msg::MODE_DISTILLATION);
+        case Mode::MANUAL_RECT: return msg(Msg::MODE_MANUAL_RECT);
+        case Mode::MASHING: return msg(Msg::MODE_MASHING);
+        case Mode::HOLD: return msg(Msg::MODE_HOLD);
+        default: return "???";
     }
 }
 
 const char* getPhaseName(RectPhase phase) {
     switch (phase) {
-        case RectPhase::IDLE: return "Ожидание";
-        case RectPhase::HEATING: return "Нагрев";
-        case RectPhase::STABILIZATION: return "Стабилизация";
-        case RectPhase::HEADS: return "Отбор голов";
-        case RectPhase::POST_HEADS_STABILIZATION: return "Стабилизация после голов";
-        case RectPhase::BODY: return "Отбор тела";
-        case RectPhase::TAILS: return "Отбор хвостов";
-        case RectPhase::PURGE: return "Продувка";
-        case RectPhase::FINISH: return "Завершение";
-        case RectPhase::COMPLETED: return "Завершено";
-        default: return "Неизвестно";
+        case RectPhase::IDLE: return msg(Msg::PHASE_IDLE);
+        case RectPhase::HEATING: return msg(Msg::PHASE_HEATING);
+        case RectPhase::STABILIZATION: return msg(Msg::PHASE_STABILIZATION);
+        case RectPhase::HEADS: return msg(Msg::PHASE_HEADS);
+        case RectPhase::POST_HEADS_STABILIZATION: return msg(Msg::PHASE_POST_HEADS_STAB);
+        case RectPhase::BODY: return msg(Msg::PHASE_BODY);
+        case RectPhase::TAILS: return msg(Msg::PHASE_TAILS);
+        case RectPhase::PURGE: return msg(Msg::PHASE_PURGE);
+        case RectPhase::FINISH: return msg(Msg::PHASE_FINISH);
+        case RectPhase::COMPLETED: return msg(Msg::PHASE_COMPLETED);
+        default: return "???";
     }
 }
 

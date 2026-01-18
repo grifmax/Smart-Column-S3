@@ -46,6 +46,20 @@ bool loadSettings(Settings& settings) {
     // Калибровка насоса
     settings.pumpCal.mlPerRevolution = prefs.getFloat(NVS_KEY_PUMP_ML_REV, DEFAULT_PUMP_ML_PER_REV);
 
+    // Ректификация
+    settings.rectParams.headsPercent = prefs.getFloat(NVS_KEY_RECT_HEADS_PCT, RECT_HEADS_PERCENT_DEFAULT);
+    settings.rectParams.headsSpeedMlHKw = prefs.getFloat(NVS_KEY_RECT_HEADS_SPEED, RECT_HEADS_SPEED_ML_H_KW);
+    settings.rectParams.bodySpeedMlHKw = prefs.getFloat(NVS_KEY_RECT_BODY_SPEED, RECT_HEADS_SPEED_ML_H_KW * 2);
+    settings.rectParams.stabilizationMin = prefs.getUShort(NVS_KEY_RECT_STAB_MIN, RECT_STABILIZATION_TIME_MIN);
+    settings.rectParams.purgeMin = prefs.getUShort(NVS_KEY_RECT_PURGE_MIN, RECT_PURGE_TIME_MIN);
+
+    // Калибровка тача
+    settings.touchCal.xMin = prefs.getInt(NVS_KEY_TOUCH_XMIN, TOUCH_CAL_X_MIN);
+    settings.touchCal.xMax = prefs.getInt(NVS_KEY_TOUCH_XMAX, TOUCH_CAL_X_MAX);
+    settings.touchCal.yMin = prefs.getInt(NVS_KEY_TOUCH_YMIN, TOUCH_CAL_Y_MIN);
+    settings.touchCal.yMax = prefs.getInt(NVS_KEY_TOUCH_YMAX, TOUCH_CAL_Y_MAX);
+    settings.touchCal.valid = prefs.getBool(NVS_KEY_TOUCH_VALID, false);
+
     // Прочее
     settings.language = prefs.getUChar(NVS_KEY_LANGUAGE, 0);
     settings.theme = prefs.getUChar(NVS_KEY_THEME, 0);
@@ -84,6 +98,20 @@ bool saveSettings(const Settings& settings) {
 
     // Калибровка насоса
     prefs.putFloat(NVS_KEY_PUMP_ML_REV, settings.pumpCal.mlPerRevolution);
+
+    // Ректификация
+    prefs.putFloat(NVS_KEY_RECT_HEADS_PCT, settings.rectParams.headsPercent);
+    prefs.putFloat(NVS_KEY_RECT_HEADS_SPEED, settings.rectParams.headsSpeedMlHKw);
+    prefs.putFloat(NVS_KEY_RECT_BODY_SPEED, settings.rectParams.bodySpeedMlHKw);
+    prefs.putUShort(NVS_KEY_RECT_STAB_MIN, settings.rectParams.stabilizationMin);
+    prefs.putUShort(NVS_KEY_RECT_PURGE_MIN, settings.rectParams.purgeMin);
+
+    // Калибровка тача
+    prefs.putInt(NVS_KEY_TOUCH_XMIN, settings.touchCal.xMin);
+    prefs.putInt(NVS_KEY_TOUCH_XMAX, settings.touchCal.xMax);
+    prefs.putInt(NVS_KEY_TOUCH_YMIN, settings.touchCal.yMin);
+    prefs.putInt(NVS_KEY_TOUCH_YMAX, settings.touchCal.yMax);
+    prefs.putBool(NVS_KEY_TOUCH_VALID, settings.touchCal.valid);
 
     // Прочее
     prefs.putUChar(NVS_KEY_LANGUAGE, settings.language);

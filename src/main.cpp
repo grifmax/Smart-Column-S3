@@ -578,6 +578,9 @@ void initHardware() {
 
   // Дисплей
   Display::init();
+  if (Display::needsTouchCalibration()) {
+    Display::startTouchCalibration();
+  }
   // Показать первый экран сразу после инициализации,
   // чтобы не оставаться на пустом чёрном экране во время загрузки.
   Display::update(g_state);
@@ -671,6 +674,13 @@ void loadSettings() {
   g_settings.pumpCal.mlPerRevolution = DEFAULT_PUMP_ML_PER_REV;
   g_settings.pumpCal.stepsPerRevolution = PUMP_STEPS_PER_REV;
   g_settings.pumpCal.microsteps = PUMP_MICROSTEPS;
+
+  // Тач (по умолчанию считаем неоткалиброванным)
+  g_settings.touchCal.xMin = TOUCH_CAL_X_MIN;
+  g_settings.touchCal.xMax = TOUCH_CAL_X_MAX;
+  g_settings.touchCal.yMin = TOUCH_CAL_Y_MIN;
+  g_settings.touchCal.yMax = TOUCH_CAL_Y_MAX;
+  g_settings.touchCal.valid = false;
 
   // PZEM-004T не требует калибровки - уже откалиброван на заводе
 

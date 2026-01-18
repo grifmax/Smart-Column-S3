@@ -261,6 +261,14 @@ struct PumpCalibration {
   uint8_t microsteps = 32;
 };
 
+struct TouchCalibration {
+  int16_t xMin = 0;
+  int16_t xMax = 0;
+  int16_t yMin = 0;
+  int16_t yMax = 0;
+  bool valid = false;
+};
+
 struct TempCalibration {
   float offsets[8] = {0};
   uint8_t addresses[8][8] = {0};
@@ -324,6 +332,7 @@ struct RectParams {
 struct Settings {
   WiFiSettings wifi;
   PumpCalibration pumpCal;
+  TouchCalibration touchCal;
   TempCalibration tempCal;
   HydrometerCalibration hydroCal; // Калибровка гидрометра
   MqttSettings mqtt;
