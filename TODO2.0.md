@@ -42,3 +42,10 @@
 - [ ] Add dedicated mode placeholders and API contracts for `NBK` and `FERMENTATION`.
 - [ ] Implement NBK mode state machine (feed/steam control, safety interlocks).
 - [ ] Implement fermentation mode (setpoint, hysteresis, scheduling, alarms).
+
+## Phase 7. Mode-specific TFT screens (in progress)
+- [x] Stage A: profile-based dashboard for `IDLE` and `RECTIFICATION` (only relevant widgets per mode).
+- [ ] Stage B: profile-based dashboard for `DISTILLATION` and `MANUAL_RECT`.
+- [ ] Stage C: profile-based dashboard for `MASHING` and `HOLD`.
+- [ ] Unify action rows/buttons by mode (show only valid controls).
+- [ ] Add a dedicated "Temperatures" detail page with all connected probes.

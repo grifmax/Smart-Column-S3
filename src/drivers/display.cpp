@@ -379,8 +379,12 @@ struct UiLiveCache {
     float tTop = 0.0f;
     float tReflux = 0.0f;
     float tTsa = 0.0f;
+    float tWaterIn = 0.0f;
+    float tWaterOut = 0.0f;
     float power = 0.0f;
     float pumpSpeed = 0.0f;
+    float voltage = 0.0f;
+    float pressure = 0.0f;
     uint32_t uptime = 0;
     uint32_t lastUpdateMs = 0;
 };
@@ -402,7 +406,7 @@ struct DashboardRenderCache {
     char ioLine[96] = {0};
     char uptime[16] = {0};
     uint8_t phaseProgress = 0;
-    bool auxIsWaterOut = false;
+    uint8_t layoutKey = 0xFF;
 };
 
 static DashboardRenderCache g_dashboardCache;
@@ -996,26 +1000,33 @@ static void renderDashboard(const SystemState& state, bool full) {
     const int16_t x2 = x1 + tileW + tileGap;
     const int16_t x3 = x2 + tileW + tileGap;
     const int16_t infoY = row2Y + tileH + 8;
-    const bool showWaterOutTile = state.temps.valid[TEMP_WATER_OUT];
-    const char* auxTileLabel = showWaterOutTile ? (ru ? "ОХЛ ВЫХ" : "WATER OUT") : msg(Msg::PUMP);
+    const bool hasWaterIn = state.temps.valid[TEMP_WATER_IN];
+    const bool hasWaterOut = state.temps.valid[TEMP_WATER_OUT];
+
+    enum DashboardProfile : uint8_t {
+        DASH_PROFILE_IDLE = 0,
+        DASH_PROFILE_RECT = 1,
+        DASH_PROFILE_GENERIC = 2
+    };
+    DashboardProfile profile = DASH_PROFILE_GENERIC;
+    if (state.mode == Mode::IDLE) {
+        profile = DASH_PROFILE_IDLE;
+    } else if (state.mode == Mode::RECTIFICATION) {
+        profile = DASH_PROFILE_RECT;
+    }
+
+    const uint8_t layoutKey = static_cast<uint8_t>((static_cast<uint8_t>(profile) << 2) |
+                                                   (hasWaterIn ? 0x01 : 0x00) |
+                                                   (hasWaterOut ? 0x02 : 0x00));
 
     if (full) {
         tft.fillScreen(colorBg());
         drawHeader(msg(Msg::MONITOR), false);
         drawTabs(UI_DASHBOARD);
         drawCard(10, barY, TFT_WIDTH - 20, 44, colorCard());
-
-        // Balanced 3x2 cockpit grid (no oversized tiles).
-        drawValueTileShell(x1, row1Y, tileW, tileH, msg(Msg::CUBE_TEMP));
-        drawValueTileShell(x2, row1Y, tileW, tileH, msg(Msg::TOP_T));
-        drawValueTileShell(x3, row1Y, tileW, tileH, msg(Msg::REFLUX_T));
-        drawValueTileShell(x1, row2Y, tileW, tileH, msg(Msg::TSA_T));
-        drawValueTileShell(x2, row2Y, tileW, tileH, msg(Msg::HEATER_POWER));
-        drawValueTileShell(x3, row2Y, tileW, tileH, auxTileLabel);
-
         drawCard(10, infoY, TFT_WIDTH - 20, 40, colorCard());
         memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
-        g_dashboardCache.auxIsWaterOut = showWaterOutTile;
+        g_dashboardCache.layoutKey = 0xFF;
     }
     
     char statusBuf[64];
@@ -1102,62 +1113,112 @@ static void renderDashboard(const SystemState& state, bool full) {
         g_dashboardCache.safetyState[sizeof(g_dashboardCache.safetyState) - 1] = '\0';
     }
 
-    char val[16];
-    snprintf(val, sizeof(val), "%.1f", state.temps.cube);
-    if (full || strcmp(g_dashboardCache.cube, val) != 0) {
-        drawValueTileValue(x1, row1Y, tileW, tileH, val, "В°C", COLOR_DANGER);
-        strncpy(g_dashboardCache.cube, val, sizeof(g_dashboardCache.cube));
-        g_dashboardCache.cube[sizeof(g_dashboardCache.cube) - 1] = '\0';
-    }
+    const bool layoutChanged = full || (g_dashboardCache.layoutKey != layoutKey);
+    const int16_t tileX[6] = {x1, x2, x3, x1, x2, x3};
+    const int16_t tileY[6] = {row1Y, row1Y, row1Y, row2Y, row2Y, row2Y};
+    const char* tileLabels[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+    const char* tileUnits[6] = {"В°C", "В°C", "В°C", "В°C", msg(Msg::UNIT_W), msg(Msg::UNIT_ML_H)};
+    uint16_t tileColors[6] = {COLOR_DANGER, colorAccent(), COLOR_INFO, COLOR_WARNING, COLOR_WARNING, COLOR_SUCCESS};
+    char tileValues[6][16] = {};
 
-    snprintf(val, sizeof(val), "%.1f", state.temps.columnTop);
-    if (full || strcmp(g_dashboardCache.top, val) != 0) {
-        drawValueTileValue(x2, row1Y, tileW, tileH, val, "В°C", colorAccent());
-        strncpy(g_dashboardCache.top, val, sizeof(g_dashboardCache.top));
-        g_dashboardCache.top[sizeof(g_dashboardCache.top) - 1] = '\0';
-    }
-    
-    snprintf(val, sizeof(val), "%.1f", state.temps.reflux);
-    if (full || strcmp(g_dashboardCache.reflux, val) != 0) {
-        drawValueTileValue(x3, row1Y, tileW, tileH, val, "В°C", COLOR_INFO);
-        strncpy(g_dashboardCache.reflux, val, sizeof(g_dashboardCache.reflux));
-        g_dashboardCache.reflux[sizeof(g_dashboardCache.reflux) - 1] = '\0';
-    }
-    
-    snprintf(val, sizeof(val), "%.1f", state.temps.tsa);
-    if (full || strcmp(g_dashboardCache.tsa, val) != 0) {
-        drawValueTileValue(x1, row2Y, tileW, tileH, val, "В°C", COLOR_WARNING);
-        strncpy(g_dashboardCache.tsa, val, sizeof(g_dashboardCache.tsa));
-        g_dashboardCache.tsa[sizeof(g_dashboardCache.tsa) - 1] = '\0';
-    }
+    tileLabels[0] = msg(Msg::CUBE_TEMP);
+    tileLabels[1] = msg(Msg::TOP_T);
+    tileLabels[2] = msg(Msg::REFLUX_T);
+    tileLabels[3] = msg(Msg::TSA_T);
 
-    snprintf(val, sizeof(val), "%.0f", state.power.power);
-    if (full || strcmp(g_dashboardCache.power, val) != 0) {
-        drawValueTileValue(x2, row2Y, tileW, tileH, val, msg(Msg::UNIT_W), COLOR_WARNING);
-        strncpy(g_dashboardCache.power, val, sizeof(g_dashboardCache.power));
-        g_dashboardCache.power[sizeof(g_dashboardCache.power) - 1] = '\0';
-    }
+    snprintf(tileValues[0], sizeof(tileValues[0]), "%.1f", state.temps.cube);
+    snprintf(tileValues[1], sizeof(tileValues[1]), "%.1f", state.temps.columnTop);
+    snprintf(tileValues[2], sizeof(tileValues[2]), "%.1f", state.temps.reflux);
+    snprintf(tileValues[3], sizeof(tileValues[3]), "%.1f", state.temps.tsa);
 
-    if (full || g_dashboardCache.auxIsWaterOut != showWaterOutTile) {
-        drawValueTileShell(x3, row2Y, tileW, tileH, auxTileLabel);
-        g_dashboardCache.pump[0] = '\0';
-        g_dashboardCache.auxIsWaterOut = showWaterOutTile;
-    }
-
-    if (showWaterOutTile) {
-        snprintf(val, sizeof(val), "%.1f", state.temps.waterOut);
+    if (profile == DASH_PROFILE_IDLE) {
+        tileLabels[4] = hasWaterIn ? (ru ? "ОХЛ ВХ" : "WATER IN") : (ru ? "СЕТЬ" : "MAINS");
+        tileLabels[5] = hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT") : (ru ? "МОЩНОСТЬ" : "POWER");
+        if (hasWaterIn) {
+            snprintf(tileValues[4], sizeof(tileValues[4]), "%.1f", state.temps.waterIn);
+            tileUnits[4] = "В°C";
+            tileColors[4] = COLOR_INFO;
+        } else {
+            snprintf(tileValues[4], sizeof(tileValues[4]), "%.0f", state.power.voltage);
+            tileUnits[4] = "V";
+            tileColors[4] = COLOR_PRIMARY;
+        }
+        if (hasWaterOut) {
+            snprintf(tileValues[5], sizeof(tileValues[5]), "%.1f", state.temps.waterOut);
+            tileUnits[5] = "В°C";
+            tileColors[5] = COLOR_INFO;
+        } else {
+            snprintf(tileValues[5], sizeof(tileValues[5]), "%.0f", state.power.power);
+            tileUnits[5] = msg(Msg::UNIT_W);
+            tileColors[5] = COLOR_WARNING;
+        }
+    } else if (profile == DASH_PROFILE_RECT) {
+        tileLabels[4] = msg(Msg::HEATER_POWER);
+        snprintf(tileValues[4], sizeof(tileValues[4]), "%.0f", state.power.power);
+        if (hasWaterOut) {
+            tileLabels[5] = ru ? "ОХЛ ВЫХ" : "WATER OUT";
+            snprintf(tileValues[5], sizeof(tileValues[5]), "%.1f", state.temps.waterOut);
+            tileUnits[5] = "В°C";
+            tileColors[5] = COLOR_INFO;
+        } else {
+            tileLabels[5] = ru ? "ОТБОР" : "TAKEOFF";
+            snprintf(tileValues[5], sizeof(tileValues[5]), "%.0f", state.pump.speedMlPerHour);
+            tileUnits[5] = msg(Msg::UNIT_ML_H);
+            tileColors[5] = COLOR_SUCCESS;
+        }
     } else {
-        snprintf(val, sizeof(val), "%.0f", state.pump.speedMlPerHour);
+        tileLabels[4] = msg(Msg::HEATER_POWER);
+        tileLabels[5] = hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT") : msg(Msg::PUMP);
+        snprintf(tileValues[4], sizeof(tileValues[4]), "%.0f", state.power.power);
+        if (hasWaterOut) {
+            snprintf(tileValues[5], sizeof(tileValues[5]), "%.1f", state.temps.waterOut);
+            tileUnits[5] = "В°C";
+            tileColors[5] = COLOR_INFO;
+        } else {
+            snprintf(tileValues[5], sizeof(tileValues[5]), "%.0f", state.pump.speedMlPerHour);
+            tileUnits[5] = msg(Msg::UNIT_ML_H);
+            tileColors[5] = COLOR_SUCCESS;
+        }
     }
-    if (full || strcmp(g_dashboardCache.pump, val) != 0) {
-        drawValueTileValue(x3, row2Y, tileW, tileH, val, showWaterOutTile ? "В°C" : msg(Msg::UNIT_ML_H),
-                           showWaterOutTile ? COLOR_INFO : COLOR_SUCCESS);
-        strncpy(g_dashboardCache.pump, val, sizeof(g_dashboardCache.pump));
-        g_dashboardCache.pump[sizeof(g_dashboardCache.pump) - 1] = '\0';
+
+    if (layoutChanged) {
+        for (uint8_t i = 0; i < 6; i++) {
+            drawValueTileShell(tileX[i], tileY[i], tileW, tileH, tileLabels[i]);
+        }
+        g_dashboardCache.cube[0] = '\0';
+        g_dashboardCache.top[0] = '\0';
+        g_dashboardCache.reflux[0] = '\0';
+        g_dashboardCache.tsa[0] = '\0';
+        g_dashboardCache.power[0] = '\0';
+        g_dashboardCache.pump[0] = '\0';
+        g_dashboardCache.infoLine[0] = '\0';
+        g_dashboardCache.ioLine[0] = '\0';
+        g_dashboardCache.layoutKey = layoutKey;
+    }
+
+    char* tileCache[6] = {
+        g_dashboardCache.cube,
+        g_dashboardCache.top,
+        g_dashboardCache.reflux,
+        g_dashboardCache.tsa,
+        g_dashboardCache.power,
+        g_dashboardCache.pump
+    };
+
+    for (uint8_t i = 0; i < 6; i++) {
+        if (full || strcmp(tileCache[i], tileValues[i]) != 0) {
+            drawValueTileValue(tileX[i], tileY[i], tileW, tileH, tileValues[i], tileUnits[i], tileColors[i]);
+            strncpy(tileCache[i], tileValues[i], 15);
+            tileCache[i][15] = '\0';
+        }
     }
 
     char infoBuf[96];
-    if (ru) {
+    if (profile == DASH_PROFILE_IDLE) {
+        snprintf(infoBuf, sizeof(infoBuf), "%s",
+                 ru ? "Ожидание: выберите режим в Управлении"
+                    : "Idle: choose mode in Control");
+    } else if (ru) {
         snprintf(infoBuf, sizeof(infoBuf), "Гол %.0f | Тело %.0f | Хв %.0f мл",
                  state.stats.headsVolume,
                  state.stats.bodyVolume,
@@ -1184,11 +1245,15 @@ static void renderDashboard(const SystemState& state, bool full) {
         waterBuf[sizeof(waterBuf) - 1] = '\0';
     }
     char ioBuf[96];
-    snprintf(ioBuf, sizeof(ioBuf), "W %s | V %.0f | P %.0f | K1%s K2%s K3%s",
-             waterBuf,
-             state.power.voltage,
-             state.pressure.cube,
-             k1, k2, k3);
+    if (profile == DASH_PROFILE_IDLE) {
+        snprintf(ioBuf, sizeof(ioBuf), "W %s | V %.0f | P %.0f", waterBuf, state.power.voltage, state.pressure.cube);
+    } else {
+        snprintf(ioBuf, sizeof(ioBuf), "W %s | V %.0f | P %.0f | K1%s K2%s K3%s",
+                 waterBuf,
+                 state.power.voltage,
+                 state.pressure.cube,
+                 k1, k2, k3);
+    }
 
     char upBuf[16];
     formatUptimeCompact(state.uptime, upBuf, sizeof(upBuf));
@@ -1733,11 +1798,15 @@ void update(const SystemState& state) {
                 if (fabsf(uiLive.tCube - state.temps.cube) > 0.1f ||
                     fabsf(uiLive.tTop - state.temps.columnTop) > 0.1f ||
                     fabsf(uiLive.tReflux - state.temps.reflux) > 0.1f ||
-                    fabsf(uiLive.tTsa - state.temps.tsa) > 0.1f) {
+                    fabsf(uiLive.tTsa - state.temps.tsa) > 0.1f ||
+                    fabsf(uiLive.tWaterIn - state.temps.waterIn) > 0.1f ||
+                    fabsf(uiLive.tWaterOut - state.temps.waterOut) > 0.1f) {
                     changed = true;
                 }
                 if (fabsf(uiLive.power - state.power.power) > 1.0f ||
-                    fabsf(uiLive.pumpSpeed - state.pump.speedMlPerHour) > 1.0f) {
+                    fabsf(uiLive.pumpSpeed - state.pump.speedMlPerHour) > 1.0f ||
+                    fabsf(uiLive.voltage - state.power.voltage) > 1.0f ||
+                    fabsf(uiLive.pressure - state.pressure.cube) > 1.0f) {
                     changed = true;
                 }
                 if (ui.currentScreen == UI_SERVICE &&
@@ -1747,9 +1816,8 @@ void update(const SystemState& state) {
                 }
             }
             if (ui.currentScreen == UI_DASHBOARD &&
-                state.mode != Mode::IDLE &&
-                (now - uiLive.lastUpdateMs) > 1000) {
-                // Keep phase timer/progress moving even when temperatures are stable.
+                (now - uiLive.lastUpdateMs) > 1200) {
+                // Keep phase timer/progress and service values moving even when temperatures are stable.
                 changed = true;
             }
         }
@@ -1780,8 +1848,12 @@ void update(const SystemState& state) {
         uiLive.tTop = state.temps.columnTop;
         uiLive.tReflux = state.temps.reflux;
         uiLive.tTsa = state.temps.tsa;
+        uiLive.tWaterIn = state.temps.waterIn;
+        uiLive.tWaterOut = state.temps.waterOut;
         uiLive.power = state.power.power;
         uiLive.pumpSpeed = state.pump.speedMlPerHour;
+        uiLive.voltage = state.power.voltage;
+        uiLive.pressure = state.pressure.cube;
         uiLive.uptime = state.uptime;
         uiLive.lastUpdateMs = now;
         const bool full = (ui.currentScreen != ui.lastRenderedScreen);
