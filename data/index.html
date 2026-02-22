@@ -62,220 +62,126 @@
 
         <!-- Вкладка: Мониторинг -->
         <div id="monitor" class="tab-content active">
-            <section class="landing-shell">
-                <div class="landing-glow landing-glow-left"></div>
-                <div class="landing-glow landing-glow-right"></div>
-
-                <div class="landing-hero">
-                    <div class="landing-hero-main">
-                        <div class="landing-eyebrow">Live WebSocket Landing</div>
-                        <h2 class="landing-title">Главный экран оператора</h2>
-                        <p class="landing-subtitle">Ключевые параметры процесса и быстрые переходы к управлению</p>
-
-                        <div class="landing-badges">
-                            <span id="landing-mode-chip" class="landing-chip mode-idle">IDLE</span>
-                            <span id="landing-phase-chip" class="landing-chip">PHASE -</span>
-                            <span id="landing-safety-chip" class="landing-chip landing-chip-neutral">SAFETY -</span>
-                        </div>
-
-                        <div class="landing-actions">
-                            <button class="btn btn-primary" onclick="activateTabById('control')">Управление</button>
-                            <button class="btn" onclick="activateTabById('settings')">Настройки</button>
-                            <a href="charts.html" class="btn btn-info" style="text-decoration: none;">Графики</a>
-                        </div>
+            <section class="operator-screen">
+                <div class="operator-main-menu">
+                    <div>
+                        <div class="operator-kicker">Main Operator Menu</div>
+                        <h2 class="operator-title">Главный экран оператора</h2>
+                        <p class="operator-subtitle">Оперативная телеметрия, статус процесса и быстрый доступ к управлению</p>
                     </div>
-
-                    <div class="landing-hero-side">
-                        <div class="landing-kpi-main">
-                            <div class="landing-kpi-label">Куб</div>
-                            <div id="landing-cube-value" class="landing-kpi-value">--.-°C</div>
-                        </div>
-                        <div class="landing-kpi-grid">
-                            <div class="landing-kpi-mini">
-                                <div class="landing-kpi-label">Мощность</div>
-                                <div id="landing-power-value" class="landing-kpi-mini-value">-- W</div>
-                            </div>
-                            <div class="landing-kpi-mini">
-                                <div class="landing-kpi-label">Давление куба</div>
-                                <div id="landing-pressure-value" class="landing-kpi-mini-value">-- мм</div>
-                            </div>
-                            <div class="landing-kpi-mini">
-                                <div class="landing-kpi-label">Насос</div>
-                                <div id="landing-pump-value" class="landing-kpi-mini-value">-- мл/ч</div>
-                            </div>
-                            <div class="landing-kpi-mini">
-                                <div class="landing-kpi-label">Крепость</div>
-                                <div id="landing-abv-value" class="landing-kpi-mini-value">-- %</div>
-                            </div>
-                        </div>
+                    <div class="operator-action-row">
+                        <button class="btn btn-primary" onclick="activateTabById('control')">Управление</button>
+                        <button class="btn" onclick="activateTabById('settings')">Настройки</button>
+                        <a href="charts.html" class="btn btn-info" style="text-decoration: none;">Графики</a>
                     </div>
                 </div>
 
-                <div class="landing-strip">
-                    <div class="landing-strip-item">
-                        <span class="landing-strip-label">Вода вход</span>
-                        <span id="landing-water-in" class="landing-strip-value">--.-°C</span>
-                    </div>
-                    <div class="landing-strip-item">
-                        <span class="landing-strip-label">Вода выход</span>
-                        <span id="landing-water-out" class="landing-strip-value">--.-°C</span>
-                    </div>
-                    <div class="landing-strip-item">
-                        <span class="landing-strip-label">Сеть</span>
-                        <span id="landing-voltage" class="landing-strip-value">-- V</span>
-                    </div>
-                    <div class="landing-strip-item">
-                        <span class="landing-strip-label">Обновление</span>
-                        <span id="landing-updated" class="landing-strip-value">--:--:--</span>
-                    </div>
+                <div class="operator-chip-row">
+                    <span id="landing-mode-chip" class="landing-chip mode-idle">IDLE</span>
+                    <span id="landing-phase-chip" class="landing-chip">PHASE -</span>
+                    <span id="landing-safety-chip" class="landing-chip landing-chip-neutral">SAFETY -</span>
+                    <span class="operator-updated">Обновление: <strong id="landing-updated">--:--:--</strong></span>
+                </div>
+
+                <div class="operator-grid">
+                    <article class="operator-card operator-card-status">
+                        <h3 class="operator-card-title">Статус процесса</h3>
+                        <div class="operator-status-grid">
+                            <div class="operator-stat">
+                                <span class="operator-stat-label">Режим</span>
+                                <span id="mode" class="operator-stat-value mode-idle">IDLE</span>
+                            </div>
+                            <div class="operator-stat">
+                                <span class="operator-stat-label">Фаза</span>
+                                <span id="phase" class="operator-stat-value">—</span>
+                            </div>
+                            <div class="operator-stat">
+                                <span class="operator-stat-label">Uptime</span>
+                                <span id="operator-uptime" class="operator-stat-value">--:--:--</span>
+                            </div>
+                            <div class="operator-stat">
+                                <span class="operator-stat-label">Крепость</span>
+                                <span id="abv" class="operator-stat-value">--%</span>
+                            </div>
+                        </div>
+                        <div class="operator-level-grid">
+                            <div class="operator-level-item">
+                                <span class="operator-level-label">Куб</span>
+                                <span id="temp-cube" class="operator-level-value operator-level-main">--°C</span>
+                            </div>
+                            <div class="operator-level-item">
+                                <span class="operator-level-label">Мощность</span>
+                                <span id="power-power" class="operator-level-value">-- W</span>
+                            </div>
+                            <div class="operator-level-item">
+                                <span class="operator-level-label">Давление</span>
+                                <span id="pressure-cube" class="operator-level-value">-- мм рт.ст.</span>
+                            </div>
+                            <div class="operator-level-item">
+                                <span class="operator-level-label">Насос</span>
+                                <span id="pump-speed" class="operator-level-value">-- мл/ч</span>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="operator-card">
+                        <h3 class="operator-card-title">Температуры</h3>
+                        <div class="operator-list">
+                            <div class="operator-list-row"><span>Царга низ</span><strong id="temp-column-bottom">--°C</strong></div>
+                            <div class="operator-list-row"><span>Царга верх</span><strong id="temp-column-top">--°C</strong></div>
+                            <div class="operator-list-row"><span>Дефлегматор</span><strong id="temp-reflux">--°C</strong></div>
+                            <div class="operator-list-row"><span>ТСА</span><strong id="temp-tsa">--°C</strong></div>
+                            <div class="operator-list-row"><span>Вода вход</span><strong id="landing-water-in">--.-°C</strong></div>
+                            <div class="operator-list-row"><span>Вода выход</span><strong id="landing-water-out">--.-°C</strong></div>
+                        </div>
+                    </article>
+
+                    <article class="operator-card">
+                        <h3 class="operator-card-title">Электропитание (PZEM-004T)</h3>
+                        <div class="operator-list">
+                            <div class="operator-list-row"><span>Напряжение</span><strong id="power-voltage">-- V</strong></div>
+                            <div class="operator-list-row"><span>Ток</span><strong id="power-current">-- A</strong></div>
+                            <div class="operator-list-row"><span>Энергия</span><strong id="power-energy">-- кВт·ч</strong></div>
+                            <div class="operator-list-row"><span>Частота</span><strong id="power-frequency">-- Гц</strong></div>
+                            <div class="operator-list-row"><span>Коэфф. мощности</span><strong id="power-pf">--</strong></div>
+                            <div class="operator-list-row"><span>Сеть (live)</span><strong id="landing-voltage">-- V</strong></div>
+                        </div>
+                    </article>
+
+                    <article class="operator-card">
+                        <h3 class="operator-card-title">Отбор и объёмы</h3>
+                        <div class="operator-list">
+                            <div class="operator-list-row"><span>Общий объём</span><strong id="pump-volume">-- мл</strong></div>
+                            <div class="operator-list-row"><span>Головы</span><strong id="volume-heads">-- мл</strong></div>
+                            <div class="operator-list-row"><span>Тело</span><strong id="volume-body">-- мл</strong></div>
+                            <div class="operator-list-row"><span>Хвосты</span><strong id="volume-tails">-- мл</strong></div>
+                            <div class="operator-list-row"><span>Атмосферное</span><strong id="pressure-atm">-- гПа</strong></div>
+                            <div class="operator-list-row"><span>Порог захлёба</span><strong id="pressure-flood">-- мм</strong></div>
+                        </div>
+                    </article>
+
+                    <article class="operator-card operator-card-chart">
+                        <h3 class="operator-card-title">Температуры (5 мин)</h3>
+                        <div id="mini-chart" style="width: 100%; height: 240px;"></div>
+                    </article>
+
+                    <article class="operator-card operator-card-scheme">
+                        <h3 class="operator-card-title">Схема процесса</h3>
+                        <div class="operator-scheme-wrap">
+                            <object data="schemes/column-animated.svg" type="image/svg+xml" class="operator-scheme"></object>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Служебные значения для совместимости с текущим JS -->
+                <div class="operator-shadow-values" aria-hidden="true">
+                    <span id="landing-cube-value">--.-°C</span>
+                    <span id="landing-power-value">-- W</span>
+                    <span id="landing-pressure-value">-- мм</span>
+                    <span id="landing-pump-value">-- мл/ч</span>
+                    <span id="landing-abv-value">-- %</span>
                 </div>
             </section>
-
-            <div class="cards">
-                <!-- Режим и фаза -->
-                <div class="card">
-                    <h2>Статус</h2>
-                    <div class="big-value">
-                        <div class="label">Режим</div>
-                        <div id="mode" class="value mode-idle">IDLE</div>
-                    </div>
-                    <div class="big-value">
-                        <div class="label">Фаза</div>
-                        <div id="phase" class="value">—</div>
-                    </div>
-                </div>
-
-                <!-- Температуры -->
-                <div class="card">
-                    <h2>🌡️ Температуры</h2>
-                    <div class="metrics">
-                        <div class="metric">
-                            <span class="metric-label">Куб</span>
-                            <span id="temp-cube" class="metric-value">--°C</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Царга низ</span>
-                            <span id="temp-column-bottom" class="metric-value">--°C</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Царга верх</span>
-                            <span id="temp-column-top" class="metric-value">--°C</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Дефлегматор</span>
-                            <span id="temp-reflux" class="metric-value">--°C</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">ТСА</span>
-                            <span id="temp-tsa" class="metric-value">--°C</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Давление -->
-                <div class="card">
-                    <h2>📈 Давление</h2>
-                    <div class="metrics">
-                        <div class="metric">
-                            <span class="metric-label">Куб</span>
-                            <span id="pressure-cube" class="metric-value">-- мм рт.ст.</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Атмосферное</span>
-                            <span id="pressure-atm" class="metric-value">-- гПа</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Порог захлёба</span>
-                            <span id="pressure-flood" class="metric-value">-- мм</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Мощность -->
-                <div class="card">
-                    <h2>⚡ Электропитание (PZEM-004T)</h2>
-                    <div class="metrics">
-                        <div class="metric">
-                            <span class="metric-label">Напряжение</span>
-                            <span id="power-voltage" class="metric-value">-- V</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Ток</span>
-                            <span id="power-current" class="metric-value">-- A</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Мощность</span>
-                            <span id="power-power" class="metric-value">-- W</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Энергия</span>
-                            <span id="power-energy" class="metric-value">-- кВт·ч</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Частота</span>
-                            <span id="power-frequency" class="metric-value">-- Гц</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Коэфф. мощности</span>
-                            <span id="power-pf" class="metric-value">--</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Насос и отбор -->
-                <div class="card">
-                    <h2>💧 Насос и отбор</h2>
-                    <div class="metrics">
-                        <div class="metric">
-                            <span class="metric-label">Скорость</span>
-                            <span id="pump-speed" class="metric-value">-- мл/ч</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Объём</span>
-                            <span id="pump-volume" class="metric-value">-- мл</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Головы</span>
-                            <span id="volume-heads" class="metric-value">-- мл</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Тело</span>
-                            <span id="volume-body" class="metric-value">-- мл</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Хвосты</span>
-                            <span id="volume-tails" class="metric-value">-- мл</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Ареометр -->
-                <div class="card">
-                    <h2>🍷 Ареометр</h2>
-                    <div class="big-value">
-                        <div class="label">Крепость</div>
-                        <div id="abv" class="value">--%</div>
-                    </div>
-                </div>
-
-                <!-- Анимированная схема колонны -->
-                <div class="card">
-                    <h2>🏭 Схема процесса</h2>
-                    <div class="scheme-container" style="display: flex; justify-content: center; padding: 10px;">
-                        <object data="schemes/column-animated.svg" type="image/svg+xml"
-                            style="width: 100%; max-width: 500px; height: auto;"></object>
-                    </div>
-                </div>
-
-                <!-- Мини-график температур -->
-                <div class="card">
-                    <h2>📈 Температуры (5 мин)</h2>
-                    <div id="mini-chart" style="width: 100%; height: 200px;"></div>
-                    <div style="text-align: center; margin-top: 10px;">
-                        <a href="charts.html" class="btn btn-primary btn-sm">📊 Все графики</a>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- Вкладка: Управление -->

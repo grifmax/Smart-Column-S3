@@ -891,6 +891,8 @@ function updateUI(data) {
     if (data.uptime !== undefined) {
 
         document.getElementById('uptime').textContent = formatUptime(data.uptime);
+        const opUptime = document.getElementById('operator-uptime');
+        if (opUptime) opUptime.textContent = formatUptime(data.uptime);
 
     }
 
@@ -1997,6 +1999,8 @@ function updateUIFromStatus(data) {
         const el = document.getElementById('uptime');
 
         if (el) el.textContent = formatUptime(data.uptime);
+        const opUptime = document.getElementById('operator-uptime');
+        if (opUptime) opUptime.textContent = formatUptime(data.uptime);
 
     }
 
