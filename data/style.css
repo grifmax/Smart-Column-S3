@@ -168,6 +168,8 @@ header h1 {
 .mode-rectification { color: var(--success); }
 .mode-manual { color: var(--info); }
 .mode-distillation { color: var(--warning); }
+.mode-mashing { color: #8d6e63; }
+.mode-hold { color: #6f42c1; }
 .mode-error { color: var(--danger); }
 
 /* Metrics */
@@ -246,6 +248,12 @@ header h1 {
 .btn-sm {
     padding: 6px 12px;
     font-size: 0.9em;
+}
+
+.btn-active-mode {
+    box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.25), 0 0 12px rgba(40, 167, 69, 0.35);
+    border-color: #1f8f3a !important;
+    position: relative;
 }
 
 .btn-disabled,

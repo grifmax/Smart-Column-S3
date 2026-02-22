@@ -1451,7 +1451,9 @@ void init() {
                 sizeof(g_settings.wifi.password) - 1);
         g_settings.wifi.password[sizeof(g_settings.wifi.password) - 1] = '\0';
 
-        g_settings.wifi.apMode = false;
+        // AP must stay available while STA reconnects, so local UI at 192.168.4.1
+        // does not disappear during/after WiFi credential updates.
+        g_settings.wifi.apMode = true;
 
         // Сохранить в NVS
         if (NVSManager::saveSettings(g_settings)) {
@@ -1467,7 +1469,14 @@ void init() {
           delay(100);
 
           WiFi.disconnect();
-          WiFi.mode(WIFI_STA);
+          WiFi.mode(WIFI_AP_STA);
+          if (WiFi.getMode() != WIFI_AP_STA || WiFi.softAPIP() != IPAddress(192, 168, 4, 1)) {
+            IPAddress apIp(192, 168, 4, 1);
+            IPAddress apGw(192, 168, 4, 1);
+            IPAddress apMask(255, 255, 255, 0);
+            WiFi.softAPConfig(apIp, apGw, apMask);
+            WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
+          }
           WiFi.begin(g_settings.wifi.ssid, g_settings.wifi.password);
         } else {
           LOG_E("WiFi: Failed to save settings to NVS");
@@ -1755,6 +1764,7 @@ void broadcastState(const SystemState &state) {
   StaticJsonDocument<768> fastDoc;
   fastDoc["mode"] = static_cast<int>(state.mode);
   fastDoc["phase"] = static_cast<int>(state.rectPhase);
+  fastDoc["paused"] = state.paused;
   fastDoc["uptime"] = state.uptime;
 
   fastDoc["t_cube"] = state.temps.cube;
@@ -1796,6 +1806,7 @@ void broadcastState(const SystemState &state) {
   StaticJsonDocument<3072> doc;
   doc["mode"] = static_cast<int>(state.mode);
   doc["phase"] = static_cast<int>(state.rectPhase);
+  doc["paused"] = state.paused;
   doc["uptime"] = state.uptime;
 
   doc["t_cube"] = state.temps.cube;

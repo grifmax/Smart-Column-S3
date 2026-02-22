@@ -34,6 +34,52 @@ let currentPaused = false;
 
 let maxHeaterPower = 3000;  // Будет обновлено из настроек
 
+const MODE_IDLE = 0;
+const MODE_RECT = 1;
+const MODE_MANUAL = 2;
+const MODE_DIST = 3;
+const MODE_MASH = 4;
+const MODE_HOLD = 5;
+
+function getModeLabel(mode) {
+    switch (mode) {
+        case MODE_IDLE: return 'Idle';
+        case MODE_RECT: return 'Rectification';
+        case MODE_MANUAL: return 'Manual';
+        case MODE_DIST: return 'Distillation';
+        case MODE_MASH: return 'Mashing';
+        case MODE_HOLD: return 'Hold';
+        default: return 'Unknown';
+    }
+}
+
+function getModeCssClass(mode) {
+    switch (mode) {
+        case MODE_IDLE: return 'mode-idle';
+        case MODE_RECT: return 'mode-rectification';
+        case MODE_MANUAL: return 'mode-manual';
+        case MODE_DIST: return 'mode-distillation';
+        case MODE_MASH: return 'mode-mashing';
+        case MODE_HOLD: return 'mode-hold';
+        default: return 'mode-idle';
+    }
+}
+
+const STATUS_POLL_INTERVAL_MS = 2000;
+let statusPollTimer = null;
+
+function startStatusPolling(immediate = false) {
+    if (statusPollTimer) return;
+    if (immediate) loadStatus();
+    statusPollTimer = setInterval(loadStatus, STATUS_POLL_INTERVAL_MS);
+}
+
+function stopStatusPolling() {
+    if (!statusPollTimer) return;
+    clearInterval(statusPollTimer);
+    statusPollTimer = null;
+}
+
 
 // ============================================================================
 // Режим запуска UI: local (прямо на ESP32) vs cloud (через web-proxy кабинет)
@@ -107,15 +153,9 @@ document.addEventListener('DOMContentLoaded', async function () {
         setInterval(loadDiscoveredDevices, 30000);
     }
 
-    loadStatus();  // Загрузить начальный статус
-
+    // Запускаем fallback polling сразу, после подключения WS он будет остановлен.
+    startStatusPolling(true);
     connectWebSocket();
-
-
-
-    // Периодический опрос статуса (резервный вариант если WebSocket отключён)
-
-    setInterval(loadStatus, 2000);
 
 });
 
@@ -150,6 +190,7 @@ function connectWebSocket() {
         ws.onopen = function () {
 
             isConnected = true;
+            stopStatusPolling();
 
             updateConnectionStatus(true);
 
@@ -202,6 +243,7 @@ function connectWebSocket() {
         ws.onclose = function () {
 
             isConnected = false;
+            startStatusPolling(true);
 
             updateConnectionStatus(false);
 
@@ -232,6 +274,7 @@ function connectWebSocket() {
         console.error('Ошибка создания WebSocket:', e);
 
         updateConnectionStatus(false);
+        startStatusPolling(true);
 
     }
 
@@ -294,6 +337,17 @@ function updateConnectionStatus(connected) {
 
 
 function initMiniChart() {
+
+    const miniChartContainer = document.querySelector("#mini-chart");
+    if (!miniChartContainer) return;
+
+    // Graceful fallback for offline/AP mode when CDN script is not available.
+    if (typeof window.ApexCharts === 'undefined') {
+        miniChartContainer.innerHTML = '<div class="info-display">Мини-график временно недоступен</div>';
+        addLog('⚠ Мини-график недоступен: библиотека графика не загружена', 'warning');
+        miniChart = null;
+        return;
+    }
 
     const options = {
 
@@ -419,7 +473,7 @@ function initMiniChart() {
 
 
 
-    miniChart = new ApexCharts(document.querySelector("#mini-chart"), options);
+    miniChart = new ApexCharts(miniChartContainer, options);
 
     miniChart.render();
 
@@ -535,16 +589,26 @@ function updateUI(data) {
 
     if (data.mode !== undefined) {
 
-        const modeNames = ['IDLE', 'RECT', 'MANUAL', 'DIST', 'MASH', 'HOLD'];
-
-        const modeName = modeNames[data.mode] || 'UNKNOWN';
-
+        const modeNum = Number(data.mode);
+        const modeLabel = Number.isFinite(modeNum)
+            ? getModeLabel(modeNum).toUpperCase()
+            : 'UNKNOWN';
+        const modeClass = Number.isFinite(modeNum)
+            ? getModeCssClass(modeNum)
+            : 'mode-idle';
         const modeEl = document.getElementById('mode');
 
-        modeEl.textContent = modeName;
+        modeEl.textContent = modeLabel;
 
-        modeEl.className = `value mode-${modeName.toLowerCase()}`;
+        modeEl.className = `value ${modeClass}`;
+        if (Number.isFinite(modeNum)) {
+            currentMode = modeNum;
+        }
 
+    }
+
+    if (data.paused !== undefined) {
+        currentPaused = Boolean(data.paused);
     }
 
 
@@ -749,6 +813,8 @@ function updateUI(data) {
 
     }
 
+    updateButtonStates();
+
 }
 
 
@@ -847,7 +913,32 @@ function initTabs() {
 
 
 
+function confirmModeSwitch(targetModeId, targetModeName) {
+
+    const targetLabel = targetModeName || getModeLabel(targetModeId);
+
+    if (currentMode === MODE_IDLE) return true;
+
+    if (currentMode === targetModeId) {
+        addLog(`Mode "${targetLabel}" is already running`, 'warning');
+        return false;
+    }
+
+    const currentModeLabel = getModeLabel(currentMode);
+
+    return confirm(
+        `Current mode "${currentModeLabel}" is running.\\n` +
+        `Switch to "${targetLabel}"?\\n\\n` +
+        `Current process will be stopped.`
+    );
+
+}
+
+
+
 async function startRectification() {
+
+    if (!confirmModeSwitch(MODE_RECT, 'Auto-rectification')) return;
 
     try {
 
@@ -905,6 +996,7 @@ function startManual() {
 
     // Переход на страницу ручного управления
 
+    if (!confirmModeSwitch(MODE_MANUAL, 'Manual rectification')) return;
     window.location.href = 'manual.html';
 
 }
@@ -912,6 +1004,8 @@ function startManual() {
 
 
 async function startDistillation() {
+
+    if (!confirmModeSwitch(MODE_DIST, 'Distillation')) return;
 
     try {
 
@@ -1138,6 +1232,7 @@ function readStepsFromUI(containerId, mode) {
 }
 
 async function startMashing() {
+    if (!confirmModeSwitch(MODE_MASH, 'Mashing')) return;
     try {
         const profileName = (document.getElementById('mash-profile-name')?.value ?? '').trim() || 'Mashing';
         const steps = readStepsFromUI('mash-steps', 'mash');
@@ -1179,6 +1274,7 @@ async function startMashing() {
 }
 
 async function startHold() {
+    if (!confirmModeSwitch(MODE_HOLD, 'Hold')) return;
     try {
         const steps = readStepsFromUI('hold-steps', 'hold');
 
@@ -1481,13 +1577,24 @@ async function loadStatus() {
                 currentMode = modeNum;
             } else if (typeof data.modeStr === 'string') {
                 const s = data.modeStr.toLowerCase();
-                currentMode = (s === 'idle' || s === '0') ? 0 : 1;
+                const modeMap = {
+                    idle: MODE_IDLE,
+                    rect: MODE_RECT,
+                    rectification: MODE_RECT,
+                    manual: MODE_MANUAL,
+                    dist: MODE_DIST,
+                    distillation: MODE_DIST,
+                    mash: MODE_MASH,
+                    mashing: MODE_MASH,
+                    hold: MODE_HOLD
+                };
+                currentMode = modeMap[s] ?? MODE_IDLE;
             } else {
-                currentMode = 0;
+                currentMode = MODE_IDLE;
             }
         }
 
-        currentPaused = data.paused || false;
+        currentPaused = Boolean(data.paused);
 
 
 
@@ -1536,10 +1643,23 @@ function updateUIFromStatus(data) {
         const modeEl = document.getElementById('mode');
 
         if (modeEl) {
+            const modeKey = String(data.modeStr).toLowerCase();
+            const modeMap = {
+                idle: MODE_IDLE,
+                rect: MODE_RECT,
+                rectification: MODE_RECT,
+                manual: MODE_MANUAL,
+                dist: MODE_DIST,
+                distillation: MODE_DIST,
+                mash: MODE_MASH,
+                mashing: MODE_MASH,
+                hold: MODE_HOLD
+            };
+            const modeNum = modeMap[modeKey];
+            const resolvedMode = Number.isFinite(modeNum) ? modeNum : MODE_IDLE;
 
-            modeEl.textContent = data.modeStr.toUpperCase();
-
-            modeEl.className = `value mode-${data.modeStr}`;
+            modeEl.textContent = getModeLabel(resolvedMode).toUpperCase();
+            modeEl.className = `value ${getModeCssClass(resolvedMode)}`;
 
         }
 
@@ -1778,104 +1898,64 @@ function updateUIFromStatus(data) {
 
 function updateButtonStates() {
 
-    const isIdle = currentMode === 0;
+    const isIdle = currentMode === MODE_IDLE;
 
-
-
-    // Кнопки запуска режимов
-
+    // Buttons that start modes
     const btnRect = document.querySelector('button[onclick="startRectification()"]');
-
     const btnManual = document.querySelector('button[onclick="startManual()"]');
-
     const btnDist = document.querySelector('button[onclick="startDistillation()"]');
-
     const btnMashing = document.querySelector('button[onclick="startMashing()"]');
-
     const btnHold = document.querySelector('button[onclick="startHold()"]');
 
+    const modeButtons = [
+        { mode: MODE_RECT, button: btnRect },
+        { mode: MODE_MANUAL, button: btnManual },
+        { mode: MODE_DIST, button: btnDist },
+        { mode: MODE_MASH, button: btnMashing },
+        { mode: MODE_HOLD, button: btnHold }
+    ];
 
+    modeButtons.forEach(({ mode, button }) => {
+        if (!button) return;
 
-    // Кнопки управления
+        if (!button.dataset.baseText) {
+            button.dataset.baseText = button.textContent.trim();
+        }
 
+        const isCurrentMode = currentMode === mode;
+        const shouldDisable = !isIdle && !isCurrentMode;
+
+        button.disabled = shouldDisable;
+        button.classList.toggle('btn-disabled', shouldDisable);
+        button.classList.toggle('btn-active-mode', isCurrentMode);
+        button.textContent = isCurrentMode
+            ? `Running: ${button.dataset.baseText}`
+            : button.dataset.baseText;
+    });
+
+    // Runtime controls
     const btnStop = document.querySelector('button[onclick="stopProcess()"]');
-
     const btnPause = document.querySelector('button[onclick="pauseProcess()"]');
-
     const btnResume = document.querySelector('button[onclick="resumeProcess()"]');
 
-
-
-    // Настройка состояний
-
-    if (btnRect) {
-
-        btnRect.disabled = !isIdle;
-
-        btnRect.classList.toggle('btn-disabled', !isIdle);
-
-    }
-
-    if (btnManual) {
-
-        btnManual.disabled = !isIdle;
-
-        btnManual.classList.toggle('btn-disabled', !isIdle);
-
-    }
-
-    if (btnDist) {
-
-        btnDist.disabled = !isIdle;
-
-        btnDist.classList.toggle('btn-disabled', !isIdle);
-
-    }
-
-    if (btnMashing) {
-
-        btnMashing.disabled = !isIdle;
-
-        btnMashing.classList.toggle('btn-disabled', !isIdle);
-
-    }
-
-    if (btnHold) {
-
-        btnHold.disabled = !isIdle;
-
-        btnHold.classList.toggle('btn-disabled', !isIdle);
-
-    }
-
-
-
     if (btnStop) {
-
         btnStop.disabled = isIdle;
-
         btnStop.classList.toggle('btn-disabled', isIdle);
-
     }
 
     if (btnPause) {
-
-        btnPause.disabled = isIdle || currentPaused;
-
-        btnPause.classList.toggle('btn-disabled', isIdle || currentPaused);
-
+        const disablePause = isIdle || currentPaused;
+        btnPause.disabled = disablePause;
+        btnPause.classList.toggle('btn-disabled', disablePause);
     }
 
     if (btnResume) {
-
-        btnResume.disabled = isIdle || !currentPaused;
-
-        btnResume.classList.toggle('btn-disabled', isIdle || !currentPaused);
-
+        const disableResume = isIdle || !currentPaused;
+        btnResume.disabled = disableResume;
+        btnResume.classList.toggle('btn-disabled', disableResume);
     }
 
 }
-
 
 
 function updateHeaterSlider() {
@@ -6357,6 +6437,3 @@ async function testESP32Connection() {
     }
 
 }
-
-
-
