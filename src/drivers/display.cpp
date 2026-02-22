@@ -550,17 +550,55 @@ static void saveBodySpeed(float val) { g_settings.rectParams.bodySpeedMlHKw = va
 static void saveStabMin(float val) { g_settings.rectParams.stabilizationMin = (uint16_t)val; NVSManager::saveSettings(g_settings); }
 static void savePurgeMin(float val) { g_settings.rectParams.purgeMin = (uint16_t)val; NVSManager::saveSettings(g_settings); }
 
-static void saveDistSpeed(float val) { distUi.speedMlH = val; }
-static void saveDistHeads(float val) { distUi.headsVolumeMl = val; }
-static void saveDistTarget(float val) { distUi.targetVolumeMl = val; }
-static void saveDistEndTemp(float val) { distUi.endTempC = val; }
+static void persistDistUi() {
+    g_settings.distillationUi.speedMlH = distUi.speedMlH;
+    g_settings.distillationUi.headsVolumeMl = distUi.headsVolumeMl;
+    g_settings.distillationUi.targetVolumeMl = distUi.targetVolumeMl;
+    g_settings.distillationUi.endTempC = distUi.endTempC;
+    g_settings.distillationUi.powerPercent = distUi.powerPercent;
+    g_settings.distillationUi.tailsVolumeMl = distUi.tailsVolumeMl;
+    NVSManager::saveSettings(g_settings);
+}
+
+static void applyDistUiRuntime() {
+    FSM::Distillation::setParams(distUi.speedMlH,
+                                 distUi.headsVolumeMl,
+                                 distUi.targetVolumeMl,
+                                 distUi.endTempC);
+    FSM::Distillation::setPowerPercent(static_cast<uint8_t>(distUi.powerPercent));
+}
+
+static void saveDistSpeed(float val) {
+    distUi.speedMlH = val;
+    applyDistUiRuntime();
+    persistDistUi();
+}
+static void saveDistHeads(float val) {
+    distUi.headsVolumeMl = val;
+    applyDistUiRuntime();
+    persistDistUi();
+}
+static void saveDistTarget(float val) {
+    distUi.targetVolumeMl = val;
+    applyDistUiRuntime();
+    persistDistUi();
+}
+static void saveDistEndTemp(float val) {
+    distUi.endTempC = val;
+    applyDistUiRuntime();
+    persistDistUi();
+}
 static void saveDistPower(float val) {
     if (val < 0.0f) val = 0.0f;
     if (val > 100.0f) val = 100.0f;
     distUi.powerPercent = val;
-    FSM::Distillation::setPowerPercent(static_cast<uint8_t>(val));
+    applyDistUiRuntime();
+    persistDistUi();
 }
-static void saveDistTails(float val) { distUi.tailsVolumeMl = val; }
+static void saveDistTails(float val) {
+    distUi.tailsVolumeMl = val;
+    persistDistUi();
+}
 
 static void saveManualRectSpeed(float val) {
     if (val < 0.0f) val = 0.0f;
@@ -667,32 +705,18 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty, const SystemState& stat
     const int16_t x3 = x2 + w3 + g;
     const int16_t y1 = y0 + hTile + g;
     const int16_t y2 = y1 + hTile + g;
-    const int16_t halfW = (TFT_WIDTH - 28) / 2;
-    const int16_t rightHalfX = x1 + halfW + 8;
 
     if (state.mode == Mode::DISTILLATION) {
-        if (hit(tx, ty, x2, y0, w3, hTile)) {
+        const int16_t g2 = 6;
+        const int16_t w2 = (TFT_WIDTH - 20 - g2) / 2;
+        const int16_t x2d = x1 + w2 + g2;
+        const int16_t y1d = y0 + 48 + g2;
+        if (hit(tx, ty, x2d, y0, w2, 74)) {
             openValueEdit(ru ? "Мощность дист." : "Dist power",
                           distUi.powerPercent, 0, 100, 1, 10, saveDistPower, "%", 0);
             return true;
         }
-        if (hit(tx, ty, x1, y1, w3, hTile)) {
-            openValueEdit(msg(Msg::HEADS_VOLUME), distUi.headsVolumeMl, 0, 5000, 10, 100, saveDistHeads, "ml", 0);
-            return true;
-        }
-        if (hit(tx, ty, x2, y1, w3, hTile)) {
-            openValueEdit(msg(Msg::TARGET_VOLUME), distUi.targetVolumeMl, 0, 50000, 100, 1000, saveDistTarget, "ml", 0);
-            return true;
-        }
-        if (hit(tx, ty, x3, y1, w3, hTile)) {
-            openValueEdit(ru ? "Хвосты объем" : "Tails volume", distUi.tailsVolumeMl, 0, 50000, 100, 1000, saveDistTails, "ml", 0);
-            return true;
-        }
-        if (hit(tx, ty, x1, y2, halfW, hTile)) {
-            openValueEdit(msg(Msg::DIST_SPEED), distUi.speedMlH, 50, 5000, 50, 500, saveDistSpeed, "ml/h", 0);
-            return true;
-        }
-        if (hit(tx, ty, rightHalfX, y2, halfW, hTile)) {
+        if (hit(tx, ty, x2d, y1d, w2, 74)) {
             openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1f, 1.0f, saveDistEndTemp, "C", 1);
             return true;
         }
@@ -1933,49 +1957,34 @@ static void renderModeMonitorCustom(const SystemState& state, bool full) {
 
     if (state.mode == Mode::DISTILLATION) {
         const int16_t g = 6;
-        const int16_t hTile = 48;
-        const int16_t w3 = (TFT_WIDTH - 20 - g * 2) / 3;
+        const int16_t hTile = 74;
+        const int16_t w2 = (TFT_WIDTH - 20 - g) / 2;
         const int16_t x1 = 10;
-        const int16_t x2 = x1 + w3 + g;
-        const int16_t x3 = x2 + w3 + g;
+        const int16_t x2 = x1 + w2 + g;
         const int16_t y1 = panelY + hTile + g;
-        const int16_t y2 = y1 + hTile + g;
-        const int16_t halfW = (TFT_WIDTH - 28) / 2;
-        const int16_t rightHalfX = x1 + halfW + 8;
 
         if (layoutChanged) {
-            drawValueTileShell(x1, panelY, w3, hTile, msg(Msg::CUBE_TEMP));
-            drawValueTileShell(x2, panelY, w3, hTile, "POWER %");
-            drawValueTileShell(x3, panelY, w3, hTile, "TIME");
-            drawValueTileShell(x1, y1, w3, hTile, "HEADS SET/TAKE");
-            drawValueTileShell(x2, y1, w3, hTile, "BODY SET/TAKE");
-            drawValueTileShell(x3, y1, w3, hTile, "TAILS SET/TAKE");
-            drawValueTileShell(x1, y2, halfW, hTile, msg(Msg::DIST_SPEED));
-            drawValueTileShell(rightHalfX, y2, halfW, hTile, msg(Msg::END_TEMP));
+            drawValueTileShell(x1, panelY, w2, hTile, msg(Msg::CUBE_TEMP));
+            drawValueTileShell(x2, panelY, w2, hTile, ru ? "МОЩН. %" : "POWER %");
+            drawValueTileShell(x1, y1, w2, hTile, ru ? "ВРЕМЯ РАБОТЫ" : "RUN TIME");
+            drawValueTileShell(x2, y1, w2, hTile, msg(Msg::END_TEMP));
         }
 
         char runBuf[16];
-        char v[8][20];
+        char v[4][20];
         formatDurationCompact(getModeRunElapsedSec(state), runBuf, sizeof(runBuf));
         snprintf(v[0], sizeof(v[0]), "%.1f", state.temps.cube);
         snprintf(v[1], sizeof(v[1]), "%.0f", distUi.powerPercent);
         snprintf(v[2], sizeof(v[2]), "%s", runBuf);
-        snprintf(v[3], sizeof(v[3]), "%.0f/%.0f", distUi.headsVolumeMl, state.stats.headsVolume);
-        snprintf(v[4], sizeof(v[4]), "%.0f/%.0f", distUi.targetVolumeMl, state.stats.bodyVolume);
-        snprintf(v[5], sizeof(v[5]), "%.0f/%.0f", distUi.tailsVolumeMl, state.stats.tailsVolume);
-        snprintf(v[6], sizeof(v[6]), "%.0f", distUi.speedMlH);
-        snprintf(v[7], sizeof(v[7]), "%.1f", distUi.endTempC);
+        snprintf(v[3], sizeof(v[3]), "%.1f", distUi.endTempC);
 
-        updateTile(0, x1, panelY, w3, hTile, v[0], "C", COLOR_DANGER);
-        updateTile(1, x2, panelY, w3, hTile, v[1], "%", COLOR_WARNING);
-        updateTile(2, x3, panelY, w3, hTile, v[2], "", COLOR_PRIMARY);
-        updateTile(3, x1, y1, w3, hTile, v[3], "ml", COLOR_INFO);
-        updateTile(4, x2, y1, w3, hTile, v[4], "ml", COLOR_SUCCESS);
-        updateTile(5, x3, y1, w3, hTile, v[5], "ml", COLOR_WARNING);
-        updateTile(6, x1, y2, halfW, hTile, v[6], msg(Msg::UNIT_ML_H), COLOR_SUCCESS);
-        updateTile(7, rightHalfX, y2, halfW, hTile, v[7], "C", COLOR_INFO);
+        updateTile(0, x1, panelY, w2, hTile, v[0], "C", COLOR_DANGER);
+        updateTile(1, x2, panelY, w2, hTile, v[1], "%", COLOR_WARNING);
+        updateTile(2, x1, y1, w2, hTile, v[2], "", COLOR_PRIMARY);
+        updateTile(3, x2, y1, w2, hTile, v[3], "C", COLOR_INFO);
 
-        snprintf(infoLine, sizeof(infoLine), "Distillation: tap tiles to edit setpoints");
+        snprintf(infoLine, sizeof(infoLine), ru ? "Дистилляция: только ключевые параметры"
+                                                : "Distillation: key parameters only");
         snprintf(auxLine, sizeof(auxLine), "V %.0f | P %.0f | Pump %.0f",
                  state.power.voltage, state.pressure.cube, state.pump.speedMlPerHour);
     } else if (state.mode == Mode::MANUAL_RECT) {
@@ -2604,6 +2613,15 @@ void init() {
         holdStepsDefault[0].temperature = 65.0f;
         holdStepsDefault[0].duration = 60;
         holdStepsCount = 1;
+
+        // Загружаем уставки дистилляции из NVS-профиля настроек.
+        distUi.speedMlH = g_settings.distillationUi.speedMlH;
+        distUi.headsVolumeMl = g_settings.distillationUi.headsVolumeMl;
+        distUi.targetVolumeMl = g_settings.distillationUi.targetVolumeMl;
+        distUi.endTempC = g_settings.distillationUi.endTempC;
+        distUi.powerPercent = g_settings.distillationUi.powerPercent;
+        distUi.tailsVolumeMl = g_settings.distillationUi.tailsVolumeMl;
+        applyDistUiRuntime();
 
         ui.currentScreen = UI_DASHBOARD;
         ui.rootScreen = UI_DASHBOARD;

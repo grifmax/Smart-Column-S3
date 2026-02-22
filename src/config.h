@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.5.14"
+#define FIRMWARE_VERSION "1.5.15"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -605,6 +605,12 @@ struct MenuItem {
 #define NVS_KEY_RECT_BODY_SPEED "rect_bspd"
 #define NVS_KEY_RECT_STAB_MIN "rect_stab"
 #define NVS_KEY_RECT_PURGE_MIN "rect_prg"
+#define NVS_KEY_DIST_SPEED "dist_spd"
+#define NVS_KEY_DIST_HEADS_VOL "dist_hvol"
+#define NVS_KEY_DIST_TARGET_VOL "dist_tvol"
+#define NVS_KEY_DIST_END_TEMP "dist_etmp"
+#define NVS_KEY_DIST_POWER_PCT "dist_ppct"
+#define NVS_KEY_DIST_TAILS_VOL "dist_xvol"
 
 // Cloud tunnel settings
 #define NVS_KEY_CLOUD_ENABLED "cl_en"

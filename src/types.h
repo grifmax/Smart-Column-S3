@@ -328,6 +328,15 @@ struct RectParams {
   uint16_t purgeMin = 5;
 };
 
+struct DistillationUiSettings {
+  float speedMlH = 500.0f;
+  float headsVolumeMl = 0.0f;
+  float targetVolumeMl = 3000.0f;
+  float endTempC = 96.0f;
+  float powerPercent = 100.0f;
+  float tailsVolumeMl = 0.0f;
+};
+
 // Настройки (полная версия)
 struct Settings {
   WiFiSettings wifi;
@@ -341,6 +350,7 @@ struct Settings {
   EquipmentSettings equipment;
   FractionatorSettings fractionator;
   RectParams rectParams;
+  DistillationUiSettings distillationUi;
 
   uint8_t language = 0; // 0=RU, 1=EN
   uint8_t theme = 0;    // 0=Light, 1=Dark
