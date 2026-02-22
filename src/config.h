@@ -527,8 +527,20 @@ struct MenuItem {
 #define RECT_STABILIZATION_TIME_MIN 20 // Стабилизация "на себя", мин
 #define RECT_STABILIZATION_DELTA 0.1f  // °C за 5 мин
 #define RECT_HEADS_PERCENT_DEFAULT 8   // % голов от АС
+#define RECT_BODY_PERCENT_DEFAULT 84   // % тела от АС
+#define RECT_TAILS_PERCENT_DEFAULT 8   // % хвостов от АС
 #define RECT_HEADS_SPEED_ML_H_KW 50    // мл/час на кВт
 #define RECT_PURGE_TIME_MIN 10         // Продувка между фракциями
+#define RECT_FEED_ABV_DEFAULT 40.0f    // Крепость спирта-сырца по умолчанию, %
+
+// Справочные переходы по температуре куба (при 1013.25 hPa)
+// Используются как ориентиры и как fallback-ограничители в FSM.
+#define RECT_CUBE_BODY_TO_TAILS_BASE_C 94.5f
+#define RECT_CUBE_FINISH_BASE_C 99.0f
+// Линейная поправка на атмосферное давление около 1 атм.
+// dT/dP ~ 0.049 °C на 1 hPa (оценка по Antoine/NIST вблизи нормального давления).
+#define RECT_TEMP_COMP_C_PER_HPA 0.049f
+#define RECT_PRESSURE_STD_HPA 1013.25f
 
 // Smart Decrement (умное снижение скорости)
 #define DECREMENT_TRIGGER_DELTA 0.15f  // °C выше T_base → стоп
@@ -601,10 +613,15 @@ struct MenuItem {
 #define NVS_KEY_FRACTION_ANGLES "frac_ang"
 #define NVS_KEY_FRACTION_ENABLED "frac_en"
 #define NVS_KEY_RECT_HEADS_PCT "rect_hpct"
+#define NVS_KEY_RECT_BODY_PCT "rect_bpct"
+#define NVS_KEY_RECT_TAILS_PCT "rect_tpct"
 #define NVS_KEY_RECT_HEADS_SPEED "rect_hspd"
 #define NVS_KEY_RECT_BODY_SPEED "rect_bspd"
 #define NVS_KEY_RECT_STAB_MIN "rect_stab"
 #define NVS_KEY_RECT_PURGE_MIN "rect_prg"
+#define NVS_KEY_RECT_FEED_VOL "rect_fvol"
+#define NVS_KEY_RECT_FEED_ABV "rect_fabv"
+#define NVS_KEY_RECT_FEEDSTOCK "rect_feed"
 #define NVS_KEY_DIST_SPEED "dist_spd"
 #define NVS_KEY_DIST_HEADS_VOL "dist_hvol"
 #define NVS_KEY_DIST_TARGET_VOL "dist_tvol"

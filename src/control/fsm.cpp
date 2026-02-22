@@ -21,6 +21,8 @@ static uint32_t pauseStartTime = 0;
 
 // Параметры/состояние ректификации (простая реализация)
 static float rectHeadsTargetMl = 0.0f;
+static float rectBodyTargetMl = 0.0f;
+static float rectTailsTargetMl = 0.0f;
 static bool rectBodyInitialized = false;
 
 // Параметры дистилляции (задаются через API)
@@ -34,6 +36,26 @@ struct DistillationParamsRuntime {
 };
 
 static DistillationParamsRuntime g_distParams;
+
+static float clampFloat(float v, float vmin, float vmax) {
+  if (v < vmin) return vmin;
+  if (v > vmax) return vmax;
+  return v;
+}
+
+static float getAtmosphereHpa(const SystemState& state) {
+  if (state.pressure.ok &&
+      state.pressure.atmosphere > 850.0f &&
+      state.pressure.atmosphere < 1100.0f) {
+    return state.pressure.atmosphere;
+  }
+  return RECT_PRESSURE_STD_HPA;
+}
+
+static float pressureAdjustedCubeTemp(float baseTempC, const SystemState& state) {
+  const float hpa = getAtmosphereHpa(state);
+  return baseTempC + (hpa - RECT_PRESSURE_STD_HPA) * RECT_TEMP_COMP_C_PER_HPA;
+}
 
 static float estimateChargeAbvPercent(const SystemState &state) {
   // Если есть валидные данные ареометра — используем их
@@ -53,6 +75,51 @@ static uint8_t getProcessHeaterPower(const SystemState &state,
     return WattControl::update(state, settings);
   }
   return fallbackPercent;
+}
+
+static void calculateRectificationTargets(const SystemState& state,
+                                          const Settings& settings,
+                                          float& headsTargetMl,
+                                          float& bodyTargetMl,
+                                          float& tailsTargetMl) {
+  float volumeL = settings.rectParams.feedVolumeL;
+  if (volumeL <= 0.1f) {
+    volumeL = settings.equipment.cubeVolumeL;
+  }
+  volumeL = clampFloat(volumeL, 1.0f, 250.0f);
+
+  float abv = settings.rectParams.feedAbvPercent;
+  if (abv <= 0.0f || abv >= 100.0f) {
+    abv = estimateChargeAbvPercent(state);
+  }
+  abv = clampFloat(abv, 1.0f, 96.0f);
+
+  float headsPct = clampFloat(settings.rectParams.headsPercent, 0.0f, 40.0f);
+  float bodyPct = clampFloat(settings.rectParams.bodyPercent, 0.0f, 100.0f);
+  float tailsPct = clampFloat(settings.rectParams.tailsPercent, 0.0f, 100.0f);
+
+  float sumPct = headsPct + bodyPct + tailsPct;
+  if (sumPct <= 0.01f) {
+    headsPct = RECT_HEADS_PERCENT_DEFAULT;
+    bodyPct = RECT_BODY_PERCENT_DEFAULT;
+    tailsPct = RECT_TAILS_PERCENT_DEFAULT;
+    sumPct = headsPct + bodyPct + tailsPct;
+  }
+  if (sumPct > 100.0f) {
+    const float k = 100.0f / sumPct;
+    headsPct *= k;
+    bodyPct *= k;
+    tailsPct *= k;
+  }
+
+  const float aaMl = volumeL * 1000.0f * (abv / 100.0f);
+  headsTargetMl = aaMl * (headsPct / 100.0f);
+  bodyTargetMl = aaMl * (bodyPct / 100.0f);
+  tailsTargetMl = aaMl * (tailsPct / 100.0f);
+
+  if (headsTargetMl < 10.0f) {
+    headsTargetMl = 10.0f;
+  }
 }
 } // namespace
 
@@ -113,15 +180,11 @@ void update(SystemState& state, const Settings& settings) {
                 phaseStartTime = now;
                 phaseStartVolumeMl = state.pump.totalVolumeMl;
 
-                // Рассчитать целевой объём голов (мл) из % от АС
-                float abv = estimateChargeAbvPercent(state);
-                float aaMl =
-                    settings.equipment.cubeVolumeL * 1000.0f * (abv / 100.0f);
-                rectHeadsTargetMl =
-                    aaMl * (settings.rectParams.headsPercent / 100.0f);
-                if (rectHeadsTargetMl < 10.0f) {
-                  rectHeadsTargetMl = 10.0f; // защита от нулевых настроек
-                }
+                // Рассчитать целевые объёмы фракций из объёма/крепости СС и %.
+                calculateRectificationTargets(state, settings,
+                                              rectHeadsTargetMl,
+                                              rectBodyTargetMl,
+                                              rectTailsTargetMl);
 
                 // Отправка уведомления
                 MQTT::publishNotification(
@@ -219,6 +282,15 @@ void update(SystemState& state, const Settings& settings) {
               const float bodyCollected = state.pump.totalVolumeMl - phaseStartVolumeMl;
               state.stats.bodyVolume = bodyCollected;
 
+              if (rectBodyTargetMl > 0.0f && bodyCollected >= rectBodyTargetMl) {
+                LOG_I("FSM: BODY → TAILS (target %.0f/%.0f ml)",
+                      bodyCollected, rectBodyTargetMl);
+                state.rectPhase = RectPhase::TAILS;
+                phaseStartTime = now;
+                phaseStartVolumeMl = state.pump.totalVolumeMl;
+                break;
+              }
+
               // Smart Decrement: true означает переход в хвосты
               if (rectBodyInitialized && SmartDecrement::update(state, settings)) {
                 LOG_I("FSM: BODY → TAILS (SmartDecrement)");
@@ -228,9 +300,12 @@ void update(SystemState& state, const Settings& settings) {
               }
 
               // Дополнительное условие завершения (по температуре куба)
+              const float bodyToTailsTemp = pressureAdjustedCubeTemp(
+                  RECT_CUBE_BODY_TO_TAILS_BASE_C, state);
               if (state.temps.valid[TEMP_CUBE] &&
-                  state.temps.cube >= TAILS_TEMP_CUBE_MIN) {
-                LOG_I("FSM: BODY → TAILS (T_cube %.1fC)", state.temps.cube);
+                  state.temps.cube >= bodyToTailsTemp) {
+                LOG_I("FSM: BODY → TAILS (T_cube %.1fC >= %.1fC)",
+                      state.temps.cube, bodyToTailsTemp);
                 state.rectPhase = RectPhase::TAILS;
                 phaseStartTime = now;
                 phaseStartVolumeMl = state.pump.totalVolumeMl;
@@ -254,10 +329,21 @@ void update(SystemState& state, const Settings& settings) {
               const float tailsCollected = state.pump.totalVolumeMl - phaseStartVolumeMl;
               state.stats.tailsVolume = tailsCollected;
 
+              if (rectTailsTargetMl > 0.0f && tailsCollected >= rectTailsTargetMl) {
+                LOG_I("FSM: TAILS → FINISH (target %.0f/%.0f ml)",
+                      tailsCollected, rectTailsTargetMl);
+                state.rectPhase = RectPhase::FINISH;
+                phaseStartTime = now;
+                break;
+              }
+
               // Завершение погона по температуре куба
+              const float finishTemp = pressureAdjustedCubeTemp(
+                  RECT_CUBE_FINISH_BASE_C, state);
               if (state.temps.valid[TEMP_CUBE] &&
-                  state.temps.cube >= TAILS_TEMP_CUBE_MIN) {
-                LOG_I("FSM: TAILS → FINISH (T_cube %.1fC)", state.temps.cube);
+                  state.temps.cube >= finishTemp) {
+                LOG_I("FSM: TAILS → FINISH (T_cube %.1fC >= %.1fC)",
+                      state.temps.cube, finishTemp);
                 state.rectPhase = RectPhase::FINISH;
                 phaseStartTime = now;
               }
@@ -328,6 +414,8 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
         phaseStartTime = now;
         phaseStartVolumeMl = 0.0f;
         rectHeadsTargetMl = 0.0f;
+        rectBodyTargetMl = 0.0f;
+        rectTailsTargetMl = 0.0f;
         rectBodyInitialized = false;
 
         // Сброс статистики/объёма
@@ -385,6 +473,9 @@ void stopMode(SystemState& state) {
     state.mashing.stepName[0] = '\0';
     state.hold.active = false;
     state.paused = false;
+    rectHeadsTargetMl = 0.0f;
+    rectBodyTargetMl = 0.0f;
+    rectTailsTargetMl = 0.0f;
 
     // Отправка уведомления об остановке
     MQTT::publishNotification(

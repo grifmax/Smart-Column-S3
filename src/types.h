@@ -321,7 +321,13 @@ struct HydrometerCalibration {
 };
 
 struct RectParams {
+  // Сырьё/затор для спирта-сырца (для дефолтов по фракциям)
+  uint8_t feedstock = 0; // 0=sugar,1=grain/flour,2=malt,3=fruit,4=molasses,5=grape,6=honey,7=other
+  float feedVolumeL = 20.0f;
+  float feedAbvPercent = 40.0f;
   float headsPercent = 3.0f;
+  float bodyPercent = 87.0f;
+  float tailsPercent = 10.0f;
   float headsSpeedMlHKw = 300.0f;
   float bodySpeedMlHKw = 600.0f;
   uint16_t stabilizationMin = 30;

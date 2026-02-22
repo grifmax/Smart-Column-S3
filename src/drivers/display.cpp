@@ -381,8 +381,98 @@ struct ManualRectUiParams {
 };
 
 static ManualRectUiParams manualRectUi;
+static uint8_t rectParamsPage = 0; // 0 = профиль СС/фракции, 1 = техпараметры
 static uint8_t g_editMashStepIdx = 0;
 static uint8_t g_editHoldStepIdx = 0;
+
+static float clampUiFloat(float v, float vmin, float vmax) {
+    if (v < vmin) return vmin;
+    if (v > vmax) return vmax;
+    return v;
+}
+
+static const char* rectFeedstockName(uint8_t feedstock, bool ru) {
+    switch (feedstock) {
+        case 0: return ru ? "Сахар" : "Sugar";
+        case 1: return ru ? "Мука/зерно" : "Flour/Grain";
+        case 2: return ru ? "Солод" : "Malt";
+        case 3: return ru ? "Фрукты" : "Fruit";
+        case 4: return ru ? "Меласса" : "Molasses";
+        case 5: return ru ? "Виноград" : "Grape/Wine";
+        case 6: return ru ? "Мед" : "Honey";
+        default: return ru ? "Другое" : "Other";
+    }
+}
+
+static void rectFeedstockDefaults(uint8_t feedstock, float& headsPct, float& bodyPct, float& tailsPct) {
+    switch (feedstock) {
+        case 0: // Сахар
+            headsPct = 6.0f; bodyPct = 84.0f; tailsPct = 10.0f;
+            break;
+        case 1: // Мука/зерно
+            headsPct = 8.0f; bodyPct = 80.0f; tailsPct = 12.0f;
+            break;
+        case 2: // Солод
+            headsPct = 7.0f; bodyPct = 81.0f; tailsPct = 12.0f;
+            break;
+        case 3: // Фрукты
+            headsPct = 5.0f; bodyPct = 75.0f; tailsPct = 20.0f;
+            break;
+        case 4: // Меласса
+            headsPct = 8.0f; bodyPct = 74.0f; tailsPct = 18.0f;
+            break;
+        case 5: // Виноград/вино
+            headsPct = 6.0f; bodyPct = 78.0f; tailsPct = 16.0f;
+            break;
+        case 6: // Мед
+            headsPct = 7.0f; bodyPct = 79.0f; tailsPct = 14.0f;
+            break;
+        default:
+            headsPct = RECT_HEADS_PERCENT_DEFAULT;
+            bodyPct = RECT_BODY_PERCENT_DEFAULT;
+            tailsPct = RECT_TAILS_PERCENT_DEFAULT;
+            break;
+    }
+}
+
+static void normalizeRectFractions() {
+    g_settings.rectParams.headsPercent = clampUiFloat(g_settings.rectParams.headsPercent, 0.0f, 40.0f);
+    g_settings.rectParams.bodyPercent = clampUiFloat(g_settings.rectParams.bodyPercent, 0.0f, 100.0f);
+    g_settings.rectParams.tailsPercent = clampUiFloat(g_settings.rectParams.tailsPercent, 0.0f, 100.0f);
+
+    float sum = g_settings.rectParams.headsPercent +
+                g_settings.rectParams.bodyPercent +
+                g_settings.rectParams.tailsPercent;
+    if (sum > 100.0f) {
+        float excess = sum - 100.0f;
+        if (g_settings.rectParams.tailsPercent >= excess) {
+            g_settings.rectParams.tailsPercent -= excess;
+            excess = 0.0f;
+        } else {
+            excess -= g_settings.rectParams.tailsPercent;
+            g_settings.rectParams.tailsPercent = 0.0f;
+        }
+        if (excess > 0.0f) {
+            g_settings.rectParams.bodyPercent -= excess;
+            if (g_settings.rectParams.bodyPercent < 0.0f) {
+                g_settings.rectParams.bodyPercent = 0.0f;
+            }
+        }
+    }
+}
+
+static void applyRectFeedstockDefaultsAndSave(uint8_t feedstock) {
+    g_settings.rectParams.feedstock = feedstock;
+    float heads = 0.0f;
+    float body = 0.0f;
+    float tails = 0.0f;
+    rectFeedstockDefaults(feedstock, heads, body, tails);
+    g_settings.rectParams.headsPercent = heads;
+    g_settings.rectParams.bodyPercent = body;
+    g_settings.rectParams.tailsPercent = tails;
+    normalizeRectFractions();
+    NVSManager::saveSettings(g_settings);
+}
 
 static MashProfile mashProfileDefault;
 static TempStep holdStepsDefault[3];
@@ -546,7 +636,17 @@ static void saveColumnHeight(float val) { g_settings.equipment.columnHeightMm = 
 static void saveCubeVolume(float val) { g_settings.equipment.cubeVolumeL = val; NVSManager::saveSettings(g_settings); }
 static void savePackingCoeff(float val) { g_settings.equipment.packingCoeff = val; NVSManager::saveSettings(g_settings); }
 
-static void saveHeadsPercent(float val) { g_settings.rectParams.headsPercent = val; NVSManager::saveSettings(g_settings); }
+static void saveHeadsPercent(float val) { g_settings.rectParams.headsPercent = val; normalizeRectFractions(); NVSManager::saveSettings(g_settings); }
+static void saveBodyPercent(float val) { g_settings.rectParams.bodyPercent = val; normalizeRectFractions(); NVSManager::saveSettings(g_settings); }
+static void saveTailsPercent(float val) { g_settings.rectParams.tailsPercent = val; normalizeRectFractions(); NVSManager::saveSettings(g_settings); }
+static void saveFeedVolume(float val) {
+    g_settings.rectParams.feedVolumeL = clampUiFloat(val, 1.0f, 250.0f);
+    NVSManager::saveSettings(g_settings);
+}
+static void saveFeedAbv(float val) {
+    g_settings.rectParams.feedAbvPercent = clampUiFloat(val, 1.0f, 96.0f);
+    NVSManager::saveSettings(g_settings);
+}
 static void saveHeadsSpeed(float val) { g_settings.rectParams.headsSpeedMlHKw = val; NVSManager::saveSettings(g_settings); }
 static void saveBodySpeed(float val) { g_settings.rectParams.bodySpeedMlHKw = val; NVSManager::saveSettings(g_settings); }
 static void saveStabMin(float val) { g_settings.rectParams.stabilizationMin = (uint16_t)val; NVSManager::saveSettings(g_settings); }
@@ -973,22 +1073,69 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState& state) {
             break;
             
         case UI_RECT_PARAMS:
-            if (ty >= 65 && ty < 265) {
-                if (ty >= 65 && ty < 105) {
-                    openValueEdit(msg(Msg::HEADS_PERCENT), g_settings.rectParams.headsPercent, 0, 20, 0.5, 2, saveHeadsPercent, "%", 1);
-                    return true;
-                } else if (ty >= 105 && ty < 145) {
-                    openValueEdit(msg(Msg::HEADS_SPEED), g_settings.rectParams.headsSpeedMlHKw, 10, 1000, 10, 100, saveHeadsSpeed, "ml/h/k", 0);
-                    return true;
-                } else if (ty >= 145 && ty < 185) {
-                    openValueEdit(msg(Msg::BODY_SPEED), g_settings.rectParams.bodySpeedMlHKw, 50, 3000, 50, 200, saveBodySpeed, "ml/h/k", 0);
-                    return true;
-                } else if (ty >= 185 && ty < 225) {
-                    openValueEdit(msg(Msg::STABILIZATION), g_settings.rectParams.stabilizationMin, 1, 120, 1, 10, saveStabMin, "min", 0);
-                    return true;
-                } else if (ty >= 225 && ty < 265) {
-                    openValueEdit(msg(Msg::PURGE_TIME), g_settings.rectParams.purgeMin, 1, 60, 1, 5, savePurgeMin, "min", 0);
-                    return true;
+            if (hit(tx, ty, 330, 44, 140, 22)) {
+                rectParamsPage = (rectParamsPage == 0) ? 1 : 0;
+                return true;
+            }
+
+            if (ty >= 68 && ty < 250) {
+                const int16_t rowStep = 31;
+                const int16_t row = (ty - 68) / rowStep;
+                const bool ru = (g_settings.language == 0);
+
+                if (rectParamsPage == 0) {
+                    switch (row) {
+                        case 0:
+                            applyRectFeedstockDefaultsAndSave((g_settings.rectParams.feedstock + 1) % 8);
+                            return true;
+                        case 1:
+                            openValueEdit(ru ? "Объем СС" : "Feed volume",
+                                          g_settings.rectParams.feedVolumeL, 1.0f, 250.0f, 0.5f, 5.0f,
+                                          saveFeedVolume, "L", 1);
+                            return true;
+                        case 2:
+                            openValueEdit(ru ? "Крепость СС" : "Feed ABV",
+                                          g_settings.rectParams.feedAbvPercent, 1.0f, 96.0f, 0.5f, 2.0f,
+                                          saveFeedAbv, "%", 1);
+                            return true;
+                        case 3:
+                            openValueEdit(msg(Msg::HEADS_PERCENT), g_settings.rectParams.headsPercent, 0, 25, 0.5f, 2.0f,
+                                          saveHeadsPercent, "%", 1);
+                            return true;
+                        case 4:
+                            openValueEdit(ru ? "Тело %" : "Body %",
+                                          g_settings.rectParams.bodyPercent, 40, 98, 0.5f, 2.0f,
+                                          saveBodyPercent, "%", 1);
+                            return true;
+                        case 5:
+                            openValueEdit(ru ? "Хвосты %" : "Tails %",
+                                          g_settings.rectParams.tailsPercent, 0, 40, 0.5f, 2.0f,
+                                          saveTailsPercent, "%", 1);
+                            return true;
+                        default:
+                            break;
+                    }
+                } else {
+                    switch (row) {
+                        case 0:
+                            openValueEdit(msg(Msg::HEADS_SPEED), g_settings.rectParams.headsSpeedMlHKw, 10, 1000, 10, 100,
+                                          saveHeadsSpeed, "ml/h/k", 0);
+                            return true;
+                        case 1:
+                            openValueEdit(msg(Msg::BODY_SPEED), g_settings.rectParams.bodySpeedMlHKw, 50, 3000, 50, 200,
+                                          saveBodySpeed, "ml/h/k", 0);
+                            return true;
+                        case 2:
+                            openValueEdit(msg(Msg::STABILIZATION), g_settings.rectParams.stabilizationMin, 1, 120, 1, 10,
+                                          saveStabMin, "min", 0);
+                            return true;
+                        case 3:
+                            openValueEdit(msg(Msg::PURGE_TIME), g_settings.rectParams.purgeMin, 1, 60, 1, 5,
+                                          savePurgeMin, "min", 0);
+                            return true;
+                        default:
+                            break;
+                    }
                 }
             }
             break;
@@ -2335,24 +2482,83 @@ static void renderRectParams() {
     drawHeader(msg(Msg::RECT_PARAMS), true);
     drawTabs(UI_SETTINGS);
 
-    int16_t y = 65;
-    int16_t step = 40;
+    const bool ru = (g_settings.language == 0);
+    int16_t y = 68;
+    const int16_t step = 31;
     char buf[32];
 
-    snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.headsPercent);
-    drawValueRow(y, msg(Msg::HEADS_PERCENT), buf); y += step;
-    
+    tft.fillRoundRect(330, 44, 140, 22, 8, COLOR_INFO);
+    tft.drawRoundRect(330, 44, 140, 22, 8, TFT_WHITE);
+    tft.setTextColor(TFT_WHITE);
+    tft.setTextSize(1);
+    tft.setTextDatum(middle_center);
+    tft.drawString(rectParamsPage == 0 ? (ru ? "ТЕХ ПАРАМЕТРЫ" : "TECH PARAMS")
+                                       : (ru ? "ПРОФИЛЬ СС" : "FEED PROFILE"),
+                   400, 55);
+    tft.setTextDatum(top_left);
+
+    if (rectParamsPage == 0) {
+        snprintf(buf, sizeof(buf), "%s", rectFeedstockName(g_settings.rectParams.feedstock, ru));
+        drawValueRow(y, ru ? "Сырье СС" : "Feedstock", buf); y += step;
+
+        snprintf(buf, sizeof(buf), "%.1f %s", g_settings.rectParams.feedVolumeL, msg(Msg::UNIT_L));
+        drawValueRow(y, ru ? "Объем СС" : "Feed volume", buf); y += step;
+
+        snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.feedAbvPercent);
+        drawValueRow(y, ru ? "Крепость СС" : "Feed ABV", buf); y += step;
+
+        snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.headsPercent);
+        drawValueRow(y, msg(Msg::HEADS_PERCENT), buf); y += step;
+
+        snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.bodyPercent);
+        drawValueRow(y, ru ? "Тело %" : "Body %", buf); y += step;
+
+        snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.tailsPercent);
+        drawValueRow(y, ru ? "Хвосты %" : "Tails %", buf);
+
+        tft.setTextColor(tft.color565(120, 120, 120));
+        tft.setTextSize(1);
+        tft.setTextDatum(bottom_center);
+        tft.drawString(ru ? "Тап по 'Сырье СС' применяет дефолты фракций"
+                          : "Tap feedstock row to apply default fractions",
+                       TFT_WIDTH / 2, TFT_HEIGHT - UI_FOOTER_H - 6);
+        tft.setTextDatum(top_left);
+        return;
+    }
+
     snprintf(buf, sizeof(buf), "%.0f %s", g_settings.rectParams.headsSpeedMlHKw, msg(Msg::UNIT_ML_H_K));
     drawValueRow(y, msg(Msg::HEADS_SPEED), buf); y += step;
-    
+
     snprintf(buf, sizeof(buf), "%.0f %s", g_settings.rectParams.bodySpeedMlHKw, msg(Msg::UNIT_ML_H_K));
     drawValueRow(y, msg(Msg::BODY_SPEED), buf); y += step;
-    
+
     snprintf(buf, sizeof(buf), "%u %s", g_settings.rectParams.stabilizationMin, msg(Msg::UNIT_MIN));
     drawValueRow(y, msg(Msg::STABILIZATION), buf); y += step;
-    
+
     snprintf(buf, sizeof(buf), "%u %s", g_settings.rectParams.purgeMin, msg(Msg::UNIT_MIN));
-    drawValueRow(y, msg(Msg::PURGE_TIME), buf);
+    drawValueRow(y, msg(Msg::PURGE_TIME), buf); y += step;
+
+    const float atmHpa =
+        (g_state.pressure.ok && g_state.pressure.atmosphere > 850.0f && g_state.pressure.atmosphere < 1100.0f)
+            ? g_state.pressure.atmosphere
+            : RECT_PRESSURE_STD_HPA;
+    const float bodyToTailsT = RECT_CUBE_BODY_TO_TAILS_BASE_C +
+                               (atmHpa - RECT_PRESSURE_STD_HPA) * RECT_TEMP_COMP_C_PER_HPA;
+    const float finishT = RECT_CUBE_FINISH_BASE_C +
+                          (atmHpa - RECT_PRESSURE_STD_HPA) * RECT_TEMP_COMP_C_PER_HPA;
+
+    snprintf(buf, sizeof(buf), "%.1f C", bodyToTailsT);
+    drawValueRow(y, ru ? "Куб: тело→хвосты*" : "Cube: body->tails*", buf, false); y += step;
+
+    snprintf(buf, sizeof(buf), "%.1f C", finishT);
+    drawValueRow(y, ru ? "Куб: финиш хвостов*" : "Cube: tails finish*", buf, false);
+
+    tft.setTextColor(tft.color565(120, 120, 120));
+    tft.setTextSize(1);
+    tft.setTextDatum(bottom_center);
+    snprintf(buf, sizeof(buf), "P=%.0f hPa  *%s", atmHpa, ru ? "с поправкой на давление" : "pressure compensated");
+    tft.drawString(buf, TFT_WIDTH / 2, TFT_HEIGHT - UI_FOOTER_H - 6);
+    tft.setTextDatum(top_left);
 }
 
 static void renderDistParams() {

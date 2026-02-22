@@ -47,7 +47,12 @@ bool loadSettings(Settings& settings) {
     settings.pumpCal.mlPerRevolution = prefs.getFloat(NVS_KEY_PUMP_ML_REV, DEFAULT_PUMP_ML_PER_REV);
 
     // Ректификация
+    settings.rectParams.feedstock = prefs.getUChar(NVS_KEY_RECT_FEEDSTOCK, 0);
+    settings.rectParams.feedVolumeL = prefs.getFloat(NVS_KEY_RECT_FEED_VOL, DEFAULT_CUBE_VOLUME_L);
+    settings.rectParams.feedAbvPercent = prefs.getFloat(NVS_KEY_RECT_FEED_ABV, RECT_FEED_ABV_DEFAULT);
     settings.rectParams.headsPercent = prefs.getFloat(NVS_KEY_RECT_HEADS_PCT, RECT_HEADS_PERCENT_DEFAULT);
+    settings.rectParams.bodyPercent = prefs.getFloat(NVS_KEY_RECT_BODY_PCT, RECT_BODY_PERCENT_DEFAULT);
+    settings.rectParams.tailsPercent = prefs.getFloat(NVS_KEY_RECT_TAILS_PCT, RECT_TAILS_PERCENT_DEFAULT);
     settings.rectParams.headsSpeedMlHKw = prefs.getFloat(NVS_KEY_RECT_HEADS_SPEED, RECT_HEADS_SPEED_ML_H_KW);
     settings.rectParams.bodySpeedMlHKw = prefs.getFloat(NVS_KEY_RECT_BODY_SPEED, RECT_HEADS_SPEED_ML_H_KW * 2);
     settings.rectParams.stabilizationMin = prefs.getUShort(NVS_KEY_RECT_STAB_MIN, RECT_STABILIZATION_TIME_MIN);
@@ -108,7 +113,12 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_PUMP_ML_REV, settings.pumpCal.mlPerRevolution);
 
     // Ректификация
+    prefs.putUChar(NVS_KEY_RECT_FEEDSTOCK, settings.rectParams.feedstock);
+    prefs.putFloat(NVS_KEY_RECT_FEED_VOL, settings.rectParams.feedVolumeL);
+    prefs.putFloat(NVS_KEY_RECT_FEED_ABV, settings.rectParams.feedAbvPercent);
     prefs.putFloat(NVS_KEY_RECT_HEADS_PCT, settings.rectParams.headsPercent);
+    prefs.putFloat(NVS_KEY_RECT_BODY_PCT, settings.rectParams.bodyPercent);
+    prefs.putFloat(NVS_KEY_RECT_TAILS_PCT, settings.rectParams.tailsPercent);
     prefs.putFloat(NVS_KEY_RECT_HEADS_SPEED, settings.rectParams.headsSpeedMlHKw);
     prefs.putFloat(NVS_KEY_RECT_BODY_SPEED, settings.rectParams.bodySpeedMlHKw);
     prefs.putUShort(NVS_KEY_RECT_STAB_MIN, settings.rectParams.stabilizationMin);
