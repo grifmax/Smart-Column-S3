@@ -196,6 +196,7 @@ enum UiScreen : uint8_t {
     UI_CONTROL,
     UI_SETTINGS,
     UI_SERVICE,
+    UI_MODE_MONITOR,
     UI_EQUIPMENT,
     UI_RECT_PARAMS,
     UI_DIST_PARAMS,
@@ -464,6 +465,10 @@ static bool isModeRunning(const SystemState& state) {
     return state.mode != Mode::IDLE;
 }
 
+static bool isMonitorRootScreen(UiScreen screen) {
+    return (screen == UI_DASHBOARD || screen == UI_MODE_MONITOR);
+}
+
 static uint16_t dimmedButtonColor() {
     return tft.color565(140, 140, 140);
 }
@@ -536,13 +541,13 @@ static void savePumpCal(float val) { g_settings.pumpCal.mlPerRevolution = val; N
 static void saveManualHeater(float val) { Heater::setPower((uint8_t)val); }
 static void saveManualPump(float val) { if (val <= 0) Pump::stop(); else Pump::start(val); }
 
-static bool handleNavigationTap(int16_t tx, int16_t ty) {
+static bool handleNavigationTap(int16_t tx, int16_t ty, const SystemState& state) {
     if (ui.modeSwitchConfirm) {
         return false;
     }
 
     // РљРЅРѕРїРєР° РќРђР—РђР” (С‚РµРїРµСЂСЊ РІ РІРµСЂС…РЅРµРј РїСЂР°РІРѕРј СѓРіР»Сѓ РЅР° РїРѕРґ-СЌРєСЂР°РЅР°С…)
-    bool isRoot = (ui.currentScreen == UI_DASHBOARD || ui.currentScreen == UI_CONTROL || 
+    bool isRoot = (isMonitorRootScreen(ui.currentScreen) || ui.currentScreen == UI_CONTROL ||
                    ui.currentScreen == UI_SETTINGS || ui.currentScreen == UI_SERVICE);
     
     if (!isRoot && hit(tx, ty, TFT_WIDTH - 110, 0, 110, 50)) {
@@ -554,7 +559,15 @@ static bool handleNavigationTap(int16_t tx, int16_t ty) {
     if (ty >= (TFT_HEIGHT - UI_FOOTER_H)) {
         int tab = tx / (TFT_WIDTH / 4);
         if (tab >= 0 && tab < 4) {
-            switchRoot(static_cast<UiScreen>(tab));
+            if (tab == 0) {
+                switchRoot(isModeRunning(state) ? UI_MODE_MONITOR : UI_DASHBOARD);
+            } else if (tab == 1) {
+                switchRoot(UI_CONTROL);
+            } else if (tab == 2) {
+                switchRoot(UI_SETTINGS);
+            } else {
+                switchRoot(UI_SERVICE);
+            }
         }
         return true;
     }
@@ -566,6 +579,13 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState& state) {
     switch (ui.currentScreen) {
         case UI_DASHBOARD:
             // Tap on dashboard goes to Control
+            if (ty > UI_HEADER_H && ty < (TFT_HEIGHT - UI_FOOTER_H)) {
+                switchRoot(UI_CONTROL);
+                return true;
+            }
+            break;
+        case UI_MODE_MONITOR:
+            // Tap on active mode monitor also opens Control for quick actions.
             if (ty > UI_HEADER_H && ty < (TFT_HEIGHT - UI_FOOTER_H)) {
                 switchRoot(UI_CONTROL);
                 return true;
@@ -838,7 +858,11 @@ static void drawTabs(UiScreen current) {
     for (int i = 0; i < 4; i++) {
         const int16_t x = gap + i * (bw + gap);
         const int16_t y = navY + 7;
-        const bool active = (current == static_cast<UiScreen>(i));
+        bool active = false;
+        if (i == 0) active = isMonitorRootScreen(current);
+        else if (i == 1) active = (current == UI_CONTROL);
+        else if (i == 2) active = (current == UI_SETTINGS);
+        else active = (current == UI_SERVICE);
         const uint16_t bg = active ? COLOR_PRIMARY : navInactive;
         const uint16_t border = active ? tft.color565(240, 245, 250) : tft.color565(145, 155, 165);
         const uint16_t fg = active ? TFT_WHITE : colorFg();
@@ -1278,6 +1302,243 @@ static void renderDashboard(const SystemState& state, bool full) {
         g_dashboardCache.infoLine[sizeof(g_dashboardCache.infoLine) - 1] = '\0';
         strncpy(g_dashboardCache.ioLine, ioBuf, sizeof(g_dashboardCache.ioLine));
         g_dashboardCache.ioLine[sizeof(g_dashboardCache.ioLine) - 1] = '\0';
+        strncpy(g_dashboardCache.uptime, upBuf, sizeof(g_dashboardCache.uptime));
+        g_dashboardCache.uptime[sizeof(g_dashboardCache.uptime) - 1] = '\0';
+    }
+
+    tft.setFont(&fonts::efontJA_16);
+    tft.setTextDatum(top_left);
+}
+
+static void renderModeMonitor(const SystemState& state, bool full) {
+    const bool ru = (g_settings.language == 0);
+    const int16_t barY = 8;
+    const int16_t statusX = 20;
+    const int16_t statusY = barY + 5;
+    const int16_t statusW = 300;
+    const int16_t statusH = 34;
+    const int16_t badgeX = 332;
+    const int16_t badgeW = 128;
+    const int16_t badgeH = 14;
+
+    const int16_t panelY = 56;
+    const int16_t panelH = 156;
+    const int16_t leftX = 10;
+    const int16_t leftW = 218;
+    const int16_t rightX = 236;
+    const int16_t rightW = TFT_WIDTH - rightX - 10;
+    const int16_t colGap = 6;
+    const int16_t rowGap = 6;
+    const int16_t tileW = (rightW - colGap) / 2;
+    const int16_t tileH = (panelH - rowGap * 2) / 3;
+    const int16_t infoY = panelY + panelH + 8;
+
+    if (full) {
+        tft.fillScreen(colorBg());
+        drawHeader(msg(Msg::MONITOR), false);
+        drawTabs(UI_MODE_MONITOR);
+        drawCard(10, barY, TFT_WIDTH - 20, 44, colorCard());
+        drawCard(leftX, panelY, leftW, panelH, colorCard());
+
+        drawValueTileShell(rightX, panelY, tileW, tileH, msg(Msg::CUBE_TEMP));
+        drawValueTileShell(rightX + tileW + colGap, panelY, tileW, tileH, msg(Msg::TOP_T));
+        drawValueTileShell(rightX, panelY + tileH + rowGap, tileW, tileH, msg(Msg::REFLUX_T));
+        drawValueTileShell(rightX + tileW + colGap, panelY + tileH + rowGap, tileW, tileH, msg(Msg::TSA_T));
+        drawValueTileShell(rightX, panelY + (tileH + rowGap) * 2, tileW, tileH, msg(Msg::HEATER_POWER));
+        drawValueTileShell(rightX + tileW + colGap, panelY + (tileH + rowGap) * 2, tileW, tileH,
+                           state.temps.valid[TEMP_WATER_OUT] ? (ru ? "ОХЛ ВЫХ" : "WATER OUT") : msg(Msg::PUMP));
+
+        drawCard(10, infoY, TFT_WIDTH - 20, 40, colorCard());
+        memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
+        g_dashboardCache.layoutKey = 0xEE;
+    }
+
+    char statusBuf[64];
+    snprintf(statusBuf, sizeof(statusBuf), "%s / %s",
+             FSM::getModeName(state.mode),
+             FSM::getPhaseName(state.rectPhase));
+
+    const char* procState = state.paused ? (ru ? "ПАУЗА" : "PAUSE") : (ru ? "РАБОТА" : "RUN");
+    const uint16_t procColor = state.paused ? COLOR_WARNING : COLOR_SUCCESS;
+    const char* safetyState = state.safetyOk ? (ru ? "БЕЗОП." : "SAFE") : (ru ? "ТРЕВОГА" : "ALARM");
+    const uint16_t safetyColor = state.safetyOk ? COLOR_SUCCESS : COLOR_DANGER;
+
+    const uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
+    const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(state, g_settings);
+    const uint8_t phaseProgress = FSM::getPhaseProgressPercent(state, g_settings);
+    char elapsedBuf[16];
+    char targetBuf[16];
+    char timerBuf[32];
+    formatDurationCompact(phaseElapsedSec, elapsedBuf, sizeof(elapsedBuf));
+    if (phaseTargetSec > 0) {
+        formatDurationCompact(phaseTargetSec, targetBuf, sizeof(targetBuf));
+        snprintf(timerBuf, sizeof(timerBuf), "%s %s/%s", ru ? "Фаза" : "Phase", elapsedBuf, targetBuf);
+    } else {
+        snprintf(timerBuf, sizeof(timerBuf), "%s %s", ru ? "Фаза" : "Phase", elapsedBuf);
+    }
+
+    if (full || strcmp(g_dashboardCache.status, statusBuf) != 0 ||
+        strcmp(g_dashboardCache.phaseTimer, timerBuf) != 0 ||
+        g_dashboardCache.phaseProgress != phaseProgress) {
+        if (!full) {
+            tft.fillRect(statusX, statusY, statusW, statusH, colorCard());
+        }
+        tft.setTextColor(colorAccent());
+        tft.setTextSize(1);
+        tft.setFont(&fonts::efontJA_16);
+        tft.setTextDatum(top_left);
+        tft.drawString(statusBuf, statusX + 2, statusY + 1);
+        tft.setTextColor(tft.color565(120, 130, 140));
+        tft.drawString(timerBuf, statusX + 2, statusY + 14);
+
+        const int16_t pbX = statusX + 2;
+        const int16_t pbY = statusY + 27;
+        const int16_t pbW = statusW - 6;
+        const int16_t pbH = 6;
+        tft.fillRoundRect(pbX, pbY, pbW, pbH, 3, tft.color565(210, 216, 224));
+        if (phaseProgress > 0) {
+            const int16_t fillW = (pbW * phaseProgress) / 100;
+            tft.fillRoundRect(pbX, pbY, fillW, pbH, 3, COLOR_PRIMARY);
+        }
+
+        strncpy(g_dashboardCache.status, statusBuf, sizeof(g_dashboardCache.status));
+        g_dashboardCache.status[sizeof(g_dashboardCache.status) - 1] = '\0';
+        strncpy(g_dashboardCache.phaseTimer, timerBuf, sizeof(g_dashboardCache.phaseTimer));
+        g_dashboardCache.phaseTimer[sizeof(g_dashboardCache.phaseTimer) - 1] = '\0';
+        g_dashboardCache.phaseProgress = phaseProgress;
+    }
+
+    if (full || strcmp(g_dashboardCache.processState, procState) != 0 ||
+        strcmp(g_dashboardCache.safetyState, safetyState) != 0) {
+        if (!full) {
+            tft.fillRect(badgeX - 4, barY + 4, badgeW + 8, 34, colorCard());
+        }
+        tft.fillRoundRect(badgeX, barY + 6, badgeW, badgeH, 7, procColor);
+        tft.drawRoundRect(badgeX, barY + 6, badgeW, badgeH, 7, tft.color565(220, 230, 240));
+        tft.setTextColor(TFT_WHITE);
+        tft.setTextSize(1);
+        tft.setTextDatum(middle_center);
+        tft.drawString(procState, badgeX + badgeW / 2, barY + 6 + badgeH / 2);
+
+        tft.fillRoundRect(badgeX, barY + 24, badgeW, badgeH, 7, safetyColor);
+        tft.drawRoundRect(badgeX, barY + 24, badgeW, badgeH, 7, tft.color565(220, 230, 240));
+        tft.drawString(safetyState, badgeX + badgeW / 2, barY + 24 + badgeH / 2);
+
+        strncpy(g_dashboardCache.processState, procState, sizeof(g_dashboardCache.processState));
+        g_dashboardCache.processState[sizeof(g_dashboardCache.processState) - 1] = '\0';
+        strncpy(g_dashboardCache.safetyState, safetyState, sizeof(g_dashboardCache.safetyState));
+        g_dashboardCache.safetyState[sizeof(g_dashboardCache.safetyState) - 1] = '\0';
+    }
+
+    char summaryBuf[96];
+    if (ru) {
+        snprintf(summaryBuf, sizeof(summaryBuf), "ОКНО РЕЖИМА\nГол %.0f  Тело %.0f  Хв %.0f",
+                 state.stats.headsVolume, state.stats.bodyVolume, state.stats.tailsVolume);
+    } else {
+        snprintf(summaryBuf, sizeof(summaryBuf), "MODE WINDOW\nH %.0f  B %.0f  T %.0f",
+                 state.stats.headsVolume, state.stats.bodyVolume, state.stats.tailsVolume);
+    }
+
+    char val[16];
+    char topLine[32];
+    snprintf(topLine, sizeof(topLine), "V %.0f  P %.0f", state.power.voltage, state.pressure.cube);
+    if (full || strcmp(g_dashboardCache.infoLine, summaryBuf) != 0 || strcmp(g_dashboardCache.ioLine, topLine) != 0) {
+        if (!full) {
+            tft.fillRect(leftX + 6, panelY + 8, leftW - 12, panelH - 16, colorCard());
+        }
+        tft.setTextColor(colorFg());
+        tft.setTextSize(1);
+        tft.setTextDatum(top_left);
+        tft.drawString(ru ? "РЕЖИМНОЕ ОКНО" : "MODE WINDOW", leftX + 10, panelY + 10);
+        tft.setTextColor(tft.color565(120, 130, 140));
+        tft.drawString(topLine, leftX + 10, panelY + 28);
+        tft.setTextColor(colorFg());
+        if (ru) {
+            snprintf(val, sizeof(val), "Гол %.0f мл", state.stats.headsVolume);
+            tft.drawString(val, leftX + 10, panelY + 52);
+            snprintf(val, sizeof(val), "Тело %.0f мл", state.stats.bodyVolume);
+            tft.drawString(val, leftX + 10, panelY + 72);
+            snprintf(val, sizeof(val), "Хв %.0f мл", state.stats.tailsVolume);
+            tft.drawString(val, leftX + 10, panelY + 92);
+        } else {
+            snprintf(val, sizeof(val), "Heads %.0f ml", state.stats.headsVolume);
+            tft.drawString(val, leftX + 10, panelY + 52);
+            snprintf(val, sizeof(val), "Body %.0f ml", state.stats.bodyVolume);
+            tft.drawString(val, leftX + 10, panelY + 72);
+            snprintf(val, sizeof(val), "Tails %.0f ml", state.stats.tailsVolume);
+            tft.drawString(val, leftX + 10, panelY + 92);
+        }
+
+        const char* k1 = Valves::getWater() ? "ON" : "--";
+        const char* k2 = Valves::getHeads() ? "ON" : "--";
+        const char* k3 = (Heater::getPower() > 0) ? "ON" : "--";
+        snprintf(val, sizeof(val), "K1%s K2%s K3%s", k1, k2, k3);
+        tft.setTextColor(tft.color565(120, 130, 140));
+        tft.drawString(val, leftX + 10, panelY + 120);
+
+        strncpy(g_dashboardCache.infoLine, summaryBuf, sizeof(g_dashboardCache.infoLine));
+        g_dashboardCache.infoLine[sizeof(g_dashboardCache.infoLine) - 1] = '\0';
+        strncpy(g_dashboardCache.ioLine, topLine, sizeof(g_dashboardCache.ioLine));
+        g_dashboardCache.ioLine[sizeof(g_dashboardCache.ioLine) - 1] = '\0';
+    }
+
+    snprintf(val, sizeof(val), "%.1f", state.temps.cube);
+    if (full || strcmp(g_dashboardCache.cube, val) != 0) {
+        drawValueTileValue(rightX, panelY, tileW, tileH, val, "В°C", COLOR_DANGER);
+        strncpy(g_dashboardCache.cube, val, sizeof(g_dashboardCache.cube));
+        g_dashboardCache.cube[sizeof(g_dashboardCache.cube) - 1] = '\0';
+    }
+    snprintf(val, sizeof(val), "%.1f", state.temps.columnTop);
+    if (full || strcmp(g_dashboardCache.top, val) != 0) {
+        drawValueTileValue(rightX + tileW + colGap, panelY, tileW, tileH, val, "В°C", colorAccent());
+        strncpy(g_dashboardCache.top, val, sizeof(g_dashboardCache.top));
+        g_dashboardCache.top[sizeof(g_dashboardCache.top) - 1] = '\0';
+    }
+    snprintf(val, sizeof(val), "%.1f", state.temps.reflux);
+    if (full || strcmp(g_dashboardCache.reflux, val) != 0) {
+        drawValueTileValue(rightX, panelY + tileH + rowGap, tileW, tileH, val, "В°C", COLOR_INFO);
+        strncpy(g_dashboardCache.reflux, val, sizeof(g_dashboardCache.reflux));
+        g_dashboardCache.reflux[sizeof(g_dashboardCache.reflux) - 1] = '\0';
+    }
+    snprintf(val, sizeof(val), "%.1f", state.temps.tsa);
+    if (full || strcmp(g_dashboardCache.tsa, val) != 0) {
+        drawValueTileValue(rightX + tileW + colGap, panelY + tileH + rowGap, tileW, tileH, val, "В°C", COLOR_WARNING);
+        strncpy(g_dashboardCache.tsa, val, sizeof(g_dashboardCache.tsa));
+        g_dashboardCache.tsa[sizeof(g_dashboardCache.tsa) - 1] = '\0';
+    }
+    snprintf(val, sizeof(val), "%.0f", state.power.power);
+    if (full || strcmp(g_dashboardCache.power, val) != 0) {
+        drawValueTileValue(rightX, panelY + (tileH + rowGap) * 2, tileW, tileH, val, msg(Msg::UNIT_W), COLOR_WARNING);
+        strncpy(g_dashboardCache.power, val, sizeof(g_dashboardCache.power));
+        g_dashboardCache.power[sizeof(g_dashboardCache.power) - 1] = '\0';
+    }
+    if (state.temps.valid[TEMP_WATER_OUT]) {
+        snprintf(val, sizeof(val), "%.1f", state.temps.waterOut);
+    } else {
+        snprintf(val, sizeof(val), "%.0f", state.pump.speedMlPerHour);
+    }
+    if (full || strcmp(g_dashboardCache.pump, val) != 0) {
+        drawValueTileValue(rightX + tileW + colGap, panelY + (tileH + rowGap) * 2, tileW, tileH,
+                           val,
+                           state.temps.valid[TEMP_WATER_OUT] ? "В°C" : msg(Msg::UNIT_ML_H),
+                           state.temps.valid[TEMP_WATER_OUT] ? COLOR_INFO : COLOR_SUCCESS);
+        strncpy(g_dashboardCache.pump, val, sizeof(g_dashboardCache.pump));
+        g_dashboardCache.pump[sizeof(g_dashboardCache.pump) - 1] = '\0';
+    }
+
+    char upBuf[16];
+    formatUptimeCompact(state.uptime, upBuf, sizeof(upBuf));
+    if (full || strcmp(g_dashboardCache.uptime, upBuf) != 0) {
+        if (!full) {
+            tft.fillRect(14, infoY + 3, TFT_WIDTH - 28, 34, colorCard());
+        }
+        tft.setTextColor(tft.color565(120, 130, 140));
+        tft.setTextSize(1);
+        tft.setTextDatum(middle_left);
+        tft.drawString(ru ? "Окно режима активно" : "Mode window active", 20, infoY + 20);
+        tft.setTextColor(COLOR_PRIMARY);
+        tft.setTextDatum(middle_right);
+        tft.drawString(upBuf, TFT_WIDTH - 18, infoY + 20);
         strncpy(g_dashboardCache.uptime, upBuf, sizeof(g_dashboardCache.uptime));
         g_dashboardCache.uptime[sizeof(g_dashboardCache.uptime) - 1] = '\0';
     }
@@ -1778,6 +2039,14 @@ void update(const SystemState& state) {
 
     TouchEvent ev = readTouchEvent();
 
+    // Auto-select monitor root window: idle overview vs active mode window.
+    if (ui.stackDepth == 0 && isMonitorRootScreen(ui.rootScreen)) {
+        const UiScreen desiredMonitor = isModeRunning(state) ? UI_MODE_MONITOR : UI_DASHBOARD;
+        if (ui.rootScreen != desiredMonitor || ui.currentScreen != desiredMonitor) {
+            switchRoot(desiredMonitor);
+        }
+    }
+
     if (!ui.needsRedraw && g_displayStats.lastFrameAtMs > 0 &&
         (now - g_displayStats.lastFrameAtMs) > DISPLAY_FORCE_REFRESH_MS) {
         ui.needsRedraw = true;
@@ -1786,6 +2055,7 @@ void update(const SystemState& state) {
     if (!ui.needsRedraw) {
         bool changed = false;
         if (ui.currentScreen == UI_DASHBOARD ||
+            ui.currentScreen == UI_MODE_MONITOR ||
             ui.currentScreen == UI_CONTROL ||
             ui.currentScreen == UI_SERVICE ||
             ui.currentScreen == UI_MANUAL) {
@@ -1815,7 +2085,7 @@ void update(const SystemState& state) {
                     changed = true;
                 }
             }
-            if (ui.currentScreen == UI_DASHBOARD &&
+            if ((ui.currentScreen == UI_DASHBOARD || ui.currentScreen == UI_MODE_MONITOR) &&
                 (now - uiLive.lastUpdateMs) > 1200) {
                 // Keep phase timer/progress and service values moving even when temperatures are stable.
                 changed = true;
@@ -1829,7 +2099,7 @@ void update(const SystemState& state) {
     if (ev.tapped) {
         bool handled = false;
         // РџСЂРѕР±СѓРµРј РїСЂСЏРјС‹Рµ РєРѕРѕСЂРґРёРЅР°С‚С‹
-        handled = handleNavigationTap(ev.x, ev.y);
+        handled = handleNavigationTap(ev.x, ev.y, state);
         if (!handled) {
             handled = handleScreenTap(ev.x, ev.y, state);
         }
@@ -1861,6 +2131,9 @@ void update(const SystemState& state) {
         switch (ui.currentScreen) {
             case UI_DASHBOARD:
                 renderDashboard(state, full);
+                break;
+            case UI_MODE_MONITOR:
+                renderModeMonitor(state, full);
                 break;
             case UI_CONTROL:
                 renderControl(state, full);
