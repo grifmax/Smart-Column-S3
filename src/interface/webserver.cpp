@@ -715,10 +715,16 @@ void init() {
         strlcpy(g_settings.telegram.token, token, sizeof(g_settings.telegram.token));
         strlcpy(g_settings.telegram.chatId, chatId, sizeof(g_settings.telegram.chatId));
 
-        NVSManager::saveSettings(g_settings);
-        TelegramBot::setSettings(g_settings.telegram);
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
 
         request->send(200, "application/json", "{\"success\":true}");
+
+        // Apply runtime settings after HTTP response to avoid blocking request.
+        TelegramBot::setSettings(g_settings.telegram);
       });
 
   // POST /api/settings/telegram/test - отправить тестовое сообщение
@@ -733,6 +739,12 @@ void init() {
         if (len > 0 && deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        if (WiFi.status() != WL_CONNECTED) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"error\":\"WiFi STA not connected\"}");
           return;
         }
 
