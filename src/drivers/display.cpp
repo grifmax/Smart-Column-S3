@@ -402,6 +402,7 @@ struct DashboardRenderCache {
     char ioLine[96] = {0};
     char uptime[16] = {0};
     uint8_t phaseProgress = 0;
+    bool auxIsWaterOut = false;
 };
 
 static DashboardRenderCache g_dashboardCache;
@@ -995,6 +996,8 @@ static void renderDashboard(const SystemState& state, bool full) {
     const int16_t x2 = x1 + tileW + tileGap;
     const int16_t x3 = x2 + tileW + tileGap;
     const int16_t infoY = row2Y + tileH + 8;
+    const bool showWaterOutTile = state.temps.valid[TEMP_WATER_OUT];
+    const char* auxTileLabel = showWaterOutTile ? (ru ? "ОХЛ ВЫХ" : "WATER OUT") : msg(Msg::PUMP);
 
     if (full) {
         tft.fillScreen(colorBg());
@@ -1008,10 +1011,11 @@ static void renderDashboard(const SystemState& state, bool full) {
         drawValueTileShell(x3, row1Y, tileW, tileH, msg(Msg::REFLUX_T));
         drawValueTileShell(x1, row2Y, tileW, tileH, msg(Msg::TSA_T));
         drawValueTileShell(x2, row2Y, tileW, tileH, msg(Msg::HEATER_POWER));
-        drawValueTileShell(x3, row2Y, tileW, tileH, msg(Msg::PUMP));
+        drawValueTileShell(x3, row2Y, tileW, tileH, auxTileLabel);
 
         drawCard(10, infoY, TFT_WIDTH - 20, 40, colorCard());
         memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
+        g_dashboardCache.auxIsWaterOut = showWaterOutTile;
     }
     
     char statusBuf[64];
@@ -1134,24 +1138,54 @@ static void renderDashboard(const SystemState& state, bool full) {
         g_dashboardCache.power[sizeof(g_dashboardCache.power) - 1] = '\0';
     }
 
-    snprintf(val, sizeof(val), "%.0f", state.pump.speedMlPerHour);
+    if (full || g_dashboardCache.auxIsWaterOut != showWaterOutTile) {
+        drawValueTileShell(x3, row2Y, tileW, tileH, auxTileLabel);
+        g_dashboardCache.pump[0] = '\0';
+        g_dashboardCache.auxIsWaterOut = showWaterOutTile;
+    }
+
+    if (showWaterOutTile) {
+        snprintf(val, sizeof(val), "%.1f", state.temps.waterOut);
+    } else {
+        snprintf(val, sizeof(val), "%.0f", state.pump.speedMlPerHour);
+    }
     if (full || strcmp(g_dashboardCache.pump, val) != 0) {
-        drawValueTileValue(x3, row2Y, tileW, tileH, val, msg(Msg::UNIT_ML_H), COLOR_SUCCESS);
+        drawValueTileValue(x3, row2Y, tileW, tileH, val, showWaterOutTile ? "В°C" : msg(Msg::UNIT_ML_H),
+                           showWaterOutTile ? COLOR_INFO : COLOR_SUCCESS);
         strncpy(g_dashboardCache.pump, val, sizeof(g_dashboardCache.pump));
         g_dashboardCache.pump[sizeof(g_dashboardCache.pump) - 1] = '\0';
     }
 
     char infoBuf[96];
-    snprintf(infoBuf, sizeof(infoBuf), "H %.0f | B %.0f | T %.0f",
-             state.stats.headsVolume,
-             state.stats.bodyVolume,
-             state.stats.tailsVolume);
+    if (ru) {
+        snprintf(infoBuf, sizeof(infoBuf), "Гол %.0f | Тело %.0f | Хв %.0f мл",
+                 state.stats.headsVolume,
+                 state.stats.bodyVolume,
+                 state.stats.tailsVolume);
+    } else {
+        snprintf(infoBuf, sizeof(infoBuf), "Heads %.0f | Body %.0f | Tails %.0f ml",
+                 state.stats.headsVolume,
+                 state.stats.bodyVolume,
+                 state.stats.tailsVolume);
+    }
 
     const char* k1 = Valves::getWater() ? "ON" : "--";
     const char* k2 = Valves::getHeads() ? "ON" : "--";
     const char* k3 = (Heater::getPower() > 0) ? "ON" : "--";
+    char waterBuf[24];
+    if (state.temps.valid[TEMP_WATER_IN] && state.temps.valid[TEMP_WATER_OUT]) {
+        snprintf(waterBuf, sizeof(waterBuf), "%.1f/%.1f", state.temps.waterIn, state.temps.waterOut);
+    } else if (state.temps.valid[TEMP_WATER_OUT]) {
+        snprintf(waterBuf, sizeof(waterBuf), "--/%.1f", state.temps.waterOut);
+    } else if (state.temps.valid[TEMP_WATER_IN]) {
+        snprintf(waterBuf, sizeof(waterBuf), "%.1f/--", state.temps.waterIn);
+    } else {
+        strncpy(waterBuf, "--/--", sizeof(waterBuf));
+        waterBuf[sizeof(waterBuf) - 1] = '\0';
+    }
     char ioBuf[96];
-    snprintf(ioBuf, sizeof(ioBuf), "V %.0f | P %.0f | K1 %s K2 %s K3 %s",
+    snprintf(ioBuf, sizeof(ioBuf), "W %s | V %.0f | P %.0f | K1%s K2%s K3%s",
+             waterBuf,
              state.power.voltage,
              state.pressure.cube,
              k1, k2, k3);
