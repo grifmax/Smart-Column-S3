@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.5.1"
+#define FIRMWARE_VERSION "1.5.2"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -22,7 +22,7 @@
 // Временное отключение сетевых сервисов (OTA/MQTT/Telegram/Cloud)
 #define NETWORK_SERVICES_ENABLED 0
 // Включить веб-интерфейс
-#define WEB_SERVER_ENABLED 0
+#define WEB_SERVER_ENABLED 1
 // Форсировать AP-режим для диагностики
 #define FORCE_AP_MODE 0
 // Тестовый режим насоса (отключает остальную логику)
@@ -60,12 +60,14 @@
 #define PIN_TEMP_SENSORS 4           // DS18B20 (OneWire)
 #define PIN_ONEWIRE PIN_TEMP_SENSORS // Алиас
 
-// --- PZEM-004T (аппаратный UART0) ---
-#define PZEM_RX_PIN 44          // RX (подключается к TX PZEM)
-#define PZEM_TX_PIN 43          // TX (подключается к RX PZEM)
+// --- PZEM-004T (UART1, отдельно от COM11/UART0) ---
+// GPIO19/20 используются как USB-JTAG по умолчанию на ESP32-S3.
+// В этой конфигурации они задействованы под PZEM.
+#define PZEM_RX_PIN 20          // RX (подключается к TX PZEM)
+#define PZEM_TX_PIN 19          // TX (подключается к RX PZEM)
 #define PIN_PZEM_RX PZEM_RX_PIN // Алиас для совместимости
 #define PIN_PZEM_TX PZEM_TX_PIN // Алиас для совместимости
-#define PZEM_UART_NUM 0         // UART0 для PZEM-004T
+#define PZEM_UART_NUM 1         // UART1 для PZEM-004T
 #define PZEM_BAUD_RATE 9600     // Скорость PZEM-004T
 
 // --- I2C шина (BMP280, ADS1115, OLED) ---
@@ -469,7 +471,7 @@ struct MenuItem {
 #define INTERVAL_TEMP_READ 1000     // Чтение температур
 #define INTERVAL_PRESSURE_READ 2000 // Чтение давления
 #define INTERVAL_POWER_READ 1000    // Чтение мощности
-#define INTERVAL_DISPLAY_UPDATE 500 // Обновление дисплея
+#define INTERVAL_DISPLAY_UPDATE 200 // Обновление дисплея
 #define INTERVAL_WEB_BROADCAST 2000 // Отправка данных по WebSocket
 #define INTERVAL_WEB_BROADCAST_FULL 10000 // Полный пакет данных
 #define INTERVAL_LOG_WRITE 60000    // Запись в лог (1 мин)

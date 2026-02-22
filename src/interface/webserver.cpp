@@ -26,6 +26,7 @@ typedef enum {
 #endif
 
 #include "control/fsm.h"
+#include "drivers/display.h"
 #include "drivers/heater.h"
 #include "drivers/pump.h"
 #include "drivers/valves.h"
@@ -152,7 +153,7 @@ void init() {
   // API endpoints
   // GET /api/status - полное состояние системы
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<2048> doc;
+    StaticJsonDocument<2304> doc;
 
     // Режим и состояние процесса
     doc["mode"] = static_cast<int>(g_state.mode);
@@ -213,6 +214,15 @@ void init() {
     JsonObject equipment = doc.createNestedObject("equipment");
     equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+
+    const auto displayStats = Display::getRuntimeStats();
+    JsonObject display = doc.createNestedObject("display");
+    display["frames"] = displayStats.framesRendered;
+    display["slowFrames"] = displayStats.slowFrames;
+    display["recoveries"] = displayStats.watchdogRecoveries;
+    display["lastFrameMs"] = displayStats.lastFrameMs;
+    display["maxFrameMs"] = displayStats.maxFrameMs;
+    display["lastFrameAt"] = displayStats.lastFrameAtMs;
 
     // Cloud tunnel status (локально полезно для привязки)
     JsonObject cloud = doc.createNestedObject("cloud");
@@ -1759,6 +1769,7 @@ void broadcastState(const SystemState &state) {
     return;
 
   const uint32_t now = millis();
+  const auto displayStats = Display::getRuntimeStats();
 
   // Минимальный пакет для "лайв" (часто)
   StaticJsonDocument<768> fastDoc;
@@ -1791,6 +1802,8 @@ void broadcastState(const SystemState &state) {
   fastDoc["volume"] = state.pump.totalVolumeMl;
 
   fastDoc["abv"] = state.hydrometer.abv;
+  fastDoc["display_last_ms"] = displayStats.lastFrameMs;
+  fastDoc["display_slow"] = displayStats.slowFrames;
 
   String fastJson;
   serializeJson(fastDoc, fastJson);
@@ -1833,6 +1846,14 @@ void broadcastState(const SystemState &state) {
   doc["volume"] = state.pump.totalVolumeMl;
 
   doc["abv"] = state.hydrometer.abv;
+
+  JsonObject display = doc.createNestedObject("display");
+  display["frames"] = displayStats.framesRendered;
+  display["slowFrames"] = displayStats.slowFrames;
+  display["recoveries"] = displayStats.watchdogRecoveries;
+  display["lastFrameMs"] = displayStats.lastFrameMs;
+  display["maxFrameMs"] = displayStats.maxFrameMs;
+  display["lastFrameAt"] = displayStats.lastFrameAtMs;
 
   JsonObject mashing = doc.createNestedObject("mashing");
   mashing["active"] = state.mashing.active;

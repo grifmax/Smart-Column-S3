@@ -8,13 +8,14 @@
 - [x] Disable non-active mode buttons while a process is running.
 - [x] Add confirmation dialog before switching to another mode.
 - [x] Include `paused` in WS fast/full state packets.
-- [ ] Add E2E smoke test for mode switch and button states.
+- [x] Add E2E smoke test for mode switch and button states (`tools/ui-smoke`).
 
 ## Phase 2. Display stability and observability
 - [ ] Audit display update loop frequency and contention with sensor/IO tasks.
-- [ ] Add display watchdog (re-init on bus timeout/error burst).
+- [x] Add display soft-watchdog (force full redraw after slow-frame burst).
+- [ ] Add display hard-watchdog (re-init bus/panel on persistent timeout/error burst).
 - [ ] Reduce redraw scope (partial updates, dirty regions).
-- [ ] Add frame-time metrics and dropped-frame counters to diagnostics.
+- [x] Add frame-time metrics and recovery counters to diagnostics.
 - [ ] Add configurable display refresh profile (`normal` / `safe`).
 
 ## Phase 3. Telegram channel hardening (FastBot2)
