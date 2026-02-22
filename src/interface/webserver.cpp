@@ -31,6 +31,7 @@ typedef enum {
 #include "drivers/pump.h"
 #include "drivers/valves.h"
 #include "drivers/sensors.h"
+#include "interface/telegram.h"
 #include "storage/nvs_manager.h"
 #include "cloud_tunnel.h"
 #include "../profiles.h"
@@ -658,6 +659,89 @@ void init() {
         strlcpy(g_settings.cloud.tunnelUrl, url, sizeof(g_settings.cloud.tunnelUrl));
 
         NVSManager::saveSettings(g_settings);
+
+        request->send(200, "application/json", "{\"success\":true}");
+      });
+
+  // --------------------------------------------------------------------------
+  // TELEGRAM SETTINGS API
+  // --------------------------------------------------------------------------
+
+  // GET /api/settings/telegram - получить настройки Telegram
+  server.on("/api/settings/telegram", HTTP_GET, [](AsyncWebServerRequest *request) {
+    StaticJsonDocument<384> doc;
+    doc["enabled"] = g_settings.telegram.enabled;
+    doc["token"] = g_settings.telegram.token;
+    doc["chatId"] = g_settings.telegram.chatId;
+    doc["configured"] =
+        (g_settings.telegram.token[0] != '\0' && g_settings.telegram.chatId[0] != '\0');
+    doc["active"] = TelegramBot::isEnabled();
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  // POST /api/settings/telegram - сохранить настройки Telegram
+  server.on(
+      "/api/settings/telegram", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<384> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const bool enabled = doc["enabled"] | g_settings.telegram.enabled;
+        const char* token = doc.containsKey("token")
+                                ? (doc["token"] | "")
+                                : g_settings.telegram.token;
+        const char* chatId = doc.containsKey("chatId")
+                                 ? (doc["chatId"] | "")
+                                 : g_settings.telegram.chatId;
+
+        if (enabled && (!token[0] || !chatId[0])) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Token and chatId required when enabled\"}");
+          return;
+        }
+
+        g_settings.telegram.enabled = enabled;
+        strlcpy(g_settings.telegram.token, token, sizeof(g_settings.telegram.token));
+        strlcpy(g_settings.telegram.chatId, chatId, sizeof(g_settings.telegram.chatId));
+
+        NVSManager::saveSettings(g_settings);
+        TelegramBot::setSettings(g_settings.telegram);
+
+        request->send(200, "application/json", "{\"success\":true}");
+      });
+
+  // POST /api/settings/telegram/test - отправить тестовое сообщение
+  server.on(
+      "/api/settings/telegram/test", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<256> doc;
+        if (len > 0 && deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const char* msg = doc["message"] | "Smart-Column S3: test notification";
+        if (!TelegramBot::sendMessage(msg)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Telegram not configured or send failed\"}");
+          return;
+        }
 
         request->send(200, "application/json", "{\"success\":true}");
       });
