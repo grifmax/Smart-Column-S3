@@ -456,15 +456,15 @@ header h1 {
 .operator-screen-instrument .operator-grid > .operator-card:nth-of-type(2),
 .operator-screen-instrument .operator-grid > .operator-card:nth-of-type(3),
 .operator-screen-instrument .operator-grid > .operator-card:nth-of-type(4) {
-    grid-column: span 4;
+    grid-column: 1 / -1;
 }
 
 .operator-screen-instrument .operator-card-chart {
-    grid-column: span 8;
+    grid-column: 1 / -1;
 }
 
 .operator-screen-instrument .operator-card-scheme {
-    grid-column: span 4;
+    grid-column: 1 / -1;
 }
 
 .operator-screen-instrument .operator-status-grid {
@@ -538,15 +538,15 @@ header h1 {
 .operator-screen-compact .operator-grid > .operator-card:nth-of-type(2),
 .operator-screen-compact .operator-grid > .operator-card:nth-of-type(3),
 .operator-screen-compact .operator-grid > .operator-card:nth-of-type(4) {
-    grid-column: span 2;
+    grid-column: 1 / -1;
 }
 
 .operator-screen-compact .operator-card-chart {
-    grid-column: span 3;
+    grid-column: 1 / -1;
 }
 
 .operator-screen-compact .operator-card-scheme {
-    grid-column: span 3;
+    grid-column: 1 / -1;
 }
 
 .operator-screen-compact .operator-status-grid {
@@ -1152,7 +1152,7 @@ footer {
     }
 
     .operator-screen-compact .operator-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: 1fr;
         gap: 8px;
     }
 
@@ -1165,7 +1165,7 @@ footer {
     .operator-screen-compact .operator-grid > .operator-card:nth-of-type(2),
     .operator-screen-compact .operator-grid > .operator-card:nth-of-type(3),
     .operator-screen-compact .operator-grid > .operator-card:nth-of-type(4) {
-        grid-column: span 1;
+        grid-column: 1 / -1;
     }
 
     .operator-card-status,
