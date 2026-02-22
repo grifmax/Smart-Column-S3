@@ -235,6 +235,49 @@ function initTopMenu() {
     });
 }
 
+const OPERATOR_VIEW_STORAGE_KEY = 'ui.operatorView';
+
+function setOperatorView(view) {
+    const screen = document.querySelector('#monitor .operator-screen');
+    const button = document.getElementById('operator-view-toggle');
+    if (!screen) return;
+
+    const normalizedView = view === 'compact' ? 'compact' : 'instrument';
+    const isInstrument = normalizedView === 'instrument';
+    screen.classList.toggle('operator-screen-instrument', isInstrument);
+    screen.classList.toggle('operator-screen-compact', !isInstrument);
+
+    if (button) {
+        button.textContent = `View: ${isInstrument ? 'Instrument' : 'Compact'}`;
+    }
+}
+
+function toggleOperatorView() {
+    const screen = document.querySelector('#monitor .operator-screen');
+    if (!screen) return;
+
+    const nextView = screen.classList.contains('operator-screen-instrument') ? 'compact' : 'instrument';
+    setOperatorView(nextView);
+    try {
+        localStorage.setItem(OPERATOR_VIEW_STORAGE_KEY, nextView);
+    } catch (e) {
+        console.warn('operator view save failed:', e);
+    }
+}
+
+function initOperatorViewToggle() {
+    const screen = document.querySelector('#monitor .operator-screen');
+    if (!screen) return;
+
+    let saved = 'instrument';
+    try {
+        saved = localStorage.getItem(OPERATOR_VIEW_STORAGE_KEY) || 'instrument';
+    } catch (e) {
+        console.warn('operator view load failed:', e);
+    }
+    setOperatorView(saved);
+}
+
 
 // Инициализация при загрузке страницы
 
@@ -242,6 +285,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     initTabs();
     initTopMenu();
+    initOperatorViewToggle();
 
     initMashingHoldControls();
 

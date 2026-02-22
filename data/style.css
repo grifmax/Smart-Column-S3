@@ -442,6 +442,82 @@ header h1 {
     height: auto;
 }
 
+.operator-screen-instrument .operator-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.operator-screen-instrument .operator-card-status {
+    grid-column: 1 / -1;
+}
+
+.operator-screen-instrument .operator-grid > .operator-card:nth-of-type(2),
+.operator-screen-instrument .operator-grid > .operator-card:nth-of-type(3),
+.operator-screen-instrument .operator-grid > .operator-card:nth-of-type(4) {
+    grid-column: span 4;
+}
+
+.operator-screen-instrument .operator-card-chart {
+    grid-column: span 8;
+}
+
+.operator-screen-instrument .operator-card-scheme {
+    grid-column: span 4;
+}
+
+.operator-screen-instrument .operator-status-grid {
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.operator-screen-instrument .operator-stat {
+    padding: 8px 10px;
+}
+
+.operator-screen-instrument .operator-level-grid {
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    gap: 8px;
+}
+
+.operator-screen-instrument .operator-level-item {
+    padding: 10px 11px;
+}
+
+.operator-screen-instrument .operator-level-label {
+    font-size: 0.76em;
+}
+
+.operator-screen-instrument .operator-level-value {
+    font-size: 1.24em;
+}
+
+.operator-screen-instrument .operator-level-main {
+    font-size: 2.15em;
+    line-height: 0.96;
+}
+
+.operator-screen-instrument .operator-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.operator-screen-instrument .operator-list-row {
+    padding: 8px 9px;
+}
+
+.operator-screen-instrument .operator-list-row span {
+    font-size: 0.76em;
+}
+
+.operator-screen-instrument .operator-list-row strong {
+    font-size: 1.06em;
+}
+
+.operator-screen-instrument #mini-chart {
+    height: 220px !important;
+}
+
 .operator-shadow-values {
     display: none;
 }
@@ -973,6 +1049,17 @@ footer {
         grid-template-columns: 1fr;
     }
 
+    .operator-screen-instrument .operator-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .operator-screen-instrument .operator-grid > .operator-card,
+    .operator-screen-instrument .operator-card-status,
+    .operator-screen-instrument .operator-card-chart,
+    .operator-screen-instrument .operator-card-scheme {
+        grid-column: 1;
+    }
+
     .operator-card-status,
     .operator-card-scheme {
         grid-column: 1;
@@ -983,7 +1070,16 @@ footer {
         grid-template-columns: 1fr;
     }
 
+    .operator-screen-instrument .operator-level-grid,
+    .operator-screen-instrument .operator-status-grid {
+        grid-template-columns: 1fr;
+    }
+
     .operator-list {
+        grid-template-columns: 1fr;
+    }
+
+    .operator-screen-instrument .operator-list {
         grid-template-columns: 1fr;
     }
 

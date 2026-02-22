@@ -62,7 +62,7 @@
 
         <!-- Вкладка: Мониторинг -->
         <div id="monitor" class="tab-content active">
-            <section class="operator-screen">
+            <section class="operator-screen operator-screen-instrument">
                 <div class="operator-main-menu">
                     <div>
                         <div class="operator-kicker">Main Operator Menu</div>
@@ -73,6 +73,7 @@
                         <button class="btn btn-primary" onclick="activateTabById('control')">Управление</button>
                         <button class="btn" onclick="activateTabById('settings')">Настройки</button>
                         <a href="charts.html" class="btn btn-info" style="text-decoration: none;">Графики</a>
+                        <button id="operator-view-toggle" class="btn btn-sm" type="button" onclick="toggleOperatorView()">View: Instrument</button>
                     </div>
                 </div>
 
