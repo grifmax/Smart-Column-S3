@@ -344,6 +344,18 @@ struct UiLiveCache {
 
 static UiLiveCache uiLive;
 
+struct DashboardRenderCache {
+    char status[64] = {0};
+    char cube[16] = {0};
+    char power[16] = {0};
+    char top[16] = {0};
+    char reflux[16] = {0};
+    char pump[16] = {0};
+    char tsa[16] = {0};
+};
+
+static DashboardRenderCache g_dashboardCache;
+
 struct DisplayRuntimeStatsInternal {
     uint32_t framesRendered = 0;
     uint32_t slowFrames = 0;
@@ -827,13 +839,23 @@ static void drawCard(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t bg) {
     tft.drawRoundRect(x, y, w, h, 12, tft.color565(200, 200, 200));
 }
 
-static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h, const char* label, const char* value, const char* unit, uint16_t color) {
+static void drawValueTileShell(int16_t x, int16_t y, int16_t w, int16_t h, const char* label) {
     drawCard(x, y, w, h, colorCard());
     
     tft.setTextColor(tft.color565(120, 120, 120));
     tft.setTextSize(1);
     tft.setTextDatum(top_left);
     tft.drawString(label, x + 10, y + 8);
+    tft.setTextDatum(top_left);
+}
+
+static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h, const char* value, const char* unit, uint16_t color) {
+    // Clear only value area to avoid visible full-tile flicker on periodic updates.
+    const int16_t valueAreaY = y + 22;
+    const int16_t valueAreaH = h - 24;
+    if (valueAreaH > 0) {
+        tft.fillRoundRect(x + 2, valueAreaY, w - 4, valueAreaH, 8, colorCard());
+    }
     
     tft.setTextColor(color);
     tft.setTextSize(w > 150 ? 4 : 2); // Р‘РѕР»СЊС€РёРµ Р·РЅР°С‡РµРЅРёСЏ РґР»СЏ РєСЂСѓРїРЅС‹С… РїР»РёС‚РѕРє
@@ -848,58 +870,92 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h, const char
     tft.setTextDatum(top_left);
 }
 
+static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h, const char* label, const char* value, const char* unit, uint16_t color) {
+    drawValueTileShell(x, y, w, h, label);
+    drawValueTileValue(x, y, w, h, value, unit, color);
+}
+
 static void renderDashboard(const SystemState& state, bool full) {
+    const int16_t barY = 10;
+    const int16_t statusX = 20;
+    const int16_t statusY = barY + 5;
+    const int16_t statusW = TFT_WIDTH - 40;
+    const int16_t statusH = 30;
+
     if (full) {
         tft.fillScreen(colorBg());
         drawHeader(msg(Msg::MONITOR), false);
         drawTabs(UI_DASHBOARD);
-    }
-
-    // Header bar with Mode & Phase (РїРµСЂРµРЅРµСЃ РІС‹С€Рµ, С‚Р°Рє РєР°Рє С…РµРґРµСЂР° РЅРµС‚)
-    int16_t barY = 10; 
-    if (full) {
         drawCard(10, barY, TFT_WIDTH - 20, 40, colorCard());
+        drawValueTileShell(10, barY + 50, 225, 90, msg(Msg::CUBE_TEMP));
+        drawValueTileShell(245, barY + 50, 225, 90, msg(Msg::HEATER_POWER));
+        drawValueTileShell(10, barY + 150, 107, 55, msg(Msg::TOP_T));
+        drawValueTileShell(127, barY + 150, 107, 55, msg(Msg::REFLUX_T));
+        drawValueTileShell(245, barY + 150, 107, 55, msg(Msg::PUMP));
+        drawValueTileShell(362, barY + 150, 107, 55, msg(Msg::TSA_T));
+        memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
     }
     
-    static char lastStatus[64] = "";
     char statusBuf[64];
     snprintf(statusBuf, sizeof(statusBuf), "%s : %s", 
              FSM::getModeName(state.mode), 
              FSM::getPhaseName(state.rectPhase));
     
-    if (full || strcmp(lastStatus, statusBuf) != 0) {
+    if (full || strcmp(g_dashboardCache.status, statusBuf) != 0) {
         if (!full) {
-            tft.fillRect(20, barY + 5, TFT_WIDTH - 40, 30, colorCard());
+            tft.fillRect(statusX, statusY, statusW, statusH, colorCard());
         }
         tft.setTextColor(colorAccent());
         tft.setTextSize(2);
         tft.setTextDatum(middle_center);
         tft.drawString(statusBuf, TFT_WIDTH / 2, barY + 20);
         tft.setTextSize(1);
-        strncpy(lastStatus, statusBuf, sizeof(lastStatus));
-        lastStatus[sizeof(lastStatus) - 1] = '\0';
+        strncpy(g_dashboardCache.status, statusBuf, sizeof(g_dashboardCache.status));
+        g_dashboardCache.status[sizeof(g_dashboardCache.status) - 1] = '\0';
     }
 
-    // Main Row: Cube and Power
     char val[16];
     snprintf(val, sizeof(val), "%.1f", state.temps.cube);
-    drawValueTile(10, barY + 50, 225, 90, msg(Msg::CUBE_TEMP), val, "В°C", COLOR_DANGER);
+    if (full || strcmp(g_dashboardCache.cube, val) != 0) {
+        drawValueTileValue(10, barY + 50, 225, 90, val, "В°C", COLOR_DANGER);
+        strncpy(g_dashboardCache.cube, val, sizeof(g_dashboardCache.cube));
+        g_dashboardCache.cube[sizeof(g_dashboardCache.cube) - 1] = '\0';
+    }
     
     snprintf(val, sizeof(val), "%.0f", state.power.power);
-    drawValueTile(245, barY + 50, 225, 90, msg(Msg::HEATER_POWER), val, msg(Msg::UNIT_W), COLOR_WARNING);
+    if (full || strcmp(g_dashboardCache.power, val) != 0) {
+        drawValueTileValue(245, barY + 50, 225, 90, val, msg(Msg::UNIT_W), COLOR_WARNING);
+        strncpy(g_dashboardCache.power, val, sizeof(g_dashboardCache.power));
+        g_dashboardCache.power[sizeof(g_dashboardCache.power) - 1] = '\0';
+    }
 
-    // Secondary Row: Top, Reflux, Pump, TSA
     snprintf(val, sizeof(val), "%.1f", state.temps.columnTop);
-    drawValueTile(10, barY + 150, 107, 55, msg(Msg::TOP_T), val, "В°C", colorAccent());
+    if (full || strcmp(g_dashboardCache.top, val) != 0) {
+        drawValueTileValue(10, barY + 150, 107, 55, val, "В°C", colorAccent());
+        strncpy(g_dashboardCache.top, val, sizeof(g_dashboardCache.top));
+        g_dashboardCache.top[sizeof(g_dashboardCache.top) - 1] = '\0';
+    }
     
     snprintf(val, sizeof(val), "%.1f", state.temps.reflux);
-    drawValueTile(127, barY + 150, 107, 55, msg(Msg::REFLUX_T), val, "В°C", COLOR_INFO);
+    if (full || strcmp(g_dashboardCache.reflux, val) != 0) {
+        drawValueTileValue(127, barY + 150, 107, 55, val, "В°C", COLOR_INFO);
+        strncpy(g_dashboardCache.reflux, val, sizeof(g_dashboardCache.reflux));
+        g_dashboardCache.reflux[sizeof(g_dashboardCache.reflux) - 1] = '\0';
+    }
     
     snprintf(val, sizeof(val), "%.0f", state.pump.speedMlPerHour);
-    drawValueTile(245, barY + 150, 107, 55, msg(Msg::PUMP), val, msg(Msg::UNIT_ML_H), COLOR_SUCCESS);
+    if (full || strcmp(g_dashboardCache.pump, val) != 0) {
+        drawValueTileValue(245, barY + 150, 107, 55, val, msg(Msg::UNIT_ML_H), COLOR_SUCCESS);
+        strncpy(g_dashboardCache.pump, val, sizeof(g_dashboardCache.pump));
+        g_dashboardCache.pump[sizeof(g_dashboardCache.pump) - 1] = '\0';
+    }
     
     snprintf(val, sizeof(val), "%.1f", state.temps.tsa);
-    drawValueTile(362, barY + 150, 107, 55, msg(Msg::TSA_T), val, "В°C", COLOR_DANGER);
+    if (full || strcmp(g_dashboardCache.tsa, val) != 0) {
+        drawValueTileValue(362, barY + 150, 107, 55, val, "В°C", COLOR_DANGER);
+        strncpy(g_dashboardCache.tsa, val, sizeof(g_dashboardCache.tsa));
+        g_dashboardCache.tsa[sizeof(g_dashboardCache.tsa) - 1] = '\0';
+    }
     
     tft.setTextDatum(top_left);
 }
@@ -1421,7 +1477,9 @@ void update(const SystemState& state) {
                     fabsf(uiLive.pumpSpeed - state.pump.speedMlPerHour) > 1.0f) {
                     changed = true;
                 }
-                if (state.uptime != uiLive.uptime && (now - uiLive.lastUpdateMs) > 1000) {
+                if (ui.currentScreen == UI_SERVICE &&
+                    state.uptime != uiLive.uptime &&
+                    (now - uiLive.lastUpdateMs) > 1000) {
                     changed = true;
                 }
             }
