@@ -912,10 +912,10 @@ static void drawCard(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t bg) {
 static void drawValueTileShell(int16_t x, int16_t y, int16_t w, int16_t h, const char* label) {
     drawCard(x, y, w, h, colorCard());
     
-    tft.setTextColor(tft.color565(120, 120, 120));
+    tft.setTextColor(tft.color565(96, 104, 116));
     tft.setTextSize(1);
     tft.setTextDatum(top_left);
-    tft.drawString(label, x + 10, y + 8);
+    tft.drawString(label, x + 10, y + 6);
     tft.setTextDatum(top_left);
 }
 
@@ -923,19 +923,19 @@ static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h, const
     // Clear only value area to avoid visible full-tile flicker on periodic updates.
     const int16_t valueAreaY = y + 22;
     const int16_t valueAreaH = h - 24;
-    const bool largeValue = (w > 150);
+    const bool primaryTile = (h >= 80);
     if (valueAreaH > 0) {
         tft.fillRoundRect(x + 2, valueAreaY, w - 4, valueAreaH, 8, colorCard());
     }
     
     tft.setTextColor(color);
-    tft.setTextSize(largeValue ? 4 : 2); // Р‘РѕР»СЊС€РёРµ Р·РЅР°С‡РµРЅРёСЏ РґР»СЏ РєСЂСѓРїРЅС‹С… РїР»РёС‚РѕРє
+    tft.setTextSize(primaryTile ? 3 : 2);
     tft.setTextDatum(middle_center);
     const int16_t valueX = x + w / 2;
-    const int16_t valueY = y + h / 2 + 5;
+    const int16_t valueY = y + h / 2 + (primaryTile ? 6 : 4);
     tft.drawString(value, valueX, valueY);
-    if (largeValue) {
-        // Extra pass gives a visually bolder look for primary values.
+    if (primaryTile) {
+        // Extra pass gives a visually bolder look for values.
         tft.drawString(value, valueX + 1, valueY);
     }
     
@@ -980,19 +980,19 @@ static void renderDashboard(const SystemState& state, bool full) {
     const int16_t badgeX = 330;
     const int16_t badgeW = 130;
     const int16_t badgeH = 14;
-    const int16_t infoY = 218;
+    const int16_t infoY = 216;
 
     if (full) {
         tft.fillScreen(colorBg());
         drawHeader(msg(Msg::MONITOR), false);
         drawTabs(UI_DASHBOARD);
         drawCard(10, barY, TFT_WIDTH - 20, 48, colorCard());
-        drawValueTileShell(10, 58, 228, 96, msg(Msg::CUBE_TEMP));
-        drawValueTileShell(242, 58, 228, 96, msg(Msg::HEATER_POWER));
-        drawValueTileShell(10, 160, 147, 56, msg(Msg::TOP_T));
-        drawValueTileShell(166, 160, 147, 56, msg(Msg::REFLUX_T));
-        drawValueTileShell(322, 160, 147, 56, msg(Msg::TSA_T));
-        drawCard(10, infoY, TFT_WIDTH - 20, 34, colorCard());
+        drawValueTileShell(10, 58, 228, 86, msg(Msg::CUBE_TEMP));
+        drawValueTileShell(242, 58, 228, 86, msg(Msg::HEATER_POWER));
+        drawValueTileShell(10, 148, 147, 64, msg(Msg::TOP_T));
+        drawValueTileShell(166, 148, 147, 64, msg(Msg::REFLUX_T));
+        drawValueTileShell(322, 148, 147, 64, msg(Msg::TSA_T));
+        drawCard(10, infoY, TFT_WIDTH - 20, 36, colorCard());
         memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
     }
     
@@ -1083,35 +1083,35 @@ static void renderDashboard(const SystemState& state, bool full) {
     char val[16];
     snprintf(val, sizeof(val), "%.1f", state.temps.cube);
     if (full || strcmp(g_dashboardCache.cube, val) != 0) {
-        drawValueTileValue(10, 58, 228, 96, val, "В°C", COLOR_DANGER);
+        drawValueTileValue(10, 58, 228, 86, val, "В°C", COLOR_DANGER);
         strncpy(g_dashboardCache.cube, val, sizeof(g_dashboardCache.cube));
         g_dashboardCache.cube[sizeof(g_dashboardCache.cube) - 1] = '\0';
     }
     
     snprintf(val, sizeof(val), "%.0f", state.power.power);
     if (full || strcmp(g_dashboardCache.power, val) != 0) {
-        drawValueTileValue(242, 58, 228, 96, val, msg(Msg::UNIT_W), COLOR_WARNING);
+        drawValueTileValue(242, 58, 228, 86, val, msg(Msg::UNIT_W), COLOR_WARNING);
         strncpy(g_dashboardCache.power, val, sizeof(g_dashboardCache.power));
         g_dashboardCache.power[sizeof(g_dashboardCache.power) - 1] = '\0';
     }
 
     snprintf(val, sizeof(val), "%.1f", state.temps.columnTop);
     if (full || strcmp(g_dashboardCache.top, val) != 0) {
-        drawValueTileValue(10, 160, 147, 56, val, "В°C", colorAccent());
+        drawValueTileValue(10, 148, 147, 64, val, "В°C", colorAccent());
         strncpy(g_dashboardCache.top, val, sizeof(g_dashboardCache.top));
         g_dashboardCache.top[sizeof(g_dashboardCache.top) - 1] = '\0';
     }
     
     snprintf(val, sizeof(val), "%.1f", state.temps.reflux);
     if (full || strcmp(g_dashboardCache.reflux, val) != 0) {
-        drawValueTileValue(166, 160, 147, 56, val, "В°C", COLOR_INFO);
+        drawValueTileValue(166, 148, 147, 64, val, "В°C", COLOR_INFO);
         strncpy(g_dashboardCache.reflux, val, sizeof(g_dashboardCache.reflux));
         g_dashboardCache.reflux[sizeof(g_dashboardCache.reflux) - 1] = '\0';
     }
     
     snprintf(val, sizeof(val), "%.1f", state.temps.tsa);
     if (full || strcmp(g_dashboardCache.tsa, val) != 0) {
-        drawValueTileValue(322, 160, 147, 56, val, "В°C", COLOR_DANGER);
+        drawValueTileValue(322, 148, 147, 64, val, "В°C", COLOR_DANGER);
         strncpy(g_dashboardCache.tsa, val, sizeof(g_dashboardCache.tsa));
         g_dashboardCache.tsa[sizeof(g_dashboardCache.tsa) - 1] = '\0';
     }
@@ -1141,17 +1141,17 @@ static void renderDashboard(const SystemState& state, bool full) {
         strcmp(g_dashboardCache.ioLine, ioBuf) != 0 ||
         strcmp(g_dashboardCache.uptime, upBuf) != 0) {
         if (!full) {
-            tft.fillRect(14, infoY + 3, TFT_WIDTH - 28, 28, colorCard());
+            tft.fillRect(14, infoY + 3, TFT_WIDTH - 28, 30, colorCard());
         }
         tft.setTextColor(colorFg());
         tft.setTextSize(1);
         tft.setTextDatum(middle_left);
-        tft.drawString(infoBuf, 20, infoY + 11);
+        tft.drawString(infoBuf, 20, infoY + 12);
         tft.setTextColor(tft.color565(120, 130, 140));
-        tft.drawString(ioBuf, 20, infoY + 24);
+        tft.drawString(ioBuf, 20, infoY + 25);
         tft.setTextColor(COLOR_PRIMARY);
         tft.setTextDatum(middle_right);
-        tft.drawString(upBuf, TFT_WIDTH - 18, infoY + 11);
+        tft.drawString(upBuf, TFT_WIDTH - 18, infoY + 12);
 
         strncpy(g_dashboardCache.infoLine, infoBuf, sizeof(g_dashboardCache.infoLine));
         g_dashboardCache.infoLine[sizeof(g_dashboardCache.infoLine) - 1] = '\0';
