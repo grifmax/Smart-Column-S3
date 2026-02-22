@@ -30,6 +30,7 @@ struct DistillationParamsRuntime {
   float headsVolumeMl = 0.0f;
   float targetVolumeMl = 0.0f;
   float endTempC = 96.0f;
+  uint8_t powerPercent = 100;
 };
 
 static DistillationParamsRuntime g_distParams;
@@ -765,9 +766,16 @@ void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl,
   }
 
   LOG_I("Distillation params: speed=%.0f ml/h, heads=%.0f ml, target=%.0f ml, "
-        "endTemp=%.1fC",
+        "endTemp=%.1fC, power=%u%%",
         g_distParams.speedMlH, g_distParams.headsVolumeMl,
-        g_distParams.targetVolumeMl, g_distParams.endTempC);
+        g_distParams.targetVolumeMl, g_distParams.endTempC,
+        static_cast<unsigned>(g_distParams.powerPercent));
+}
+
+void setPowerPercent(uint8_t powerPercent) {
+  if (powerPercent > 100) powerPercent = 100;
+  g_distParams.powerPercent = powerPercent;
+  LOG_I("Distillation power set: %u%%", static_cast<unsigned>(g_distParams.powerPercent));
 }
 
 void update(SystemState &state, const Settings &settings) {
@@ -781,7 +789,7 @@ void update(SystemState &state, const Settings &settings) {
   // Используем rectPhase как "этап" для UI (heating/heads/body/finish)
   switch (state.rectPhase) {
   case RectPhase::HEATING: {
-    Heater::setPower(100);
+    Heater::setPower(g_distParams.powerPercent);
 
     // Переход к отбору при приближении к кипению
     if (state.temps.valid[TEMP_CUBE] && state.temps.cube >= 78.0f) {
@@ -800,7 +808,7 @@ void update(SystemState &state, const Settings &settings) {
   }
 
   case RectPhase::HEADS: {
-    Heater::setPower(100);
+    Heater::setPower(g_distParams.powerPercent);
     Pump::start(g_distParams.speedMlH);
     Valves::setHeads(true);
 
@@ -818,7 +826,7 @@ void update(SystemState &state, const Settings &settings) {
   }
 
   case RectPhase::BODY: {
-    Heater::setPower(100);
+    Heater::setPower(g_distParams.powerPercent);
     Valves::setHeads(false);
     Pump::start(g_distParams.speedMlH);
 

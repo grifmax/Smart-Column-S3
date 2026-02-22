@@ -119,6 +119,10 @@ namespace FSM {
          * @param endTempC Температура завершения по кубу (°C, может быть 0)
          */
         void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC);
+        /**
+         * Установить мощность нагрева для дистилляции (0..100%)
+         */
+        void setPowerPercent(uint8_t powerPercent);
         void update(SystemState& state, const Settings& settings);
     }
     

@@ -364,9 +364,23 @@ struct DistUiParams {
     float headsVolumeMl = 0.0f;
     float targetVolumeMl = 3000.0f;
     float endTempC = 96.0f;
+    float powerPercent = 100.0f;
+    float tailsVolumeMl = 0.0f;
 };
 
 static DistUiParams distUi;
+
+struct ManualRectUiParams {
+    float speedMlH = 600.0f;
+    float powerPercent = 60.0f;
+    float headsTargetMl = 300.0f;
+    float bodyTargetMl = 2500.0f;
+    float tailsTargetMl = 800.0f;
+};
+
+static ManualRectUiParams manualRectUi;
+static uint8_t g_editMashStepIdx = 0;
+static uint8_t g_editHoldStepIdx = 0;
 
 static MashProfile mashProfileDefault;
 static TempStep holdStepsDefault[3];
@@ -411,6 +425,9 @@ struct DashboardRenderCache {
 };
 
 static DashboardRenderCache g_dashboardCache;
+static char g_modeTileCache[12][20] = {{0}};
+static Mode g_modeRuntimeMode = Mode::IDLE;
+static uint32_t g_modeRuntimeStartUptime = 0;
 
 struct DisplayRuntimeStatsInternal {
     uint32_t framesRendered = 0;
@@ -489,6 +506,7 @@ static void startModeFromControl(Mode mode) {
                                              distUi.headsVolumeMl,
                                              distUi.targetVolumeMl,
                                              distUi.endTempC);
+                FSM::Distillation::setPowerPercent(static_cast<uint8_t>(distUi.powerPercent));
             }
             FSM::startMode(g_state, g_settings, mode);
             break;
@@ -536,6 +554,69 @@ static void saveDistSpeed(float val) { distUi.speedMlH = val; }
 static void saveDistHeads(float val) { distUi.headsVolumeMl = val; }
 static void saveDistTarget(float val) { distUi.targetVolumeMl = val; }
 static void saveDistEndTemp(float val) { distUi.endTempC = val; }
+static void saveDistPower(float val) {
+    if (val < 0.0f) val = 0.0f;
+    if (val > 100.0f) val = 100.0f;
+    distUi.powerPercent = val;
+    FSM::Distillation::setPowerPercent(static_cast<uint8_t>(val));
+}
+static void saveDistTails(float val) { distUi.tailsVolumeMl = val; }
+
+static void saveManualRectSpeed(float val) {
+    if (val < 0.0f) val = 0.0f;
+    manualRectUi.speedMlH = val;
+    if (g_state.mode == Mode::MANUAL_RECT) {
+        if (val <= 0.0f) Pump::stop();
+        else Pump::start(val);
+    }
+}
+static void saveManualRectPower(float val) {
+    if (val < 0.0f) val = 0.0f;
+    if (val > 100.0f) val = 100.0f;
+    manualRectUi.powerPercent = val;
+    if (g_state.mode == Mode::MANUAL_RECT) {
+        Heater::setPower(static_cast<uint8_t>(val));
+    }
+}
+static void saveManualRectHeadsTarget(float val) { if (val < 0.0f) val = 0.0f; manualRectUi.headsTargetMl = val; }
+static void saveManualRectBodyTarget(float val) { if (val < 0.0f) val = 0.0f; manualRectUi.bodyTargetMl = val; }
+static void saveManualRectTailsTarget(float val) { if (val < 0.0f) val = 0.0f; manualRectUi.tailsTargetMl = val; }
+
+static void saveMashStepTemp(float val) {
+    if (g_editMashStepIdx >= mashProfileDefault.stepCount) return;
+    mashProfileDefault.steps[g_editMashStepIdx].temperature = val;
+    if (g_state.mode == Mode::MASHING && g_state.mashing.currentStep == g_editMashStepIdx) {
+        g_state.mashing.targetTemp = val;
+    }
+}
+static void saveMashStepDuration(float val) {
+    if (g_editMashStepIdx >= mashProfileDefault.stepCount) return;
+    if (val < 1.0f) val = 1.0f;
+    mashProfileDefault.steps[g_editMashStepIdx].duration = static_cast<uint16_t>(val);
+    if (g_state.mode == Mode::MASHING && g_state.mashing.currentStep == g_editMashStepIdx) {
+        g_state.mashing.stepDuration = static_cast<uint32_t>(val) * 60UL;
+        g_state.mashing.tempInRange = false;
+        g_state.mashing.inRangeStartTime = 0;
+    }
+}
+
+static void saveHoldStepTemp(float val) {
+    if (g_editHoldStepIdx >= holdStepsCount) return;
+    holdStepsDefault[g_editHoldStepIdx].temperature = val;
+    if (g_state.mode == Mode::HOLD && g_state.hold.currentStep == g_editHoldStepIdx) {
+        g_state.hold.targetTemp = val;
+    }
+}
+static void saveHoldStepDuration(float val) {
+    if (g_editHoldStepIdx >= holdStepsCount) return;
+    if (val < 1.0f) val = 1.0f;
+    holdStepsDefault[g_editHoldStepIdx].duration = static_cast<uint16_t>(val);
+    if (g_state.mode == Mode::HOLD && g_state.hold.currentStep == g_editHoldStepIdx) {
+        g_state.hold.steps[g_editHoldStepIdx].duration = static_cast<uint16_t>(val);
+        g_state.hold.tempInRange = false;
+        g_state.hold.inRangeStartTime = 0;
+    }
+}
 
 static void savePumpCal(float val) { g_settings.pumpCal.mlPerRevolution = val; NVSManager::saveSettings(g_settings); Pump::setCalibration(val); }
 static void saveManualHeater(float val) { Heater::setPower((uint8_t)val); }
@@ -575,6 +656,139 @@ static bool handleNavigationTap(int16_t tx, int16_t ty, const SystemState& state
     return false;
 }
 
+static bool handleModeMonitorTap(int16_t tx, int16_t ty, const SystemState& state) {
+    const bool ru = (g_settings.language == 0);
+    const int16_t y0 = 56;
+    const int16_t hTile = 48;
+    const int16_t g = 6;
+    const int16_t w3 = (TFT_WIDTH - 20 - g * 2) / 3;
+    const int16_t x1 = 10;
+    const int16_t x2 = x1 + w3 + g;
+    const int16_t x3 = x2 + w3 + g;
+    const int16_t y1 = y0 + hTile + g;
+    const int16_t y2 = y1 + hTile + g;
+    const int16_t halfW = (TFT_WIDTH - 28) / 2;
+    const int16_t rightHalfX = x1 + halfW + 8;
+
+    if (state.mode == Mode::DISTILLATION) {
+        if (hit(tx, ty, x2, y0, w3, hTile)) {
+            openValueEdit(ru ? "Мощность дист." : "Dist power",
+                          distUi.powerPercent, 0, 100, 1, 10, saveDistPower, "%", 0);
+            return true;
+        }
+        if (hit(tx, ty, x1, y1, w3, hTile)) {
+            openValueEdit(msg(Msg::HEADS_VOLUME), distUi.headsVolumeMl, 0, 5000, 10, 100, saveDistHeads, "ml", 0);
+            return true;
+        }
+        if (hit(tx, ty, x2, y1, w3, hTile)) {
+            openValueEdit(msg(Msg::TARGET_VOLUME), distUi.targetVolumeMl, 0, 50000, 100, 1000, saveDistTarget, "ml", 0);
+            return true;
+        }
+        if (hit(tx, ty, x3, y1, w3, hTile)) {
+            openValueEdit(ru ? "Хвосты объем" : "Tails volume", distUi.tailsVolumeMl, 0, 50000, 100, 1000, saveDistTails, "ml", 0);
+            return true;
+        }
+        if (hit(tx, ty, x1, y2, halfW, hTile)) {
+            openValueEdit(msg(Msg::DIST_SPEED), distUi.speedMlH, 50, 5000, 50, 500, saveDistSpeed, "ml/h", 0);
+            return true;
+        }
+        if (hit(tx, ty, rightHalfX, y2, halfW, hTile)) {
+            openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1f, 1.0f, saveDistEndTemp, "C", 1);
+            return true;
+        }
+        return false;
+    }
+
+    if (state.mode == Mode::MANUAL_RECT) {
+        const int16_t leftX = 10;
+        const int16_t leftW = 154;
+        const int16_t rowH = 28;
+        const int16_t rowGap = 4;
+        for (uint8_t i = 0; i < 5; i++) {
+            const int16_t ry = y0 + i * (rowH + rowGap);
+            if (!hit(tx, ty, leftX, ry, leftW, rowH)) continue;
+            switch (i) {
+                case 0:
+                    openValueEdit(ru ? "Скорость отбора" : "Takeoff speed",
+                                  manualRectUi.speedMlH, 0, 5000, 10, 100, saveManualRectSpeed, "ml/h", 0);
+                    return true;
+                case 1:
+                    openValueEdit(ru ? "Мощность руч." : "Manual power",
+                                  manualRectUi.powerPercent, 0, 100, 1, 10, saveManualRectPower, "%", 0);
+                    return true;
+                case 2:
+                    openValueEdit(ru ? "Головы цель" : "Heads target",
+                                  manualRectUi.headsTargetMl, 0, 10000, 10, 100, saveManualRectHeadsTarget, "ml", 0);
+                    return true;
+                case 3:
+                    openValueEdit(ru ? "Тело цель" : "Body target",
+                                  manualRectUi.bodyTargetMl, 0, 50000, 100, 1000, saveManualRectBodyTarget, "ml", 0);
+                    return true;
+                case 4:
+                    openValueEdit(ru ? "Хвосты цель" : "Tails target",
+                                  manualRectUi.tailsTargetMl, 0, 50000, 100, 1000, saveManualRectTailsTarget, "ml", 0);
+                    return true;
+                default:
+                    break;
+            }
+        }
+        return false;
+    }
+
+    if (state.mode == Mode::MASHING) {
+        const uint8_t steps = mashProfileDefault.stepCount;
+        if (steps == 0) return false;
+        const int16_t listX = 10;
+        const int16_t listW = TFT_WIDTH - 20;
+        const int16_t rowGap = 4;
+        const int16_t listH = 156;
+        int16_t rowH = (listH - (steps - 1) * rowGap) / steps;
+        if (rowH < 28) rowH = 28;
+        for (uint8_t i = 0; i < steps; i++) {
+            const int16_t ry = y0 + i * (rowH + rowGap);
+            if (!hit(tx, ty, listX, ry, listW, rowH)) continue;
+            g_editMashStepIdx = i;
+            if (tx < (listX + listW / 2)) {
+                openValueEdit(ru ? "Температура шага" : "Step temperature",
+                              mashProfileDefault.steps[i].temperature, 30, 90, 0.1f, 1.0f, saveMashStepTemp, "C", 1);
+            } else {
+                openValueEdit(ru ? "Длительность шага" : "Step duration",
+                              mashProfileDefault.steps[i].duration, 1, 240, 1, 10, saveMashStepDuration, "min", 0);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    if (state.mode == Mode::HOLD) {
+        const uint8_t steps = holdStepsCount;
+        if (steps == 0) return false;
+        const int16_t listX = 10;
+        const int16_t listW = TFT_WIDTH - 20;
+        const int16_t rowGap = 4;
+        const int16_t listH = 156;
+        int16_t rowH = (listH - (steps - 1) * rowGap) / steps;
+        if (rowH < 32) rowH = 32;
+        for (uint8_t i = 0; i < steps; i++) {
+            const int16_t ry = y0 + i * (rowH + rowGap);
+            if (!hit(tx, ty, listX, ry, listW, rowH)) continue;
+            g_editHoldStepIdx = i;
+            if (tx < (listX + listW / 2)) {
+                openValueEdit(ru ? "Температура удерж." : "Hold temperature",
+                              holdStepsDefault[i].temperature, 30, 95, 0.1f, 1.0f, saveHoldStepTemp, "C", 1);
+            } else {
+                openValueEdit(ru ? "Время удерж." : "Hold duration",
+                              holdStepsDefault[i].duration, 1, 720, 1, 15, saveHoldStepDuration, "min", 0);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // Auto-rectification: keep current screen mostly read-only for now.
+    return false;
+}
+
 static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState& state) {
     switch (ui.currentScreen) {
         case UI_DASHBOARD:
@@ -585,9 +799,15 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState& state) {
             }
             break;
         case UI_MODE_MONITOR:
-            // Tap on active mode monitor also opens Control for quick actions.
             if (ty > UI_HEADER_H && ty < (TFT_HEIGHT - UI_FOOTER_H)) {
-                switchRoot(UI_CONTROL);
+                if (handleModeMonitorTap(tx, ty, state)) {
+                    return true;
+                }
+                // Fallback: tap on left status panel opens Control menu.
+                if (tx < (TFT_WIDTH / 2)) {
+                    switchRoot(UI_CONTROL);
+                    return true;
+                }
                 return true;
             }
             break;
@@ -1004,6 +1224,21 @@ static void formatDurationCompact(uint32_t sec, char* out, size_t outSize) {
     }
 }
 
+static uint32_t getModeRunElapsedSec(const SystemState& state) {
+    if (state.mode != g_modeRuntimeMode) {
+        g_modeRuntimeMode = state.mode;
+        g_modeRuntimeStartUptime = state.uptime;
+    }
+    if (state.mode == Mode::IDLE) {
+        return 0;
+    }
+    if (state.uptime < g_modeRuntimeStartUptime) {
+        g_modeRuntimeStartUptime = state.uptime;
+        return 0;
+    }
+    return state.uptime - g_modeRuntimeStartUptime;
+}
+
 static void renderDashboard(const SystemState& state, bool full) {
     const bool ru = (g_settings.language == 0);
     const int16_t barY = 8;
@@ -1310,7 +1545,14 @@ static void renderDashboard(const SystemState& state, bool full) {
     tft.setTextDatum(top_left);
 }
 
+static void renderModeMonitorCustom(const SystemState& state, bool full);
+
 static void renderModeMonitor(const SystemState& state, bool full) {
+    if (state.mode != Mode::RECTIFICATION) {
+        renderModeMonitorCustom(state, full);
+        return;
+    }
+
     const bool ru = (g_settings.language == 0);
     const int16_t barY = 8;
     const int16_t statusX = 20;
@@ -1539,6 +1781,407 @@ static void renderModeMonitor(const SystemState& state, bool full) {
         tft.setTextColor(COLOR_PRIMARY);
         tft.setTextDatum(middle_right);
         tft.drawString(upBuf, TFT_WIDTH - 18, infoY + 20);
+        strncpy(g_dashboardCache.uptime, upBuf, sizeof(g_dashboardCache.uptime));
+        g_dashboardCache.uptime[sizeof(g_dashboardCache.uptime) - 1] = '\0';
+    }
+
+    tft.setFont(&fonts::efontJA_16);
+    tft.setTextDatum(top_left);
+}
+
+static void renderModeMonitorCustom(const SystemState& state, bool full) {
+    const bool ru = (g_settings.language == 0);
+    const int16_t barY = 8;
+    const int16_t statusX = 20;
+    const int16_t statusY = barY + 5;
+    const int16_t statusW = 300;
+    const int16_t statusH = 34;
+    const int16_t badgeX = 332;
+    const int16_t badgeW = 128;
+    const int16_t badgeH = 14;
+
+    const int16_t panelY = 56;
+    const int16_t panelH = 156;
+    const int16_t infoY = panelY + panelH + 8;
+    const bool hasWaterOut = state.temps.valid[TEMP_WATER_OUT];
+    const uint8_t layoutKey =
+        static_cast<uint8_t>(0xC0 |
+                             ((static_cast<uint8_t>(state.mode) & 0x0F) << 1) |
+                             (hasWaterOut ? 0x01 : 0x00));
+
+    if (full) {
+        tft.fillScreen(colorBg());
+        drawHeader(msg(Msg::MONITOR), false);
+        drawTabs(UI_MODE_MONITOR);
+        drawCard(10, barY, TFT_WIDTH - 20, 44, colorCard());
+        drawCard(10, infoY, TFT_WIDTH - 20, 40, colorCard());
+        memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
+        g_dashboardCache.layoutKey = 0xFF;
+    }
+
+    const bool layoutChanged = full || (g_dashboardCache.layoutKey != layoutKey);
+    if (layoutChanged) {
+        memset(g_modeTileCache, 0, sizeof(g_modeTileCache));
+        g_dashboardCache.infoLine[0] = '\0';
+        g_dashboardCache.ioLine[0] = '\0';
+        g_dashboardCache.uptime[0] = '\0';
+    }
+
+    char statusBuf[64];
+    snprintf(statusBuf, sizeof(statusBuf), "%s / %s",
+             FSM::getModeName(state.mode),
+             FSM::getPhaseName(state.rectPhase));
+
+    const char* procState = state.paused ? (ru ? "PAUSE" : "PAUSE") : (ru ? "RUN" : "RUN");
+    const uint16_t procColor = state.paused ? COLOR_WARNING : COLOR_SUCCESS;
+    const char* safetyState = state.safetyOk ? (ru ? "SAFE" : "SAFE") : (ru ? "ALARM" : "ALARM");
+    const uint16_t safetyColor = state.safetyOk ? COLOR_SUCCESS : COLOR_DANGER;
+
+    uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
+    const uint32_t nowMs = millis();
+    if (state.mode == Mode::MASHING) {
+        phaseElapsedSec = 0;
+        if (state.mashing.tempInRange && state.mashing.inRangeStartTime > 0 &&
+            nowMs >= state.mashing.inRangeStartTime) {
+            phaseElapsedSec = (nowMs - state.mashing.inRangeStartTime) / 1000UL;
+        }
+    } else if (state.mode == Mode::HOLD) {
+        phaseElapsedSec = 0;
+        if (state.hold.tempInRange && state.hold.inRangeStartTime > 0 &&
+            nowMs >= state.hold.inRangeStartTime) {
+            phaseElapsedSec = (nowMs - state.hold.inRangeStartTime) / 1000UL;
+        }
+    }
+    const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(state, g_settings);
+    const uint8_t phaseProgress = FSM::getPhaseProgressPercent(state, g_settings);
+    char elapsedBuf[16];
+    char targetBuf[16];
+    char timerBuf[32];
+    formatDurationCompact(phaseElapsedSec, elapsedBuf, sizeof(elapsedBuf));
+    if (phaseTargetSec > 0) {
+        formatDurationCompact(phaseTargetSec, targetBuf, sizeof(targetBuf));
+        snprintf(timerBuf, sizeof(timerBuf), "%s %s/%s", ru ? "Phase" : "Phase", elapsedBuf, targetBuf);
+    } else {
+        snprintf(timerBuf, sizeof(timerBuf), "%s %s", ru ? "Phase" : "Phase", elapsedBuf);
+    }
+
+    if (full || strcmp(g_dashboardCache.status, statusBuf) != 0 ||
+        strcmp(g_dashboardCache.phaseTimer, timerBuf) != 0 ||
+        g_dashboardCache.phaseProgress != phaseProgress) {
+        if (!full) {
+            tft.fillRect(statusX, statusY, statusW, statusH, colorCard());
+        }
+        tft.setTextColor(colorAccent());
+        tft.setTextSize(1);
+        tft.setFont(&fonts::efontJA_16);
+        tft.setTextDatum(top_left);
+        tft.drawString(statusBuf, statusX + 2, statusY + 1);
+        tft.setTextColor(tft.color565(120, 130, 140));
+        tft.drawString(timerBuf, statusX + 2, statusY + 14);
+
+        const int16_t pbX = statusX + 2;
+        const int16_t pbY = statusY + 27;
+        const int16_t pbW = statusW - 6;
+        const int16_t pbH = 6;
+        tft.fillRoundRect(pbX, pbY, pbW, pbH, 3, tft.color565(210, 216, 224));
+        if (phaseProgress > 0) {
+            const int16_t fillW = (pbW * phaseProgress) / 100;
+            tft.fillRoundRect(pbX, pbY, fillW, pbH, 3, COLOR_PRIMARY);
+        }
+        strncpy(g_dashboardCache.status, statusBuf, sizeof(g_dashboardCache.status));
+        g_dashboardCache.status[sizeof(g_dashboardCache.status) - 1] = '\0';
+        strncpy(g_dashboardCache.phaseTimer, timerBuf, sizeof(g_dashboardCache.phaseTimer));
+        g_dashboardCache.phaseTimer[sizeof(g_dashboardCache.phaseTimer) - 1] = '\0';
+        g_dashboardCache.phaseProgress = phaseProgress;
+    }
+
+    if (full || strcmp(g_dashboardCache.processState, procState) != 0 ||
+        strcmp(g_dashboardCache.safetyState, safetyState) != 0) {
+        if (!full) {
+            tft.fillRect(badgeX - 4, barY + 4, badgeW + 8, 34, colorCard());
+        }
+        tft.fillRoundRect(badgeX, barY + 6, badgeW, badgeH, 7, procColor);
+        tft.drawRoundRect(badgeX, barY + 6, badgeW, badgeH, 7, tft.color565(220, 230, 240));
+        tft.setTextColor(TFT_WHITE);
+        tft.setTextSize(1);
+        tft.setTextDatum(middle_center);
+        tft.drawString(procState, badgeX + badgeW / 2, barY + 6 + badgeH / 2);
+
+        tft.fillRoundRect(badgeX, barY + 24, badgeW, badgeH, 7, safetyColor);
+        tft.drawRoundRect(badgeX, barY + 24, badgeW, badgeH, 7, tft.color565(220, 230, 240));
+        tft.drawString(safetyState, badgeX + badgeW / 2, barY + 24 + badgeH / 2);
+
+        strncpy(g_dashboardCache.processState, procState, sizeof(g_dashboardCache.processState));
+        g_dashboardCache.processState[sizeof(g_dashboardCache.processState) - 1] = '\0';
+        strncpy(g_dashboardCache.safetyState, safetyState, sizeof(g_dashboardCache.safetyState));
+        g_dashboardCache.safetyState[sizeof(g_dashboardCache.safetyState) - 1] = '\0';
+    }
+
+    auto updateTile = [&](uint8_t idx, int16_t x, int16_t y, int16_t w, int16_t h,
+                          const char* value, const char* unit, uint16_t color) {
+        if (full || strcmp(g_modeTileCache[idx], value) != 0) {
+            drawValueTileValue(x, y, w, h, value, unit, color);
+            strncpy(g_modeTileCache[idx], value, sizeof(g_modeTileCache[idx]) - 1);
+            g_modeTileCache[idx][sizeof(g_modeTileCache[idx]) - 1] = '\0';
+        }
+    };
+
+    char infoLine[96] = "";
+    char auxLine[96] = "";
+    char upBuf[16];
+    formatDurationCompact(getModeRunElapsedSec(state), upBuf, sizeof(upBuf));
+
+    if (state.mode == Mode::DISTILLATION) {
+        const int16_t g = 6;
+        const int16_t hTile = 48;
+        const int16_t w3 = (TFT_WIDTH - 20 - g * 2) / 3;
+        const int16_t x1 = 10;
+        const int16_t x2 = x1 + w3 + g;
+        const int16_t x3 = x2 + w3 + g;
+        const int16_t y1 = panelY + hTile + g;
+        const int16_t y2 = y1 + hTile + g;
+        const int16_t halfW = (TFT_WIDTH - 28) / 2;
+        const int16_t rightHalfX = x1 + halfW + 8;
+
+        if (layoutChanged) {
+            drawValueTileShell(x1, panelY, w3, hTile, msg(Msg::CUBE_TEMP));
+            drawValueTileShell(x2, panelY, w3, hTile, "POWER %");
+            drawValueTileShell(x3, panelY, w3, hTile, "TIME");
+            drawValueTileShell(x1, y1, w3, hTile, "HEADS SET/TAKE");
+            drawValueTileShell(x2, y1, w3, hTile, "BODY SET/TAKE");
+            drawValueTileShell(x3, y1, w3, hTile, "TAILS SET/TAKE");
+            drawValueTileShell(x1, y2, halfW, hTile, msg(Msg::DIST_SPEED));
+            drawValueTileShell(rightHalfX, y2, halfW, hTile, msg(Msg::END_TEMP));
+        }
+
+        char runBuf[16];
+        char v[8][20];
+        formatDurationCompact(getModeRunElapsedSec(state), runBuf, sizeof(runBuf));
+        snprintf(v[0], sizeof(v[0]), "%.1f", state.temps.cube);
+        snprintf(v[1], sizeof(v[1]), "%.0f", distUi.powerPercent);
+        snprintf(v[2], sizeof(v[2]), "%s", runBuf);
+        snprintf(v[3], sizeof(v[3]), "%.0f/%.0f", distUi.headsVolumeMl, state.stats.headsVolume);
+        snprintf(v[4], sizeof(v[4]), "%.0f/%.0f", distUi.targetVolumeMl, state.stats.bodyVolume);
+        snprintf(v[5], sizeof(v[5]), "%.0f/%.0f", distUi.tailsVolumeMl, state.stats.tailsVolume);
+        snprintf(v[6], sizeof(v[6]), "%.0f", distUi.speedMlH);
+        snprintf(v[7], sizeof(v[7]), "%.1f", distUi.endTempC);
+
+        updateTile(0, x1, panelY, w3, hTile, v[0], "C", COLOR_DANGER);
+        updateTile(1, x2, panelY, w3, hTile, v[1], "%", COLOR_WARNING);
+        updateTile(2, x3, panelY, w3, hTile, v[2], "", COLOR_PRIMARY);
+        updateTile(3, x1, y1, w3, hTile, v[3], "ml", COLOR_INFO);
+        updateTile(4, x2, y1, w3, hTile, v[4], "ml", COLOR_SUCCESS);
+        updateTile(5, x3, y1, w3, hTile, v[5], "ml", COLOR_WARNING);
+        updateTile(6, x1, y2, halfW, hTile, v[6], msg(Msg::UNIT_ML_H), COLOR_SUCCESS);
+        updateTile(7, rightHalfX, y2, halfW, hTile, v[7], "C", COLOR_INFO);
+
+        snprintf(infoLine, sizeof(infoLine), "Distillation: tap tiles to edit setpoints");
+        snprintf(auxLine, sizeof(auxLine), "V %.0f | P %.0f | Pump %.0f",
+                 state.power.voltage, state.pressure.cube, state.pump.speedMlPerHour);
+    } else if (state.mode == Mode::MANUAL_RECT) {
+        const int16_t leftX = 10;
+        const int16_t leftW = 154;
+        const int16_t rowH = 28;
+        const int16_t rowGap = 4;
+        const int16_t rightX = 170;
+        const int16_t rightW = TFT_WIDTH - rightX - 10;
+        const int16_t colW = (rightW - 6) / 2;
+        const int16_t rightRowH = 36;
+        const int16_t rightGap = 4;
+
+        if (layoutChanged) {
+            drawCard(leftX, panelY, leftW, panelH, colorCard());
+            const char* labels[8] = {
+                msg(Msg::CUBE_TEMP), msg(Msg::TOP_T), msg(Msg::REFLUX_T), msg(Msg::TSA_T),
+                "CUBE PRESS", "ATM PRESS", "MAINS", hasWaterOut ? "WATER OUT" : msg(Msg::PUMP)
+            };
+            for (uint8_t i = 0; i < 8; i++) {
+                const int16_t cx = rightX + ((i % 2) * (colW + 6));
+                const int16_t cy = panelY + ((i / 2) * (rightRowH + rightGap));
+                drawValueTileShell(cx, cy, colW, rightRowH, labels[i]);
+            }
+        }
+
+        const char* rowLabels[5] = {"Speed", "Power", "Heads", "Body", "Tails"};
+        char rowVals[5][24];
+        snprintf(rowVals[0], sizeof(rowVals[0]), "%.0f ml/h", manualRectUi.speedMlH);
+        snprintf(rowVals[1], sizeof(rowVals[1]), "%.0f %%", manualRectUi.powerPercent);
+        snprintf(rowVals[2], sizeof(rowVals[2]), "%.0f/%.0f ml", manualRectUi.headsTargetMl, state.stats.headsVolume);
+        snprintf(rowVals[3], sizeof(rowVals[3]), "%.0f/%.0f ml", manualRectUi.bodyTargetMl, state.stats.bodyVolume);
+        snprintf(rowVals[4], sizeof(rowVals[4]), "%.0f/%.0f ml", manualRectUi.tailsTargetMl, state.stats.tailsVolume);
+        for (uint8_t i = 0; i < 5; i++) {
+            const int16_t ry = panelY + i * (rowH + rowGap);
+            const uint16_t bg = (i <= 1) ? tft.color565(236, 245, 255) : colorCard();
+            drawCard(leftX, ry, leftW, rowH, bg);
+            tft.setTextColor(tft.color565(90, 100, 112));
+            tft.setTextDatum(middle_left);
+            tft.drawString(rowLabels[i], leftX + 8, ry + 9);
+            tft.setTextColor(colorAccent());
+            tft.setTextDatum(middle_right);
+            tft.drawString(rowVals[i], leftX + leftW - 8, ry + 9);
+        }
+
+        char v[8][20];
+        snprintf(v[0], sizeof(v[0]), "%.1f", state.temps.cube);
+        snprintf(v[1], sizeof(v[1]), "%.1f", state.temps.columnTop);
+        snprintf(v[2], sizeof(v[2]), "%.1f", state.temps.reflux);
+        snprintf(v[3], sizeof(v[3]), "%.1f", state.temps.tsa);
+        snprintf(v[4], sizeof(v[4]), "%.0f", state.pressure.cube);
+        snprintf(v[5], sizeof(v[5]), "%.0f", state.pressure.atmosphere);
+        snprintf(v[6], sizeof(v[6]), "%.0f", state.power.voltage);
+        if (hasWaterOut) snprintf(v[7], sizeof(v[7]), "%.1f", state.temps.waterOut);
+        else snprintf(v[7], sizeof(v[7]), "%.0f", state.pump.speedMlPerHour);
+
+        for (uint8_t i = 0; i < 8; i++) {
+            const int16_t cx = rightX + ((i % 2) * (colW + 6));
+            const int16_t cy = panelY + ((i / 2) * (rightRowH + rightGap));
+            const char* unit = "C";
+            if (i == 4) unit = "mm";
+            else if (i == 5) unit = "hPa";
+            else if (i == 6) unit = "V";
+            else if (i == 7) unit = hasWaterOut ? "C" : msg(Msg::UNIT_ML_H);
+            uint16_t color = (i == 0) ? COLOR_DANGER : ((i == 1) ? colorAccent() : ((i == 2) ? COLOR_INFO : ((i == 3) ? COLOR_WARNING : COLOR_PRIMARY)));
+            if (i == 4) color = COLOR_WARNING;
+            if (i == 5) color = COLOR_INFO;
+            if (i == 7) color = hasWaterOut ? COLOR_INFO : COLOR_SUCCESS;
+            updateTile(i, cx, cy, colW, rightRowH, v[i], unit, color);
+        }
+
+        snprintf(infoLine, sizeof(infoLine), "Manual rect: edit speed/power/fractions on left");
+        snprintf(auxLine, sizeof(auxLine), "Cube %.0f | Atm %.0f | V %.0f",
+                 state.pressure.cube, state.pressure.atmosphere, state.power.voltage);
+    } else if (state.mode == Mode::MASHING || state.mode == Mode::HOLD) {
+        const bool isMash = (state.mode == Mode::MASHING);
+        uint8_t steps = isMash ? mashProfileDefault.stepCount : holdStepsCount;
+        if (!isMash && steps == 0 && state.hold.stepCount > 0) steps = state.hold.stepCount;
+        const int16_t listX = 10;
+        const int16_t listW = TFT_WIDTH - 20;
+        const int16_t rowGap = 4;
+        const int16_t listH = panelH;
+        int16_t rowH = (steps > 0) ? (listH - (steps - 1) * rowGap) / steps : listH;
+        if (rowH < (isMash ? 28 : 32)) rowH = isMash ? 28 : 32;
+
+        if (layoutChanged) {
+            drawCard(listX, panelY, listW, listH, colorCard());
+        }
+
+        if (steps == 0) {
+            tft.fillRect(listX + 8, panelY + 8, listW - 16, listH - 16, colorCard());
+            tft.setTextColor(colorFg());
+            tft.setTextDatum(middle_center);
+            tft.drawString(isMash ? "Mashing profile is empty" : "Hold step list is empty", TFT_WIDTH / 2, panelY + listH / 2);
+        } else {
+            for (uint8_t i = 0; i < steps; i++) {
+                const int16_t ry = panelY + i * (rowH + rowGap);
+                const bool current = isMash
+                    ? (state.mashing.active && i == state.mashing.currentStep)
+                    : (state.hold.active && i == state.hold.currentStep);
+                drawCard(listX, ry, listW, rowH, current ? tft.color565(235, 245, 255) : colorCard());
+
+                float tSet = 0.0f;
+                uint16_t dSet = 0;
+                if (isMash) {
+                    tSet = mashProfileDefault.steps[i].temperature;
+                    dSet = mashProfileDefault.steps[i].duration;
+                } else if (i < holdStepsCount) {
+                    tSet = holdStepsDefault[i].temperature;
+                    dSet = holdStepsDefault[i].duration;
+                } else if (state.hold.active && i < state.hold.stepCount) {
+                    tSet = state.hold.steps[i].temperature;
+                    dSet = state.hold.steps[i].duration;
+                }
+
+                uint8_t progress = 0;
+                if (isMash && state.mashing.active) {
+                    if (i < state.mashing.currentStep) progress = 100;
+                    else if (i == state.mashing.currentStep && dSet > 0 &&
+                             state.mashing.tempInRange && state.mashing.inRangeStartTime > 0 &&
+                             nowMs >= state.mashing.inRangeStartTime) {
+                        uint32_t elapsedSec = (nowMs - state.mashing.inRangeStartTime) / 1000UL;
+                        uint32_t targetSec = static_cast<uint32_t>(dSet) * 60UL;
+                        uint32_t p = (targetSec > 0) ? ((elapsedSec * 100UL) / targetSec) : 0;
+                        if (p > 100) p = 100;
+                        progress = static_cast<uint8_t>(p);
+                    }
+                } else if (!isMash && state.hold.active) {
+                    if (i < state.hold.currentStep) progress = 100;
+                    else if (i == state.hold.currentStep && dSet > 0 &&
+                             state.hold.tempInRange && state.hold.inRangeStartTime > 0 &&
+                             nowMs >= state.hold.inRangeStartTime) {
+                        uint32_t elapsedSec = (nowMs - state.hold.inRangeStartTime) / 1000UL;
+                        uint32_t targetSec = static_cast<uint32_t>(dSet) * 60UL;
+                        uint32_t p = (targetSec > 0) ? ((elapsedSec * 100UL) / targetSec) : 0;
+                        if (p > 100) p = 100;
+                        progress = static_cast<uint8_t>(p);
+                    }
+                }
+
+                char leftBuf[40];
+                char rightBuf[24];
+                snprintf(leftBuf, sizeof(leftBuf), "%u. %.1f C", static_cast<unsigned>(i + 1), tSet);
+                snprintf(rightBuf, sizeof(rightBuf), "%u min", static_cast<unsigned>(dSet));
+
+                tft.setTextColor(current ? colorAccent() : colorFg());
+                tft.setTextDatum(middle_left);
+                tft.drawString(leftBuf, listX + 10, ry + (isMash ? 10 : 12));
+                tft.setTextColor(tft.color565(90, 100, 112));
+                tft.setTextDatum(middle_right);
+                tft.drawString(rightBuf, listX + listW - 10, ry + (isMash ? 10 : 12));
+
+                const int16_t pbX = listX + 10;
+                const int16_t pbY = ry + rowH - 9;
+                const int16_t pbW = listW - 20;
+                tft.fillRoundRect(pbX, pbY, pbW, 5, 2, tft.color565(210, 216, 224));
+                if (progress > 0) {
+                    const int16_t fillW = (pbW * progress) / 100;
+                    tft.fillRoundRect(pbX, pbY, fillW, 5, 2, COLOR_PRIMARY);
+                }
+                tft.drawFastVLine(listX + listW / 2, ry + 6, rowH - 12, tft.color565(214, 220, 228));
+            }
+        }
+
+        if (isMash) {
+            snprintf(infoLine, sizeof(infoLine), "Mashing: tap left half for temp, right half for time");
+            snprintf(auxLine, sizeof(auxLine), "Step %u/%u | Target %.1f C",
+                     static_cast<unsigned>(state.mashing.currentStep + 1),
+                     static_cast<unsigned>(steps),
+                     state.mashing.targetTemp);
+        } else {
+            snprintf(infoLine, sizeof(infoLine), "Hold: tap left half for temp, right half for time");
+            snprintf(auxLine, sizeof(auxLine), "Step %u/%u | Cube %.1f C",
+                     static_cast<unsigned>(state.hold.currentStep + 1),
+                     static_cast<unsigned>(steps),
+                     state.temps.cube);
+        }
+    } else {
+        drawCard(10, panelY, TFT_WIDTH - 20, panelH, colorCard());
+        snprintf(infoLine, sizeof(infoLine), "Mode has no dedicated monitor layout");
+        snprintf(auxLine, sizeof(auxLine), "");
+    }
+
+    if (layoutChanged) {
+        g_dashboardCache.layoutKey = layoutKey;
+    }
+
+    if (full || strcmp(g_dashboardCache.infoLine, infoLine) != 0 ||
+        strcmp(g_dashboardCache.ioLine, auxLine) != 0 ||
+        strcmp(g_dashboardCache.uptime, upBuf) != 0) {
+        if (!full) {
+            tft.fillRect(14, infoY + 3, TFT_WIDTH - 28, 34, colorCard());
+        }
+        tft.setTextColor(colorFg());
+        tft.setTextSize(1);
+        tft.setTextDatum(middle_left);
+        tft.drawString(infoLine, 20, infoY + 13);
+        tft.setTextColor(tft.color565(120, 130, 140));
+        tft.drawString(auxLine, 20, infoY + 28);
+        tft.setTextColor(COLOR_PRIMARY);
+        tft.setTextDatum(middle_right);
+        tft.drawString(upBuf, TFT_WIDTH - 18, infoY + 13);
+        strncpy(g_dashboardCache.infoLine, infoLine, sizeof(g_dashboardCache.infoLine));
+        g_dashboardCache.infoLine[sizeof(g_dashboardCache.infoLine) - 1] = '\0';
+        strncpy(g_dashboardCache.ioLine, auxLine, sizeof(g_dashboardCache.ioLine));
+        g_dashboardCache.ioLine[sizeof(g_dashboardCache.ioLine) - 1] = '\0';
         strncpy(g_dashboardCache.uptime, upBuf, sizeof(g_dashboardCache.uptime));
         g_dashboardCache.uptime[sizeof(g_dashboardCache.uptime) - 1] = '\0';
     }
