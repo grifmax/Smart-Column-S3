@@ -389,6 +389,7 @@ static UiLiveCache uiLive;
 
 struct DashboardRenderCache {
     char status[64] = {0};
+    char phaseTimer[32] = {0};
     char processState[24] = {0};
     char safetyState[24] = {0};
     char cube[16] = {0};
@@ -398,7 +399,9 @@ struct DashboardRenderCache {
     char pump[16] = {0};
     char tsa[16] = {0};
     char infoLine[96] = {0};
+    char ioLine[96] = {0};
     char uptime[16] = {0};
+    uint8_t phaseProgress = 0;
 };
 
 static DashboardRenderCache g_dashboardCache;
@@ -956,29 +959,40 @@ static void formatUptimeCompact(uint32_t uptimeSec, char* out, size_t outSize) {
     snprintf(out, outSize, "%02lu:%02lu:%02lu", (unsigned long)h, (unsigned long)m, (unsigned long)s);
 }
 
+static void formatDurationCompact(uint32_t sec, char* out, size_t outSize) {
+    const uint32_t h = sec / 3600UL;
+    const uint32_t m = (sec % 3600UL) / 60UL;
+    const uint32_t s = sec % 60UL;
+    if (h > 0) {
+        snprintf(out, outSize, "%02lu:%02lu:%02lu", (unsigned long)h, (unsigned long)m, (unsigned long)s);
+    } else {
+        snprintf(out, outSize, "%02lu:%02lu", (unsigned long)m, (unsigned long)s);
+    }
+}
+
 static void renderDashboard(const SystemState& state, bool full) {
     const bool ru = (g_settings.language == 0);
     const int16_t barY = 8;
     const int16_t statusX = 20;
-    const int16_t statusY = barY + 8;
-    const int16_t statusW = 298;
-    const int16_t statusH = 30;
+    const int16_t statusY = barY + 5;
+    const int16_t statusW = 300;
+    const int16_t statusH = 36;
     const int16_t badgeX = 330;
     const int16_t badgeW = 130;
     const int16_t badgeH = 14;
-    const int16_t infoY = 220;
+    const int16_t infoY = 218;
 
     if (full) {
         tft.fillScreen(colorBg());
         drawHeader(msg(Msg::MONITOR), false);
         drawTabs(UI_DASHBOARD);
-        drawCard(10, barY, TFT_WIDTH - 20, 44, colorCard());
+        drawCard(10, barY, TFT_WIDTH - 20, 48, colorCard());
         drawValueTileShell(10, 58, 228, 96, msg(Msg::CUBE_TEMP));
         drawValueTileShell(242, 58, 228, 96, msg(Msg::HEATER_POWER));
         drawValueTileShell(10, 160, 147, 56, msg(Msg::TOP_T));
         drawValueTileShell(166, 160, 147, 56, msg(Msg::REFLUX_T));
         drawValueTileShell(322, 160, 147, 56, msg(Msg::TSA_T));
-        drawCard(10, infoY, TFT_WIDTH - 20, 30, colorCard());
+        drawCard(10, infoY, TFT_WIDTH - 20, 34, colorCard());
         memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
     }
     
@@ -994,8 +1008,24 @@ static void renderDashboard(const SystemState& state, bool full) {
     const uint16_t procColor = (state.mode == Mode::IDLE) ? COLOR_INFO : (state.paused ? COLOR_WARNING : COLOR_SUCCESS);
     const char* safetyState = state.safetyOk ? (ru ? "БЕЗОП." : "SAFE") : (ru ? "ТРЕВОГА" : "ALARM");
     const uint16_t safetyColor = state.safetyOk ? COLOR_SUCCESS : COLOR_DANGER;
-    
-    if (full || strcmp(g_dashboardCache.status, statusBuf) != 0) {
+
+    const uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
+    const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(state, g_settings);
+    const uint8_t phaseProgress = FSM::getPhaseProgressPercent(state, g_settings);
+    char elapsedBuf[16];
+    char targetBuf[16];
+    char timerBuf[32];
+    formatDurationCompact(phaseElapsedSec, elapsedBuf, sizeof(elapsedBuf));
+    if (phaseTargetSec > 0) {
+        formatDurationCompact(phaseTargetSec, targetBuf, sizeof(targetBuf));
+        snprintf(timerBuf, sizeof(timerBuf), "%s %s/%s", ru ? "Фаза" : "Phase", elapsedBuf, targetBuf);
+    } else {
+        snprintf(timerBuf, sizeof(timerBuf), "%s %s", ru ? "Фаза" : "Phase", elapsedBuf);
+    }
+
+    if (full || strcmp(g_dashboardCache.status, statusBuf) != 0 ||
+        strcmp(g_dashboardCache.phaseTimer, timerBuf) != 0 ||
+        g_dashboardCache.phaseProgress != phaseProgress) {
         if (!full) {
             tft.fillRect(statusX, statusY, statusW, statusH, colorCard());
         }
@@ -1003,11 +1033,26 @@ static void renderDashboard(const SystemState& state, bool full) {
         tft.setTextSize(1);
         tft.setFont(&fonts::efontJA_16);
         tft.setTextDatum(top_left);
-        tft.drawString(statusBuf, statusX + 2, statusY + 6);
+        tft.drawString(statusBuf, statusX + 2, statusY + 1);
+        tft.setTextColor(tft.color565(120, 130, 140));
+        tft.drawString(timerBuf, statusX + 2, statusY + 14);
+
+        const int16_t pbX = statusX + 2;
+        const int16_t pbY = statusY + 27;
+        const int16_t pbW = statusW - 6;
+        const int16_t pbH = 6;
+        tft.fillRoundRect(pbX, pbY, pbW, pbH, 3, tft.color565(210, 216, 224));
+        if (phaseProgress > 0) {
+            const int16_t fillW = (pbW * phaseProgress) / 100;
+            tft.fillRoundRect(pbX, pbY, fillW, pbH, 3, COLOR_PRIMARY);
+        }
         tft.setFont(&fonts::efontJA_16);
         tft.setTextDatum(top_left);
         strncpy(g_dashboardCache.status, statusBuf, sizeof(g_dashboardCache.status));
         g_dashboardCache.status[sizeof(g_dashboardCache.status) - 1] = '\0';
+        strncpy(g_dashboardCache.phaseTimer, timerBuf, sizeof(g_dashboardCache.phaseTimer));
+        g_dashboardCache.phaseTimer[sizeof(g_dashboardCache.phaseTimer) - 1] = '\0';
+        g_dashboardCache.phaseProgress = phaseProgress;
     }
 
     if (full || strcmp(g_dashboardCache.processState, procState) != 0 ||
@@ -1072,7 +1117,7 @@ static void renderDashboard(const SystemState& state, bool full) {
     }
 
     char infoBuf[96];
-    snprintf(infoBuf, sizeof(infoBuf), "%s: %.0f %s | H %.0f  B %.0f  T %.0f ml",
+    snprintf(infoBuf, sizeof(infoBuf), "%s %.0f %s | H %.0f B %.0f T %.0f",
              ru ? "Насос" : "Pump",
              state.pump.speedMlPerHour,
              msg(Msg::UNIT_ML_H),
@@ -1080,23 +1125,38 @@ static void renderDashboard(const SystemState& state, bool full) {
              state.stats.bodyVolume,
              state.stats.tailsVolume);
 
+    const char* k1 = Valves::getWater() ? "ON" : "--";
+    const char* k2 = Valves::getHeads() ? "ON" : "--";
+    const char* k3 = (Heater::getPower() > 0) ? "ON" : "--";
+    char ioBuf[96];
+    snprintf(ioBuf, sizeof(ioBuf), "V %.0f | P %.0f | K1 %s K2 %s K3 %s",
+             state.power.voltage,
+             state.pressure.cube,
+             k1, k2, k3);
+
     char upBuf[16];
     formatUptimeCompact(state.uptime, upBuf, sizeof(upBuf));
 
-    if (full || strcmp(g_dashboardCache.infoLine, infoBuf) != 0 || strcmp(g_dashboardCache.uptime, upBuf) != 0) {
+    if (full || strcmp(g_dashboardCache.infoLine, infoBuf) != 0 ||
+        strcmp(g_dashboardCache.ioLine, ioBuf) != 0 ||
+        strcmp(g_dashboardCache.uptime, upBuf) != 0) {
         if (!full) {
-            tft.fillRect(14, infoY + 3, TFT_WIDTH - 28, 24, colorCard());
+            tft.fillRect(14, infoY + 3, TFT_WIDTH - 28, 28, colorCard());
         }
         tft.setTextColor(colorFg());
         tft.setTextSize(1);
         tft.setTextDatum(middle_left);
-        tft.drawString(infoBuf, 20, infoY + 15);
+        tft.drawString(infoBuf, 20, infoY + 11);
+        tft.setTextColor(tft.color565(120, 130, 140));
+        tft.drawString(ioBuf, 20, infoY + 24);
         tft.setTextColor(COLOR_PRIMARY);
         tft.setTextDatum(middle_right);
-        tft.drawString(upBuf, TFT_WIDTH - 18, infoY + 15);
+        tft.drawString(upBuf, TFT_WIDTH - 18, infoY + 11);
 
         strncpy(g_dashboardCache.infoLine, infoBuf, sizeof(g_dashboardCache.infoLine));
         g_dashboardCache.infoLine[sizeof(g_dashboardCache.infoLine) - 1] = '\0';
+        strncpy(g_dashboardCache.ioLine, ioBuf, sizeof(g_dashboardCache.ioLine));
+        g_dashboardCache.ioLine[sizeof(g_dashboardCache.ioLine) - 1] = '\0';
         strncpy(g_dashboardCache.uptime, upBuf, sizeof(g_dashboardCache.uptime));
         g_dashboardCache.uptime[sizeof(g_dashboardCache.uptime) - 1] = '\0';
     }
@@ -1629,6 +1689,12 @@ void update(const SystemState& state) {
                     (now - uiLive.lastUpdateMs) > 1000) {
                     changed = true;
                 }
+            }
+            if (ui.currentScreen == UI_DASHBOARD &&
+                state.mode != Mode::IDLE &&
+                (now - uiLive.lastUpdateMs) > 1000) {
+                // Keep phase timer/progress moving even when temperatures are stable.
+                changed = true;
             }
         }
         if (changed && (now - uiLive.lastUpdateMs) > 300) {

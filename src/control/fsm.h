@@ -149,6 +149,21 @@ namespace FSM {
      * @return Строка с именем
      */
     const char* getPhaseName(RectPhase phase);
+
+    /**
+     * Время текущей фазы в секундах (с учетом пауз).
+     */
+    uint32_t getPhaseElapsedSec();
+
+    /**
+     * Оценка целевой длительности текущей фазы в секундах (0, если не применимо).
+     */
+    uint32_t getPhaseTargetSec(const SystemState& state, const Settings& settings);
+
+    /**
+     * Прогресс текущей фазы в процентах (0..100), 0 если цель не определена.
+     */
+    uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settings);
     
     /**
      * Получение имени режима

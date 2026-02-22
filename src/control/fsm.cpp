@@ -881,6 +881,93 @@ namespace ManualRect {
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // =============================================================================
 
+uint32_t getPhaseElapsedSec() {
+    if (phaseStartTime == 0) return 0;
+    const uint32_t now = millis();
+    if (now < phaseStartTime) return 0;
+    return (now - phaseStartTime) / 1000UL;
+}
+
+uint32_t getPhaseTargetSec(const SystemState& state, const Settings& settings) {
+    switch (state.mode) {
+        case Mode::RECTIFICATION:
+            switch (state.rectPhase) {
+                case RectPhase::STABILIZATION:
+                    return static_cast<uint32_t>(settings.rectParams.stabilizationMin) * 60UL;
+                case RectPhase::POST_HEADS_STABILIZATION:
+                    return 5UL * 60UL;
+                case RectPhase::PURGE:
+                    return static_cast<uint32_t>(settings.rectParams.purgeMin) * 60UL;
+                case RectPhase::FINISH:
+                    return 5UL * 60UL;
+                case RectPhase::HEADS: {
+                    const float headsSpeedMlH =
+                        settings.rectParams.headsSpeedMlHKw *
+                        (settings.equipment.heaterPowerW / 1000.0f);
+                    if (headsSpeedMlH > 0.1f && rectHeadsTargetMl > 0.1f) {
+                        return static_cast<uint32_t>((rectHeadsTargetMl / headsSpeedMlH) * 3600.0f);
+                    }
+                    return 0;
+                }
+                default:
+                    return 0;
+            }
+
+        case Mode::DISTILLATION:
+            switch (state.rectPhase) {
+                case RectPhase::HEADS:
+                    if (g_distParams.speedMlH > 0.1f && g_distParams.headsVolumeMl > 0.1f) {
+                        return static_cast<uint32_t>((g_distParams.headsVolumeMl / g_distParams.speedMlH) * 3600.0f);
+                    }
+                    return 0;
+                case RectPhase::BODY:
+                    if (g_distParams.speedMlH > 0.1f && g_distParams.targetVolumeMl > state.pump.totalVolumeMl) {
+                        const float remMl = g_distParams.targetVolumeMl - state.pump.totalVolumeMl;
+                        return static_cast<uint32_t>((remMl / g_distParams.speedMlH) * 3600.0f);
+                    }
+                    return 0;
+                case RectPhase::FINISH:
+                    return 5UL * 60UL;
+                default:
+                    return 0;
+            }
+
+        case Mode::MASHING:
+            if (state.mashing.active && state.mashing.stepDuration > 0) {
+                return state.mashing.stepDuration;
+            }
+            return 0;
+
+        case Mode::HOLD:
+            if (state.hold.active && state.hold.stepCount > 0 &&
+                state.hold.currentStep < state.hold.stepCount) {
+                return static_cast<uint32_t>(state.hold.steps[state.hold.currentStep].duration) * 60UL;
+            }
+            return 0;
+
+        default:
+            return 0;
+    }
+}
+
+uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settings) {
+    const uint32_t targetSec = getPhaseTargetSec(state, settings);
+    if (targetSec == 0) return 0;
+
+    uint32_t elapsedSec = getPhaseElapsedSec();
+    const uint32_t now = millis();
+    if (state.mode == Mode::MASHING && state.mashing.tempInRange &&
+        state.mashing.inRangeStartTime > 0 && now >= state.mashing.inRangeStartTime) {
+        elapsedSec = (now - state.mashing.inRangeStartTime) / 1000UL;
+    } else if (state.mode == Mode::HOLD && state.hold.tempInRange &&
+               state.hold.inRangeStartTime > 0 && now >= state.hold.inRangeStartTime) {
+        elapsedSec = (now - state.hold.inRangeStartTime) / 1000UL;
+    }
+
+    if (elapsedSec >= targetSec) return 100;
+    return static_cast<uint8_t>((elapsedSec * 100UL) / targetSec);
+}
+
 const char* getModeName(Mode mode) {
     switch (mode) {
         case Mode::IDLE: return msg(Msg::MODE_IDLE);

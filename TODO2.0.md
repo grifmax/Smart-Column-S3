@@ -34,3 +34,11 @@
 - [ ] Finalize UART/pin mapping profiles (including PZEM on dedicated port).
 - [ ] Add compile-time pin profiles for board revisions.
 - [ ] Add boot-time pin sanity checks and conflict warnings.
+
+## Phase 6. Distiller parity: cockpit UI + process ergonomics (in progress)
+- [ ] Add process phase telemetry API in FSM (elapsed/target/progress) for TFT and Web UI.
+- [ ] Upgrade main TFT dashboard to a cockpit layout (mode+phase timer, progress bar, I/O statuses).
+- [ ] Add at-a-glance operation strip (voltage, pressure, pump, fractions, uptime) with partial redraws only.
+- [ ] Add dedicated mode placeholders and API contracts for `NBK` and `FERMENTATION`.
+- [ ] Implement NBK mode state machine (feed/steam control, safety interlocks).
+- [ ] Implement fermentation mode (setpoint, hysteresis, scheduling, alarms).
