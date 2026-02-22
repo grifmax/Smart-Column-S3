@@ -244,11 +244,14 @@ function setOperatorView(view) {
 
     const normalizedView = view === 'compact' ? 'compact' : 'instrument';
     const isInstrument = normalizedView === 'instrument';
+    screen.setAttribute('data-view', normalizedView);
     screen.classList.toggle('operator-screen-instrument', isInstrument);
     screen.classList.toggle('operator-screen-compact', !isInstrument);
 
     if (button) {
         button.textContent = `View: ${isInstrument ? 'Instrument' : 'Compact'}`;
+        button.classList.toggle('btn-info', isInstrument);
+        button.classList.toggle('btn-warning', !isInstrument);
     }
 }
 

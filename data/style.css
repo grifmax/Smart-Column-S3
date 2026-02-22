@@ -518,6 +518,83 @@ header h1 {
     height: 220px !important;
 }
 
+.operator-screen-compact .operator-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.operator-screen-compact .operator-card-status {
+    grid-column: 1 / -1;
+}
+
+.operator-screen-compact .operator-grid > .operator-card:nth-of-type(2),
+.operator-screen-compact .operator-grid > .operator-card:nth-of-type(3),
+.operator-screen-compact .operator-grid > .operator-card:nth-of-type(4) {
+    grid-column: span 2;
+}
+
+.operator-screen-compact .operator-card-chart {
+    grid-column: span 3;
+}
+
+.operator-screen-compact .operator-card-scheme {
+    grid-column: span 3;
+}
+
+.operator-screen-compact .operator-status-grid {
+    grid-template-columns: repeat(4, minmax(100px, 1fr));
+    gap: 6px;
+    margin-bottom: 7px;
+}
+
+.operator-screen-compact .operator-level-grid {
+    grid-template-columns: repeat(4, minmax(100px, 1fr));
+    gap: 6px;
+}
+
+.operator-screen-compact .operator-stat {
+    padding: 6px 8px;
+}
+
+.operator-screen-compact .operator-level-item {
+    padding: 7px 8px;
+}
+
+.operator-screen-compact .operator-level-label,
+.operator-screen-compact .operator-stat-label {
+    font-size: 0.72em;
+}
+
+.operator-screen-compact .operator-level-value,
+.operator-screen-compact .operator-stat-value {
+    font-size: 0.96em;
+}
+
+.operator-screen-compact .operator-level-main {
+    font-size: 1.56em;
+}
+
+.operator-screen-compact .operator-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.operator-screen-compact .operator-list-row {
+    padding: 6px 7px;
+}
+
+.operator-screen-compact .operator-list-row span {
+    font-size: 0.72em;
+}
+
+.operator-screen-compact .operator-list-row strong {
+    font-size: 0.94em;
+}
+
+.operator-screen-compact #mini-chart {
+    height: 180px !important;
+}
+
 .operator-shadow-values {
     display: none;
 }
@@ -1060,6 +1137,23 @@ footer {
         grid-column: 1;
     }
 
+    .operator-screen-compact .operator-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .operator-screen-compact .operator-card-status,
+    .operator-screen-compact .operator-card-chart,
+    .operator-screen-compact .operator-card-scheme {
+        grid-column: 1 / -1;
+    }
+
+    .operator-screen-compact .operator-grid > .operator-card:nth-of-type(2),
+    .operator-screen-compact .operator-grid > .operator-card:nth-of-type(3),
+    .operator-screen-compact .operator-grid > .operator-card:nth-of-type(4) {
+        grid-column: span 1;
+    }
+
     .operator-card-status,
     .operator-card-scheme {
         grid-column: 1;
@@ -1075,12 +1169,21 @@ footer {
         grid-template-columns: 1fr;
     }
 
+    .operator-screen-compact .operator-level-grid,
+    .operator-screen-compact .operator-status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .operator-list {
         grid-template-columns: 1fr;
     }
 
     .operator-screen-instrument .operator-list {
         grid-template-columns: 1fr;
+    }
+
+    .operator-screen-compact .operator-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .cards {
