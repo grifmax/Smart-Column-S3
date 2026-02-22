@@ -341,10 +341,11 @@ struct ValueEditState {
     ValueSaveCallback onSave;
     char unit[16];
     uint8_t decimals;
+    bool returnToModeMonitor = false;
 };
 static ValueEditState edit;
 
-static void openValueEdit(const char* label, float val, float min, float max, float step, float fastStep, ValueSaveCallback cb, const char* unit = "", uint8_t decimals = 1) {
+static void openValueEdit(const char* label, float val, float min, float max, float step, float fastStep, ValueSaveCallback cb, const char* unit = "", uint8_t decimals = 1, bool returnToModeMonitor = false) {
     strncpy(edit.label, label, sizeof(edit.label)-1);
     edit.label[sizeof(edit.label) - 1] = '\0';
     edit.value = val;
@@ -356,6 +357,7 @@ static void openValueEdit(const char* label, float val, float min, float max, fl
     strncpy(edit.unit, unit, sizeof(edit.unit)-1);
     edit.unit[sizeof(edit.unit) - 1] = '\0';
     edit.decimals = decimals;
+    edit.returnToModeMonitor = returnToModeMonitor;
     pushScreen(UI_VALUE_EDIT);
 }
 
@@ -665,6 +667,12 @@ static bool handleNavigationTap(int16_t tx, int16_t ty, const SystemState& state
         return false;
     }
 
+    // Value edit uses the full bottom area for the Save action.
+    // Do not let tab navigation intercept taps there.
+    if (ui.currentScreen == UI_VALUE_EDIT) {
+        return false;
+    }
+
     // РљРЅРѕРїРєР° РќРђР—РђР” (С‚РµРїРµСЂСЊ РІ РІРµСЂС…РЅРµРј РїСЂР°РІРѕРј СѓРіР»Сѓ РЅР° РїРѕРґ-СЌРєСЂР°РЅР°С…)
     bool isRoot = (isMonitorRootScreen(ui.currentScreen) || ui.currentScreen == UI_CONTROL ||
                    ui.currentScreen == UI_SETTINGS || ui.currentScreen == UI_SERVICE);
@@ -713,11 +721,11 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty, const SystemState& stat
         const int16_t y1d = y0 + 48 + g2;
         if (hit(tx, ty, x2d, y0, w2, 74)) {
             openValueEdit(ru ? "Мощность дист." : "Dist power",
-                          distUi.powerPercent, 0, 100, 1, 10, saveDistPower, "%", 0);
+                          distUi.powerPercent, 0, 100, 1, 10, saveDistPower, "%", 0, true);
             return true;
         }
         if (hit(tx, ty, x2d, y1d, w2, 74)) {
-            openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1f, 1.0f, saveDistEndTemp, "C", 1);
+            openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1f, 1.0f, saveDistEndTemp, "C", 1, true);
             return true;
         }
         return false;
@@ -734,23 +742,23 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty, const SystemState& stat
             switch (i) {
                 case 0:
                     openValueEdit(ru ? "Скорость отбора" : "Takeoff speed",
-                                  manualRectUi.speedMlH, 0, 5000, 10, 100, saveManualRectSpeed, "ml/h", 0);
+                                  manualRectUi.speedMlH, 0, 5000, 10, 100, saveManualRectSpeed, "ml/h", 0, true);
                     return true;
                 case 1:
                     openValueEdit(ru ? "Мощность руч." : "Manual power",
-                                  manualRectUi.powerPercent, 0, 100, 1, 10, saveManualRectPower, "%", 0);
+                                  manualRectUi.powerPercent, 0, 100, 1, 10, saveManualRectPower, "%", 0, true);
                     return true;
                 case 2:
                     openValueEdit(ru ? "Головы цель" : "Heads target",
-                                  manualRectUi.headsTargetMl, 0, 10000, 10, 100, saveManualRectHeadsTarget, "ml", 0);
+                                  manualRectUi.headsTargetMl, 0, 10000, 10, 100, saveManualRectHeadsTarget, "ml", 0, true);
                     return true;
                 case 3:
                     openValueEdit(ru ? "Тело цель" : "Body target",
-                                  manualRectUi.bodyTargetMl, 0, 50000, 100, 1000, saveManualRectBodyTarget, "ml", 0);
+                                  manualRectUi.bodyTargetMl, 0, 50000, 100, 1000, saveManualRectBodyTarget, "ml", 0, true);
                     return true;
                 case 4:
                     openValueEdit(ru ? "Хвосты цель" : "Tails target",
-                                  manualRectUi.tailsTargetMl, 0, 50000, 100, 1000, saveManualRectTailsTarget, "ml", 0);
+                                  manualRectUi.tailsTargetMl, 0, 50000, 100, 1000, saveManualRectTailsTarget, "ml", 0, true);
                     return true;
                 default:
                     break;
@@ -774,10 +782,10 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty, const SystemState& stat
             g_editMashStepIdx = i;
             if (tx < (listX + listW / 2)) {
                 openValueEdit(ru ? "Температура шага" : "Step temperature",
-                              mashProfileDefault.steps[i].temperature, 30, 90, 0.1f, 1.0f, saveMashStepTemp, "C", 1);
+                              mashProfileDefault.steps[i].temperature, 30, 90, 0.1f, 1.0f, saveMashStepTemp, "C", 1, true);
             } else {
                 openValueEdit(ru ? "Длительность шага" : "Step duration",
-                              mashProfileDefault.steps[i].duration, 1, 240, 1, 10, saveMashStepDuration, "min", 0);
+                              mashProfileDefault.steps[i].duration, 1, 240, 1, 10, saveMashStepDuration, "min", 0, true);
             }
             return true;
         }
@@ -799,10 +807,10 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty, const SystemState& stat
             g_editHoldStepIdx = i;
             if (tx < (listX + listW / 2)) {
                 openValueEdit(ru ? "Температура удерж." : "Hold temperature",
-                              holdStepsDefault[i].temperature, 30, 95, 0.1f, 1.0f, saveHoldStepTemp, "C", 1);
+                              holdStepsDefault[i].temperature, 30, 95, 0.1f, 1.0f, saveHoldStepTemp, "C", 1, true);
             } else {
                 openValueEdit(ru ? "Время удерж." : "Hold duration",
-                              holdStepsDefault[i].duration, 1, 720, 1, 15, saveHoldStepDuration, "min", 0);
+                              holdStepsDefault[i].duration, 1, 720, 1, 15, saveHoldStepDuration, "min", 0, true);
             }
             return true;
         }
@@ -909,7 +917,11 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState& state) {
                 return true;
             } else if (hit(tx, ty, 10, 255, TFT_WIDTH - 20, 55)) {
                 if (edit.onSave) edit.onSave(edit.value);
-                popScreen();
+                if (edit.returnToModeMonitor && isModeRunning(g_state)) {
+                    switchRoot(UI_MODE_MONITOR);
+                } else {
+                    popScreen();
+                }
                 return true;
             }
             break;
