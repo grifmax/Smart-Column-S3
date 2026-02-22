@@ -80,6 +80,7 @@ header h1 {
     gap: 15px;
     font-size: 0.9em;
     color: var(--text-secondary);
+    flex-wrap: wrap;
 }
 
 .status-dot {
@@ -107,8 +108,79 @@ header h1 {
 .tabs {
     display: flex;
     gap: 10px;
-    margin-bottom: 20px;
+    margin-bottom: 0;
     flex-wrap: wrap;
+}
+
+.top-menu {
+    margin-left: auto;
+    position: relative;
+}
+
+.menu-toggle {
+    width: 46px;
+    height: 42px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    cursor: pointer;
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 4px 14px var(--shadow);
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.menu-toggle:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+
+.menu-toggle span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--text-primary);
+}
+
+.menu-dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 10px);
+    width: min(84vw, 320px);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 10px;
+    box-shadow: 0 20px 50px var(--shadow);
+    display: none;
+    z-index: 1200;
+}
+
+.menu-dropdown.open {
+    display: block;
+    animation: menuDropIn 180ms ease-out both;
+}
+
+.tabs-dropdown {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tabs-dropdown .tab {
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 10px;
+}
+
+@keyframes menuDropIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 .tab {
@@ -634,13 +706,12 @@ footer {
         font-size: 1.5em;
     }
 
-    .tabs {
-        gap: 5px;
+    .top-menu {
+        margin-left: 0;
     }
 
-    .tab {
-        padding: 8px 12px;
-        font-size: 0.9em;
+    .menu-dropdown {
+        width: min(92vw, 360px);
     }
 
     .cards {

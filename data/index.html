@@ -36,22 +36,29 @@
                         </div>
                     </div>
                 </div>
+                <div class="top-menu">
+                    <button id="top-menu-toggle" class="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false" onclick="toggleTopMenu(event)">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </button>
+                    <div id="top-menu-dropdown" class="menu-dropdown">
+                        <nav class="tabs tabs-dropdown">
+                            <button class="tab active" data-tab="monitor">📊 Мониторинг</button>
+                            <button class="tab" data-tab="control">🎛️ Управление</button>
+                            <button class="tab" data-tab="settings">⚙️ Настройки</button>
+                            <button class="tab" data-tab="logs">📝 Логи</button>
+                            <button class="tab" data-tab="history">📚 История</button>
+                            <button class="tab" data-tab="profiles">📁 Профили</button>
+                            <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
+                            <a href="manual.html" class="tab" style="text-decoration: none;">🔧 Ручной режим</a>
+                            <a href="calibration.html" class="tab" style="text-decoration: none;">⚙️ Калибровка</a>
+                            <a href="wifi.html" class="tab" style="text-decoration: none;">📶 WiFi</a>
+                        </nav>
+                    </div>
+                </div>
             </div>
         </header>
-
-        <!-- Навигация -->
-        <nav class="tabs">
-            <button class="tab active" data-tab="monitor">📊 Мониторинг</button>
-            <button class="tab" data-tab="control">🎛️ Управление</button>
-            <button class="tab" data-tab="settings">⚙️ Настройки</button>
-            <button class="tab" data-tab="logs">📝 Логи</button>
-            <button class="tab" data-tab="history">📚 История</button>
-            <button class="tab" data-tab="profiles">📁 Профили</button>
-            <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
-            <a href="manual.html" class="tab" style="text-decoration: none;">🔧 Ручной режим</a>
-            <a href="calibration.html" class="tab" style="text-decoration: none;">⚙️ Калибровка</a>
-            <a href="wifi.html" class="tab" style="text-decoration: none;">📶 WiFi</a>
-        </nav>
 
         <!-- Вкладка: Мониторинг -->
         <div id="monitor" class="tab-content active">

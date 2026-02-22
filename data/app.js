@@ -203,12 +203,45 @@ function setCloudOnlyUiVisible(visible) {
     });
 }
 
+function closeTopMenu() {
+    const dropdown = document.getElementById('top-menu-dropdown');
+    const toggle = document.getElementById('top-menu-toggle');
+    if (dropdown) dropdown.classList.remove('open');
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
+function toggleTopMenu(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('top-menu-dropdown');
+    const toggle = document.getElementById('top-menu-toggle');
+    if (!dropdown || !toggle) return;
+    const willOpen = !dropdown.classList.contains('open');
+    dropdown.classList.toggle('open', willOpen);
+    toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+}
+
+function initTopMenu() {
+    document.addEventListener('click', (event) => {
+        const dropdown = document.getElementById('top-menu-dropdown');
+        const toggle = document.getElementById('top-menu-toggle');
+        if (!dropdown || !toggle) return;
+        const target = event.target;
+        if (dropdown.contains(target) || toggle.contains(target)) return;
+        closeTopMenu();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeTopMenu();
+    });
+}
+
 
 // Инициализация при загрузке страницы
 
 document.addEventListener('DOMContentLoaded', async function () {
 
     initTabs();
+    initTopMenu();
 
     initMashingHoldControls();
 
@@ -959,7 +992,10 @@ function initTabs() {
             const targetId = tab.getAttribute('data-tab');
 
             // Это ссылка на другую страницу (charts/manual/...), не трогаем.
-            if (!targetId) return;
+            if (!targetId) {
+                closeTopMenu();
+                return;
+            }
 
 
 
@@ -993,6 +1029,8 @@ function initTabs() {
                 loadHistoryList();
 
             }
+
+            closeTopMenu();
 
         });
 
