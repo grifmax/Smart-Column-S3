@@ -216,6 +216,12 @@ struct UiState {
 
     bool touchPressed = false;
     uint32_t lastTapMs = 0;
+    uint32_t ignoreTapUntilMs = 0;
+    int16_t touchDownX = 0;
+    int16_t touchDownY = 0;
+    int16_t touchLastX = 0;
+    int16_t touchLastY = 0;
+    uint32_t touchDownMs = 0;
 
     bool calibrating = false;
     uint8_t calStep = 0;
@@ -229,6 +235,11 @@ struct UiState {
 
 static UiState ui;
 
+static const uint16_t UI_TAP_MOVE_TOLERANCE = 24;
+static const uint32_t UI_TAP_MAX_DURATION_MS = 700;
+static const uint32_t UI_TAP_MIN_INTERVAL_MS = 220;
+static const uint32_t UI_SCREEN_SWITCH_GUARD_MS = 280;
+
 struct TouchEvent {
     bool pressed = false;
     bool tapped = false;
@@ -241,49 +252,81 @@ static TouchEvent readTouchEvent() {
     TouchEvent ev;
     int16_t sx = 0;
     int16_t sy = 0;
+    const uint32_t now = millis();
     bool pressed = touch_ok && touchRead(&sx, &sy);
     ev.pressed = pressed;
     ev.x = sx;
     ev.y = sy;
 
     if (pressed && !ui.touchPressed) {
-        uint32_t now = millis();
-        if (now - ui.lastTapMs > 160) {
-            ev.tapped = true;
-            ui.lastTapMs = now;
-        }
+        ui.touchDownX = sx;
+        ui.touchDownY = sy;
+        ui.touchLastX = sx;
+        ui.touchLastY = sy;
+        ui.touchDownMs = now;
+    } else if (pressed && ui.touchPressed) {
+        ui.touchLastX = sx;
+        ui.touchLastY = sy;
     }
 
     if (!pressed && ui.touchPressed) {
         ev.released = true;
+        ev.x = ui.touchLastX;
+        ev.y = ui.touchLastY;
+
+        const uint32_t touchDurationMs = now - ui.touchDownMs;
+        const int32_t dx = static_cast<int32_t>(ui.touchLastX) - static_cast<int32_t>(ui.touchDownX);
+        const int32_t dy = static_cast<int32_t>(ui.touchLastY) - static_cast<int32_t>(ui.touchDownY);
+        const uint32_t move = static_cast<uint32_t>(abs(dx) + abs(dy));
+
+        if (now >= ui.ignoreTapUntilMs &&
+            touchDurationMs <= UI_TAP_MAX_DURATION_MS &&
+            move <= UI_TAP_MOVE_TOLERANCE &&
+            (now - ui.lastTapMs) > UI_TAP_MIN_INTERVAL_MS) {
+            ev.tapped = true;
+            ui.lastTapMs = now;
+        }
     }
 
     ui.touchPressed = pressed;
     return ev;
 }
 
+static void armScreenSwitchGuard() {
+    const uint32_t now = millis();
+    ui.ignoreTapUntilMs = now + UI_SCREEN_SWITCH_GUARD_MS;
+}
+
 static void pushScreen(UiScreen screen) {
+    if (ui.currentScreen == screen) return;
     if (ui.stackDepth < 6) {
         ui.stack[ui.stackDepth++] = ui.currentScreen;
     }
     ui.currentScreen = screen;
     ui.needsRedraw = true;
+    armScreenSwitchGuard();
 }
 
 static void popScreen() {
+    UiScreen target = ui.rootScreen;
     if (ui.stackDepth > 0) {
-        ui.currentScreen = ui.stack[--ui.stackDepth];
-    } else {
-        ui.currentScreen = ui.rootScreen;
+        target = ui.stack[--ui.stackDepth];
     }
+    if (ui.currentScreen == target) return;
+    ui.currentScreen = target;
     ui.needsRedraw = true;
+    armScreenSwitchGuard();
 }
 
 static void switchRoot(UiScreen screen) {
+    const bool changed = (ui.rootScreen != screen) || (ui.currentScreen != screen) || (ui.stackDepth != 0);
     ui.rootScreen = screen;
     ui.currentScreen = screen;
     ui.stackDepth = 0;
-    ui.needsRedraw = true;
+    if (changed) {
+        ui.needsRedraw = true;
+        armScreenSwitchGuard();
+    }
 }
 
 typedef void (*ValueSaveCallback)(float);
@@ -1442,7 +1485,9 @@ void update(const SystemState& state) {
         }
 
         if (ui.needsRedraw) {
+            tft.startWrite();
             renderTouchCalibration();
+            tft.endWrite();
             ui.needsRedraw = false;
         }
         return;
@@ -1516,6 +1561,7 @@ void update(const SystemState& state) {
         uiLive.uptime = state.uptime;
         uiLive.lastUpdateMs = now;
         const bool full = (ui.currentScreen != ui.lastRenderedScreen);
+        tft.startWrite();
         switch (ui.currentScreen) {
             case UI_DASHBOARD:
                 renderDashboard(state, full);
@@ -1551,6 +1597,7 @@ void update(const SystemState& state) {
                 renderDashboard(state, full);
                 break;
         }
+        tft.endWrite();
 
         const uint32_t frameTime = millis() - frameStartMs;
         bool scheduleRecoveryRedraw = false;
@@ -1564,7 +1611,7 @@ void update(const SystemState& state) {
 
         if (frameTime >= DISPLAY_SLOW_FRAME_MS) {
             g_displayStats.slowFrames++;
-            if (frameTime >= DISPLAY_HARD_FRAME_MS) {
+            if (!full && frameTime >= DISPLAY_HARD_FRAME_MS) {
                 if (g_displayStats.consecutiveSlowFrames < 255) g_displayStats.consecutiveSlowFrames++;
                 if (g_displayStats.consecutiveHardFrames < 255) g_displayStats.consecutiveHardFrames++;
             } else {
