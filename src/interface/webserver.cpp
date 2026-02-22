@@ -153,7 +153,7 @@ void init() {
   // API endpoints
   // GET /api/status - полное состояние системы
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<2304> doc;
+    StaticJsonDocument<2560> doc;
 
     // Режим и состояние процесса
     doc["mode"] = static_cast<int>(g_state.mode);
@@ -220,9 +220,14 @@ void init() {
     display["frames"] = displayStats.framesRendered;
     display["slowFrames"] = displayStats.slowFrames;
     display["recoveries"] = displayStats.watchdogRecoveries;
+    display["hardRecoveries"] = displayStats.hardWatchdogRecoveries;
+    display["hardFailures"] = displayStats.hardWatchdogFailures;
     display["lastFrameMs"] = displayStats.lastFrameMs;
     display["maxFrameMs"] = displayStats.maxFrameMs;
     display["lastFrameAt"] = displayStats.lastFrameAtMs;
+    display["lastGapMs"] = displayStats.lastUpdateGapMs;
+    display["maxGapMs"] = displayStats.maxUpdateGapMs;
+    display["gapOverruns"] = displayStats.updateGapOverruns;
 
     // Cloud tunnel status (локально полезно для привязки)
     JsonObject cloud = doc.createNestedObject("cloud");
@@ -1772,7 +1777,7 @@ void broadcastState(const SystemState &state) {
   const auto displayStats = Display::getRuntimeStats();
 
   // Минимальный пакет для "лайв" (часто)
-  StaticJsonDocument<768> fastDoc;
+  StaticJsonDocument<896> fastDoc;
   fastDoc["mode"] = static_cast<int>(state.mode);
   fastDoc["phase"] = static_cast<int>(state.rectPhase);
   fastDoc["paused"] = state.paused;
@@ -1804,6 +1809,8 @@ void broadcastState(const SystemState &state) {
   fastDoc["abv"] = state.hydrometer.abv;
   fastDoc["display_last_ms"] = displayStats.lastFrameMs;
   fastDoc["display_slow"] = displayStats.slowFrames;
+  fastDoc["display_hard"] = displayStats.hardWatchdogRecoveries;
+  fastDoc["display_gap_ms"] = displayStats.lastUpdateGapMs;
 
   String fastJson;
   serializeJson(fastDoc, fastJson);
@@ -1816,7 +1823,7 @@ void broadcastState(const SystemState &state) {
   }
   lastFullBroadcast = now;
 
-  StaticJsonDocument<3072> doc;
+  StaticJsonDocument<3328> doc;
   doc["mode"] = static_cast<int>(state.mode);
   doc["phase"] = static_cast<int>(state.rectPhase);
   doc["paused"] = state.paused;
@@ -1851,9 +1858,14 @@ void broadcastState(const SystemState &state) {
   display["frames"] = displayStats.framesRendered;
   display["slowFrames"] = displayStats.slowFrames;
   display["recoveries"] = displayStats.watchdogRecoveries;
+  display["hardRecoveries"] = displayStats.hardWatchdogRecoveries;
+  display["hardFailures"] = displayStats.hardWatchdogFailures;
   display["lastFrameMs"] = displayStats.lastFrameMs;
   display["maxFrameMs"] = displayStats.maxFrameMs;
   display["lastFrameAt"] = displayStats.lastFrameAtMs;
+  display["lastGapMs"] = displayStats.lastUpdateGapMs;
+  display["maxGapMs"] = displayStats.maxUpdateGapMs;
+  display["gapOverruns"] = displayStats.updateGapOverruns;
 
   JsonObject mashing = doc.createNestedObject("mashing");
   mashing["active"] = state.mashing.active;

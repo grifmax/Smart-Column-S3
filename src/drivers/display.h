@@ -16,9 +16,14 @@ namespace Display {
         uint32_t framesRendered = 0;
         uint32_t slowFrames = 0;
         uint32_t watchdogRecoveries = 0;
+        uint32_t hardWatchdogRecoveries = 0;
+        uint32_t hardWatchdogFailures = 0;
         uint16_t lastFrameMs = 0;
         uint16_t maxFrameMs = 0;
         uint32_t lastFrameAtMs = 0;
+        uint16_t lastUpdateGapMs = 0;
+        uint16_t maxUpdateGapMs = 0;
+        uint32_t updateGapOverruns = 0;
     };
 
     /**

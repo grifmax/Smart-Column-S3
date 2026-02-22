@@ -348,10 +348,20 @@ struct DisplayRuntimeStatsInternal {
     uint32_t framesRendered = 0;
     uint32_t slowFrames = 0;
     uint32_t watchdogRecoveries = 0;
+    uint32_t hardWatchdogRecoveries = 0;
+    uint32_t hardWatchdogFailures = 0;
     uint16_t lastFrameMs = 0;
     uint16_t maxFrameMs = 0;
     uint32_t lastFrameAtMs = 0;
+    uint16_t lastUpdateGapMs = 0;
+    uint16_t maxUpdateGapMs = 0;
+    uint32_t updateGapOverruns = 0;
+    uint32_t lastUpdateCallAtMs = 0;
     uint8_t consecutiveSlowFrames = 0;
+    uint8_t consecutiveHardFrames = 0;
+    uint8_t softRecoveriesInWindow = 0;
+    uint32_t softRecoveryWindowStartedMs = 0;
+    uint32_t lastHardRecoveryAtMs = 0;
 };
 
 static DisplayRuntimeStatsInternal g_displayStats;
@@ -359,6 +369,12 @@ static DisplayRuntimeStatsInternal g_displayStats;
 static const uint16_t DISPLAY_SLOW_FRAME_MS = 120;
 static const uint16_t DISPLAY_HARD_FRAME_MS = 250;
 static const uint32_t DISPLAY_FORCE_REFRESH_MS = 5000;
+static const uint8_t DISPLAY_SOFT_WD_THRESHOLD = 3;
+static const uint8_t DISPLAY_HARD_FRAME_BURST_THRESHOLD = 6;
+static const uint8_t DISPLAY_SOFT_WD_BURST_FOR_HARD = 3;
+static const uint32_t DISPLAY_SOFT_WD_WINDOW_MS = 12000;
+static const uint32_t DISPLAY_HARD_RECOVERY_COOLDOWN_MS = 15000;
+static const uint16_t DISPLAY_UPDATE_GAP_WARN_MS = INTERVAL_DISPLAY_UPDATE * 3;
 
 static const int16_t CTRL_BW = 225;
 static const int16_t CTRL_BH = 48;
@@ -1122,12 +1138,12 @@ static void renderService(const SystemState& state, bool full) {
         tft.fillScreen(colorBg());
         drawHeader(msg(Msg::SERVICE), false);
         drawTabs(UI_SERVICE);
-        char buf[32];
+        char buf[40];
         snprintf(buf, sizeof(buf), "%s", FW_VERSION);
         drawValueRow(30, msg(Msg::VERSION), buf);
     }
 
-    char buf[32];
+    char buf[48];
     clearRow(80, 30);
     snprintf(buf, sizeof(buf), "%lus", state.uptime);
     drawValueRow(80, msg(Msg::UPTIME), buf);
@@ -1143,10 +1159,12 @@ static void renderService(const SystemState& state, bool full) {
     drawValueRow(180, ru ? "Кадр TFT" : "TFT frame", buf);
 
     clearRow(230, 30);
-    snprintf(buf, sizeof(buf), "%lu/%lu",
+    snprintf(buf, sizeof(buf), "S%lu R%lu H%lu G%u",
              (unsigned long)g_displayStats.slowFrames,
-             (unsigned long)g_displayStats.watchdogRecoveries);
-    drawValueRow(230, ru ? "Slow/Recover" : "Slow/Recover", buf);
+             (unsigned long)g_displayStats.watchdogRecoveries,
+             (unsigned long)g_displayStats.hardWatchdogRecoveries,
+             (unsigned int)g_displayStats.lastUpdateGapMs);
+    drawValueRow(230, ru ? "Диагн. TFT" : "TFT diag", buf);
 }
 
 static void renderTouchCalibration() {
@@ -1193,6 +1211,71 @@ static void applyTouchCalibration() {
     NVSManager::saveSettings(g_settings);
 }
 
+static bool initDisplayHardware(bool showBootSplash) {
+    tft_ok = tft.init();
+    if (!tft_ok) {
+        touch_ok = false;
+        return false;
+    }
+
+    tft.setRotation(1);  // Landscape (480x320)
+    tft.setSwapBytes(true);
+    tft.setTextScroll(false);
+    tft.setTextSize(1);
+    tft.setFont(&fonts::efontJA_16);
+
+    // Re-init dedicated touch SPI to recover after bus faults.
+    pinMode(TOUCH_IRQ, INPUT_PULLUP);
+    touchSpi.end();
+    touchSpi.begin(TOUCH_CLK, TOUCH_DO, TOUCH_DIN, TOUCH_CS);
+    touch_ok = touch.begin(touchSpi);
+    if (touch_ok) {
+        touch.setRotation(1);
+    }
+
+    if (showBootSplash) {
+        tft.fillScreen(TFT_BLACK);
+        tft.setTextColor(TFT_WHITE);
+        tft.setTextSize(3);
+        tft.setCursor(100, 120);
+        tft.println("Smart-Column S3");
+        tft.setTextSize(2);
+        tft.setCursor(140, 170);
+        tft.setTextColor(TFT_GREEN);
+        tft.println("TFT + Touch OK");
+        delay(1200);
+    }
+
+    tft.fillScreen(TFT_BLACK);
+    return true;
+}
+
+static bool attemptHardRecovery(uint32_t nowMs) {
+    if (nowMs - g_displayStats.lastHardRecoveryAtMs < DISPLAY_HARD_RECOVERY_COOLDOWN_MS) {
+        return false;
+    }
+
+    g_displayStats.lastHardRecoveryAtMs = nowMs;
+    LOG_W("Display: hard watchdog recovery requested");
+
+    if (!initDisplayHardware(false)) {
+        g_displayStats.hardWatchdogFailures++;
+        LOG_E("Display: hard watchdog recovery failed");
+        return false;
+    }
+
+    g_displayStats.hardWatchdogRecoveries++;
+    g_displayStats.consecutiveSlowFrames = 0;
+    g_displayStats.consecutiveHardFrames = 0;
+    g_displayStats.softRecoveriesInWindow = 0;
+    g_displayStats.softRecoveryWindowStartedMs = 0;
+
+    ui.lastRenderedScreen = static_cast<UiScreen>(255);
+    ui.needsRedraw = true;
+    LOG_W("Display: hard watchdog recovery done");
+    return true;
+}
+
 #endif // TFT_ENABLED
 
 namespace Display {
@@ -1203,39 +1286,9 @@ void init() {
 #if TFT_ENABLED
     // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ TFT
     LOG_I("Display: Init TFT (LovyanGFX)...");
-    tft_ok = tft.init();
     
-    if (tft_ok) {
-        tft.setRotation(1);  // Р›Р°РЅРґС€Р°С„С‚РЅР°СЏ РѕСЂРёРµРЅС‚Р°С†РёСЏ (480x320)
-        tft.setSwapBytes(true);
-        tft.setTextScroll(false);
-        tft.setTextSize(1);
-        tft.setFont(&fonts::efontJA_16); // Р’СЃС‚СЂРѕРµРЅРЅС‹Р№ С€СЂРёС„С‚ СЃ РїРѕРґРґРµСЂР¶РєРѕР№ РєРёСЂРёР»Р»РёС†С‹
-        
-        // Setup touch controller on dedicated hardware SPI bus
-        pinMode(TOUCH_IRQ, INPUT_PULLUP);
-        touchSpi.begin(TOUCH_CLK, TOUCH_DO, TOUCH_DIN, TOUCH_CS);
-        touch_ok = touch.begin(touchSpi);
-        if (touch_ok) {
-            touch.setRotation(1);
-        }
-        
-        // Welcome screen
-        tft.fillScreen(TFT_BLACK);
-        tft.setTextColor(TFT_WHITE);
-        tft.setTextSize(3);
-        tft.setCursor(100, 120);
-        tft.println("Smart-Column S3");
-        tft.setTextSize(2);
-        tft.setCursor(140, 170);
-        tft.setTextColor(TFT_GREEN);
-        tft.println("TFT + Touch OK");
-        
+    if (initDisplayHardware(true)) {
         LOG_I("Display: TFT + Touch initialized");
-        delay(1500);
-        
-        // РћС‡РёСЃС‚РёС‚СЊ СЌРєСЂР°РЅ РґР»СЏ РѕСЃРЅРѕРІРЅРѕРіРѕ UI
-        tft.fillScreen(TFT_BLACK);
 
         // РџСЂРѕС„РёР»СЊ Р·Р°С‚РёСЂРєРё РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
         memset(&mashProfileDefault, 0, sizeof(mashProfileDefault));
@@ -1284,7 +1337,25 @@ void init() {
 
 void update(const SystemState& state) {
 #if TFT_ENABLED
-    if (!tft_ok) return;
+    const uint32_t now = millis();
+
+    if (g_displayStats.lastUpdateCallAtMs > 0) {
+        const uint32_t updateGapMs = now - g_displayStats.lastUpdateCallAtMs;
+        const uint16_t clampedGapMs = static_cast<uint16_t>(updateGapMs > 0xFFFF ? 0xFFFF : updateGapMs);
+        g_displayStats.lastUpdateGapMs = clampedGapMs;
+        if (clampedGapMs > g_displayStats.maxUpdateGapMs) {
+            g_displayStats.maxUpdateGapMs = clampedGapMs;
+        }
+        if (updateGapMs > DISPLAY_UPDATE_GAP_WARN_MS) {
+            g_displayStats.updateGapOverruns++;
+        }
+    }
+    g_displayStats.lastUpdateCallAtMs = now;
+
+    if (!tft_ok) {
+        attemptHardRecovery(now);
+        return;
+    }
 
     if (ui.calibrating) {
         TouchEvent ev;
@@ -1322,7 +1393,6 @@ void update(const SystemState& state) {
     }
 
     TouchEvent ev = readTouchEvent();
-    const uint32_t now = millis();
 
     if (!ui.needsRedraw && g_displayStats.lastFrameAtMs > 0 &&
         (now - g_displayStats.lastFrameAtMs) > DISPLAY_FORCE_REFRESH_MS) {
@@ -1426,6 +1496,7 @@ void update(const SystemState& state) {
 
         const uint32_t frameTime = millis() - frameStartMs;
         bool scheduleRecoveryRedraw = false;
+        bool requestHardRecovery = false;
         g_displayStats.framesRendered++;
         g_displayStats.lastFrameMs = static_cast<uint16_t>(frameTime > 0xFFFF ? 0xFFFF : frameTime);
         g_displayStats.lastFrameAtMs = millis();
@@ -1436,24 +1507,52 @@ void update(const SystemState& state) {
         if (frameTime >= DISPLAY_SLOW_FRAME_MS) {
             g_displayStats.slowFrames++;
             if (frameTime >= DISPLAY_HARD_FRAME_MS) {
-                g_displayStats.consecutiveSlowFrames++;
+                if (g_displayStats.consecutiveSlowFrames < 255) g_displayStats.consecutiveSlowFrames++;
+                if (g_displayStats.consecutiveHardFrames < 255) g_displayStats.consecutiveHardFrames++;
             } else {
                 g_displayStats.consecutiveSlowFrames = 0;
+                g_displayStats.consecutiveHardFrames = 0;
             }
         } else {
             g_displayStats.consecutiveSlowFrames = 0;
+            g_displayStats.consecutiveHardFrames = 0;
         }
 
-        if (g_displayStats.consecutiveSlowFrames >= 3) {
+        if (g_displayStats.consecutiveSlowFrames >= DISPLAY_SOFT_WD_THRESHOLD) {
             // Soft watchdog: force a full redraw cycle instead of running with a stale frame.
             g_displayStats.watchdogRecoveries++;
             g_displayStats.consecutiveSlowFrames = 0;
             ui.lastRenderedScreen = static_cast<UiScreen>(255);
             scheduleRecoveryRedraw = true;
+
+            if (g_displayStats.softRecoveryWindowStartedMs == 0 ||
+                (now - g_displayStats.softRecoveryWindowStartedMs) > DISPLAY_SOFT_WD_WINDOW_MS) {
+                g_displayStats.softRecoveryWindowStartedMs = now;
+                g_displayStats.softRecoveriesInWindow = 1;
+            } else if (g_displayStats.softRecoveriesInWindow < 255) {
+                g_displayStats.softRecoveriesInWindow++;
+            }
+        }
+
+        if (g_displayStats.softRecoveryWindowStartedMs > 0 &&
+            (now - g_displayStats.softRecoveryWindowStartedMs) > DISPLAY_SOFT_WD_WINDOW_MS) {
+            g_displayStats.softRecoveryWindowStartedMs = now;
+            g_displayStats.softRecoveriesInWindow = 0;
+        }
+
+        if (g_displayStats.consecutiveHardFrames >= DISPLAY_HARD_FRAME_BURST_THRESHOLD ||
+            g_displayStats.softRecoveriesInWindow >= DISPLAY_SOFT_WD_BURST_FOR_HARD) {
+            requestHardRecovery = true;
+        }
+
+        if (requestHardRecovery && attemptHardRecovery(now)) {
+            return;
         }
 
         ui.needsRedraw = scheduleRecoveryRedraw;
-        ui.lastRenderedScreen = ui.currentScreen;
+        if (!scheduleRecoveryRedraw) {
+            ui.lastRenderedScreen = ui.currentScreen;
+        }
     }
 #endif
 
@@ -1510,9 +1609,14 @@ RuntimeStats getRuntimeStats() {
     stats.framesRendered = g_displayStats.framesRendered;
     stats.slowFrames = g_displayStats.slowFrames;
     stats.watchdogRecoveries = g_displayStats.watchdogRecoveries;
+    stats.hardWatchdogRecoveries = g_displayStats.hardWatchdogRecoveries;
+    stats.hardWatchdogFailures = g_displayStats.hardWatchdogFailures;
     stats.lastFrameMs = g_displayStats.lastFrameMs;
     stats.maxFrameMs = g_displayStats.maxFrameMs;
     stats.lastFrameAtMs = g_displayStats.lastFrameAtMs;
+    stats.lastUpdateGapMs = g_displayStats.lastUpdateGapMs;
+    stats.maxUpdateGapMs = g_displayStats.maxUpdateGapMs;
+    stats.updateGapOverruns = g_displayStats.updateGapOverruns;
 #endif
     return stats;
 }
