@@ -920,14 +920,21 @@ static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h, const
     // Clear only value area to avoid visible full-tile flicker on periodic updates.
     const int16_t valueAreaY = y + 22;
     const int16_t valueAreaH = h - 24;
+    const bool largeValue = (w > 150);
     if (valueAreaH > 0) {
         tft.fillRoundRect(x + 2, valueAreaY, w - 4, valueAreaH, 8, colorCard());
     }
     
     tft.setTextColor(color);
-    tft.setTextSize(w > 150 ? 4 : 2); // Р‘РѕР»СЊС€РёРµ Р·РЅР°С‡РµРЅРёСЏ РґР»СЏ РєСЂСѓРїРЅС‹С… РїР»РёС‚РѕРє
+    tft.setTextSize(largeValue ? 4 : 2); // Р‘РѕР»СЊС€РёРµ Р·РЅР°С‡РµРЅРёСЏ РґР»СЏ РєСЂСѓРїРЅС‹С… РїР»РёС‚РѕРє
     tft.setTextDatum(middle_center);
-    tft.drawString(value, x + w / 2, y + h / 2 + 5);
+    const int16_t valueX = x + w / 2;
+    const int16_t valueY = y + h / 2 + 5;
+    tft.drawString(value, valueX, valueY);
+    if (largeValue) {
+        // Extra pass gives a visually bolder look for primary values.
+        tft.drawString(value, valueX + 1, valueY);
+    }
     
     tft.setTextColor(tft.color565(100, 100, 100));
     tft.setTextSize(1);
