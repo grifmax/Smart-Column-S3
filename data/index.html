@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart-Column S3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="column-animation.css">
     <link rel="stylesheet" href="schemes-animation.css">
@@ -52,6 +55,75 @@
 
         <!-- Вкладка: Мониторинг -->
         <div id="monitor" class="tab-content active">
+            <section class="landing-shell">
+                <div class="landing-glow landing-glow-left"></div>
+                <div class="landing-glow landing-glow-right"></div>
+
+                <div class="landing-hero">
+                    <div class="landing-hero-main">
+                        <div class="landing-eyebrow">Live WebSocket Landing</div>
+                        <h2 class="landing-title">Главный экран оператора</h2>
+                        <p class="landing-subtitle">Ключевые параметры процесса и быстрые переходы к управлению</p>
+
+                        <div class="landing-badges">
+                            <span id="landing-mode-chip" class="landing-chip mode-idle">IDLE</span>
+                            <span id="landing-phase-chip" class="landing-chip">PHASE -</span>
+                            <span id="landing-safety-chip" class="landing-chip landing-chip-neutral">SAFETY -</span>
+                        </div>
+
+                        <div class="landing-actions">
+                            <button class="btn btn-primary" onclick="activateTabById('control')">Управление</button>
+                            <button class="btn" onclick="activateTabById('settings')">Настройки</button>
+                            <a href="charts.html" class="btn btn-info" style="text-decoration: none;">Графики</a>
+                        </div>
+                    </div>
+
+                    <div class="landing-hero-side">
+                        <div class="landing-kpi-main">
+                            <div class="landing-kpi-label">Куб</div>
+                            <div id="landing-cube-value" class="landing-kpi-value">--.-°C</div>
+                        </div>
+                        <div class="landing-kpi-grid">
+                            <div class="landing-kpi-mini">
+                                <div class="landing-kpi-label">Мощность</div>
+                                <div id="landing-power-value" class="landing-kpi-mini-value">-- W</div>
+                            </div>
+                            <div class="landing-kpi-mini">
+                                <div class="landing-kpi-label">Давление куба</div>
+                                <div id="landing-pressure-value" class="landing-kpi-mini-value">-- мм</div>
+                            </div>
+                            <div class="landing-kpi-mini">
+                                <div class="landing-kpi-label">Насос</div>
+                                <div id="landing-pump-value" class="landing-kpi-mini-value">-- мл/ч</div>
+                            </div>
+                            <div class="landing-kpi-mini">
+                                <div class="landing-kpi-label">Крепость</div>
+                                <div id="landing-abv-value" class="landing-kpi-mini-value">-- %</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="landing-strip">
+                    <div class="landing-strip-item">
+                        <span class="landing-strip-label">Вода вход</span>
+                        <span id="landing-water-in" class="landing-strip-value">--.-°C</span>
+                    </div>
+                    <div class="landing-strip-item">
+                        <span class="landing-strip-label">Вода выход</span>
+                        <span id="landing-water-out" class="landing-strip-value">--.-°C</span>
+                    </div>
+                    <div class="landing-strip-item">
+                        <span class="landing-strip-label">Сеть</span>
+                        <span id="landing-voltage" class="landing-strip-value">-- V</span>
+                    </div>
+                    <div class="landing-strip-item">
+                        <span class="landing-strip-label">Обновление</span>
+                        <span id="landing-updated" class="landing-strip-value">--:--:--</span>
+                    </div>
+                </div>
+            </section>
+
             <div class="cards">
                 <!-- Режим и фаза -->
                 <div class="card">

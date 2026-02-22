@@ -65,6 +65,88 @@ function getModeCssClass(mode) {
     }
 }
 
+function resolveMode(modeValue, modeStrValue) {
+    const modeNum = Number(modeValue);
+    if (Number.isFinite(modeNum)) return modeNum;
+    if (typeof modeStrValue !== 'string') return MODE_IDLE;
+
+    const modeMap = {
+        idle: MODE_IDLE,
+        rect: MODE_RECT,
+        rectification: MODE_RECT,
+        manual: MODE_MANUAL,
+        dist: MODE_DIST,
+        distillation: MODE_DIST,
+        mash: MODE_MASH,
+        mashing: MODE_MASH,
+        hold: MODE_HOLD
+    };
+    return modeMap[modeStrValue.toLowerCase()] ?? MODE_IDLE;
+}
+
+function updateLandingUi(snapshot) {
+    const modeChip = document.getElementById('landing-mode-chip');
+    if (modeChip && snapshot.mode !== undefined) {
+        const modeNum = resolveMode(snapshot.mode, snapshot.modeStr);
+        modeChip.textContent = getModeLabel(modeNum).toUpperCase();
+        modeChip.className = `landing-chip ${getModeCssClass(modeNum)}`;
+    }
+
+    const phaseChip = document.getElementById('landing-phase-chip');
+    if (phaseChip && snapshot.phaseText !== undefined) {
+        phaseChip.textContent = `PHASE ${snapshot.phaseText || '-'}`;
+    }
+
+    const safetyChip = document.getElementById('landing-safety-chip');
+    if (safetyChip && snapshot.safetyOk !== undefined) {
+        if (snapshot.safetyOk) {
+            safetyChip.textContent = 'SAFETY OK';
+            safetyChip.className = 'landing-chip landing-chip-ok';
+        } else {
+            safetyChip.textContent = 'SAFETY ALERT';
+            safetyChip.className = 'landing-chip landing-chip-warn';
+        }
+    }
+
+    if (snapshot.tCube !== undefined) {
+        const el = document.getElementById('landing-cube-value');
+        if (el) el.textContent = `${snapshot.tCube.toFixed(1)}°C`;
+    }
+    if (snapshot.power !== undefined) {
+        const el = document.getElementById('landing-power-value');
+        if (el) el.textContent = `${snapshot.power.toFixed(0)} W`;
+    }
+    if (snapshot.pressureCube !== undefined) {
+        const el = document.getElementById('landing-pressure-value');
+        if (el) el.textContent = `${snapshot.pressureCube.toFixed(1)} мм`;
+    }
+    if (snapshot.pumpSpeed !== undefined) {
+        const el = document.getElementById('landing-pump-value');
+        if (el) el.textContent = `${snapshot.pumpSpeed.toFixed(0)} мл/ч`;
+    }
+    if (snapshot.abv !== undefined) {
+        const el = document.getElementById('landing-abv-value');
+        if (el) el.textContent = `${snapshot.abv.toFixed(1)} %`;
+    }
+    if (snapshot.waterIn !== undefined) {
+        const el = document.getElementById('landing-water-in');
+        if (el) el.textContent = `${snapshot.waterIn.toFixed(1)}°C`;
+    }
+    if (snapshot.waterOut !== undefined) {
+        const el = document.getElementById('landing-water-out');
+        if (el) el.textContent = `${snapshot.waterOut.toFixed(1)}°C`;
+    }
+    if (snapshot.voltage !== undefined) {
+        const el = document.getElementById('landing-voltage');
+        if (el) el.textContent = `${snapshot.voltage.toFixed(0)} V`;
+    }
+
+    const upd = document.getElementById('landing-updated');
+    if (upd) {
+        upd.textContent = new Date().toLocaleTimeString('ru-RU', { hour12: false });
+    }
+}
+
 const STATUS_POLL_INTERVAL_MS = 2000;
 let statusPollTimer = null;
 
@@ -584,6 +666,7 @@ function updateMiniChart(data) {
 
 
 function updateUI(data) {
+    let phaseText = undefined;
 
     // Режим
 
@@ -619,7 +702,8 @@ function updateUI(data) {
 
         const phaseNames = ['IDLE', 'HEATING', 'STABIL', 'HEADS', 'PURGE', 'BODY', 'TAILS', 'FINISH', 'ERROR'];
 
-        document.getElementById('phase').textContent = phaseNames[data.phase] || '—';
+        phaseText = phaseNames[data.phase] || '-';
+        document.getElementById('phase').textContent = phaseText;
 
     }
 
@@ -813,6 +897,19 @@ function updateUI(data) {
 
     }
 
+    updateLandingUi({
+        mode: data.mode,
+        phaseText,
+        tCube: data.t_cube,
+        power: data.power,
+        pressureCube: data.p_cube,
+        pumpSpeed: data.pump_speed,
+        abv: data.abv,
+        waterIn: data.t_water_in,
+        waterOut: data.t_water_out,
+        voltage: data.voltage
+    });
+
     updateButtonStates();
 
 }
@@ -901,6 +998,11 @@ function initTabs() {
 
     });
 
+}
+
+function activateTabById(targetId) {
+    const tab = document.querySelector(`.tab[data-tab="${targetId}"]`);
+    if (tab) tab.click();
 }
 
 
@@ -1571,28 +1673,7 @@ async function loadStatus() {
 
         // Нормализуем mode: ожидаем число (0=IDLE), но на прокси/кастомных сборках
         // может прилететь строка. Для кнопок достаточно корректно определить IDLE.
-        {
-            const modeNum = Number(data.mode);
-            if (Number.isFinite(modeNum)) {
-                currentMode = modeNum;
-            } else if (typeof data.modeStr === 'string') {
-                const s = data.modeStr.toLowerCase();
-                const modeMap = {
-                    idle: MODE_IDLE,
-                    rect: MODE_RECT,
-                    rectification: MODE_RECT,
-                    manual: MODE_MANUAL,
-                    dist: MODE_DIST,
-                    distillation: MODE_DIST,
-                    mash: MODE_MASH,
-                    mashing: MODE_MASH,
-                    hold: MODE_HOLD
-                };
-                currentMode = modeMap[s] ?? MODE_IDLE;
-            } else {
-                currentMode = MODE_IDLE;
-            }
-        }
+        currentMode = resolveMode(data.mode, data.modeStr);
 
         currentPaused = Boolean(data.paused);
 
@@ -1635,28 +1716,16 @@ async function loadStatus() {
 
 
 function updateUIFromStatus(data) {
+    let phaseText = '-';
 
     // Режим
 
-    if (data.modeStr !== undefined) {
+    if (data.modeStr !== undefined || data.mode !== undefined) {
 
         const modeEl = document.getElementById('mode');
 
         if (modeEl) {
-            const modeKey = String(data.modeStr).toLowerCase();
-            const modeMap = {
-                idle: MODE_IDLE,
-                rect: MODE_RECT,
-                rectification: MODE_RECT,
-                manual: MODE_MANUAL,
-                dist: MODE_DIST,
-                distillation: MODE_DIST,
-                mash: MODE_MASH,
-                mashing: MODE_MASH,
-                hold: MODE_HOLD
-            };
-            const modeNum = modeMap[modeKey];
-            const resolvedMode = Number.isFinite(modeNum) ? modeNum : MODE_IDLE;
+            const resolvedMode = resolveMode(data.mode, data.modeStr);
 
             modeEl.textContent = getModeLabel(resolvedMode).toUpperCase();
             modeEl.className = `value ${getModeCssClass(resolvedMode)}`;
@@ -1675,7 +1744,8 @@ function updateUIFromStatus(data) {
 
         if (phaseEl) {
 
-            phaseEl.textContent = data.phaseStr.toUpperCase() || '—';
+            phaseText = data.phaseStr.toUpperCase() || '-';
+            phaseEl.textContent = phaseText;
 
         }
 
@@ -1891,6 +1961,21 @@ function updateUIFromStatus(data) {
         if (el) el.textContent = formatUptime(data.uptime);
 
     }
+
+    updateLandingUi({
+        mode: data.mode,
+        modeStr: data.modeStr,
+        phaseText,
+        safetyOk: data.safetyOk,
+        tCube: data.temps?.cube,
+        power: data.power?.power,
+        pressureCube: data.pressure?.cube,
+        pumpSpeed: data.pump?.speedMlH,
+        abv: data.hydrometer?.abv,
+        waterIn: data.temps?.waterIn,
+        waterOut: data.temps?.waterOut,
+        voltage: data.power?.voltage
+    });
 
 }
 
