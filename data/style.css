@@ -395,14 +395,14 @@ header h1 {
 }
 
 .operator-list-row {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
     border-radius: 9px;
     border: 1px solid var(--landing-border);
     background: rgba(255, 255, 255, 0.62);
-    padding: 7px 8px;
+    padding: 7px 9px;
 }
 
 [data-theme="dark"] .operator-list-row {
@@ -411,14 +411,16 @@ header h1 {
 
 .operator-list-row span {
     color: var(--landing-muted);
-    font-size: 0.74em;
-    line-height: 1.12;
+    font-size: 0.8em;
+    line-height: 1.18;
 }
 
 .operator-list-row strong {
     color: var(--landing-ink);
-    font-size: 1em;
-    line-height: 1.1;
+    font-size: 1.02em;
+    line-height: 1.12;
+    text-align: right;
+    white-space: nowrap;
 }
 
 .operator-scheme-wrap {
@@ -503,15 +505,15 @@ header h1 {
 }
 
 .operator-screen-instrument .operator-list-row {
-    padding: 8px 9px;
+    padding: 8px 10px;
 }
 
 .operator-screen-instrument .operator-list-row span {
-    font-size: 0.76em;
+    font-size: 0.82em;
 }
 
 .operator-screen-instrument .operator-list-row strong {
-    font-size: 1.06em;
+    font-size: 1.08em;
 }
 
 .operator-screen-instrument #mini-chart {
@@ -580,15 +582,15 @@ header h1 {
 }
 
 .operator-screen-compact .operator-list-row {
-    padding: 6px 7px;
+    padding: 7px 8px;
 }
 
 .operator-screen-compact .operator-list-row span {
-    font-size: 0.72em;
+    font-size: 0.76em;
 }
 
 .operator-screen-compact .operator-list-row strong {
-    font-size: 0.94em;
+    font-size: 0.96em;
 }
 
 .operator-screen-compact #mini-chart {
@@ -1174,14 +1176,8 @@ footer {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .operator-list {
-        grid-template-columns: 1fr;
-    }
-
-    .operator-screen-instrument .operator-list {
-        grid-template-columns: 1fr;
-    }
-
+    .operator-list,
+    .operator-screen-instrument .operator-list,
     .operator-screen-compact .operator-list {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
