@@ -1011,6 +1011,82 @@
         </div>
     </div>
 
+    <div id="rect-start-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 760px;">
+            <div class="modal-header">
+                <div class="modal-title">Настройки авто-ректификации</div>
+                <button class="modal-close" onclick="closeRectificationStartModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-section">
+                    <div class="modal-section-title">Параметры сырца и фракций</div>
+                    <div class="modal-info-grid">
+                        <div class="form-group">
+                            <label for="rect-start-feedstock">Сырье</label>
+                            <select id="rect-start-feedstock">
+                                <option value="0">Сахар</option>
+                                <option value="1">Мука / зерно</option>
+                                <option value="2">Солод</option>
+                                <option value="3">Фрукты</option>
+                                <option value="4">Меласса</option>
+                                <option value="5">Виноград / вино</option>
+                                <option value="6">Мед</option>
+                                <option value="7">Другое</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="rect-start-feed-volume">Объем сырца, л</label>
+                            <input type="number" id="rect-start-feed-volume" min="1" max="250" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="rect-start-feed-abv">Крепость сырца, %</label>
+                            <input type="number" id="rect-start-feed-abv" min="1" max="96" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="rect-start-heads-percent">Головы, %</label>
+                            <input type="number" id="rect-start-heads-percent" min="0" max="40" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="rect-start-body-percent">Тело, %</label>
+                            <input type="number" id="rect-start-body-percent" min="0" max="100" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="rect-start-tails-percent">Хвосты, %</label>
+                            <input type="number" id="rect-start-tails-percent" min="0" max="100" step="0.1">
+                            <div id="rect-start-fractions-sum" style="margin-top: 6px; font-size: 0.85em; color: var(--text-secondary);">Sum: --%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-section">
+                    <div class="modal-section-title">Скорости и фазы</div>
+                    <div class="modal-info-grid">
+                        <div class="form-group">
+                            <label for="rect-start-heads-speed">Скорость голов, мл/ч/кВт</label>
+                            <input type="number" id="rect-start-heads-speed" min="10" max="2000" step="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="rect-start-body-speed">Скорость тела, мл/ч/кВт</label>
+                            <input type="number" id="rect-start-body-speed" min="50" max="3000" step="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="rect-start-stabilization">Стабилизация, мин</label>
+                            <input type="number" id="rect-start-stabilization" min="1" max="180" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="rect-start-purge">Продувка, мин</label>
+                            <input type="number" id="rect-start-purge" min="1" max="120" step="1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeRectificationStartModal()">Отмена</button>
+                <button id="rect-start-confirm" class="btn btn-success" onclick="confirmStartRectification()">Сохранить и запустить</button>
+            </div>
+        </div>
+    </div>
+
     <script src="column-animation.js"></script>
     <script src="app.js"></script>
 </body>

@@ -128,6 +128,84 @@ static const char *getMashPhaseString(MashPhase phase) {
   }
 }
 
+static float clampFloatRange(float value, float minValue, float maxValue) {
+  if (value < minValue) return minValue;
+  if (value > maxValue) return maxValue;
+  return value;
+}
+
+static uint16_t clampU16Range(uint32_t value, uint16_t minValue,
+                              uint16_t maxValue) {
+  if (value < minValue) return minValue;
+  if (value > maxValue) return maxValue;
+  return static_cast<uint16_t>(value);
+}
+
+static void getRectFeedstockDefaults(uint8_t feedstock, float &headsPct,
+                                     float &bodyPct, float &tailsPct) {
+  switch (feedstock) {
+  case 0: // Sugar
+    headsPct = 6.0f;
+    bodyPct = 84.0f;
+    tailsPct = 10.0f;
+    break;
+  case 1: // Flour / grain
+    headsPct = 8.0f;
+    bodyPct = 80.0f;
+    tailsPct = 12.0f;
+    break;
+  case 2: // Malt
+    headsPct = 7.0f;
+    bodyPct = 81.0f;
+    tailsPct = 12.0f;
+    break;
+  case 3: // Fruit
+    headsPct = 5.0f;
+    bodyPct = 75.0f;
+    tailsPct = 20.0f;
+    break;
+  case 4: // Molasses
+    headsPct = 8.0f;
+    bodyPct = 74.0f;
+    tailsPct = 18.0f;
+    break;
+  case 5: // Grape / wine
+    headsPct = 6.0f;
+    bodyPct = 78.0f;
+    tailsPct = 16.0f;
+    break;
+  case 6: // Honey
+    headsPct = 7.0f;
+    bodyPct = 79.0f;
+    tailsPct = 14.0f;
+    break;
+  default:
+    headsPct = RECT_HEADS_PERCENT_DEFAULT;
+    bodyPct = RECT_BODY_PERCENT_DEFAULT;
+    tailsPct = RECT_TAILS_PERCENT_DEFAULT;
+    break;
+  }
+}
+
+static void normalizeRectFractions(RectParams &params) {
+  params.headsPercent = clampFloatRange(params.headsPercent, 0.0f, 40.0f);
+  params.bodyPercent = clampFloatRange(params.bodyPercent, 0.0f, 100.0f);
+  params.tailsPercent = clampFloatRange(params.tailsPercent, 0.0f, 100.0f);
+
+  float sum = params.headsPercent + params.bodyPercent + params.tailsPercent;
+  if (sum <= 100.0f) return;
+
+  float excess = sum - 100.0f;
+  if (params.tailsPercent >= excess) {
+    params.tailsPercent -= excess;
+    return;
+  }
+
+  excess -= params.tailsPercent;
+  params.tailsPercent = 0.0f;
+  params.bodyPercent = clampFloatRange(params.bodyPercent - excess, 0.0f, 100.0f);
+}
+
 namespace WebServer {
 
 void init() {
@@ -756,6 +834,133 @@ void init() {
         }
 
         request->send(200, "application/json", "{\"success\":true}");
+      });
+
+  // GET /api/settings/rect - get auto-rectification startup parameters
+  server.on("/api/settings/rect", HTTP_GET, [](AsyncWebServerRequest *request) {
+    StaticJsonDocument<384> doc;
+    const RectParams &params = g_settings.rectParams;
+
+    doc["feedstock"] = params.feedstock;
+    doc["feedVolumeL"] = params.feedVolumeL;
+    doc["feedAbvPercent"] = params.feedAbvPercent;
+    doc["headsPercent"] = params.headsPercent;
+    doc["bodyPercent"] = params.bodyPercent;
+    doc["tailsPercent"] = params.tailsPercent;
+    doc["headsSpeedMlHKw"] = params.headsSpeedMlHKw;
+    doc["bodySpeedMlHKw"] = params.bodySpeedMlHKw;
+    doc["stabilizationMin"] = params.stabilizationMin;
+    doc["purgeMin"] = params.purgeMin;
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  // POST /api/settings/rect - save auto-rectification startup parameters
+  server.on(
+      "/api/settings/rect", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<640> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        JsonObject root = doc.as<JsonObject>();
+        JsonObject params = root["params"].is<JsonObject>()
+                                ? root["params"].as<JsonObject>()
+                                : root;
+
+        RectParams updated = g_settings.rectParams;
+        bool fractionsUpdated = false;
+
+        if (params.containsKey("feedstock")) {
+          int feedstock = params["feedstock"].as<int>();
+          if (feedstock < 0) feedstock = 0;
+          if (feedstock > 7) feedstock = 7;
+          updated.feedstock = static_cast<uint8_t>(feedstock);
+        }
+
+        bool applyFeedstockDefaults = params["applyFeedstockDefaults"] | false;
+        if (applyFeedstockDefaults) {
+          getRectFeedstockDefaults(updated.feedstock, updated.headsPercent,
+                                   updated.bodyPercent, updated.tailsPercent);
+          fractionsUpdated = true;
+        }
+
+        if (params.containsKey("feedVolumeL")) {
+          updated.feedVolumeL =
+              clampFloatRange(params["feedVolumeL"].as<float>(), 1.0f, 250.0f);
+        }
+        if (params.containsKey("feedAbvPercent")) {
+          updated.feedAbvPercent = clampFloatRange(
+              params["feedAbvPercent"].as<float>(), 1.0f, 96.0f);
+        }
+        if (params.containsKey("headsPercent")) {
+          updated.headsPercent =
+              clampFloatRange(params["headsPercent"].as<float>(), 0.0f, 40.0f);
+          fractionsUpdated = true;
+        }
+        if (params.containsKey("bodyPercent")) {
+          updated.bodyPercent =
+              clampFloatRange(params["bodyPercent"].as<float>(), 0.0f, 100.0f);
+          fractionsUpdated = true;
+        }
+        if (params.containsKey("tailsPercent")) {
+          updated.tailsPercent =
+              clampFloatRange(params["tailsPercent"].as<float>(), 0.0f, 100.0f);
+          fractionsUpdated = true;
+        }
+        if (params.containsKey("headsSpeedMlHKw")) {
+          updated.headsSpeedMlHKw = clampFloatRange(
+              params["headsSpeedMlHKw"].as<float>(), 10.0f, 2000.0f);
+        }
+        if (params.containsKey("bodySpeedMlHKw")) {
+          updated.bodySpeedMlHKw = clampFloatRange(
+              params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
+        }
+        if (params.containsKey("stabilizationMin")) {
+          updated.stabilizationMin = clampU16Range(
+              params["stabilizationMin"].as<uint32_t>(), 1, 180);
+        }
+        if (params.containsKey("purgeMin")) {
+          updated.purgeMin =
+              clampU16Range(params["purgeMin"].as<uint32_t>(), 1, 120);
+        }
+
+        if (fractionsUpdated) {
+          normalizeRectFractions(updated);
+        }
+
+        g_settings.rectParams = updated;
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        StaticJsonDocument<448> out;
+        out["success"] = true;
+        out["feedstock"] = g_settings.rectParams.feedstock;
+        out["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
+        out["feedAbvPercent"] = g_settings.rectParams.feedAbvPercent;
+        out["headsPercent"] = g_settings.rectParams.headsPercent;
+        out["bodyPercent"] = g_settings.rectParams.bodyPercent;
+        out["tailsPercent"] = g_settings.rectParams.tailsPercent;
+        out["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
+        out["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+        out["stabilizationMin"] = g_settings.rectParams.stabilizationMin;
+        out["purgeMin"] = g_settings.rectParams.purgeMin;
+
+        String json;
+        serializeJson(out, json);
+        request->send(200, "application/json", json);
       });
 
   // POST /api/manual/heater - установить мощность ТЭНа (0-100%)
