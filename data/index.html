@@ -63,27 +63,6 @@
         <!-- Вкладка: Мониторинг -->
         <div id="monitor" class="tab-content active">
             <section class="operator-screen operator-screen-instrument">
-                <div class="operator-main-menu">
-                    <div>
-                        <div class="operator-kicker">Main Operator Menu</div>
-                        <h2 class="operator-title">Главный экран оператора</h2>
-                        <p class="operator-subtitle">Оперативная телеметрия, статус процесса и быстрый доступ к управлению</p>
-                    </div>
-                    <div class="operator-action-row">
-                        <button class="btn btn-primary" onclick="activateTabById('control')">Управление</button>
-                        <button class="btn" onclick="activateTabById('settings')">Настройки</button>
-                        <a href="charts.html" class="btn btn-info" style="text-decoration: none;">Графики</a>
-                        <button id="operator-view-toggle" class="btn btn-sm" type="button" onclick="toggleOperatorView()">View: Instrument</button>
-                    </div>
-                </div>
-
-                <div class="operator-chip-row">
-                    <span id="landing-mode-chip" class="landing-chip mode-idle">IDLE</span>
-                    <span id="landing-phase-chip" class="landing-chip">PHASE -</span>
-                    <span id="landing-safety-chip" class="landing-chip landing-chip-neutral">SAFETY -</span>
-                    <span class="operator-updated">Обновление: <strong id="landing-updated">--:--:--</strong></span>
-                </div>
-
                 <div class="operator-grid">
                     <article class="operator-card operator-card-status">
                         <h3 class="operator-card-title">Статус процесса</h3>

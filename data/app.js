@@ -271,6 +271,13 @@ function toggleOperatorView() {
 function initOperatorViewToggle() {
     const screen = document.querySelector('#monitor .operator-screen');
     if (!screen) return;
+    const button = document.getElementById('operator-view-toggle');
+
+    // If the toggle control is not present in layout, keep stable instrument view.
+    if (!button) {
+        setOperatorView('instrument');
+        return;
+    }
 
     let saved = 'instrument';
     try {
