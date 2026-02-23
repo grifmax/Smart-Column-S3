@@ -36,8 +36,8 @@ let maxHeaterPower = 3000;  // Будет обновлено из настрое
 
 const MODE_IDLE = 0;
 const MODE_RECT = 1;
-const MODE_MANUAL = 2;
-const MODE_DIST = 3;
+const MODE_DIST = 2;
+const MODE_MANUAL = 3;
 const MODE_MASH = 4;
 const MODE_HOLD = 5;
 
