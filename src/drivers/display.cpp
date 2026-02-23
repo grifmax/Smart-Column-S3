@@ -2844,6 +2844,7 @@ void init() {
         ui.currentScreen = UI_DASHBOARD;
         ui.rootScreen = UI_DASHBOARD;
         ui.stackDepth = 0;
+        ui.lastRenderedScreen = static_cast<UiScreen>(255);
         ui.needsRedraw = true;
         const bool forceCal = touch_ok ? detectCalibrationRequest() : false;
         ui.calibrating = !g_settings.touchCal.valid || forceCal;
@@ -2900,6 +2901,7 @@ void update(const SystemState& state) {
                     if (ui.calStep >= 4) {
                         applyTouchCalibration();
                         ui.calibrating = false;
+                        ui.lastRenderedScreen = static_cast<UiScreen>(255);
                         ui.needsRedraw = true;
                     }
                 }
