@@ -84,7 +84,10 @@
                             </div>
                             <div class="operator-stat">
                                 <span class="operator-stat-label">Крепость</span>
-                                <span id="abv" class="operator-stat-value">--%</span>
+                                <span id="abv-edit-trigger" class="operator-stat-value operator-abv-value" onclick="openRuntimeEditModal('planned-abv')" title="Нажмите для ввода плановой крепости">
+                                    <span id="abv">--%</span>
+                                    <span id="abv-source-dot" class="abv-source-dot abv-source-offline" title="Ареометр OFF"></span>
+                                </span>
                             </div>
                         </div>
                         <div class="operator-level-grid">
@@ -111,6 +114,12 @@
                         <h3 class="operator-card-title" id="mode-runtime-title">Прогресс режима</h3>
                         <div id="mode-runtime-caption" class="operator-runtime-caption">Ожидание запуска процесса</div>
                         <div id="mode-runtime-bars" class="operator-runtime-bars"></div>
+                        <div id="mode-runtime-rect" class="operator-runtime-manual" style="display: none;">
+                            <button class="operator-edit-tile" type="button" data-edit-param="rect-power">
+                                <span class="operator-edit-label">Мощность</span>
+                                <strong id="rect-power-display">-- %</strong>
+                            </button>
+                        </div>
                         <div id="mode-runtime-manual" class="operator-runtime-manual" style="display: none;">
                             <button class="operator-edit-tile" type="button" data-edit-param="manual-power">
                                 <span class="operator-edit-label">Мощность</span>
@@ -1127,6 +1136,12 @@
                     <input type="number" id="runtime-edit-value" step="1">
                 </div>
                 <div id="runtime-edit-hint" style="color: var(--text-secondary); font-size: 0.92em;"></div>
+                <div id="runtime-edit-unit-toggle" style="display: none; margin-top: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95em;">
+                        <input type="checkbox" id="runtime-edit-unit-watts" onchange="onRuntimeEditUnitToggle()">
+                        <span>Ввести в Ваттах (Вт)</span>
+                    </label>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn" onclick="closeRuntimeEditModal()">Отмена</button>

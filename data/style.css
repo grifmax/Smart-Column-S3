@@ -457,6 +457,29 @@ header h1 {
     color: var(--landing-ink);
 }
 
+.operator-abv-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.abv-source-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.12);
+}
+
+.abv-source-online {
+    background: #22c55e;
+}
+
+.abv-source-offline {
+    background: #ef4444;
+}
+
 .operator-level-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(120px, 1fr));

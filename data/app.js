@@ -95,6 +95,7 @@ let runtimeMonitorState = {
     phase: 0,
     phaseStr: 'IDLE',
     power: { power: 0 },
+    hydrometer: { abv: 0, valid: false },
     pump: { speedMlH: 0, totalMl: 0 },
     volumes: { heads: 0, body: 0, tails: 0 },
     equipment: { heaterPowerW: maxHeaterPower },
@@ -144,6 +145,9 @@ let runtimeMonitorState = {
 };
 
 let runtimeEditContext = null;
+const ABV_PLAN_STORAGE_KEY = 'ui.plannedAbvPercent';
+let plannedAbvPercent = 40.0;
+let plannedAbvUserSet = false;
 
 function toFinite(value, fallback = 0) {
     const num = Number(value);
@@ -171,6 +175,70 @@ function formatDurationSafe(totalSec) {
     return formatUptime(sec);
 }
 
+function normalizeAbvPercent(value, fallback = 40.0) {
+    const num = toFinite(value, fallback);
+    if (num < 0) return 0;
+    if (num > 100) return 100;
+    return num;
+}
+
+function loadPlannedAbv() {
+    try {
+        const raw = localStorage.getItem(ABV_PLAN_STORAGE_KEY);
+        if (raw !== null) {
+            plannedAbvPercent = normalizeAbvPercent(raw, plannedAbvPercent);
+            plannedAbvUserSet = true;
+        }
+    } catch (e) {
+        console.warn('planned ABV load failed:', e);
+    }
+}
+
+function savePlannedAbv(value) {
+    plannedAbvPercent = normalizeAbvPercent(value, plannedAbvPercent);
+    plannedAbvUserSet = true;
+    try {
+        localStorage.setItem(ABV_PLAN_STORAGE_KEY, plannedAbvPercent.toFixed(1));
+    } catch (e) {
+        console.warn('planned ABV save failed:', e);
+    }
+}
+
+function getEffectiveAbvForCalculations() {
+    const state = runtimeMonitorState;
+    const sensorRaw = Number(state.hydrometer.abv);
+    const sensorHasValue = Number.isFinite(sensorRaw) && sensorRaw > 0;
+    const sensorAbv = normalizeAbvPercent(sensorRaw, plannedAbvPercent);
+    if (state.hydrometer.valid && sensorHasValue) {
+        return { value: sensorAbv, source: 'sensor' };
+    }
+    return { value: plannedAbvPercent, source: 'planned' };
+}
+
+function renderAbvValue() {
+    const abvEl = document.getElementById('abv');
+    const dotEl = document.getElementById('abv-source-dot');
+    if (!abvEl) return;
+
+    const effective = getEffectiveAbvForCalculations();
+    if (effective.source === 'sensor') {
+        abvEl.textContent = `${effective.value.toFixed(1)}%`;
+    } else {
+        abvEl.textContent = `~${effective.value.toFixed(1)}%`;
+    }
+
+    if (!dotEl) return;
+    if (effective.source === 'sensor') {
+        dotEl.classList.remove('abv-source-offline');
+        dotEl.classList.add('abv-source-online');
+        dotEl.title = 'Ареометр ONLINE (данные с датчика)';
+    } else {
+        dotEl.classList.remove('abv-source-online');
+        dotEl.classList.add('abv-source-offline');
+        dotEl.title = 'Ареометр OFF/нет данных (используется плановая крепость)';
+    }
+}
+
 function updateRuntimeStateFromStatus(data) {
     if (!data || typeof data !== 'object') return;
     const s = runtimeMonitorState;
@@ -181,6 +249,10 @@ function updateRuntimeStateFromStatus(data) {
 
     if (data.power && typeof data.power === 'object') {
         if (data.power.power !== undefined) s.power.power = toFinite(data.power.power, s.power.power);
+    }
+    if (data.hydrometer && typeof data.hydrometer === 'object') {
+        if (data.hydrometer.abv !== undefined) s.hydrometer.abv = toFinite(data.hydrometer.abv, s.hydrometer.abv);
+        if (data.hydrometer.valid !== undefined) s.hydrometer.valid = Boolean(data.hydrometer.valid);
     }
     if (data.pump && typeof data.pump === 'object') {
         if (data.pump.speedMlH !== undefined) s.pump.speedMlH = toFinite(data.pump.speedMlH, s.pump.speedMlH);
@@ -196,6 +268,9 @@ function updateRuntimeStateFromStatus(data) {
     }
     if (data.rectification && typeof data.rectification === 'object') {
         s.rectification = { ...s.rectification, ...data.rectification };
+        if (!plannedAbvUserSet && data.rectification.feedAbvPercent !== undefined) {
+            plannedAbvPercent = normalizeAbvPercent(data.rectification.feedAbvPercent, plannedAbvPercent);
+        }
     }
     if (data.distillation && typeof data.distillation === 'object') {
         s.distillation = { ...s.distillation, ...data.distillation };
@@ -222,6 +297,8 @@ function updateRuntimeStateFromWs(data) {
     if (data.phaseStr !== undefined) s.phaseStr = String(data.phaseStr);
 
     if (data.power !== undefined) s.power.power = toFinite(data.power, s.power.power);
+    if (data.abv !== undefined) s.hydrometer.abv = toFinite(data.abv, s.hydrometer.abv);
+    if (data.abv_valid !== undefined) s.hydrometer.valid = Boolean(data.abv_valid);
     if (data.pump_speed !== undefined) s.pump.speedMlH = toFinite(data.pump_speed, s.pump.speedMlH);
     if (data.pump_volume !== undefined) s.pump.totalMl = toFinite(data.pump_volume, s.pump.totalMl);
     if (data.volume_heads !== undefined) s.volumes.heads = toFinite(data.volume_heads, s.volumes.heads);
@@ -250,9 +327,11 @@ function updateRuntimeStateFromWs(data) {
     }
 }
 
-function estimateRectTargets(rect) {
+function estimateRectTargets(rect, abvPercentOverride = null) {
     const feedVolumeL = toFinite(rect.feedVolumeL, 0);
-    const feedAbv = toFinite(rect.feedAbvPercent, 0);
+    const feedAbv = abvPercentOverride === null
+        ? toFinite(rect.feedAbvPercent, 0)
+        : normalizeAbvPercent(abvPercentOverride, toFinite(rect.feedAbvPercent, 0));
     const absoluteAlcoholMl = Math.max(0, feedVolumeL * 1000 * (feedAbv / 100));
     const heads = absoluteAlcoholMl * (toFinite(rect.headsPercent, 0) / 100);
     const body = absoluteAlcoholMl * (toFinite(rect.bodyPercent, 0) / 100);
@@ -299,12 +378,14 @@ function updateManualTiles() {
     const measuredPower = Math.max(0, toFinite(s.power.power, 0));
     const powerPercent = clampPercent((measuredPower / heaterMax) * 100);
 
+    const rectPowerEl = document.getElementById('rect-power-display');
     const powerEl = document.getElementById('manual-power-display');
     const speedEl = document.getElementById('manual-speed-display');
     const headsEl = document.getElementById('manual-heads-display');
     const bodyEl = document.getElementById('manual-body-display');
     const tailsEl = document.getElementById('manual-tails-display');
 
+    if (rectPowerEl) rectPowerEl.textContent = `${powerPercent.toFixed(0)} %`;
     if (powerEl) powerEl.textContent = `${powerPercent.toFixed(0)} %`;
     if (speedEl) speedEl.textContent = `${toFinite(s.pump.speedMlH, 0).toFixed(0)} мл/ч`;
     if (headsEl) headsEl.textContent = `${toFinite(s.volumes.heads, 0).toFixed(0)} мл`;
@@ -325,9 +406,11 @@ function renderModeRuntimeCard() {
 
     if (mode === MODE_RECT) {
         titleEl.textContent = 'Прогресс авто-ректификации';
-        captionEl.textContent = `Фаза: ${s.phaseStr || phase || '-'}`;
+        const effectiveAbv = getEffectiveAbvForCalculations();
+        const abvSourceText = effectiveAbv.source === 'sensor' ? 'датчик' : 'план';
+        captionEl.textContent = `Фаза: ${s.phaseStr || phase || '-'} • крепость расчета ${effectiveAbv.value.toFixed(1)}% (${abvSourceText})`;
 
-        const est = estimateRectTargets(s.rectification);
+        const est = estimateRectTargets(s.rectification, effectiveAbv.value);
         const heaterKw = Math.max(0.1, toFinite(s.equipment.heaterPowerW, maxHeaterPower) / 1000);
         const headsSpeed = toFinite(s.rectification.headsSpeedMlHKw, 0) * heaterKw;
         const bodySpeed = toFinite(s.rectification.bodySpeedMlHKw, 0) * heaterKw;
@@ -466,6 +549,10 @@ function renderModeRuntimeCard() {
     if (manualEl) {
         manualEl.style.display = mode === MODE_MANUAL ? 'grid' : 'none';
     }
+    const rectEl = document.getElementById('mode-runtime-rect');
+    if (rectEl) {
+        rectEl.style.display = mode === MODE_RECT ? 'grid' : 'none';
+    }
 }
 
 function initRuntimeMonitorUi() {
@@ -492,6 +579,25 @@ function getRuntimeEditConfig(paramKey) {
     const currentPowerPercent = clampPercent((measuredPower / heaterMax) * 100);
 
     const map = {
+        'rect-power': {
+            title: 'Мощность нагрева (ректификация)',
+            label: 'Мощность, %',
+            step: '1',
+            min: '0',
+            max: '100',
+            hint: 'Override мощности ТЭНа. Установите -1 для возврата к автоматическому управлению.',
+            value: currentPowerPercent.toFixed(0),
+            supportsUnitToggle: true,
+            heaterMaxW: heaterMax,
+            submit: async (value) => {
+                const resp = await fetch('/api/rect/heater', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ power: Number(value) })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
         'manual-power': {
             title: 'Мощность нагрева',
             label: 'Мощность, %',
@@ -500,6 +606,8 @@ function getRuntimeEditConfig(paramKey) {
             max: '100',
             hint: 'Применяется сразу в ручном режиме.',
             value: currentPowerPercent.toFixed(0),
+            supportsUnitToggle: true,
+            heaterMaxW: heaterMax,
             submit: async (value) => {
                 const resp = await fetch('/api/manual/heater', {
                     method: 'POST',
@@ -507,6 +615,20 @@ function getRuntimeEditConfig(paramKey) {
                     body: JSON.stringify({ power: Number(value) })
                 });
                 if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
+        'planned-abv': {
+            title: 'Плановая крепость',
+            label: 'Крепость, %',
+            step: '0.1',
+            min: '0',
+            max: '100',
+            hint: 'Используется для расчёта целей и времени, пока электронный ареометр OFF.',
+            value: normalizeAbvPercent(plannedAbvPercent, 40).toFixed(1),
+            submit: async (value) => {
+                savePlannedAbv(value);
+                renderAbvValue();
+                renderModeRuntimeCard();
             }
         },
         'manual-speed': {
@@ -582,8 +704,10 @@ function getRuntimeEditConfig(paramKey) {
 }
 
 function openRuntimeEditModal(paramKey) {
-    if (currentMode !== MODE_MANUAL) {
-        addLog('Редактирование параметров доступно только в ручной ректификации', 'warning');
+    const isRectParam = paramKey === 'rect-power';
+    const isPlannedAbvParam = paramKey === 'planned-abv';
+    if (!isPlannedAbvParam && currentMode !== MODE_MANUAL && !(isRectParam && currentMode === MODE_RECT)) {
+        addLog('Редактирование параметров доступно только в ручной или авто-ректификации', 'warning');
         return;
     }
 
@@ -593,6 +717,8 @@ function openRuntimeEditModal(paramKey) {
     const labelEl = document.getElementById('runtime-edit-label');
     const inputEl = document.getElementById('runtime-edit-value');
     const hintEl = document.getElementById('runtime-edit-hint');
+    const toggleEl = document.getElementById('runtime-edit-unit-toggle');
+    const cbWatts = document.getElementById('runtime-edit-unit-watts');
     if (!config || !modal || !titleEl || !labelEl || !inputEl || !hintEl) return;
 
     runtimeEditContext = config;
@@ -603,9 +729,52 @@ function openRuntimeEditModal(paramKey) {
     inputEl.step = config.step;
     inputEl.value = config.value;
     hintEl.textContent = config.hint;
+
+    // Show/reset unit toggle checkbox
+    if (toggleEl && cbWatts) {
+        if (config.supportsUnitToggle) {
+            cbWatts.checked = false;
+            toggleEl.style.display = 'block';
+        } else {
+            toggleEl.style.display = 'none';
+        }
+    }
+
     modal.style.display = 'flex';
     inputEl.focus();
     inputEl.select();
+}
+
+function onRuntimeEditUnitToggle() {
+    const cbWatts = document.getElementById('runtime-edit-unit-watts');
+    const labelEl = document.getElementById('runtime-edit-label');
+    const inputEl = document.getElementById('runtime-edit-value');
+    const config = runtimeEditContext;
+    if (!config || !cbWatts || !labelEl || !inputEl) return;
+
+    const heaterMaxW = config.heaterMaxW || maxHeaterPower;
+    const useWatts = cbWatts.checked;
+
+    if (useWatts) {
+        // Convert current % value to W
+        const currentPct = toFinite(inputEl.value, 0);
+        const watts = Math.round((currentPct / 100) * heaterMaxW);
+        labelEl.textContent = 'Мощность, Вт';
+        inputEl.min = '0';
+        inputEl.max = String(heaterMaxW);
+        inputEl.step = '10';
+        inputEl.value = String(watts);
+    } else {
+        // Convert current W value back to %
+        const currentW = toFinite(inputEl.value, 0);
+        const pct = Math.round((currentW / heaterMaxW) * 100);
+        labelEl.textContent = 'Мощность, %';
+        inputEl.min = config.min;
+        inputEl.max = config.max;
+        inputEl.step = config.step;
+        inputEl.value = String(Math.min(100, Math.max(0, pct)));
+    }
+    inputEl.focus();
 }
 
 function closeRuntimeEditModal() {
@@ -617,6 +786,7 @@ function closeRuntimeEditModal() {
 async function submitRuntimeEditModal() {
     if (!runtimeEditContext) return;
     const inputEl = document.getElementById('runtime-edit-value');
+    const cbWatts = document.getElementById('runtime-edit-unit-watts');
     if (!inputEl) return;
 
     const min = toFinite(inputEl.min, 0);
@@ -628,6 +798,13 @@ async function submitRuntimeEditModal() {
     }
     if (value < min) value = min;
     if (value > max) value = max;
+
+    // If watts mode is active, convert W → % before submitting
+    if (cbWatts && cbWatts.checked && runtimeEditContext.supportsUnitToggle) {
+        const heaterMaxW = runtimeEditContext.heaterMaxW || maxHeaterPower;
+        value = Math.round((value / heaterMaxW) * 100);
+        value = Math.min(100, Math.max(0, value));
+    }
 
     try {
         await runtimeEditContext.submit(value);
@@ -891,6 +1068,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     initTopMenu();
     initOperatorViewToggle();
     initRuntimeMonitorUi();
+    loadPlannedAbv();
+    renderAbvValue();
 
     initMashingHoldControls();
     initRectificationStartModal();
@@ -1530,11 +1709,7 @@ function updateUI(data) {
 
     // Ареометр
 
-    if (data.abv !== undefined) {
-
-        document.getElementById('abv').textContent = data.abv.toFixed(1) + '%';
-
-    }
+    renderAbvValue();
 
 
 
@@ -1591,7 +1766,7 @@ function updateUI(data) {
         power: data.power,
         pressureCube: data.p_cube,
         pumpSpeed: data.pump_speed,
-        abv: data.abv,
+        abv: getEffectiveAbvForCalculations().value,
         waterIn: data.t_water_in,
         waterOut: data.t_water_out,
         voltage: data.voltage
@@ -2781,13 +2956,7 @@ function updateUIFromStatus(data) {
 
         // Ареометр
 
-    if (data.hydrometer && data.hydrometer.abv !== undefined) {
-
-        const el = document.getElementById('abv');
-
-        if (el) el.textContent = data.hydrometer.abv.toFixed(1) + '%';
-
-    }
+    renderAbvValue();
 
 
 
@@ -2812,7 +2981,7 @@ function updateUIFromStatus(data) {
         power: data.power?.power,
         pressureCube: data.pressure?.cube,
         pumpSpeed: data.pump?.speedMlH,
-        abv: data.hydrometer?.abv,
+        abv: getEffectiveAbvForCalculations().value,
         waterIn: data.temps?.waterIn,
         waterOut: data.temps?.waterOut,
         voltage: data.power?.voltage

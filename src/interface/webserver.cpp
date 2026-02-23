@@ -26,6 +26,7 @@ typedef enum {
 #endif
 
 #include "control/fsm.h"
+#include "control/watt_control.h"
 #include "drivers/display.h"
 #include "drivers/heater.h"
 #include "drivers/pump.h"
@@ -1022,6 +1023,31 @@ void init() {
         if (power < 0) power = 0;
         if (power > 100) power = 100;
         Heater::setPower((uint8_t)power);
+
+        char resp[96];
+        snprintf(resp, sizeof(resp), "{\"success\":true,\"power\":%d}", power);
+        request->send(200, "application/json", resp);
+      });
+
+  // POST /api/rect/heater - override мощности ТЭНа в авто-ректификации (0-100%)
+  // power=-1 снимает override и возвращает управление WattControl
+  server.on(
+      "/api/rect/heater", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<128> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        int power = doc["power"] | -2;
+        if (power < -1) power = -1;
+        if (power > 100) power = 100;
+        WattControl::setOverride((int8_t)power);
 
         char resp[96];
         snprintf(resp, sizeof(resp), "{\"success\":true,\"power\":%d}", power);
@@ -2208,6 +2234,7 @@ void broadcastState(const SystemState &state) {
   fastDoc["volume_tails"] = state.stats.tailsVolume;
 
   fastDoc["abv"] = state.hydrometer.abv;
+  fastDoc["abv_valid"] = state.hydrometer.valid;
   const uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
   const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(state, g_settings);
   fastDoc["phase_elapsed_sec"] = phaseElapsedSec;
@@ -2266,6 +2293,7 @@ void broadcastState(const SystemState &state) {
   doc["volume_tails"] = state.stats.tailsVolume;
 
   doc["abv"] = state.hydrometer.abv;
+  doc["abv_valid"] = state.hydrometer.valid;
 
   JsonObject progress = doc.createNestedObject("progress");
   progress["phaseElapsedSec"] = phaseElapsedSec;
