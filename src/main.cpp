@@ -231,6 +231,10 @@ void setup() {
   LOG_I("IP: %s", WiFi.localIP().toString().c_str());
   LOG_I("=================================");
 
+  // Switch from BOOT status to the main UI immediately after setup.
+  Display::update(g_state);
+  g_lastDisplayUpdate = millis();
+
   // Звуковой сигнал готовности
   if (g_settings.soundEnabled) {
     Buzzer::beep(2, BUZZER_DURATION_SHORT);
@@ -536,10 +540,14 @@ void loop() {
   // Yield для WiFi
   yield();
 
-  // Задержка для предотвращения перегрева CPU
-  // Увеличена задержка для снижения нагрузки на CPU и предотвращения перегрева
-  // Без этой задержки цикл работает на 100% CPU и ESP перегревается
-  delay(10); // 10 мс задержка для снижения частоты цикла до ~100 Гц
+  // При генерации шагов насоса в основном loop нельзя спать долго:
+  // AccelStepper::runSpeed() требует частых вызовов.
+#if !PUMP_TASK_ENABLED
+  const uint32_t loopDelayMs = Pump::isRunning() ? 1 : 10;
+#else
+  const uint32_t loopDelayMs = 10;
+#endif
+  delay(loopDelayMs);
 }
 
 // =============================================================================
@@ -583,7 +591,6 @@ void initHardware() {
   }
   // Показать первый экран сразу после инициализации,
   // чтобы не оставаться на пустом чёрном экране во время загрузки.
-  Display::update(g_state);
 
   // Кнопки
   Buttons::init();
@@ -605,11 +612,30 @@ void initNetwork() {
   LOG_I("AP started (diag): %s, IP: %s", WIFI_AP_SSID,
         WiFi.softAPIP().toString().c_str());
 #else
-  // Попытка подключения к WiFi
+  // AP поднимаем всегда для гарантированного локального доступа по 192.168.4.1.
+  // STA подключаем параллельно, если есть сохранённые креды.
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+
+  IPAddress apIp(192, 168, 4, 1);
+  IPAddress apGw(192, 168, 4, 1);
+  IPAddress apMask(255, 255, 255, 0);
+  if (!WiFi.softAPConfig(apIp, apGw, apMask)) {
+    LOG_W("AP config failed, using default AP network");
+  }
+
+  const bool apStarted = WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
+  g_settings.wifi.apMode = apStarted;
+  if (apStarted) {
+    LOG_I("AP started: %s, IP: %s", WIFI_AP_SSID,
+          WiFi.softAPIP().toString().c_str());
+  } else {
+    LOG_E("AP start failed for SSID: %s", WIFI_AP_SSID);
+  }
+
+  // Попытка подключения к внешнему WiFi (STA)
   if (strlen(g_settings.wifi.ssid) > 0) {
     LOG_I("Connecting to WiFi: %s", g_settings.wifi.ssid);
-
-    WiFi.mode(WIFI_STA);
     WiFi.begin(g_settings.wifi.ssid, g_settings.wifi.password);
 
     uint32_t startAttempt = millis();
@@ -622,21 +648,10 @@ void initNetwork() {
     Serial.println();
 
     if (WiFi.status() == WL_CONNECTED) {
-      LOG_I("WiFi connected! IP: %s", WiFi.localIP().toString().c_str());
+      LOG_I("WiFi connected! STA IP: %s", WiFi.localIP().toString().c_str());
     } else {
-      LOG_E("WiFi connection failed, starting AP mode");
-      g_settings.wifi.apMode = true;
+      LOG_W("WiFi connection failed, AP-only access remains available");
     }
-  } else {
-    g_settings.wifi.apMode = true;
-  }
-
-  // AP режим если нет подключения
-  if (g_settings.wifi.apMode) {
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
-    LOG_I("AP started: %s, IP: %s", WIFI_AP_SSID,
-          WiFi.softAPIP().toString().c_str());
   }
 #endif
 
