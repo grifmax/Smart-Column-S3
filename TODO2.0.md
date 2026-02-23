@@ -19,6 +19,7 @@
 - [ ] Add configurable display refresh profile (`normal` / `safe`).
 
 ## Phase 3. Telegram channel hardening (FastBot2)
+- [x] Migrate Telegram backend to FastBot2 and apply settings in non-blocking runtime flow.
 - [ ] Verify reconnect/backoff behavior on unstable Wi-Fi.
 - [ ] Add command rate limiting and duplicate suppression.
 - [ ] Add telemetry for bot send/poll errors.
@@ -36,16 +37,16 @@
 - [ ] Add boot-time pin sanity checks and conflict warnings.
 
 ## Phase 6. Distiller parity: cockpit UI + process ergonomics (in progress)
-- [ ] Add process phase telemetry API in FSM (elapsed/target/progress) for TFT and Web UI.
-- [ ] Upgrade main TFT dashboard to a cockpit layout (mode+phase timer, progress bar, I/O statuses).
-- [ ] Add at-a-glance operation strip (voltage, pressure, pump, fractions, uptime) with partial redraws only.
+- [x] Add process phase telemetry API in FSM (elapsed/target/progress) for TFT and Web UI.
+- [x] Upgrade main TFT dashboard to a cockpit layout (mode+phase timer, progress bar, I/O statuses).
+- [x] Add at-a-glance operation strip (voltage, pressure, pump, fractions, uptime) with partial redraws only.
 - [ ] Add dedicated mode placeholders and API contracts for `NBK` and `FERMENTATION`.
 - [ ] Implement NBK mode state machine (feed/steam control, safety interlocks).
 - [ ] Implement fermentation mode (setpoint, hysteresis, scheduling, alarms).
 
 ## Phase 7. Mode-specific TFT screens (in progress)
 - [x] Stage A: profile-based dashboard for `IDLE` and `RECTIFICATION` (only relevant widgets per mode).
-- [ ] Stage B: profile-based dashboard for `DISTILLATION` and `MANUAL_RECT`.
-- [ ] Stage C: profile-based dashboard for `MASHING` and `HOLD`.
+- [x] Stage B: profile-based dashboard for `DISTILLATION` and `MANUAL_RECT`.
+- [x] Stage C: profile-based dashboard for `MASHING` and `HOLD`.
 - [ ] Unify action rows/buttons by mode (show only valid controls).
 - [ ] Add a dedicated "Temperatures" detail page with all connected probes.

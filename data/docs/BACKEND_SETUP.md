@@ -117,7 +117,7 @@ fetch('https://spiritcontrol.ru/api/status', {
 
 ### Нагреватель
 
-- `POST /api/heater/power` - Установить мощность (0-100%)
+- `POST /api/manual/heater` - Установить мощность (0-100%)
 
 ### Система
 
@@ -176,7 +176,7 @@ curl -u admin:admin -X POST \
 curl -u admin:admin -X POST \
   -H "Content-Type: application/json" \
   -d '{"power": 75}' \
-  https://spiritcontrol.ru/api/heater/power
+  https://spiritcontrol.ru/api/manual/heater
 ```
 
 ## 🔒 Безопасность

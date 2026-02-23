@@ -88,7 +88,7 @@ HTTPS: ✅ (если используете SSL)
 - `POST /api/pump/start` - Запуск насоса
 - `POST /api/pump/stop` - Остановка насоса
 - `GET /api/pump/status` - Статус насоса
-- `POST /api/heater/power` - Установить мощность нагревателя
+- `POST /api/manual/heater` - Установить мощность нагревателя
 - И другие...
 
 Полный список в `BACKEND_SETUP.md`

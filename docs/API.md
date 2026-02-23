@@ -1,726 +1,292 @@
 # Smart-Column S3 — Документация API
 
-**Версия:** 1.2+
-**Последнее обновление:** 2025-12-06
+**Версия прошивки:** `1.5.16`  
+**Последнее обновление:** 2026-02-23
 
-## Содержание
+## Базовая информация
 
-1. [REST API](#rest-api)
-2. [WebSocket API](#websocket-api)
-3. [MQTT интеграция](#mqtt-интеграция)
-4. [Аутентификация](#аутентификация)
-5. [Ограничение запросов](#ограничение-запросов)
-6. [Коды ошибок](#коды-ошибок)
-7. [Примеры использования](#примеры-использования)
+- Базовый URL: `http://<device-ip>`
+- REST префикс: `/api/*`
+- WebSocket: `ws://<device-ip>/ws`
+- Формат данных: `application/json`
+- Аутентификация: HTTP Basic Auth (если включена в настройках)
 
----
+## Справочник режимов
+
+### `mode` (`/api/process/start`, `/api/status`, WebSocket)
+
+- `idle`
+- `rectification`
+- `distillation`
+- `manual` (допустим также `manual_rect` при старте)
+- `mashing`
+- `hold`
+
+### `phaseStr` (ректификация)
+
+- `idle`, `heating`, `stabilization`, `heads`, `post_heads`, `body`, `tails`, `purge`, `finish`, `completed`
 
 ## REST API
 
-Все REST API эндпоинты доступны по адресу `http://<ip-устройства>/api/`
+### Ключевые endpoints
 
-### Аутентификация
+## Состояние и диагностика
 
-Большинство эндпоинтов требуют HTTP Basic Authentication (если включено в настройках).
+### `GET /api/status`
+Полное состояние системы, включая режим, температуры, давление, мощность, прогресс, параметры режимов, метрики дисплея, cloud, mashing/hold.
 
-```http
-Authorization: Basic <base64(username:password)>
-```
+Ключевые поля:
 
-### Эндпоинты
+- `mode`, `modeStr`, `phase`, `phaseStr`, `paused`, `safetyOk`, `uptime`
+- `temps.{cube,columnBottom,columnTop,reflux,deflegmator,product,tsa,waterIn,waterOut}`
+- `pressure.{cube,atm,kpa}`
+- `power.{voltage,current,power,energy,frequency,pf}`
+- `pump.{speedMlH,totalMl,running}`
+- `hydrometer.{abv,density,valid}`
+- `volumes.{heads,body,tails}`
+- `rectification.{feedVolumeL,feedAbvPercent,headsPercent,bodyPercent,tailsPercent,headsSpeedMlHKw,bodySpeedMlHKw,headsTargetMl,bodyTargetMl,tailsTargetMl}`
+- `distillation.{speedMlH,headsVolumeMl,targetVolumeMl,endTempC,powerPercent}`
+- `progress.{phaseElapsedSec,phaseTargetSec,phaseRemainingSec,phasePercent}`
+- `display.{frames,slowFrames,recoveries,hardRecoveries,hardFailures,lastFrameMs,maxFrameMs,lastGapMs,maxGapMs,gapOverruns}`
+- `cloud.{enabled,tunnelUrl,connected,authenticated,claimActive,claimCode?,claimExpiresAt?}`
+- `mashing.{active,phase,phaseStr,stepCount,currentStep,targetTemp,stepDurationSec,tempInRange,stepName,elapsedSec,remainingSec}`
+- `hold.{active,stepCount,currentStep,targetTemp,tempInRange,stepDurationSec,elapsedSec,remainingSec}`
 
-#### GET /api/status
+### `GET /api/health`
+Сводное состояние датчиков и системы.
 
-Получить текущее состояние системы.
+### `GET /api/version`
+Версия прошивки + метаданные сборки + board/deviceId + frontend version (из `/version.json`, если есть).
 
-**Ответ:**
+### `POST /api/reboot`
+Перезагрузка контроллера.
+
+## Управление процессом
+
+### `POST /api/process/start`
+Запуск режима.
+
+Минимальный запрос:
+
 ```json
 {
-  "mode": 0,
-  "phase": 1,
-  "temperatures": {
-    "cube": 78.5,
-    "column_bottom": 75.2,
-    "column_top": 82.1,
-    "reflux": 80.5,
-    "tsa": 45.2,
-    "water_in": 18.5,
-    "water_out": 25.3
-  },
-  "power": {
-    "voltage": 220.5,
-    "current": 4.25,
-    "power": 937,
-    "energy": 2.456
-  },
-  "heater_power": 85,
-  "pump_speed": 120,
-  "uptime": 145620
+  "mode": "rectification"
 }
 ```
 
-#### GET /api/health
+Примеры `params`:
 
-Получить статус здоровья системы (0-100%).
+- `distillation`: `speed`, `headsVolume`, `targetVolume`, `endTemp`
+- `mashing`: `profile: { name, steps: [{temperature,duration,name}] }`
+- `hold`: `steps: [{temperature,duration}]`
 
-**Ответ:**
+### `POST /api/process/stop`
+Остановить текущий процесс.
+
+### `POST /api/process/pause`
+Поставить на паузу.
+
+### `POST /api/process/resume`
+Возобновить после паузы.
+
+## Авто-ректификация
+
+### `GET /api/settings/rect`
+Получить параметры старта авто-ректификации.
+
+### `POST /api/settings/rect`
+Сохранить параметры старта авто-ректификации.
+
+Поддерживаемые поля:
+
+- `feedstock` (`0..7`)
+- `feedVolumeL` (`1..250`)
+- `feedAbvPercent` (`1..96`)
+- `headsPercent` (`0..40`)
+- `bodyPercent` (`0..100`)
+- `tailsPercent` (`0..100`)
+- `headsSpeedMlHKw` (`10..2000`)
+- `bodySpeedMlHKw` (`50..3000`)
+- `stabilizationMin` (`1..180`)
+- `purgeMin` (`1..120`)
+- `applyFeedstockDefaults` (`true/false`)
+
+Можно передавать как плоский JSON, так и через вложенный объект `params`.
+
+### Feedstock (`feedstock`) и дефолтные фракции
+
+| feedstock | Сырьё | Головы % | Тело % | Хвосты % |
+|---|---|---:|---:|---:|
+| 0 | Сахар | 6 | 84 | 10 |
+| 1 | Мука/зерно | 8 | 80 | 12 |
+| 2 | Солод | 7 | 81 | 12 |
+| 3 | Фрукты | 5 | 75 | 20 |
+| 4 | Меласса | 8 | 74 | 18 |
+| 5 | Виноград/вино | 6 | 78 | 16 |
+| 6 | Мёд | 7 | 79 | 14 |
+| 7 | Другое | значения по умолчанию проекта |
+
+## Ручное управление (runtime)
+
+### `POST /api/manual/heater`
+Установить мощность ТЭНа в ручном режиме, `%` (`0..100`).
+
+```json
+{ "power": 55 }
+```
+
+### `POST /api/rect/heater`
+Override мощности ТЭНа в авто-ректификации.
+
+- `power = -1` — снять override и вернуть управление `WattControl`
+- `power = 0..100` — принудительный %
+
+### `POST /api/manual/pump`
+Управление насосом.
+
+- `speed <= 0` — стоп
+- `speed > 0` — запуск с указанной скоростью мл/ч
+
+```json
+{ "speed": 900 }
+```
+
+### `POST /api/manual/valves`
+Управление клапанами: `water`, `heads`, `uno`, либо `allOff: true`.
+
+```json
+{ "water": true, "heads": false, "uno": true }
+```
+
+### `POST /api/manual/volumes`
+Ручная корректировка отображаемых объёмов фракций.
+
 ```json
 {
-  "health": 95,
-  "checks": {
-    "temperatures": true,
-    "power": true,
-    "water_flow": true,
-    "pressure": true
-  },
-  "warnings": [],
-  "errors": []
+  "heads": 120,
+  "body": 2500,
+  "tails": 150,
+  "syncTotal": true
 }
 ```
 
-#### GET /api/sensors
+- Обязателен минимум один из: `heads`, `body`, `tails`
+- При `syncTotal=true` суммарный `pump.totalVolumeMl` пересчитывается автоматически
 
-Получить показания всех датчиков.
+## Telegram
 
-**Ответ:**
+### `GET /api/settings/telegram`
+Статус и настройки Telegram.
+
+### `POST /api/settings/telegram`
+Сохранить настройки:
+
 ```json
 {
-  "ds18b20": [78.5, 75.2, 82.1, 80.5, 45.2, 18.5, 25.3],
-  "bmp280_1": {"temperature": 22.5, "pressure": 101325},
-  "bmp280_2": {"temperature": 78.2, "pressure": 102100},
-  "mpx5010": 850,
-  "zmpt101b": 220.5,
-  "acs712": 4.25,
-  "yf_s201": 12.5
+  "enabled": true,
+  "token": "123456:ABCDEF...",
+  "chatId": "123456789"
 }
 ```
 
-#### POST /api/mode/start
+### `POST /api/settings/telegram/test`
+Отправить тестовое сообщение.
 
-Запустить выбранный режим работы.
-
-**Запрос:**
 ```json
-{
-  "mode": 0,
-  "params": {
-    "heads_percent": 8,
-    "body_speed": 100,
-    "target_temp": 78.5
-  }
-}
+{ "message": "Smart-Column S3: test" }
 ```
 
-**Ответ:**
-```json
-{
-  "success": true,
-  "message": "Режим ректификации запущен"
-}
-```
+Примечание: backend Telegram в прошивке реализован на **FastBot2**.
 
-#### POST /api/mode/stop
+## Калибровка и оборудование
 
-Остановить текущую операцию.
+- `GET /api/calibration`
+- `POST /api/calibration/pump`
+- `POST /api/calibration/temp`
+- `POST /api/calibration/hydrometer`
+- `GET /api/calibration/scan`
+- `POST /api/pump/calibrate/start`
+- `POST /api/pump/calibrate/stop`
+- `POST /api/pump/calibrate/finish`
+- `POST /api/pump/start`
+- `POST /api/pump/stop`
+- `GET /api/pump/status`
+- `GET /api/energy`
 
-**Ответ:**
-```json
-{
-  "success": true,
-  "message": "Операция остановлена"
-}
-```
+## Wi‑Fi и облако
 
-#### POST /api/heater/power
+- `GET /api/wifi/scan`
+- `GET /api/wifi/status`
+- `POST /api/wifi/connect`
+- `POST /api/cloud/claim`
+- `POST /api/cloud/config`
 
-Установить мощность нагревателя (0-100%).
+## Профили
 
-**Запрос:**
-```json
-{
-  "power": 85
-}
-```
-
-**Ответ:**
-```json
-{
-  "success": true,
-  "power": 85
-}
-```
-
-#### POST /api/pump/speed
-
-Установить скорость насоса (мл/час).
-
-**Запрос:**
-```json
-{
-  "speed": 120
-}
-```
-
-**Ответ:**
-```json
-{
-  "success": true,
-  "speed": 120
-}
-```
-
-#### GET /api/calibration
-
-Получить данные калибровки.
-
-**Ответ:**
-```json
-{
-  "ds18b20_offsets": [0.0, -0.2, 0.1, 0.0, -0.1, 0.0, 0.2],
-  "pump_ml_per_rev": 2.5,
-  "voltage_calibration": 1.0,
-  "current_calibration": 1.0,
-  "pressure_calibration": 1.0
-}
-```
-
-#### POST /api/calibration
-
-Обновить данные калибровки.
-
-**Запрос:**
-```json
-{
-  "ds18b20_offsets": [0.0, -0.2, 0.1, 0.0, -0.1, 0.0, 0.2],
-  "pump_ml_per_rev": 2.5
-}
-```
-
-**Ответ:**
-```json
-{
-  "success": true,
-  "message": "Калибровка обновлена"
-}
-```
-
-#### GET /api/system/info
-
-Получить информацию о системе.
-
-**Ответ:**
-```json
-{
-  "firmware_version": "1.2.1",
-  "hardware": "ESP32-S3 DevKitC-1 N16R8",
-  "uptime": 145620,
-  "free_heap": 245760,
-  "wifi_rssi": -45,
-  "ip_address": "192.168.1.100"
-}
-```
-
-#### POST /api/system/reboot
-
-Перезагрузить устройство.
-
-**Ответ:**
-```json
-{
-  "success": true,
-  "message": "Перезагрузка через 3 секунды"
-}
-```
-
----
+- `GET /api/profiles`
+- `GET /api/profiles/{id}`
+- `POST /api/profiles/{id}/load`
+- `DELETE /api/profiles/{id}`
 
 ## WebSocket API
 
-Подключение по адресу `ws://<ip-устройства>/ws`
+Подключение:
 
-### Формат сообщений
-
-Все сообщения в формате JSON.
-
-#### Сервер → Клиент (Обновления статуса)
-
-Отправляется каждую 1 секунду во время работы.
-
-```json
-{
-  "type": "status",
-  "data": {
-    "mode": 0,
-    "phase": 1,
-    "temperatures": { ... },
-    "power": { ... },
-    "heater_power": 85,
-    "pump_speed": 120
-  }
-}
+```text
+ws://<device-ip>/ws
 ```
 
-#### Сервер → Клиент (События)
-
-```json
-{
-  "type": "event",
-  "event": "phase_change",
-  "data": {
-    "from": 1,
-    "to": 2,
-    "phase_name": "HEADS"
-  }
-}
-```
-
-#### Клиент → Сервер (Команды)
-
-```json
-{
-  "command": "set_power",
-  "value": 85
-}
-```
-
-```json
-{
-  "command": "set_speed",
-  "value": 120
-}
-```
-
-```json
-{
-  "command": "start_mode",
-  "mode": 0,
-  "params": { ... }
-}
-```
-
----
-
-## MQTT интеграция
-
-### Подключение
-
-```
-Сервер: <mqtt_broker>
-Порт: 1883 (по умолчанию)
-Имя пользователя: <mqtt_username> (опционально)
-Пароль: <mqtt_password> (опционально)
-```
-
-### Структура топиков
-
-#### Топик состояния
-```
-smartcolumn/<device_id>/state
-```
-
-**Пример полезной нагрузки:**
-```json
-{
-  "mode": 0,
-  "phase": 1,
-  "temperatures": {
-    "cube": 78.5,
-    "column_top": 82.1
-  },
-  "power": {
-    "voltage": 220.5,
-    "current": 4.25,
-    "power": 937,
-    "energy": 2.456
-  }
-}
-```
-
-**Публикуется:** Каждые 10 секунд (настраивается)
-
-#### Топик здоровья
-```
-smartcolumn/<device_id>/health
-```
-
-**Полезная нагрузка:** `95` (процент 0-100)
-**Публикуется:** Каждые 5 секунд
-
-#### Топик доступности
-```
-smartcolumn/<device_id>/status
-```
-
-**Полезная нагрузка:** `online` или `offline`
-**Retained:** Да
-**LWT:** Да
-
-### Home Assistant MQTT Discovery
-
-Устройство автоматически публикует сообщения обнаружения для Home Assistant.
-
-#### Формат топика обнаружения
-```
-homeassistant/sensor/<device_id>_<entity>/config
-```
-
-#### Пример сообщения обнаружения (Датчик температуры)
-
-**Топик:** `homeassistant/sensor/abc123_cube_temp/config`
-
-**Полезная нагрузка:**
-```json
-{
-  "name": "Температура куба",
-  "uniq_id": "abc123_cube_temp",
-  "stat_t": "smartcolumn/abc123/state",
-  "val_tpl": "{{ value_json.temperatures.cube }}",
-  "unit_of_meas": "°C",
-  "dev_cla": "temperature",
-  "avty_t": "smartcolumn/abc123/status",
-  "dev": {
-    "ids": ["smartcolumn_abc123"],
-    "name": "Smart Column abc123",
-    "mdl": "ESP32-S3 DevKitC-1",
-    "mf": "DIY",
-    "sw": "1.2.1"
-  }
-}
-```
-
-#### Доступные сущности
-
-| Сущность | Класс устройства | Единица | Класс состояния |
-|----------|------------------|---------|-----------------|
-| Температура куба | temperature | °C | measurement |
-| Температура царги верх | temperature | °C | measurement |
-| Напряжение | voltage | V | measurement |
-| Ток | current | A | measurement |
-| Мощность | power | W | measurement |
-| Энергия | energy | kWh | total_increasing |
-| Здоровье системы | None | % | measurement |
-
----
-
-## Аутентификация
-
-### HTTP Basic Authentication
-
-Когда аутентификация включена, все HTTP запросы должны содержать:
-
-```http
-Authorization: Basic <base64(username:password)>
-```
-
-### Пример (Python)
-```python
-import requests
-from requests.auth import HTTPBasicAuth
-
-response = requests.get(
-    'http://192.168.1.100/api/status',
-    auth=HTTPBasicAuth('admin', 'password')
-)
-```
-
-### Пример (cURL)
-```bash
-curl -u admin:password http://192.168.1.100/api/status
-```
-
-### Пример (JavaScript)
-```javascript
-fetch('http://192.168.1.100/api/status', {
-  headers: {
-    'Authorization': 'Basic ' + btoa('admin:password')
-  }
-})
-```
-
----
-
-## Ограничение запросов
-
-Система реализует ограничение частоты запросов для защиты от злоупотреблений.
-
-**Лимиты:**
-- 60 запросов в минуту с одного IP-адреса
-- Применяется ко всем HTTP эндпоинтам
-
-**Ответ при превышении:**
-```http
-HTTP/1.1 429 Too Many Requests
-Content-Type: application/json
-
-{
-  "error": "Превышен лимит запросов",
-  "retry_after": 45
-}
-```
-
----
-
-## Коды ошибок
-
-| HTTP код | Значение |
-|----------|----------|
-| 200 | Успешно |
-| 400 | Неверный запрос - Некорректные параметры |
-| 401 | Не авторизован - Требуется аутентификация или неверные данные |
-| 404 | Не найдено - Эндпоинт не существует |
-| 429 | Слишком много запросов - Превышен лимит |
-| 500 | Внутренняя ошибка сервера |
-
-### Формат ответа с ошибкой
-
-```json
-{
-  "error": "Сообщение об ошибке",
-  "code": 400,
-  "details": "Дополнительная информация"
-}
-```
-
----
-
-## Примеры использования
-
-### Python - Получение статуса и управление
-
-```python
-import requests
-from requests.auth import HTTPBasicAuth
-import time
-
-BASE_URL = 'http://192.168.1.100'
-auth = HTTPBasicAuth('admin', 'password')
-
-# Получить текущий статус
-status = requests.get(f'{BASE_URL}/api/status', auth=auth).json()
-print(f"Текущая температура: {status['temperatures']['cube']}°C")
-
-# Установить мощность нагревателя
-requests.post(
-    f'{BASE_URL}/api/heater/power',
-    json={'power': 75},
-    auth=auth
-)
-
-# Запустить режим ректификации
-requests.post(
-    f'{BASE_URL}/api/mode/start',
-    json={
-        'mode': 0,
-        'params': {
-            'heads_percent': 8,
-            'body_speed': 100
-        }
-    },
-    auth=auth
-)
-
-# Мониторинг статуса
-while True:
-    status = requests.get(f'{BASE_URL}/api/status', auth=auth).json()
-    print(f"Куб: {status['temperatures']['cube']}°C, Мощность: {status['power']['power']}Вт")
-    time.sleep(5)
-```
-
-### Node.js - Подписка на MQTT
-
-```javascript
-const mqtt = require('mqtt');
-
-const client = mqtt.connect('mqtt://localhost:1883', {
-  username: 'mqtt_user',
-  password: 'mqtt_pass'
-});
-
-client.on('connect', () => {
-  // Подписаться на все топики устройства
-  client.subscribe('smartcolumn/abc123/#');
-});
-
-client.on('message', (topic, message) => {
-  console.log(`${topic}: ${message.toString()}`);
-
-  if (topic.endsWith('/state')) {
-    const state = JSON.parse(message.toString());
-    console.log(`Температура куба: ${state.temperatures.cube}°C`);
-    console.log(`Мощность: ${state.power.power}Вт`);
-  }
-
-  if (topic.endsWith('/health')) {
-    const health = parseInt(message.toString());
-    console.log(`Здоровье системы: ${health}%`);
-    if (health < 80) {
-      console.warn('Внимание: Низкое здоровье системы!');
-    }
-  }
-});
-```
-
-### Home Assistant - Energy Dashboard
-
-Добавьте в `configuration.yaml`:
-
-```yaml
-mqtt:
-  sensor:
-    - name: "Smart Column Энергия"
-      state_topic: "smartcolumn/abc123/state"
-      value_template: "{{ value_json.power.energy }}"
-      unit_of_measurement: "kWh"
-      device_class: energy
-      state_class: total_increasing
-```
-
-Затем добавьте в Energy Dashboard:
-1. Настройки → Панели управления → Энергия
-2. Добавить источник энергии
-3. Выбрать "Smart Column Энергия"
-
-### JavaScript - WebSocket подключение
-
-```javascript
-const ws = new WebSocket('ws://192.168.1.100/ws');
-
-ws.onopen = () => {
-  console.log('WebSocket подключен');
-
-  // Отправить команду
-  ws.send(JSON.stringify({
-    command: 'set_power',
-    value: 85
-  }));
-};
-
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-
-  if (data.type === 'status') {
-    console.log(`Температура: ${data.data.temperatures.cube}°C`);
-    console.log(`Мощность: ${data.data.power.power}Вт`);
-  }
-
-  if (data.type === 'event') {
-    console.log(`Событие: ${data.event}`);
-    console.log(`Данные:`, data.data);
-  }
-};
-
-ws.onerror = (error) => {
-  console.error('WebSocket ошибка:', error);
-};
-
-ws.onclose = () => {
-  console.log('WebSocket отключен');
-};
-```
-
-### cURL - Примеры команд
+### Fast packet (частый)
+Отправляется каждые `INTERVAL_WEB_BROADCAST` (по умолчанию 2000 мс).
+
+Основные поля:
+
+- `mode`, `modeStr`, `phase`, `phaseStr`, `paused`, `uptime`
+- `t_cube`, `t_column_bottom`, `t_column_top`, `t_reflux`, `t_tsa`, `t_water_in`, `t_water_out`
+- `p_cube`, `p_atm`
+- `voltage`, `current`, `power`, `energy`, `frequency`, `pf`
+- `pump_speed`, `pump_volume`, `speed`, `volume`
+- `volume_heads`, `volume_body`, `volume_tails`
+- `abv`, `abv_valid`
+- `phase_elapsed_sec`, `phase_target_sec`, `phase_remaining_sec`, `phase_percent`
+- `display_last_ms`, `display_slow`, `display_hard`, `display_gap_ms`
+
+### Full packet (редкий)
+Отправляется каждые `INTERVAL_WEB_BROADCAST_FULL` (по умолчанию 10000 мс), содержит расширенные объекты:
+
+- `progress`
+- `rectification`
+- `distillation`
+- `display`
+
+## API Errors
+
+Типовые ответы:
+
+- `400` — некорректный JSON/параметры
+- `401` — требуется авторизация
+- `404` — endpoint/ресурс не найден
+- `500` — ошибка сохранения/внутренняя ошибка
+- `503` — внешняя зависимость недоступна (например, Wi‑Fi STA для Telegram test)
+
+## Quick cURL Examples
 
 ```bash
-# Получить статус
-curl -u admin:password http://192.168.1.100/api/status
+# Статус
+curl -u admin:admin http://192.168.4.1/api/status
 
-# Получить здоровье системы
-curl -u admin:password http://192.168.1.100/api/health
-
-# Установить мощность нагревателя
-curl -u admin:password \
-  -X POST \
+# Старт ректификации
+curl -u admin:admin -X POST http://192.168.4.1/api/process/start \
   -H "Content-Type: application/json" \
-  -d '{"power": 75}' \
-  http://192.168.1.100/api/heater/power
+  -d '{"mode":"rectification"}'
 
-# Запустить ректификацию
-curl -u admin:password \
-  -X POST \
+# Обновить параметры авто-ректификации
+curl -u admin:admin -X POST http://192.168.4.1/api/settings/rect \
   -H "Content-Type: application/json" \
-  -d '{"mode": 0, "params": {"heads_percent": 8, "body_speed": 100}}' \
-  http://192.168.1.100/api/mode/start
+  -d '{"feedstock":0,"feedVolumeL":25,"feedAbvPercent":35,"applyFeedstockDefaults":true}'
 
-# Остановить процесс
-curl -u admin:password \
-  -X POST \
-  http://192.168.1.100/api/mode/stop
-
-# Получить информацию о системе
-curl -u admin:password http://192.168.1.100/api/system/info
+# Ручная коррекция объёмов
+curl -u admin:admin -X POST http://192.168.4.1/api/manual/volumes \
+  -H "Content-Type: application/json" \
+  -d '{"heads":80,"body":1800,"tails":100,"syncTotal":true}'
 ```
-
-### Python - MQTT публикация и подписка
-
-```python
-import paho.mqtt.client as mqtt
-import json
-
-def on_connect(client, userdata, flags, rc):
-    print(f"Подключено с кодом результата {rc}")
-    # Подписаться на все топики устройства
-    client.subscribe("smartcolumn/abc123/#")
-
-def on_message(client, userdata, msg):
-    print(f"{msg.topic}: {msg.payload.decode()}")
-
-    if msg.topic.endswith('/state'):
-        state = json.loads(msg.payload.decode())
-        temp = state['temperatures']['cube']
-        power = state['power']['power']
-        print(f"Куб: {temp}°C, Мощность: {power}Вт")
-
-        # Проверка на превышение температуры
-        if temp > 95:
-            print("⚠️ ВНИМАНИЕ: Высокая температура!")
-
-client = mqtt.Client()
-client.username_pw_set("mqtt_user", "mqtt_pass")
-client.on_connect = on_connect
-client.on_message = on_message
-
-client.connect("192.168.1.100", 1883, 60)
-client.loop_forever()
-```
-
----
-
-## Заголовки безопасности
-
-Все HTTP ответы включают заголовки безопасности:
-
-```http
-Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'
-X-Frame-Options: DENY
-X-Content-Type-Options: nosniff
-X-XSS-Protection: 1; mode=block
-Referrer-Policy: strict-origin-when-cross-origin
-Permissions-Policy: geolocation=(), microphone=(), camera=()
-```
-
----
-
-## История изменений
-
-### v1.2.1 (2025-12-06)
-- Добавлена MQTT интеграция
-- Добавлено Home Assistant MQTT Discovery
-- Добавлена HTTP Basic Authentication
-- Добавлено ограничение запросов (60 req/min)
-- Добавлены заголовки безопасности
-- Добавлен эндпоинт `/api/health`
-
-### v1.2.0 (2025-12-05)
-- Добавлен мониторинг мощности PZEM-004T
-- Добавлено отслеживание энергии
-- Добавлены обновления здоровья через WebSocket
-- Добавлены Telegram оповещения
-
-### v1.1.0 (2025-12-02)
-- Первоначальная документация API
-- Основные REST эндпоинты
-- Поддержка WebSocket
-
----
-
-*Последнее обновление: 2025-12-06*

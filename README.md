@@ -5,22 +5,22 @@
 [![Platform](https://img.shields.io/badge/platform-ESP32-blue.svg)](https://www.espressif.com/en/products/socs/esp32)
 [![Framework](https://img.shields.io/badge/framework-Arduino-00979D.svg)](https://www.arduino.cc/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.5.13-orange.svg)](https://github.com/grifmax/rectification-controller)
-[![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/API.md#mqtt-integration)
+[![Version](https://img.shields.io/badge/version-1.5.16-orange.svg)](https://github.com/grifmax/rectification-controller)
+[![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
 
 ## 📋 Описание
 
 Полнофункциональная система автоматического управления процессами ректификации и дистилляции с веб-интерфейсом, множественными датчиками температуры, автоматическим управлением мощностью и развитой системой безопасности.
 
-### 🆕 Что нового в v1.3
+### 🆕 Что нового в v1.5.16
 
-- 📜 **История процессов** - сохранение и просмотр завершённых процессов в SPIFFS
-- 📊 **Детальная аналитика** - графики температур и мощности для каждого процесса
-- 🔄 **Сравнение процессов** - наложение графиков 2-5 процессов для анализа
-- 📤 **Экспорт данных** - выгрузка истории в CSV/JSON формат
-- 🔔 **Push-уведомления** - автоматические уведомления через Home Assistant MQTT
-- 📱 **Мобильные оповещения** - интеграция с мобильными приложениями HA
+- 🖥️ **Mode-specific мониторинг** на TFT и Web UI: отдельные рабочие экраны под запущенный режим.
+- 📈 **Прогресс и ETA по фазе/режиму**: расширенная телеметрия `progress` для REST/WebSocket.
+- 🧪 **Авто-ректификация с профилями сырья**: сырьё, % фракций, расчёт целевых объёмов.
+- ✍️ **Редактирование в процессе**: ручная корректировка объёмов фракций через API/UI (`/api/manual/volumes`).
+- 🤖 **Telegram на FastBot2**: более стабильный runtime, тест сообщения и безопасное применение настроек.
+- 📶 **Статус крепости с fallback**: плановая крепость до появления валидных данных от ареометра (`abv_valid`).
 
 👉 **[Документация по истории процессов](docs/HISTORY_SCHEMA.md)** | **[Push-уведомления](docs/HOME_ASSISTANT.md#push-уведомления)**
 
@@ -118,8 +118,8 @@ pio run --target uploadfs
 
 ### 2. Первое подключение
 
-1. ESP32 создаст WiFi точку доступа **"Distiller_XXXX"**
-2. Пароль по умолчанию: **"distiller12345"**
+1. ESP32 создаст WiFi точку доступа **"Smart-Column-S3"**
+2. Пароль по умолчанию: **"12345678"**
 3. Подключитесь к точке доступа
 4. Откройте браузер: **http://192.168.4.1**
 5. Настройте систему через веб-интерфейс
@@ -143,23 +143,31 @@ OLED (I2C)        → GPIO 21 (SDA), 22 (SCL)
 # Статус системы
 GET /api/status
 
-# Управление нагревателем
-POST /api/heater
+# Запуск процесса
+POST /api/process/start
 {
-  "power": 2000,  // Вт
-  "mode": "manual" // или "auto"
-}
-
-# Запуск ректификации
-POST /api/rectification/start
-{
-  "model": "classic",
-  "headsVolume": 50,
-  "bodyVolume": 2000
+  "mode": "rectification"
 }
 
 # Остановка процесса
-POST /api/rectification/stop
+POST /api/process/stop
+
+# Пауза / возобновление
+POST /api/process/pause
+POST /api/process/resume
+
+# Редактирование параметров авто-ректификации
+GET  /api/settings/rect
+POST /api/settings/rect
+
+# Ручная корректировка объёмов фракций
+POST /api/manual/volumes
+{
+  "heads": 120,
+  "body": 2500,
+  "tails": 150,
+  "syncTotal": true
+}
 ```
 
 ### WebSocket
@@ -168,10 +176,10 @@ POST /api/rectification/stop
 // Подключение
 const ws = new WebSocket('ws://192.168.4.1/ws');
 
-// Автоматические обновления каждую секунду
+// Быстрые обновления WebSocket: каждые 2 сек (полный пакет ~10 сек)
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-  console.log('Температура куба:', data.temperatures.cube);
+  console.log('Температура куба:', data.t_cube);
 };
 ```
 
@@ -239,10 +247,9 @@ help        # Справка
 
 ### Руководства
 
-- **[API Documentation](docs/API.md)** - Полная документация REST API, WebSocket и MQTT
+- **[API Documentation](docs/API.md)** - Полная документация REST API и WebSocket
   - REST API endpoints
   - WebSocket протокол
-  - MQTT топики и сообщения
   - Home Assistant MQTT Discovery
   - Примеры использования на Python, Node.js, cURL
 
@@ -266,11 +273,11 @@ help        # Справка
 | Тема | Документ | Описание |
 |------|----------|----------|
 | REST API | [API.md](docs/API.md#rest-api) | HTTP endpoints для управления |
-| MQTT | [API.md](docs/API.md#mqtt-integration) | MQTT топики и полезная нагрузка |
+| MQTT | [HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md) | MQTT интеграция и автодискавери |
 | Home Assistant | [HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md) | Полное руководство по интеграции |
-| Безопасность | [API.md](docs/API.md#authentication) | Authentication & Rate Limiting |
+| Безопасность | [API.md](docs/API.md#api-errors) | Ошибки API и статусы |
 | Energy Tracking | [HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md#energy-dashboard) | Отслеживание энергопотребления |
-| Примеры кода | [API.md](docs/API.md#examples) | Python, Node.js примеры |
+| Примеры кода | [API.md](docs/API.md#quick-curl-examples) | Быстрые cURL примеры |
 
 ## 🗂️ Структура проекта
 
@@ -307,8 +314,8 @@ rectification-controller/
 
 ```cpp
 // WiFi
-#define WIFI_SSID "DistillerAP"
-#define WIFI_PASSWORD "distiller12345"
+#define WIFI_AP_SSID "Smart-Column-S3"
+#define WIFI_AP_PASS "12345678"
 
 // Безопасность
 #define MAX_CUBE_TEMP 105.0        // °C
@@ -324,7 +331,7 @@ rectification-controller/
 
 - **Частота обновления температур:** 1 сек
 - **Частота проверки безопасности:** 500 мс
-- **Частота обновления веб-интерфейса:** 1 сек
+- **Частота WebSocket (fast/full):** 2 сек / 10 сек
 - **Watchdog таймаут:** 30 сек
 - **Используемая память:** ~220 KB из 520 KB
 - **Размер прошивки:** ~500 KB из 4 MB
