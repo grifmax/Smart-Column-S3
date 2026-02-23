@@ -200,33 +200,28 @@ void init() {
         LOG_E("Sensors: ADS1115 NOT FOUND");
     }
 
+#if PZEM_ENABLED
     // PZEM-004T v3.0
     pzemSerial.begin(PZEM_BAUD_RATE, SERIAL_8N1, PIN_PZEM_RX, PIN_PZEM_TX);
-    delay(100); // Даём время на инициализацию
+    delay(100);
 
-    // Проверка связи с PZEM (3 попытки для надёжности)
     pzem_ok = false;
     for (uint8_t attempt = 0; attempt < 3; attempt++) {
         float testVoltage = pzem.voltage();
         float testFreq = pzem.frequency();
 
-        // Проверяем несколько параметров для уверенности
         if (!isnan(testVoltage) && !isnan(testFreq)) {
-            // PZEM отвечает
             if (testVoltage > 0 && testFreq >= 45 && testFreq <= 65) {
-                // AC питание подключено и корректно
                 pzem_ok = true;
                 LOG_I("Sensors: PZEM-004T OK (V=%.1fV, F=%.1fHz)", testVoltage, testFreq);
                 break;
             } else if (testVoltage == 0) {
-                // PZEM работает, но нет AC питания
                 pzem_ok = true;
                 LOG_WARN("Sensors: PZEM-004T OK but NO AC POWER detected");
                 break;
             }
         }
 
-        // Пауза перед следующей попыткой
         if (attempt < 2) {
             delay(200);
         }
@@ -235,6 +230,10 @@ void init() {
     if (!pzem_ok) {
         LOG_E("Sensors: PZEM-004T communication FAILED after 3 attempts");
     }
+#else
+    pzem_ok = false;
+    LOG_W("Sensors: PZEM disabled by build flag (PZEM_ENABLED=0)");
+#endif
 
     // Датчик потока воды
     pinMode(PIN_FLOW_SENSOR, INPUT_PULLUP);
