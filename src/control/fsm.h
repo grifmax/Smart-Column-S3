@@ -168,6 +168,17 @@ namespace FSM {
      * Прогресс текущей фазы в процентах (0..100), 0 если цель не определена.
      */
     uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settings);
+
+    /**
+     * Целевые объёмы фракций для текущей/последней авто-ректификации.
+     */
+    void getRectTargetsMl(float& headsMl, float& bodyMl, float& tailsMl);
+
+    /**
+     * Runtime-параметры дистилляции.
+     */
+    void getDistillationParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl,
+                               float& endTempC, uint8_t& powerPercent);
     
     /**
      * Получение имени режима

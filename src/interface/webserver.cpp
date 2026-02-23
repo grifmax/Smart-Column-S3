@@ -232,7 +232,7 @@ void init() {
   // API endpoints
   // GET /api/status - полное состояние системы
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<2560> doc;
+    StaticJsonDocument<3584> doc;
 
     // Режим и состояние процесса
     doc["mode"] = static_cast<int>(g_state.mode);
@@ -293,6 +293,47 @@ void init() {
     JsonObject equipment = doc.createNestedObject("equipment");
     equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+
+    // Runtime-параметры режимов (для экрана мониторинга)
+    JsonObject rect = doc.createNestedObject("rectification");
+    rect["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
+    rect["feedAbvPercent"] = g_settings.rectParams.feedAbvPercent;
+    rect["headsPercent"] = g_settings.rectParams.headsPercent;
+    rect["bodyPercent"] = g_settings.rectParams.bodyPercent;
+    rect["tailsPercent"] = g_settings.rectParams.tailsPercent;
+    rect["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
+    rect["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+
+    float rectHeadsTargetMl = 0.0f;
+    float rectBodyTargetMl = 0.0f;
+    float rectTailsTargetMl = 0.0f;
+    FSM::getRectTargetsMl(rectHeadsTargetMl, rectBodyTargetMl, rectTailsTargetMl);
+    rect["headsTargetMl"] = rectHeadsTargetMl;
+    rect["bodyTargetMl"] = rectBodyTargetMl;
+    rect["tailsTargetMl"] = rectTailsTargetMl;
+
+    JsonObject distillation = doc.createNestedObject("distillation");
+    float distSpeedMlH = 0.0f;
+    float distHeadsVolumeMl = 0.0f;
+    float distTargetVolumeMl = 0.0f;
+    float distEndTempC = 0.0f;
+    uint8_t distPowerPercent = 0;
+    FSM::getDistillationParams(distSpeedMlH, distHeadsVolumeMl, distTargetVolumeMl, distEndTempC,
+                               distPowerPercent);
+    distillation["speedMlH"] = distSpeedMlH;
+    distillation["headsVolumeMl"] = distHeadsVolumeMl;
+    distillation["targetVolumeMl"] = distTargetVolumeMl;
+    distillation["endTempC"] = distEndTempC;
+    distillation["powerPercent"] = distPowerPercent;
+
+    JsonObject progress = doc.createNestedObject("progress");
+    const uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
+    const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(g_state, g_settings);
+    progress["phaseElapsedSec"] = phaseElapsedSec;
+    progress["phaseTargetSec"] = phaseTargetSec;
+    progress["phaseRemainingSec"] =
+        (phaseTargetSec > phaseElapsedSec) ? (phaseTargetSec - phaseElapsedSec) : 0;
+    progress["phasePercent"] = FSM::getPhaseProgressPercent(g_state, g_settings);
 
     const auto displayStats = Display::getRuntimeStats();
     JsonObject display = doc.createNestedObject("display");
@@ -1048,6 +1089,60 @@ void init() {
         }
 
         request->send(200, "application/json", "{\"success\":true}");
+      });
+
+  // POST /api/manual/volumes - ручная корректировка отображаемых объёмов фракций
+  // body: { "heads": 100, "body": 2500, "tails": 120, "syncTotal": true }
+  server.on(
+      "/api/manual/volumes", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<192> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        bool changed = false;
+        if (doc.containsKey("heads")) {
+          const float v = doc["heads"].as<float>();
+          g_state.stats.headsVolume = (v < 0.0f) ? 0.0f : v;
+          changed = true;
+        }
+        if (doc.containsKey("body")) {
+          const float v = doc["body"].as<float>();
+          g_state.stats.bodyVolume = (v < 0.0f) ? 0.0f : v;
+          changed = true;
+        }
+        if (doc.containsKey("tails")) {
+          const float v = doc["tails"].as<float>();
+          g_state.stats.tailsVolume = (v < 0.0f) ? 0.0f : v;
+          changed = true;
+        }
+
+        if (!changed) {
+          request->send(400, "application/json",
+                        "{\"error\":\"At least one field is required\"}");
+          return;
+        }
+
+        const bool syncTotal = doc["syncTotal"] | true;
+        if (syncTotal) {
+          g_state.pump.totalVolumeMl =
+              g_state.stats.headsVolume + g_state.stats.bodyVolume + g_state.stats.tailsVolume;
+        }
+
+        StaticJsonDocument<192> out;
+        out["success"] = true;
+        out["heads"] = g_state.stats.headsVolume;
+        out["body"] = g_state.stats.bodyVolume;
+        out["tails"] = g_state.stats.tailsVolume;
+        out["totalMl"] = g_state.pump.totalVolumeMl;
+        String json;
+        serializeJson(out, json);
+        request->send(200, "application/json", json);
       });
 
   // ==========================================================================
@@ -2080,7 +2175,9 @@ void broadcastState(const SystemState &state) {
   // Минимальный пакет для "лайв" (часто)
   StaticJsonDocument<896> fastDoc;
   fastDoc["mode"] = static_cast<int>(state.mode);
+  fastDoc["modeStr"] = getModeString(state.mode);
   fastDoc["phase"] = static_cast<int>(state.rectPhase);
+  fastDoc["phaseStr"] = getPhaseString(state.rectPhase);
   fastDoc["paused"] = state.paused;
   fastDoc["uptime"] = state.uptime;
 
@@ -2106,8 +2203,18 @@ void broadcastState(const SystemState &state) {
   fastDoc["pump_volume"] = state.pump.totalVolumeMl;
   fastDoc["speed"] = state.pump.speedMlPerHour;
   fastDoc["volume"] = state.pump.totalVolumeMl;
+  fastDoc["volume_heads"] = state.stats.headsVolume;
+  fastDoc["volume_body"] = state.stats.bodyVolume;
+  fastDoc["volume_tails"] = state.stats.tailsVolume;
 
   fastDoc["abv"] = state.hydrometer.abv;
+  const uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
+  const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(state, g_settings);
+  fastDoc["phase_elapsed_sec"] = phaseElapsedSec;
+  fastDoc["phase_target_sec"] = phaseTargetSec;
+  fastDoc["phase_remaining_sec"] =
+      (phaseTargetSec > phaseElapsedSec) ? (phaseTargetSec - phaseElapsedSec) : 0;
+  fastDoc["phase_percent"] = FSM::getPhaseProgressPercent(state, g_settings);
   fastDoc["display_last_ms"] = displayStats.lastFrameMs;
   fastDoc["display_slow"] = displayStats.slowFrames;
   fastDoc["display_hard"] = displayStats.hardWatchdogRecoveries;
@@ -2124,9 +2231,11 @@ void broadcastState(const SystemState &state) {
   }
   lastFullBroadcast = now;
 
-  StaticJsonDocument<3328> doc;
+  StaticJsonDocument<4096> doc;
   doc["mode"] = static_cast<int>(state.mode);
+  doc["modeStr"] = getModeString(state.mode);
   doc["phase"] = static_cast<int>(state.rectPhase);
+  doc["phaseStr"] = getPhaseString(state.rectPhase);
   doc["paused"] = state.paused;
   doc["uptime"] = state.uptime;
 
@@ -2152,8 +2261,49 @@ void broadcastState(const SystemState &state) {
   doc["pump_volume"] = state.pump.totalVolumeMl;
   doc["speed"] = state.pump.speedMlPerHour;
   doc["volume"] = state.pump.totalVolumeMl;
+  doc["volume_heads"] = state.stats.headsVolume;
+  doc["volume_body"] = state.stats.bodyVolume;
+  doc["volume_tails"] = state.stats.tailsVolume;
 
   doc["abv"] = state.hydrometer.abv;
+
+  JsonObject progress = doc.createNestedObject("progress");
+  progress["phaseElapsedSec"] = phaseElapsedSec;
+  progress["phaseTargetSec"] = phaseTargetSec;
+  progress["phaseRemainingSec"] =
+      (phaseTargetSec > phaseElapsedSec) ? (phaseTargetSec - phaseElapsedSec) : 0;
+  progress["phasePercent"] = FSM::getPhaseProgressPercent(state, g_settings);
+
+  JsonObject rect = doc.createNestedObject("rectification");
+  rect["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
+  rect["feedAbvPercent"] = g_settings.rectParams.feedAbvPercent;
+  rect["headsPercent"] = g_settings.rectParams.headsPercent;
+  rect["bodyPercent"] = g_settings.rectParams.bodyPercent;
+  rect["tailsPercent"] = g_settings.rectParams.tailsPercent;
+  rect["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
+  rect["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+
+  float rectHeadsTargetMl = 0.0f;
+  float rectBodyTargetMl = 0.0f;
+  float rectTailsTargetMl = 0.0f;
+  FSM::getRectTargetsMl(rectHeadsTargetMl, rectBodyTargetMl, rectTailsTargetMl);
+  rect["headsTargetMl"] = rectHeadsTargetMl;
+  rect["bodyTargetMl"] = rectBodyTargetMl;
+  rect["tailsTargetMl"] = rectTailsTargetMl;
+
+  JsonObject distillation = doc.createNestedObject("distillation");
+  float distSpeedMlH = 0.0f;
+  float distHeadsVolumeMl = 0.0f;
+  float distTargetVolumeMl = 0.0f;
+  float distEndTempC = 0.0f;
+  uint8_t distPowerPercent = 0;
+  FSM::getDistillationParams(distSpeedMlH, distHeadsVolumeMl, distTargetVolumeMl, distEndTempC,
+                             distPowerPercent);
+  distillation["speedMlH"] = distSpeedMlH;
+  distillation["headsVolumeMl"] = distHeadsVolumeMl;
+  distillation["targetVolumeMl"] = distTargetVolumeMl;
+  distillation["endTempC"] = distEndTempC;
+  distillation["powerPercent"] = distPowerPercent;
 
   JsonObject display = doc.createNestedObject("display");
   display["frames"] = displayStats.framesRendered;

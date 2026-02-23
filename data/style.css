@@ -311,6 +311,10 @@ header h1 {
     grid-column: 1 / -1;
 }
 
+.operator-card-runtime {
+    grid-column: 1 / -1;
+}
+
 .operator-card-title {
     font-size: 0.98em;
     text-transform: uppercase;
@@ -325,6 +329,107 @@ header h1 {
     grid-template-columns: repeat(4, minmax(120px, 1fr));
     gap: 7px;
     margin-bottom: 8px;
+}
+
+.operator-runtime-caption {
+    color: var(--landing-muted);
+    margin-bottom: 10px;
+    font-size: 0.93em;
+}
+
+.operator-runtime-bars {
+    display: grid;
+    gap: 8px;
+}
+
+.operator-runtime-track {
+    border-radius: 10px;
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.62);
+    padding: 8px 10px;
+}
+
+[data-theme="dark"] .operator-runtime-track {
+    background: rgba(30, 41, 59, 0.54);
+}
+
+.operator-runtime-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 0.88em;
+}
+
+.operator-runtime-head strong {
+    color: var(--landing-ink);
+}
+
+.operator-runtime-bar {
+    width: 100%;
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.1);
+    overflow: hidden;
+}
+
+.operator-runtime-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #16a34a, #22c55e);
+    transition: width 240ms ease;
+}
+
+.operator-runtime-track.is-waiting .operator-runtime-fill {
+    background: linear-gradient(90deg, #0ea5e9, #22d3ee);
+}
+
+.operator-runtime-track.is-pending .operator-runtime-fill {
+    background: linear-gradient(90deg, #64748b, #94a3b8);
+}
+
+.operator-runtime-meta {
+    margin-top: 5px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--landing-muted);
+    font-size: 0.8em;
+}
+
+.operator-runtime-manual {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+    gap: 8px;
+}
+
+.operator-edit-tile {
+    border-radius: 10px;
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.66);
+    color: var(--landing-ink);
+    padding: 10px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+[data-theme="dark"] .operator-edit-tile {
+    background: rgba(30, 41, 59, 0.58);
+}
+
+.operator-edit-tile:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+
+.operator-edit-label {
+    display: block;
+    color: var(--landing-muted);
+    font-size: 0.78em;
+    margin-bottom: 4px;
 }
 
 .operator-stat {
@@ -1191,6 +1296,10 @@ footer {
     .operator-list,
     .operator-screen-instrument .operator-list,
     .operator-screen-compact .operator-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .operator-runtime-manual {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 

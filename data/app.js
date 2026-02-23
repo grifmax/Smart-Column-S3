@@ -84,6 +84,562 @@ function resolveMode(modeValue, modeStrValue) {
     return modeMap[modeStrValue.toLowerCase()] ?? MODE_IDLE;
 }
 
+const PHASE_HEADS = 3;
+const PHASE_POST_HEADS_STAB = 4;
+const PHASE_BODY = 5;
+const PHASE_TAILS = 6;
+
+let runtimeMonitorState = {
+    mode: MODE_IDLE,
+    modeStr: 'idle',
+    phase: 0,
+    phaseStr: 'IDLE',
+    power: { power: 0 },
+    pump: { speedMlH: 0, totalMl: 0 },
+    volumes: { heads: 0, body: 0, tails: 0 },
+    equipment: { heaterPowerW: maxHeaterPower },
+    rectification: {
+        feedVolumeL: 20,
+        feedAbvPercent: 40,
+        headsPercent: 8,
+        bodyPercent: 84,
+        tailsPercent: 8,
+        headsSpeedMlHKw: 300,
+        bodySpeedMlHKw: 600,
+        headsTargetMl: 0,
+        bodyTargetMl: 0,
+        tailsTargetMl: 0
+    },
+    distillation: {
+        speedMlH: 0,
+        headsVolumeMl: 0,
+        targetVolumeMl: 0,
+        endTempC: 0,
+        powerPercent: 0
+    },
+    mashing: {
+        active: false,
+        stepCount: 0,
+        currentStep: 0,
+        stepDurationSec: 0,
+        elapsedSec: 0,
+        remainingSec: 0,
+        stepName: ''
+    },
+    hold: {
+        active: false,
+        stepCount: 0,
+        currentStep: 0,
+        stepDurationSec: 0,
+        elapsedSec: 0,
+        remainingSec: 0,
+        targetTemp: 0
+    },
+    progress: {
+        phaseElapsedSec: 0,
+        phaseTargetSec: 0,
+        phaseRemainingSec: 0,
+        phasePercent: 0
+    }
+};
+
+let runtimeEditContext = null;
+
+function toFinite(value, fallback = 0) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+}
+
+function clampPercent(value) {
+    const num = toFinite(value, 0);
+    if (num < 0) return 0;
+    if (num > 100) return 100;
+    return num;
+}
+
+function runtimeEscapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function formatDurationSafe(totalSec) {
+    const sec = Math.max(0, Math.round(toFinite(totalSec, 0)));
+    return formatUptime(sec);
+}
+
+function updateRuntimeStateFromStatus(data) {
+    if (!data || typeof data !== 'object') return;
+    const s = runtimeMonitorState;
+    s.mode = resolveMode(data.mode ?? s.mode, data.modeStr ?? s.modeStr);
+    if (data.modeStr !== undefined) s.modeStr = String(data.modeStr);
+    if (data.phase !== undefined) s.phase = toFinite(data.phase, s.phase);
+    if (data.phaseStr !== undefined) s.phaseStr = String(data.phaseStr);
+
+    if (data.power && typeof data.power === 'object') {
+        if (data.power.power !== undefined) s.power.power = toFinite(data.power.power, s.power.power);
+    }
+    if (data.pump && typeof data.pump === 'object') {
+        if (data.pump.speedMlH !== undefined) s.pump.speedMlH = toFinite(data.pump.speedMlH, s.pump.speedMlH);
+        if (data.pump.totalMl !== undefined) s.pump.totalMl = toFinite(data.pump.totalMl, s.pump.totalMl);
+    }
+    if (data.volumes && typeof data.volumes === 'object') {
+        if (data.volumes.heads !== undefined) s.volumes.heads = toFinite(data.volumes.heads, s.volumes.heads);
+        if (data.volumes.body !== undefined) s.volumes.body = toFinite(data.volumes.body, s.volumes.body);
+        if (data.volumes.tails !== undefined) s.volumes.tails = toFinite(data.volumes.tails, s.volumes.tails);
+    }
+    if (data.equipment && typeof data.equipment === 'object' && data.equipment.heaterPowerW !== undefined) {
+        s.equipment.heaterPowerW = toFinite(data.equipment.heaterPowerW, s.equipment.heaterPowerW);
+    }
+    if (data.rectification && typeof data.rectification === 'object') {
+        s.rectification = { ...s.rectification, ...data.rectification };
+    }
+    if (data.distillation && typeof data.distillation === 'object') {
+        s.distillation = { ...s.distillation, ...data.distillation };
+    }
+    if (data.mashing && typeof data.mashing === 'object') {
+        s.mashing = { ...s.mashing, ...data.mashing };
+    }
+    if (data.hold && typeof data.hold === 'object') {
+        s.hold = { ...s.hold, ...data.hold };
+    }
+    if (data.progress && typeof data.progress === 'object') {
+        s.progress = { ...s.progress, ...data.progress };
+    }
+}
+
+function updateRuntimeStateFromWs(data) {
+    if (!data || typeof data !== 'object') return;
+    const s = runtimeMonitorState;
+    if (data.mode !== undefined || data.modeStr !== undefined) {
+        s.mode = resolveMode(data.mode ?? s.mode, data.modeStr ?? s.modeStr);
+    }
+    if (data.modeStr !== undefined) s.modeStr = String(data.modeStr);
+    if (data.phase !== undefined) s.phase = toFinite(data.phase, s.phase);
+    if (data.phaseStr !== undefined) s.phaseStr = String(data.phaseStr);
+
+    if (data.power !== undefined) s.power.power = toFinite(data.power, s.power.power);
+    if (data.pump_speed !== undefined) s.pump.speedMlH = toFinite(data.pump_speed, s.pump.speedMlH);
+    if (data.pump_volume !== undefined) s.pump.totalMl = toFinite(data.pump_volume, s.pump.totalMl);
+    if (data.volume_heads !== undefined) s.volumes.heads = toFinite(data.volume_heads, s.volumes.heads);
+    if (data.volume_body !== undefined) s.volumes.body = toFinite(data.volume_body, s.volumes.body);
+    if (data.volume_tails !== undefined) s.volumes.tails = toFinite(data.volume_tails, s.volumes.tails);
+
+    if (data.phase_elapsed_sec !== undefined) s.progress.phaseElapsedSec = toFinite(data.phase_elapsed_sec, s.progress.phaseElapsedSec);
+    if (data.phase_target_sec !== undefined) s.progress.phaseTargetSec = toFinite(data.phase_target_sec, s.progress.phaseTargetSec);
+    if (data.phase_remaining_sec !== undefined) s.progress.phaseRemainingSec = toFinite(data.phase_remaining_sec, s.progress.phaseRemainingSec);
+    if (data.phase_percent !== undefined) s.progress.phasePercent = clampPercent(data.phase_percent);
+
+    if (data.mashing && typeof data.mashing === 'object') {
+        s.mashing = { ...s.mashing, ...data.mashing };
+    }
+    if (data.hold && typeof data.hold === 'object') {
+        s.hold = { ...s.hold, ...data.hold };
+    }
+    if (data.progress && typeof data.progress === 'object') {
+        s.progress = { ...s.progress, ...data.progress };
+    }
+    if (data.rectification && typeof data.rectification === 'object') {
+        s.rectification = { ...s.rectification, ...data.rectification };
+    }
+    if (data.distillation && typeof data.distillation === 'object') {
+        s.distillation = { ...s.distillation, ...data.distillation };
+    }
+}
+
+function estimateRectTargets(rect) {
+    const feedVolumeL = toFinite(rect.feedVolumeL, 0);
+    const feedAbv = toFinite(rect.feedAbvPercent, 0);
+    const absoluteAlcoholMl = Math.max(0, feedVolumeL * 1000 * (feedAbv / 100));
+    const heads = absoluteAlcoholMl * (toFinite(rect.headsPercent, 0) / 100);
+    const body = absoluteAlcoholMl * (toFinite(rect.bodyPercent, 0) / 100);
+    const tails = absoluteAlcoholMl * (toFinite(rect.tailsPercent, 0) / 100);
+    return { heads, body, tails };
+}
+
+function renderRuntimeBars(items) {
+    const barsEl = document.getElementById('mode-runtime-bars');
+    if (!barsEl) return;
+    if (!items.length) {
+        barsEl.innerHTML = '';
+        return;
+    }
+
+    barsEl.innerHTML = items.map((item) => {
+        const pct = clampPercent(item.percent);
+        const title = runtimeEscapeHtml(item.label || 'Этап');
+        const stateClass = item.stateClass ? ` ${runtimeEscapeHtml(item.stateClass)}` : '';
+        const primary = runtimeEscapeHtml(item.primary || '');
+        const leftMeta = runtimeEscapeHtml(item.metaLeft || '');
+        const rightMeta = runtimeEscapeHtml(item.metaRight || '');
+        return `
+            <div class="operator-runtime-track${stateClass}">
+                <div class="operator-runtime-head">
+                    <span>${title}</span>
+                    <strong>${primary}</strong>
+                </div>
+                <div class="operator-runtime-bar">
+                    <div class="operator-runtime-fill" style="width:${pct.toFixed(1)}%"></div>
+                </div>
+                <div class="operator-runtime-meta">
+                    <span>${leftMeta}</span>
+                    <span>${rightMeta}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateManualTiles() {
+    const s = runtimeMonitorState;
+    const heaterMax = Math.max(1, toFinite(s.equipment.heaterPowerW, maxHeaterPower));
+    const measuredPower = Math.max(0, toFinite(s.power.power, 0));
+    const powerPercent = clampPercent((measuredPower / heaterMax) * 100);
+
+    const powerEl = document.getElementById('manual-power-display');
+    const speedEl = document.getElementById('manual-speed-display');
+    const headsEl = document.getElementById('manual-heads-display');
+    const bodyEl = document.getElementById('manual-body-display');
+    const tailsEl = document.getElementById('manual-tails-display');
+
+    if (powerEl) powerEl.textContent = `${powerPercent.toFixed(0)} %`;
+    if (speedEl) speedEl.textContent = `${toFinite(s.pump.speedMlH, 0).toFixed(0)} мл/ч`;
+    if (headsEl) headsEl.textContent = `${toFinite(s.volumes.heads, 0).toFixed(0)} мл`;
+    if (bodyEl) bodyEl.textContent = `${toFinite(s.volumes.body, 0).toFixed(0)} мл`;
+    if (tailsEl) tailsEl.textContent = `${toFinite(s.volumes.tails, 0).toFixed(0)} мл`;
+}
+
+function renderModeRuntimeCard() {
+    const titleEl = document.getElementById('mode-runtime-title');
+    const captionEl = document.getElementById('mode-runtime-caption');
+    const manualEl = document.getElementById('mode-runtime-manual');
+    if (!titleEl || !captionEl) return;
+
+    const s = runtimeMonitorState;
+    const mode = resolveMode(s.mode, s.modeStr);
+    const phase = toFinite(s.phase, 0);
+    const items = [];
+
+    if (mode === MODE_RECT) {
+        titleEl.textContent = 'Прогресс авто-ректификации';
+        captionEl.textContent = `Фаза: ${s.phaseStr || phase || '-'}`;
+
+        const est = estimateRectTargets(s.rectification);
+        const heaterKw = Math.max(0.1, toFinite(s.equipment.heaterPowerW, maxHeaterPower) / 1000);
+        const headsSpeed = toFinite(s.rectification.headsSpeedMlHKw, 0) * heaterKw;
+        const bodySpeed = toFinite(s.rectification.bodySpeedMlHKw, 0) * heaterKw;
+        const tailsSpeed = Math.max(0, bodySpeed / 2);
+        const targetHeads = toFinite(s.rectification.headsTargetMl, 0) > 0 ? toFinite(s.rectification.headsTargetMl, 0) : est.heads;
+        const targetBody = toFinite(s.rectification.bodyTargetMl, 0) > 0 ? toFinite(s.rectification.bodyTargetMl, 0) : est.body;
+        const targetTails = toFinite(s.rectification.tailsTargetMl, 0) > 0 ? toFinite(s.rectification.tailsTargetMl, 0) : est.tails;
+
+        [
+            { key: 'heads', label: 'Головы', target: targetHeads, speed: headsSpeed, value: toFinite(s.volumes.heads, 0), pending: phase < PHASE_HEADS },
+            { key: 'body', label: 'Тело', target: targetBody, speed: bodySpeed, value: toFinite(s.volumes.body, 0), pending: phase < PHASE_BODY || phase === PHASE_POST_HEADS_STAB },
+            { key: 'tails', label: 'Хвосты', target: targetTails, speed: tailsSpeed, value: toFinite(s.volumes.tails, 0), pending: phase < PHASE_TAILS }
+        ].forEach((part) => {
+            const target = Math.max(0, part.target);
+            const value = Math.max(0, part.value);
+            const pct = target > 0 ? clampPercent((value / target) * 100) : 0;
+            const remMl = Math.max(0, target - value);
+            const remSec = (part.speed > 0 && remMl > 0) ? (remMl / part.speed) * 3600 : 0;
+            items.push({
+                label: part.label,
+                percent: pct,
+                primary: target > 0 ? `${(100 - pct).toFixed(0)}% осталось` : 'Цель не задана',
+                metaLeft: target > 0 ? `${value.toFixed(0)} / ${target.toFixed(0)} мл` : `${value.toFixed(0)} мл`,
+                metaRight: remSec > 0 ? `~${formatDurationSafe(remSec)}` : (part.pending ? 'ожидание' : '—'),
+                stateClass: part.pending ? 'is-pending' : ''
+            });
+        });
+    } else if (mode === MODE_DIST) {
+        titleEl.textContent = 'Прогресс дистилляции';
+        const target = Math.max(0, toFinite(s.distillation.targetVolumeMl, 0));
+        const speed = Math.max(0, toFinite(s.distillation.speedMlH, 0));
+        const total = Math.max(0, toFinite(s.pump.totalMl, 0));
+        const pct = target > 0 ? clampPercent((total / target) * 100) : clampPercent(s.progress.phasePercent);
+        const remMl = Math.max(0, target - total);
+        const remSec = (target > 0 && speed > 0) ? (remMl / speed) * 3600 : toFinite(s.progress.phaseRemainingSec, 0);
+        captionEl.textContent = target > 0
+            ? `Цель ${target.toFixed(0)} мл, скорость ${speed.toFixed(0)} мл/ч`
+            : `Фаза: ${s.phaseStr || phase || '-'}`;
+        items.push({
+            label: 'Перегон',
+            percent: pct,
+            primary: `${(100 - pct).toFixed(0)}% осталось`,
+            metaLeft: target > 0 ? `${total.toFixed(0)} / ${target.toFixed(0)} мл` : `${total.toFixed(0)} мл`,
+            metaRight: remSec > 0 ? `~${formatDurationSafe(remSec)}` : '—',
+            stateClass: target > 0 ? '' : 'is-waiting'
+        });
+    } else if (mode === MODE_MASH) {
+        titleEl.textContent = 'Прогресс затирки';
+        const totalSteps = Math.max(0, Math.round(toFinite(s.mashing.stepCount, 0)));
+        const currentStep = Math.max(0, Math.round(toFinite(s.mashing.currentStep, 0)));
+        const elapsed = Math.max(0, toFinite(s.mashing.elapsedSec, 0));
+        const duration = Math.max(0, toFinite(s.mashing.stepDurationSec, 0));
+        const currentPct = duration > 0 ? clampPercent((elapsed / duration) * 100) : 0;
+        captionEl.textContent = totalSteps > 0
+            ? `Шаг ${Math.min(currentStep + 1, totalSteps)} из ${totalSteps}`
+            : 'Ожидание профиля затирки';
+
+        for (let i = 0; i < totalSteps; i += 1) {
+            let pct = 0;
+            let primary = 'ожидание';
+            let metaRight = '—';
+            let stateClass = 'is-pending';
+            if (i < currentStep) {
+                pct = 100;
+                primary = 'завершено';
+                stateClass = '';
+            } else if (i === currentStep) {
+                pct = currentPct;
+                primary = `${(100 - pct).toFixed(0)}% осталось`;
+                metaRight = `~${formatDurationSafe(s.mashing.remainingSec)}`;
+                stateClass = '';
+            }
+
+            items.push({
+                label: i === currentStep && s.mashing.stepName ? s.mashing.stepName : `Шаг ${i + 1}`,
+                percent: pct,
+                primary,
+                metaLeft: i === currentStep ? `${elapsed.toFixed(0)} / ${duration.toFixed(0)} с` : '',
+                metaRight,
+                stateClass
+            });
+        }
+    } else if (mode === MODE_HOLD) {
+        titleEl.textContent = 'Режим выдержки';
+        const duration = Math.max(0, toFinite(s.hold.stepDurationSec, 0));
+        const elapsed = Math.max(0, toFinite(s.hold.elapsedSec, 0));
+        const pct = duration > 0 ? clampPercent((elapsed / duration) * 100) : clampPercent(s.progress.phasePercent);
+        const remSec = duration > elapsed ? (duration - elapsed) : toFinite(s.progress.phaseRemainingSec, 0);
+        captionEl.textContent = `Цель ${toFinite(s.hold.targetTemp, 0).toFixed(1)}°C`;
+        items.push({
+            label: 'Обратный отсчет',
+            percent: pct,
+            primary: `${formatDurationSafe(remSec)} осталось`,
+            metaLeft: duration > 0 ? `${elapsed.toFixed(0)} / ${duration.toFixed(0)} с` : '',
+            metaRight: `шаг ${Math.round(toFinite(s.hold.currentStep, 0)) + 1}`,
+            stateClass: ''
+        });
+    } else if (mode === MODE_MANUAL) {
+        titleEl.textContent = 'Ручная ректификация';
+        captionEl.textContent = 'Параметры ниже редактируются нажатием на плитку';
+
+        const heads = Math.max(0, toFinite(s.volumes.heads, 0));
+        const body = Math.max(0, toFinite(s.volumes.body, 0));
+        const tails = Math.max(0, toFinite(s.volumes.tails, 0));
+        const total = Math.max(1, heads + body + tails);
+        [
+            { label: 'Головы', value: heads },
+            { label: 'Тело', value: body },
+            { label: 'Хвосты', value: tails }
+        ].forEach((part) => {
+            const pct = clampPercent((part.value / total) * 100);
+            items.push({
+                label: part.label,
+                percent: pct,
+                primary: `${part.value.toFixed(0)} мл`,
+                metaLeft: `доля ${pct.toFixed(0)}%`,
+                metaRight: '',
+                stateClass: ''
+            });
+        });
+    } else {
+        titleEl.textContent = 'Прогресс режима';
+        captionEl.textContent = 'Ожидание запуска процесса';
+        items.push({
+            label: 'Нет активного режима',
+            percent: 0,
+            primary: '0% выполнено',
+            metaLeft: '',
+            metaRight: '',
+            stateClass: 'is-pending'
+        });
+    }
+
+    renderRuntimeBars(items);
+    updateManualTiles();
+    if (manualEl) {
+        manualEl.style.display = mode === MODE_MANUAL ? 'grid' : 'none';
+    }
+}
+
+function initRuntimeMonitorUi() {
+    const tiles = document.querySelectorAll('[data-edit-param]');
+    tiles.forEach((tile) => {
+        tile.addEventListener('click', () => {
+            const param = tile.getAttribute('data-edit-param');
+            if (param) openRuntimeEditModal(param);
+        });
+    });
+
+    const modal = document.getElementById('runtime-edit-modal');
+    if (modal) {
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) closeRuntimeEditModal();
+        });
+    }
+}
+
+function getRuntimeEditConfig(paramKey) {
+    const s = runtimeMonitorState;
+    const heaterMax = Math.max(1, toFinite(s.equipment.heaterPowerW, maxHeaterPower));
+    const measuredPower = Math.max(0, toFinite(s.power.power, 0));
+    const currentPowerPercent = clampPercent((measuredPower / heaterMax) * 100);
+
+    const map = {
+        'manual-power': {
+            title: 'Мощность нагрева',
+            label: 'Мощность, %',
+            step: '1',
+            min: '0',
+            max: '100',
+            hint: 'Применяется сразу в ручном режиме.',
+            value: currentPowerPercent.toFixed(0),
+            submit: async (value) => {
+                const resp = await fetch('/api/manual/heater', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ power: Number(value) })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
+        'manual-speed': {
+            title: 'Скорость отбора',
+            label: 'Скорость, мл/ч',
+            step: '1',
+            min: '0',
+            max: '5000',
+            hint: '0 = остановить насос.',
+            value: toFinite(s.pump.speedMlH, 0).toFixed(0),
+            submit: async (value) => {
+                const resp = await fetch('/api/manual/pump', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ speed: Number(value) })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
+        'manual-heads': {
+            title: 'Объем фракции: Головы',
+            label: 'Головы, мл',
+            step: '1',
+            min: '0',
+            max: '100000',
+            hint: 'Коррекция учетного объема на экране.',
+            value: toFinite(s.volumes.heads, 0).toFixed(0),
+            submit: async (value) => {
+                const resp = await fetch('/api/manual/volumes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ heads: Number(value), syncTotal: true })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
+        'manual-body': {
+            title: 'Объем фракции: Тело',
+            label: 'Тело, мл',
+            step: '1',
+            min: '0',
+            max: '100000',
+            hint: 'Коррекция учетного объема на экране.',
+            value: toFinite(s.volumes.body, 0).toFixed(0),
+            submit: async (value) => {
+                const resp = await fetch('/api/manual/volumes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ body: Number(value), syncTotal: true })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
+        'manual-tails': {
+            title: 'Объем фракции: Хвосты',
+            label: 'Хвосты, мл',
+            step: '1',
+            min: '0',
+            max: '100000',
+            hint: 'Коррекция учетного объема на экране.',
+            value: toFinite(s.volumes.tails, 0).toFixed(0),
+            submit: async (value) => {
+                const resp = await fetch('/api/manual/volumes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tails: Number(value), syncTotal: true })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        }
+    };
+    return map[paramKey] || null;
+}
+
+function openRuntimeEditModal(paramKey) {
+    if (currentMode !== MODE_MANUAL) {
+        addLog('Редактирование параметров доступно только в ручной ректификации', 'warning');
+        return;
+    }
+
+    const config = getRuntimeEditConfig(paramKey);
+    const modal = document.getElementById('runtime-edit-modal');
+    const titleEl = document.getElementById('runtime-edit-title');
+    const labelEl = document.getElementById('runtime-edit-label');
+    const inputEl = document.getElementById('runtime-edit-value');
+    const hintEl = document.getElementById('runtime-edit-hint');
+    if (!config || !modal || !titleEl || !labelEl || !inputEl || !hintEl) return;
+
+    runtimeEditContext = config;
+    titleEl.textContent = config.title;
+    labelEl.textContent = config.label;
+    inputEl.min = config.min;
+    inputEl.max = config.max;
+    inputEl.step = config.step;
+    inputEl.value = config.value;
+    hintEl.textContent = config.hint;
+    modal.style.display = 'flex';
+    inputEl.focus();
+    inputEl.select();
+}
+
+function closeRuntimeEditModal() {
+    runtimeEditContext = null;
+    const modal = document.getElementById('runtime-edit-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function submitRuntimeEditModal() {
+    if (!runtimeEditContext) return;
+    const inputEl = document.getElementById('runtime-edit-value');
+    if (!inputEl) return;
+
+    const min = toFinite(inputEl.min, 0);
+    const max = toFinite(inputEl.max, Number.POSITIVE_INFINITY);
+    let value = toFinite(inputEl.value, NaN);
+    if (!Number.isFinite(value)) {
+        alert('Введите корректное число');
+        return;
+    }
+    if (value < min) value = min;
+    if (value > max) value = max;
+
+    try {
+        await runtimeEditContext.submit(value);
+        closeRuntimeEditModal();
+        addLog('Параметр обновлен', 'success');
+        setTimeout(loadStatus, 250);
+    } catch (error) {
+        const message = error?.message || 'Ошибка сохранения';
+        addLog(`Ошибка изменения параметра: ${message}`, 'error');
+    }
+}
+
 function updateLandingUi(snapshot) {
     const modeChip = document.getElementById('landing-mode-chip');
     if (modeChip && snapshot.mode !== undefined) {
@@ -334,6 +890,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     initTabs();
     initTopMenu();
     initOperatorViewToggle();
+    initRuntimeMonitorUi();
 
     initMashingHoldControls();
     initRectificationStartModal();
@@ -794,6 +1351,7 @@ function updateMiniChart(data) {
 
 function updateUI(data) {
     let phaseText = undefined;
+    updateRuntimeStateFromWs(data);
 
     // Режим
 
@@ -1039,6 +1597,7 @@ function updateUI(data) {
         voltage: data.voltage
     });
 
+    renderModeRuntimeCard();
     updateButtonStates();
 
 }
@@ -1996,6 +2555,7 @@ async function loadStatus() {
 
 function updateUIFromStatus(data) {
     let phaseText = '-';
+    updateRuntimeStateFromStatus(data);
 
     // Режим
 
@@ -2257,6 +2817,8 @@ function updateUIFromStatus(data) {
         waterOut: data.temps?.waterOut,
         voltage: data.power?.voltage
     });
+
+    renderModeRuntimeCard();
 
 }
 

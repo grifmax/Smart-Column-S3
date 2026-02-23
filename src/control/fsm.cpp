@@ -1067,6 +1067,21 @@ uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settin
     return static_cast<uint8_t>((elapsedSec * 100UL) / targetSec);
 }
 
+void getRectTargetsMl(float& headsMl, float& bodyMl, float& tailsMl) {
+    headsMl = rectHeadsTargetMl;
+    bodyMl = rectBodyTargetMl;
+    tailsMl = rectTailsTargetMl;
+}
+
+void getDistillationParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl,
+                           float& endTempC, uint8_t& powerPercent) {
+    speedMlH = g_distParams.speedMlH;
+    headsVolumeMl = g_distParams.headsVolumeMl;
+    targetVolumeMl = g_distParams.targetVolumeMl;
+    endTempC = g_distParams.endTempC;
+    powerPercent = g_distParams.powerPercent;
+}
+
 const char* getModeName(Mode mode) {
     switch (mode) {
         case Mode::IDLE: return msg(Msg::MODE_IDLE);
