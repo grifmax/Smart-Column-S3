@@ -7,10 +7,14 @@
     <title>Smart-Column S3</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="column-animation.css">
     <link rel="stylesheet" href="schemes-animation.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2196f3">
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 </head>
 
@@ -18,26 +22,33 @@
     <div class="container">
         <!-- Заголовок -->
         <header>
-            <h1>🏭 Smart-Column S3</h1>
+            <h1 style="cursor:pointer" onclick="document.querySelector('[data-tab=monitor]').click()">🏭 Smart-Column S3
+            </h1>
             <div class="status-bar">
                 <span id="connection-status" class="status-dot offline">●</span>
                 <span id="connection-text">Подключение...</span>
                 <span class="uptime">Uptime: <span id="uptime">--:--:--</span></span>
                 <div class="user-menu-container" data-cloud-only="1" style="position: relative; margin-left: 15px;">
-                    <span class="user-info" id="user-info" style="color: var(--text-secondary); font-size: 0.9em; cursor: pointer; user-select: none;" onclick="toggleUserMenu()">
+                    <span class="user-info" id="user-info"
+                        style="color: var(--text-secondary); font-size: 0.9em; cursor: pointer; user-select: none;"
+                        onclick="toggleUserMenu()">
                         👤 <span id="current-username">Загрузка...</span> ▼
                     </span>
-                    <div id="user-menu" class="user-menu" style="display: none; position: absolute; top: 100%; right: 0; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 5px; min-width: 150px; z-index: 1000;">
-                        <div class="user-menu-item" onclick="switchAccount()" style="padding: 10px 15px; cursor: pointer; border-bottom: 1px solid var(--border-color);">
+                    <div id="user-menu" class="user-menu"
+                        style="display: none; position: absolute; top: 100%; right: 0; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 5px; min-width: 150px; z-index: 1000;">
+                        <div class="user-menu-item" onclick="switchAccount()"
+                            style="padding: 10px 15px; cursor: pointer; border-bottom: 1px solid var(--border-color);">
                             🔄 Сменить аккаунт
                         </div>
-                        <div class="user-menu-item" onclick="logout()" style="padding: 10px 15px; cursor: pointer; color: var(--danger, #dc3545);">
+                        <div class="user-menu-item" onclick="logout()"
+                            style="padding: 10px 15px; cursor: pointer; color: var(--danger, #dc3545);">
                             🚪 Выход
                         </div>
                     </div>
                 </div>
                 <div class="top-menu">
-                    <button id="top-menu-toggle" class="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false" onclick="toggleTopMenu(event)">
+                    <button id="top-menu-toggle" class="menu-toggle" type="button" aria-label="Открыть меню"
+                        aria-expanded="false" onclick="toggleTopMenu(event)">
                         <span></span>
                         <span></span>
                         <span></span>
@@ -50,6 +61,7 @@
                             <button class="tab" data-tab="logs">📝 Логи</button>
                             <button class="tab" data-tab="history">📚 История</button>
                             <button class="tab" data-tab="profiles">📁 Профили</button>
+                            <button class="tab" data-tab="tools">🧮 Инструменты</button>
                             <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
                             <a href="manual.html" class="tab" style="text-decoration: none;">🔧 Ручной режим</a>
                             <a href="calibration.html" class="tab" style="text-decoration: none;">⚙️ Калибровка</a>
@@ -64,9 +76,18 @@
         <div id="monitor" class="tab-content active">
             <section class="operator-screen operator-screen-instrument">
                 <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
-                    <button id="operator-view-toggle" class="btn btn-sm" type="button" onclick="toggleOperatorView()">View: Instrument</button>
+                    <button id="operator-view-toggle" class="btn btn-sm" type="button"
+                        onclick="toggleOperatorView()">View: Instrument</button>
                 </div>
                 <div class="operator-grid">
+                    <article class="operator-card operator-card-scheme">
+                        <h3 class="operator-card-title">Схема процесса</h3>
+                        <div class="operator-scheme-wrap">
+                            <object data="schemes/column-animated.svg" type="image/svg+xml"
+                                class="operator-scheme"></object>
+                        </div>
+                    </article>
+
                     <article class="operator-card operator-card-status">
                         <h3 class="operator-card-title">Статус процесса</h3>
                         <div class="operator-status-grid">
@@ -84,10 +105,7 @@
                             </div>
                             <div class="operator-stat">
                                 <span class="operator-stat-label">Крепость</span>
-                                <span id="abv-edit-trigger" class="operator-stat-value operator-abv-value" onclick="openRuntimeEditModal('planned-abv')" title="Нажмите для ввода плановой крепости">
-                                    <span id="abv">--%</span>
-                                    <span id="abv-source-dot" class="abv-source-dot abv-source-offline" title="Ареометр OFF"></span>
-                                </span>
+                                <span id="abv" class="operator-stat-value">--%</span>
                             </div>
                         </div>
                         <div class="operator-level-grid">
@@ -115,10 +133,6 @@
                         <div id="mode-runtime-caption" class="operator-runtime-caption">Ожидание запуска процесса</div>
                         <div id="mode-runtime-bars" class="operator-runtime-bars"></div>
                         <div id="mode-runtime-rect" class="operator-runtime-manual" style="display: none;">
-                            <button class="operator-edit-tile" type="button" data-edit-param="rect-power">
-                                <span class="operator-edit-label">Мощность</span>
-                                <strong id="rect-power-display">-- %</strong>
-                            </button>
                         </div>
                         <div id="mode-runtime-manual" class="operator-runtime-manual" style="display: none;">
                             <button class="operator-edit-tile" type="button" data-edit-param="manual-power">
@@ -141,42 +155,63 @@
                                 <span class="operator-edit-label">Хвосты</span>
                                 <strong id="manual-tails-display">-- мл</strong>
                             </button>
+                            <button class="operator-edit-tile" type="button" data-edit-param="rect-power">
+                                <span class="operator-edit-label">Мощность</span>
+                                <strong id="rect-power-display">-- %</strong>
+                            </button>
                         </div>
                     </article>
 
                     <article class="operator-card">
                         <h3 class="operator-card-title">Температуры</h3>
                         <div class="operator-list">
-                            <div class="operator-list-row"><span>Царга низ</span><strong id="temp-column-bottom">--°C</strong></div>
-                            <div class="operator-list-row"><span>Царга верх</span><strong id="temp-column-top">--°C</strong></div>
-                            <div class="operator-list-row"><span>Дефлегматор</span><strong id="temp-reflux">--°C</strong></div>
+                            <div class="operator-list-row"><span>Царга низ</span><strong
+                                    id="temp-column-bottom">--°C</strong></div>
+                            <div class="operator-list-row"><span>Царга верх</span><strong
+                                    id="temp-column-top">--°C</strong></div>
+                            <div class="operator-list-row"><span>Дефлегматор</span><strong
+                                    id="temp-reflux">--°C</strong></div>
                             <div class="operator-list-row"><span>ТСА</span><strong id="temp-tsa">--°C</strong></div>
-                            <div class="operator-list-row"><span>Вода вход</span><strong id="landing-water-in">--.-°C</strong></div>
-                            <div class="operator-list-row"><span>Вода выход</span><strong id="landing-water-out">--.-°C</strong></div>
+                            <div class="operator-list-row"><span>Вода вход</span><strong
+                                    id="landing-water-in">--.-°C</strong></div>
+                            <div class="operator-list-row"><span>Вода выход</span><strong
+                                    id="landing-water-out">--.-°C</strong></div>
                         </div>
                     </article>
 
                     <article class="operator-card">
                         <h3 class="operator-card-title">Электропитание (PZEM-004T)</h3>
                         <div class="operator-list">
-                            <div class="operator-list-row"><span>Напряжение</span><strong id="power-voltage">-- V</strong></div>
-                            <div class="operator-list-row"><span>Ток</span><strong id="power-current">-- A</strong></div>
-                            <div class="operator-list-row"><span>Энергия</span><strong id="power-energy">-- кВт·ч</strong></div>
-                            <div class="operator-list-row"><span>Частота</span><strong id="power-frequency">-- Гц</strong></div>
-                            <div class="operator-list-row"><span>Коэфф. мощности</span><strong id="power-pf">--</strong></div>
-                            <div class="operator-list-row"><span>Сеть (live)</span><strong id="landing-voltage">-- V</strong></div>
+                            <div class="operator-list-row"><span>Напряжение</span><strong id="power-voltage">--
+                                    V</strong></div>
+                            <div class="operator-list-row"><span>Ток</span><strong id="power-current">-- A</strong>
+                            </div>
+                            <div class="operator-list-row"><span>Энергия</span><strong id="power-energy">--
+                                    кВт·ч</strong></div>
+                            <div class="operator-list-row"><span>Частота</span><strong id="power-frequency">--
+                                    Гц</strong></div>
+                            <div class="operator-list-row"><span>Коэфф. мощности</span><strong id="power-pf">--</strong>
+                            </div>
+                            <div class="operator-list-row"><span>Сеть (live)</span><strong id="landing-voltage">--
+                                    V</strong></div>
                         </div>
                     </article>
 
                     <article class="operator-card">
                         <h3 class="operator-card-title">Отбор и объёмы</h3>
                         <div class="operator-list">
-                            <div class="operator-list-row"><span>Общий объём</span><strong id="pump-volume">-- мл</strong></div>
-                            <div class="operator-list-row"><span>Головы</span><strong id="volume-heads">-- мл</strong></div>
-                            <div class="operator-list-row"><span>Тело</span><strong id="volume-body">-- мл</strong></div>
-                            <div class="operator-list-row"><span>Хвосты</span><strong id="volume-tails">-- мл</strong></div>
-                            <div class="operator-list-row"><span>Атмосферное</span><strong id="pressure-atm">-- гПа</strong></div>
-                            <div class="operator-list-row"><span>Порог захлёба</span><strong id="pressure-flood">-- мм</strong></div>
+                            <div class="operator-list-row"><span>Общий объём</span><strong id="pump-volume">--
+                                    мл</strong></div>
+                            <div class="operator-list-row"><span>Головы</span><strong id="volume-heads">-- мл</strong>
+                            </div>
+                            <div class="operator-list-row"><span>Тело</span><strong id="volume-body">-- мл</strong>
+                            </div>
+                            <div class="operator-list-row"><span>Хвосты</span><strong id="volume-tails">-- мл</strong>
+                            </div>
+                            <div class="operator-list-row"><span>Атмосферное</span><strong id="pressure-atm">--
+                                    гПа</strong></div>
+                            <div class="operator-list-row"><span>Порог захлёба</span><strong id="pressure-flood">--
+                                    мм</strong></div>
                         </div>
                     </article>
 
@@ -185,12 +220,7 @@
                         <div id="mini-chart" style="width: 100%; height: 240px;"></div>
                     </article>
 
-                    <article class="operator-card operator-card-scheme">
-                        <h3 class="operator-card-title">Схема процесса</h3>
-                        <div class="operator-scheme-wrap">
-                            <object data="schemes/column-animated.svg" type="image/svg+xml" class="operator-scheme"></object>
-                        </div>
-                    </article>
+
                 </div>
 
                 <!-- Служебные значения для совместимости с текущим JS -->
@@ -226,7 +256,8 @@
 
                     <div class="form-group">
                         <label>Режим</label>
-                        <select id="extra-mode-select" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+                        <select id="extra-mode-select"
+                            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
                             <option value="none">Не выбран</option>
                             <option value="mashing">Затирка</option>
                             <option value="hold">Hold (выдержка)</option>
@@ -253,7 +284,8 @@
                     </div>
 
                     <div id="hold-controls" class="control-group" style="display: none; margin-top: 15px;">
-                        <h3 style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 0.95em;">Hold (выдержка)</h3>
+                        <h3 style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 0.95em;">Hold (выдержка)
+                        </h3>
 
                         <div class="form-group">
                             <label>Шаги (температура °C, длительность мин)</label>
@@ -302,7 +334,8 @@
                         исходящий WSS-туннель.
                     </p>
 
-                    <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+                    <div
+                        style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
                         <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; font-size: 14px;">
                             <strong>Device ID:</strong>
                             <span id="device-id">Загрузка...</span>
@@ -375,13 +408,16 @@
                 </div>
 
                 <!-- Настройки подключения к ESP32 -->
-                <div class="card" data-cloud-only="1" style="border: 2px solid var(--primary, #007bff); background: linear-gradient(135deg, rgba(0, 123, 255, 0.1), rgba(0, 123, 255, 0.05));">
+                <div class="card" data-cloud-only="1"
+                    style="border: 2px solid var(--primary, #007bff); background: linear-gradient(135deg, rgba(0, 123, 255, 0.1), rgba(0, 123, 255, 0.05));">
                     <h2>📡 Подключение к ESP32</h2>
                     <p style="color: var(--text-secondary); margin-bottom: 15px;">
-                        Настройка подключения к физическому устройству ESP32. Если устройство не настроено, веб-интерфейс будет работать в демо-режиме.
+                        Настройка подключения к физическому устройству ESP32. Если устройство не настроено,
+                        веб-интерфейс будет работать в демо-режиме.
                     </p>
 
-                    <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; background: var(--bg-secondary); margin-bottom: 15px;">
+                    <div
+                        style="border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; background: var(--bg-secondary); margin-bottom: 15px;">
                         <h3 style="margin: 0 0 10px 0; font-size: 1em;">🔗 Привязать устройство (ID + PIN)</h3>
                         <p style="color: var(--text-secondary); font-size: 0.9em; margin-bottom: 10px;">
                             На устройстве сгенерируйте PIN (локально), затем введите Device ID и PIN сюда.
@@ -403,33 +439,36 @@
                         </div>
 
                         <div id="discovered-devices" style="margin-top: 10px;">
-                            <p class="info-text" style="margin: 0; color: var(--text-secondary);">Загрузка доступных устройств...</p>
+                            <p class="info-text" style="margin: 0; color: var(--text-secondary);">Загрузка доступных
+                                устройств...</p>
                         </div>
                     </div>
-                    
+
                     <div class="form-group">
                         <label>Выберите устройство</label>
-                        <select id="esp32-device-select" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); margin-bottom: 10px;" onchange="loadESP32Device()">
+                        <select id="esp32-device-select"
+                            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); margin-bottom: 10px;"
+                            onchange="loadESP32Device()">
                             <option value="">Загрузка...</option>
                         </select>
                         <button class="btn btn-success" onclick="showAddDeviceForm()" style="width: 100%;">
                             ➕ Добавить новое устройство
                         </button>
                     </div>
-                    
+
                     <div id="esp32-device-form" style="display: none;">
                         <div class="form-group">
                             <label>Название устройства</label>
                             <input type="text" id="esp32-device-name" placeholder="Кухня, Гараж и т.д.">
                         </div>
-                        
+
                         <div class="form-group">
                             <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
                                 <input type="checkbox" id="esp32-enabled" onchange="toggleESP32Fields()">
                                 <span style="font-weight: 600;">Включить подключение к ESP32</span>
                             </label>
                         </div>
-                        
+
                         <div id="esp32-fields" style="display: none;">
                             <div class="form-group">
                                 <label>Адрес ESP32</label>
@@ -438,19 +477,19 @@
                                     IP-адрес или доменное имя устройства ESP32
                                 </small>
                             </div>
-                            
+
                             <div class="form-group">
                                 <label>Порт</label>
                                 <input type="number" id="esp32-port" value="80" min="1" max="65535">
                             </div>
-                            
+
                             <div class="form-group">
                                 <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
                                     <input type="checkbox" id="esp32-use-https">
                                     <span>Использовать HTTPS</span>
                                 </label>
                             </div>
-                            
+
                             <div class="form-group">
                                 <label>Имя пользователя (опционально)</label>
                                 <input type="text" id="esp32-username" placeholder="admin">
@@ -458,33 +497,37 @@
                                     Если на ESP32 настроена HTTP Basic Authentication
                                 </small>
                             </div>
-                            
+
                             <div class="form-group">
                                 <label>Пароль (опционально)</label>
                                 <input type="password" id="esp32-password" placeholder="пароль">
                             </div>
-                            
+
                             <div class="form-group">
                                 <label>Таймаут подключения (сек)</label>
                                 <input type="number" id="esp32-timeout" value="5" min="1" max="30">
                             </div>
-                            
+
                             <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
-                                <button class="btn btn-primary" onclick="saveESP32Device()" style="flex: 1; min-width: 150px;">
+                                <button class="btn btn-primary" onclick="saveESP32Device()"
+                                    style="flex: 1; min-width: 150px;">
                                     💾 Сохранить
                                 </button>
                                 <button class="btn" onclick="testESP32Connection()" style="flex: 1; min-width: 150px;">
                                     🔍 Проверить подключение
                                 </button>
-                                <button class="btn btn-warning" id="esp32-activate-btn" onclick="activateESP32Device()" style="flex: 1; min-width: 150px; display: none;">
+                                <button class="btn btn-warning" id="esp32-activate-btn" onclick="activateESP32Device()"
+                                    style="flex: 1; min-width: 150px; display: none;">
                                     ⭐ Установить активным
                                 </button>
-                                <button class="btn btn-danger" id="esp32-delete-btn" onclick="deleteESP32Device()" style="flex: 1; min-width: 150px; display: none;">
+                                <button class="btn btn-danger" id="esp32-delete-btn" onclick="deleteESP32Device()"
+                                    style="flex: 1; min-width: 150px; display: none;">
                                     🗑️ Удалить
                                 </button>
                             </div>
-                            
-                            <div id="esp32-test-result" style="margin-top: 10px; padding: 10px; border-radius: 5px; display: none;"></div>
+
+                            <div id="esp32-test-result"
+                                style="margin-top: 10px; padding: 10px; border-radius: 5px; display: none;"></div>
                         </div>
                     </div>
                 </div>
@@ -818,6 +861,68 @@
             </div>
         </div>
 
+        <!-- Вкладка: Инструменты (Калькуляторы) -->
+        <div id="tools" class="tab-content">
+            <div class="cards">
+                <!-- Калькулятор коррекции ареометра -->
+                <div class="card">
+                    <h2>🌡️ Коррекция ареометра</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Приведение показаний спиртометра к 20°C.
+                    </p>
+                    <div class="form-group">
+                        <label>Показания ареометра (%)</label>
+                        <input type="number" id="calc-abv-raw" placeholder="Например: 45" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>Температура дистиллята (°C)</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="number" id="calc-temp-raw" placeholder="Например: 25.5" step="0.1"
+                                style="flex: 1;">
+                            <button class="btn btn-sm" onclick="fetchCurrentTempForCalc()">Взять с датчика</button>
+                        </div>
+                    </div>
+                    <div class="calc-result"
+                        style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-top: 15px; text-align: center;">
+                        <div style="color: var(--text-secondary); font-size: 0.9em;">Реальная крепость (при 20°C)</div>
+                        <div id="calc-abv-result" style="font-size: 2em; font-weight: bold; color: var(--primary);">-- %
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="calculateAbvCorrection()"
+                        style="width: 100%; margin-top: 10px;">Рассчитать</button>
+                </div>
+
+                <!-- Калькулятор разбавления -->
+                <div class="card">
+                    <h2>💧 Разбавление спирта</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Расчет необходимого количества воды для разбавления.
+                    </p>
+                    <div class="form-group">
+                        <label>Исходный объем (мл)</label>
+                        <input type="number" id="calc-dil-volume" placeholder="Например: 1000">
+                    </div>
+                    <div class="form-group">
+                        <label>Исходная крепость (%)</label>
+                        <input type="number" id="calc-dil-abv-src" placeholder="Например: 96.6" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>Желаемая крепость (%)</label>
+                        <input type="number" id="calc-dil-abv-target" placeholder="Например: 40" step="0.1">
+                    </div>
+                    <div class="calc-result"
+                        style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-top: 15px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;"><span>Добавить
+                                воды:</span> <strong id="calc-dil-water">-- мл</strong></div>
+                        <div style="display: flex; justify-content: space-between;"><span>Общий объем:</span> <strong
+                                id="calc-dil-total">-- мл</strong></div>
+                    </div>
+                    <button class="btn btn-primary" onclick="calculateDilution()"
+                        style="width: 100%; margin-top: 10px;">Рассчитать</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Футер -->
         <footer>
             <p>Smart-Column S3 v1.4.11 | ESP32-S3 DevKitC-1 N16R8</p>
@@ -1090,7 +1195,8 @@
                         <div class="form-group">
                             <label for="rect-start-tails-percent">Хвосты, %</label>
                             <input type="number" id="rect-start-tails-percent" min="0" max="100" step="0.1">
-                            <div id="rect-start-fractions-sum" style="margin-top: 6px; font-size: 0.85em; color: var(--text-secondary);">Sum: --%</div>
+                            <div id="rect-start-fractions-sum"
+                                style="margin-top: 6px; font-size: 0.85em; color: var(--text-secondary);">Sum: --%</div>
                         </div>
                     </div>
                 </div>
@@ -1119,7 +1225,8 @@
             </div>
             <div class="modal-footer">
                 <button class="btn" onclick="closeRectificationStartModal()">Отмена</button>
-                <button id="rect-start-confirm" class="btn btn-success" onclick="confirmStartRectification()">Сохранить и запустить</button>
+                <button id="rect-start-confirm" class="btn btn-success" onclick="confirmStartRectification()">Сохранить
+                    и запустить</button>
             </div>
         </div>
     </div>

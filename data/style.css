@@ -8,9 +8,16 @@
     --text-secondary: #666666;
     --border-color: #dddddd;
     --accent: #007bff;
+    --accent-hover: #0056b3;
     --success: #28a745;
+    --success-bg: rgba(40, 167, 69, 0.12);
+    --success-text: #155724;
     --warning: #ffc107;
+    --warning-bg: rgba(255, 152, 0, 0.12);
+    --warning-text: #7c4a00;
     --danger: #dc3545;
+    --danger-bg: rgba(220, 53, 69, 0.12);
+    --danger-text: #721c24;
     --info: #17a2b8;
     --shadow: rgba(0, 0, 0, 0.1);
     --accent-2: #ff7a18;
@@ -28,6 +35,13 @@
     --text-primary: #e0e0e0;
     --text-secondary: #b0b0b0;
     --border-color: #404040;
+    --accent-hover: #3d9bff;
+    --success-bg: rgba(40, 167, 69, 0.2);
+    --success-text: #6fcf97;
+    --warning-bg: rgba(255, 152, 0, 0.2);
+    --warning-text: #ffcc80;
+    --danger-bg: rgba(220, 53, 69, 0.2);
+    --danger-text: #f48fb1;
     --shadow: rgba(0, 0, 0, 0.3);
     --landing-ink: #e2e8f0;
     --landing-muted: #94a3b8;
@@ -100,8 +114,15 @@ header h1 {
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
 }
 
 /* Tabs */
@@ -179,8 +200,15 @@ header h1 {
 }
 
 @keyframes menuDropIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .tab {
@@ -302,13 +330,13 @@ header h1 {
     grid-column: 1 / -1;
 }
 
-.operator-card-chart,
-.operator-card-scheme {
+.operator-card-chart {
     grid-column: span 1;
 }
 
 .operator-card-scheme {
     grid-column: 1 / -1;
+    padding: 6px;
 }
 
 .operator-card-runtime {
@@ -339,6 +367,7 @@ header h1 {
 
 .operator-runtime-bars {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
 }
 
@@ -557,9 +586,9 @@ header h1 {
     justify-content: center;
     border-radius: 10px;
     border: 1px solid var(--landing-border);
-    padding: 8px;
+    padding: 4px;
     background: rgba(255, 255, 255, 0.56);
-    min-height: 190px;
+    min-height: 120px;
 }
 
 [data-theme="dark"] .operator-scheme-wrap {
@@ -568,8 +597,14 @@ header h1 {
 
 .operator-scheme {
     width: 100%;
-    max-width: 360px;
+    max-width: 420px;
     height: auto;
+    aspect-ratio: 530 / 755;
+}
+
+.operator-card-scheme .operator-card-title {
+    margin-bottom: 4px;
+    font-size: 0.82em;
 }
 
 .operator-screen-instrument .operator-grid {
@@ -577,21 +612,28 @@ header h1 {
     gap: 10px;
 }
 
-.operator-screen-instrument .operator-card-status {
-    grid-column: 1 / -1;
+.operator-screen-instrument .operator-card-scheme {
+    grid-column: 1 / 6;
+    grid-row: 1 / 5;
+    padding: 6px;
 }
 
-.operator-screen-instrument .operator-grid > .operator-card:nth-of-type(2),
-.operator-screen-instrument .operator-grid > .operator-card:nth-of-type(3),
-.operator-screen-instrument .operator-grid > .operator-card:nth-of-type(4) {
-    grid-column: 1 / -1;
+.operator-screen-instrument .operator-card-scheme .operator-scheme {
+    max-width: 100%;
+}
+
+.operator-screen-instrument .operator-card-status {
+    grid-column: 6 / -1;
+}
+
+.operator-screen-instrument .operator-grid>.operator-card:nth-of-type(3),
+.operator-screen-instrument .operator-grid>.operator-card:nth-of-type(4),
+.operator-screen-instrument .operator-grid>.operator-card:nth-of-type(5),
+.operator-screen-instrument .operator-grid>.operator-card:nth-of-type(6) {
+    grid-column: 6 / -1;
 }
 
 .operator-screen-instrument .operator-card-chart {
-    grid-column: 1 / -1;
-}
-
-.operator-screen-instrument .operator-card-scheme {
     grid-column: 1 / -1;
 }
 
@@ -628,7 +670,7 @@ header h1 {
 }
 
 .operator-screen-instrument .operator-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
 }
 
@@ -663,9 +705,10 @@ header h1 {
     grid-column: 1 / -1;
 }
 
-.operator-screen-compact .operator-grid > .operator-card:nth-of-type(2),
-.operator-screen-compact .operator-grid > .operator-card:nth-of-type(3),
-.operator-screen-compact .operator-grid > .operator-card:nth-of-type(4) {
+.operator-screen-compact .operator-grid>.operator-card:nth-of-type(2),
+.operator-screen-compact .operator-grid>.operator-card:nth-of-type(3),
+.operator-screen-compact .operator-grid>.operator-card:nth-of-type(4),
+.operator-screen-compact .operator-grid>.operator-card:nth-of-type(5) {
     grid-column: 1 / -1;
 }
 
@@ -947,8 +990,15 @@ header h1 {
 }
 
 @keyframes landingFade {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Cards Grid */
@@ -990,13 +1040,33 @@ header h1 {
 }
 
 /* Mode Colors */
-.mode-idle { color: var(--text-secondary); }
-.mode-rectification { color: var(--success); }
-.mode-manual { color: var(--info); }
-.mode-distillation { color: var(--warning); }
-.mode-mashing { color: #8d6e63; }
-.mode-hold { color: #6f42c1; }
-.mode-error { color: var(--danger); }
+.mode-idle {
+    color: var(--text-secondary);
+}
+
+.mode-rectification {
+    color: var(--success);
+}
+
+.mode-manual {
+    color: var(--info);
+}
+
+.mode-distillation {
+    color: var(--warning);
+}
+
+.mode-mashing {
+    color: #8d6e63;
+}
+
+.mode-hold {
+    color: #6f42c1;
+}
+
+.mode-error {
+    color: var(--danger);
+}
 
 /* Metrics */
 .metrics {
@@ -1272,7 +1342,7 @@ footer {
         grid-template-columns: 1fr;
     }
 
-    .operator-screen-instrument .operator-grid > .operator-card,
+    .operator-screen-instrument .operator-grid>.operator-card,
     .operator-screen-instrument .operator-card-status,
     .operator-screen-instrument .operator-card-chart,
     .operator-screen-instrument .operator-card-scheme {
@@ -1290,9 +1360,9 @@ footer {
         grid-column: 1 / -1;
     }
 
-    .operator-screen-compact .operator-grid > .operator-card:nth-of-type(2),
-    .operator-screen-compact .operator-grid > .operator-card:nth-of-type(3),
-    .operator-screen-compact .operator-grid > .operator-card:nth-of-type(4) {
+    .operator-screen-compact .operator-grid>.operator-card:nth-of-type(2),
+    .operator-screen-compact .operator-grid>.operator-card:nth-of-type(3),
+    .operator-screen-compact .operator-grid>.operator-card:nth-of-type(4) {
         grid-column: 1 / -1;
     }
 
@@ -1482,21 +1552,6 @@ footer {
     border-radius: 12px;
     font-size: 0.8em;
     font-weight: 600;
-}
-
-.history-status-completed {
-    background: #4caf50;
-    color: white;
-}
-
-.history-status-stopped {
-    background: #ff9800;
-    color: white;
-}
-
-.history-status-error {
-    background: #f44336;
-    color: white;
 }
 
 /* ============================================================================
