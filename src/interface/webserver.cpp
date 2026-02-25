@@ -249,6 +249,7 @@ void init() {
     JsonObject temps = doc.createNestedObject("temps");
     temps["cube"] = g_state.temps.cube;
     temps["columnBottom"] = g_state.temps.columnBottom;
+    temps["columnMiddle"] = g_state.temps.columnMiddle;
     temps["columnTop"] = g_state.temps.columnTop;
     temps["reflux"] = g_state.temps.reflux;
     temps["deflegmator"] = g_state.temps.deflegmator;
@@ -268,6 +269,7 @@ void init() {
     power["voltage"] = g_state.power.voltage;
     power["current"] = g_state.power.current;
     power["power"] = g_state.power.power;
+    power["setPercent"] = Heater::getPower();
     power["energy"] = g_state.power.energy;
     power["frequency"] = g_state.power.frequency;
     power["pf"] = g_state.power.powerFactor;

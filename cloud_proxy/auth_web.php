@@ -363,6 +363,7 @@ function login($username, $password) {
         return ['success' => false, 'message' => 'Неверный логин или пароль'];
     }
     
+    session_regenerate_id(true); // Защита от фиксации сессии
     $_SESSION['user_id'] = $user['id'];
     updateUser($user['id'], ['last_login' => time()]);
     
@@ -450,4 +451,3 @@ if ($pdo !== null) {
         error_log('Error during initial user check: ' . $e->getMessage());
     }
 }
-

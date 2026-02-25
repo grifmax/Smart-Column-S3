@@ -14,6 +14,8 @@
         })();
     </script>
     <style>
+        /* manual.html — только уникальные компоненты, не дублирующие style.css */
+
         .manual-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -22,10 +24,10 @@
         }
 
         .control-panel {
-            background: var(--card-bg);
-            border-radius: 12px;
+            background: var(--bg-card);
+            border-radius: 10px;
             padding: 20px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 8px var(--shadow);
         }
 
         .slider-container {
@@ -36,10 +38,11 @@
             width: 100%;
             height: 8px;
             border-radius: 4px;
-            background: var(--primary-color);
+            background: var(--border-color);
             outline: none;
             opacity: 0.7;
             transition: opacity 0.2s;
+            cursor: pointer;
         }
 
         .slider:hover {
@@ -63,7 +66,7 @@
         }
 
         .temp-card {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            background: linear-gradient(135deg, var(--accent), var(--info));
             padding: 15px;
             border-radius: 8px;
             color: white;
@@ -91,26 +94,29 @@
         .valve-btn {
             padding: 15px;
             border-radius: 8px;
-            border: 2px solid var(--primary-color);
-            background: white;
+            border: 2px solid var(--border-color);
+            background: var(--bg-card);
+            color: var(--text-primary);
             cursor: pointer;
             transition: all 0.3s;
             font-size: 16px;
         }
 
         .valve-btn.active {
-            background: var(--primary-color);
+            background: var(--accent);
             color: white;
+            border-color: var(--accent);
         }
 
-        .status-bar {
-            background: var(--card-bg);
+        .manual-status-bar {
+            background: var(--bg-card);
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 2px 4px var(--shadow);
         }
 
         .status-indicator {
@@ -119,33 +125,21 @@
             gap: 10px;
         }
 
-        .status-dot {
+        .status-dot-manual {
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            background: #ccc;
+            background: var(--border-color);
         }
 
-        .status-dot.running {
-            background: #4CAF50;
+        .status-dot-manual.running {
+            background: var(--success);
             animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
         }
 
         /* Настройки ректификации */
         .settings-section {
-            background: var(--bg-secondary, #f5f5f5);
+            background: var(--bg-primary);
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 15px;
@@ -154,7 +148,7 @@
         .settings-section h3 {
             margin: 0 0 15px 0;
             font-size: 1.1em;
-            border-bottom: 1px solid var(--border-color, #ddd);
+            border-bottom: 1px solid var(--border-color);
             padding-bottom: 8px;
         }
 
@@ -178,11 +172,11 @@
         .setting-item input[type="number"],
         .setting-item select {
             padding: 8px 12px;
-            border: 1px solid var(--border-color, #ccc);
+            border: 1px solid var(--border-color);
             border-radius: 6px;
             font-size: 1em;
-            background: var(--bg-primary, #fff);
-            color: var(--text-primary, #333);
+            background: var(--bg-card);
+            color: var(--text-primary);
         }
 
         .setting-item input[type="checkbox"] {
@@ -192,7 +186,7 @@
         }
 
         .setting-item small {
-            color: var(--text-secondary, #666);
+            color: var(--text-secondary);
             font-size: 0.85em;
         }
     </style>
@@ -207,9 +201,9 @@
         </div>
 
         <!-- Статус бар -->
-        <div class="status-bar">
+        <div class="manual-status-bar">
             <div class="status-indicator">
-                <div class="status-dot" id="process-status"></div>
+                <div class="status-dot-manual" id="process-status"></div>
                 <span id="status-text">Процесс остановлен</span>
             </div>
             <div>
@@ -792,14 +786,14 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
-                }).catch(() => {});
+                }).catch(() => { });
             } else {
                 addLog(`🔀 Все клапаны закрыты`);
                 fetch('/api/manual/valves', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ allOff: true })
-                }).catch(() => {});
+                }).catch(() => { });
             }
         }
 
