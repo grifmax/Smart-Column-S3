@@ -1,8 +1,9 @@
 .pio/
 node_modules/
 
-# Generated JS bundle (собирается из src/web/)
+# Generated bundles (собираются из src/web/)
 data/app.js
+data/style.css
 
 # cloud_tunnel_service build artifacts / dependencies
 cloud_tunnel_service/node_modules/

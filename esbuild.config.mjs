@@ -3,13 +3,18 @@ import * as esbuild from 'esbuild';
 const isWatch = process.argv.includes('--watch');
 
 const opts = {
-    entryPoints: ['src/web/main.js'],
+    entryPoints: [
+        'src/web/main.js',
+        'src/web/styles/main.css',
+    ],
     bundle: true,
     minify: !isWatch,
     sourcemap: isWatch ? 'inline' : false,
-    outfile: 'data/app.js',
+    outdir: 'data',
+    entryNames: '[name]',
     target: ['es2020'],
     charset: 'utf8',
+    // CSS: main.css → data/main.css, переименуем после сборки
 };
 
 if (isWatch) {
@@ -17,8 +22,13 @@ if (isWatch) {
     await ctx.watch();
     console.log('👀 Watching src/web/ for changes...');
 } else {
-    const result = esbuild.buildSync(opts);
+    esbuild.buildSync(opts);
+    // Переименовать выходные файлы: main.js → app.js, main.css → style.css
     const fs = await import('fs');
-    const stat = fs.statSync('data/app.js');
-    console.log(`✅ Built data/app.js (${(stat.size / 1024).toFixed(1)} KB)`);
+    fs.renameSync('data/main.js', 'data/app.js');
+    fs.renameSync('data/main.css', 'data/style.css');
+    const jsSize = fs.statSync('data/app.js').size;
+    const cssSize = fs.statSync('data/style.css').size;
+    console.log(`✅ Built data/app.js (${(jsSize / 1024).toFixed(1)} KB)`);
+    console.log(`✅ Built data/style.css (${(cssSize / 1024).toFixed(1)} KB)`);
 }

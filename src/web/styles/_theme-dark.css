@@ -1,0 +1,27 @@
+[data-theme="dark"] {
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #2d2d2d;
+    --bg-card: #2d2d2d;
+    --text-primary: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    --border-color: #404040;
+    --accent-hover: #3d9bff;
+    --success-bg: rgba(40, 167, 69, 0.2);
+    --success-text: #6fcf97;
+    --warning-bg: rgba(255, 152, 0, 0.2);
+    --warning-text: #ffcc80;
+    --danger-bg: rgba(220, 53, 69, 0.2);
+    --danger-text: #f48fb1;
+    --shadow: rgba(0, 0, 0, 0.3);
+    --landing-ink: #e2e8f0;
+    --landing-muted: #94a3b8;
+    --landing-chip-bg: rgba(15, 23, 42, 0.62);
+    --landing-border: rgba(148, 163, 184, 0.26);
+    --landing-glass: rgba(17, 25, 40, 0.82);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
