@@ -22,31 +22,30 @@ export function initMiniChart() {
     const options = {
 
         chart: {
-
             type: 'line',
-
-            height: 200,
-
+            height: 220,
             animations: {
-
                 enabled: true,
-
-                dynamicAnimation: {
-
-                    speed: 500
-
-                }
-
+                dynamicAnimation: { speed: 500 }
             },
-
             toolbar: {
-
-                show: false
-
+                show: true,
+                tools: {
+                    download: true,
+                    selection: true,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                },
+                autoSelected: 'zoom'
             },
-
+            zoom: {
+                enabled: true,
+                type: 'x'
+            },
             background: 'transparent'
-
         },
 
         theme: {

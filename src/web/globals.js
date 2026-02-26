@@ -22,7 +22,7 @@ export let miniChartData = {
 
 };
 
-export const MINI_CHART_MAX_POINTS = 60; // 5 минут при обновлении каждые 5 секунд
+export const MINI_CHART_MAX_POINTS = 360; // 30 минут при обновлении каждые 5 секунд
 
 
 

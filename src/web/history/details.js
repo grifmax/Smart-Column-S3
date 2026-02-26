@@ -309,9 +309,21 @@ export function renderTempChart(process) {
             },
 
             toolbar: {
-
-                show: true
-
+                show: true,
+                tools: {
+                    download: true,
+                    selection: true,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                },
+                autoSelected: 'zoom'
+            },
+            zoom: {
+                enabled: true,
+                type: 'x'
             },
 
             background: 'transparent'
@@ -449,9 +461,21 @@ export function renderPowerChart(process) {
             },
 
             toolbar: {
-
-                show: true
-
+                show: true,
+                tools: {
+                    download: true,
+                    selection: true,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                },
+                autoSelected: 'zoom'
+            },
+            zoom: {
+                enabled: true,
+                type: 'x'
             },
 
             background: 'transparent'
