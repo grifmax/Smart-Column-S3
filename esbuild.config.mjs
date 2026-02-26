@@ -20,7 +20,7 @@ const opts = {
 if (isWatch) {
     const ctx = await esbuild.context(opts);
     await ctx.watch();
-    console.log('👀 Watching src/web/ for changes...');
+    console.log('[WATCH] Watching src/web/ for changes...');
 } else {
     esbuild.buildSync(opts);
     // Переименовать выходные файлы: main.js → app.js, main.css → style.css
@@ -29,6 +29,6 @@ if (isWatch) {
     fs.renameSync('data/main.css', 'data/style.css');
     const jsSize = fs.statSync('data/app.js').size;
     const cssSize = fs.statSync('data/style.css').size;
-    console.log(`✅ Built data/app.js (${(jsSize / 1024).toFixed(1)} KB)`);
-    console.log(`✅ Built data/style.css (${(cssSize / 1024).toFixed(1)} KB)`);
+    console.log(`[OK] Built data/app.js (${(jsSize / 1024).toFixed(1)} KB)`);
+    console.log(`[OK] Built data/style.css (${(cssSize / 1024).toFixed(1)} KB)`);
 }
