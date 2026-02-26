@@ -1,3 +1,8 @@
+import { ws, setWs, isConnected, setIsConnected, reconnectInterval, setReconnectInterval } from '../globals.js';
+import { startStatusPolling, stopStatusPolling } from '../ui/landing.js';
+import { updateUI } from '../ui/update-ui.js';
+import { addLog } from './logs.js';
+
 // ============================================================================
 
 // WebSocket
@@ -7,10 +12,12 @@
 
 
 export function connectWebSocket() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        return;
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-
-    const wsUrl = `${protocol}//${window.location.hostname}/ws`;
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
 
 
 
@@ -20,13 +27,12 @@ export function connectWebSocket() {
 
     try {
 
-        ws = new WebSocket(wsUrl);
+        const socket = new WebSocket(wsUrl);
+        setWs(socket);
 
+        socket.onopen = function () {
 
-
-        ws.onopen = function () {
-
-            isConnected = true;
+            setIsConnected(true);
             stopStatusPolling();
 
             updateConnectionStatus(true);
@@ -41,7 +47,7 @@ export function connectWebSocket() {
 
                 clearInterval(reconnectInterval);
 
-                reconnectInterval = null;
+                setReconnectInterval(null);
 
             }
 
@@ -49,7 +55,7 @@ export function connectWebSocket() {
 
 
 
-        ws.onmessage = function (event) {
+        socket.onmessage = function (event) {
 
             try {
 
@@ -67,7 +73,7 @@ export function connectWebSocket() {
 
 
 
-        ws.onerror = function (error) {
+        socket.onerror = function (error) {
 
             console.error('WebSocket error:', error);
 
@@ -77,9 +83,12 @@ export function connectWebSocket() {
 
 
 
-        ws.onclose = function () {
+        socket.onclose = function () {
 
-            isConnected = false;
+            setIsConnected(false);
+            if (ws === socket) {
+                setWs(null);
+            }
             startStatusPolling(true);
 
             updateConnectionStatus(false);
@@ -92,7 +101,7 @@ export function connectWebSocket() {
 
             if (!reconnectInterval) {
 
-                reconnectInterval = setInterval(() => {
+                setReconnectInterval(setInterval(() => {
 
                     if (!isConnected) {
 
@@ -100,7 +109,7 @@ export function connectWebSocket() {
 
                     }
 
-                }, 5000);
+                }, 5000));
 
             }
 
@@ -144,6 +153,8 @@ export function updateConnectionStatus(connected) {
     const statusDot = document.getElementById('connection-status');
 
     const statusText = document.getElementById('connection-text');
+
+    if (!statusDot || !statusText) return;
 
 
 

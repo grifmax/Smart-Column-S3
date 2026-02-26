@@ -1,9 +1,8 @@
-const CACHE_NAME = 'smart-column-v6';
+const CACHE_NAME = 'smart-column-v7';
 const ASSETS = [
   '/',
   '/index.html',
   '/style.css',
-  '/app.js',
   '/column-animation.css',
   '/column-animation.js',
   '/schemes-animation.css',
@@ -41,6 +40,28 @@ self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('/api/') ||
     event.request.url.includes('/ws') ||
     event.request.url.startsWith('chrome-extension://')) {
+    return;
+  }
+
+  const requestUrl = new URL(event.request.url);
+  const isAppShellFile =
+    requestUrl.origin === self.location.origin &&
+    (requestUrl.pathname === '/' ||
+      requestUrl.pathname === '/index.html' ||
+      requestUrl.pathname === '/app.js' ||
+      requestUrl.pathname === '/style.css');
+
+  // Для app shell используем network-first, чтобы не застревать на старом app.js
+  if (isAppShellFile) {
+    event.respondWith(
+      fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type !== 'opaque') {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+        }
+        return networkResponse;
+      }).catch(() => caches.match(event.request))
+    );
     return;
   }
 
