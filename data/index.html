@@ -620,6 +620,23 @@
                 </div>
 
                 <div class="card">
+                    <h2>🔔 Браузерные уведомления</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Всплывающие Push-уведомления в браузере об ошибках и завершении процесса.
+                    </p>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="browser-notifications-enabled"
+                                onchange="toggleBrowserNotifications()">
+                            <span>Разрешить уведомления в этом браузере</span>
+                        </label>
+                    </div>
+                    <div class="controls">
+                        <button class="btn btn-success" onclick="testBrowserNotification()">📨 Тест</button>
+                    </div>
+                </div>
+
+                <div class="card">
                     <h2>🔒 Безопасность</h2>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">

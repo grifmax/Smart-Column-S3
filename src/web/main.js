@@ -52,6 +52,7 @@ import { connectWebSocket } from './core/websocket.js';
 import { startStatusPolling } from './ui/landing.js';
 import { loadUserInfo } from './cloud/user.js';
 import { loadDiscoveredDevices } from './cloud/devices.js';
+import { initNotifications, requestNotificationPermission, showNotification, toggleBrowserNotifications, testBrowserNotification } from './core/notifications.js';
 
 // ============================================================================
 // Window bindings (для onclick в HTML)
@@ -148,6 +149,8 @@ window.calculateAbvCorrection = calculateAbvCorrection;
 window.calculateDilution = calculateDilution;
 window.fetchCurrentTempForCalc = fetchCurrentTempForCalc;
 window.toggleOperatorView = toggleOperatorView;
+window.toggleBrowserNotifications = toggleBrowserNotifications;
+window.testBrowserNotification = testBrowserNotification;
 
 // ============================================================================
 // Инициализация при загрузке страницы
@@ -171,6 +174,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     loadPumpInfo();
     loadVersionInfo();
     loadTelegramSettings();
+    initNotifications();
     initServiceWorker();
 
     // Определяем режим: локально на ESP32 или через cloud-proxy кабинет
