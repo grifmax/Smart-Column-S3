@@ -2,9 +2,13 @@
     "private": true,
     "scripts": {
         "build": "node esbuild.config.mjs",
-        "watch": "node esbuild.config.mjs --watch"
+        "watch": "node esbuild.config.mjs --watch",
+        "lint": "eslint src/web/",
+        "lint:fix": "eslint src/web/ --fix"
     },
     "devDependencies": {
-        "esbuild": "^0.24.0"
+        "@eslint/js": "^10.0.1",
+        "esbuild": "^0.24.0",
+        "eslint": "^10.0.2"
     }
 }
