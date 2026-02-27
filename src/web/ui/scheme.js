@@ -1,3 +1,130 @@
+import { runtimeMonitorState } from '../globals.js';
+import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
+import { addLog } from '../core/logs.js';
+
+function setValveClass(svg, valveId, opened) {
+    const el = svg.getElementById(valveId);
+    if (!el) return;
+    el.classList.toggle('valve-open', Boolean(opened));
+    el.classList.toggle('valve-closed', !opened);
+}
+
+async function postJson(url, payload) {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
+    }
+}
+
+async function setManualValve(svg, valveKey, opened) {
+    const valveMap = {
+        water: 'svg-valve-water',
+        heads: 'svg-valve-heads',
+        uno: 'svg-valve-uno'
+    };
+    const valveId = valveMap[valveKey];
+    if (!valveId) return;
+
+    setValveClass(svg, valveId, opened);
+    try {
+        await postJson('/api/manual/valves', { [valveKey]: opened });
+        runtimeMonitorState.valves = { ...runtimeMonitorState.valves, [valveKey]: opened };
+        addLog(`Valve ${valveKey}: ${opened ? 'open' : 'closed'}`, 'info');
+    } catch (error) {
+        setValveClass(svg, valveId, !opened);
+        addLog(`Valve ${valveKey}: request failed (${error.message})`, 'error');
+    }
+}
+
+async function toggleHeaterFromScheme() {
+    try {
+        const currentlyOn = Number(runtimeMonitorState?.power?.power || 0) > 10;
+        const targetPowerPercent = currentlyOn ? 0 : 60;
+        await postJson('/api/manual/heater', { power: targetPowerPercent });
+        addLog(`Heater set to ${targetPowerPercent}% from scheme`, 'info');
+    } catch (error) {
+        addLog(`Heater control failed (${error.message})`, 'error');
+    }
+}
+
+function applySchemeTheme(svg) {
+    const theme = document.body?.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    if (svg._appliedTheme === theme) return;
+    svg._appliedTheme = theme;
+
+    const isDark = theme === 'dark';
+    const strokeColor = isDark ? '#d5dbe4' : '#000000';
+    const labelColor = isDark ? '#e8edf5' : '#333333';
+    const bodyFill = isDark ? '#2c3138' : '#ffffff';
+
+    svg.querySelectorAll('.struct').forEach((el) => {
+        el.style.stroke = strokeColor;
+        el.style.fill = bodyFill;
+    });
+    svg.querySelectorAll('.struct-line,.pipe,.jar,.valve').forEach((el) => {
+        el.style.stroke = strokeColor;
+    });
+    svg.querySelectorAll('.label-text,.indicator-text').forEach((el) => {
+        el.style.fill = labelColor;
+    });
+
+    // In dark theme some scheme lines use hardcoded stroke="#000" in SVG attributes.
+    // Promote those contours to a readable color without touching colored process lines.
+    svg.querySelectorAll('[stroke]').forEach((el) => {
+        const attrStroke = String(el.getAttribute('stroke') || '').trim().toLowerCase();
+        const hardcodedBlack = attrStroke === '#000' || attrStroke === '#000000' || attrStroke === 'black';
+        if (hardcodedBlack) {
+            el.style.stroke = isDark ? strokeColor : '';
+        }
+    });
+}
+
+function initSchemeInteractions(svg) {
+    if (svg._interactiveBound) return;
+    svg._interactiveBound = true;
+
+    const bindValve = (id, key) => {
+        const valve = svg.getElementById(id);
+        if (!valve) return;
+        valve.style.cursor = 'pointer';
+        valve.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const nextState = !valve.classList.contains('valve-open');
+            setManualValve(svg, key, nextState);
+        });
+    };
+
+    bindValve('svg-valve-water', 'water');
+    bindValve('svg-valve-heads', 'heads');
+    bindValve('svg-valve-uno', 'uno');
+
+    const tailsValve = svg.getElementById('svg-valve-tails');
+    if (tailsValve) {
+        tailsValve.style.cursor = 'not-allowed';
+        tailsValve.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            addLog('Tails valve control is not available in current hardware', 'warning');
+        });
+    }
+
+    const powerBtn = svg.getElementById('zone-power-btn');
+    if (powerBtn) {
+        powerBtn.style.cursor = 'pointer';
+        powerBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleHeaterFromScheme();
+        });
+    }
+}
+
 // ============================================================================
 // Интерактивная схема (SVG)
 // ============================================================================
@@ -21,6 +148,9 @@ export function updateInteractiveScheme(data) {
     }
 
     // Обновление температур на схеме
+    applySchemeTheme(svg);
+    initSchemeInteractions(svg);
+
     if (data.temps) {
         const setTxt = (id, val) => {
             const el = svg.getElementById(id);
@@ -105,22 +235,18 @@ export function updateInteractiveScheme(data) {
             powerActEl.textContent = data.power.power.toFixed(0) + 'Вт';
     }
 
-    // Состояние клапанов (если данные приходят в status)
-    if (data.valves) {
-        const updateValve = (id, state) => {
-            const el = svg.getElementById(id);
-            if (el) el.classList.toggle('valve-open', !!state);
-            if (el) el.classList.toggle('valve-closed', !state);
-        };
-        if (data.valves.water !== undefined) updateValve('svg-valve-water', data.valves.water);
-        if (data.valves.heads !== undefined) updateValve('svg-valve-heads', data.valves.heads);
-        if (data.valves.uno !== undefined) updateValve('svg-valve-uno', data.valves.uno);
-        if (data.valves.tails !== undefined) updateValve('svg-valve-tails', data.valves.tails);
+    const valvesState = (data.valves && typeof data.valves === 'object')
+        ? data.valves
+        : runtimeMonitorState.valves;
+    if (valvesState) {
+        if (valvesState.water !== undefined) setValveClass(svg, 'svg-valve-water', valvesState.water);
+        if (valvesState.heads !== undefined) setValveClass(svg, 'svg-valve-heads', valvesState.heads);
+        if (valvesState.uno !== undefined) setValveClass(svg, 'svg-valve-uno', valvesState.uno);
+        if (valvesState.tails !== undefined) setValveClass(svg, 'svg-valve-tails', valvesState.tails);
 
-        // Анимация потока воды
         const waterFlow = svg.getElementById('anim-water-flow');
-        if (waterFlow && data.valves.water !== undefined) {
-            if (data.valves.water) waterFlow.classList.add('flowing');
+        if (waterFlow && valvesState.water !== undefined) {
+            if (valvesState.water) waterFlow.classList.add('flowing');
             else waterFlow.classList.remove('flowing');
         }
     }
@@ -147,7 +273,7 @@ export function updateInteractiveScheme(data) {
     }
 
     // Визуализация капель (скорость отбора)
-    if ((data.pump && data.pump.speedMlH !== undefined) || data.valves) {
+    if ((data.pump && data.pump.speedMlH !== undefined) || valvesState) {
         const speed = runtimeMonitorState.pump.speedMlH || 0;
         const dropHeads = svg.getElementById('drop-heads');
         const dropUno = svg.getElementById('drop-uno');

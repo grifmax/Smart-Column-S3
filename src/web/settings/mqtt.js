@@ -1,9 +1,10 @@
 export function toggleMqttFields() {
 
-    const enabled = document.getElementById('mqtt-enabled').checked;
-
+    const enabledEl = document.getElementById('mqtt-enabled');
     const fields = document.getElementById('mqtt-fields');
 
-    fields.style.display = enabled ? 'block' : 'none';
+    if (!enabledEl || !fields) return;
+
+    fields.style.display = enabledEl.checked ? 'block' : 'none';
 
 }

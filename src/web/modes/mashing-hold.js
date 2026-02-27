@@ -1,3 +1,8 @@
+import { MODE_MASH, MODE_HOLD } from '../globals.js';
+import { confirmModeSwitch } from './common.js';
+import { loadStatus } from '../core/status.js';
+import { addLog } from '../core/logs.js';
+
 // ============================================================================
 // Дополнительные режимы: Затирка / Hold
 // ============================================================================
@@ -63,8 +68,8 @@ export function initMashingHoldControls() {
             setExtraMode(select.value);
         } else {
             // Если селектора нет (старый HTML), просто скрываем блоки по умолчанию
-            if (mashingControls) mashingControls.style.display = 'none';
-            if (holdControls) holdControls.style.display = 'none';
+            if (mashingControls) mashingControls.style.display = '';
+            if (holdControls) holdControls.style.display = '';
         }
     } catch (e) {
         console.error('initMashingHoldControls error:', e);

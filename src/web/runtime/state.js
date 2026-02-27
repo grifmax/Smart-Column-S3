@@ -1,3 +1,6 @@
+import { runtimeMonitorState, resolveMode, plannedAbvUserSet, plannedAbvPercent, setPlannedAbvPercent } from '../globals.js';
+import { toFinite, normalizeAbvPercent, clampPercent } from './helpers.js';
+
 export function updateRuntimeStateFromStatus(data) {
     if (!data || typeof data !== 'object') return;
     const s = runtimeMonitorState;
@@ -17,6 +20,9 @@ export function updateRuntimeStateFromStatus(data) {
         if (data.pump.speedMlH !== undefined) s.pump.speedMlH = toFinite(data.pump.speedMlH, s.pump.speedMlH);
         if (data.pump.totalMl !== undefined) s.pump.totalMl = toFinite(data.pump.totalMl, s.pump.totalMl);
     }
+    if (data.valves && typeof data.valves === 'object') {
+        s.valves = { ...s.valves, ...data.valves };
+    }
     if (data.volumes && typeof data.volumes === 'object') {
         if (data.volumes.heads !== undefined) s.volumes.heads = toFinite(data.volumes.heads, s.volumes.heads);
         if (data.volumes.body !== undefined) s.volumes.body = toFinite(data.volumes.body, s.volumes.body);
@@ -28,7 +34,7 @@ export function updateRuntimeStateFromStatus(data) {
     if (data.rectification && typeof data.rectification === 'object') {
         s.rectification = { ...s.rectification, ...data.rectification };
         if (!plannedAbvUserSet && data.rectification.feedAbvPercent !== undefined) {
-            plannedAbvPercent = normalizeAbvPercent(data.rectification.feedAbvPercent, plannedAbvPercent);
+            setPlannedAbvPercent(normalizeAbvPercent(data.rectification.feedAbvPercent, plannedAbvPercent));
         }
     }
     if (data.distillation && typeof data.distillation === 'object') {
@@ -60,6 +66,9 @@ export function updateRuntimeStateFromWs(data) {
     if (data.abv_valid !== undefined) s.hydrometer.valid = Boolean(data.abv_valid);
     if (data.pump_speed !== undefined) s.pump.speedMlH = toFinite(data.pump_speed, s.pump.speedMlH);
     if (data.pump_volume !== undefined) s.pump.totalMl = toFinite(data.pump_volume, s.pump.totalMl);
+    if (data.valves && typeof data.valves === 'object') {
+        s.valves = { ...s.valves, ...data.valves };
+    }
     if (data.volume_heads !== undefined) s.volumes.heads = toFinite(data.volume_heads, s.volumes.heads);
     if (data.volume_body !== undefined) s.volumes.body = toFinite(data.volume_body, s.volumes.body);
     if (data.volume_tails !== undefined) s.volumes.tails = toFinite(data.volume_tails, s.volumes.tails);

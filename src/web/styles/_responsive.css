@@ -10,10 +10,15 @@
 
     .top-menu {
         margin-left: 0;
+        width: 100%;
     }
 
     .menu-dropdown {
-        width: min(92vw, 360px);
+        width: 100%;
+    }
+
+    .tabs-dropdown {
+        flex-wrap: nowrap;
     }
 
     .operator-screen {

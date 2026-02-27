@@ -245,6 +245,10 @@
                         <button class="btn btn-info" onclick="startDistillation()">🏺 Дистилляция</button>
                     </div>
                     <div class="controls">
+                        <button class="btn btn-success" onclick="startMashing()">▶️ Затирка</button>
+                        <button class="btn btn-success" onclick="startHold()">▶️ Hold</button>
+                    </div>
+                    <div class="controls">
                         <button class="btn btn-danger" onclick="stopProcess()" disabled>⏹️ Остановить</button>
                         <button class="btn" onclick="pauseProcess()">⏸️ Пауза</button>
                         <button class="btn" onclick="resumeProcess()">⏯️ Продолжить</button>
@@ -253,17 +257,6 @@
 
                 <div class="card">
                     <h2>Дополнительные режимы</h2>
-
-                    <div class="form-group">
-                        <label>Режим</label>
-                        <select id="extra-mode-select"
-                            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
-                            <option value="none">Не выбран</option>
-                            <option value="mashing">Затирка</option>
-                            <option value="hold">Hold (выдержка)</option>
-                        </select>
-                    </div>
-
                     <div id="mashing-controls" class="control-group" style="display: none;">
                         <h3 style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 0.95em;">Затирка</h3>
 
@@ -279,7 +272,6 @@
 
                         <div class="controls" style="flex-wrap: wrap;">
                             <button class="btn btn-sm" onclick="addMashStep()">➕ Добавить шаг</button>
-                            <button class="btn btn-success" onclick="startMashing()">▶️ Запустить затирку</button>
                         </div>
                     </div>
 
@@ -294,7 +286,6 @@
 
                         <div class="controls" style="flex-wrap: wrap;">
                             <button class="btn btn-sm" onclick="addHoldStep()">➕ Добавить шаг</button>
-                            <button class="btn btn-success" onclick="startHold()">▶️ Запустить Hold</button>
                         </div>
                     </div>
                 </div>
@@ -585,7 +576,13 @@
                                 step="1000">
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="saveMqtt()">💾 Сохранить</button>
+                    <div id="mqtt-config-state" style="color: var(--text-secondary); font-size: 0.9em; margin-bottom: 12px;">
+                        Статус: загрузка...
+                    </div>
+                    <div class="controls">
+                        <button class="btn btn-primary" onclick="saveMqtt()">💾 Сохранить</button>
+                        <button class="btn btn-success" onclick="sendMqttTest()">📨 Тест</button>
+                    </div>
                 </div>
 
                 <div class="card">

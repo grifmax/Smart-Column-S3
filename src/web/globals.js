@@ -3,12 +3,24 @@
 
 
 export let ws = null;
+export function setWs(newWs) {
+    ws = newWs;
+}
 
 export let reconnectInterval = null;
+export function setReconnectInterval(interval) {
+    reconnectInterval = interval;
+}
 
 export let isConnected = false;
+export function setIsConnected(connected) {
+    isConnected = connected;
+}
 
 export let miniChart = null;
+export function setMiniChart(c) {
+    miniChart = c;
+}
 
 export let miniChartData = {
 
@@ -29,10 +41,17 @@ export const MINI_CHART_MAX_POINTS = 360; // 30 минут при обновле
 // Состояние процесса
 
 export let currentMode = 0;  // 0 = IDLE
+export function setCurrentMode(mode) {
+    currentMode = mode;
+}
 
 export let currentPaused = false;
+export function setCurrentPaused(paused) {
+    currentPaused = paused;
+}
 
-export let maxHeaterPower = 3000;  // Будет обновлено из настроек
+export let maxHeaterPower = 3000;
+export function setMaxHeaterPower(val) { maxHeaterPower = val; }  // Будет обновлено из настроек
 
 export const MODE_IDLE = 0;
 export const MODE_RECT = 1;
@@ -97,6 +116,7 @@ export let runtimeMonitorState = {
     power: { power: 0 },
     hydrometer: { abv: 0, valid: false },
     pump: { speedMlH: 0, totalMl: 0 },
+    valves: { water: false, heads: false, uno: false, tails: false },
     volumes: { heads: 0, body: 0, tails: 0 },
     equipment: { heaterPowerW: maxHeaterPower },
     rectification: {
@@ -145,6 +165,17 @@ export let runtimeMonitorState = {
 };
 
 export let runtimeEditContext = null;
+export function setRuntimeEditContext(ctx) {
+    runtimeEditContext = ctx;
+}
 export const ABV_PLAN_STORAGE_KEY = 'ui.plannedAbvPercent';
 export let plannedAbvPercent = 40.0;
 export let plannedAbvUserSet = false;
+
+export function setPlannedAbvPercent(value) {
+    plannedAbvPercent = value;
+}
+
+export function setPlannedAbvUserSet(value) {
+    plannedAbvUserSet = value;
+}

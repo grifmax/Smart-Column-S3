@@ -33,6 +33,7 @@ typedef enum {
 #include "drivers/valves.h"
 #include "drivers/sensors.h"
 #include "interface/telegram.h"
+#include "interface/mqtt.h"
 #include "storage/nvs_manager.h"
 #include "cloud_tunnel.h"
 #include "../profiles.h"
@@ -279,6 +280,12 @@ void init() {
     pump["speedMlH"] = g_state.pump.speedMlPerHour;
     pump["totalMl"] = g_state.pump.totalVolumeMl;
     pump["running"] = g_state.pump.running;
+
+    JsonObject valves = doc.createNestedObject("valves");
+    valves["water"] = Valves::getWater();
+    valves["heads"] = Valves::getHeads();
+    valves["uno"] = Valves::getUno();
+    valves["tails"] = false; // Отдельного канала хвостов в драйвере нет
 
     // Ареометр
     JsonObject hydro = doc.createNestedObject("hydrometer");
@@ -782,6 +789,154 @@ void init() {
 
         NVSManager::saveSettings(g_settings);
 
+        request->send(200, "application/json", "{\"success\":true}");
+      });
+
+  // --------------------------------------------------------------------------
+  // MQTT SETTINGS API
+  // --------------------------------------------------------------------------
+
+  // GET /api/settings/mqtt - получить настройки MQTT
+  server.on("/api/settings/mqtt", HTTP_GET, [](AsyncWebServerRequest *request) {
+    StaticJsonDocument<512> doc;
+    doc["enabled"] = g_settings.mqtt.enabled;
+    doc["server"] = g_settings.mqtt.server;
+    doc["port"] = g_settings.mqtt.port;
+    doc["username"] = g_settings.mqtt.username;
+    doc["password"] = g_settings.mqtt.password;
+    doc["baseTopic"] = g_settings.mqtt.baseTopic;
+    doc["publishInterval"] = g_settings.mqtt.publishInterval;
+    doc["discovery"] = true; // Discovery публикуется автоматически при коннекте
+    doc["connected"] = MQTT::isConnected();
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  // POST /api/settings/mqtt - сохранить настройки MQTT
+  server.on(
+      "/api/settings/mqtt", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<512> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const bool enabled = doc["enabled"] | g_settings.mqtt.enabled;
+        const char* server = doc.containsKey("server")
+                                 ? (doc["server"] | "")
+                                 : g_settings.mqtt.server;
+        uint16_t port = doc.containsKey("port")
+                            ? static_cast<uint16_t>(doc["port"] | g_settings.mqtt.port)
+                            : g_settings.mqtt.port;
+        const char* username = doc.containsKey("username")
+                                   ? (doc["username"] | "")
+                                   : g_settings.mqtt.username;
+        const char* password = doc.containsKey("password")
+                                   ? (doc["password"] | "")
+                                   : g_settings.mqtt.password;
+        const char* baseTopic = doc.containsKey("baseTopic")
+                                    ? (doc["baseTopic"] | "smart-column")
+                                    : g_settings.mqtt.baseTopic;
+        uint32_t publishInterval = doc.containsKey("publishInterval")
+                                       ? static_cast<uint32_t>(doc["publishInterval"] |
+                                                                g_settings.mqtt.publishInterval)
+                                       : g_settings.mqtt.publishInterval;
+
+        if (enabled && (!server || server[0] == '\0')) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"MQTT server is required when enabled\"}");
+          return;
+        }
+        if (port == 0) port = 1883;
+        if (publishInterval < 1000) publishInterval = 1000;
+        if (publishInterval > 60000) publishInterval = 60000;
+
+        g_settings.mqtt.enabled = enabled;
+        strlcpy(g_settings.mqtt.server, server, sizeof(g_settings.mqtt.server));
+        g_settings.mqtt.port = port;
+        strlcpy(g_settings.mqtt.username, username, sizeof(g_settings.mqtt.username));
+        strlcpy(g_settings.mqtt.password, password, sizeof(g_settings.mqtt.password));
+        strlcpy(g_settings.mqtt.baseTopic, baseTopic, sizeof(g_settings.mqtt.baseTopic));
+        g_settings.mqtt.publishInterval = publishInterval;
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        request->send(200, "application/json", "{\"success\":true}");
+
+        // Применяем runtime-настройки после ответа
+        if (g_settings.mqtt.enabled && WiFi.status() == WL_CONNECTED &&
+            g_settings.mqtt.server[0] != '\0') {
+          MQTT::setBaseTopic(g_settings.mqtt.baseTopic);
+          MQTT::init(g_settings.mqtt.server, g_settings.mqtt.port,
+                     g_settings.mqtt.username[0] ? g_settings.mqtt.username : nullptr,
+                     g_settings.mqtt.password[0] ? g_settings.mqtt.password : nullptr);
+          MQTT::handle();
+        }
+      });
+
+  // POST /api/settings/mqtt/test - отправить тестовое MQTT уведомление
+  server.on(
+      "/api/settings/mqtt/test", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        if (!g_settings.mqtt.enabled) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"MQTT disabled\"}");
+          return;
+        }
+        if (g_settings.mqtt.server[0] == '\0') {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"MQTT server is not configured\"}");
+          return;
+        }
+        if (WiFi.status() != WL_CONNECTED) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"error\":\"WiFi STA not connected\"}");
+          return;
+        }
+
+        StaticJsonDocument<256> doc;
+        if (len > 0 && deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+        const char* message = doc["message"] | "Smart-Column S3: MQTT test from Web UI";
+
+        // Убеждаемся, что MQTT клиент инициализирован и подключен
+        if (!MQTT::isConnected()) {
+          MQTT::setBaseTopic(g_settings.mqtt.baseTopic);
+          MQTT::init(g_settings.mqtt.server, g_settings.mqtt.port,
+                     g_settings.mqtt.username[0] ? g_settings.mqtt.username : nullptr,
+                     g_settings.mqtt.password[0] ? g_settings.mqtt.password : nullptr);
+          for (uint8_t i = 0; i < 20 && !MQTT::isConnected(); ++i) {
+            MQTT::handle();
+            delay(50);
+          }
+        }
+
+        if (!MQTT::isConnected()) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"error\":\"MQTT broker unavailable\"}");
+          return;
+        }
+
+        MQTT::publishNotification("MQTT test", message, "info");
         request->send(200, "application/json", "{\"success\":true}");
       });
 
@@ -2201,7 +2356,7 @@ void broadcastState(const SystemState &state) {
   const auto displayStats = Display::getRuntimeStats();
 
   // Минимальный пакет для "лайв" (часто)
-  StaticJsonDocument<896> fastDoc;
+  StaticJsonDocument<1024> fastDoc;
   fastDoc["mode"] = static_cast<int>(state.mode);
   fastDoc["modeStr"] = getModeString(state.mode);
   fastDoc["phase"] = static_cast<int>(state.rectPhase);
@@ -2234,6 +2389,11 @@ void broadcastState(const SystemState &state) {
   fastDoc["volume_heads"] = state.stats.headsVolume;
   fastDoc["volume_body"] = state.stats.bodyVolume;
   fastDoc["volume_tails"] = state.stats.tailsVolume;
+  JsonObject fastValves = fastDoc.createNestedObject("valves");
+  fastValves["water"] = Valves::getWater();
+  fastValves["heads"] = Valves::getHeads();
+  fastValves["uno"] = Valves::getUno();
+  fastValves["tails"] = false;
 
   fastDoc["abv"] = state.hydrometer.abv;
   fastDoc["abv_valid"] = state.hydrometer.valid;
@@ -2293,6 +2453,11 @@ void broadcastState(const SystemState &state) {
   doc["volume_heads"] = state.stats.headsVolume;
   doc["volume_body"] = state.stats.bodyVolume;
   doc["volume_tails"] = state.stats.tailsVolume;
+  JsonObject valves = doc.createNestedObject("valves");
+  valves["water"] = Valves::getWater();
+  valves["heads"] = Valves::getHeads();
+  valves["uno"] = Valves::getUno();
+  valves["tails"] = false;
 
   doc["abv"] = state.hydrometer.abv;
   doc["abv_valid"] = state.hydrometer.valid;

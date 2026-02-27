@@ -1,45 +1,37 @@
 .menu-dropdown {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 10px);
-    width: min(84vw, 320px);
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 14px;
-    padding: 10px;
-    box-shadow: 0 20px 50px var(--shadow);
-    display: none;
-    z-index: 1200;
+    position: static;
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    display: block;
+    z-index: auto;
 }
 
 .menu-dropdown.open {
     display: block;
-    animation: menuDropIn 180ms ease-out both;
+    animation: none;
 }
 
 .tabs-dropdown {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: nowrap;
     gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
 }
 
 .tabs-dropdown .tab {
-    width: 100%;
-    text-align: left;
-    padding: 10px 12px;
+    width: auto;
+    min-width: max-content;
+    text-align: center;
+    padding: 9px 12px;
     border-radius: 10px;
-}
-
-@keyframes menuDropIn {
-    from {
-        opacity: 0;
-        transform: translateY(-6px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .tab {

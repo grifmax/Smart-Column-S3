@@ -19,7 +19,7 @@
 
   <style>
     .indicator { fill: url(#grad-indicator); stroke: #666; stroke-width: 1; }
-    .indicator-text { font-family: 'Segoe UI', Helvetica, sans-serif; font-size: 12px; font-weight: bold; text-anchor: middle; dominant-baseline: central; fill: #333; }
+    .indicator-text { font-family: 'Segoe UI', Helvetica, sans-serif; font-size: 14px; font-weight: bold; text-anchor: middle; dominant-baseline: central; fill: #333; }
     .label-text { font-family: 'Segoe UI', Helvetica, sans-serif; font-size: 12px; text-anchor: middle; dominant-baseline: central; fill: #333; }
     .struct { fill: #fff; stroke: #000; stroke-width: 1; }
     .struct-line { fill: none; stroke: #000; stroke-width: 1; }
@@ -359,8 +359,8 @@
 
   <!-- Индикатор ABV (крепость) -->
   <g id="ind-abv">
-    <rect x="300" y="40" width="80" height="25" rx="3.75" ry="3.75" class="indicator"/>
-    <text id="txt-abv" x="340" y="53" class="indicator-text">--.- %</text>
+    <rect x="315" y="319" width="80" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-abv" x="355" y="332" class="indicator-text">--.- %</text>
   </g>
 
   <!-- Температура дефлегматора (reflux) — поверх дефлегматора -->
