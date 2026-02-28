@@ -92,47 +92,49 @@ export function collectRectificationModalSettings() {
     return normalizeRectificationFractions(params);
 }
 
-export async function openRectificationStartModal() {
-    const modal = document.getElementById('rect-start-modal');
-    if (!modal) {
-        addLog('Rectification settings modal not found in layout', 'error');
-        return false;
-    }
+function applyRectificationSettingsToInputs(params) {
+    const setValue = (id, value) => {
+        const el = document.getElementById(id);
+        if (el && value !== undefined && value !== null) el.value = String(value);
+    };
 
+    setValue('rect-start-feedstock', params.feedstock ?? 0);
+    setValue('rect-start-feed-volume', params.feedVolumeL ?? 20);
+    setValue('rect-start-feed-abv', params.feedAbvPercent ?? 40);
+    setValue('rect-start-heads-percent', params.headsPercent ?? 8);
+    setValue('rect-start-body-percent', params.bodyPercent ?? 84);
+    setValue('rect-start-tails-percent', params.tailsPercent ?? 8);
+    setValue('rect-start-heads-speed', params.headsSpeedMlHKw ?? 300);
+    setValue('rect-start-body-speed', params.bodySpeedMlHKw ?? 600);
+    setValue('rect-start-stabilization', params.stabilizationMin ?? 30);
+    setValue('rect-start-purge', params.purgeMin ?? 5);
+    updateRectificationFractionsSum();
+}
+
+export async function loadRectificationStartSettings() {
     try {
         const response = await fetch('/api/settings/rect');
         if (response.ok) {
-            const params = await response.json();
-            const setValue = (id, value) => {
-                const el = document.getElementById(id);
-                if (el && value !== undefined && value !== null) el.value = String(value);
-            };
-
-            setValue('rect-start-feedstock', params.feedstock ?? 0);
-            setValue('rect-start-feed-volume', params.feedVolumeL ?? 20);
-            setValue('rect-start-feed-abv', params.feedAbvPercent ?? 40);
-            setValue('rect-start-heads-percent', params.headsPercent ?? 8);
-            setValue('rect-start-body-percent', params.bodyPercent ?? 84);
-            setValue('rect-start-tails-percent', params.tailsPercent ?? 8);
-            setValue('rect-start-heads-speed', params.headsSpeedMlHKw ?? 300);
-            setValue('rect-start-body-speed', params.bodySpeedMlHKw ?? 600);
-            setValue('rect-start-stabilization', params.stabilizationMin ?? 30);
-            setValue('rect-start-purge', params.purgeMin ?? 5);
-        } else {
-            addLog(`Rect settings load error: ${response.status}`, 'warning');
+            applyRectificationSettingsToInputs(await response.json());
+            return true;
         }
+        addLog(`Rect settings load error: ${response.status}`, 'warning');
     } catch (e) {
         addLog(`Rect settings load network error: ${e.message}`, 'warning');
     }
+    return false;
+}
 
-    updateRectificationFractionsSum();
+export async function openRectificationStartModal() {
+    await loadRectificationStartSettings();
+    const modal = document.getElementById('rect-start-modal');
+    if (!modal) return false;
     modal.style.display = 'flex';
     return true;
 }
 
-export async function confirmStartRectification() {
-    const saveButton = document.getElementById('rect-start-confirm');
-    if (saveButton) saveButton.disabled = true;
+async function saveAndStartRectification(startButton) {
+    if (startButton) startButton.disabled = true;
 
     try {
         const params = collectRectificationModalSettings();
@@ -146,7 +148,7 @@ export async function confirmStartRectification() {
         if (!saveResponse.ok) {
             const err = await saveResponse.text();
             addLog(`Rect settings save error (${saveResponse.status}): ${err}`, 'error');
-            return;
+            return false;
         }
 
         closeRectificationStartModal();
@@ -161,28 +163,34 @@ export async function confirmStartRectification() {
         if (!startResponse.ok) {
             const err = await startResponse.text();
             addLog(`Start error (${startResponse.status}): ${err}`, 'error');
-            return;
+            return false;
         }
 
         const data = await startResponse.json();
         addLog('Auto-rectification started', 'success');
         if (data.warning) addLog(`Warning: ${data.warning}`, 'warning');
         setTimeout(loadStatus, 500);
+        return true;
     } catch (e) {
         addLog(`Start rectification network error: ${e.message}`, 'error');
-        console.error('confirmStartRectification error:', e);
+        console.error('saveAndStartRectification error:', e);
+        return false;
     } finally {
-        if (saveButton) saveButton.disabled = false;
+        if (startButton) startButton.disabled = false;
     }
+}
+
+export async function confirmStartRectification() {
+    await saveAndStartRectification(document.getElementById('rect-start-confirm'));
 }
 
 export function initRectificationStartModal() {
     const modal = document.getElementById('rect-start-modal');
-    if (!modal) return;
-
-    modal.addEventListener('click', (event) => {
-        if (event.target === modal) closeRectificationStartModal();
-    });
+    if (modal) {
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) closeRectificationStartModal();
+        });
+    }
 
     const feedstock = document.getElementById('rect-start-feedstock');
     if (feedstock) {
@@ -194,21 +202,40 @@ export function initRectificationStartModal() {
             const input = document.getElementById(id);
             if (input) input.addEventListener('input', updateRectificationFractionsSum);
         });
+
+    updateRectificationFractionsSum();
 }
 
 export async function startRectification() {
-
-    if (!confirmModeSwitch(MODE_RECT, 'Auto-rectification')) return;
-
-    await openRectificationStartModal();
-
+    if (!confirmModeSwitch(MODE_RECT, 'Auto-rectification')) return false;
+    return await saveAndStartRectification(document.getElementById('mode-start-button'));
 }
 
-export function startManual() {
+export async function startManual() {
+    if (!confirmModeSwitch(MODE_MANUAL, 'Manual rectification')) return false;
 
-    // Переход на страницу ручного управления
+    try {
+        addLog('Starting manual rectification...', 'info');
+        const response = await fetch('/api/process/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'manual_rect' })
+        });
 
-    if (!confirmModeSwitch(MODE_MANUAL, 'Manual rectification')) return;
-    window.location.href = 'manual.html';
+        if (!response.ok) {
+            const err = await response.text();
+            addLog(`Start manual error (${response.status}): ${err}`, 'error');
+            return false;
+        }
 
+        const data = await response.json();
+        addLog('Manual rectification started', 'success');
+        if (data.warning) addLog(`Warning: ${data.warning}`, 'warning');
+        setTimeout(loadStatus, 500);
+        return true;
+    } catch (e) {
+        addLog(`Manual start network error: ${e.message}`, 'error');
+        console.error('startManual error:', e);
+        return false;
+    }
 }

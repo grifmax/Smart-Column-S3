@@ -25,7 +25,7 @@ export function initMashingHoldControls() {
 
             try {
                 localStorage.setItem('control.extraMode', normalized);
-            } catch (_) {
+            } catch {
                 // ignore
             }
         };
@@ -37,7 +37,7 @@ export function initMashingHoldControls() {
 
         const mashStepsEl = document.getElementById('mash-steps');
         if (mashStepsEl && mashStepsEl.children.length === 0) {
-            // По умолчанию — шаги как в backend-дефолте
+            // По умолчанию: шаги как в backend-дефолте
             addMashStep({ temperature: 38.0, duration: 20, name: 'Кислотная пауза' });
             addMashStep({ temperature: 52.0, duration: 20, name: 'Белковая пауза' });
             addMashStep({ temperature: 63.0, duration: 40, name: 'Мальтозная пауза' });
@@ -47,7 +47,7 @@ export function initMashingHoldControls() {
 
         const holdStepsEl = document.getElementById('hold-steps');
         if (holdStepsEl && holdStepsEl.children.length === 0) {
-            // Дефолт — одна ступень 65°C на 60 минут
+            // Дефолт: одна ступень 65°C на 60 минут
             addHoldStep({ temperature: 65.0, duration: 60 });
         }
 
@@ -57,17 +57,17 @@ export function initMashingHoldControls() {
             let saved = 'none';
             try {
                 saved = localStorage.getItem('control.extraMode') || 'none';
-            } catch (_) {
+            } catch {
                 // ignore
             }
 
-            // Если разметка обновилась и select ещё не выставлен — восстановим
+            // Если разметка обновилась и select ещё не выставлен - восстановим.
             if (!select.value || select.value === 'none') {
                 select.value = saved;
             }
             setExtraMode(select.value);
         } else {
-            // Если селектора нет (старый HTML), просто скрываем блоки по умолчанию
+            // Если селектора нет (старый HTML), просто показываем блоки по умолчанию
             if (mashingControls) mashingControls.style.display = '';
             if (holdControls) holdControls.style.display = '';
         }
@@ -176,14 +176,15 @@ export function readStepsFromUI(containerId, mode) {
 }
 
 export async function startMashing() {
-    if (!confirmModeSwitch(MODE_MASH, 'Mashing')) return;
+    if (!confirmModeSwitch(MODE_MASH, 'Mashing')) return false;
+
     try {
         const profileName = (document.getElementById('mash-profile-name')?.value ?? '').trim() || 'Mashing';
         const steps = readStepsFromUI('mash-steps', 'mash');
 
         if (!steps.length) {
             addLog('✗ Затирка: добавьте хотя бы один корректный шаг (температура и длительность)', 'error');
-            return;
+            return false;
         }
 
         addLog('📤 Отправка команды запуска затирки...', 'info');
@@ -205,26 +206,30 @@ export async function startMashing() {
         if (response.ok) {
             const data = await response.json();
             addLog('✓ Затирка запущена', 'success');
-            if (data.warning) addLog('⚠️ ' + data.warning, 'warning');
+            if (data.warning) addLog(`⚠️ ${data.warning}`, 'warning');
             setTimeout(loadStatus, 500);
-        } else {
-            const error = await response.text();
-            addLog('✗ Ошибка (' + response.status + '): ' + error, 'error');
+            return true;
         }
+
+        const error = await response.text();
+        addLog(`✗ Ошибка (${response.status}): ${error}`, 'error');
+        return false;
     } catch (e) {
-        addLog('✗ Ошибка сети: ' + e.message, 'error');
+        addLog(`✗ Ошибка сети: ${e.message}`, 'error');
         console.error('Start mashing error:', e);
+        return false;
     }
 }
 
 export async function startHold() {
-    if (!confirmModeSwitch(MODE_HOLD, 'Hold')) return;
+    if (!confirmModeSwitch(MODE_HOLD, 'Hold')) return false;
+
     try {
         const steps = readStepsFromUI('hold-steps', 'hold');
 
         if (!steps.length) {
             addLog('✗ Hold: добавьте хотя бы один корректный шаг (температура и длительность)', 'error');
-            return;
+            return false;
         }
 
         addLog('📤 Отправка команды запуска Hold...', 'info');
@@ -241,14 +246,17 @@ export async function startHold() {
         if (response.ok) {
             const data = await response.json();
             addLog('✓ Hold запущен', 'success');
-            if (data.warning) addLog('⚠️ ' + data.warning, 'warning');
+            if (data.warning) addLog(`⚠️ ${data.warning}`, 'warning');
             setTimeout(loadStatus, 500);
-        } else {
-            const error = await response.text();
-            addLog('✗ Ошибка (' + response.status + '): ' + error, 'error');
+            return true;
         }
+
+        const error = await response.text();
+        addLog(`✗ Ошибка (${response.status}): ${error}`, 'error');
+        return false;
     } catch (e) {
-        addLog('✗ Ошибка сети: ' + e.message, 'error');
+        addLog(`✗ Ошибка сети: ${e.message}`, 'error');
         console.error('Start hold error:', e);
+        return false;
     }
 }

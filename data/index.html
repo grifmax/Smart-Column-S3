@@ -82,6 +82,14 @@
                 <div class="operator-grid">
                     <article class="operator-card operator-card-scheme">
                         <h3 class="operator-card-title">Схема процесса</h3>
+                        <div class="operator-scheme-controls" role="group" aria-label="Управление процессом">
+                            <button class="btn operator-scheme-btn operator-scheme-btn-pause" type="button"
+                                data-runtime-action="pause" onclick="pauseProcess()">⏸️ Пауза</button>
+                            <button class="btn operator-scheme-btn operator-scheme-btn-start" type="button"
+                                data-runtime-action="resume" onclick="resumeProcess()">⏯️ Запустить</button>
+                            <button class="btn operator-scheme-btn operator-scheme-btn-stop" type="button"
+                                data-runtime-action="stop" onclick="stopProcess()" disabled>⏹️ Остановить</button>
+                        </div>
                         <div class="operator-scheme-wrap">
                             <object data="schemes/column-animated.svg" type="image/svg+xml"
                                 class="operator-scheme"></object>
@@ -236,80 +244,212 @@
 
         <!-- Вкладка: Управление -->
         <div id="control" class="tab-content">
-            <div class="cards">
-                <div class="card">
-                    <h2>Запуск процесса</h2>
-                    <div class="controls">
-                        <button class="btn btn-success" onclick="startRectification()">▶️ Авто-ректификация</button>
-                        <button class="btn btn-warning" onclick="startManual()">🎛️ Ручная ректификация</button>
-                        <button class="btn btn-info" onclick="startDistillation()">🏺 Дистилляция</button>
-                    </div>
-                    <div class="controls">
-                        <button class="btn btn-success" onclick="startMashing()">▶️ Затирка</button>
-                        <button class="btn btn-success" onclick="startHold()">▶️ Hold</button>
-                    </div>
-                    <div class="controls">
-                        <button class="btn btn-danger" onclick="stopProcess()" disabled>⏹️ Остановить</button>
-                        <button class="btn" onclick="pauseProcess()">⏸️ Пауза</button>
-                        <button class="btn" onclick="resumeProcess()">⏯️ Продолжить</button>
-                    </div>
-                </div>
+            <div class="card control-layout-card">
+                <div class="control-layout">
+                    <aside class="control-mode-selector">
+                        <h2>Режимы</h2>
+                        <p class="control-mode-hint">Выберите режим слева. Параметры появятся справа.</p>
 
-                <div class="card">
-                    <h2>Дополнительные режимы</h2>
-                    <div id="mashing-controls" class="control-group" style="display: none;">
-                        <h3 style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 0.95em;">Затирка</h3>
-
-                        <div class="form-group">
-                            <label>Название профиля</label>
-                            <input type="text" id="mash-profile-name" placeholder="Например: Пшеничный солод">
+                        <div class="control-mode-list">
+                            <button class="btn btn-success control-mode-btn" type="button" data-mode-select="rectification"
+                                data-mode="1" data-mode-action="rectification"
+                                onclick="selectControlMode('rectification')">▶️ Авто-ректификация</button>
+                            <button class="btn btn-warning control-mode-btn" type="button" data-mode-select="manual"
+                                data-mode="3" data-mode-action="manual"
+                                onclick="selectControlMode('manual')">🎛️ Ручная ректификация</button>
+                            <button class="btn btn-info control-mode-btn" type="button" data-mode-select="distillation"
+                                data-mode="2" data-mode-action="distillation"
+                                onclick="selectControlMode('distillation')">🏺 Дистилляция</button>
+                            <button class="btn btn-success control-mode-btn" type="button" data-mode-select="mashing"
+                                data-mode="4" data-mode-action="mashing"
+                                onclick="selectControlMode('mashing')">▶️ Затирка</button>
+                            <button class="btn btn-success control-mode-btn" type="button" data-mode-select="hold"
+                                data-mode="5" data-mode-action="hold"
+                                onclick="selectControlMode('hold')">▶️ Hold</button>
                         </div>
 
-                        <div class="form-group">
-                            <label>Шаги затирки (температура °C, длительность мин)</label>
-                            <div id="mash-steps"></div>
+                        <div class="control-runtime">
+                            <h3>Управление процессом</h3>
+                            <div class="controls control-runtime-buttons">
+                                <button class="btn btn-danger" type="button" data-runtime-action="stop"
+                                    onclick="stopProcess()" disabled>⏹️ Остановить</button>
+                                <button class="btn" type="button" data-runtime-action="pause"
+                                    onclick="pauseProcess()">⏸️ Пауза</button>
+                                <button class="btn" type="button" data-runtime-action="resume"
+                                    onclick="resumeProcess()">⏯️ Продолжить</button>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <section id="control-mode-panel" class="control-params-panel">
+                        <div class="control-panel-head">
+                            <h2 id="control-mode-title">Авто-ректификация</h2>
+                            <p id="control-mode-subtitle" class="control-mode-subtitle">Параметры запуска процесса</p>
                         </div>
 
-                        <div class="controls" style="flex-wrap: wrap;">
-                            <button class="btn btn-sm" onclick="addMashStep()">➕ Добавить шаг</button>
-                        </div>
-                    </div>
+                        <div class="control-panel-body">
+                            <div id="control-panel-rectification" class="control-mode-panel-section"
+                                data-mode-panel="rectification">
+                                <div class="control-subsection">
+                                    <div class="control-subsection-title">Параметры сырца и фракций</div>
+                                    <div class="control-form-grid">
+                                        <div class="form-group">
+                                            <label for="rect-start-feedstock">Сырье</label>
+                                            <select id="rect-start-feedstock">
+                                                <option value="0">Сахар</option>
+                                                <option value="1">Мука / зерно</option>
+                                                <option value="2">Солод</option>
+                                                <option value="3">Фрукты</option>
+                                                <option value="4">Меласса</option>
+                                                <option value="5">Виноград / вино</option>
+                                                <option value="6">Мед</option>
+                                                <option value="7">Другое</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-start-feed-volume">Объем сырца, л</label>
+                                            <input type="number" id="rect-start-feed-volume" min="1" max="250" step="0.1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-start-feed-abv">Крепость сырца, %</label>
+                                            <input type="number" id="rect-start-feed-abv" min="1" max="96" step="0.1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-start-heads-percent">Головы, %</label>
+                                            <input type="number" id="rect-start-heads-percent" min="0" max="40" step="0.1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-start-body-percent">Тело, %</label>
+                                            <input type="number" id="rect-start-body-percent" min="0" max="100" step="0.1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-start-tails-percent">Хвосты, %</label>
+                                            <input type="number" id="rect-start-tails-percent" min="0" max="100" step="0.1">
+                                            <div id="rect-start-fractions-sum" class="control-inline-hint">Sum: --%</div>
+                                        </div>
+                                    </div>
+                                </div>
 
-                    <div id="hold-controls" class="control-group" style="display: none; margin-top: 15px;">
-                        <h3 style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 0.95em;">Hold (выдержка)
-                        </h3>
+                                <div class="control-subsection">
+                                    <div class="control-subsection-title">Скорости и фазы</div>
+                                    <div class="control-form-grid">
+                                        <div class="form-group">
+                                            <label for="rect-start-heads-speed">Скорость голов, мл/ч/кВт</label>
+                                            <input type="number" id="rect-start-heads-speed" min="10" max="2000" step="10">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-start-body-speed">Скорость тела, мл/ч/кВт</label>
+                                            <input type="number" id="rect-start-body-speed" min="50" max="3000" step="10">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-start-stabilization">Стабилизация, мин</label>
+                                            <input type="number" id="rect-start-stabilization" min="1" max="180" step="1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="rect-start-purge">Продувка, мин</label>
+                                            <input type="number" id="rect-start-purge" min="1" max="120" step="1">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
-                        <div class="form-group">
-                            <label>Шаги (температура °C, длительность мин)</label>
-                            <div id="hold-steps"></div>
+                            <div id="control-panel-manual" class="control-mode-panel-section" data-mode-panel="manual"
+                                style="display: none;">
+                                <div class="control-subsection">
+                                    <div class="control-subsection-title">Ручное управление</div>
+                                    <div class="control-group">
+                                        <label for="heater-power">Мощность нагрева: <span id="heater-value">0</span> Вт</label>
+                                        <input type="range" id="heater-power" min="0" max="5500" step="50" value="0"
+                                            oninput="updateHeater(this.value)">
+                                    </div>
+                                    <div class="control-group">
+                                        <label for="pump-speed-control">Скорость насоса: <span id="pump-value">0</span> мл/ч</label>
+                                        <input type="range" id="pump-speed-control" min="0" max="500" value="0"
+                                            oninput="updatePump(this.value)">
+                                    </div>
+                                    <div class="control-group">
+                                        <label>Клапаны</label>
+                                        <div class="controls">
+                                            <button class="btn btn-sm" type="button" onclick="toggleValve('water')">💧 Вода</button>
+                                            <button class="btn btn-sm" type="button" onclick="toggleValve('heads')">🥃 Головы</button>
+                                            <button class="btn btn-sm" type="button" onclick="toggleValve('uno')">🔄 УНО</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="control-panel-distillation" class="control-mode-panel-section"
+                                data-mode-panel="distillation" style="display: none;">
+                                <div class="control-subsection">
+                                    <div class="control-subsection-title">Параметры дистилляции</div>
+                                    <div class="control-form-grid">
+                                        <div class="form-group">
+                                            <label for="dist-start-speed">Скорость отбора, мл/ч</label>
+                                            <input type="number" id="dist-start-speed" min="10" max="6000" step="10"
+                                                value="500">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dist-start-heads-volume">Головы, мл</label>
+                                            <input type="number" id="dist-start-heads-volume" min="0" max="3000" step="10"
+                                                value="0">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dist-start-target-volume">Целевой объем, мл</label>
+                                            <input type="number" id="dist-start-target-volume" min="0" max="50000" step="50"
+                                                value="0">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="dist-start-end-temp">Температура окончания, °C</label>
+                                            <input type="number" id="dist-start-end-temp" min="70" max="110" step="0.1"
+                                                value="96">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="control-panel-mashing" class="control-mode-panel-section" data-mode-panel="mashing"
+                                style="display: none;">
+                                <div id="mashing-controls" class="control-group">
+                                    <div class="control-subsection-title">Затирка</div>
+
+                                    <div class="form-group">
+                                        <label for="mash-profile-name">Название профиля</label>
+                                        <input type="text" id="mash-profile-name" placeholder="Например: Пшеничный солод">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Шаги затирки (температура °C, длительность мин)</label>
+                                        <div id="mash-steps"></div>
+                                    </div>
+
+                                    <div class="controls" style="flex-wrap: wrap;">
+                                        <button class="btn btn-sm" type="button" onclick="addMashStep()">➕ Добавить шаг</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="control-panel-hold" class="control-mode-panel-section" data-mode-panel="hold"
+                                style="display: none;">
+                                <div id="hold-controls" class="control-group">
+                                    <div class="control-subsection-title">Hold (выдержка)</div>
+
+                                    <div class="form-group">
+                                        <label>Шаги (температура °C, длительность мин)</label>
+                                        <div id="hold-steps"></div>
+                                    </div>
+
+                                    <div class="controls" style="flex-wrap: wrap;">
+                                        <button class="btn btn-sm" type="button" onclick="addHoldStep()">➕ Добавить шаг</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="controls" style="flex-wrap: wrap;">
-                            <button class="btn btn-sm" onclick="addHoldStep()">➕ Добавить шаг</button>
+                        <div class="control-panel-footer">
+                            <button id="mode-start-button" class="btn btn-primary control-start-btn" type="button"
+                                onclick="startSelectedMode()">▶️ Запустить режим</button>
                         </div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <h2>Ручное управление</h2>
-                    <div class="control-group">
-                        <label for="heater-power">Мощность нагрева: <span id="heater-value">0</span> Вт</label>
-                        <input type="range" id="heater-power" min="0" max="5500" step="50" value="0"
-                            oninput="updateHeater(this.value)">
-                    </div>
-                    <div class="control-group">
-                        <label for="pump-speed-control">Скорость насоса: <span id="pump-value">0</span> мл/ч</label>
-                        <input type="range" id="pump-speed-control" min="0" max="500" value="0"
-                            oninput="updatePump(this.value)">
-                    </div>
-                    <div class="control-group">
-                        <label>Клапаны</label>
-                        <div class="controls">
-                            <button class="btn btn-sm" onclick="toggleValve('water')">💧 Вода</button>
-                            <button class="btn btn-sm" onclick="toggleValve('heads')">🥃 Головы</button>
-                            <button class="btn btn-sm" onclick="toggleValve('uno')">🔄 УНО</button>
-                        </div>
-                    </div>
+                    </section>
                 </div>
             </div>
         </div>
@@ -1163,84 +1303,6 @@
                 <button class="btn" onclick="closeImportModal()">Отмена</button>
                 <button class="btn btn-success" onclick="doImportProfiles()" id="import-btn" disabled>📥
                     Импортировать</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="rect-start-modal" class="modal-overlay">
-        <div class="modal-content" style="max-width: 760px;">
-            <div class="modal-header">
-                <div class="modal-title">Настройки авто-ректификации</div>
-                <button class="modal-close" onclick="closeRectificationStartModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="modal-section">
-                    <div class="modal-section-title">Параметры сырца и фракций</div>
-                    <div class="modal-info-grid">
-                        <div class="form-group">
-                            <label for="rect-start-feedstock">Сырье</label>
-                            <select id="rect-start-feedstock">
-                                <option value="0">Сахар</option>
-                                <option value="1">Мука / зерно</option>
-                                <option value="2">Солод</option>
-                                <option value="3">Фрукты</option>
-                                <option value="4">Меласса</option>
-                                <option value="5">Виноград / вино</option>
-                                <option value="6">Мед</option>
-                                <option value="7">Другое</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="rect-start-feed-volume">Объем сырца, л</label>
-                            <input type="number" id="rect-start-feed-volume" min="1" max="250" step="0.1">
-                        </div>
-                        <div class="form-group">
-                            <label for="rect-start-feed-abv">Крепость сырца, %</label>
-                            <input type="number" id="rect-start-feed-abv" min="1" max="96" step="0.1">
-                        </div>
-                        <div class="form-group">
-                            <label for="rect-start-heads-percent">Головы, %</label>
-                            <input type="number" id="rect-start-heads-percent" min="0" max="40" step="0.1">
-                        </div>
-                        <div class="form-group">
-                            <label for="rect-start-body-percent">Тело, %</label>
-                            <input type="number" id="rect-start-body-percent" min="0" max="100" step="0.1">
-                        </div>
-                        <div class="form-group">
-                            <label for="rect-start-tails-percent">Хвосты, %</label>
-                            <input type="number" id="rect-start-tails-percent" min="0" max="100" step="0.1">
-                            <div id="rect-start-fractions-sum"
-                                style="margin-top: 6px; font-size: 0.85em; color: var(--text-secondary);">Sum: --%</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="modal-section">
-                    <div class="modal-section-title">Скорости и фазы</div>
-                    <div class="modal-info-grid">
-                        <div class="form-group">
-                            <label for="rect-start-heads-speed">Скорость голов, мл/ч/кВт</label>
-                            <input type="number" id="rect-start-heads-speed" min="10" max="2000" step="10">
-                        </div>
-                        <div class="form-group">
-                            <label for="rect-start-body-speed">Скорость тела, мл/ч/кВт</label>
-                            <input type="number" id="rect-start-body-speed" min="50" max="3000" step="10">
-                        </div>
-                        <div class="form-group">
-                            <label for="rect-start-stabilization">Стабилизация, мин</label>
-                            <input type="number" id="rect-start-stabilization" min="1" max="180" step="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="rect-start-purge">Продувка, мин</label>
-                            <input type="number" id="rect-start-purge" min="1" max="120" step="1">
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn" onclick="closeRectificationStartModal()">Отмена</button>
-                <button id="rect-start-confirm" class="btn btn-success" onclick="confirmStartRectification()">Сохранить
-                    и запустить</button>
             </div>
         </div>
     </div>

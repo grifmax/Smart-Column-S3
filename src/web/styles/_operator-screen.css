@@ -109,6 +109,40 @@
     font-weight: 800;
 }
 
+.operator-scheme-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.operator-scheme-btn {
+    border-radius: 10px;
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--landing-ink);
+    font-size: 0.82em;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    padding: 8px 6px;
+}
+
+[data-theme="dark"] .operator-scheme-btn {
+    background: rgba(30, 41, 59, 0.62);
+}
+
+.operator-scheme-btn.operator-scheme-btn-pause {
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+.operator-scheme-btn.operator-scheme-btn-start {
+    border-color: rgba(22, 163, 74, 0.35);
+}
+
+.operator-scheme-btn.operator-scheme-btn-stop {
+    border-color: rgba(220, 38, 38, 0.35);
+}
+
 .operator-status-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(120px, 1fr));

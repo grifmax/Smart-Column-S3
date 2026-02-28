@@ -396,12 +396,15 @@ export function updateButtonStates() {
 
     const isIdle = currentMode === MODE_IDLE;
 
-    // Buttons that start modes
-    const btnRect = document.querySelector('button[onclick="startRectification()"]');
-    const btnManual = document.querySelector('button[onclick="startManual()"]');
-    const btnDist = document.querySelector('button[onclick="startDistillation()"]');
-    const btnMashing = document.querySelector('button[onclick="startMashing()"]');
-    const btnHold = document.querySelector('button[onclick="startHold()"]');
+    const findModeButton = (modeAction, fallbackOnclick) =>
+        document.querySelector(`button[data-mode-action="${modeAction}"]`) ||
+        document.querySelector(`button[onclick="${fallbackOnclick}"]`);
+
+    const btnRect = findModeButton('rectification', 'startRectification()');
+    const btnManual = findModeButton('manual', 'startManual()');
+    const btnDist = findModeButton('distillation', 'startDistillation()');
+    const btnMashing = findModeButton('mashing', 'startMashing()');
+    const btnHold = findModeButton('hold', 'startHold()');
 
     const modeButtons = [
         { mode: MODE_RECT, button: btnRect },
@@ -429,27 +432,43 @@ export function updateButtonStates() {
             : button.dataset.baseText;
     });
 
-    // Runtime controls
-    const btnStop = document.querySelector('button[onclick="stopProcess()"]');
-    const btnPause = document.querySelector('button[onclick="pauseProcess()"]');
-    const btnResume = document.querySelector('button[onclick="resumeProcess()"]');
+    const startButton = document.getElementById('mode-start-button');
+    if (startButton) {
+        const selectedMode = Number(startButton.dataset.mode);
+        const isCurrentMode = Number.isFinite(selectedMode) && currentMode === selectedMode;
+        const shouldDisable = !isIdle && !isCurrentMode;
 
-    if (btnStop) {
-        btnStop.disabled = isIdle;
-        btnStop.classList.toggle('btn-disabled', isIdle);
+        startButton.disabled = shouldDisable;
+        startButton.classList.toggle('btn-disabled', shouldDisable);
     }
 
-    if (btnPause) {
-        const disablePause = isIdle || currentPaused;
-        btnPause.disabled = disablePause;
-        btnPause.classList.toggle('btn-disabled', disablePause);
-    }
+    // Runtime controls (can be duplicated in several UI blocks)
+    const findRuntimeButtons = (action, fallbackOnclick) => {
+        const byAction = Array.from(document.querySelectorAll(`button[data-runtime-action="${action}"]`));
+        const byFallback = Array.from(document.querySelectorAll(`button[onclick="${fallbackOnclick}"]`));
+        return Array.from(new Set([...byAction, ...byFallback]));
+    };
 
-    if (btnResume) {
-        const disableResume = isIdle || !currentPaused;
-        btnResume.disabled = disableResume;
-        btnResume.classList.toggle('btn-disabled', disableResume);
-    }
+    const btnStopList = findRuntimeButtons('stop', 'stopProcess()');
+    const btnPauseList = findRuntimeButtons('pause', 'pauseProcess()');
+    const btnResumeList = findRuntimeButtons('resume', 'resumeProcess()');
+
+    btnStopList.forEach((button) => {
+        button.disabled = isIdle;
+        button.classList.toggle('btn-disabled', isIdle);
+    });
+
+    const disablePause = isIdle || currentPaused;
+    btnPauseList.forEach((button) => {
+        button.disabled = disablePause;
+        button.classList.toggle('btn-disabled', disablePause);
+    });
+
+    const disableResume = isIdle || !currentPaused;
+    btnResumeList.forEach((button) => {
+        button.disabled = disableResume;
+        button.classList.toggle('btn-disabled', disableResume);
+    });
 
 }
 

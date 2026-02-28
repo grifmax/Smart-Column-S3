@@ -18,6 +18,7 @@ import { startDistillation } from './modes/distillation.js';
 import { stopProcess, pauseProcess, resumeProcess, updateHeater, updatePump, toggleValve } from './modes/manual.js';
 import { startMashing, startHold, addMashStep, addHoldStep } from './modes/mashing-hold.js';
 import { startRectification, startManual, openRectificationStartModal, confirmStartRectification, closeRectificationStartModal, updateRectificationFractionsSum, applyRectificationFeedstockDefaults } from './modes/rectification.js';
+import { initControlModePanel, selectControlMode, startSelectedMode } from './modes/control-panel.js';
 import { showCreateProfileModal, closeProfileModal, saveProfile, viewProfile, closeProfileViewModal, quickLoadProfile, loadProfileToSettings, deleteProfile, clearUserProfiles } from './profiles/crud.js';
 import { exportProfile, exportAllProfiles, showImportModal, closeImportModal, doImportProfiles } from './profiles/import-export.js';
 import { loadProfilesList } from './profiles/list.js';
@@ -106,6 +107,8 @@ window.addMashStep = addMashStep;
 window.addHoldStep = addHoldStep;
 window.startRectification = startRectification;
 window.startManual = startManual;
+window.selectControlMode = selectControlMode;
+window.startSelectedMode = startSelectedMode;
 window.openRectificationStartModal = openRectificationStartModal;
 window.confirmStartRectification = confirmStartRectification;
 window.closeRectificationStartModal = closeRectificationStartModal;
@@ -167,6 +170,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     initMashingHoldControls();
     initRectificationStartModal();
+    await initControlModePanel();
 
     loadTheme();
     loadDemoMode();
