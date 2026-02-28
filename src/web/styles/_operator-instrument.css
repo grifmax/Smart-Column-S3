@@ -1,0 +1,61 @@
+/* Instrument view specifics */
+
+.operator-screen-instrument .operator-level-label {
+    font-size: 0.76em;
+}
+
+.operator-screen-instrument .operator-level-value {
+    font-size: 1.24em;
+}
+
+.operator-screen-instrument .operator-level-main {
+    font-size: 2.15em;
+    line-height: 0.96;
+}
+
+.operator-screen-instrument .operator-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.operator-screen-instrument .operator-list-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+}
+
+.operator-screen-instrument .operator-list-row span {
+    font-size: 0.82em;
+}
+
+.operator-screen-instrument .operator-list-row strong {
+    font-size: 1.08em;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.operator-screen-instrument #mini-chart {
+    height: 220px !important;
+}
+
+.operator-screen-compact .operator-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.operator-screen-compact .operator-card-status {
+    grid-column: 1 / -1;
+}
+
+.operator-screen-compact .operator-grid>.operator-card:nth-of-type(2),
+.operator-screen-compact .operator-grid>.operator-card:nth-of-type(3),
+.operator-screen-compact .operator-grid>.operator-card:nth-of-type(4),
+.operator-screen-compact .operator-grid>.operator-card:nth-of-type(5) {
+    grid-column: 1 / -1;
+}
+
+.operator-screen-compact .operator-card-chart {
+    grid-column: 1 / -1;
+}

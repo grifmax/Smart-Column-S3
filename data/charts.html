@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,19 +8,14 @@
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="charts-style.css">
     <script>
-        // Загрузить тему из localStorage перед отрисовкой страницы
-        (function() {
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            if (document.body) {
-                document.body.setAttribute('data-theme', savedTheme);
-            } else {
-                document.addEventListener('DOMContentLoaded', function() {
-                    document.body.setAttribute('data-theme', savedTheme);
-                });
-            }
+        // Загрузить тему из localStorage перед отрисовкой
+        (function () {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
         })();
     </script>
 </head>
+
 <body>
     <div class="container">
         <!-- Заголовок -->
@@ -69,8 +65,10 @@
                 </div>
                 <div class="control-group-inline">
                     <label><strong>Порог отклонения:</strong></label>
-                    <input type="range" id="anomaly-threshold" min="5" max="50" value="15" step="5" style="width: 200px;">
-                    <span id="anomaly-threshold-value" style="min-width: 40px; display: inline-block; font-weight: bold;">15%</span>
+                    <input type="range" id="anomaly-threshold" min="5" max="50" value="15" step="5"
+                        style="width: 200px;">
+                    <span id="anomaly-threshold-value"
+                        style="min-width: 40px; display: inline-block; font-weight: bold;">15%</span>
                 </div>
                 <div class="control-group-inline">
                     <label><strong>Окно усреднения:</strong></label>
@@ -82,9 +80,12 @@
                         <option value="900">15 минут</option>
                     </select>
                 </div>
-                <div style="margin-top: 10px; padding: 10px; background-color: var(--bg-secondary); border-radius: 5px; font-size: 0.9em;">
-                    <strong>ℹ️ Как работает:</strong> Маркеры автоматически появляются на графиках, когда текущее значение отклоняется
-                    от среднего за выбранное окно времени больше чем на указанный порог. Маркеры показывают процент отклонения.
+                <div
+                    style="margin-top: 10px; padding: 10px; background-color: var(--bg-secondary); border-radius: 5px; font-size: 0.9em;">
+                    <strong>ℹ️ Как работает:</strong> Маркеры автоматически появляются на графиках, когда текущее
+                    значение отклоняется
+                    от среднего за выбранное окно времени больше чем на указанный порог. Маркеры показывают процент
+                    отклонения.
                 </div>
             </div>
         </div>
@@ -173,4 +174,5 @@
     <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
     <script src="charts.js"></script>
 </body>
+
 </html>

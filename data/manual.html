@@ -1,38 +1,54 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ручное управление - Smart Column S3</title>
     <link rel="stylesheet" href="style.css">
+    <script>
+        // Загрузить тему из localStorage перед отрисовкой
+        (function () {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
     <style>
+        /* manual.html — только уникальные компоненты, не дублирующие style.css */
+
         .manual-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 20px;
             margin-top: 20px;
         }
+
         .control-panel {
-            background: var(--card-bg);
-            border-radius: 12px;
+            background: var(--bg-card);
+            border-radius: 10px;
             padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px var(--shadow);
         }
+
         .slider-container {
             margin: 15px 0;
         }
+
         .slider {
             width: 100%;
             height: 8px;
             border-radius: 4px;
-            background: var(--primary-color);
+            background: var(--border-color);
             outline: none;
             opacity: 0.7;
             transition: opacity 0.2s;
+            cursor: pointer;
         }
+
         .slider:hover {
             opacity: 1;
         }
+
         .value-display {
             display: flex;
             justify-content: space-between;
@@ -41,77 +57,141 @@
             font-size: 18px;
             font-weight: 600;
         }
+
         .temp-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 15px;
             margin-top: 15px;
         }
+
         .temp-card {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            background: linear-gradient(135deg, var(--accent), var(--info));
             padding: 15px;
             border-radius: 8px;
             color: white;
             text-align: center;
         }
+
         .temp-value {
             font-size: 28px;
             font-weight: bold;
             margin: 5px 0;
         }
+
         .temp-label {
             font-size: 14px;
             opacity: 0.9;
         }
+
         .valve-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 10px;
             margin-top: 15px;
         }
+
         .valve-btn {
             padding: 15px;
             border-radius: 8px;
-            border: 2px solid var(--primary-color);
-            background: white;
+            border: 2px solid var(--border-color);
+            background: var(--bg-card);
+            color: var(--text-primary);
             cursor: pointer;
             transition: all 0.3s;
             font-size: 16px;
         }
+
         .valve-btn.active {
-            background: var(--primary-color);
+            background: var(--accent);
             color: white;
+            border-color: var(--accent);
         }
-        .status-bar {
-            background: var(--card-bg);
+
+        .manual-status-bar {
+            background: var(--bg-card);
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            box-shadow: 0 2px 4px var(--shadow);
         }
+
         .status-indicator {
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        .status-dot {
+
+        .status-dot-manual {
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            background: #ccc;
+            background: var(--border-color);
         }
-        .status-dot.running {
-            background: #4CAF50;
+
+        .status-dot-manual.running {
+            background: var(--success);
             animation: pulse 2s infinite;
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+        /* Настройки ректификации */
+        .settings-section {
+            background: var(--bg-primary);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .settings-section h3 {
+            margin: 0 0 15px 0;
+            font-size: 1.1em;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .setting-item label {
+            font-weight: 500;
+            font-size: 0.95em;
+        }
+
+        .setting-item input[type="number"],
+        .setting-item select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1em;
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
+
+        .setting-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 8px;
+        }
+
+        .setting-item small {
+            color: var(--text-secondary);
+            font-size: 0.85em;
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <!-- Шапка -->
@@ -121,14 +201,168 @@
         </div>
 
         <!-- Статус бар -->
-        <div class="status-bar">
+        <div class="manual-status-bar">
             <div class="status-indicator">
-                <div class="status-dot" id="process-status"></div>
+                <div class="status-dot-manual" id="process-status"></div>
                 <span id="status-text">Процесс остановлен</span>
             </div>
             <div>
                 <button class="btn btn-success" id="btn-start" onclick="startManualProcess()">▶️ Запустить</button>
-                <button class="btn btn-danger" id="btn-stop" onclick="stopProcess()" style="display:none;">⏹️ Остановить</button>
+                <button class="btn btn-danger" id="btn-stop" onclick="stopProcess()" style="display:none;">⏹️
+                    Остановить</button>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- НАСТРОЙКА ПАРАМЕТРОВ РЕКТИФИКАЦИИ -->
+        <!-- ========================================== -->
+        <div class="control-panel" style="margin-bottom: 20px;">
+            <h2>⚙️ Параметры ректификации</h2>
+
+            <!-- ГОЛОВЫ -->
+            <div class="settings-section">
+                <h3>🥃 Отбор голов</h3>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label>Объём отбора (мл):</label>
+                        <input type="number" id="heads-volume" value="50" min="10" max="500" step="10">
+                    </div>
+                    <div class="setting-item">
+                        <label>Режим отбора:</label>
+                        <select id="heads-mode" onchange="updateHeadsMode()">
+                            <option value="time" selected>По времени</option>
+                            <option value="speed">По скорости</option>
+                            <option value="temp">По температуре куба</option>
+                        </select>
+                    </div>
+
+                    <!-- По времени -->
+                    <div class="setting-item" id="heads-time-group">
+                        <label>Время отбора (мин):</label>
+                        <input type="number" id="heads-time" value="180" min="30" max="600" step="10"
+                            oninput="calcHeadsSpeed()">
+                        <small>Скорость: <span id="heads-calc-speed">16.7</span> мл/ч</small>
+                    </div>
+
+                    <!-- По скорости -->
+                    <div class="setting-item" id="heads-speed-group" style="display:none;">
+                        <label>Скорость (мл/ч):</label>
+                        <input type="number" id="heads-speed" value="300" min="50" max="1000" step="10"
+                            oninput="calcHeadsTime()">
+                        <small>Время: <span id="heads-calc-time">10</span> мин</small>
+                    </div>
+
+                    <!-- По температуре -->
+                    <div class="setting-item" id="heads-temp-group" style="display:none;">
+                        <label>Температура куба (°C):</label>
+                        <input type="number" id="heads-temp" value="78.5" min="75" max="85" step="0.1">
+                        <small>Стандарт: 78-79°C (кипение этанола)</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ТЕЛО -->
+            <div class="settings-section">
+                <h3>🍷 Отбор тела</h3>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label>Порог заброса температуры (°C):</label>
+                        <input type="number" id="body-spike-threshold" value="0.2" min="0.1" max="1.0" step="0.05">
+                        <small>Пауза отбора при резком скачке</small>
+                    </div>
+                    <div class="setting-item">
+                        <label>Декремент скорости (%):</label>
+                        <input type="number" id="body-speed-decrement" value="5" min="1" max="20" step="1">
+                        <small>Уменьшение после каждой стабилизации</small>
+                    </div>
+                </div>
+
+                <h4 style="margin: 15px 0 10px; font-size: 1em;">⏩ Переход на хвосты</h4>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label>Критерий перехода:</label>
+                        <select id="body-to-tails-mode" onchange="updateBodyToTailsMode()">
+                            <option value="stabilize" selected>По невозможности стабилизации</option>
+                            <option value="temp">По температуре куба</option>
+                            <option value="both">Любой из критериев (первый сработавший)</option>
+                        </select>
+                    </div>
+
+                    <!-- По стабилизации -->
+                    <div class="setting-item" id="body-stabilize-group">
+                        <label>Таймаут стабилизации (мин):</label>
+                        <input type="number" id="body-stabilize-timeout" value="10" min="3" max="30" step="1">
+                        <small>Переход если не стабилизируется за это время</small>
+                    </div>
+
+                    <!-- По температуре -->
+                    <div class="setting-item" id="body-temp-group" style="display:none;">
+                        <label>Температура куба (°C):</label>
+                        <input type="number" id="body-to-tails-temp" value="92" min="85" max="96" step="0.5">
+                        <small>Стандарт: 92-93°C (окончание спирта)</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ХВОСТЫ -->
+            <div class="settings-section">
+                <h3>🧪 Отбор хвостов</h3>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="tails-enabled" onchange="updateTailsMode()">
+                            Отбирать хвосты
+                        </label>
+                    </div>
+                    <div id="tails-settings" style="display:none;">
+                        <div class="setting-item">
+                            <label>Критерий остановки:</label>
+                            <select id="tails-stop-mode" onchange="updateTailsStopMode()">
+                                <option value="temp" selected>По температуре куба</option>
+                                <option value="abv">По крепости (ареометр)</option>
+                            </select>
+                        </div>
+                        <div class="setting-item" id="tails-temp-group">
+                            <label>Температура куба (°C):</label>
+                            <input type="number" id="tails-stop-temp" value="93" min="85" max="99" step="0.5">
+                            <small>Стандарт: 92-93°C</small>
+                        </div>
+                        <div class="setting-item" id="tails-abv-group" style="display:none;">
+                            <label>Мин. крепость (% ABV):</label>
+                            <input type="number" id="tails-stop-abv" value="40" min="10" max="70" step="1">
+                        </div>
+
+                        <!-- Параллельный ШИМ-отбор хвостов -->
+                        <h4 style="margin: 15px 0 10px; font-size: 1em; grid-column: 1 / -1;">⚡ Параллельный отбор
+                            (ШИМ-клапан)</h4>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="tails-pwm-enabled" onchange="updateTailsPwmMode()">
+                                Включить ШИМ-отбор хвостов
+                            </label>
+                            <small>Одновременный отбор через отдельный клапан</small>
+                        </div>
+                        <div id="tails-pwm-settings" style="display:none;">
+                            <div class="setting-item">
+                                <label>Скважность ШИМ (%):</label>
+                                <input type="range" id="tails-pwm-duty" value="30" min="5" max="100" step="5"
+                                    oninput="document.getElementById('tails-pwm-duty-val').textContent = this.value + '%'">
+                                <span id="tails-pwm-duty-val">30%</span>
+                                <small>Доля времени открытия клапана</small>
+                            </div>
+                            <div class="setting-item">
+                                <label>Период цикла (сек):</label>
+                                <input type="number" id="tails-pwm-period" value="10" min="2" max="60" step="1">
+                                <small>Длительность одного цикла ШИМ</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 15px; text-align: right;">
+                <button class="btn btn-primary" onclick="saveRectSettings()">💾 Сохранить настройки</button>
+                <button class="btn btn-secondary" onclick="loadRectSettings()">🔄 Загрузить</button>
             </div>
         </div>
 
@@ -170,7 +404,7 @@
                         <span id="heater-display">0%</span>
                     </div>
                     <input type="range" min="0" max="100" value="0" class="slider" id="heater-slider"
-                           oninput="updateHeaterManual(this.value)">
+                        oninput="updateHeaterManual(this.value)">
                 </div>
                 <div style="margin-top: 15px;">
                     <div style="display: flex; justify-content: space-between; font-size: 14px;">
@@ -189,7 +423,7 @@
                         <span id="pump-display">0 мл/ч</span>
                     </div>
                     <input type="range" min="0" max="300" value="0" class="slider" id="pump-slider"
-                           oninput="updatePumpManual(this.value)">
+                        oninput="updatePumpManual(this.value)">
                 </div>
                 <div style="margin-top: 15px;">
                     <div style="font-size: 14px;">
@@ -221,7 +455,8 @@
         <!-- Лог -->
         <div class="control-panel" style="margin-top: 20px;">
             <h2>📋 Журнал</h2>
-            <div id="log-container" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+            <div id="log-container"
+                style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;">
             </div>
         </div>
     </div>
@@ -230,15 +465,234 @@
         let processRunning = false;
         let updateInterval = null;
 
+        // ========================================
+        // Функции управления настройками ректификации
+        // ========================================
+
+        function updateHeadsMode() {
+            const mode = document.getElementById('heads-mode').value;
+            document.getElementById('heads-time-group').style.display = mode === 'time' ? 'flex' : 'none';
+            document.getElementById('heads-speed-group').style.display = mode === 'speed' ? 'flex' : 'none';
+            document.getElementById('heads-temp-group').style.display = mode === 'temp' ? 'flex' : 'none';
+            if (mode === 'time') calcHeadsSpeed();
+            if (mode === 'speed') calcHeadsTime();
+        }
+
+        function updateTailsMode() {
+            const enabled = document.getElementById('tails-enabled').checked;
+            document.getElementById('tails-settings').style.display = enabled ? 'block' : 'none';
+        }
+
+        function updateBodyToTailsMode() {
+            const mode = document.getElementById('body-to-tails-mode').value;
+            const showStabilize = mode === 'stabilize' || mode === 'both';
+            const showTemp = mode === 'temp' || mode === 'both';
+            document.getElementById('body-stabilize-group').style.display = showStabilize ? 'flex' : 'none';
+            document.getElementById('body-temp-group').style.display = showTemp ? 'flex' : 'none';
+        }
+
+        function toggleDemoMode() {
+            const enabled = document.getElementById('demo-mode-enabled').checked;
+
+            // Сохранить в localStorage
+            localStorage.setItem('demoMode', enabled ? 'true' : 'false');
+
+            // Отправить на сервер
+            fetch('/api/settings/demo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled })
+            }).then(r => {
+                if (r.ok) {
+                    addLog(enabled ? '🧪 Демо-режим ВКЛЮЧЁН' : '✅ Демо-режим отключён');
+                } else {
+                    addLog('⚠️ Ошибка сохранения на сервер');
+                }
+            }).catch(() => {
+                addLog('⚠️ Демо-режим сохранён локально');
+            });
+        }
+
+        function updateTailsStopMode() {
+            const mode = document.getElementById('tails-stop-mode').value;
+            document.getElementById('tails-temp-group').style.display = mode === 'temp' ? 'flex' : 'none';
+            document.getElementById('tails-abv-group').style.display = mode === 'abv' ? 'flex' : 'none';
+        }
+
+        function updateTailsPwmMode() {
+            const enabled = document.getElementById('tails-pwm-enabled').checked;
+            document.getElementById('tails-pwm-settings').style.display = enabled ? 'block' : 'none';
+        }
+
+        function calcHeadsSpeed() {
+            const volume = parseFloat(document.getElementById('heads-volume').value) || 50;
+            const time = parseFloat(document.getElementById('heads-time').value) || 180;
+            const speed = (volume / time) * 60; // мл/ч
+            document.getElementById('heads-calc-speed').textContent = speed.toFixed(1);
+        }
+
+        function calcHeadsTime() {
+            const volume = parseFloat(document.getElementById('heads-volume').value) || 50;
+            const speed = parseFloat(document.getElementById('heads-speed').value) || 300;
+            const time = (volume / speed) * 60; // минут
+            document.getElementById('heads-calc-time').textContent = time.toFixed(0);
+        }
+
+        function saveRectSettings() {
+            const settings = collectRectSettings();
+
+            // Сохранить в localStorage и отправить на сервер
+            localStorage.setItem('rectSettings', JSON.stringify(settings));
+
+            fetch('/api/settings/rectification', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            }).then(r => {
+                if (r.ok) {
+                    addLog('✅ Настройки ректификации сохранены');
+                } else {
+                    addLog('⚠️ Настройки сохранены локально (сервер недоступен)');
+                }
+            }).catch(() => {
+                addLog('⚠️ Настройки сохранены локально');
+            });
+        }
+
+        function collectRectSettings() {
+            const demoEl = document.getElementById('demo-mode-enabled');
+
+            const settings = {
+                demoMode: demoEl ? demoEl.checked : undefined,
+                heads: {
+                    volume: parseFloat(document.getElementById('heads-volume').value),
+                    mode: document.getElementById('heads-mode').value,
+                    time: parseFloat(document.getElementById('heads-time').value),
+                    speed: parseFloat(document.getElementById('heads-speed').value),
+                    temp: parseFloat(document.getElementById('heads-temp').value)
+                },
+                body: {
+                    spikeThreshold: parseFloat(document.getElementById('body-spike-threshold').value),
+                    speedDecrement: parseFloat(document.getElementById('body-speed-decrement').value),
+                    toTailsMode: document.getElementById('body-to-tails-mode').value,
+                    stabilizeTimeout: parseFloat(document.getElementById('body-stabilize-timeout').value),
+                    toTailsTemp: parseFloat(document.getElementById('body-to-tails-temp').value)
+                },
+                tails: {
+                    enabled: document.getElementById('tails-enabled').checked,
+                    stopMode: document.getElementById('tails-stop-mode').value,
+                    stopTemp: parseFloat(document.getElementById('tails-stop-temp').value),
+                    stopAbv: parseFloat(document.getElementById('tails-stop-abv').value),
+                    pwmEnabled: document.getElementById('tails-pwm-enabled').checked,
+                    pwmDuty: parseFloat(document.getElementById('tails-pwm-duty').value),
+                    pwmPeriod: parseFloat(document.getElementById('tails-pwm-period').value)
+                }
+            };
+            // Удалить undefined (например demoMode если нет элемента)
+            Object.keys(settings).forEach((k) => settings[k] === undefined && delete settings[k]);
+            return settings;
+        }
+
+        async function persistRectSettings(settings, { silent = false } = {}) {
+            // Сохранить в localStorage и отправить на сервер
+            localStorage.setItem('rectSettings', JSON.stringify(settings));
+
+            try {
+                const r = await fetch('/api/settings/rectification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                if (!silent) {
+                    addLog(r.ok ? '✅ Настройки ректификации сохранены' : '⚠️ Настройки сохранены локально (сервер недоступен)');
+                }
+                return r.ok;
+            } catch (_) {
+                if (!silent) addLog('⚠️ Настройки сохранены локально');
+                return false;
+            }
+        }
+
+        function validateRectSettings() {
+            const ids = [
+                'heads-volume', 'heads-time', 'heads-speed', 'heads-temp',
+                'body-spike-threshold', 'body-speed-decrement', 'body-stabilize-timeout', 'body-to-tails-temp',
+                'tails-stop-temp', 'tails-stop-abv', 'tails-pwm-duty', 'tails-pwm-period'
+            ];
+
+            for (const id of ids) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+                if (typeof el.checkValidity === 'function' && !el.checkValidity()) {
+                    if (typeof el.reportValidity === 'function') el.reportValidity();
+                    addLog('⚠️ Проверьте введённые значения (диапазоны/формат).', 'warning');
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function loadRectSettings() {
+            const saved = localStorage.getItem('rectSettings');
+            if (saved) {
+                try {
+                    const s = JSON.parse(saved);
+
+                    // Демо-режим
+                    const demoEl = document.getElementById('demo-mode-enabled');
+                    if (demoEl) demoEl.checked = s.demoMode || false;
+
+                    if (s.heads) {
+                        document.getElementById('heads-volume').value = s.heads.volume || 50;
+                        document.getElementById('heads-mode').value = s.heads.mode || 'time';
+                        document.getElementById('heads-time').value = s.heads.time || 180;
+                        document.getElementById('heads-speed').value = s.heads.speed || 300;
+                        document.getElementById('heads-temp').value = s.heads.temp || 78.5;
+                    }
+                    if (s.body) {
+                        document.getElementById('body-spike-threshold').value = s.body.spikeThreshold || 0.2;
+                        document.getElementById('body-speed-decrement').value = s.body.speedDecrement || 5;
+                        document.getElementById('body-to-tails-mode').value = s.body.toTailsMode || 'stabilize';
+                        document.getElementById('body-stabilize-timeout').value = s.body.stabilizeTimeout || 10;
+                        document.getElementById('body-to-tails-temp').value = s.body.toTailsTemp || 92;
+                    }
+                    if (s.tails) {
+                        document.getElementById('tails-enabled').checked = s.tails.enabled || false;
+                        document.getElementById('tails-stop-mode').value = s.tails.stopMode || 'temp';
+                        document.getElementById('tails-stop-temp').value = s.tails.stopTemp || 93;
+                        document.getElementById('tails-stop-abv').value = s.tails.stopAbv || 40;
+                        document.getElementById('tails-pwm-enabled').checked = s.tails.pwmEnabled || false;
+                        document.getElementById('tails-pwm-duty').value = s.tails.pwmDuty || 30;
+                        document.getElementById('tails-pwm-duty-val').textContent = (s.tails.pwmDuty || 30) + '%';
+                        document.getElementById('tails-pwm-period').value = s.tails.pwmPeriod || 10;
+                    }
+                    updateHeadsMode();
+                    updateBodyToTailsMode();
+                    updateTailsMode();
+                    updateTailsStopMode();
+                    updateTailsPwmMode();
+                    addLog('📋 Настройки ректификации загружены');
+                } catch (e) {
+                    addLog('⚠️ Ошибка загрузки настроек: ' + e.message);
+                }
+            }
+        }
+
         // Инициализация при загрузке
         window.addEventListener('load', () => {
+            loadRectSettings();  // Загрузить сохранённые настройки
             loadStatus();
-            startUpdates();
-            addLog('✅ Страница ручного управления загружена');
+            addLog('✅ Страница ручного управления загружена (запуск/обновление — только после ввода параметров и нажатия "Запустить")');
         });
 
         // Запуск процесса
         async function startManualProcess() {
+            if (!validateRectSettings()) return;
+
+            // Зафиксировать параметры перед стартом (чтобы запуск был "после ввода/настройки")
+            const settings = collectRectSettings();
+            await persistRectSettings(settings, { silent: true });
+
             try {
                 const response = await fetch('/api/process/start', {
                     method: 'POST',
@@ -250,6 +704,7 @@
                     processRunning = true;
                     updateUI();
                     addLog('✅ Ручной режим запущен', 'success');
+                    ensureUpdatesStarted();
                 } else {
                     const error = await response.text();
                     addLog('❌ Ошибка запуска: ' + error, 'error');
@@ -283,15 +738,31 @@
         // Обновление мощности нагревателя
         function updateHeaterManual(value) {
             document.getElementById('heater-display').textContent = value + '%';
-            // TODO: отправить команду на сервер
-            addLog(`🔥 Мощность нагревателя: ${value}%`);
+            fetch('/api/manual/heater', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ power: parseInt(value, 10) })
+            }).then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                addLog(`🔥 Мощность нагревателя: ${value}%`);
+            }).catch(e => {
+                addLog('⚠️ Ошибка установки мощности: ' + e.message, 'warning');
+            });
         }
 
         // Обновление скорости насоса
         function updatePumpManual(value) {
             document.getElementById('pump-display').textContent = value + ' мл/ч';
-            // TODO: отправить команду на сервер
-            addLog(`💧 Скорость насоса: ${value} мл/ч`);
+            fetch('/api/manual/pump', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ speed: parseFloat(value) })
+            }).then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                addLog(`💧 Скорость насоса: ${value} мл/ч`);
+            }).catch(e => {
+                addLog('⚠️ Ошибка управления насосом: ' + e.message, 'warning');
+            });
         }
 
         // Переключение клапана
@@ -306,8 +777,23 @@
             if (!isActive) {
                 btn.classList.add('active');
                 addLog(`🔀 Клапан "${valve}" открыт`);
+                let body = {};
+                if (valve === 'heads') body = { heads: true, uno: false };
+                if (valve === 'body') body = { heads: false, uno: false };
+                if (valve === 'tails') body = { heads: false, uno: true };
+                if (valve === 'waste') body = { allOff: true };
+                fetch('/api/manual/valves', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                }).catch(() => { });
             } else {
                 addLog(`🔀 Все клапаны закрыты`);
+                fetch('/api/manual/valves', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ allOff: true })
+                }).catch(() => { });
             }
         }
 
@@ -344,8 +830,10 @@
                 document.getElementById('temp-product').textContent = data.temps?.product?.toFixed(1) || '--';
 
                 // Обновить состояние процесса
-                processRunning = data.mode !== 'idle';
+                processRunning = data.modeStr !== 'idle';
                 updateUI();
+                // Если процесс уже запущен (не нами), включить обновление статуса
+                if (processRunning) ensureUpdatesStarted();
 
             } catch (e) {
                 console.error('Ошибка загрузки статуса:', e);
@@ -353,7 +841,8 @@
         }
 
         // Периодическое обновление
-        function startUpdates() {
+        function ensureUpdatesStarted() {
+            if (updateInterval) return;
             updateInterval = setInterval(loadStatus, 2000);
         }
 
@@ -382,4 +871,5 @@
         }
     </script>
 </body>
+
 </html>

@@ -1,0 +1,139 @@
+/* Responsive */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+
+    header h1 {
+        font-size: 1.5em;
+    }
+
+    .top-menu {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .menu-dropdown {
+        width: 100%;
+    }
+
+    .tabs-dropdown {
+        flex-wrap: nowrap;
+    }
+
+    .operator-screen {
+        padding: 12px;
+    }
+
+    .operator-main-menu {
+        flex-direction: column;
+    }
+
+    .operator-action-row {
+        width: 100%;
+    }
+
+    .operator-action-row .btn {
+        flex: 1;
+        min-width: 120px;
+    }
+
+    .operator-updated {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .operator-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .operator-screen-instrument .operator-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .operator-screen-instrument .operator-grid>.operator-card,
+    .operator-screen-instrument .operator-card-status,
+    .operator-screen-instrument .operator-card-chart,
+    .operator-screen-instrument .operator-card-scheme {
+        grid-column: 1;
+    }
+
+    .operator-screen-compact .operator-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .operator-screen-compact .operator-card-status,
+    .operator-screen-compact .operator-card-chart,
+    .operator-screen-compact .operator-card-scheme {
+        grid-column: 1 / -1;
+    }
+
+    .operator-screen-compact .operator-grid>.operator-card:nth-of-type(2),
+    .operator-screen-compact .operator-grid>.operator-card:nth-of-type(3),
+    .operator-screen-compact .operator-grid>.operator-card:nth-of-type(4) {
+        grid-column: 1 / -1;
+    }
+
+    .operator-card-status,
+    .operator-card-scheme {
+        grid-column: 1;
+    }
+
+    .operator-level-grid,
+    .operator-status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .operator-screen-instrument .operator-level-grid,
+    .operator-screen-instrument .operator-status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .operator-screen-compact .operator-level-grid,
+    .operator-screen-compact .operator-status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .operator-list,
+    .operator-screen-instrument .operator-list,
+    .operator-screen-compact .operator-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .operator-runtime-manual {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cards {
+        grid-template-columns: 1fr;
+    }
+
+    .landing-shell {
+        padding: 14px;
+    }
+
+    .landing-hero {
+        grid-template-columns: 1fr;
+    }
+
+    .landing-title {
+        font-size: 1.45em;
+    }
+
+    .landing-strip {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+    }
+
+    .big-value .value {
+        font-size: 2em;
+    }
+
+    .controls {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+    }
+}

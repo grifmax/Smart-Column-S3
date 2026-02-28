@@ -1,0 +1,74 @@
+/* Buttons */
+.btn {
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-color);
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1em;
+    color: var(--text-primary);
+    transition: all 0.3s;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px var(--shadow);
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.btn-success {
+    background: var(--success);
+    color: white;
+    border-color: var(--success);
+}
+
+.btn-warning {
+    background: var(--warning);
+    color: #333;
+    border-color: var(--warning);
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: white;
+    border-color: var(--danger);
+}
+
+.btn-info {
+    background: var(--info);
+    color: white;
+    border-color: var(--info);
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.9em;
+}
+
+.btn-active-mode {
+    box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.25), 0 0 12px rgba(40, 167, 69, 0.35);
+    border-color: #1f8f3a !important;
+    position: relative;
+}
+
+.btn-disabled,
+.btn:disabled {
+    background: var(--border-color) !important;
+    color: var(--text-secondary) !important;
+    border-color: var(--border-color) !important;
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.btn-disabled:hover,
+.btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}

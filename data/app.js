@@ -1,2205 +1,340 @@
-// Smart-Column S3 - Web UI JavaScript
+(()=>{function l(e,t="info"){let o=document.getElementById("log-container"),r=new Date().toLocaleTimeString(),n=document.createElement("div");n.className=`log-entry ${t}`,n.textContent=`[${r}] ${e}`,o.appendChild(n),o.scrollTop=o.scrollHeight;let i=o.querySelectorAll(".log-entry");i.length>100&&i[0].remove()}function ht(){confirm("Очистить логи?")&&(document.getElementById("log-container").innerHTML="",l("Логи очищены","info"))}function vt(){l("📥 Запрос экспорта логов...","info"),window.open("/api/export","_blank")}var W=null;function Oe(e){W=e}var de=null;function Re(e){de=e}var je=!1;function Ue(e){je=e}var G=null;function qe(e){G=e}var b={timestamps:[],cube:[],columnTop:[],reflux:[]},wt=360,L=0;function ce(e){L=e}var Pe=!1;function me(e){Pe=e}var k=3e3;function xt(e){k=e}var M=0,T=1,O=2,F=3,R=4,z=5;function A(e){switch(e){case M:return"Idle";case T:return"Rectification";case F:return"Manual";case O:return"Distillation";case R:return"Mashing";case z:return"Hold";default:return"Unknown"}}function ne(e){switch(e){case M:return"mode-idle";case T:return"mode-rectification";case F:return"mode-manual";case O:return"mode-distillation";case R:return"mode-mashing";case z:return"mode-hold";default:return"mode-idle"}}function N(e,t){let o=Number(e);return Number.isFinite(o)?o:typeof t!="string"?M:{idle:M,rect:T,rectification:T,manual:F,dist:O,distillation:O,mash:R,mashing:R,hold:z}[t.toLowerCase()]??M}var bt=3,Et=4,It=5,St=6,y={mode:M,modeStr:"idle",phase:0,phaseStr:"IDLE",power:{power:0},hydrometer:{abv:0,valid:!1},pump:{speedMlH:0,totalMl:0},valves:{water:!1,heads:!1,uno:!1,tails:!1},volumes:{heads:0,body:0,tails:0},equipment:{heaterPowerW:k},rectification:{feedVolumeL:20,feedAbvPercent:40,headsPercent:8,bodyPercent:84,tailsPercent:8,headsSpeedMlHKw:300,bodySpeedMlHKw:600,headsTargetMl:0,bodyTargetMl:0,tailsTargetMl:0},distillation:{speedMlH:0,headsVolumeMl:0,targetVolumeMl:0,endTempC:0,powerPercent:0},mashing:{active:!1,stepCount:0,currentStep:0,stepDurationSec:0,elapsedSec:0,remainingSec:0,stepName:""},hold:{active:!1,stepCount:0,currentStep:0,stepDurationSec:0,elapsedSec:0,remainingSec:0,targetTemp:0},progress:{phaseElapsedSec:0,phaseTargetSec:0,phaseRemainingSec:0,phasePercent:0}},te=null;function Ve(e){te=e}var We="ui.plannedAbvPercent",D=40,ze=!1;function ue(e){D=e}function Je(e){ze=e}function Ct(e,t=2){let o=String(e);for(;o.length<t;)o="0"+o;return o}function Y(e){if(!Number.isFinite(e)||e<0)return"0:00:00";let t=Math.floor(e/3600),o=Math.floor(e%3600/60),r=Math.floor(e%60);return`${t}:${Ct(o)}:${Ct(r)}`}function m(e,t=0){let o=Number(e);return Number.isFinite(o)?o:t}function C(e){let t=m(e,0);return t<0?0:t>100?100:t}function re(e){return String(e??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}function pe(e){let t=Math.max(0,Math.round(m(e,0)));return Y(t)}function J(e,t=40){let o=m(e,t);return o<0?0:o>100?100:o}function Bt(e){if(!e||typeof e!="object")return;let t=y;t.mode=N(e.mode??t.mode,e.modeStr??t.modeStr),e.modeStr!==void 0&&(t.modeStr=String(e.modeStr)),e.phase!==void 0&&(t.phase=m(e.phase,t.phase)),e.phaseStr!==void 0&&(t.phaseStr=String(e.phaseStr)),e.power&&typeof e.power=="object"&&e.power.power!==void 0&&(t.power.power=m(e.power.power,t.power.power)),e.hydrometer&&typeof e.hydrometer=="object"&&(e.hydrometer.abv!==void 0&&(t.hydrometer.abv=m(e.hydrometer.abv,t.hydrometer.abv)),e.hydrometer.valid!==void 0&&(t.hydrometer.valid=!!e.hydrometer.valid)),e.pump&&typeof e.pump=="object"&&(e.pump.speedMlH!==void 0&&(t.pump.speedMlH=m(e.pump.speedMlH,t.pump.speedMlH)),e.pump.totalMl!==void 0&&(t.pump.totalMl=m(e.pump.totalMl,t.pump.totalMl))),e.valves&&typeof e.valves=="object"&&(t.valves={...t.valves,...e.valves}),e.volumes&&typeof e.volumes=="object"&&(e.volumes.heads!==void 0&&(t.volumes.heads=m(e.volumes.heads,t.volumes.heads)),e.volumes.body!==void 0&&(t.volumes.body=m(e.volumes.body,t.volumes.body)),e.volumes.tails!==void 0&&(t.volumes.tails=m(e.volumes.tails,t.volumes.tails))),e.equipment&&typeof e.equipment=="object"&&e.equipment.heaterPowerW!==void 0&&(t.equipment.heaterPowerW=m(e.equipment.heaterPowerW,t.equipment.heaterPowerW)),e.rectification&&typeof e.rectification=="object"&&(t.rectification={...t.rectification,...e.rectification},!ze&&e.rectification.feedAbvPercent!==void 0&&ue(J(e.rectification.feedAbvPercent,D))),e.distillation&&typeof e.distillation=="object"&&(t.distillation={...t.distillation,...e.distillation}),e.mashing&&typeof e.mashing=="object"&&(t.mashing={...t.mashing,...e.mashing}),e.hold&&typeof e.hold=="object"&&(t.hold={...t.hold,...e.hold}),e.progress&&typeof e.progress=="object"&&(t.progress={...t.progress,...e.progress})}function Mt(e){if(!e||typeof e!="object")return;let t=y;(e.mode!==void 0||e.modeStr!==void 0)&&(t.mode=N(e.mode??t.mode,e.modeStr??t.modeStr)),e.modeStr!==void 0&&(t.modeStr=String(e.modeStr)),e.phase!==void 0&&(t.phase=m(e.phase,t.phase)),e.phaseStr!==void 0&&(t.phaseStr=String(e.phaseStr)),e.power!==void 0&&(t.power.power=m(e.power,t.power.power)),e.abv!==void 0&&(t.hydrometer.abv=m(e.abv,t.hydrometer.abv)),e.abv_valid!==void 0&&(t.hydrometer.valid=!!e.abv_valid),e.pump_speed!==void 0&&(t.pump.speedMlH=m(e.pump_speed,t.pump.speedMlH)),e.pump_volume!==void 0&&(t.pump.totalMl=m(e.pump_volume,t.pump.totalMl)),e.valves&&typeof e.valves=="object"&&(t.valves={...t.valves,...e.valves}),e.volume_heads!==void 0&&(t.volumes.heads=m(e.volume_heads,t.volumes.heads)),e.volume_body!==void 0&&(t.volumes.body=m(e.volume_body,t.volumes.body)),e.volume_tails!==void 0&&(t.volumes.tails=m(e.volume_tails,t.volumes.tails)),e.phase_elapsed_sec!==void 0&&(t.progress.phaseElapsedSec=m(e.phase_elapsed_sec,t.progress.phaseElapsedSec)),e.phase_target_sec!==void 0&&(t.progress.phaseTargetSec=m(e.phase_target_sec,t.progress.phaseTargetSec)),e.phase_remaining_sec!==void 0&&(t.progress.phaseRemainingSec=m(e.phase_remaining_sec,t.progress.phaseRemainingSec)),e.phase_percent!==void 0&&(t.progress.phasePercent=C(e.phase_percent)),e.mashing&&typeof e.mashing=="object"&&(t.mashing={...t.mashing,...e.mashing}),e.hold&&typeof e.hold=="object"&&(t.hold={...t.hold,...e.hold}),e.progress&&typeof e.progress=="object"&&(t.progress={...t.progress,...e.progress}),e.rectification&&typeof e.rectification=="object"&&(t.rectification={...t.rectification,...e.rectification}),e.distillation&&typeof e.distillation=="object"&&(t.distillation={...t.distillation,...e.distillation})}function Tt(e,t=null){let o=m(e.feedVolumeL,0),r=t===null?m(e.feedAbvPercent,0):J(t,m(e.feedAbvPercent,0)),n=Math.max(0,o*1e3*(r/100)),i=n*(m(e.headsPercent,0)/100),s=n*(m(e.bodyPercent,0)/100),a=n*(m(e.tailsPercent,0)/100);return{heads:i,body:s,tails:a}}function Pt(){try{let e=localStorage.getItem(We);e!==null&&(ue(J(e,D)),Je(!0))}catch(e){console.warn("planned ABV load failed:",e)}}function Lt(e){ue(J(e,D)),Je(!0);try{localStorage.setItem(We,D.toFixed(1))}catch(t){console.warn("planned ABV save failed:",t)}}function Q(){let e=y,t=Number(e.hydrometer.abv),o=Number.isFinite(t)&&t>0,r=J(t,D);return e.hydrometer.valid&&o?{value:r,source:"sensor"}:{value:D,source:"planned"}}function K(){let e=document.getElementById("abv"),t=document.getElementById("abv-source-dot");if(!e)return;let o=Q();o.source==="sensor"?e.textContent=`${o.value.toFixed(1)}%`:e.textContent=`~${o.value.toFixed(1)}%`,t&&(o.source==="sensor"?(t.classList.remove("abv-source-offline"),t.classList.add("abv-source-online"),t.title="Ареометр ONLINE (данные с датчика)"):(t.classList.remove("abv-source-online"),t.classList.add("abv-source-offline"),t.title="Ареометр OFF/нет данных (используется плановая крепость)"))}function Le(e){let t=document.getElementById("landing-mode-chip");if(t&&e.mode!==void 0){let i=N(e.mode,e.modeStr);t.textContent=A(i).toUpperCase(),t.className=`landing-chip ${ne(i)}`}let o=document.getElementById("landing-phase-chip");o&&e.phaseText!==void 0&&(o.textContent=`PHASE ${e.phaseText||"-"}`);let r=document.getElementById("landing-safety-chip");if(r&&e.safetyOk!==void 0&&(e.safetyOk?(r.textContent="SAFETY OK",r.className="landing-chip landing-chip-ok"):(r.textContent="SAFETY ALERT",r.className="landing-chip landing-chip-warn")),e.tCube!==void 0){let i=document.getElementById("landing-cube-value");i&&(i.textContent=`${e.tCube.toFixed(1)}°C`)}if(e.power!==void 0){let i=document.getElementById("landing-power-value");i&&(i.textContent=`${e.power.toFixed(0)} W`)}if(e.pressureCube!==void 0){let i=document.getElementById("landing-pressure-value");i&&(i.textContent=`${e.pressureCube.toFixed(1)} мм`)}if(e.pumpSpeed!==void 0){let i=document.getElementById("landing-pump-value");i&&(i.textContent=`${e.pumpSpeed.toFixed(0)} мл/ч`)}if(e.abv!==void 0){let i=document.getElementById("landing-abv-value");i&&(i.textContent=`${e.abv.toFixed(1)} %`)}if(e.waterIn!==void 0){let i=document.getElementById("landing-water-in");i&&(i.textContent=`${e.waterIn.toFixed(1)}°C`)}if(e.waterOut!==void 0){let i=document.getElementById("landing-water-out");i&&(i.textContent=`${e.waterOut.toFixed(1)}°C`)}if(e.voltage!==void 0){let i=document.getElementById("landing-voltage");i&&(i.textContent=`${e.voltage.toFixed(0)} V`)}let n=document.getElementById("landing-updated");n&&(n.textContent=new Date().toLocaleTimeString("ru-RU",{hour12:!1}))}var vn=2e3,fe=null;function ge(e=!1){fe||(e&&w(),fe=setInterval(w,vn))}function kt(){fe&&(clearInterval(fe),fe=null)}function ie(e,t,o){let r=e.getElementById(t);r&&(r.classList.toggle("valve-open",!!o),r.classList.toggle("valve-closed",!o))}async function Ft(e,t){let o=await fetch(e,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)});if(!o.ok){let r=await o.text();throw new Error(r||`HTTP ${o.status}`)}}async function wn(e,t,o){let n={water:"svg-valve-water",heads:"svg-valve-heads",uno:"svg-valve-uno"}[t];if(n){ie(e,n,o);try{await Ft("/api/manual/valves",{[t]:o}),y.valves={...y.valves,[t]:o},l(`Valve ${t}: ${o?"open":"closed"}`,"info")}catch(i){ie(e,n,!o),l(`Valve ${t}: request failed (${i.message})`,"error")}}}async function xn(){try{let t=Number(y?.power?.power||0)>10?0:60;await Ft("/api/manual/heater",{power:t}),l(`Heater set to ${t}% from scheme`,"info")}catch(e){l(`Heater control failed (${e.message})`,"error")}}function bn(e){let t=document.body?.getAttribute("data-theme")==="dark"?"dark":"light";if(e._appliedTheme===t)return;e._appliedTheme=t;let o=t==="dark",r=o?"#d5dbe4":"#000000",n=o?"#e8edf5":"#333333",i=o?"#2c3138":"#ffffff";e.querySelectorAll(".struct").forEach(s=>{s.style.stroke=r,s.style.fill=i}),e.querySelectorAll(".struct-line,.pipe,.jar,.valve").forEach(s=>{s.style.stroke=r}),e.querySelectorAll(".label-text,.indicator-text").forEach(s=>{s.style.fill=n}),e.querySelectorAll("[stroke]").forEach(s=>{let a=String(s.getAttribute("stroke")||"").trim().toLowerCase();(a==="#000"||a==="#000000"||a==="black")&&(s.style.stroke=o?r:"")})}function En(e){if(e._interactiveBound)return;e._interactiveBound=!0;let t=(n,i)=>{let s=e.getElementById(n);s&&(s.style.cursor="pointer",s.addEventListener("click",a=>{a.preventDefault(),a.stopPropagation();let d=!s.classList.contains("valve-open");wn(e,i,d)}))};t("svg-valve-water","water"),t("svg-valve-heads","heads"),t("svg-valve-uno","uno");let o=e.getElementById("svg-valve-tails");o&&(o.style.cursor="not-allowed",o.addEventListener("click",n=>{n.preventDefault(),n.stopPropagation(),l("Tails valve control is not available in current hardware","warning")}));let r=e.getElementById("zone-power-btn");r&&(r.style.cursor="pointer",r.addEventListener("click",n=>{n.preventDefault(),n.stopPropagation(),xn()}))}function ye(e){let t=document.querySelector(".operator-scheme");if(!t)return;let o=t.contentDocument;if(!o){t._schemeLoadPending||(t._schemeLoadPending=!0,t.addEventListener("load",()=>{t._schemeLoadPending=!1,ye(e)},{once:!0}));return}if(bn(o),En(o),e.temps){let c=(p,h)=>{let v=o.getElementById(p);v&&h!==void 0&&(v.textContent=h.toFixed(1))};c("txt-temp-cube",e.temps.cube),c("txt-temp-col-top",e.temps.columnTop),c("txt-temp-col-mid",e.temps.columnMiddle),c("txt-temp-node",e.temps.product),c("txt-temp-reflux",e.temps.reflux),c("txt-temp-tsa",e.temps.tsa),c("txt-water-in",e.temps.waterIn),c("txt-water-out",e.temps.waterOut);let f=o.getElementById("zone-reflux");if(f){let p=e.temps.columnMiddle||0;f.classList.toggle("condensing",p>70)}}let r;if(e.pressure&&e.pressure.cube!==void 0?r=e.pressure.cube:e.p_cube!==void 0&&(r=e.p_cube),r!==void 0){let c=o.getElementById("txt-pressure-cube");c&&(c.textContent=r.toFixed(1))}let n=o.getElementById("txt-abv");if(n){let c=Q();n.textContent=c.value.toFixed(1)+"%";let f=n.previousElementSibling;f&&(f.style.stroke=c.source==="sensor"?"#6610f2":"#7f8c8d",f.style.strokeWidth=c.source==="sensor"?"2":"1")}if(e.power&&e.power.power!==void 0){let c=o.getElementById("svg-heater");c&&(e.power.power>0?c.classList.add("heater-on"):c.classList.remove("heater-on"));let f=o.getElementById("anim-vapor");f&&(e.power.power>0?f.classList.add("vapor-active"):f.classList.remove("vapor-active"));let p=o.getElementById("anim-power-bar");if(p){let E=y&&y.equipment&&y.equipment.heaterPowerW?y.equipment.heaterPowerW:3e3,S=e.power.power,B=Math.min(1,Math.max(0,S/E));p.setAttribute("width",B*160)}let h=o.getElementById("txt-power-set");h&&e.power.setPercent!==void 0&&(h.textContent=e.power.setPercent.toFixed(0)+"%");let v=o.getElementById("txt-power-actual");v&&e.power.power!==void 0&&(v.textContent=e.power.power.toFixed(0)+"Вт")}let i=e.valves&&typeof e.valves=="object"?e.valves:y.valves;if(i){i.water!==void 0&&ie(o,"svg-valve-water",i.water),i.heads!==void 0&&ie(o,"svg-valve-heads",i.heads),i.uno!==void 0&&ie(o,"svg-valve-uno",i.uno),i.tails!==void 0&&ie(o,"svg-valve-tails",i.tails);let c=o.getElementById("anim-water-flow");c&&i.water!==void 0&&(i.water?c.classList.add("flowing"):c.classList.remove("flowing"))}let s=o.getElementById("anim-liquid-level");if(s&&y){let c=y,f=(c.rectification?.feedVolumeL||20)*1e3,p=c.pump?.totalMl||0,h=1;f>0&&(h=Math.max(0,Math.min(1,(f-p)/f)));let v=600-h*120,E=`M65,${v} L295,${v} L295,600 Q295,615 280,615 L80,615 Q65,615 65,600 Z`;s.setAttribute("d",E)}if(e.pump&&e.pump.speedMlH!==void 0||i){let c=y.pump.speedMlH||0,f=o.getElementById("drop-heads"),p=o.getElementById("drop-uno"),h=o.getElementById("svg-valve-heads"),v=o.getElementById("svg-valve-uno"),E=(_,ee)=>{if(_)if(c>0&&ee){let P=180/c;P<.1&&(P=.1),P>2&&(P=2),_.style.animation=`drop-fall ${P.toFixed(2)}s infinite linear`}else _.style.animation="none",_.style.opacity="0"},S=o.getElementById("svg-valve-tails"),B=o.getElementById("drop-tails");E(f,h&&h.classList.contains("valve-open")),E(p,v&&v.classList.contains("valve-open")),E(B,S&&S.classList.contains("valve-open"));let I=o.getElementById("txt-pump-speed");I&&(I.textContent=c.toFixed(0)+" мл/ч");let V=o.getElementById("zone-pump");V&&V.classList.toggle("pump-running",c>0)}let a=o.getElementById("txt-phase");if(a&&e.phase!==void 0){let c=["ОЖИДАНИЕ","НАГРЕВ","СТАБИЛ.","ГОЛОВЫ","ПРОДУВКА","ТЕЛО","ХВОСТЫ","ФИНИШ","ОШИБКА"],f=["#7f8c8d","#e67e22","#f1c40f","#e74c3c","#3498db","#2ecc71","#9b59b6","#27ae60","#c0392b"],p=Number(e.phase);p>=0&&p<c.length&&(a.textContent=c[p],a.setAttribute("fill",f[p]))}if(y){let c=y,f=c.volumes?.heads||0,p=c.rectification?.headsTargetMl||0;p===0&&c.rectification?.feedVolumeL&&(p=c.rectification.feedVolumeL*1e3*.4*.05),p===0&&(p=300);let h=Math.min(1,f/p),v=96,E=v*h,S=o.getElementById("anim-liquid-heads");S&&(S.setAttribute("y",v-E),S.setAttribute("height",E));let B=c.volumes?.body||0,I=c.rectification?.bodyTargetMl||0;I===0&&c.rectification?.feedVolumeL&&(I=c.rectification.feedVolumeL*1e3*.4*.4),I===0&&(I=3e3);let V=Math.min(1,B/I),_=117,ee=_*V,P=o.getElementById("anim-liquid-body");P&&(P.setAttribute("y",_-ee),P.setAttribute("height",ee));let yn=c.volumes?.tails||0,le=c.rectification?.tailsTargetMl||0;le===0&&c.rectification?.feedVolumeL&&(le=c.rectification.feedVolumeL*1e3*.4*.1),le===0&&(le=800);let hn=Math.min(1,yn/le),gt=95,yt=gt*hn,_e=o.getElementById("anim-liquid-tails");_e&&(_e.setAttribute("y",gt-yt),_e.setAttribute("height",yt))}let d=o.getElementById("anim-condensate"),u=o.getElementById("svg-heater"),g=o.getElementById("anim-water-flow");if(d&&u&&g){let c=u.classList.contains("heater-on"),f=g.classList.contains("flowing");c&&f?d.classList.add("condensing"):d.classList.remove("condensing")}}function In(e){let t=document.getElementById("mode-runtime-bars");if(t){if(!e.length){t.innerHTML="";return}t.innerHTML=e.map(o=>{let r=C(o.percent),n=re(o.label||"Этап"),i=o.stateClass?` ${re(o.stateClass)}`:"",s=re(o.primary||""),a=re(o.metaLeft||""),d=re(o.metaRight||"");return`
+            <div class="operator-runtime-track${i}">
+                <div class="operator-runtime-head">
+                    <span>${n}</span>
+                    <strong>${s}</strong>
+                </div>
+                <div class="operator-runtime-bar">
+                    <div class="operator-runtime-fill" style="width:${r.toFixed(1)}%"></div>
+                </div>
+                <div class="operator-runtime-meta">
+                    <span>${a}</span>
+                    <span>${d}</span>
+                </div>
+            </div>
+        `}).join("")}}function Sn(){let e=y,t=Math.max(1,m(e.equipment.heaterPowerW,k)),o=Math.max(0,m(e.power.power,0)),r=C(o/t*100),n=document.getElementById("rect-power-display"),i=document.getElementById("manual-power-display"),s=document.getElementById("manual-speed-display"),a=document.getElementById("manual-heads-display"),d=document.getElementById("manual-body-display"),u=document.getElementById("manual-tails-display");n&&(n.textContent=`${r.toFixed(0)} %`),i&&(i.textContent=`${r.toFixed(0)} %`),s&&(s.textContent=`${m(e.pump.speedMlH,0).toFixed(0)} мл/ч`),a&&(a.textContent=`${m(e.volumes.heads,0).toFixed(0)} мл`),d&&(d.textContent=`${m(e.volumes.body,0).toFixed(0)} мл`),u&&(u.textContent=`${m(e.volumes.tails,0).toFixed(0)} мл`)}function se(){let e=document.getElementById("mode-runtime-title"),t=document.getElementById("mode-runtime-caption"),o=document.getElementById("mode-runtime-manual");if(!e||!t)return;let r=y,n=N(r.mode,r.modeStr),i=m(r.phase,0),s=[];if(n===T){e.textContent="Прогресс авто-ректификации";let d=Q(),u=d.source==="sensor"?"датчик":"план";t.textContent=`Фаза: ${r.phaseStr||i||"-"} • крепость расчета ${d.value.toFixed(1)}% (${u})`;let g=Tt(r.rectification,d.value),c=Math.max(.1,m(r.equipment.heaterPowerW,k)/1e3),f=m(r.rectification.headsSpeedMlHKw,0)*c,p=m(r.rectification.bodySpeedMlHKw,0)*c,h=Math.max(0,p/2),v=m(r.rectification.headsTargetMl,0)>0?m(r.rectification.headsTargetMl,0):g.heads,E=m(r.rectification.bodyTargetMl,0)>0?m(r.rectification.bodyTargetMl,0):g.body,S=m(r.rectification.tailsTargetMl,0)>0?m(r.rectification.tailsTargetMl,0):g.tails;[{key:"heads",label:"Головы",target:v,speed:f,value:m(r.volumes.heads,0),pending:i<bt},{key:"body",label:"Тело",target:E,speed:p,value:m(r.volumes.body,0),pending:i<It||i===Et},{key:"tails",label:"Хвосты",target:S,speed:h,value:m(r.volumes.tails,0),pending:i<St}].forEach(B=>{let I=Math.max(0,B.target),V=Math.max(0,B.value),_=I>0?C(V/I*100):0,ee=Math.max(0,I-V),P=B.speed>0&&ee>0?ee/B.speed*3600:0;s.push({label:B.label,percent:_,primary:I>0?`${(100-_).toFixed(0)}% осталось`:"Цель не задана",metaLeft:I>0?`${V.toFixed(0)} / ${I.toFixed(0)} мл`:`${V.toFixed(0)} мл`,metaRight:P>0?`~${pe(P)}`:B.pending?"ожидание":"—",stateClass:B.pending?"is-pending":""})})}else if(n===O){e.textContent="Прогресс дистилляции";let d=Math.max(0,m(r.distillation.targetVolumeMl,0)),u=Math.max(0,m(r.distillation.speedMlH,0)),g=Math.max(0,m(r.pump.totalMl,0)),c=d>0?C(g/d*100):C(r.progress.phasePercent),f=Math.max(0,d-g),p=d>0&&u>0?f/u*3600:m(r.progress.phaseRemainingSec,0);t.textContent=d>0?`Цель ${d.toFixed(0)} мл, скорость ${u.toFixed(0)} мл/ч`:`Фаза: ${r.phaseStr||i||"-"}`,s.push({label:"Перегон",percent:c,primary:`${(100-c).toFixed(0)}% осталось`,metaLeft:d>0?`${g.toFixed(0)} / ${d.toFixed(0)} мл`:`${g.toFixed(0)} мл`,metaRight:p>0?`~${pe(p)}`:"—",stateClass:d>0?"":"is-waiting"})}else if(n===R){e.textContent="Прогресс затирки";let d=Math.max(0,Math.round(m(r.mashing.stepCount,0))),u=Math.max(0,Math.round(m(r.mashing.currentStep,0))),g=Math.max(0,m(r.mashing.elapsedSec,0)),c=Math.max(0,m(r.mashing.stepDurationSec,0)),f=c>0?C(g/c*100):0;t.textContent=d>0?`Шаг ${Math.min(u+1,d)} из ${d}`:"Ожидание профиля затирки";for(let p=0;p<d;p+=1){let h=0,v="ожидание",E="—",S="is-pending";p<u?(h=100,v="завершено",S=""):p===u&&(h=f,v=`${(100-h).toFixed(0)}% осталось`,E=`~${pe(r.mashing.remainingSec)}`,S=""),s.push({label:p===u&&r.mashing.stepName?r.mashing.stepName:`Шаг ${p+1}`,percent:h,primary:v,metaLeft:p===u?`${g.toFixed(0)} / ${c.toFixed(0)} с`:"",metaRight:E,stateClass:S})}}else if(n===z){e.textContent="Режим выдержки";let d=Math.max(0,m(r.hold.stepDurationSec,0)),u=Math.max(0,m(r.hold.elapsedSec,0)),g=d>0?C(u/d*100):C(r.progress.phasePercent),c=d>u?d-u:m(r.progress.phaseRemainingSec,0);t.textContent=`Цель ${m(r.hold.targetTemp,0).toFixed(1)}°C`,s.push({label:"Обратный отсчет",percent:g,primary:`${pe(c)} осталось`,metaLeft:d>0?`${u.toFixed(0)} / ${d.toFixed(0)} с`:"",metaRight:`шаг ${Math.round(m(r.hold.currentStep,0))+1}`,stateClass:""})}else if(n===F){e.textContent="Ручная ректификация",t.textContent="Параметры ниже редактируются нажатием на плитку";let d=Math.max(0,m(r.volumes.heads,0)),u=Math.max(0,m(r.volumes.body,0)),g=Math.max(0,m(r.volumes.tails,0)),c=Math.max(1,d+u+g);[{label:"Головы",value:d},{label:"Тело",value:u},{label:"Хвосты",value:g}].forEach(f=>{let p=C(f.value/c*100);s.push({label:f.label,percent:p,primary:`${f.value.toFixed(0)} мл`,metaLeft:`доля ${p.toFixed(0)}%`,metaRight:"",stateClass:""})})}else e.textContent="Прогресс режима",t.textContent="Ожидание запуска процесса",s.push({label:"Нет активного режима",percent:0,primary:"0% выполнено",metaLeft:"",metaRight:"",stateClass:"is-pending"});In(s),Sn(),o&&(o.style.display=n===F?"grid":"none");let a=document.getElementById("mode-runtime-rect");a&&(a.style.display=n===T?"grid":"none")}function $t(){document.querySelectorAll("[data-edit-param]").forEach(o=>{o.addEventListener("click",()=>{let r=o.getAttribute("data-edit-param");r&&openRuntimeEditModal(r)})});let t=document.getElementById("runtime-edit-modal");t&&t.addEventListener("click",o=>{o.target===t&&closeRuntimeEditModal()})}async function w(){try{let e=await fetch("/api/status");if(!e.ok){let o=`✗ Статус недоступен (/api/status): HTTP ${e.status}`;l(o,"error"),ce(0),me(!1),ke();return}let t=await e.json();ce(N(t.mode,t.modeStr)),me(!!t.paused),t.equipment&&t.equipment.heaterPowerW&&(xt(t.equipment.heaterPowerW),Bn());try{Cn(t)}catch(o){console.error("updateUIFromStatus error:",o)}ke()}catch(e){console.error("Ошибка загрузки статуса:",e)}}var he=null,Qe=null;function Cn(e){let t="-";Bt(e);let o=e.modeStr!==void 0||e.mode!==void 0?N(e.mode,e.modeStr):L,r=e.phaseStr||"";if(typeof window.showNotification=="function"&&(he!==null&&he!==o?o===M?window.showNotification("Процесс завершён",{body:`Режим: ${A(he)}`}):he===M&&window.showNotification("Процесс запущен",{body:`Режим: ${A(o)}`}):Qe!==null&&Qe!==r&&o!==M&&r&&r!=="-"&&window.showNotification("Смена этапа",{body:`Новый этап: ${r}`})),he=o,Qe=r,e.modeStr!==void 0||e.mode!==void 0){let n=document.getElementById("mode");if(n){let i=N(e.mode,e.modeStr);n.textContent=A(i).toUpperCase(),n.className=`value ${ne(i)}`}}if(e.phaseStr!==void 0){let n=document.getElementById("phase");n&&(t=e.phaseStr.toUpperCase()||"-",n.textContent=t)}if(Ht(e),e.temps){if(e.temps.cube!==void 0){let n=document.getElementById("temp-cube");n&&(n.textContent=e.temps.cube.toFixed(1)+"°C")}if(e.temps.columnBottom!==void 0){let n=document.getElementById("temp-column-bottom");n&&(n.textContent=e.temps.columnBottom.toFixed(1)+"°C")}if(e.temps.columnTop!==void 0){let n=document.getElementById("temp-column-top");n&&(n.textContent=e.temps.columnTop.toFixed(1)+"°C")}if(e.temps.reflux!==void 0){let n=document.getElementById("temp-reflux");n&&(n.textContent=e.temps.reflux.toFixed(1)+"°C")}if(e.temps.tsa!==void 0){let n=document.getElementById("temp-tsa");n&&(n.textContent=e.temps.tsa.toFixed(1)+"°C")}}if(e.pressure){if(e.pressure.cube!==void 0){let n=document.getElementById("pressure-cube");n&&(n.textContent=e.pressure.cube.toFixed(1)+" мм рт.ст.")}if(e.pressure.atm!==void 0){let n=document.getElementById("pressure-atm");n&&(n.textContent=e.pressure.atm.toFixed(1)+" гПа")}}if(e.power){if(e.power.voltage!==void 0){let n=document.getElementById("power-voltage");n&&(n.textContent=e.power.voltage.toFixed(1)+" V")}if(e.power.current!==void 0){let n=document.getElementById("power-current");n&&(n.textContent=e.power.current.toFixed(2)+" A")}if(e.power.power!==void 0){let n=document.getElementById("power-power");n&&(n.textContent=e.power.power.toFixed(0)+" W")}if(e.power.energy!==void 0){let n=document.getElementById("power-energy");n&&(n.textContent=e.power.energy.toFixed(3)+" кВт·ч")}if(e.power.frequency!==void 0){let n=document.getElementById("power-frequency");n&&(n.textContent=e.power.frequency.toFixed(1)+" Гц")}if(e.power.pf!==void 0){let n=document.getElementById("power-pf");n&&(n.textContent=e.power.pf.toFixed(2))}}if(e.pump){if(e.pump.speedMlH!==void 0){let n=document.getElementById("pump-speed");n&&(n.textContent=e.pump.speedMlH.toFixed(0)+" мл/ч")}if(e.pump.totalMl!==void 0){let n=document.getElementById("pump-volume");n&&(n.textContent=e.pump.totalMl.toFixed(0)+" мл")}}if(e.volumes){if(e.volumes.heads!==void 0){let n=document.getElementById("volume-heads");n&&(n.textContent=e.volumes.heads.toFixed(0)+" мл")}if(e.volumes.body!==void 0){let n=document.getElementById("volume-body");n&&(n.textContent=e.volumes.body.toFixed(0)+" мл")}if(e.volumes.tails!==void 0){let n=document.getElementById("volume-tails");n&&(n.textContent=e.volumes.tails.toFixed(0)+" мл")}}if(K(),e.uptime!==void 0){let n=document.getElementById("uptime");n&&(n.textContent=Y(e.uptime));let i=document.getElementById("operator-uptime");i&&(i.textContent=Y(e.uptime))}Le({mode:e.mode,modeStr:e.modeStr,phaseText:t,safetyOk:e.safetyOk,tCube:e.temps?.cube,power:e.power?.power,pressureCube:e.pressure?.cube,pumpSpeed:e.pump?.speedMlH,abv:Q().value,waterIn:e.temps?.waterIn,waterOut:e.temps?.waterOut,voltage:e.power?.voltage}),ye(e),se()}function ke(){let e=L===M,t=document.querySelector('button[onclick="startRectification()"]'),o=document.querySelector('button[onclick="startManual()"]'),r=document.querySelector('button[onclick="startDistillation()"]'),n=document.querySelector('button[onclick="startMashing()"]'),i=document.querySelector('button[onclick="startHold()"]');[{mode:T,button:t},{mode:F,button:o},{mode:O,button:r},{mode:R,button:n},{mode:z,button:i}].forEach(({mode:g,button:c})=>{if(!c)return;c.dataset.baseText||(c.dataset.baseText=c.textContent.trim());let f=L===g,p=!e&&!f;c.disabled=p,c.classList.toggle("btn-disabled",p),c.classList.toggle("btn-active-mode",f),c.textContent=f?`Running: ${c.dataset.baseText}`:c.dataset.baseText});let a=document.querySelector('button[onclick="stopProcess()"]'),d=document.querySelector('button[onclick="pauseProcess()"]'),u=document.querySelector('button[onclick="resumeProcess()"]');if(a&&(a.disabled=e,a.classList.toggle("btn-disabled",e)),d){let g=e||Pe;d.disabled=g,d.classList.toggle("btn-disabled",g)}if(u){let g=e||!Pe;u.disabled=g,u.classList.toggle("btn-disabled",g)}}function Bn(){let e=document.getElementById("heater-power"),t=document.querySelector('label[for="heater-power"]');e&&(e.max=k,e.step=50),t&&(t.innerHTML=`Мощность нагрева: <span id="heater-value">0</span> Вт (макс ${k})`)}function Ht(e){let t=document.getElementById("device-id");t&&e.deviceId&&(t.textContent=String(e.deviceId));let o=document.getElementById("cloud-enabled"),r=document.getElementById("cloud-tunnel-url"),n=document.getElementById("cloud-conn-status"),i=document.getElementById("cloud-auth-status"),s=document.getElementById("cloud-claim-status");if(e.cloud&&(o&&typeof e.cloud.enabled=="boolean"&&(o.checked=e.cloud.enabled),r&&typeof e.cloud.tunnelUrl=="string"&&document.activeElement!==r&&(r.value||(r.value=e.cloud.tunnelUrl)),n&&(n.textContent=e.cloud.connected?"online":"offline"),i&&(i.textContent=e.cloud.authenticated?"ok":"no"),s))if(e.cloud.claimActive&&e.cloud.claimCode){let a=null;e.cloud.claimExpiresAt!==void 0&&e.uptime!==void 0&&(a=Math.max(0,Math.round(Number(e.cloud.claimExpiresAt)-Number(e.uptime)))),s.textContent=a!==null?`${e.cloud.claimCode} (ещё ~${a}с)`:String(e.cloud.claimCode)}else s.textContent="нет"}async function At(){let e=document.getElementById("cloud-enabled"),t=document.getElementById("cloud-tunnel-url"),o=!!e?.checked,r=(t?.value||"").trim();try{l("📤 Сохранение настроек облака...","info");let n=await fetch("/api/cloud/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:o,tunnelUrl:r})});if(!n.ok){let i=await n.text();l("✗ Ошибка сохранения облака: "+i,"error");return}l("✓ Настройки облака сохранены","success"),setTimeout(w,500)}catch(n){l("✗ Ошибка сети: "+n.message,"error")}}async function Nt(){try{l("📤 Генерация PIN для привязки...","info");let e=await fetch("/api/cloud/claim",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ttlSeconds:600})});if(!e.ok){let o=await e.text();l("✗ Ошибка генерации PIN: "+o,"error");return}let t=await e.json();l("✓ PIN сгенерирован: "+(t.claimCode||""),"success"),setTimeout(w,200)}catch(e){l("✗ Ошибка сети: "+e.message,"error")}}async function Fe(){let e=document.getElementById("discovered-devices");if(e){e.innerHTML='<p class="info-text" style="margin: 0; color: var(--text-secondary);">Загрузка доступных устройств...</p>';try{let t=await fetch("/api/web/devices/discovered",{credentials:"same-origin"});if(!t.ok){let i=await t.text();e.innerHTML=`<p class="info-text" style="margin: 0; color: var(--text-secondary);">Ошибка: ${t.status}</p>`,console.error("Failed to load discovered devices:",t.status,i);return}let r=(await t.json()).devices||[];if(!r.length){e.innerHTML='<p class="info-text" style="margin: 0; color: var(--text-secondary);">Нет доступных устройств. Сгенерируйте PIN на устройстве и обновите.</p>';return}let n=document.createElement("div");n.style.display="flex",n.style.flexDirection="column",n.style.gap="8px",r.forEach(i=>{let s=document.createElement("div");s.style.display="flex",s.style.alignItems="center",s.style.justifyContent="space-between",s.style.gap="10px",s.style.padding="8px 10px",s.style.border="1px solid var(--border-color)",s.style.borderRadius="6px",s.style.background="var(--bg-primary)";let a=document.createElement("div");a.style.display="flex",a.style.flexDirection="column";let d=document.createElement("div");d.style.fontWeight="600",d.textContent=i.deviceId;let u=document.createElement("div");u.style.fontSize="0.85em",u.style.color="var(--text-secondary)";let g=i.lastSeenAt?new Date(i.lastSeenAt).toLocaleString("ru-RU"):"—",c=i.expiresAt?new Date(i.expiresAt).toLocaleString("ru-RU"):"—";u.textContent=`lastSeen: ${g} | expires: ${c}`,a.appendChild(d),a.appendChild(u);let f=document.createElement("button");f.className="btn btn-sm",f.textContent="Выбрать",f.onclick=()=>{let p=document.getElementById("claim-device-id"),h=document.getElementById("claim-device-pin");p&&(p.value=i.deviceId||""),h&&h.focus()},s.appendChild(a),s.appendChild(f),n.appendChild(s)}),e.innerHTML="",e.appendChild(n)}catch(t){console.error("loadDiscoveredDevices error:",t),e.innerHTML='<p class="info-text" style="margin: 0; color: var(--text-secondary);">Ошибка загрузки списка</p>'}}}async function Dt(){let e=document.getElementById("claim-device-id"),t=document.getElementById("claim-device-pin"),o=(e?.value||"").trim(),r=(t?.value||"").trim();if(!o||!r){alert("Введите Device ID и PIN");return}try{let n=await fetch("/api/web/devices/claim",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json; charset=utf-8"},body:JSON.stringify({deviceId:o,claimCode:r})}),i=await n.text(),s=null;try{s=JSON.parse(i)}catch{}if(!n.ok){let a=s&&(s.error||s.message)?s.error||s.message:i;alert(`Ошибка привязки: ${a}`);return}alert("Устройство привязано и добавлено в аккаунт"),t&&(t.value=""),await X(),await Fe()}catch(n){console.error("claimDeviceToAccount error:",n),alert("Ошибка сети при привязке")}}var $=null,ve=[];async function X(){try{let e=await fetch("/api/web/esp32/devices",{credentials:"same-origin"});if(!e.ok){let n=await e.text();if(console.error("Failed to load devices:",e.status,n),e.status===401){let i=document.getElementById("esp32-device-select");i&&(i.innerHTML='<option value="">Требуется авторизация</option>');return}throw new Error("Failed to load devices: "+e.status)}ve=(await e.json()).devices||[];let o=document.getElementById("esp32-device-select");if(!o||(o.innerHTML='<option value="">-- Выберите устройство --</option>',ve.length===0))return;ve.forEach(n=>{let i=document.createElement("option");i.value=n.id;let s=n.tunnelEnabled?` ☁️${n.tunnelStatus?" "+n.tunnelStatus:""}`:"";i.textContent=n.name+(n.is_active?" (активно)":"")+s,o.appendChild(i)});let r=ve.find(n=>n.is_active);r&&(o.value=r.id,$e())}catch(e){console.error("Error loading ESP32 devices:",e);let t=document.getElementById("esp32-device-select");t&&(t.innerHTML='<option value="">Ошибка загрузки</option>')}}async function $e(){let e=document.getElementById("esp32-device-select");if(!e||!e.value){document.getElementById("esp32-device-form").style.display="none";return}$=parseInt(e.value);let t=ve.find(o=>o.id===$);if(t)document.getElementById("esp32-device-name").value=t.name||"",document.getElementById("esp32-host").value=t.host||"",document.getElementById("esp32-port").value=t.port||80,document.getElementById("esp32-use-https").checked=t.useHttps||!1,document.getElementById("esp32-username").value=t.username||"",document.getElementById("esp32-password").value="",document.getElementById("esp32-timeout").value=t.timeout||5,document.getElementById("esp32-enabled").checked=!0,we(),document.getElementById("esp32-device-form").style.display="block",document.getElementById("esp32-activate-btn").style.display=t.is_active?"none":"inline-block",document.getElementById("esp32-delete-btn").style.display="inline-block";else try{let o=await fetch(`/api/web/esp32/devices/${$}`);if(!o.ok)throw new Error("Failed to load device");let n=(await o.json()).device;document.getElementById("esp32-device-name").value=n.name||"",document.getElementById("esp32-host").value=n.host||"",document.getElementById("esp32-port").value=n.port||80,document.getElementById("esp32-use-https").checked=n.useHttps||!1,document.getElementById("esp32-username").value=n.username||"",document.getElementById("esp32-password").value="",document.getElementById("esp32-timeout").value=n.timeout||5,document.getElementById("esp32-enabled").checked=!0,we(),document.getElementById("esp32-device-form").style.display="block",document.getElementById("esp32-activate-btn").style.display=n.is_active?"none":"inline-block",document.getElementById("esp32-delete-btn").style.display="inline-block"}catch(o){console.error("Error loading device:",o),alert("Ошибка загрузки устройства")}}function _t(){$=null,document.getElementById("esp32-device-select").value="",document.getElementById("esp32-device-name").value="",document.getElementById("esp32-host").value="",document.getElementById("esp32-port").value="80",document.getElementById("esp32-use-https").checked=!1,document.getElementById("esp32-username").value="",document.getElementById("esp32-password").value="",document.getElementById("esp32-timeout").value="5",document.getElementById("esp32-enabled").checked=!1,document.getElementById("esp32-device-form").style.display="block",document.getElementById("esp32-activate-btn").style.display="none",document.getElementById("esp32-delete-btn").style.display="none",we()}async function Ot(){await X()}function we(){let e=document.getElementById("esp32-enabled").checked,t=document.getElementById("esp32-fields");t&&(t.style.display=e?"block":"none")}async function Ke(){let e=document.getElementById("esp32-device-name").value.trim();if(!e){alert("Укажите название устройства");return}let t={name:e,enabled:document.getElementById("esp32-enabled").checked,host:document.getElementById("esp32-host").value.trim(),port:parseInt(document.getElementById("esp32-port").value)||80,useHttps:document.getElementById("esp32-use-https").checked,username:document.getElementById("esp32-username").value.trim(),password:document.getElementById("esp32-password").value.trim(),timeout:parseInt(document.getElementById("esp32-timeout").value)||5};if(t.enabled&&!t.host){alert("Укажите адрес ESP32");return}try{let o;if($?(t.id=$,o=await fetch(`/api/web/esp32/devices/${$}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)})):(t.is_active=!0,o=await fetch("/api/web/esp32/devices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)})),!o.ok){let n=await o.json();throw new Error(n.error||"Failed to save device")}let r=await o.json();alert("Устройство сохранено успешно!"),await X(),t.password&&(document.getElementById("esp32-password").value="")}catch(o){console.error("Error saving ESP32 device:",o),alert("Ошибка сохранения устройства: "+o.message)}}async function Rt(){await Ke()}async function jt(){if(!$){alert("Выберите устройство");return}try{let e=await fetch(`/api/web/esp32/devices/${$}/activate`,{method:"POST"});if(!e.ok){let t=await e.json();throw new Error(t.error||"Failed to activate device")}alert("Устройство активировано!"),await X(),$e()}catch(e){console.error("Error activating device:",e),alert("Ошибка активации устройства: "+e.message)}}async function Ut(){if(!$){alert("Выберите устройство");return}if(confirm("Удалить это устройство?"))try{let e=await fetch(`/api/web/esp32/devices/${$}`,{method:"DELETE"});if(!e.ok){let t=await e.json();throw new Error(t.error||"Failed to delete device")}alert("Устройство удалено"),$=null,document.getElementById("esp32-device-select").value="",document.getElementById("esp32-device-form").style.display="none",await X()}catch(e){console.error("Error deleting device:",e),alert("Ошибка удаления устройства: "+e.message)}}async function qt(){let e=document.getElementById("esp32-test-result");if(e){e.style.display="block",e.innerHTML="Проверка подключения...",e.style.background="var(--bg-secondary)",e.style.color="var(--text-primary)";try{let o=await(await fetch("/api/web/esp32/test",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin"})).json();o.success?(e.style.background="rgba(40, 167, 69, 0.2)",e.style.color="#28a745",e.style.border="1px solid #28a745",e.innerHTML="✓ "+(o.message||"Подключение успешно!")):(e.style.background="rgba(220, 53, 69, 0.2)",e.style.color="#dc3545",e.style.border="1px solid #dc3545",e.innerHTML="✗ "+(o.error||"Ошибка подключения"))}catch(t){console.error("Error testing ESP32 connection:",t),e.style.background="rgba(220, 53, 69, 0.2)",e.style.color="#dc3545",e.style.border="1px solid #dc3545",e.innerHTML="✗ Ошибка: "+t.message}}}document.addEventListener("DOMContentLoaded",function(){let e=document.getElementById("compare-modal");e&&e.addEventListener("click",function(t){t.target===e&&closeCompareModal()})});async function Vt(){try{let e=await fetch("/api/web/user",{credentials:"same-origin"});if(!e.ok){let r=await e.text();if(console.error("Failed to load user info:",e.status,r),e.status===401){let n=document.getElementById("current-username");n&&(n.textContent="Не авторизован");return}throw new Error("Failed to load user info: "+e.status)}let t=await e.json(),o=document.getElementById("current-username");o&&(o.textContent=t.username||"Неизвестно")}catch(e){console.error("Error loading user info:",e);let t=document.getElementById("current-username");t&&(t.textContent="Ошибка загрузки")}}function Wt(){let e=document.getElementById("user-menu");e&&(e.style.display=e.style.display==="none"?"block":"none")}document.addEventListener("click",function(e){let t=document.getElementById("user-info"),o=document.getElementById("user-menu");o&&t&&!t.contains(e.target)&&!o.contains(e.target)&&(o.style.display="none")});async function zt(){try{(await fetch("/api/web/user/logout")).ok?window.location.href="/login":alert("Ошибка выхода из системы")}catch(e){console.error("Error logging out:",e),alert("Ошибка выхода из системы")}}async function Jt(){try{await fetch("/api/web/user/logout",{credentials:"same-origin"})}catch(e){console.warn("Switch account: logout request failed, redirecting to login anyway:",e)}window.location.href="/login?switch=1"}function Qt(e){if(document.getElementById("memory-stats").style.display==="none")return;let o=n=>n<1024?n+" B":n<1024*1024?(n/1024).toFixed(1)+" KB":(n/(1024*1024)).toFixed(1)+" MB",r=e.heap_total-e.heap_free;document.getElementById("mem-heap-used").textContent=o(r),document.getElementById("mem-heap-total").textContent=o(e.heap_total),document.getElementById("mem-heap-pct").textContent=e.heap_used_pct.toFixed(1)+"%",document.getElementById("mem-psram-free").textContent=o(e.psram_free),document.getElementById("mem-psram-total").textContent=o(e.psram_total),document.getElementById("mem-flash-pct").textContent=e.flash_used_pct.toFixed(1)+"%"}function Kt(){let e=document.getElementById("show-memory-stats"),t=document.getElementById("memory-stats");e.checked?(t.style.display="block",localStorage.setItem("showMemoryStats","true")):(t.style.display="none",localStorage.setItem("showMemoryStats","false"))}function Gt(){let e=localStorage.getItem("showMemoryStats")==="true",t=document.getElementById("show-memory-stats"),o=document.getElementById("memory-stats");t&&(t.checked=e),o&&(o.style.display=e?"block":"none")}function Yt(e){document.body.setAttribute("data-theme",e),localStorage.setItem("theme",e),G&&G.updateOptions({theme:{mode:e}}),l(`🌓 Тема изменена: ${e}`,"info")}function Xt(){let e=localStorage.getItem("theme")||"light";document.body.setAttribute("data-theme",e)}function xe(){let e=document.getElementById("top-menu-dropdown"),t=document.getElementById("top-menu-toggle");e&&e.classList.remove("open"),t&&t.setAttribute("aria-expanded","false")}function Zt(){let e=document.getElementById("top-menu-dropdown"),t=document.getElementById("top-menu-toggle");if(!e||!t)return;if(!window.matchMedia("(max-width: 768px)").matches){e.style.position="",e.style.left="",e.style.right="",e.style.top="",e.style.width="",e.style.maxWidth="";return}let r=t.getBoundingClientRect(),n=10,i=Math.max(n,Math.round(r.bottom+8));e.style.position="fixed",e.style.left=`${n}px`,e.style.right=`${n}px`,e.style.top=`${i}px`,e.style.width="auto",e.style.maxWidth="none"}function eo(e){e&&e.stopPropagation();let t=document.getElementById("top-menu-dropdown"),o=document.getElementById("top-menu-toggle");if(!t||!o)return;let r=!t.classList.contains("open");r&&Zt(),t.classList.toggle("open",r),o.setAttribute("aria-expanded",r?"true":"false")}function to(){document.addEventListener("click",e=>{let t=document.getElementById("top-menu-dropdown"),o=document.getElementById("top-menu-toggle");if(!t||!o)return;let r=e.target;t.contains(r)||o.contains(r)||xe()}),document.addEventListener("keydown",e=>{e.key==="Escape"&&xe()}),window.addEventListener("resize",()=>{let e=document.getElementById("top-menu-dropdown");e&&e.classList.contains("open")&&Zt()})}function oo(e){H.has(e)?H.delete(e):H.add(e),Mn()}function Mn(){let e=document.getElementById("compare-processes-btn");e&&(e.disabled=H.size<2,e.textContent=`📊 Сравнить выбранные (${H.size})`)}function no(e){let t=document.getElementById("hist-stat-total"),o=document.getElementById("hist-stat-completed"),r=document.getElementById("hist-stat-time"),n=document.getElementById("hist-stat-energy");if(!t)return;let i=e.length,s=e.filter(u=>u.status==="completed").length,a=e.reduce((u,g)=>u+(g.duration||0),0),d=0;t.textContent=i,o.textContent=s,r.textContent=(a/3600).toFixed(1)+" ч",n.textContent=d.toFixed(1)+" кВт·ч"}async function ro(){if(confirm("Удалить ВСЮ историю процессов? Это действие необратимо!"))try{if(!(await fetch("/api/history",{method:"DELETE",headers:{"Content-Type":"application/json"}})).ok)throw new Error("Failed to clear history");l("🗑️ История полностью очищена","info"),await be()}catch(e){console.error("Error clearing history:",e),l("❌ Ошибка при очистке истории","error"),alert("Ошибка при очистке истории")}}async function io(e){if(confirm("Удалить этот процесс из истории?"))try{if(!(await fetch(`/api/history/${e}`,{method:"DELETE",headers:{"Content-Type":"application/json"}})).ok)throw new Error("Failed to delete history item");l(`🗑️ Процесс ${e} удалён из истории`,"info"),await be()}catch(t){console.error("Error deleting history item:",t),l("❌ Ошибка при удалении процесса","error"),alert("Ошибка при удалении процесса")}}var Ge=[];async function be(){try{let e=await fetch("/api/history");if(!e.ok)throw new Error("Failed to load history");Ge=(await e.json()).processes||[],Ye(),l(`📚 Загружено процессов: ${Ge.length}`,"info")}catch(e){console.error("Error loading history:",e),l("❌ Ошибка загрузки истории","error");let t=document.getElementById("history-list");t&&(t.innerHTML='<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет данных или ошибка загрузки</div>')}}function Ye(){let e=document.getElementById("history-filter-type")?.value||"all",t=document.getElementById("history-sort")?.value||"date-desc",o=[...Ge];e!=="all"&&(o=o.filter(r=>r.type===e)),o.sort((r,n)=>{switch(t){case"date-desc":return n.startTime-r.startTime;case"date-asc":return r.startTime-n.startTime;case"duration-desc":return n.duration-r.duration;case"duration-asc":return r.duration-n.duration;default:return 0}}),Tn(o),no(o)}function Tn(e){let t=document.getElementById("history-list");if(t){if(e.length===0){t.innerHTML='<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет процессов для отображения</div>';return}t.innerHTML="",e.forEach(o=>{let r=Pn(o);t.appendChild(r)})}}var H=new Set;function Pn(e){let t=document.createElement("div");t.className="history-item",t.dataset.processId=e.id;let o={rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка",hold:"Выдержка"},r={completed:"Завершен",stopped:"Остановлен",error:"Ошибка"},n=o[e.type]||e.type,i=r[e.status]||e.status,s=new Date(e.startTime*1e3),a=(e.duration/3600).toFixed(1),d=H.has(e.id);return t.innerHTML=`
 
-let ws = null;
-let reconnectInterval = null;
-let isConnected = false;
-let miniChart = null;
-let miniChartData = {
-    timestamps: [],
-    cube: [],
-    columnTop: [],
-    reflux: []
-};
-const MINI_CHART_MAX_POINTS = 60; // 5 минут при обновлении каждые 5 секунд
-
-// Инициализация при загрузке страницы
-document.addEventListener('DOMContentLoaded', function() {
-    initTabs();
-    loadTheme();
-    initMiniChart();
-    loadMemoryStatsPreference();
-    loadPumpInfo();
-    loadVersionInfo(); // Загрузить информацию о версиях
-    connectWebSocket();
-});
-
-// ============================================================================
-// WebSocket
-// ============================================================================
-
-function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}/ws`;
-
-    addLog('Подключение к WebSocket...');
-
-    try {
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = function() {
-            isConnected = true;
-            updateConnectionStatus(true);
-            addLog('✅ Подключено к контроллеру', 'info');
-
-            // Остановить попытки переподключения
-            if (reconnectInterval) {
-                clearInterval(reconnectInterval);
-                reconnectInterval = null;
-            }
-        };
-
-        ws.onmessage = function(event) {
-            try {
-                const data = JSON.parse(event.data);
-                updateUI(data);
-            } catch (e) {
-                console.error('Ошибка парсинга JSON:', e);
-            }
-        };
-
-        ws.onerror = function(error) {
-            console.error('WebSocket error:', error);
-            addLog('❌ Ошибка подключения', 'error');
-        };
-
-        ws.onclose = function() {
-            isConnected = false;
-            updateConnectionStatus(false);
-            addLog('⚠️ Соединение разорвано. Переподключение...', 'warning');
-
-            // Попытка переподключения каждые 5 секунд
-            if (!reconnectInterval) {
-                reconnectInterval = setInterval(() => {
-                    if (!isConnected) {
-                        connectWebSocket();
-                    }
-                }, 5000);
-            }
-        };
-    } catch (e) {
-        console.error('Ошибка создания WebSocket:', e);
-        updateConnectionStatus(false);
-    }
-}
-
-function sendCommand(action, param = '', value = 0) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        const cmd = { action, param, value };
-        ws.send(JSON.stringify(cmd));
-        addLog(`📤 Команда: ${action} ${param} ${value}`);
-    } else {
-        addLog('❌ Нет подключения к контроллеру', 'error');
-    }
-}
-
-function updateConnectionStatus(connected) {
-    const statusDot = document.getElementById('connection-status');
-    const statusText = document.getElementById('connection-text');
-
-    if (connected) {
-        statusDot.className = 'status-dot online';
-        statusText.textContent = 'Подключено';
-    } else {
-        statusDot.className = 'status-dot offline';
-        statusText.textContent = 'Отключено';
-    }
-}
-
-// ============================================================================
-// Mini Chart
-// ============================================================================
-
-function initMiniChart() {
-    const options = {
-        chart: {
-            type: 'line',
-            height: 200,
-            animations: {
-                enabled: true,
-                dynamicAnimation: {
-                    speed: 500
-                }
-            },
-            toolbar: {
-                show: false
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: [
-            {
-                name: 'Куб',
-                data: []
-            },
-            {
-                name: 'Царга верх',
-                data: []
-            },
-            {
-                name: 'Дефлегматор',
-                data: []
-            }
-        ],
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    minute: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: '°C'
-            },
-            decimalsInFloat: 1
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        colors: ['#dc3545', '#007bff', '#17a2b8'],
-        legend: {
-            show: true,
-            position: 'top'
-        },
-        tooltip: {
-            x: {
-                format: 'HH:mm:ss'
-            }
-        }
-    };
-
-    miniChart = new ApexCharts(document.querySelector("#mini-chart"), options);
-    miniChart.render();
-}
-
-function updateMiniChart(data) {
-    if (!miniChart) return;
-
-    const now = new Date().getTime();
-
-    // Добавить новые данные
-    if (data.t_cube !== undefined) {
-        miniChartData.timestamps.push(now);
-        miniChartData.cube.push(data.t_cube);
-        miniChartData.columnTop.push(data.t_column_top || null);
-        miniChartData.reflux.push(data.t_reflux || null);
-
-        // Ограничить количество точек
-        if (miniChartData.timestamps.length > MINI_CHART_MAX_POINTS) {
-            miniChartData.timestamps.shift();
-            miniChartData.cube.shift();
-            miniChartData.columnTop.shift();
-            miniChartData.reflux.shift();
-        }
-
-        // Обновить график
-        miniChart.updateSeries([
-            {
-                name: 'Куб',
-                data: miniChartData.timestamps.map((t, i) => ({
-                    x: t,
-                    y: miniChartData.cube[i]
-                }))
-            },
-            {
-                name: 'Царга верх',
-                data: miniChartData.timestamps.map((t, i) => ({
-                    x: t,
-                    y: miniChartData.columnTop[i]
-                }))
-            },
-            {
-                name: 'Дефлегматор',
-                data: miniChartData.timestamps.map((t, i) => ({
-                    x: t,
-                    y: miniChartData.reflux[i]
-                }))
-            }
-        ]);
-    }
-}
-
-// ============================================================================
-// UI Updates
-// ============================================================================
-
-function updateUI(data) {
-    // Режим
-    if (data.mode !== undefined) {
-        const modeNames = ['IDLE', 'RECT', 'MANUAL', 'DIST', 'MASH', 'HOLD'];
-        const modeName = modeNames[data.mode] || 'UNKNOWN';
-        const modeEl = document.getElementById('mode');
-        modeEl.textContent = modeName;
-        modeEl.className = `value mode-${modeName.toLowerCase()}`;
-    }
-
-    // Фаза
-    if (data.phase !== undefined) {
-        const phaseNames = ['IDLE', 'HEATING', 'STABIL', 'HEADS', 'PURGE', 'BODY', 'TAILS', 'FINISH', 'ERROR'];
-        document.getElementById('phase').textContent = phaseNames[data.phase] || '—';
-    }
-
-    // Температуры
-    if (data.t_cube !== undefined) {
-        document.getElementById('temp-cube').textContent = data.t_cube.toFixed(1) + '°C';
-    }
-    if (data.t_column_bottom !== undefined) {
-        document.getElementById('temp-column-bottom').textContent = data.t_column_bottom.toFixed(1) + '°C';
-    }
-    if (data.t_column_top !== undefined) {
-        document.getElementById('temp-column-top').textContent = data.t_column_top.toFixed(1) + '°C';
-    }
-    if (data.t_reflux !== undefined) {
-        document.getElementById('temp-reflux').textContent = data.t_reflux.toFixed(1) + '°C';
-    }
-    if (data.t_tsa !== undefined) {
-        document.getElementById('temp-tsa').textContent = data.t_tsa.toFixed(1) + '°C';
-    }
-
-    // Давление
-    if (data.p_cube !== undefined) {
-        document.getElementById('pressure-cube').textContent = data.p_cube.toFixed(1) + ' мм рт.ст.';
-    }
-    if (data.p_atm !== undefined) {
-        document.getElementById('pressure-atm').textContent = data.p_atm.toFixed(1) + ' гПа';
-    }
-    if (data.p_flood !== undefined) {
-        document.getElementById('pressure-flood').textContent = data.p_flood.toFixed(1) + ' мм';
-    }
-
-    // Мощность (PZEM-004T)
-    if (data.voltage !== undefined) {
-        document.getElementById('power-voltage').textContent = data.voltage.toFixed(1) + ' V';
-    }
-    if (data.current !== undefined) {
-        document.getElementById('power-current').textContent = data.current.toFixed(2) + ' A';
-    }
-    if (data.power !== undefined) {
-        document.getElementById('power-power').textContent = data.power.toFixed(0) + ' W';
-    }
-    if (data.energy !== undefined) {
-        document.getElementById('power-energy').textContent = data.energy.toFixed(3) + ' кВт·ч';
-    }
-    if (data.frequency !== undefined) {
-        document.getElementById('power-frequency').textContent = data.frequency.toFixed(1) + ' Гц';
-    }
-    if (data.pf !== undefined) {
-        document.getElementById('power-pf').textContent = data.pf.toFixed(2);
-    }
-
-    // Насос
-    if (data.pump_speed !== undefined) {
-        document.getElementById('pump-speed').textContent = data.pump_speed.toFixed(0) + ' мл/ч';
-    }
-    if (data.pump_volume !== undefined) {
-        document.getElementById('pump-volume').textContent = data.pump_volume.toFixed(0) + ' мл';
-    }
-
-    // Объёмы фракций
-    if (data.volume_heads !== undefined) {
-        document.getElementById('volume-heads').textContent = data.volume_heads.toFixed(0) + ' мл';
-    }
-    if (data.volume_body !== undefined) {
-        document.getElementById('volume-body').textContent = data.volume_body.toFixed(0) + ' мл';
-    }
-    if (data.volume_tails !== undefined) {
-        document.getElementById('volume-tails').textContent = data.volume_tails.toFixed(0) + ' мл';
-    }
-
-    // Ареометр
-    if (data.abv !== undefined) {
-        document.getElementById('abv').textContent = data.abv.toFixed(1) + '%';
-    }
-
-    // Uptime
-    if (data.uptime !== undefined) {
-        document.getElementById('uptime').textContent = formatUptime(data.uptime);
-    }
-
-    // События
-    if (data.type === 'event') {
-        addLog(data.message, data.level || 'info');
-    }
-
-    // Обновить мини-график
-    updateMiniChart(data);
-
-    // Обновить статистику памяти
-    if (data.memory !== undefined) {
-        updateMemoryStats(data.memory);
-    }
-
-    // Обновить анимацию колонны
-    if (typeof updateColumnAnimation === 'function') {
-        updateColumnAnimation(data);
-    }
-}
-
-function formatUptime(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
-}
-
-function pad(num) {
-    return num.toString().padStart(2, '0');
-}
-
-// ============================================================================
-// Tabs
-// ============================================================================
-
-function initTabs() {
-    const tabs = document.querySelectorAll('.tab');
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const targetId = tab.getAttribute('data-tab');
-
-            // Убрать активный класс со всех вкладок
-            tabs.forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-
-            // Добавить активный класс к выбранной вкладке
-            tab.classList.add('active');
-            document.getElementById(targetId).classList.add('active');
-
-            // Загрузить историю при переключении на вкладку "История"
-            if (targetId === 'history') {
-                loadHistoryList();
-            }
-        });
-    });
-}
-
-// ============================================================================
-// Control Functions
-// ============================================================================
-
-async function startRectification() {
-    try {
-        addLog('📤 Отправка команды запуска авто-ректификации...', 'info');
-
-        const response = await fetch('/api/process/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: 'rectification' })
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            addLog('✅ Авто-ректификация запущена', 'success');
-            if (data.warning) {
-                addLog('⚠️ ' + data.warning, 'warning');
-            }
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            const error = await response.text();
-            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка сети: ' + e.message, 'error');
-        console.error('Start rectification error:', e);
-    }
-}
-
-function startManual() {
-    // Переход на страницу ручного управления
-    window.location.href = 'manual.html';
-}
-
-async function startDistillation() {
-    try {
-        addLog('📤 Отправка команды запуска дистилляции...', 'info');
-
-        const response = await fetch('/api/process/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: 'distillation' })
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            addLog('✅ Дистилляция запущена', 'success');
-            if (data.warning) {
-                addLog('⚠️ ' + data.warning, 'warning');
-            }
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            const error = await response.text();
-            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка сети: ' + e.message, 'error');
-        console.error('Start distillation error:', e);
-    }
-}
-
-async function stopProcess() {
-    if (!confirm('Остановить процесс?')) return;
-
-    try {
-        const response = await fetch('/api/process/stop', {
-            method: 'POST'
-        });
-
-        if (response.ok) {
-            addLog('✅ Процесс остановлен', 'warning');
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            addLog('❌ Ошибка остановки', 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка: ' + e.message, 'error');
-    }
-}
-
-async function pauseProcess() {
-    try {
-        const response = await fetch('/api/process/pause', {
-            method: 'POST'
-        });
-
-        if (response.ok) {
-            addLog('✅ Процесс приостановлен', 'info');
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            addLog('❌ Ошибка паузы', 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка: ' + e.message, 'error');
-    }
-}
-
-async function resumeProcess() {
-    try {
-        const response = await fetch('/api/process/resume', {
-            method: 'POST'
-        });
-
-        if (response.ok) {
-            addLog('✅ Процесс возобновлен', 'info');
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            addLog('❌ Ошибка возобновления', 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка: ' + e.message, 'error');
-    }
-}
-
-function updateHeater(value) {
-    document.getElementById('heater-value').textContent = value;
-    sendCommand('heater', 'power', parseInt(value));
-}
-
-function updatePump(value) {
-    document.getElementById('pump-value').textContent = value;
-    sendCommand('pump', 'speed', parseInt(value));
-}
-
-function toggleValve(name) {
-    sendCommand('valve', name, 1);
-    addLog(`🔄 Переключение клапана: ${name}`);
-}
-
-// ============================================================================
-// Settings
-// ============================================================================
-
-function saveWiFi() {
-    const ssid = document.getElementById('wifi-ssid').value;
-    const password = document.getElementById('wifi-password').value;
-
-    if (ssid) {
-        sendCommand('wifi', 'save', 0);
-        addLog('💾 WiFi настройки сохранены', 'info');
-        alert('WiFi настройки сохранены. Перезагрузите контроллер.');
-    }
-}
-
-async function saveEquipment() {
-    const heaterPower = document.getElementById('heater-power-w').value;
-    const columnHeight = document.getElementById('column-height').value;
-    const mlPerRev = parseFloat(document.getElementById('pump-ml-per-rev').value);
-    const stepsPerRev = parseInt(document.getElementById('pump-steps-per-rev').value);
-
-    // Проверка и сохранение параметров насоса
-    const pumpData = {};
-    let hasPumpData = false;
-
-    if (mlPerRev && mlPerRev > 0) {
-        pumpData.mlPerRev = mlPerRev;
-        hasPumpData = true;
-    }
-
-    if (stepsPerRev && stepsPerRev > 0) {
-        pumpData.stepsPerRev = stepsPerRev;
-        hasPumpData = true;
-    }
-
-    if (hasPumpData) {
-        try {
-            const response = await fetch('/api/calibration/pump', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(pumpData)
-            });
-
-            if (response.ok) {
-                let msg = '✓ Параметры насоса сохранены:';
-                if (pumpData.mlPerRev) msg += ' ' + pumpData.mlPerRev.toFixed(3) + ' мл/об';
-                if (pumpData.stepsPerRev) msg += ', ' + pumpData.stepsPerRev + ' шагов/об';
-                addLog(msg, 'success');
-            } else {
-                addLog('✗ Ошибка сохранения параметров насоса', 'error');
-            }
-        } catch (error) {
-            addLog('✗ Ошибка соединения при сохранении насоса', 'error');
-        }
-    }
-
-    // Сохранение других параметров оборудования (через WebSocket)
-    sendCommand('equipment', 'save', 0);
-    addLog('💾 Настройки оборудования сохранены', 'info');
-}
-
-function toggleMqttFields() {
-    const enabled = document.getElementById('mqtt-enabled').checked;
-    const fields = document.getElementById('mqtt-fields');
-    fields.style.display = enabled ? 'block' : 'none';
-}
-
-function saveMqtt() {
-    const enabled = document.getElementById('mqtt-enabled').checked;
-    const server = document.getElementById('mqtt-server').value;
-    const port = document.getElementById('mqtt-port').value;
-    const username = document.getElementById('mqtt-username').value;
-    const password = document.getElementById('mqtt-password').value;
-    const baseTopic = document.getElementById('mqtt-base-topic').value;
-    const discovery = document.getElementById('mqtt-discovery').checked;
-    const publishInterval = document.getElementById('mqtt-publish-interval').value;
-
-    if (enabled && !server) {
-        alert('Укажите адрес MQTT сервера');
-        return;
-    }
-
-    sendCommand('mqtt', 'save', 0);
-    addLog('💾 MQTT настройки сохранены', 'info');
-    alert('MQTT настройки сохранены. Перезагрузите контроллер.');
-}
-
-function toggleAuthFields() {
-    const enabled = document.getElementById('auth-enabled').checked;
-    const fields = document.getElementById('auth-fields');
-    fields.style.display = enabled ? 'block' : 'none';
-}
-
-function saveSecurity() {
-    const authEnabled = document.getElementById('auth-enabled').checked;
-    const username = document.getElementById('web-username').value;
-    const password = document.getElementById('web-password').value;
-    const rateLimitEnabled = document.getElementById('rate-limit-enabled').checked;
-
-    if (authEnabled && (!username || !password)) {
-        alert('Укажите имя пользователя и пароль');
-        return;
-    }
-
-    sendCommand('security', 'save', 0);
-    addLog('💾 Настройки безопасности сохранены', 'info');
-    alert('Настройки безопасности сохранены. Перезагрузите контроллер.');
-}
-
-function setTheme(theme) {
-    document.body.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-
-    // Обновить тему мини-графика
-    if (miniChart) {
-        miniChart.updateOptions({
-            theme: {
-                mode: theme
-            }
-        });
-    }
-
-    addLog(`🎨 Тема изменена: ${theme}`, 'info');
-}
-
-function loadTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    document.body.setAttribute('data-theme', savedTheme);
-}
-
-// ============================================================================
-// Logs
-// ============================================================================
-
-function addLog(message, type = 'info') {
-    const logContainer = document.getElementById('log-container');
-    const timestamp = new Date().toLocaleTimeString();
-    const entry = document.createElement('div');
-    entry.className = `log-entry ${type}`;
-    entry.textContent = `[${timestamp}] ${message}`;
-
-    logContainer.appendChild(entry);
-
-    // Автоскролл вниз
-    logContainer.scrollTop = logContainer.scrollHeight;
-
-    // Ограничить количество записей (последние 100)
-    const entries = logContainer.querySelectorAll('.log-entry');
-    if (entries.length > 100) {
-        entries[0].remove();
-    }
-}
-
-function clearLogs() {
-    if (confirm('Очистить логи?')) {
-        document.getElementById('log-container').innerHTML = '';
-        addLog('Логи очищены', 'info');
-    }
-}
-
-function downloadLogs() {
-    addLog('📥 Запрос экспорта логов...', 'info');
-    window.open('/api/export', '_blank');
-}
-
-// ============================================================================
-// Memory Statistics
-// ============================================================================
-
-function updateMemoryStats(mem) {
-    const memStatsDiv = document.getElementById('memory-stats');
-    if (memStatsDiv.style.display === 'none') return;
-
-    // Форматирование байтов в KB/MB
-    const formatBytes = (bytes) => {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    };
-
-    // SRAM (Heap)
-    const heapUsed = mem.heap_total - mem.heap_free;
-    document.getElementById('mem-heap-used').textContent = formatBytes(heapUsed);
-    document.getElementById('mem-heap-total').textContent = formatBytes(mem.heap_total);
-    document.getElementById('mem-heap-pct').textContent = mem.heap_used_pct.toFixed(1) + '%';
-
-    // PSRAM
-    document.getElementById('mem-psram-free').textContent = formatBytes(mem.psram_free);
-    document.getElementById('mem-psram-total').textContent = formatBytes(mem.psram_total);
-
-    // Flash
-    document.getElementById('mem-flash-pct').textContent = mem.flash_used_pct.toFixed(1) + '%';
-}
-
-function toggleMemoryStats() {
-    const checkbox = document.getElementById('show-memory-stats');
-    const memStatsDiv = document.getElementById('memory-stats');
-
-    if (checkbox.checked) {
-        memStatsDiv.style.display = 'block';
-        localStorage.setItem('showMemoryStats', 'true');
-    } else {
-        memStatsDiv.style.display = 'none';
-        localStorage.setItem('showMemoryStats', 'false');
-    }
-}
-
-function loadMemoryStatsPreference() {
-    const showMemoryStats = localStorage.getItem('showMemoryStats') === 'true';
-    const checkbox = document.getElementById('show-memory-stats');
-    const memStatsDiv = document.getElementById('memory-stats');
-
-    if (checkbox) {
-        checkbox.checked = showMemoryStats;
-    }
-
-    if (memStatsDiv) {
-        memStatsDiv.style.display = showMemoryStats ? 'block' : 'none';
-    }
-}
-
-// ============================================================================
-// Загрузка информации о насосе
-// ============================================================================
-
-async function loadPumpInfo() {
-    try {
-        const response = await fetch('/api/calibration');
-        if (!response.ok) {
-            throw new Error('Failed to load calibration data');
-        }
-
-        const data = await response.json();
-
-        // Обновить информацию о насосе
-        const mlPerRevEl = document.getElementById('pump-ml-per-rev');
-        const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
-
-        if (mlPerRevEl && data.pump) {
-            // Теперь это input поле, устанавливаем value
-            mlPerRevEl.value = data.pump.mlPerRev.toFixed(3);
-        }
-
-        if (stepsPerRevEl && data.pump) {
-            // Показываем общее количество шагов
-            const totalSteps = data.pump.stepsPerRev * data.pump.microsteps;
-            stepsPerRevEl.value = totalSteps;
-        }
-    } catch (error) {
-        console.error('Error loading pump info:', error);
-        const mlPerRevEl = document.getElementById('pump-ml-per-rev');
-        const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
-
-        if (mlPerRevEl) mlPerRevEl.placeholder = 'Ошибка загрузки';
-        if (stepsPerRevEl) stepsPerRevEl.placeholder = 'Ошибка загрузки';
-    }
-}
-
-// Загрузка информации о версиях
-async function loadVersionInfo() {
-    try {
-        const response = await fetch('/api/version');
-        if (!response.ok) {
-            throw new Error('Failed to load version info');
-        }
-
-        const data = await response.json();
-
-        // Обновить информацию о прошивке
-        if (data.firmware) {
-            document.getElementById('firmware-version').textContent = data.firmware.version || 'Unknown';
-            document.getElementById('firmware-build-date').textContent = data.firmware.buildDate || 'Unknown';
-            document.getElementById('firmware-build-time').textContent = data.firmware.buildTime || 'Unknown';
-        }
-
-        if (data.board) {
-            const flashMB = (data.board.flashSize / (1024 * 1024)).toFixed(0);
-            const psramMB = (data.board.psramSize / (1024 * 1024)).toFixed(0);
-            document.getElementById('board-chip').textContent =
-                `${data.board.chip} (Flash: ${flashMB}MB, PSRAM: ${psramMB}MB)`;
-        }
-
-        // Обновить информацию о фронтенде
-        if (data.frontend) {
-            document.getElementById('frontend-build-date').textContent =
-                data.frontend.buildDate || data.frontend.note || 'Unknown';
-            document.getElementById('frontend-build-time').textContent =
-                data.frontend.buildTime || '-';
-        }
-
-        addLog('✓ Информация о версиях обновлена', 'success');
-    } catch (error) {
-        console.error('Error loading version info:', error);
-        document.getElementById('firmware-version').textContent = 'Ошибка загрузки';
-        document.getElementById('frontend-build-date').textContent = 'Ошибка загрузки';
-        addLog('✗ Ошибка загрузки версий', 'error');
-    }
-}
-
-// ============================================================================
-// История процессов
-// ============================================================================
-
-let historyData = [];
-
-async function loadHistoryList() {
-    try {
-        const response = await fetch('/api/history');
-        if (!response.ok) {
-            throw new Error('Failed to load history');
-        }
-
-        const data = await response.json();
-        historyData = data.processes || [];
-
-        // Применить фильтры
-        applyHistoryFilters();
-
-        addLog(`📚 Загружено процессов: ${historyData.length}`, 'info');
-    } catch (error) {
-        console.error('Error loading history:', error);
-        addLog('❌ Ошибка загрузки истории', 'error');
-
-        // Показать пустой список
-        const historyListEl = document.getElementById('history-list');
-        if (historyListEl) {
-            historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет данных или ошибка загрузки</div>';
-        }
-    }
-}
-
-function applyHistoryFilters() {
-    const typeFilter = document.getElementById('history-filter-type')?.value || 'all';
-    const sortBy = document.getElementById('history-sort')?.value || 'date-desc';
-
-    let filtered = [...historyData];
-
-    // Фильтр по типу
-    if (typeFilter !== 'all') {
-        filtered = filtered.filter(p => p.type === typeFilter);
-    }
-
-    // Сортировка
-    filtered.sort((a, b) => {
-        switch (sortBy) {
-            case 'date-desc':
-                return b.startTime - a.startTime;
-            case 'date-asc':
-                return a.startTime - b.startTime;
-            case 'duration-desc':
-                return b.duration - a.duration;
-            case 'duration-asc':
-                return a.duration - b.duration;
-            default:
-                return 0;
-        }
-    });
-
-    // Отрисовать список
-    renderHistoryList(filtered);
-
-    // Обновить статистику
-    updateHistoryStats(filtered);
-}
-
-function renderHistoryList(processes) {
-    const historyListEl = document.getElementById('history-list');
-    if (!historyListEl) return;
-
-    if (processes.length === 0) {
-        historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет процессов для отображения</div>';
-        return;
-    }
-
-    historyListEl.innerHTML = '';
-
-    processes.forEach(process => {
-        const itemEl = renderHistoryItem(process);
-        historyListEl.appendChild(itemEl);
-    });
-}
-
-let selectedProcesses = new Set();
-
-function renderHistoryItem(process) {
-    const div = document.createElement('div');
-    div.className = 'history-item';
-    div.dataset.processId = process.id;
-
-    const typeNames = {
-        rectification: 'Ректификация',
-        distillation: 'Дистилляция',
-        mashing: 'Затирка',
-        hold: 'Выдержка'
-    };
-
-    const statusNames = {
-        completed: 'Завершен',
-        stopped: 'Остановлен',
-        error: 'Ошибка'
-    };
-
-    const typeName = typeNames[process.type] || process.type;
-    const statusName = statusNames[process.status] || process.status;
-
-    const startDate = new Date(process.startTime * 1000);
-    const durationHours = (process.duration / 3600).toFixed(1);
-    const isSelected = selectedProcesses.has(process.id);
-
-    div.innerHTML = `
         <div class="history-header">
+
             <div style="display: flex; align-items: center; gap: 10px;">
+
                 <input type="checkbox"
+
                        class="history-checkbox"
-                       data-process-id="${process.id}"
-                       ${isSelected ? 'checked' : ''}
-                       onchange="toggleProcessSelection('${process.id}')">
+
+                       data-process-id="${e.id}"
+
+                       ${d?"checked":""}
+
+                       onchange="toggleProcessSelection('${e.id}')">
+
                 <div>
-                    <span class="history-type history-type-${process.type}">${typeName}</span>
-                    <span class="history-status history-status-${process.status}">${statusName}</span>
+
+                    <span class="history-type history-type-${e.type}">${n}</span>
+
+                    <span class="history-status history-status-${e.status}">${i}</span>
+
                 </div>
+
             </div>
-            <div class="history-date">${startDate.toLocaleString('ru-RU')}</div>
+
+            <div class="history-date">${s.toLocaleString("ru-RU")}</div>
+
         </div>
+
         <div class="history-info">
+
             <div class="history-metric">
+
                 <span class="metric-label">⏱️ Длительность:</span>
-                <span class="metric-value">${durationHours} ч</span>
+
+                <span class="metric-value">${a} ч</span>
+
             </div>
+
             <div class="history-metric">
+
                 <span class="metric-label">💧 Объём:</span>
-                <span class="metric-value">${process.totalVolume || 0} мл</span>
+
+                <span class="metric-value">${e.totalVolume||0} мл</span>
+
             </div>
+
         </div>
+
         <div class="history-actions">
-            <button class="btn-secondary" onclick="viewHistoryDetails('${process.id}')">👁️ Подробно</button>
-            <button class="btn-secondary" onclick="exportHistory('${process.id}')">📥 Экспорт</button>
-            <button class="btn-danger" onclick="deleteHistoryItem('${process.id}')">🗑️ Удалить</button>
+
+            <button class="btn-secondary" onclick="viewHistoryDetails('${e.id}')">👁️ Подробно</button>
+
+            <button class="btn-secondary" onclick="exportHistory('${e.id}')">📥 Экспорт</button>
+
+            <button class="btn-danger" onclick="deleteHistoryItem('${e.id}')">🗑️ Удалить</button>
+
         </div>
-    `;
 
-    return div;
-}
+    `,t}var Ee=null,Ie=null;async function so(){if(H.size<2){alert("Выберите минимум 2 процесса для сравнения");return}if(H.size>5){alert("Можно сравнить максимум 5 процессов одновременно");return}try{addLog(`📊 Загрузка ${H.size} процессов для сравнения...`,"info");let e=[];for(let t of H){let o=await fetch(`/api/history/${t}`);if(o.ok){let r=await o.json();e.push(r)}}if(e.length<2){alert("Не удалось загрузить процессы для сравнения");return}Ln(e),addLog(`✓ Сравнение ${e.length} процессов`,"info")}catch(e){console.error("Error comparing processes:",e),addLog("❌ Ошибка при сравнении процессов","error"),alert("Ошибка при сравнении процессов")}}function Ln(e){let t=document.getElementById("compare-process-list");t.innerHTML="";let o=["#dc3545","#007bff","#28a745","#ffc107","#6f42c1"];e.forEach((r,n)=>{let i={rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка",hold:"Выдержка"},s=document.createElement("div");s.style.cssText=`
 
-function toggleProcessSelection(processId) {
-    if (selectedProcesses.has(processId)) {
-        selectedProcesses.delete(processId);
-    } else {
-        selectedProcesses.add(processId);
-    }
-    updateCompareButton();
-}
-
-function updateCompareButton() {
-    const compareBtn = document.getElementById('compare-processes-btn');
-    if (compareBtn) {
-        compareBtn.disabled = selectedProcesses.size < 2;
-        compareBtn.textContent = `📊 Сравнить выбранные (${selectedProcesses.size})`;
-    }
-}
-
-function updateHistoryStats(processes) {
-    const totalEl = document.getElementById('hist-stat-total');
-    const completedEl = document.getElementById('hist-stat-completed');
-    const timeEl = document.getElementById('hist-stat-time');
-    const energyEl = document.getElementById('hist-stat-energy');
-
-    if (!totalEl) return;
-
-    const total = processes.length;
-    const completed = processes.filter(p => p.status === 'completed').length;
-    const totalTime = processes.reduce((sum, p) => sum + (p.duration || 0), 0);
-    const totalEnergy = 0; // Будет реализовано позже, когда появится поле energy в процессах
-
-    totalEl.textContent = total;
-    completedEl.textContent = completed;
-    timeEl.textContent = (totalTime / 3600).toFixed(1) + ' ч';
-    energyEl.textContent = totalEnergy.toFixed(1) + ' кВт·ч';
-}
-
-async function clearHistory() {
-    if (!confirm('Удалить ВСЮ историю процессов? Это действие необратимо!')) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/history', {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to clear history');
-        }
-
-        addLog('🗑️ История полностью очищена', 'info');
-        await loadHistoryList();
-    } catch (error) {
-        console.error('Error clearing history:', error);
-        addLog('❌ Ошибка при очистке истории', 'error');
-        alert('Ошибка при очистке истории');
-    }
-}
-
-async function deleteHistoryItem(id) {
-    if (!confirm('Удалить этот процесс из истории?')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/history/${id}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to delete history item');
-        }
-
-        addLog(`🗑️ Процесс ${id} удален из истории`, 'info');
-        await loadHistoryList();
-    } catch (error) {
-        console.error('Error deleting history item:', error);
-        addLog('❌ Ошибка при удалении процесса', 'error');
-        alert('Ошибка при удалении процесса');
-    }
-}
-
-async function viewHistoryDetails(id) {
-    try {
-        const response = await fetch(`/api/history/${id}`);
-        if (!response.ok) {
-            throw new Error('Failed to load history details');
-        }
-
-        const process = await response.json();
-
-        // Создать модальное окно с деталями
-        showHistoryDetailsModal(process);
-
-        addLog(`👁️ Просмотр процесса ${id}`, 'info');
-    } catch (error) {
-        console.error('Error loading history details:', error);
-        addLog('❌ Ошибка загрузки деталей процесса', 'error');
-        alert('Ошибка загрузки деталей процесса');
-    }
-}
-
-let tempChart = null;
-let powerChart = null;
-
-function showHistoryDetailsModal(process) {
-    const typeNames = {
-        rectification: 'Ректификация',
-        distillation: 'Дистилляция',
-        mashing: 'Затирка',
-        hold: 'Выдержка'
-    };
-
-    const startDate = new Date(process.metadata.startTime * 1000);
-    const endDate = new Date(process.metadata.endTime * 1000);
-    const typeName = typeNames[process.process.type] || process.process.type;
-
-    // Установить заголовок
-    document.getElementById('modal-title').textContent = `${typeName} - ${startDate.toLocaleDateString('ru-RU')}`;
-
-    // Заполнить основную информацию
-    const infoGrid = document.getElementById('modal-info-grid');
-    infoGrid.innerHTML = `
-        <div class="modal-info-item">
-            <div class="modal-info-label">Тип процесса</div>
-            <div class="modal-info-value">${typeName}</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Режим</div>
-            <div class="modal-info-value">${process.process.mode === 'auto' ? 'Авто' : 'Ручной'}</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Начало</div>
-            <div class="modal-info-value">${startDate.toLocaleString('ru-RU')}</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Окончание</div>
-            <div class="modal-info-value">${endDate.toLocaleString('ru-RU')}</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Длительность</div>
-            <div class="modal-info-value">${(process.metadata.duration / 3600).toFixed(1)} ч</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Статус</div>
-            <div class="modal-info-value">${process.metadata.completedSuccessfully ? '✅ Успешно' : '⚠️ Прервано'}</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Средняя мощность</div>
-            <div class="modal-info-value">${process.metrics?.power?.avgPower || 0} Вт</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Потреблено энергии</div>
-            <div class="modal-info-value">${(process.metrics?.power?.energyUsed || 0).toFixed(2)} кВт·ч</div>
-        </div>
-    `;
-
-    // Построить график температур
-    renderTempChart(process);
-
-    // Построить график мощности
-    renderPowerChart(process);
-
-    // Заполнить фазы
-    renderPhases(process);
-
-    // Заполнить результаты
-    const resultsGrid = document.getElementById('modal-results-grid');
-    resultsGrid.innerHTML = `
-        <div class="modal-info-item">
-            <div class="modal-info-label">Головы</div>
-            <div class="modal-info-value">${process.results.headsCollected || 0} мл</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Тело</div>
-            <div class="modal-info-value">${process.results.bodyCollected || 0} мл</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Хвосты</div>
-            <div class="modal-info-value">${process.results.tailsCollected || 0} мл</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Всего собрано</div>
-            <div class="modal-info-value">${process.results.totalCollected || 0} мл</div>
-        </div>
-    `;
-
-    // Привязать обработчики к кнопкам экспорта
-    const exportCsvBtn = document.getElementById('modal-export-csv');
-    const exportJsonBtn = document.getElementById('modal-export-json');
-
-    if (exportCsvBtn) {
-        exportCsvBtn.onclick = () => exportHistoryCSV(process.id);
-    }
-
-    if (exportJsonBtn) {
-        exportJsonBtn.onclick = () => exportHistoryJSON(process.id);
-    }
-
-    // Показать модальное окно
-    document.getElementById('history-modal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeHistoryModal() {
-    document.getElementById('history-modal').classList.remove('active');
-    document.body.style.overflow = '';
-
-    // Уничтожить графики
-    if (tempChart) {
-        tempChart.destroy();
-        tempChart = null;
-    }
-    if (powerChart) {
-        powerChart.destroy();
-        powerChart = null;
-    }
-}
-
-function renderTempChart(process) {
-    const chartEl = document.getElementById('modal-temp-chart');
-    chartEl.innerHTML = '';
-
-    if (!process.timeseries || process.timeseries.data.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';
-        return;
-    }
-
-    const data = process.timeseries.data;
-
-    const options = {
-        chart: {
-            type: 'line',
-            height: 350,
-            animations: {
-                enabled: false
-            },
-            toolbar: {
-                show: true
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: [
-            {
-                name: 'Куб',
-                data: data.map(p => ({ x: p.time * 1000, y: p.cube }))
-            },
-            {
-                name: 'Царга верх',
-                data: data.map(p => ({ x: p.time * 1000, y: p.columnTop }))
-            }
-        ],
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    hour: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: 'Температура (°C)'
-            },
-            decimalsInFloat: 1
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        colors: ['#dc3545', '#007bff'],
-        legend: {
-            show: true,
-            position: 'top'
-        },
-        tooltip: {
-            x: {
-                format: 'dd MMM HH:mm'
-            }
-        }
-    };
-
-    tempChart = new ApexCharts(chartEl, options);
-    tempChart.render();
-}
-
-function renderPowerChart(process) {
-    const chartEl = document.getElementById('modal-power-chart');
-    chartEl.innerHTML = '';
-
-    if (!process.timeseries || process.timeseries.data.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';
-        return;
-    }
-
-    const data = process.timeseries.data;
-
-    const options = {
-        chart: {
-            type: 'area',
-            height: 300,
-            animations: {
-                enabled: false
-            },
-            toolbar: {
-                show: true
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: [
-            {
-                name: 'Мощность',
-                data: data.map(p => ({ x: p.time * 1000, y: p.power }))
-            }
-        ],
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    hour: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: 'Мощность (Вт)'
-            },
-            decimalsInFloat: 0
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        fill: {
-            type: 'gradient',
-            gradient: {
-                shadeIntensity: 1,
-                opacityFrom: 0.7,
-                opacityTo: 0.3
-            }
-        },
-        colors: ['#28a745'],
-        tooltip: {
-            x: {
-                format: 'dd MMM HH:mm'
-            }
-        }
-    };
-
-    powerChart = new ApexCharts(chartEl, options);
-    powerChart.render();
-}
-
-function renderPhases(process) {
-    const phasesEl = document.getElementById('modal-phases');
-
-    if (!process.phases || process.phases.length === 0) {
-        phasesEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет информации о фазах</p>';
-        return;
-    }
-
-    const phaseNames = {
-        heating: 'Нагрев',
-        stabilization: 'Стабилизация',
-        heads: 'Отбор голов',
-        body: 'Отбор тела',
-        tails: 'Отбор хвостов',
-        purge: 'Очистка',
-        finish: 'Завершение'
-    };
-
-    phasesEl.innerHTML = '';
-
-    process.phases.forEach(phase => {
-        const phaseEl = document.createElement('div');
-        phaseEl.className = 'modal-phase-item';
-
-        const phaseName = phaseNames[phase.name] || phase.name;
-        const startDate = new Date(phase.startTime * 1000);
-        const endDate = new Date(phase.endTime * 1000);
-
-        phaseEl.innerHTML = `
-            <div class="modal-phase-name">${phaseName}</div>
-            <div class="modal-phase-details">
-                <div class="modal-phase-detail">Начало: <strong>${startDate.toLocaleTimeString('ru-RU')}</strong></div>
-                <div class="modal-phase-detail">Окончание: <strong>${endDate.toLocaleTimeString('ru-RU')}</strong></div>
-                <div class="modal-phase-detail">Длительность: <strong>${(phase.duration / 60).toFixed(0)} мин</strong></div>
-                <div class="modal-phase-detail">Объём: <strong>${phase.volume || 0} мл</strong></div>
-                <div class="modal-phase-detail">Средняя скорость: <strong>${phase.avgSpeed || 0} мл/ч</strong></div>
-            </div>
-        `;
-
-        phasesEl.appendChild(phaseEl);
-    });
-}
-
-// Закрытие модального окна при клике на overlay
-document.addEventListener('DOMContentLoaded', function() {
-    const modalOverlay = document.getElementById('history-modal');
-    if (modalOverlay) {
-        modalOverlay.addEventListener('click', function(e) {
-            if (e.target === modalOverlay) {
-                closeHistoryModal();
-            }
-        });
-    }
-});
-
-async function exportHistory(id, format = null) {
-    try {
-        // Если формат не указан, спросить у пользователя
-        if (!format) {
-            const choice = confirm('Выберите формат экспорта:\n\nОК - CSV (таблица)\nОтмена - JSON (данные)');
-            format = choice ? 'csv' : 'json';
-        }
-
-        addLog(`📥 Экспорт процесса ${id} в формате ${format.toUpperCase()}...`, 'info');
-
-        // Открыть экспорт в новой вкладке
-        window.open(`/api/history/${id}/export?format=${format}`, '_blank');
-
-        addLog(`✅ Экспорт процесса ${id} начат`, 'info');
-    } catch (error) {
-        console.error('Error exporting history:', error);
-        addLog('❌ Ошибка экспорта', 'error');
-    }
-}
-
-async function exportHistoryCSV(id) {
-    await exportHistory(id, 'csv');
-}
-
-async function exportHistoryJSON(id) {
-    await exportHistory(id, 'json');
-}
-
-// ============================================================================
-// Сравнение процессов
-// ============================================================================
-
-let compareTempChart = null;
-let comparePowerChart = null;
-
-async function compareSelected() {
-    if (selectedProcesses.size < 2) {
-        alert('Выберите минимум 2 процесса для сравнения');
-        return;
-    }
-
-    if (selectedProcesses.size > 5) {
-        alert('Можно сравнить максимум 5 процессов одновременно');
-        return;
-    }
-
-    try {
-        addLog(`📊 Загрузка ${selectedProcesses.size} процессов для сравнения...`, 'info');
-
-        // Загрузить все выбранные процессы
-        const processes = [];
-        for (const processId of selectedProcesses) {
-            const response = await fetch(`/api/history/${processId}`);
-            if (response.ok) {
-                const process = await response.json();
-                processes.push(process);
-            }
-        }
-
-        if (processes.length < 2) {
-            alert('Не удалось загрузить процессы для сравнения');
-            return;
-        }
-
-        showCompareModal(processes);
-        addLog(`✅ Сравнение ${processes.length} процессов`, 'info');
-    } catch (error) {
-        console.error('Error comparing processes:', error);
-        addLog('❌ Ошибка при сравнении процессов', 'error');
-        alert('Ошибка при сравнении процессов');
-    }
-}
-
-function showCompareModal(processes) {
-    // Заполнить список процессов
-    const processList = document.getElementById('compare-process-list');
-    processList.innerHTML = '';
-
-    const colors = ['#dc3545', '#007bff', '#28a745', '#ffc107', '#6f42c1'];
-
-    processes.forEach((process, index) => {
-        const typeNames = {
-            rectification: 'Ректификация',
-            distillation: 'Дистилляция',
-            mashing: 'Затирка',
-            hold: 'Выдержка'
-        };
-
-        const badge = document.createElement('div');
-        badge.style.cssText = `
             padding: 10px 15px;
-            background: ${colors[index]};
+
+            background: ${o[n]};
+
             color: white;
+
             border-radius: 6px;
+
             font-weight: 600;
+
             font-size: 0.9em;
-        `;
-        badge.textContent = `${typeNames[process.process.type] || process.process.type} - ${new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU')}`;
-        processList.appendChild(badge);
-    });
 
-    // Построить графики сравнения
-    renderCompareTempChart(processes, colors);
-    renderComparePowerChart(processes, colors);
-    renderCompareTable(processes);
+        `,s.textContent=`${i[r.process.type]||r.process.type} - ${new Date(r.metadata.startTime*1e3).toLocaleDateString("ru-RU")}`,t.appendChild(s)}),kn(e,o),Fn(e,o),$n(e),document.getElementById("compare-modal").classList.add("active"),document.body.style.overflow="hidden"}function ao(){document.getElementById("compare-modal").classList.remove("active"),document.body.style.overflow="",Ee&&(Ee.destroy(),Ee=null),Ie&&(Ie.destroy(),Ie=null)}function kn(e,t){let o=document.getElementById("compare-temp-chart");o.innerHTML="";let r=[];if(e.forEach((i,s)=>{if(i.timeseries&&i.timeseries.data&&i.timeseries.data.length>0){let a=new Date(i.metadata.startTime*1e3).toLocaleDateString("ru-RU");r.push({name:`Процесс ${s+1} (${a})`,data:i.timeseries.data.map(d=>({x:d.time*1e3,y:d.cube}))})}}),r.length===0){o.innerHTML='<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';return}let n={chart:{type:"line",height:400,animations:{enabled:!1},toolbar:{show:!0,tools:{download:!0,selection:!0,zoom:!0,zoomin:!0,zoomout:!0,pan:!0,reset:!0},autoSelected:"zoom"},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:r,xaxis:{type:"datetime",labels:{datetimeFormatter:{hour:"HH:mm"}}},yaxis:{title:{text:"Температура куба (°C)"},decimalsInFloat:1},stroke:{curve:"smooth",width:2},colors:t,legend:{show:!0,position:"top"},tooltip:{x:{format:"dd MMM HH:mm"}}};Ee=new ApexCharts(o,n),Ee.render()}function Fn(e,t){let o=document.getElementById("compare-power-chart");o.innerHTML="";let r=[];if(e.forEach((i,s)=>{if(i.timeseries&&i.timeseries.data&&i.timeseries.data.length>0){let a=new Date(i.metadata.startTime*1e3).toLocaleDateString("ru-RU");r.push({name:`Процесс ${s+1} (${a})`,data:i.timeseries.data.map(d=>({x:d.time*1e3,y:d.power}))})}}),r.length===0){o.innerHTML='<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';return}let n={chart:{type:"line",height:300,animations:{enabled:!1},toolbar:{show:!0,tools:{download:!0,selection:!0,zoom:!0,zoomin:!0,zoomout:!0,pan:!0,reset:!0},autoSelected:"zoom"},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:r,xaxis:{type:"datetime",labels:{datetimeFormatter:{hour:"HH:mm"}}},yaxis:{title:{text:"Мощность (Вт)"},decimalsInFloat:0},stroke:{curve:"smooth",width:2},colors:t,legend:{show:!0,position:"top"},tooltip:{x:{format:"dd MMM HH:mm"}}};Ie=new ApexCharts(o,n),Ie.render()}function $n(e){let t=document.getElementById("compare-table"),o='<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';o+='<thead><tr style="background: var(--bg-secondary);">',o+='<th style="padding: 10px; border: 1px solid var(--border-color);">Параметр</th>',e.forEach((n,i)=>{let s=new Date(n.metadata.startTime*1e3).toLocaleDateString("ru-RU");o+=`<th style="padding: 10px; border: 1px solid var(--border-color);">Процесс ${i+1}<br><span style="font-size: 0.8em; font-weight: normal;">${s}</span></th>`}),o+="</tr></thead><tbody>",[{label:"Длительность",getValue:n=>(n.metadata.duration/3600).toFixed(1)+" ч"},{label:"Средняя мощность",getValue:n=>(n.metrics?.power?.avgPower||0)+" Вт"},{label:"Потреблено энергии",getValue:n=>(n.metrics?.power?.energyUsed||0).toFixed(2)+" кВт·ч"},{label:"Головы",getValue:n=>(n.results?.headsCollected||0)+" мл"},{label:"Тело",getValue:n=>(n.results?.bodyCollected||0)+" мл"},{label:"Хвосты",getValue:n=>(n.results?.tailsCollected||0)+" мл"},{label:"Всего собрано",getValue:n=>(n.results?.totalCollected||0)+" мл"},{label:"Статус",getValue:n=>n.metadata.completedSuccessfully?"✅ Успешно":"⚠️ Прервано"}].forEach(n=>{o+="<tr>",o+=`<td style="padding: 10px; border: 1px solid var(--border-color); font-weight: 600;">${n.label}</td>`,e.forEach(i=>{o+=`<td style="padding: 10px; border: 1px solid var(--border-color);">${n.getValue(i)}</td>`}),o+="</tr>"}),o+="</tbody></table>",t.innerHTML=o}async function lo(e){try{let t=await fetch(`/api/history/${e}`);if(!t.ok)throw new Error("Failed to load history details");let o=await t.json();Hn(o),addLog(`👁️ Просмотр процесса ${e}`,"info")}catch(t){console.error("Error loading history details:",t),addLog("❌ Ошибка загрузки деталей процесса","error"),alert("Ошибка загрузки деталей процесса")}}var Se=null,Ce=null;function Hn(e){let t={rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка",hold:"Выдержка"},o=new Date(e.metadata.startTime*1e3),r=new Date(e.metadata.endTime*1e3),n=t[e.process.type]||e.process.type;document.getElementById("modal-title").textContent=`${n} - ${o.toLocaleDateString("ru-RU")}`;let i=document.getElementById("modal-info-grid");i.innerHTML=`
 
-    // Показать модальное окно
-    document.getElementById('compare-modal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
+        <div class="modal-info-item">
 
-function closeCompareModal() {
-    document.getElementById('compare-modal').classList.remove('active');
-    document.body.style.overflow = '';
+            <div class="modal-info-label">Тип процесса</div>
 
-    // Уничтожить графики
-    if (compareTempChart) {
-        compareTempChart.destroy();
-        compareTempChart = null;
-    }
-    if (comparePowerChart) {
-        comparePowerChart.destroy();
-        comparePowerChart = null;
-    }
-}
+            <div class="modal-info-value">${n}</div>
 
-function renderCompareTempChart(processes, colors) {
-    const chartEl = document.getElementById('compare-temp-chart');
-    chartEl.innerHTML = '';
+        </div>
 
-    const series = [];
+        <div class="modal-info-item">
 
-    processes.forEach((process, index) => {
-        if (process.timeseries && process.timeseries.data && process.timeseries.data.length > 0) {
-            const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
-            series.push({
-                name: `Процесс ${index + 1} (${startDate})`,
-                data: process.timeseries.data.map(p => ({
-                    x: p.time * 1000,
-                    y: p.cube
-                }))
-            });
-        }
-    });
+            <div class="modal-info-label">Режим</div>
 
-    if (series.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';
-        return;
-    }
+            <div class="modal-info-value">${e.process.mode==="auto"?"Авто":"Ручной"}</div>
 
-    const options = {
-        chart: {
-            type: 'line',
-            height: 400,
-            animations: {
-                enabled: false
-            },
-            toolbar: {
-                show: true
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: series,
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    hour: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: 'Температура куба (°C)'
-            },
-            decimalsInFloat: 1
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        colors: colors,
-        legend: {
-            show: true,
-            position: 'top'
-        },
-        tooltip: {
-            x: {
-                format: 'dd MMM HH:mm'
-            }
-        }
-    };
+        </div>
 
-    compareTempChart = new ApexCharts(chartEl, options);
-    compareTempChart.render();
-}
+        <div class="modal-info-item">
 
-function renderComparePowerChart(processes, colors) {
-    const chartEl = document.getElementById('compare-power-chart');
-    chartEl.innerHTML = '';
+            <div class="modal-info-label">Начало</div>
 
-    const series = [];
+            <div class="modal-info-value">${o.toLocaleString("ru-RU")}</div>
 
-    processes.forEach((process, index) => {
-        if (process.timeseries && process.timeseries.data && process.timeseries.data.length > 0) {
-            const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
-            series.push({
-                name: `Процесс ${index + 1} (${startDate})`,
-                data: process.timeseries.data.map(p => ({
-                    x: p.time * 1000,
-                    y: p.power
-                }))
-            });
-        }
-    });
+        </div>
 
-    if (series.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';
-        return;
-    }
+        <div class="modal-info-item">
 
-    const options = {
-        chart: {
-            type: 'line',
-            height: 300,
-            animations: {
-                enabled: false
-            },
-            toolbar: {
-                show: true
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: series,
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    hour: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: 'Мощность (Вт)'
-            },
-            decimalsInFloat: 0
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        colors: colors,
-        legend: {
-            show: true,
-            position: 'top'
-        },
-        tooltip: {
-            x: {
-                format: 'dd MMM HH:mm'
-            }
-        }
-    };
+            <div class="modal-info-label">Окончание</div>
 
-    comparePowerChart = new ApexCharts(chartEl, options);
-    comparePowerChart.render();
-}
+            <div class="modal-info-value">${r.toLocaleString("ru-RU")}</div>
 
-function renderCompareTable(processes) {
-    const tableEl = document.getElementById('compare-table');
+        </div>
 
-    let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';
-    html += '<thead><tr style="background: var(--bg-secondary);">';
-    html += '<th style="padding: 10px; border: 1px solid var(--border-color);">Параметр</th>';
+        <div class="modal-info-item">
 
-    processes.forEach((process, index) => {
-        const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
-        html += `<th style="padding: 10px; border: 1px solid var(--border-color);">Процесс ${index + 1}<br><span style="font-size: 0.8em; font-weight: normal;">${startDate}</span></th>`;
-    });
+            <div class="modal-info-label">Длительность</div>
 
-    html += '</tr></thead><tbody>';
+            <div class="modal-info-value">${(e.metadata.duration/3600).toFixed(1)} ч</div>
 
-    // Строки таблицы
-    const rows = [
-        { label: 'Длительность', getValue: (p) => (p.metadata.duration / 3600).toFixed(1) + ' ч' },
-        { label: 'Средняя мощность', getValue: (p) => (p.metrics?.power?.avgPower || 0) + ' Вт' },
-        { label: 'Потреблено энергии', getValue: (p) => (p.metrics?.power?.energyUsed || 0).toFixed(2) + ' кВт·ч' },
-        { label: 'Головы', getValue: (p) => (p.results?.headsCollected || 0) + ' мл' },
-        { label: 'Тело', getValue: (p) => (p.results?.bodyCollected || 0) + ' мл' },
-        { label: 'Хвосты', getValue: (p) => (p.results?.tailsCollected || 0) + ' мл' },
-        { label: 'Всего собрано', getValue: (p) => (p.results?.totalCollected || 0) + ' мл' },
-        { label: 'Статус', getValue: (p) => p.metadata.completedSuccessfully ? '✅ Успешно' : '⚠️ Прервано' }
-    ];
+        </div>
 
-    rows.forEach(row => {
-        html += '<tr>';
-        html += `<td style="padding: 10px; border: 1px solid var(--border-color); font-weight: 600;">${row.label}</td>`;
-        processes.forEach(process => {
-            html += `<td style="padding: 10px; border: 1px solid var(--border-color);">${row.getValue(process)}</td>`;
-        });
-        html += '</tr>';
-    });
+        <div class="modal-info-item">
 
-    html += '</tbody></table>';
-    tableEl.innerHTML = html;
-}
+            <div class="modal-info-label">Статус</div>
 
-// ============================================================================
-// PROFILES - Управление профилями процессов
-// ============================================================================
+            <div class="modal-info-value">${e.metadata.completedSuccessfully?"✅ Успешно":"⚠️ Прервано"}</div>
 
-let currentProfileId = null; // ID профиля для просмотра/редактирования
+        </div>
 
-// Загрузка списка профилей
-function loadProfilesList() {
-    const listEl = document.getElementById('profiles-list');
-    if (!listEl) return;
+        <div class="modal-info-item">
 
-    listEl.innerHTML = '<p class="info-text">Загрузка профилей...</p>';
+            <div class="modal-info-label">Средняя мощность</div>
 
-    fetch('/api/profiles')
-        .then(response => response.json())
-        .then(data => {
-            if (data.profiles && data.profiles.length > 0) {
-                renderProfilesList(data.profiles);
-                updateProfilesStats(data.profiles);
-            } else {
-                listEl.innerHTML = '<p class="info-text">📁 Профили не найдены. Создайте первый профиль!</p>';
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка загрузки профилей:', error);
-            listEl.innerHTML = '<p class="error-text">❌ Ошибка загрузки профилей</p>';
-        });
-}
+            <div class="modal-info-value">${e.metrics?.power?.avgPower||0} Вт</div>
 
-// Отрисовка списка профилей
-function renderProfilesList(profiles) {
-    const listEl = document.getElementById('profiles-list');
-    const filter = document.getElementById('profile-filter-category').value;
+        </div>
 
-    // Применить фильтр
-    const filtered = filter === 'all'
-        ? profiles
-        : profiles.filter(p => p.category === filter);
+        <div class="modal-info-item">
 
-    if (filtered.length === 0) {
-        listEl.innerHTML = '<p class="info-text">📁 Профили не найдены для выбранной категории</p>';
-        return;
-    }
+            <div class="modal-info-label">Потреблено энергии</div>
 
-    let html = '';
-    filtered.forEach(profile => {
-        html += renderProfileItem(profile);
-    });
+            <div class="modal-info-value">${(e.metrics?.power?.energyUsed||0).toFixed(2)} кВт·ч</div>
 
-    listEl.innerHTML = html;
-}
+        </div>
 
-// Отрисовка элемента профиля
-function renderProfileItem(profile) {
-    const categoryIcons = {
-        'rectification': '🌀',
-        'distillation': '🔥',
-        'mashing': '🌾'
-    };
+    `,An(e),Nn(e),Dn(e);let s=document.getElementById("modal-results-grid");s.innerHTML=`
 
-    const categoryNames = {
-        'rectification': 'Ректификация',
-        'distillation': 'Дистилляция',
-        'mashing': 'Затирка'
-    };
+        <div class="modal-info-item">
 
-    const icon = categoryIcons[profile.category] || '📁';
-    const catName = categoryNames[profile.category] || profile.category;
-    const builtinBadge = profile.isBuiltin ? '<span style="background: #2196F3; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Встроенный</span>' : '';
+            <div class="modal-info-label">Головы</div>
 
-    const lastUsed = profile.lastUsed > 0
-        ? new Date(profile.lastUsed * 1000).toLocaleDateString('ru-RU')
-        : 'Не использовался';
+            <div class="modal-info-value">${e.results.headsCollected||0} мл</div>
 
-    return `
+        </div>
+
+        <div class="modal-info-item">
+
+            <div class="modal-info-label">Тело</div>
+
+            <div class="modal-info-value">${e.results.bodyCollected||0} мл</div>
+
+        </div>
+
+        <div class="modal-info-item">
+
+            <div class="modal-info-label">Хвосты</div>
+
+            <div class="modal-info-value">${e.results.tailsCollected||0} мл</div>
+
+        </div>
+
+        <div class="modal-info-item">
+
+            <div class="modal-info-label">Всего собрано</div>
+
+            <div class="modal-info-value">${e.results.totalCollected||0} мл</div>
+
+        </div>
+
+    `;let a=document.getElementById("modal-export-csv"),d=document.getElementById("modal-export-json");a&&(a.onclick=()=>exportHistoryCSV(e.id)),d&&(d.onclick=()=>exportHistoryJSON(e.id)),document.getElementById("history-modal").classList.add("active"),document.body.style.overflow="hidden"}function Xe(){document.getElementById("history-modal").classList.remove("active"),document.body.style.overflow="",Se&&(Se.destroy(),Se=null),Ce&&(Ce.destroy(),Ce=null)}function An(e){let t=document.getElementById("modal-temp-chart");if(t.innerHTML="",!e.timeseries||e.timeseries.data.length===0){t.innerHTML='<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';return}let o=e.timeseries.data,r={chart:{type:"line",height:350,animations:{enabled:!1},toolbar:{show:!0,tools:{download:!0,selection:!0,zoom:!0,zoomin:!0,zoomout:!0,pan:!0,reset:!0},autoSelected:"zoom"},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:[{name:"Куб",data:o.map(n=>({x:n.time*1e3,y:n.cube}))},{name:"Царга верх",data:o.map(n=>({x:n.time*1e3,y:n.columnTop}))}],xaxis:{type:"datetime",labels:{datetimeFormatter:{hour:"HH:mm"}}},yaxis:{title:{text:"Температура (°C)"},decimalsInFloat:1},stroke:{curve:"smooth",width:2},colors:["#dc3545","#007bff"],legend:{show:!0,position:"top"},tooltip:{x:{format:"dd MMM HH:mm"}}};Se=new ApexCharts(t,r),Se.render()}function Nn(e){let t=document.getElementById("modal-power-chart");if(t.innerHTML="",!e.timeseries||e.timeseries.data.length===0){t.innerHTML='<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';return}let o=e.timeseries.data,r={chart:{type:"area",height:300,animations:{enabled:!1},toolbar:{show:!0,tools:{download:!0,selection:!0,zoom:!0,zoomin:!0,zoomout:!0,pan:!0,reset:!0},autoSelected:"zoom"},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:[{name:"Мощность",data:o.map(n=>({x:n.time*1e3,y:n.power}))}],xaxis:{type:"datetime",labels:{datetimeFormatter:{hour:"HH:mm"}}},yaxis:{title:{text:"Мощность (Вт)"},decimalsInFloat:0},stroke:{curve:"smooth",width:2},fill:{type:"gradient",gradient:{shadeIntensity:1,opacityFrom:.7,opacityTo:.3}},colors:["#28a745"],tooltip:{x:{format:"dd MMM HH:mm"}}};Ce=new ApexCharts(t,r),Ce.render()}function Dn(e){let t=document.getElementById("modal-phases");if(!e.phases||e.phases.length===0){t.innerHTML='<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет информации о фазах</p>';return}let o={heating:"Нагрев",stabilization:"Стабилизация",heads:"Отбор голов",body:"Отбор тела",tails:"Отбор хвостов",purge:"Очистка",finish:"Завершение"};t.innerHTML="",e.phases.forEach(r=>{let n=document.createElement("div");n.className="modal-phase-item";let i=o[r.name]||r.name,s=new Date(r.startTime*1e3),a=new Date(r.endTime*1e3);n.innerHTML=`
+
+            <div class="modal-phase-name">${i}</div>
+
+            <div class="modal-phase-details">
+
+                <div class="modal-phase-detail">Начало: <strong>${s.toLocaleTimeString("ru-RU")}</strong></div>
+
+                <div class="modal-phase-detail">Окончание: <strong>${a.toLocaleTimeString("ru-RU")}</strong></div>
+
+                <div class="modal-phase-detail">Длительность: <strong>${(r.duration/60).toFixed(0)} мин</strong></div>
+
+                <div class="modal-phase-detail">Объём: <strong>${r.volume||0} мл</strong></div>
+
+                <div class="modal-phase-detail">Средняя скорость: <strong>${r.avgSpeed||0} мл/ч</strong></div>
+
+            </div>
+
+        `,t.appendChild(n)})}document.addEventListener("DOMContentLoaded",function(){let e=document.getElementById("history-modal");e&&e.addEventListener("click",function(t){t.target===e&&Xe()})});async function He(e,t=null){try{t||(t=confirm(`Выберите формат экспорта:
+
+ОК - CSV (таблица)
+Отмена - JSON (данные)`)?"csv":"json"),addLog(`📥 Экспорт процесса ${e} в формате ${t.toUpperCase()}...`,"info"),window.open(`/api/history/${e}/export?format=${t}`,"_blank"),addLog(`✅ Экспорт процесса ${e} начат`,"info")}catch(o){console.error("Error exporting history:",o),addLog("✗ Ошибка экспорта","error")}}async function co(e){await He(e,"csv")}async function mo(e){await He(e,"json")}function j(e,t){let o=t||A(e);if(L===M)return!0;if(L===e)return l(`Mode "${o}" is already running`,"warning"),!1;let r=A(L);return confirm(`Current mode "${r}" is running.\\nSwitch to "${o}"?\\n\\nCurrent process will be stopped.`)}async function uo(){if(j(O,"Distillation"))try{l("📤 Отправка команды запуска дистилляции...","info");let e=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"distillation"})});if(e.ok){let t=await e.json();l("✅ Дистилляция запущена","success"),t.warning&&l("⚠️ "+t.warning,"warning"),setTimeout(w,500)}else{let t=await e.text();l("✗ Ошибка ("+e.status+"): "+t,"error")}}catch(e){l("✗ Ошибка сети: "+e.message,"error"),console.error("Start distillation error:",e)}}function po(){let e=document.querySelector("#mini-chart");if(!e)return;if(typeof window.ApexCharts>"u"){e.innerHTML='<div class="info-display">Мини-график временно недоступен</div>',l("⚠ Мини-график недоступен: библиотека графика не загружена","warning"),qe(null);return}let t={chart:{type:"line",height:220,animations:{enabled:!0,dynamicAnimation:{speed:500}},toolbar:{show:!0,tools:{download:!0,selection:!0,zoom:!0,zoomin:!0,zoomout:!0,pan:!0,reset:!0},autoSelected:"zoom"},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:[{name:"Куб",data:[]},{name:"Царга верх",data:[]},{name:"Дефлегматор",data:[]}],xaxis:{type:"datetime",labels:{datetimeFormatter:{minute:"HH:mm"}}},yaxis:{title:{text:"°C"},decimalsInFloat:1},stroke:{curve:"smooth",width:2},colors:["#dc3545","#007bff","#17a2b8"],legend:{show:!0,position:"top"},tooltip:{x:{format:"HH:mm:ss"}}};qe(new ApexCharts(e,t)),G.render()}function fo(e){if(!G)return;let t=new Date().getTime();e.t_cube!==void 0&&(b.timestamps.push(t),b.cube.push(e.t_cube),b.columnTop.push(e.t_column_top||null),b.reflux.push(e.t_reflux||null),b.timestamps.length>wt&&(b.timestamps.shift(),b.cube.shift(),b.columnTop.shift(),b.reflux.shift()),G.updateSeries([{name:"Куб",data:b.timestamps.map((o,r)=>({x:o,y:b.cube[r]}))},{name:"Царга верх",data:b.timestamps.map((o,r)=>({x:o,y:b.columnTop[r]}))},{name:"Дефлегматор",data:b.timestamps.map((o,r)=>({x:o,y:b.reflux[r]}))}]))}function go(e){let t;if(Mt(e),e.mode!==void 0){let o=Number(e.mode),r=Number.isFinite(o)?A(o).toUpperCase():"UNKNOWN",n=Number.isFinite(o)?ne(o):"mode-idle",i=document.getElementById("mode");i.textContent=r,i.className=`value ${n}`,Number.isFinite(o)&&ce(o)}if(e.paused!==void 0&&me(!!e.paused),e.phase!==void 0&&(t=["IDLE","HEATING","STABIL","HEADS","PURGE","BODY","TAILS","FINISH","ERROR"][e.phase]||"-",document.getElementById("phase").textContent=t),e.t_cube!==void 0&&(document.getElementById("temp-cube").textContent=e.t_cube.toFixed(1)+"°C"),e.t_column_bottom!==void 0&&(document.getElementById("temp-column-bottom").textContent=e.t_column_bottom.toFixed(1)+"°C"),e.t_column_top!==void 0&&(document.getElementById("temp-column-top").textContent=e.t_column_top.toFixed(1)+"°C"),e.t_reflux!==void 0&&(document.getElementById("temp-reflux").textContent=e.t_reflux.toFixed(1)+"°C"),e.t_tsa!==void 0&&(document.getElementById("temp-tsa").textContent=e.t_tsa.toFixed(1)+"°C"),e.p_cube!==void 0&&(document.getElementById("pressure-cube").textContent=e.p_cube.toFixed(1)+" мм рт.ст."),e.p_atm!==void 0&&(document.getElementById("pressure-atm").textContent=e.p_atm.toFixed(1)+" гПа"),e.p_flood!==void 0&&(document.getElementById("pressure-flood").textContent=e.p_flood.toFixed(1)+" мм"),e.voltage!==void 0&&(document.getElementById("power-voltage").textContent=e.voltage.toFixed(1)+" V"),e.current!==void 0&&(document.getElementById("power-current").textContent=e.current.toFixed(2)+" A"),e.power!==void 0&&(document.getElementById("power-power").textContent=e.power.toFixed(0)+" W"),e.energy!==void 0&&(document.getElementById("power-energy").textContent=e.energy.toFixed(3)+" кВт·ч"),e.frequency!==void 0&&(document.getElementById("power-frequency").textContent=e.frequency.toFixed(1)+" Гц"),e.pf!==void 0&&(document.getElementById("power-pf").textContent=e.pf.toFixed(2)),e.pump_speed!==void 0&&(document.getElementById("pump-speed").textContent=e.pump_speed.toFixed(0)+" мл/ч"),e.pump_volume!==void 0&&(document.getElementById("pump-volume").textContent=e.pump_volume.toFixed(0)+" мл"),e.volume_heads!==void 0&&(document.getElementById("volume-heads").textContent=e.volume_heads.toFixed(0)+" мл"),e.volume_body!==void 0&&(document.getElementById("volume-body").textContent=e.volume_body.toFixed(0)+" мл"),e.volume_tails!==void 0&&(document.getElementById("volume-tails").textContent=e.volume_tails.toFixed(0)+" мл"),K(),e.uptime!==void 0){document.getElementById("uptime").textContent=Y(e.uptime);let o=document.getElementById("operator-uptime");o&&(o.textContent=Y(e.uptime))}e.type==="event"&&l(e.message,e.level||"info"),fo(e),e.memory!==void 0&&Qt(e.memory),typeof updateColumnAnimation=="function"&&updateColumnAnimation(e),ye(e),Le({mode:e.mode,phaseText:t,tCube:e.t_cube,power:e.power,pressureCube:e.p_cube,pumpSpeed:e.pump_speed,abv:Q().value,waterIn:e.t_water_in,waterOut:e.t_water_out,voltage:e.voltage}),se(),ke()}function et(){if(W&&(W.readyState===WebSocket.OPEN||W.readyState===WebSocket.CONNECTING))return;let t=`${window.location.protocol==="https:"?"wss:":"ws:"}//${window.location.host}/ws`;l("Подключение к WebSocket...");try{let o=new WebSocket(t);Oe(o),o.onopen=function(){Ue(!0),kt(),Ze(!0),l("✓ Подключено к контроллеру","info"),de&&(clearInterval(de),Re(null))},o.onmessage=function(r){try{let n=JSON.parse(r.data);go(n)}catch(n){console.error("Ошибка парсинга JSON:",n)}},o.onerror=function(r){console.error("WebSocket error:",r),l("✗ Ошибка подключения","error")},o.onclose=function(){Ue(!1),W===o&&Oe(null),ge(!0),Ze(!1),l("⚠️ Соединение разорвано. Переподключение...","warning"),de||Re(setInterval(()=>{je||et()},5e3))}}catch(o){console.error("Ошибка создания WebSocket:",o),Ze(!1),ge(!0)}}function U(e,t="",o=0){if(W&&W.readyState===WebSocket.OPEN){let r={action:e,param:t,value:o};W.send(JSON.stringify(r)),l(`📤 Команда: ${e} ${t} ${o}`)}else l("✗ Нет подключения к контроллеру","error")}function Ze(e){let t=document.getElementById("connection-status"),o=document.getElementById("connection-text");!t||!o||(e?(t.className="status-dot online",o.textContent="Подключено"):(t.className="status-dot offline",o.textContent="Отключено"))}async function yo(){if(confirm("Остановить процесс?"))try{(await fetch("/api/process/stop",{method:"POST"})).ok?(l("✓ Процесс остановлен","warning"),setTimeout(w,500)):l("✗ Ошибка остановки","error")}catch(e){l("✗ Ошибка: "+e.message,"error")}}async function ho(){try{(await fetch("/api/process/pause",{method:"POST"})).ok?(l("✓ Процесс приостановлен","info"),setTimeout(w,500)):l("✗ Ошибка паузы","error")}catch(e){l("✗ Ошибка: "+e.message,"error")}}async function vo(){try{(await fetch("/api/process/resume",{method:"POST"})).ok?(l("✓ Процесс возобновлен","info"),setTimeout(w,500)):l("✗ Ошибка возобновления","error")}catch(e){l("✗ Ошибка: "+e.message,"error")}}function wo(e){document.getElementById("heater-value").textContent=e,U("heater","power",parseInt(e))}function xo(e){document.getElementById("pump-value").textContent=e,U("pump","speed",parseInt(e))}function bo(e){U("valve",e,1),l(`🔄 Переключение клапана: ${e}`)}function Eo(){try{let e=document.getElementById("extra-mode-select"),t=document.getElementById("mashing-controls"),o=document.getElementById("hold-controls"),r=a=>{let d=a||"none";t&&(t.style.display=d==="mashing"?"":"none"),o&&(o.style.display=d==="hold"?"":"none");try{localStorage.setItem("control.extraMode",d)}catch{}},n=document.getElementById("mash-profile-name");n&&!n.value&&(n.value="Default Mashing");let i=document.getElementById("mash-steps");i&&i.children.length===0&&(oe({temperature:38,duration:20,name:"Кислотная пауза"}),oe({temperature:52,duration:20,name:"Белковая пауза"}),oe({temperature:63,duration:40,name:"Мальтозная пауза"}),oe({temperature:72,duration:20,name:"Осахаривание"}),oe({temperature:78,duration:10,name:"Мэш-аут"}));let s=document.getElementById("hold-steps");if(s&&s.children.length===0&&tt({temperature:65,duration:60}),e){e.addEventListener("change",()=>r(e.value));let a="none";try{a=localStorage.getItem("control.extraMode")||"none"}catch{}(!e.value||e.value==="none")&&(e.value=a),r(e.value)}else t&&(t.style.display=""),o&&(o.style.display="")}catch(e){console.error("initMashingHoldControls error:",e)}}function Io({mode:e,temperature:t,duration:o,name:r}){let n=document.createElement("div");n.dataset.stepRow=e,n.style.display="flex",n.style.gap="10px",n.style.flexWrap="wrap",n.style.alignItems="center",n.style.marginBottom="8px";let i=document.createElement("input");i.type="number",i.step="0.1",i.min="0",i.placeholder="Темп, °C",i.value=(t??"")===""?"":String(t),i.dataset.field="temperature",i.style.width="140px";let s=document.createElement("input");if(s.type="number",s.step="1",s.min="1",s.placeholder="Мин",s.value=(o??"")===""?"":String(o),s.dataset.field="duration",s.style.width="110px",n.appendChild(i),n.appendChild(s),e==="mash"){let d=document.createElement("input");d.type="text",d.placeholder="Имя шага (опц.)",d.value=r||"",d.dataset.field="name",d.style.flex="1",d.style.minWidth="180px",n.appendChild(d)}let a=document.createElement("button");return a.className="btn btn-sm",a.textContent="✖",a.title="Удалить шаг",a.onclick=()=>n.remove(),n.appendChild(a),n}function oe(e={}){let t=document.getElementById("mash-steps");t&&t.appendChild(Io({mode:"mash",temperature:e.temperature,duration:e.duration,name:e.name}))}function tt(e={}){let t=document.getElementById("hold-steps");t&&t.appendChild(Io({mode:"hold",temperature:e.temperature,duration:e.duration}))}function So(e,t){let o=document.getElementById(e);if(!o)return[];let r=Array.from(o.querySelectorAll(`div[data-step-row="${t}"]`)),n=[];for(let i of r){let s=i.querySelector('input[data-field="temperature"]')?.value??"",a=i.querySelector('input[data-field="duration"]')?.value??"",d=Number.parseFloat(s),u=Number.parseInt(a,10);if(!Number.isFinite(d)||d<=0||!Number.isFinite(u)||u<=0)continue;let g={temperature:d,duration:u};if(t==="mash"){let c=(i.querySelector('input[data-field="name"]')?.value??"").trim();c&&(g.name=c)}n.push(g)}return n}async function Co(){if(j(R,"Mashing"))try{let e=(document.getElementById("mash-profile-name")?.value??"").trim()||"Mashing",t=So("mash-steps","mash");if(!t.length){l("✗ Затирка: добавьте хотя бы один корректный шаг (температура и длительность)","error");return}l("📤 Отправка команды запуска затирки...","info");let o=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"mashing",params:{profile:{name:e,steps:t}}})});if(o.ok){let r=await o.json();l("✓ Затирка запущена","success"),r.warning&&l("⚠️ "+r.warning,"warning"),setTimeout(w,500)}else{let r=await o.text();l("✗ Ошибка ("+o.status+"): "+r,"error")}}catch(e){l("✗ Ошибка сети: "+e.message,"error"),console.error("Start mashing error:",e)}}async function Bo(){if(j(z,"Hold"))try{let e=So("hold-steps","hold");if(!e.length){l("✗ Hold: добавьте хотя бы один корректный шаг (температура и длительность)","error");return}l("📤 Отправка команды запуска Hold...","info");let t=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"hold",params:{steps:e}})});if(t.ok){let o=await t.json();l("✓ Hold запущен","success"),o.warning&&l("⚠️ "+o.warning,"warning"),setTimeout(w,500)}else{let o=await t.text();l("✗ Ошибка ("+t.status+"): "+o,"error")}}catch(e){l("✗ Ошибка сети: "+e.message,"error"),console.error("Start hold error:",e)}}var Mo={0:{heads:6,body:84,tails:10},1:{heads:8,body:80,tails:12},2:{heads:7,body:81,tails:12},3:{heads:5,body:75,tails:20},4:{heads:8,body:74,tails:18},5:{heads:6,body:78,tails:16},6:{heads:7,body:79,tails:14},7:{heads:8,body:84,tails:8}};function x(e,t,o,r){let n=Number(e);return Number.isFinite(n)?n<t?t:n>o?o:n:r}function Ae(){let e=document.getElementById("rect-start-modal");e&&(e.style.display="none")}function Be(){let e=x(document.getElementById("rect-start-heads-percent")?.value,0,40,0),t=x(document.getElementById("rect-start-body-percent")?.value,0,100,0),o=x(document.getElementById("rect-start-tails-percent")?.value,0,100,0),r=e+t+o,n=document.getElementById("rect-start-fractions-sum");n&&(n.textContent=`Sum: ${r.toFixed(1)}%`,n.style.color=r>100?"var(--danger)":"var(--text-secondary)")}function ot(){let e=document.getElementById("rect-start-feedstock"),t=document.getElementById("rect-start-heads-percent"),o=document.getElementById("rect-start-body-percent"),r=document.getElementById("rect-start-tails-percent");if(!e||!t||!o||!r)return;let n=x(e.value,0,7,0),i=Mo[n]||Mo[7];t.value=i.heads.toFixed(1),o.value=i.body.toFixed(1),r.value=i.tails.toFixed(1),Be()}function _n(e){e.headsPercent=x(e.headsPercent,0,40,0),e.bodyPercent=x(e.bodyPercent,0,100,0),e.tailsPercent=x(e.tailsPercent,0,100,0);let t=e.headsPercent+e.bodyPercent+e.tailsPercent;if(t<=100)return e;let o=t-100;return e.tailsPercent>=o?(e.tailsPercent-=o,e):(o-=e.tailsPercent,e.tailsPercent=0,e.bodyPercent=Math.max(0,e.bodyPercent-o),e)}function On(){let e={feedstock:x(document.getElementById("rect-start-feedstock")?.value,0,7,0),feedVolumeL:x(document.getElementById("rect-start-feed-volume")?.value,1,250,20),feedAbvPercent:x(document.getElementById("rect-start-feed-abv")?.value,1,96,40),headsPercent:x(document.getElementById("rect-start-heads-percent")?.value,0,40,8),bodyPercent:x(document.getElementById("rect-start-body-percent")?.value,0,100,84),tailsPercent:x(document.getElementById("rect-start-tails-percent")?.value,0,100,8),headsSpeedMlHKw:x(document.getElementById("rect-start-heads-speed")?.value,10,2e3,300),bodySpeedMlHKw:x(document.getElementById("rect-start-body-speed")?.value,50,3e3,600),stabilizationMin:Math.round(x(document.getElementById("rect-start-stabilization")?.value,1,180,30)),purgeMin:Math.round(x(document.getElementById("rect-start-purge")?.value,1,120,5))};return _n(e)}async function nt(){let e=document.getElementById("rect-start-modal");if(!e)return l("Rectification settings modal not found in layout","error"),!1;try{let t=await fetch("/api/settings/rect");if(t.ok){let o=await t.json(),r=(n,i)=>{let s=document.getElementById(n);s&&i!==void 0&&i!==null&&(s.value=String(i))};r("rect-start-feedstock",o.feedstock??0),r("rect-start-feed-volume",o.feedVolumeL??20),r("rect-start-feed-abv",o.feedAbvPercent??40),r("rect-start-heads-percent",o.headsPercent??8),r("rect-start-body-percent",o.bodyPercent??84),r("rect-start-tails-percent",o.tailsPercent??8),r("rect-start-heads-speed",o.headsSpeedMlHKw??300),r("rect-start-body-speed",o.bodySpeedMlHKw??600),r("rect-start-stabilization",o.stabilizationMin??30),r("rect-start-purge",o.purgeMin??5)}else l(`Rect settings load error: ${t.status}`,"warning")}catch(t){l(`Rect settings load network error: ${t.message}`,"warning")}return Be(),e.style.display="flex",!0}async function To(){let e=document.getElementById("rect-start-confirm");e&&(e.disabled=!0);try{let t=On(),o=await fetch("/api/settings/rect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)});if(!o.ok){let i=await o.text();l(`Rect settings save error (${o.status}): ${i}`,"error");return}Ae(),l("Starting auto-rectification with updated settings...","info");let r=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"rectification"})});if(!r.ok){let i=await r.text();l(`Start error (${r.status}): ${i}`,"error");return}let n=await r.json();l("Auto-rectification started","success"),n.warning&&l(`Warning: ${n.warning}`,"warning"),setTimeout(w,500)}catch(t){l(`Start rectification network error: ${t.message}`,"error"),console.error("confirmStartRectification error:",t)}finally{e&&(e.disabled=!1)}}function Po(){let e=document.getElementById("rect-start-modal");if(!e)return;e.addEventListener("click",o=>{o.target===e&&Ae()});let t=document.getElementById("rect-start-feedstock");t&&t.addEventListener("change",ot),["rect-start-heads-percent","rect-start-body-percent","rect-start-tails-percent"].forEach(o=>{let r=document.getElementById(o);r&&r.addEventListener("input",Be)})}async function Lo(){j(T,"Auto-rectification")&&await nt()}function ko(){j(F,"Manual rectification")&&(window.location.href="manual.html")}var Me=null;function Te(e){Me=e}function ae(){let e=document.getElementById("profiles-list");e&&(e.innerHTML='<p class="info-text">Загрузка профилей...</p>',fetch("/api/profiles").then(t=>t.json()).then(t=>{t.profiles&&t.profiles.length>0?(Rn(t.profiles),Un(t.profiles)):e.innerHTML='<p class="info-text">📁 Профили не найдены. Создайте первый профиль!</p>'}).catch(t=>{console.error("Ошибка загрузки профилей:",t),e.innerHTML='<p class="error-text">❌ Ошибка загрузки профилей</p>'}))}function Rn(e){let t=document.getElementById("profiles-list"),o=document.getElementById("profile-filter-category").value,r=o==="all"?e:e.filter(i=>i.category===o);if(r.length===0){t.innerHTML='<p class="info-text">📁 Профили не найдены для выбранной категории</p>';return}let n="";r.forEach(i=>{n+=jn(i)}),t.innerHTML=n}function jn(e){let t={rectification:"🌀",distillation:"🔥",mashing:"🌾"},o={rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка"},r=t[e.category]||"📁",n=o[e.category]||e.category,i=e.isBuiltin?'<span style="background: #2196F3; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Встроенный</span>':"",s=e.lastUsed>0?new Date(e.lastUsed*1e3).toLocaleDateString("ru-RU"):"Не использовался";return`
+
         <div class="profile-item" style="background: var(--bg-primary); padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--accent-color);">
+
             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+
                 <div style="flex: 1;">
+
                     <div style="font-weight: 600; font-size: 1.1em; margin-bottom: 5px;">
-                        ${icon} ${profile.name}${builtinBadge}
+
+                        ${r} ${e.name}${i}
+
                     </div>
+
                     <div style="color: var(--text-secondary); font-size: 0.9em;">
-                        ${catName} • Использований: ${profile.useCount} • Последнее: ${lastUsed}
+
+                        ${n} • Использований: ${e.useCount} • Последнее: ${s}
+
                     </div>
+
                 </div>
+
                 <div style="display: flex; gap: 5px;">
-                    <button class="btn-icon" onclick="viewProfile('${profile.id}')" title="Просмотр">👁️</button>
-                    <button class="btn-icon btn-success" onclick="quickLoadProfile('${profile.id}')" title="Загрузить">📥</button>
-                    <button class="btn-icon" onclick="exportProfile('${profile.id}')" title="Экспорт">📤</button>
-                    ${!profile.isBuiltin ? `<button class="btn-icon btn-danger" onclick="deleteProfile('${profile.id}')" title="Удалить">🗑️</button>` : ''}
+
+                    <button class="btn-icon" onclick="viewProfile('${e.id}')" title="Просмотр">👁️</button>
+
+                    <button class="btn-icon btn-success" onclick="quickLoadProfile('${e.id}')" title="Загрузить">📥</button>
+
+                    <button class="btn-icon" onclick="exportProfile('${e.id}')" title="Экспорт">📤</button>
+
+                    ${e.isBuiltin?"":`<button class="btn-icon btn-danger" onclick="deleteProfile('${e.id}')" title="Удалить">🗑️</button>`}
+
                 </div>
+
             </div>
+
         </div>
-    `;
-}
 
-// Обновление статистики профилей
-function updateProfilesStats(profiles) {
-    document.getElementById('prof-stat-total').textContent = profiles.length;
+    `}function Un(e){document.getElementById("prof-stat-total").textContent=e.length;let t=e.filter(r=>r.isBuiltin).length,o=e.length-t;if(document.getElementById("prof-stat-builtin").textContent=t,document.getElementById("prof-stat-user").textContent=o,e.length>0){let r=e.reduce((n,i)=>n.useCount>i.useCount?n:i);document.getElementById("prof-stat-popular").textContent=r.useCount>0?r.name:"—"}else document.getElementById("prof-stat-popular").textContent="—"}function Fo(){Te(null),document.getElementById("profile-modal-title").textContent="Создание профиля",document.getElementById("profile-name").value="",document.getElementById("profile-description").value="",document.getElementById("profile-category").value="rectification",document.getElementById("profile-tags").value="",document.getElementById("profile-modal").style.display="flex"}function rt(){document.getElementById("profile-modal").style.display="none"}function $o(){let e=document.getElementById("profile-name").value.trim(),t=document.getElementById("profile-description").value.trim(),o=document.getElementById("profile-category").value,r=document.getElementById("profile-tags").value.trim(),n=r?r.split(",").map(s=>s.trim()).filter(s=>s):[];if(!e){alert("Пожалуйста, введите название профиля");return}fetch("/api/profiles",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({metadata:{name:e,description:t,category:o,tags:n,author:"user"},parameters:{mode:o,model:"classic",heater:{maxPower:3e3,autoMode:!0,pidKp:2,pidKi:.5,pidKd:1},rectification:{stabilizationMin:20,headsVolume:50,bodyVolume:2e3,tailsVolume:100,headsSpeed:150,bodySpeed:300,tailsSpeed:400,purgeMin:5},distillation:{headsVolume:0,targetVolume:3e3,speed:500,endTemp:96},temperatures:{maxCube:98,maxColumn:82,headsEnd:78.5,bodyStart:78,bodyEnd:85},safety:{maxRuntime:720,waterFlowMin:2,pressureMax:150}}})}).then(s=>s.json()).then(s=>{s.success?(rt(),ae(),alert("✅ Профиль успешно создан!")):alert("❌ Ошибка создания профиля: "+(s.error||"Неизвестная ошибка"))}).catch(s=>{console.error("Ошибка сохранения профиля:",s),alert("❌ Ошибка сохранения профиля")})}function Ho(e){fetch(`/api/profiles/${e}`).then(t=>t.json()).then(t=>{qn(t)}).catch(t=>{console.error("Ошибка загрузки профиля:",t),alert("❌ Ошибка загрузки профиля")})}function qn(e){Te(e.id),document.getElementById("profile-view-title").textContent=e.metadata.name;let t=document.getElementById("profile-view-body"),o={rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка"},r=`
 
-    const builtin = profiles.filter(p => p.isBuiltin).length;
-    const user = profiles.length - builtin;
-
-    document.getElementById('prof-stat-builtin').textContent = builtin;
-    document.getElementById('prof-stat-user').textContent = user;
-
-    // Самый используемый
-    if (profiles.length > 0) {
-        const mostUsed = profiles.reduce((prev, current) =>
-            (prev.useCount > current.useCount) ? prev : current
-        );
-        document.getElementById('prof-stat-popular').textContent =
-            mostUsed.useCount > 0 ? mostUsed.name : '—';
-    } else {
-        document.getElementById('prof-stat-popular').textContent = '—';
-    }
-}
-
-// Показать модальное окно создания профиля
-function showCreateProfileModal() {
-    currentProfileId = null;
-    document.getElementById('profile-modal-title').textContent = 'Создание профиля';
-    document.getElementById('profile-name').value = '';
-    document.getElementById('profile-description').value = '';
-    document.getElementById('profile-category').value = 'rectification';
-    document.getElementById('profile-tags').value = '';
-    document.getElementById('profile-modal').style.display = 'flex';
-}
-
-// Закрыть модальное окно создания
-function closeProfileModal() {
-    document.getElementById('profile-modal').style.display = 'none';
-}
-
-// Сохранить профиль
-function saveProfile() {
-    const name = document.getElementById('profile-name').value.trim();
-    const description = document.getElementById('profile-description').value.trim();
-    const category = document.getElementById('profile-category').value;
-    const tagsStr = document.getElementById('profile-tags').value.trim();
-    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
-
-    if (!name) {
-        alert('Пожалуйста, введите название профиля');
-        return;
-    }
-
-    // TODO: Получить текущие параметры из формы управления
-    // Пока используем значения по умолчанию
-    const profile = {
-        metadata: {
-            name: name,
-            description: description,
-            category: category,
-            tags: tags,
-            author: 'user'
-        },
-        parameters: {
-            mode: category,
-            model: 'classic',
-            heater: {
-                maxPower: 3000,
-                autoMode: true,
-                pidKp: 2.0,
-                pidKi: 0.5,
-                pidKd: 1.0
-            },
-            rectification: {
-                stabilizationMin: 20,
-                headsVolume: 50,
-                bodyVolume: 2000,
-                tailsVolume: 100,
-                headsSpeed: 150,
-                bodySpeed: 300,
-                tailsSpeed: 400,
-                purgeMin: 5
-            },
-            distillation: {
-                headsVolume: 0,
-                targetVolume: 3000,
-                speed: 500,
-                endTemp: 96.0
-            },
-            temperatures: {
-                maxCube: 98.0,
-                maxColumn: 82.0,
-                headsEnd: 78.5,
-                bodyStart: 78.0,
-                bodyEnd: 85.0
-            },
-            safety: {
-                maxRuntime: 720,
-                waterFlowMin: 2.0,
-                pressureMax: 150
-            }
-        }
-    };
-
-    fetch('/api/profiles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profile)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            closeProfileModal();
-            loadProfilesList();
-            alert('✅ Профиль успешно создан!');
-        } else {
-            alert('❌ Ошибка создания профиля: ' + (data.error || 'Неизвестная ошибка'));
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка сохранения профиля:', error);
-        alert('❌ Ошибка сохранения профиля');
-    });
-}
-
-// Просмотр профиля
-function viewProfile(id) {
-    fetch(`/api/profiles/${id}`)
-        .then(response => response.json())
-        .then(profile => {
-            showProfileViewModal(profile);
-        })
-        .catch(error => {
-            console.error('Ошибка загрузки профиля:', error);
-            alert('❌ Ошибка загрузки профиля');
-        });
-}
-
-// Показать модальное окно просмотра профиля
-function showProfileViewModal(profile) {
-    currentProfileId = profile.id;
-    document.getElementById('profile-view-title').textContent = profile.metadata.name;
-
-    const body = document.getElementById('profile-view-body');
-    const catNames = {
-        'rectification': 'Ректификация',
-        'distillation': 'Дистилляция',
-        'mashing': 'Затирка'
-    };
-
-    let html = `
         <div class="modal-section">
+
             <div class="modal-section-title">📋 Метаданные</div>
+
             <div class="modal-info-grid">
-                <div><strong>Название:</strong> ${profile.metadata.name}</div>
-                <div><strong>Категория:</strong> ${catNames[profile.metadata.category] || profile.metadata.category}</div>
-                <div><strong>Описание:</strong> ${profile.metadata.description || '—'}</div>
-                <div><strong>Автор:</strong> ${profile.metadata.author}</div>
-                <div><strong>Теги:</strong> ${profile.metadata.tags.join(', ') || '—'}</div>
-                <div><strong>Встроенный:</strong> ${profile.metadata.isBuiltin ? 'Да' : 'Нет'}</div>
+
+                <div><strong>Название:</strong> ${e.metadata.name}</div>
+
+                <div><strong>Категория:</strong> ${o[e.metadata.category]||e.metadata.category}</div>
+
+                <div><strong>Описание:</strong> ${e.metadata.description||"—"}</div>
+
+                <div><strong>Автор:</strong> ${e.metadata.author}</div>
+
+                <div><strong>Теги:</strong> ${e.metadata.tags.join(", ")||"—"}</div>
+
+                <div><strong>Встроенный:</strong> ${e.metadata.isBuiltin?"Да":"Нет"}</div>
+
             </div>
+
         </div>
 
+
+
         <div class="modal-section">
+
             <div class="modal-section-title">⚙️ Параметры ректификации</div>
+
             <div class="modal-info-grid">
-                <div><strong>Стабилизация:</strong> ${profile.parameters.rectification.stabilizationMin} мин</div>
-                <div><strong>Объём голов:</strong> ${profile.parameters.rectification.headsVolume} мл</div>
-                <div><strong>Объём тела:</strong> ${profile.parameters.rectification.bodyVolume} мл</div>
-                <div><strong>Объём хвостов:</strong> ${profile.parameters.rectification.tailsVolume} мл</div>
-                <div><strong>Скорость голов:</strong> ${profile.parameters.rectification.headsSpeed} мл/ч/кВт</div>
-                <div><strong>Скорость тела:</strong> ${profile.parameters.rectification.bodySpeed} мл/ч/кВт</div>
+
+                <div><strong>Стабилизация:</strong> ${e.parameters.rectification.stabilizationMin} мин</div>
+
+                <div><strong>Объём голов:</strong> ${e.parameters.rectification.headsVolume} мл</div>
+
+                <div><strong>Объём тела:</strong> ${e.parameters.rectification.bodyVolume} мл</div>
+
+                <div><strong>Объём хвостов:</strong> ${e.parameters.rectification.tailsVolume} мл</div>
+
+                <div><strong>Скорость голов:</strong> ${e.parameters.rectification.headsSpeed} мл/ч/кВт</div>
+
+                <div><strong>Скорость тела:</strong> ${e.parameters.rectification.bodySpeed} мл/ч/кВт</div>
+
             </div>
+
         </div>
 
+
+
         <div class="modal-section">
+
             <div class="modal-section-title">🌡️ Температурные пороги</div>
+
             <div class="modal-info-grid">
-                <div><strong>Макс. куб:</strong> ${profile.parameters.temperatures.maxCube}°C</div>
-                <div><strong>Макс. колонна:</strong> ${profile.parameters.temperatures.maxColumn}°C</div>
-                <div><strong>Окончание голов:</strong> ${profile.parameters.temperatures.headsEnd}°C</div>
-                <div><strong>Начало тела:</strong> ${profile.parameters.temperatures.bodyStart}°C</div>
-                <div><strong>Окончание тела:</strong> ${profile.parameters.temperatures.bodyEnd}°C</div>
+
+                <div><strong>Макс. куб:</strong> ${e.parameters.temperatures.maxCube}°C</div>
+
+                <div><strong>Макс. колонна:</strong> ${e.parameters.temperatures.maxColumn}°C</div>
+
+                <div><strong>Окончание голов:</strong> ${e.parameters.temperatures.headsEnd}°C</div>
+
+                <div><strong>Начало тела:</strong> ${e.parameters.temperatures.bodyStart}°C</div>
+
+                <div><strong>Окончание тела:</strong> ${e.parameters.temperatures.bodyEnd}°C</div>
+
             </div>
+
         </div>
+
+
 
         <div class="modal-section">
+
             <div class="modal-section-title">📊 Статистика использования</div>
+
             <div class="modal-info-grid">
-                <div><strong>Использований:</strong> ${profile.statistics.useCount}</div>
-                <div><strong>Средняя длительность:</strong> ${Math.round(profile.statistics.avgDuration / 60)} мин</div>
-                <div><strong>Средний выход:</strong> ${profile.statistics.avgYield} мл</div>
-                <div><strong>Успешность:</strong> ${profile.statistics.successRate.toFixed(1)}%</div>
+
+                <div><strong>Использований:</strong> ${e.statistics.useCount}</div>
+
+                <div><strong>Средняя длительность:</strong> ${Math.round(e.statistics.avgDuration/60)} мин</div>
+
+                <div><strong>Средний выход:</strong> ${e.statistics.avgYield} мл</div>
+
+                <div><strong>Успешность:</strong> ${e.statistics.successRate.toFixed(1)}%</div>
+
             </div>
+
         </div>
-    `;
 
-    body.innerHTML = html;
-    document.getElementById('profile-view-modal').style.display = 'flex';
-}
+    `;t.innerHTML=r,document.getElementById("profile-view-modal").style.display="flex"}function it(){document.getElementById("profile-view-modal").style.display="none",Te(null)}function st(e){confirm("Загрузить этот профиль в текущие настройки?")&&fetch(`/api/profiles/${e}/load`,{method:"POST"}).then(t=>t.json()).then(t=>{t.success?alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".'):alert("❌ Ошибка загрузки профиля: "+(t.error||"Неизвестная ошибка"))}).catch(t=>{console.error("Ошибка загрузки профиля:",t),alert("❌ Ошибка загрузки профиля")})}function Ao(){Me&&(it(),st(Me))}function No(e){confirm("Удалить этот профиль? Действие нельзя отменить.")&&fetch(`/api/profiles/${e}`,{method:"DELETE"}).then(t=>t.json()).then(t=>{t.success?(ae(),alert("✅ Профиль удалён")):alert("❌ "+(t.error||"Ошибка удаления профиля"))}).catch(t=>{console.error("Ошибка удаления профиля:",t),alert("❌ Ошибка удаления профиля")})}function Do(){confirm("Удалить ВСЕ пользовательские профили? Встроенные рецепты останутся. Действие нельзя отменить!")&&fetch("/api/profiles",{method:"DELETE"}).then(e=>e.json()).then(e=>{e.success?(ae(),alert("✅ Все пользовательские профили удалены")):alert("❌ Ошибка очистки профилей")}).catch(e=>{console.error("Ошибка очистки профилей:",e),alert("❌ Ошибка очистки профилей")})}function _o(e){fetch(`/api/profiles/${e}/export`).then(t=>t.json()).then(t=>{let o=new Blob([JSON.stringify(t,null,2)],{type:"application/json"}),r=URL.createObjectURL(o),n=document.createElement("a");n.href=r,n.download=`profile_${t.metadata.name.replace(/\s+/g,"_")}_${e}.json`,document.body.appendChild(n),n.click(),document.body.removeChild(n),URL.revokeObjectURL(r)}).catch(t=>{console.error("Ошибка экспорта профиля:",t),alert("❌ Ошибка экспорта профиля")})}function Oo(){let e=confirm("Включить встроенные рецепты в экспорт?");fetch(`/api/profiles/export${e?"?includeBuiltin=true":""}`).then(t=>t.json()).then(t=>{if(!t||t.length===0){alert("Нет профилей для экспорта");return}let o=new Blob([JSON.stringify(t,null,2)],{type:"application/json"}),r=URL.createObjectURL(o),n=document.createElement("a");n.href=r;let i=new Date().toISOString().split("T")[0];n.download=`profiles_export_${i}.json`,document.body.appendChild(n),n.click(),document.body.removeChild(n),URL.revokeObjectURL(r),alert(`✅ Экспортировано профилей: ${t.length}`)}).catch(t=>{console.error("Ошибка экспорта профилей:",t),alert("❌ Ошибка экспорта профилей")})}var q=null;function Ro(){q=null,document.getElementById("import-file-input").value="",document.getElementById("import-preview").style.display="none",document.getElementById("import-btn").disabled=!0,document.getElementById("profile-import-modal").style.display="flex",document.getElementById("import-file-input").onchange=function(e){let t=e.target.files[0];if(!t)return;let o=new FileReader;o.onload=function(r){try{q=JSON.parse(r.target.result);let n="";if(Array.isArray(q))n=`Массив из ${q.length} профилей`;else if(q.metadata)n=`Профиль: ${q.metadata.name}`;else throw new Error("Неверный формат JSON");document.getElementById("import-preview-text").textContent=n,document.getElementById("import-preview").style.display="block",document.getElementById("import-btn").disabled=!1}catch{alert("❌ Ошибка чтения файла: неверный формат JSON"),q=null,document.getElementById("import-btn").disabled=!0}},o.readAsText(t)}}function at(){document.getElementById("profile-import-modal").style.display="none",q=null}function jo(){if(!q){alert("Выберите файл для импорта");return}fetch("/api/profiles/import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(q)}).then(e=>e.json()).then(e=>{e.success?(at(),loadProfilesList(),alert(`✅ Импортировано профилей: ${e.imported}`)):alert("❌ Ошибка импорта: "+(e.error||"Неизвестная ошибка"))}).catch(e=>{console.error("Ошибка импорта профилей:",e),alert("❌ Ошибка импорта профилей")})}function Vn(e){let t=y,o=Math.max(1,m(t.equipment.heaterPowerW,k)),r=Math.max(0,m(t.power.power,0)),n=C(r/o*100);return{"rect-power":{title:"Мощность нагрева (ректификация)",label:"Мощность, %",step:"1",min:"0",max:"100",hint:"Override мощности ТЭНа. Установите -1 для возврата к автоматическому управлению.",value:n.toFixed(0),supportsUnitToggle:!0,heaterMaxW:o,submit:async s=>{let a=await fetch("/api/rect/heater",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({power:Number(s)})});if(!a.ok)throw new Error(await a.text())}},"manual-power":{title:"Мощность нагрева",label:"Мощность, %",step:"1",min:"0",max:"100",hint:"Применяется сразу в ручном режиме.",value:n.toFixed(0),supportsUnitToggle:!0,heaterMaxW:o,submit:async s=>{let a=await fetch("/api/manual/heater",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({power:Number(s)})});if(!a.ok)throw new Error(await a.text())}},"planned-abv":{title:"Плановая крепость",label:"Крепость, %",step:"0.1",min:"0",max:"100",hint:"Используется для расчёта целей и времени, пока электронный ареометр OFF.",value:J(D,40).toFixed(1),submit:async s=>{Lt(s),K(),se()}},"manual-speed":{title:"Скорость отбора",label:"Скорость, мл/ч",step:"1",min:"0",max:"5000",hint:"0 = остановить насос.",value:m(t.pump.speedMlH,0).toFixed(0),submit:async s=>{let a=await fetch("/api/manual/pump",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({speed:Number(s)})});if(!a.ok)throw new Error(await a.text())}},"manual-heads":{title:"Объем фракции: Головы",label:"Головы, мл",step:"1",min:"0",max:"100000",hint:"Коррекция учетного объема на экране.",value:m(t.volumes.heads,0).toFixed(0),submit:async s=>{let a=await fetch("/api/manual/volumes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({heads:Number(s),syncTotal:!0})});if(!a.ok)throw new Error(await a.text())}},"manual-body":{title:"Объем фракции: Тело",label:"Тело, мл",step:"1",min:"0",max:"100000",hint:"Коррекция учетного объема на экране.",value:m(t.volumes.body,0).toFixed(0),submit:async s=>{let a=await fetch("/api/manual/volumes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({body:Number(s),syncTotal:!0})});if(!a.ok)throw new Error(await a.text())}},"manual-tails":{title:"Объем фракции: Хвосты",label:"Хвосты, мл",step:"1",min:"0",max:"100000",hint:"Коррекция учетного объема на экране.",value:m(t.volumes.tails,0).toFixed(0),submit:async s=>{let a=await fetch("/api/manual/volumes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tails:Number(s),syncTotal:!0})});if(!a.ok)throw new Error(await a.text())}}}[e]||null}function Uo(e){if(!(e==="planned-abv")&&L!==F&&!(e==="rect-power"&&L===T)){l("Редактирование параметров доступно только в ручной или авто-ректификации","warning");return}let r=Vn(e),n=document.getElementById("runtime-edit-modal"),i=document.getElementById("runtime-edit-title"),s=document.getElementById("runtime-edit-label"),a=document.getElementById("runtime-edit-value"),d=document.getElementById("runtime-edit-hint"),u=document.getElementById("runtime-edit-unit-toggle"),g=document.getElementById("runtime-edit-unit-watts");!r||!n||!i||!s||!a||!d||(Ve(r),i.textContent=r.title,s.textContent=r.label,a.min=r.min,a.max=r.max,a.step=r.step,a.value=r.value,d.textContent=r.hint,u&&g&&(r.supportsUnitToggle?(g.checked=!1,u.style.display="block"):u.style.display="none"),n.style.display="flex",a.focus(),a.select())}function qo(){let e=document.getElementById("runtime-edit-unit-watts"),t=document.getElementById("runtime-edit-label"),o=document.getElementById("runtime-edit-value"),r=te;if(!r||!e||!t||!o)return;let n=r.heaterMaxW||k;if(e.checked){let s=m(o.value,0),a=Math.round(s/100*n);t.textContent="Мощность, Вт",o.min="0",o.max=String(n),o.step="10",o.value=String(a)}else{let s=m(o.value,0),a=Math.round(s/n*100);t.textContent="Мощность, %",o.min=r.min,o.max=r.max,o.step=r.step,o.value=String(Math.min(100,Math.max(0,a)))}o.focus()}function lt(){Ve(null);let e=document.getElementById("runtime-edit-modal");e&&(e.style.display="none")}async function Vo(){if(!te)return;let e=document.getElementById("runtime-edit-value"),t=document.getElementById("runtime-edit-unit-watts");if(!e)return;let o=m(e.min,0),r=m(e.max,Number.POSITIVE_INFINITY),n=m(e.value,NaN);if(!Number.isFinite(n)){alert("Введите корректное число");return}if(n<o&&(n=o),n>r&&(n=r),t&&t.checked&&te.supportsUnitToggle){let i=te.heaterMaxW||k;n=Math.round(n/i*100),n=Math.min(100,Math.max(0,n))}try{await te.submit(n),lt(),l("Параметр обновлен","success"),setTimeout(w,250)}catch(i){let s=i?.message||"Ошибка сохранения";l(`Ошибка изменения параметра: ${s}`,"error")}}function Wo(){let e=document.getElementById("demo-mode-enabled").checked;localStorage.setItem("demoMode",e?"true":"false"),fetch("/api/settings/demo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:e})}).then(t=>{t.ok?addLog(e?"🧪 Демо-режим ВКЛЮЧЁН":"✅ Демо-режим отключён","info"):addLog("⚠️ Ошибка сохранения демо-режима на сервер","warning")}).catch(t=>{addLog("⚠️ Демо-режим сохранён локально (сервер недоступен)","warning")})}function zo(){let e=localStorage.getItem("demoMode"),t=document.getElementById("demo-mode-enabled");t&&e==="true"&&(t.checked=!0)}function Jo(){confirm(`Перезагрузить контроллер ESP32?
 
-// Закрыть модальное окно просмотра
-function closeProfileViewModal() {
-    document.getElementById('profile-view-modal').style.display = 'none';
-    currentProfileId = null;
-}
-
-// Быстрая загрузка профиля
-function quickLoadProfile(id) {
-    if (!confirm('Загрузить этот профиль в текущие настройки?')) return;
-
-    fetch(`/api/profiles/${id}/load`, {
-        method: 'POST'
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
-        } else {
-            alert('❌ Ошибка загрузки профиля: ' + (data.error || 'Неизвестная ошибка'));
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка загрузки профиля:', error);
-        alert('❌ Ошибка загрузки профиля');
-    });
-}
-
-// Загрузка профиля в настройки (из модального окна)
-function loadProfileToSettings() {
-    if (!currentProfileId) return;
-    closeProfileViewModal();
-    quickLoadProfile(currentProfileId);
-}
-
-// Удаление профиля
-function deleteProfile(id) {
-    if (!confirm('Удалить этот профиль? Действие нельзя отменить.')) return;
-
-    fetch(`/api/profiles/${id}`, {
-        method: 'DELETE'
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadProfilesList();
-            alert('✅ Профиль удалён');
-        } else {
-            alert('❌ ' + (data.error || 'Ошибка удаления профиля'));
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка удаления профиля:', error);
-        alert('❌ Ошибка удаления профиля');
-    });
-}
-
-// Очистка пользовательских профилей
-function clearUserProfiles() {
-    if (!confirm('Удалить ВСЕ пользовательские профили? Встроенные рецепты останутся. Действие нельзя отменить!')) return;
-
-    fetch('/api/profiles', {
-        method: 'DELETE'
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            loadProfilesList();
-            alert('✅ Все пользовательские профили удалены');
-        } else {
-            alert('❌ Ошибка очистки профилей');
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка очистки профилей:', error);
-        alert('❌ Ошибка очистки профилей');
-    });
-}
-
-// Экспорт одного профиля
-function exportProfile(id) {
-    fetch(`/api/profiles/${id}/export`)
-        .then(response => response.json())
-        .then(data => {
-            // Создаем blob и скачиваем
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `profile_${data.metadata.name.replace(/\s+/g, '_')}_${id}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        })
-        .catch(error => {
-            console.error('Ошибка экспорта профиля:', error);
-            alert('❌ Ошибка экспорта профиля');
-        });
-}
-
-// Экспорт всех профилей
-function exportAllProfiles() {
-    const includeBuiltin = confirm('Включить встроенные рецепты в экспорт?');
-
-    fetch(`/api/profiles/export${includeBuiltin ? '?includeBuiltin=true' : ''}`)
-        .then(response => response.json())
-        .then(data => {
-            if (!data || data.length === 0) {
-                alert('Нет профилей для экспорта');
-                return;
-            }
-
-            // Создаем blob и скачиваем
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const timestamp = new Date().toISOString().split('T')[0];
-            a.download = `profiles_export_${timestamp}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            alert(`✅ Экспортировано профилей: ${data.length}`);
-        })
-        .catch(error => {
-            console.error('Ошибка экспорта профилей:', error);
-            alert('❌ Ошибка экспорта профилей');
-        });
-}
-
-// Показать модальное окно импорта
-let importFileData = null;
-
-function showImportModal() {
-    importFileData = null;
-    document.getElementById('import-file-input').value = '';
-    document.getElementById('import-preview').style.display = 'none';
-    document.getElementById('import-btn').disabled = true;
-    document.getElementById('profile-import-modal').style.display = 'flex';
-
-    // Добавляем обработчик выбора файла
-    document.getElementById('import-file-input').onchange = function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            try {
-                importFileData = JSON.parse(event.target.result);
-
-                // Показываем предпросмотр
-                let previewText = '';
-                if (Array.isArray(importFileData)) {
-                    previewText = `Массив из ${importFileData.length} профилей`;
-                } else if (importFileData.metadata) {
-                    previewText = `Профиль: ${importFileData.metadata.name}`;
-                } else {
-                    throw new Error('Неверный формат JSON');
-                }
-
-                document.getElementById('import-preview-text').textContent = previewText;
-                document.getElementById('import-preview').style.display = 'block';
-                document.getElementById('import-btn').disabled = false;
-            } catch (error) {
-                alert('❌ Ошибка чтения файла: неверный формат JSON');
-                importFileData = null;
-                document.getElementById('import-btn').disabled = true;
-            }
-        };
-        reader.readAsText(file);
-    };
-}
-
-// Закрыть модальное окно импорта
-function closeImportModal() {
-    document.getElementById('profile-import-modal').style.display = 'none';
-    importFileData = null;
-}
-
-// Выполнить импорт профилей
-function doImportProfiles() {
-    if (!importFileData) {
-        alert('Выберите файл для импорта');
-        return;
-    }
-
-    fetch('/api/profiles/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(importFileData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            closeImportModal();
-            loadProfilesList();
-            alert(`✅ Импортировано профилей: ${data.imported}`);
-        } else {
-            alert('❌ Ошибка импорта: ' + (data.error || 'Неизвестная ошибка'));
-        }
-    })
-    .catch(error => {
-        console.error('Ошибка импорта профилей:', error);
-        alert('❌ Ошибка импорта профилей');
-    });
-}
-
-// ============================================================================
-
-// Закрытие модального окна сравнения при клике на overlay
-document.addEventListener('DOMContentLoaded', function() {
-    const compareOverlay = document.getElementById('compare-modal');
-    if (compareOverlay) {
-        compareOverlay.addEventListener('click', function(e) {
-            if (e.target === compareOverlay) {
-                closeCompareModal();
-            }
-        });
-    }
-});
+Все текущие процессы будут остановлены!`)&&(addLog("🔄 Отправка команды перезагрузки...","warning"),fetch("/api/reboot",{method:"POST"}).then(e=>{e.ok?(addLog("✓ Контроллер перезагружается...","success"),setTimeout(()=>{addLog("📌 Попытка переподключения...","info"),window.location.reload()},5e3)):addLog("✗ Ошибка перезагрузки","error")}).catch(e=>{addLog("❌ Ошибка сети: "+e.message,"error")}))}async function Qo(){let e=document.getElementById("heater-power-w").value,t=document.getElementById("column-height").value,o=parseFloat(document.getElementById("pump-ml-per-rev").value),r=parseInt(document.getElementById("pump-steps-per-rev").value),n={},i=!1;if(o&&o>0&&(n.mlPerRev=o,i=!0),r&&r>0&&(n.stepsPerRev=r,i=!0),i)try{if((await fetch("/api/calibration/pump",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(n)})).ok){let a="✓ Параметры насоса сохранены:";n.mlPerRev&&(a+=" "+n.mlPerRev.toFixed(3)+" мл/об"),n.stepsPerRev&&(a+=", "+n.stepsPerRev+" шагов/об"),l(a,"success")}else l("✗ Ошибка сохранения параметров насоса","error")}catch{l("✗ Ошибка соединения при сохранении насоса","error")}U("equipment","save",0),l("💾 Настройки оборудования сохранены","info")}function Ne(){let e=document.getElementById("mqtt-enabled"),t=document.getElementById("mqtt-fields");!e||!t||(t.style.display=e.checked?"block":"none")}function dt(){return{enabled:document.getElementById("mqtt-enabled"),server:document.getElementById("mqtt-server"),port:document.getElementById("mqtt-port"),username:document.getElementById("mqtt-username"),password:document.getElementById("mqtt-password"),baseTopic:document.getElementById("mqtt-base-topic"),discovery:document.getElementById("mqtt-discovery"),publishInterval:document.getElementById("mqtt-publish-interval"),state:document.getElementById("mqtt-config-state")}}async function ct(){let e=dt();if(!(!e.enabled||!e.server||!e.port||!e.username||!e.password||!e.baseTopic||!e.publishInterval))try{let t=await fetch("/api/settings/mqtt");if(!t.ok){e.state&&(e.state.textContent="Статус: ошибка загрузки");return}let o=await t.json();if(e.enabled.checked=!!o.enabled,e.server.value=o.server||"",e.port.value=Number.isFinite(Number(o.port))?String(o.port):"1883",e.username.value=o.username||"",e.password.value=o.password||"",e.baseTopic.value=o.baseTopic||"smart-column",e.discovery&&(e.discovery.checked=o.discovery!==!1),e.publishInterval.value=Number.isFinite(Number(o.publishInterval))?String(o.publishInterval):"10000",Ne(),e.state){let r=o.connected?"подключен":"не подключен";e.state.textContent=`Статус: ${r}`}}catch(t){e.state&&(e.state.textContent="Статус: ошибка сети"),console.error("MQTT settings load error:",t)}}async function Ko(){let e=dt();if(!e.enabled||!e.server||!e.port||!e.username||!e.password||!e.baseTopic||!e.publishInterval)return;let t=!!e.enabled.checked,o=(e.server.value||"").trim(),r=Number.parseInt(e.port.value,10)||1883,n=(e.username.value||"").trim(),i=e.password.value||"",s=(e.baseTopic.value||"").trim()||"smart-column",a=!!e.discovery?.checked,d=Number.parseInt(e.publishInterval.value,10)||1e4;if(t&&!o){alert("Укажите адрес MQTT сервера");return}try{let u=await fetch("/api/settings/mqtt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:t,server:o,port:r,username:n,password:i,baseTopic:s,discovery:a,publishInterval:d})});if(!u.ok){let g=await u.text();e.state&&(e.state.textContent="Статус: ошибка сохранения"),l(`MQTT save failed: ${g}`,"error"),alert("Ошибка сохранения MQTT настроек");return}e.state&&(e.state.textContent="Статус: сохранено"),l("MQTT settings saved","success"),await ct()}catch(u){e.state&&(e.state.textContent="Статус: ошибка сети"),l(`MQTT save network error: ${u.message}`,"error"),console.error("MQTT settings save error:",u)}}async function Go(){let e=dt();try{let t=await fetch("/api/settings/mqtt/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:"Smart-Column S3: MQTT test from Web UI"})});if(!t.ok){let o=await t.text();e.state&&(e.state.textContent="Статус: тест не отправлен"),l(`MQTT test failed: ${o}`,"error"),alert("Не удалось отправить MQTT тест");return}e.state&&(e.state.textContent="Статус: тест отправлен"),l("MQTT test published","success")}catch(t){e.state&&(e.state.textContent="Статус: ошибка сети"),l(`MQTT test network error: ${t.message}`,"error"),console.error("MQTT test error:",t)}}async function mt(){try{let e=await fetch("/api/calibration");if(!e.ok)throw new Error("Failed to load calibration data");let t=await e.json(),o=document.getElementById("pump-ml-per-rev"),r=document.getElementById("pump-steps-per-rev");if(o&&t.pump&&t.pump.mlPerRev!==void 0&&t.pump.mlPerRev!==null?(o.value=t.pump.mlPerRev.toFixed(3),o.placeholder="Загрузка..."):o&&(o.value="",o.placeholder="Загрузка..."),r&&t.pump&&t.pump.stepsPerRev!==void 0&&t.pump.stepsPerRev!==null){let n=(t.pump.stepsPerRev||0)*(t.pump.microsteps||1);r.value=n,r.placeholder="Загрузка..."}else r&&(r.value="",r.placeholder="Загрузка...")}catch(e){console.error("Error loading pump info:",e);let t=document.getElementById("pump-ml-per-rev"),o=document.getElementById("pump-steps-per-rev");t&&(t.placeholder="Ошибка загрузки"),o&&(o.placeholder="Ошибка загрузки")}}async function ut(){try{let e=await fetch("/api/version");if(!e.ok)throw new Error("Failed to load version info");let t=await e.json();if(t.firmware&&(document.getElementById("firmware-version").textContent=t.firmware.version||"Unknown",document.getElementById("firmware-build-date").textContent=t.firmware.buildDate||"Unknown",document.getElementById("firmware-build-time").textContent=t.firmware.buildTime||"Unknown"),t.board){let o=(t.board.flashSize/1048576).toFixed(0),r=(t.board.psramSize/(1024*1024)).toFixed(0);document.getElementById("board-chip").textContent=`${t.board.chip} (Flash: ${o}MB, PSRAM: ${r}MB)`}t.frontend&&(document.getElementById("frontend-build-date").textContent=t.frontend.buildDate||t.frontend.note||"Unknown",document.getElementById("frontend-build-time").textContent=t.frontend.buildTime||"-"),addLog("✔ Информация о версиях обновлена","success")}catch(e){console.error("Error loading version info:",e),document.getElementById("firmware-version").textContent="Ошибка загрузки",document.getElementById("frontend-build-date").textContent="Ошибка загрузки",addLog("✗ Ошибка загрузки версий","error")}}function Yo(){let e=document.getElementById("auth-enabled").checked,t=document.getElementById("auth-fields");t.style.display=e?"block":"none"}function Xo(){let e=document.getElementById("auth-enabled").checked,t=document.getElementById("web-username").value,o=document.getElementById("web-password").value,r=document.getElementById("rate-limit-enabled").checked;if(e&&(!t||!o)){alert("Укажите имя пользователя и пароль");return}U("security","save",0),l("💾 Настройки безопасности сохранены","info"),alert("Настройки безопасности сохранены. Перезагрузите контроллер.")}function pt(){let e=document.getElementById("telegram-enabled"),t=document.getElementById("telegram-fields");!e||!t||(t.style.display=e.checked?"block":"none")}async function ft(){let e=document.getElementById("telegram-config-state"),t=document.getElementById("telegram-enabled"),o=document.getElementById("telegram-token"),r=document.getElementById("telegram-chat-id");if(!(!e||!t||!o||!r))try{let n=await fetch("/api/settings/telegram");if(!n.ok){e.textContent="Статус: ошибка загрузки";return}let i=await n.json();t.checked=!!i.enabled,o.value=i.token||"",r.value=i.chatId||"",pt(),i.configured?e.textContent=i.active?"Статус: настроено и активно":"Статус: настроено":e.textContent="Статус: не настроено"}catch(n){console.error("Telegram settings load error:",n),e.textContent="Статус: ошибка сети"}}async function Zo(){let e=document.getElementById("telegram-enabled"),t=document.getElementById("telegram-token"),o=document.getElementById("telegram-chat-id"),r=document.getElementById("telegram-config-state");if(!e||!t||!o||!r)return;let n=!!e.checked,i=(t.value||"").trim(),s=(o.value||"").trim();if(n&&(!i||!s)){alert("Для включения Telegram укажите Bot Token и Chat ID");return}try{let a=await fetch("/api/settings/telegram",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:n,token:i,chatId:s})});if(!a.ok){let d=await a.text();r.textContent="Статус: ошибка сохранения",addLog("✗ Telegram: ошибка сохранения: "+d,"error"),alert("Ошибка сохранения Telegram настроек");return}r.textContent=n?"Статус: сохранено":"Статус: отключено",addLog("✓ Telegram настройки сохранены","success")}catch(a){console.error("Telegram settings save error:",a),r.textContent="Статус: ошибка сети",addLog("✗ Telegram: ошибка сети при сохранении","error")}}async function en(){let e=document.getElementById("telegram-config-state");if(e)try{let t=await fetch("/api/settings/telegram/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:"Smart-Column S3: test from Web UI"})});if(!t.ok){let o=await t.text();addLog("✗ Telegram: тест не отправлен: "+o,"error"),e.textContent="Статус: тест не отправлен",alert("Не удалось отправить тестовое сообщение");return}e.textContent="Статус: тест отправлен",addLog("✓ Telegram: тестовое сообщение отправлено","success")}catch(t){console.error("Telegram test send error:",t),e.textContent="Статус: ошибка сети",addLog("✗ Telegram: ошибка сети при отправке теста","error")}}function tn(){let e=document.getElementById("wifi-ssid").value,t=document.getElementById("wifi-password").value;e&&(U("wifi","save",0),l("💾 WiFi настройки сохранены","info"),alert("WiFi настройки сохранены. Перезагрузите контроллер."))}function on(){let e=document.getElementById("temp-reflux"),t=document.getElementById("calc-temp-raw");if(e&&t){let o=e.textContent,r=parseFloat(o);isNaN(r)?addLog("⚠️ Нет данных с датчика","warning"):(t.value=r,addLog("🌡️ Температура получена с датчика","info"))}}function nn(){let e=parseFloat(document.getElementById("calc-abv-raw").value),t=parseFloat(document.getElementById("calc-temp-raw").value),o=document.getElementById("calc-abv-result");if(isNaN(e)||isNaN(t)){alert("Введите корректные значения");return}let r=(20-t)*(.001*e+.16),n=e+r;n=Math.min(100,Math.max(0,n)),o.textContent=n.toFixed(2)+" %"}function rn(){let e=parseFloat(document.getElementById("calc-dil-volume").value),t=parseFloat(document.getElementById("calc-dil-abv-src").value),o=parseFloat(document.getElementById("calc-dil-abv-target").value);if(isNaN(e)||isNaN(t)||isNaN(o)||o<=0||o>t){alert("Проверьте введенные данные. Желаемая крепость должна быть меньше исходной.");return}let r=e*(t/o),n=r-e;document.getElementById("calc-dil-water").textContent=Math.round(n)+" мл",document.getElementById("calc-dil-total").textContent=Math.round(r)+" мл"}var Wn="ui.operatorView";function De(e){let t=document.querySelector("#monitor .operator-screen"),o=document.getElementById("operator-view-toggle");if(!t)return;let r=e==="compact"?"compact":"instrument",n=r==="instrument";t.setAttribute("data-view",r),t.classList.toggle("operator-screen-instrument",n),t.classList.toggle("operator-screen-compact",!n),o&&(o.textContent=`View: ${n?"Instrument":"Compact"}`,o.classList.toggle("btn-info",n),o.classList.toggle("btn-warning",!n))}function an(){let e=document.querySelector("#monitor .operator-screen");if(!e)return;let t=e.classList.contains("operator-screen-instrument")?"compact":"instrument";De(t);try{localStorage.setItem(Wn,t)}catch(o){console.warn("operator view save failed:",o)}}function sn(){return window.innerWidth>=768?"instrument":"compact"}function ln(){if(!document.querySelector("#monitor .operator-screen"))return;if(!document.getElementById("operator-view-toggle")){De("instrument");return}De(sn());let o;window.addEventListener("resize",function(){clearTimeout(o),o=setTimeout(function(){De(sn())},200)})}function dn(){let e=document.querySelectorAll(".tab");e.forEach(t=>{t.addEventListener("click",()=>{let o=t.getAttribute("data-tab");if(!o){xe();return}e.forEach(n=>n.classList.remove("active")),document.querySelectorAll(".tab-content").forEach(n=>{n.classList.remove("active")}),t.classList.add("active");let r=document.getElementById(o);r&&r.classList.add("active"),o==="history"&&loadHistoryList(),xe()})})}function cn(){"serviceWorker"in navigator&&window.addEventListener("load",()=>{navigator.serviceWorker.register("/service-worker.js").then(e=>{console.log("ServiceWorker registration successful with scope: ",e.scope)}).catch(e=>{console.log("ServiceWorker registration failed: ",e)})})}async function mn(){let e=new AbortController,t=setTimeout(()=>e.abort(),1200);try{let o=await fetch("/api/web/user",{credentials:"same-origin",signal:e.signal});return o.status===404?!1:o.status===200||o.status===401||o.status>=400}catch{return!1}finally{clearTimeout(t)}}function un(e){document.querySelectorAll('[data-cloud-only="1"]').forEach(t=>{t.style.display=e?"":"none"})}var Z=!1;async function pn(){if(!("Notification"in window))return!1;let e=localStorage.getItem("browser-notifications")==="1",t=document.getElementById("browser-notifications-enabled");return Notification.permission==="granted"&&e?(Z=!0,t&&(t.checked=!0)):t&&(t.checked=!1),Z}async function zn(){return"Notification"in window?(Z=await Notification.requestPermission()==="granted",Z):(alert("Ваш браузер не поддерживает Push-уведомления"),!1)}function Jn(e,t={}){if(!Z)return;let o={icon:"/manifest/icon-192.png",badge:"/manifest/icon-72.png",vibrate:[200,100,200],...t};if(navigator.serviceWorker&&navigator.serviceWorker.ready)navigator.serviceWorker.ready.then(r=>{r.showNotification(e,o)}).catch(r=>{try{new Notification(e,o)}catch{}});else try{new Notification(e,o)}catch{}}async function fn(){let e=document.getElementById("browser-notifications-enabled");if(e){if(e.checked){let t=await zn();e.checked=t,t?addLog("✓ Браузерные уведомления включены","success"):addLog("✗ Нет разрешения на браузерные уведомления","error")}else Z=!1,addLog("ℹ Браузерные уведомления отключены","info");localStorage.setItem("browser-notifications",Z?"1":"0")}}function gn(){if(!Z){alert("Сначала включите уведомления!");return}Jn("Тестовое уведомление",{body:"Smart-Column S3: уведомления работают корректно!"})}window.saveCloudConfig=At;window.generateCloudClaim=Nt;window.loadESP32Devices=X;window.loadESP32Device=$e;window.showAddDeviceForm=_t;window.loadESP32Config=Ot;window.toggleESP32Fields=we;window.saveESP32Device=Ke;window.saveESP32Config=Rt;window.activateESP32Device=jt;window.deleteESP32Device=Ut;window.testESP32Connection=qt;window.claimDeviceToAccount=Dt;window.toggleUserMenu=Wt;window.logout=zt;window.switchAccount=Jt;window.addLog=l;window.clearLogs=ht;window.downloadLogs=vt;window.toggleMemoryStats=Kt;window.setTheme=Yt;window.toggleTopMenu=eo;window.compareSelected=so;window.closeCompareModal=ao;window.viewHistoryDetails=lo;window.closeHistoryModal=Xe;window.exportHistory=He;window.exportHistoryCSV=co;window.exportHistoryJSON=mo;window.loadHistoryList=be;window.applyHistoryFilters=Ye;window.clearHistory=ro;window.deleteHistoryItem=io;window.toggleProcessSelection=oo;window.confirmModeSwitch=j;window.startDistillation=uo;window.stopProcess=yo;window.pauseProcess=ho;window.resumeProcess=vo;window.updateHeater=wo;window.updatePump=xo;window.toggleValve=bo;window.startMashing=Co;window.startHold=Bo;window.addMashStep=oe;window.addHoldStep=tt;window.startRectification=Lo;window.startManual=ko;window.openRectificationStartModal=nt;window.confirmStartRectification=To;window.closeRectificationStartModal=Ae;window.updateRectificationFractionsSum=Be;window.applyRectificationFeedstockDefaults=ot;window.showCreateProfileModal=Fo;window.closeProfileModal=rt;window.saveProfile=$o;window.viewProfile=Ho;window.closeProfileViewModal=it;window.quickLoadProfile=st;window.loadProfileToSettings=Ao;window.deleteProfile=No;window.clearUserProfiles=Do;window.exportProfile=_o;window.exportAllProfiles=Oo;window.showImportModal=Ro;window.closeImportModal=at;window.doImportProfiles=jo;window.loadProfilesList=ae;window.renderAbvValue=K;window.openRuntimeEditModal=Uo;window.closeRuntimeEditModal=lt;window.submitRuntimeEditModal=Vo;window.onRuntimeEditUnitToggle=qo;window.toggleDemoMode=Wo;window.rebootController=Jo;window.saveEquipment=Qo;window.saveMqtt=Ko;window.sendMqttTest=Go;window.toggleMqttFields=Ne;window.loadPumpInfo=mt;window.loadVersionInfo=ut;window.saveSecurity=Xo;window.toggleAuthFields=Yo;window.saveTelegramSettings=Zo;window.sendTelegramTest=en;window.toggleTelegramFields=pt;window.loadTelegramSettings=ft;window.saveWiFi=tn;window.calculateAbvCorrection=nn;window.calculateDilution=rn;window.fetchCurrentTempForCalc=on;window.toggleOperatorView=an;window.toggleBrowserNotifications=fn;window.testBrowserNotification=gn;document.addEventListener("DOMContentLoaded",async function(){dn(),to(),ln(),$t(),Pt(),K(),Eo(),Po(),Xt(),zo(),po(),Gt(),mt(),ut(),ct(),ft(),pn(),cn();let e=await mn();un(e),e&&(Vt(),X(),Fe(),setInterval(Fe,3e4)),ge(!0),et()});})();

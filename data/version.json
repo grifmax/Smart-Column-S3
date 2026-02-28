@@ -1,7 +1,6 @@
 {
-  "buildDate": "Unknown",
-  "buildTime": "00:00:00",
-  "buildTimestamp": 0,
-  "builder": "Manual",
-  "note": "This file will be auto-generated during build"
+  "buildDate": "Feb 26 2026",
+  "buildTime": "09:23:37",
+  "buildTimestamp": 1772087017,
+  "builder": "PlatformIO"
 }

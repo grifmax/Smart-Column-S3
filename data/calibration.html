@@ -6,11 +6,14 @@
     <title>Калибровка - Smart Column S3</title>
     <link rel="stylesheet" href="style.css">
     <script>
-        // Загрузить тему из localStorage
-        (function() {
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            document.addEventListener('DOMContentLoaded', function() {
-                document.body.setAttribute('data-theme', savedTheme);
+        // Загрузить тему из localStorage перед отрисовкой (как на других страницах)
+        (function () {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            // Основной переключатель темы завязан на переменные CSS, поэтому ставим на <html>
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            // Для совместимости с кодом/стилями, которые могут проверять <body>
+            document.addEventListener('DOMContentLoaded', function () {
+                document.body?.setAttribute('data-theme', savedTheme);
             });
         })();
     </script>

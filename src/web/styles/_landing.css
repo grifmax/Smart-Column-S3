@@ -1,0 +1,216 @@
+/* Landing */
+.landing-shell {
+    position: relative;
+    padding: 22px;
+    margin-bottom: 20px;
+    border-radius: 16px;
+    border: 1px solid var(--landing-border);
+    background: linear-gradient(145deg, var(--landing-glass), rgba(255, 255, 255, 0.62));
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+    animation: landingFade 420ms ease-out both;
+}
+
+[data-theme="dark"] .landing-shell {
+    background: linear-gradient(145deg, rgba(17, 25, 40, 0.92), rgba(17, 25, 40, 0.72));
+}
+
+.landing-glow {
+    position: absolute;
+    width: 260px;
+    height: 260px;
+    border-radius: 999px;
+    pointer-events: none;
+    filter: blur(20px);
+    opacity: 0.35;
+}
+
+.landing-glow-left {
+    left: -80px;
+    top: -100px;
+    background: rgba(23, 162, 184, 0.34);
+}
+
+.landing-glow-right {
+    right: -80px;
+    bottom: -140px;
+    background: rgba(255, 122, 24, 0.28);
+}
+
+.landing-hero {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 16px;
+}
+
+.landing-eyebrow {
+    display: inline-block;
+    font-size: 0.76em;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--landing-muted);
+    margin-bottom: 8px;
+    font-weight: 700;
+}
+
+.landing-title {
+    font-family: 'Exo 2', 'Manrope', sans-serif;
+    font-size: 1.9em;
+    line-height: 1.08;
+    margin: 0;
+    color: var(--landing-ink);
+}
+
+.landing-subtitle {
+    margin: 8px 0 14px;
+    color: var(--landing-muted);
+    max-width: 560px;
+}
+
+.landing-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.landing-chip {
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-size: 0.82em;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    background: var(--landing-chip-bg);
+    border: 1px solid var(--landing-border);
+    color: var(--landing-ink);
+}
+
+.landing-chip-neutral {
+    color: var(--landing-muted);
+}
+
+.landing-chip-ok {
+    background: rgba(40, 167, 69, 0.16);
+    border-color: rgba(40, 167, 69, 0.48);
+    color: #1f7a35;
+}
+
+.landing-chip-warn {
+    background: rgba(220, 53, 69, 0.14);
+    border-color: rgba(220, 53, 69, 0.45);
+    color: #9f2231;
+}
+
+.landing-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+}
+
+.landing-actions .btn {
+    min-width: 132px;
+}
+
+.landing-hero-side {
+    display: grid;
+    grid-template-rows: auto auto;
+    gap: 10px;
+}
+
+.landing-kpi-main {
+    border-radius: 14px;
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.7);
+    padding: 12px 16px;
+}
+
+[data-theme="dark"] .landing-kpi-main {
+    background: rgba(15, 23, 42, 0.6);
+}
+
+.landing-kpi-label {
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--landing-muted);
+    margin-bottom: 6px;
+    font-weight: 700;
+}
+
+.landing-kpi-value {
+    font-family: 'Exo 2', 'Manrope', sans-serif;
+    font-size: clamp(2rem, 5vw, 2.8rem);
+    line-height: 1;
+    font-weight: 800;
+    color: var(--landing-ink);
+}
+
+.landing-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+    gap: 8px;
+}
+
+.landing-kpi-mini {
+    border-radius: 12px;
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.7);
+    padding: 10px 12px;
+}
+
+[data-theme="dark"] .landing-kpi-mini {
+    background: rgba(15, 23, 42, 0.58);
+}
+
+.landing-kpi-mini-value {
+    font-size: 1.14em;
+    font-weight: 800;
+    color: var(--landing-ink);
+}
+
+.landing-strip {
+    position: relative;
+    z-index: 1;
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 8px;
+}
+
+.landing-strip-item {
+    border-radius: 10px;
+    border: 1px solid var(--landing-border);
+    padding: 9px 11px;
+    background: rgba(255, 255, 255, 0.66);
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+[data-theme="dark"] .landing-strip-item {
+    background: rgba(15, 23, 42, 0.52);
+}
+
+.landing-strip-label {
+    color: var(--landing-muted);
+    font-size: 0.82em;
+}
+
+.landing-strip-value {
+    font-weight: 700;
+    color: var(--landing-ink);
+}
+
+@keyframes landingFade {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

@@ -1,0 +1,60 @@
+.operator-scheme {
+    width: 100%;
+    max-width: 420px;
+    height: auto;
+    aspect-ratio: 530 / 755;
+}
+
+.operator-card-scheme .operator-card-title {
+    margin-bottom: 4px;
+    font-size: 0.82em;
+}
+
+.operator-screen-instrument .operator-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.operator-screen-instrument .operator-card-scheme {
+    grid-column: 1 / 6;
+    grid-row: 1 / 5;
+    padding: 6px;
+}
+
+.operator-screen-instrument .operator-card-scheme .operator-scheme {
+    max-width: 100%;
+}
+
+.operator-screen-instrument .operator-card-status {
+    grid-column: 6 / -1;
+}
+
+.operator-screen-instrument .operator-grid>.operator-card:nth-of-type(3),
+.operator-screen-instrument .operator-grid>.operator-card:nth-of-type(4),
+.operator-screen-instrument .operator-grid>.operator-card:nth-of-type(5),
+.operator-screen-instrument .operator-grid>.operator-card:nth-of-type(6) {
+    grid-column: 6 / -1;
+}
+
+.operator-screen-instrument .operator-card-chart {
+    grid-column: 1 / -1;
+}
+
+.operator-screen-instrument .operator-status-grid {
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.operator-screen-instrument .operator-stat {
+    padding: 8px 10px;
+}
+
+.operator-screen-instrument .operator-level-grid {
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    gap: 8px;
+}
+
+.operator-screen-instrument .operator-level-item {
+    padding: 10px 11px;
+}
