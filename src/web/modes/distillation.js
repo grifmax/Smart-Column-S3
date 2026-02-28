@@ -16,7 +16,8 @@ export function collectDistillationSettings() {
         speed: clampDistillationInput(document.getElementById('dist-start-speed')?.value, 10, 6000, 500),
         headsVolume: clampDistillationInput(document.getElementById('dist-start-heads-volume')?.value, 0, 3000, 0),
         targetVolume: clampDistillationInput(document.getElementById('dist-start-target-volume')?.value, 0, 50000, 0),
-        endTemp: clampDistillationInput(document.getElementById('dist-start-end-temp')?.value, 70, 110, 96)
+        endTemp: clampDistillationInput(document.getElementById('dist-start-end-temp')?.value, 70, 110, 96),
+        powerPercent: clampDistillationInput(document.getElementById('dist-start-power-percent')?.value, 0, 100, 60)
     };
 }
 

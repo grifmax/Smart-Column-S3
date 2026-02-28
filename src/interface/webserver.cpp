@@ -229,7 +229,9 @@ void init() {
   server.addHandler(&ws);
 
   // Статические файлы (Web UI)
-  server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+  server.serveStatic("/", LittleFS, "/")
+      .setDefaultFile("index.html")
+      .setTemplateProcessor(nullptr);
 
   // API endpoints
   // GET /api/status - полное состояние системы
@@ -496,7 +498,7 @@ void init() {
 #ifdef USE_LITTLEFS
     File versionFile = LittleFS.open("/version.json", "r");
 #else
-            File versionFile = SPIFFS.open("/version.json", "r");
+            File versionFile = LittleFS.open("/version.json", "r");
 #endif
 
     if (versionFile) {
@@ -591,7 +593,10 @@ void init() {
           float headsVol = params["headsVolume"] | 0.0f;
           float targetVol = params["targetVolume"] | 0.0f;
           float endTemp = params["endTemp"] | 96.0f;
+          uint8_t powerPercent = params["powerPercent"] | 60;
+          if (powerPercent > 100) powerPercent = 100;
           FSM::Distillation::setParams(speed, headsVol, targetVol, endTemp);
+          FSM::Distillation::setPowerPercent(powerPercent);
           FSM::startMode(g_state, g_settings, mode);
         } else if (mode == Mode::MASHING) {
           // params.profile: { name, steps:[{temperature,duration,name?}, ...] }

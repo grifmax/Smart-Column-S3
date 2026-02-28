@@ -264,6 +264,9 @@ export function updateUIFromStatus(data) {
 
             if (el) el.textContent = data.power.power.toFixed(0) + ' W';
 
+            const distPowerFact = document.getElementById('dist-start-power-fact');
+            if (distPowerFact) distPowerFact.value = data.power.power.toFixed(0);
+
         }
 
         if (data.power.energy !== undefined) {
@@ -290,6 +293,13 @@ export function updateUIFromStatus(data) {
 
         }
 
+    }
+
+    if (data.distillation && data.distillation.powerPercent !== undefined) {
+        const distPowerSet = document.getElementById('dist-start-power-percent');
+        if (distPowerSet && document.activeElement !== distPowerSet) {
+            distPowerSet.value = String(Math.max(0, Math.min(100, Number(data.distillation.powerPercent) || 0)));
+        }
     }
 
 

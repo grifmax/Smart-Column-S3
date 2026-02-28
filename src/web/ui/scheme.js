@@ -1,6 +1,77 @@
-import { runtimeMonitorState } from '../globals.js';
+﻿import {
+    runtimeMonitorState,
+    resolveMode,
+    MODE_IDLE,
+    MODE_RECT,
+    MODE_DIST,
+    MODE_MANUAL,
+    MODE_MASH,
+    MODE_HOLD
+} from '../globals.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { addLog } from '../core/logs.js';
+
+const MODE_SCHEME_PATHS = {
+    [MODE_IDLE]: 'schemes/column-animated.svg',
+    [MODE_RECT]: 'schemes/column-animated.svg',
+    [MODE_MANUAL]: 'schemes/column-animated.svg',
+    [MODE_DIST]: 'schemes/distillation-animated.svg',
+    [MODE_MASH]: 'schemes/mash-animated.svg',
+    [MODE_HOLD]: 'schemes/hold-animated.svg'
+};
+
+function getSchemePathForData(data) {
+    const mode = resolveMode(
+        data?.mode ?? runtimeMonitorState.mode,
+        data?.modeStr ?? runtimeMonitorState.modeStr
+    );
+    return MODE_SCHEME_PATHS[mode] || MODE_SCHEME_PATHS[MODE_RECT];
+}
+
+function ensureActiveScheme(obj, data) {
+    const desiredPath = getSchemePathForData(data);
+    const currentPath = obj.dataset.schemePath || obj.getAttribute('data') || '';
+
+    if (!obj.dataset.schemePath) {
+        obj.dataset.schemePath = currentPath;
+    }
+
+    if (currentPath === desiredPath) return false;
+
+    obj.dataset.schemePath = desiredPath;
+    obj.data = desiredPath; // Браузер сам перезагрузит src
+    return true;
+}
+
+function getNestedNumber(obj, key) {
+    const value = obj && typeof obj === 'object' ? obj[key] : undefined;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : undefined;
+}
+
+function getStatusNumber(data, nestedRoot, nestedKey, flatKey) {
+    const nested = getNestedNumber(data?.[nestedRoot], nestedKey);
+    if (nested !== undefined) return nested;
+    const flat = Number(data?.[flatKey]);
+    return Number.isFinite(flat) ? flat : undefined;
+}
+
+function getPowerActualW(data) {
+    const nested = getNestedNumber(data?.power, 'power');
+    if (nested !== undefined) return nested;
+    const flat = Number(data?.power);
+    return Number.isFinite(flat) ? flat : undefined;
+}
+
+function getPowerSetPercent(data) {
+    const fromPowerObject = getNestedNumber(data?.power, 'setPercent');
+    if (fromPowerObject !== undefined) return fromPowerObject;
+    const fromDistillation = getNestedNumber(data?.distillation, 'powerPercent');
+    if (fromDistillation !== undefined) return fromDistillation;
+    const runtime = Number(runtimeMonitorState?.distillation?.powerPercent);
+    return Number.isFinite(runtime) ? runtime : undefined;
+}
+
 
 function setValveClass(svg, valveId, opened) {
     const el = svg.getElementById(valveId);
@@ -83,7 +154,6 @@ function applySchemeTheme(svg) {
         }
     });
 }
-
 function initSchemeInteractions(svg) {
     if (svg._interactiveBound) return;
     svg._interactiveBound = true;
@@ -133,6 +203,17 @@ export function updateInteractiveScheme(data) {
     const obj = document.querySelector('.operator-scheme');
     if (!obj) return;
 
+    if (ensureActiveScheme(obj, data)) {
+        if (!obj._schemeLoadPending) {
+            obj._schemeLoadPending = true;
+            obj.addEventListener('load', () => {
+                obj._schemeLoadPending = false;
+                updateInteractiveScheme(data);
+            }, { once: true });
+        }
+        return;
+    }
+
     // Доступ к документу внутри <object>
     const svg = obj.contentDocument;
     if (!svg) {
@@ -151,26 +232,33 @@ export function updateInteractiveScheme(data) {
     applySchemeTheme(svg);
     initSchemeInteractions(svg);
 
-    if (data.temps) {
-        const setTxt = (id, val) => {
-            const el = svg.getElementById(id);
-            if (el && val !== undefined) el.textContent = val.toFixed(1);
-        };
-        setTxt('txt-temp-cube', data.temps.cube);
-        setTxt('txt-temp-col-top', data.temps.columnTop);
-        setTxt('txt-temp-col-mid', data.temps.columnMiddle);
-        setTxt('txt-temp-node', data.temps.product);
-        setTxt('txt-temp-reflux', data.temps.reflux);
-        setTxt('txt-temp-tsa', data.temps.tsa);
-        setTxt('txt-water-in', data.temps.waterIn);
-        setTxt('txt-water-out', data.temps.waterOut);
+    const tempCube = getStatusNumber(data, 'temps', 'cube', 't_cube');
+    const tempColTop = getStatusNumber(data, 'temps', 'columnTop', 't_column_top');
+    const tempColMid = getStatusNumber(data, 'temps', 'columnMiddle', 't_column_bottom');
+    const tempNode = getStatusNumber(data, 'temps', 'product', 't_product');
+    const tempReflux = getStatusNumber(data, 'temps', 'reflux', 't_reflux');
+    const tempTsa = getStatusNumber(data, 'temps', 'tsa', 't_tsa');
+    const tempWaterIn = getStatusNumber(data, 'temps', 'waterIn', 't_water_in');
+    const tempWaterOut = getStatusNumber(data, 'temps', 'waterOut', 't_water_out');
 
-        // Капли дефлегматора — видимы при T царги > 70°C
-        const refluxZone = svg.getElementById('zone-reflux');
-        if (refluxZone) {
-            const colMid = data.temps.columnMiddle || 0;
-            refluxZone.classList.toggle('condensing', colMid > 70);
-        }
+    const setTxt = (id, val) => {
+        const el = svg.getElementById(id);
+        if (el && val !== undefined) el.textContent = val.toFixed(1);
+    };
+    setTxt('txt-temp-cube', tempCube);
+    setTxt('txt-temp-col-top', tempColTop);
+    setTxt('txt-temp-col-mid', tempColMid);
+    setTxt('txt-temp-node', tempNode);
+    setTxt('txt-temp-reflux', tempReflux);
+    setTxt('txt-temp-tsa', tempTsa);
+    setTxt('txt-water-in', tempWaterIn);
+    setTxt('txt-water-out', tempWaterOut);
+
+    // Капли дефлегматора — видимы при T царги > 70°C
+    const refluxZone = svg.getElementById('zone-reflux');
+    if (refluxZone) {
+        const colMid = tempColMid || 0;
+        refluxZone.classList.toggle('condensing', colMid > 70);
     }
 
     // Обновление давления на схеме
@@ -200,18 +288,21 @@ export function updateInteractiveScheme(data) {
         }
     }
 
+    const powerActualW = getPowerActualW(data);
+    const powerSetPercent = getPowerSetPercent(data);
+
     // Анимация ТЭНа
-    if (data.power && data.power.power !== undefined) {
+    if (powerActualW !== undefined) {
         const heater = svg.getElementById('svg-heater');
         if (heater) {
-            if (data.power.power > 0) heater.classList.add('heater-on');
+            if (powerActualW > 0) heater.classList.add('heater-on');
             else heater.classList.remove('heater-on');
         }
 
         // Анимация пара
         const vaporGroup = svg.getElementById('anim-vapor');
         if (vaporGroup) {
-            if (data.power.power > 0) vaporGroup.classList.add('vapor-active');
+            if (powerActualW > 0) vaporGroup.classList.add('vapor-active');
             else vaporGroup.classList.remove('vapor-active');
         }
 
@@ -221,18 +312,17 @@ export function updateInteractiveScheme(data) {
             const maxW = (runtimeMonitorState && runtimeMonitorState.equipment && runtimeMonitorState.equipment.heaterPowerW)
                 ? runtimeMonitorState.equipment.heaterPowerW
                 : 3000;
-            const currentW = data.power.power;
-            const pct = Math.min(1, Math.max(0, currentW / maxW));
+            const pct = Math.min(1, Math.max(0, powerActualW / maxW));
             powerBar.setAttribute('width', pct * 160); // 160 - полная ширина бара в SVG
         }
 
         // Прямоугольник мощности: установленная (%) и фактическая (Вт)
         const powerSetEl = svg.getElementById('txt-power-set');
-        if (powerSetEl && data.power.setPercent !== undefined)
-            powerSetEl.textContent = data.power.setPercent.toFixed(0) + '%';
+        if (powerSetEl && powerSetPercent !== undefined)
+            powerSetEl.textContent = powerSetPercent.toFixed(0) + '%';
         const powerActEl = svg.getElementById('txt-power-actual');
-        if (powerActEl && data.power.power !== undefined)
-            powerActEl.textContent = data.power.power.toFixed(0) + 'Вт';
+        if (powerActEl)
+            powerActEl.textContent = powerActualW.toFixed(0) + 'Вт';
     }
 
     const valvesState = (data.valves && typeof data.valves === 'object')
@@ -273,38 +363,54 @@ export function updateInteractiveScheme(data) {
     }
 
     // Визуализация капель (скорость отбора)
-    if ((data.pump && data.pump.speedMlH !== undefined) || valvesState) {
-        const speed = runtimeMonitorState.pump.speedMlH || 0;
-        const dropHeads = svg.getElementById('drop-heads');
-        const dropUno = svg.getElementById('drop-uno');
+    const livePumpSpeed = getStatusNumber(data, 'pump', 'speedMlH', 'pump_speed');
+    if (livePumpSpeed !== undefined || valvesState) {
+        const speed = livePumpSpeed !== undefined
+            ? livePumpSpeed
+            : (runtimeMonitorState.pump.speedMlH || 0);
         const valveHeads = svg.getElementById('svg-valve-heads');
         const valveUno = svg.getElementById('svg-valve-uno');
+        const valveTails = svg.getElementById('svg-valve-tails');
 
-        const updateDrop = (drop, valveOpen) => {
-            if (!drop) return;
-            if (speed > 0 && valveOpen) {
-                let duration = 180 / speed; // T = 180/S (примерно 20 капель/мл)
-                if (duration < 0.1) duration = 0.1;
-                if (duration > 2.0) duration = 2.0;
-                drop.style.animation = `drop-fall ${duration.toFixed(2)}s infinite linear`;
-            } else {
-                drop.style.animation = 'none';
-                drop.style.opacity = '0';
+        const updateDrop = (dropClassPrefix, valveOpen, specificDropEle) => {
+            for (let i = 1; i <= 3; i++) {
+                const drop = specificDropEle ? (i === 1 ? specificDropEle : null) : svg.getElementById(`${dropClassPrefix}-${i}`);
+                if (!drop) continue; // На старой схеме это один элемент drop- heads, uno, tails (без -1,2,3)
+                if (speed > 0 && valveOpen) {
+                    let duration = 180 / speed; // T = 180/S (~20 капель/мл)
+                    if (duration < 0.1) duration = 0.1;
+                    if (duration > 2.0) duration = 2.0;
+                    // В column-animated анимация называется drop-fall, в distillation - dripping
+                    const animName = specificDropEle ? 'drop-fall' : 'dripping';
+                    drop.style.animation = `${animName} ${duration.toFixed(2)}s infinite linear`;
+                } else {
+                    drop.style.animation = 'none';
+                    drop.style.opacity = '0';
+                }
             }
         };
 
-        const valveTails = svg.getElementById('svg-valve-tails');
-        const dropTails = svg.getElementById('drop-tails');
+        // Поддержка старой схемы (rectification - один drop)
+        const dropHeadsSingle = svg.getElementById('drop-heads');
+        const dropUnoSingle = svg.getElementById('drop-uno');
+        const dropTailsSingle = svg.getElementById('drop-tails');
 
-        updateDrop(dropHeads, valveHeads && valveHeads.classList.contains('valve-open'));
-        updateDrop(dropUno, valveUno && valveUno.classList.contains('valve-open'));
-        updateDrop(dropTails, valveTails && valveTails.classList.contains('valve-open'));
+        if (dropHeadsSingle) updateDrop('drop-heads', valveHeads?.classList.contains('valve-open'), dropHeadsSingle);
+        if (dropUnoSingle) updateDrop('drop-uno', valveUno?.classList.contains('valve-open'), dropUnoSingle);
+        if (dropTailsSingle) updateDrop('drop-tails', valveTails?.classList.contains('valve-open'), dropTailsSingle);
+
+        // Поддержка схемы дистилляции (группа active-drops.drop-dist с drop-tails-1..3)
+        // В дистилляции отбор идет всегда (без клапана отбора, только если есть скорость > 0)
+        const isDistillationFlow = svg.querySelector('.drop-dist') !== null;
+        if (isDistillationFlow) {
+            updateDrop('drop-tails', true); // Клапана нет, льется всегда при speed>0
+        }
 
         // Скорость насоса
         const pumpSpeedEl = svg.getElementById('txt-pump-speed');
         if (pumpSpeedEl) pumpSpeedEl.textContent = speed.toFixed(0) + ' мл/ч';
 
-        // Анимация ротора насоса (класс вешается на zone-pump)
+        // Анимация ротора насоса
         const zonePump = svg.getElementById('zone-pump');
         if (zonePump) zonePump.classList.toggle('pump-running', speed > 0);
     }

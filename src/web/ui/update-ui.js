@@ -1,10 +1,15 @@
-// ============================================================================
-
-// UI Updates
-
-// ============================================================================
-
-
+﻿import { updateMemoryStats } from '../core/memory.js';
+import { runtimeMonitorState, currentMode, setCurrentMode, currentPaused, setCurrentPaused, getModeLabel, getModeCssClass, resolveMode } from '../globals.js';
+import { updateRuntimeStateFromWs } from '../runtime/state.js';
+import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
+import { renderModeRuntimeCard } from '../runtime/bars.js';
+import { updateMiniChart } from './mini-chart.js';
+import { updateInteractiveScheme } from './scheme.js';
+import { updateLandingUi } from './landing.js';
+import { updateButtonStates } from '../core/status.js';
+import { pad, formatUptime } from '../core/utils.js';
+import { addLog } from '../core/logs.js';
+import { renderAbvValue } from '../runtime/abv.js';
 
 export function updateUI(data) {
     let phaseText = undefined;
@@ -27,13 +32,13 @@ export function updateUI(data) {
 
         modeEl.className = `value ${modeClass}`;
         if (Number.isFinite(modeNum)) {
-            currentMode = modeNum;
+            setCurrentMode(modeNum);
         }
 
     }
 
     if (data.paused !== undefined) {
-        currentPaused = Boolean(data.paused);
+        setCurrentPaused(Boolean(data.paused));
     }
 
 
@@ -124,6 +129,8 @@ export function updateUI(data) {
     if (data.power !== undefined) {
 
         document.getElementById('power-power').textContent = data.power.toFixed(0) + ' W';
+        const distPowerFact = document.getElementById('dist-start-power-fact');
+        if (distPowerFact) distPowerFact.value = Number(data.power).toFixed(0);
 
     }
 
@@ -143,6 +150,13 @@ export function updateUI(data) {
 
         document.getElementById('power-pf').textContent = data.pf.toFixed(2);
 
+    }
+
+    if (data.distillation && data.distillation.powerPercent !== undefined) {
+        const distPowerSet = document.getElementById('dist-start-power-percent');
+        if (distPowerSet && document.activeElement !== distPowerSet) {
+            distPowerSet.value = String(Math.max(0, Math.min(100, Number(data.distillation.powerPercent) || 0)));
+        }
     }
 
 
@@ -255,27 +269,5 @@ export function updateUI(data) {
 
     renderModeRuntimeCard();
     updateButtonStates();
-
-}
-
-
-
-export function formatUptime(seconds) {
-
-    const hours = Math.floor(seconds / 3600);
-
-    const minutes = Math.floor((seconds % 3600) / 60);
-
-    const secs = seconds % 60;
-
-    return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
-
-}
-
-
-
-export function pad(num) {
-
-    return num.toString().padStart(2, '0');
 
 }
