@@ -2702,8 +2702,9 @@ static void renderTouchCalibration() {
         {TFT_WIDTH - 30, TFT_HEIGHT - 30},
         {30, TFT_HEIGHT - 30}
     };
-    int16_t px = points[ui.calStep][0];
-    int16_t py = points[ui.calStep][1];
+    const uint8_t stepIdx = (ui.calStep < 4) ? ui.calStep : 3;
+    int16_t px = points[stepIdx][0];
+    int16_t py = points[stepIdx][1];
     tft.drawCircle(px, py, 10, TFT_GREEN);
     tft.drawLine(px - 15, py, px + 15, py, TFT_GREEN);
     tft.drawLine(px, py - 15, px, py + 15, TFT_GREEN);
@@ -2903,6 +2904,8 @@ void update(const SystemState& state) {
                         ui.calibrating = false;
                         ui.lastRenderedScreen = static_cast<UiScreen>(255);
                         ui.needsRedraw = true;
+                        // Calibration is finished; render normal UI on next update cycle.
+                        return;
                     }
                 }
                 }
@@ -3146,6 +3149,17 @@ void startTouchCalibration() {
     if (!tft_ok || !touch_ok) return;
     ui.calibrating = true;
     ui.calStep = 0;
+    ui.calSkip = 2;
+    memset(ui.calRawX, 0, sizeof(ui.calRawX));
+    memset(ui.calRawY, 0, sizeof(ui.calRawY));
+    ui.touchPressed = false;
+    ui.touchDownX = 0;
+    ui.touchDownY = 0;
+    ui.touchLastX = 0;
+    ui.touchLastY = 0;
+    ui.touchDownMs = 0;
+    ui.lastTapMs = 0;
+    ui.ignoreTapUntilMs = millis() + 250;
     ui.needsRedraw = true;
 #endif
 }
