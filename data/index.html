@@ -84,11 +84,20 @@
                         <h3 class="operator-card-title">Схема процесса</h3>
                         <div class="operator-scheme-controls" role="group" aria-label="Управление процессом">
                             <button class="btn operator-scheme-btn operator-scheme-btn-pause" type="button"
-                                data-runtime-action="pause" onclick="pauseProcess()">⏸️ Пауза</button>
+                                data-runtime-action="pause" onclick="pauseProcess()">
+                                <span class="operator-scheme-btn-icon" aria-hidden="true">⏸</span>
+                                <span class="operator-scheme-btn-label">Пауза</span>
+                            </button>
                             <button class="btn operator-scheme-btn operator-scheme-btn-start" type="button"
-                                data-runtime-action="resume" onclick="resumeProcess()">⏯️ Запустить</button>
+                                data-runtime-action="resume" onclick="resumeProcess()">
+                                <span class="operator-scheme-btn-icon" aria-hidden="true">▶</span>
+                                <span class="operator-scheme-btn-label">Запустить</span>
+                            </button>
                             <button class="btn operator-scheme-btn operator-scheme-btn-stop" type="button"
-                                data-runtime-action="stop" onclick="stopProcess()" disabled>⏹️ Остановить</button>
+                                data-runtime-action="stop" onclick="stopProcess()" disabled>
+                                <span class="operator-scheme-btn-icon" aria-hidden="true">■</span>
+                                <span class="operator-scheme-btn-label">Остановить</span>
+                            </button>
                         </div>
                         <div class="operator-scheme-wrap">
                             <object data="schemes/column-animated.svg" type="image/svg+xml"
