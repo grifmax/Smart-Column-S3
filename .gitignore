@@ -1,1 +1,18 @@
 .pio/
+node_modules/
+
+# Generated bundles (собираются из src/web/)
+data/app.js
+data/style.css
+
+# cloud_tunnel_service build artifacts / dependencies
+cloud_tunnel_service/node_modules/
+cloud_tunnel_service/dist/
+cloud_tunnel_service/.env
+
+# OS files
+.DS_Store
+Thumbs.db
+nul
+*.bak
+*.tmp
