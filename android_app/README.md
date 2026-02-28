@@ -1,0 +1,119 @@
+# Smart Column S3 - Android App
+
+Android приложение для управления ректификационной колонной Smart-Column S3.
+
+## 🚀 Быстрый старт
+
+### Если Flutter не установлен
+1. **Установите Flutter SDK** - см. [FLUTTER_SETUP.md](FLUTTER_SETUP.md)
+2. **Настройте Android SDK** - см. [FLUTTER_SETUP.md](FLUTTER_SETUP.md)
+
+### Сборка APK
+```powershell
+cd android_app
+.\build_apk.ps1
+```
+
+📖 **Подробные инструкции:**
+- [FLUTTER_SETUP.md](FLUTTER_SETUP.md) - установка Flutter SDK
+- [BUILD_APK.md](BUILD_APK.md) - подробная инструкция по сборке APK
+- [BUILD_INSTRUCTIONS.md](BUILD_INSTRUCTIONS.md) - общая информация о сборке
+
+## Требования
+
+- Flutter SDK 3.0.0 или выше
+- Android SDK 21+ (только 64-bit устройства - arm64-v8a)
+- Dart 3.0.0 или выше (входит в Flutter)
+
+## Установка зависимостей
+
+1. Установите зависимости:
+```bash
+flutter pub get
+```
+
+2. Сгенерируйте файлы JSON сериализации:
+```bash
+flutter pub run build_runner build --delete-conflicting-outputs
+```
+
+3. Запустите приложение:
+```bash
+flutter run
+```
+
+## Сборка APK
+
+### Автоматическая сборка (рекомендуется)
+```powershell
+.\build_apk.ps1
+```
+
+### Ручная сборка
+
+**Debug версия:**
+```bash
+flutter build apk --debug
+```
+
+**Release версия:**
+```bash
+flutter build apk --release
+```
+
+APK будет в: `build\app\outputs\flutter-apk\`
+
+## ✅ Работа без ESP32
+
+**Приложение МОЖЕТ работать без ESP32!**
+
+- При запуске показывается экран подключения устройства
+- Можно просматривать все UI элементы
+- Можно настраивать профили (сохраняются локально)
+- Можно просматривать историю (если есть сохраненные данные)
+- При попытке подключения к несуществующему устройству показываются ошибки подключения
+
+**Ограничения без ESP32:**
+- Нет реальных данных с датчиков
+- Невозможно управление процессом
+- Нет WebSocket обновлений
+
+## Архитектура
+
+Приложение использует:
+- **Flutter** для UI
+- **Riverpod** для state management
+- **Dio** для HTTP запросов
+- **WebSocket** для real-time обновлений
+- **SharedPreferences** и **Hive** для локального хранилища
+
+## Структура проекта
+
+```
+lib/
+├── main.dart                 # Точка входа
+├── app.dart                  # Главный виджет приложения
+├── core/                     # Основная логика
+│   ├── api/                 # API клиенты
+│   ├── storage/             # Локальное хранилище
+│   ├── network/             # Сетевые утилиты
+│   └── utils/               # Вспомогательные функции
+├── features/                # Функциональные модули
+│   ├── dashboard/          # Главный экран
+│   ├── monitoring/          # Мониторинг
+│   ├── control/             # Управление
+│   ├── profiles/            # Профили
+│   ├── history/             # История
+│   ├── settings/            # Настройки
+│   ├── calibration/         # Калибровка
+│   ├── charts/              # Графики
+│   └── device_connection/   # Подключение к устройству
+└── shared/                  # Общие компоненты
+    ├── widgets/             # Переиспользуемые виджеты
+    └── theme/               # Тема приложения
+```
+
+## Лицензия
+
+См. основной проект Smart-Column S3.
+
