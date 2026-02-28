@@ -111,6 +111,18 @@ namespace FSM {
     // =========================================================================
     
     namespace Distillation {
+        /**
+         * Установить параметры дистилляции (используются при старте/в процессе)
+         * @param speedMlH Скорость отбора (мл/ч)
+         * @param headsVolumeMl Объём голов (мл, может быть 0)
+         * @param targetVolumeMl Целевой объём отбора (мл, может быть 0)
+         * @param endTempC Температура завершения по кубу (°C, может быть 0)
+         */
+        void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC);
+        /**
+         * Установить мощность нагрева для дистилляции (0..100%)
+         */
+        void setPowerPercent(uint8_t powerPercent);
         void update(SystemState& state, const Settings& settings);
     }
     
@@ -120,8 +132,9 @@ namespace FSM {
     
     namespace Mashing {
         void update(SystemState& state, const Settings& settings);
-        void setProfile(uint8_t profileIndex);
+        void setProfile(const MashProfile* profile);
         void nextStep(SystemState& state);
+        void start(SystemState& state, const MashProfile* profile);
     }
     
     // =========================================================================
@@ -131,6 +144,7 @@ namespace FSM {
     namespace Hold {
         void update(SystemState& state, const Settings& settings);
         void setSteps(const TempStep* steps, uint8_t count);
+        void start(SystemState& state, const TempStep* steps, uint8_t count);
     }
     
     /**
@@ -139,6 +153,32 @@ namespace FSM {
      * @return Строка с именем
      */
     const char* getPhaseName(RectPhase phase);
+
+    /**
+     * Время текущей фазы в секундах (с учетом пауз).
+     */
+    uint32_t getPhaseElapsedSec();
+
+    /**
+     * Оценка целевой длительности текущей фазы в секундах (0, если не применимо).
+     */
+    uint32_t getPhaseTargetSec(const SystemState& state, const Settings& settings);
+
+    /**
+     * Прогресс текущей фазы в процентах (0..100), 0 если цель не определена.
+     */
+    uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settings);
+
+    /**
+     * Целевые объёмы фракций для текущей/последней авто-ректификации.
+     */
+    void getRectTargetsMl(float& headsMl, float& bodyMl, float& tailsMl);
+
+    /**
+     * Runtime-параметры дистилляции.
+     */
+    void getDistillationParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl,
+                               float& endTempC, uint8_t& powerPercent);
     
     /**
      * Получение имени режима

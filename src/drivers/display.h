@@ -12,6 +12,20 @@
 #include "types.h"
 
 namespace Display {
+    struct RuntimeStats {
+        uint32_t framesRendered = 0;
+        uint32_t slowFrames = 0;
+        uint32_t watchdogRecoveries = 0;
+        uint32_t hardWatchdogRecoveries = 0;
+        uint32_t hardWatchdogFailures = 0;
+        uint16_t lastFrameMs = 0;
+        uint16_t maxFrameMs = 0;
+        uint32_t lastFrameAtMs = 0;
+        uint16_t lastUpdateGapMs = 0;
+        uint16_t maxUpdateGapMs = 0;
+        uint32_t updateGapOverruns = 0;
+    };
+
     /**
      * Инициализация дисплея
      */
@@ -70,6 +84,26 @@ namespace Display {
      * @return Размер данных
      */
     size_t getScreenshot(uint8_t* buffer, size_t maxSize);
+
+    /**
+     * Нужно ли запускать калибровку тача
+     */
+    bool needsTouchCalibration();
+
+    /**
+     * Запустить мастер калибровки тача
+     */
+    void startTouchCalibration();
+
+    /**
+     * Идёт ли калибровка тача
+     */
+    bool isTouchCalibrating();
+
+    /**
+     * Внутренняя телеметрия рендера TFT (для диагностики стабильности)
+     */
+    RuntimeStats getRuntimeStats();
 }
 
 #endif // DISPLAY_H

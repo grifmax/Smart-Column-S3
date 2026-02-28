@@ -12,40 +12,57 @@ static bool lastState[4] = {false};
 namespace Buttons {
 
 void init() {
-    LOG_I("Buttons: Initializing...");
+  LOG_I("Buttons: Initializing...");
 
-    pinMode(PIN_BTN_1, INPUT_PULLUP);
-    pinMode(PIN_BTN_2, INPUT_PULLUP);
-    pinMode(PIN_BTN_3, INPUT_PULLUP);
-    pinMode(PIN_BTN_4, INPUT_PULLUP);
+  if (PIN_BUTTON_UP >= 0) {
+    pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
+  }
+  if (PIN_BUTTON_DOWN >= 0) {
+    pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
+  }
+  if (PIN_BUTTON_OK >= 0) {
+    pinMode(PIN_BUTTON_OK, INPUT_PULLUP);
+  }
+  if (PIN_BUTTON_BACK >= 0) {
+    pinMode(PIN_BUTTON_BACK, INPUT_PULLUP);
+  }
 
-    LOG_I("Buttons: Ready");
+  LOG_I("Buttons: Ready");
 }
 
 void update() {
-    uint32_t now = millis();
-    uint8_t pins[] = {PIN_BTN_1, PIN_BTN_2, PIN_BTN_3, PIN_BTN_4};
+  uint32_t now = millis();
+  int pins[] = {PIN_BUTTON_UP, PIN_BUTTON_DOWN, PIN_BUTTON_OK,
+                PIN_BUTTON_BACK};
 
-    for (uint8_t i = 0; i < 4; i++) {
-        bool current = !digitalRead(pins[i]); // Инвертируем (pullup)
-
-        // Debounce
-        if (current != lastState[i] && now - lastPress[i] > BTN_DEBOUNCE_MS) {
-            lastState[i] = current;
-            lastPress[i] = now;
-
-            if (current) {
-                LOG_D("Buttons: Button %d pressed", i + 1);
-                // TODO: Отправить событие
-            }
-        }
+  for (uint8_t i = 0; i < 4; i++) {
+    if (pins[i] < 0) {
+      continue;
     }
+    bool current = !digitalRead(pins[i]); // Инвертируем (pullup)
+
+    // Debounce
+    if (current != lastState[i] && now - lastPress[i] > BUTTON_DEBOUNCE_MS) {
+      lastState[i] = current;
+      lastPress[i] = now;
+
+      if (current) {
+        LOG_D("Buttons: Button %d pressed", i + 1);
+        // TODO: Отправить событие
+      }
+    }
+  }
 }
 
 bool isPressed(uint8_t button) {
-    if (button > 4) return false;
-    uint8_t pins[] = {PIN_BTN_1, PIN_BTN_2, PIN_BTN_3, PIN_BTN_4};
-    return !digitalRead(pins[button - 1]);
+  if (button > 4)
+    return false;
+  int pins[] = {PIN_BUTTON_UP, PIN_BUTTON_DOWN, PIN_BUTTON_OK,
+                PIN_BUTTON_BACK};
+  if (pins[button - 1] < 0) {
+    return false;
+  }
+  return !digitalRead(pins[button - 1]);
 }
 
 } // namespace Buttons

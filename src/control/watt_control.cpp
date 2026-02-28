@@ -23,6 +23,7 @@ static float warnThreshold = 0;         // Предупреждение
 static float critThreshold = 0;         // Критический порог
 static int8_t overridePower = -1;       // Override мощности (-1 = выкл)
 static uint32_t lastFloodTime = 0;      // Время последнего захлёба
+static uint32_t floodPauseUntil = 0;    // До какого момента держать паузу после захлёба
 static uint8_t floodCount = 0;          // Счётчик захлёбов
 static uint8_t powerReduction = 0;      // Накопленное снижение мощности
 
@@ -64,6 +65,8 @@ void setFloodPressure(float pressure) {
 }
 
 uint8_t update(const SystemState& state, const Settings& settings) {
+    uint32_t now = millis();
+
     // Если override активен - использовать его
     if (overridePower >= 0) {
         return overridePower;
@@ -74,6 +77,12 @@ uint8_t update(const SystemState& state, const Settings& settings) {
     // Проверка захлёба
     if (pressure >= critThreshold) {
         handleFlood();
+    }
+
+    // Во время паузы после захлёба удерживаем текущее значение,
+    // чтобы не дергать мощность и не блокировать основной loop.
+    if (now < floodPauseUntil) {
+        return Heater::getPower();
     }
 
     // Рассчитать рекомендуемую мощность
@@ -89,7 +98,7 @@ uint8_t update(const SystemState& state, const Settings& settings) {
     }
 
     // Постепенное восстановление мощности после захлёба
-    if (powerReduction > 0 && millis() - lastFloodTime > 60000) {
+    if (powerReduction > 0 && now - lastFloodTime > 60000) {
         // Каждую минуту восстанавливаем 5%
         if (powerReduction >= 5) {
             powerReduction -= 5;
@@ -98,7 +107,7 @@ uint8_t update(const SystemState& state, const Settings& settings) {
             powerReduction = 0;
             LOG_I("WattControl: Power fully restored");
         }
-        lastFloodTime = millis();
+        lastFloodTime = now;
     }
 
     return recommended;
@@ -153,8 +162,8 @@ void handleFlood() {
     LOG_E("WattControl: FLOOD detected! Power %d%% → %d%% (reduction: %d%%)",
           currentPower, newPower, powerReduction);
 
-    // Пауза 30 секунд
-    delay(30000);
+    // Вместо блокирующей задержки задаем неблокирующую паузу.
+    floodPauseUntil = now + 30000;
 
     // Если захлёбы частые - добавить больше снижения
     if (floodCount > 3) {
