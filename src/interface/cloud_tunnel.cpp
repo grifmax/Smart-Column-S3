@@ -71,6 +71,35 @@ static bool parseWssUrl(const char* url, String& hostOut, uint16_t& portOut, Str
   return true;
 }
 
+// Stable ASCII tokens to keep cloud status compatible with local Web API/WebSocket.
+static const char* getModeToken(Mode mode) {
+  switch (mode) {
+    case Mode::IDLE: return "idle";
+    case Mode::RECTIFICATION: return "rectification";
+    case Mode::DISTILLATION: return "distillation";
+    case Mode::MANUAL_RECT: return "manual";
+    case Mode::MASHING: return "mashing";
+    case Mode::HOLD: return "hold";
+    default: return "unknown";
+  }
+}
+
+static const char* getPhaseToken(RectPhase phase) {
+  switch (phase) {
+    case RectPhase::IDLE: return "idle";
+    case RectPhase::HEATING: return "heating";
+    case RectPhase::STABILIZATION: return "stabilization";
+    case RectPhase::HEADS: return "heads";
+    case RectPhase::POST_HEADS_STABILIZATION: return "post_heads";
+    case RectPhase::BODY: return "body";
+    case RectPhase::TAILS: return "tails";
+    case RectPhase::PURGE: return "purge";
+    case RectPhase::FINISH: return "finish";
+    case RectPhase::COMPLETED: return "completed";
+    default: return "unknown";
+  }
+}
+
 static String base64Encode(const uint8_t* data, size_t len) {
   size_t outLen = 0;
   // calculate size
@@ -203,9 +232,9 @@ static void handleHttpRequest(JsonDocument& req) {
     // Соберём JSON как в WebServer::/api/status (минимально достаточно для UI)
     StaticJsonDocument<2048> doc;
     doc["mode"] = static_cast<int>(g_state.mode);
-    doc["modeStr"] = FSM::getModeName(g_state.mode);
+    doc["modeStr"] = getModeToken(g_state.mode);
     doc["phase"] = static_cast<int>(g_state.rectPhase);
-    doc["phaseStr"] = FSM::getPhaseName(g_state.rectPhase);
+    doc["phaseStr"] = getPhaseToken(g_state.rectPhase);
     doc["paused"] = g_state.paused;
     doc["safetyOk"] = g_state.safetyOk;
     doc["uptime"] = g_state.uptime;
