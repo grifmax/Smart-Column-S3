@@ -125,6 +125,13 @@
     margin: 0;
 }
 
+.control-panel-body .form-group.control-checkbox-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
 .control-panel-body .form-group input,
 .control-panel-body .form-group select {
     width: 100%;
@@ -146,6 +153,16 @@
     margin-top: 6px;
     font-size: 0.85em;
     color: var(--text-secondary);
+}
+
+#manual-tails-settings,
+#manual-tails-pwm-settings {
+    grid-column: 1 / -1;
+}
+
+.control-inline-actions {
+    margin-top: 12px;
+    gap: 8px;
 }
 
 .control-panel-footer {

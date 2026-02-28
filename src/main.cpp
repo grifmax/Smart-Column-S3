@@ -24,7 +24,7 @@
 #include "drivers/valves.h"
 
 // Управление
-// #include "control/demo_simulator.h" // ВРЕМЕННО ОТКЛЮЧЕНО ДЛЯ ДИАГНОСТИКИ
+#include "control/demo_simulator.h"
 #include "control/fsm.h"
 #include "control/safety.h"
 #include "control/watt_control.h"
@@ -136,12 +136,12 @@ void setup() {
   // Инициализация истории энергопотребления
   memset(&g_energyHistory, 0, sizeof(g_energyHistory));
 
-  // SPIFFS
-  if (!SPIFFS.begin(true)) {
-    LOG_E("SPIFFS mount failed!");
+  // LittleFS
+  if (!LittleFS.begin(true)) {
+    LOG_E("LittleFS mount failed!");
   } else {
-    LOG_I("SPIFFS: %d KB used / %d KB total", SPIFFS.usedBytes() / 1024,
-          SPIFFS.totalBytes() / 1024);
+    LOG_I("LittleFS: %d KB used / %d KB total", LittleFS.usedBytes() / 1024,
+          LittleFS.totalBytes() / 1024);
   }
 
   // NVS - загрузка настроек
@@ -402,10 +402,9 @@ void loop() {
   }
 
   // Демо-симулятор (перезаписывает данные сенсоров если demoMode=true)
-  // ВРЕМЕННО ОТКЛЮЧЕНО ДЛЯ ДИАГНОСТИКИ
-  // if (g_settings.demoMode) {
-  //   DemoSimulator::update(g_state, g_settings);
-  // }
+  if (g_settings.demoMode) {
+    DemoSimulator::update(g_state, g_settings);
+  }
 
   // FSM - конечный автомат режимов
   if (g_state.safetyOk && !g_state.paused) {

@@ -18,7 +18,21 @@ import { startDistillation } from './modes/distillation.js';
 import { stopProcess, pauseProcess, resumeProcess, updateHeater, updatePump, toggleValve } from './modes/manual.js';
 import { startMashing, startHold, addMashStep, addHoldStep } from './modes/mashing-hold.js';
 import { startRectification, startManual, openRectificationStartModal, confirmStartRectification, closeRectificationStartModal, updateRectificationFractionsSum, applyRectificationFeedstockDefaults } from './modes/rectification.js';
-import { initControlModePanel, selectControlMode, startSelectedMode } from './modes/control-panel.js';
+import {
+    initControlModePanel,
+    selectControlMode,
+    startSelectedMode,
+    initManualRectSettings,
+    saveManualRectSettings,
+    loadManualRectSettings,
+    updateManualHeadsMode,
+    calcManualHeadsSpeed,
+    calcManualHeadsTime,
+    updateManualBodyToTailsMode,
+    updateManualTailsMode,
+    updateManualTailsStopMode,
+    updateManualTailsPwmMode
+} from './modes/control-panel.js';
 import { showCreateProfileModal, closeProfileModal, saveProfile, viewProfile, closeProfileViewModal, quickLoadProfile, loadProfileToSettings, deleteProfile, clearUserProfiles } from './profiles/crud.js';
 import { exportProfile, exportAllProfiles, showImportModal, closeImportModal, doImportProfiles } from './profiles/import-export.js';
 import { loadProfilesList } from './profiles/list.js';
@@ -109,6 +123,15 @@ window.startRectification = startRectification;
 window.startManual = startManual;
 window.selectControlMode = selectControlMode;
 window.startSelectedMode = startSelectedMode;
+window.saveManualRectSettings = saveManualRectSettings;
+window.loadManualRectSettings = loadManualRectSettings;
+window.updateManualHeadsMode = updateManualHeadsMode;
+window.calcManualHeadsSpeed = calcManualHeadsSpeed;
+window.calcManualHeadsTime = calcManualHeadsTime;
+window.updateManualBodyToTailsMode = updateManualBodyToTailsMode;
+window.updateManualTailsMode = updateManualTailsMode;
+window.updateManualTailsStopMode = updateManualTailsStopMode;
+window.updateManualTailsPwmMode = updateManualTailsPwmMode;
 window.openRectificationStartModal = openRectificationStartModal;
 window.confirmStartRectification = confirmStartRectification;
 window.closeRectificationStartModal = closeRectificationStartModal;
@@ -170,6 +193,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     initMashingHoldControls();
     initRectificationStartModal();
+    initManualRectSettings();
     await initControlModePanel();
 
     loadTheme();

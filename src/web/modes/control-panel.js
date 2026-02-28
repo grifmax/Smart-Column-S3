@@ -7,6 +7,7 @@ import { startDistillation, collectDistillationSettings } from './distillation.j
 import { startMashing, startHold } from './mashing-hold.js';
 
 const CONTROL_MODE_STORAGE_KEY = 'control.selectedMode';
+const MANUAL_RECT_STORAGE_KEY = 'control.manualRectSettings';
 const CONTROL_MODES = {
     rectification: {
         title: 'Авто-ректификация',
@@ -47,6 +48,7 @@ const CONTROL_MODES = {
 
 let selectedControlMode = 'rectification';
 let rectSettingsLoaded = false;
+let manualRectInitialized = false;
 
 function getModeDefinition(mode) {
     return CONTROL_MODES[mode] || CONTROL_MODES.rectification;
@@ -133,6 +135,7 @@ export async function startSelectedMode() {
             started = await startRectification();
             break;
         case 'manual':
+            saveManualRectSettings({ silent: true });
             started = await startManual();
             break;
         case 'distillation':
@@ -162,6 +165,8 @@ export async function initControlModePanel() {
         return;
     }
 
+    initManualRectSettings();
+
     let initialMode = 'rectification';
     try {
         const saved = localStorage.getItem(CONTROL_MODE_STORAGE_KEY);
@@ -173,4 +178,195 @@ export async function initControlModePanel() {
     }
 
     await selectControlMode(initialMode, { persist: false });
+}
+
+function byId(id) {
+    return document.getElementById(id);
+}
+
+function setInputValue(id, value) {
+    const el = byId(id);
+    if (!el || value === undefined || value === null) return;
+    if (el.type === 'checkbox') {
+        el.checked = Boolean(value);
+        return;
+    }
+    el.value = String(value);
+}
+
+function getNumberValue(id, fallback) {
+    const parsed = Number(byId(id)?.value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getStringValue(id, fallback) {
+    const value = byId(id)?.value;
+    return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function getCheckboxValue(id) {
+    return Boolean(byId(id)?.checked);
+}
+
+export function calcManualHeadsSpeed() {
+    const volume = getNumberValue('manual-heads-volume', 50);
+    const time = Math.max(1, getNumberValue('manual-heads-time', 180));
+    const speed = (volume / time) * 60;
+    const out = byId('manual-heads-calc-speed');
+    if (out) out.textContent = speed.toFixed(1);
+}
+
+export function calcManualHeadsTime() {
+    const volume = getNumberValue('manual-heads-volume', 50);
+    const speed = Math.max(1, getNumberValue('manual-heads-speed', 300));
+    const time = (volume / speed) * 60;
+    const out = byId('manual-heads-calc-time');
+    if (out) out.textContent = time.toFixed(0);
+}
+
+export function updateManualHeadsMode() {
+    const mode = getStringValue('manual-heads-mode', 'time');
+    const timeGroup = byId('manual-heads-time-group');
+    const speedGroup = byId('manual-heads-speed-group');
+    const tempGroup = byId('manual-heads-temp-group');
+    if (timeGroup) timeGroup.style.display = mode === 'time' ? '' : 'none';
+    if (speedGroup) speedGroup.style.display = mode === 'speed' ? '' : 'none';
+    if (tempGroup) tempGroup.style.display = mode === 'temp' ? '' : 'none';
+
+    if (mode === 'time') calcManualHeadsSpeed();
+    if (mode === 'speed') calcManualHeadsTime();
+}
+
+export function updateManualBodyToTailsMode() {
+    const mode = getStringValue('manual-body-to-tails-mode', 'stabilize');
+    const stabilizeGroup = byId('manual-body-stabilize-group');
+    const tempGroup = byId('manual-body-temp-group');
+    if (stabilizeGroup) stabilizeGroup.style.display = (mode === 'stabilize' || mode === 'both') ? '' : 'none';
+    if (tempGroup) tempGroup.style.display = (mode === 'temp' || mode === 'both') ? '' : 'none';
+}
+
+export function updateManualTailsMode() {
+    const tailsSettings = byId('manual-tails-settings');
+    if (tailsSettings) tailsSettings.style.display = getCheckboxValue('manual-tails-enabled') ? '' : 'none';
+}
+
+export function updateManualTailsStopMode() {
+    const mode = getStringValue('manual-tails-stop-mode', 'temp');
+    const tempGroup = byId('manual-tails-temp-group');
+    const abvGroup = byId('manual-tails-abv-group');
+    if (tempGroup) tempGroup.style.display = mode === 'temp' ? '' : 'none';
+    if (abvGroup) abvGroup.style.display = mode === 'abv' ? '' : 'none';
+}
+
+export function updateManualTailsPwmMode() {
+    const pwmSettings = byId('manual-tails-pwm-settings');
+    if (pwmSettings) pwmSettings.style.display = getCheckboxValue('manual-tails-pwm-enabled') ? '' : 'none';
+}
+
+function collectManualRectSettings() {
+    return {
+        heads: {
+            volume: getNumberValue('manual-heads-volume', 50),
+            mode: getStringValue('manual-heads-mode', 'time'),
+            time: getNumberValue('manual-heads-time', 180),
+            speed: getNumberValue('manual-heads-speed', 300),
+            temp: getNumberValue('manual-heads-temp', 78.5)
+        },
+        body: {
+            spikeThreshold: getNumberValue('manual-body-spike-threshold', 0.2),
+            speedDecrement: getNumberValue('manual-body-speed-decrement', 5),
+            toTailsMode: getStringValue('manual-body-to-tails-mode', 'stabilize'),
+            stabilizeTimeout: getNumberValue('manual-body-stabilize-timeout', 10),
+            toTailsTemp: getNumberValue('manual-body-to-tails-temp', 92)
+        },
+        tails: {
+            enabled: getCheckboxValue('manual-tails-enabled'),
+            stopMode: getStringValue('manual-tails-stop-mode', 'temp'),
+            stopTemp: getNumberValue('manual-tails-stop-temp', 93),
+            stopAbv: getNumberValue('manual-tails-stop-abv', 40),
+            pwmEnabled: getCheckboxValue('manual-tails-pwm-enabled'),
+            pwmDuty: getNumberValue('manual-tails-pwm-duty', 30),
+            pwmPeriod: getNumberValue('manual-tails-pwm-period', 10)
+        }
+    };
+}
+
+function applyManualRectSettings(settings) {
+    const heads = settings?.heads || {};
+    const body = settings?.body || {};
+    const tails = settings?.tails || {};
+
+    setInputValue('manual-heads-volume', heads.volume ?? 50);
+    setInputValue('manual-heads-mode', heads.mode ?? 'time');
+    setInputValue('manual-heads-time', heads.time ?? 180);
+    setInputValue('manual-heads-speed', heads.speed ?? 300);
+    setInputValue('manual-heads-temp', heads.temp ?? 78.5);
+
+    setInputValue('manual-body-spike-threshold', body.spikeThreshold ?? 0.2);
+    setInputValue('manual-body-speed-decrement', body.speedDecrement ?? 5);
+    setInputValue('manual-body-to-tails-mode', body.toTailsMode ?? 'stabilize');
+    setInputValue('manual-body-stabilize-timeout', body.stabilizeTimeout ?? 10);
+    setInputValue('manual-body-to-tails-temp', body.toTailsTemp ?? 92);
+
+    setInputValue('manual-tails-enabled', tails.enabled ?? false);
+    setInputValue('manual-tails-stop-mode', tails.stopMode ?? 'temp');
+    setInputValue('manual-tails-stop-temp', tails.stopTemp ?? 93);
+    setInputValue('manual-tails-stop-abv', tails.stopAbv ?? 40);
+    setInputValue('manual-tails-pwm-enabled', tails.pwmEnabled ?? false);
+    setInputValue('manual-tails-pwm-duty', tails.pwmDuty ?? 30);
+    setInputValue('manual-tails-pwm-period', tails.pwmPeriod ?? 10);
+
+    const dutyValue = byId('manual-tails-pwm-duty-val');
+    if (dutyValue) dutyValue.textContent = `${getNumberValue('manual-tails-pwm-duty', 30)}%`;
+
+    updateManualHeadsMode();
+    updateManualBodyToTailsMode();
+    updateManualTailsMode();
+    updateManualTailsStopMode();
+    updateManualTailsPwmMode();
+}
+
+export function saveManualRectSettings(options = {}) {
+    const { silent = false } = options;
+    const settings = collectManualRectSettings();
+    try {
+        localStorage.setItem(MANUAL_RECT_STORAGE_KEY, JSON.stringify(settings));
+        if (!silent) addLog('Параметры ручной ректификации сохранены', 'info');
+    } catch {
+        if (!silent) addLog('Не удалось сохранить параметры ручной ректификации', 'warning');
+    }
+}
+
+export function loadManualRectSettings(options = {}) {
+    const { silent = false } = options;
+    try {
+        const raw = localStorage.getItem(MANUAL_RECT_STORAGE_KEY);
+        if (!raw) {
+            applyManualRectSettings({});
+            return;
+        }
+        applyManualRectSettings(JSON.parse(raw));
+        if (!silent) addLog('Параметры ручной ректификации загружены', 'info');
+    } catch {
+        applyManualRectSettings({});
+        if (!silent) addLog('Ошибка загрузки параметров ручной ректификации', 'warning');
+    }
+}
+
+export function initManualRectSettings() {
+    if (manualRectInitialized || !byId('manual-heads-mode')) return;
+    manualRectInitialized = true;
+
+    const headsVolume = byId('manual-heads-volume');
+    if (headsVolume) headsVolume.addEventListener('input', calcManualHeadsSpeed);
+
+    const pwmDuty = byId('manual-tails-pwm-duty');
+    if (pwmDuty) {
+        pwmDuty.addEventListener('input', () => {
+            const dutyValue = byId('manual-tails-pwm-duty-val');
+            if (dutyValue) dutyValue.textContent = `${pwmDuty.value}%`;
+        });
+    }
+
+    loadManualRectSettings({ silent: true });
 }

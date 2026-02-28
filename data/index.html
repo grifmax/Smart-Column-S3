@@ -55,15 +55,14 @@
                     </button>
                     <div id="top-menu-dropdown" class="menu-dropdown">
                         <nav class="tabs tabs-dropdown">
-                            <button class="tab active" data-tab="monitor">📊 Мониторинг</button>
-                            <button class="tab" data-tab="control">🎛️ Управление</button>
+                            <button class="tab active" data-tab="monitor">🏠 Главная</button>
+                            <button class="tab" data-tab="control">🎛️ Режимы</button>
                             <button class="tab" data-tab="settings">⚙️ Настройки</button>
                             <button class="tab" data-tab="logs">📝 Логи</button>
                             <button class="tab" data-tab="history">📚 История</button>
                             <button class="tab" data-tab="profiles">📁 Профили</button>
                             <button class="tab" data-tab="tools">🧮 Инструменты</button>
                             <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
-                            <a href="manual.html" class="tab" style="text-decoration: none;">🔧 Ручной режим</a>
                             <a href="calibration.html" class="tab" style="text-decoration: none;">⚙️ Калибровка</a>
                             <a href="wifi.html" class="tab" style="text-decoration: none;">📶 WiFi</a>
                         </nav>
@@ -72,7 +71,7 @@
             </div>
         </header>
 
-        <!-- Вкладка: Мониторинг -->
+        <!-- Вкладка: Главная -->
         <div id="monitor" class="tab-content active">
             <section class="operator-screen operator-screen-instrument">
                 <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
@@ -251,7 +250,7 @@
             </section>
         </div>
 
-        <!-- Вкладка: Управление -->
+        <!-- Вкладка: Режимы -->
         <div id="control" class="tab-content">
             <div class="card control-layout-card">
                 <div class="control-layout">
@@ -277,17 +276,6 @@
                                 onclick="selectControlMode('hold')">▶️ Hold</button>
                         </div>
 
-                        <div class="control-runtime">
-                            <h3>Управление процессом</h3>
-                            <div class="controls control-runtime-buttons">
-                                <button class="btn btn-danger" type="button" data-runtime-action="stop"
-                                    onclick="stopProcess()" disabled>⏹️ Остановить</button>
-                                <button class="btn" type="button" data-runtime-action="pause"
-                                    onclick="pauseProcess()">⏸️ Пауза</button>
-                                <button class="btn" type="button" data-runtime-action="resume"
-                                    onclick="resumeProcess()">⏯️ Продолжить</button>
-                            </div>
-                        </div>
                     </aside>
 
                     <section id="control-mode-panel" class="control-params-panel">
@@ -345,10 +333,12 @@
                                         <div class="form-group">
                                             <label for="rect-start-heads-speed">Скорость голов, мл/ч/кВт</label>
                                             <input type="number" id="rect-start-heads-speed" min="10" max="2000" step="10">
+                                            <div class="control-inline-hint">Пример: сахарная 250-350, зерновая 180-260</div>
                                         </div>
                                         <div class="form-group">
                                             <label for="rect-start-body-speed">Скорость тела, мл/ч/кВт</label>
                                             <input type="number" id="rect-start-body-speed" min="50" max="3000" step="10">
+                                            <div class="control-inline-hint">Пример: сахарная 500-700, зерновая 420-600</div>
                                         </div>
                                         <div class="form-group">
                                             <label for="rect-start-stabilization">Стабилизация, мин</label>
@@ -383,6 +373,119 @@
                                             <button class="btn btn-sm" type="button" onclick="toggleValve('heads')">🥃 Головы</button>
                                             <button class="btn btn-sm" type="button" onclick="toggleValve('uno')">🔄 УНО</button>
                                         </div>
+                                    </div>
+                                </div>
+                                <div class="control-subsection">
+                                    <div class="control-subsection-title">Параметры ручной ректификации</div>
+                                    <div class="control-form-grid">
+                                        <div class="form-group">
+                                            <label for="manual-heads-volume">Головы: объём, мл</label>
+                                            <input type="number" id="manual-heads-volume" min="10" max="500" step="10"
+                                                value="50">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="manual-heads-mode">Головы: режим</label>
+                                            <select id="manual-heads-mode" onchange="updateManualHeadsMode()">
+                                                <option value="time">По времени</option>
+                                                <option value="speed">По скорости</option>
+                                                <option value="temp">По температуре куба</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" id="manual-heads-time-group">
+                                            <label for="manual-heads-time">Головы: время, мин</label>
+                                            <input type="number" id="manual-heads-time" min="30" max="600" step="10"
+                                                value="180" oninput="calcManualHeadsSpeed()">
+                                            <div class="control-inline-hint">Скорость: <span
+                                                    id="manual-heads-calc-speed">16.7</span> мл/ч</div>
+                                        </div>
+                                        <div class="form-group" id="manual-heads-speed-group" style="display: none;">
+                                            <label for="manual-heads-speed">Головы: скорость, мл/ч</label>
+                                            <input type="number" id="manual-heads-speed" min="50" max="1000" step="10"
+                                                value="300" oninput="calcManualHeadsTime()">
+                                            <div class="control-inline-hint">Время: <span
+                                                    id="manual-heads-calc-time">10</span> мин</div>
+                                        </div>
+                                        <div class="form-group" id="manual-heads-temp-group" style="display: none;">
+                                            <label for="manual-heads-temp">Головы: температура куба, °C</label>
+                                            <input type="number" id="manual-heads-temp" min="75" max="85" step="0.1"
+                                                value="78.5">
+                                            <div class="control-inline-hint">Обычно 78.0-79.0 °C</div>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="manual-body-spike-threshold">Тело: порог скачка, °C</label>
+                                            <input type="number" id="manual-body-spike-threshold" min="0.1" max="1.0"
+                                                step="0.05" value="0.2">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="manual-body-speed-decrement">Тело: декремент скорости, %</label>
+                                            <input type="number" id="manual-body-speed-decrement" min="1" max="20"
+                                                step="1" value="5">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="manual-body-to-tails-mode">Переход на хвосты</label>
+                                            <select id="manual-body-to-tails-mode" onchange="updateManualBodyToTailsMode()">
+                                                <option value="stabilize">По невозможности стабилизации</option>
+                                                <option value="temp">По температуре куба</option>
+                                                <option value="both">Любой критерий</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" id="manual-body-stabilize-group">
+                                            <label for="manual-body-stabilize-timeout">Таймаут стабилизации, мин</label>
+                                            <input type="number" id="manual-body-stabilize-timeout" min="3" max="30"
+                                                step="1" value="10">
+                                        </div>
+                                        <div class="form-group" id="manual-body-temp-group" style="display: none;">
+                                            <label for="manual-body-to-tails-temp">Температура перехода, °C</label>
+                                            <input type="number" id="manual-body-to-tails-temp" min="85" max="96"
+                                                step="0.5" value="92">
+                                        </div>
+
+                                        <div class="form-group control-checkbox-field">
+                                            <label for="manual-tails-enabled">Хвосты: отбор</label>
+                                            <input type="checkbox" id="manual-tails-enabled"
+                                                onchange="updateManualTailsMode()">
+                                        </div>
+                                        <div class="form-group" id="manual-tails-settings" style="display: none;">
+                                            <label for="manual-tails-stop-mode">Хвосты: критерий остановки</label>
+                                            <select id="manual-tails-stop-mode" onchange="updateManualTailsStopMode()">
+                                                <option value="temp">По температуре куба</option>
+                                                <option value="abv">По крепости (ареометр)</option>
+                                            </select>
+                                            <div id="manual-tails-temp-group" style="margin-top: 8px;">
+                                                <label for="manual-tails-stop-temp">Температура, °C</label>
+                                                <input type="number" id="manual-tails-stop-temp" min="85" max="99"
+                                                    step="0.5" value="93">
+                                            </div>
+                                            <div id="manual-tails-abv-group" style="display: none; margin-top: 8px;">
+                                                <label for="manual-tails-stop-abv">Мин. крепость, %</label>
+                                                <input type="number" id="manual-tails-stop-abv" min="10" max="70"
+                                                    step="1" value="40">
+                                            </div>
+                                        </div>
+
+                                        <div class="form-group control-checkbox-field">
+                                            <label for="manual-tails-pwm-enabled">Хвосты: ШИМ-отбор</label>
+                                            <input type="checkbox" id="manual-tails-pwm-enabled"
+                                                onchange="updateManualTailsPwmMode()">
+                                        </div>
+                                        <div class="form-group" id="manual-tails-pwm-settings" style="display: none;">
+                                            <label for="manual-tails-pwm-duty">Скважность ШИМ, %</label>
+                                            <input type="range" id="manual-tails-pwm-duty" min="5" max="100" step="5"
+                                                value="30"
+                                                oninput="document.getElementById('manual-tails-pwm-duty-val').textContent = this.value + '%'">
+                                            <div class="control-inline-hint"><span id="manual-tails-pwm-duty-val">30%</span>
+                                            </div>
+                                            <label for="manual-tails-pwm-period" style="margin-top: 8px;">Период цикла, сек</label>
+                                            <input type="number" id="manual-tails-pwm-period" min="2" max="60" step="1"
+                                                value="10">
+                                        </div>
+                                    </div>
+                                    <div class="controls control-inline-actions">
+                                        <button class="btn btn-primary" type="button"
+                                            onclick="saveManualRectSettings()">💾 Сохранить параметры</button>
+                                        <button class="btn btn-secondary" type="button"
+                                            onclick="loadManualRectSettings()">🔄 Загрузить</button>
                                     </div>
                                 </div>
                             </div>
@@ -1256,7 +1359,7 @@
                 <div class="modal-section">
                     <div class="modal-section-title">⚙️ Параметры</div>
                     <p style="color: var(--text-secondary); font-size: 0.9em; margin-top: -10px; margin-bottom: 15px;">
-                        Профиль сохранит текущие настройки процесса из вкладки "Управление"
+                        Профиль сохранит текущие настройки процесса из вкладки "Режимы"
                     </p>
                     <div style="background: var(--bg-primary); padding: 10px; border-radius: 4px; font-size: 0.9em;">
                         ℹ️ Будут сохранены: мощность нагревателя, объемы фракций, скорости отбора, температурные пороги,

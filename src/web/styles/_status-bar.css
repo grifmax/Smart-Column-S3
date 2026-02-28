@@ -1,4 +1,4 @@
-.status-bar {
+﻿.status-bar {
     display: flex;
     align-items: center;
     gap: 15px;
@@ -52,6 +52,17 @@
 
 .menu-toggle {
     display: none;
+    width: 42px;
+    height: 38px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-card);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 5px;
+    cursor: pointer;
+    padding: 0;
 }
 
 .menu-toggle:hover {
