@@ -99,6 +99,9 @@ async function ensureRectificationSettingsLoaded() {
 function goToMonitorTab() {
     const monitorTab = document.querySelector('.tab[data-tab="monitor"]');
     if (monitorTab) monitorTab.click();
+    requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    });
 }
 
 export async function selectControlMode(mode, options = {}) {
