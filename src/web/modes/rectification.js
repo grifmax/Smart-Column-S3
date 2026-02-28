@@ -1,3 +1,8 @@
+import { MODE_RECT, MODE_MANUAL } from '../globals.js';
+import { confirmModeSwitch } from './common.js';
+import { loadStatus } from '../core/status.js';
+import { addLog } from '../core/logs.js';
+
 export const RECT_FEEDSTOCK_DEFAULTS = {
     0: { heads: 6.0, body: 84.0, tails: 10.0 },
     1: { heads: 8.0, body: 80.0, tails: 12.0 },

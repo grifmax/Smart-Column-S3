@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.5.17"
+#define FIRMWARE_VERSION "1.5.18"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -37,7 +37,7 @@
 #define TEST_ENABLE_HYDROMETER 0
 #define TEST_ENABLE_POWER 0
 #define TEST_ENABLE_DISPLAY 0
-#define TEST_ENABLE_WEBSOCKET 0
+#define TEST_ENABLE_WEBSOCKET 1
 #define TEST_ENABLE_CLOUD 0
 #define TEST_ENABLE_LOGGER 0
 #define TEST_ENABLE_BUTTONS 0

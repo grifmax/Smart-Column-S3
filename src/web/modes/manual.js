@@ -1,3 +1,7 @@
+import { loadStatus } from '../core/status.js';
+import { addLog } from '../core/logs.js';
+import { sendCommand } from '../core/websocket.js';
+
 export async function stopProcess() {
 
     if (!confirm('Остановить процесс?')) return;

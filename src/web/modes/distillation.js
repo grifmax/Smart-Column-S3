@@ -1,3 +1,8 @@
+import { MODE_DIST } from '../globals.js';
+import { confirmModeSwitch } from './common.js';
+import { loadStatus } from '../core/status.js';
+import { addLog } from '../core/logs.js';
+
 export async function startDistillation() {
 
     if (!confirmModeSwitch(MODE_DIST, 'Distillation')) return;

@@ -1,3 +1,29 @@
+import {
+    currentMode,
+    currentPaused,
+    maxHeaterPower,
+    MODE_IDLE,
+    MODE_RECT,
+    MODE_DIST,
+    MODE_MANUAL,
+    MODE_MASH,
+    MODE_HOLD,
+    resolveMode,
+    getModeLabel,
+    getModeCssClass,
+    setCurrentMode,
+    setCurrentPaused,
+    setMaxHeaterPower
+} from '../globals.js';
+import { updateRuntimeStateFromStatus } from '../runtime/state.js';
+import { getEffectiveAbvForCalculations, renderAbvValue } from '../runtime/abv.js';
+import { renderModeRuntimeCard } from '../runtime/bars.js';
+import { updateInteractiveScheme } from '../ui/scheme.js';
+import { updateLandingUi } from '../ui/landing.js';
+import { updateCloudUiFromStatus } from '../cloud/cloud-config.js';
+import { formatUptime } from './utils.js';
+import { addLog } from './logs.js';
+
 // ============================================================================
 
 // Загрузка статуса и обновление кнопок
@@ -19,8 +45,8 @@ export async function loadStatus() {
             addLog(msg, 'error');
 
             // Сбросить состояние, чтобы кнопки не выглядели как "процесс запущен"
-            currentMode = 0;
-            currentPaused = false;
+            setCurrentMode(MODE_IDLE);
+            setCurrentPaused(false);
             updateButtonStates();
             return;
         }
@@ -35,9 +61,8 @@ export async function loadStatus() {
 
         // Нормализуем mode: ожидаем число (0=IDLE), но на прокси/кастомных сборках
         // может прилететь строка. Для кнопок достаточно корректно определить IDLE.
-        currentMode = resolveMode(data.mode, data.modeStr);
-
-        currentPaused = Boolean(data.paused);
+        setCurrentMode(resolveMode(data.mode, data.modeStr));
+        setCurrentPaused(Boolean(data.paused));
 
 
 
@@ -45,7 +70,7 @@ export async function loadStatus() {
 
         if (data.equipment && data.equipment.heaterPowerW) {
 
-            maxHeaterPower = data.equipment.heaterPowerW;
+            setMaxHeaterPower(data.equipment.heaterPowerW);
 
             updateHeaterSlider();
 
