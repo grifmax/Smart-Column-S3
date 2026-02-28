@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1000" id="dist-scheme">
+  <defs>
+    <linearGradient id="distHeatGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#ff0000;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff6600;stop-opacity:0.5" />
+    </linearGradient>
+
+    <linearGradient id="coolWaterGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00bfff;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#0080ff;stop-opacity:0.3" />
+    </linearGradient>
+  </defs>
+
+  <!-- Куб (большой, 60% высоты) -->
+  <g id="dist-cube" class="cube">
+    <rect x="150" y="650" width="300" height="300" rx="15" fill="#dc3545" stroke="#004080" stroke-width="5"/>
+
+    <!-- Волны жидкости в кубе -->
+    <path d="M 160 670 Q 200 660, 240 670 T 320 670 T 400 670 T 440 670"
+          stroke="#fff" stroke-width="2" fill="none" opacity="0.4" class="liquid-wave w1"/>
+    <path d="M 160 690 Q 200 680, 240 690 T 320 690 T 400 690 T 440 690"
+          stroke="#fff" stroke-width="2" fill="none" opacity="0.3" class="liquid-wave w2"/>
+
+    <!-- Индикаторы нагрева -->
+    <line x1="180" y1="920" x2="260" y2="920" stroke="#fff" stroke-width="4" class="heat-indicator" opacity="0.6"/>
+    <line x1="340" y1="920" x2="420" y2="920" stroke="#fff" stroke-width="4" class="heat-indicator" opacity="0.6"/>
+
+    <!-- Пузыри кипения -->
+    <circle cx="200" cy="850" r="6" fill="#fff" opacity="0.5" class="boiling-bubble b1"/>
+    <circle cx="250" cy="880" r="5" fill="#fff" opacity="0.5" class="boiling-bubble b2"/>
+    <circle cx="300" cy="870" r="7" fill="#fff" opacity="0.5" class="boiling-bubble b3"/>
+    <circle cx="350" cy="860" r="6" fill="#fff" opacity="0.5" class="boiling-bubble b4"/>
+    <circle cx="400" cy="890" r="5" fill="#fff" opacity="0.5" class="boiling-bubble b5"/>
+  </g>
+
+  <!-- Пар поднимается -->
+  <g class="vapor-flow">
+    <ellipse cx="300" cy="630" rx="30" ry="15" fill="#fff" opacity="0.3" class="vapor-cloud v1"/>
+    <ellipse cx="280" cy="580" rx="35" ry="18" fill="#fff" opacity="0.3" class="vapor-cloud v2"/>
+    <ellipse cx="320" cy="530" rx="32" ry="16" fill="#fff" opacity="0.3" class="vapor-cloud v3"/>
+    <ellipse cx="290" cy="480" rx="38" ry="20" fill="#fff" opacity="0.3" class="vapor-cloud v4"/>
+    <ellipse cx="310" cy="430" rx="35" ry="17" fill="#fff" opacity="0.3" class="vapor-cloud v5"/>
+  </g>
+
+  <!-- Холодильник (вертикальная труба с змеевиком) -->
+  <g id="condenser">
+    <rect x="260" y="200" width="80" height="250" rx="8" fill="#ffd700" stroke="#004080" stroke-width="4"/>
+
+    <!-- Змеевик охлаждения (спираль) -->
+    <path d="M 270 220 Q 290 230, 270 240 Q 250 250, 270 260 Q 290 270, 270 280 Q 250 290, 270 300 Q 290 310, 270 320 Q 250 330, 270 340 Q 290 350, 270 360 Q 250 370, 270 380 Q 290 390, 270 400 Q 250 410, 270 420"
+          stroke="#007bff" stroke-width="6" fill="none" class="cooling-coil"/>
+
+    <!-- Охлаждающая вода -->
+    <g class="cooling-water">
+      <circle cx="275" cy="230" r="3" fill="#00bfff" class="water-drop wd1" opacity="0"/>
+      <circle cx="265" cy="260" r="3" fill="#00bfff" class="water-drop wd2" opacity="0"/>
+      <circle cx="275" cy="290" r="3" fill="#00bfff" class="water-drop wd3" opacity="0"/>
+      <circle cx="265" cy="320" r="3" fill="#00bfff" class="water-drop wd4" opacity="0"/>
+      <circle cx="275" cy="350" r="3" fill="#00bfff" class="water-drop wd5" opacity="0"/>
+      <circle cx="265" cy="380" r="3" fill="#00bfff" class="water-drop wd6" opacity="0"/>
+    </g>
+
+    <!-- Конденсат стекает -->
+    <g class="condensation">
+      <circle cx="300" cy="240" r="4" fill="#00bfff" class="condensate-drop cd1" opacity="0"/>
+      <circle cx="290" cy="280" r="4" fill="#00bfff" class="condensate-drop cd2" opacity="0"/>
+      <circle cx="310" cy="320" r="4" fill="#00bfff" class="condensate-drop cd3" opacity="0"/>
+      <circle cx="300" cy="360" r="4" fill="#00bfff" class="condensate-drop cd4" opacity="0"/>
+      <circle cx="290" cy="400" r="4" fill="#00bfff" class="condensate-drop cd5" opacity="0"/>
+    </g>
+  </g>
+
+  <!-- Выходная трубка -->
+  <line x1="300" y1="450" x2="300" y2="520" stroke="#004080" stroke-width="6" class="output-pipe"/>
+
+  <!-- Капли падают в банку -->
+  <g class="dripping">
+    <circle cx="300" cy="530" r="5" fill="#28a745" class="final-drop fd1" opacity="0"/>
+    <circle cx="300" cy="560" r="5" fill="#28a745" class="final-drop fd2" opacity="0"/>
+  </g>
+
+  <!-- Банка сборная (большая зелёная) -->
+  <g id="collection-jar">
+    <rect x="220" y="580" width="160" height="200" rx="10" fill="none" stroke="#28a745" stroke-width="5"/>
+    <rect x="220" y="780" width="160" height="30" rx="10" fill="#28a745" stroke="#004080" stroke-width="3"/>
+
+    <!-- Жидкость в банке -->
+    <rect x="225" y="600" width="150" height="0" fill="#28a745" opacity="0.6" class="jar-liquid-dist" id="dist-liquid"/>
+
+    <!-- Шкала объёма -->
+    <line x1="210" y1="680" x2="220" y2="680" stroke="#666" stroke-width="2"/>
+    <text x="200" y="685" text-anchor="end" font-size="12" fill="#666">1L</text>
+    <line x1="210" y1="730" x2="220" y2="730" stroke="#666" stroke-width="2"/>
+    <text x="200" y="735" text-anchor="end" font-size="12" fill="#666">500ml</text>
+
+    <!-- Ареометр плавает -->
+    <g class="hydrometer" transform="translate(300, 700)">
+      <rect x="-8" y="-60" width="16" height="80" rx="8" fill="#fff" stroke="#333" stroke-width="2"/>
+      <circle cx="0" cy="25" r="10" fill="#dc3545"/>
+      <text x="0" y="-25" text-anchor="middle" font-size="14" font-weight="bold" fill="#333" id="dist-abv">0%</text>
+    </g>
+
+    <!-- Волны при падении капель -->
+    <ellipse cx="300" cy="600" rx="40" ry="8" fill="none" stroke="#28a745" stroke-width="2" opacity="0" class="splash-wave"/>
+
+    <text x="300" y="820" text-anchor="middle" font-size="18" font-weight="bold" fill="#28a745">PRODUCT</text>
+    <text x="300" y="840" text-anchor="middle" font-size="14" fill="#666" id="dist-volume">0 ml</text>
+  </g>
+
+  <!-- Кнопка Power -->
+  <g id="dist-power-btn" class="power-btn">
+    <circle cx="300" cy="130" r="35" fill="#6c757d" stroke="#333" stroke-width="3" class="power-circle"/>
+    <path d="M 300 105 L 300 130 M 293 115 A 18 18 0 1 1 307 115"
+          stroke="#ffd700" stroke-width="5" fill="none" stroke-linecap="round" class="power-icon"/>
+  </g>
+
+  <!-- Температуры -->
+  <g class="temp-indicators">
+    <text x="50" y="800" font-size="16" font-weight="bold" fill="#666">T куб:</text>
+    <text x="50" y="825" font-size="20" font-weight="bold" fill="#dc3545" id="dist-temp-cube">--°C</text>
+
+    <text x="50" y="350" font-size="16" font-weight="bold" fill="#666">T пар:</text>
+    <text x="50" y="375" font-size="20" font-weight="bold" fill="#ffd700" id="dist-temp-vapor">--°C</text>
+
+    <text x="450" y="700" font-size="16" font-weight="bold" fill="#666">T продукт:</text>
+    <text x="450" y="725" font-size="20" font-weight="bold" fill="#28a745" id="dist-temp-product">--°C</text>
+  </g>
+
+  <!-- Индикатор мощности -->
+  <g class="power-indicator">
+    <text x="480" y="920" font-size="14" fill="#666">ТЭН:</text>
+    <text x="480" y="945" font-size="18" font-weight="bold" fill="#ff6600" id="dist-power-level">0%</text>
+  </g>
+</svg>

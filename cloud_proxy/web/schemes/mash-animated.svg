@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 800" id="mash-scheme">
+  <defs>
+    <linearGradient id="mashGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b4513;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#d2691e;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#f4a460;stop-opacity:0.6" />
+    </linearGradient>
+
+    <radialGradient id="heatGlow">
+      <stop offset="0%" style="stop-color:#ff6600;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#ff0000;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Заторный котёл (широкий, горизонтальный) -->
+  <g id="mash-kettle">
+    <ellipse cx="300" cy="550" rx="220" ry="30" fill="#333" stroke="#000" stroke-width="3"/>
+    <rect x="80" y="300" width="440" height="250" fill="url(#mashGradient)" stroke="#333" stroke-width="5"/>
+    <ellipse cx="300" cy="300" rx="220" ry="30" fill="#d2691e" stroke="#333" stroke-width="5"/>
+
+    <!-- Волны на поверхности -->
+    <path d="M 90 310 Q 140 305, 190 310 T 290 310 T 390 310 T 490 310 T 510 310"
+          stroke="#8b4513" stroke-width="3" fill="none" opacity="0.5" class="mash-surface-wave sw1"/>
+    <path d="M 90 320 Q 140 315, 190 320 T 290 320 T 390 320 T 490 320 T 510 320"
+          stroke="#8b4513" stroke-width="3" fill="none" opacity="0.3" class="mash-surface-wave sw2"/>
+
+    <!-- Частички зерна -->
+    <circle cx="150" cy="400" r="3" fill="#663300" class="grain-particle gp1"/>
+    <circle cx="200" cy="450" r="2.5" fill="#663300" class="grain-particle gp2"/>
+    <circle cx="250" cy="380" r="3" fill="#663300" class="grain-particle gp3"/>
+    <circle cx="350" cy="420" r="2.5" fill="#663300" class="grain-particle gp4"/>
+    <circle cx="400" cy="470" r="3" fill="#663300" class="grain-particle gp5"/>
+    <circle cx="450" cy="390" r="2.5" fill="#663300" class="grain-particle gp6"/>
+
+    <!-- Пузырьки CO2 -->
+    <circle cx="180" cy="480" r="4" fill="#fff" opacity="0.4" class="co2-bubble cb1"/>
+    <circle cx="280" cy="500" r="5" fill="#fff" opacity="0.4" class="co2-bubble cb2"/>
+    <circle cx="380" cy="490" r="4" fill="#fff" opacity="0.4" class="co2-bubble cb3"/>
+    <circle cx="420" cy="510" r="5" fill="#fff" opacity="0.4" class="co2-bubble cb4"/>
+  </g>
+
+  <!-- Мешалка (крестовина) -->
+  <g id="stirrer" class="stirrer" transform-origin="300 400">
+    <line x1="300" y1="250" x2="300" y2="520" stroke="#666" stroke-width="8"/>
+    <g class="stirrer-blades" transform-origin="300 400">
+      <!-- Горизонтальная лопасть -->
+      <rect x="200" y="390" width="200" height="20" rx="5" fill="#888" stroke="#333" stroke-width="2"/>
+      <!-- Вертикальная лопасть -->
+      <rect x="290" y="300" width="20" height="200" rx="5" fill="#888" stroke="#333" stroke-width="2"/>
+      <!-- Диагональные лопасти -->
+      <rect x="250" y="350" width="100" height="15" rx="5" fill="#888" stroke="#333" stroke-width="2" transform="rotate(45 300 400)"/>
+      <rect x="250" y="390" width="100" height="15" rx="5" fill="#888" stroke="#333" stroke-width="2" transform="rotate(-45 300 400)"/>
+    </g>
+    <circle cx="300" cy="400" r="15" fill="#444" stroke="#000" stroke-width="2"/>
+  </g>
+
+  <!-- Нагрев снизу -->
+  <g id="mash-heating" class="heating-element">
+    <ellipse cx="300" cy="560" rx="180" ry="20" fill="url(#heatGlow)" opacity="0.6" class="heat-glow"/>
+    <path d="M 150 565 Q 180 560, 210 565 T 270 565 T 330 565 T 390 565 T 450 565"
+          stroke="#ff6600" stroke-width="4" fill="none" class="heat-waves hw1"/>
+    <path d="M 150 575 Q 180 570, 210 575 T 270 575 T 330 575 T 390 575 T 450 575"
+          stroke="#ff3300" stroke-width="4" fill="none" class="heat-waves hw2"/>
+  </g>
+
+  <!-- Термометр (большой, центральный) -->
+  <g id="mash-thermometer">
+    <rect x="550" y="200" width="60" height="380" rx="30" fill="#fff" stroke="#333" stroke-width="4"/>
+    <rect x="565" y="215" width="30" height="350" rx="15" fill="#e0e0e0"/>
+
+    <!-- Ртуть -->
+    <rect x="568" y="515" width="24" height="0" rx="12" fill="#dc3545" class="mercury-column" id="mash-mercury"/>
+
+    <circle cx="580" cy="565" r="25" fill="#dc3545" stroke="#333" stroke-width="3"/>
+
+    <!-- Шкала температуры -->
+    <text x="540" y="230" font-size="16" font-weight="bold" fill="#333" text-anchor="end">80°C</text>
+    <line x1="545" y1="225" x2="555" y2="225" stroke="#333" stroke-width="2"/>
+
+    <text x="540" y="300" font-size="16" font-weight="bold" fill="#333" text-anchor="end">72°C</text>
+    <line x1="545" y1="295" x2="555" y2="295" stroke="#333" stroke-width="2"/>
+
+    <text x="540" y="370" font-size="16" font-weight="bold" fill="#333" text-anchor="end">63°C</text>
+    <line x1="545" y1="365" x2="555" y2="365" stroke="#333" stroke-width="2"/>
+
+    <text x="540" y="440" font-size="16" font-weight="bold" fill="#333" text-anchor="end">52°C</text>
+    <line x1="545" y1="435" x2="555" y2="435" stroke="#333" stroke-width="2"/>
+
+    <text x="540" y="510" font-size="16" font-weight="bold" fill="#333" text-anchor="end">40°C</text>
+    <line x1="545" y1="505" x2="555" y2="505" stroke="#333" stroke-width="2"/>
+
+    <!-- Текущая температура -->
+    <text x="580" y="650" font-size="24" font-weight="bold" fill="#dc3545" text-anchor="middle" id="mash-temp-current">--°C</text>
+  </g>
+
+  <!-- График температурных пауз -->
+  <g id="temp-pauses-chart">
+    <text x="700" y="180" font-size="20" font-weight="bold" fill="#333">Паузы:</text>
+
+    <!-- Пауза 1: Мэшаут -->
+    <g id="pause-mashout" class="temp-pause">
+      <rect x="680" y="200" width="180" height="50" rx="8" fill="#e0e0e0" stroke="#666" stroke-width="2" class="pause-bg"/>
+      <text x="690" y="225" font-size="16" font-weight="bold" fill="#333">78°C Мэшаут</text>
+      <text x="850" y="225" font-size="14" fill="#666" text-anchor="end" class="pause-time">3 мин</text>
+      <circle cx="865" cy="220" r="8" fill="#ccc" stroke="#666" stroke-width="2" class="pause-indicator"/>
+    </g>
+
+    <!-- Пауза 2: Осахаривание 72 -->
+    <g id="pause-sac72" class="temp-pause">
+      <rect x="680" y="260" width="180" height="50" rx="8" fill="#e0e0e0" stroke="#666" stroke-width="2" class="pause-bg"/>
+      <text x="690" y="285" font-size="16" font-weight="bold" fill="#333">72°C Осахар.</text>
+      <text x="850" y="285" font-size="14" fill="#666" text-anchor="end" class="pause-time">30 мин</text>
+      <circle cx="865" cy="280" r="8" fill="#ccc" stroke="#666" stroke-width="2" class="pause-indicator"/>
+    </g>
+
+    <!-- Пауза 3: Осахаривание 63 -->
+    <g id="pause-sac63" class="temp-pause">
+      <rect x="680" y="320" width="180" height="50" rx="8" fill="#e0e0e0" stroke="#666" stroke-width="2" class="pause-bg"/>
+      <text x="690" y="345" font-size="16" font-weight="bold" fill="#333">63°C Осахар.</text>
+      <text x="850" y="345" font-size="14" fill="#666" text-anchor="end" class="pause-time">40 мин</text>
+      <circle cx="865" cy="340" r="8" fill="#ccc" stroke="#666" stroke-width="2" class="pause-indicator"/>
+    </g>
+
+    <!-- Пауза 4: Белковая -->
+    <g id="pause-protein" class="temp-pause">
+      <rect x="680" y="380" width="180" height="50" rx="8" fill="#d4edda" stroke="#28a745" stroke-width="3" class="pause-bg"/>
+      <text x="690" y="405" font-size="16" font-weight="bold" fill="#333">52°C Белковая</text>
+      <text x="850" y="405" font-size="14" fill="#666" text-anchor="end" class="pause-time">20 мин</text>
+      <circle cx="865" cy="400" r="8" fill="#28a745" stroke="#fff" stroke-width="2" class="pause-indicator">
+        <animate attributeName="r" values="8;12;8" dur="1.5s" repeatCount="indefinite"/>
+      </circle>
+      <text x="865" y="405" font-size="12" font-weight="bold" fill="#fff" text-anchor="middle">✓</text>
+    </g>
+  </g>
+
+  <!-- Таймер текущей паузы -->
+  <g id="mash-timer">
+    <text x="770" y="500" font-size="18" font-weight="bold" fill="#666">Осталось:</text>
+    <text x="770" y="535" font-size="36" font-weight="bold" fill="#28a745" id="mash-timer-value">--:--</text>
+
+    <!-- Прогресс-бар -->
+    <rect x="680" y="550" width="180" height="20" rx="10" fill="#e0e0e0" stroke="#666" stroke-width="2"/>
+    <rect x="682" y="552" width="0" height="16" rx="8" fill="#28a745" class="pause-progress" id="mash-progress-bar"/>
+  </g>
+
+  <!-- Кнопка Power -->
+  <g id="mash-power-btn" class="power-btn">
+    <circle cx="300" cy="150" r="35" fill="#6c757d" stroke="#333" stroke-width="3" class="power-circle"/>
+    <path d="M 300 125 L 300 150 M 293 135 A 18 18 0 1 1 307 135"
+          stroke="#ffd700" stroke-width="5" fill="none" stroke-linecap="round" class="power-icon"/>
+  </g>
+
+  <!-- Индикатор скорости мешалки -->
+  <g class="stirrer-speed">
+    <text x="50" y="400" font-size="16" font-weight="bold" fill="#666">Мешалка:</text>
+    <text x="50" y="430" font-size="20" font-weight="bold" fill="#28a745" id="mash-stirrer-rpm">0 RPM</text>
+  </g>
+
+  <!-- Индикатор мощности нагрева -->
+  <g class="heating-power">
+    <text x="50" y="500" font-size="16" font-weight="bold" fill="#666">Нагрев:</text>
+    <text x="50" y="530" font-size="20" font-weight="bold" fill="#ff6600" id="mash-power-level">0%</text>
+  </g>
+</svg>

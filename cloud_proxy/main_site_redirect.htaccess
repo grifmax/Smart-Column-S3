@@ -1,0 +1,5 @@
+# Редирект с основного домена на поддомен прокси
+# Файл для загрузки в smartcolumn/public_html/.htaccess
+
+Redirect permanent / https://smart-column-proxy.spiritcontrol.ru/
+

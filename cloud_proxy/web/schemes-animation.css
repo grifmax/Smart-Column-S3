@@ -1,0 +1,478 @@
+/* Animations for All Scheme Modes */
+
+/* ========== DISTILLATION SCHEME ========== */
+
+/* Cube heating */
+#dist-cube.heating {
+    animation: cubeGlow 2s ease-in-out infinite;
+}
+
+/* Liquid waves in cube */
+.liquid-wave {
+    animation: liquidWave 3s ease-in-out infinite;
+}
+.w1 { animation-delay: 0s; }
+.w2 { animation-delay: 1s; }
+
+@keyframes liquidWave {
+    0%, 100% { transform: translateX(0); opacity: 0.4; }
+    50% { transform: translateX(10px); opacity: 0.6; }
+}
+
+/* Boiling bubbles */
+.boiling-bubble {
+    animation: boilBubble 2.5s ease-in infinite;
+}
+.b1 { animation-delay: 0s; }
+.b2 { animation-delay: 0.5s; }
+.b3 { animation-delay: 1s; }
+.b4 { animation-delay: 1.5s; }
+.b5 { animation-delay: 2s; }
+
+@keyframes boilBubble {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 0;
+    }
+    20% { opacity: 0.6; }
+    100% {
+        transform: translateY(-180px) scale(0.3);
+        opacity: 0;
+    }
+}
+
+/* Vapor clouds rising */
+.vapor-cloud {
+    animation: vaporRise 4s ease-in-out infinite;
+}
+.v1 { animation-delay: 0s; }
+.v2 { animation-delay: 0.8s; }
+.v3 { animation-delay: 1.6s; }
+.v4 { animation-delay: 2.4s; }
+.v5 { animation-delay: 3.2s; }
+
+@keyframes vaporRise {
+    0% {
+        transform: translateY(0) scale(0.8);
+        opacity: 0;
+    }
+    20% { opacity: 0.4; }
+    80% { opacity: 0.3; }
+    100% {
+        transform: translateY(-100px) scale(1.2);
+        opacity: 0;
+    }
+}
+
+/* Cooling coil */
+.cooling-coil {
+    animation: coolPulse 3s ease-in-out infinite;
+}
+
+@keyframes coolPulse {
+    0%, 100% { stroke: #007bff; stroke-width: 6; }
+    50% { stroke: #00bfff; stroke-width: 8; }
+}
+
+/* Water drops in coil */
+.water-drop {
+    animation: waterFlow 2s linear infinite;
+}
+.wd1 { animation-delay: 0s; }
+.wd2 { animation-delay: 0.3s; }
+.wd3 { animation-delay: 0.6s; }
+.wd4 { animation-delay: 0.9s; }
+.wd5 { animation-delay: 1.2s; }
+.wd6 { animation-delay: 1.5s; }
+
+@keyframes waterFlow {
+    0% {
+        transform: translateY(0);
+        opacity: 0;
+    }
+    10% { opacity: 0.8; }
+    90% { opacity: 0.8; }
+    100% {
+        transform: translateY(40px);
+        opacity: 0;
+    }
+}
+
+/* Condensate drops */
+.condensate-drop {
+    animation: condenseDrop 2.5s ease-in infinite;
+}
+.cd1 { animation-delay: 0s; }
+.cd2 { animation-delay: 0.5s; }
+.cd3 { animation-delay: 1s; }
+.cd4 { animation-delay: 1.5s; }
+.cd5 { animation-delay: 2s; }
+
+@keyframes condenseDrop {
+    0% {
+        transform: translateY(0);
+        opacity: 0;
+    }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% {
+        transform: translateY(160px);
+        opacity: 0;
+    }
+}
+
+/* Final drops into jar */
+.final-drop {
+    animation: finalDrip 1.5s ease-in infinite;
+}
+.fd1 { animation-delay: 0s; }
+.fd2 { animation-delay: 0.75s; }
+
+@keyframes finalDrip {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 0;
+    }
+    10% { opacity: 1; }
+    100% {
+        transform: translateY(60px) scale(0.5);
+        opacity: 0;
+    }
+}
+
+/* Jar liquid filling */
+.jar-liquid-dist {
+    transition: height 1s ease-out, y 1s ease-out;
+}
+
+/* Hydrometer floating */
+.hydrometer {
+    animation: hydroFloat 4s ease-in-out infinite;
+}
+
+@keyframes hydroFloat {
+    0%, 100% { transform: translate(300px, 700px); }
+    50% { transform: translate(300px, 695px); }
+}
+
+/* Splash waves */
+.splash-wave {
+    animation: splashRipple 2s ease-out infinite;
+}
+
+@keyframes splashRipple {
+    0% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    30% { opacity: 0.6; }
+    100% {
+        opacity: 0;
+        transform: scale(2);
+    }
+}
+
+/* ========== MASH SCHEME ========== */
+
+/* Mash surface waves */
+.mash-surface-wave {
+    animation: mashWave 4s ease-in-out infinite;
+}
+.sw1 { animation-delay: 0s; }
+.sw2 { animation-delay: 2s; }
+
+@keyframes mashWave {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(15px); }
+}
+
+/* Grain particles movement */
+.grain-particle {
+    animation: grainFloat 8s ease-in-out infinite;
+}
+.gp1 { animation-delay: 0s; }
+.gp2 { animation-delay: 1s; }
+.gp3 { animation-delay: 2s; }
+.gp4 { animation-delay: 3s; }
+.gp5 { animation-delay: 4s; }
+.gp6 { animation-delay: 5s; }
+
+@keyframes grainFloat {
+    0%, 100% { transform: translate(0, 0); }
+    25% { transform: translate(10px, -5px); }
+    50% { transform: translate(-5px, 5px); }
+    75% { transform: translate(-10px, -10px); }
+}
+
+/* CO2 bubbles */
+.co2-bubble {
+    animation: co2Rise 3s ease-in infinite;
+}
+.cb1 { animation-delay: 0s; }
+.cb2 { animation-delay: 0.75s; }
+.cb3 { animation-delay: 1.5s; }
+.cb4 { animation-delay: 2.25s; }
+
+@keyframes co2Rise {
+    0% {
+        transform: translateY(0);
+        opacity: 0;
+    }
+    20% { opacity: 0.5; }
+    100% {
+        transform: translateY(-200px);
+        opacity: 0;
+    }
+}
+
+/* Stirrer rotation */
+.stirrer.running .stirrer-blades {
+    animation: stirRotate 5s linear infinite;
+}
+
+@keyframes stirRotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Heating element */
+.heat-glow {
+    animation: heatGlowPulse 2s ease-in-out infinite;
+}
+
+@keyframes heatGlowPulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.8; }
+}
+
+.heat-waves {
+    animation: heatWave 1.5s ease-in-out infinite;
+}
+.hw1 { animation-delay: 0s; }
+.hw2 { animation-delay: 0.75s; }
+
+@keyframes heatWave {
+    0%, 100% { opacity: 0.4; transform: translateY(0); }
+    50% { opacity: 0.8; transform: translateY(-10px); }
+}
+
+/* Mercury column rise */
+.mercury-column {
+    transition: height 1s ease-out, y 1s ease-out;
+}
+
+/* Temperature pause indicators */
+.temp-pause.active .pause-bg {
+    fill: #d4edda;
+    stroke: #28a745;
+    stroke-width: 3;
+}
+
+.temp-pause.completed .pause-indicator {
+    fill: #28a745;
+}
+
+.temp-pause.active .pause-indicator {
+    animation: pauseIndicatorPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pauseIndicatorPulse {
+    0%, 100% { r: 8px; }
+    50% { r: 12px; }
+}
+
+/* Progress bar */
+.pause-progress {
+    transition: width 1s linear;
+}
+
+/* ========== HOLD SCHEME ========== */
+
+/* Gentle warm glow */
+.warm-glow.active {
+    opacity: 0.4;
+    animation: warmGlowPulse 4s ease-in-out infinite;
+}
+
+@keyframes warmGlowPulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.5; }
+}
+
+/* Gentle waves */
+.gentle-wave {
+    animation: gentleWave 5s ease-in-out infinite;
+}
+.gw1 { animation-delay: 0s; }
+
+@keyframes gentleWave {
+    0%, 100% { transform: translateX(0); opacity: 0.2; }
+    50% { transform: translateX(8px); opacity: 0.4; }
+}
+
+/* Steam puffs */
+.steam-puff {
+    animation: steamPuff 3s ease-out infinite;
+}
+.sp1 { animation-delay: 0s; }
+.sp2 { animation-delay: 0.3s; }
+.sp3 { animation-delay: 0.6s; }
+
+@keyframes steamPuff {
+    0% {
+        transform: translateY(0) scale(0.5);
+        opacity: 0;
+    }
+    30% { opacity: 0.6; }
+    100% {
+        transform: translateY(-40px) scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Gentle heating */
+.gentle-heat.active {
+    opacity: 0.3;
+    animation: gentleHeatPulse 3s ease-in-out infinite;
+}
+
+@keyframes gentleHeatPulse {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 0.4; }
+}
+
+/* Mercury rise (temperature indicator) */
+.mercury-rise {
+    transition: height 2s ease-out, y 2s ease-out;
+}
+
+.mercury-rise.overheat {
+    animation: mercuryOverheat 1s ease-in-out infinite;
+}
+
+@keyframes mercuryOverheat {
+    0%, 100% { fill: #dc3545; }
+    50% { fill: #ff0000; }
+}
+
+.mercury-rise.underheat {
+    animation: mercuryUnderheat 1s ease-in-out infinite;
+}
+
+@keyframes mercuryUnderheat {
+    0%, 100% { fill: #007bff; }
+    50% { fill: #0056b3; }
+}
+
+/* Timer progress circle */
+.timer-progress {
+    transition: stroke-dashoffset 1s linear;
+}
+
+/* Completion check */
+.completion-check.show {
+    animation: checkAppear 0.5s ease-out forwards;
+}
+
+@keyframes checkAppear {
+    0% {
+        opacity: 0;
+        transform: scale(0);
+    }
+    50% { transform: scale(1.2); }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Stability indicator colors */
+.stability-circle.excellent {
+    fill: #28a745;
+    animation: stabilityPulse 2s ease-in-out infinite;
+}
+
+.stability-circle.normal {
+    fill: #ffc107;
+}
+
+.stability-circle.poor {
+    fill: #dc3545;
+    animation: stabilityWarning 1s ease-in-out infinite;
+}
+
+@keyframes stabilityPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+@keyframes stabilityWarning {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+/* Background heat rings */
+.heat-ring {
+    animation: heatRingExpand 6s ease-out infinite;
+}
+.hr1 { animation-delay: 0s; }
+.hr2 { animation-delay: 2s; }
+.hr3 { animation-delay: 4s; }
+
+@keyframes heatRingExpand {
+    0% {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+    50% { opacity: 0.3; }
+    100% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Power bar fill */
+.power-bar {
+    transition: width 0.5s ease-out;
+}
+
+/* ========== COMMON ANIMATIONS ========== */
+
+/* Power button */
+.power-btn.active .power-circle {
+    fill: #28a745;
+    animation: powerGlow 1.5s ease-in-out infinite;
+}
+
+.power-btn.active .power-icon {
+    stroke: #fff;
+}
+
+@keyframes powerGlow {
+    0%, 100% { filter: drop-shadow(0 0 5px #28a745); }
+    50% { filter: drop-shadow(0 0 15px #00ff00); }
+}
+
+/* Cube glow (common) */
+@keyframes cubeGlow {
+    0%, 100% { filter: brightness(1) drop-shadow(0 0 0px #ff0000); }
+    50% { filter: brightness(1.3) drop-shadow(0 0 20px #ff6600); }
+}
+
+/* Heat indicators */
+.heat-indicator {
+    animation: heatIndicatorPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes heatIndicatorPulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    svg {
+        max-width: 100%;
+        height: auto;
+    }
+}

@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart-Column S3</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="column-animation.css">
+    <link rel="stylesheet" href="schemes-animation.css">
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Заголовок -->
+        <header>
+            <h1>🏭 Smart-Column S3</h1>
+            <div class="status-bar">
+                <span id="connection-status" class="status-dot offline">●</span>
+                <span id="connection-text">Подключение...</span>
+                <span class="uptime">Uptime: <span id="uptime">--:--:--</span></span>
+                <span class="user-info" id="user-info" style="margin-left: 15px; color: var(--text-secondary); font-size: 0.9em;">
+                    👤 <span id="current-username">Загрузка...</span>
+                </span>
+            </div>
+        </header>
+
+        <!-- Навигация -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="monitor">📊 Мониторинг</button>
+            <button class="tab" data-tab="control">🎛️ Управление</button>
+            <button class="tab" data-tab="settings">⚙️ Настройки</button>
+            <button class="tab" data-tab="logs">📝 Логи</button>
+            <button class="tab" data-tab="history">📚 История</button>
+            <button class="tab" data-tab="profiles">📁 Профили</button>
+            <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
+            <a href="manual.html" class="tab" style="text-decoration: none;">🔧 Ручной режим</a>
+            <a href="calibration.html" class="tab" style="text-decoration: none;">⚙️ Калибровка</a>
+            <a href="wifi.html" class="tab" style="text-decoration: none;">📶 WiFi</a>
+        </nav>
+
+        <!-- Вкладка: Мониторинг -->
+        <div id="monitor" class="tab-content active">
+            <div class="cards">
+                <!-- Режим и фаза -->
+                <div class="card">
+                    <h2>Статус</h2>
+                    <div class="big-value">
+                        <div class="label">Режим</div>
+                        <div id="mode" class="value mode-idle">IDLE</div>
+                    </div>
+                    <div class="big-value">
+                        <div class="label">Фаза</div>
+                        <div id="phase" class="value">—</div>
+                    </div>
+                </div>
+
+                <!-- Температуры -->
+                <div class="card">
+                    <h2>🌡️ Температуры</h2>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="metric-label">Куб</span>
+                            <span id="temp-cube" class="metric-value">--°C</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Царга низ</span>
+                            <span id="temp-column-bottom" class="metric-value">--°C</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Царга верх</span>
+                            <span id="temp-column-top" class="metric-value">--°C</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Дефлегматор</span>
+                            <span id="temp-reflux" class="metric-value">--°C</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">ТСА</span>
+                            <span id="temp-tsa" class="metric-value">--°C</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Давление -->
+                <div class="card">
+                    <h2>📈 Давление</h2>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="metric-label">Куб</span>
+                            <span id="pressure-cube" class="metric-value">-- мм рт.ст.</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Атмосферное</span>
+                            <span id="pressure-atm" class="metric-value">-- гПа</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Порог захлёба</span>
+                            <span id="pressure-flood" class="metric-value">-- мм</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Мощность -->
+                <div class="card">
+                    <h2>⚡ Электропитание (PZEM-004T)</h2>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="metric-label">Напряжение</span>
+                            <span id="power-voltage" class="metric-value">-- V</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Ток</span>
+                            <span id="power-current" class="metric-value">-- A</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Мощность</span>
+                            <span id="power-power" class="metric-value">-- W</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Энергия</span>
+                            <span id="power-energy" class="metric-value">-- кВт·ч</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Частота</span>
+                            <span id="power-frequency" class="metric-value">-- Гц</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Коэфф. мощности</span>
+                            <span id="power-pf" class="metric-value">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Насос и отбор -->
+                <div class="card">
+                    <h2>💧 Насос и отбор</h2>
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="metric-label">Скорость</span>
+                            <span id="pump-speed" class="metric-value">-- мл/ч</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Объём</span>
+                            <span id="pump-volume" class="metric-value">-- мл</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Головы</span>
+                            <span id="volume-heads" class="metric-value">-- мл</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Тело</span>
+                            <span id="volume-body" class="metric-value">-- мл</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Хвосты</span>
+                            <span id="volume-tails" class="metric-value">-- мл</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ареометр -->
+                <div class="card">
+                    <h2>🍷 Ареометр</h2>
+                    <div class="big-value">
+                        <div class="label">Крепость</div>
+                        <div id="abv" class="value">--%</div>
+                    </div>
+                </div>
+
+                <!-- Анимированная схема колонны -->
+                <div class="card">
+                    <h2>🏭 Схема процесса</h2>
+                    <div class="scheme-container" style="display: flex; justify-content: center; padding: 10px;">
+                        <object data="schemes/column-animated.svg" type="image/svg+xml"
+                            style="width: 100%; max-width: 500px; height: auto;"></object>
+                    </div>
+                </div>
+
+                <!-- Мини-график температур -->
+                <div class="card">
+                    <h2>📈 Температуры (5 мин)</h2>
+                    <div id="mini-chart" style="width: 100%; height: 200px;"></div>
+                    <div style="text-align: center; margin-top: 10px;">
+                        <a href="charts.html" class="btn btn-primary btn-sm">📊 Все графики</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Управление -->
+        <div id="control" class="tab-content">
+            <div class="cards">
+                <div class="card">
+                    <h2>Запуск процесса</h2>
+                    <div class="controls">
+                        <button class="btn btn-success" onclick="startRectification()">▶️ Авто-ректификация</button>
+                        <button class="btn btn-warning" onclick="startManual()">🎛️ Ручная ректификация</button>
+                        <button class="btn btn-info" onclick="startDistillation()">🏺 Дистилляция</button>
+                    </div>
+                    <div class="controls">
+                        <button class="btn btn-danger" onclick="stopProcess()">⏹️ Остановить</button>
+                        <button class="btn" onclick="pauseProcess()">⏸️ Пауза</button>
+                        <button class="btn" onclick="resumeProcess()">⏯️ Продолжить</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Ручное управление</h2>
+                    <div class="control-group">
+                        <label for="heater-power">Мощность нагрева: <span id="heater-value">0</span> Вт</label>
+                        <input type="range" id="heater-power" min="0" max="5500" step="50" value="0"
+                            oninput="updateHeater(this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label for="pump-speed-control">Скорость насоса: <span id="pump-value">0</span> мл/ч</label>
+                        <input type="range" id="pump-speed-control" min="0" max="500" value="0"
+                            oninput="updatePump(this.value)">
+                    </div>
+                    <div class="control-group">
+                        <label>Клапаны</label>
+                        <div class="controls">
+                            <button class="btn btn-sm" onclick="toggleValve('water')">💧 Вода</button>
+                            <button class="btn btn-sm" onclick="toggleValve('heads')">🥃 Головы</button>
+                            <button class="btn btn-sm" onclick="toggleValve('uno')">🔄 УНО</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Настройки -->
+        <div id="settings" class="tab-content">
+            <div class="cards">
+                <!-- Демо-режим -->
+                <div class="card"
+                    style="border: 2px solid var(--warning, #ffc107); background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 193, 7, 0.05));">
+                    <h2>🧪 Демо-режим</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Симуляция оборудования для тестирования интерфейса без реального подключения датчиков и
+                        исполнительных устройств.
+                    </p>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="demo-mode-enabled" onchange="toggleDemoMode()">
+                            <span style="font-weight: 600;">Включить демо-режим</span>
+                        </label>
+                    </div>
+                    <small style="color: var(--warning, #856404); display: block; margin-top: 10px;">
+                        ⚠️ В демо-режиме все показания датчиков генерируются программно. Реальное оборудование не
+                        управляется.
+                    </small>
+                </div>
+
+                <!-- Перезагрузка контроллера -->
+                <div class="card"
+                    style="border: 2px solid var(--danger, #dc3545); background: linear-gradient(135deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));">
+                    <h2>🔄 Перезагрузка</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Перезагрузка контроллера ESP32. Все текущие процессы будут остановлены.
+                    </p>
+                    <button class="btn btn-danger" onclick="rebootController()" style="width: 100%; padding: 12px;">
+                        🔄 Перезагрузить контроллер
+                    </button>
+                    <small style="color: var(--danger, #dc3545); display: block; margin-top: 10px;">
+                        ⚠️ Веб-интерфейс будет недоступен несколько секунд во время перезагрузки.
+                    </small>
+                </div>
+
+                <!-- Настройки подключения к ESP32 -->
+                <div class="card" style="border: 2px solid var(--primary, #007bff); background: linear-gradient(135deg, rgba(0, 123, 255, 0.1), rgba(0, 123, 255, 0.05));">
+                    <h2>📡 Подключение к ESP32</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Настройка подключения к физическому устройству ESP32. Если устройство не настроено, веб-интерфейс будет работать в демо-режиме.
+                    </p>
+                    
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="esp32-enabled" onchange="toggleESP32Fields()">
+                            <span style="font-weight: 600;">Включить подключение к ESP32</span>
+                        </label>
+                    </div>
+                    
+                    <div id="esp32-fields" style="display: none;">
+                        <div class="form-group">
+                            <label>Адрес ESP32</label>
+                            <input type="text" id="esp32-host" placeholder="192.168.1.100 или esp32.local">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                                IP-адрес или доменное имя устройства ESP32
+                            </small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Порт</label>
+                            <input type="number" id="esp32-port" value="80" min="1" max="65535">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="esp32-use-https">
+                                <span>Использовать HTTPS</span>
+                            </label>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Имя пользователя (опционально)</label>
+                            <input type="text" id="esp32-username" placeholder="admin">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                                Если на ESP32 настроена HTTP Basic Authentication
+                            </small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Пароль (опционально)</label>
+                            <input type="password" id="esp32-password" placeholder="пароль">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Таймаут подключения (сек)</label>
+                            <input type="number" id="esp32-timeout" value="5" min="1" max="30">
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; margin-top: 15px;">
+                            <button class="btn btn-primary" onclick="saveESP32Config()" style="flex: 1;">
+                                💾 Сохранить настройки
+                            </button>
+                            <button class="btn" onclick="testESP32Connection()" style="flex: 1;">
+                                🔍 Проверить подключение
+                            </button>
+                        </div>
+                        
+                        <div id="esp32-test-result" style="margin-top: 10px; padding: 10px; border-radius: 5px; display: none;"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📶 WiFi</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                        Настройка WiFi подключения доступна на отдельной странице с возможностью сканирования доступных
+                        сетей и просмотра статуса подключения.
+                    </p>
+                    <a href="wifi.html" class="btn btn-primary"
+                        style="text-decoration: none; display: inline-block; padding: 10px 20px;">
+                        📶 Открыть настройки WiFi
+                    </a>
+                </div>
+
+                <div class="card">
+                    <h2>📡 MQTT</h2>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="mqtt-enabled" onchange="toggleMqttFields()">
+                            <span>Включить MQTT</span>
+                        </label>
+                    </div>
+                    <div id="mqtt-fields">
+                        <div class="form-group">
+                            <label>Сервер MQTT</label>
+                            <input type="text" id="mqtt-server" placeholder="192.168.1.50 или homeassistant.local">
+                        </div>
+                        <div class="form-group">
+                            <label>Порт</label>
+                            <input type="number" id="mqtt-port" value="1883" min="1" max="65535">
+                        </div>
+                        <div class="form-group">
+                            <label>Имя пользователя (опционально)</label>
+                            <input type="text" id="mqtt-username" placeholder="mqtt_user">
+                        </div>
+                        <div class="form-group">
+                            <label>Пароль (опционально)</label>
+                            <input type="password" id="mqtt-password" placeholder="пароль">
+                        </div>
+                        <div class="form-group">
+                            <label>Базовый топик</label>
+                            <input type="text" id="mqtt-base-topic" value="smartcolumn">
+                        </div>
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="mqtt-discovery" checked>
+                                <span>Home Assistant Discovery</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>Интервал публикации (мс)</label>
+                            <input type="number" id="mqtt-publish-interval" value="10000" min="1000" max="60000"
+                                step="1000">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveMqtt()">💾 Сохранить</button>
+                </div>
+
+                <div class="card">
+                    <h2>🔒 Безопасность</h2>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="auth-enabled" onchange="toggleAuthFields()">
+                            <span>Включить аутентификацию</span>
+                        </label>
+                    </div>
+                    <div id="auth-fields">
+                        <div class="form-group">
+                            <label>Имя пользователя</label>
+                            <input type="text" id="web-username" value="admin">
+                        </div>
+                        <div class="form-group">
+                            <label>Пароль</label>
+                            <input type="password" id="web-password" placeholder="новый пароль">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="rate-limit-enabled" checked>
+                            <span>Rate Limiting (60 req/min)</span>
+                        </label>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveSecurity()">💾 Сохранить</button>
+                </div>
+
+                <div class="card">
+                    <h2>Оборудование</h2>
+
+                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">💧 Калибровка насоса
+                    </h3>
+                    <div class="form-group">
+                        <label>мл на оборот</label>
+                        <input type="number" id="pump-ml-per-rev" step="0.001" min="0" placeholder="Загрузка...">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                            Объём жидкости за один полный оборот двигателя насоса
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label>Шагов за полный оборот</label>
+                        <input type="number" id="pump-steps-per-rev" min="1" step="1" placeholder="Загрузка...">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">
+                            Справочное значение для калибровки (шаги × микрошаги)
+                        </small>
+                    </div>
+
+                    <hr style="margin: 20px 0; border-color: var(--border);">
+
+                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">⚙️ Параметры
+                        оборудования</h3>
+                    <div class="form-group">
+                        <label>Мощность ТЭНа (Вт)</label>
+                        <input type="number" id="heater-power-w" value="3000" min="1000" max="10000">
+                    </div>
+                    <div class="form-group">
+                        <label>Высота царги (мм)</label>
+                        <input type="number" id="column-height" value="1500" min="500" max="3000">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveEquipment()">💾 Сохранить</button>
+                </div>
+
+                <div class="card">
+                    <h2>Тема интерфейса</h2>
+                    <div class="controls">
+                        <button class="btn" onclick="setTheme('light')">☀️ Светлая</button>
+                        <button class="btn" onclick="setTheme('dark')">🌙 Тёмная</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>ℹ️ Информация о версиях</h2>
+
+                    <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95em;">📱 Прошивка (Backend)
+                    </h3>
+                    <div
+                        style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; font-size: 14px;">
+                            <strong>Версия:</strong>
+                            <span id="firmware-version">Загрузка...</span>
+
+                            <strong>Дата сборки:</strong>
+                            <span id="firmware-build-date">Загрузка...</span>
+
+                            <strong>Время сборки:</strong>
+                            <span id="firmware-build-time">Загрузка...</span>
+
+                            <strong>Плата:</strong>
+                            <span id="board-chip">Загрузка...</span>
+                        </div>
+                    </div>
+
+                    <h3 style="color: var(--text-secondary); font-size: 0.95em;">🌐 Веб-интерфейс (Frontend)</h3>
+                    <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px;">
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; font-size: 14px;">
+                            <strong>Дата сборки:</strong>
+                            <span id="frontend-build-date">Загрузка...</span>
+
+                            <strong>Время сборки:</strong>
+                            <span id="frontend-build-time">Загрузка...</span>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-secondary" onclick="loadVersionInfo()" style="margin-top: 15px;">🔄
+                        Обновить</button>
+                </div>
+
+                <div class="card">
+                    <h2>Отображение</h2>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="show-memory-stats" onchange="toggleMemoryStats()">
+                            <span>Показывать статистику памяти в футере</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Логи -->
+        <div id="logs" class="tab-content">
+            <div class="card">
+                <h2>Последние события</h2>
+                <div id="log-container" class="log-container">
+                    <div class="log-entry">Подключение к системе...</div>
+                </div>
+                <button class="btn" onclick="clearLogs()">🗑️ Очистить</button>
+                <button class="btn btn-primary" onclick="downloadLogs()">💾 Скачать CSV</button>
+            </div>
+        </div>
+
+        <!-- Вкладка: История -->
+        <div id="history" class="tab-content">
+            <div class="card">
+                <h2>📚 История процессов</h2>
+
+                <!-- Фильтры и поиск -->
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <select id="history-filter-type" onchange="loadHistoryList()">
+                        <option value="all">Все типы</option>
+                        <option value="rectification">Ректификация</option>
+                        <option value="distillation">Дистилляция</option>
+                        <option value="mashing">Затирка</option>
+                    </select>
+                    <select id="history-filter-status" onchange="loadHistoryList()">
+                        <option value="all">Все статусы</option>
+                        <option value="completed">Завершено</option>
+                        <option value="stopped">Остановлено</option>
+                        <option value="error">Ошибка</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadHistoryList()">🔄 Обновить</button>
+                    <button id="compare-processes-btn" class="btn btn-primary" onclick="compareSelected()" disabled>📊
+                        Сравнить выбранные (0)</button>
+                    <button class="btn" onclick="clearHistory()">🗑️ Очистить историю</button>
+                </div>
+
+                <!-- Список процессов -->
+                <div id="history-list" class="history-list">
+                    <p class="info-text">Загрузка истории процессов...</p>
+                </div>
+
+                <!-- Статистика -->
+                <div style="margin-top: 20px; padding: 15px; background: var(--bg-primary); border-radius: 6px;">
+                    <h3 style="margin-top: 0;">📊 Статистика</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Всего процессов</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="hist-stat-total">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Успешно завершено</div>
+                            <div style="font-size: 1.5em; font-weight: 600; color: #4CAF50;" id="hist-stat-completed">0
+                            </div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Общее время</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="hist-stat-time">0 ч</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Энергия</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="hist-stat-energy">0 кВт·ч</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Профили -->
+        <div id="profiles" class="tab-content">
+            <div class="card">
+                <h2>📁 Профили процессов</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                    Сохраняйте настройки процессов под именем для повторного использования.
+                    Встроенные рецепты помогут начать работу с готовыми параметрами.
+                </p>
+
+                <!-- Действия -->
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <select id="profile-filter-category" onchange="loadProfilesList()">
+                        <option value="all">Все категории</option>
+                        <option value="rectification">Ректификация</option>
+                        <option value="distillation">Дистилляция</option>
+                        <option value="mashing">Затирка</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadProfilesList()">🔄 Обновить</button>
+                    <button class="btn btn-success" onclick="showCreateProfileModal()">➕ Создать профиль</button>
+                    <button class="btn" onclick="exportAllProfiles()">📤 Экспорт всех</button>
+                    <button class="btn" onclick="showImportModal()">📥 Импорт</button>
+                    <button class="btn" onclick="clearUserProfiles()">🗑️ Очистить пользовательские</button>
+                </div>
+
+                <!-- Список профилей -->
+                <div id="profiles-list" class="profiles-list">
+                    <p class="info-text">Загрузка профилей...</p>
+                </div>
+
+                <!-- Статистика -->
+                <div style="margin-top: 20px; padding: 15px; background: var(--bg-primary); border-radius: 6px;">
+                    <h3 style="margin-top: 0;">📊 Статистика</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Всего профилей</div>
+                            <div style="font-size: 1.5em; font-weight: 600;" id="prof-stat-total">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Встроенных рецептов</div>
+                            <div style="font-size: 1.5em; font-weight: 600; color: #2196F3;" id="prof-stat-builtin">0
+                            </div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Пользовательских</div>
+                            <div style="font-size: 1.5em; font-weight: 600; color: #4CAF50;" id="prof-stat-user">0</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Самый используемый</div>
+                            <div style="font-size: 1.1em; font-weight: 600;" id="prof-stat-popular">—</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Футер -->
+        <footer>
+            <p>Smart-Column S3 v1.4.11 | ESP32-S3 DevKitC-1 N16R8</p>
+            <div id="memory-stats"
+                style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
+                    <span>💾 SRAM: <span id="mem-heap-used">--</span> / <span id="mem-heap-total">--</span> (<span
+                            id="mem-heap-pct">--%</span>)</span>
+                    <span>🧠 PSRAM: <span id="mem-psram-free">--</span> / <span id="mem-psram-total">--</span></span>
+                    <span>📦 Flash: <span id="mem-flash-pct">--%</span></span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Модальное окно для детального просмотра процесса -->
+    <div id="history-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="modal-title">Детали процесса</div>
+                <button class="modal-close" onclick="closeHistoryModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Основная информация -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📋 Основная информация</div>
+                    <div class="modal-info-grid" id="modal-info-grid">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Графики температур -->
+                <div class="modal-section">
+                    <div class="modal-section-title">🌡️ Температуры</div>
+                    <div class="modal-chart">
+                        <div id="modal-temp-chart"></div>
+                    </div>
+                </div>
+
+                <!-- График мощности -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⚡ Мощность</div>
+                    <div class="modal-chart">
+                        <div id="modal-power-chart"></div>
+                    </div>
+                </div>
+
+                <!-- Фазы процесса -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⏱️ Фазы процесса</div>
+                    <div class="modal-phases" id="modal-phases">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Результаты -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📊 Результаты</div>
+                    <div class="modal-info-grid" id="modal-results-grid">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Действия с процессом -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📥 Экспорт данных</div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn-primary" id="modal-export-csv" style="flex: 1; min-width: 150px;">
+                            📊 Экспорт в CSV
+                        </button>
+                        <button class="btn-primary" id="modal-export-json" style="flex: 1; min-width: 150px;">
+                            📄 Экспорт в JSON
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для сравнения процессов -->
+    <div id="compare-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 1400px;">
+            <div class="modal-header">
+                <div class="modal-title" id="compare-modal-title">Сравнение процессов</div>
+                <button class="modal-close" onclick="closeCompareModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Список сравниваемых процессов -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📋 Сравниваемые процессы</div>
+                    <div id="compare-process-list"
+                        style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+
+                <!-- График сравнения температур -->
+                <div class="modal-section">
+                    <div class="modal-section-title">🌡️ Сравнение температур (куб)</div>
+                    <div class="modal-chart">
+                        <div id="compare-temp-chart"></div>
+                    </div>
+                </div>
+
+                <!-- График сравнения мощности -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⚡ Сравнение мощности</div>
+                    <div class="modal-chart">
+                        <div id="compare-power-chart"></div>
+                    </div>
+                </div>
+
+                <!-- Сравнительная таблица -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📊 Сравнительная таблица</div>
+                    <div id="compare-table" style="overflow-x: auto;">
+                        <!-- Будет заполнено JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для создания/редактирования профиля -->
+    <div id="profile-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <div class="modal-title" id="profile-modal-title">Создание профиля</div>
+                <button class="modal-close" onclick="closeProfileModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Метаданные -->
+                <div class="modal-section">
+                    <div class="modal-section-title">📝 Основная информация</div>
+                    <div style="display: flex; flex-direction: column; gap: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Название профиля
+                                *</label>
+                            <input type="text" id="profile-name" placeholder="Например: Сахарная брага 40%"
+                                maxlength="50"
+                                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Описание</label>
+                            <textarea id="profile-description" placeholder="Краткое описание профиля..." maxlength="200"
+                                rows="3"
+                                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); resize: vertical;"></textarea>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Категория *</label>
+                            <select id="profile-category"
+                                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+                                <option value="rectification">Ректификация</option>
+                                <option value="distillation">Дистилляция</option>
+                                <option value="mashing">Затирка солода</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 500;">Теги (через
+                                запятую)</label>
+                            <input type="text" id="profile-tags" placeholder="сахар, классика, 40%"
+                                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Параметры процесса -->
+                <div class="modal-section">
+                    <div class="modal-section-title">⚙️ Параметры</div>
+                    <p style="color: var(--text-secondary); font-size: 0.9em; margin-top: -10px; margin-bottom: 15px;">
+                        Профиль сохранит текущие настройки процесса из вкладки "Управление"
+                    </p>
+                    <div style="background: var(--bg-primary); padding: 10px; border-radius: 4px; font-size: 0.9em;">
+                        ℹ️ Будут сохранены: мощность нагревателя, объемы фракций, скорости отбора, температурные пороги,
+                        настройки безопасности
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeProfileModal()">Отмена</button>
+                <button class="btn btn-success" onclick="saveProfile()">💾 Сохранить профиль</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для просмотра профиля -->
+    <div id="profile-view-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <div class="modal-title" id="profile-view-title">Детали профиля</div>
+                <button class="modal-close" onclick="closeProfileViewModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="profile-view-body">
+                <!-- Будет заполнено JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeProfileViewModal()">Закрыть</button>
+                <button class="btn btn-primary" onclick="loadProfileToSettings()">📥 Загрузить в настройки</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для импорта профилей -->
+    <div id="profile-import-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <div class="modal-title">📥 Импорт профилей</div>
+                <button class="modal-close" onclick="closeImportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                    Загрузите JSON файл с профилями для импорта. Можно импортировать как один профиль, так и несколько
+                    сразу.
+                </p>
+                <input type="file" id="import-file-input" accept=".json"
+                    style="width: 100%; padding: 10px; border: 2px dashed var(--border-color); border-radius: 4px; cursor: pointer;">
+                <div id="import-preview"
+                    style="margin-top: 15px; padding: 10px; background: var(--bg-primary); border-radius: 4px; display: none;">
+                    <div style="font-weight: 500; margin-bottom: 5px;">Предпросмотр:</div>
+                    <div id="import-preview-text" style="color: var(--text-secondary); font-size: 0.9em;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeImportModal()">Отмена</button>
+                <button class="btn btn-success" onclick="doImportProfiles()" id="import-btn" disabled>📥
+                    Импортировать</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="column-animation.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

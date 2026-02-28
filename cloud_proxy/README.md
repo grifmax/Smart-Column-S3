@@ -1,0 +1,50 @@
+# Smart-Column S3 - Web Proxy
+
+Веб-прокси для доступа к интерфейсу ESP32 через spiritcontrol.ru с авторизацией.
+
+## 📁 Структура файлов
+
+### Основные файлы:
+- `proxy.php` - основной прокси файл
+- `login.php` - страница авторизации
+- `auth_web.php` - система авторизации
+- `web_settings_api.php` - API для настроек ESP32
+- `esp32_config.php` - функции конфигурации ESP32
+- `config.php` - базовая конфигурация
+- `.htaccess` - правила Apache
+
+### Файлы для основного домена:
+- `main_site_redirect.htaccess` - редирект (для smartcolumn/public_html/)
+- `main_site_redirect.php` - альтернативный редирект
+
+### Директория:
+- `web/` - веб-интерфейс ESP32 (все файлы из data/)
+
+## 📚 Документация
+
+**Правило:** Все файлы документации (.md) создаются в директории `docs/` или `data/docs/`, а не в корне проекта.
+
+Основная документация по развертыванию находится в `data/docs/`:
+- `data/docs/DEPLOYMENT_SUMMARY.md` - краткая сводка
+- `data/docs/DEPLOYMENT_FILES_LIST.md` - полный список файлов
+- `data/docs/FILES_FOR_PROXY.md` - что загружать на прокси сервер
+- И другие инструкции...
+
+## 🚀 Быстрый старт
+
+1. Модифицируйте файлы в `data/` (см. `data/docs/ESP32_SETTINGS_INSTRUCTIONS.md`)
+2. Скопируйте все из `data/` в `cloud_proxy/web/`
+3. Загрузите файлы на сервер (см. `data/docs/DEPLOYMENT_FILES_LIST.md`)
+
+## 📋 Файлы для загрузки на сервер
+
+**На сервер `spiritcontrol.ru` в корень веб-директории:**
+- Все PHP файлы (proxy.php, login.php, auth_web.php, web_settings_api.php, esp32_config.php, config.php, database.php, database_init.php)
+- `.htaccess`
+- Директория `web/` (все файлы)
+
+## 🔗 Полезные ссылки
+
+- Инициализация БД: `https://spiritcontrol.ru/database_init.php?confirm=yes`
+- Страница входа: `https://spiritcontrol.ru/login.php`
+- Главная страница: `https://spiritcontrol.ru/`
