@@ -1,3 +1,6 @@
+﻿import { sendCommand } from '../core/websocket.js';
+import { addLog } from '../core/logs.js';
+
 // ============================================================================
 
 // Settings

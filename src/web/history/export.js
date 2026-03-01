@@ -1,4 +1,4 @@
-export async function exportHistory(id, format = null) {
+﻿export async function exportHistory(id, format = null) {
 
     try {
 

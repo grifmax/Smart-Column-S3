@@ -1,9 +1,12 @@
+﻿import { ABV_PLAN_STORAGE_KEY, plannedAbvPercent, setPlannedAbvPercent, plannedAbvUserSet, setPlannedAbvUserSet, runtimeMonitorState } from '../globals.js';
+import { normalizeAbvPercent } from './helpers.js';
+
 export function loadPlannedAbv() {
     try {
         const raw = localStorage.getItem(ABV_PLAN_STORAGE_KEY);
         if (raw !== null) {
-            plannedAbvPercent = normalizeAbvPercent(raw, plannedAbvPercent);
-            plannedAbvUserSet = true;
+            setPlannedAbvPercent(normalizeAbvPercent(raw, plannedAbvPercent));
+            setPlannedAbvUserSet(true);
         }
     } catch (e) {
         console.warn('planned ABV load failed:', e);
@@ -11,8 +14,8 @@ export function loadPlannedAbv() {
 }
 
 export function savePlannedAbv(value) {
-    plannedAbvPercent = normalizeAbvPercent(value, plannedAbvPercent);
-    plannedAbvUserSet = true;
+    setPlannedAbvPercent(normalizeAbvPercent(value, plannedAbvPercent));
+    setPlannedAbvUserSet(true);
     try {
         localStorage.setItem(ABV_PLAN_STORAGE_KEY, plannedAbvPercent.toFixed(1));
     } catch (e) {

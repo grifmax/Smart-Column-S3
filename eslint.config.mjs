@@ -127,6 +127,12 @@ export default [
                 Object: 'readonly',
                 Map: 'readonly',
                 Set: 'readonly',
+                Blob: 'readonly',
+                FileReader: 'readonly',
+                updateColumnAnimation: 'readonly',
+                AbortController: 'readonly',
+                Notification: 'readonly',
+                WebSocket: 'readonly',
                 // External libs (loaded via <script>)
                 ApexCharts: 'readonly',
             },
@@ -134,7 +140,7 @@ export default [
         rules: {
             // Ослабим для legacy кода
             'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-            'no-undef': 'off',
+            'no-undef': 'error',
             'no-redeclare': 'error',
             'no-constant-condition': 'warn',
             'no-empty': 'warn',

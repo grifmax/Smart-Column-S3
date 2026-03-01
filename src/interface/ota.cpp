@@ -31,7 +31,7 @@ void init() {
         } else { // U_SPIFFS
             type = "filesystem";
             // ВАЖНО: остановить SPIFFS перед обновлением
-            SPIFFS.end();
+            LittleFS.end();
         }
 
         otaInProgress = true;

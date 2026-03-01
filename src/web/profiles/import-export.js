@@ -1,4 +1,4 @@
-// Экспорт одного профиля
+﻿// Экспорт одного профиля
 
 export function exportProfile(id) {
 

@@ -1,3 +1,5 @@
+﻿import { formatUptime } from '../core/utils.js';
+
 export function toFinite(value, fallback = 0) {
     const num = Number(value);
     return Number.isFinite(num) ? num : fallback;

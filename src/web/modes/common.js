@@ -1,3 +1,6 @@
+﻿import { currentMode, MODE_IDLE, getModeLabel } from '../globals.js';
+import { addLog } from '../core/logs.js';
+
 // ============================================================================
 
 // Control Functions

@@ -1,3 +1,6 @@
+﻿import { sendCommand } from '../core/websocket.js';
+import { addLog } from '../core/logs.js';
+
 export function toggleAuthFields() {
 
     const enabled = document.getElementById('auth-enabled').checked;

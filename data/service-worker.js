@@ -1,7 +1,8 @@
-const CACHE_NAME = 'smart-column-v7';
+const CACHE_NAME = 'smart-column-v9';
 const ASSETS = [
   '/',
   '/index.html',
+  '/app.js',
   '/style.css',
   '/column-animation.css',
   '/column-animation.js',
@@ -15,9 +16,9 @@ const ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Прекэшируем основные ассеты (не прерываемся при ошибках загрузки внешних)
+      // Cache core assets; do not fail install if external CDN fails.
       return Promise.allSettled(
-        ASSETS.map(asset => cache.add(asset).catch(e => console.warn('SW: cache add error', asset, e)))
+        ASSETS.map((asset) => cache.add(asset).catch((e) => console.warn('SW: cache add error', asset, e)))
       );
     })
   );
@@ -36,10 +37,12 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Не кэшируем API, WebSocket и расширения Chrome
-  if (event.request.url.includes('/api/') ||
+  // Do not cache API/WebSocket and browser extensions.
+  if (
+    event.request.url.includes('/api/') ||
     event.request.url.includes('/ws') ||
-    event.request.url.startsWith('chrome-extension://')) {
+    event.request.url.startsWith('chrome-extension://')
+  ) {
     return;
   }
 
@@ -49,37 +52,44 @@ self.addEventListener('fetch', (event) => {
     (requestUrl.pathname === '/' ||
       requestUrl.pathname === '/index.html' ||
       requestUrl.pathname === '/app.js' ||
-      requestUrl.pathname === '/style.css');
+      requestUrl.pathname === '/style.css' ||
+      requestUrl.pathname === '/charts.html' ||
+      requestUrl.pathname === '/charts.js' ||
+      requestUrl.pathname === '/charts-style.css');
 
-  // Для app shell используем network-first, чтобы не застревать на старом app.js
+  // For app shell force real network first (no HTTP cache), fallback to SW cache.
   if (isAppShellFile) {
+    const networkRequest = new Request(event.request, { cache: 'no-store' });
     event.respondWith(
-      fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type !== 'opaque') {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
-        }
-        return networkResponse;
-      }).catch(() => caches.match(event.request))
+      fetch(networkRequest)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type !== 'opaque') {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }
 
-  // Стратегия: Stale-While-Revalidate с динамическим кэшированием
+  // Stale-While-Revalidate for the rest of static assets.
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        // Кэшируем успешные ответы
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type !== 'opaque') {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
-      }).catch(() => {
-        // При ошибке сети просто игнорим, отдастся кэш, если есть
-      });
+      const fetchPromise = fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type !== 'opaque') {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          // Ignore network errors; cached response (if any) is returned.
+        });
 
       return cachedResponse || fetchPromise;
     })

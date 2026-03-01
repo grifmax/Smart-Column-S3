@@ -1,4 +1,4 @@
-export function toggleMqttFields() {
+﻿export function toggleMqttFields() {
 
     const enabledEl = document.getElementById('mqtt-enabled');
     const fields = document.getElementById('mqtt-fields');

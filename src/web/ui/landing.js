@@ -1,3 +1,6 @@
+﻿import { resolveMode, getModeLabel, getModeCssClass } from '../globals.js';
+import { loadStatus } from '../core/status.js';
+
 export function updateLandingUi(snapshot) {
     const modeChip = document.getElementById('landing-mode-chip');
     if (modeChip && snapshot.mode !== undefined) {

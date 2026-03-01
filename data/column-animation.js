@@ -1,4 +1,4 @@
-// Animated Scheme Controller for All Modes
+﻿// Animated Scheme Controller for All Modes
 
 class SchemeController {
     constructor() {

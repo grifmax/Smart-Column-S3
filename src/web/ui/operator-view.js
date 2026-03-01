@@ -1,4 +1,34 @@
 export const OPERATOR_VIEW_STORAGE_KEY = 'ui.operatorView';
+const OPERATOR_COMPACT_BREAKPOINT = 1024;
+
+let autoSyncBound = false;
+let autoSyncTimer = null;
+
+function getResponsiveViewportWidth() {
+    const widths = [];
+
+    const visual = Number(window.visualViewport?.width);
+    if (Number.isFinite(visual) && visual > 0) widths.push(visual);
+
+    const inner = Number(window.innerWidth);
+    if (Number.isFinite(inner) && inner > 0) widths.push(inner);
+
+    const client = Number(document.documentElement?.clientWidth);
+    if (Number.isFinite(client) && client > 0) widths.push(client);
+
+    const monitorWidth = Number(document.querySelector('#monitor .operator-screen')?.getBoundingClientRect?.().width);
+    if (Number.isFinite(monitorWidth) && monitorWidth > 0) widths.push(monitorWidth);
+
+    if (!widths.length) return 1920;
+    return Math.min(...widths);
+}
+
+function scheduleAutoSync() {
+    clearTimeout(autoSyncTimer);
+    autoSyncTimer = setTimeout(() => {
+        syncOperatorViewAuto();
+    }, 120);
+}
 
 export function setOperatorView(view) {
     const screen = document.querySelector('#monitor .operator-screen');
@@ -31,9 +61,15 @@ export function toggleOperatorView() {
     }
 }
 
-// Авто-выбор: Instrument ≥768px, Compact <768px
+// Auto mode: instrument on wide viewports, compact on narrower screens.
 export function getAutoOperatorView() {
-    return window.innerWidth >= 768 ? 'instrument' : 'compact';
+    return getResponsiveViewportWidth() >= OPERATOR_COMPACT_BREAKPOINT ? 'instrument' : 'compact';
+}
+
+export function syncOperatorViewAuto() {
+    const screen = document.querySelector('#monitor .operator-screen');
+    if (!screen) return;
+    setOperatorView(getAutoOperatorView());
 }
 
 export function initOperatorViewToggle() {
@@ -46,15 +82,23 @@ export function initOperatorViewToggle() {
         return;
     }
 
-    // При первом запуске — авто-выбор по ширине экрана
-    setOperatorView(getAutoOperatorView());
+    // Initial auto-select by effective viewport width.
+    syncOperatorViewAuto();
 
-    // Авто-переключение при resize (без ручного override)
-    let resizeTimer;
-    window.addEventListener('resize', function () {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(function () {
-            setOperatorView(getAutoOperatorView());
-        }, 200);
-    });
+    if (autoSyncBound) return;
+    autoSyncBound = true;
+
+    // React to viewport and layout changes (window resize, zoom, orientation).
+    window.addEventListener('resize', scheduleAutoSync);
+    window.addEventListener('orientationchange', scheduleAutoSync);
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', scheduleAutoSync);
+        window.visualViewport.addEventListener('scroll', scheduleAutoSync);
+    }
+
+    if (typeof ResizeObserver !== 'undefined') {
+        const observer = new ResizeObserver(() => scheduleAutoSync());
+        observer.observe(document.documentElement);
+    }
 }

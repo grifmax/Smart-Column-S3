@@ -12,16 +12,16 @@ ProcessRecorder processRecorder;
 bool initHistory() {
     Serial.println("Инициализация системы истории процессов...");
 
-    // Проверить, смонтирована ли SPIFFS
-    if (!SPIFFS.begin(true)) {
-        Serial.println("Ошибка: не удалось инициализировать SPIFFS");
+    // Проверить, смонтирована ли LittleFS
+    if (!LittleFS.begin(true)) {
+        Serial.println("Ошибка: не удалось инициализировать LittleFS");
         return false;
     }
 
     // Проверить существование директории /history
-    if (!SPIFFS.exists(HISTORY_DIR)) {
+    if (!LittleFS.exists(HISTORY_DIR)) {
         Serial.println("Создание директории /history");
-        // SPIFFS не требует явного создания директорий
+        // LittleFS не требует явного создания директорий
         // Они создаются автоматически при сохранении файла
     }
 
@@ -44,7 +44,7 @@ bool saveProcessHistory(const ProcessHistory& history) {
 
     Serial.printf("Сохранение процесса в историю: %s\n", filename.c_str());
 
-    File file = SPIFFS.open(filename, FILE_WRITE);
+    File file = LittleFS.open(filename, FILE_WRITE);
     if (!file) {
         Serial.println("Ошибка: не удалось создать файл истории");
         return false;
@@ -209,12 +209,12 @@ bool saveProcessHistory(const ProcessHistory& history) {
 bool loadProcessHistory(const String& id, ProcessHistory& history) {
     String filename = String(HISTORY_DIR) + "/process_" + id + ".json";
 
-    if (!SPIFFS.exists(filename)) {
+    if (!LittleFS.exists(filename)) {
         Serial.printf("Ошибка: файл не найден: %s\n", filename.c_str());
         return false;
     }
 
-    File file = SPIFFS.open(filename, FILE_READ);
+    File file = LittleFS.open(filename, FILE_READ);
     if (!file) {
         Serial.println("Ошибка: не удалось открыть файл");
         return false;
@@ -354,7 +354,7 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
 std::vector<ProcessListItem> getProcessList() {
     std::vector<ProcessListItem> list;
 
-    File root = SPIFFS.open(HISTORY_DIR);
+    File root = LittleFS.open(HISTORY_DIR);
     if (!root || !root.isDirectory()) {
         return list;
     }
@@ -401,12 +401,12 @@ std::vector<ProcessListItem> getProcessList() {
 bool deleteProcess(const String& id) {
     String filename = String(HISTORY_DIR) + "/process_" + id + ".json";
 
-    if (!SPIFFS.exists(filename)) {
+    if (!LittleFS.exists(filename)) {
         Serial.printf("Файл не найден: %s\n", filename.c_str());
         return false;
     }
 
-    if (SPIFFS.remove(filename)) {
+    if (LittleFS.remove(filename)) {
         Serial.printf("Процесс удалён: %s\n", id.c_str());
         return true;
     }
@@ -419,7 +419,7 @@ bool deleteProcess(const String& id) {
 // ============================================================================
 
 bool clearHistory() {
-    File root = SPIFFS.open(HISTORY_DIR);
+    File root = LittleFS.open(HISTORY_DIR);
     if (!root || !root.isDirectory()) {
         return false;
     }
@@ -428,7 +428,7 @@ bool clearHistory() {
     while (file) {
         if (!file.isDirectory()) {
             String filename = file.name();
-            SPIFFS.remove(filename);
+            LittleFS.remove(filename);
         }
         file = root.openNextFile();
     }
@@ -447,7 +447,7 @@ void rotateHistory() {
     size_t totalSize = 0;
 
     // Собрать список файлов и их размеры
-    File root = SPIFFS.open(HISTORY_DIR);
+    File root = LittleFS.open(HISTORY_DIR);
     if (!root || !root.isDirectory()) {
         return;
     }
@@ -471,7 +471,7 @@ void rotateHistory() {
     // Удалить старые файлы если превышен лимит по количеству
     while (files.size() > MAX_HISTORY_FILES) {
         Serial.printf("Удаление старого файла (превышен лимит): %s\n", files[0].c_str());
-        SPIFFS.remove(files[0]);
+        LittleFS.remove(files[0]);
         totalSize -= sizes[0];
         files.erase(files.begin());
         sizes.erase(sizes.begin());
@@ -480,7 +480,7 @@ void rotateHistory() {
     // Удалить старые файлы если превышен лимит по размеру
     while (totalSize > MAX_HISTORY_SIZE && files.size() > 1) {
         Serial.printf("Удаление старого файла (превышен размер): %s\n", files[0].c_str());
-        SPIFFS.remove(files[0]);
+        LittleFS.remove(files[0]);
         totalSize -= sizes[0];
         files.erase(files.begin());
         sizes.erase(sizes.begin());
@@ -494,7 +494,7 @@ void rotateHistory() {
 uint16_t getHistoryCount() {
     uint16_t count = 0;
 
-    File root = SPIFFS.open(HISTORY_DIR);
+    File root = LittleFS.open(HISTORY_DIR);
     if (!root || !root.isDirectory()) {
         return 0;
     }
@@ -516,7 +516,7 @@ uint16_t getHistoryCount() {
 size_t getHistorySize() {
     size_t totalSize = 0;
 
-    File root = SPIFFS.open(HISTORY_DIR);
+    File root = LittleFS.open(HISTORY_DIR);
     if (!root || !root.isDirectory()) {
         return 0;
     }

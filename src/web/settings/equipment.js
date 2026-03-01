@@ -1,3 +1,6 @@
+﻿import { sendCommand } from '../core/websocket.js';
+import { addLog } from '../core/logs.js';
+
 export async function saveEquipment() {
 
     const heaterPower = document.getElementById('heater-power-w').value;

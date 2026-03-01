@@ -1,3 +1,6 @@
+﻿import { miniChart } from '../globals.js';
+import { addLog } from './logs.js';
+
 export function setTheme(theme) {
 
     document.body.setAttribute('data-theme', theme);

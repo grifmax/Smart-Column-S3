@@ -1,4 +1,4 @@
-export function toggleTelegramFields() {
+﻿export function toggleTelegramFields() {
 
     const enabledEl = document.getElementById('telegram-enabled');
 

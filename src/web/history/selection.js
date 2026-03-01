@@ -1,3 +1,7 @@
+﻿import { selectedProcesses } from './list.js';
+import { addLog } from '../core/logs.js';
+import { loadHistoryList } from './list.js';
+
 export function toggleProcessSelection(processId) {
 
     if (selectedProcesses.has(processId)) {

@@ -20,6 +20,7 @@ import { getEffectiveAbvForCalculations, renderAbvValue } from '../runtime/abv.j
 import { renderModeRuntimeCard } from '../runtime/bars.js';
 import { updateInteractiveScheme } from '../ui/scheme.js';
 import { updateLandingUi } from '../ui/landing.js';
+import { syncOperatorViewAuto } from '../ui/operator-view.js';
 import { updateCloudUiFromStatus } from '../cloud/cloud-config.js';
 import { formatUptime } from './utils.js';
 import { addLog } from './logs.js';
@@ -108,6 +109,7 @@ let prevPhaseForNotify = null;
 export function updateUIFromStatus(data) {
     let phaseText = '-';
     updateRuntimeStateFromStatus(data);
+    syncOperatorViewAuto();
 
     const resolvedMode = (data.modeStr !== undefined || data.mode !== undefined) ? resolveMode(data.mode, data.modeStr) : currentMode;
     const currentPhase = data.phaseStr || '';

@@ -13,16 +13,16 @@
 bool initProfiles() {
     Serial.println("Инициализация системы профилей...");
 
-    // Проверить, смонтирована ли SPIFFS
-    if (!SPIFFS.begin(true)) {
-        Serial.println("Ошибка: не удалось инициализировать SPIFFS");
+    // Проверить, смонтирована ли LittleFS
+    if (!LittleFS.begin(true)) {
+        Serial.println("Ошибка: не удалось инициализировать LittleFS");
         return false;
     }
 
     // Проверить существование директории /profiles
-    if (!SPIFFS.exists(PROFILES_DIR)) {
+    if (!LittleFS.exists(PROFILES_DIR)) {
         Serial.println("Создание директории /profiles");
-        // SPIFFS не требует явного создания директорий
+        // LittleFS не требует явного создания директорий
     }
 
     // Загрузить встроенные рецепты если их нет
@@ -54,7 +54,7 @@ bool saveProfile(const Profile& profile) {
     String filename = String(PROFILES_DIR) + "/profile_" + profile.id + ".json";
     Serial.printf("Сохранение профиля: %s\n", filename.c_str());
 
-    File file = SPIFFS.open(filename, FILE_WRITE);
+    File file = LittleFS.open(filename, FILE_WRITE);
     if (!file) {
         Serial.println("Ошибка: не удалось создать файл профиля");
         return false;
@@ -157,12 +157,12 @@ bool saveProfile(const Profile& profile) {
 bool loadProfile(const String& id, Profile& profile) {
     String filename = String(PROFILES_DIR) + "/profile_" + id + ".json";
 
-    if (!SPIFFS.exists(filename)) {
+    if (!LittleFS.exists(filename)) {
         Serial.printf("Ошибка: файл не найден: %s\n", filename.c_str());
         return false;
     }
 
-    File file = SPIFFS.open(filename, FILE_READ);
+    File file = LittleFS.open(filename, FILE_READ);
     if (!file) {
         Serial.println("Ошибка: не удалось открыть файл");
         return false;
@@ -253,7 +253,7 @@ bool loadProfile(const String& id, Profile& profile) {
 std::vector<ProfileListItem> getProfileList() {
     std::vector<ProfileListItem> list;
 
-    File root = SPIFFS.open(PROFILES_DIR);
+    File root = LittleFS.open(PROFILES_DIR);
     if (!root || !root.isDirectory()) {
         return list;
     }
@@ -310,12 +310,12 @@ bool deleteProfile(const String& id) {
 
     String filename = String(PROFILES_DIR) + "/profile_" + id + ".json";
 
-    if (!SPIFFS.exists(filename)) {
+    if (!LittleFS.exists(filename)) {
         Serial.printf("Файл не найден: %s\n", filename.c_str());
         return false;
     }
 
-    if (SPIFFS.remove(filename)) {
+    if (LittleFS.remove(filename)) {
         Serial.printf("Профиль удалён: %s\n", id.c_str());
         return true;
     }
@@ -328,7 +328,7 @@ bool deleteProfile(const String& id) {
 // ============================================================================
 
 bool clearProfiles() {
-    File root = SPIFFS.open(PROFILES_DIR);
+    File root = LittleFS.open(PROFILES_DIR);
     if (!root || !root.isDirectory()) {
         return false;
     }
@@ -346,7 +346,7 @@ bool clearProfiles() {
                 DeserializationError error = deserializeJson(doc, file);
 
                 if (!error && !doc["metadata"]["isBuiltin"].as<bool>()) {
-                    SPIFFS.remove(filename);
+                    LittleFS.remove(filename);
                     deleted++;
                 }
             }
@@ -533,7 +533,7 @@ void rotateProfiles() {
     std::vector<bool> builtinFlags;
 
     // Собрать список файлов
-    File root = SPIFFS.open(PROFILES_DIR);
+    File root = LittleFS.open(PROFILES_DIR);
     if (!root || !root.isDirectory()) {
         return;
     }
@@ -573,7 +573,7 @@ void rotateProfiles() {
         for (size_t i = 0; i < files.size() && toDelete > 0; i++) {
             if (!builtinFlags[i]) {
                 Serial.printf("Удаление старого профиля: %s\n", files[i].c_str());
-                SPIFFS.remove(files[i]);
+                LittleFS.remove(files[i]);
                 toDelete--;
             }
         }
@@ -587,7 +587,7 @@ void rotateProfiles() {
 uint16_t getProfileCount() {
     uint16_t count = 0;
 
-    File root = SPIFFS.open(PROFILES_DIR);
+    File root = LittleFS.open(PROFILES_DIR);
     if (!root || !root.isDirectory()) {
         return 0;
     }

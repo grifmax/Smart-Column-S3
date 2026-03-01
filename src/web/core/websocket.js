@@ -1,4 +1,4 @@
-import { ws, setWs, isConnected, setIsConnected, reconnectInterval, setReconnectInterval } from '../globals.js';
+﻿import { ws, setWs, isConnected, setIsConnected, reconnectInterval, setReconnectInterval } from '../globals.js';
 import { startStatusPolling, stopStatusPolling } from '../ui/landing.js';
 import { updateUI } from '../ui/update-ui.js';
 import { addLog } from './logs.js';

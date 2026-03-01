@@ -1,10 +1,11 @@
-// Smart-Column S3 - Charts with ApexCharts
+﻿// Smart-Column S3 - Charts with ApexCharts
 
 let ws = null;
 let reconnectInterval = null;
 let isConnected = false;
 let chartsPaused = false;
 let currentPeriod = 60; // секунды
+const DATA_RETENTION_SECONDS = 6 * 60 * 60; // 6 часов буфера в памяти браузера
 
 // Anomaly detection settings
 let anomalyDetectionEnabled = false;
@@ -395,8 +396,8 @@ function updateChartData(data) {
         document.getElementById('uptime').textContent = formatUptime(data.uptime);
     }
 
-    // Очистка старых данных
-    cleanOldData();
+    // Очистка устаревших данных (независимо от выбранного окна просмотра)
+    pruneRetainedData();
 }
 
 function appendData(buffer, key, value) {
@@ -409,20 +410,40 @@ function updateChart(chartName, seriesData) {
     if (!chart) return;
 
     const timeArray = chartData[chartName].time;
-    const newSeries = seriesData.map((data, index) => ({
-        data: timeArray.map((time, i) => ({
-            x: time,
-            y: data[i]
-        }))
+    const cutoffTime = currentPeriod === 0 ? 0 : Date.now() - (currentPeriod * 1000);
+    const startIndex = getStartIndexByCutoff(timeArray, cutoffTime);
+    const newSeries = seriesData.map((data) => ({
+        data: buildSeriesPoints(timeArray, data, startIndex)
     }));
 
     chart.updateSeries(newSeries, false);
 }
 
-function cleanOldData() {
-    if (currentPeriod === 0) return; // Не чистим если "Всё время"
+function getStartIndexByCutoff(timeArray, cutoffTime) {
+    if (!Array.isArray(timeArray) || timeArray.length === 0 || cutoffTime <= 0) {
+        return 0;
+    }
+    for (let i = 0; i < timeArray.length; i++) {
+        if (timeArray[i] >= cutoffTime) return i;
+    }
+    return timeArray.length;
+}
 
-    const cutoffTime = new Date().getTime() - (currentPeriod * 1000);
+function buildSeriesPoints(timeArray, valuesArray, startIndex) {
+    const points = [];
+    for (let i = startIndex; i < timeArray.length; i++) {
+        points.push({
+            x: timeArray[i],
+            y: valuesArray[i]
+        });
+    }
+    return points;
+}
+
+function pruneRetainedData() {
+    if (DATA_RETENTION_SECONDS <= 0) return;
+
+    const cutoffTime = Date.now() - (DATA_RETENTION_SECONDS * 1000);
 
     Object.keys(chartData).forEach(chartName => {
         if (chartName === 'fractions') return; // Пропускаем столбчатый график
@@ -430,22 +451,62 @@ function cleanOldData() {
         const buffer = chartData[chartName];
         if (!buffer.time || buffer.time.length === 0) return;
 
-        // Найти индекс первого элемента, который нужно оставить
-        let cutoffIndex = 0;
-        for (let i = 0; i < buffer.time.length; i++) {
-            if (buffer.time[i] >= cutoffTime) {
-                cutoffIndex = i;
-                break;
-            }
-        }
+        const cutoffIndex = getStartIndexByCutoff(buffer.time, cutoffTime);
 
-        // Удалить старые данные
-        if (cutoffIndex > 0) {
+        if (cutoffIndex > 0 && cutoffIndex < buffer.time.length) {
             Object.keys(buffer).forEach(key => {
                 buffer[key] = buffer[key].slice(cutoffIndex);
             });
+        } else if (cutoffIndex >= buffer.time.length) {
+            Object.keys(buffer).forEach(key => {
+                buffer[key] = [];
+            });
         }
     });
+}
+
+function refreshVisibleWindow() {
+    if (chartData.temperatures.time.length > 0) {
+        updateChart('temperatures', [
+            chartData.temperatures.cube,
+            chartData.temperatures.columnBottom,
+            chartData.temperatures.columnTop,
+            chartData.temperatures.reflux,
+            chartData.temperatures.tsa,
+            chartData.temperatures.waterIn,
+            chartData.temperatures.waterOut
+        ]);
+    }
+
+    if (chartData.pressure.time.length > 0) {
+        updateChart('pressure', [
+            chartData.pressure.cube,
+            chartData.pressure.atm,
+            chartData.pressure.flood
+        ]);
+    }
+
+    if (chartData.power.time.length > 0) {
+        updateChart('power', [
+            chartData.power.voltage,
+            chartData.power.current,
+            chartData.power.power,
+            chartData.power.energy,
+            chartData.power.frequency,
+            chartData.power.pf
+        ]);
+    }
+
+    if (chartData.pump.time.length > 0) {
+        updateChart('pump', [
+            chartData.pump.speed,
+            chartData.pump.volume
+        ]);
+    }
+
+    if (chartData.abv.time.length > 0) {
+        updateChart('abv', [chartData.abv.value]);
+    }
 }
 
 // ============================================================================
@@ -562,11 +623,14 @@ function setupPeriodButtons() {
     document.querySelectorAll('.period-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const period = parseInt(btn.getAttribute('data-period'));
-            currentPeriod = period;
+            currentPeriod = Number.isFinite(period) ? period : 60;
 
             // Update active button
             document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
+
+            // Период влияет только на отображение, данные в буфере не удаляются.
+            refreshVisibleWindow();
         });
     });
 }

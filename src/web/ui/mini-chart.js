@@ -1,3 +1,6 @@
+﻿import { miniChart, setMiniChart, miniChartData, MINI_CHART_MAX_POINTS } from '../globals.js';
+import { addLog } from '../core/logs.js';
+
 // ============================================================================
 
 // Mini Chart
@@ -15,7 +18,7 @@ export function initMiniChart() {
     if (typeof window.ApexCharts === 'undefined') {
         miniChartContainer.innerHTML = '<div class="info-display">Мини-график временно недоступен</div>';
         addLog('⚠ Мини-график недоступен: библиотека графика не загружена', 'warning');
-        miniChart = null;
+        setMiniChart(null);
         return;
     }
 
@@ -142,8 +145,7 @@ export function initMiniChart() {
 
 
 
-    miniChart = new ApexCharts(miniChartContainer, options);
-
+    setMiniChart(new ApexCharts(miniChartContainer, options));
     miniChart.render();
 
 }

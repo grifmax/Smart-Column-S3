@@ -1,3 +1,6 @@
+﻿import { updateHistoryStats } from './selection.js';
+import { addLog } from '../core/logs.js';
+
 // ============================================================================
 
 // История процессов

@@ -178,6 +178,7 @@ window.fetchCurrentTempForCalc = fetchCurrentTempForCalc;
 window.toggleOperatorView = toggleOperatorView;
 window.toggleBrowserNotifications = toggleBrowserNotifications;
 window.testBrowserNotification = testBrowserNotification;
+window.showNotification = showNotification;
 
 // ============================================================================
 // Инициализация при загрузке страницы

@@ -1,8 +1,11 @@
+﻿import { currentProfileId, setCurrentProfileId } from './state.js';
+import { loadProfilesList } from './list.js';
+
 // Показать модальное окно создания профиля
 
 export function showCreateProfileModal() {
 
-    currentProfileId = null;
+    setCurrentProfileId(null);
 
     document.getElementById('profile-modal-title').textContent = 'Создание профиля';
 
@@ -230,7 +233,7 @@ export function viewProfile(id) {
 
 export function showProfileViewModal(profile) {
 
-    currentProfileId = profile.id;
+    setCurrentProfileId(profile.id);
 
     document.getElementById('profile-view-title').textContent = profile.metadata.name;
 
@@ -358,7 +361,7 @@ export function closeProfileViewModal() {
 
     document.getElementById('profile-view-modal').style.display = 'none';
 
-    currentProfileId = null;
+    setCurrentProfileId(null);
 
 }
 

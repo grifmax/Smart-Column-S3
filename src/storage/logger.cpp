@@ -17,14 +17,14 @@ namespace Logger {
 bool init() {
   LOG_I("Logger: Initializing...");
 
-  if (!SPIFFS.begin(true)) {
-    LOG_E("Logger: SPIFFS mount failed!");
+  if (!LittleFS.begin(true)) {
+    LOG_E("Logger: LittleFS mount failed!");
     return false;
   }
 
   // Создать директорию для логов
-  if (!SPIFFS.exists(LOG_FILE_PREFIX)) {
-    SPIFFS.mkdir(LOG_FILE_PREFIX);
+  if (!LittleFS.exists(LOG_FILE_PREFIX)) {
+    LittleFS.mkdir(LOG_FILE_PREFIX);
   }
 
   LOG_I("Logger: Ready");
@@ -45,7 +45,7 @@ void startSession() {
            timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, LOG_FILE_EXT);
 
   // Открыть файл для записи
-  currentLogFile = SPIFFS.open(currentFilename, FILE_WRITE);
+  currentLogFile = LittleFS.open(currentFilename, FILE_WRITE);
 
   if (!currentLogFile) {
     LOG_E("Logger: Failed to open %s", currentFilename);
@@ -107,7 +107,7 @@ void log(const LogEvent &event) {
 
 String getLogsList() {
   String result = "[";
-  File root = SPIFFS.open(LOG_FILE_PREFIX);
+  File root = LittleFS.open(LOG_FILE_PREFIX);
 
   if (!root || !root.isDirectory()) {
     return "[]";
@@ -131,7 +131,7 @@ String getLogsList() {
 }
 
 String readLog(const char *filename) {
-  File file = SPIFFS.open(filename, FILE_READ);
+  File file = LittleFS.open(filename, FILE_READ);
   if (!file) {
     return "";
   }
@@ -142,7 +142,7 @@ String readLog(const char *filename) {
 }
 
 bool deleteLog(const char *filename) {
-  if (SPIFFS.remove(filename)) {
+  if (LittleFS.remove(filename)) {
     LOG_I("Logger: Deleted %s", filename);
     return true;
   } else {

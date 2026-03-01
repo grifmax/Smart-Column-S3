@@ -1,8 +1,12 @@
-// ============================================================================
+﻿// ============================================================================
 // Режим запуска UI: local (прямо на ESP32) vs cloud (через web-proxy кабинет)
 // ============================================================================
 
 export let isCloudProxyMode = false;
+
+export function setIsCloudProxyMode(value) {
+    isCloudProxyMode = value;
+}
 
 export async function detectCloudProxyMode() {
     // Идея: /api/web/* существует только на web-proxy (cloud_proxy).

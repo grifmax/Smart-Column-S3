@@ -1,4 +1,4 @@
-import { addLog } from '../core/logs.js';
+﻿import { addLog } from '../core/logs.js';
 import { toggleMqttFields } from './mqtt.js';
 
 function getMqttElements() {

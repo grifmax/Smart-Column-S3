@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <div id="status">Connecting...</div>
+    <div id="messages"></div>
+
+    <script>
+        const ws = new WebSocket('ws://192.168.3.138/ws');
+        const statusEl = document.getElementById('status');
+        const messagesEl = document.getElementById('messages');
+
+        ws.onopen = function() {
+            statusEl.textContent = 'Connected!';
+            statusEl.style.color = 'green';
+            console.log('WebSocket connected');
+        };
+
+        ws.onmessage = function(event) {
+            const msg = document.createElement('div');
+            msg.textContent = new Date().toLocaleTimeString() + ': ' + event.data.substring(0, 200);
+            messagesEl.insertBefore(msg, messagesEl.firstChild);
+            console.log('Received:', event.data);
+        };
+
+        ws.onerror = function(error) {
+            statusEl.textContent = 'Error: ' + error;
+            statusEl.style.color = 'red';
+            console.error('WebSocket error:', error);
+        };
+
+        ws.onclose = function() {
+            statusEl.textContent = 'Disconnected';
+            statusEl.style.color = 'orange';
+            console.log('WebSocket disconnected');
+        };
+    </script>
+</body>
+</html>
