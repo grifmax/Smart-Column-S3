@@ -304,6 +304,7 @@ struct EquipmentSettings {
   float packingCoeff = 3.5f;
   uint16_t heaterPowerW = 2000;
   float cubeVolumeL = 20.0f;
+  float minHeaterSubmergeL = 7.5f;
 };
 
 struct FractionatorSettings {

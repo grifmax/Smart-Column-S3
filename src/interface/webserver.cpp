@@ -305,6 +305,8 @@ void init() {
     JsonObject equipment = doc.createNestedObject("equipment");
     equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+    equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
+    equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
 
     // Runtime-параметры режимов (для экрана мониторинга)
     JsonObject rect = doc.createNestedObject("rectification");
@@ -2394,6 +2396,11 @@ void broadcastState(const SystemState &state) {
   fastDoc["volume_heads"] = state.stats.headsVolume;
   fastDoc["volume_body"] = state.stats.bodyVolume;
   fastDoc["volume_tails"] = state.stats.tailsVolume;
+  JsonObject fastEquipment = fastDoc.createNestedObject("equipment");
+  fastEquipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
+  fastEquipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+  fastEquipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
+  fastEquipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
   JsonObject fastValves = fastDoc.createNestedObject("valves");
   fastValves["water"] = Valves::getWater();
   fastValves["heads"] = Valves::getHeads();
@@ -2473,6 +2480,12 @@ void broadcastState(const SystemState &state) {
   progress["phaseRemainingSec"] =
       (phaseTargetSec > phaseElapsedSec) ? (phaseTargetSec - phaseElapsedSec) : 0;
   progress["phasePercent"] = FSM::getPhaseProgressPercent(state, g_settings);
+
+  JsonObject equipment = doc.createNestedObject("equipment");
+  equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
+  equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+  equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
+  equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
 
   JsonObject rect = doc.createNestedObject("rectification");
   rect["feedVolumeL"] = g_settings.rectParams.feedVolumeL;

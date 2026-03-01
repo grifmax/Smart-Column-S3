@@ -1,4 +1,4 @@
-// Smart-Column S3 - Web UI JavaScript
+﻿// Smart-Column S3 - Web UI JavaScript
 
 
 
@@ -118,7 +118,11 @@ export let runtimeMonitorState = {
     pump: { speedMlH: 0, totalMl: 0 },
     valves: { water: false, heads: false, uno: false, tails: false },
     volumes: { heads: 0, body: 0, tails: 0 },
-    equipment: { heaterPowerW: maxHeaterPower },
+    equipment: {
+        heaterPowerW: maxHeaterPower,
+        cubeVolumeL: 20,
+        minHeaterSubmergeL: 7.5
+    },
     rectification: {
         feedVolumeL: 20,
         feedAbvPercent: 40,

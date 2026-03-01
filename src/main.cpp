@@ -683,6 +683,7 @@ void loadSettings() {
   g_settings.equipment.packingCoeff = DEFAULT_PACKING_COEFF;
   g_settings.equipment.heaterPowerW = DEFAULT_HEATER_POWER_W;
   g_settings.equipment.cubeVolumeL = DEFAULT_CUBE_VOLUME_L;
+  g_settings.equipment.minHeaterSubmergeL = DEFAULT_MIN_HEATER_SUBMERGE_L;
 
   // Насос
   g_settings.pumpCal.mlPerRevolution = DEFAULT_PUMP_ML_PER_REV;

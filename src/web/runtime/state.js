@@ -1,4 +1,4 @@
-import { runtimeMonitorState, resolveMode, plannedAbvUserSet, plannedAbvPercent, setPlannedAbvPercent } from '../globals.js';
+﻿import { runtimeMonitorState, resolveMode, plannedAbvUserSet, plannedAbvPercent, setPlannedAbvPercent } from '../globals.js';
 import { toFinite, normalizeAbvPercent, clampPercent } from './helpers.js';
 
 export function updateRuntimeStateFromStatus(data) {
@@ -28,8 +28,19 @@ export function updateRuntimeStateFromStatus(data) {
         if (data.volumes.body !== undefined) s.volumes.body = toFinite(data.volumes.body, s.volumes.body);
         if (data.volumes.tails !== undefined) s.volumes.tails = toFinite(data.volumes.tails, s.volumes.tails);
     }
-    if (data.equipment && typeof data.equipment === 'object' && data.equipment.heaterPowerW !== undefined) {
-        s.equipment.heaterPowerW = toFinite(data.equipment.heaterPowerW, s.equipment.heaterPowerW);
+    if (data.equipment && typeof data.equipment === 'object') {
+        if (data.equipment.heaterPowerW !== undefined) {
+            s.equipment.heaterPowerW = toFinite(data.equipment.heaterPowerW, s.equipment.heaterPowerW);
+        }
+        if (data.equipment.cubeVolumeL !== undefined) {
+            s.equipment.cubeVolumeL = toFinite(data.equipment.cubeVolumeL, s.equipment.cubeVolumeL);
+        }
+        if (data.equipment.minHeaterSubmergeL !== undefined) {
+            s.equipment.minHeaterSubmergeL = toFinite(
+                data.equipment.minHeaterSubmergeL,
+                s.equipment.minHeaterSubmergeL
+            );
+        }
     }
     if (data.rectification && typeof data.rectification === 'object') {
         s.rectification = { ...s.rectification, ...data.rectification };
@@ -92,6 +103,20 @@ export function updateRuntimeStateFromWs(data) {
     }
     if (data.distillation && typeof data.distillation === 'object') {
         s.distillation = { ...s.distillation, ...data.distillation };
+    }
+    if (data.equipment && typeof data.equipment === 'object') {
+        if (data.equipment.heaterPowerW !== undefined) {
+            s.equipment.heaterPowerW = toFinite(data.equipment.heaterPowerW, s.equipment.heaterPowerW);
+        }
+        if (data.equipment.cubeVolumeL !== undefined) {
+            s.equipment.cubeVolumeL = toFinite(data.equipment.cubeVolumeL, s.equipment.cubeVolumeL);
+        }
+        if (data.equipment.minHeaterSubmergeL !== undefined) {
+            s.equipment.minHeaterSubmergeL = toFinite(
+                data.equipment.minHeaterSubmergeL,
+                s.equipment.minHeaterSubmergeL
+            );
+        }
     }
 }
 

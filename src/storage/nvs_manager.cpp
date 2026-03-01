@@ -42,6 +42,9 @@ bool loadSettings(Settings& settings) {
     settings.equipment.heaterPowerW = prefs.getUShort(NVS_KEY_HEATER_POWER, DEFAULT_HEATER_POWER_W);
     settings.equipment.cubeVolumeL = prefs.getUShort(NVS_KEY_CUBE_VOLUME, DEFAULT_CUBE_VOLUME_L);
     settings.equipment.packingCoeff = prefs.getFloat(NVS_KEY_PACKING_COEFF, DEFAULT_PACKING_COEFF);
+    settings.equipment.minHeaterSubmergeL = prefs.getFloat(
+        NVS_KEY_MIN_HEATER_SUBMERGE, DEFAULT_MIN_HEATER_SUBMERGE_L
+    );
 
     // Калибровка насоса
     settings.pumpCal.mlPerRevolution = prefs.getFloat(NVS_KEY_PUMP_ML_REV, DEFAULT_PUMP_ML_PER_REV);
@@ -108,6 +111,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putUShort(NVS_KEY_HEATER_POWER, settings.equipment.heaterPowerW);
     prefs.putUShort(NVS_KEY_CUBE_VOLUME, settings.equipment.cubeVolumeL);
     prefs.putFloat(NVS_KEY_PACKING_COEFF, settings.equipment.packingCoeff);
+    prefs.putFloat(NVS_KEY_MIN_HEATER_SUBMERGE, settings.equipment.minHeaterSubmergeL);
 
     // Калибровка насоса
     prefs.putFloat(NVS_KEY_PUMP_ML_REV, settings.pumpCal.mlPerRevolution);
