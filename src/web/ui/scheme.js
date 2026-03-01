@@ -20,6 +20,8 @@ const MODE_SCHEME_PATHS = {
     [MODE_HOLD]: 'schemes/hold-animated.svg'
 };
 
+const MANUAL_RECT_STORAGE_KEY = 'control.manualRectSettings';
+
 function getSchemePathForData(data) {
     const mode = resolveMode(
         data?.mode ?? runtimeMonitorState.mode,
@@ -70,6 +72,27 @@ function getPowerSetPercent(data) {
     if (fromDistillation !== undefined) return fromDistillation;
     const runtime = Number(runtimeMonitorState?.distillation?.powerPercent);
     return Number.isFinite(runtime) ? runtime : undefined;
+}
+
+function isTailsPwmEnabled() {
+    const tailsPwmCheckbox = document.getElementById('manual-tails-pwm-enabled');
+    if (tailsPwmCheckbox) {
+        return Boolean(tailsPwmCheckbox.checked);
+    }
+
+    try {
+        const raw = localStorage.getItem(MANUAL_RECT_STORAGE_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        return Boolean(parsed?.tails?.pwmEnabled);
+    } catch {
+        return false;
+    }
+}
+
+function setOptionalDisplay(el, visible) {
+    if (!el) return;
+    el.style.display = visible ? '' : 'none';
 }
 
 
@@ -231,6 +254,11 @@ export function updateInteractiveScheme(data) {
     // Обновление температур на схеме
     applySchemeTheme(svg);
     initSchemeInteractions(svg);
+
+    // Левая хвостовая ветка отображается только при включенном "Хвосты: ШИМ-отбор".
+    const showTailsBranch = isTailsPwmEnabled();
+    setOptionalDisplay(svg.getElementById('zone-tails-left-branch'), showTailsBranch);
+    setOptionalDisplay(svg.getElementById('ind-volume-tails'), showTailsBranch);
 
     const tempCube = getStatusNumber(data, 'temps', 'cube', 't_cube');
     const tempColTop = getStatusNumber(data, 'temps', 'columnTop', 't_column_top');
