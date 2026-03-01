@@ -535,6 +535,11 @@ struct MenuItem {
 #define RECT_PURGE_TIME_MIN 10         // Продувка между фракциями
 #define RECT_FEED_ABV_DEFAULT 40.0f    // Крепость спирта-сырца по умолчанию, %
 
+// Пороги аварий (могут быть изменены в настройках)
+#define DEFAULT_SAFETY_PRESSURE_MAX_MMHG 50.0f
+#define DEFAULT_SAFETY_TSA_MAX_C 55.0f
+#define DEFAULT_SAFETY_WATER_OUT_MAX_C 70.0f
+
 // Справочные переходы по температуре куба (при 1013.25 hPa)
 // Используются как ориентиры и как fallback-ограничители в FSM.
 #define RECT_CUBE_BODY_TO_TAILS_BASE_C 94.5f
@@ -632,6 +637,9 @@ struct MenuItem {
 #define NVS_KEY_DIST_END_TEMP "dist_etmp"
 #define NVS_KEY_DIST_POWER_PCT "dist_ppct"
 #define NVS_KEY_DIST_TAILS_VOL "dist_xvol"
+#define NVS_KEY_SAFETY_PRESSURE_MAX "safe_pmax"
+#define NVS_KEY_SAFETY_TSA_MAX "safe_tsa"
+#define NVS_KEY_SAFETY_WATER_OUT_MAX "safe_wout"
 
 // Cloud tunnel settings
 #define NVS_KEY_CLOUD_ENABLED "cl_en"

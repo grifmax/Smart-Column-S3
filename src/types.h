@@ -345,6 +345,12 @@ struct DistillationUiSettings {
   float tailsVolumeMl = 0.0f;
 };
 
+struct SafetySettings {
+  float pressureMaxMmHg = 50.0f;
+  float tsaMaxC = 55.0f;
+  float waterOutMaxC = 70.0f;
+};
+
 // Настройки (полная версия)
 struct Settings {
   WiFiSettings wifi;
@@ -359,6 +365,7 @@ struct Settings {
   FractionatorSettings fractionator;
   RectParams rectParams;
   DistillationUiSettings distillationUi;
+  SafetySettings safety;
 
   uint8_t language = 0; // 0=RU, 1=EN
   uint8_t theme = 0;    // 0=Light, 1=Dark

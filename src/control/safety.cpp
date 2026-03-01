@@ -12,13 +12,24 @@
 
 namespace Safety {
 
+static float clampSafety(float value, float minValue, float maxValue) {
+    if (value < minValue) return minValue;
+    if (value > maxValue) return maxValue;
+    return value;
+}
+
 void check(SystemState& state, const Settings& settings) {
     bool emergencyStop = false;
     AlarmType alarmType = AlarmType::NONE;
     AlarmLevel alarmLevel = AlarmLevel::NONE;
 
-    // Проверка прорыва паров (T_TSA > 55°C)
-    if (state.temps.valid[TEMP_TSA] && state.temps.tsa > SAFETY_TEMP_TSA_MAX) {
+    const float tsaMaxC = clampSafety(settings.safety.tsaMaxC, 35.0f, 120.0f);
+    const float waterOutMaxC = clampSafety(settings.safety.waterOutMaxC, 30.0f, 120.0f);
+    const float pressureMaxMmHg = clampSafety(settings.safety.pressureMaxMmHg, 5.0f, 200.0f);
+    state.pressure.critThreshold = pressureMaxMmHg;
+
+    // Проверка прорыва паров (T_TSA > порога)
+    if (state.temps.valid[TEMP_TSA] && state.temps.tsa > tsaMaxC) {
         LOG_E("SAFETY: Vapor breakthrough! T_TSA=%.1f°C", state.temps.tsa);
         emergencyStop = true;
         alarmType = AlarmType::VAPOR_BREAKTHROUGH;
@@ -30,8 +41,8 @@ void check(SystemState& state, const Settings& settings) {
         MQTT::publishNotification("КРИТИЧЕСКАЯ ОШИБКА", msg, "error");
     }
 
-    // Проверка перегрева воды (T_water_out > 70°C)
-    if (state.temps.valid[TEMP_WATER_OUT] && state.temps.waterOut > SAFETY_TEMP_WATER_OUT_MAX) {
+    // Проверка перегрева воды (T_water_out > порога)
+    if (state.temps.valid[TEMP_WATER_OUT] && state.temps.waterOut > waterOutMaxC) {
         LOG_E("SAFETY: Water overheat! T_water_out=%.1f°C", state.temps.waterOut);
         Heater::emergencyStop();
         alarmType = AlarmType::WATER_OVERHEAT;
@@ -44,7 +55,7 @@ void check(SystemState& state, const Settings& settings) {
     }
 
     // Проверка захлёба колонны
-    if (state.pressure.cube > state.pressure.critThreshold) {
+    if (state.pressure.cube > pressureMaxMmHg) {
         LOG_E("SAFETY: Column flood! P=%.1f mmHg", state.pressure.cube);
         Heater::setPower(Heater::getPower() * 0.85); // Снизить мощность
         alarmType = AlarmType::COLUMN_FLOOD;

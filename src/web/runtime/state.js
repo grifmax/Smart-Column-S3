@@ -57,6 +57,9 @@ export function updateRuntimeStateFromStatus(data) {
     if (data.distillation && typeof data.distillation === 'object') {
         s.distillation = { ...s.distillation, ...data.distillation };
     }
+    if (data.safetySettings && typeof data.safetySettings === 'object') {
+        s.safetySettings = { ...s.safetySettings, ...data.safetySettings };
+    }
     if (data.mashing && typeof data.mashing === 'object') {
         s.mashing = { ...s.mashing, ...data.mashing };
     }
@@ -109,6 +112,9 @@ export function updateRuntimeStateFromWs(data) {
     }
     if (data.distillation && typeof data.distillation === 'object') {
         s.distillation = { ...s.distillation, ...data.distillation };
+    }
+    if (data.safetySettings && typeof data.safetySettings === 'object') {
+        s.safetySettings = { ...s.safetySettings, ...data.safetySettings };
     }
     if (data.equipment && typeof data.equipment === 'object') {
         if (data.equipment.heaterPowerW !== undefined) {

@@ -72,6 +72,17 @@ bool loadSettings(Settings& settings) {
     settings.distillationUi.powerPercent = prefs.getFloat(NVS_KEY_DIST_POWER_PCT, 100.0f);
     settings.distillationUi.tailsVolumeMl = prefs.getFloat(NVS_KEY_DIST_TAILS_VOL, 0.0f);
 
+    // Безопасность
+    settings.safety.pressureMaxMmHg = prefs.getFloat(
+        NVS_KEY_SAFETY_PRESSURE_MAX, DEFAULT_SAFETY_PRESSURE_MAX_MMHG
+    );
+    settings.safety.tsaMaxC = prefs.getFloat(
+        NVS_KEY_SAFETY_TSA_MAX, DEFAULT_SAFETY_TSA_MAX_C
+    );
+    settings.safety.waterOutMaxC = prefs.getFloat(
+        NVS_KEY_SAFETY_WATER_OUT_MAX, DEFAULT_SAFETY_WATER_OUT_MAX_C
+    );
+
     // Калибровка тача
     settings.touchCal.xMin = prefs.getInt(NVS_KEY_TOUCH_XMIN, TOUCH_CAL_X_MIN);
     settings.touchCal.xMax = prefs.getInt(NVS_KEY_TOUCH_XMAX, TOUCH_CAL_X_MAX);
@@ -139,6 +150,11 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_DIST_END_TEMP, settings.distillationUi.endTempC);
     prefs.putFloat(NVS_KEY_DIST_POWER_PCT, settings.distillationUi.powerPercent);
     prefs.putFloat(NVS_KEY_DIST_TAILS_VOL, settings.distillationUi.tailsVolumeMl);
+
+    // Безопасность
+    prefs.putFloat(NVS_KEY_SAFETY_PRESSURE_MAX, settings.safety.pressureMaxMmHg);
+    prefs.putFloat(NVS_KEY_SAFETY_TSA_MAX, settings.safety.tsaMaxC);
+    prefs.putFloat(NVS_KEY_SAFETY_WATER_OUT_MAX, settings.safety.waterOutMaxC);
 
     // Калибровка тача
     prefs.putInt(NVS_KEY_TOUCH_XMIN, settings.touchCal.xMin);

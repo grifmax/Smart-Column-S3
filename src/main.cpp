@@ -707,6 +707,11 @@ void loadSettings() {
   g_settings.rectParams.stabilizationMin = RECT_STABILIZATION_TIME_MIN;
   g_settings.rectParams.purgeMin = RECT_PURGE_TIME_MIN;
 
+  // Безопасность
+  g_settings.safety.pressureMaxMmHg = DEFAULT_SAFETY_PRESSURE_MAX_MMHG;
+  g_settings.safety.tsaMaxC = DEFAULT_SAFETY_TSA_MAX_C;
+  g_settings.safety.waterOutMaxC = DEFAULT_SAFETY_WATER_OUT_MAX_C;
+
   // Фракционник - все позиции по умолчанию
   g_settings.fractionator.enabled = false;
   g_settings.fractionator.angles[0] = FRACTION_ANGLE_HEADS;
