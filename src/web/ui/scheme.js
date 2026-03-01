@@ -95,6 +95,69 @@ function setOptionalDisplay(el, visible) {
     el.style.display = visible ? '' : 'none';
 }
 
+function ensurePumpSpinKeyframes(svg) {
+    if (svg.getElementById('pump-spin-style')) return;
+    const style = svg.createElementNS('http://www.w3.org/2000/svg', 'style');
+    style.setAttribute('id', 'pump-spin-style');
+    style.textContent = '@keyframes pump-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+    svg.documentElement.appendChild(style);
+}
+
+function updatePumpImpellerAnimation(svg, speedMlH) {
+    const impeller = svg.getElementById('pump-impeller');
+    if (!impeller) return;
+
+    const speed = Number(speedMlH);
+    const isRunning = Number.isFinite(speed) && speed > 0;
+
+    if (!isRunning) {
+        if (impeller._spinAnimation) {
+            impeller._spinAnimation.cancel();
+            impeller._spinAnimation = null;
+        }
+        impeller.style.animation = 'none';
+        impeller.dataset.spinDurationMs = '';
+        return;
+    }
+
+    // Визуальная скорость вращения привязана к расходу помпы:
+    // малый расход -> медленнее, высокий -> быстрее.
+    const durationMs = Math.max(300, Math.min(2400, 180000 / speed));
+    const previousDuration = Number(impeller.dataset.spinDurationMs || 0);
+    const needRestart = !impeller._spinAnimation || Math.abs(previousDuration - durationMs) > 80;
+
+    if (needRestart) {
+        if (impeller._spinAnimation) {
+            impeller._spinAnimation.cancel();
+            impeller._spinAnimation = null;
+        }
+
+        impeller.style.transformOrigin = '256px 371px';
+        impeller.style.transformBox = 'fill-box';
+
+        if (typeof impeller.animate === 'function') {
+            impeller._spinAnimation = impeller.animate(
+                [
+                    { transform: 'rotate(0deg)' },
+                    { transform: 'rotate(360deg)' }
+                ],
+                {
+                    duration: durationMs,
+                    iterations: Infinity,
+                    easing: 'linear'
+                }
+            );
+        } else {
+            ensurePumpSpinKeyframes(svg);
+            impeller.style.animation = `pump-spin ${durationMs.toFixed(0)}ms linear infinite`;
+        }
+
+        impeller.dataset.spinDurationMs = durationMs.toFixed(0);
+    } else if (impeller._spinAnimation?.playState === 'paused') {
+        impeller._spinAnimation.play();
+    }
+}
+
 
 function setValveClass(svg, valveId, opened) {
     const el = svg.getElementById(valveId);
@@ -447,6 +510,7 @@ export function updateInteractiveScheme(data) {
         // Анимация ротора насоса
         const zonePump = svg.getElementById('zone-pump');
         if (zonePump) zonePump.classList.toggle('pump-running', speed > 0);
+        updatePumpImpellerAnimation(svg, speed);
     }
 
     // Индикатор фазы
