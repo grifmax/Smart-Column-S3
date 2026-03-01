@@ -257,6 +257,84 @@ function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempT
     refluxLayer.style.opacity = refluxOpacity.toFixed(3);
 }
 
+function stopRefluxDropChaos(drop) {
+    if (drop._refluxChaosTimer) {
+        clearTimeout(drop._refluxChaosTimer);
+        drop._refluxChaosTimer = null;
+    }
+    if (drop._refluxChaosAnimation) {
+        drop._refluxChaosAnimation.cancel();
+        drop._refluxChaosAnimation = null;
+    }
+    drop._refluxChaosActive = false;
+    drop.style.opacity = '0';
+    drop.style.transform = '';
+}
+
+function startRefluxDropChaos(drop) {
+    if (drop._refluxChaosActive) return;
+    drop._refluxChaosActive = true;
+
+    const tick = () => {
+        if (!drop._refluxChaosActive) return;
+
+        const delayMs = 120 + Math.random() * 950;
+        drop._refluxChaosTimer = setTimeout(() => {
+            if (!drop._refluxChaosActive) return;
+
+            const durationMs = 450 + Math.random() * 1200;
+            const driftStart = -2 + Math.random() * 4;
+            const driftEnd = driftStart + (-1.2 + Math.random() * 2.4);
+            const endDrop = 22 + Math.random() * 12;
+
+            if (typeof drop.animate === 'function') {
+                drop._refluxChaosAnimation = drop.animate(
+                    [
+                        { opacity: 0, transform: `translate(${driftStart.toFixed(2)}px, 0px) scale(0.92)` },
+                        { opacity: 0.95, transform: `translate(${driftStart.toFixed(2)}px, ${(endDrop * 0.35).toFixed(2)}px) scale(1)` },
+                        { opacity: 0, transform: `translate(${driftEnd.toFixed(2)}px, ${endDrop.toFixed(2)}px) scale(0.58)` }
+                    ],
+                    {
+                        duration: durationMs,
+                        easing: 'cubic-bezier(0.25, 0.05, 0.35, 1)',
+                        iterations: 1
+                    }
+                );
+                drop._refluxChaosAnimation.onfinish = () => {
+                    drop._refluxChaosAnimation = null;
+                    tick();
+                };
+            } else {
+                // Fallback без Web Animations API.
+                drop.style.opacity = '0.9';
+                drop.style.transform = `translate(${driftEnd.toFixed(2)}px, ${endDrop.toFixed(2)}px)`;
+                drop._refluxChaosTimer = setTimeout(() => {
+                    if (!drop._refluxChaosActive) return;
+                    drop.style.opacity = '0';
+                    drop.style.transform = '';
+                    tick();
+                }, durationMs);
+            }
+        }, delayMs);
+    };
+
+    tick();
+}
+
+function updateRefluxDropChaos(svg, tempReflux) {
+    const zone = svg.getElementById('zone-reflux');
+    if (!zone) return;
+
+    const active = Number(tempReflux) >= 65;
+    zone.classList.toggle('condensing', active);
+
+    const drops = zone.querySelectorAll('.drop');
+    drops.forEach((drop) => {
+        if (active) startRefluxDropChaos(drop);
+        else stopRefluxDropChaos(drop);
+    });
+}
+
 
 function setValveClass(svg, valveId, opened) {
     const el = svg.getElementById(valveId);
@@ -452,12 +530,8 @@ export function updateInteractiveScheme(data) {
     }
     updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pCube);
 
-    // Капли дефлегматора — видимы при T царги > 70°C
-    const refluxZone = svg.getElementById('zone-reflux');
-    if (refluxZone) {
-        const colMid = tempColMid || 0;
-        refluxZone.classList.toggle('condensing', colMid > 70);
-    }
+    // Хаотичное капание в дефлегматоре при T_reflux >= 65°C.
+    updateRefluxDropChaos(svg, tempReflux);
 
     // Обновление давления на схеме
     if (pCube !== undefined) {
