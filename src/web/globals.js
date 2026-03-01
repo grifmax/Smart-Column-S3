@@ -121,7 +121,8 @@ export let runtimeMonitorState = {
     equipment: {
         heaterPowerW: maxHeaterPower,
         cubeVolumeL: 20,
-        minHeaterSubmergeL: 7.5
+        minHeaterSubmergeL: 7.5,
+        waterAutoStartCubeTempC: 45
     },
     rectification: {
         feedVolumeL: 20,

@@ -41,6 +41,12 @@ export function updateRuntimeStateFromStatus(data) {
                 s.equipment.minHeaterSubmergeL
             );
         }
+        if (data.equipment.waterAutoStartCubeTempC !== undefined) {
+            s.equipment.waterAutoStartCubeTempC = toFinite(
+                data.equipment.waterAutoStartCubeTempC,
+                s.equipment.waterAutoStartCubeTempC
+            );
+        }
     }
     if (data.rectification && typeof data.rectification === 'object') {
         s.rectification = { ...s.rectification, ...data.rectification };
@@ -115,6 +121,12 @@ export function updateRuntimeStateFromWs(data) {
             s.equipment.minHeaterSubmergeL = toFinite(
                 data.equipment.minHeaterSubmergeL,
                 s.equipment.minHeaterSubmergeL
+            );
+        }
+        if (data.equipment.waterAutoStartCubeTempC !== undefined) {
+            s.equipment.waterAutoStartCubeTempC = toFinite(
+                data.equipment.waterAutoStartCubeTempC,
+                s.equipment.waterAutoStartCubeTempC
             );
         }
     }

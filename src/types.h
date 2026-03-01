@@ -305,6 +305,7 @@ struct EquipmentSettings {
   uint16_t heaterPowerW = 2000;
   float cubeVolumeL = 20.0f;
   float minHeaterSubmergeL = 7.5f;
+  float waterAutoStartCubeTempC = 45.0f;
 };
 
 struct FractionatorSettings {

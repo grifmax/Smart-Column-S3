@@ -487,6 +487,7 @@ struct MenuItem {
 #define DEFAULT_HEATER_POWER_W 3000   // Мощность нагревателя (Вт)
 #define DEFAULT_CUBE_VOLUME_L 50.0    // Объем куба (л)
 #define DEFAULT_MIN_HEATER_SUBMERGE_L 7.5f // Мин. уровень жидкости над ТЭН (л)
+#define DEFAULT_WATER_AUTOSTART_CUBE_TEMP_C 45.0f // Автостарт воды по температуре куба (°C)
 
 // Параметры насоса по умолчанию
 #define DEFAULT_PUMP_ML_PER_REV 0.5f // мл на оборот
@@ -608,6 +609,7 @@ struct MenuItem {
 #define NVS_KEY_HEATER_POWER "heater_pwr"
 #define NVS_KEY_CUBE_VOLUME "cube_vol"
 #define NVS_KEY_MIN_HEATER_SUBMERGE "heat_sub_l"
+#define NVS_KEY_WATER_AUTOSTART_CUBE_TEMP "water_auto_t"
 #define NVS_KEY_TEMP_OFFSETS "temp_offs"
 #define NVS_KEY_PUMP_ML_REV "pump_mlrev"
 #define NVS_KEY_PRESSURE_FLOOD "p_flood"

@@ -43,6 +43,10 @@ static float clampFloat(float v, float vmin, float vmax) {
   return v;
 }
 
+static float getWaterAutoStartTempC(const Settings& settings) {
+  return clampFloat(settings.equipment.waterAutoStartCubeTempC, 20.0f, 60.0f);
+}
+
 static float getAtmosphereHpa(const SystemState& state) {
   if (state.pressure.ok &&
       state.pressure.atmosphere > 850.0f &&
@@ -139,10 +143,10 @@ void update(SystemState& state, const Settings& settings) {
             break;
 
         case RectPhase::HEATING:
-            // Разгон: ТЭН 100%, вода вкл при T_cube > 45°C
+            // Разгон: ТЭН 100%, вода по настраиваемому порогу T_cube.
             Heater::setPower(100);
 
-            if (state.temps.cube > 45.0f) {
+            if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
                 Valves::setWater(true);
             }
 
@@ -873,7 +877,7 @@ void update(SystemState &state, const Settings &settings) {
   uint32_t now = millis();
 
   // Базовые действия для дистилляции
-  if (state.temps.cube > 45.0f) {
+  if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
     Valves::setWater(true);
   }
 

@@ -307,6 +307,7 @@ void init() {
     equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
     equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
     equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
+    equipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
 
     // Runtime-параметры режимов (для экрана мониторинга)
     JsonObject rect = doc.createNestedObject("rectification");
@@ -795,6 +796,74 @@ void init() {
         strlcpy(g_settings.cloud.tunnelUrl, url, sizeof(g_settings.cloud.tunnelUrl));
 
         NVSManager::saveSettings(g_settings);
+
+        request->send(200, "application/json", "{\"success\":true}");
+      });
+
+  // --------------------------------------------------------------------------
+  // EQUIPMENT SETTINGS API
+  // --------------------------------------------------------------------------
+
+  // GET /api/settings/equipment - получить настройки оборудования
+  server.on("/api/settings/equipment", HTTP_GET, [](AsyncWebServerRequest *request) {
+    StaticJsonDocument<384> doc;
+    doc["heaterPowerW"] = g_settings.equipment.heaterPowerW;
+    doc["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+    doc["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
+    doc["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
+    doc["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  // POST /api/settings/equipment - сохранить настройки оборудования
+  server.on(
+      "/api/settings/equipment", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<384> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        if (doc.containsKey("heaterPowerW")) {
+          g_settings.equipment.heaterPowerW = clampU16Range(
+              doc["heaterPowerW"].as<uint32_t>(), 1000, 10000
+          );
+        }
+        if (doc.containsKey("columnHeightMm")) {
+          g_settings.equipment.columnHeightMm = clampU16Range(
+              doc["columnHeightMm"].as<uint32_t>(), 500, 3000
+          );
+        }
+        if (doc.containsKey("cubeVolumeL")) {
+          g_settings.equipment.cubeVolumeL = clampFloatRange(
+              doc["cubeVolumeL"].as<float>(), 5.0f, 250.0f
+          );
+        }
+        if (doc.containsKey("minHeaterSubmergeL")) {
+          g_settings.equipment.minHeaterSubmergeL = clampFloatRange(
+              doc["minHeaterSubmergeL"].as<float>(), 0.5f, 100.0f
+          );
+        }
+        if (doc.containsKey("waterAutoStartCubeTempC")) {
+          g_settings.equipment.waterAutoStartCubeTempC = clampFloatRange(
+              doc["waterAutoStartCubeTempC"].as<float>(), 20.0f, 60.0f
+          );
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
 
         request->send(200, "application/json", "{\"success\":true}");
       });
@@ -2401,6 +2470,7 @@ void broadcastState(const SystemState &state) {
   fastEquipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
   fastEquipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   fastEquipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
+  fastEquipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
   JsonObject fastValves = fastDoc.createNestedObject("valves");
   fastValves["water"] = Valves::getWater();
   fastValves["heads"] = Valves::getHeads();
@@ -2486,6 +2556,7 @@ void broadcastState(const SystemState &state) {
   equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
   equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
+  equipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
 
   JsonObject rect = doc.createNestedObject("rectification");
   rect["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
