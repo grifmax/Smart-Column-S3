@@ -229,6 +229,9 @@ struct UiState {
     uint8_t calSkip = 0;
     int16_t calRawX[4] = {0};
     int16_t calRawY[4] = {0};
+    int16_t calCapturedRawX = 0;
+    int16_t calCapturedRawY = 0;
+    bool calCapturedValid = false;
 
     bool modeSwitchConfirm = false;
     Mode modeSwitchTarget = Mode::IDLE;
@@ -2884,19 +2887,36 @@ void update(const SystemState& state) {
     if (ui.calibrating) {
         TouchEvent ev;
         if (touch_ok) {
+            const bool wasPressed = ui.touchPressed;
             ev = readTouchEvent();
-            if (ev.tapped) {
-                if (ui.calSkip > 0) {
-                    ui.calSkip--;
-                    ui.needsRedraw = true;
-                } else {
+
+            // Capture raw coordinates on fresh press (finger still touching).
+            // We cannot call readTouchRawFiltered after ev.tapped because by
+            // then the finger is already released and the touch controller
+            // returns no data.
+            if (ev.pressed && !wasPressed) {
                 int16_t rx = 0;
                 int16_t ry = 0;
                 if (readTouchRawFiltered(&rx, &ry)) {
+                    ui.calCapturedRawX = rx;
+                    ui.calCapturedRawY = ry;
+                    ui.calCapturedValid = true;
+                } else {
+                    ui.calCapturedValid = false;
+                }
+            }
+
+            if (ev.tapped) {
+                if (ui.calSkip > 0) {
+                    ui.calSkip--;
+                    ui.calCapturedValid = false;
+                    ui.needsRedraw = true;
+                } else if (ui.calCapturedValid) {
                     if (ui.calStep < 4) {
-                        ui.calRawX[ui.calStep] = rx;
-                        ui.calRawY[ui.calStep] = ry;
+                        ui.calRawX[ui.calStep] = ui.calCapturedRawX;
+                        ui.calRawY[ui.calStep] = ui.calCapturedRawY;
                         ui.calStep++;
+                        ui.calCapturedValid = false;
                         ui.needsRedraw = true;
                     }
                     if (ui.calStep >= 4) {
@@ -2907,7 +2927,6 @@ void update(const SystemState& state) {
                         // Calibration is finished; render normal UI on next update cycle.
                         return;
                     }
-                }
                 }
             }
         }
@@ -3152,6 +3171,9 @@ void startTouchCalibration() {
     ui.calSkip = 2;
     memset(ui.calRawX, 0, sizeof(ui.calRawX));
     memset(ui.calRawY, 0, sizeof(ui.calRawY));
+    ui.calCapturedRawX = 0;
+    ui.calCapturedRawY = 0;
+    ui.calCapturedValid = false;
     ui.touchPressed = false;
     ui.touchDownX = 0;
     ui.touchDownY = 0;
