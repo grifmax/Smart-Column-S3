@@ -16,12 +16,12 @@
       <stop offset="100%" style="stop-color:#bdc3c7;stop-opacity:1"/>
     </linearGradient>
     <!-- Анимационные градиенты царги и куба -->
-    <linearGradient id="grad-column-heat" x1="0%" y1="100%" x2="0%" y2="0%">
+    <linearGradient id="grad-column-heat" x1="0" y1="743" x2="0" y2="38" gradientUnits="userSpaceOnUse">
       <stop offset="0%" style="stop-color:#d94b2b;stop-opacity:0.65"/>
       <stop offset="70%" style="stop-color:#d94b2b;stop-opacity:0.18"/>
       <stop offset="100%" style="stop-color:#d94b2b;stop-opacity:0"/>
     </linearGradient>
-    <linearGradient id="grad-column-reflux" x1="0%" y1="0%" x2="0%" y2="100%">
+    <linearGradient id="grad-column-reflux" x1="0" y1="38" x2="0" y2="743" gradientUnits="userSpaceOnUse">
       <stop offset="0%" style="stop-color:#1f84ff;stop-opacity:0.65"/>
       <stop offset="70%" style="stop-color:#1f84ff;stop-opacity:0.18"/>
       <stop offset="100%" style="stop-color:#1f84ff;stop-opacity:0"/>
@@ -30,12 +30,19 @@
       <stop offset="0%" style="stop-color:#8fd0ff;stop-opacity:0.55"/>
       <stop offset="100%" style="stop-color:#3e8fd7;stop-opacity:0.35"/>
     </linearGradient>
+    <clipPath id="clip-reflux-drops">
+      <rect x="146" y="38" width="50" height="206"/>
+    </clipPath>
+    <clipPath id="clip-cube-lid-trapezoid">
+      <path d="M76,553 L146,488 L196,488 L266,553 Z"/>
+    </clipPath>
   </defs>
 
   <style>
     .indicator { fill: url(#grad-indicator); stroke: #666; stroke-width: 1; }
     .indicator-text { font-family: 'Segoe UI', Helvetica, sans-serif; font-size: 14px; font-weight: bold; text-anchor: middle; dominant-baseline: central; fill: #333; }
     .label-text { font-family: 'Segoe UI', Helvetica, sans-serif; font-size: 12px; text-anchor: middle; dominant-baseline: central; fill: #333; }
+    g[id^="ind-"] { transform-box: fill-box; transform-origin: center center; transform: scale(1.13); }
     .struct { fill: #fff; stroke: #000; stroke-width: 1; }
     .struct-line { fill: none; stroke: #000; stroke-width: 1; }
     .pipe { fill: none; stroke: #000; stroke-width: 1; }
@@ -54,6 +61,7 @@
     .jar { fill: #fff; stroke: #000; stroke-width: 2; }
     .drop { fill: #3498db; opacity: 0; transition: opacity 0.5s; }
     .condensing .drop { opacity: 0.7; }
+    .bubble { fill: #b8e7ff; opacity: 0; filter: drop-shadow(0 0 2px rgba(184, 231, 255, 0.7)); }
 
     @keyframes water-pipe-pulse {
       0%, 100% { opacity: 0.78; }
@@ -69,12 +77,14 @@
     <line x1="143" y1="38" x2="143" y2="158" class="struct-line"/>
     <line x1="199" y1="38" x2="199" y2="158" class="struct-line"/>
 
-    <!-- Капли конденсата -->
-    <path d="M158,50 L162.71,63.33 C162.9,63.87 163,64.43 163,65 C163,66.33 162.47,67.6 161.54,68.54 C160.6,69.47 159.33,70 158,70 C156.67,70 155.4,69.47 154.46,68.54 C153.53,67.6 153,66.33 153,65 C153,64.43 153.1,63.87 153.29,63.33 Z" class="drop"/>
-    <path d="M162,132 L166.71,145.33 C166.9,145.87 167,146.43 167,147 C167,148.33 166.47,149.6 165.54,150.54 C164.6,151.47 163.33,152 162,152 C160.67,152 159.4,151.47 158.46,150.54 C157.53,149.6 157,148.33 157,147 C157,146.43 157.1,145.87 157.29,145.33 Z" class="drop"/>
-    <path d="M183,67 L187.71,80.33 C187.9,80.87 188,81.43 188,82 C188,83.33 187.47,84.6 186.54,85.54 C185.6,86.47 184.33,87 183,87 C181.67,87 180.4,86.47 179.46,85.54 C178.53,84.6 178,83.33 178,82 C178,81.43 178.1,80.87 178.29,80.33 Z" class="drop"/>
-    <path d="M183,108 L187.71,121.33 C187.9,121.87 188,122.43 188,123 C188,124.33 187.47,125.6 186.54,126.54 C185.6,127.47 184.33,128 183,128 C181.67,128 180.4,127.47 179.46,126.54 C178.53,125.6 178,124.33 178,123 C178,122.43 178.1,121.87 178.29,121.33 Z" class="drop"/>
-    <path d="M162,92 L166.71,105.33 C166.9,105.87 167,106.43 167,107 C167,108.33 166.47,109.6 165.54,110.54 C164.6,111.47 163.33,112 162,112 C160.67,112 159.4,111.47 158.46,110.54 C157.53,109.6 157,108.33 157,107 C157,106.43 157.1,105.87 157.29,105.33 Z" class="drop"/>
+    <!-- Капли конденсата: старт сверху, падение в диоптр ниже дефлегматора -->
+    <g id="anim-reflux-drops" clip-path="url(#clip-reflux-drops)">
+      <circle cx="155" cy="54" r="2.4" class="drop"/>
+      <circle cx="163" cy="51" r="2.2" class="drop"/>
+      <circle cx="171" cy="56" r="2.5" class="drop"/>
+      <circle cx="179" cy="52" r="2.3" class="drop"/>
+      <circle cx="187" cy="55" r="2.4" class="drop"/>
+    </g>
   </g>
 
   <!-- Трубки ТСА (вверх из дефлегматора) -->
@@ -127,8 +137,6 @@
   <!-- ═══════════════════════════════════════════════════════════ -->
   <g id="zone-column">
     <rect id="column-shell" x="146" y="244" width="50" height="244" fill="url(#dots-packing)" stroke="#1f2d3b" stroke-width="2.6"/>
-    <rect id="anim-column-heat-layer" x="146" y="244" width="50" height="244" fill="url(#grad-column-heat)" opacity="0" pointer-events="none"/>
-    <rect id="anim-column-reflux-layer" x="146" y="244" width="50" height="244" fill="url(#grad-column-reflux)" opacity="0" pointer-events="none"/>
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
@@ -145,17 +153,39 @@
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- ТРАПЕЦИЯ (переход в куб)  y=488..553                       -->
   <!-- ═══════════════════════════════════════════════════════════ -->
-  <path d="M76,553 L146,488 L196,488 L266,553 Z" class="struct"/>
+  <path d="M76,553 L146,488 L196,488 L266,553 Z" class="struct" stroke-width="2.6"/>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- КУБ (бойлер)  y=553..743                                   -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <g id="zone-cube">
-    <rect id="cube-shell" x="76" y="553" width="190" height="190" class="struct"/>
+    <rect id="cube-shell" x="76" y="553" width="190" height="190" class="struct" stroke-width="2.6"/>
+  </g>
+
+  <!-- Анимационные слои тепла/рефлюкса: от верха дефлегматора до уровня жидкости -->
+  <rect id="anim-gradient-core-heat" x="150" y="38" width="42" height="0" fill="url(#grad-column-heat)" opacity="0" pointer-events="none"/>
+  <rect id="anim-gradient-core-reflux" x="150" y="38" width="42" height="0" fill="url(#grad-column-reflux)" opacity="0" pointer-events="none"/>
+  <rect id="anim-gradient-lid-heat" x="76" y="488" width="190" height="0" fill="url(#grad-column-heat)" opacity="0" pointer-events="none" clip-path="url(#clip-cube-lid-trapezoid)"/>
+  <rect id="anim-gradient-lid-reflux" x="76" y="488" width="190" height="0" fill="url(#grad-column-reflux)" opacity="0" pointer-events="none" clip-path="url(#clip-cube-lid-trapezoid)"/>
+  <rect id="anim-gradient-cube-heat" x="80" y="553" width="182" height="0" fill="url(#grad-column-heat)" opacity="0" pointer-events="none"/>
+  <rect id="anim-gradient-cube-reflux" x="80" y="553" width="182" height="0" fill="url(#grad-column-reflux)" opacity="0" pointer-events="none"/>
+
+  <!-- Уровень жидкости в кубе -->
+  <rect id="anim-liquid-level" x="76" y="743" width="190" height="0" fill="url(#grad-cube-liquid)" opacity="0.9" pointer-events="none"/>
+
+  <!-- Пузырьки кипения от ТЭНа к верхней границе уровня жидкости -->
+  <g id="anim-boil-bubbles" pointer-events="none" style="opacity:0">
+    <circle class="bubble" cx="114" cy="716" r="2.9"/>
+    <circle class="bubble" cx="132" cy="721" r="2.4"/>
+    <circle class="bubble" cx="151" cy="714" r="2.8"/>
+    <circle class="bubble" cx="171" cy="719" r="2.5"/>
+    <circle class="bubble" cx="190" cy="713" r="2.7"/>
+    <circle class="bubble" cx="210" cy="718" r="2.6"/>
+    <circle class="bubble" cx="228" cy="715" r="2.5"/>
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- ТЭН + КНОПКА ПИТАНИЯ (внизу куба)                         -->
+  <!-- ТЭН (внизу куба)                         -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <g id="zone-heater">
     <!-- Три дуги (катушки нагревателя) -->
@@ -165,19 +195,14 @@
     <!-- Горизонтальные линии катушек -->
     <line x1="225" y1="678" x2="305" y2="678" stroke="#000" stroke-width="1"/>
     <line x1="225" y1="732" x2="305" y2="732" stroke="#000" stroke-width="1"/>
-
-    <!-- Кнопка питания (оранжевый круг) -->
-    <g id="zone-power-btn" style="cursor:pointer">
-      <circle cx="301.51" cy="704.74" r="20.25" fill="#df8c42"/>
-      <path d="M301.51,684 C290.06,684 280.75,693.29 280.75,704.74 C280.75,716.19 290.06,725.5 301.51,725.5 C312.94,725.5 322.25,716.19 322.25,704.74 C322.25,693.29 312.94,684 301.51,684 Z M301.51,685.51 C312.11,685.51 320.74,694.14 320.74,704.74 C320.74,715.34 312.11,723.99 301.51,723.99 C290.89,723.99 282.26,715.34 282.26,704.74 C282.26,694.14 290.89,685.51 301.51,685.51 Z M300.56,692.69 L300.56,700.27 L302.46,700.27 L302.46,692.69 Z M298.55,696.15 C294.82,697.4 292.1,700.91 292.1,705.06 C292.1,710.26 296.31,714.47 301.51,714.47 C306.69,714.47 310.9,710.26 310.9,705.06 C310.9,700.93 308.2,697.42 304.47,696.17 L304.47,697.77 C307.36,698.94 309.39,701.76 309.39,705.06 C309.39,709.42 305.86,712.96 301.51,712.96 C297.16,712.96 293.61,709.42 293.61,705.06 C293.61,701.76 295.67,698.94 298.55,697.77 Z" fill="#fff"/>
-    </g>
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- КОЛЛЕКТОР: труба от насоса к клапанам                      -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- Горизонтальная труба + ответвления к клапанам -->
-  <path d="M455.75,408 L455.8,374 L254,374 L254,346 M258,346 L258,370 L459.8,370 L459.75,408" class="pipe"/>
+  <path id="collector-main-pipe" d="M398.8,374 L254,374 L254,346 M258,346 L258,370 L398.8,370" class="pipe"/>
+  <path id="collector-tails-pipe" d="M455.75,408 L455.8,374 L398.8,374 M398.8,370 L459.8,370 L459.75,408" class="pipe"/>
   <!-- Вертикальные ответвления к клапанам -->
   <path d="M331.75,408 L331.97,373.21 M335.97,373.24 L335.75,408" class="pipe"/>
   <path d="M394.75,408 L394.83,373.3 M398.83,373.31 L398.75,408" class="pipe"/>
@@ -246,9 +271,9 @@
   </g>
 
   <!-- Трубы от клапанов к ёмкостям -->
-  <path d="M335.75,428 L335.5,444 M331.5,444 L331.75,428" class="pipe"/>
-  <path d="M398.75,428 L398.75,547 M394.75,547 L394.75,428" class="pipe"/>
-  <path d="M459.75,428 L459.75,468 M455.75,468 L455.75,428" class="pipe"/>
+  <path id="pipe-heads-down" d="M335.75,428 L335.5,444 M331.5,444 L331.75,428" class="pipe"/>
+  <path id="pipe-body-down" d="M398.75,428 L398.75,547 M394.75,547 L394.75,428" class="pipe"/>
+  <path id="pipe-tails-down" d="M459.75,428 L459.75,468 M455.75,468 L455.75,428" class="pipe"/>
   <g id="zone-tails-left-branch">
     <!-- Труба от клапана воды к ёмкости хвостов (влево) -->
     <path id="tails-left-pipe" d="M104,459 L34.5,459 L34.5,480 M30.5,480 L30.5,455 L104,455" class="pipe"/>
@@ -282,7 +307,7 @@
   <!-- ═══════════════════════════════════════════════════════════ -->
   <text x="332" y="358" class="label-text">Головы</text>
   <text x="395" y="358" class="label-text">Тело</text>
-  <text x="453" y="358" class="label-text">Хвосты</text>
+  <text id="label-tails-right" x="453" y="358" class="label-text">Хвосты</text>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- СЕРЫЕ ИНДИКАТОРЫ (привязка к данным)                       -->
@@ -332,7 +357,7 @@
 
   <!-- Давление куба -->
   <g id="ind-pressure-cube">
-    <rect x="146" y="510" width="62" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <rect x="130" y="510" width="94" height="25" rx="3.75" ry="3.75" class="indicator"/>
     <text id="txt-pressure-cube" x="177" y="523" class="indicator-text">-- мм рт.ст.</text>
   </g>
 
@@ -344,8 +369,9 @@
 
   <!-- Объём куба -->
   <g id="ind-volume-cube">
-    <rect x="149" y="619" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
-    <text id="txt-volume-cube" x="177" y="632" class="indicator-text">-- л</text>
+    <rect x="145" y="619" width="64" height="35" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-volume-cube" x="177" y="630" class="indicator-text">-- L</text>
+    <text id="txt-aa-cube" x="177" y="642" class="indicator-text" style="font-size:10px;fill:#666">AA -- L</text>
   </g>
 
   <!-- Мощность ТЭНа (установленная / фактическая) -->
@@ -353,7 +379,7 @@
     <rect x="120" y="689.5" width="109" height="36" rx="5.4" ry="5.4" class="indicator"/>
     <text id="txt-power-set" x="155" y="705" class="indicator-text">--%</text>
     <text x="175" y="705" class="indicator-text" style="fill:#666;font-size:10px">/</text>
-    <text id="txt-power-actual" x="195" y="705" class="indicator-text">--Вт</text>
+    <text id="txt-power-actual" x="191" y="705" class="indicator-text" xml:space="preserve" style="text-anchor:start"> -- &#1042;&#1090;</text>
   </g>
 
   <!-- Объём голов -->
@@ -381,11 +407,11 @@
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
-  <!-- ИНДИКАТОР ФАЗЫ (справа вверху)                             -->
+  <!-- ИНДИКАТОР ФАЗЫ (справа внизу)                             -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <g id="ind-phase">
-    <rect x="300" y="4" width="120" height="30" rx="6" ry="6" fill="#fff" stroke="#ccc" stroke-width="1"/>
-    <text id="txt-phase" x="360" y="20" class="indicator-text" style="font-size:13px;fill:#7f8c8d">ОЖИДАНИЕ</text>
+    <rect x="336" y="690" width="120" height="30" rx="6" ry="6" fill="#fff" stroke="#ccc" stroke-width="1"/>
+    <text id="txt-phase" x="396" y="705" class="indicator-text" style="font-size:13px;fill:#7f8c8d">IDLE</text>
   </g>
 
   <!-- Индикатор ABV (крепость) -->
@@ -415,9 +441,6 @@
 
   <!-- Анимация конденсации -->
   <g id="anim-condensate"/>
-
-  <!-- Уровень жидкости в кубе -->
-  <rect id="anim-liquid-level" x="76" y="743" width="190" height="0" fill="url(#grad-cube-liquid)" opacity="0.9" pointer-events="none"/>
 
   <!-- Капли отбора (анимированные) -->
   <circle id="drop-heads" cx="334" cy="444" r="3" class="drop" style="opacity:0"/>

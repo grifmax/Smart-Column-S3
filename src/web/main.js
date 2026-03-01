@@ -45,7 +45,19 @@ import { toggleMqttFields } from './settings/mqtt.js';
 import { loadPumpInfo, loadVersionInfo } from './settings/pump-version.js';
 import { saveSecurity, toggleAuthFields } from './settings/security.js';
 import { saveTelegramSettings, sendTelegramTest, toggleTelegramFields, loadTelegramSettings } from './settings/telegram.js';
-import { saveWiFi } from './settings/wifi.js';
+import { saveWiFi, initWiFiSettings, loadWiFiStatus, scanWiFiNetworks, connectWiFiNetwork, cancelWiFiSelection } from './settings/wifi.js';
+import {
+    initCalibrationTab,
+    loadCalibrationData,
+    scanCalibrationSensors,
+    calibrateTempOffset,
+    calibrateTempReference,
+    updateCalibrationTime,
+    startCalibration,
+    stopCalibration,
+    applyCalibration,
+    cancelCalibration
+} from './settings/calibration.js';
 import { calculateAbvCorrection, calculateDilution, fetchCurrentTempForCalc } from './tools/calculators.js';
 import { toggleOperatorView } from './ui/operator-view.js';
 
@@ -172,6 +184,19 @@ window.sendTelegramTest = sendTelegramTest;
 window.toggleTelegramFields = toggleTelegramFields;
 window.loadTelegramSettings = loadTelegramSettings;
 window.saveWiFi = saveWiFi;
+window.loadWiFiStatus = loadWiFiStatus;
+window.scanWiFiNetworks = scanWiFiNetworks;
+window.connectWiFiNetwork = connectWiFiNetwork;
+window.cancelWiFiSelection = cancelWiFiSelection;
+window.loadCalibrationData = loadCalibrationData;
+window.scanCalibrationSensors = scanCalibrationSensors;
+window.calibrateTempOffset = calibrateTempOffset;
+window.calibrateTempReference = calibrateTempReference;
+window.updateCalibrationTime = updateCalibrationTime;
+window.startCalibration = startCalibration;
+window.stopCalibration = stopCalibration;
+window.applyCalibration = applyCalibration;
+window.cancelCalibration = cancelCalibration;
 window.calculateAbvCorrection = calculateAbvCorrection;
 window.calculateDilution = calculateDilution;
 window.fetchCurrentTempForCalc = fetchCurrentTempForCalc;
@@ -205,6 +230,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     loadVersionInfo();
     loadMqttSettings();
     loadTelegramSettings();
+    initWiFiSettings();
+    initCalibrationTab();
     initNotifications();
     initServiceWorker();
 

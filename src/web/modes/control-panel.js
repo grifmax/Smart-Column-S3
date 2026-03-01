@@ -101,7 +101,7 @@ async function ensureRectificationSettingsLoaded() {
 function goToMonitorTab() {
     const monitorTab = document.querySelector('.tab[data-tab="monitor"]');
     if (monitorTab) monitorTab.click();
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
         window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     });
 }
@@ -128,7 +128,7 @@ export function getSelectedControlMode() {
 }
 
 export async function startSelectedMode() {
-    let started = false;
+    let started;
 
     switch (selectedControlMode) {
         case 'rectification':
@@ -265,6 +265,10 @@ export function updateManualTailsPwmMode() {
 
 function collectManualRectSettings() {
     return {
+        feed: {
+            volumeL: getNumberValue('manual-feed-volume', 20),
+            abvPercent: getNumberValue('manual-feed-abv', 40)
+        },
         heads: {
             volume: getNumberValue('manual-heads-volume', 50),
             mode: getStringValue('manual-heads-mode', 'time'),
@@ -292,9 +296,13 @@ function collectManualRectSettings() {
 }
 
 function applyManualRectSettings(settings) {
+    const feed = settings?.feed || {};
     const heads = settings?.heads || {};
     const body = settings?.body || {};
     const tails = settings?.tails || {};
+
+    setInputValue('manual-feed-volume', feed.volumeL ?? 20);
+    setInputValue('manual-feed-abv', feed.abvPercent ?? 40);
 
     setInputValue('manual-heads-volume', heads.volume ?? 50);
     setInputValue('manual-heads-mode', heads.mode ?? 'time');

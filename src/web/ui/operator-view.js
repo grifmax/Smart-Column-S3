@@ -75,12 +75,6 @@ export function syncOperatorViewAuto() {
 export function initOperatorViewToggle() {
     const screen = document.querySelector('#monitor .operator-screen');
     if (!screen) return;
-    const button = document.getElementById('operator-view-toggle');
-
-    if (!button) {
-        setOperatorView('instrument');
-        return;
-    }
 
     // Initial auto-select by effective viewport width.
     syncOperatorViewAuto();

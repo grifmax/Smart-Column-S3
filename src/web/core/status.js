@@ -454,7 +454,7 @@ export function updateButtonStates() {
         startButton.classList.toggle('btn-disabled', shouldDisable);
     }
 
-    // Runtime controls (can be duplicated in several UI blocks)
+    // Runtime controls: toggle button (pause/resume) + stop
     const findRuntimeButtons = (action, fallbackOnclick) => {
         const byAction = Array.from(document.querySelectorAll(`button[data-runtime-action="${action}"]`));
         const byFallback = Array.from(document.querySelectorAll(`button[onclick="${fallbackOnclick}"]`));
@@ -462,25 +462,43 @@ export function updateButtonStates() {
     };
 
     const btnStopList = findRuntimeButtons('stop', 'stopProcess()');
-    const btnPauseList = findRuntimeButtons('pause', 'pauseProcess()');
-    const btnResumeList = findRuntimeButtons('resume', 'resumeProcess()');
-
     btnStopList.forEach((button) => {
         button.disabled = isIdle;
         button.classList.toggle('btn-disabled', isIdle);
     });
 
-    const disablePause = isIdle || currentPaused;
-    btnPauseList.forEach((button) => {
-        button.disabled = disablePause;
-        button.classList.toggle('btn-disabled', disablePause);
-    });
+    const pauseResumeBtn = document.getElementById('runtime-pause-resume-btn');
+    if (pauseResumeBtn) {
+        const iconEl = pauseResumeBtn.querySelector('.operator-scheme-btn-icon');
+        const labelEl = pauseResumeBtn.querySelector('.operator-scheme-btn-label');
 
-    const disableResume = isIdle || !currentPaused;
-    btnResumeList.forEach((button) => {
-        button.disabled = disableResume;
-        button.classList.toggle('btn-disabled', disableResume);
-    });
+        pauseResumeBtn.disabled = isIdle;
+        pauseResumeBtn.classList.toggle('btn-disabled', isIdle);
+
+        pauseResumeBtn.classList.remove('operator-scheme-btn-pause', 'operator-scheme-btn-start');
+        if (currentPaused && !isIdle) {
+            pauseResumeBtn.classList.add('operator-scheme-btn-start');
+            pauseResumeBtn.dataset.runtimeAction = 'resume';
+            pauseResumeBtn.setAttribute('onclick', 'resumeProcess()');
+            if (iconEl) iconEl.textContent = '▶';
+            if (labelEl) labelEl.textContent = 'Запустить';
+        } else {
+            pauseResumeBtn.classList.add('operator-scheme-btn-pause');
+            pauseResumeBtn.dataset.runtimeAction = 'pause';
+            pauseResumeBtn.setAttribute('onclick', 'pauseProcess()');
+            if (iconEl) iconEl.textContent = '⏸';
+            if (labelEl) labelEl.textContent = 'Пауза';
+        }
+    }
+
+    // Main screen: when IDLE, hide scheme and show CTA to mode selection
+    const schemeWrap = document.querySelector('#monitor .operator-scheme-wrap');
+    const schemeControls = document.querySelector('#monitor .operator-scheme-controls');
+    const modeCta = document.getElementById('monitor-idle-mode-cta');
+
+    if (schemeWrap) schemeWrap.style.display = isIdle ? 'none' : '';
+    if (schemeControls) schemeControls.style.display = isIdle ? 'none' : '';
+    if (modeCta) modeCta.style.display = isIdle ? 'flex' : 'none';
 
 }
 

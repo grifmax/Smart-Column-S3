@@ -1,11 +1,11 @@
 ﻿/* Instrument view specifics */
 
 .operator-screen-instrument .operator-level-label {
-    font-size: 0.76em;
+    font-size: 0.82em;
 }
 
 .operator-screen-instrument .operator-level-value {
-    font-size: 1.24em;
+    font-size: 1.33em;
 }
 
 .operator-screen-instrument .operator-level-main {
@@ -27,11 +27,11 @@
 }
 
 .operator-screen-instrument .operator-list-row span {
-    font-size: 0.82em;
+    font-size: 0.88em;
 }
 
 .operator-screen-instrument .operator-list-row strong {
-    font-size: 1.08em;
+    font-size: 1.16em;
     text-align: right;
     white-space: nowrap;
 }

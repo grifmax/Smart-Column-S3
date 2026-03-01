@@ -21,6 +21,36 @@ const MODE_SCHEME_PATHS = {
 };
 
 const MANUAL_RECT_STORAGE_KEY = 'control.manualRectSettings';
+const CUBE_LIQUID_VISIBLE_TOP_Y = 648;
+const CUBE_LIQUID_BOTTOM_Y = 743;
+const GRADIENT_TOP_Y = 38;
+const GRADIENT_LID_TOP_Y = 488;
+const GRADIENT_CUBE_TOP_Y = 553;
+const BOILING_TEMP_TO_CUBE_ABV_TABLE = [
+    { tempC: 78.2, abvPercent: 96 },
+    { tempC: 79.0, abvPercent: 92 },
+    { tempC: 80.0, abvPercent: 88 },
+    { tempC: 81.0, abvPercent: 84 },
+    { tempC: 82.0, abvPercent: 78 },
+    { tempC: 83.0, abvPercent: 72 },
+    { tempC: 84.0, abvPercent: 66 },
+    { tempC: 85.0, abvPercent: 60 },
+    { tempC: 86.0, abvPercent: 54 },
+    { tempC: 87.0, abvPercent: 47 },
+    { tempC: 88.0, abvPercent: 40 },
+    { tempC: 89.0, abvPercent: 34 },
+    { tempC: 90.0, abvPercent: 28 },
+    { tempC: 91.0, abvPercent: 23 },
+    { tempC: 92.0, abvPercent: 18 },
+    { tempC: 93.0, abvPercent: 14 },
+    { tempC: 94.0, abvPercent: 10 },
+    { tempC: 95.0, abvPercent: 7 },
+    { tempC: 96.0, abvPercent: 4.5 },
+    { tempC: 97.0, abvPercent: 2.5 },
+    { tempC: 98.0, abvPercent: 1.2 },
+    { tempC: 99.0, abvPercent: 0.5 },
+    { tempC: 100.0, abvPercent: 0 }
+];
 
 function getSchemePathForData(data) {
     const mode = resolveMode(
@@ -82,20 +112,123 @@ function getPositiveFiniteNumber(...candidates) {
     return undefined;
 }
 
+function readManualRectSettings() {
+    try {
+        const raw = localStorage.getItem(MANUAL_RECT_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
 function isTailsPwmEnabled() {
     const tailsPwmCheckbox = document.getElementById('manual-tails-pwm-enabled');
     if (tailsPwmCheckbox) {
         return Boolean(tailsPwmCheckbox.checked);
     }
 
-    try {
-        const raw = localStorage.getItem(MANUAL_RECT_STORAGE_KEY);
-        if (!raw) return false;
-        const parsed = JSON.parse(raw);
-        return Boolean(parsed?.tails?.pwmEnabled);
-    } catch {
-        return false;
+    const parsed = readManualRectSettings();
+    return Boolean(parsed?.tails?.pwmEnabled);
+}
+
+function isManualTailsEnabled() {
+    const tailsEnabledCheckbox = document.getElementById('manual-tails-enabled');
+    if (tailsEnabledCheckbox) {
+        return Boolean(tailsEnabledCheckbox.checked);
     }
+
+    const parsed = readManualRectSettings();
+    return Boolean(parsed?.tails?.enabled);
+}
+
+function getManualFeedSetup() {
+    const parsed = readManualRectSettings();
+    const domFeedVolume = Number(document.getElementById('manual-feed-volume')?.value);
+    const domFeedAbv = Number(document.getElementById('manual-feed-abv')?.value);
+
+    const feedVolumeL = getPositiveFiniteNumber(
+        domFeedVolume,
+        parsed?.feed?.volumeL,
+        runtimeMonitorState?.rectification?.feedVolumeL,
+        20
+    );
+
+    const feedAbvPercent = getPositiveFiniteNumber(
+        domFeedAbv,
+        parsed?.feed?.abvPercent,
+        runtimeMonitorState?.rectification?.feedAbvPercent,
+        40
+    );
+
+    return {
+        volumeL: Number(feedVolumeL) || 20,
+        abvPercent: Math.max(0, Math.min(100, Number(feedAbvPercent) || 40)),
+        settings: parsed || {}
+    };
+}
+
+function interpolateByTemp(table, tempC) {
+    const t = Number(tempC);
+    if (!Number.isFinite(t)) return undefined;
+    if (table.length === 0) return undefined;
+    if (t <= table[0].tempC) return table[0].abvPercent;
+
+    for (let i = 1; i < table.length; i++) {
+        const prev = table[i - 1];
+        const next = table[i];
+        if (t <= next.tempC) {
+            const span = next.tempC - prev.tempC;
+            if (span <= 0) return next.abvPercent;
+            const ratio = (t - prev.tempC) / span;
+            return prev.abvPercent + ((next.abvPercent - prev.abvPercent) * ratio);
+        }
+    }
+
+    return table[table.length - 1].abvPercent;
+}
+
+function getCubeAbvByBoilingTemp(tempC, fallbackAbvPercent) {
+    const byTable = interpolateByTemp(BOILING_TEMP_TO_CUBE_ABV_TABLE, tempC);
+    if (Number.isFinite(byTable)) return Math.max(0, Math.min(100, byTable));
+    return Math.max(0, Math.min(100, Number(fallbackAbvPercent) || 0));
+}
+
+function pickRectTargets(runtimeState, manualSettings, absoluteAlcoholMl, tailsEnabled) {
+    const rect = runtimeState?.rectification || {};
+    const headsFromPercent = absoluteAlcoholMl * ((Number(rect.headsPercent) || 0) / 100);
+    const bodyFromPercent = absoluteAlcoholMl * ((Number(rect.bodyPercent) || 0) / 100);
+    const tailsFromPercent = absoluteAlcoholMl * ((Number(rect.tailsPercent) || 0) / 100);
+
+    const headsTargetMl = getPositiveFiniteNumber(
+        rect.headsTargetMl,
+        manualSettings?.heads?.volume,
+        headsFromPercent,
+        300
+    ) || 300;
+
+    const tailsTargetMl = tailsEnabled
+        ? (getPositiveFiniteNumber(
+            rect.tailsTargetMl,
+            tailsFromPercent,
+            800
+        ) || 800)
+        : 1;
+
+    const bodyFromRemainder = Math.max(0, absoluteAlcoholMl - headsTargetMl - (tailsEnabled ? tailsTargetMl : 0));
+    const bodyTargetMl = getPositiveFiniteNumber(
+        rect.bodyTargetMl,
+        bodyFromRemainder,
+        bodyFromPercent,
+        3000
+    ) || 3000;
+
+    return {
+        headsTargetMl,
+        bodyTargetMl,
+        tailsTargetMl
+    };
 }
 
 function setOptionalDisplay(el, visible) {
@@ -140,8 +273,8 @@ function updatePumpImpellerAnimation(svg, speedMlH) {
             impeller._spinAnimation = null;
         }
 
-        impeller.style.transformOrigin = '256px 371px';
         impeller.style.transformBox = 'fill-box';
+        impeller.style.transformOrigin = 'center';
 
         if (typeof impeller.animate === 'function') {
             impeller._spinAnimation = impeller.animate(
@@ -192,14 +325,179 @@ function getTsaRiseRatePerMin(svg, tempCube, tempTsa) {
     return (tsa - prevTsa) / dtMin;
 }
 
-function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pressureCube) {
-    const heatLayer = svg.getElementById('anim-column-heat-layer');
-    const refluxLayer = svg.getElementById('anim-column-reflux-layer');
-    if (!heatLayer || !refluxLayer) return;
+function setLayerRect(layer, y, height, opacity) {
+    if (!layer) return;
+    const h = Math.max(0, Number(height) || 0);
+    if (h <= 0.01) {
+        layer.setAttribute('height', '0');
+        layer.style.opacity = '0';
+        return;
+    }
+    layer.setAttribute('y', Number(y).toFixed(2));
+    layer.setAttribute('height', h.toFixed(2));
+    layer.style.opacity = Number(opacity).toFixed(3);
+}
 
-    const shell = svg.getElementById('column-shell');
-    const baseY = Number(shell?.getAttribute('y')) || 244;
-    const baseH = Number(shell?.getAttribute('height')) || 244;
+function applyThreeLayerCoverage(
+    coreLayer,
+    lidLayer,
+    cubeLayer,
+    coverage,
+    fromTop,
+    opacity,
+    topY,
+    lidTopY,
+    cubeTopY,
+    bottomY
+) {
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const t = Number(topY);
+    const l = Number(lidTopY);
+    const c = Number(cubeTopY);
+    const b = Number(bottomY);
+    if (!(b > t) || !(l > t) || !(c > l) || !(b > c)) {
+        setLayerRect(coreLayer, t, 0, 0);
+        setLayerRect(lidLayer, l, 0, 0);
+        setLayerRect(cubeLayer, c, 0, 0);
+        return;
+    }
+
+    const totalSpan = b - t;
+    const coreSpan = l - t;
+    const lidSpan = c - l;
+    const cubeSpan = b - c;
+    const targetHeight = totalSpan * clamp01(coverage);
+
+    let coreHeight;
+    let lidHeight;
+    let cubeHeight;
+    if (fromTop) {
+        coreHeight = Math.min(coreSpan, targetHeight);
+        const remAfterCore = Math.max(0, targetHeight - coreHeight);
+        lidHeight = Math.min(lidSpan, remAfterCore);
+        cubeHeight = Math.max(0, remAfterCore - lidHeight);
+    } else {
+        cubeHeight = Math.min(cubeSpan, targetHeight);
+        const remAfterCube = Math.max(0, targetHeight - cubeHeight);
+        lidHeight = Math.min(lidSpan, remAfterCube);
+        coreHeight = Math.max(0, remAfterCube - lidHeight);
+    }
+
+    const coreY = fromTop ? t : (l - coreHeight);
+    const lidY = fromTop ? l : (c - lidHeight);
+    const cubeY = fromTop ? c : (b - cubeHeight);
+    setLayerRect(coreLayer, coreY, coreHeight, opacity);
+    setLayerRect(lidLayer, lidY, lidHeight, opacity);
+    setLayerRect(cubeLayer, cubeY, cubeHeight, opacity);
+}
+
+function getFeedBoilingTempC() {
+    const mode = resolveMode(runtimeMonitorState?.mode, runtimeMonitorState?.modeStr);
+    const manualFeed = getManualFeedSetup();
+    const feedAbv = getPositiveFiniteNumber(
+        mode === MODE_MANUAL ? manualFeed.abvPercent : undefined,
+        runtimeMonitorState?.rectification?.feedAbvPercent,
+        runtimeMonitorState?.rectification?.feedABV,
+        getEffectiveAbvForCalculations()?.value,
+        40
+    );
+    const abv = Math.max(0, Math.min(100, Number(feedAbv) || 40));
+    // Приближение для Ткип смеси в зависимости от крепости сырца.
+    return Math.max(78.3, Math.min(100, 100 - (0.215 * abv)));
+}
+
+function stopBoilingBubble(bubble) {
+    if (bubble._boilTimer) {
+        clearTimeout(bubble._boilTimer);
+        bubble._boilTimer = null;
+    }
+    if (bubble._boilAnimation) {
+        bubble._boilAnimation.cancel();
+        bubble._boilAnimation = null;
+    }
+    bubble._boilActive = false;
+    bubble.style.opacity = '0';
+    bubble.style.transform = '';
+}
+
+function startBoilingBubble(svg, bubble) {
+    if (bubble._boilActive) return;
+    bubble._boilActive = true;
+    const startY = Number(bubble.dataset.startY || bubble.getAttribute('cy') || 716);
+    bubble.dataset.startY = String(startY);
+
+    const tick = () => {
+        if (!bubble._boilActive) return;
+        const delayMs = 80 + Math.random() * 520;
+        bubble._boilTimer = setTimeout(() => {
+            if (!bubble._boilActive) return;
+
+            const liquidTopY = Number(svg._cubeLiquidTopY || CUBE_LIQUID_VISIBLE_TOP_Y);
+            const targetY = Math.max(560, Math.min(CUBE_LIQUID_VISIBLE_TOP_Y + 14, liquidTopY + 6 + (Math.random() * 8)));
+            const riseDistance = Math.max(24, startY - targetY);
+            const driftX = -7 + Math.random() * 14;
+            const durationMs = 700 + Math.random() * 1100;
+
+            if (typeof bubble.animate === 'function') {
+                bubble._boilAnimation = bubble.animate(
+                    [
+                        { opacity: 0, transform: 'translate(0px, 0px) scale(0.45)' },
+                        { opacity: 0.7, transform: `translate(${(driftX * 0.45).toFixed(2)}px, ${(-riseDistance * 0.55).toFixed(2)}px) scale(1)` },
+                        { opacity: 0, transform: `translate(${driftX.toFixed(2)}px, ${(-riseDistance).toFixed(2)}px) scale(1.2)` }
+                    ],
+                    {
+                        duration: durationMs,
+                        easing: 'cubic-bezier(0.22, 0.08, 0.3, 1)',
+                        iterations: 1
+                    }
+                );
+                bubble._boilAnimation.onfinish = () => {
+                    bubble._boilAnimation = null;
+                    tick();
+                };
+            } else {
+                bubble.style.opacity = '0.75';
+                bubble.style.transform = `translate(${driftX.toFixed(2)}px, ${(-riseDistance).toFixed(2)}px)`;
+                bubble._boilTimer = setTimeout(() => {
+                    if (!bubble._boilActive) return;
+                    bubble.style.opacity = '0';
+                    bubble.style.transform = '';
+                    tick();
+                }, durationMs);
+            }
+        }, delayMs);
+    };
+
+    tick();
+}
+
+function updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY) {
+    const group = svg.getElementById('anim-boil-bubbles');
+    if (!group) return;
+
+    const tCube = Number(tempCube);
+    const powerW = Number(powerActualW) || 0;
+    const boilingTempC = getFeedBoilingTempC();
+    const active = Number.isFinite(tCube) && tCube >= boilingTempC && powerW > 120;
+
+    svg._cubeLiquidTopY = Number.isFinite(liquidTopY) ? liquidTopY : CUBE_LIQUID_VISIBLE_TOP_Y;
+    group.style.opacity = active ? '1' : '0';
+
+    const bubbles = group.querySelectorAll('.bubble');
+    bubbles.forEach((bubble) => {
+        if (active) startBoilingBubble(svg, bubble);
+        else stopBoilingBubble(bubble);
+    });
+}
+
+function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pressureCube, liquidTopY) {
+    const heatCore = svg.getElementById('anim-gradient-core-heat');
+    const refluxCore = svg.getElementById('anim-gradient-core-reflux');
+    const heatLid = svg.getElementById('anim-gradient-lid-heat');
+    const refluxLid = svg.getElementById('anim-gradient-lid-reflux');
+    const heatCube = svg.getElementById('anim-gradient-cube-heat');
+    const refluxCube = svg.getElementById('anim-gradient-cube-reflux');
+    if (!heatCore || !refluxCore || !heatLid || !refluxLid || !heatCube || !refluxCube) return;
 
     const tCube = Number(tempCube) || 0;
     const tMid = Number(tempColMid) || 0;
@@ -216,45 +514,46 @@ function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempT
     const pressureLevel = clamp01((pCube - 8) / 20);
     const tsaDeltaLevel = clamp01((tsaRisePerMin - 0.02) / 0.20);
 
-    // Базовые зоны: красная поднимается снизу, синяя заполняет сверху.
-    let heatCoverage = 0.2 + (0.75 * heatLevel);
-    let refluxCoverage = 0.15 + (0.75 * refluxLevel);
-
-    // В стабильной зоне допускаем выраженное перекрытие в центре.
-    const overlapBoost = 0.25 * stabilityLevel;
-    heatCoverage = Math.min(1, heatCoverage + overlapBoost);
-    refluxCoverage = Math.min(1, refluxCoverage + overlapBoost);
-
-    // Базовое вытеснение: более "сильный" слой поджимает противоположный.
-    const dominance = heatLevel - refluxLevel;
-    if (dominance > 0) {
-        refluxCoverage *= (1 - Math.min(0.45, dominance * 0.45));
-    } else if (dominance < 0) {
-        heatCoverage *= (1 - Math.min(0.35, Math.abs(dominance) * 0.35));
-    }
-
-    // Доп. факторы "красного вытеснения":
-    // 1) рост TSA, 2) перегрев TSA, 3) рост давления.
     const redPush = Math.max(tsaHotLevel, pressureLevel, tsaDeltaLevel);
-    if (redPush > 0) {
-        heatCoverage = Math.min(1, heatCoverage + (0.25 * redPush));
-        refluxCoverage = Math.max(0.08, refluxCoverage * (1 - 0.55 * redPush));
-    }
+    let heatCoverage = 0.24 + (0.70 * heatLevel) + (0.18 * redPush);
+    let refluxCoverage = 0.18 + (0.62 * refluxLevel) + (0.20 * stabilityLevel);
 
-    const heatHeight = baseH * clamp01(heatCoverage);
-    const heatY = baseY + (baseH - heatHeight);
-    const refluxHeight = baseH * clamp01(refluxCoverage);
-    const refluxY = baseY;
+    // По мере разогрева красный слой вытесняет синий вверх.
+    refluxCoverage *= (1 - Math.min(0.80, (heatLevel * 0.78) + (redPush * 0.52)));
+    heatCoverage = Math.min(1, heatCoverage);
+    refluxCoverage = Math.max(0.03, Math.min(1, refluxCoverage));
 
-    heatLayer.setAttribute('y', heatY.toFixed(2));
-    heatLayer.setAttribute('height', heatHeight.toFixed(2));
-    refluxLayer.setAttribute('y', refluxY.toFixed(2));
-    refluxLayer.setAttribute('height', refluxHeight.toFixed(2));
+    const bottomY = Math.max(
+        GRADIENT_CUBE_TOP_Y + 1,
+        Math.min(CUBE_LIQUID_BOTTOM_Y, Number(liquidTopY) || CUBE_LIQUID_VISIBLE_TOP_Y)
+    );
+    const heatOpacity = Math.min(0.96, 0.10 + (heatLevel * 0.80) + (redPush * 0.22));
+    const refluxOpacity = Math.max(0.08, (0.12 + refluxLevel * 0.76) * (1 - redPush * 0.58));
 
-    const heatOpacity = Math.min(0.95, 0.12 + heatLevel * 0.78 + (redPush * 0.2));
-    const refluxOpacity = Math.max(0.08, (0.1 + refluxLevel * 0.74) * (1 - redPush * 0.6));
-    heatLayer.style.opacity = heatOpacity.toFixed(3);
-    refluxLayer.style.opacity = refluxOpacity.toFixed(3);
+    applyThreeLayerCoverage(
+        heatCore,
+        heatLid,
+        heatCube,
+        heatCoverage,
+        false,
+        heatOpacity,
+        GRADIENT_TOP_Y,
+        GRADIENT_LID_TOP_Y,
+        GRADIENT_CUBE_TOP_Y,
+        bottomY
+    );
+    applyThreeLayerCoverage(
+        refluxCore,
+        refluxLid,
+        refluxCube,
+        refluxCoverage,
+        true,
+        refluxOpacity,
+        GRADIENT_TOP_Y,
+        GRADIENT_LID_TOP_Y,
+        GRADIENT_CUBE_TOP_Y,
+        bottomY
+    );
 }
 
 function stopRefluxDropChaos(drop) {
@@ -283,15 +582,15 @@ function startRefluxDropChaos(drop) {
             if (!drop._refluxChaosActive) return;
 
             const durationMs = 450 + Math.random() * 1200;
-            const driftStart = -2 + Math.random() * 4;
-            const driftEnd = driftStart + (-1.2 + Math.random() * 2.4);
-            const endDrop = 22 + Math.random() * 12;
+            const driftStart = -0.18 + (Math.random() * 0.36);
+            const driftEnd = -0.22 + (Math.random() * 0.44);
+            const endDrop = 128 + Math.random() * 52;
 
             if (typeof drop.animate === 'function') {
                 drop._refluxChaosAnimation = drop.animate(
                     [
                         { opacity: 0, transform: `translate(${driftStart.toFixed(2)}px, 0px) scale(0.92)` },
-                        { opacity: 0.95, transform: `translate(${driftStart.toFixed(2)}px, ${(endDrop * 0.35).toFixed(2)}px) scale(1)` },
+                        { opacity: 0.95, transform: `translate(${driftStart.toFixed(2)}px, ${(endDrop * 0.32).toFixed(2)}px) scale(1)` },
                         { opacity: 0, transform: `translate(${driftEnd.toFixed(2)}px, ${endDrop.toFixed(2)}px) scale(0.58)` }
                     ],
                     {
@@ -375,17 +674,6 @@ async function setManualValve(svg, valveKey, opened) {
     }
 }
 
-async function toggleHeaterFromScheme() {
-    try {
-        const currentlyOn = Number(runtimeMonitorState?.power?.power || 0) > 10;
-        const targetPowerPercent = currentlyOn ? 0 : 60;
-        await postJson('/api/manual/heater', { power: targetPowerPercent });
-        addLog(`Heater set to ${targetPowerPercent}% from scheme`, 'info');
-    } catch (error) {
-        addLog(`Heater control failed (${error.message})`, 'error');
-    }
-}
-
 function applySchemeTheme(svg) {
     const theme = document.body?.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
     if (svg._appliedTheme === theme) return;
@@ -447,15 +735,6 @@ function initSchemeInteractions(svg) {
         });
     }
 
-    const powerBtn = svg.getElementById('zone-power-btn');
-    if (powerBtn) {
-        powerBtn.style.cursor = 'pointer';
-        powerBtn.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            toggleHeaterFromScheme();
-        });
-    }
 }
 
 // ============================================================================
@@ -495,10 +774,29 @@ export function updateInteractiveScheme(data) {
     applySchemeTheme(svg);
     initSchemeInteractions(svg);
 
+    const currentMode = resolveMode(
+        data?.mode ?? runtimeMonitorState.mode,
+        data?.modeStr ?? runtimeMonitorState.modeStr
+    );
+    const manualFeedSetup = getManualFeedSetup();
+    const manualSettings = manualFeedSetup.settings || {};
+    const manualTailsEnabled = isManualTailsEnabled();
+
     // Левая хвостовая ветка отображается только при включенном "Хвосты: ШИМ-отбор".
-    const showTailsBranch = isTailsPwmEnabled();
-    setOptionalDisplay(svg.getElementById('zone-tails-left-branch'), showTailsBranch);
-    setOptionalDisplay(svg.getElementById('ind-volume-tails'), showTailsBranch);
+    const showLeftTailsBranch = isTailsPwmEnabled();
+    setOptionalDisplay(svg.getElementById('zone-tails-left-branch'), showLeftTailsBranch);
+    setOptionalDisplay(svg.getElementById('ind-volume-tails'), showLeftTailsBranch);
+
+    // Правая хвостовая ветка (клапан+банка+патрубок) скрывается при выключенном отборе хвостов в ручном режиме.
+    const showRightTailsBranch = currentMode === MODE_MANUAL ? manualTailsEnabled : true;
+    setOptionalDisplay(svg.getElementById('collector-tails-pipe'), showRightTailsBranch);
+    setOptionalDisplay(svg.getElementById('pipe-tails-down'), showRightTailsBranch);
+    setOptionalDisplay(svg.getElementById('svg-valve-tails'), showRightTailsBranch);
+    setOptionalDisplay(svg.getElementById('jar-tails-right'), showRightTailsBranch);
+    setOptionalDisplay(svg.getElementById('label-tails-right'), showRightTailsBranch);
+    setOptionalDisplay(svg.getElementById('ind-volume-body-small'), showRightTailsBranch);
+    setOptionalDisplay(svg.getElementById('drop-tails'), showRightTailsBranch);
+    setOptionalDisplay(svg.getElementById('anim-liquid-tails'), showRightTailsBranch);
 
     const tempCube = getStatusNumber(data, 'temps', 'cube', 't_cube');
     const tempColTop = getStatusNumber(data, 'temps', 'columnTop', 't_column_top');
@@ -528,7 +826,7 @@ export function updateInteractiveScheme(data) {
     } else if (data.p_cube !== undefined) {
         pCube = data.p_cube;
     }
-    updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pCube);
+    let liquidTopY = CUBE_LIQUID_VISIBLE_TOP_Y;
 
     // Хаотичное капание в дефлегматоре при T_reflux >= 65°C.
     updateRefluxDropChaos(svg, tempReflux);
@@ -588,7 +886,7 @@ export function updateInteractiveScheme(data) {
             powerSetEl.textContent = powerSetPercent.toFixed(0) + '%';
         const powerActEl = svg.getElementById('txt-power-actual');
         if (powerActEl)
-            powerActEl.textContent = `${powerActualW.toFixed(0)} Вт`;
+            powerActEl.textContent = ` ${powerActualW.toFixed(0)} Вт`;
     }
 
     const valvesState = (data.valves && typeof data.valves === 'object')
@@ -624,26 +922,41 @@ export function updateInteractiveScheme(data) {
     const liquidShape = svg.getElementById('anim-liquid-level');
     if (liquidShape && runtimeMonitorState) {
         const s = runtimeMonitorState;
+        const feedVolumeL = getPositiveFiniteNumber(
+            currentMode === MODE_MANUAL ? manualFeedSetup.volumeL : undefined,
+            s.rectification?.feedVolumeL,
+            (s.distillation?.targetVolumeMl || 0) / 1000,
+            20
+        ) || 20;
+        const feedAbvPercent = getPositiveFiniteNumber(
+            currentMode === MODE_MANUAL ? manualFeedSetup.abvPercent : undefined,
+            s.rectification?.feedAbvPercent,
+            getEffectiveAbvForCalculations()?.value,
+            40
+        ) || 40;
+
         const maxCubeVolumeL = getPositiveFiniteNumber(
             s.equipment?.cubeVolumeL,
             s.equipment?.cubeVolume,
             s.rectification?.cubeVolumeL,
             s.distillation?.cubeVolumeL,
-            s.rectification?.feedVolumeL,
+            feedVolumeL,
             20
         );
         const chargeVolumeL = Math.min(
             maxCubeVolumeL || 20,
-            getPositiveFiniteNumber(
-                s.rectification?.feedVolumeL,
-                (s.distillation?.targetVolumeMl || 0) / 1000,
-                maxCubeVolumeL,
-                20
-            ) || 20
+            feedVolumeL
         );
         const fromFractionsMl = (s.volumes?.heads || 0) + (s.volumes?.body || 0) + (s.volumes?.tails || 0);
         const collectedMl = Math.max(fromFractionsMl, s.pump?.totalMl || 0);
         const remainingVolumeL = Math.max(0, chargeVolumeL - (collectedMl / 1000));
+        const boilingRefTempC = getPositiveFiniteNumber(tempCube, tempColTop, tempNode, tempReflux);
+        const cubeAbvByTemp = getCubeAbvByBoilingTemp(boilingRefTempC, feedAbvPercent);
+        const initialAbsoluteAlcoholL = Math.max(0, chargeVolumeL * (feedAbvPercent / 100));
+        const remainingAbsoluteAlcoholL = Math.max(
+            0,
+            Math.min(initialAbsoluteAlcoholL, remainingVolumeL * (cubeAbvByTemp / 100))
+        );
 
         // Уровень показываем как долю от максимальной емкости куба.
         const fillPercent = Math.max(0, Math.min(1, remainingVolumeL / (maxCubeVolumeL || 1)));
@@ -653,23 +966,34 @@ export function updateInteractiveScheme(data) {
             const cubeShell = svg.getElementById('cube-shell');
             const cubeY = Number(cubeShell?.getAttribute('y')) || 553;
             const cubeH = Number(cubeShell?.getAttribute('height')) || 190;
-            const liquidHeight = cubeH * fillPercent;
-            const liquidY = cubeY + (cubeH - liquidHeight);
+            const visibleTopY = Math.max(cubeY, Math.min(cubeY + cubeH - 8, CUBE_LIQUID_VISIBLE_TOP_Y));
+            const visibleSpan = Math.max(1, (cubeY + cubeH) - visibleTopY);
+            const liquidHeight = visibleSpan * fillPercent;
+            const liquidY = (cubeY + cubeH) - liquidHeight;
 
             liquidShape.setAttribute('y', liquidY.toFixed(2));
             liquidShape.setAttribute('height', liquidHeight.toFixed(2));
+            liquidTopY = liquidY;
         } else {
             // Поддержка старых версий SVG, где уровень задан path.
             const yTop = 600 - (fillPercent * 120);
             const d = `M65,${yTop} L295,${yTop} L295,600 Q295,615 280,615 L80,615 Q65,615 65,600 Z`;
             liquidShape.setAttribute('d', d);
+            liquidTopY = yTop;
         }
 
         const cubeVolumeText = svg.getElementById('txt-volume-cube');
         if (cubeVolumeText) {
             cubeVolumeText.textContent = `${remainingVolumeL.toFixed(1)} л`;
         }
+        const cubeAAText = svg.getElementById('txt-aa-cube');
+        if (cubeAAText) {
+            cubeAAText.textContent = `АС ${remainingAbsoluteAlcoholL.toFixed(2)} л`;
+        }
     }
+
+    updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pCube, liquidTopY);
+    updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY);
 
     // Визуализация капель (скорость отбора)
     const livePumpSpeed = getStatusNumber(data, 'pump', 'speedMlH', 'pump_speed');
@@ -751,14 +1075,22 @@ export function updateInteractiveScheme(data) {
     if (runtimeMonitorState) {
         const s = runtimeMonitorState;
 
+        const activeFeedVolumeL = getPositiveFiniteNumber(
+            currentMode === MODE_MANUAL ? manualFeedSetup.volumeL : undefined,
+            s.rectification?.feedVolumeL,
+            20
+        ) || 20;
+        const activeFeedAbvPercent = getPositiveFiniteNumber(
+            currentMode === MODE_MANUAL ? manualFeedSetup.abvPercent : undefined,
+            s.rectification?.feedAbvPercent,
+            40
+        ) || 40;
+        const absoluteAlcoholMl = Math.max(0, activeFeedVolumeL * 1000 * (activeFeedAbvPercent / 100));
+        const targets = pickRectTargets(s, manualSettings, absoluteAlcoholMl, showRightTailsBranch);
+
         // Heads Jar
         const headsVol = s.volumes?.heads || 0;
-        // Если цель не задана, берем примерную (5% от 40% спирта в 20л сырца ~ 400мл) или дефолт 300мл
-        let headsMax = s.rectification?.headsTargetMl || 0;
-        if (headsMax === 0 && s.rectification?.feedVolumeL) {
-            headsMax = s.rectification.feedVolumeL * 1000 * 0.4 * 0.05;
-        }
-        if (headsMax === 0) headsMax = 300;
+        const headsMax = Math.max(1, targets.headsTargetMl);
 
         const headsPct = Math.min(1, headsVol / headsMax);
         const headsH = 96; // Высота SVG jar (новый SVG 415×737)
@@ -774,11 +1106,7 @@ export function updateInteractiveScheme(data) {
 
         // Body Jar
         const bodyVol = s.volumes?.body || 0;
-        let bodyMax = s.rectification?.bodyTargetMl || 0;
-        if (bodyMax === 0 && s.rectification?.feedVolumeL) {
-            bodyMax = s.rectification.feedVolumeL * 1000 * 0.4 * 0.4; // ~3.2л
-        }
-        if (bodyMax === 0) bodyMax = 3000;
+        const bodyMax = Math.max(1, targets.bodyTargetMl);
 
         const bodyPct = Math.min(1, bodyVol / bodyMax);
         const bodyH = 117; // Высота SVG jar (новый SVG 415×737)
@@ -794,11 +1122,7 @@ export function updateInteractiveScheme(data) {
 
         // Tails Jar
         const tailsVol = s.volumes?.tails || 0;
-        let tailsMax = s.rectification?.tailsTargetMl || 0;
-        if (tailsMax === 0 && s.rectification?.feedVolumeL) {
-            tailsMax = s.rectification.feedVolumeL * 1000 * 0.4 * 0.1; // ~0.8л
-        }
-        if (tailsMax === 0) tailsMax = 800;
+        const tailsMax = Math.max(1, targets.tailsTargetMl);
 
         const tailsPct = Math.min(1, tailsVol / tailsMax);
         const tailsH = 95; // Высота SVG jar (новый SVG 415×737)

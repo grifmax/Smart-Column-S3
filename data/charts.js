@@ -6,6 +6,7 @@ let isConnected = false;
 let chartsPaused = false;
 let currentPeriod = 60; // секунды
 const DATA_RETENTION_SECONDS = 6 * 60 * 60; // 6 часов буфера в памяти браузера
+const chartLogs = [];
 
 // Anomaly detection settings
 let anomalyDetectionEnabled = false;
@@ -45,7 +46,57 @@ document.addEventListener('DOMContentLoaded', function() {
     setupAnomalyControls();
     loadAnomalySettings();
     connectWebSocket();
+    addChartLog('Страница графиков готова', 'info');
 });
+
+// ============================================================================
+// Logs
+// ============================================================================
+
+function addChartLog(message, type = 'info') {
+    const container = document.getElementById('log-container');
+    const timestamp = new Date().toLocaleTimeString();
+    const line = `[${timestamp}] ${message}`;
+    chartLogs.push(line);
+    if (chartLogs.length > 500) chartLogs.shift();
+
+    if (!container) return;
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${type}`;
+    entry.textContent = line;
+    container.appendChild(entry);
+    container.scrollTop = container.scrollHeight;
+
+    const entries = container.querySelectorAll('.log-entry');
+    if (entries.length > 300) entries[0].remove();
+}
+
+function clearLogs() {
+    if (!confirm('Очистить логи?')) return;
+    chartLogs.length = 0;
+    const container = document.getElementById('log-container');
+    if (container) container.innerHTML = '';
+    addChartLog('Логи очищены', 'info');
+}
+
+function downloadLogs() {
+    const rows = ['timestamp,message'];
+    chartLogs.forEach((line) => {
+        const match = line.match(/^\[(.*?)\]\s*(.*)$/);
+        const ts = match ? match[1] : '';
+        const msg = match ? match[2] : line;
+        rows.push(`"${ts.replace(/"/g, '""')}","${msg.replace(/"/g, '""')}"`);
+    });
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `smart-column-logs-${Date.now()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    addChartLog('Экспорт логов выполнен', 'success');
+}
 
 // ============================================================================
 // WebSocket
@@ -61,6 +112,7 @@ function connectWebSocket() {
         ws.onopen = function() {
             isConnected = true;
             updateConnectionStatus(true);
+            addChartLog('WebSocket подключен', 'success');
             if (reconnectInterval) {
                 clearInterval(reconnectInterval);
                 reconnectInterval = null;
@@ -75,16 +127,19 @@ function connectWebSocket() {
                 updateChartData(data);
             } catch (e) {
                 console.error('JSON parse error:', e);
+                addChartLog(`Ошибка JSON: ${e.message}`, 'error');
             }
         };
 
         ws.onerror = function(error) {
             console.error('WebSocket error:', error);
+            addChartLog('Ошибка WebSocket', 'error');
         };
 
         ws.onclose = function() {
             isConnected = false;
             updateConnectionStatus(false);
+            addChartLog('WebSocket отключен, ожидаю переподключение', 'warning');
 
             if (!reconnectInterval) {
                 reconnectInterval = setInterval(() => {
@@ -95,6 +150,7 @@ function connectWebSocket() {
     } catch (e) {
         console.error('WebSocket creation error:', e);
         updateConnectionStatus(false);
+        addChartLog(`Ошибка создания WebSocket: ${e.message}`, 'error');
     }
 }
 
