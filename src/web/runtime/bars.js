@@ -1,3 +1,8 @@
+﻿import { runtimeMonitorState, resolveMode, maxHeaterPower, MODE_RECT, PHASE_HEADS, PHASE_BODY, PHASE_POST_HEADS_STAB, PHASE_TAILS, MODE_DIST, MODE_MASH, MODE_HOLD, MODE_MANUAL } from '../globals.js';
+import { clampPercent, runtimeEscapeHtml, toFinite, formatDurationSafe } from '../runtime/helpers.js';
+import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
+import { estimateRectTargets } from '../runtime/state.js';
+
 export function renderRuntimeBars(items) {
     const barsEl = document.getElementById('mode-runtime-bars');
     if (!barsEl) return;
@@ -40,6 +45,7 @@ export function updateManualTiles() {
     const rectPowerEl = document.getElementById('rect-power-display');
     const powerEl = document.getElementById('manual-power-display');
     const speedEl = document.getElementById('manual-speed-display');
+    const waterAutoStartEl = document.getElementById('water-autostart-display');
     const headsEl = document.getElementById('manual-heads-display');
     const bodyEl = document.getElementById('manual-body-display');
     const tailsEl = document.getElementById('manual-tails-display');
@@ -47,6 +53,7 @@ export function updateManualTiles() {
     if (rectPowerEl) rectPowerEl.textContent = `${powerPercent.toFixed(0)} %`;
     if (powerEl) powerEl.textContent = `${powerPercent.toFixed(0)} %`;
     if (speedEl) speedEl.textContent = `${toFinite(s.pump.speedMlH, 0).toFixed(0)} мл/ч`;
+    if (waterAutoStartEl) waterAutoStartEl.textContent = `${toFinite(s.equipment.waterAutoStartCubeTempC, 45).toFixed(1)} °C`;
     if (headsEl) headsEl.textContent = `${toFinite(s.volumes.heads, 0).toFixed(0)} мл`;
     if (bodyEl) bodyEl.textContent = `${toFinite(s.volumes.body, 0).toFixed(0)} мл`;
     if (tailsEl) tailsEl.textContent = `${toFinite(s.volumes.tails, 0).toFixed(0)} мл`;

@@ -114,6 +114,7 @@ export function getRuntimeEditConfig(paramKey) {
             value: currentPowerPercent.toFixed(0),
             supportsUnitToggle: true,
             heaterMaxW: heaterMax,
+            allowInRect: true,
             submit: async (value) => {
                 const resp = await fetch('/api/rect/heater', {
                     method: 'POST',
@@ -156,6 +157,7 @@ export function getRuntimeEditConfig(paramKey) {
             max: '100',
             hint: 'Используется для расчёта целей и времени, пока электронный ареометр OFF.',
             value: normalizeAbvPercent(plannedAbvPercent, 40).toFixed(1),
+            allowAnyMode: true,
             submit: async (value) => {
                 savePlannedAbv(value);
                 renderAbvValue();
@@ -180,6 +182,29 @@ export function getRuntimeEditConfig(paramKey) {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ speed: Number(value) })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
+        'water-autostart-cube-temp': {
+            title: 'Подача холодной воды',
+            label: 'Автостарт по T куба, °C',
+            step: '0.5',
+            min: '20',
+            max: '60',
+            hint: 'Температура куба, при которой система автоматически откроет подачу воды.',
+            value: toFinite(s.equipment.waterAutoStartCubeTempC, 45).toFixed(1),
+            allowAnyMode: true,
+            quickAdjustments: {
+                groups: [
+                    { unit: 'celsius', label: 'Быстрые шаги, °C', deltas: [-1, -5, 1, 5] }
+                ]
+            },
+            submit: async (value) => {
+                const resp = await fetch('/api/settings/equipment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ waterAutoStartCubeTempC: Number(value) })
                 });
                 if (!resp.ok) throw new Error(await resp.text());
             }
@@ -240,14 +265,16 @@ export function getRuntimeEditConfig(paramKey) {
 }
 
 export function openRuntimeEditModal(paramKey) {
-    const isRectParam = paramKey === 'rect-power';
-    const isPlannedAbvParam = paramKey === 'planned-abv';
-    if (!isPlannedAbvParam && currentMode !== MODE_MANUAL && !(isRectParam && currentMode === MODE_RECT)) {
+    const config = getRuntimeEditConfig(paramKey);
+    if (!config) return;
+
+    const allowAnyMode = Boolean(config.allowAnyMode);
+    const allowRectMode = Boolean(config.allowInRect) && currentMode === MODE_RECT;
+    if (!allowAnyMode && currentMode !== MODE_MANUAL && !allowRectMode) {
         addLog('Редактирование параметров доступно только в ручной или авто-ректификации', 'warning');
         return;
     }
 
-    const config = getRuntimeEditConfig(paramKey);
     const modal = document.getElementById('runtime-edit-modal');
     const titleEl = document.getElementById('runtime-edit-title');
     const labelEl = document.getElementById('runtime-edit-label');
