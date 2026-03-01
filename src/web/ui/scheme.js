@@ -74,6 +74,14 @@ function getPowerSetPercent(data) {
     return Number.isFinite(runtime) ? runtime : undefined;
 }
 
+function getPositiveFiniteNumber(...candidates) {
+    for (const value of candidates) {
+        const num = Number(value);
+        if (Number.isFinite(num) && num > 0) return num;
+    }
+    return undefined;
+}
+
 function isTailsPwmEnabled() {
     const tailsPwmCheckbox = document.getElementById('manual-tails-pwm-enabled');
     if (tailsPwmCheckbox) {
@@ -446,29 +454,53 @@ export function updateInteractiveScheme(data) {
     });
 
     // Анимация уровня жидкости
-    const liquidPath = svg.getElementById('anim-liquid-level');
-    if (liquidPath && runtimeMonitorState) {
+    const liquidShape = svg.getElementById('anim-liquid-level');
+    if (liquidShape && runtimeMonitorState) {
         const s = runtimeMonitorState;
-        // Объем куба (л) -> мл
-        const maxVol = (s.rectification?.feedVolumeL || 20) * 1000;
-        // Отобрано (мл)
-        const collected = s.pump?.totalMl || 0;
+        const maxCubeVolumeL = getPositiveFiniteNumber(
+            s.equipment?.cubeVolumeL,
+            s.equipment?.cubeVolume,
+            s.rectification?.cubeVolumeL,
+            s.distillation?.cubeVolumeL,
+            s.rectification?.feedVolumeL,
+            20
+        );
+        const chargeVolumeL = Math.min(
+            maxCubeVolumeL || 20,
+            getPositiveFiniteNumber(
+                s.rectification?.feedVolumeL,
+                (s.distillation?.targetVolumeMl || 0) / 1000,
+                maxCubeVolumeL,
+                20
+            ) || 20
+        );
+        const fromFractionsMl = (s.volumes?.heads || 0) + (s.volumes?.body || 0) + (s.volumes?.tails || 0);
+        const collectedMl = Math.max(fromFractionsMl, s.pump?.totalMl || 0);
+        const remainingVolumeL = Math.max(0, chargeVolumeL - (collectedMl / 1000));
 
-        // Оставшийся объем (0..1)
-        let pct = 1.0;
-        if (maxVol > 0) {
-            pct = Math.max(0, Math.min(1, (maxVol - collected) / maxVol));
+        // Уровень показываем как долю от максимальной емкости куба.
+        const fillPercent = Math.max(0, Math.min(1, remainingVolumeL / (maxCubeVolumeL || 1)));
+
+        const tagName = String(liquidShape.tagName || '').toLowerCase();
+        if (tagName === 'rect') {
+            const cubeShell = svg.getElementById('cube-shell');
+            const cubeY = Number(cubeShell?.getAttribute('y')) || 553;
+            const cubeH = Number(cubeShell?.getAttribute('height')) || 190;
+            const liquidHeight = cubeH * fillPercent;
+            const liquidY = cubeY + (cubeH - liquidHeight);
+
+            liquidShape.setAttribute('y', liquidY.toFixed(2));
+            liquidShape.setAttribute('height', liquidHeight.toFixed(2));
+        } else {
+            // Поддержка старых версий SVG, где уровень задан path.
+            const yTop = 600 - (fillPercent * 120);
+            const d = `M65,${yTop} L295,${yTop} L295,600 Q295,615 280,615 L80,615 Q65,615 65,600 Z`;
+            liquidShape.setAttribute('d', d);
         }
-
-        // Координаты Y для уровня жидкости: Полный (100%): y=480, Пустой (0%): y=600
-        const yTop = 600 - (pct * 120);
-        const d = `M65,${yTop} L295,${yTop} L295,600 Q295,615 280,615 L80,615 Q65,615 65,600 Z`;
-        liquidPath.setAttribute('d', d);
 
         const cubeVolumeText = svg.getElementById('txt-volume-cube');
         if (cubeVolumeText) {
-            const remainingMl = Math.max(0, maxVol - collected);
-            cubeVolumeText.textContent = `${(remainingMl / 1000).toFixed(1)} л`;
+            cubeVolumeText.textContent = `${remainingVolumeL.toFixed(1)} л`;
         }
     }
 

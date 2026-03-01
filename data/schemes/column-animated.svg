@@ -417,7 +417,7 @@
   <g id="anim-condensate"/>
 
   <!-- Уровень жидкости в кубе -->
-  <rect id="anim-liquid-level" x="76" y="553" width="190" height="0" fill="#3498db" opacity="0.2" pointer-events="none"/>
+  <rect id="anim-liquid-level" x="76" y="743" width="190" height="0" fill="url(#grad-cube-liquid)" opacity="0.9" pointer-events="none"/>
 
   <!-- Капли отбора (анимированные) -->
   <circle id="drop-heads" cx="334" cy="444" r="3" class="drop" style="opacity:0"/>
