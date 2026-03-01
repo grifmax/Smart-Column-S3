@@ -166,6 +166,55 @@ function updatePumpImpellerAnimation(svg, speedMlH) {
     }
 }
 
+function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux) {
+    const heatLayer = svg.getElementById('anim-column-heat-layer');
+    const refluxLayer = svg.getElementById('anim-column-reflux-layer');
+    if (!heatLayer || !refluxLayer) return;
+
+    const shell = svg.getElementById('column-shell');
+    const baseY = Number(shell?.getAttribute('y')) || 244;
+    const baseH = Number(shell?.getAttribute('height')) || 244;
+
+    const tCube = Number(tempCube) || 0;
+    const tMid = Number(tempColMid) || 0;
+    const tReflux = Number(tempReflux) || 0;
+
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const heatLevel = clamp01((tCube - 45) / 35);
+    const refluxLevel = clamp01((tReflux - 65) / 18);
+    const stabilityLevel = clamp01(1 - Math.abs(tMid - 76.6) / 3.5);
+
+    // Базовые зоны: красная поднимается снизу, синяя заполняет сверху.
+    let heatCoverage = 0.2 + (0.75 * heatLevel);
+    let refluxCoverage = 0.15 + (0.75 * refluxLevel);
+
+    // В стабильной зоне допускаем выраженное перекрытие в центре.
+    const overlapBoost = 0.25 * stabilityLevel;
+    heatCoverage = Math.min(1, heatCoverage + overlapBoost);
+    refluxCoverage = Math.min(1, refluxCoverage + overlapBoost);
+
+    // Базовое вытеснение: более "сильный" слой поджимает противоположный.
+    const dominance = heatLevel - refluxLevel;
+    if (dominance > 0) {
+        refluxCoverage *= (1 - Math.min(0.45, dominance * 0.45));
+    } else if (dominance < 0) {
+        heatCoverage *= (1 - Math.min(0.35, Math.abs(dominance) * 0.35));
+    }
+
+    const heatHeight = baseH * clamp01(heatCoverage);
+    const heatY = baseY + (baseH - heatHeight);
+    const refluxHeight = baseH * clamp01(refluxCoverage);
+    const refluxY = baseY;
+
+    heatLayer.setAttribute('y', heatY.toFixed(2));
+    heatLayer.setAttribute('height', heatHeight.toFixed(2));
+    refluxLayer.setAttribute('y', refluxY.toFixed(2));
+    refluxLayer.setAttribute('height', refluxHeight.toFixed(2));
+
+    heatLayer.style.opacity = (0.12 + heatLevel * 0.78).toFixed(3);
+    refluxLayer.style.opacity = (0.1 + refluxLevel * 0.74).toFixed(3);
+}
+
 
 function setValveClass(svg, valveId, opened) {
     const el = svg.getElementById(valveId);
@@ -352,6 +401,7 @@ export function updateInteractiveScheme(data) {
     setTxt('txt-temp-tsa', tempTsa, ' °C');
     setTxt('txt-water-in', tempWaterIn, ' °C');
     setTxt('txt-water-out', tempWaterOut, ' °C');
+    updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux);
 
     // Капли дефлегматора — видимы при T царги > 70°C
     const refluxZone = svg.getElementById('zone-reflux');

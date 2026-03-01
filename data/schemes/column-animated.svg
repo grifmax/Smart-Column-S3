@@ -126,7 +126,7 @@
   <!-- ЦАРГА (насадочная колонна с упаковкой)  y=244..488         -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <g id="zone-column">
-    <rect id="column-shell" x="146" y="244" width="50" height="244" fill="url(#dots-packing)" stroke="#314354" stroke-width="1"/>
+    <rect id="column-shell" x="146" y="244" width="50" height="244" fill="url(#dots-packing)" stroke="#1f2d3b" stroke-width="2.6"/>
     <rect id="anim-column-heat-layer" x="146" y="244" width="50" height="244" fill="url(#grad-column-heat)" opacity="0" pointer-events="none"/>
     <rect id="anim-column-reflux-layer" x="146" y="244" width="50" height="244" fill="url(#grad-column-reflux)" opacity="0" pointer-events="none"/>
   </g>
