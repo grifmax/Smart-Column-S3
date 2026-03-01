@@ -229,9 +229,11 @@ struct UiState {
     uint8_t calSkip = 0;
     int16_t calRawX[4] = {0};
     int16_t calRawY[4] = {0};
-    int16_t calCapturedRawX = 0;
-    int16_t calCapturedRawY = 0;
-    bool calCapturedValid = false;
+    // Continuous raw sampling during held press for calibration accuracy.
+    bool calIsCollecting = false;
+    int32_t calSumRawX = 0;
+    int32_t calSumRawY = 0;
+    uint16_t calSampleCount = 0;
 
     bool modeSwitchConfirm = false;
     Mode modeSwitchTarget = Mode::IDLE;
@@ -2692,25 +2694,30 @@ static void renderTouchCalibration() {
     tft.setTextSize(1);
     tft.setCursor(20, 60);
     if (ui.calSkip > 0) {
+        // Warm-up phase: show countdown only, NO calibration target yet.
         char buf[32];
         snprintf(buf, sizeof(buf), msg(Msg::TOUCH_CAL_TAP_N), ui.calSkip);
         tft.print(buf);
     } else {
-        tft.print(msg(Msg::TOUCH_CAL_TOUCH_TARGET));
-    }
+        // Actual calibration phase: show which point and draw the target.
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%s  %d/4", msg(Msg::TOUCH_CAL_TOUCH_TARGET), ui.calStep + 1);
+        tft.print(buf);
 
-    const int16_t points[4][2] = {
-        {30, 30},
-        {TFT_WIDTH - 30, 30},
-        {TFT_WIDTH - 30, TFT_HEIGHT - 30},
-        {30, TFT_HEIGHT - 30}
-    };
-    const uint8_t stepIdx = (ui.calStep < 4) ? ui.calStep : 3;
-    int16_t px = points[stepIdx][0];
-    int16_t py = points[stepIdx][1];
-    tft.drawCircle(px, py, 10, TFT_GREEN);
-    tft.drawLine(px - 15, py, px + 15, py, TFT_GREEN);
-    tft.drawLine(px, py - 15, px, py + 15, TFT_GREEN);
+        const int16_t points[4][2] = {
+            {30, 30},
+            {TFT_WIDTH - 30, 30},
+            {TFT_WIDTH - 30, TFT_HEIGHT - 30},
+            {30, TFT_HEIGHT - 30}
+        };
+        const uint8_t stepIdx = (ui.calStep < 4) ? ui.calStep : 3;
+        int16_t px = points[stepIdx][0];
+        int16_t py = points[stepIdx][1];
+        tft.drawCircle(px, py, 15, TFT_GREEN);
+        tft.drawCircle(px, py, 3, TFT_GREEN);
+        tft.drawLine(px - 20, py, px + 20, py, TFT_GREEN);
+        tft.drawLine(px, py - 20, px, py + 20, TFT_GREEN);
+    }
 }
 
 static void applyTouchCalibration() {
@@ -2890,33 +2897,40 @@ void update(const SystemState& state) {
             const bool wasPressed = ui.touchPressed;
             ev = readTouchEvent();
 
-            // Capture raw coordinates on fresh press (finger still touching).
-            // We cannot call readTouchRawFiltered after ev.tapped because by
-            // then the finger is already released and the touch controller
-            // returns no data.
-            if (ev.pressed && !wasPressed) {
-                int16_t rx = 0;
-                int16_t ry = 0;
-                if (readTouchRawFiltered(&rx, &ry)) {
-                    ui.calCapturedRawX = rx;
-                    ui.calCapturedRawY = ry;
-                    ui.calCapturedValid = true;
-                } else {
-                    ui.calCapturedValid = false;
+            // Accumulate raw samples continuously while the finger is held.
+            // This gives a stable averaged position for each calibration point.
+            // We do NOT use readTouchRawFiltered after ev.tapped because by
+            // then the finger is already released and the controller has no data.
+            if (ev.pressed) {
+                int16_t rx = 0, ry = 0;
+                if (touchReadRaw(&rx, &ry)) {
+                    if (!wasPressed) {
+                        // First frame of this press: start fresh accumulator.
+                        ui.calSumRawX = rx;
+                        ui.calSumRawY = ry;
+                        ui.calSampleCount = 1;
+                        ui.calIsCollecting = true;
+                    } else if (ui.calIsCollecting && ui.calSampleCount < 500) {
+                        ui.calSumRawX += rx;
+                        ui.calSumRawY += ry;
+                        ui.calSampleCount++;
+                    }
                 }
             }
 
             if (ev.tapped) {
                 if (ui.calSkip > 0) {
                     ui.calSkip--;
-                    ui.calCapturedValid = false;
+                    ui.calIsCollecting = false;
+                    ui.calSampleCount = 0;
                     ui.needsRedraw = true;
-                } else if (ui.calCapturedValid) {
+                } else if (ui.calIsCollecting && ui.calSampleCount > 0) {
                     if (ui.calStep < 4) {
-                        ui.calRawX[ui.calStep] = ui.calCapturedRawX;
-                        ui.calRawY[ui.calStep] = ui.calCapturedRawY;
+                        ui.calRawX[ui.calStep] = (int16_t)(ui.calSumRawX / ui.calSampleCount);
+                        ui.calRawY[ui.calStep] = (int16_t)(ui.calSumRawY / ui.calSampleCount);
                         ui.calStep++;
-                        ui.calCapturedValid = false;
+                        ui.calIsCollecting = false;
+                        ui.calSampleCount = 0;
                         ui.needsRedraw = true;
                     }
                     if (ui.calStep >= 4) {
@@ -3171,9 +3185,10 @@ void startTouchCalibration() {
     ui.calSkip = 2;
     memset(ui.calRawX, 0, sizeof(ui.calRawX));
     memset(ui.calRawY, 0, sizeof(ui.calRawY));
-    ui.calCapturedRawX = 0;
-    ui.calCapturedRawY = 0;
-    ui.calCapturedValid = false;
+    ui.calIsCollecting = false;
+    ui.calSumRawX = 0;
+    ui.calSumRawY = 0;
+    ui.calSampleCount = 0;
     ui.touchPressed = false;
     ui.touchDownX = 0;
     ui.touchDownY = 0;
