@@ -224,10 +224,18 @@ export function renderModeRuntimeCard() {
 export function initRuntimeMonitorUi() {
     const tiles = document.querySelectorAll('[data-edit-param]');
     tiles.forEach((tile) => {
-        tile.addEventListener('click', () => {
+        const openFromTile = () => {
             const param = tile.getAttribute('data-edit-param');
             if (param) openRuntimeEditModal(param);
-        });
+        };
+        tile.addEventListener('click', openFromTile);
+        if (tile.tagName !== 'BUTTON') {
+            tile.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                openFromTile();
+            });
+        }
     });
 
     const modal = document.getElementById('runtime-edit-modal');

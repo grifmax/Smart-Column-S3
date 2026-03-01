@@ -209,6 +209,75 @@ export function getRuntimeEditConfig(paramKey) {
                 if (!resp.ok) throw new Error(await resp.text());
             }
         },
+        'safety-pressure-max': {
+            title: 'Авария: давление куба',
+            label: 'Порог, мм рт.ст.',
+            step: '0.5',
+            min: '5',
+            max: '200',
+            hint: 'При превышении этого давления сработает аварийная остановка.',
+            value: toFinite(s.safetySettings.pressureMaxMmHg, 50).toFixed(1),
+            allowAnyMode: true,
+            quickAdjustments: {
+                groups: [
+                    { unit: 'mmhg', label: 'Быстрые шаги, мм рт.ст.', deltas: [-1, -5, 1, 5] }
+                ]
+            },
+            submit: async (value) => {
+                const resp = await fetch('/api/settings/safety', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pressureMaxMmHg: Number(value) })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
+        'safety-tsa-max': {
+            title: 'Авария: температура TSA',
+            label: 'Порог, °C',
+            step: '0.5',
+            min: '35',
+            max: '120',
+            hint: 'При превышении температуры TSA сработает аварийная остановка.',
+            value: toFinite(s.safetySettings.tsaMaxC, 55).toFixed(1),
+            allowAnyMode: true,
+            quickAdjustments: {
+                groups: [
+                    { unit: 'celsius', label: 'Быстрые шаги, °C', deltas: [-1, -5, 1, 5] }
+                ]
+            },
+            submit: async (value) => {
+                const resp = await fetch('/api/settings/safety', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tsaMaxC: Number(value) })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
+        'safety-water-out-max': {
+            title: 'Авария: вода на выходе',
+            label: 'Порог, °C',
+            step: '0.5',
+            min: '30',
+            max: '120',
+            hint: 'Максимально допустимая температура охлаждающей воды на выходе.',
+            value: toFinite(s.safetySettings.waterOutMaxC, 70).toFixed(1),
+            allowAnyMode: true,
+            quickAdjustments: {
+                groups: [
+                    { unit: 'celsius', label: 'Быстрые шаги, °C', deltas: [-1, -5, 1, 5] }
+                ]
+            },
+            submit: async (value) => {
+                const resp = await fetch('/api/settings/safety', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ waterOutMaxC: Number(value) })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+            }
+        },
         'manual-heads': {
             title: 'Объем фракции: Головы',
             label: 'Головы, мл',

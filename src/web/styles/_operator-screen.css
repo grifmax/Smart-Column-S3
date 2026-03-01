@@ -301,6 +301,19 @@
     transform: translateY(-1px);
 }
 
+.operator-edit-inline {
+    cursor: pointer;
+    border-radius: 6px;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.operator-edit-inline:hover,
+.operator-edit-inline:focus-visible {
+    color: var(--accent);
+    background-color: rgba(59, 130, 246, 0.12);
+    outline: none;
+}
+
 .operator-edit-label {
     display: block;
     color: var(--landing-muted);
