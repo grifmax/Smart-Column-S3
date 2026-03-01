@@ -1,6 +1,62 @@
 ﻿import { runtimeMonitorState, resolveMode, plannedAbvUserSet, plannedAbvPercent, setPlannedAbvPercent } from '../globals.js';
 import { toFinite, normalizeAbvPercent, clampPercent } from './helpers.js';
 
+function readFiniteCandidate(source, keys) {
+    if (!source || typeof source !== 'object') return undefined;
+    for (const key of keys) {
+        if (!(key in source)) continue;
+        const value = toFinite(source[key], NaN);
+        if (Number.isFinite(value)) return value;
+    }
+    return undefined;
+}
+
+function mergeEquipmentState(s, data) {
+    const sources = [];
+    if (data?.equipment && typeof data.equipment === 'object') sources.push(data.equipment);
+    if (data?.settings?.equipment && typeof data.settings.equipment === 'object') sources.push(data.settings.equipment);
+    if (data && typeof data === 'object') sources.push(data);
+
+    const assign = (field, keys) => {
+        for (const source of sources) {
+            const value = readFiniteCandidate(source, keys);
+            if (value === undefined) continue;
+            s.equipment[field] = value;
+            return;
+        }
+    };
+
+    assign('heaterPowerW', ['heaterPowerW', 'heater_power_w']);
+    assign('cubeVolumeL', ['cubeVolumeL', 'cube_volume_l']);
+    assign('minHeaterSubmergeL', ['minHeaterSubmergeL', 'min_heater_submerge_l']);
+    assign('waterAutoStartCubeTempC', [
+        'waterAutoStartCubeTempC',
+        'water_auto_start_cube_temp_c',
+        'water_auto_start_cube_temp'
+    ]);
+}
+
+function mergeSafetySettingsState(s, data) {
+    const sources = [];
+    if (data?.safetySettings && typeof data.safetySettings === 'object') sources.push(data.safetySettings);
+    if (data?.safety && typeof data.safety === 'object') sources.push(data.safety);
+    if (data?.settings?.safety && typeof data.settings.safety === 'object') sources.push(data.settings.safety);
+    if (data && typeof data === 'object') sources.push(data);
+
+    const assign = (field, keys) => {
+        for (const source of sources) {
+            const value = readFiniteCandidate(source, keys);
+            if (value === undefined) continue;
+            s.safetySettings[field] = value;
+            return;
+        }
+    };
+
+    assign('pressureMaxMmHg', ['pressureMaxMmHg', 'pressure_max_mmhg', 'safetyPressureMaxMmHg']);
+    assign('tsaMaxC', ['tsaMaxC', 'tsa_max_c', 'safetyTsaMaxC']);
+    assign('waterOutMaxC', ['waterOutMaxC', 'water_out_max_c', 'safetyWaterOutMaxC']);
+}
+
 export function updateRuntimeStateFromStatus(data) {
     if (!data || typeof data !== 'object') return;
     const s = runtimeMonitorState;
@@ -28,26 +84,9 @@ export function updateRuntimeStateFromStatus(data) {
         if (data.volumes.body !== undefined) s.volumes.body = toFinite(data.volumes.body, s.volumes.body);
         if (data.volumes.tails !== undefined) s.volumes.tails = toFinite(data.volumes.tails, s.volumes.tails);
     }
-    if (data.equipment && typeof data.equipment === 'object') {
-        if (data.equipment.heaterPowerW !== undefined) {
-            s.equipment.heaterPowerW = toFinite(data.equipment.heaterPowerW, s.equipment.heaterPowerW);
-        }
-        if (data.equipment.cubeVolumeL !== undefined) {
-            s.equipment.cubeVolumeL = toFinite(data.equipment.cubeVolumeL, s.equipment.cubeVolumeL);
-        }
-        if (data.equipment.minHeaterSubmergeL !== undefined) {
-            s.equipment.minHeaterSubmergeL = toFinite(
-                data.equipment.minHeaterSubmergeL,
-                s.equipment.minHeaterSubmergeL
-            );
-        }
-        if (data.equipment.waterAutoStartCubeTempC !== undefined) {
-            s.equipment.waterAutoStartCubeTempC = toFinite(
-                data.equipment.waterAutoStartCubeTempC,
-                s.equipment.waterAutoStartCubeTempC
-            );
-        }
-    }
+
+    mergeEquipmentState(s, data);
+
     if (data.rectification && typeof data.rectification === 'object') {
         s.rectification = { ...s.rectification, ...data.rectification };
         if (!plannedAbvUserSet && data.rectification.feedAbvPercent !== undefined) {
@@ -57,9 +96,9 @@ export function updateRuntimeStateFromStatus(data) {
     if (data.distillation && typeof data.distillation === 'object') {
         s.distillation = { ...s.distillation, ...data.distillation };
     }
-    if (data.safetySettings && typeof data.safetySettings === 'object') {
-        s.safetySettings = { ...s.safetySettings, ...data.safetySettings };
-    }
+
+    mergeSafetySettingsState(s, data);
+
     if (data.mashing && typeof data.mashing === 'object') {
         s.mashing = { ...s.mashing, ...data.mashing };
     }
@@ -113,29 +152,9 @@ export function updateRuntimeStateFromWs(data) {
     if (data.distillation && typeof data.distillation === 'object') {
         s.distillation = { ...s.distillation, ...data.distillation };
     }
-    if (data.safetySettings && typeof data.safetySettings === 'object') {
-        s.safetySettings = { ...s.safetySettings, ...data.safetySettings };
-    }
-    if (data.equipment && typeof data.equipment === 'object') {
-        if (data.equipment.heaterPowerW !== undefined) {
-            s.equipment.heaterPowerW = toFinite(data.equipment.heaterPowerW, s.equipment.heaterPowerW);
-        }
-        if (data.equipment.cubeVolumeL !== undefined) {
-            s.equipment.cubeVolumeL = toFinite(data.equipment.cubeVolumeL, s.equipment.cubeVolumeL);
-        }
-        if (data.equipment.minHeaterSubmergeL !== undefined) {
-            s.equipment.minHeaterSubmergeL = toFinite(
-                data.equipment.minHeaterSubmergeL,
-                s.equipment.minHeaterSubmergeL
-            );
-        }
-        if (data.equipment.waterAutoStartCubeTempC !== undefined) {
-            s.equipment.waterAutoStartCubeTempC = toFinite(
-                data.equipment.waterAutoStartCubeTempC,
-                s.equipment.waterAutoStartCubeTempC
-            );
-        }
-    }
+
+    mergeSafetySettingsState(s, data);
+    mergeEquipmentState(s, data);
 }
 
 export function estimateRectTargets(rect, abvPercentOverride = null) {

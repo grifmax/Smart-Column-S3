@@ -313,6 +313,11 @@ void init() {
     safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
     safetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
     safetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
+    doc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
+    doc["water_auto_start_cube_temp_c"] = g_settings.equipment.waterAutoStartCubeTempC;
+    doc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
+    doc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
+    doc["safety_water_out_max_c"] = g_settings.safety.waterOutMaxC;
 
     // Runtime-параметры режимов (для экрана мониторинга)
     JsonObject rect = doc.createNestedObject("rectification");
@@ -2532,6 +2537,11 @@ void broadcastState(const SystemState &state) {
   fastSafetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
   fastSafetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
   fastSafetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
+  fastDoc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
+  fastDoc["water_auto_start_cube_temp_c"] = g_settings.equipment.waterAutoStartCubeTempC;
+  fastDoc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
+  fastDoc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
+  fastDoc["safety_water_out_max_c"] = g_settings.safety.waterOutMaxC;
   JsonObject fastValves = fastDoc.createNestedObject("valves");
   fastValves["water"] = Valves::getWater();
   fastValves["heads"] = Valves::getHeads();
@@ -2622,6 +2632,11 @@ void broadcastState(const SystemState &state) {
   safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
   safetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
   safetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
+  doc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
+  doc["water_auto_start_cube_temp_c"] = g_settings.equipment.waterAutoStartCubeTempC;
+  doc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
+  doc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
+  doc["safety_water_out_max_c"] = g_settings.safety.waterOutMaxC;
 
   JsonObject rect = doc.createNestedObject("rectification");
   rect["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
