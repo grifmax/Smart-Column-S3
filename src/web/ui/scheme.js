@@ -432,6 +432,19 @@ export function updateInteractiveScheme(data) {
         }
     }
 
+    // "Заливка" синей линии охлаждения при рабочем охлаждении.
+    const coolingActiveByValve = Boolean(valvesState?.water);
+    const coolingActiveByTemps = (
+        tempWaterIn !== undefined
+        && tempWaterOut !== undefined
+        && tempWaterOut > tempWaterIn
+        && tempWaterOut > 20
+    );
+    const isCoolingActive = coolingActiveByValve || coolingActiveByTemps;
+    svg.querySelectorAll('.pipe-water').forEach((pipe) => {
+        pipe.classList.toggle('active', isCoolingActive);
+    });
+
     // Анимация уровня жидкости
     const liquidPath = svg.getElementById('anim-liquid-level');
     if (liquidPath && runtimeMonitorState) {

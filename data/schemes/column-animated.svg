@@ -40,12 +40,25 @@
     .struct-line { fill: none; stroke: #000; stroke-width: 1; }
     .pipe { fill: none; stroke: #000; stroke-width: 1; }
     .pipe-water { fill: none; stroke: #001dbc; stroke-width: 1; }
+    .pipe-water.active {
+      stroke: #1a9cff;
+      stroke-width: 4;
+      stroke-linecap: round;
+      opacity: 0.95;
+      filter: drop-shadow(0 0 4px rgba(26, 156, 255, 0.85));
+      animation: water-pipe-pulse 1.2s ease-in-out infinite;
+    }
     .valve { fill: #fff; stroke: #000; stroke-width: 1; }
     .valve-open .valve { fill: #2ecc71; stroke: #27ae60; }
     .valve-closed .valve { fill: #e74c3c; stroke: #c0392b; }
     .jar { fill: #fff; stroke: #000; stroke-width: 2; }
     .drop { fill: #3498db; opacity: 0; transition: opacity 0.5s; }
     .condensing .drop { opacity: 0.7; }
+
+    @keyframes water-pipe-pulse {
+      0%, 100% { opacity: 0.78; }
+      50% { opacity: 1; }
+    }
   </style>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
