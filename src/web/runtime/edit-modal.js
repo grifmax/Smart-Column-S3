@@ -1,3 +1,102 @@
+﻿import {
+    runtimeMonitorState, maxHeaterPower, currentMode,
+    MODE_MANUAL, MODE_RECT, plannedAbvPercent,
+    runtimeEditContext, setRuntimeEditContext
+} from '../globals.js';
+import { toFinite, clampPercent, normalizeAbvPercent } from './helpers.js';
+import { savePlannedAbv, renderAbvValue } from './abv.js';
+import { renderModeRuntimeCard } from './bars.js';
+import { addLog } from '../core/logs.js';
+import { loadStatus } from '../core/status.js';
+
+function isRuntimeEditWattsMode(config) {
+    if (!config?.supportsUnitToggle) return false;
+    const cbWatts = document.getElementById('runtime-edit-unit-watts');
+    return Boolean(cbWatts?.checked);
+}
+
+function getRuntimeQuickAdjustments(config) {
+    const groups = config?.quickAdjustments?.groups;
+    if (!Array.isArray(groups) || groups.length === 0) return [];
+    return groups;
+}
+
+function formatRuntimeDelta(delta) {
+    const sign = delta >= 0 ? '+' : '';
+    return `${sign}${delta}`;
+}
+
+function renderRuntimeQuickActions(config) {
+    const root = document.getElementById('runtime-edit-quick-actions');
+    if (!root) return;
+
+    const groups = getRuntimeQuickAdjustments(config);
+    if (!groups.length) {
+        root.style.display = 'none';
+        root.innerHTML = '';
+        return;
+    }
+
+    const activeUnit = isRuntimeEditWattsMode(config) ? 'watts' : 'percent';
+    root.innerHTML = groups.map((group) => {
+        const values = Array.isArray(group.deltas) ? group.deltas : [];
+        const buttons = values.map((delta) => (
+            `<button type="button" class="btn btn-sm runtime-edit-quick-btn" data-runtime-delta-unit="${group.unit}" data-runtime-delta="${delta}">${formatRuntimeDelta(delta)}</button>`
+        )).join('');
+        const isActive = group.unit === activeUnit ? ' is-active' : '';
+        return `
+            <div class="runtime-edit-quick-group${isActive}">
+                <div class="runtime-edit-quick-label">${group.label}</div>
+                <div class="runtime-edit-quick-row">${buttons}</div>
+            </div>
+        `;
+    }).join('');
+
+    root.querySelectorAll('[data-runtime-delta]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const unit = String(button.getAttribute('data-runtime-delta-unit') || '').trim();
+            const delta = toFinite(button.getAttribute('data-runtime-delta'), NaN);
+            applyRuntimeQuickDelta(unit, delta);
+            renderRuntimeQuickActions(config);
+        });
+    });
+    root.style.display = 'grid';
+}
+
+function applyRuntimeQuickDelta(unit, delta) {
+    const config = runtimeEditContext;
+    const inputEl = document.getElementById('runtime-edit-value');
+    if (!config || !inputEl || !Number.isFinite(delta)) return;
+
+    const min = toFinite(inputEl.min, Number.NEGATIVE_INFINITY);
+    const max = toFinite(inputEl.max, Number.POSITIVE_INFINITY);
+    const currentValue = toFinite(inputEl.value, min || 0);
+
+    if (config.supportsUnitToggle) {
+        const heaterMaxW = Math.max(1, toFinite(config.heaterMaxW, maxHeaterPower));
+        const wattsMode = isRuntimeEditWattsMode(config);
+        const currentPercent = wattsMode ? ((currentValue / heaterMaxW) * 100) : currentValue;
+
+        let nextPercent;
+        if (unit === 'watts') {
+            const nextWatts = Math.max(0, Math.min(heaterMaxW, (currentPercent / 100) * heaterMaxW + delta));
+            nextPercent = (nextWatts / heaterMaxW) * 100;
+        } else {
+            nextPercent = currentPercent + delta;
+        }
+        nextPercent = Math.max(0, Math.min(100, nextPercent));
+        inputEl.value = wattsMode
+            ? String(Math.round((nextPercent / 100) * heaterMaxW))
+            : String(Math.round(nextPercent));
+        inputEl.focus();
+        return;
+    }
+
+    const nextValue = Math.min(max, Math.max(min, currentValue + delta));
+    inputEl.value = String(Math.round(nextValue));
+    inputEl.focus();
+}
+
 export function getRuntimeEditConfig(paramKey) {
     const s = runtimeMonitorState;
     const heaterMax = Math.max(1, toFinite(s.equipment.heaterPowerW, maxHeaterPower));
@@ -34,6 +133,12 @@ export function getRuntimeEditConfig(paramKey) {
             value: currentPowerPercent.toFixed(0),
             supportsUnitToggle: true,
             heaterMaxW: heaterMax,
+            quickAdjustments: {
+                groups: [
+                    { unit: 'watts', label: 'Быстрые шаги, Вт', deltas: [-10, -100, 10, 100] },
+                    { unit: 'percent', label: 'Быстрые шаги, %', deltas: [-1, -10, 1, 10] }
+                ]
+            },
             submit: async (value) => {
                 const resp = await fetch('/api/manual/heater', {
                     method: 'POST',
@@ -147,7 +252,7 @@ export function openRuntimeEditModal(paramKey) {
     const cbWatts = document.getElementById('runtime-edit-unit-watts');
     if (!config || !modal || !titleEl || !labelEl || !inputEl || !hintEl) return;
 
-    runtimeEditContext = config;
+    setRuntimeEditContext(config);
     titleEl.textContent = config.title;
     labelEl.textContent = config.label;
     inputEl.min = config.min;
@@ -165,6 +270,7 @@ export function openRuntimeEditModal(paramKey) {
             toggleEl.style.display = 'none';
         }
     }
+    renderRuntimeQuickActions(config);
 
     modal.style.display = 'flex';
     inputEl.focus();
@@ -200,11 +306,12 @@ export function onRuntimeEditUnitToggle() {
         inputEl.step = config.step;
         inputEl.value = String(Math.min(100, Math.max(0, pct)));
     }
+    renderRuntimeQuickActions(config);
     inputEl.focus();
 }
 
 export function closeRuntimeEditModal() {
-    runtimeEditContext = null;
+    setRuntimeEditContext(null);
     const modal = document.getElementById('runtime-edit-modal');
     if (modal) modal.style.display = 'none';
 }

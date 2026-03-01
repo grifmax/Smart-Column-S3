@@ -1,4 +1,4 @@
-/* ============================================================================
+﻿/* ============================================================================
    Модальное окно
    ============================================================================ */
 
@@ -153,6 +153,42 @@
 
 .modal-phase-detail strong {
     color: var(--text-primary);
+}
+
+.runtime-edit-quick-actions {
+    margin-top: 14px;
+    display: grid;
+    gap: 10px;
+}
+
+.runtime-edit-quick-group {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px;
+    background: var(--bg-secondary);
+}
+
+.runtime-edit-quick-group.is-active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.runtime-edit-quick-label {
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    margin-bottom: 7px;
+}
+
+.runtime-edit-quick-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.runtime-edit-quick-btn {
+    min-width: 64px;
+    padding: 6px 10px;
+    font-size: 0.86em;
 }
 
 /* Темная тема для модального окна */
