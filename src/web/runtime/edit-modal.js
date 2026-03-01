@@ -170,6 +170,11 @@ export function getRuntimeEditConfig(paramKey) {
             max: '5000',
             hint: '0 = остановить насос.',
             value: toFinite(s.pump.speedMlH, 0).toFixed(0),
+            quickAdjustments: {
+                groups: [
+                    { unit: 'mlh', label: 'Быстрые шаги, мл/ч', deltas: [-10, -100, 10, 100] }
+                ]
+            },
             submit: async (value) => {
                 const resp = await fetch('/api/manual/pump', {
                     method: 'POST',
