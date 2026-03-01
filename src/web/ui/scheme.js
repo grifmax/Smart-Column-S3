@@ -166,7 +166,33 @@ function updatePumpImpellerAnimation(svg, speedMlH) {
     }
 }
 
-function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux) {
+function getTsaRiseRatePerMin(svg, tempCube, tempTsa) {
+    const cube = Number(tempCube) || 0;
+    const tsa = Number(tempTsa);
+    if (!Number.isFinite(tsa)) return 0;
+
+    const now = Date.now();
+    if (!svg._tsaTrend) {
+        svg._tsaTrend = { prevTsa: tsa, prevTs: now };
+        return 0;
+    }
+
+    const prevTsa = Number(svg._tsaTrend.prevTsa);
+    const prevTs = Number(svg._tsaTrend.prevTs);
+    svg._tsaTrend.prevTsa = tsa;
+    svg._tsaTrend.prevTs = now;
+
+    if (cube < 45 || !Number.isFinite(prevTsa) || !Number.isFinite(prevTs)) {
+        return 0;
+    }
+
+    const dtMs = now - prevTs;
+    if (dtMs <= 0) return 0;
+    const dtMin = dtMs / 60000;
+    return (tsa - prevTsa) / dtMin;
+}
+
+function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pressureCube) {
     const heatLayer = svg.getElementById('anim-column-heat-layer');
     const refluxLayer = svg.getElementById('anim-column-reflux-layer');
     if (!heatLayer || !refluxLayer) return;
@@ -178,11 +204,17 @@ function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux) {
     const tCube = Number(tempCube) || 0;
     const tMid = Number(tempColMid) || 0;
     const tReflux = Number(tempReflux) || 0;
+    const tTsa = Number(tempTsa) || 0;
+    const pCube = Number(pressureCube) || 0;
+    const tsaRisePerMin = getTsaRiseRatePerMin(svg, tCube, tTsa);
 
     const clamp01 = (v) => Math.max(0, Math.min(1, v));
     const heatLevel = clamp01((tCube - 45) / 35);
     const refluxLevel = clamp01((tReflux - 65) / 18);
     const stabilityLevel = clamp01(1 - Math.abs(tMid - 76.6) / 3.5);
+    const tsaHotLevel = clamp01((tTsa - 78.5) / 3.0);
+    const pressureLevel = clamp01((pCube - 8) / 20);
+    const tsaDeltaLevel = clamp01((tsaRisePerMin - 0.02) / 0.20);
 
     // Базовые зоны: красная поднимается снизу, синяя заполняет сверху.
     let heatCoverage = 0.2 + (0.75 * heatLevel);
@@ -201,6 +233,14 @@ function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux) {
         heatCoverage *= (1 - Math.min(0.35, Math.abs(dominance) * 0.35));
     }
 
+    // Доп. факторы "красного вытеснения":
+    // 1) рост TSA, 2) перегрев TSA, 3) рост давления.
+    const redPush = Math.max(tsaHotLevel, pressureLevel, tsaDeltaLevel);
+    if (redPush > 0) {
+        heatCoverage = Math.min(1, heatCoverage + (0.25 * redPush));
+        refluxCoverage = Math.max(0.08, refluxCoverage * (1 - 0.55 * redPush));
+    }
+
     const heatHeight = baseH * clamp01(heatCoverage);
     const heatY = baseY + (baseH - heatHeight);
     const refluxHeight = baseH * clamp01(refluxCoverage);
@@ -211,8 +251,10 @@ function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux) {
     refluxLayer.setAttribute('y', refluxY.toFixed(2));
     refluxLayer.setAttribute('height', refluxHeight.toFixed(2));
 
-    heatLayer.style.opacity = (0.12 + heatLevel * 0.78).toFixed(3);
-    refluxLayer.style.opacity = (0.1 + refluxLevel * 0.74).toFixed(3);
+    const heatOpacity = Math.min(0.95, 0.12 + heatLevel * 0.78 + (redPush * 0.2));
+    const refluxOpacity = Math.max(0.08, (0.1 + refluxLevel * 0.74) * (1 - redPush * 0.6));
+    heatLayer.style.opacity = heatOpacity.toFixed(3);
+    refluxLayer.style.opacity = refluxOpacity.toFixed(3);
 }
 
 
@@ -401,7 +443,14 @@ export function updateInteractiveScheme(data) {
     setTxt('txt-temp-tsa', tempTsa, ' °C');
     setTxt('txt-water-in', tempWaterIn, ' °C');
     setTxt('txt-water-out', tempWaterOut, ' °C');
-    updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux);
+
+    let pCube = undefined;
+    if (data.pressure && data.pressure.cube !== undefined) {
+        pCube = data.pressure.cube;
+    } else if (data.p_cube !== undefined) {
+        pCube = data.p_cube;
+    }
+    updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pCube);
 
     // Капли дефлегматора — видимы при T царги > 70°C
     const refluxZone = svg.getElementById('zone-reflux');
@@ -411,12 +460,6 @@ export function updateInteractiveScheme(data) {
     }
 
     // Обновление давления на схеме
-    let pCube = undefined;
-    if (data.pressure && data.pressure.cube !== undefined) {
-        pCube = data.pressure.cube;
-    } else if (data.p_cube !== undefined) {
-        pCube = data.p_cube;
-    }
     if (pCube !== undefined) {
         const el = svg.getElementById('txt-pressure-cube');
         if (el) el.textContent = `${pCube.toFixed(1)} мм рт.ст.`;
