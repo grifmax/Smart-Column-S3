@@ -15,6 +15,21 @@
       <stop offset="50%" style="stop-color:#ecf0f1;stop-opacity:1"/>
       <stop offset="100%" style="stop-color:#bdc3c7;stop-opacity:1"/>
     </linearGradient>
+    <!-- Анимационные градиенты царги и куба -->
+    <linearGradient id="grad-column-heat" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#d94b2b;stop-opacity:0.65"/>
+      <stop offset="70%" style="stop-color:#d94b2b;stop-opacity:0.18"/>
+      <stop offset="100%" style="stop-color:#d94b2b;stop-opacity:0"/>
+    </linearGradient>
+    <linearGradient id="grad-column-reflux" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1f84ff;stop-opacity:0.65"/>
+      <stop offset="70%" style="stop-color:#1f84ff;stop-opacity:0.18"/>
+      <stop offset="100%" style="stop-color:#1f84ff;stop-opacity:0"/>
+    </linearGradient>
+    <linearGradient id="grad-cube-liquid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8fd0ff;stop-opacity:0.55"/>
+      <stop offset="100%" style="stop-color:#3e8fd7;stop-opacity:0.35"/>
+    </linearGradient>
   </defs>
 
   <style>
@@ -98,7 +113,9 @@
   <!-- ЦАРГА (насадочная колонна с упаковкой)  y=244..488         -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <g id="zone-column">
-    <rect x="146" y="244" width="50" height="244" fill="url(#dots-packing)" stroke="#314354" stroke-width="1"/>
+    <rect id="column-shell" x="146" y="244" width="50" height="244" fill="url(#dots-packing)" stroke="#314354" stroke-width="1"/>
+    <rect id="anim-column-heat-layer" x="146" y="244" width="50" height="244" fill="url(#grad-column-heat)" opacity="0" pointer-events="none"/>
+    <rect id="anim-column-reflux-layer" x="146" y="244" width="50" height="244" fill="url(#grad-column-reflux)" opacity="0" pointer-events="none"/>
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
@@ -121,7 +138,7 @@
   <!-- КУБ (бойлер)  y=553..743                                   -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <g id="zone-cube">
-    <rect x="76" y="553" width="190" height="190" class="struct"/>
+    <rect id="cube-shell" x="76" y="553" width="190" height="190" class="struct"/>
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
@@ -159,7 +176,7 @@
     <!-- Корпус насоса (белая заливка перекрывает трубки) -->
     <circle cx="256" cy="371" r="22" fill="#fff" stroke="#000" stroke-width="1.5"/>
     <!-- Крыльчатка (6 лопастей) -->
-    <g fill="none" stroke="#555" stroke-width="2" stroke-linecap="round">
+    <g id="pump-impeller" fill="none" stroke="#555" stroke-width="2" stroke-linecap="round">
       <line x1="256" y1="371" x2="256" y2="352"/>
       <line x1="256" y1="371" x2="272.5" y2="380.5"/>
       <line x1="256" y1="371" x2="239.5" y2="380.5"/>
@@ -219,8 +236,15 @@
   <path d="M335.75,428 L335.5,444 M331.5,444 L331.75,428" class="pipe"/>
   <path d="M398.75,428 L398.75,547 M394.75,547 L394.75,428" class="pipe"/>
   <path d="M459.75,428 L459.75,468 M455.75,468 L455.75,428" class="pipe"/>
-  <!-- Труба от клапана воды к ёмкости хвостов (влево) -->
-  <path d="M104,459 L34.5,459 L34.5,480 M30.5,480 L30.5,455 L104,455" class="pipe"/>
+  <g id="zone-tails-left-branch">
+    <!-- Труба от клапана воды к ёмкости хвостов (влево) -->
+    <path id="tails-left-pipe" d="M104,459 L34.5,459 L34.5,480 M30.5,480 L30.5,455 L104,455" class="pipe"/>
+    <!-- Ёмкость ХВОСТОВ левая -->
+    <g id="jar-tails-left">
+      <path d="M-15,501.25 C-15,498.35 -12.84,496 -10.17,496 L61.39,496 C72.73,501.64 80,513.95 80,527.5 C80,541.05 72.73,553.36 61.39,559 L-10.17,559 C-12.84,559 -15,556.65 -15,553.75 L-15,501.25 Z" class="jar" transform="rotate(270,32.5,527.5)"/>
+    </g>
+    <text id="label-tails-left" x="34" y="429" class="label-text">Хвосты</text>
+  </g>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- ЁМКОСТИ ДЛЯ ФРАКЦИЙ                                       -->
@@ -240,18 +264,12 @@
     <path d="M410.25,467.25 C410.25,464.35 412.41,462 415.08,462 L486.64,462 C497.98,467.64 505.25,479.95 505.25,493.5 C505.25,507.05 497.98,519.36 486.64,525 L415.08,525 C412.41,525 410.25,522.65 410.25,519.75 L410.25,467.25 Z" class="jar" transform="rotate(270,457.75,493.5)"/>
   </g>
 
-  <!-- Ёмкость ХВОСТОВ левая -->
-  <g id="jar-tails-left">
-    <path d="M-15,501.25 C-15,498.35 -12.84,496 -10.17,496 L61.39,496 C72.73,501.64 80,513.95 80,527.5 C80,541.05 72.73,553.36 61.39,559 L-10.17,559 C-12.84,559 -15,556.65 -15,553.75 L-15,501.25 Z" class="jar" transform="rotate(270,32.5,527.5)"/>
-  </g>
-
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- ТЕКСТОВЫЕ МЕТКИ (Головы, Тело, Хвосты)                    -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <text x="332" y="358" class="label-text">Головы</text>
   <text x="395" y="358" class="label-text">Тело</text>
   <text x="453" y="358" class="label-text">Хвосты</text>
-  <text x="34" y="429" class="label-text">Хвосты</text>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!-- СЕРЫЕ ИНДИКАТОРЫ (привязка к данным)                       -->
