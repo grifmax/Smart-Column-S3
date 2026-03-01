@@ -269,18 +269,18 @@ export function updateInteractiveScheme(data) {
     const tempWaterIn = getStatusNumber(data, 'temps', 'waterIn', 't_water_in');
     const tempWaterOut = getStatusNumber(data, 'temps', 'waterOut', 't_water_out');
 
-    const setTxt = (id, val) => {
+    const setTxt = (id, val, unit = '') => {
         const el = svg.getElementById(id);
-        if (el && val !== undefined) el.textContent = val.toFixed(1);
+        if (el && val !== undefined) el.textContent = `${val.toFixed(1)}${unit}`;
     };
-    setTxt('txt-temp-cube', tempCube);
-    setTxt('txt-temp-col-top', tempColTop);
-    setTxt('txt-temp-col-mid', tempColMid);
-    setTxt('txt-temp-node', tempNode);
-    setTxt('txt-temp-reflux', tempReflux);
-    setTxt('txt-temp-tsa', tempTsa);
-    setTxt('txt-water-in', tempWaterIn);
-    setTxt('txt-water-out', tempWaterOut);
+    setTxt('txt-temp-cube', tempCube, ' °C');
+    setTxt('txt-temp-col-top', tempColTop, ' °C');
+    setTxt('txt-temp-col-mid', tempColMid, ' °C');
+    setTxt('txt-temp-node', tempNode, ' °C');
+    setTxt('txt-temp-reflux', tempReflux, ' °C');
+    setTxt('txt-temp-tsa', tempTsa, ' °C');
+    setTxt('txt-water-in', tempWaterIn, ' °C');
+    setTxt('txt-water-out', tempWaterOut, ' °C');
 
     // Капли дефлегматора — видимы при T царги > 70°C
     const refluxZone = svg.getElementById('zone-reflux');
@@ -298,7 +298,7 @@ export function updateInteractiveScheme(data) {
     }
     if (pCube !== undefined) {
         const el = svg.getElementById('txt-pressure-cube');
-        if (el) el.textContent = pCube.toFixed(1);
+        if (el) el.textContent = `${pCube.toFixed(1)} мм рт.ст.`;
     }
 
     // Обновление ABV на схеме
@@ -350,7 +350,7 @@ export function updateInteractiveScheme(data) {
             powerSetEl.textContent = powerSetPercent.toFixed(0) + '%';
         const powerActEl = svg.getElementById('txt-power-actual');
         if (powerActEl)
-            powerActEl.textContent = powerActualW.toFixed(0) + 'Вт';
+            powerActEl.textContent = `${powerActualW.toFixed(0)} Вт`;
     }
 
     const valvesState = (data.valves && typeof data.valves === 'object')
@@ -388,6 +388,12 @@ export function updateInteractiveScheme(data) {
         const yTop = 600 - (pct * 120);
         const d = `M65,${yTop} L295,${yTop} L295,600 Q295,615 280,615 L80,615 Q65,615 65,600 Z`;
         liquidPath.setAttribute('d', d);
+
+        const cubeVolumeText = svg.getElementById('txt-volume-cube');
+        if (cubeVolumeText) {
+            const remainingMl = Math.max(0, maxVol - collected);
+            cubeVolumeText.textContent = `${(remainingMl / 1000).toFixed(1)} л`;
+        }
     }
 
     // Визуализация капель (скорость отбора)
@@ -487,6 +493,8 @@ export function updateInteractiveScheme(data) {
             elHeads.setAttribute('y', headsH - headsHFill);
             elHeads.setAttribute('height', headsHFill);
         }
+        const txtHeads = svg.getElementById('txt-volume-heads');
+        if (txtHeads) txtHeads.textContent = `${headsVol.toFixed(0)} мл`;
 
         // Body Jar
         const bodyVol = s.volumes?.body || 0;
@@ -505,6 +513,8 @@ export function updateInteractiveScheme(data) {
             elBody.setAttribute('y', bodyH - bodyHFill);
             elBody.setAttribute('height', bodyHFill);
         }
+        const txtBody = svg.getElementById('txt-volume-body');
+        if (txtBody) txtBody.textContent = `${bodyVol.toFixed(0)} мл`;
 
         // Tails Jar
         const tailsVol = s.volumes?.tails || 0;
@@ -523,6 +533,10 @@ export function updateInteractiveScheme(data) {
             elTails.setAttribute('y', tailsH - tailsHFill);
             elTails.setAttribute('height', tailsHFill);
         }
+        const txtTailsLeft = svg.getElementById('txt-volume-tails');
+        if (txtTailsLeft) txtTailsLeft.textContent = `${tailsVol.toFixed(0)} мл`;
+        const txtTailsRight = svg.getElementById('txt-volume-tails-right');
+        if (txtTailsRight) txtTailsRight.textContent = `${tailsVol.toFixed(0)} мл`;
     }
 
     // Анимация конденсации (если есть нагрев и включена вода)

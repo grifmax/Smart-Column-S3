@@ -320,7 +320,7 @@
   <!-- Давление куба -->
   <g id="ind-pressure-cube">
     <rect x="146" y="510" width="62" height="25" rx="3.75" ry="3.75" class="indicator"/>
-    <text id="txt-pressure-cube" x="177" y="523" class="indicator-text">-- ммРт</text>
+    <text id="txt-pressure-cube" x="177" y="523" class="indicator-text">-- мм рт.ст.</text>
   </g>
 
   <!-- Температура куба -->
