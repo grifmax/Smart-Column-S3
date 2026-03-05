@@ -1,6 +1,10 @@
 @import './_variables.css';
 @import './_theme-dark.css';
 @import './_base.css';
+@import './_app-layout.css';
+@import './_titlebar.css';
+@import './_sidebar.css';
+@import './_kpi-strip.css';
 @import './_status-bar.css';
 @import './_menu.css';
 @import './_operator-screen.css';
@@ -12,6 +16,7 @@
 @import './_buttons.css';
 @import './_forms.css';
 @import './_control-panel.css';
+@import './_equipment.css';
 @import './_logs.css';
 @import './_responsive.css';
 @import './_scrollbar.css';

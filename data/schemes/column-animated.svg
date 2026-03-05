@@ -377,9 +377,9 @@
   <!-- Мощность ТЭНа (установленная / фактическая) -->
   <g id="ind-power">
     <rect x="120" y="689.5" width="109" height="36" rx="5.4" ry="5.4" class="indicator"/>
-    <text id="txt-power-set" x="155" y="705" class="indicator-text">--%</text>
-    <text x="175" y="705" class="indicator-text" style="fill:#666;font-size:10px">/</text>
-    <text id="txt-power-actual" x="191" y="705" class="indicator-text" xml:space="preserve" style="text-anchor:start"> -- &#1042;&#1090;</text>
+    <text id="txt-power-set" x="166" y="705" class="indicator-text" style="text-anchor:end">--%</text>
+    <text x="172" y="705" class="indicator-text" style="fill:#666;font-size:10px">/</text>
+    <text id="txt-power-actual" x="178" y="705" class="indicator-text" style="text-anchor:start">-- &#1042;&#1090;</text>
   </g>
 
   <!-- Объём голов -->

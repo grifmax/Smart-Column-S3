@@ -160,13 +160,13 @@ export function updateConnectionStatus(connected) {
 
     if (connected) {
 
-        statusDot.className = 'status-dot online';
+        statusDot.className = 'status-indicator online';
 
         statusText.textContent = 'Подключено';
 
     } else {
 
-        statusDot.className = 'status-dot offline';
+        statusDot.className = 'status-indicator';
 
         statusText.textContent = 'Отключено';
 

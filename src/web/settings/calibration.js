@@ -125,8 +125,7 @@ export async function loadCalibrationData() {
                     const validBadge = temp.valid ? '✓ OK' : '✗ Ошибка';
 
                     const li = document.createElement('li');
-                    li.className = 'card';
-                    li.style.marginBottom = '10px';
+                    li.className = 'equipment-sensor-item';
                     li.innerHTML = `
                         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
                             <strong>${name}</strong>

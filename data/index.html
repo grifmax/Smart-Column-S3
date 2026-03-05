@@ -19,35 +19,43 @@
 </head>
 
 <body>
-    <div class="container">
-        <!-- Заголовок -->
-        <header>
-            <h1 style="cursor:pointer" onclick="document.querySelector('[data-tab=monitor]').click()">🏭 Smart-Column S3
-            </h1>
-            <div class="status-bar">
-                <span id="connection-status" class="status-dot offline">●</span>
+    <div class="app-window">
+        <!-- ===== TITLEBAR ===== -->
+        <div class="titlebar">
+            <div class="traffic-lights">
+                <div class="traffic-light tl-close"></div>
+                <div class="traffic-light tl-min"></div>
+                <div class="traffic-light tl-max"></div>
+            </div>
+            <span class="titlebar-title" onclick="document.querySelector('.sidebar-item.tab[data-tab=monitor]')?.click()">Smart-Column S3</span>
+            <div class="titlebar-status">
+                <div class="status-indicator" id="connection-status"></div>
                 <span id="connection-text">Подключение...</span>
-                <span class="uptime">Uptime: <span id="uptime">--:--:--</span></span>
-                <div class="user-menu-container" data-cloud-only="1" style="position: relative; margin-left: 15px;">
-                    <span class="user-info" id="user-info"
-                        style="color: var(--text-secondary); font-size: 0.9em; cursor: pointer; user-select: none;"
-                        onclick="toggleUserMenu()">
-                        👤 <span id="current-username">Загрузка...</span> ▼
-                    </span>
-                    <div id="user-menu" class="user-menu"
-                        style="display: none; position: absolute; top: 100%; right: 0; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 5px; min-width: 150px; z-index: 1000;">
-                        <div class="user-menu-item" onclick="switchAccount()"
-                            style="padding: 10px 15px; cursor: pointer; border-bottom: 1px solid var(--border-color);">
-                            🔄 Сменить аккаунт
-                        </div>
-                        <div class="user-menu-item" onclick="logout()"
-                            style="padding: 10px 15px; cursor: pointer; color: var(--danger, #dc3545);">
-                            🚪 Выход
-                        </div>
+                <span style="color:var(--text-tertiary)">&middot;</span>
+                <span>Uptime: <span id="uptime">--:--:--</span></span>
+            </div>
+            <div class="user-menu-container" data-cloud-only="1" style="position: relative; margin-left: 15px;">
+                <span class="user-info" id="user-info"
+                    style="color: var(--text-secondary); font-size: 0.9em; cursor: pointer; user-select: none;"
+                    onclick="toggleUserMenu()">
+                    👤 <span id="current-username">Загрузка...</span> ▼
+                </span>
+                <div id="user-menu" class="user-menu"
+                    style="display: none; position: absolute; top: 100%; right: 0; background: var(--bg-content); border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 5px; min-width: 150px; z-index: 1000;">
+                    <div class="user-menu-item" onclick="switchAccount()"
+                        style="padding: 10px 15px; cursor: pointer; border-bottom: 1px solid var(--border-color);">
+                        🔄 Сменить аккаунт
+                    </div>
+                    <div class="user-menu-item" onclick="logout()"
+                        style="padding: 10px 15px; cursor: pointer; color: var(--danger, #dc3545);">
+                        🚪 Выход
                     </div>
                 </div>
+            </div>
+            <div style="flex:1"></div>
+            <div class="titlebar-controls">
                 <div class="top-menu">
-                    <button id="top-menu-toggle" class="menu-toggle" type="button" aria-label="Открыть меню"
+                    <button id="top-menu-toggle" class="menu-toggle" type="button" aria-label="Меню"
                         aria-expanded="false" onclick="toggleTopMenu(event)">
                         <span></span>
                         <span></span>
@@ -55,18 +63,106 @@
                     </button>
                     <div id="top-menu-dropdown" class="menu-dropdown">
                         <nav class="tabs tabs-dropdown">
-                            <button class="tab active" data-tab="monitor">🏠 Главная</button>
-                            <button class="tab" data-tab="control">🎛️ Режимы</button>
-                            <button class="tab" data-tab="settings">⚙️ Настройки</button>
-                            <button class="tab" data-tab="equipment">🧰 Оборудование</button>
-                            <button class="tab" data-tab="history">📚 История</button>
-                            <button class="tab" data-tab="tools">🧮 Инструменты</button>
+                            <button class="tab active" data-tab="monitor">📊 Главная</button>
                             <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
+                            <a href="charts.html#logs" class="tab" style="text-decoration: none;">📝 Логи</a>
+                            <button class="tab" data-tab="control">🎛️ Режимы</button>
+                            <button class="tab" data-tab="equipment">🧰 Оборудование</button>
+                            <button class="tab" data-tab="tools">🧮 Инструменты</button>
+                            <button class="tab" data-tab="settings">⚙️ Настройки</button>
+                            <button class="tab" data-tab="wifi">📶 WiFi</button>
+                            <button class="tab" data-tab="history">📚 История</button>
                         </nav>
                     </div>
                 </div>
+                <button class="titlebar-btn" onclick="setTheme(document.body.getAttribute('data-theme')==='dark'?'light':'dark')" title="Тема">🌓</button>
             </div>
-        </header>
+        </div>
+
+        <div class="main-layout">
+            <!-- ===== SIDEBAR ===== -->
+            <nav class="sidebar">
+                <div class="sidebar-section-title">Мониторинг</div>
+                <button class="sidebar-item tab active" data-tab="monitor">
+                    <span class="icon">📊</span> Главная
+                </button>
+                <a href="charts.html" class="sidebar-item" style="text-decoration:none">
+                    <span class="icon">📈</span> Графики
+                </a>
+                <a href="charts.html#logs" class="sidebar-item" style="text-decoration:none">
+                    <span class="icon">📝</span> Логи
+                </a>
+
+                <div class="sidebar-section-title">Управление</div>
+                <button class="sidebar-item tab" data-tab="control">
+                    <span class="icon">🎛️</span> Режимы
+                </button>
+                <button class="sidebar-item tab" data-tab="equipment">
+                    <span class="icon">🧰</span> Оборудование
+                </button>
+                <button class="sidebar-item tab" data-tab="tools">
+                    <span class="icon">🧮</span> Инструменты
+                </button>
+
+                <div class="sidebar-section-title">Система</div>
+                <button class="sidebar-item tab" data-tab="settings">
+                    <span class="icon">⚙️</span> Настройки
+                </button>
+                <button class="sidebar-item tab" data-tab="wifi">
+                    <span class="icon">📶</span> WiFi
+                </button>
+                <button class="sidebar-item tab" data-tab="history">
+                    <span class="icon">📚</span> История
+                </button>
+
+                <div class="sidebar-spacer"></div>
+                <div class="sidebar-footer">
+                    Smart-Column S3 <span id="sidebar-version">v--</span><br>
+                    ESP32-S3 DevKitC-1 N16R8
+                </div>
+            </nav>
+
+            <!-- ===== CONTENT AREA ===== -->
+            <div class="content-area">
+                <!-- KPI TOOLBAR -->
+                <div class="toolbar">
+                    <div class="toolbar-top">
+                        <span class="toolbar-title" id="toolbar-page-title">Главная</span>
+                        <span class="status-badge idle" id="toolbar-status-badge">
+                            <span class="badge-dot"></span>
+                            <span id="toolbar-mode-label">IDLE</span>
+                        </span>
+                        <div class="toolbar-spacer"></div>
+                        <div class="toolbar-group">
+                            <button class="toolbar-btn warning" id="toolbar-pause-btn" onclick="pauseProcess()">⏸ Пауза</button>
+                            <button class="toolbar-btn danger" id="toolbar-stop-btn" onclick="stopProcess()" disabled>■ Стоп</button>
+                        </div>
+                    </div>
+                    <div class="toolbar-kpi-strip">
+                        <div class="toolbar-kpi kpi-temp">
+                            <div class="toolbar-kpi-label">Температура куба</div>
+                            <div class="toolbar-kpi-value" id="kpi-temp-cube">--<span class="toolbar-kpi-unit">°C</span></div>
+                        </div>
+                        <div class="toolbar-kpi kpi-tsarga">
+                            <div class="toolbar-kpi-label">Царга</div>
+                            <div class="toolbar-kpi-value" id="kpi-tsarga">--<span class="toolbar-kpi-unit">°C</span></div>
+                        </div>
+                        <div class="toolbar-kpi kpi-power">
+                            <div class="toolbar-kpi-label">Мощность</div>
+                            <div class="toolbar-kpi-value" id="kpi-power">--<span class="toolbar-kpi-unit">W</span></div>
+                        </div>
+                        <div class="toolbar-kpi kpi-pressure">
+                            <div class="toolbar-kpi-label">Давление</div>
+                            <div class="toolbar-kpi-value" id="kpi-pressure">--<span class="toolbar-kpi-unit">мм рт.ст.</span></div>
+                        </div>
+                        <div class="toolbar-kpi kpi-pump">
+                            <div class="toolbar-kpi-label">Насос</div>
+                            <div class="toolbar-kpi-value" id="kpi-pump">--<span class="toolbar-kpi-unit">мл/ч</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="content-body">
 
         <!-- Вкладка: Главная -->
         <div id="monitor" class="tab-content active">
@@ -793,31 +889,6 @@
                 </div>
 
                 <div class="card">
-                    <h2>📶 WiFi</h2>
-                    <div id="wifi-inline-status" class="info-text" style="margin-bottom: 12px;">Загрузка статуса...</div>
-                    <div class="controls" style="margin-bottom: 12px;">
-                        <button class="btn btn-primary" onclick="scanWiFiNetworks()">📡 Сканировать сети</button>
-                        <button class="btn" onclick="loadWiFiStatus()">🔄 Обновить статус</button>
-                    </div>
-                    <div id="wifi-inline-network-list" class="history-list" style="margin-bottom: 12px;">
-                        <p class="info-text">Нажмите «Сканировать сети»</p>
-                    </div>
-                    <div class="form-group">
-                        <label>SSID</label>
-                        <input type="text" id="wifi-inline-ssid" placeholder="Выберите сеть из списка или введите вручную">
-                    </div>
-                    <div class="form-group">
-                        <label>Пароль</label>
-                        <input type="password" id="wifi-inline-password" placeholder="Пароль WiFi">
-                    </div>
-                    <div class="controls">
-                        <button class="btn btn-success" onclick="connectWiFiNetwork()">🔌 Подключить</button>
-                        <button class="btn" onclick="cancelWiFiSelection()">Очистить</button>
-                    </div>
-                    <div id="wifi-inline-message" class="info-text" style="margin-top: 10px;"></div>
-                </div>
-
-                <div class="card">
                     <h2>📡 MQTT</h2>
                     <div class="form-group">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
@@ -999,31 +1070,66 @@
             </div>
         </div>
 
+        <!-- Вкладка: WiFi -->
+        <div id="wifi" class="tab-content">
+            <div class="cards">
+                <div class="card">
+                    <h2>📶 WiFi</h2>
+                    <div id="wifi-inline-status" class="info-text" style="margin-bottom: 12px;">Загрузка статуса...</div>
+                    <div class="controls" style="margin-bottom: 12px;">
+                        <button class="btn btn-primary" onclick="scanWiFiNetworks()">📡 Сканировать сети</button>
+                        <button class="btn" onclick="loadWiFiStatus()">🔄 Обновить статус</button>
+                    </div>
+                    <div id="wifi-inline-network-list" class="history-list" style="margin-bottom: 12px;">
+                        <p class="info-text">Нажмите «Сканировать сети»</p>
+                    </div>
+                    <div class="form-group">
+                        <label>SSID</label>
+                        <input type="text" id="wifi-inline-ssid" placeholder="Выберите сеть из списка или введите вручную">
+                    </div>
+                    <div class="form-group">
+                        <label>Пароль</label>
+                        <input type="password" id="wifi-inline-password" placeholder="Пароль WiFi">
+                    </div>
+                    <div class="controls">
+                        <button class="btn btn-success" onclick="connectWiFiNetwork()">🔌 Подключить</button>
+                        <button class="btn" onclick="cancelWiFiSelection()">Очистить</button>
+                    </div>
+                    <div id="wifi-inline-message" class="info-text" style="margin-top: 10px;"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Вкладка: Оборудование -->
         <div id="equipment" class="tab-content">
             <div class="cards">
-                <div class="card">
+                <div class="card equipment-card equipment-card-params">
                     <h2>🧰 Параметры оборудования</h2>
-                    <div class="form-group">
-                        <label>мл на оборот</label>
-                        <input type="number" id="pump-ml-per-rev" step="0.001" min="0" placeholder="Загрузка...">
+                    <p class="equipment-subtitle">Базовые параметры узлов. Изменения сохраняются в контроллере.</p>
+                    <div class="equipment-grid">
+                        <div class="form-group">
+                            <label>мл на оборот</label>
+                            <input type="number" id="pump-ml-per-rev" step="0.001" min="0" placeholder="Загрузка...">
+                        </div>
+                        <div class="form-group">
+                            <label>Шагов за полный оборот</label>
+                            <input type="number" id="pump-steps-per-rev" min="1" step="1" placeholder="Загрузка...">
+                        </div>
+                        <div class="form-group">
+                            <label>Мощность ТЭНа (Вт)</label>
+                            <input type="number" id="heater-power-w" value="3000" min="1000" max="10000">
+                        </div>
+                        <div class="form-group">
+                            <label>Высота царги (мм)</label>
+                            <input type="number" id="column-height" value="1500" min="500" max="3000">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Шагов за полный оборот</label>
-                        <input type="number" id="pump-steps-per-rev" min="1" step="1" placeholder="Загрузка...">
+                    <div class="controls equipment-actions">
+                        <button class="btn btn-primary" onclick="saveEquipment()">💾 Сохранить</button>
                     </div>
-                    <div class="form-group">
-                        <label>Мощность ТЭНа (Вт)</label>
-                        <input type="number" id="heater-power-w" value="3000" min="1000" max="10000">
-                    </div>
-                    <div class="form-group">
-                        <label>Высота царги (мм)</label>
-                        <input type="number" id="column-height" value="1500" min="500" max="3000">
-                    </div>
-                    <button class="btn btn-primary" onclick="saveEquipment()">💾 Сохранить</button>
                 </div>
 
-                <div class="card">
+                <div class="card equipment-card equipment-card-pump">
                     <h2>💧 Калибровка насоса</h2>
                     <div class="form-group">
                         <label>Текущее значение</label>
@@ -1055,10 +1161,10 @@
                         <label>Расчётное время</label>
                         <div class="info-text" id="cal-time">30 мин</div>
                     </div>
-                    <div id="cal-progress-container" style="display: none; margin: 20px 0; padding: 15px; background: var(--bg-secondary); border-radius: 6px; border-left: 4px solid var(--primary);">
-                        <div style="margin-bottom: 10px;"><strong>Калибровка в процессе...</strong></div>
-                        <div style="background: var(--border-color); height: 24px; border-radius: 12px; overflow: hidden; margin-bottom: 8px;">
-                            <div id="cal-progress-bar" style="background: linear-gradient(90deg, #4CAF50, #66bb6a); height: 100%; width: 0%; transition: width 0.5s; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600;"></div>
+                    <div id="cal-progress-container" class="equipment-progress-wrap" style="display: none;">
+                        <div class="equipment-progress-title"><strong>Калибровка в процессе...</strong></div>
+                        <div class="equipment-progress-track">
+                            <div id="cal-progress-bar" class="equipment-progress-bar"></div>
                         </div>
                         <div class="info-text">Прошло: <span id="cal-elapsed">0 мин 0 сек</span> / <span id="cal-total">0 мин</span></div>
                     </div>
@@ -1068,7 +1174,7 @@
                             <input type="number" id="actual-volume" step="0.1" min="0" placeholder="Введите фактический объём">
                         </div>
                     </div>
-                    <div class="controls" style="flex-wrap: wrap;">
+                    <div class="controls equipment-actions" style="flex-wrap: wrap;">
                         <button class="btn btn-success" id="btn-start-cal" onclick="startCalibration()">▶️ Старт калибровки</button>
                         <button class="btn btn-warning" id="btn-stop-cal" onclick="stopCalibration()" style="display: none;">⏹️ Стоп</button>
                         <button class="btn btn-primary" id="btn-apply-cal" onclick="applyCalibration()" style="display: none;">✅ Применить</button>
@@ -1077,13 +1183,13 @@
                     <div id="pumpResult" class="info-text" style="margin-top: 10px;"></div>
                 </div>
 
-                <div class="card">
+                <div class="card equipment-card equipment-card-temp">
                     <h2>🌡️ Калибровка термометров</h2>
-                    <div class="controls">
+                    <div class="controls equipment-actions">
                         <button class="btn btn-secondary" onclick="scanCalibrationSensors()">🔍 Сканировать датчики</button>
                         <button class="btn" onclick="loadCalibrationData()">🔄 Обновить</button>
                     </div>
-                    <ul class="history-list" id="sensorList" style="margin-top: 12px;">
+                    <ul class="equipment-sensor-list" id="sensorList">
                         <li class="info-text">Загрузка...</li>
                     </ul>
                     <div id="tempResult" class="info-text" style="margin-top: 10px;"></div>
@@ -1093,6 +1199,10 @@
         <div id="history" class="tab-content">
             <div class="card">
                 <h2>📚 История процессов</h2>
+                <div class="equipment-log-hint">
+                    <span>📝 Логи перенесены на страницу графиков</span>
+                    <a href="charts.html#logs" class="btn btn-sm">Открыть логи</a>
+                </div>
 
                 <!-- Фильтры и поиск -->
                 <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
@@ -1208,8 +1318,8 @@
         </div>
 
         <!-- Футер -->
-        <footer>
-            <p>Smart-Column S3 v1.4.11 | ESP32-S3 DevKitC-1 N16R8</p>
+        <footer style="padding: 10px; text-align: center;">
+            <p style="font-size: 0.8em; color: var(--text-tertiary);">Smart-Column S3 v1.4.11 | ESP32-S3 DevKitC-1 N16R8</p>
             <div id="memory-stats"
                 style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
                 <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
@@ -1220,7 +1330,11 @@
                 </div>
             </div>
         </footer>
-    </div>
+
+                </div><!-- /content-body -->
+            </div><!-- /content-area -->
+        </div><!-- /main-layout -->
+    </div><!-- /app-window -->
 
     <!-- Модальное окно для детального просмотра процесса -->
     <div id="history-modal" class="modal-overlay">

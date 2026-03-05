@@ -2165,7 +2165,8 @@ void init() {
         }
 
         const char *ssid = doc["ssid"];
-        const char *password = doc["password"];
+        const bool hasPasswordField = doc.containsKey("password");
+        const char *password = hasPasswordField ? (doc["password"] | "") : nullptr;
 
         if (!ssid || strlen(ssid) == 0) {
           request->send(400, "application/json",
@@ -2176,12 +2177,25 @@ void init() {
         LOG_I("WiFi: Connect request for SSID: %s", ssid);
 
         // Сохранить в настройки
+        char prevSsid[sizeof(g_settings.wifi.ssid)];
+        strncpy(prevSsid, g_settings.wifi.ssid, sizeof(prevSsid) - 1);
+        prevSsid[sizeof(prevSsid) - 1] = '\0';
+
         strncpy(g_settings.wifi.ssid, ssid, sizeof(g_settings.wifi.ssid) - 1);
         g_settings.wifi.ssid[sizeof(g_settings.wifi.ssid) - 1] = '\0';
 
-        strncpy(g_settings.wifi.password, password ? password : "",
-                sizeof(g_settings.wifi.password) - 1);
-        g_settings.wifi.password[sizeof(g_settings.wifi.password) - 1] = '\0';
+        const bool sameSsid = strcmp(prevSsid, ssid) == 0;
+        const bool keepExistingPassword =
+            (!hasPasswordField || !password || strlen(password) == 0) &&
+            sameSsid && strlen(g_settings.wifi.password) > 0;
+
+        if (keepExistingPassword) {
+          LOG_W("WiFi: Empty password for same SSID, keeping stored password");
+        } else {
+          strncpy(g_settings.wifi.password, password ? password : "",
+                  sizeof(g_settings.wifi.password) - 1);
+          g_settings.wifi.password[sizeof(g_settings.wifi.password) - 1] = '\0';
+        }
 
         // AP must stay available while STA reconnects, so local UI at 192.168.4.1
         // does not disappear during/after WiFi credential updates.

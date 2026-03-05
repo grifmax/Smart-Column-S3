@@ -49,6 +49,7 @@
                     <button class="btn btn-sm" onclick="resumeCharts()">▶️ Продолжить</button>
                     <button class="btn btn-sm" onclick="clearCharts()">🗑️ Очистить</button>
                     <button class="btn btn-sm btn-primary" onclick="exportCharts()">💾 Экспорт PNG</button>
+                    <a href="#logs" class="btn btn-sm">📝 К логам</a>
                 </div>
             </div>
         </div>
@@ -165,7 +166,7 @@
         </div>
 
         <!-- Логи (перенесены из основной страницы) -->
-        <div class="card" style="margin-top: 20px;">
+        <div id="logs" class="card" style="margin-top: 20px;">
             <h2>📝 Логи</h2>
             <div id="log-container" class="log-container">
                 <div class="log-entry">Инициализация графиков...</div>

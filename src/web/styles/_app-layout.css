@@ -1,0 +1,27 @@
+/* App layout — macOS window structure */
+
+.app-window {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--bg-content);
+    position: relative;
+    overflow: hidden;
+}
+
+.main-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.content-area {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--bg-inset);
+}
+
+.content-body {
+    padding: 16px 20px 20px;
+}

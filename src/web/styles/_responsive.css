@@ -11,13 +11,29 @@
     }
 }
 
-@media (max-width: 768px) {
-    .container {
-        padding: 10px;
+/* Desktop: hide hamburger, show sidebar */
+@media (min-width: 901px) {
+    .menu-toggle {
+        display: none !important;
     }
 
-    header h1 {
-        font-size: 1.5em;
+    .menu-dropdown {
+        display: none !important;
+    }
+}
+
+/* Mobile/tablet: hide sidebar, show hamburger */
+@media (max-width: 900px) {
+    .sidebar {
+        display: none;
+    }
+
+    .toolbar-kpi-strip {
+        display: none;
+    }
+
+    .content-body {
+        padding: 10px;
     }
 
     .top-menu {

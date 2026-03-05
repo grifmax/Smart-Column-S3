@@ -1,0 +1,91 @@
+/* Titlebar — macOS window chrome */
+
+.titlebar {
+    height: var(--titlebar-h);
+    min-height: var(--titlebar-h);
+    background: var(--bg-sidebar);
+    backdrop-filter: blur(30px) saturate(1.5);
+    -webkit-backdrop-filter: blur(30px) saturate(1.5);
+    border-bottom: 0.5px solid var(--border-strong);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    position: relative;
+    z-index: 100;
+    user-select: none;
+}
+
+.traffic-lights {
+    display: flex;
+    gap: 8px;
+    padding-right: 8px;
+}
+
+.traffic-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 0.5px solid rgba(0, 0, 0, 0.12);
+}
+
+.tl-close { background: #ff5f57; }
+.tl-min   { background: #febc2e; }
+.tl-max   { background: #28c840; }
+
+.titlebar-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+    cursor: pointer;
+}
+
+.titlebar-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--red, #ff3530);
+}
+
+.status-indicator.online {
+    background: var(--green, #30b350);
+    box-shadow: 0 0 6px rgba(52, 199, 89, 0.5);
+}
+
+.titlebar-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.titlebar-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: var(--bg-hover);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--text-secondary);
+    transition: background 0.15s;
+}
+
+.titlebar-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .titlebar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}

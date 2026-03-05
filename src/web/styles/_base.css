@@ -1,33 +1,14 @@
-﻿/* Base layout */
+/* Base layout */
 
 body {
-    font-family: 'Manrope', 'Exo 2', 'Segoe UI', sans-serif;
-    background:
-        radial-gradient(1000px 560px at 8% -10%, rgba(23, 162, 184, 0.16), transparent 65%),
-        radial-gradient(1000px 560px at 108% -20%, rgba(255, 122, 24, 0.12), transparent 64%),
-        var(--bg-primary);
+    font-family: -apple-system, 'Inter', 'SF Pro Display', 'Manrope', 'Segoe UI', sans-serif;
+    background: var(--bg-window);
     color: var(--text-primary);
-    line-height: 1.6;
-}
-
-.container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 20px;
-}
-
-/* Header */
-header {
-    background: var(--bg-card);
-    padding: 20px;
-    border-radius: 10px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 4px var(--shadow);
-}
-
-header h1 {
-    font-family: 'Exo 2', 'Manrope', sans-serif;
-    font-size: 2em;
-    margin-bottom: 10px;
-    letter-spacing: 0.02em;
+    line-height: 1.47;
+    height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+    padding: 0;
 }

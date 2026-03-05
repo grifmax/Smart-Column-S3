@@ -1,6 +1,8 @@
 ﻿import { addLog } from '../core/logs.js';
 
 let selectedNetwork = null;
+let currentSsid = '';
+const scannedNetworks = new Map();
 
 function byId(id) {
     return document.getElementById(id);
@@ -29,6 +31,7 @@ function signalLevel(rssi) {
 function renderNetworkList(networks = []) {
     const list = byId('wifi-inline-network-list');
     if (!list) return;
+    scannedNetworks.clear();
 
     if (!networks.length) {
         list.innerHTML = '<p class="info-text">Сети не найдены</p>';
@@ -46,6 +49,7 @@ function renderNetworkList(networks = []) {
 
         const ssid = String(network?.ssid || '').trim();
         const lock = network?.encryption === 'open' ? '🔓' : '🔒';
+        scannedNetworks.set(ssid, { encryption: network?.encryption || 'secured' });
         btn.textContent = `${lock} ${ssid || '(hidden)'}  ${signalLevel(network?.rssi)}  (${network?.rssi ?? '--'} dBm)`;
         btn.onclick = () => {
             selectedNetwork = ssid;
@@ -67,12 +71,15 @@ export async function loadWiFiStatus() {
         const data = await response.json();
 
         if (data.connected) {
+            currentSsid = String(data.ssid || '').trim();
             statusEl.textContent = `Подключено: ${data.ssid} | IP: ${data.ip} | RSSI: ${data.rssi} dBm`;
             statusEl.style.color = 'var(--success, #28a745)';
         } else if (data.apMode) {
+            currentSsid = '';
             statusEl.textContent = `Режим AP: ${data.apSSID} | IP: ${data.apIP}`;
             statusEl.style.color = 'var(--warning, #ffc107)';
         } else {
+            currentSsid = '';
             statusEl.textContent = 'WiFi не подключен';
             statusEl.style.color = 'var(--danger, #dc3545)';
         }
@@ -115,6 +122,13 @@ export async function connectWiFiNetwork() {
 
     if (!ssid) {
         setWifiMessage('Укажите SSID сети', 'error');
+        return;
+    }
+
+    const scanned = scannedNetworks.get(ssid);
+    const isSecured = scanned && scanned.encryption !== 'open';
+    if (isSecured && !password && ssid !== currentSsid) {
+        setWifiMessage('Для защищенной сети укажите пароль', 'error');
         return;
     }
 

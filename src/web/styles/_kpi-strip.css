@@ -1,0 +1,160 @@
+/* KPI toolbar strip — sticky dashboard */
+
+.toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--bg-content);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 0.5px solid var(--separator);
+}
+
+.toolbar-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 20px;
+    border-bottom: 0.5px solid var(--separator);
+}
+
+.toolbar-title {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.toolbar-spacer {
+    flex: 1;
+}
+
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    background: var(--separator);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.toolbar-btn {
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--bg-content);
+    border: none;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background 0.12s;
+    font-family: inherit;
+}
+
+.toolbar-btn:hover {
+    background: var(--bg-hover);
+}
+
+.toolbar-btn.danger {
+    color: var(--red);
+    font-weight: 600;
+}
+
+.toolbar-btn.warning {
+    color: var(--orange);
+    font-weight: 600;
+}
+
+.toolbar-btn:disabled {
+    color: var(--text-tertiary);
+    cursor: not-allowed;
+}
+
+/* KPI strip */
+.toolbar-kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0;
+}
+
+.toolbar-kpi {
+    padding: 8px 16px;
+    border-right: 0.5px solid var(--separator);
+    position: relative;
+    transition: background 0.12s;
+}
+
+.toolbar-kpi:last-child {
+    border-right: none;
+}
+
+.toolbar-kpi:hover {
+    background: var(--bg-hover);
+}
+
+.toolbar-kpi::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+}
+
+.toolbar-kpi.kpi-temp::before    { background: var(--orange); }
+.toolbar-kpi.kpi-tsarga::before  { background: var(--red); }
+.toolbar-kpi.kpi-power::before   { background: var(--accent); }
+.toolbar-kpi.kpi-pressure::before { background: var(--teal); }
+.toolbar-kpi.kpi-pump::before    { background: var(--green); }
+
+.toolbar-kpi-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 2px;
+}
+
+.toolbar-kpi-value {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+.toolbar-kpi-unit {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-left: 1px;
+}
+
+/* Status badge */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.status-badge.idle {
+    background: rgba(142, 142, 147, 0.12);
+    color: var(--text-secondary);
+}
+
+.status-badge.running {
+    background: rgba(52, 199, 89, 0.12);
+    color: var(--green);
+}
+
+.status-badge .badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}

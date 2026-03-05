@@ -26,7 +26,7 @@ export function positionTopMenuDropdown() {
     const toggle = document.getElementById('top-menu-toggle');
     if (!dropdown || !toggle) return;
 
-    const isMobile = getResponsiveViewportWidth() <= 768;
+    const isMobile = getResponsiveViewportWidth() <= 900;
     if (!isMobile) {
         dropdown.style.position = '';
         dropdown.style.left = '';

@@ -10,6 +10,7 @@ import { updateButtonStates } from '../core/status.js';
 import { pad, formatUptime } from '../core/utils.js';
 import { addLog } from '../core/logs.js';
 import { renderAbvValue } from '../runtime/abv.js';
+import { updateKpiStrip } from './kpi-strip.js';
 
 export function updateUI(data) {
     let phaseText = undefined;
@@ -269,5 +270,6 @@ export function updateUI(data) {
 
     renderModeRuntimeCard();
     updateButtonStates();
+    updateKpiStrip(data);
 
 }

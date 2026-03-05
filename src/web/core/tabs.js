@@ -1,70 +1,64 @@
-﻿import { closeTopMenu } from './top-menu.js';
+import { closeTopMenu } from './top-menu.js';
 
 // ============================================================================
-
-// Tabs
-
+// Tabs — syncs sidebar + dropdown active states
 // ============================================================================
 
-
+const tabTitles = {
+    monitor: 'Главная',
+    control: 'Режимы',
+    settings: 'Настройки',
+    wifi: 'WiFi',
+    equipment: 'Оборудование',
+    history: 'История',
+    tools: 'Инструменты'
+};
 
 export function initTabs() {
-
-    // В навигации есть и кнопки-вкладки (data-tab), и ссылки на другие страницы (<a>).
-    // Для вкладок работаем только с элементами, у которых есть data-tab.
     const tabs = document.querySelectorAll('.tab');
 
     tabs.forEach(tab => {
-
         tab.addEventListener('click', () => {
-
             const targetId = tab.getAttribute('data-tab');
 
-            // Это ссылка на другую страницу (charts/manual/...), не трогаем.
+            // External link (charts/logs), just close menu
             if (!targetId) {
                 closeTopMenu();
                 return;
             }
 
-
-
-            // Убрать активный класс со всех вкладок
-
+            // Deactivate all tabs (both sidebar and dropdown)
             tabs.forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
-            document.querySelectorAll('.tab-content').forEach(content => {
-
-                content.classList.remove('active');
-
+            // Also deactivate sidebar-item links (non-tab items like charts/logs)
+            document.querySelectorAll('.sidebar-item').forEach(s => {
+                if (!s.getAttribute('data-tab')) return;
+                s.classList.remove('active');
             });
 
-
-
-            // Добавить активный класс к выбранной вкладке
-
-            tab.classList.add('active');
+            // Activate ALL matching tabs (sidebar + dropdown may both have same data-tab)
+            document.querySelectorAll(`.tab[data-tab="${targetId}"]`).forEach(t => t.classList.add('active'));
 
             const targetEl = document.getElementById(targetId);
             if (targetEl) {
                 targetEl.classList.add('active');
             }
 
+            // Update toolbar page title
+            const titleEl = document.getElementById('toolbar-page-title');
+            if (titleEl && tabTitles[targetId]) {
+                titleEl.textContent = tabTitles[targetId];
+            }
 
-
-            // Загрузить историю при переключении на вкладку "История"
-
+            // Load history on tab switch
             if (targetId === 'history') {
-
                 loadHistoryList();
-
             }
 
             closeTopMenu();
-
         });
-
     });
-
 }
 
 export function activateTabById(targetId) {

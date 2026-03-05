@@ -26,4 +26,38 @@
     --landing-chip-bg: rgba(255, 255, 255, 0.72);
     --landing-border: rgba(15, 23, 42, 0.12);
     --landing-glass: rgba(255, 255, 255, 0.82);
+
+    /* macOS layout */
+    --titlebar-h: 52px;
+    --sidebar-w: 220px;
+
+    /* macOS Sonoma extended palette */
+    --bg-window: #e0e0e0;
+    --bg-sidebar: rgba(238, 238, 240, 0.92);
+    --bg-content: #ffffff;
+    --bg-inset: #f0f0f2;
+    --bg-grouped: #eaeaef;
+    --bg-hover: rgba(0, 0, 0, 0.06);
+    --bg-active: rgba(0, 122, 255, 0.10);
+
+    --text-tertiary: #8e8e93;
+    --text-link: #0066cc;
+
+    --green: #30b350;
+    --orange: #f59300;
+    --red: #ff3530;
+    --yellow: #f0c000;
+    --teal: #4ab8ea;
+    --purple: #af52de;
+
+    --border-strong: rgba(0, 0, 0, 0.22);
+    --separator: rgba(0, 0, 0, 0.10);
+
+    --shadow-card: 0 0.5px 2px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.10);
+    --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 12px;
+    --radius-xl: 14px;
 }
