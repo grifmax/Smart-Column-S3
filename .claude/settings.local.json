@@ -24,7 +24,8 @@
       "Bash(zcat)",
       "Bash(pio device monitor --port COM11 --baud 115200 --filter esp32_exception_decoder)",
       "Bash(pio device monitor --port COM11 --baud 115200)",
-      "Bash(git push origin claude/smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7)"
+      "Bash(git push origin claude/smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7)",
+      "Bash(grep -n \"heater-on\\\\|\\\\.heater\\\\|#svg-heater\\\\|anim-power\" /c/distiller/Smart-Column-S3/data/schemes/*.svg)"
     ]
   }
 }

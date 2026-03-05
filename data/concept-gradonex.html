@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart-Column S3 — Gradonex Dark (Original SVG)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #080b14;
+            --glass: rgba(14, 18, 32, 0.82);
+            --glass2: rgba(20, 26, 46, 0.75);
+            --card: rgba(22, 28, 50, 0.6);
+            --card-h: rgba(30, 38, 64, 0.7);
+            --bdr: rgba(255, 255, 255, 0.07);
+            --bdr2: rgba(255, 255, 255, 0.12);
+            --sep: rgba(255, 255, 255, 0.05);
+            --t1: #e6e8f0;
+            --t2: #8890a8;
+            --t3: #5a6080;
+            --tl: #606890;
+            --cyan: #00d4ff;
+            --orange: #ff9500;
+            --green: #00e676;
+            --red: #ff4055;
+            --yellow: #ffd600;
+            --blue: #448aff;
+            --purple: #b388ff;
+            --pink: #ff4081;
+            --r: 14px;
+            --rs: 10px;
+            --rx: 6px;
+            --mono: 'JetBrains Mono', 'SF Mono', monospace;
+            --ui: 'Inter', -apple-system, sans-serif;
+        }
+
+        html,
+        body {
+            height: 100%;
+            font-family: var(--ui);
+            background: var(--bg);
+            color: var(--t1);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background:
+                radial-gradient(ellipse at 15% 10%, rgba(0, 80, 200, 0.10) 0%, transparent 55%),
+                radial-gradient(ellipse at 85% 90%, rgba(100, 20, 180, 0.07) 0%, transparent 55%),
+                var(--bg);
+        }
+
+        .app {
+            max-width: 520px;
+            margin: 0 auto;
+            padding: 0 6px 28px;
+        }
+
+        /* HEADER */
+        .hdr {
+            text-align: center;
+            padding: 14px 10px 10px;
+            background: var(--glass);
+            border-bottom: 1px solid var(--bdr);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            margin: 0 -6px;
+        }
+
+        .hdr-sub {
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+            color: var(--t3);
+        }
+
+        .hdr-t {
+            font-size: 17px;
+            font-weight: 800;
+            letter-spacing: -.02em;
+            background: linear-gradient(135deg, var(--cyan), var(--blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* GLASS */
+        .gl {
+            background: var(--glass2);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--bdr);
+            border-radius: var(--r);
+            overflow: hidden;
+        }
+
+        /* SCHEME */
+        .scheme {
+            margin: 10px 0;
+            padding: 8px;
+            position: relative;
+        }
+
+        .scheme-inner {
+            position: relative;
+            width: 100%;
+            padding-bottom: 142%;
+            overflow: hidden;
+            border-radius: var(--rs);
+        }
+
+        .scheme-inner object,
+        .scheme-inner svg,
+        .scheme-inner img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* SECTION GRID */
+        .sg {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin: 6px 0;
+        }
+
+        .sc {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .st {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--t3);
+            padding: 6px 10px 3px;
+        }
+
+        /* DATA CARD */
+        .dc {
+            background: var(--card);
+            border: 1px solid var(--bdr);
+            border-radius: var(--rs);
+            padding: 9px 10px;
+            transition: background .15s, border-color .15s;
+        }
+
+        .dc:hover {
+            background: var(--card-h);
+            border-color: var(--bdr2);
+        }
+
+        .dc-h {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 3px;
+        }
+
+        .dc-i {
+            font-size: 20px;
+            line-height: 1;
+        }
+
+        .dc-m {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .dc-l {
+            font-size: 8px;
+            font-weight: 600;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--tl);
+            line-height: 1.2;
+        }
+
+        .dc-v {
+            font-family: var(--mono);
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -.02em;
+        }
+
+        .dc-s {
+            font-size: 9px;
+            color: var(--t3);
+        }
+
+        .v-cyan {
+            color: var(--cyan);
+        }
+
+        .v-orange {
+            color: var(--orange);
+        }
+
+        .v-green {
+            color: var(--green);
+        }
+
+        .v-red {
+            color: var(--red);
+        }
+
+        .v-yellow {
+            color: var(--yellow);
+        }
+
+        .v-blue {
+            color: var(--blue);
+        }
+
+        /* BADGE */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 7px;
+            border-radius: 16px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .03em;
+            text-transform: uppercase;
+        }
+
+        .badge-g {
+            background: rgba(0, 230, 118, .12);
+            color: var(--green);
+            border: 1px solid rgba(0, 230, 118, .18);
+        }
+
+        /* CIRCLE PROGRESS */
+        .cp {
+            position: relative;
+            width: 44px;
+            height: 44px;
+            flex-shrink: 0;
+        }
+
+        .cp svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .cp .trk {
+            fill: none;
+            stroke: rgba(255, 255, 255, .05);
+            stroke-width: 3.5;
+        }
+
+        .cp .fl {
+            fill: none;
+            stroke-width: 3.5;
+            stroke-linecap: round;
+        }
+
+        .cp-lb {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        /* SELECTION CARD */
+        .sel {
+            background: var(--card);
+            border: 1px solid var(--bdr);
+            border-radius: var(--rs);
+            padding: 9px 10px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .sel-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .sel-t {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--tl);
+            margin-bottom: 1px;
+        }
+
+        .sel-t .ico {
+            font-size: 14px;
+        }
+
+        .sel-d {
+            font-size: 9px;
+            color: var(--t2);
+            font-family: var(--mono);
+        }
+
+        .bar-t {
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 255, 255, .05);
+            border-radius: 2px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .bar-f {
+            height: 100%;
+            border-radius: 2px;
+        }
+
+        .bar-f.cyan {
+            background: var(--cyan);
+            box-shadow: 0 0 6px rgba(0, 212, 255, .35);
+        }
+
+        .bar-f.green {
+            background: var(--green);
+            box-shadow: 0 0 6px rgba(0, 230, 118, .35);
+        }
+
+        .bar-f.red {
+            background: var(--red);
+        }
+
+        /* POWER BARS */
+        .pwr {
+            display: flex;
+            align-items: flex-end;
+            gap: 1.5px;
+            height: 16px;
+            margin-top: 4px;
+        }
+
+        .pwr-s {
+            width: 4px;
+            border-radius: 1px;
+        }
+
+        .pwr-l {
+            font-family: var(--mono);
+            font-size: 8px;
+            color: var(--t3);
+            margin-left: 4px;
+        }
+
+        /* PUMP */
+        .pump-r {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pump-g {
+            position: relative;
+            width: 36px;
+            height: 36px;
+            flex-shrink: 0;
+        }
+
+        .pump-g svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .pump-g-l {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--mono);
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--cyan);
+        }
+
+        /* CHART */
+        .chart {
+            margin: 6px 0;
+            padding: 10px;
+        }
+
+        .chart-t {
+            font-size: 9px;
+            font-weight: 600;
+            color: var(--t2);
+            margin-bottom: 6px;
+        }
+
+        .chart-lg {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .chart-li {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 8px;
+            color: var(--t3);
+        }
+
+        .chart-d {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+        }
+
+        .chart-a {
+            height: 100px;
+            background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .015) 0px, rgba(255, 255, 255, .015) 1px, transparent 1px, transparent 20px);
+            border-radius: var(--rx);
+            margin-top: 6px;
+        }
+
+        .chart-a svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* FOOTER */
+        .ftr {
+            text-align: center;
+            padding: 14px 0 6px;
+            font-size: 9px;
+            color: var(--t3);
+        }
+
+        .ftr a {
+            color: var(--cyan);
+            text-decoration: none;
+        }
+
+        /* QUICK TABLE */
+        .qtbl {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px;
+        }
+
+        .qtbl-r {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            border-bottom: 1px solid var(--sep);
+        }
+
+        .qtbl-k {
+            font-size: 9px;
+            color: var(--t3);
+        }
+
+        .qtbl-v {
+            font-size: 9px;
+            font-family: var(--mono);
+            font-weight: 600;
+        }
+
+        ::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, .08);
+            border-radius: 2px;
+        }
+
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .ai {
+            animation: fade-in .35s ease-out both;
+        }
+
+        .ai:nth-child(2) {
+            animation-delay: .04s
+        }
+
+        .ai:nth-child(3) {
+            animation-delay: .08s
+        }
+
+        .ai:nth-child(4) {
+            animation-delay: .12s
+        }
+
+        .ai:nth-child(5) {
+            animation-delay: .16s
+        }
+
+        .ai:nth-child(6) {
+            animation-delay: .2s
+        }
+
+        @media(min-width:768px) {
+            .app {
+                max-width: 900px;
+                padding: 0 20px 36px;
+            }
+
+            .hdr {
+                border-radius: 0 0 var(--r) var(--r);
+                margin: 0;
+            }
+
+            .sg {
+                gap: 10px;
+            }
+        }
+
+        /* Dark override for embedded SVG */
+        .scheme-inner object {
+            filter: invert(0);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+
+        <div class="hdr">
+            <div class="hdr-sub">Система управления ректификацией</div>
+            <div class="hdr-t">Smart-Column S3</div>
+        </div>
+
+        <!-- SCHEME with original SVG -->
+        <div class="scheme gl ai">
+            <div class="scheme-inner">
+                <object type="image/svg+xml" data="schemes/column-animated.svg"
+                    style="filter: invert(1) hue-rotate(180deg) brightness(1.2) contrast(0.9);"></object>
+            </div>
+        </div>
+
+        <!-- TWO COL -->
+        <div class="sg">
+            <div class="sc">
+                <div class="st">Статус процесса</div>
+                <div class="dc ai">
+                    <div class="dc-h"><span class="dc-i">🤖</span>
+                        <div class="dc-m">
+                            <div class="dc-l">Режим</div><span class="badge badge-g">Автоматический</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="dc ai">
+                    <div class="dc-h"><span class="dc-i">⚛️</span>
+                        <div class="dc-m">
+                            <div class="dc-l">Фаза</div>
+                            <div class="dc-v v-cyan" style="font-size:13px">ОТБОР ТЕЛА</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="dc ai">
+                    <div class="dc-h"><span class="dc-i">⏱️</span>
+                        <div class="dc-m">
+                            <div class="dc-l">Uptime</div>
+                            <div class="dc-s">Время работы</div>
+                        </div>
+                    </div>
+                    <div class="dc-v v-green" style="font-size:26px">0:41:00</div>
+                </div>
+                <div class="dc ai">
+                    <div class="dc-h"><span class="dc-i">🌡️</span>
+                        <div class="dc-m">
+                            <div class="dc-l">Крепость</div>
+                        </div>
+                    </div>
+                    <div class="dc-v v-orange" style="font-size:28px">~96.0%</div>
+                </div>
+                <div class="dc ai">
+                    <div class="dc-h"><span class="dc-i">⚡</span>
+                        <div class="dc-m">
+                            <div class="dc-l">Мощность</div>
+                        </div>
+                    </div>
+                    <div class="dc-v v-yellow" style="font-size:24px">1200 <span
+                            style="font-size:11px;color:var(--t3)">Вт</span></div>
+                    <div style="display:flex;align-items:flex-end;gap:1.5px;height:16px;margin-top:4px" id="pwrBars1">
+                    </div>
+                </div>
+                <div class="dc ai">
+                    <div class="dc-h"><span class="dc-i">💧</span>
+                        <div class="dc-m">
+                            <div class="dc-l">Насос</div>
+                        </div>
+                    </div>
+                    <div class="pump-r">
+                        <div>
+                            <div class="dc-v v-cyan" style="font-size:24px">350</div>
+                            <div class="dc-s">мл/ч</div>
+                        </div>
+                        <div class="pump-g">
+                            <svg viewBox="0 0 36 36">
+                                <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,.05)"
+                                    stroke-width="3" />
+                                <circle cx="18" cy="18" r="14" fill="none" stroke="var(--cyan)" stroke-width="3"
+                                    stroke-dasharray="88" stroke-dashoffset="26" stroke-linecap="round"
+                                    transform="rotate(-90 18 18)"
+                                    style="filter:drop-shadow(0 0 8px rgba(0,212,255,.3))" />
+                            </svg>
+                            <div class="pump-g-l">350</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sc">
+                <div class="st">Управление отбором</div>
+                <div class="sel ai">
+                    <div class="sel-info">
+                        <div class="sel-t"><span class="ico">🧪</span> Головы</div>
+                        <div class="sel-d">50 мл / 150 мл (33%)</div>
+                        <div class="bar-t">
+                            <div class="bar-f cyan" style="width:33%"></div>
+                        </div>
+                    </div>
+                    <div class="cp"><svg viewBox="0 0 44 44">
+                            <circle class="trk" cx="22" cy="22" r="18" />
+                            <circle class="fl" cx="22" cy="22" r="18" stroke="var(--cyan)" stroke-dasharray="113"
+                                stroke-dashoffset="75.7" style="filter:drop-shadow(0 0 6px rgba(0,212,255,.3))" />
+                        </svg>
+                        <div class="cp-lb" style="color:var(--cyan)">33%</div>
+                    </div>
+                </div>
+                <div class="sel ai">
+                    <div class="sel-info">
+                        <div class="sel-t"><span class="ico">🍷</span> Тело</div>
+                        <div class="sel-d">250 мл / 1000 мл (25%)</div>
+                        <div class="bar-t">
+                            <div class="bar-f green" style="width:25%"></div>
+                        </div>
+                    </div>
+                    <div class="cp"><svg viewBox="0 0 44 44">
+                            <circle class="trk" cx="22" cy="22" r="18" />
+                            <circle class="fl" cx="22" cy="22" r="18" stroke="var(--green)" stroke-dasharray="113"
+                                stroke-dashoffset="84.8" style="filter:drop-shadow(0 0 6px rgba(0,230,118,.3))" />
+                        </svg>
+                        <div class="cp-lb" style="color:var(--green)">25%</div>
+                    </div>
+                </div>
+                <div class="sel ai">
+                    <div class="sel-info">
+                        <div class="sel-t"><span class="ico">🛢️</span> Хвосты</div>
+                        <div class="sel-d">0 мл / 300 мл (0%)</div>
+                        <div class="bar-t">
+                            <div class="bar-f red" style="width:0%"></div>
+                        </div>
+                    </div>
+                    <div class="cp"><svg viewBox="0 0 44 44">
+                            <circle class="trk" cx="22" cy="22" r="18" />
+                            <circle class="fl" cx="22" cy="22" r="18" stroke="var(--red)" stroke-dasharray="113"
+                                stroke-dashoffset="113" />
+                        </svg>
+                        <div class="cp-lb" style="color:var(--red)">0%</div>
+                    </div>
+                </div>
+                <div class="dc ai" style="margin-top:2px">
+                    <div class="dc-l" style="margin-bottom:5px">Быстрый обзор</div>
+                    <div class="qtbl">
+                        <div class="qtbl-r"><span class="qtbl-k">Куб</span><span class="qtbl-v v-orange">85.2°C</span>
+                        </div>
+                        <div class="qtbl-r"><span class="qtbl-k">Царга</span><span class="qtbl-v v-yellow">78.1°C</span>
+                        </div>
+                        <div class="qtbl-r"><span class="qtbl-k">Дефл.</span><span class="qtbl-v v-cyan">77.8°C</span>
+                        </div>
+                        <div class="qtbl-r"><span class="qtbl-k">Холод.</span><span class="qtbl-v v-blue">20.5°C</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CHART -->
+        <div class="chart gl ai">
+            <div class="chart-t">📈 Температуры (5 мин)</div>
+            <div class="chart-lg">
+                <div class="chart-li">
+                    <div class="chart-d" style="background:var(--orange)"></div>T_куб
+                </div>
+                <div class="chart-li">
+                    <div class="chart-d" style="background:var(--yellow)"></div>T_царга
+                </div>
+                <div class="chart-li">
+                    <div class="chart-d" style="background:var(--cyan)"></div>T_дефлегматор
+                </div>
+                <div class="chart-li">
+                    <div class="chart-d" style="background:var(--blue)"></div>T_холодильник
+                </div>
+            </div>
+            <div class="chart-a">
+                <svg viewBox="0 0 400 100" preserveAspectRatio="none">
+                    <polyline
+                        points="0,25 20,23 40,27 60,20 80,18 100,23 120,16 140,14 160,18 180,12 200,15 220,11 240,13 260,9 280,12 300,7 320,11 340,9 360,5 380,7 400,3"
+                        fill="none" stroke="#ff9500" stroke-width="1.5" opacity=".85" />
+                    <polyline
+                        points="0,42 20,40 40,44 60,38 80,36 100,40 120,34 140,32 160,36 180,30 200,32 220,28 240,30 260,26 280,28 300,24 320,26 340,22 360,20 380,22 400,18"
+                        fill="none" stroke="#ffd600" stroke-width="1.5" opacity=".85" />
+                    <polyline
+                        points="0,47 20,45 40,48 60,42 80,40 100,44 120,38 140,36 160,40 180,34 200,36 220,32 240,34 260,30 280,32 300,28 320,30 340,26 360,24 380,26 400,22"
+                        fill="none" stroke="#00d4ff" stroke-width="1.5" opacity=".85" />
+                    <polyline
+                        points="0,82 20,83 40,81 60,82 80,80 100,83 120,81 140,82 160,80 180,83 200,81 220,82 240,80 260,83 280,81 300,82 320,80 340,83 360,81 380,82 400,81"
+                        fill="none" stroke="#448aff" stroke-width="1.5" opacity=".85" />
+                </svg>
+            </div>
+        </div>
+
+        <div class="ftr">Локальный доступ: <a href="#">192.168.4.1:80</a> · Smart-Column S3 v1.4.11</div>
+    </div>
+
+    <script>
+        (function () {
+            var c = document.getElementById('pwrBars1'), max = 1500, cur = 1200, n = 20;
+            for (var i = 0; i < n; i++) {
+                var b = document.createElement('div'); b.style.cssText = 'width:4px;border-radius:1px;';
+                var r = i / n, act = i < (cur / max) * n;
+                var col = r < .4 ? 'var(--green)' : r < .7 ? 'var(--yellow)' : r < .9 ? 'var(--orange)' : 'var(--red)';
+                b.style.height = act ? (5 + r * 11) + 'px' : '2px';
+                b.style.background = act ? col : 'rgba(255,255,255,.04)';
+                if (act) b.style.boxShadow = '0 0 4px ' + col;
+                c.appendChild(b);
+            }
+        })();
+    </script>
+</body>
+
+</html>

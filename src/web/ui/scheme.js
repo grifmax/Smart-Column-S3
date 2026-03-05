@@ -12,9 +12,9 @@ import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { addLog } from '../core/logs.js';
 
 const MODE_SCHEME_PATHS = {
-    [MODE_IDLE]: 'schemes/column-animated.svg',
-    [MODE_RECT]: 'schemes/column-animated.svg',
-    [MODE_MANUAL]: 'schemes/column-animated.svg',
+    [MODE_IDLE]: 'schemes/column-tesla.svg',
+    [MODE_RECT]: 'schemes/column-tesla.svg',
+    [MODE_MANUAL]: 'schemes/column-tesla.svg',
     [MODE_DIST]: 'schemes/distillation-animated.svg',
     [MODE_MASH]: 'schemes/mash-animated.svg',
     [MODE_HOLD]: 'schemes/hold-animated.svg'
