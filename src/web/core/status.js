@@ -316,6 +316,10 @@ export function updateUIFromStatus(data) {
 
             if (el) el.textContent = data.pump.speedMlH.toFixed(0) + ' мл/ч';
 
+            const tbSpeed = document.getElementById('toolbar-pump-speed');
+
+            if (tbSpeed) tbSpeed.textContent = data.pump.speedMlH.toFixed(0) + ' мл/ч';
+
         }
 
         if (data.pump.totalMl !== undefined) {
@@ -489,6 +493,25 @@ export function updateButtonStates() {
             if (iconEl) iconEl.textContent = '⏸';
             if (labelEl) labelEl.textContent = 'Пауза';
         }
+    }
+
+    const tbPauseBtn = document.getElementById('toolbar-pause-btn');
+    if (tbPauseBtn) {
+        tbPauseBtn.disabled = isIdle;
+        tbPauseBtn.classList.toggle('btn-disabled', isIdle);
+        if (currentPaused && !isIdle) {
+            tbPauseBtn.classList.replace('warning', 'success');
+            tbPauseBtn.innerHTML = '▶ Пуск';
+        } else {
+            tbPauseBtn.classList.replace('success', 'warning');
+            tbPauseBtn.innerHTML = '⏸ Пауза';
+        }
+    }
+
+    const tbStopBtn = document.getElementById('toolbar-stop-btn');
+    if (tbStopBtn) {
+        tbStopBtn.disabled = isIdle;
+        tbStopBtn.classList.toggle('btn-disabled', isIdle);
     }
 
     // Main screen: when IDLE, hide scheme and show CTA to mode selection

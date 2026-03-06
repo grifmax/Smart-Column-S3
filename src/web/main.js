@@ -60,6 +60,7 @@ import {
 } from './settings/calibration.js';
 import { calculateAbvCorrection, calculateDilution, fetchCurrentTempForCalc } from './tools/calculators.js';
 import { toggleOperatorView } from './ui/operator-view.js';
+import { zoomScheme } from './ui/scheme.js';
 
 // Функции для инициализации
 import { initTabs } from './core/tabs.js';
@@ -204,6 +205,7 @@ window.toggleOperatorView = toggleOperatorView;
 window.toggleBrowserNotifications = toggleBrowserNotifications;
 window.testBrowserNotification = testBrowserNotification;
 window.showNotification = showNotification;
+window.zoomScheme = zoomScheme;
 
 // ============================================================================
 // Инициализация при загрузке страницы

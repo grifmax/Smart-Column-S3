@@ -5,10 +5,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Графики - Smart-Column S3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="charts-style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2196f3">
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
     <script>
-        // Загрузить тему из localStorage перед отрисовкой
         (function () {
             const savedTheme = localStorage.getItem('theme') || 'light';
             document.documentElement.setAttribute('data-theme', savedTheme);
@@ -17,174 +24,220 @@
 </head>
 
 <body>
-    <div class="container">
-        <!-- Заголовок -->
-        <header>
-            <div class="header-content">
-                <div>
-                    <h1>📈 Графики реального времени</h1>
-                    <a href="index.html" class="back-link">← Вернуться к управлению</a>
-                </div>
-                <div class="status-bar">
-                    <span id="connection-status" class="status-dot offline">●</span>
-                    <span id="connection-text">Подключение...</span>
-                    <span class="uptime">Uptime: <span id="uptime">--:--:--</span></span>
-                </div>
+    <div class="app-window">
+        <!-- ===== TITLEBAR ===== -->
+        <div class="titlebar">
+            <div class="traffic-lights">
+                <div class="traffic-light tl-close"></div>
+                <div class="traffic-light tl-min"></div>
+                <div class="traffic-light tl-max"></div>
             </div>
-        </header>
-
-        <!-- Панель управления графиками -->
-        <div class="chart-controls">
-            <div class="control-panel">
-                <div class="control-group-inline">
-                    <label><strong>Период:</strong></label>
-                    <button class="btn btn-sm period-btn active" data-period="60">1 мин</button>
-                    <button class="btn btn-sm period-btn" data-period="300">5 мин</button>
-                    <button class="btn btn-sm period-btn" data-period="900">15 мин</button>
-                    <button class="btn btn-sm period-btn" data-period="3600">1 час</button>
-                    <button class="btn btn-sm period-btn" data-period="0">Всё</button>
-                </div>
-                <div class="control-group-inline">
-                    <button class="btn btn-sm" onclick="pauseCharts()">⏸️ Пауза</button>
-                    <button class="btn btn-sm" onclick="resumeCharts()">▶️ Продолжить</button>
-                    <button class="btn btn-sm" onclick="clearCharts()">🗑️ Очистить</button>
-                    <button class="btn btn-sm btn-primary" onclick="exportCharts()">💾 Экспорт PNG</button>
-                    <a href="#logs" class="btn btn-sm">📝 К логам</a>
-                </div>
+            <span class="titlebar-title" onclick="window.location.href='index.html'">Smart-Column S3</span>
+            <div class="titlebar-status">
+                <div class="status-indicator" id="connection-status"></div>
+                <span id="connection-text">Подключение...</span>
+                <span style="color:var(--text-tertiary)">&middot;</span>
+                <span>Uptime: <span id="uptime">--:--:--</span></span>
             </div>
-        </div>
-
-        <!-- Панель маркеров аномалий -->
-        <div class="card" style="margin-bottom: 20px;">
-            <h2>⚠️ Маркеры отклонений от нормы</h2>
-            <div class="anomaly-controls">
-                <div class="control-group-inline">
-                    <label class="switch-label">
-                        <input type="checkbox" id="anomaly-toggle">
-                        <span>Включить маркеры</span>
-                    </label>
+            <div style="flex:1"></div>
+            <div class="titlebar-controls">
+                <div class="top-menu">
+                    <button id="top-menu-toggle" class="menu-toggle" type="button" aria-label="Меню"
+                        aria-expanded="false" onclick="toggleTopMenu(event)">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </button>
+                    <div id="top-menu-dropdown" class="menu-dropdown">
+                        <nav class="tabs tabs-dropdown">
+                            <a href="index.html" class="tab" style="text-decoration: none;">📊 Главная</a>
+                            <button class="tab active" data-tab="charts">📈 Графики</button>
+                            <a href="logs.html" class="tab" style="text-decoration: none;">📝 Логи</a>
+                        </nav>
+                    </div>
                 </div>
-                <div class="control-group-inline">
-                    <label><strong>Порог отклонения:</strong></label>
-                    <input type="range" id="anomaly-threshold" min="5" max="50" value="15" step="5"
-                        style="width: 200px;">
-                    <span id="anomaly-threshold-value"
-                        style="min-width: 40px; display: inline-block; font-weight: bold;">15%</span>
-                </div>
-                <div class="control-group-inline">
-                    <label><strong>Окно усреднения:</strong></label>
-                    <select id="anomaly-window" class="select-sm">
-                        <option value="60">1 минута</option>
-                        <option value="180">3 минуты</option>
-                        <option value="300" selected>5 минут</option>
-                        <option value="600">10 минут</option>
-                        <option value="900">15 минут</option>
-                    </select>
-                </div>
-                <div
-                    style="margin-top: 10px; padding: 10px; background-color: var(--bg-secondary); border-radius: 5px; font-size: 0.9em;">
-                    <strong>ℹ️ Как работает:</strong> Маркеры автоматически появляются на графиках, когда текущее
-                    значение отклоняется
-                    от среднего за выбранное окно времени больше чем на указанный порог. Маркеры показывают процент
-                    отклонения.
-                </div>
+                <button class="titlebar-btn"
+                    onclick="setTheme(document.body.getAttribute('data-theme')==='dark'?'light':'dark')"
+                    title="Тема">🌓</button>
             </div>
         </div>
 
-        <!-- График 1: Температуры -->
-        <div class="card chart-card">
-            <div class="chart-header">
-                <h2>🌡️ Температуры</h2>
-                <div class="chart-checkboxes">
-                    <label><input type="checkbox" id="check-temp-cube" checked> Куб</label>
-                    <label><input type="checkbox" id="check-temp-column-bottom" checked> Царга низ</label>
-                    <label><input type="checkbox" id="check-temp-column-top" checked> Царга верх</label>
-                    <label><input type="checkbox" id="check-temp-reflux" checked> Дефлегматор</label>
-                    <label><input type="checkbox" id="check-temp-tsa" checked> ТСА</label>
-                    <label><input type="checkbox" id="check-temp-water-in"> Вода вход</label>
-                    <label><input type="checkbox" id="check-temp-water-out"> Вода выход</label>
+        <div class="main-layout">
+            <!-- ===== SIDEBAR ===== -->
+            <nav class="sidebar">
+                <div class="sidebar-section-title">Мониторинг</div>
+                <a href="index.html" class="sidebar-item" style="text-decoration:none">
+                    <span class="icon">📊</span> Главная
+                </a>
+                <a href="charts.html" class="sidebar-item active" style="text-decoration:none">
+                    <span class="icon">📈</span> Графики
+                </a>
+                <a href="logs.html" class="sidebar-item" style="text-decoration:none">
+                    <span class="icon">📝</span> Логи
+                </a>
+                <div class="sidebar-spacer"></div>
+                <div class="sidebar-footer">
+                    Smart-Column S3
+                </div>
+            </nav>
+
+            <!-- ===== CONTENT AREA ===== -->
+            <div class="content-area" id="charts-content">
+                <div class="toolbar">
+                    <div class="toolbar-top">
+                        <span class="toolbar-title">Графики реального времени</span>
+                    </div>
+                </div>
+
+                <div class="scroll-wrapper">
+                    <div style="padding: 20px;">
+
+                        <!-- Панель управления графиками -->
+                        <div class="grouped-box" style="margin-bottom: 20px;">
+                            <div class="control-panel" style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                <div class="control-group-inline">
+                                    <label><strong>Период:</strong></label>
+                                    <button class="btn btn-sm period-btn active" data-period="60">1 мин</button>
+                                    <button class="btn btn-sm period-btn" data-period="300">5 мин</button>
+                                    <button class="btn btn-sm period-btn" data-period="900">15 мин</button>
+                                    <button class="btn btn-sm period-btn" data-period="3600">1 час</button>
+                                    <button class="btn btn-sm period-btn" data-period="0">Всё</button>
+                                </div>
+                                <div class="control-group-inline">
+                                    <button class="btn btn-sm" onclick="pauseCharts()">⏸️ Пауза</button>
+                                    <button class="btn btn-sm" onclick="resumeCharts()">▶️ Продолжить</button>
+                                    <button class="btn btn-sm" onclick="clearCharts()">🗑️ Очистить</button>
+                                    <button class="btn btn-sm btn-primary" onclick="exportCharts()">💾 Экспорт
+                                        PNG</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Панель маркеров аномалий -->
+                        <div class="grouped-box" style="margin-bottom: 20px;">
+                            <h2 style="margin-top: 0;">⚠️ Маркеры отклонений от нормы</h2>
+                            <div class="anomaly-controls"
+                                style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center; margin-top: 10px;">
+                                <div class="control-group-inline">
+                                    <label class="switch-label">
+                                        <input type="checkbox" id="anomaly-toggle">
+                                        <span>Включить маркеры</span>
+                                    </label>
+                                </div>
+                                <div class="control-group-inline">
+                                    <label><strong>Порог отклонения:</strong></label>
+                                    <input type="range" id="anomaly-threshold" min="5" max="50" value="15" step="5"
+                                        style="width: 150px;">
+                                    <span id="anomaly-threshold-value"
+                                        style="min-width: 40px; display: inline-block; font-weight: bold;">15%</span>
+                                </div>
+                                <div class="control-group-inline">
+                                    <label><strong>Окно усреднения:</strong></label>
+                                    <select id="anomaly-window" class="select-sm">
+                                        <option value="60">1 минута</option>
+                                        <option value="180">3 минуты</option>
+                                        <option value="300" selected>5 минут</option>
+                                        <option value="600">10 минут</option>
+                                        <option value="900">15 минут</option>
+                                    </select>
+                                </div>
+                                <div
+                                    style="width: 100%; margin-top: 5px; padding: 10px; background-color: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9em;">
+                                    <strong>ℹ️ Как работает:</strong> Маркеры автоматически появляются на графиках,
+                                    когда текущее значение отклоняется от среднего за выбранное окно времени больше чем
+                                    на указанный порог. Маркеры показывают процент отклонения.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Графики -->
+                        <div class="grouped-box" style="margin-bottom: 20px;">
+                            <div class="chart-header"
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                                <h2 style="margin: 0;">🌡️ Температуры</h2>
+                                <div class="chart-checkboxes"
+                                    style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.9em;">
+                                    <label><input type="checkbox" id="check-temp-cube" checked> Куб</label>
+                                    <label><input type="checkbox" id="check-temp-column-bottom" checked> Царга
+                                        низ</label>
+                                    <label><input type="checkbox" id="check-temp-column-top" checked> Царга верх</label>
+                                    <label><input type="checkbox" id="check-temp-reflux" checked> Дефлегматор</label>
+                                    <label><input type="checkbox" id="check-temp-tsa" checked> ТСА</label>
+                                    <label><input type="checkbox" id="check-temp-water-in"> Вода вход</label>
+                                    <label><input type="checkbox" id="check-temp-water-out"> Вода выход</label>
+                                </div>
+                            </div>
+                            <div id="chart-temperatures" class="chart"></div>
+                        </div>
+
+                        <div class="grouped-box" style="margin-bottom: 20px;">
+                            <div class="chart-header"
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                                <h2 style="margin: 0;">📈 Давление</h2>
+                                <div class="chart-checkboxes"
+                                    style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.9em;">
+                                    <label><input type="checkbox" id="check-pressure-cube" checked> Куб (мм
+                                        рт.ст.)</label>
+                                    <label><input type="checkbox" id="check-pressure-atm" checked> Атмосферное
+                                        (гПа)</label>
+                                    <label><input type="checkbox" id="check-pressure-flood"> Порог захлёба</label>
+                                </div>
+                            </div>
+                            <div id="chart-pressure" class="chart"></div>
+                        </div>
+
+                        <div class="grouped-box" style="margin-bottom: 20px;">
+                            <div class="chart-header"
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                                <h2 style="margin: 0;">⚡ Электропитание (PZEM-004T)</h2>
+                                <div class="chart-checkboxes"
+                                    style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.9em;">
+                                    <label><input type="checkbox" id="check-power-voltage" checked> Напряжение
+                                        (V)</label>
+                                    <label><input type="checkbox" id="check-power-current" checked> Ток (A)</label>
+                                    <label><input type="checkbox" id="check-power-power" checked> Мощность (W)</label>
+                                    <label><input type="checkbox" id="check-power-energy"> Энергия (кВт·ч)</label>
+                                    <label><input type="checkbox" id="check-power-frequency"> Частота (Гц)</label>
+                                    <label><input type="checkbox" id="check-power-pf"> PF</label>
+                                </div>
+                            </div>
+                            <div id="chart-power" class="chart"></div>
+                        </div>
+
+                        <div class="grouped-box" style="margin-bottom: 20px;">
+                            <div class="chart-header"
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                                <h2 style="margin: 0;">💧 Насос и отбор</h2>
+                                <div class="chart-checkboxes"
+                                    style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.9em;">
+                                    <label><input type="checkbox" id="check-pump-speed" checked> Скорость (мл/ч)</label>
+                                    <label><input type="checkbox" id="check-pump-volume" checked> Накопительный объём
+                                        (мл)</label>
+                                </div>
+                            </div>
+                            <div id="chart-pump" class="chart"></div>
+                        </div>
+
+                        <div class="grouped-box" style="margin-bottom: 20px;">
+                            <div class="chart-header" style="margin-bottom: 10px;">
+                                <h2 style="margin: 0;">🍷 Электронный ареометр</h2>
+                            </div>
+                            <div id="chart-abv" class="chart"></div>
+                        </div>
+
+                        <div class="grouped-box" style="margin-bottom: 20px;">
+                            <div class="chart-header" style="margin-bottom: 10px;">
+                                <h2 style="margin: 0;">📊 Объёмы фракций</h2>
+                            </div>
+                            <div id="chart-fractions" class="chart-bar"></div>
+                        </div>
+
+                    </div>
                 </div>
             </div>
-            <div id="chart-temperatures" class="chart"></div>
         </div>
-
-        <!-- График 2: Давление -->
-        <div class="card chart-card">
-            <div class="chart-header">
-                <h2>📈 Давление</h2>
-                <div class="chart-checkboxes">
-                    <label><input type="checkbox" id="check-pressure-cube" checked> Куб (мм рт.ст.)</label>
-                    <label><input type="checkbox" id="check-pressure-atm" checked> Атмосферное (гПа)</label>
-                    <label><input type="checkbox" id="check-pressure-flood"> Порог захлёба</label>
-                </div>
-            </div>
-            <div id="chart-pressure" class="chart"></div>
-        </div>
-
-        <!-- График 3: Мощность PZEM-004T -->
-        <div class="card chart-card">
-            <div class="chart-header">
-                <h2>⚡ Электропитание (PZEM-004T)</h2>
-                <div class="chart-checkboxes">
-                    <label><input type="checkbox" id="check-power-voltage" checked> Напряжение (V)</label>
-                    <label><input type="checkbox" id="check-power-current" checked> Ток (A)</label>
-                    <label><input type="checkbox" id="check-power-power" checked> Мощность (W)</label>
-                    <label><input type="checkbox" id="check-power-energy"> Энергия (кВт·ч)</label>
-                    <label><input type="checkbox" id="check-power-frequency"> Частота (Гц)</label>
-                    <label><input type="checkbox" id="check-power-pf"> PF</label>
-                </div>
-            </div>
-            <div id="chart-power" class="chart"></div>
-        </div>
-
-        <!-- График 4: Насос и отбор -->
-        <div class="card chart-card">
-            <div class="chart-header">
-                <h2>💧 Насос и отбор</h2>
-                <div class="chart-checkboxes">
-                    <label><input type="checkbox" id="check-pump-speed" checked> Скорость (мл/ч)</label>
-                    <label><input type="checkbox" id="check-pump-volume" checked> Накопительный объём (мл)</label>
-                </div>
-            </div>
-            <div id="chart-pump" class="chart"></div>
-        </div>
-
-        <!-- График 5: Крепость -->
-        <div class="card chart-card">
-            <div class="chart-header">
-                <h2>🍷 Электронный ареометр</h2>
-            </div>
-            <div id="chart-abv" class="chart"></div>
-        </div>
-
-        <!-- График 6: Фракции (столбчатый) -->
-        <div class="card chart-card">
-            <div class="chart-header">
-                <h2>📊 Объёмы фракций</h2>
-            </div>
-            <div id="chart-fractions" class="chart-bar"></div>
-        </div>
-
-        <!-- Логи (перенесены из основной страницы) -->
-        <div id="logs" class="card" style="margin-top: 20px;">
-            <h2>📝 Логи</h2>
-            <div id="log-container" class="log-container">
-                <div class="log-entry">Инициализация графиков...</div>
-            </div>
-            <div class="controls" style="margin-top: 10px;">
-                <button class="btn" onclick="clearLogs()">🗑️ Очистить</button>
-                <button class="btn btn-primary" onclick="downloadLogs()">💾 Скачать CSV</button>
-            </div>
-        </div>
-
-        <!-- Футер -->
-        <footer>
-            <p>Smart-Column S3 v1.0 | Графики: ApexCharts</p>
-        </footer>
     </div>
 
-    <!-- ApexCharts библиотека -->
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
     <script src="charts.js"></script>
 </body>
 

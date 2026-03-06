@@ -1188,3 +1188,19 @@ export function updateInteractiveScheme(data) {
         else condensateGroup.classList.remove('condensing');
     }
 }
+
+let currentScale = 100;
+export function zoomScheme(direction) {
+    if (direction > 0) {
+        currentScale = Math.min(currentScale + 10, 200);
+    } else {
+        currentScale = Math.max(currentScale - 10, 50);
+    }
+    const svg = document.getElementById('main-scheme-svg');
+    if (svg) {
+        svg.style.width = `${currentScale}%`;
+        svg.style.height = 'auto';
+        svg.style.transform = 'none';
+        svg.style.maxWidth = 'none';
+    }
+}

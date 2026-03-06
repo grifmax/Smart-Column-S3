@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Логи - Smart-Column S3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="column-animation.css">
+    <link rel="stylesheet" href="schemes-animation.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2196f3">
+    <script>
+        (function () {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+</head>
+
+<body>
+    <div class="app-window">
+        <!-- ===== TITLEBAR ===== -->
+        <div class="titlebar">
+            <div class="traffic-lights">
+                <div class="traffic-light tl-close"></div>
+                <div class="traffic-light tl-min"></div>
+                <div class="traffic-light tl-max"></div>
+            </div>
+            <span class="titlebar-title" onclick="window.location.href='index.html'">Smart-Column S3</span>
+            <div class="titlebar-status">
+                <div class="status-indicator" id="connection-status"></div>
+                <span id="connection-text">Подключение...</span>
+                <span style="color:var(--text-tertiary)">&middot;</span>
+                <span>Uptime: <span id="uptime">--:--:--</span></span>
+            </div>
+            <div style="flex:1"></div>
+            <div class="titlebar-controls">
+                <div class="top-menu">
+                    <button id="top-menu-toggle" class="menu-toggle" type="button" aria-label="Меню"
+                        aria-expanded="false" onclick="toggleTopMenu(event)">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </button>
+                    <div id="top-menu-dropdown" class="menu-dropdown">
+                        <nav class="tabs tabs-dropdown">
+                            <a href="index.html" class="tab" style="text-decoration: none;">📊 Главная</a>
+                            <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
+                            <button class="tab active" data-tab="logs">📝 Логи</button>
+                        </nav>
+                    </div>
+                </div>
+                <button class="titlebar-btn"
+                    onclick="setTheme(document.body.getAttribute('data-theme')==='dark'?'light':'dark')"
+                    title="Тема">🌓</button>
+            </div>
+        </div>
+
+        <div class="main-layout">
+            <!-- ===== SIDEBAR ===== -->
+            <nav class="sidebar">
+                <div class="sidebar-section-title">Мониторинг</div>
+                <a href="index.html" class="sidebar-item" style="text-decoration:none">
+                    <span class="icon">📊</span> Главная
+                </a>
+                <a href="charts.html" class="sidebar-item" style="text-decoration:none">
+                    <span class="icon">📈</span> Графики
+                </a>
+                <a href="logs.html" class="sidebar-item active" style="text-decoration:none">
+                    <span class="icon">📝</span> Логи
+                </a>
+
+                <div class="sidebar-spacer"></div>
+                <div class="sidebar-footer">
+                    Smart-Column S3
+                </div>
+            </nav>
+
+            <!-- ===== CONTENT AREA ===== -->
+            <div class="content-area">
+                <div class="toolbar">
+                    <div class="toolbar-top">
+                        <span class="toolbar-title">Логи системы</span>
+                    </div>
+                </div>
+
+                <div class="scroll-wrapper">
+                    <div style="padding: 20px;">
+                        <div id="logs" class="grouped-box"
+                            style="display: flex; flex-direction: column; height: calc(100vh - 120px);">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h2 style="margin: 0;">📝 Журнал событий</h2>
+                                <div class="controls" style="display: flex; gap: 10px;">
+                                    <button class="btn" onclick="clearLogs()">🗑️ Очистить</button>
+                                    <button class="btn btn-primary" onclick="downloadLogs()">💾 Скачать CSV</button>
+                                </div>
+                            </div>
+                            <div id="log-container" class="log-container"
+                                style="flex: 1; overflow-y: auto; background-color: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; font-family: monospace; font-size: 0.9em;">
+                                <div class="log-entry" style="color: var(--text-secondary);">Инициализация страницы
+                                    логов...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Скрипты логов и вебсокета -->
+    <script src="app.js"></script>
+</body>
+
+</html>
