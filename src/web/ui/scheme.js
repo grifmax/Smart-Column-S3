@@ -21,11 +21,14 @@ const MODE_SCHEME_PATHS = {
 };
 
 const MANUAL_RECT_STORAGE_KEY = 'control.manualRectSettings';
-const CUBE_LIQUID_VISIBLE_TOP_Y = 560;
+const CUBE_LIQUID_VISIBLE_TOP_Y = 553;
+const CUBE_LIQUID_MIN_TOP_Y = 488;
 const CUBE_LIQUID_BOTTOM_Y = 743;
 const GRADIENT_TOP_Y = 38;
 const GRADIENT_LID_TOP_Y = 488;
 const GRADIENT_CUBE_TOP_Y = 553;
+const CUBE_LID_TOP_LEFT_X = 146;
+const CUBE_LID_TOP_RIGHT_X = 196;
 const BOILING_TEMP_TO_CUBE_ABV_TABLE = [
     { tempC: 78.2, abvPercent: 96 },
     { tempC: 79.0, abvPercent: 92 },
@@ -600,7 +603,10 @@ function startBoilingBubble(svg, bubble, intensity = 0.5) {
             const spawnJitterY = Math.random() * 4.0;
             const originX = startX + spawnJitterX;
             const originY = startY + spawnJitterY;
-            const targetY = Math.max(558, Math.min(CUBE_LIQUID_VISIBLE_TOP_Y + 18, liquidTopY + 1 + (Math.random() * 4)));
+            const targetY = Math.max(
+                CUBE_LIQUID_MIN_TOP_Y + 10,
+                Math.min(CUBE_LIQUID_BOTTOM_Y - 8, liquidTopY + 1 + (Math.random() * 4))
+            );
             const riseDistance = Math.max(16, originY - targetY);
             const driftX = (-6 + (Math.random() * 12)) * (0.5 + localIntensity * 0.5);
             const durationMs = Math.max(900, 1550 - (240 * localIntensity)) + (Math.random() * 920);
@@ -744,6 +750,132 @@ function ensureDynamicLiquidClip(svg) {
     return clipPathShape;
 }
 
+function buildCubeLiquidClipPath(geom) {
+    if (!geom) return '';
+    const left = Number(geom.left);
+    const right = Number(geom.right);
+    const bottom = Number(geom.bottom);
+    const bodyTop = Number(geom.bodyTop);
+    const lidTop = Number(geom.lidTop);
+    const lidTopLeft = Number(geom.lidTopLeft);
+    const lidTopRight = Number(geom.lidTopRight);
+    if (
+        !Number.isFinite(left)
+        || !Number.isFinite(right)
+        || !Number.isFinite(bottom)
+        || !Number.isFinite(bodyTop)
+        || !Number.isFinite(lidTop)
+        || !Number.isFinite(lidTopLeft)
+        || !Number.isFinite(lidTopRight)
+        || right <= left
+        || bottom <= bodyTop
+        || bodyTop <= lidTop
+        || lidTopRight <= lidTopLeft
+    ) {
+        return '';
+    }
+
+    return [
+        `M ${left.toFixed(2)} ${bottom.toFixed(2)}`,
+        `L ${right.toFixed(2)} ${bottom.toFixed(2)}`,
+        `L ${right.toFixed(2)} ${bodyTop.toFixed(2)}`,
+        `L ${lidTopRight.toFixed(2)} ${lidTop.toFixed(2)}`,
+        `L ${lidTopLeft.toFixed(2)} ${lidTop.toFixed(2)}`,
+        `L ${left.toFixed(2)} ${bodyTop.toFixed(2)}`,
+        'Z'
+    ].join(' ');
+}
+
+function ensureCubeLiquidContainerClip(svg, geom) {
+    const clipId = 'clip-cube-liquid-volume';
+    const clipPathId = 'clip-cube-liquid-volume-path';
+    let clipPath = svg.getElementById(clipId);
+    let clipPathShape = svg.getElementById(clipPathId);
+    if (!clipPath || !clipPathShape) {
+        const ns = 'http://www.w3.org/2000/svg';
+        let defs = svg.querySelector('defs');
+        if (!defs && svg.documentElement) {
+            defs = svg.createElementNS(ns, 'defs');
+            svg.documentElement.insertBefore(defs, svg.documentElement.firstChild);
+        }
+        if (!defs) return null;
+
+        if (!clipPath) {
+            clipPath = svg.createElementNS(ns, 'clipPath');
+            clipPath.setAttribute('id', clipId);
+            defs.appendChild(clipPath);
+        }
+        if (!clipPathShape) {
+            clipPathShape = svg.createElementNS(ns, 'path');
+            clipPathShape.setAttribute('id', clipPathId);
+            clipPathShape.setAttribute('d', '');
+            clipPath.appendChild(clipPathShape);
+        }
+    }
+
+    const clipPathD = buildCubeLiquidClipPath(geom);
+    if (clipPathD) clipPathShape.setAttribute('d', clipPathD);
+    return clipPath;
+}
+
+function calculateLiquidTopYByFillPercent(fillPercent, geom) {
+    const fill = Math.max(0, Math.min(1, Number(fillPercent) || 0));
+    const left = Number(geom?.left);
+    const right = Number(geom?.right);
+    const bottom = Number(geom?.bottom);
+    const bodyTop = Number(geom?.bodyTop);
+    const lidTop = Number(geom?.lidTop);
+    const lidTopLeft = Number(geom?.lidTopLeft);
+    const lidTopRight = Number(geom?.lidTopRight);
+
+    if (
+        !Number.isFinite(left)
+        || !Number.isFinite(right)
+        || !Number.isFinite(bottom)
+        || !Number.isFinite(bodyTop)
+        || !Number.isFinite(lidTop)
+        || !Number.isFinite(lidTopLeft)
+        || !Number.isFinite(lidTopRight)
+        || right <= left
+        || bottom <= bodyTop
+    ) {
+        return CUBE_LIQUID_VISIBLE_TOP_Y;
+    }
+
+    const bodyWidth = right - left;
+    const bodyHeight = bottom - bodyTop;
+    const bodyArea = bodyWidth * bodyHeight;
+
+    const lidHeight = Math.max(0, bodyTop - lidTop);
+    const lidBottomWidth = bodyWidth;
+    const lidTopWidth = Math.max(1, lidTopRight - lidTopLeft);
+    const lidArea = ((lidBottomWidth + lidTopWidth) * 0.5) * lidHeight;
+
+    const totalArea = bodyArea + lidArea;
+    if (totalArea <= 0) return CUBE_LIQUID_VISIBLE_TOP_Y;
+
+    const targetArea = totalArea * fill;
+    if (targetArea <= bodyArea) {
+        const bodyFillHeight = targetArea / bodyWidth;
+        return bottom - bodyFillHeight;
+    }
+
+    const targetLidArea = Math.min(lidArea, Math.max(0, targetArea - bodyArea));
+    if (lidHeight <= 0 || targetLidArea <= 0.001) return bodyTop;
+
+    const slope = (lidBottomWidth - lidTopWidth) / lidHeight;
+    let depthIntoLid = 0;
+    if (Math.abs(slope) < 1e-6) {
+        depthIntoLid = targetLidArea / lidBottomWidth;
+    } else {
+        const discr = Math.max(0, (lidBottomWidth * lidBottomWidth) - (2 * slope * targetLidArea));
+        depthIntoLid = (lidBottomWidth - Math.sqrt(discr)) / slope;
+    }
+
+    depthIntoLid = Math.max(0, Math.min(lidHeight, depthIntoLid));
+    return bodyTop - depthIntoLid;
+}
+
 function drawLiquidSurfacePath(liquidPath, topY, leftX, rightX, bottomY, amplitude = 0, phase = 0) {
     if (!liquidPath) return;
 
@@ -767,7 +899,7 @@ function drawLiquidSurfacePath(liquidPath, topY, leftX, rightX, bottomY, amplitu
         const wavePrimary = Math.sin((x * freq) + phase);
         const waveSecondary = Math.sin((x * freq * 1.85) - (phase * 1.35)) * harmonic;
         const y = top + ((wavePrimary + waveSecondary) * amp);
-        const yClamped = Math.min(bottom - 0.6, Math.max(556, y));
+        const yClamped = Math.min(bottom - 0.6, Math.max(CUBE_LIQUID_MIN_TOP_Y + 0.6, y));
         d += `L ${x.toFixed(2)} ${yClamped.toFixed(2)} `;
     }
     d += 'Z';
@@ -802,7 +934,7 @@ function updateLiquidWave(svg, liquidTopY, powerActualW, tempCube, boilingTempC)
         right: 266,
         bottom: CUBE_LIQUID_BOTTOM_Y
     };
-    const top = Math.max(560, Math.min(742, Number(liquidTopY) || CUBE_LIQUID_VISIBLE_TOP_Y));
+    const top = Math.max(CUBE_LIQUID_MIN_TOP_Y + 1, Math.min(742, Number(liquidTopY) || CUBE_LIQUID_VISIBLE_TOP_Y));
     const powerW = Number(powerActualW) || 0;
     const tCube = Number(tempCube);
     const boilTemp = Number(boilingTempC);
@@ -1340,7 +1472,9 @@ export function updateInteractiveScheme(data) {
         ) || 40;
         svg._feedAbvPercent = feedAbvPercent;
 
+        const cubeVolumeInputL = Number(document.getElementById('cube-volume-l')?.value);
         const maxCubeVolumeL = getPositiveFiniteNumber(
+            cubeVolumeInputL,
             s.equipment?.cubeVolumeL,
             s.equipment?.cubeVolume,
             s.rectification?.cubeVolumeL,
@@ -1370,21 +1504,30 @@ export function updateInteractiveScheme(data) {
         const cubeY = Number(cubeShell?.getAttribute('y')) || 553;
         const cubeW = Number(cubeShell?.getAttribute('width')) || 190;
         const cubeH = Number(cubeShell?.getAttribute('height')) || 190;
-        const visibleTopY = Math.max(cubeY, Math.min(cubeY + cubeH - 8, CUBE_LIQUID_VISIBLE_TOP_Y));
-        const visibleSpan = Math.max(1, (cubeY + cubeH) - visibleTopY);
-        const liquidHeight = visibleSpan * fillPercent;
-        const liquidY = (cubeY + cubeH) - liquidHeight;
         const liquidBottomY = cubeY + cubeH;
         const liquidLeftX = cubeX;
         const liquidRightX = cubeX + cubeW;
+        const lidTopY = Math.min(cubeY - 6, GRADIENT_LID_TOP_Y);
+        const lidTopLeftX = cubeX + ((CUBE_LID_TOP_LEFT_X - 76) / 190) * cubeW;
+        const lidTopRightX = cubeX + ((CUBE_LID_TOP_RIGHT_X - 76) / 190) * cubeW;
+        const liquidGeom = {
+            left: liquidLeftX,
+            right: liquidRightX,
+            bottom: liquidBottomY,
+            bodyTop: cubeY,
+            lidTop: lidTopY,
+            lidTopLeft: lidTopLeftX,
+            lidTopRight: lidTopRightX
+        };
+        const liquidY = calculateLiquidTopYByFillPercent(fillPercent, liquidGeom);
 
         drawLiquidSurfacePath(liquidShape, liquidY, liquidLeftX, liquidRightX, liquidBottomY, 0, 0);
         liquidTopY = liquidY;
-        svg._cubeLiquidGeom = {
-            left: liquidLeftX,
-            right: liquidRightX,
-            bottom: liquidBottomY
-        };
+        svg._cubeLiquidGeom = liquidGeom;
+
+        if (ensureCubeLiquidContainerClip(svg, liquidGeom)) {
+            liquidShape.setAttribute('clip-path', 'url(#clip-cube-liquid-volume)');
+        }
 
         const cubeVolumeText = svg.getElementById('txt-volume-cube');
         if (cubeVolumeText) {
