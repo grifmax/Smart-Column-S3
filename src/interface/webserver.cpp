@@ -228,6 +228,45 @@ void init() {
 
   server.addHandler(&ws);
 
+  // WiFi Setup Wizard — при первом запуске (нет сохранённого SSID)
+  // редирект на лёгкую страницу wifi.html вместо тяжёлого index.html
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (strlen(g_settings.wifi.ssid) == 0 && WiFi.status() != WL_CONNECTED) {
+      request->redirect("/wifi.html");
+      return;
+    }
+    // Отдаём index.html (или .gz если есть)
+    if (LittleFS.exists("/index.html.gz")) {
+      AsyncWebServerResponse *response =
+          request->beginResponse(LittleFS, "/index.html.gz", "text/html");
+      response->addHeader("Content-Encoding", "gzip");
+      request->send(response);
+    } else {
+      request->send(LittleFS, "/index.html", "text/html");
+    }
+  });
+
+  // Captive portal: перехват всех неизвестных хостов → wifi.html
+  server.on("/generate_204", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (strlen(g_settings.wifi.ssid) == 0) {
+      request->redirect("/wifi.html");
+    } else {
+      request->send(204);
+    }
+  });
+  server.on("/hotspot-detect.html", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              request->redirect("/wifi.html");
+            });
+  server.on("/connecttest.txt", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              if (strlen(g_settings.wifi.ssid) == 0) {
+                request->redirect("/wifi.html");
+              } else {
+                request->send(200, "text/plain", "Microsoft Connect Test");
+              }
+            });
+
   // Статические файлы (Web UI)
   server.serveStatic("/", LittleFS, "/")
       .setDefaultFile("index.html")
@@ -2132,6 +2171,7 @@ void init() {
     doc["ip"] = WiFi.localIP().toString();
     doc["rssi"] = WiFi.RSSI();
     doc["apMode"] = g_settings.wifi.apMode;
+    doc["wifiConfigured"] = (strlen(g_settings.wifi.ssid) > 0);
 
     if (g_settings.wifi.apMode) {
       doc["apSSID"] = WIFI_AP_SSID;

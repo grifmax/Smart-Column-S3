@@ -188,13 +188,9 @@
   <!-- ТЭН (внизу куба)                         -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <g id="zone-heater">
-    <!-- Три дуги (катушки нагревателя) -->
-    <path d="M241.8,712.37 C221.77,719.88 175.56,722.69 138.42,718.67 C101.28,714.64 87.18,705.29 106.89,697.75 C126.59,690.21 172.68,687.31 209.99,691.27 C247.3,695.23 261.8,704.55 242.43,712.13" fill="none" stroke="#000" stroke-width="1"/>
-    <path d="M218.65,733.16 C184.18,738.09 136.49,736.44 112.08,729.46 C87.68,722.48 95.78,712.82 130.19,707.86 C164.6,702.91 212.32,704.54 236.81,711.51 C261.3,718.47 253.31,728.14 218.96,733.11" fill="none" stroke="#000" stroke-width="1"/>
-    <path d="M188.7,704.73 C147.29,706.32 107.36,700.82 99.38,692.43 C91.41,684.05 118.39,675.94 159.73,674.29 C201.08,672.64 241.22,678.08 249.51,686.45 C257.79,694.82 231.11,702.97 189.83,704.69" fill="none" stroke="#000" stroke-width="1"/>
-    <!-- Горизонтальные линии катушек -->
-    <line x1="225" y1="678" x2="305" y2="678" stroke="#000" stroke-width="1"/>
-    <line x1="225" y1="732" x2="305" y2="732" stroke="#000" stroke-width="1"/>
+    <!-- Полоска ТЭНа — горизонтальный бар чуть выше дна куба -->
+    <rect id="heater-bar" x="82" y="730" width="180" height="5" rx="2.5" ry="2.5"
+          fill="#1a0500" stroke="none" opacity="1"/>
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
@@ -376,10 +372,10 @@
 
   <!-- Мощность ТЭНа (установленная / фактическая) -->
   <g id="ind-power">
-    <rect x="120" y="689.5" width="109" height="36" rx="5.4" ry="5.4" class="indicator"/>
-    <text id="txt-power-set" x="166" y="705" class="indicator-text" style="text-anchor:end">--%</text>
-    <text x="172" y="705" class="indicator-text" style="fill:#666;font-size:10px">/</text>
-    <text id="txt-power-actual" x="178" y="705" class="indicator-text" style="text-anchor:start">-- &#1042;&#1090;</text>
+    <rect x="120" y="660" width="109" height="36" rx="5.4" ry="5.4" class="indicator"/>
+    <text id="txt-power-set" x="166" y="676" class="indicator-text" style="text-anchor:end">--%</text>
+    <text x="172" y="676" class="indicator-text" style="fill:#666;font-size:10px">/</text>
+    <text id="txt-power-actual" x="178" y="676" class="indicator-text" style="text-anchor:start">-- &#1042;&#1090;</text>
   </g>
 
   <!-- Объём голов -->

@@ -7,6 +7,7 @@
 
 #include "fs_compat.h"
 #include <Arduino.h>
+#include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
 #include <Wire.h>
@@ -48,6 +49,10 @@
 SystemState g_state;           // Текущее состояние системы
 Settings g_settings;           // Настройки (из NVS)
 EnergyHistory g_energyHistory; // История энергопотребления
+
+// Captive portal DNS (активен только при первом запуске без WiFi)
+static DNSServer g_dnsServer;
+static bool g_captivePortalActive = false;
 
 // Таймеры задач
 uint32_t g_lastTempRead = 0;
@@ -264,6 +269,17 @@ static void pumpTask(void *param) {
 #endif
 
 void loop() {
+  // Captive portal DNS обработка
+  if (g_captivePortalActive) {
+    g_dnsServer.processNextRequest();
+    // Отключаем captive portal после успешного WiFi подключения
+    if (WiFi.status() == WL_CONNECTED || strlen(g_settings.wifi.ssid) > 0) {
+      g_dnsServer.stop();
+      g_captivePortalActive = false;
+      LOG_I("Captive portal stopped — WiFi configured");
+    }
+  }
+
   uint32_t now = millis();
 
 #if PUMP_TEST_MODE
@@ -651,6 +667,11 @@ void initNetwork() {
     } else {
       LOG_W("WiFi connection failed, AP-only access remains available");
     }
+  } else {
+    // Нет сохранённого SSID — запускаем captive portal
+    g_dnsServer.start(53, "*", WiFi.softAPIP());
+    g_captivePortalActive = true;
+    LOG_I("Captive portal started — WiFi setup wizard active");
   }
 #endif
 

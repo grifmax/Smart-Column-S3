@@ -108,6 +108,10 @@
       <feGaussianBlur stdDeviation="3.5" result="blur"/>
       <feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+    <!-- Soft edge filter for heater bar -->
+    <filter id="heater-soft" x="-5%" y="-30%" width="110%" height="160%">
+      <feGaussianBlur stdDeviation="1.2"/>
+    </filter>
   </defs>
 
   <style>
@@ -145,23 +149,6 @@
     .condensing .drop { opacity: 0.7; }
     .bubble { fill: #bbdefb; opacity: 0; filter: drop-shadow(0 0 2px rgba(187,222,251,0.5)); }
 
-    .heater-coil {
-      fill: none;
-      stroke: #5a6a7a;
-      stroke-width: 1.6;
-      stroke-linecap: round;
-      transition: stroke 0.5s ease, stroke-width 0.5s ease, filter 0.5s ease;
-    }
-    /* Горячий ТЭН — аналог .pipe-water.active */
-    .heater-coil.hot {
-      stroke-linecap: round;
-      animation: heater-pulse 1.2s ease-in-out infinite;
-    }
-    @keyframes heater-pulse {
-      0%   { opacity: 1; }
-      50%  { opacity: 0.78; }
-      100% { opacity: 1; }
-    }
     @keyframes water-pulse {
       0%   { stroke-width: 3.5; opacity: 0.9; }
       50%  { stroke-width: 2.8; opacity: 0.7; }
@@ -294,13 +281,10 @@
     <circle class="bubble" cx="228" cy="715" r="2.5"/>
   </g>
 
-  <!-- ТЭН -->
+  <!-- ТЭН — полоска-бар -->
   <g id="zone-heater">
-    <path class="heater-coil" stroke="#5a6a7a" stroke-width="1.6" d="M241.8,712.37 C221.77,719.88 175.56,722.69 138.42,718.67 C101.28,714.64 87.18,705.29 106.89,697.75 C126.59,690.21 172.68,687.31 209.99,691.27 C247.3,695.23 261.8,704.55 242.43,712.13"/>
-    <path class="heater-coil" stroke="#5a6a7a" stroke-width="1.6" d="M218.65,733.16 C184.18,738.09 136.49,736.44 112.08,729.46 C87.68,722.48 95.78,712.82 130.19,707.86 C164.6,702.91 212.32,704.54 236.81,711.51 C261.3,718.47 253.31,728.14 218.96,733.11"/>
-    <path class="heater-coil" stroke="#5a6a7a" stroke-width="1.6" d="M188.7,704.73 C147.29,706.32 107.36,700.82 99.38,692.43 C91.41,684.05 118.39,675.94 159.73,674.29 C201.08,672.64 241.22,678.08 249.51,686.45 C257.79,694.82 231.11,702.97 189.83,704.69"/>
-    <line class="heater-coil" stroke="#5a6a7a" stroke-width="1.6" x1="225" y1="678" x2="305" y2="678"/>
-    <line class="heater-coil" stroke="#5a6a7a" stroke-width="1.6" x1="225" y1="732" x2="305" y2="732"/>
+    <rect id="heater-bar" x="90" y="729" width="164" height="6" rx="3" ry="3"
+          fill="#3a3a3a" stroke="none" opacity="0.9" filter="url(#heater-soft)"/>
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
@@ -491,10 +475,10 @@
 
   <!-- Мощность ТЭНа -->
   <g id="ind-power">
-    <rect x="120" y="689.5" width="109" height="36" rx="10" ry="10" class="indicator" filter="url(#shadow-sm)"/>
-    <text id="txt-power-set" x="166" y="705" class="indicator-text" style="text-anchor:end">--%</text>
-    <text x="172" y="705" class="indicator-text" style="fill:#90a4ae;font-size:10px">/</text>
-    <text id="txt-power-actual" x="178" y="705" class="indicator-text" style="text-anchor:start">-- Вт</text>
+    <rect x="120" y="660" width="109" height="36" rx="10" ry="10" class="indicator" filter="url(#shadow-sm)"/>
+    <text id="txt-power-set" x="166" y="676" class="indicator-text" style="text-anchor:end">--%</text>
+    <text x="172" y="676" class="indicator-text" style="fill:#90a4ae;font-size:10px">/</text>
+    <text id="txt-power-actual" x="178" y="676" class="indicator-text" style="text-anchor:start">-- Вт</text>
   </g>
 
   <!-- Объём голов, под банкой jar-heads (центр x=333, дно y=545) -->

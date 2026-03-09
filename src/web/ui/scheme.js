@@ -900,7 +900,7 @@ export function updateInteractiveScheme(data) {
     const powerActualW = getPowerActualW(data);
     const powerSetPercent = getPowerSetPercent(data);
 
-    // Анимация ТЭНа — свечение пропорционально мощности
+    // Анимация ТЭНа — полоска-бар, свечение пропорционально мощности
     if (powerActualW !== undefined) {
         const heater = svg.getElementById('svg-heater');
         if (heater) {
@@ -908,39 +908,36 @@ export function updateInteractiveScheme(data) {
             else heater.classList.remove('heater-on');
         }
 
-        const heaterZone = svg.getElementById('zone-heater');
-        if (heaterZone) {
+        const heaterBar = svg.getElementById('heater-bar');
+        if (heaterBar) {
             const maxW = (runtimeMonitorState && runtimeMonitorState.equipment && runtimeMonitorState.equipment.heaterPowerW)
                 ? runtimeMonitorState.equipment.heaterPowerW
                 : 3000;
             const pct = Math.min(1, Math.max(0, powerActualW / maxW));
-            const coils = heaterZone.querySelectorAll('path, line');
-            coils.forEach(el => {
-                if (!el._origStroke) {
-                    el._origStroke = el.getAttribute('stroke') || '#000';
-                    el._origStrokeWidth = el.getAttribute('stroke-width') || '1';
-                }
-            });
 
             if (pct <= 0) {
-                coils.forEach(el => {
-                    el.setAttribute('stroke', el._origStroke || '#000');
-                    el.setAttribute('stroke-width', el._origStrokeWidth || '1');
-                    el.style.filter = '';
-                });
+                heaterBar.setAttribute('fill', '#3a3a3a');
+                heaterBar.setAttribute('height', '6');
+                heaterBar.setAttribute('y', '729');
+                heaterBar.style.filter = 'url(#heater-soft)';
             } else {
-                // Интерполяция от тёмно-красного (20%) к ярко-красному (100%)
-                const r = Math.round(80 + 175 * pct);
-                const g = Math.round(20 * (1 - pct));
-                const b = Math.round(10 * (1 - pct));
+                // Цвет: от тёмно-серого (0%) через бордовый к ярко-красному (100%)
+                const r = Math.round(58 + 197 * pct);   // 58 → 255
+                const g = Math.round(58 * (1 - pct));    // 58 → 0
+                const b = Math.round(58 * (1 - pct));    // 58 → 0
                 const color = `rgb(${r},${g},${b})`;
-                const glowRadius = 2 + 8 * pct;
-                const glowOpacity = 0.3 + 0.7 * pct;
-                coils.forEach(el => {
-                    el.setAttribute('stroke', color);
-                    el.setAttribute('stroke-width', String(1 + 1.5 * pct));
-                    el.style.filter = `drop-shadow(0 0 ${glowRadius}px rgba(${r},${g},${b},${glowOpacity}))`;
-                });
+
+                // Высота полоски растёт от 6 до 9 px
+                const barH = 6 + 3 * pct;
+                heaterBar.setAttribute('fill', color);
+                heaterBar.setAttribute('height', String(barH));
+                heaterBar.setAttribute('y', String(735 - barH));
+
+                // Свечение: мягкое размытие + glow
+                const glowR = 4 + 14 * pct;
+                const glowOp = 0.3 + 0.7 * pct;
+                heaterBar.style.filter = `url(#heater-soft) drop-shadow(0 0 ${glowR}px rgba(${r},${g},${b},${glowOp}))` +
+                    (pct > 0.3 ? ` drop-shadow(0 0 ${glowR * 2}px rgba(255,${Math.round(60*(1-pct))},0,${glowOp * 0.4}))` : '');
             }
         }
 

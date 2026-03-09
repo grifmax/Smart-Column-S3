@@ -1,29 +1,133 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Настройка WiFi - Smart-Column S3</title>
-    <link rel="stylesheet" href="style.css">
-    <script>
-        // Загрузить тему из localStorage перед отрисовкой
-        (function () {
-            const savedTheme = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', savedTheme);
-        })();
-    </script>
     <style>
-        /* wifi.html — только уникальные компоненты страницы настройки WiFi */
+        :root {
+            --bg: #f5f5f7;
+            --bg-card: #fff;
+            --text: #1d1d1f;
+            --text-sec: #6e6e73;
+            --accent: #007aff;
+            --accent-hover: #0056b3;
+            --border: #d2d2d7;
+            --success: #34c759;
+            --success-bg: #e8f9ed;
+            --danger: #ff3b30;
+            --danger-bg: #fef0ef;
+            --radius: 12px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #1c1c1e;
+                --bg-card: #2c2c2e;
+                --text: #f5f5f7;
+                --text-sec: #98989d;
+                --border: #48484a;
+                --success-bg: #0d3b1a;
+                --danger-bg: #3b1410;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 16px;
+        }
+
+        .wizard {
+            width: 100%;
+            max-width: 440px;
+        }
+
+        .wizard-header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .wizard-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .wizard-header p {
+            color: var(--text-sec);
+            font-size: 15px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 20px;
+            border: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+
+        .card h2 {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 14px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--bg-card);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
 
         .wifi-status {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 14px 16px;
+            padding: 14px;
             border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid var(--border-color);
+            margin-bottom: 16px;
+            border: 1px solid var(--border);
         }
 
         .wifi-status.connected {
@@ -47,54 +151,44 @@
 
         .wifi-status-label {
             font-weight: 600;
-            margin-bottom: 3px;
-        }
-
-        .wifi-status.connected .wifi-status-label {
-            color: var(--success-text);
-        }
-
-        .wifi-status.disconnected .wifi-status-label {
-            color: var(--danger-text);
+            margin-bottom: 2px;
         }
 
         .wifi-status-details {
             font-size: 0.88em;
-            color: var(--text-secondary);
+            color: var(--text-sec);
         }
 
         .network-list {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            margin-top: 16px;
+            margin-top: 14px;
         }
 
         .network-item {
             display: flex;
             align-items: center;
             padding: 12px 14px;
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--border);
             border-radius: 8px;
             cursor: pointer;
-            transition: all 0.25s;
+            transition: all 0.2s;
             background: var(--bg-card);
         }
 
         .network-item:hover {
             border-color: var(--accent);
-            box-shadow: 0 2px 8px var(--shadow);
         }
 
         .network-item.selected {
             border-color: var(--accent);
             border-width: 2px;
-            background: var(--bg-primary);
         }
 
         .network-icon {
-            font-size: 22px;
-            margin-right: 12px;
+            font-size: 20px;
+            margin-right: 10px;
             flex-shrink: 0;
         }
 
@@ -104,54 +198,42 @@
 
         .network-ssid {
             font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 3px;
+            margin-bottom: 2px;
         }
 
         .network-details {
             font-size: 0.84em;
-            color: var(--text-secondary);
+            color: var(--text-sec);
         }
 
         .signal-strength {
             display: flex;
             gap: 3px;
             align-items: flex-end;
-            margin-left: 12px;
+            margin-left: 10px;
         }
 
         .signal-bar {
-            width: 6px;
+            width: 5px;
             border-radius: 2px;
-            background: var(--border-color);
+            background: var(--border);
         }
 
-        .signal-bar:nth-child(1) {
-            height: 8px;
-        }
-
-        .signal-bar:nth-child(2) {
-            height: 13px;
-        }
-
-        .signal-bar:nth-child(3) {
-            height: 18px;
-        }
-
-        .signal-bar:nth-child(4) {
-            height: 23px;
-        }
+        .signal-bar:nth-child(1) { height: 7px; }
+        .signal-bar:nth-child(2) { height: 12px; }
+        .signal-bar:nth-child(3) { height: 17px; }
+        .signal-bar:nth-child(4) { height: 22px; }
 
         .signal-bar.active {
             background: var(--success);
         }
 
         .connect-panel {
-            margin-top: 16px;
+            margin-top: 14px;
             padding: 16px;
-            background: var(--bg-primary);
+            background: var(--bg);
             border-radius: 8px;
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--border);
             display: none;
         }
 
@@ -160,21 +242,31 @@
         }
 
         .connect-panel h2 {
-            font-size: 1.1em;
-            margin-bottom: 14px;
-            color: var(--text-primary);
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 10px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-sec);
+            margin-bottom: 4px;
         }
 
         .wifi-input {
             width: 100%;
             padding: 10px 12px;
-            border: 2px solid var(--border-color);
-            border-radius: 6px;
-            font-size: 1em;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 15px;
             background: var(--bg-card);
-            color: var(--text-primary);
-            transition: border-color 0.25s;
-            margin-top: 6px;
+            color: var(--text);
+            transition: border-color 0.2s;
         }
 
         .wifi-input:focus {
@@ -182,84 +274,110 @@
             border-color: var(--accent);
         }
 
+        .controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
         .spinner {
             display: inline-block;
-            width: 18px;
-            height: 18px;
-            border: 3px solid var(--border-color);
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
             border-top-color: var(--accent);
             border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+            animation: spin 0.7s linear infinite;
             vertical-align: middle;
         }
 
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
 
         .wifi-message {
-            padding: 12px 14px;
-            border-radius: 6px;
+            padding: 12px;
+            border-radius: 8px;
             margin-top: 12px;
             display: none;
-            font-size: 0.95em;
+            font-size: 14px;
         }
 
         .wifi-message.success {
             display: block;
             background: var(--success-bg);
-            color: var(--success-text);
+            color: var(--success);
             border: 1px solid var(--success);
         }
 
         .wifi-message.error {
             display: block;
             background: var(--danger-bg);
-            color: var(--danger-text);
+            color: var(--danger);
             border: 1px solid var(--danger);
+        }
+
+        .skip-link {
+            text-align: center;
+            margin-top: 16px;
+        }
+
+        .skip-link a {
+            color: var(--text-sec);
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        .skip-link a:hover {
+            color: var(--accent);
+        }
+
+        .redirect-bar {
+            text-align: center;
+            padding: 14px;
+            background: var(--success-bg);
+            border: 1px solid var(--success);
+            border-radius: var(--radius);
+            margin-top: 16px;
+            font-size: 15px;
+            display: none;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <!-- Заголовок -->
-        <header>
-            <h1>📡 Настройка WiFi</h1>
-            <div class="status-bar">
-                <a href="/" class="btn btn-sm">← На главную</a>
-            </div>
-        </header>
+    <div class="wizard">
+        <div class="wizard-header">
+            <h1 id="wizard-title">📡 Smart-Column S3</h1>
+            <p id="wizard-subtitle">Настройка WiFi</p>
+        </div>
+
+        <!-- Статус -->
+        <div id="currentStatus"></div>
 
         <!-- Основная карточка -->
         <div class="card">
-            <h2>Подключение к сети</h2>
+            <h2>Доступные сети</h2>
 
-            <!-- Текущий статус -->
-            <div id="currentStatus"></div>
-
-            <!-- Кнопка сканирования -->
             <div class="controls">
                 <button class="btn btn-primary" onclick="scanNetworks()" id="scanBtn">
-                    <span>📡</span> Сканировать сети
+                    📡 Сканировать
                 </button>
             </div>
 
-            <!-- Список сетей -->
             <div class="network-list" id="networkList"></div>
 
             <!-- Форма подключения -->
             <div class="connect-panel" id="connectForm">
-                <h2>Подключение к сети</h2>
+                <h2>Подключение</h2>
                 <div class="form-group">
-                    <label>SSID:</label>
+                    <label>Сеть:</label>
                     <input type="text" id="selectedSSID" class="wifi-input" readonly>
                 </div>
                 <div class="form-group">
                     <label>Пароль:</label>
-                    <input type="password" id="wifiPassword" class="wifi-input" placeholder="Введите пароль">
+                    <input type="password" id="wifiPassword" class="wifi-input" placeholder="Введите пароль"
+                        onkeydown="if(event.key==='Enter')connectToNetwork()">
                 </div>
                 <div class="controls" style="margin-top: 10px;">
                     <button class="btn btn-primary" onclick="connectToNetwork()">
@@ -273,92 +391,112 @@
             </div>
         </div>
 
-        <footer>
-            <p>Smart-Column S3 | WiFi Setup</p>
-        </footer>
+        <!-- Редирект после подключения -->
+        <div class="redirect-bar" id="redirectBar">
+            ✅ Подключено! Переход на главную через <span id="countdown">8</span> сек...
+        </div>
+
+        <!-- Ссылка "пропустить" (видна только если WiFi уже настроен) -->
+        <div class="skip-link" id="skipLink" style="display:none">
+            <a href="/">← На главную</a>
+        </div>
     </div>
 
     <script>
         let selectedNetwork = null;
+        let isWizardMode = false;
 
-        window.onload = function () {
-            loadStatus();
+        window.onload = async function () {
+            await loadStatus();
+            // Авто-сканирование при первом запуске
+            scanNetworks();
         };
 
         async function loadStatus() {
             try {
-                const response = await fetch('/api/wifi/status');
-                const data = await response.json();
-                const statusDiv = document.getElementById('currentStatus');
+                const r = await fetch('/api/wifi/status');
+                const d = await r.json();
+                const el = document.getElementById('currentStatus');
+                const skipLink = document.getElementById('skipLink');
 
-                if (data.connected) {
-                    statusDiv.innerHTML = `
+                isWizardMode = !d.wifiConfigured;
+
+                if (isWizardMode) {
+                    document.getElementById('wizard-subtitle').textContent = 'Первоначальная настройка';
+                }
+
+                if (d.wifiConfigured || d.connected) {
+                    skipLink.style.display = '';
+                }
+
+                if (d.connected) {
+                    el.innerHTML = `
                         <div class="wifi-status connected">
                             <div class="wifi-status-icon">✅</div>
                             <div class="wifi-status-info">
-                                <div class="wifi-status-label">Подключено к: ${data.ssid}</div>
-                                <div class="wifi-status-details">IP: ${data.ip} | Сигнал: ${data.rssi} dBm</div>
+                                <div class="wifi-status-label">Подключено: ${d.ssid}</div>
+                                <div class="wifi-status-details">IP: ${d.ip} | Сигнал: ${d.rssi} dBm</div>
                             </div>
                         </div>`;
-                } else if (data.apMode) {
-                    statusDiv.innerHTML = `
+                } else if (d.apMode) {
+                    el.innerHTML = `
                         <div class="wifi-status disconnected">
                             <div class="wifi-status-icon">📡</div>
                             <div class="wifi-status-info">
-                                <div class="wifi-status-label">Режим точки доступа: ${data.apSSID}</div>
-                                <div class="wifi-status-details">IP: ${data.apIP}</div>
+                                <div class="wifi-status-label">Точка доступа: ${d.apSSID}</div>
+                                <div class="wifi-status-details">IP: ${d.apIP}</div>
                             </div>
                         </div>`;
                 } else {
-                    statusDiv.innerHTML = `
+                    el.innerHTML = `
                         <div class="wifi-status disconnected">
                             <div class="wifi-status-icon">❌</div>
                             <div class="wifi-status-info">
                                 <div class="wifi-status-label">WiFi не подключён</div>
-                                <div class="wifi-status-details">Отсканируйте сети и подключитесь</div>
+                                <div class="wifi-status-details">Выберите сеть из списка</div>
                             </div>
                         </div>`;
                 }
-            } catch (error) {
-                console.error('Ошибка загрузки статуса:', error);
+            } catch (e) {
+                console.error('Status error:', e);
             }
         }
 
         async function scanNetworks() {
             const btn = document.getElementById('scanBtn');
-            const networkList = document.getElementById('networkList');
+            const list = document.getElementById('networkList');
 
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> Сканирование...';
-            networkList.innerHTML = '';
+            btn.innerHTML = '<span class="spinner"></span> Поиск...';
+            list.innerHTML = '';
 
             try {
-                const response = await fetch('/api/wifi/scan');
-                const data = await response.json();
+                const r = await fetch('/api/wifi/scan');
+                const d = await r.json();
 
-                if (data.count === 0) {
-                    networkList.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">Сети не найдены</p>';
+                if (d.count === 0) {
+                    list.innerHTML = '<p style="color:var(--text-sec);text-align:center;padding:20px;">Сети не найдены</p>';
                 } else {
-                    data.networks.forEach(network => {
-                        const strength = getSignalStrength(network.rssi);
+                    d.networks.forEach(n => {
+                        const s = getSignalStrength(n.rssi);
                         const item = document.createElement('div');
                         item.className = 'network-item';
-                        item.onclick = () => selectNetwork(network.ssid, item);
+                        item.onclick = () => selectNetwork(n.ssid, item);
                         item.innerHTML = `
-                            <div class="network-icon">${network.encryption === 'open' ? '🔓' : '🔒'}</div>
+                            <div class="network-icon">${n.encryption === 'open' ? '🔓' : '🔒'}</div>
                             <div class="network-info">
-                                <div class="network-ssid">${network.ssid}</div>
-                                <div class="network-details">Канал: ${network.channel} | ${network.encryption === 'open' ? 'Открытая' : 'Защищённая'}</div>
+                                <div class="network-ssid">${n.ssid}</div>
+                                <div class="network-details">Канал ${n.channel} · ${n.rssi} dBm</div>
                             </div>
-                            <div class="signal-strength">${generateSignalBars(strength)}</div>`;
-                        networkList.appendChild(item);
+                            <div class="signal-strength">${signalBars(s)}</div>`;
+                        list.appendChild(item);
                     });
                 }
-            } catch (error) {
-                networkList.innerHTML = `<p style="color: var(--danger);">Ошибка сканирования: ${error.message}</p>`;
+            } catch (e) {
+                list.innerHTML = `<p style="color:var(--danger)">Ошибка: ${e.message}</p>`;
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<span>📡</span> Сканировать сети';
+                btn.innerHTML = '📡 Сканировать';
             }
         }
 
@@ -369,62 +507,97 @@
             return 1;
         }
 
-        function generateSignalBars(strength) {
-            let bars = '';
-            for (let i = 1; i <= 4; i++) {
-                bars += `<div class="signal-bar ${i <= strength ? 'active' : ''}"></div>`;
-            }
-            return bars;
+        function signalBars(strength) {
+            let b = '';
+            for (let i = 1; i <= 4; i++)
+                b += `<div class="signal-bar ${i <= strength ? 'active' : ''}"></div>`;
+            return b;
         }
 
-        function selectNetwork(ssid, element) {
-            document.querySelectorAll('.network-item').forEach(item => item.classList.remove('selected'));
-            element.classList.add('selected');
+        function selectNetwork(ssid, el) {
+            document.querySelectorAll('.network-item').forEach(i => i.classList.remove('selected'));
+            el.classList.add('selected');
             selectedNetwork = ssid;
             document.getElementById('selectedSSID').value = ssid;
             document.getElementById('wifiPassword').value = '';
             document.getElementById('connectForm').classList.add('show');
             document.getElementById('connectMessage').className = 'wifi-message';
+            document.getElementById('wifiPassword').focus();
         }
 
         function cancelConnect() {
             document.getElementById('connectForm').classList.remove('show');
-            document.querySelectorAll('.network-item').forEach(item => item.classList.remove('selected'));
+            document.querySelectorAll('.network-item').forEach(i => i.classList.remove('selected'));
             selectedNetwork = null;
         }
 
         async function connectToNetwork() {
             const ssid = document.getElementById('selectedSSID').value;
             const password = document.getElementById('wifiPassword').value;
-            const messageDiv = document.getElementById('connectMessage');
+            const msg = document.getElementById('connectMessage');
 
             if (!ssid) {
-                messageDiv.className = 'wifi-message error';
-                messageDiv.textContent = 'Выберите сеть';
+                msg.className = 'wifi-message error';
+                msg.textContent = 'Выберите сеть';
                 return;
             }
 
             try {
-                const response = await fetch('/api/wifi/connect', {
+                const r = await fetch('/api/wifi/connect', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ssid, password })
                 });
+                const d = await r.json();
 
-                const data = await response.json();
+                if (r.ok) {
+                    msg.className = 'wifi-message success';
+                    msg.textContent = '✓ Подключение... Ожидайте.';
 
-                if (response.ok) {
-                    messageDiv.className = 'wifi-message success';
-                    messageDiv.textContent = '✓ Подключение... Подождите 10 секунд и обновите страницу.';
-                    setTimeout(() => { loadStatus(); cancelConnect(); }, 10000);
+                    // Проверяем подключение каждые 2 секунды
+                    let attempts = 0;
+                    const check = setInterval(async () => {
+                        attempts++;
+                        try {
+                            const sr = await fetch('/api/wifi/status');
+                            const sd = await sr.json();
+                            if (sd.connected) {
+                                clearInterval(check);
+                                await loadStatus();
+                                cancelConnect();
+                                startRedirect();
+                            }
+                        } catch (e) { /* ignore */ }
+                        if (attempts >= 10) {
+                            clearInterval(check);
+                            msg.className = 'wifi-message error';
+                            msg.textContent = '✗ Не удалось подключиться. Проверьте пароль.';
+                            await loadStatus();
+                        }
+                    }, 2000);
                 } else {
-                    messageDiv.className = 'wifi-message error';
-                    messageDiv.textContent = '✗ Ошибка: ' + (data.error || 'Неизвестная ошибка');
+                    msg.className = 'wifi-message error';
+                    msg.textContent = '✗ ' + (d.error || 'Ошибка');
                 }
-            } catch (error) {
-                messageDiv.className = 'wifi-message error';
-                messageDiv.textContent = '✗ Ошибка подключения: ' + error.message;
+            } catch (e) {
+                msg.className = 'wifi-message error';
+                msg.textContent = '✗ Ошибка: ' + e.message;
             }
+        }
+
+        function startRedirect() {
+            const bar = document.getElementById('redirectBar');
+            const span = document.getElementById('countdown');
+            bar.style.display = '';
+            let sec = 8;
+            const t = setInterval(() => {
+                sec--;
+                span.textContent = sec;
+                if (sec <= 0) {
+                    clearInterval(t);
+                    window.location.href = '/';
+                }
+            }, 1000);
         }
     </script>
 </body>
