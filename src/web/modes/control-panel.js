@@ -1,4 +1,12 @@
-import { MODE_RECT, MODE_MANUAL, MODE_DIST, MODE_MASH, MODE_HOLD } from '../globals.js';
+import {
+    MODE_RECT,
+    MODE_MANUAL,
+    MODE_DIST,
+    MODE_MASH,
+    MODE_HOLD,
+    clampFeedVolumeToCube,
+    getCubeVolumeLimitL
+} from '../globals.js';
 import { addLog } from '../core/logs.js';
 import { loadStatus } from '../core/status.js';
 import { startRectification, loadRectificationStartSettings } from './rectification.js';
@@ -263,10 +271,18 @@ export function updateManualTailsPwmMode() {
     if (pwmSettings) pwmSettings.style.display = getCheckboxValue('manual-tails-pwm-enabled') ? '' : 'none';
 }
 
+export function syncManualFeedVolumeLimit() {
+    const input = byId('manual-feed-volume');
+    if (!input) return;
+    const maxFeedVolumeL = Math.max(1, Math.min(250, getCubeVolumeLimitL()));
+    input.max = String(maxFeedVolumeL);
+    input.value = String(clampFeedVolumeToCube(input.value, Number(input.value) || 20));
+}
+
 function collectManualRectSettings() {
     return {
         feed: {
-            volumeL: getNumberValue('manual-feed-volume', 20),
+            volumeL: clampFeedVolumeToCube(getNumberValue('manual-feed-volume', 20), 20),
             abvPercent: getNumberValue('manual-feed-abv', 40)
         },
         heads: {
@@ -301,7 +317,12 @@ function applyManualRectSettings(settings) {
     const body = settings?.body || {};
     const tails = settings?.tails || {};
 
-    setInputValue('manual-feed-volume', feed.volumeL ?? 20);
+    const manualFeedVolumeInput = byId('manual-feed-volume');
+    if (manualFeedVolumeInput) {
+        const maxFeedVolumeL = Math.max(1, Math.min(250, getCubeVolumeLimitL()));
+        manualFeedVolumeInput.max = String(maxFeedVolumeL);
+        manualFeedVolumeInput.value = String(clampFeedVolumeToCube(feed.volumeL ?? 20, 20));
+    }
     setInputValue('manual-feed-abv', feed.abvPercent ?? 40);
 
     setInputValue('manual-heads-volume', heads.volume ?? 50);
@@ -377,4 +398,5 @@ export function initManualRectSettings() {
     }
 
     loadManualRectSettings({ silent: true });
+    syncManualFeedVolumeLimit();
 }

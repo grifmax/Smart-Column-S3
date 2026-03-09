@@ -35,6 +35,7 @@ export let miniChartData = {
 };
 
 export const MINI_CHART_MAX_POINTS = 360; // 30 минут при обновлении каждые 5 секунд
+export const DEFAULT_CUBE_VOLUME_L = 37;
 
 
 
@@ -120,12 +121,12 @@ export let runtimeMonitorState = {
     volumes: { heads: 0, body: 0, tails: 0 },
     equipment: {
         heaterPowerW: maxHeaterPower,
-        cubeVolumeL: 20,
+        cubeVolumeL: DEFAULT_CUBE_VOLUME_L,
         minHeaterSubmergeL: 7.5,
         waterAutoStartCubeTempC: 45
     },
     rectification: {
-        feedVolumeL: 20,
+        feedVolumeL: DEFAULT_CUBE_VOLUME_L,
         feedAbvPercent: 40,
         headsPercent: 8,
         bodyPercent: 84,
@@ -177,6 +178,24 @@ export let runtimeMonitorState = {
 export let runtimeEditContext = null;
 export function setRuntimeEditContext(ctx) {
     runtimeEditContext = ctx;
+}
+export function getCubeVolumeLimitL(fallback = DEFAULT_CUBE_VOLUME_L) {
+    const fromRuntime = Number(runtimeMonitorState?.equipment?.cubeVolumeL);
+    if (Number.isFinite(fromRuntime) && fromRuntime > 0) return fromRuntime;
+
+    const fromForm = Number(document.getElementById('cube-volume-l')?.value);
+    if (Number.isFinite(fromForm) && fromForm > 0) return fromForm;
+
+    return fallback;
+}
+
+export function clampFeedVolumeToCube(value, fallback = DEFAULT_CUBE_VOLUME_L) {
+    const maxVolume = Math.max(1, Math.min(250, getCubeVolumeLimitL(fallback)));
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return Math.min(fallback, maxVolume);
+    if (parsed < 1) return 1;
+    if (parsed > maxVolume) return maxVolume;
+    return parsed;
 }
 export const ABV_PLAN_STORAGE_KEY = 'ui.plannedAbvPercent';
 export let plannedAbvPercent = 40.0;

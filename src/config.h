@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.7.1"
+#define FIRMWARE_VERSION "1.7.2"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -485,7 +485,7 @@ struct MenuItem {
 #define DEFAULT_COLUMN_HEIGHT_MM 1500 // Высота колонны (мм)
 #define DEFAULT_PACKING_COEFF 15.0f   // СПН коэффициент: мм рт.ст./м
 #define DEFAULT_HEATER_POWER_W 3000   // Мощность нагревателя (Вт)
-#define DEFAULT_CUBE_VOLUME_L 50.0    // Объем куба (л)
+#define DEFAULT_CUBE_VOLUME_L 37.0    // Объем куба (л)
 #define DEFAULT_MIN_HEATER_SUBMERGE_L 7.5f // Мин. уровень жидкости над ТЭН (л)
 #define DEFAULT_WATER_AUTOSTART_CUBE_TEMP_C 45.0f // Автостарт воды по температуре куба (°C)
 

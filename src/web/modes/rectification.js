@@ -1,4 +1,4 @@
-import { MODE_RECT, MODE_MANUAL } from '../globals.js';
+import { MODE_RECT, MODE_MANUAL, clampFeedVolumeToCube, getCubeVolumeLimitL } from '../globals.js';
 import { confirmModeSwitch } from './common.js';
 import { loadStatus } from '../core/status.js';
 import { addLog } from '../core/logs.js';
@@ -76,9 +76,10 @@ export function normalizeRectificationFractions(params) {
 }
 
 export function collectRectificationModalSettings() {
+    const maxFeedVolumeL = Math.max(1, Math.min(250, getCubeVolumeLimitL()));
     const params = {
         feedstock: clampRectInput(document.getElementById('rect-start-feedstock')?.value, 0, 7, 0),
-        feedVolumeL: clampRectInput(document.getElementById('rect-start-feed-volume')?.value, 1, 250, 20),
+        feedVolumeL: clampRectInput(document.getElementById('rect-start-feed-volume')?.value, 1, maxFeedVolumeL, clampFeedVolumeToCube(20)),
         feedAbvPercent: clampRectInput(document.getElementById('rect-start-feed-abv')?.value, 1, 96, 40),
         headsPercent: clampRectInput(document.getElementById('rect-start-heads-percent')?.value, 0, 40, 8),
         bodyPercent: clampRectInput(document.getElementById('rect-start-body-percent')?.value, 0, 100, 84),
@@ -99,7 +100,12 @@ function applyRectificationSettingsToInputs(params) {
     };
 
     setValue('rect-start-feedstock', params.feedstock ?? 0);
-    setValue('rect-start-feed-volume', params.feedVolumeL ?? 20);
+    const feedVolumeInput = document.getElementById('rect-start-feed-volume');
+    if (feedVolumeInput) {
+        const maxFeedVolumeL = Math.max(1, Math.min(250, getCubeVolumeLimitL()));
+        feedVolumeInput.max = String(maxFeedVolumeL);
+        feedVolumeInput.value = String(clampFeedVolumeToCube(params.feedVolumeL ?? 20));
+    }
     setValue('rect-start-feed-abv', params.feedAbvPercent ?? 40);
     setValue('rect-start-heads-percent', params.headsPercent ?? 8);
     setValue('rect-start-body-percent', params.bodyPercent ?? 84);
@@ -109,6 +115,14 @@ function applyRectificationSettingsToInputs(params) {
     setValue('rect-start-stabilization', params.stabilizationMin ?? 30);
     setValue('rect-start-purge', params.purgeMin ?? 5);
     updateRectificationFractionsSum();
+}
+
+export function syncRectificationFeedVolumeLimit() {
+    const feedVolumeInput = document.getElementById('rect-start-feed-volume');
+    if (!feedVolumeInput) return;
+    const maxFeedVolumeL = Math.max(1, Math.min(250, getCubeVolumeLimitL()));
+    feedVolumeInput.max = String(maxFeedVolumeL);
+    feedVolumeInput.value = String(clampFeedVolumeToCube(feedVolumeInput.value, Number(feedVolumeInput.value) || 20));
 }
 
 export async function loadRectificationStartSettings() {
@@ -203,6 +217,7 @@ export function initRectificationStartModal() {
             if (input) input.addEventListener('input', updateRectificationFractionsSum);
         });
 
+    syncRectificationFeedVolumeLimit();
     updateRectificationFractionsSum();
 }
 

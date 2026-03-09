@@ -391,10 +391,38 @@ function applyThreeLayerCoverage(
     setLayerRect(cubeLayer, cubeY, cubeHeight, opacity);
 }
 
-function getFeedBoilingTempC() {
+function normalizePressureToMmHg(rawPressure) {
+    const value = Number(rawPressure);
+    if (!Number.isFinite(value) || value <= 0) return undefined;
+
+    // Pa -> mmHg
+    if (value > 20000) return value * 0.00750061683;
+    // hPa -> mmHg
+    if (value > 820) return value * 0.750061683;
+    // kPa -> mmHg
+    if (value >= 80 && value <= 130) return value * 7.50061683;
+    // Already mmHg
+    return value;
+}
+
+function getAtmosphericPressureMmHg(data) {
+    const candidates = [
+        getStatusNumber(data, 'pressure', 'atm', 'p_atm'),
+        runtimeMonitorState?.pressure?.atm,
+        runtimeMonitorState?.p_atm
+    ];
+    for (const candidate of candidates) {
+        const mmHg = normalizePressureToMmHg(candidate);
+        if (Number.isFinite(mmHg)) return mmHg;
+    }
+    return undefined;
+}
+
+function getFeedBoilingTempC(svg) {
     const mode = resolveMode(runtimeMonitorState?.mode, runtimeMonitorState?.modeStr);
     const manualFeed = getManualFeedSetup();
     const feedAbv = getPositiveFiniteNumber(
+        svg?._feedAbvPercent,
         mode === MODE_MANUAL ? manualFeed.abvPercent : undefined,
         runtimeMonitorState?.rectification?.feedAbvPercent,
         runtimeMonitorState?.rectification?.feedABV,
@@ -402,8 +430,17 @@ function getFeedBoilingTempC() {
         40
     );
     const abv = Math.max(0, Math.min(100, Number(feedAbv) || 40));
-    // Приближение для Ткип смеси в зависимости от крепости сырца.
-    return Math.max(78.3, Math.min(100, 100 - (0.215 * abv)));
+    // Таблично-эмпирическое приближение для Ткип смеси в зависимости от крепости сырца.
+    const baseBoilingTempC = Math.max(78.3, Math.min(100, 100 - (0.215 * abv)));
+
+    // Поправка на атмосферное давление: при повышении давления температура кипения растет.
+    // dT/dP около рабочей зоны спиртоводной смеси.
+    const atmMmHg = Number(svg?._atmPressureMmHg);
+    const correctedBoilingTempC = Number.isFinite(atmMmHg)
+        ? (baseBoilingTempC + ((atmMmHg - 760) * 0.037))
+        : baseBoilingTempC;
+
+    return Math.max(74, Math.min(104, correctedBoilingTempC));
 }
 
 function stopBoilingBubble(bubble) {
@@ -420,39 +457,172 @@ function stopBoilingBubble(bubble) {
     bubble.style.transform = '';
 }
 
-function startBoilingBubble(svg, bubble) {
+function ensureBoilingPopLayer(svg) {
+    let layer = svg.getElementById('anim-boil-pops');
+    if (layer) return layer;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    layer = svg.createElementNS(ns, 'g');
+    layer.setAttribute('id', 'anim-boil-pops');
+    layer.setAttribute('pointer-events', 'none');
+
+    const bubblesGroup = svg.getElementById('anim-boil-bubbles');
+    if (bubblesGroup?.parentNode) {
+        bubblesGroup.parentNode.insertBefore(layer, bubblesGroup.nextSibling);
+    } else if (svg.documentElement) {
+        svg.documentElement.appendChild(layer);
+    }
+    return layer;
+}
+
+function spawnBubblePop(svg, x, y, intensity = 0.5) {
+    const layer = ensureBoilingPopLayer(svg);
+    if (!layer) return;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const popPower = Math.max(0.2, Math.min(1.4, Number(intensity) || 0.5));
+
+    const ring = svg.createElementNS(ns, 'circle');
+    ring.setAttribute('cx', x.toFixed(2));
+    ring.setAttribute('cy', y.toFixed(2));
+    ring.setAttribute('r', (1.25 + (0.45 * popPower)).toFixed(2));
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', '#d9f2ff');
+    ring.setAttribute('stroke-width', (1.35 + (0.75 * popPower)).toFixed(2));
+    ring.setAttribute('opacity', '0.95');
+    layer.appendChild(ring);
+
+    const flash = svg.createElementNS(ns, 'circle');
+    flash.setAttribute('cx', x.toFixed(2));
+    flash.setAttribute('cy', y.toFixed(2));
+    flash.setAttribute('r', (1.2 + (0.65 * popPower)).toFixed(2));
+    flash.setAttribute('fill', '#eefbff');
+    flash.setAttribute('opacity', '0.9');
+    layer.appendChild(flash);
+
+    const cleanupNode = (node, fallbackMs) => {
+        if (typeof node.animate === 'function') return;
+        setTimeout(() => {
+            node.remove();
+        }, fallbackMs);
+    };
+
+    if (typeof ring.animate === 'function') {
+        const ringAnim = ring.animate(
+            [
+                { opacity: 0.95, transform: 'scale(0.45)' },
+                { opacity: 0.42, transform: `scale(${(1.9 + popPower).toFixed(2)})` },
+                { opacity: 0, transform: `scale(${(2.8 + (1.35 * popPower)).toFixed(2)})` }
+            ],
+            {
+                duration: 230 + (100 * popPower),
+                easing: 'cubic-bezier(0.15, 0.6, 0.25, 1)',
+                iterations: 1
+            }
+        );
+        ringAnim.onfinish = () => ring.remove();
+    } else {
+        cleanupNode(ring, 320);
+    }
+
+    if (typeof flash.animate === 'function') {
+        const flashAnim = flash.animate(
+            [
+                { opacity: 0.9, transform: 'scale(1)' },
+                { opacity: 0.35, transform: 'scale(1.65)' },
+                { opacity: 0, transform: 'scale(2.2)' }
+            ],
+            {
+                duration: 160 + (75 * popPower),
+                easing: 'ease-out',
+                iterations: 1
+            }
+        );
+        flashAnim.onfinish = () => flash.remove();
+    } else {
+        cleanupNode(flash, 220);
+    }
+
+    const droplets = 4 + Math.round(3 * popPower);
+    for (let i = 0; i < droplets; i++) {
+        const droplet = svg.createElementNS(ns, 'circle');
+        droplet.setAttribute('cx', x.toFixed(2));
+        droplet.setAttribute('cy', y.toFixed(2));
+        droplet.setAttribute('r', (0.65 + (Math.random() * 0.55)).toFixed(2));
+        droplet.setAttribute('fill', '#b7e6ff');
+        droplet.setAttribute('opacity', '0.85');
+        layer.appendChild(droplet);
+
+        const angle = (-95 + (i * (190 / Math.max(1, droplets - 1))) + ((Math.random() - 0.5) * 16)) * (Math.PI / 180);
+        const distance = (4.8 + (Math.random() * 8.8)) * (0.65 + popPower);
+        const dx = Math.cos(angle) * distance;
+        const dy = Math.sin(angle) * distance;
+        const duration = 180 + (Math.random() * 230);
+
+        if (typeof droplet.animate === 'function') {
+            const dropAnim = droplet.animate(
+                [
+                    { opacity: 0.85, transform: 'translate(0px, 0px) scale(1)' },
+                    { opacity: 0.65, transform: `translate(${dx.toFixed(2)}px, ${(dy * 0.85).toFixed(2)}px) scale(0.9)` },
+                    { opacity: 0, transform: `translate(${(dx * 1.2).toFixed(2)}px, ${(dy + 1.8).toFixed(2)}px) scale(0.55)` }
+                ],
+                {
+                    duration,
+                    easing: 'cubic-bezier(0.2, 0.65, 0.2, 1)',
+                    iterations: 1
+                }
+            );
+            dropAnim.onfinish = () => droplet.remove();
+        } else {
+            cleanupNode(droplet, duration + 40);
+        }
+    }
+}
+
+function startBoilingBubble(svg, bubble, intensity = 0.5) {
     if (bubble._boilActive) return;
     bubble._boilActive = true;
+    bubble._boilIntensity = Math.max(0, Math.min(1.2, Number(intensity) || 0.5));
+    const startX = Number(bubble.dataset.startX || bubble.getAttribute('cx') || 170);
     const startY = Number(bubble.dataset.startY || bubble.getAttribute('cy') || 716);
+    bubble.dataset.startX = String(startX);
     bubble.dataset.startY = String(startY);
 
     const tick = () => {
         if (!bubble._boilActive) return;
-        const delayMs = 80 + Math.random() * 520;
+        const localIntensity = Math.max(0.2, Math.min(1.4, Number(bubble._boilIntensity) || 0.5));
+        const delayMs = Math.max(120, 520 - (180 * localIntensity)) + (Math.random() * 380);
         bubble._boilTimer = setTimeout(() => {
             if (!bubble._boilActive) return;
 
             const liquidTopY = Number(svg._cubeLiquidTopY || CUBE_LIQUID_VISIBLE_TOP_Y);
-            const targetY = Math.max(560, Math.min(CUBE_LIQUID_VISIBLE_TOP_Y + 14, liquidTopY + 6 + (Math.random() * 8)));
-            const riseDistance = Math.max(24, startY - targetY);
-            const driftX = -7 + Math.random() * 14;
-            const durationMs = 700 + Math.random() * 1100;
+            const spawnJitterX = (Math.random() - 0.5) * 4.5;
+            const spawnJitterY = Math.random() * 4.0;
+            const originX = startX + spawnJitterX;
+            const originY = startY + spawnJitterY;
+            const targetY = Math.max(558, Math.min(CUBE_LIQUID_VISIBLE_TOP_Y + 18, liquidTopY + 1 + (Math.random() * 4)));
+            const riseDistance = Math.max(16, originY - targetY);
+            const driftX = (-6 + (Math.random() * 12)) * (0.5 + localIntensity * 0.5);
+            const durationMs = Math.max(900, 1550 - (240 * localIntensity)) + (Math.random() * 920);
+            const hitX = originX + driftX;
+            const hitY = targetY + (Math.random() * 1.2);
 
             if (typeof bubble.animate === 'function') {
                 bubble._boilAnimation = bubble.animate(
                     [
-                        { opacity: 0, transform: 'translate(0px, 0px) scale(0.45)' },
-                        { opacity: 0.7, transform: `translate(${(driftX * 0.45).toFixed(2)}px, ${(-riseDistance * 0.55).toFixed(2)}px) scale(1)` },
-                        { opacity: 0, transform: `translate(${driftX.toFixed(2)}px, ${(-riseDistance).toFixed(2)}px) scale(1.2)` }
+                        { opacity: 0, transform: `translate(${spawnJitterX.toFixed(2)}px, ${spawnJitterY.toFixed(2)}px) scale(0.2)` },
+                        { opacity: 0.84, transform: `translate(${(driftX * 0.55).toFixed(2)}px, ${(-riseDistance * 0.62).toFixed(2)}px) scale(${(1.0 + 0.30 * localIntensity).toFixed(2)})` },
+                        { opacity: 0.08, transform: `translate(${driftX.toFixed(2)}px, ${(-riseDistance).toFixed(2)}px) scale(${(1.35 + 0.55 * localIntensity).toFixed(2)})` }
                     ],
                     {
                         duration: durationMs,
-                        easing: 'cubic-bezier(0.22, 0.08, 0.3, 1)',
+                        easing: 'cubic-bezier(0.18, 0.1, 0.28, 1)',
                         iterations: 1
                     }
                 );
                 bubble._boilAnimation.onfinish = () => {
                     bubble._boilAnimation = null;
+                    spawnBubblePop(svg, hitX, hitY, localIntensity);
                     tick();
                 };
             } else {
@@ -462,6 +632,7 @@ function startBoilingBubble(svg, bubble) {
                     if (!bubble._boilActive) return;
                     bubble.style.opacity = '0';
                     bubble.style.transform = '';
+                    spawnBubblePop(svg, hitX, hitY, localIntensity);
                     tick();
                 }, durationMs);
             }
@@ -471,68 +642,213 @@ function startBoilingBubble(svg, bubble) {
     tick();
 }
 
-function updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY) {
+function stopBoilingPopEffects(svg) {
+    const layer = svg.getElementById('anim-boil-pops');
+    if (!layer) return;
+    while (layer.firstChild) {
+        layer.removeChild(layer.firstChild);
+    }
+}
+
+function updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY, boilingTempC) {
     const group = svg.getElementById('anim-boil-bubbles');
     if (!group) return;
 
     const tCube = Number(tempCube);
     const powerW = Number(powerActualW) || 0;
-    const boilingTempC = getFeedBoilingTempC();
-    const active = Number.isFinite(tCube) && tCube >= boilingTempC && powerW > 120;
+    const boilTemp = Number(boilingTempC);
+    const active = Number.isFinite(tCube) && Number.isFinite(boilTemp) && tCube >= boilTemp && powerW > 80;
+    const intensity = active
+        ? Math.max(
+            0.2,
+            Math.min(
+                1.2,
+                ((powerW / 2800) * 0.55) + ((Math.max(0, tCube - boilTemp) / 4.0) * 0.75)
+            )
+        )
+        : 0;
 
     svg._cubeLiquidTopY = Number.isFinite(liquidTopY) ? liquidTopY : CUBE_LIQUID_VISIBLE_TOP_Y;
     group.style.opacity = active ? '1' : '0';
 
     const bubbles = group.querySelectorAll('.bubble');
     bubbles.forEach((bubble) => {
-        if (active) startBoilingBubble(svg, bubble);
-        else stopBoilingBubble(bubble);
+        if (active) {
+            bubble._boilIntensity = intensity;
+            startBoilingBubble(svg, bubble, intensity);
+        } else {
+            stopBoilingBubble(bubble);
+        }
     });
+    if (!active) stopBoilingPopEffects(svg);
 }
 
-function updateLiquidWave(svg, liquidTopY, powerActualW, tempCube) {
-    const waveLine = svg.getElementById('liquid-wave-line');
-    if (!waveLine) return;
+function ensureLiquidPathShape(svg) {
+    const current = svg.getElementById('anim-liquid-level');
+    if (!current) return null;
 
-    const boilingTempC = getFeedBoilingTempC();
-    const powerW = Number(powerActualW) || 0;
-    const tCube = Number(tempCube);
-    const active = Number.isFinite(tCube) && tCube >= boilingTempC - 5 && powerW > 50;
+    const tag = String(current.tagName || '').toLowerCase();
+    if (tag === 'path') return current;
 
-    // Always update Y and amplitude so running animation uses fresh values
-    waveLine._waveY = Math.max(560, Math.min(740, Number(liquidTopY) || CUBE_LIQUID_VISIBLE_TOP_Y));
-    waveLine._waveAmplitude = Math.min(5, 0.5 + powerW / 500);
+    const ns = 'http://www.w3.org/2000/svg';
+    const path = svg.createElementNS(ns, 'path');
+    path.setAttribute('id', 'anim-liquid-level');
+    path.setAttribute('fill', current.getAttribute('fill') || 'url(#grad-cube-liquid)');
+    path.setAttribute('opacity', current.getAttribute('opacity') || '0.9');
+    path.setAttribute('pointer-events', current.getAttribute('pointer-events') || 'none');
+    path.setAttribute('d', '');
 
-    if (!active) {
-        waveLine.style.display = 'none';
-        waveLine._waveActive = false;
+    const clipPath = current.getAttribute('clip-path');
+    if (clipPath) path.setAttribute('clip-path', clipPath);
+
+    current.parentNode?.replaceChild(path, current);
+    return path;
+}
+
+function ensureDynamicLiquidClip(svg) {
+    const clipId = 'clip-liquid-wave-dynamic';
+    const clipPathId = 'clip-liquid-wave-path';
+    let clipPath = svg.getElementById(clipId);
+    let clipPathShape = svg.getElementById(clipPathId);
+    if (!clipPath || !clipPathShape) {
+        const ns = 'http://www.w3.org/2000/svg';
+        let defs = svg.querySelector('defs');
+        if (!defs && svg.documentElement) {
+            defs = svg.createElementNS(ns, 'defs');
+            svg.documentElement.insertBefore(defs, svg.documentElement.firstChild);
+        }
+        if (!defs) return null;
+
+        if (!clipPath) {
+            clipPath = svg.createElementNS(ns, 'clipPath');
+            clipPath.setAttribute('id', clipId);
+            defs.appendChild(clipPath);
+        }
+        if (!clipPathShape) {
+            clipPathShape = svg.createElementNS(ns, 'path');
+            clipPathShape.setAttribute('id', clipPathId);
+            clipPathShape.setAttribute('d', '');
+            clipPath.appendChild(clipPathShape);
+        }
+    }
+
+    const clipRef = `url(#${clipId})`;
+    ['anim-gradient-cube-heat', 'anim-gradient-cube-reflux'].forEach((id) => {
+        const layer = svg.getElementById(id);
+        if (!layer) return;
+        if (layer.getAttribute('clip-path') !== clipRef) {
+            layer.setAttribute('clip-path', clipRef);
+        }
+    });
+
+    return clipPathShape;
+}
+
+function drawLiquidSurfacePath(liquidPath, topY, leftX, rightX, bottomY, amplitude = 0, phase = 0) {
+    if (!liquidPath) return;
+
+    const left = Number(leftX);
+    const right = Number(rightX);
+    const bottom = Number(bottomY);
+    const top = Number(topY);
+    if (!Number.isFinite(left) || !Number.isFinite(right) || !Number.isFinite(bottom) || !Number.isFinite(top) || right <= left) {
         return;
     }
 
-    waveLine.style.display = '';
+    const amp = Math.max(0, Number(amplitude) || 0);
+    const width = right - left;
+    const steps = Math.max(18, Math.min(64, Math.round(width / 4)));
+    const freq = 0.11;
+    const harmonic = 0.26;
 
-    if (!waveLine._waveActive) {
-        waveLine._waveActive = true;
-        const CUBE_LEFT = 76;
-        const CUBE_RIGHT = 266;
-        const FREQ = 0.04;
-        const SPEED = 0.0025;
-
-        const animateWave = (timestamp) => {
-            if (!waveLine._waveActive) return;
-            const y0 = waveLine._waveY || CUBE_LIQUID_VISIBLE_TOP_Y;
-            const amp = waveLine._waveAmplitude || 2;
-            const phase = timestamp * SPEED;
-            let d = '';
-            for (let x = CUBE_LEFT; x <= CUBE_RIGHT; x += 4) {
-                const y = y0 + amp * Math.sin(x * FREQ + phase);
-                d += (x === CUBE_LEFT ? 'M' : 'L') + ` ${x},${y.toFixed(1)} `;
-            }
-            waveLine.setAttribute('d', d);
-            requestAnimationFrame(animateWave);
-        };
-        requestAnimationFrame(animateWave);
+    let d = `M ${left.toFixed(2)} ${bottom.toFixed(2)} L ${right.toFixed(2)} ${bottom.toFixed(2)} `;
+    for (let i = steps; i >= 0; i--) {
+        const x = left + ((width * i) / steps);
+        const wavePrimary = Math.sin((x * freq) + phase);
+        const waveSecondary = Math.sin((x * freq * 1.85) - (phase * 1.35)) * harmonic;
+        const y = top + ((wavePrimary + waveSecondary) * amp);
+        const yClamped = Math.min(bottom - 0.6, Math.max(556, y));
+        d += `L ${x.toFixed(2)} ${yClamped.toFixed(2)} `;
     }
+    d += 'Z';
+    liquidPath.setAttribute('d', d);
+
+    const svg = liquidPath.ownerDocument;
+    const clipPathShape = ensureDynamicLiquidClip(svg);
+    if (clipPathShape) {
+        clipPathShape.setAttribute('d', d);
+    }
+}
+
+function stopLiquidWaveAnimation(svg) {
+    const state = svg._liquidWaveState;
+    if (!state) return;
+    state.active = false;
+    if (state.rafId) {
+        cancelAnimationFrame(state.rafId);
+        state.rafId = 0;
+    }
+}
+
+function updateLiquidWave(svg, liquidTopY, powerActualW, tempCube, boilingTempC) {
+    const liquidShape = ensureLiquidPathShape(svg);
+    if (!liquidShape) return;
+
+    const legacyWaveLine = svg.getElementById('liquid-wave-line');
+    if (legacyWaveLine) legacyWaveLine.style.display = 'none';
+
+    const geom = svg._cubeLiquidGeom || {
+        left: 76,
+        right: 266,
+        bottom: CUBE_LIQUID_BOTTOM_Y
+    };
+    const top = Math.max(560, Math.min(742, Number(liquidTopY) || CUBE_LIQUID_VISIBLE_TOP_Y));
+    const powerW = Number(powerActualW) || 0;
+    const tCube = Number(tempCube);
+    const boilTemp = Number(boilingTempC);
+    const active = Number.isFinite(tCube) && Number.isFinite(boilTemp) && tCube >= boilTemp && powerW > 80;
+
+    if (!active) {
+        stopLiquidWaveAnimation(svg);
+        drawLiquidSurfacePath(liquidShape, top, geom.left, geom.right, geom.bottom, 0, 0);
+        return;
+    }
+
+    const overBoil = Math.max(0, tCube - boilTemp);
+    const heatFactor = Math.max(0, Math.min(1, overBoil / 4.2));
+    const powerFactor = Math.max(0, Math.min(1, powerW / 3000));
+    const amplitude = Math.max(0.5, Math.min(5.8, 0.7 + (heatFactor * 3.1) + (powerFactor * 1.3)));
+    const speed = 0.0024 + (heatFactor * 0.0036) + (powerFactor * 0.0014);
+
+    if (!svg._liquidWaveState) {
+        svg._liquidWaveState = { active: false, rafId: 0, top, amplitude, speed };
+    }
+    const state = svg._liquidWaveState;
+    state.top = top;
+    state.amplitude = amplitude;
+    state.speed = speed;
+    state.left = geom.left;
+    state.right = geom.right;
+    state.bottom = geom.bottom;
+
+    if (state.active) return;
+    state.active = true;
+
+    const animateWave = (timestamp) => {
+        if (!state.active) return;
+        const phase = timestamp * state.speed;
+        drawLiquidSurfacePath(
+            liquidShape,
+            state.top,
+            state.left,
+            state.right,
+            state.bottom,
+            state.amplitude,
+            phase
+        );
+        state.rafId = requestAnimationFrame(animateWave);
+    };
+    state.rafId = requestAnimationFrame(animateWave);
 }
 
 function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pressureCube, liquidTopY) {
@@ -871,6 +1187,10 @@ export function updateInteractiveScheme(data) {
     } else if (data.p_cube !== undefined) {
         pCube = data.p_cube;
     }
+    const pAtmMmHg = getAtmosphericPressureMmHg(data);
+    if (Number.isFinite(pAtmMmHg)) {
+        svg._atmPressureMmHg = pAtmMmHg;
+    }
     let liquidTopY = CUBE_LIQUID_VISIBLE_TOP_Y;
 
     // Хаотичное капание в дефлегматоре при T_reflux >= 65°C.
@@ -997,7 +1317,7 @@ export function updateInteractiveScheme(data) {
     });
 
     // Анимация уровня жидкости
-    const liquidShape = svg.getElementById('anim-liquid-level');
+    const liquidShape = ensureLiquidPathShape(svg);
     if (liquidShape && runtimeMonitorState) {
         const s = runtimeMonitorState;
         const feedVolumeL = getPositiveFiniteNumber(
@@ -1012,6 +1332,7 @@ export function updateInteractiveScheme(data) {
             getEffectiveAbvForCalculations()?.value,
             40
         ) || 40;
+        svg._feedAbvPercent = feedAbvPercent;
 
         const maxCubeVolumeL = getPositiveFiniteNumber(
             s.equipment?.cubeVolumeL,
@@ -1038,27 +1359,26 @@ export function updateInteractiveScheme(data) {
 
         // Уровень показываем как долю от максимальной емкости куба.
         const fillPercent = Math.max(0, Math.min(1, remainingVolumeL / (maxCubeVolumeL || 1)));
+        const cubeShell = svg.getElementById('cube-shell');
+        const cubeX = Number(cubeShell?.getAttribute('x')) || 76;
+        const cubeY = Number(cubeShell?.getAttribute('y')) || 553;
+        const cubeW = Number(cubeShell?.getAttribute('width')) || 190;
+        const cubeH = Number(cubeShell?.getAttribute('height')) || 190;
+        const visibleTopY = Math.max(cubeY, Math.min(cubeY + cubeH - 8, CUBE_LIQUID_VISIBLE_TOP_Y));
+        const visibleSpan = Math.max(1, (cubeY + cubeH) - visibleTopY);
+        const liquidHeight = visibleSpan * fillPercent;
+        const liquidY = (cubeY + cubeH) - liquidHeight;
+        const liquidBottomY = cubeY + cubeH;
+        const liquidLeftX = cubeX;
+        const liquidRightX = cubeX + cubeW;
 
-        const tagName = String(liquidShape.tagName || '').toLowerCase();
-        if (tagName === 'rect') {
-            const cubeShell = svg.getElementById('cube-shell');
-            const cubeY = Number(cubeShell?.getAttribute('y')) || 553;
-            const cubeH = Number(cubeShell?.getAttribute('height')) || 190;
-            const visibleTopY = Math.max(cubeY, Math.min(cubeY + cubeH - 8, CUBE_LIQUID_VISIBLE_TOP_Y));
-            const visibleSpan = Math.max(1, (cubeY + cubeH) - visibleTopY);
-            const liquidHeight = visibleSpan * fillPercent;
-            const liquidY = (cubeY + cubeH) - liquidHeight;
-
-            liquidShape.setAttribute('y', liquidY.toFixed(2));
-            liquidShape.setAttribute('height', liquidHeight.toFixed(2));
-            liquidTopY = liquidY;
-        } else {
-            // Поддержка старых версий SVG, где уровень задан path.
-            const yTop = 600 - (fillPercent * 120);
-            const d = `M65,${yTop} L295,${yTop} L295,600 Q295,615 280,615 L80,615 Q65,615 65,600 Z`;
-            liquidShape.setAttribute('d', d);
-            liquidTopY = yTop;
-        }
+        drawLiquidSurfacePath(liquidShape, liquidY, liquidLeftX, liquidRightX, liquidBottomY, 0, 0);
+        liquidTopY = liquidY;
+        svg._cubeLiquidGeom = {
+            left: liquidLeftX,
+            right: liquidRightX,
+            bottom: liquidBottomY
+        };
 
         const cubeVolumeText = svg.getElementById('txt-volume-cube');
         if (cubeVolumeText) {
@@ -1070,9 +1390,10 @@ export function updateInteractiveScheme(data) {
         }
     }
 
+    const boilingTempC = getFeedBoilingTempC(svg);
     updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pCube, liquidTopY);
-    updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY);
-    updateLiquidWave(svg, liquidTopY, powerActualW, tempCube);
+    updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY, boilingTempC);
+    updateLiquidWave(svg, liquidTopY, powerActualW, tempCube, boilingTempC);
 
     // Визуализация капель (скорость отбора)
     const livePumpSpeed = getStatusNumber(data, 'pump', 'speedMlH', 'pump_speed');
