@@ -77,6 +77,10 @@
         text-align: left;
     }
 
+    .cols-layout {
+        grid-template-columns: 1fr;
+    }
+
     .operator-screen {
         padding: 12px;
     }

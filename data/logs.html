@@ -64,17 +64,41 @@
 
         <div class="main-layout">
             <!-- ===== SIDEBAR ===== -->
-            <nav class="sidebar">
+            <nav class="sidebar" id="main-sidebar">
+                <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Свернуть меню">◀</button>
+
                 <div class="sidebar-section-title">Мониторинг</div>
-                <a href="index.html" class="sidebar-item" style="text-decoration:none">
-                    <span class="icon">📊</span> Главная
-                </a>
-                <a href="charts.html" class="sidebar-item" style="text-decoration:none">
-                    <span class="icon">📈</span> Графики
-                </a>
-                <a href="logs.html" class="sidebar-item active" style="text-decoration:none">
-                    <span class="icon">📝</span> Логи
-                </a>
+                <button class="sidebar-item" onclick="window.location.href='index.html'">
+                    <span class="icon">📊</span><span class="label">Главная</span>
+                </button>
+                <button class="sidebar-item" onclick="window.location.href='charts.html'">
+                    <span class="icon">📈</span><span class="label">Графики</span>
+                </button>
+                <button class="sidebar-item active">
+                    <span class="icon">📝</span><span class="label">Логи</span>
+                </button>
+
+                <div class="sidebar-section-title">Управление</div>
+                <button class="sidebar-item" onclick="window.location.href='index.html'">
+                    <span class="icon">🎛️</span><span class="label">Режимы</span>
+                </button>
+                <button class="sidebar-item" onclick="window.location.href='index.html'">
+                    <span class="icon">🧰</span><span class="label">Оборудование</span>
+                </button>
+                <button class="sidebar-item" onclick="window.location.href='index.html'">
+                    <span class="icon">🧮</span><span class="label">Инструменты</span>
+                </button>
+
+                <div class="sidebar-section-title">Система</div>
+                <button class="sidebar-item" onclick="window.location.href='index.html'">
+                    <span class="icon">⚙️</span><span class="label">Настройки</span>
+                </button>
+                <button class="sidebar-item" onclick="window.location.href='index.html'">
+                    <span class="icon">📶</span><span class="label">WiFi</span>
+                </button>
+                <button class="sidebar-item" onclick="window.location.href='index.html'">
+                    <span class="icon">📚</span><span class="label">История</span>
+                </button>
 
                 <div class="sidebar-spacer"></div>
                 <div class="sidebar-footer">

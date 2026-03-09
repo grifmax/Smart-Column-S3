@@ -490,6 +490,51 @@ function updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY) {
     });
 }
 
+function updateLiquidWave(svg, liquidTopY, powerActualW, tempCube) {
+    const waveLine = svg.getElementById('liquid-wave-line');
+    if (!waveLine) return;
+
+    const boilingTempC = getFeedBoilingTempC();
+    const powerW = Number(powerActualW) || 0;
+    const tCube = Number(tempCube);
+    const active = Number.isFinite(tCube) && tCube >= boilingTempC - 5 && powerW > 50;
+
+    // Always update Y and amplitude so running animation uses fresh values
+    waveLine._waveY = Math.max(560, Math.min(740, Number(liquidTopY) || CUBE_LIQUID_VISIBLE_TOP_Y));
+    waveLine._waveAmplitude = Math.min(5, 0.5 + powerW / 500);
+
+    if (!active) {
+        waveLine.style.display = 'none';
+        waveLine._waveActive = false;
+        return;
+    }
+
+    waveLine.style.display = '';
+
+    if (!waveLine._waveActive) {
+        waveLine._waveActive = true;
+        const CUBE_LEFT = 76;
+        const CUBE_RIGHT = 266;
+        const FREQ = 0.04;
+        const SPEED = 0.0025;
+
+        const animateWave = (timestamp) => {
+            if (!waveLine._waveActive) return;
+            const y0 = waveLine._waveY || CUBE_LIQUID_VISIBLE_TOP_Y;
+            const amp = waveLine._waveAmplitude || 2;
+            const phase = timestamp * SPEED;
+            let d = '';
+            for (let x = CUBE_LEFT; x <= CUBE_RIGHT; x += 4) {
+                const y = y0 + amp * Math.sin(x * FREQ + phase);
+                d += (x === CUBE_LEFT ? 'M' : 'L') + ` ${x},${y.toFixed(1)} `;
+            }
+            waveLine.setAttribute('d', d);
+            requestAnimationFrame(animateWave);
+        };
+        requestAnimationFrame(animateWave);
+    }
+}
+
 function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pressureCube, liquidTopY) {
     const heatCore = svg.getElementById('anim-gradient-core-heat');
     const refluxCore = svg.getElementById('anim-gradient-core-reflux');
@@ -1030,6 +1075,7 @@ export function updateInteractiveScheme(data) {
 
     updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pCube, liquidTopY);
     updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY);
+    updateLiquidWave(svg, liquidTopY, powerActualW, tempCube);
 
     // Визуализация капель (скорость отбора)
     const livePumpSpeed = getStatusNumber(data, 'pump', 'speedMlH', 'pump_speed');

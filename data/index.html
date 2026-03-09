@@ -65,8 +65,8 @@
                     <div id="top-menu-dropdown" class="menu-dropdown">
                         <nav class="tabs tabs-dropdown">
                             <button class="tab active" data-tab="monitor">📊 Главная</button>
-                            <a href="charts.html" class="tab" style="text-decoration: none;">📈 Графики</a>
-                            <a href="logs.html" class="tab" style="text-decoration: none;">📝 Логи</a>
+                            <a href="charts.html" class="tab">📈 Графики</a>
+                            <a href="charts.html#logs" class="tab">📝 Логи</a>
                             <button class="tab" data-tab="control">🎛️ Режимы</button>
                             <button class="tab" data-tab="equipment">🧰 Оборудование</button>
                             <button class="tab" data-tab="tools">🧮 Инструменты</button>
@@ -84,38 +84,40 @@
 
         <div class="main-layout">
             <!-- ===== SIDEBAR ===== -->
-            <nav class="sidebar">
+            <nav class="sidebar" id="main-sidebar">
+                <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Свернуть меню">◀</button>
+
                 <div class="sidebar-section-title">Мониторинг</div>
                 <button class="sidebar-item tab active" data-tab="monitor">
-                    <span class="icon">📊</span> Главная
+                    <span class="icon">📊</span><span class="label">Главная</span>
                 </button>
-                <a href="charts.html" class="sidebar-item" style="text-decoration:none">
-                    <span class="icon">📈</span> Графики
-                </a>
-                <a href="logs.html" class="sidebar-item" style="text-decoration:none">
-                    <span class="icon">📝</span> Логи
-                </a>
+                <button class="sidebar-item" onclick="window.location.href='charts.html'">
+                    <span class="icon">📈</span><span class="label">Графики</span>
+                </button>
+                <button class="sidebar-item" onclick="window.location.href='logs.html'">
+                    <span class="icon">📝</span><span class="label">Логи</span>
+                </button>
 
                 <div class="sidebar-section-title">Управление</div>
                 <button class="sidebar-item tab" data-tab="control">
-                    <span class="icon">🎛️</span> Режимы
+                    <span class="icon">🎛️</span><span class="label">Режимы</span>
                 </button>
                 <button class="sidebar-item tab" data-tab="equipment">
-                    <span class="icon">🧰</span> Оборудование
+                    <span class="icon">🧰</span><span class="label">Оборудование</span>
                 </button>
                 <button class="sidebar-item tab" data-tab="tools">
-                    <span class="icon">🧮</span> Инструменты
+                    <span class="icon">🧮</span><span class="label">Инструменты</span>
                 </button>
 
                 <div class="sidebar-section-title">Система</div>
                 <button class="sidebar-item tab" data-tab="settings">
-                    <span class="icon">⚙️</span> Настройки
+                    <span class="icon">⚙️</span><span class="label">Настройки</span>
                 </button>
                 <button class="sidebar-item tab" data-tab="wifi">
-                    <span class="icon">📶</span> WiFi
+                    <span class="icon">📶</span><span class="label">WiFi</span>
                 </button>
                 <button class="sidebar-item tab" data-tab="history">
-                    <span class="icon">📚</span> История
+                    <span class="icon">📚</span><span class="label">История</span>
                 </button>
 
                 <div class="sidebar-spacer"></div>

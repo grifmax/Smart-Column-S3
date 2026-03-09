@@ -211,9 +211,22 @@ window.zoomScheme = zoomScheme;
 // Инициализация при загрузке страницы
 // ============================================================================
 
+function initSidebarCollapse() {
+    const btn = document.getElementById('sidebar-collapse-btn');
+    const sidebar = document.getElementById('main-sidebar');
+    if (!btn || !sidebar) return;
+    const saved = localStorage.getItem('sidebar-collapsed');
+    if (saved === '1') sidebar.classList.add('collapsed');
+    btn.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        localStorage.setItem('sidebar-collapsed', sidebar.classList.contains('collapsed') ? '1' : '0');
+    });
+}
+
 document.addEventListener('DOMContentLoaded', async function () {
     initTabs();
     initTopMenu();
+    initSidebarCollapse();
     initOperatorViewToggle();
     initRuntimeMonitorUi();
     loadPlannedAbv();

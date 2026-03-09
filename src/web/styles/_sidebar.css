@@ -12,6 +12,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    transition: width 0.2s ease, min-width 0.2s ease;
 }
 
 .sidebar-section-title {
@@ -21,6 +22,8 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 16px 10px 6px;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 .sidebar-section-title:first-child {
@@ -44,6 +47,15 @@
     text-align: left;
     text-decoration: none;
     font-family: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+a.sidebar-item,
+a.sidebar-item:visited,
+a.sidebar-item:active {
+    color: var(--text-primary);
+    text-decoration: none;
 }
 
 .sidebar-item:hover {
@@ -55,11 +67,37 @@
     color: #fff;
 }
 
+/* Reset .tab styles inside sidebar — all items must look uniform */
+.sidebar .sidebar-item.tab {
+    background: none;
+    border: none;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.sidebar .sidebar-item.tab:hover {
+    background: var(--bg-hover);
+    border: none;
+}
+
+.sidebar .sidebar-item.tab.active {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+}
+
 .sidebar-item .icon {
     font-size: 16px;
     width: 22px;
     text-align: center;
     flex-shrink: 0;
+}
+
+.sidebar-item .label {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .sidebar-spacer {
@@ -73,4 +111,75 @@
     color: var(--text-tertiary);
     text-align: center;
     line-height: 1.4;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+/* Collapse toggle button */
+.sidebar-collapse-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 6px;
+    margin-bottom: 4px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-tertiary);
+    border-radius: var(--radius-sm);
+    transition: background 0.12s, color 0.12s;
+    font-size: 16px;
+}
+
+.sidebar-collapse-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* Collapsed sidebar — icons only */
+.sidebar.collapsed {
+    width: 48px;
+    min-width: 48px;
+    align-items: center;
+    padding: 8px 4px;
+}
+
+.sidebar.collapsed .sidebar-section-title {
+    font-size: 0;
+    padding: 8px 0 2px;
+    text-align: center;
+}
+
+.sidebar.collapsed .sidebar-section-title::after {
+    content: '';
+    display: block;
+    width: 20px;
+    height: 1px;
+    background: var(--separator);
+    margin: 0 auto;
+}
+
+.sidebar.collapsed .sidebar-item {
+    justify-content: center;
+    padding: 8px;
+    gap: 0;
+}
+
+.sidebar.collapsed .sidebar-item .label {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-footer {
+    font-size: 0;
+    padding: 6px;
+}
+
+.sidebar.collapsed .sidebar-footer::before {
+    content: 'v';
+    font-size: 9px;
+}
+
+.sidebar.collapsed .sidebar-collapse-btn {
+    transform: rotate(180deg);
 }
