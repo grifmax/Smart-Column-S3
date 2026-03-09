@@ -1,14 +1,12 @@
-const CACHE_NAME = 'smart-column-v9';
+const CACHE_NAME = 'smart-column-v10';
 const ASSETS = [
   '/',
   '/index.html',
   '/app.js',
   '/style.css',
-  '/column-animation.css',
-  '/column-animation.js',
   '/schemes-animation.css',
   '/manifest.json',
-  '/schemes/column-animated.svg',
+  '/schemes/column-tesla.svg',
   'https://cdn.jsdelivr.net/npm/apexcharts',
   'https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap'
 ];
