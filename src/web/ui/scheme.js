@@ -21,7 +21,7 @@ const MODE_SCHEME_PATHS = {
 };
 
 const MANUAL_RECT_STORAGE_KEY = 'control.manualRectSettings';
-const CUBE_LIQUID_VISIBLE_TOP_Y = 648;
+const CUBE_LIQUID_VISIBLE_TOP_Y = 560;
 const CUBE_LIQUID_BOTTOM_Y = 743;
 const GRADIENT_TOP_Y = 38;
 const GRADIENT_LID_TOP_Y = 488;
@@ -1320,15 +1320,21 @@ export function updateInteractiveScheme(data) {
     const liquidShape = ensureLiquidPathShape(svg);
     if (liquidShape && runtimeMonitorState) {
         const s = runtimeMonitorState;
+        const rectFeedVolumeInputL = Number(document.getElementById('rect-start-feed-volume')?.value);
+        const rectFeedAbvInputPercent = Number(document.getElementById('rect-start-feed-abv')?.value);
         const feedVolumeL = getPositiveFiniteNumber(
             currentMode === MODE_MANUAL ? manualFeedSetup.volumeL : undefined,
-            s.rectification?.feedVolumeL,
+            currentMode === MODE_RECT ? rectFeedVolumeInputL : undefined,
             (s.distillation?.targetVolumeMl || 0) / 1000,
+            s.rectification?.feedVolumeL,
+            rectFeedVolumeInputL,
             20
         ) || 20;
         const feedAbvPercent = getPositiveFiniteNumber(
             currentMode === MODE_MANUAL ? manualFeedSetup.abvPercent : undefined,
+            currentMode === MODE_RECT ? rectFeedAbvInputPercent : undefined,
             s.rectification?.feedAbvPercent,
+            rectFeedAbvInputPercent,
             getEffectiveAbvForCalculations()?.value,
             40
         ) || 40;

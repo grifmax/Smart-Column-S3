@@ -1,4 +1,4 @@
-import { addLog } from '../core/logs.js';
+﻿import { addLog } from '../core/logs.js';
 import { runtimeMonitorState, DEFAULT_CUBE_VOLUME_L } from '../globals.js';
 import { syncRectificationFeedVolumeLimit } from '../modes/rectification.js';
 import { syncManualFeedVolumeLimit } from '../modes/control-panel.js';
@@ -8,6 +8,19 @@ const CUBE_EXTENDER_PRESET_STORAGE_KEY = 'equipment.cubeExtenderPresetL';
 function toFiniteNumber(value, fallback = 0) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseLocalizedNumber(value, fallback = NaN) {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : fallback;
+    }
+    if (typeof value !== 'string') {
+        return fallback;
+    }
+
+    const normalized = value.trim().replace(',', '.');
+    if (!normalized) return fallback;
+    return toFiniteNumber(normalized, fallback);
 }
 
 function clamp(value, min, max, fallback = min) {
@@ -25,7 +38,7 @@ function setInputValue(id, value) {
 }
 
 function getInputValue(id, fallback = 0) {
-    return toFiniteNumber(document.getElementById(id)?.value, fallback);
+    return parseLocalizedNumber(document.getElementById(id)?.value, fallback);
 }
 
 function syncFeedVolumeLimits() {
@@ -33,15 +46,21 @@ function syncFeedVolumeLimits() {
     syncManualFeedVolumeLimit();
 }
 
-function updateCubeVolumeHint() {
-    const cubeVolume = clamp(getInputValue('cube-volume-l', DEFAULT_CUBE_VOLUME_L), 5, 250, DEFAULT_CUBE_VOLUME_L);
+function updateCubeVolumeHint(options = {}) {
+    const { normalizeInput = false } = options;
+    const cubeVolumeInput = document.getElementById('cube-volume-l');
+    const cubeVolumeRaw = parseLocalizedNumber(
+        cubeVolumeInput?.value,
+        runtimeMonitorState?.equipment?.cubeVolumeL ?? DEFAULT_CUBE_VOLUME_L
+    );
+    const cubeVolume = clamp(cubeVolumeRaw, 5, 250, DEFAULT_CUBE_VOLUME_L);
+
     const cubeHint = document.getElementById('cube-volume-hint');
     if (cubeHint) {
         cubeHint.textContent = `Лимит объема сырца: ${cubeVolume.toFixed(1)} л`;
     }
 
-    const cubeVolumeInput = document.getElementById('cube-volume-l');
-    if (cubeVolumeInput) {
+    if (cubeVolumeInput && normalizeInput) {
         cubeVolumeInput.value = cubeVolume.toFixed(1);
     }
 
@@ -55,6 +74,7 @@ function updateCubeVolumeHint() {
 function loadCubeExtenderPreset() {
     const extenderInput = document.getElementById('cube-extender-add-l');
     if (!extenderInput) return;
+
     try {
         const saved = localStorage.getItem(CUBE_EXTENDER_PRESET_STORAGE_KEY);
         if (saved !== null) {
@@ -65,6 +85,7 @@ function loadCubeExtenderPreset() {
     } catch {
         // ignore storage failures
     }
+
     extenderInput.value = DEFAULT_CUBE_VOLUME_L.toFixed(1);
 }
 
@@ -88,7 +109,7 @@ export function addCubeExtenderVolume() {
     cubeInput.value = nextCubeVolume.toFixed(1);
     extenderInput.value = extenderVolume.toFixed(1);
     saveCubeExtenderPreset(extenderVolume.toFixed(1));
-    updateCubeVolumeHint();
+    updateCubeVolumeHint({ normalizeInput: true });
 }
 
 export async function loadEquipmentSettings() {
@@ -113,11 +134,11 @@ export async function loadEquipmentSettings() {
         };
 
         loadCubeExtenderPreset();
-        updateCubeVolumeHint();
+        updateCubeVolumeHint({ normalizeInput: true });
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
         loadCubeExtenderPreset();
-        updateCubeVolumeHint();
+        updateCubeVolumeHint({ normalizeInput: true });
     }
 }
 
@@ -131,7 +152,7 @@ export async function saveEquipment() {
     const mlPerRev = toFiniteNumber(document.getElementById('pump-ml-per-rev')?.value, NaN);
     const stepsPerRev = toFiniteNumber(document.getElementById('pump-steps-per-rev')?.value, NaN);
 
-    if (Number.isFinite(mlPerRev) && mlPerRev > 0 || Number.isFinite(stepsPerRev) && stepsPerRev > 0) {
+    if ((Number.isFinite(mlPerRev) && mlPerRev > 0) || (Number.isFinite(stepsPerRev) && stepsPerRev > 0)) {
         try {
             const pumpData = {};
             if (Number.isFinite(mlPerRev) && mlPerRev > 0) pumpData.mlPerRev = mlPerRev;
@@ -181,7 +202,7 @@ export async function saveEquipment() {
             waterAutoStartCubeTempC
         };
 
-        updateCubeVolumeHint();
+        updateCubeVolumeHint({ normalizeInput: true });
         addLog('💾 Настройки оборудования сохранены', 'success');
     } catch (error) {
         addLog(`✗ Ошибка сети при сохранении оборудования: ${error.message}`, 'error');
@@ -191,8 +212,9 @@ export async function saveEquipment() {
 export function initEquipmentSettingsUi() {
     const cubeVolumeInput = document.getElementById('cube-volume-l');
     if (cubeVolumeInput) {
-        cubeVolumeInput.addEventListener('input', updateCubeVolumeHint);
-        cubeVolumeInput.addEventListener('change', updateCubeVolumeHint);
+        cubeVolumeInput.addEventListener('input', () => updateCubeVolumeHint());
+        cubeVolumeInput.addEventListener('change', () => updateCubeVolumeHint({ normalizeInput: true }));
+        cubeVolumeInput.addEventListener('blur', () => updateCubeVolumeHint({ normalizeInput: true }));
     }
 
     const extenderInput = document.getElementById('cube-extender-add-l');
@@ -205,5 +227,5 @@ export function initEquipmentSettingsUi() {
     }
 
     loadCubeExtenderPreset();
-    updateCubeVolumeHint();
+    updateCubeVolumeHint({ normalizeInput: true });
 }
