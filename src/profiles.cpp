@@ -5,6 +5,8 @@
 #include "profiles.h"
 #include <FS.h>
 #include <algorithm>
+#include "storage/nvs_manager.h"
+#include "types.h"
 
 // ============================================================================
 // Инициализация системы профилей
@@ -660,11 +662,42 @@ bool applyProfile(const String& id) {
 
     Serial.printf("Применение профиля: %s\n", profile.metadata.name.c_str());
 
-    // TODO: Применить параметры к системе
-    // Эта функция будет интегрирована с основной системой управления
-    // Сейчас просто логируем что профиль применяется
+    // Общие
+    g_settings.equipment.heaterPowerW = profile.parameters.heater.maxPower;
 
-    Serial.println("Профиль применён (TODO: интеграция с системой)");
+    // Безопасность
+    g_settings.safety.pressureMaxMmHg = profile.parameters.safety.pressureMax;
+
+    if (profile.metadata.category == "rectification" || profile.parameters.mode == "rectification") {
+        g_settings.rectParams.stabilizationMin = profile.parameters.rectification.stabilizationMin;
+        g_settings.rectParams.purgeMin = profile.parameters.rectification.purgeMin;
+        g_settings.rectParams.headsSpeedMlHKw = profile.parameters.rectification.headsSpeed;
+        g_settings.rectParams.bodySpeedMlHKw = profile.parameters.rectification.bodySpeed;
+
+        // Пересчет абсолютных объемов в проценты от сырья (aaMl = volumeL * 10 * abv)
+        float aaMl = g_settings.rectParams.feedVolumeL * 10.0f * g_settings.rectParams.feedAbvPercent;
+        if (aaMl > 0) {
+            g_settings.rectParams.headsPercent = profile.parameters.rectification.headsVolume * 100.0f / aaMl;
+            g_settings.rectParams.bodyPercent = profile.parameters.rectification.bodyVolume * 100.0f / aaMl;
+            g_settings.rectParams.tailsPercent = profile.parameters.rectification.tailsVolume * 100.0f / aaMl;
+        }
+    } else if (profile.metadata.category == "distillation" || profile.parameters.mode == "distillation") {
+        g_settings.distillationUi.headsVolumeMl = profile.parameters.distillation.headsVolume;
+        g_settings.distillationUi.targetVolumeMl = profile.parameters.distillation.targetVolume;
+        g_settings.distillationUi.speedMlH = profile.parameters.distillation.speed;
+        g_settings.distillationUi.endTempC = profile.parameters.distillation.endTemp;
+        
+        // приблизительный процент мощности
+        float powerPct = (float)profile.parameters.heater.maxPower / 3000.0f * 100.0f;
+        if (powerPct > 100.0f) powerPct = 100.0f;
+        if (powerPct < 0.0f) powerPct = 0.0f;
+        g_settings.distillationUi.powerPercent = profile.parameters.heater.autoMode ? 100.0f : powerPct;
+    }
+
+    // Сохранение в NVS
+    NVSManager::saveSettings(g_settings);
+
+    Serial.println("Профиль успешно применён и сохранён в глобальные настройки.");
     return true;
 }
 
@@ -732,39 +765,46 @@ String createProfileFromSettings(const String& name, const String& description, 
     profile.metadata.author = "user";
     profile.metadata.isBuiltin = false;
 
-    // TODO: Получить текущие настройки из системы
-    // Пока заполняем значениями по умолчанию
     profile.parameters.mode = category;
     profile.parameters.model = "classic";
 
     // Нагреватель
-    profile.parameters.heater.maxPower = 3000;
+    profile.parameters.heater.maxPower = g_settings.equipment.heaterPowerW > 0 ? g_settings.equipment.heaterPowerW : 3000;
     profile.parameters.heater.autoMode = true;
     profile.parameters.heater.pidKp = 2.0;
     profile.parameters.heater.pidKi = 0.5;
     profile.parameters.heater.pidKd = 1.0;
 
-    // Ректификация
-    profile.parameters.rectification.stabilizationMin = 20;
-    profile.parameters.rectification.headsVolume = 50;
-    profile.parameters.rectification.bodyVolume = 2000;
-    profile.parameters.rectification.tailsVolume = 100;
-    profile.parameters.rectification.headsSpeed = 150;
-    profile.parameters.rectification.bodySpeed = 300;
-    profile.parameters.rectification.tailsSpeed = 400;
-    profile.parameters.rectification.purgeMin = 5;
+    // Безопасность
+    profile.parameters.safety.maxRuntime = 720;
+    profile.parameters.safety.waterFlowMin = 2.0;
+    profile.parameters.safety.pressureMax = g_settings.safety.pressureMaxMmHg > 0 ? (uint16_t)g_settings.safety.pressureMaxMmHg : 150;
 
-    // Температуры
+    // Температуры (оставляем общими разумными дефолтами)
     profile.parameters.temperatures.maxCube = 98.0;
     profile.parameters.temperatures.maxColumn = 82.0;
     profile.parameters.temperatures.headsEnd = 78.5;
     profile.parameters.temperatures.bodyStart = 78.0;
     profile.parameters.temperatures.bodyEnd = 85.0;
 
-    // Безопасность
-    profile.parameters.safety.maxRuntime = 720;
-    profile.parameters.safety.waterFlowMin = 2.0;
-    profile.parameters.safety.pressureMax = 150;
+    if (category == "rectification" || category == "manual_rect") {
+        profile.parameters.rectification.stabilizationMin = g_settings.rectParams.stabilizationMin;
+        profile.parameters.rectification.purgeMin = g_settings.rectParams.purgeMin;
+        profile.parameters.rectification.headsSpeed = g_settings.rectParams.headsSpeedMlHKw;
+        profile.parameters.rectification.bodySpeed = g_settings.rectParams.bodySpeedMlHKw;
+        profile.parameters.rectification.tailsSpeed = g_settings.rectParams.bodySpeedMlHKw; // fallback
+
+        // Пересчет процентов в абсолютные мл
+        float aaMl = g_settings.rectParams.feedVolumeL * 10.0f * g_settings.rectParams.feedAbvPercent;
+        profile.parameters.rectification.headsVolume = (uint16_t)(aaMl * g_settings.rectParams.headsPercent / 100.0f);
+        profile.parameters.rectification.bodyVolume = (uint16_t)(aaMl * g_settings.rectParams.bodyPercent / 100.0f);
+        profile.parameters.rectification.tailsVolume = (uint16_t)(aaMl * g_settings.rectParams.tailsPercent / 100.0f);
+    } else if (category == "distillation") {
+        profile.parameters.distillation.headsVolume = (uint16_t)g_settings.distillationUi.headsVolumeMl;
+        profile.parameters.distillation.targetVolume = (uint16_t)g_settings.distillationUi.targetVolumeMl;
+        profile.parameters.distillation.speed = (uint16_t)g_settings.distillationUi.speedMlH;
+        profile.parameters.distillation.endTemp = g_settings.distillationUi.endTempC;
+    }
 
     // Статистика
     profile.statistics.useCount = 0;
