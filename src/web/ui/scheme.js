@@ -22,13 +22,11 @@ const MODE_SCHEME_PATHS = {
 
 const MANUAL_RECT_STORAGE_KEY = 'control.manualRectSettings';
 const CUBE_LIQUID_VISIBLE_TOP_Y = 553;
-const CUBE_LIQUID_MIN_TOP_Y = 488;
+const CUBE_LIQUID_MIN_TOP_Y = 553;
 const CUBE_LIQUID_BOTTOM_Y = 743;
 const GRADIENT_TOP_Y = 38;
 const GRADIENT_LID_TOP_Y = 488;
 const GRADIENT_CUBE_TOP_Y = 553;
-const CUBE_LID_TOP_LEFT_X = 146;
-const CUBE_LID_TOP_RIGHT_X = 196;
 const BOILING_TEMP_TO_CUBE_ABV_TABLE = [
     { tempC: 78.2, abvPercent: 96 },
     { tempC: 79.0, abvPercent: 92 },
@@ -1507,27 +1505,17 @@ export function updateInteractiveScheme(data) {
         const liquidBottomY = cubeY + cubeH;
         const liquidLeftX = cubeX;
         const liquidRightX = cubeX + cubeW;
-        const lidTopY = Math.min(cubeY - 6, GRADIENT_LID_TOP_Y);
-        const lidTopLeftX = cubeX + ((CUBE_LID_TOP_LEFT_X - 76) / 190) * cubeW;
-        const lidTopRightX = cubeX + ((CUBE_LID_TOP_RIGHT_X - 76) / 190) * cubeW;
-        const liquidGeom = {
-            left: liquidLeftX,
-            right: liquidRightX,
-            bottom: liquidBottomY,
-            bodyTop: cubeY,
-            lidTop: lidTopY,
-            lidTopLeft: lidTopLeftX,
-            lidTopRight: lidTopRightX
-        };
-        const liquidY = calculateLiquidTopYByFillPercent(fillPercent, liquidGeom);
+        const liquidHeight = cubeH * fillPercent;
+        const liquidY = liquidBottomY - liquidHeight;
 
         drawLiquidSurfacePath(liquidShape, liquidY, liquidLeftX, liquidRightX, liquidBottomY, 0, 0);
         liquidTopY = liquidY;
-        svg._cubeLiquidGeom = liquidGeom;
-
-        if (ensureCubeLiquidContainerClip(svg, liquidGeom)) {
-            liquidShape.setAttribute('clip-path', 'url(#clip-cube-liquid-volume)');
-        }
+        liquidShape.removeAttribute('clip-path');
+        svg._cubeLiquidGeom = {
+            left: liquidLeftX,
+            right: liquidRightX,
+            bottom: liquidBottomY
+        };
 
         const cubeVolumeText = svg.getElementById('txt-volume-cube');
         if (cubeVolumeText) {

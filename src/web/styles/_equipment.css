@@ -1,5 +1,9 @@
-.equipment-card {
+﻿.equipment-card {
     border: 1px solid var(--border-color);
+}
+
+.equipment-card h2 {
+    margin-bottom: 12px;
 }
 
 .equipment-subtitle {
@@ -21,6 +25,50 @@
 
 .equipment-actions .btn {
     min-width: 160px;
+}
+
+.equipment-card .form-group select {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1em;
+}
+
+.equipment-card .form-group select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.equipment-inline-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.equipment-inline-row .btn {
+    white-space: nowrap;
+}
+
+.equipment-hint {
+    color: var(--text-secondary);
+    display: block;
+    margin-top: 6px;
+}
+
+.equipment-info-box {
+    padding: 10px 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.95em;
+}
+
+.equipment-manual-wrap {
+    margin: 20px 0;
 }
 
 .equipment-progress-wrap {
@@ -70,6 +118,27 @@
     padding: 12px;
 }
 
+.equipment-sensor-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.equipment-sensor-meta {
+    margin: 6px 0;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+}
+
+.equipment-sensor-actions {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
 .equipment-log-hint {
     display: flex;
     align-items: center;
@@ -80,6 +149,34 @@
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     margin-bottom: 16px;
+}
+
+.equipment-num-stepper {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: center;
+}
+
+.equipment-step-group {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.equipment-step-btn {
+    min-width: 34px;
+    height: 40px;
+    padding: 0 8px;
+    font-size: 0.9em;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.equipment-num-input {
+    width: 100% !important;
+    margin: 0 !important;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 900px) {
@@ -95,5 +192,15 @@
     .equipment-log-hint {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .equipment-sensor-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .equipment-step-btn {
+        min-width: 30px;
+        height: 36px;
+        font-size: 0.82em;
     }
 }

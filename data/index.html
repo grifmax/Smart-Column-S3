@@ -1262,11 +1262,11 @@
                                     <div class="form-group">
                                         <label>Объем куба, л</label>
                                         <input type="number" id="cube-volume-l" value="37" min="5" max="250" step="0.1">
-                                        <small id="cube-volume-hint" style="color: var(--text-secondary); display:block; margin-top:6px;">Лимит объема сырца: 37.0 л</small>
+                                        <small id="cube-volume-hint" class="equipment-hint">Лимит объема сырца: 37.0 л</small>
                                     </div>
                                     <div class="form-group">
                                         <label>Добавить увеличитель куба, л</label>
-                                        <div style="display:flex; gap:8px;">
+                                        <div class="equipment-inline-row">
                                             <input type="number" id="cube-extender-add-l" value="37" min="0.1" max="100" step="0.1">
                                             <button class="btn btn-sm" type="button" onclick="addCubeExtenderVolume()">➕ Добавить</button>
                                         </div>
@@ -1289,7 +1289,7 @@
                                 <h2>💧 Калибровка насоса</h2>
                                 <div class="form-group">
                                     <label>Текущее значение</label>
-                                    <div class="info-text" id="pumpCurrent">Загрузка...</div>
+                                    <div class="info-display equipment-info-box" id="pumpCurrent">Загрузка...</div>
                                 </div>
                                 <div class="form-group">
                                     <label for="cal-speed">Скорость налива (мл/час)</label>
@@ -1315,7 +1315,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label>Расчётное время</label>
-                                    <div class="info-text" id="cal-time">30 мин</div>
+                                    <div class="info-display equipment-info-box" id="cal-time">30 мин</div>
                                 </div>
                                 <div id="cal-progress-container" class="equipment-progress-wrap" style="display: none;">
                                     <div class="equipment-progress-title"><strong>Калибровка в процессе...</strong>
@@ -1326,14 +1326,14 @@
                                     <div class="info-text">Прошло: <span id="cal-elapsed">0 мин 0 сек</span> / <span
                                             id="cal-total">0 мин</span></div>
                                 </div>
-                                <div id="cal-manual-volume" style="display: none; margin: 20px 0;">
+                                <div id="cal-manual-volume" class="equipment-manual-wrap" style="display: none;">
                                     <div class="form-group">
                                         <label for="actual-volume">Фактически налитый объём (мл)</label>
                                         <input type="number" id="actual-volume" step="0.1" min="0"
                                             placeholder="Введите фактический объём">
                                     </div>
                                 </div>
-                                <div class="controls equipment-actions" style="flex-wrap: wrap;">
+                                <div class="controls equipment-actions">
                                     <button class="btn btn-success" id="btn-start-cal" onclick="startCalibration()">▶️
                                         Старт калибровки</button>
                                     <button class="btn btn-warning" id="btn-stop-cal" onclick="stopCalibration()"

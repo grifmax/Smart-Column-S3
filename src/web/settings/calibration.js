@@ -1,4 +1,5 @@
 ﻿import { addLog } from '../core/logs.js';
+import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const API_BASE = '/api/calibration';
 
@@ -127,19 +128,20 @@ export async function loadCalibrationData() {
                     const li = document.createElement('li');
                     li.className = 'equipment-sensor-item';
                     li.innerHTML = `
-                        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <div class="equipment-sensor-head">
                             <strong>${name}</strong>
                             <span class="info-text">${validBadge}</span>
                         </div>
-                        <div class="info-text" style="margin:6px 0;">Адрес: ${temp.address || '—'} | Текущее: ${Number.isFinite(current) ? current.toFixed(2) : '--'} °C | Смещение: ${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'} °C</div>
-                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                            <input type="number" id="offset_${i}" value="${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'}" step="0.01" style="width:110px;">
+                        <div class="equipment-sensor-meta">Адрес: ${temp.address || '—'} | Текущее: ${Number.isFinite(current) ? current.toFixed(2) : '--'} °C | Смещение: ${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'} °C</div>
+                        <div class="equipment-sensor-actions">
+                            <input type="number" id="offset_${i}" value="${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'}" step="0.01">
                             <button class="btn btn-sm" onclick="calibrateTempOffset(${i})">Смещение</button>
-                            <input type="number" id="ref_${i}" step="0.1" placeholder="Эталон °C" style="width:120px;">
+                            <input type="number" id="ref_${i}" step="0.1" placeholder="Эталон °C">
                             <button class="btn btn-sm btn-secondary" onclick="calibrateTempReference(${i})">По эталону</button>
                         </div>
                     `;
                     sensorList.appendChild(li);
+                    initEquipmentNumberSteppers(li);
                 });
             }
         }
@@ -363,6 +365,8 @@ export async function cancelCalibration() {
 
 export function initCalibrationTab() {
     if (!byId('equipment')) return;
+    initEquipmentNumberSteppers();
     updateCalibrationTime();
     loadCalibrationData();
 }
+

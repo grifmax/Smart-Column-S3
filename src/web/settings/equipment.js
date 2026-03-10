@@ -2,6 +2,7 @@
 import { runtimeMonitorState, DEFAULT_CUBE_VOLUME_L } from '../globals.js';
 import { syncRectificationFeedVolumeLimit } from '../modes/rectification.js';
 import { syncManualFeedVolumeLimit } from '../modes/control-panel.js';
+import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const CUBE_EXTENDER_PRESET_STORAGE_KEY = 'equipment.cubeExtenderPresetL';
 
@@ -133,10 +134,12 @@ export async function loadEquipmentSettings() {
             waterAutoStartCubeTempC: clamp(data.waterAutoStartCubeTempC, 20, 60, 45)
         };
 
+        initEquipmentNumberSteppers();
         loadCubeExtenderPreset();
         updateCubeVolumeHint({ normalizeInput: true });
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
+        initEquipmentNumberSteppers();
         loadCubeExtenderPreset();
         updateCubeVolumeHint({ normalizeInput: true });
     }
@@ -210,6 +213,8 @@ export async function saveEquipment() {
 }
 
 export function initEquipmentSettingsUi() {
+    initEquipmentNumberSteppers();
+
     const cubeVolumeInput = document.getElementById('cube-volume-l');
     if (cubeVolumeInput) {
         cubeVolumeInput.addEventListener('input', () => updateCubeVolumeHint());
