@@ -106,17 +106,28 @@ export async function loadVersionInfo() {
 
         const data = await response.json();
 
+        const setNodeText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+
 
 
         // Обновить информацию о прошивке
 
         if (data.firmware) {
 
-            document.getElementById('firmware-version').textContent = data.firmware.version || 'Unknown';
+            const firmwareVersion = data.firmware.version || 'Unknown';
 
-            document.getElementById('firmware-build-date').textContent = data.firmware.buildDate || 'Unknown';
+            setNodeText('firmware-version', firmwareVersion);
 
-            document.getElementById('firmware-build-time').textContent = data.firmware.buildTime || 'Unknown';
+            setNodeText('firmware-build-date', data.firmware.buildDate || 'Unknown');
+
+            setNodeText('firmware-build-time', data.firmware.buildTime || 'Unknown');
+
+            setNodeText('sidebar-version', `v${firmwareVersion}`);
+
+            setNodeText('footer-firmware-version', firmwareVersion);
 
         }
 
@@ -158,9 +169,18 @@ export async function loadVersionInfo() {
 
         console.error('Error loading version info:', error);
 
-        document.getElementById('firmware-version').textContent = 'Ошибка загрузки';
+        const setNodeText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
 
-        document.getElementById('frontend-build-date').textContent = 'Ошибка загрузки';
+        setNodeText('firmware-version', 'Ошибка загрузки');
+
+        setNodeText('frontend-build-date', 'Ошибка загрузки');
+
+        setNodeText('sidebar-version', 'v?');
+
+        setNodeText('footer-firmware-version', '?');
 
         addLog('✗ Ошибка загрузки версий', 'error');
 

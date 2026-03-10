@@ -9,6 +9,7 @@
             "name": "PlatformIO",
             "includePath": [
                 "C:/distiller/Smart-Column-S3/src",
+                "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/DNSServer/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/ArduinoOTA/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src",
@@ -246,7 +247,6 @@
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/AsyncUDP/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/BluetoothSerial/src",
-                "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/DNSServer/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/EEPROM/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/ESP32/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/Ethernet/src",
@@ -271,6 +271,7 @@
                 "limitSymbolsToIncludedHeaders": true,
                 "path": [
                     "C:/distiller/Smart-Column-S3/src",
+                    "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/DNSServer/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/ArduinoOTA/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src",
@@ -508,7 +509,6 @@
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/AsyncUDP/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/BluetoothSerial/src",
-                    "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/DNSServer/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/EEPROM/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/ESP32/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/Ethernet/src",

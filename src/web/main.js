@@ -59,7 +59,18 @@ import {
     applyCalibration,
     cancelCalibration
 } from './settings/calibration.js';
-import { calculateAbvCorrection, calculateDilution, fetchCurrentTempForCalc } from './tools/calculators.js';
+import {
+    calculateAbvCorrection,
+    calculateBlendFractions,
+    calculateDilution,
+    calculateHeatingCost,
+    calculatePotentialAlcohol,
+    calculateReverseBatch,
+    calculateSelectionRate,
+    calculateYieldFractions,
+    fetchCurrentTempForCalc,
+    updatePotentialAlcoholMode
+} from './tools/calculators.js';
 import { toggleOperatorView } from './ui/operator-view.js';
 import { zoomScheme } from './ui/scheme.js';
 
@@ -203,8 +214,15 @@ window.stopCalibration = stopCalibration;
 window.applyCalibration = applyCalibration;
 window.cancelCalibration = cancelCalibration;
 window.calculateAbvCorrection = calculateAbvCorrection;
+window.calculateBlendFractions = calculateBlendFractions;
 window.calculateDilution = calculateDilution;
+window.calculateHeatingCost = calculateHeatingCost;
+window.calculatePotentialAlcohol = calculatePotentialAlcohol;
+window.calculateReverseBatch = calculateReverseBatch;
+window.calculateSelectionRate = calculateSelectionRate;
+window.calculateYieldFractions = calculateYieldFractions;
 window.fetchCurrentTempForCalc = fetchCurrentTempForCalc;
+window.updatePotentialAlcoholMode = updatePotentialAlcoholMode;
 window.toggleOperatorView = toggleOperatorView;
 window.toggleBrowserNotifications = toggleBrowserNotifications;
 window.testBrowserNotification = testBrowserNotification;
@@ -247,6 +265,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     loadMemoryStatsPreference();
     loadPumpInfo();
     loadVersionInfo();
+    updatePotentialAlcoholMode();
     initEquipmentSettingsUi();
     loadEquipmentSettings();
     loadSafetySettings();

@@ -63,7 +63,13 @@
       "Bash(~/.platformio/penv/Scripts/platformio.exe run -e esp32s3_n8r2 -t uploadfs)",
       "Bash(~/.platformio/penv/Scripts/platformio.exe run -e esp32s3_n8r2 -t upload)",
       "Bash(node -e \"const fs=require\\(''fs''\\),zlib=require\\(''zlib''\\);const src=fs.readFileSync\\(''data/index.html''\\);fs.writeFileSync\\(''data/index.html.gz'',zlib.gzipSync\\(src,{level:9}\\)\\);console.log\\(''OK: index.html.gz ''+\\(fs.statSync\\(''data/index.html.gz''\\).size/1024\\).toFixed\\(1\\)+'' KB''\\)\")",
-      "Bash(node -e \"const fs=require\\(''fs''\\),zlib=require\\(''zlib''\\);fs.writeFileSync\\(''data/index.html.gz'',zlib.gzipSync\\(fs.readFileSync\\(''data/index.html''\\),{level:9}\\)\\);console.log\\(''OK''\\)\")"
+      "Bash(node -e \"const fs=require\\(''fs''\\),zlib=require\\(''zlib''\\);fs.writeFileSync\\(''data/index.html.gz'',zlib.gzipSync\\(fs.readFileSync\\(''data/index.html''\\),{level:9}\\)\\);console.log\\(''OK''\\)\")",
+      "Bash(xargs wc:*)",
+      "Bash(grep -E '\\\\.\\(cpp|c|h|hpp|ino\\)$')",
+      "Bash(grep -E '\\\\.\\(ts|tsx|js|jsx\\)$')",
+      "Bash(grep -E '\\\\.\\(py\\)$')",
+      "Bash(sed 's/.*\\\\.//')",
+      "Bash(grep -E '\\\\.\\(dart\\)$')"
     ]
   }
 }

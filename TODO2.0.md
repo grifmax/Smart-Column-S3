@@ -1,52 +1,45 @@
-# TODO 2.0 - Smart-Column S3
+# TODO — Smart-Column S3
 
-## Phase 1. UI reliability and safe control flow (in progress)
-- [x] Add WebSocket->HTTP status fallback polling (auto start/stop by WS state).
-- [x] Add safe fallback when chart library is unavailable (do not break UI).
-- [x] Keep mode/pause state synced from WS and `/api/status`.
-- [x] Add explicit active-mode highlighting in Control menu.
-- [x] Disable non-active mode buttons while a process is running.
-- [x] Add confirmation dialog before switching to another mode.
-- [x] Include `paused` in WS fast/full state packets.
-- [x] Add E2E smoke test for mode switch and button states (`tools/ui-smoke`).
+Единый список незавершённых задач. Завершённые фазы убраны.
 
-## Phase 2. Display stability and observability
-- [x] Audit display update loop frequency and contention with sensor/IO tasks.
-- [x] Add display soft-watchdog (force full redraw after slow-frame burst).
-- [x] Add display hard-watchdog (re-init bus/panel on persistent timeout/error burst).
-- [x] Reduce redraw scope (partial updates, dirty regions).
-- [x] Add frame-time metrics and recovery counters to diagnostics.
-- [ ] Add configurable display refresh profile (`normal` / `safe`).
+---
 
-## Phase 3. Telegram channel hardening (FastBot2)
-- [x] Migrate Telegram backend to FastBot2 and apply settings in non-blocking runtime flow.
-- [ ] Verify reconnect/backoff behavior on unstable Wi-Fi.
-- [ ] Add command rate limiting and duplicate suppression.
-- [ ] Add telemetry for bot send/poll errors.
-- [ ] Add health command with core diagnostics snapshot.
+## Firmware: FSM и runtime
 
-## Phase 4. System stability baseline
-- [ ] Introduce unified health matrix (sensors, comms, storage, heap).
-- [ ] Add periodic self-check task with event log.
-- [ ] Add reboot reason tracking + crash-safe last-state snapshot.
-- [ ] Add long-run test scenario (8h+ soak) and acceptance criteria.
+- [ ] **Ручная ректификация** — FSM логика пустая (`fsm.cpp:444, 979`). `ManualRect::update()` — пустое тело.
+- [ ] **Профили → система** — `applyProfile()` загружает профиль, но не применяет к `g_settings`/`g_state` (`profiles.cpp:663`). `createProfileFromSettings()` возвращает дефолты (`profiles.cpp:735`).
+- [ ] **MQTT команды** — callback подписан на `cmd/#`, но тело пустое (`mqtt.cpp:36`). Нужен dispatch: start/stop/pause/resume/heater/pump/valves.
+- [ ] **Давление в ареометре** — используется `density` вместо реального давления (`webserver.cpp:1659`).
+- [ ] **NBK режим** — нет в `Mode` enum, нет FSM логики.
+- [ ] **Ферментация** — нет в `Mode` enum, нет FSM логики.
 
-## Phase 5. Hardware abstraction readiness
-- [ ] Finalize UART/pin mapping profiles (including PZEM on dedicated port).
-- [ ] Add compile-time pin profiles for board revisions.
-- [ ] Add boot-time pin sanity checks and conflict warnings.
+## TFT дисплей
 
-## Phase 6. Distiller parity: cockpit UI + process ergonomics (in progress)
-- [x] Add process phase telemetry API in FSM (elapsed/target/progress) for TFT and Web UI.
-- [x] Upgrade main TFT dashboard to a cockpit layout (mode+phase timer, progress bar, I/O statuses).
-- [x] Add at-a-glance operation strip (voltage, pressure, pump, fractions, uptime) with partial redraws only.
-- [ ] Add dedicated mode placeholders and API contracts for `NBK` and `FERMENTATION`.
-- [ ] Implement NBK mode state machine (feed/steam control, safety interlocks).
-- [ ] Implement fermentation mode (setpoint, hysteresis, scheduling, alarms).
+- [ ] **Унификация кнопок по режимам** — кнопки захардкожены if/else, нет таблицы действий по режиму (`display.cpp:2722`).
+- [ ] **Страница "Все температуры"** — отдельный экран со всеми подключёнными датчиками.
+- [ ] **Конфигурируемый refresh profile** (`normal` / `safe`) — сейчас единственный хардкод `DISPLAY_FORCE_REFRESH_MS = 5000`.
 
-## Phase 7. Mode-specific TFT screens (in progress)
-- [x] Stage A: profile-based dashboard for `IDLE` and `RECTIFICATION` (only relevant widgets per mode).
-- [x] Stage B: profile-based dashboard for `DISTILLATION` and `MANUAL_RECT`.
-- [x] Stage C: profile-based dashboard for `MASHING` and `HOLD`.
-- [ ] Unify action rows/buttons by mode (show only valid controls).
-- [ ] Add a dedicated "Temperatures" detail page with all connected probes.
+## Telegram (FastBot2)
+
+- [ ] **Reconnect/backoff** — при потере WiFi бот просто пропускает `tick()`, нет backoff/retry логики.
+- [ ] **Rate limiting команд** — нет троттлинга, каждое сообщение обрабатывается мгновенно.
+- [ ] **Телеметрия ошибок** — ошибки отправки логируются в Serial, но нет счётчиков/статистики.
+- [ ] **Команда /health** — `notifyHealthAlert()` есть как push, но нет pull-команды для пользователя.
+
+## Системная стабильность
+
+- [ ] **Health matrix** — `SystemHealth` struct есть и используется (MQTT publish, Telegram alert), но `overallHealth` — один скаляр без взвешенного скоринга по подсистемам.
+- [ ] **Reboot reason tracking** — WDT-reset детектируется при старте (Serial), но не сохраняется в NVS и не отдаётся в API/UI.
+- [ ] **Периодический self-check** с event log.
+- [ ] **Soak test** 8h+ и критерии приёмки.
+
+## Hardware abstraction
+
+- [ ] UART/pin mapping profiles (PZEM на выделенный порт).
+- [ ] Compile-time pin profiles для ревизий плат.
+- [ ] Boot-time проверка пинов и конфликтов.
+
+## Web UI
+
+- [ ] **Профили — полный CRUD UI** — API готов, веб-интерфейс не завершён.
+- [ ] **Калибровка — полный UI** — структуры есть, веб-формы частично.

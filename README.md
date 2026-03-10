@@ -1,379 +1,104 @@
-# 🥃 Rectification Controller
+# Smart-Column S3
 
-> Автоматизированная система управления ректификационной колонной на базе ESP32
+> Контроллер автоматизации ректификационной колонны на ESP32-S3
 
-[![Platform](https://img.shields.io/badge/platform-ESP32-blue.svg)](https://www.espressif.com/en/products/socs/esp32)
+[![Platform](https://img.shields.io/badge/platform-ESP32--S3-blue.svg)](https://www.espressif.com/en/products/socs/esp32-s3)
 [![Framework](https://img.shields.io/badge/framework-Arduino-00979D.svg)](https://www.arduino.cc/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.5.16-orange.svg)](https://github.com/grifmax/rectification-controller)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
 
-## 📋 Описание
+## Возможности
 
-Полнофункциональная система автоматического управления процессами ректификации и дистилляции с веб-интерфейсом, множественными датчиками температуры, автоматическим управлением мощностью и развитой системой безопасности.
+- **5 режимов**: авто-ректификация, ручная ректификация, дистилляция, затирка, hold
+- **Web UI** с анимированной SVG-схемой, TFT-дисплей 3.5" ILI9488
+- **Watt-Control** -- автоподбор мощности по давлению колонны
+- **Smart Decrement** -- адаптивное снижение скорости отбора
+- **Электронный ареометр** на MPX5010DP + ADS1115
+- **MQTT / Home Assistant** -- автообнаружение, Energy Dashboard, push-уведомления
+- **Telegram-бот** (FastBot2) -- уведомления и удалённое управление
+- **История процессов** -- сохранение, просмотр, сравнение, экспорт CSV/JSON
+- **Профили процессов** -- встроенные рецепты и пользовательские конфигурации
+- **Безопасность** -- 10 типов проверок, HTTP Basic Auth, Rate Limiting
+- **OTA** -- обновление прошивки по воздуху
 
-### 🆕 Что нового в v1.5.16
+## Оборудование
 
-- 🖥️ **Mode-specific мониторинг** на TFT и Web UI: отдельные рабочие экраны под запущенный режим.
-- 📈 **Прогресс и ETA по фазе/режиму**: расширенная телеметрия `progress` для REST/WebSocket.
-- 🧪 **Авто-ректификация с профилями сырья**: сырьё, % фракций, расчёт целевых объёмов.
-- ✍️ **Редактирование в процессе**: ручная корректировка объёмов фракций через API/UI (`/api/manual/volumes`).
-- 🤖 **Telegram на FastBot2**: более стабильный runtime, тест сообщения и безопасное применение настроек.
-- 📶 **Статус крепости с fallback**: плановая крепость до появления валидных данных от ареометра (`abv_valid`).
+| Категория | Компоненты |
+|-----------|------------|
+| Контроллер | ESP32-S3 DevKitC-1 N16R8 |
+| Датчики T | DS18B20 x7 (куб, царга, дефлегматор, ТСА, вода) |
+| Давление | MPX5010DP + ADS1115, BMP280 x2 |
+| Мощность | SSR-40DA + PZEM-004T v3.0 |
+| Насос | NEMA 17 + TMC2209 (перистальтика) |
+| Клапаны | 12V NC x3 + MOSFET |
+| Дисплей | 3.5" TFT ILI9488 (SPI, touch) |
 
-👉 **[Документация по истории процессов](docs/HISTORY_SCHEMA.md)** | **[Push-уведомления](docs/HOME_ASSISTANT.md#push-уведомления)**
+Полная распиновка и BOM -- см. [SPEC.md](SPEC.md).
 
-<details>
-<summary>📦 История версий v1.2</summary>
-
-**v1.2:**
-- 🏠 **Home Assistant Integration** - автоматическое обнаружение через MQTT Discovery
-- 📡 **MQTT Client** - публикация состояния и метрик в реальном времени
-- 🔒 **HTTP Basic Authentication** - защита веб-интерфейса и API
-- 🚫 **Rate Limiting** - защита от DDoS атак (60 req/min на IP)
-- 🛡️ **Security Headers** - CSP, X-Frame-Options, и другие заголовки безопасности
-- ⚡ **PZEM-004T Support** - точный мониторинг напряжения, тока, мощности и энергии
-- 📊 **Energy Tracking** - интеграция с Energy Dashboard в Home Assistant
-
-</details>
-
-👉 **[Полная документация API](docs/API.md)** | **[Интеграция с Home Assistant](docs/HOME_ASSISTANT.md)**
-
-### ✨ Основные возможности
-
-- 🌡️ **Мониторинг температуры** - до 5 датчиков DS18B20
-- 🔥 **Управление нагревом** - ручной/автоматический режим с ПИ-регулятором
-- ⚡ **Контроль мощности** - до 5000 Вт с PZEM-004T мониторингом
-- 💧 **Автоматический отбор** - насос с программируемой скоростью
-- 🌐 **Веб-интерфейс** - полное управление через браузер
-- 📊 **Графики в реальном времени** - отслеживание всех параметров
-- 📜 **История процессов** - сохранение и анализ завершённых процессов
-- 🔄 **Сравнение процессов** - наложение графиков для оптимизации
-- 🛡️ **Многоуровневая система безопасности** - 10 типов проверок + Rate Limiting
-- 📡 **MQTT & Home Assistant** - автоматическая интеграция с умным домом
-- 🔔 **Push-уведомления** - оповещения о событиях и ошибках через HA
-- 🔒 **Безопасность** - HTTP Basic Auth, Security Headers, защита от DDoS
-- 📱 **PWA** - работает как мобильное приложение
-- 🔔 **Звуковые оповещения** - о смене фаз и ошибках
-- 💾 **Сохранение настроек** - в энергонезависимую память
-
-## 🎯 Поддерживаемые процессы
-
-### Ректификация (8 фаз)
-1. Нагрев до кипения
-2. Стабилизация колонны
-3. Отбор голов
-4. Повторная стабилизация
-5. Отбор тела (основной продукт)
-6. Отбор хвостов
-7. Завершение
-
-**Две модели работы:**
-- **Классическая** - отбор по заданным объемам
-- **Альтернативная** - отбор по времени и скорости
-
-### Дистилляция (5 фаз)
-1. Нагрев
-2. Отбор голов (опционально)
-3. Основная дистилляция
-4. Завершение
-
-## 🛠️ Оборудование
-
-### Обязательные компоненты:
-- **ESP32 DevKit** (любая версия)
-- **Датчики DS18B20** (минимум 2 шт.)
-- **SSR/реле для нагревателя** (до 5 кВт)
-- **Реле для насоса** (12В/24В)
-- **Реле для клапана** (опционально)
-
-### Опциональные компоненты:
-- **OLED дисплей** 128x64 (SSD1306, I2C)
-- **4 кнопки** управления
-- **Пьезоизлучатель** для звуковых сигналов
-- **PZEM-004T** для точного измерения мощности
-
-## 🚀 Быстрый старт
-
-### 1. Установка
+## Быстрый старт
 
 ```bash
-# Клонирование репозитория
-git clone https://github.com/grifmax/rectification-controller.git
-cd rectification-controller
+git clone https://github.com/grifmax/Smart-Column-S3.git
+cd Smart-Column-S3
 
-# Установка зависимостей через PlatformIO
-pio lib install
-
-# Компиляция
-pio run
-
-# Загрузка на ESP32
-pio run --target upload
-
-# Загрузка веб-интерфейса
-pio run --target uploadfs
+pio run -e esp32s3              # Сборка
+pio run -e esp32s3 -t upload    # Прошивка
+pio run -e esp32s3 -t uploadfs  # Загрузка Web UI
 ```
 
-### 2. Первое подключение
+После прошивки ESP32 создаст точку доступа **Smart-Column-S3** (пароль `12345678`).
+Откройте `http://192.168.4.1` и настройте WiFi/MQTT/Telegram.
 
-1. ESP32 создаст WiFi точку доступа **"Smart-Column-S3"**
-2. Пароль по умолчанию: **"12345678"**
-3. Подключитесь к точке доступа
-4. Откройте браузер: **http://192.168.4.1**
-5. Настройте систему через веб-интерфейс
-
-### 3. Подключение датчиков
+## Структура проекта
 
 ```
-DS18B20 (OneWire) → GPIO 4
-Нагреватель       → GPIO 32
-Насос             → GPIO 33
-Клапан            → GPIO 25
-Кнопки            → GPIO 13, 14, 27, 12
-OLED (I2C)        → GPIO 21 (SDA), 22 (SCL)
+Smart-Column-S3/
+├── src/
+│   ├── main.cpp
+│   ├── config.h                # Пины, константы
+│   ├── control/                # FSM, watt_control, safety
+│   ├── drivers/                # sensors, heater, pump, valves, display
+│   ├── interface/              # webserver, telegram, mqtt, buttons
+│   └── storage/                # nvs_manager, logger
+├── src/web/                    # Исходники Web UI (JS/CSS, собираются в data/)
+├── data/                       # SPIFFS -- Web UI (html/js/css/svg)
+├── docs/                       # API.md, HOME_ASSISTANT.md, схемы данных
+├── cloud_proxy/                # PHP-прокси spiritcontrol.ru
+├── cloud_tunnel_service/       # Node.js WSS-туннель ESP32 <-> cloud
+├── android_app/                # Flutter приложение
+├── tools/ui-smoke/             # Playwright E2E тесты Web UI
+└── platformio.ini
 ```
 
-## 📡 API
+## API
 
-### REST Endpoints
+Полная документация: **[docs/API.md](docs/API.md)**
 
 ```http
-# Статус системы
-GET /api/status
-
-# Запуск процесса
-POST /api/process/start
-{
-  "mode": "rectification"
-}
-
-# Остановка процесса
-POST /api/process/stop
-
-# Пауза / возобновление
-POST /api/process/pause
-POST /api/process/resume
-
-# Редактирование параметров авто-ректификации
-GET  /api/settings/rect
-POST /api/settings/rect
-
-# Ручная корректировка объёмов фракций
-POST /api/manual/volumes
-{
-  "heads": 120,
-  "body": 2500,
-  "tails": 150,
-  "syncTotal": true
-}
+GET  /api/status                # Полный статус
+POST /api/process/start         # Запуск режима
+POST /api/process/stop          # Остановка
+POST /api/process/pause         # Пауза
+WS   ws://<ip>/ws               # WebSocket (fast 2s / full 10s)
 ```
 
-### WebSocket
+## Документация
 
-```javascript
-// Подключение
-const ws = new WebSocket('ws://192.168.4.1/ws');
+| Документ | Описание |
+|----------|----------|
+| [SPEC.md](SPEC.md) | Техническая спецификация, BOM, распиновка, формулы |
+| [docs/API.md](docs/API.md) | REST API, WebSocket, MQTT |
+| [docs/HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md) | Интеграция с Home Assistant |
+| [docs/HISTORY_SCHEMA.md](docs/HISTORY_SCHEMA.md) | Схема хранения истории процессов |
+| [docs/PROFILES_SCHEMA.md](docs/PROFILES_SCHEMA.md) | Схема хранения профилей |
+| [CHANGELOG.md](CHANGELOG.md) | Журнал изменений |
+| [TODO2.0.md](TODO2.0.md) | Роадмап разработки |
 
-// Быстрые обновления WebSocket: каждые 2 сек (полный пакет ~10 сек)
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  console.log('Температура куба:', data.t_cube);
-};
-```
+## Предупреждение
 
-## 🔐 Система безопасности
+Система предназначена для автоматизации процесса ректификации. Соблюдайте правила пожарной и электробезопасности. Не оставляйте работающую систему без присмотра.
 
-### Автоматические проверки:
-- ✅ Подключение датчиков
-- ✅ Превышение максимальной температуры (105°C)
-- ✅ Скорость роста температуры (>5°C/мин)
-- ✅ Температура воды охлаждения
-- ✅ Максимальное время работы (12 часов)
-- ✅ Watchdog Timer (30 секунд)
+## Лицензия
 
-### При обнаружении проблемы:
-- ⚠️ Автоматическое отключение нагревателя
-- ⚠️ Остановка насоса
-- ⚠️ Закрытие клапана
-- ⚠️ Звуковое оповещение
-- ⚠️ Логирование в Serial и файл
-
-## 📊 Веб-интерфейс
-
-![Web Interface](docs/screenshots/interface.png)
-
-**Возможности:**
-- 📈 Графики температур в реальном времени
-- 🎛️ Управление всеми параметрами
-- 📊 Отслеживание процесса
-- ⚙️ Настройка системы
-- 📱 Адаптивный дизайн для мобильных
-- 🌙 Темная тема
-
-## 🧪 Тестирование
-
-```cpp
-// Запуск тестов безопасности
-#define RUN_SAFETY_TESTS
-runAllSafetyTests();
-```
-
-Доступные тесты:
-- ✓ Инициализация системы
-- ✓ Превышение температуры
-- ✓ Отключение датчиков
-- ✓ Скорость роста температуры
-- ✓ Превышение времени работы
-- ✓ Аварийное отключение
-
-## 📝 Serial команды
-
-```bash
-start rect  # Запуск ректификации
-start dist  # Запуск дистилляции
-stop        # Остановка
-pause       # Пауза
-resume      # Возобновление
-power 75    # Установка мощности 75%
-temps       # Показать температуры
-scan        # Сканировать датчики
-settings    # Показать настройки
-help        # Справка
-```
-
-## 📚 Документация
-
-### Руководства
-
-- **[API Documentation](docs/API.md)** - Полная документация REST API и WebSocket
-  - REST API endpoints
-  - WebSocket протокол
-  - Home Assistant MQTT Discovery
-  - Примеры использования на Python, Node.js, cURL
-
-- **[Home Assistant Integration](docs/HOME_ASSISTANT.md)** - Пошаговое руководство по интеграции
-  - Настройка MQTT брокера (Mosquitto)
-  - Автоматическое обнаружение устройства
-  - Примеры Dashboard карточек
-  - Автоматизации и уведомления
-  - Интеграция с Energy Dashboard
-  - Troubleshooting
-
-- **[Technical Specification](SPEC.md)** - Техническая спецификация v1.2
-  - Архитектура системы
-  - Описание режимов работы
-  - BOM (Bill of Materials)
-  - Распиновка ESP32-S3
-  - Формулы и алгоритмы
-
-### Быстрые ссылки
-
-| Тема | Документ | Описание |
-|------|----------|----------|
-| REST API | [API.md](docs/API.md#rest-api) | HTTP endpoints для управления |
-| MQTT | [HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md) | MQTT интеграция и автодискавери |
-| Home Assistant | [HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md) | Полное руководство по интеграции |
-| Безопасность | [API.md](docs/API.md#api-errors) | Ошибки API и статусы |
-| Energy Tracking | [HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md#energy-dashboard) | Отслеживание энергопотребления |
-| Примеры кода | [API.md](docs/API.md#quick-curl-examples) | Быстрые cURL примеры |
-
-## 🗂️ Структура проекта
-
-```
-rectification-controller/
-├── src/
-│   ├── main.cpp              # Главный файл
-│   ├── config.h              # Конфигурация
-│   ├── rectification.cpp/h   # Процесс ректификации
-│   ├── distillation.cpp/h    # Процесс дистилляции
-│   ├── heater.cpp/h          # Управление нагревом
-│   ├── pump.cpp/h            # Управление насосом
-│   ├── temp_sensors.cpp/h    # Датчики температуры
-│   ├── safety.cpp/h          # Система безопасности
-│   ├── emergency.cpp/h       # Аварийное восстановление
-│   ├── watchdog.cpp/h        # Защита от зависаний
-│   ├── settings.cpp/h        # Управление настройками
-│   ├── web.cpp/h             # Веб-сервер и API
-│   ├── display.cpp/h         # OLED дисплей
-│   └── data/                 # Веб-интерфейс
-│       ├── index.html
-│       ├── styles.css
-│       └── js/main.js
-├── test/
-│   └── test_safety.cpp       # Тесты безопасности
-├── platformio.ini            # Конфигурация PlatformIO
-├── .gitignore
-└── README.md
-```
-
-## ⚙️ Конфигурация
-
-Основные настройки в `src/config.h`:
-
-```cpp
-// WiFi
-#define WIFI_AP_SSID "Smart-Column-S3"
-#define WIFI_AP_PASS "12345678"
-
-// Безопасность
-#define MAX_CUBE_TEMP 105.0        // °C
-#define MAX_TEMP_RISE_RATE 5.0     // °C/мин
-#define MAX_RUNTIME_HOURS 12.0     // часов
-#define WATCHDOG_TIMEOUT 30        // секунд
-
-// Мощность
-#define MAX_HEATER_POWER 3000      // Вт
-```
-
-## 📈 Производительность
-
-- **Частота обновления температур:** 1 сек
-- **Частота проверки безопасности:** 500 мс
-- **Частота WebSocket (fast/full):** 2 сек / 10 сек
-- **Watchdog таймаут:** 30 сек
-- **Используемая память:** ~220 KB из 520 KB
-- **Размер прошивки:** ~500 KB из 4 MB
-
-## 🤝 Вклад в проект
-
-Буду рад вашим предложениям и улучшениям! 
-
-1. Fork репозитория
-2. Создайте ветку для ваших изменений
-3. Commit ваших изменений
-4. Push в ветку
-5. Создайте Pull Request
-
-## 📄 Лицензия
-
-MIT License - см. файл [LICENSE](LICENSE)
-
-## ⚠️ Предупреждение
-
-**ВАЖНО:** Эта система предназначена для автоматизации процесса ректификации в домашних условиях. Всегда:
-
-- 🔥 Соблюдайте правила пожарной безопасности
-- 👁️ Не оставляйте работающую систему без присмотра
-- 📏 Используйте только разрешенное оборудование
-- ⚡ Соблюдайте правила электробезопасности
-- 📖 Убедитесь, что производство разрешено в вашей стране
-
-## 📞 Поддержка
-
-- 💬 GitHub Issues для вопросов и багов
-- 📧 Email: [ваш email]
-- 💭 Обсуждения в Discussions
-
-## 🙏 Благодарности
-
-- PlatformIO за отличную платформу разработки
-- Espressif за ESP32
-- Сообществу Arduino за библиотеки и помощь
-
----
-
-**Сделано с ❤️ для энтузиастов дистилляции**
-
-⭐ Если проект полезен, поставьте звезду на GitHub!
+MIT -- см. [LICENSE](LICENSE)

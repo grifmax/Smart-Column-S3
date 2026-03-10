@@ -1471,11 +1471,363 @@
 
                     <!-- Вкладка: Инструменты -->
                     <div id="tools" class="tab-content">
-                        <div class="cards">
-                            <!-- Калькулятор коррекции ареометра -->
-                            <div class="card">
+                        <div class="cards tools-cards">
+                            <div class="card tools-card">
+                                <h2>🥃 AA / Выход / Фракции</h2>
+                                <p class="tools-card-text">
+                                    Оценка абсолютного спирта в сырце и прогноз выхода по головам, телу и хвостам.
+                                </p>
+                                <div class="form-group">
+                                    <label>Объем сырца, л</label>
+                                    <input type="number" id="calc-yield-volume-l" placeholder="Например: 30" step="0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Крепость сырца, %</label>
+                                    <input type="number" id="calc-yield-abv" placeholder="Например: 40" step="0.1">
+                                </div>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Головы, % АС</label>
+                                        <input type="number" id="calc-yield-heads-pct" value="5" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Тело, % АС</label>
+                                        <input type="number" id="calc-yield-body-pct" value="70" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Крепость готового тела, %</label>
+                                    <input type="number" id="calc-yield-body-abv" value="92" step="0.1">
+                                </div>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>Абсолютный спирт:</span>
+                                        <strong id="calc-yield-aa-total">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Головы:</span>
+                                        <strong id="calc-yield-heads-aa">-- мл</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Тело, АС:</span>
+                                        <strong id="calc-yield-body-aa">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Выход тела:</span>
+                                        <strong id="calc-yield-body-product">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Хвосты и потери:</span>
+                                        <strong id="calc-yield-tails-aa">-- мл</strong>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary tools-submit" onclick="calculateYieldFractions()">Рассчитать</button>
+                            </div>
+
+                            <div class="card tools-card">
+                                <h2>🍯 Сахар / Сусло → спирт</h2>
+                                <p class="tools-card-text" id="calc-potential-helper">
+                                    Для сахарной браги считаются потенциал спирта, КПД брожения и соотношение сахар/вода.
+                                </p>
+                                <div class="form-group">
+                                    <label>Тип сырья</label>
+                                    <select id="calc-potential-source-type" onchange="updatePotentialAlcoholMode()">
+                                        <option value="sugar">Сахарная брага</option>
+                                        <option value="brix">Сусло по Brix</option>
+                                        <option value="sg">Сусло по SG</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Объем браги / сусла, л</label>
+                                    <input type="number" id="calc-potential-volume-l" value="25" step="0.1">
+                                </div>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group" id="calc-potential-sugar-group">
+                                        <label>Сахар, кг</label>
+                                        <input type="number" id="calc-potential-sugar-kg" value="6" step="0.1">
+                                    </div>
+                                    <div class="form-group" id="calc-potential-water-group">
+                                        <label>Вода, л</label>
+                                        <input type="number" id="calc-potential-water-l" value="24" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="form-group" id="calc-potential-brix-group" hidden>
+                                    <label>Начальный Brix</label>
+                                    <input type="number" id="calc-potential-brix" value="18" step="0.1">
+                                </div>
+                                <div class="form-group" id="calc-potential-sg-group" hidden>
+                                    <label>Начальная плотность SG</label>
+                                    <input type="number" id="calc-potential-sg" value="1.070" step="0.001">
+                                </div>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group" id="calc-potential-efficiency-group">
+                                        <label>КПД брожения, %</label>
+                                        <input type="number" id="calc-potential-efficiency-pct" value="92" step="1">
+                                    </div>
+                                    <div class="form-group" id="calc-potential-attenuation-group" hidden>
+                                        <label>Сбраживание, %</label>
+                                        <input type="number" id="calc-potential-attenuation-pct" value="75" step="1">
+                                    </div>
+                                </div>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>Потенциал браги:</span>
+                                        <strong id="calc-potential-abv">-- %</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Абсолютный спирт:</span>
+                                        <strong id="calc-potential-aa">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Теоретически 40%:</span>
+                                        <strong id="calc-potential-40">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Основа расчета:</span>
+                                        <strong id="calc-potential-primary">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Доп. параметр:</span>
+                                        <strong id="calc-potential-secondary">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Соотношение сахар/вода:</span>
+                                        <strong id="calc-potential-ratio">н/д</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Оценка:</span>
+                                        <strong id="calc-potential-note">--</strong>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary tools-submit" onclick="calculatePotentialAlcohol()">Рассчитать</button>
+                            </div>
+
+                            <div class="card tools-card">
+                                <h2>📦 Обратный расчет партии</h2>
+                                <p class="tools-card-text">
+                                    Показывает, сколько нужно сырца или нейтрали для заданного объема и крепости готового продукта.
+                                </p>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Нужно получить, л</label>
+                                        <input type="number" id="calc-reverse-target-volume" value="5" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Крепость продукта, %</label>
+                                        <input type="number" id="calc-reverse-target-abv" value="40" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Крепость сырца, %</label>
+                                        <input type="number" id="calc-reverse-source-abv" value="40" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Крепость нейтрали, %</label>
+                                        <input type="number" id="calc-reverse-neutral-abv" value="96.6" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>Нужно АС:</span>
+                                        <strong id="calc-reverse-aa">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Сырец:</span>
+                                        <strong id="calc-reverse-source-volume">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Вода к сырцу:</span>
+                                        <strong id="calc-reverse-source-water">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Нейтраль:</span>
+                                        <strong id="calc-reverse-neutral-volume">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Вода к нейтрали:</span>
+                                        <strong id="calc-reverse-neutral-water">-- л</strong>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary tools-submit" onclick="calculateReverseBatch()">Рассчитать</button>
+                            </div>
+
+                            <div class="card tools-card">
+                                <h2>⚡ Нагрев / энергия / стоимость</h2>
+                                <p class="tools-card-text">
+                                    Оценка времени нагрева, расхода электроэнергии и стоимости по тарифу.
+                                </p>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Объем, л</label>
+                                        <input type="number" id="calc-heat-volume" value="37" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Мощность ТЭНа, Вт</label>
+                                        <input type="number" id="calc-heat-power" value="3000" step="1">
+                                    </div>
+                                </div>
+                                <div class="tools-inline-grid tools-inline-grid-3">
+                                    <div class="form-group">
+                                        <label>Старт, °C</label>
+                                        <input type="number" id="calc-heat-start" value="20" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Финиш, °C</label>
+                                        <input type="number" id="calc-heat-end" value="85" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>КПД, %</label>
+                                        <input type="number" id="calc-heat-efficiency" value="85" step="1">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Тариф, ₽/кВт·ч</label>
+                                    <input type="number" id="calc-heat-tariff" value="6.5" step="0.01">
+                                </div>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>Идеально:</span>
+                                        <strong id="calc-heat-ideal">-- кВт·ч</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>С учетом потерь:</span>
+                                        <strong id="calc-heat-actual">-- кВт·ч</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Время нагрева:</span>
+                                        <strong id="calc-heat-time">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Стоимость:</span>
+                                        <strong id="calc-heat-cost">-- ₽</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Примечание:</span>
+                                        <strong id="calc-heat-note">--</strong>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary tools-submit" onclick="calculateHeatingCost()">Рассчитать</button>
+                            </div>
+
+                            <div class="card tools-card">
+                                <h2>🧪 Режим отбора</h2>
+                                <p class="tools-card-text">
+                                    Грубая оценка безопасной мощности и рабочего диапазона отбора по геометрии колонны.
+                                </p>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Диаметр колонны, мм</label>
+                                        <input type="number" id="calc-select-diameter" value="38" step="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Высота насадки, мм</label>
+                                        <input type="number" id="calc-select-height" value="1500" step="10">
+                                    </div>
+                                </div>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Мощность, Вт</label>
+                                        <input type="number" id="calc-select-power" value="1800" step="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Желаемый отбор, мл/ч</label>
+                                        <input type="number" id="calc-select-rate" value="900" step="1">
+                                    </div>
+                                </div>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Этап</label>
+                                        <select id="calc-select-stage">
+                                            <option value="heads">Головы</option>
+                                            <option value="body" selected>Тело</option>
+                                            <option value="tails">Хвосты</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Тип насадки</label>
+                                        <select id="calc-select-packing">
+                                            <option value="spn" selected>СПН</option>
+                                            <option value="rpn">РПН</option>
+                                            <option value="plates">Тарелки</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>Грубая безопасная мощность:</span>
+                                        <strong id="calc-select-safe-power">-- Вт</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Расчетный диапазон:</span>
+                                        <strong id="calc-select-range">-- мл/ч</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Оценка заданного отбора:</span>
+                                        <strong id="calc-select-verdict">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Примечание:</span>
+                                        <strong id="calc-select-note">--</strong>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary tools-submit" onclick="calculateSelectionRate()">Рассчитать</button>
+                            </div>
+
+                            <div class="card tools-card">
+                                <h2>🥂 Купаж фракций</h2>
+                                <p class="tools-card-text">
+                                    Сводит несколько компонентов разной крепости в одну смесь и считает итоговую крепость.
+                                </p>
+                                <div class="tools-blend-grid">
+                                    <div class="tools-blend-header">Фракция</div>
+                                    <div class="tools-blend-header">Объем, мл</div>
+                                    <div class="tools-blend-header">Крепость, %</div>
+
+                                    <div class="tools-blend-label">1</div>
+                                    <input type="number" id="calc-blend-volume-1" value="1000" step="1">
+                                    <input type="number" id="calc-blend-abv-1" value="92" step="0.1">
+
+                                    <div class="tools-blend-label">2</div>
+                                    <input type="number" id="calc-blend-volume-2" value="500" step="1">
+                                    <input type="number" id="calc-blend-abv-2" value="65" step="0.1">
+
+                                    <div class="tools-blend-label">3</div>
+                                    <input type="number" id="calc-blend-volume-3" placeholder="0" step="1">
+                                    <input type="number" id="calc-blend-abv-3" placeholder="0" step="0.1">
+
+                                    <div class="tools-blend-label">4</div>
+                                    <input type="number" id="calc-blend-volume-4" placeholder="0" step="1">
+                                    <input type="number" id="calc-blend-abv-4" placeholder="0" step="0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Целевая крепость после разбавления, %</label>
+                                    <input type="number" id="calc-blend-target-abv" value="40" step="0.1">
+                                </div>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>Итоговый объем:</span>
+                                        <strong id="calc-blend-volume-total">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Абсолютный спирт:</span>
+                                        <strong id="calc-blend-aa-total">-- л</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Итоговая крепость:</span>
+                                        <strong id="calc-blend-abv-total">-- %</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Воды до цели:</span>
+                                        <strong id="calc-blend-dilution">--</strong>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary tools-submit" onclick="calculateBlendFractions()">Рассчитать</button>
+                            </div>
+
+                            <div class="card tools-card">
                                 <h2>🌡️ Коррекция ареометра</h2>
-                                <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                                <p class="tools-card-text">
                                     Приведение показаний спиртометра к 20°C.
                                 </p>
                                 <div class="form-group">
@@ -1484,29 +1836,21 @@
                                 </div>
                                 <div class="form-group">
                                     <label>Температура дистиллята (°C)</label>
-                                    <div style="display: flex; gap: 10px;">
-                                        <input type="number" id="calc-temp-raw" placeholder="Например: 25.5" step="0.1"
-                                            style="flex: 1;">
-                                        <button class="btn btn-sm" onclick="fetchCurrentTempForCalc()">Взять с
-                                            датчика</button>
+                                    <div class="tools-input-row">
+                                        <input type="number" id="calc-temp-raw" placeholder="Например: 25.5" step="0.1">
+                                        <button class="btn btn-sm" onclick="fetchCurrentTempForCalc()">Взять с датчика</button>
                                     </div>
                                 </div>
-                                <div class="calc-result"
-                                    style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-top: 15px; text-align: center;">
-                                    <div style="color: var(--text-secondary); font-size: 0.9em;">Реальная крепость (при
-                                        20°C)</div>
-                                    <div id="calc-abv-result"
-                                        style="font-size: 2em; font-weight: bold; color: var(--primary);">-- %
-                                    </div>
+                                <div class="tools-result tools-result-center">
+                                    <div class="tools-result-label">Реальная крепость (при 20°C)</div>
+                                    <div id="calc-abv-result" class="tools-result-value">-- %</div>
                                 </div>
-                                <button class="btn btn-primary" onclick="calculateAbvCorrection()"
-                                    style="width: 100%; margin-top: 10px;">Рассчитать</button>
+                                <button class="btn btn-primary tools-submit" onclick="calculateAbvCorrection()">Рассчитать</button>
                             </div>
 
-                            <!-- Калькулятор разбавления -->
-                            <div class="card">
+                            <div class="card tools-card">
                                 <h2>💧 Разбавление спирта</h2>
-                                <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                                <p class="tools-card-text">
                                     Расчет необходимого количества воды для разбавления.
                                 </p>
                                 <div class="form-group">
@@ -1521,24 +1865,22 @@
                                     <label>Желаемая крепость (%)</label>
                                     <input type="number" id="calc-dil-abv-target" placeholder="Например: 40" step="0.1">
                                 </div>
-                                <div class="calc-result"
-                                    style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-top: 15px;">
-                                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                                        <span>Добавить
-                                            воды:</span> <strong id="calc-dil-water">-- мл</strong>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>Добавить воды:</span>
+                                        <strong id="calc-dil-water">-- мл</strong>
                                     </div>
-                                    <div style="display: flex; justify-content: space-between;"><span>Общий
-                                            объем:</span> <strong id="calc-dil-total">-- мл</strong></div>
+                                    <div class="tools-result-row">
+                                        <span>Общий объем:</span>
+                                        <strong id="calc-dil-total">-- мл</strong>
+                                    </div>
                                 </div>
-                                <button class="btn btn-primary" onclick="calculateDilution()"
-                                    style="width: 100%; margin-top: 10px;">Рассчитать</button>
+                                <button class="btn btn-primary tools-submit" onclick="calculateDilution()">Рассчитать</button>
                             </div>
                         </div>
-                    </div>
-
-                    <!-- Футер -->
+                    </div><!-- Футер -->
                     <footer style="padding: 10px; text-align: center;">
-                        <p style="font-size: 0.8em; color: var(--text-tertiary);">Smart-Column S3 v1.4.11 | ESP32-S3
+                        <p style="font-size: 0.8em; color: var(--text-tertiary);">Smart-Column S3 v<span id="footer-firmware-version">--</span> | ESP32-S3
                             DevKitC-1 N16R8</p>
                         <div id="memory-stats"
                             style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
