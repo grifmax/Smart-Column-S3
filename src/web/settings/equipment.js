@@ -7,7 +7,7 @@ import { initEquipmentNumberSteppers } from './number-stepper.js';
 const CUBE_EXTENDER_PRESET_STORAGE_KEY = 'equipment.cubeExtenderPresetL';
 
 function toFiniteNumber(value, fallback = 0) {
-    const parsed = Number(value);
+    const parsed = Number(String(value ?? '').trim().replace(',', '.'));
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
@@ -79,15 +79,15 @@ function loadCubeExtenderPreset() {
     try {
         const saved = localStorage.getItem(CUBE_EXTENDER_PRESET_STORAGE_KEY);
         if (saved !== null) {
-            const value = clamp(saved, 0.1, 100, DEFAULT_CUBE_VOLUME_L);
-            extenderInput.value = value.toFixed(1);
+            const value = clamp(saved, 1, 100, DEFAULT_CUBE_VOLUME_L);
+            extenderInput.value = value.toFixed(0);
             return;
         }
     } catch {
         // ignore storage failures
     }
 
-    extenderInput.value = DEFAULT_CUBE_VOLUME_L.toFixed(1);
+    extenderInput.value = DEFAULT_CUBE_VOLUME_L.toFixed(0);
 }
 
 function saveCubeExtenderPreset(value) {
@@ -104,12 +104,12 @@ export function addCubeExtenderVolume() {
     if (!cubeInput || !extenderInput) return;
 
     const currentCubeVolume = clamp(cubeInput.value, 5, 250, DEFAULT_CUBE_VOLUME_L);
-    const extenderVolume = clamp(extenderInput.value, 0.1, 100, DEFAULT_CUBE_VOLUME_L);
+    const extenderVolume = clamp(extenderInput.value, 1, 100, DEFAULT_CUBE_VOLUME_L);
     const nextCubeVolume = clamp(currentCubeVolume + extenderVolume, 5, 250, currentCubeVolume);
 
     cubeInput.value = nextCubeVolume.toFixed(1);
-    extenderInput.value = extenderVolume.toFixed(1);
-    saveCubeExtenderPreset(extenderVolume.toFixed(1));
+    extenderInput.value = extenderVolume.toFixed(0);
+    saveCubeExtenderPreset(extenderVolume.toFixed(0));
     updateCubeVolumeHint({ normalizeInput: true });
 }
 
@@ -225,9 +225,9 @@ export function initEquipmentSettingsUi() {
     const extenderInput = document.getElementById('cube-extender-add-l');
     if (extenderInput) {
         extenderInput.addEventListener('change', () => {
-            const value = clamp(extenderInput.value, 0.1, 100, DEFAULT_CUBE_VOLUME_L);
-            extenderInput.value = value.toFixed(1);
-            saveCubeExtenderPreset(value.toFixed(1));
+            const value = clamp(extenderInput.value, 1, 100, DEFAULT_CUBE_VOLUME_L);
+            extenderInput.value = value.toFixed(0);
+            saveCubeExtenderPreset(value.toFixed(0));
         });
     }
 
