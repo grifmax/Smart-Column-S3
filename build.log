@@ -1,0 +1,122 @@
+Processing esp32s3_n8r2 (board: rymcu-esp32-s3-devkitc-1; platform: espressif32; framework: arduino)
+--------------------------------------------------------------------------------
+Verbose mode can be enabled via `-v, --verbose` option
+CONFIGURATION: https://docs.platformio.org/page/boards/espressif32/rymcu-esp32-s3-devkitc-1.html
+PLATFORM: Espressif 32 (6.12.0) > RYMCU ESP32-S3-DevKitC-1-N8R2 (8 MB QD, 2 MB PSRAM)
+HARDWARE: ESP32S3 240MHz, 320KB RAM, 8MB Flash
+DEBUG: Current (esp-builtin) On-board (esp-builtin) External (cmsis-dap, esp-bridge, esp-prog, iot-bus-jtag, jlink, minimodule, olimex-arm-usb-ocd, olimex-arm-usb-ocd-h, olimex-arm-usb-tiny-h, olimex-jtag-tiny, tumpa)
+PACKAGES: 
+ - framework-arduinoespressif32 @ 3.20017.241212+sha.dcc1105b 
+ - tool-esptoolpy @ 2.40900.250804 (4.9.0) 
+ - toolchain-riscv32-esp @ 8.4.0+2021r2-patch5 
+ - toolchain-xtensa-esp32s3 @ 8.4.0+2021r2-patch5
+LDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf
+LDF Modes: Finder ~ chain+, Compatibility ~ soft
+Found 56 compatible libraries
+Scanning dependencies...
+Dependency Graph
+|-- OneWire @ 2.3.8
+|-- DallasTemperature @ 3.11.0
+|-- Adafruit BMP280 Library @ 2.6.8
+|-- Adafruit ADS1X15 @ 2.6.2
+|-- Adafruit GFX Library @ 1.12.5
+|-- Adafruit SSD1306 @ 2.5.16
+|-- PZEM-004T-v30 @ 1.1.2
+|-- ESPAsyncWebServer @ 3.6.0+sha.ad3741d
+|-- AsyncTCP @ 3.3.2+sha.ef448a8
+|-- ArduinoJson @ 7.4.3
+|-- FastBot2 @ 1.2.6
+|-- LovyanGFX @ 1.2.19
+|-- XPT2046_Touchscreen @ 1.4.0+sha.f956c5d
+|-- AccelStepper @ 1.64.0
+|-- ESP32Servo @ 1.2.1
+|-- PubSubClient @ 2.8.0
+|-- WebSockets @ 2.7.3
+|-- SPI @ 2.0.0
+|-- Adafruit Unified Sensor @ 1.1.15
+|-- Adafruit BusIO @ 1.17.4
+|-- Wire @ 2.0.0
+|-- WiFi @ 2.0.0
+|-- LittleFS @ 2.0.0
+|-- FS @ 2.0.0
+|-- Preferences @ 2.0.0
+|-- ArduinoOTA @ 2.0.0
+|-- Update @ 2.0.0
+|-- WiFiClientSecure @ 2.0.0
+|-- GSON @ 1.8.4
+|-- StringUtils @ 1.5.4
+|-- GTL @ 1.3.14
+|-- GyverHTTP @ 1.0.30
+|-- DNSServer @ 2.0.0
+|-- ESPmDNS @ 2.0.0
+Building in release mode
+Compiling .pio\build\esp32s3_n8r2\src\control\fsm.cpp.o
+src/control/fsm.cpp: In function 'void FSM::ManualRect::update(SystemState&, const Settings&)':
+src/control/fsm.cpp:1001:26: error: 'isWaterOpen' is not a member of 'Valves'
+             if (!Valves::isWaterOpen()) Valves::setWater(true);
+                          ^~~~~~~~~~~
+Compiling .pio\build\esp32s3_n8r2\src\interface\mqtt.cpp.o
+*** [.pio\build\esp32s3_n8r2\src\control\fsm.cpp.o] Error 1
+src/interface/mqtt.cpp: In function 'void MQTT::publishState(const SystemState&)':
+src/interface/mqtt.cpp:176:5: warning: 'template<unsigned int N> class ArduinoJson::V743PB22::StaticJsonDocument' is deprecated: use JsonDocument instead [-Wdeprecated-declarations]
+     StaticJsonDocument<512> doc;
+     ^~~~~~~~~~~~~~~~~~
+In file included from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.hpp:65,
+                 from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.h:9,
+                 from src/interface/mqtt.cpp:10:
+.pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson/compatibility.hpp:63:58: note: declared here
+ class ARDUINOJSON_DEPRECATED("use JsonDocument instead") StaticJsonDocument
+                                                          ^~~~~~~~~~~~~~~~~~
+src/interface/mqtt.cpp:183:61: warning: 'ArduinoJson::V743PB22::JsonObject ArduinoJson::V743PB22::JsonDocument::createNestedObject(TChar*) [with TChar = const char]' is deprecated: use doc[key].to<JsonObject>() instead [-Wdeprecated-declarations]
+     JsonObject temps = doc.createNestedObject("temperatures");
+                                                             ^
+In file included from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.hpp:42,
+                 from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.h:9,
+                 from src/interface/mqtt.cpp:10:
+.pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson/Document/JsonDocument.hpp:376:14: note: declared here
+   JsonObject createNestedObject(TChar* key) {
+              ^~~~~~~~~~~~~~~~~~
+src/interface/mqtt.cpp:191:54: warning: 'ArduinoJson::V743PB22::JsonObject ArduinoJson::V743PB22::JsonDocument::createNestedObject(TChar*) [with TChar = const char]' is deprecated: use doc[key].to<JsonObject>() instead [-Wdeprecated-declarations]
+     JsonObject power = doc.createNestedObject("power");
+                                                      ^
+In file included from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.hpp:42,
+                 from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.h:9,
+                 from src/interface/mqtt.cpp:10:
+.pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson/Document/JsonDocument.hpp:376:14: note: declared here
+   JsonObject createNestedObject(TChar* key) {
+              ^~~~~~~~~~~~~~~~~~
+src/interface/mqtt.cpp: In function 'void MQTT::publishHealth(const SystemHealth&)':
+src/interface/mqtt.cpp:210:5: warning: 'template<unsigned int N> class ArduinoJson::V743PB22::StaticJsonDocument' is deprecated: use JsonDocument instead [-Wdeprecated-declarations]
+     StaticJsonDocument<384> doc;
+     ^~~~~~~~~~~~~~~~~~
+In file included from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.hpp:65,
+                 from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.h:9,
+                 from src/interface/mqtt.cpp:10:
+.pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson/compatibility.hpp:63:58: note: declared here
+ class ARDUINOJSON_DEPRECATED("use JsonDocument instead") StaticJsonDocument
+                                                          ^~~~~~~~~~~~~~~~~~
+src/interface/mqtt.cpp: In function 'void MQTT::publishNotification(const char*, const char*, const char*)':
+src/interface/mqtt.cpp:354:5: warning: 'template<unsigned int N> class ArduinoJson::V743PB22::StaticJsonDocument' is deprecated: use JsonDocument instead [-Wdeprecated-declarations]
+     StaticJsonDocument<512> doc;
+     ^~~~~~~~~~~~~~~~~~
+In file included from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.hpp:65,
+                 from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.h:9,
+                 from src/interface/mqtt.cpp:10:
+.pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson/compatibility.hpp:63:58: note: declared here
+ class ARDUINOJSON_DEPRECATED("use JsonDocument instead") StaticJsonDocument
+                                                          ^~~~~~~~~~~~~~~~~~
+src/interface/mqtt.cpp:368:5: warning: 'template<unsigned int N> class ArduinoJson::V743PB22::StaticJsonDocument' is deprecated: use JsonDocument instead [-Wdeprecated-declarations]
+     StaticJsonDocument<384> notifyDoc;
+     ^~~~~~~~~~~~~~~~~~
+In file included from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.hpp:65,
+                 from .pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson.h:9,
+                 from src/interface/mqtt.cpp:10:
+.pio/libdeps/esp32s3_n8r2/ArduinoJson/src/ArduinoJson/compatibility.hpp:63:58: note: declared here
+ class ARDUINOJSON_DEPRECATED("use JsonDocument instead") StaticJsonDocument
+                                                          ^~~~~~~~~~~~~~~~~~
+========================= [FAILED] Took 29.73 seconds =========================
+
+Environment    Status    Duration
+-------------  --------  ------------
+esp32s3_n8r2   FAILED    00:00:29.730
+==================== 1 failed, 0 succeeded in 00:00:29.730 ====================

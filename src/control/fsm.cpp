@@ -998,7 +998,7 @@ namespace ManualRect {
     void update(SystemState& state, const Settings& settings) {
         // 1. Автоматическое включение охлаждения
         if (state.temps.valid[TEMP_CUBE] && state.temps.cube >= getWaterAutoStartTempC(settings)) {
-            if (!Valves::isWaterOpen()) Valves::setWater(true);
+            if (!Valves::getWater()) Valves::setWater(true);
         }
 
         // 2. Анти-захлёб
@@ -1189,6 +1189,37 @@ const char* getPhaseName(RectPhase phase) {
         case RectPhase::FINISH: return msg(Msg::PHASE_FINISH);
         case RectPhase::COMPLETED: return msg(Msg::PHASE_COMPLETED);
         default: return "???";
+    }
+}
+
+void nextFraction(SystemState& state, const Settings& settings) {
+    if (state.mode == Mode::MANUAL_RECT) {
+        // В ручном режиме переключаемся на следующую фазу
+        if (state.rectPhase == RectPhase::HEADS) {
+            ManualRect::setPhase(state, RectPhase::BODY);
+        } else if (state.rectPhase == RectPhase::BODY) {
+            ManualRect::setPhase(state, RectPhase::TAILS);
+        } else if (state.rectPhase == RectPhase::TAILS) {
+            ManualRect::setPhase(state, RectPhase::FINISH);
+        }
+    } else if (state.mode == Mode::RECTIFICATION) {
+        // В автоматическом режиме (если разрешено ручное вмешательство)
+        if (state.rectPhase == RectPhase::HEADS) {
+            state.rectPhase = RectPhase::POST_HEADS_STABILIZATION;
+            phaseStartTime = millis();
+            Pump::stop();
+            Valves::setHeads(false);
+            LOG_I("FSM: HEADS -> POST_HEADS_STABILIZATION (manual next)");
+        } else if (state.rectPhase == RectPhase::BODY) {
+            state.rectPhase = RectPhase::TAILS;
+            phaseStartTime = millis();
+            Valves::setFraction(Fraction::TAILS, true);
+            LOG_I("FSM: BODY -> TAILS (manual next)");
+        } else if (state.rectPhase == RectPhase::TAILS) {
+            state.rectPhase = RectPhase::FINISH;
+            phaseStartTime = millis();
+            LOG_I("FSM: TAILS -> FINISH (manual next)");
+        }
     }
 }
 

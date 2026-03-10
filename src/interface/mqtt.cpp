@@ -10,6 +10,16 @@
 #include <ArduinoJson.h>
 #include "config.h"
 
+// Для управления железом
+#include "control/fsm.h"
+#include "control/watt_control.h"
+#include "drivers/heater.h"
+#include "drivers/pump.h"
+#include "drivers/valves.h"
+
+extern SystemState g_state;
+extern Settings g_settings;
+
 static WiFiClient wifiClient;
 static PubSubClient mqttClient(wifiClient);
 static String baseTopic = "smartcolumn";
@@ -33,7 +43,86 @@ void init(const char* server, uint16_t port, const char* username, const char* p
     // Установка callback для входящих сообщений
     mqttClient.setCallback([](char* topic, byte* payload, unsigned int length) {
         LOG_D("MQTT: Message received [%s]", topic);
-        // TODO: Обработка команд управления
+        
+        // Преобразуем payload в String
+        String payloadStr = "";
+        for (unsigned int i = 0; i < length; i++) {
+            payloadStr += (char)payload[i];
+        }
+        payloadStr.trim();
+        
+        String topicStr = String(topic);
+        String cmdPrefix = baseTopic + "/" + deviceId + "/cmd/";
+        
+        if (!topicStr.startsWith(cmdPrefix)) {
+            return;
+        }
+        
+        String cmd = topicStr.substring(cmdPrefix.length());
+        
+        LOG_I("MQTT Command: %s = %s", cmd.c_str(), payloadStr.c_str());
+
+        // Обработка команд FSM
+        if (cmd == "start") {
+            Mode m = Mode::IDLE;
+            int reqMode = payloadStr.toInt();
+            if (reqMode > 0 && reqMode <= static_cast<int>(Mode::MASHING)) {
+                m = static_cast<Mode>(reqMode);
+            } else {
+                // Если не указан - попробовать использовать текущий сохранённый (в UI это обычно не делается)
+                // Оставим IDLE, значит FSM::startMode просто включит IDLE. В идеале UI передает число.
+                LOG_W("MQTT: start without valid mode. Using IDLE.");
+            }
+            FSM::startMode(g_state, g_settings, m);
+        } else if (cmd == "stop") {
+            FSM::stopMode(g_state);
+        } else if (cmd == "pause") {
+            FSM::pause(g_state);
+        } else if (cmd == "resume") {
+            FSM::resume(g_state);
+        } else if (cmd == "next") {
+            FSM::nextFraction(g_state, g_settings);
+        }
+        
+        // Обработка управления железом (работает если FSM не заблокировал)
+        // ТЭН
+        else if (cmd == "heater") {
+            int pwr = payloadStr.toInt();
+            if (pwr < 0) pwr = 0;
+            if (pwr > 100) pwr = 100;
+            if (g_state.mode == Mode::RECTIFICATION || g_state.mode == Mode::DISTILLATION || g_state.mode == Mode::MASHING) {
+                // В автоматическом режиме - override (от -1: снять перехват, 0-100: установить)
+                int overridePwr = payloadStr.toInt();
+                WattControl::setOverride(overridePwr);
+            } else {
+                Heater::setPower((uint8_t)pwr);
+            }
+        }
+        // Насос
+        else if (cmd == "pump") {
+            float speed = payloadStr.toFloat();
+            if (speed <= 0.0f) {
+                Pump::stop();
+            } else {
+                Pump::start(speed);
+            }
+        }
+        // Клапаны
+        else if (cmd == "valves/water") {
+            Valves::setWater(payloadStr == "1" || payloadStr == "true" || payloadStr == "on");
+        }
+        else if (cmd == "valves/heads") {
+            Valves::setHeads(payloadStr == "1" || payloadStr == "true" || payloadStr == "on");
+        }
+        else if (cmd == "valves/uno") {
+            Valves::setUno(payloadStr == "1" || payloadStr == "true" || payloadStr == "on");
+        }
+        else if (cmd == "valves/closeAll" || cmd == "valves/stop") {
+            Valves::closeAll();
+        }
+        else {
+            LOG_W("MQTT: Unknown command: %s", cmd.c_str());
+        }
     });
 
     LOG_I("MQTT: Device ID: %s", deviceId.c_str());
