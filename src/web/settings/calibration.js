@@ -134,10 +134,20 @@ export async function loadCalibrationData() {
                         </div>
                         <div class="equipment-sensor-meta">Адрес: ${temp.address || '—'} | Текущее: ${Number.isFinite(current) ? current.toFixed(2) : '--'} °C | Смещение: ${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'} °C</div>
                         <div class="equipment-sensor-actions">
-                            <input type="number" id="offset_${i}" value="${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'}" step="0.1" data-stepper-mode="pair" data-stepper-step="0.1">
-                            <button class="btn btn-sm" onclick="calibrateTempOffset(${i})">Смещение</button>
-                            <input type="number" id="ref_${i}" step="0.1" placeholder="Эталон °C" data-stepper-mode="pair" data-stepper-step="0.1">
-                            <button class="btn btn-sm btn-secondary" onclick="calibrateTempReference(${i})">По эталону</button>
+                            <div class="form-group equipment-sensor-action">
+                                <label for="offset_${i}">Смещение, °C</label>
+                                <div class="equipment-sensor-action-row">
+                                    <input type="number" id="offset_${i}" value="${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'}" step="0.1" data-stepper-mode="pair" data-stepper-step="0.1">
+                                    <button class="btn btn-sm" onclick="calibrateTempOffset(${i})">Применить</button>
+                                </div>
+                            </div>
+                            <div class="form-group equipment-sensor-action">
+                                <label for="ref_${i}">Эталон, °C</label>
+                                <div class="equipment-sensor-action-row">
+                                    <input type="number" id="ref_${i}" step="0.1" placeholder="Эталон °C" data-stepper-mode="pair" data-stepper-step="0.1">
+                                    <button class="btn btn-sm btn-secondary" onclick="calibrateTempReference(${i})">По эталону</button>
+                                </div>
+                            </div>
                         </div>
                     `;
                     sensorList.appendChild(li);

@@ -134,9 +134,35 @@
 
 .equipment-sensor-actions {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr) auto;
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    gap: 10px;
+    align-items: start;
+    margin-top: 10px;
+}
+
+.equipment-sensor-action {
+    margin: 0;
+}
+
+.equipment-sensor-action label {
+    margin-bottom: 6px;
+    font-size: 0.92em;
+}
+
+.equipment-sensor-action-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     align-items: center;
+}
+
+.equipment-sensor-action-row .btn {
+    height: 40px;
+    white-space: nowrap;
+}
+
+.equipment-sensor-action-row .equipment-num-stepper {
+    width: 100%;
 }
 
 .equipment-log-hint {
@@ -196,6 +222,14 @@
 
     .equipment-sensor-actions {
         grid-template-columns: 1fr;
+    }
+
+    .equipment-sensor-action-row {
+        grid-template-columns: 1fr;
+    }
+
+    .equipment-sensor-action-row .btn {
+        width: 100%;
     }
 
     .equipment-step-btn {
