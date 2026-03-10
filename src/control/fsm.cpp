@@ -440,8 +440,25 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
         Pump::resetVolume();
         LOG_I("FSM: Distillation mode started");
     } else if (mode == Mode::MANUAL_RECT) {
-        state.rectPhase = RectPhase::IDLE;
-        // TODO: Инициализация ручной ректификации
+        state.rectPhase = RectPhase::HEATING;
+        phaseStartTime = now;
+        phaseStartVolumeMl = 0.0f;
+        rectBodyInitialized = false;
+
+        calculateRectificationTargets(state, settings,
+                                      rectHeadsTargetMl,
+                                      rectBodyTargetMl,
+                                      rectTailsTargetMl);
+        state.stats = ProcessStats{};
+        Pump::resetVolume();
+
+        ManualRect::setPhase(state, RectPhase::HEATING);
+
+        MQTT::publishNotification(
+            "Ручная ректификация",
+            "Режим запущен. Установите мощность ТЭНа и управляйте процессом.",
+            "info"
+        );
         LOG_I("FSM: Manual rectification mode started");
     } else if (mode == Mode::MASHING) {
         state.rectPhase = RectPhase::IDLE;
@@ -975,8 +992,69 @@ void update(SystemState &state, const Settings &settings) {
 // =============================================================================
 
 namespace ManualRect {
+    static bool alertSent = false;
+    static uint32_t lastFloodTime = 0;
+
     void update(SystemState& state, const Settings& settings) {
-        // TODO: Реализовать логику ручной ректификации
+        // 1. Автоматическое включение охлаждения
+        if (state.temps.valid[TEMP_CUBE] && state.temps.cube >= getWaterAutoStartTempC(settings)) {
+            if (!Valves::isWaterOpen()) Valves::setWater(true);
+        }
+
+        // 2. Анти-захлёб
+        float floodP = WattControl::calculateFloodPressure(settings.equipment.columnHeightMm, settings.equipment.packingCoeff);
+        float critP = floodP * PRESSURE_CRIT_MULT;
+
+        if (state.pressure.ok && state.pressure.cube >= critP && (millis() - lastFloodTime > 5000)) {
+            lastFloodTime = millis();
+            uint8_t power = Heater::getPower();
+            uint8_t newP = (uint8_t)(power * 0.85f);
+            if (newP < 30) newP = 30; // Min 30
+            Heater::setPower(newP);
+            MQTT::publishNotification("Захлёб!", "Давление критическое! Мощность ТЭНа снижена.", "warning");
+            LOG_E("ManualRect: Flood! P=%.1f >= %.1f. Power %d -> %d", state.pressure.cube, critP, power, newP);
+        }
+
+        // 3. Подсчёт объёмов и уведомления
+        float collected = state.pump.totalVolumeMl - phaseStartVolumeMl;
+        if (collected < 0.0f) collected = 0.0f;
+
+        switch (state.rectPhase) {
+            case RectPhase::HEADS:
+                state.stats.headsVolume = collected;
+                if (rectHeadsTargetMl > 0.0f && collected >= rectHeadsTargetMl && !alertSent) {
+                    Pump::stop();
+                    MQTT::publishNotification("Смена тары", "Отбор голов завершен. Смените тару на ТЕЛО и подтвердите продолжение.", "warning");
+                    alertSent = true;
+                }
+                break;
+            case RectPhase::BODY:
+                state.stats.bodyVolume = collected;
+                if (rectBodyTargetMl > 0.0f && collected >= rectBodyTargetMl && !alertSent) {
+                    Pump::stop();
+                    MQTT::publishNotification("Смена тары", "Отбор тела завершен. Смените тару на ХВОСТЫ и подтвердите продолжение.", "warning");
+                    alertSent = true;
+                }
+                break;
+            case RectPhase::TAILS:
+                state.stats.tailsVolume = collected;
+                if (rectTailsTargetMl > 0.0f && collected >= rectTailsTargetMl && !alertSent) {
+                    Pump::stop();
+                    MQTT::publishNotification("Завершение", "Отбор хвостов завершен. Можно завершать процесс.", "warning");
+                    alertSent = true;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    void setPhase(SystemState& state, RectPhase phase) {
+        state.rectPhase = phase;
+        phaseStartVolumeMl = state.pump.totalVolumeMl;
+        alertSent = false;
+        
+        LOG_I("ManualRect: phase changed to %d", (int)phase);
     }
 }
 

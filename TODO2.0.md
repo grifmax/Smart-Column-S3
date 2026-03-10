@@ -6,7 +6,7 @@
 
 ## Firmware: FSM и runtime
 
-- [ ] **Ручная ректификация** — FSM логика пустая (`fsm.cpp:444, 979`). `ManualRect::update()` — пустое тело.
+- [x] **Ручная ректификация** — Реализован `ManualRect::update()` с автоматикой воды по T_cube, подсчетом объемов фракций, анти-захлебной защитой от давления и возможностью смены фаз по API (`/api/manual/phase`).
 - [ ] **Профили → система** — `applyProfile()` загружает профиль, но не применяет к `g_settings`/`g_state` (`profiles.cpp:663`). `createProfileFromSettings()` возвращает дефолты (`profiles.cpp:735`).
 - [ ] **MQTT команды** — callback подписан на `cmd/#`, но тело пустое (`mqtt.cpp:36`). Нужен dispatch: start/stop/pause/resume/heater/pump/valves.
 - [ ] **Давление в ареометре** — используется `density` вместо реального давления (`webserver.cpp:1659`).

@@ -104,6 +104,7 @@ namespace FSM {
     
     namespace ManualRect {
         void update(SystemState& state, const Settings& settings);
+        void setPhase(SystemState& state, RectPhase phase);
     }
     
     // =========================================================================

@@ -1467,6 +1467,41 @@ void init() {
         request->send(200, "application/json", "{\"success\":true}");
       });
 
+  // POST /api/manual/phase - переключение фазы в ручном режиме
+  // body: { "phase": 3 } (где 3 = HEADS, 5 = BODY, 6 = TAILS)
+  server.on(
+      "/api/manual/phase", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<128> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        if (g_state.mode != Mode::MANUAL_RECT) {
+          request->send(400, "application/json", "{\"error\":\"Not in MANUAL_RECT mode\"}");
+          return;
+        }
+
+        if (!doc.containsKey("phase")) {
+          request->send(400, "application/json", "{\"error\":\"Missing phase\"}");
+          return;
+        }
+
+        uint8_t phaseId = doc["phase"].as<uint8_t>();
+        
+        // Маппим фазу и вызываем FSM
+        FSM::ManualRect::setPhase(g_state, static_cast<RectPhase>(phaseId));
+
+        char resp[128];
+        snprintf(resp, sizeof(resp), "{\"success\":true,\"phase\":%d}", (int)phaseId);
+        request->send(200, "application/json", resp);
+      });
+
   // POST /api/manual/volumes - ручная корректировка отображаемых объёмов фракций
   // body: { "heads": 100, "body": 2500, "tails": 120, "syncTotal": true }
   server.on(
