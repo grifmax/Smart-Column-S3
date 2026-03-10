@@ -1473,17 +1473,19 @@
                     <div id="tools" class="tab-content">
                         <div class="cards tools-cards">
                             <div class="card tools-card">
-                                <h2>🥃 AA / Выход / Фракции</h2>
+                                <h2>🥃 AA / Фракции / Время</h2>
                                 <p class="tools-card-text">
-                                    Оценка абсолютного спирта в сырце и прогноз выхода по головам, телу и хвостам.
+                                    Считает абсолютный спирт, объемы фракций и ориентировочное время отбора по заданным скоростям.
                                 </p>
-                                <div class="form-group">
-                                    <label>Объем сырца, л</label>
-                                    <input type="number" id="calc-yield-volume-l" placeholder="Например: 30" step="0.1">
-                                </div>
-                                <div class="form-group">
-                                    <label>Крепость сырца, %</label>
-                                    <input type="number" id="calc-yield-abv" placeholder="Например: 40" step="0.1">
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Объем сырца, л</label>
+                                        <input type="number" id="calc-yield-volume-l" placeholder="Например: 30" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Крепость сырца, %</label>
+                                        <input type="number" id="calc-yield-abv" placeholder="Например: 40" step="0.1">
+                                    </div>
                                 </div>
                                 <div class="tools-inline-grid">
                                     <div class="form-group">
@@ -1495,9 +1497,33 @@
                                         <input type="number" id="calc-yield-body-pct" value="70" step="0.1">
                                     </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>Крепость готового тела, %</label>
-                                    <input type="number" id="calc-yield-body-abv" value="92" step="0.1">
+                                <div class="tools-inline-grid tools-inline-grid-3">
+                                    <div class="form-group">
+                                        <label>Средн. крепость голов, %</label>
+                                        <input type="number" id="calc-yield-heads-abv" value="82" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Крепость тела, %</label>
+                                        <input type="number" id="calc-yield-body-abv" value="92" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Средн. крепость хвостов, %</label>
+                                        <input type="number" id="calc-yield-tails-abv" value="25" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="tools-inline-grid tools-inline-grid-3">
+                                    <div class="form-group">
+                                        <label>Головы, мл/ч</label>
+                                        <input type="number" id="calc-yield-heads-rate" value="300" step="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Тело, мл/ч</label>
+                                        <input type="number" id="calc-yield-body-rate" value="1200" step="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Хвосты, мл/ч</label>
+                                        <input type="number" id="calc-yield-tails-rate" value="1500" step="1">
+                                    </div>
                                 </div>
                                 <div class="tools-result">
                                     <div class="tools-result-row">
@@ -1506,19 +1532,19 @@
                                     </div>
                                     <div class="tools-result-row">
                                         <span>Головы:</span>
-                                        <strong id="calc-yield-heads-aa">-- мл</strong>
+                                        <strong id="calc-yield-heads-aa">--</strong>
                                     </div>
                                     <div class="tools-result-row">
-                                        <span>Тело, АС:</span>
-                                        <strong id="calc-yield-body-aa">-- л</strong>
+                                        <span>Тело:</span>
+                                        <strong id="calc-yield-body-aa">--</strong>
                                     </div>
                                     <div class="tools-result-row">
-                                        <span>Выход тела:</span>
-                                        <strong id="calc-yield-body-product">-- л</strong>
+                                        <span>Хвосты:</span>
+                                        <strong id="calc-yield-tails-aa">--</strong>
                                     </div>
                                     <div class="tools-result-row">
-                                        <span>Хвосты и потери:</span>
-                                        <strong id="calc-yield-tails-aa">-- мл</strong>
+                                        <span>Суммарное время:</span>
+                                        <strong id="calc-yield-total-time">--</strong>
                                     </div>
                                 </div>
                                 <button class="btn btn-primary tools-submit" onclick="calculateYieldFractions()">Рассчитать</button>

@@ -331,7 +331,7 @@ void init() {
     // Ареометр
     JsonObject hydro = doc.createNestedObject("hydrometer");
     hydro["abv"] = g_state.hydrometer.abv;
-    hydro["density"] = g_state.hydrometer.density;
+    hydro["pressure"] = g_state.hydrometer.pressure;
     hydro["valid"] = g_state.hydrometer.valid;
 
     // Объёмы фракций
@@ -1690,8 +1690,7 @@ void init() {
       pressurePoints.add(g_settings.hydroCal.pressurePoints[i]);
     }
     // Текущие показания
-    hydro["currentPressure"] =
-        g_state.hydrometer.density; // TODO: использовать реальное давление
+    hydro["currentPressure"] = g_state.hydrometer.pressure;
     hydro["currentABV"] = g_state.hydrometer.abv;
     hydro["valid"] = g_state.hydrometer.valid;
 

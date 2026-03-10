@@ -11,6 +11,7 @@
 #include "demo_simulator.h"
 #include <Arduino.h>
 #include <math.h>
+#include "drivers/valves.h"
 
 namespace DemoSimulator {
 
@@ -168,14 +169,30 @@ void update(SystemState &state, const Settings &settings) {
   state.power.lastUpdate = now;
 
   // ==========================================
-  // СИМУЛЯЦИЯ НАСОСА
+  // СИМУЛЯЦИЯ НАСОСА И ФРАКЦИЙ
   // ==========================================
   if (sim.phase > 50) {
     // Начинаем отбор после стабилизации
     float targetSpeed = 200.0f + sin(sim.phase * 0.1f) * 50.0f; // 150-250 мл/ч
     state.pump.speedMlPerHour = targetSpeed + (random(-20, 20));
     state.pump.running = true;
-    state.pump.totalVolumeMl += (state.pump.speedMlPerHour / 3600.0f) * dt;
+    
+    float addedVolume = (state.pump.speedMlPerHour / 3600.0f) * dt;
+    state.pump.totalVolumeMl += addedVolume;
+    
+    // Симуляция распределения по банкам (зависит от открытых клапанов)
+    // В реальности клапаны переключаются FSM (или вручную). 
+    // В лоб смотрим на состояние Valves (но в демо мы их не можем читать из g_state, 
+    // поэтому сделаем привязку: если открыт клапан голов - то в головы, если открыт УНО или фракционник на хвостах - в хвосты, иначе в тело)
+    // Допустим, мы читаем реальные состояния из Valves::getHeads() и Valves::getCurrentFraction()
+    if (Valves::getHeads()) {
+        state.stats.headsVolume += addedVolume;
+    } else if (Valves::getCurrentFraction() == Fraction::TAILS) {
+        state.stats.tailsVolume += addedVolume;
+    } else if (Valves::getCurrentFraction() == Fraction::BODY || !Valves::getHeads()) {
+        // Упрощенно всё остальное пишем в тело, если клапан голов закрыт и не хвосты
+        state.stats.bodyVolume += addedVolume;
+    }
   } else {
     state.pump.speedMlPerHour = 0.0f;
     state.pump.running = false;
@@ -189,7 +206,7 @@ void update(SystemState &state, const Settings &settings) {
     // ABV постепенно снижается с 96% до 40%
     float progress = min((sim.phase - 55.0f) / 100.0f, 1.0f);
     state.hydrometer.abv = 96.0f - progress * 56.0f; // 96% → 40%
-    state.hydrometer.density = 0.78f + progress * 0.15f;
+    state.hydrometer.pressure = 100.0f + progress * 5.0f; // Симуляция давления в мм рт. ст.
   }
 
   // Обновляем health - всё работает в демо

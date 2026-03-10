@@ -62,13 +62,16 @@ import {
 import {
     calculateAbvCorrection,
     calculateBlendFractions,
+    calculateDensityConverter,
     calculateDilution,
+    calculateFermentation,
     calculateHeatingCost,
     calculatePotentialAlcohol,
     calculateReverseBatch,
     calculateSelectionRate,
     calculateYieldFractions,
     fetchCurrentTempForCalc,
+    updateFermentationMode,
     updatePotentialAlcoholMode
 } from './tools/calculators.js';
 import { toggleOperatorView } from './ui/operator-view.js';
@@ -215,13 +218,16 @@ window.applyCalibration = applyCalibration;
 window.cancelCalibration = cancelCalibration;
 window.calculateAbvCorrection = calculateAbvCorrection;
 window.calculateBlendFractions = calculateBlendFractions;
+window.calculateDensityConverter = calculateDensityConverter;
 window.calculateDilution = calculateDilution;
+window.calculateFermentation = calculateFermentation;
 window.calculateHeatingCost = calculateHeatingCost;
 window.calculatePotentialAlcohol = calculatePotentialAlcohol;
 window.calculateReverseBatch = calculateReverseBatch;
 window.calculateSelectionRate = calculateSelectionRate;
 window.calculateYieldFractions = calculateYieldFractions;
 window.fetchCurrentTempForCalc = fetchCurrentTempForCalc;
+window.updateFermentationMode = updateFermentationMode;
 window.updatePotentialAlcoholMode = updatePotentialAlcoholMode;
 window.toggleOperatorView = toggleOperatorView;
 window.toggleBrowserNotifications = toggleBrowserNotifications;
@@ -266,6 +272,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     loadPumpInfo();
     loadVersionInfo();
     updatePotentialAlcoholMode();
+    updateFermentationMode();
     initEquipmentSettingsUi();
     loadEquipmentSettings();
     loadSafetySettings();

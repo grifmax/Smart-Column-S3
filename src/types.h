@@ -82,7 +82,7 @@ struct PressureData {
 
 // Данные гидрометра
 struct HydrometerData {
-  float density = 1.0f;
+  float pressure = 0.0f;
   float abv = 0.0f;
   float temperature = 0.0f; // Температура замера
   bool valid = false;       // Данные валидны

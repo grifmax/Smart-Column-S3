@@ -345,17 +345,17 @@ void readHydrometer(Hydrometer& hydro, float temperature) {
     // ρ = ΔP / (g × h), где g=9.81, h=высота_попугая (м)
     // Для примера: h = 0.1м
     const float height_m = 0.1f;
-    hydro.density = (kPa * 1000) / (9.81f * height_m); // г/см³
+    hydro.pressure = (kPa * 1000) / (9.81f * height_m); // г/см³
 
     // ABV (здесь нужна калибровочная таблица)
     // Пока используем упрощённую формулу
-    hydro.abv = (1.0f - hydro.density) * 100.0f;
+    hydro.abv = (1.0f - hydro.pressure) * 100.0f;
 
     // Температурная коррекция (упрощённо)
     hydro.temperature = temperature;
 
     // Валидация
-    hydro.valid = (hydro.density > 0.7f && hydro.density < 1.1f);
+    hydro.valid = (hydro.pressure > 0.7f && hydro.pressure < 1.1f);
     hydro.lastUpdate = millis();
 }
 

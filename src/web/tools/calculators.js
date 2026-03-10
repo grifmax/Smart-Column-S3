@@ -441,3 +441,509 @@ export function fetchCurrentTempForCalc() {
         }
     }
 }
+
+export function calculateAbvCorrection() {
+    const abvRaw = parseNumber('calc-abv-raw');
+    const tempRaw = parseNumber('calc-temp-raw');
+
+    if (Number.isNaN(abvRaw) || Number.isNaN(tempRaw)) {
+        alert('Введите корректные значения.');
+        return;
+    }
+
+    if (abvRaw < 0 || abvRaw > 100) {
+        alert('Показания спиртометра должны быть в диапазоне 0-100%.');
+        return;
+    }
+
+    const interpolation = interpolateGrid(
+        ALCOHOLMETER_TEMP_ANCHORS,
+        ALCOHOLMETER_ABV_ANCHORS,
+        ALCOHOLMETER_CORRECTION_GRID,
+        tempRaw,
+        abvRaw
+    );
+    const realAbv = clamp(abvRaw + interpolation.value, 0, 100);
+
+    setText('calc-abv-result', `${realAbv.toFixed(2)} %`);
+    setText('calc-abv-correction', formatSignedPercent(interpolation.value));
+    setText('calc-abv-note', describeAlcoholmeterRange(tempRaw, abvRaw));
+
+    addLog(
+        `Коррекция спиртометра: ${abvRaw.toFixed(1)}% при ${tempRaw.toFixed(1)}°C -> ${realAbv.toFixed(2)}%`,
+        'info'
+    );
+}
+
+export function calculateDilution() {
+    const sourceVolumeMl = parseNumber('calc-dil-volume');
+    const sourceAbv = parseNumber('calc-dil-abv-src');
+    const targets = [
+        parseNumber('calc-dil-stage-1'),
+        parseNumber('calc-dil-stage-2'),
+        parseNumber('calc-dil-stage-3')
+    ].filter((value) => Number.isFinite(value) && value > 0);
+
+    if (!Number.isFinite(sourceVolumeMl) || !Number.isFinite(sourceAbv) || sourceVolumeMl <= 0 || sourceAbv <= 0 || sourceAbv > 100) {
+        alert('Проверьте исходный объем и крепость.');
+        return;
+    }
+
+    if (targets.length === 0) {
+        alert('Укажите хотя бы одну целевую крепость.');
+        return;
+    }
+
+    let currentVolumeMl = sourceVolumeMl;
+    let currentAbv = sourceAbv;
+    let totalWaterMl = 0;
+    const stageSummaries = [];
+
+    for (const targetAbv of targets) {
+        if (targetAbv <= 0 || targetAbv >= currentAbv) {
+            alert('Каждый следующий этап должен быть ниже предыдущей крепости.');
+            return;
+        }
+
+        const stageTotalMl = currentVolumeMl * (currentAbv / targetAbv);
+        const waterMl = stageTotalMl - currentVolumeMl;
+        totalWaterMl += waterMl;
+        stageSummaries.push(`до ${targetAbv.toFixed(1)}%: +${waterMl.toFixed(0)} мл, итог ${stageTotalMl.toFixed(0)} мл`);
+
+        currentVolumeMl = stageTotalMl;
+        currentAbv = targetAbv;
+    }
+
+    setText('calc-dil-stage-1-result', stageSummaries[0] || '—');
+    setText('calc-dil-stage-2-result', stageSummaries[1] || '—');
+    setText('calc-dil-stage-3-result', stageSummaries[2] || '—');
+    setText('calc-dil-water', formatMilliliters(totalWaterMl));
+    setText('calc-dil-total', formatMilliliters(currentVolumeMl));
+
+    addLog(
+        `Разбавление по этапам: ${targets.length} этап., итог ${currentVolumeMl.toFixed(0)} мл @ ${currentAbv.toFixed(1)}%`,
+        'info'
+    );
+}
+
+export function calculateYieldFractions() {
+    const sourceVolumeL = parseNumber('calc-yield-volume-l');
+    const sourceAbv = parseNumber('calc-yield-abv');
+    const headsPercent = parseNumber('calc-yield-heads-pct');
+    const bodyPercent = parseNumber('calc-yield-body-pct');
+    const bodyTargetAbv = parseNumber('calc-yield-body-abv');
+    const headsAverageAbv = parseNumber('calc-yield-heads-abv');
+    const tailsAverageAbv = parseNumber('calc-yield-tails-abv');
+    const headsRateMlH = parseNumber('calc-yield-heads-rate');
+    const bodyRateMlH = parseNumber('calc-yield-body-rate');
+    const tailsRateMlH = parseNumber('calc-yield-tails-rate');
+
+    const values = [
+        sourceVolumeL,
+        sourceAbv,
+        headsPercent,
+        bodyPercent,
+        bodyTargetAbv,
+        headsAverageAbv,
+        tailsAverageAbv,
+        headsRateMlH,
+        bodyRateMlH,
+        tailsRateMlH
+    ];
+    if (values.some((value) => Number.isNaN(value))) {
+        alert('Введите корректные значения для расчета фракций.');
+        return;
+    }
+
+    if (sourceVolumeL <= 0 || sourceAbv <= 0 || sourceAbv > 100 || bodyTargetAbv <= 0 || bodyTargetAbv >= 100) {
+        alert('Проверьте объем и крепость. Крепость продукта должна быть в диапазоне 1-99%.');
+        return;
+    }
+
+    if (headsAverageAbv <= 0 || headsAverageAbv >= 100 || tailsAverageAbv <= 0 || tailsAverageAbv >= 100) {
+        alert('Средняя крепость голов и хвостов должна быть в диапазоне 1-99%.');
+        return;
+    }
+
+    if (headsPercent < 0 || bodyPercent <= 0 || headsPercent + bodyPercent > 100) {
+        alert('Сумма голов и тела не должна превышать 100% абсолютного спирта.');
+        return;
+    }
+
+    if (headsRateMlH <= 0 || bodyRateMlH <= 0 || tailsRateMlH <= 0) {
+        alert('Скорость отбора для каждого этапа должна быть больше нуля.');
+        return;
+    }
+
+    const totalAbsoluteAlcoholL = sourceVolumeL * sourceAbv / 100;
+    const headsAbsoluteAlcoholL = totalAbsoluteAlcoholL * headsPercent / 100;
+    const bodyAbsoluteAlcoholL = totalAbsoluteAlcoholL * bodyPercent / 100;
+    const tailsAbsoluteAlcoholL = Math.max(0, totalAbsoluteAlcoholL - headsAbsoluteAlcoholL - bodyAbsoluteAlcoholL);
+
+    const headsProductL = headsAbsoluteAlcoholL / (headsAverageAbv / 100);
+    const bodyProductL = bodyAbsoluteAlcoholL / (bodyTargetAbv / 100);
+    const tailsProductL = tailsAbsoluteAlcoholL / (tailsAverageAbv / 100);
+
+    const headsDurationH = (headsProductL * 1000) / headsRateMlH;
+    const bodyDurationH = (bodyProductL * 1000) / bodyRateMlH;
+    const tailsDurationH = (tailsProductL * 1000) / tailsRateMlH;
+    const totalDurationH = headsDurationH + bodyDurationH + tailsDurationH;
+
+    setText('calc-yield-aa-total', formatLiters(totalAbsoluteAlcoholL, 2));
+    setText('calc-yield-heads-aa', summarizeFraction(headsAbsoluteAlcoholL, headsProductL, headsAverageAbv, headsDurationH));
+    setText('calc-yield-body-aa', summarizeFraction(bodyAbsoluteAlcoholL, bodyProductL, bodyTargetAbv, bodyDurationH));
+    setText('calc-yield-tails-aa', summarizeFraction(tailsAbsoluteAlcoholL, tailsProductL, tailsAverageAbv, tailsDurationH));
+    setText('calc-yield-total-time', formatDuration(totalDurationH));
+
+    addLog(
+        `Фракции: АС ${totalAbsoluteAlcoholL.toFixed(2)} л, тело ${bodyProductL.toFixed(2)} л за ${formatDuration(bodyDurationH)}`,
+        'info'
+    );
+}
+
+export function calculatePotentialAlcohol() {
+    const mode = selectValue('calc-potential-source-type', 'sugar');
+    const volumeL = parseNumber('calc-potential-volume-l');
+
+    if (!Number.isFinite(volumeL) || volumeL <= 0) {
+        alert('Введите корректный объем браги или сусла.');
+        return;
+    }
+
+    let washAbv = 0;
+    let absoluteAlcoholL = 0;
+    let primaryText = '--';
+    let secondaryText = '--';
+    let ratioText = 'н/д';
+    let noteText = '--';
+
+    if (mode === 'sugar') {
+        const sugarKg = parseNumber('calc-potential-sugar-kg');
+        const waterL = parseNumber('calc-potential-water-l');
+        const efficiencyPercent = parseNumber('calc-potential-efficiency-pct');
+
+        if (!Number.isFinite(sugarKg) || !Number.isFinite(waterL) || !Number.isFinite(efficiencyPercent) ||
+            sugarKg <= 0 || waterL <= 0 || efficiencyPercent <= 0 || efficiencyPercent > 100) {
+            alert('Для сахарной браги укажите сахар, воду и КПД брожения.');
+            return;
+        }
+
+        absoluteAlcoholL = sugarKg * SUGAR_TO_AA_L_PER_KG * (efficiencyPercent / 100);
+        washAbv = (absoluteAlcoholL / volumeL) * 100;
+
+        const ratio = describeSugarWaterRatio(sugarKg, waterL);
+        const derivedVolumeL = waterL + sugarKg * SUGAR_VOLUME_DISPLACEMENT_L_PER_KG;
+
+        primaryText = `${sugarKg.toFixed(2)} кг сахара, ${waterL.toFixed(1)} л воды`;
+        secondaryText = `КПД брожения: ${efficiencyPercent.toFixed(0)}%, ожидаемый объем после растворения ~ ${derivedVolumeL.toFixed(1)} л`;
+        ratioText = ratio.ratioText;
+        noteText = ratio.note;
+    } else {
+        const attenuationPercent = parseNumber('calc-potential-attenuation-pct');
+        if (!Number.isFinite(attenuationPercent) || attenuationPercent <= 0 || attenuationPercent > 100) {
+            alert('Для сусла укажите степень сбраживания.');
+            return;
+        }
+
+        let originalGravity;
+        if (mode === 'brix') {
+            const brix = parseNumber('calc-potential-brix');
+            if (!Number.isFinite(brix) || brix <= 0 || brix > 40) {
+                alert('Укажите корректное значение Brix.');
+                return;
+            }
+            originalGravity = brixToSpecificGravity(brix);
+            primaryText = `OG ≈ ${originalGravity.toFixed(3)} из ${brix.toFixed(1)} Brix`;
+        } else {
+            originalGravity = parseNumber('calc-potential-sg');
+            if (!Number.isFinite(originalGravity) || originalGravity <= 1 || originalGravity > 1.2) {
+                alert('Укажите корректную начальную плотность SG.');
+                return;
+            }
+            primaryText = `OG: ${originalGravity.toFixed(3)}`;
+        }
+
+        const finalGravity = attenuationToFinalGravity(originalGravity, attenuationPercent);
+        washAbv = Math.max(0, (originalGravity - finalGravity) * 131.25);
+        absoluteAlcoholL = volumeL * washAbv / 100;
+        secondaryText = `FG ≈ ${finalGravity.toFixed(3)} при сбраживании ${attenuationPercent.toFixed(0)}%`;
+        noteText = 'Соотношение сахар/вода не применяется для расчета по суслу.';
+    }
+
+    const product40L = absoluteAlcoholL / 0.4;
+
+    setText('calc-potential-abv', `${washAbv.toFixed(1)} %`);
+    setText('calc-potential-aa', formatLiters(absoluteAlcoholL, 2));
+    setText('calc-potential-40', formatLiters(product40L, 2));
+    setText('calc-potential-primary', primaryText);
+    setText('calc-potential-secondary', secondaryText);
+    setText('calc-potential-ratio', ratioText);
+    setText('calc-potential-note', noteText);
+
+    addLog(
+        `Потенциал спирта: ${washAbv.toFixed(1)}%, АС ${absoluteAlcoholL.toFixed(2)} л из ${volumeL.toFixed(1)} л`,
+        'info'
+    );
+}
+
+export function calculateDensityConverter() {
+    const scale = selectValue('calc-density-scale', 'brix');
+    const rawValue = parseNumber('calc-density-value');
+    const targetFg = parseNumber('calc-density-fg');
+    const specificGravity = getDensityAsSpecificGravity(scale, rawValue);
+
+    if (!Number.isFinite(specificGravity) || specificGravity <= 0.99 || specificGravity > 1.2) {
+        alert('Проверьте входное значение плотности.');
+        return;
+    }
+
+    const brix = specificGravityToBrix(specificGravity);
+    const plato = specificGravityToPlato(specificGravity);
+    const oechsle = specificGravityToOechsle(specificGravity);
+    const targetFinalGravity = Number.isFinite(targetFg) && targetFg > 0.98 && targetFg < specificGravity ? targetFg : 1.0;
+    const potentialAbv = Math.max(0, (specificGravity - targetFinalGravity) * 131.25);
+
+    setText('calc-density-sg', specificGravity.toFixed(3));
+    setText('calc-density-brix', `${brix.toFixed(1)} °Bx`);
+    setText('calc-density-plato', `${plato.toFixed(1)} °P`);
+    setText('calc-density-oechsle', `${oechsle.toFixed(0)} °Oe`);
+    setText('calc-density-potential', `${potentialAbv.toFixed(1)} %`);
+    setText('calc-density-note', `Потенциал посчитан до FG ${targetFinalGravity.toFixed(3)}.`);
+
+    addLog(
+        `Конвертер плотности: SG ${specificGravity.toFixed(3)}, Brix ${brix.toFixed(1)}, потенциал ${potentialAbv.toFixed(1)}%`,
+        'info'
+    );
+}
+
+export function calculateFermentation() {
+    const mode = selectValue('calc-ferment-basis', 'sugar');
+    const volumeL = parseNumber('calc-ferment-volume-l');
+    const fermentationTempC = parseNumber('calc-ferment-temp');
+    const profile = getFermentationProfile();
+
+    if (!Number.isFinite(volumeL) || !Number.isFinite(fermentationTempC) || volumeL <= 0) {
+        alert('Введите корректный объем партии и температуру брожения.');
+        return;
+    }
+
+    let originalGravity = 1;
+    let finalGravity = 1;
+    let washAbv = 0;
+    let absoluteAlcoholL = 0;
+    let ratioText = 'н/д';
+    let ratioValue = NaN;
+    let noteText = '';
+
+    if (mode === 'sugar') {
+        const sugarKg = parseNumber('calc-ferment-sugar-kg');
+        const waterL = parseNumber('calc-ferment-water-l');
+        const efficiencyPercent = parseNumber('calc-ferment-efficiency-pct');
+
+        if (!Number.isFinite(sugarKg) || !Number.isFinite(waterL) || !Number.isFinite(efficiencyPercent) ||
+            sugarKg <= 0 || waterL <= 0 || efficiencyPercent <= 0 || efficiencyPercent > 100) {
+            alert('Для сахарной браги укажите сахар, воду и КПД брожения.');
+            return;
+        }
+
+        const sugarBrix = (sugarKg / (sugarKg + waterL)) * 100;
+        originalGravity = brixToSpecificGravity(sugarBrix);
+        absoluteAlcoholL = sugarKg * SUGAR_TO_AA_L_PER_KG * (efficiencyPercent / 100);
+        washAbv = (absoluteAlcoholL / volumeL) * 100;
+        finalGravity = Math.max(0.992, originalGravity - (washAbv / 131.25));
+        const ratio = describeSugarWaterRatio(sugarKg, waterL);
+        ratioText = ratio.ratioText;
+        ratioValue = waterL / sugarKg;
+        noteText = `${ratio.note} ${buildFermentationNote(profile, fermentationTempC, ratioValue, washAbv)}`;
+    } else {
+        const attenuationPercent = parseNumber('calc-ferment-attenuation-pct');
+        if (!Number.isFinite(attenuationPercent) || attenuationPercent <= 0 || attenuationPercent > 100) {
+            alert('Укажите степень сбраживания.');
+            return;
+        }
+
+        if (mode === 'brix') {
+            const brix = parseNumber('calc-ferment-brix');
+            if (!Number.isFinite(brix) || brix <= 0 || brix > 40) {
+                alert('Укажите корректный Brix.');
+                return;
+            }
+            originalGravity = brixToSpecificGravity(brix);
+        } else {
+            originalGravity = parseNumber('calc-ferment-sg');
+            if (!Number.isFinite(originalGravity) || originalGravity <= 1 || originalGravity > 1.2) {
+                alert('Укажите корректное SG.');
+                return;
+            }
+            originalGravity = originalGravity;
+        }
+
+        finalGravity = attenuationToFinalGravity(originalGravity, attenuationPercent);
+        washAbv = Math.max(0, (originalGravity - finalGravity) * 131.25);
+        absoluteAlcoholL = volumeL * washAbv / 100;
+        noteText = buildFermentationNote(profile, fermentationTempC, NaN, washAbv);
+    }
+
+    const gravityFactor = 1 + Math.max(0, (originalGravity - 1.07) / 0.01) * 0.04;
+    const recommendedYeastG = volumeL * profile.pitchPerLiter * gravityFactor;
+    const duration = buildFermentationDuration(profile.baseDays, fermentationTempC, profile.idealTemp, washAbv, ratioValue);
+
+    setText('calc-ferment-og', originalGravity.toFixed(3));
+    setText('calc-ferment-fg', finalGravity.toFixed(3));
+    setText('calc-ferment-abv', `${washAbv.toFixed(1)} %`);
+    setText('calc-ferment-aa', formatLiters(absoluteAlcoholL, 2));
+    setText('calc-ferment-ratio', ratioText);
+    setText('calc-ferment-yeast-dose', `${recommendedYeastG.toFixed(0)} г сухих дрожжей`);
+    setText('calc-ferment-time', `${duration.minDays.toFixed(0)}-${duration.maxDays.toFixed(0)} суток`);
+    setText('calc-ferment-note', noteText);
+
+    addLog(
+        `Брожение: OG ${originalGravity.toFixed(3)}, FG ${finalGravity.toFixed(3)}, потенциал ${washAbv.toFixed(1)}%`,
+        'info'
+    );
+}
+
+export function calculateReverseBatch() {
+    const targetVolumeL = parseNumber('calc-reverse-target-volume');
+    const targetAbv = parseNumber('calc-reverse-target-abv');
+    const sourceAbv = parseNumber('calc-reverse-source-abv');
+    const neutralAbv = parseNumber('calc-reverse-neutral-abv');
+
+    if (!Number.isFinite(targetVolumeL) || !Number.isFinite(targetAbv) || !Number.isFinite(sourceAbv) ||
+        !Number.isFinite(neutralAbv) || targetVolumeL <= 0 || targetAbv <= 0 || targetAbv >= 100 ||
+        sourceAbv <= 0 || sourceAbv > 100 || neutralAbv <= targetAbv || neutralAbv > 100) {
+        alert('Проверьте объем и крепость для обратного расчета.');
+        return;
+    }
+
+    const requiredAbsoluteAlcoholL = targetVolumeL * targetAbv / 100;
+    const sourcePossible = sourceAbv >= targetAbv;
+    const sourceVolumeL = sourcePossible ? requiredAbsoluteAlcoholL / (sourceAbv / 100) : NaN;
+    const sourceWaterL = sourcePossible ? Math.max(0, targetVolumeL - sourceVolumeL) : NaN;
+    const neutralVolumeL = requiredAbsoluteAlcoholL / (neutralAbv / 100);
+    const neutralWaterL = Math.max(0, targetVolumeL - neutralVolumeL);
+
+    setText('calc-reverse-aa', formatLiters(requiredAbsoluteAlcoholL, 2));
+    setText('calc-reverse-source-volume', sourcePossible ? formatLiters(sourceVolumeL, 2) : 'Нужен более крепкий исходник');
+    setText('calc-reverse-source-water', sourcePossible ? formatLiters(sourceWaterL, 2) : '--');
+    setText('calc-reverse-neutral-volume', formatLiters(neutralVolumeL, 2));
+    setText('calc-reverse-neutral-water', formatLiters(neutralWaterL, 2));
+
+    addLog(
+        `Обратный расчет партии: нужно ${requiredAbsoluteAlcoholL.toFixed(2)} л АС для ${targetVolumeL.toFixed(1)} л @ ${targetAbv.toFixed(1)}%`,
+        'info'
+    );
+}
+
+export function calculateHeatingCost() {
+    const volumeL = parseNumber('calc-heat-volume');
+    const startTempC = parseNumber('calc-heat-start');
+    const endTempC = parseNumber('calc-heat-end');
+    const heaterPowerW = parseNumber('calc-heat-power');
+    const efficiencyPercent = parseNumber('calc-heat-efficiency');
+    const tariff = parseNumber('calc-heat-tariff');
+
+    if (!Number.isFinite(volumeL) || !Number.isFinite(startTempC) || !Number.isFinite(endTempC) ||
+        !Number.isFinite(heaterPowerW) || !Number.isFinite(efficiencyPercent) ||
+        volumeL <= 0 || heaterPowerW <= 0 || efficiencyPercent <= 0 || efficiencyPercent > 100 ||
+        endTempC <= startTempC) {
+        alert('Проверьте параметры нагрева.');
+        return;
+    }
+
+    const deltaTemp = endTempC - startTempC;
+    const idealEnergyKwh = volumeL * deltaTemp * WATER_HEAT_KWH_PER_LC;
+    const actualEnergyKwh = idealEnergyKwh / (efficiencyPercent / 100);
+    const heatingTimeHours = actualEnergyKwh / (heaterPowerW / 1000);
+    const cost = Number.isFinite(tariff) && tariff >= 0 ? actualEnergyKwh * tariff : 0;
+
+    setText('calc-heat-ideal', formatKwh(idealEnergyKwh));
+    setText('calc-heat-actual', formatKwh(actualEnergyKwh));
+    setText('calc-heat-time', formatDuration(heatingTimeHours));
+    setText('calc-heat-cost', `${formatCurrency(cost)} ₽`);
+    setText('calc-heat-note', `ΔT = ${deltaTemp.toFixed(1)}°C, мощность ${formatPower(heaterPowerW)}`);
+
+    addLog(
+        `Нагрев: ${actualEnergyKwh.toFixed(2)} кВт·ч, ${formatDuration(heatingTimeHours)}, стоимость ${cost.toFixed(2)} ₽`,
+        'info'
+    );
+}
+
+export function calculateSelectionRate() {
+    const diameterMm = parseNumber('calc-select-diameter');
+    const packingHeightMm = parseNumber('calc-select-height');
+    const heaterPowerW = parseNumber('calc-select-power');
+    const desiredRateMlH = parseNumber('calc-select-rate');
+    const stage = selectValue('calc-select-stage', 'body');
+    const packingType = selectValue('calc-select-packing', 'spn');
+
+    if (!Number.isFinite(diameterMm) || !Number.isFinite(packingHeightMm) || !Number.isFinite(heaterPowerW) ||
+        diameterMm <= 0 || packingHeightMm <= 0 || heaterPowerW <= 0) {
+        alert('Проверьте геометрию колонны и мощность.');
+        return;
+    }
+
+    const areaCm2 = Math.PI * ((diameterMm / 20) ** 2);
+    const powerLimitPerCm2 = PACKING_POWER_LIMITS[packingType] || PACKING_POWER_LIMITS.spn;
+    const packingRateFactor = PACKING_RATE_FACTORS[packingType] || PACKING_RATE_FACTORS.spn;
+    const stageFactors = STAGE_RATE_FACTORS[stage] || STAGE_RATE_FACTORS.body;
+    const heightFactor = packingHeightMm < 1000 ? 0.9 : packingHeightMm > 1600 ? 1.05 : 1.0;
+
+    const safePowerW = areaCm2 * powerLimitPerCm2 * heightFactor;
+    const usablePowerW = Math.min(heaterPowerW, safePowerW);
+    const minRateMlH = usablePowerW * stageFactors.min * packingRateFactor;
+    const maxRateMlH = usablePowerW * stageFactors.max * packingRateFactor;
+
+    setText('calc-select-safe-power', formatPower(safePowerW));
+    setText('calc-select-range', `${Math.round(minRateMlH)}-${Math.round(maxRateMlH)} мл/ч`);
+    setText('calc-select-verdict', compareDesiredRate(desiredRateMlH, minRateMlH, maxRateMlH));
+    setText('calc-select-note', buildSelectionNote(heaterPowerW, safePowerW, packingHeightMm, stage));
+
+    addLog(
+        `Режим отбора: расчетный диапазон ${Math.round(minRateMlH)}-${Math.round(maxRateMlH)} мл/ч`,
+        'info'
+    );
+}
+
+export function calculateBlendFractions() {
+    let rows;
+
+    try {
+        rows = readBlendRows();
+    } catch (error) {
+        alert(error.message);
+        return;
+    }
+
+    if (rows.length === 0) {
+        alert('Заполните хотя бы одну фракцию для купажа.');
+        return;
+    }
+
+    const targetAbv = parseNumber('calc-blend-target-abv');
+    const totalVolumeMl = rows.reduce((sum, row) => sum + row.volumeMl, 0);
+    const totalAbsoluteAlcoholMl = rows.reduce((sum, row) => sum + (row.volumeMl * row.abv / 100), 0);
+    const blendAbv = totalAbsoluteAlcoholMl / totalVolumeMl * 100;
+
+    let dilutionText = 'Целевая крепость не задана';
+    if (Number.isFinite(targetAbv) && targetAbv > 0 && targetAbv < 100) {
+        if (targetAbv < blendAbv) {
+            const targetVolumeMl = totalAbsoluteAlcoholMl / (targetAbv / 100);
+            dilutionText = formatLiters((targetVolumeMl - totalVolumeMl) / 1000, 2);
+        } else if (Math.abs(targetAbv - blendAbv) < 0.05) {
+            dilutionText = 'Вода не требуется';
+        } else {
+            dilutionText = 'Водой крепость не повысить. Нужен более крепкий компонент.';
+        }
+    }
+
+    setText('calc-blend-volume-total', formatLiters(totalVolumeMl / 1000, 2));
+    setText('calc-blend-aa-total', formatLiters(totalAbsoluteAlcoholMl / 1000, 2));
+    setText('calc-blend-abv-total', `${blendAbv.toFixed(1)} %`);
+    setText('calc-blend-dilution', dilutionText);
+
+    addLog(
+        `Купаж: ${rows.length} фракц., итог ${blendAbv.toFixed(1)}% и ${(totalVolumeMl / 1000).toFixed(2)} л`,
+        'info'
+    );
+}
