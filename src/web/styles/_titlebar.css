@@ -17,9 +17,7 @@
 }
 
 .traffic-lights {
-    display: flex;
-    gap: 8px;
-    padding-right: 8px;
+    display: none;
 }
 
 .traffic-light {

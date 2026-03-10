@@ -460,11 +460,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    width: var(--scheme-scale-width, 100%);
+    max-width: 100%;
+    margin: 0 auto;
     border-radius: 10px;
     border: 1px solid var(--landing-border);
     padding: 4px;
     background: rgba(255, 255, 255, 0.56);
     min-height: 120px;
+    transition: width 0.2s ease-out;
 }
 
 [data-theme="dark"] .operator-scheme-wrap {

@@ -97,6 +97,49 @@ function applyRuntimeQuickDelta(unit, delta) {
     inputEl.focus();
 }
 
+function getRuntimeEditPopover(modal) {
+    if (!modal) return null;
+    return modal.querySelector('.runtime-edit-popover') || modal.querySelector('.modal-content');
+}
+
+function positionRuntimeEditPopover(modal, anchorEl) {
+    const popover = getRuntimeEditPopover(modal);
+    if (!popover) return;
+
+    const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+    const margin = 8;
+    const rect = popover.getBoundingClientRect();
+
+    if (!(anchorEl instanceof Element)) {
+        const centeredLeft = Math.max(margin, Math.round((viewportW - rect.width) / 2));
+        const centeredTop = Math.max(margin, Math.round((viewportH - rect.height) / 2));
+        popover.style.left = `${centeredLeft}px`;
+        popover.style.top = `${centeredTop}px`;
+        return;
+    }
+
+    const anchorRect = anchorEl.getBoundingClientRect();
+    let left = anchorRect.right + margin;
+    if (left + rect.width + margin > viewportW) {
+        left = anchorRect.left - rect.width - margin;
+    }
+    if (left < margin) {
+        left = anchorRect.left + ((anchorRect.width - rect.width) / 2);
+    }
+
+    let top = anchorRect.top + ((anchorRect.height - rect.height) / 2);
+    if (top < margin) top = margin;
+    if (top + rect.height + margin > viewportH) {
+        top = viewportH - rect.height - margin;
+    }
+
+    const clampedLeft = Math.max(margin, Math.min(left, viewportW - rect.width - margin));
+    const clampedTop = Math.max(margin, Math.min(top, viewportH - rect.height - margin));
+    popover.style.left = `${Math.round(clampedLeft)}px`;
+    popover.style.top = `${Math.round(clampedTop)}px`;
+}
+
 export function getRuntimeEditConfig(paramKey) {
     const s = runtimeMonitorState;
     const heaterMax = Math.max(1, toFinite(s.equipment.heaterPowerW, maxHeaterPower));
@@ -333,7 +376,7 @@ export function getRuntimeEditConfig(paramKey) {
     return map[paramKey] || null;
 }
 
-export function openRuntimeEditModal(paramKey) {
+export function openRuntimeEditModal(paramKey, anchorEl = null) {
     const config = getRuntimeEditConfig(paramKey);
     if (!config) return;
 
@@ -373,9 +416,14 @@ export function openRuntimeEditModal(paramKey) {
     }
     renderRuntimeQuickActions(config);
 
-    modal.style.display = 'flex';
-    inputEl.focus();
-    inputEl.select();
+    modal.style.display = 'block';
+
+    requestAnimationFrame(() => {
+        const activeAnchor = anchorEl instanceof Element ? anchorEl : document.activeElement;
+        positionRuntimeEditPopover(modal, activeAnchor);
+        inputEl.focus();
+        inputEl.select();
+    });
 }
 
 export function onRuntimeEditUnitToggle() {
@@ -414,7 +462,13 @@ export function onRuntimeEditUnitToggle() {
 export function closeRuntimeEditModal() {
     setRuntimeEditContext(null);
     const modal = document.getElementById('runtime-edit-modal');
-    if (modal) modal.style.display = 'none';
+    if (!modal) return;
+    const popover = getRuntimeEditPopover(modal);
+    if (popover) {
+        popover.style.left = '';
+        popover.style.top = '';
+    }
+    modal.style.display = 'none';
 }
 
 export async function submitRuntimeEditModal() {

@@ -592,7 +592,7 @@ function startBoilingBubble(svg, bubble, intensity = 0.5) {
     const tick = () => {
         if (!bubble._boilActive) return;
         const localIntensity = Math.max(0.2, Math.min(1.4, Number(bubble._boilIntensity) || 0.5));
-        const delayMs = Math.max(120, 520 - (180 * localIntensity)) + (Math.random() * 380);
+        const delayMs = Math.max(220, 760 - (220 * localIntensity)) + (Math.random() * 520);
         bubble._boilTimer = setTimeout(() => {
             if (!bubble._boilActive) return;
 
@@ -607,7 +607,7 @@ function startBoilingBubble(svg, bubble, intensity = 0.5) {
             );
             const riseDistance = Math.max(16, originY - targetY);
             const driftX = (-6 + (Math.random() * 12)) * (0.5 + localIntensity * 0.5);
-            const durationMs = Math.max(900, 1550 - (240 * localIntensity)) + (Math.random() * 920);
+            const durationMs = Math.max(1300, 2100 - (260 * localIntensity)) + (Math.random() * 1300);
             const hitX = originX + driftX;
             const hitY = targetY + (Math.random() * 1.2);
 
@@ -661,13 +661,21 @@ function updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY, boilingTe
     const tCube = Number(tempCube);
     const powerW = Number(powerActualW) || 0;
     const boilTemp = Number(boilingTempC);
-    const active = Number.isFinite(tCube) && Number.isFinite(boilTemp) && tCube >= boilTemp && powerW > 80;
+    const activeByBoiling = Number.isFinite(tCube) && Number.isFinite(boilTemp) && tCube >= (boilTemp - 5.5);
+    const activeByFallback = Number.isFinite(tCube) && tCube >= 72;
+    const active = powerW > 120 && (activeByBoiling || activeByFallback);
+    const preBoilFactor = Number.isFinite(tCube) && Number.isFinite(boilTemp)
+        ? Math.max(0, Math.min(1, (tCube - (boilTemp - 8)) / 8))
+        : Math.max(0, Math.min(1, (tCube - 70) / 12));
+    const overBoil = Number.isFinite(tCube) && Number.isFinite(boilTemp)
+        ? Math.max(0, tCube - boilTemp)
+        : Math.max(0, tCube - 78);
     const intensity = active
         ? Math.max(
-            0.2,
+            0.18,
             Math.min(
-                1.2,
-                ((powerW / 2800) * 0.55) + ((Math.max(0, tCube - boilTemp) / 4.0) * 0.75)
+                1.15,
+                ((powerW / 2800) * 0.42) + (preBoilFactor * 0.42) + ((overBoil / 4.5) * 0.56)
             )
         )
         : 0;
@@ -981,7 +989,7 @@ function updateLiquidWave(svg, liquidTopY, powerActualW, tempCube, boilingTempC)
     state.rafId = requestAnimationFrame(animateWave);
 }
 
-function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pressureCube, liquidTopY) {
+function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pressureCube, liquidTopY, coolingActive = false) {
     const heatCore = svg.getElementById('anim-gradient-core-heat');
     const refluxCore = svg.getElementById('anim-gradient-core-reflux');
     const heatLid = svg.getElementById('anim-gradient-lid-heat');
@@ -992,14 +1000,17 @@ function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempT
 
     const tCube = Number(tempCube) || 0;
     const tMid = Number(tempColMid) || 0;
-    const tReflux = Number(tempReflux) || 0;
+    const rawRefluxTemp = Number(tempReflux);
+    const tReflux = (Number.isFinite(rawRefluxTemp) && rawRefluxTemp > 0)
+        ? rawRefluxTemp
+        : (coolingActive ? 66 : 0);
     const tTsa = Number(tempTsa) || 0;
     const pCube = Number(pressureCube) || 0;
     const tsaRisePerMin = getTsaRiseRatePerMin(svg, tCube, tTsa);
 
     const clamp01 = (v) => Math.max(0, Math.min(1, v));
     const heatLevel = clamp01((tCube - 45) / 35);
-    const refluxLevel = clamp01((tReflux - 65) / 18);
+    const refluxLevel = clamp01(Math.max((tReflux - 58) / 20, coolingActive ? 0.28 : 0));
     const stabilityLevel = clamp01(1 - Math.abs(tMid - 76.6) / 3.5);
     const tsaHotLevel = clamp01((tTsa - 78.5) / 3.0);
     const pressureLevel = clamp01((pCube - 8) / 20);
@@ -1019,7 +1030,7 @@ function updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempT
         Math.min(CUBE_LIQUID_BOTTOM_Y, Number(liquidTopY) || CUBE_LIQUID_VISIBLE_TOP_Y)
     );
     const heatOpacity = Math.min(0.96, 0.10 + (heatLevel * 0.80) + (redPush * 0.22));
-    const refluxOpacity = Math.max(0.08, (0.12 + refluxLevel * 0.76) * (1 - redPush * 0.58));
+    const refluxOpacity = Math.max(0.12, (0.14 + refluxLevel * 0.74 + (coolingActive ? 0.08 : 0)) * (1 - redPush * 0.55));
 
     applyThreeLayerCoverage(
         heatCore,
@@ -1111,11 +1122,15 @@ function startRefluxDropChaos(drop) {
     tick();
 }
 
-function updateRefluxDropChaos(svg, tempReflux) {
+function updateRefluxDropChaos(svg, tempReflux, coolingActive = false, tempCube = undefined) {
     const zone = svg.getElementById('zone-reflux');
     if (!zone) return;
 
-    const active = Number(tempReflux) >= 65;
+    const refluxTemp = Number(tempReflux);
+    const cubeTemp = Number(tempCube);
+    const activeByTemp = Number.isFinite(refluxTemp) && refluxTemp >= 58;
+    const activeByCooling = coolingActive && (!Number.isFinite(cubeTemp) || cubeTemp >= 55);
+    const active = activeByTemp || activeByCooling;
     zone.classList.toggle('condensing', active);
 
     const drops = zone.querySelectorAll('.drop');
@@ -1291,7 +1306,10 @@ export function updateInteractiveScheme(data) {
 
     const tempCube = getStatusNumber(data, 'temps', 'cube', 't_cube');
     const tempColTop = getStatusNumber(data, 'temps', 'columnTop', 't_column_top');
-    const tempColMid = getStatusNumber(data, 'temps', 'columnMiddle', 't_column_bottom');
+    const tempColMid = getPositiveFiniteNumber(
+        getStatusNumber(data, 'temps', 'columnBottom', 't_column_bottom'),
+        getStatusNumber(data, 'temps', 'columnMiddle', 't_column_bottom')
+    );
     const tempNode = getStatusNumber(data, 'temps', 'product', 't_product');
     const tempReflux = getStatusNumber(data, 'temps', 'reflux', 't_reflux');
     const tempTsa = getStatusNumber(data, 'temps', 'tsa', 't_tsa');
@@ -1322,9 +1340,6 @@ export function updateInteractiveScheme(data) {
         svg._atmPressureMmHg = pAtmMmHg;
     }
     let liquidTopY = CUBE_LIQUID_VISIBLE_TOP_Y;
-
-    // Хаотичное капание в дефлегматоре при T_reflux >= 65°C.
-    updateRefluxDropChaos(svg, tempReflux);
 
     // Обновление давления на схеме
     if (pCube !== undefined) {
@@ -1446,6 +1461,9 @@ export function updateInteractiveScheme(data) {
         pipe.classList.toggle('active', isCoolingActive);
     });
 
+    // Хаотичное капание в дефлегматоре: по температуре либо при явном охлаждении.
+    updateRefluxDropChaos(svg, tempReflux, isCoolingActive, tempCube);
+
     // Анимация уровня жидкости
     const liquidShape = ensureLiquidPathShape(svg);
     if (liquidShape && runtimeMonitorState) {
@@ -1528,7 +1546,7 @@ export function updateInteractiveScheme(data) {
     }
 
     const boilingTempC = getFeedBoilingTempC(svg);
-    updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pCube, liquidTopY);
+    updateColumnGradientLayers(svg, tempCube, tempColMid, tempReflux, tempTsa, pCube, liquidTopY, isCoolingActive);
     updateBoilingBubbles(svg, tempCube, powerActualW, liquidTopY, boilingTempC);
     updateLiquidWave(svg, liquidTopY, powerActualW, tempCube, boilingTempC);
 
@@ -1699,7 +1717,11 @@ export function zoomScheme(direction) {
     }
     const svg = document.getElementById('main-scheme-svg');
     if (svg) {
-        svg.style.width = `${currentScale}%`;
+        const schemeWrap = svg.closest('.operator-scheme-wrap');
+        if (schemeWrap) {
+            schemeWrap.style.setProperty('--scheme-scale-width', `${currentScale}%`);
+        }
+        svg.style.width = '100%';
         svg.style.height = 'auto';
         svg.style.transform = 'none';
         svg.style.maxWidth = 'none';

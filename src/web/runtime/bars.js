@@ -226,7 +226,7 @@ export function initRuntimeMonitorUi() {
     tiles.forEach((tile) => {
         const openFromTile = () => {
             const param = tile.getAttribute('data-edit-param');
-            if (param) openRuntimeEditModal(param);
+            if (param) openRuntimeEditModal(param, tile);
         };
         tile.addEventListener('click', openFromTile);
         if (tile.tagName !== 'BUTTON') {
