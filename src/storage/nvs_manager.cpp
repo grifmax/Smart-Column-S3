@@ -82,6 +82,12 @@ bool loadSettings(Settings& settings) {
     settings.safety.waterOutMaxC = prefs.getFloat(
         NVS_KEY_SAFETY_WATER_OUT_MAX, DEFAULT_SAFETY_WATER_OUT_MAX_C
     );
+    settings.safety.waterOutRiseRateCMin = prefs.getFloat(
+        NVS_KEY_SAFETY_WATER_OUT_RISE_RATE, DEFAULT_SAFETY_WATER_OUT_RISE_RATE_C_MIN
+    );
+    settings.safety.pressureRiseRateMmHgMin = prefs.getFloat(
+        NVS_KEY_SAFETY_PRESSURE_RISE_RATE, DEFAULT_SAFETY_PRESSURE_RISE_RATE_MMHG_MIN
+    );
 
     // Калибровка тача
     settings.touchCal.xMin = prefs.getInt(NVS_KEY_TOUCH_XMIN, TOUCH_CAL_X_MIN);
@@ -155,6 +161,8 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_SAFETY_PRESSURE_MAX, settings.safety.pressureMaxMmHg);
     prefs.putFloat(NVS_KEY_SAFETY_TSA_MAX, settings.safety.tsaMaxC);
     prefs.putFloat(NVS_KEY_SAFETY_WATER_OUT_MAX, settings.safety.waterOutMaxC);
+    prefs.putFloat(NVS_KEY_SAFETY_WATER_OUT_RISE_RATE, settings.safety.waterOutRiseRateCMin);
+    prefs.putFloat(NVS_KEY_SAFETY_PRESSURE_RISE_RATE, settings.safety.pressureRiseRateMmHgMin);
 
     // Калибровка тача
     prefs.putInt(NVS_KEY_TOUCH_XMIN, settings.touchCal.xMin);

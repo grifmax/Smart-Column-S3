@@ -732,6 +732,8 @@ void loadSettings() {
   g_settings.safety.pressureMaxMmHg = DEFAULT_SAFETY_PRESSURE_MAX_MMHG;
   g_settings.safety.tsaMaxC = DEFAULT_SAFETY_TSA_MAX_C;
   g_settings.safety.waterOutMaxC = DEFAULT_SAFETY_WATER_OUT_MAX_C;
+  g_settings.safety.waterOutRiseRateCMin = DEFAULT_SAFETY_WATER_OUT_RISE_RATE_C_MIN;
+  g_settings.safety.pressureRiseRateMmHgMin = DEFAULT_SAFETY_PRESSURE_RISE_RATE_MMHG_MIN;
 
   // Фракционник - все позиции по умолчанию
   g_settings.fractionator.enabled = false;

@@ -1,0 +1,21 @@
+.safety-card {
+    border: 1px solid var(--border-color);
+}
+
+.safety-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.safety-notes {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+    display: grid;
+    gap: 6px;
+}
+
+.safety-notes li {
+    line-height: 1.35;
+}

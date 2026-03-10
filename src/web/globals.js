@@ -147,7 +147,9 @@ export let runtimeMonitorState = {
     safetySettings: {
         pressureMaxMmHg: 50,
         tsaMaxC: 55,
-        waterOutMaxC: 70
+        waterOutMaxC: 70,
+        waterOutRiseRateCMin: 8,
+        pressureRiseRateMmHgMin: 20
     },
     mashing: {
         active: false,

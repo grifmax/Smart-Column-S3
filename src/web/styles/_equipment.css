@@ -14,7 +14,7 @@
 
 .equipment-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    grid-template-columns: 1fr;
     gap: 12px;
 }
 
@@ -130,11 +130,12 @@
     margin: 6px 0;
     color: var(--text-secondary);
     font-size: 0.9em;
+    overflow-wrap: anywhere;
 }
 
 .equipment-sensor-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    grid-template-columns: 1fr;
     gap: 10px;
     align-items: start;
     margin-top: 10px;
@@ -150,8 +151,8 @@
 }
 
 .equipment-sensor-action-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     align-items: center;
 }
@@ -159,10 +160,24 @@
 .equipment-sensor-action-row .btn {
     height: 40px;
     white-space: nowrap;
+    min-width: 120px;
 }
 
 .equipment-sensor-action-row .equipment-num-stepper {
-    width: 100%;
+    width: auto;
+    flex: 0 0 auto;
+}
+
+.equipment-sensor-action-row .equipment-num-input {
+    width: 5.2ch !important;
+    min-width: 5.2ch;
+    max-width: 5.2ch;
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+.equipment-card-temp {
+    overflow: hidden;
 }
 
 .equipment-log-hint {
@@ -225,7 +240,8 @@
     }
 
     .equipment-sensor-action-row {
-        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .equipment-sensor-action-row .btn {

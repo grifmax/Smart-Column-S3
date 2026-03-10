@@ -43,7 +43,9 @@ enum class AlarmType : uint8_t {
   NONE = 0,
   VAPOR_BREAKTHROUGH, // Прорыв паров
   WATER_OVERHEAT,     // Перегрев воды
+  WATER_RISE_RATE,    // Резкий рост температуры воды
   COLUMN_FLOOD,       // Захлёб колонны
+  PRESSURE_RISE_RATE, // Резкий рост давления в кубе
   SENSOR_FAILURE,     // Отказ датчика
   POWER_FAILURE,      // Отказ питания
   OVERHEAT,           // Перегрев
@@ -349,6 +351,8 @@ struct SafetySettings {
   float pressureMaxMmHg = 50.0f;
   float tsaMaxC = 55.0f;
   float waterOutMaxC = 70.0f;
+  float waterOutRiseRateCMin = 8.0f;
+  float pressureRiseRateMmHgMin = 20.0f;
 };
 
 // Настройки (полная версия)

@@ -55,6 +55,16 @@ function mergeSafetySettingsState(s, data) {
     assign('pressureMaxMmHg', ['pressureMaxMmHg', 'pressure_max_mmhg', 'safetyPressureMaxMmHg']);
     assign('tsaMaxC', ['tsaMaxC', 'tsa_max_c', 'safetyTsaMaxC']);
     assign('waterOutMaxC', ['waterOutMaxC', 'water_out_max_c', 'safetyWaterOutMaxC']);
+    assign('waterOutRiseRateCMin', [
+        'waterOutRiseRateCMin',
+        'water_out_rise_rate_c_min',
+        'safetyWaterOutRiseRateCMin'
+    ]);
+    assign('pressureRiseRateMmHgMin', [
+        'pressureRiseRateMmHgMin',
+        'pressure_rise_rate_mmhg_min',
+        'safetyPressureRiseRateMmHgMin'
+    ]);
 }
 
 export function updateRuntimeStateFromStatus(data) {

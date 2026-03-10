@@ -122,7 +122,6 @@ export async function loadEquipmentSettings() {
         setInputValue('heater-power-w', clamp(data.heaterPowerW, 1000, 10000, 3000));
         setInputValue('column-height', clamp(data.columnHeightMm, 500, 3000, 1500));
         setInputValue('cube-volume-l', clamp(data.cubeVolumeL, 5, 250, DEFAULT_CUBE_VOLUME_L).toFixed(1));
-        setInputValue('min-heater-submerge-l', clamp(data.minHeaterSubmergeL, 0.5, 100, 7.5).toFixed(1));
         setInputValue('water-autostart-cube-temp', clamp(data.waterAutoStartCubeTempC, 20, 60, 45).toFixed(1));
 
         runtimeMonitorState.equipment = {
@@ -149,7 +148,6 @@ export async function saveEquipment() {
     const heaterPower = clamp(getInputValue('heater-power-w', 3000), 1000, 10000, 3000);
     const columnHeight = clamp(getInputValue('column-height', 1500), 500, 3000, 1500);
     const cubeVolume = clamp(getInputValue('cube-volume-l', DEFAULT_CUBE_VOLUME_L), 5, 250, DEFAULT_CUBE_VOLUME_L);
-    const minHeaterSubmergeL = clamp(getInputValue('min-heater-submerge-l', 7.5), 0.5, 100, 7.5);
     const waterAutoStartCubeTempC = clamp(getInputValue('water-autostart-cube-temp', 45), 20, 60, 45);
 
     const mlPerRev = toFiniteNumber(document.getElementById('pump-ml-per-rev')?.value, NaN);
@@ -185,7 +183,6 @@ export async function saveEquipment() {
                 heaterPowerW: Math.round(heaterPower),
                 columnHeightMm: Math.round(columnHeight),
                 cubeVolumeL: cubeVolume,
-                minHeaterSubmergeL,
                 waterAutoStartCubeTempC
             })
         });
@@ -201,7 +198,6 @@ export async function saveEquipment() {
             heaterPowerW: Math.round(heaterPower),
             columnHeightMm: Math.round(columnHeight),
             cubeVolumeL: cubeVolume,
-            minHeaterSubmergeL,
             waterAutoStartCubeTempC
         };
 

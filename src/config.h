@@ -539,6 +539,8 @@ struct MenuItem {
 #define DEFAULT_SAFETY_PRESSURE_MAX_MMHG 50.0f
 #define DEFAULT_SAFETY_TSA_MAX_C 55.0f
 #define DEFAULT_SAFETY_WATER_OUT_MAX_C 70.0f
+#define DEFAULT_SAFETY_WATER_OUT_RISE_RATE_C_MIN 8.0f
+#define DEFAULT_SAFETY_PRESSURE_RISE_RATE_MMHG_MIN 20.0f
 
 // Справочные переходы по температуре куба (при 1013.25 hPa)
 // Используются как ориентиры и как fallback-ограничители в FSM.
@@ -640,6 +642,8 @@ struct MenuItem {
 #define NVS_KEY_SAFETY_PRESSURE_MAX "safe_pmax"
 #define NVS_KEY_SAFETY_TSA_MAX "safe_tsa"
 #define NVS_KEY_SAFETY_WATER_OUT_MAX "safe_wout"
+#define NVS_KEY_SAFETY_WATER_OUT_RISE_RATE "safe_wrpm"
+#define NVS_KEY_SAFETY_PRESSURE_RISE_RATE "safe_prpm"
 
 // Cloud tunnel settings
 #define NVS_KEY_CLOUD_ENABLED "cl_en"
