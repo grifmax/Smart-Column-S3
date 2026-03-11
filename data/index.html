@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1.10.0">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -237,7 +237,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=1.10.0" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1258,33 +1258,107 @@
                     <!-- Вкладка: WiFi -->
                     <div id="wifi" class="tab-content">
                         <div class="cards">
-                            <div class="card">
+                            <div class="card wifi-card">
                                 <h2>📶 WiFi</h2>
-                                <div id="wifi-inline-status" class="info-text" style="margin-bottom: 12px;">Загрузка
-                                    статуса...</div>
-                                <div class="controls" style="margin-bottom: 12px;">
+                                <div id="wifi-inline-status" class="info-text wifi-status">Загрузка статуса...</div>
+                                <div class="controls wifi-toolbar">
                                     <button class="btn btn-primary" onclick="scanWiFiNetworks()">📡 Сканировать
                                         сети</button>
                                     <button class="btn" onclick="loadWiFiStatus()">🔄 Обновить статус</button>
                                 </div>
-                                <div id="wifi-inline-network-list" class="history-list" style="margin-bottom: 12px;">
-                                    <p class="info-text">Нажмите «Сканировать сети»</p>
+
+                                <div class="wifi-layout">
+                                    <section class="wifi-panel">
+                                        <div class="wifi-panel-header">
+                                            <h3>Сохраненные сети</h3>
+                                            <p>Порядок сверху вниз задает приоритет автоподключения.</p>
+                                        </div>
+                                        <div id="wifi-saved-list" class="wifi-saved-list">
+                                            <p class="info-text">Сохраненных сетей пока нет</p>
+                                        </div>
+                                    </section>
+
+                                    <section class="wifi-panel">
+                                        <div class="wifi-panel-header">
+                                            <h3>Доступные сети</h3>
+                                            <p>Нажмите сеть, чтобы подставить SSID в профиль.</p>
+                                        </div>
+                                        <div id="wifi-inline-network-list" class="history-list wifi-scan-list">
+                                            <p class="info-text">Нажмите «Сканировать сети»</p>
+                                        </div>
+                                    </section>
                                 </div>
-                                <div class="form-group">
-                                    <label>SSID</label>
-                                    <input type="text" id="wifi-inline-ssid"
-                                        placeholder="Выберите сеть из списка или введите вручную">
-                                </div>
-                                <div class="form-group">
-                                    <label>Пароль</label>
-                                    <input type="password" id="wifi-inline-password" placeholder="Пароль WiFi">
-                                </div>
-                                <div class="controls">
-                                    <button class="btn btn-success" onclick="connectWiFiNetwork()">🔌
-                                        Подключить</button>
-                                    <button class="btn" onclick="cancelWiFiSelection()">Очистить</button>
-                                </div>
-                                <div id="wifi-inline-message" class="info-text" style="margin-top: 10px;"></div>
+
+                                <section class="wifi-panel wifi-editor-panel">
+                                    <div class="wifi-panel-header">
+                                        <h3>Профиль сети</h3>
+                                        <p>Можно сохранить дом, работу и другие точки с разными IP и приоритетом.</p>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>SSID</label>
+                                        <input type="text" id="wifi-inline-ssid"
+                                            placeholder="Выберите сеть из списка или введите вручную">
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Пароль</label>
+                                        <input type="password" id="wifi-inline-password"
+                                            placeholder="Оставьте пустым, чтобы не менять сохраненный пароль">
+                                        <div class="info-text wifi-field-hint">Если профиль уже сохранен, пустой пароль
+                                            не перезапишет текущий.</div>
+                                    </div>
+
+                                    <div class="wifi-toggle-grid">
+                                        <label class="wifi-checkbox">
+                                            <input type="checkbox" id="wifi-inline-make-preferred">
+                                            <span>Сделать сеть приоритетной</span>
+                                        </label>
+                                        <label class="wifi-checkbox">
+                                            <input type="checkbox" id="wifi-inline-static-enabled"
+                                                onchange="toggleWiFiStaticFields()">
+                                            <span>Использовать фиксированный IP</span>
+                                        </label>
+                                    </div>
+
+                                    <div id="wifi-static-fields" class="wifi-static-fields" hidden>
+                                        <div class="wifi-grid-3">
+                                            <div class="form-group">
+                                                <label>IP адрес</label>
+                                                <input type="text" id="wifi-inline-ip" placeholder="192.168.1.140">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Шлюз</label>
+                                                <input type="text" id="wifi-inline-gateway"
+                                                    placeholder="192.168.1.1">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>Маска</label>
+                                                <input type="text" id="wifi-inline-subnet"
+                                                    placeholder="255.255.255.0">
+                                            </div>
+                                        </div>
+                                        <div class="wifi-grid-2">
+                                            <div class="form-group">
+                                                <label>DNS 1</label>
+                                                <input type="text" id="wifi-inline-dns1" placeholder="8.8.8.8">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>DNS 2</label>
+                                                <input type="text" id="wifi-inline-dns2" placeholder="1.1.1.1">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="controls wifi-profile-actions">
+                                        <button class="btn btn-primary" onclick="saveWiFiProfile()">💾 Сохранить
+                                            профиль</button>
+                                        <button class="btn btn-success" onclick="connectWiFiNetwork()">🔌 Сохранить и
+                                            подключить</button>
+                                        <button class="btn" onclick="cancelWiFiSelection()">Очистить</button>
+                                    </div>
+                                </section>
+                                <div id="wifi-inline-message" class="info-text wifi-message"></div>
                             </div>
                         </div>
                     </div>
@@ -2411,7 +2485,7 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=1.10.0"></script>
 </body>
 
 </html>

@@ -165,6 +165,19 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .operator-runtime-manual .operator-edit-tile {
+        padding: 8px 10px;
+        gap: 8px;
+    }
+
+    .operator-runtime-manual .operator-edit-label {
+        font-size: 0.86em;
+    }
+
+    .operator-runtime-manual .operator-edit-tile strong {
+        font-size: 1.06em;
+    }
+
     .cards {
         grid-template-columns: 1fr;
     }

@@ -6,8 +6,94 @@
 
 #include "nvs_manager.h"
 #include <Preferences.h>
+#include <ArduinoJson.h>
+
+#include "../interface/wifi_profiles.h"
 
 static Preferences prefs;
+
+namespace {
+
+void clearWiFiProfiles(WiFiSettings& wifi) {
+    wifi.profileCount = 0;
+    for (uint8_t i = 0; i < WIFI_MAX_PROFILES; ++i) {
+        memset(&wifi.profiles[i], 0, sizeof(WiFiProfile));
+        wifi.profiles[i].enabled = true;
+        strlcpy(wifi.profiles[i].subnet, "255.255.255.0", sizeof(wifi.profiles[i].subnet));
+    }
+}
+
+void loadWiFiProfilesFromNvs(WiFiSettings& wifi) {
+    clearWiFiProfiles(wifi);
+
+    String json = prefs.getString(NVS_KEY_WIFI_PROFILES, "");
+    if (json.isEmpty()) {
+        return;
+    }
+
+    DynamicJsonDocument doc(4096);
+    DeserializationError error = deserializeJson(doc, json);
+    if (error) {
+        LOG_W("NVS: WiFi profiles JSON parse failed: %s", error.c_str());
+        return;
+    }
+
+    JsonArray profiles = doc["profiles"].is<JsonArray>() ? doc["profiles"].as<JsonArray>() : doc.as<JsonArray>();
+    if (profiles.isNull()) {
+        LOG_W("NVS: WiFi profiles JSON has no array");
+        return;
+    }
+
+    uint8_t index = 0;
+    for (JsonObject profile : profiles) {
+        if (index >= WIFI_MAX_PROFILES) break;
+
+        WiFiProfile& target = wifi.profiles[index];
+        target.enabled = profile["enabled"] | true;
+        strlcpy(target.ssid, profile["ssid"] | "", sizeof(target.ssid));
+        strlcpy(target.password, profile["password"] | "", sizeof(target.password));
+        target.useStaticIp = profile["useStaticIp"] | false;
+        strlcpy(target.ip, profile["ip"] | "", sizeof(target.ip));
+        strlcpy(target.gateway, profile["gateway"] | "", sizeof(target.gateway));
+        strlcpy(target.subnet, profile["subnet"] | "255.255.255.0", sizeof(target.subnet));
+        strlcpy(target.dns1, profile["dns1"] | "", sizeof(target.dns1));
+        strlcpy(target.dns2, profile["dns2"] | "", sizeof(target.dns2));
+
+        if (target.ssid[0] != '\0' && target.enabled) {
+            ++index;
+        }
+    }
+
+    wifi.profileCount = index;
+    WiFiProfiles::compactProfiles(wifi);
+}
+
+void saveWiFiProfilesToNvs(const WiFiSettings& source) {
+    WiFiSettings wifi = source;
+    WiFiProfiles::compactProfiles(wifi);
+
+    DynamicJsonDocument doc(4096);
+    JsonArray profiles = doc.createNestedArray("profiles");
+    for (uint8_t i = 0; i < wifi.profileCount && i < WIFI_MAX_PROFILES; ++i) {
+        const WiFiProfile& profile = wifi.profiles[i];
+        JsonObject item = profiles.createNestedObject();
+        item["enabled"] = profile.enabled;
+        item["ssid"] = profile.ssid;
+        item["password"] = profile.password;
+        item["useStaticIp"] = profile.useStaticIp;
+        item["ip"] = profile.ip;
+        item["gateway"] = profile.gateway;
+        item["subnet"] = profile.subnet;
+        item["dns1"] = profile.dns1;
+        item["dns2"] = profile.dns2;
+    }
+
+    String json;
+    serializeJson(doc, json);
+    prefs.putString(NVS_KEY_WIFI_PROFILES, json);
+}
+
+} // namespace
 
 namespace NVSManager {
 
@@ -26,6 +112,16 @@ bool loadSettings(Settings& settings) {
     // WiFi
     prefs.getString(NVS_KEY_WIFI_SSID, settings.wifi.ssid, sizeof(settings.wifi.ssid));
     prefs.getString(NVS_KEY_WIFI_PASS, settings.wifi.password, sizeof(settings.wifi.password));
+    loadWiFiProfilesFromNvs(settings.wifi);
+    if (settings.wifi.profileCount == 0 && settings.wifi.ssid[0] != '\0') {
+        WiFiProfile& migrated = settings.wifi.profiles[0];
+        migrated.enabled = true;
+        strlcpy(migrated.ssid, settings.wifi.ssid, sizeof(migrated.ssid));
+        strlcpy(migrated.password, settings.wifi.password, sizeof(migrated.password));
+        strlcpy(migrated.subnet, "255.255.255.0", sizeof(migrated.subnet));
+        settings.wifi.profileCount = 1;
+    }
+    WiFiProfiles::syncLegacyFields(settings.wifi);
 
     // Telegram
     prefs.getString(NVS_KEY_TG_TOKEN, settings.telegram.token, sizeof(settings.telegram.token));
@@ -125,6 +221,7 @@ bool saveSettings(const Settings& settings) {
     // WiFi
     prefs.putString(NVS_KEY_WIFI_SSID, settings.wifi.ssid);
     prefs.putString(NVS_KEY_WIFI_PASS, settings.wifi.password);
+    saveWiFiProfilesToNvs(settings.wifi);
 
     // Telegram
     prefs.putString(NVS_KEY_TG_TOKEN, settings.telegram.token);
@@ -208,6 +305,22 @@ void reset() {
     prefs.clear();
     prefs.end();
     LOG_I("NVS: Reset complete");
+}
+
+bool loadWiFi(WiFiSettings& wifi) {
+    Settings settings{};
+    if (!loadSettings(settings)) return false;
+    wifi = settings.wifi;
+    return true;
+}
+
+bool saveWiFi(const WiFiSettings& wifi) {
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putString(NVS_KEY_WIFI_SSID, wifi.ssid);
+    prefs.putString(NVS_KEY_WIFI_PASS, wifi.password);
+    saveWiFiProfilesToNvs(wifi);
+    prefs.end();
+    return true;
 }
 
 } // namespace NVSManager

@@ -272,10 +272,26 @@ struct SystemState {
 };
 
 // Структуры настроек (именованные для typedef)
+static constexpr uint8_t WIFI_MAX_PROFILES = 8;
+
+struct WiFiProfile {
+  bool enabled = true;
+  char ssid[64] = "";
+  char password[64] = "";
+  bool useStaticIp = false;
+  char ip[16] = "";
+  char gateway[16] = "";
+  char subnet[16] = "255.255.255.0";
+  char dns1[16] = "";
+  char dns2[16] = "";
+};
+
 struct WiFiSettings {
   char ssid[64] = "";
   char password[64] = "";
   bool apMode = true;
+  uint8_t profileCount = 0;
+  WiFiProfile profiles[WIFI_MAX_PROFILES];
 };
 
 struct PumpCalibration {

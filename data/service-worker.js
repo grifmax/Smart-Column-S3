@@ -1,4 +1,4 @@
-const CACHE_NAME = 'smart-column-v10';
+const CACHE_NAME = 'smart-column-v19';
 const ASSETS = [
   '/',
   '/index.html',

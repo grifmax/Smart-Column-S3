@@ -37,6 +37,7 @@
 #include "interface/telegram.h"
 #include "interface/webserver.h"
 #include "interface/cloud_tunnel.h"
+#include "interface/wifi_profiles.h"
 
 // Хранение
 #include "storage/logger.h"
@@ -649,23 +650,11 @@ void initNetwork() {
   }
 
   // Попытка подключения к внешнему WiFi (STA)
-  if (strlen(g_settings.wifi.ssid) > 0) {
-    LOG_I("Connecting to WiFi: %s", g_settings.wifi.ssid);
-    WiFi.begin(g_settings.wifi.ssid, g_settings.wifi.password);
-
-    uint32_t startAttempt = millis();
-    while (WiFi.status() != WL_CONNECTED &&
-           millis() - startAttempt < WIFI_CONNECT_TIMEOUT_MS) {
-      delay(100);
-      Serial.print(".");
-      esp_task_wdt_reset(); // Сброс watchdog во время ожидания WiFi
-    }
-    Serial.println();
-
-    if (WiFi.status() == WL_CONNECTED) {
+  if (WiFiProfiles::hasConfiguredProfiles(g_settings.wifi)) {
+    if (WiFiProfiles::connectBestAvailable(g_settings.wifi, WIFI_CONNECT_TIMEOUT_MS)) {
       LOG_I("WiFi connected! STA IP: %s", WiFi.localIP().toString().c_str());
     } else {
-      LOG_W("WiFi connection failed, AP-only access remains available");
+      LOG_W("WiFi connection failed for all saved profiles, AP-only access remains available");
     }
   } else {
     // Нет сохранённого SSID — запускаем captive portal
@@ -774,6 +763,7 @@ void resetWiFiAndRestart() {
   prefs.begin(NVS_NAMESPACE, false);
   prefs.remove(NVS_KEY_WIFI_SSID);
   prefs.remove(NVS_KEY_WIFI_PASS);
+  prefs.remove(NVS_KEY_WIFI_PROFILES);
   prefs.end();
 
   Serial.println("WiFi settings cleared! Restarting...");

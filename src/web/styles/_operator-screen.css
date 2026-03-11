@@ -298,9 +298,16 @@
     border: 1px solid var(--landing-border);
     background: rgba(255, 255, 255, 0.66);
     color: var(--landing-ink);
-    padding: 10px;
+    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 0;
     text-align: left;
     cursor: pointer;
+    font-family: inherit;
+    font-size: 1rem;
     transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
@@ -329,8 +336,25 @@
 .operator-edit-label {
     display: block;
     color: var(--landing-muted);
-    font-size: 0.78em;
-    margin-bottom: 4px;
+    font-size: 0.86em;
+    line-height: 1.18;
+    font-weight: 400;
+    max-width: 100%;
+    white-space: normal;
+}
+
+.operator-edit-tile strong {
+    display: block;
+    margin-top: 0;
+    font-family: inherit;
+    font-size: 1.1em;
+    line-height: 1.12;
+    letter-spacing: 0;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--landing-ink);
+    text-align: right;
+    white-space: nowrap;
 }
 
 .operator-stat {

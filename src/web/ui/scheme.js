@@ -31,6 +31,7 @@ const CUBE_LIQUID_BOTTOM_Y = 743;
 const GRADIENT_TOP_Y = 38;
 const GRADIENT_LID_TOP_Y = 488;
 const GRADIENT_CUBE_TOP_Y = 553;
+const SCHEME_ASSET_VERSION = '1.10.0';
 const BOILING_TEMP_TO_CUBE_ABV_TABLE = [
     { tempC: 78.2, abvPercent: 96 },
     { tempC: 79.0, abvPercent: 92 },
@@ -62,7 +63,9 @@ function getSchemePathForData(data) {
         data?.mode ?? runtimeMonitorState.mode,
         data?.modeStr ?? runtimeMonitorState.modeStr
     );
-    return MODE_SCHEME_PATHS[mode] || MODE_SCHEME_PATHS[MODE_RECT];
+    const path = MODE_SCHEME_PATHS[mode] || MODE_SCHEME_PATHS[MODE_RECT];
+    const separator = path.includes('?') ? '&' : '?';
+    return `${path}${separator}v=${SCHEME_ASSET_VERSION}`;
 }
 
 function ensureActiveScheme(obj, data) {
@@ -239,6 +242,20 @@ function pickRectTargets(runtimeState, manualSettings, absoluteAlcoholMl, tailsE
 function setOptionalDisplay(el, visible) {
     if (!el) return;
     el.style.display = visible ? '' : 'none';
+}
+
+function setJarFillLevel(el, percent) {
+    if (!el) return;
+    const topY = Number(el.getAttribute('data-top'));
+    const bottomY = Number(el.getAttribute('data-bottom'));
+    if (!Number.isFinite(topY) || !Number.isFinite(bottomY) || bottomY <= topY) {
+        return;
+    }
+    const clampedPercent = Math.max(0, Math.min(1, percent || 0));
+    const totalHeight = bottomY - topY;
+    const fillHeight = totalHeight * clampedPercent;
+    el.setAttribute('y', `${bottomY - fillHeight}`);
+    el.setAttribute('height', `${fillHeight}`);
 }
 
 function ensurePumpSpinKeyframes(svg) {
@@ -1652,13 +1669,9 @@ export function updateInteractiveScheme(data) {
         const headsMax = Math.max(1, targets.headsTargetMl);
 
         const headsPct = Math.min(1, headsVol / headsMax);
-        const headsH = 96; // Высота SVG jar (новый SVG 415×737)
-        const headsHFill = headsH * headsPct;
-
         const elHeads = svg.getElementById('anim-liquid-heads');
         if (elHeads) {
-            elHeads.setAttribute('y', headsH - headsHFill);
-            elHeads.setAttribute('height', headsHFill);
+            setJarFillLevel(elHeads, headsPct);
         }
         const txtHeads = svg.getElementById('txt-volume-heads');
         if (txtHeads) txtHeads.textContent = `${headsVol.toFixed(0)} мл`;
@@ -1668,13 +1681,9 @@ export function updateInteractiveScheme(data) {
         const bodyMax = Math.max(1, targets.bodyTargetMl);
 
         const bodyPct = Math.min(1, bodyVol / bodyMax);
-        const bodyH = 117; // Высота SVG jar (новый SVG 415×737)
-        const bodyHFill = bodyH * bodyPct;
-
         const elBody = svg.getElementById('anim-liquid-body');
         if (elBody) {
-            elBody.setAttribute('y', bodyH - bodyHFill);
-            elBody.setAttribute('height', bodyHFill);
+            setJarFillLevel(elBody, bodyPct);
         }
         const txtBody = svg.getElementById('txt-volume-body');
         if (txtBody) txtBody.textContent = `${bodyVol.toFixed(0)} мл`;
@@ -1684,13 +1693,9 @@ export function updateInteractiveScheme(data) {
         const tailsMax = Math.max(1, targets.tailsTargetMl);
 
         const tailsPct = Math.min(1, tailsVol / tailsMax);
-        const tailsH = 95; // Высота SVG jar (новый SVG 415×737)
-        const tailsHFill = tailsH * tailsPct;
-
         const elTails = svg.getElementById('anim-liquid-tails');
         if (elTails) {
-            elTails.setAttribute('y', tailsH - tailsHFill);
-            elTails.setAttribute('height', tailsHFill);
+            setJarFillLevel(elTails, tailsPct);
         }
         const txtTailsLeft = svg.getElementById('txt-volume-tails');
         if (txtTailsLeft) txtTailsLeft.textContent = `${tailsVol.toFixed(0)} мл`;

@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.9.2"
+#define FIRMWARE_VERSION "1.10.0"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -605,6 +605,7 @@ struct MenuItem {
 // Ключи NVS
 #define NVS_KEY_WIFI_SSID "wifi_ssid"
 #define NVS_KEY_WIFI_PASS "wifi_pass"
+#define NVS_KEY_WIFI_PROFILES "wifi_profiles"
 #define NVS_KEY_TG_TOKEN "tg_token"
 #define NVS_KEY_TG_CHAT "tg_chat"
 #define NVS_KEY_LANGUAGE "lang"

@@ -34,6 +34,7 @@ typedef enum {
 #include "drivers/sensors.h"
 #include "interface/telegram.h"
 #include "interface/mqtt.h"
+#include "interface/wifi_profiles.h"
 #include "storage/nvs_manager.h"
 #include "cloud_tunnel.h"
 #include "../profiles.h"
@@ -61,6 +62,42 @@ struct PumpCalibrationSession {
 };
 
 static PumpCalibrationSession g_pumpCalSession;
+
+static bool hasConfiguredWiFi() {
+  return WiFiProfiles::hasConfiguredProfiles(g_settings.wifi);
+}
+
+static void appendWiFiProfileJson(JsonObject obj, const WiFiProfile& profile, uint8_t index) {
+  obj["index"] = index;
+  obj["priority"] = index + 1;
+  obj["enabled"] = profile.enabled;
+  obj["ssid"] = profile.ssid;
+  obj["hasPassword"] = (profile.password[0] != '\0');
+  obj["useStaticIp"] = profile.useStaticIp;
+  obj["ip"] = profile.ip;
+  obj["gateway"] = profile.gateway;
+  obj["subnet"] = profile.subnet;
+  obj["dns1"] = profile.dns1;
+  obj["dns2"] = profile.dns2;
+  obj["connected"] =
+      (WiFi.status() == WL_CONNECTED && String(WiFi.SSID()) == String(profile.ssid));
+}
+
+static void buildWiFiProfilesResponse(JsonDocument& doc) {
+  WiFiProfiles::compactProfiles(g_settings.wifi);
+  JsonArray profiles = doc.createNestedArray("profiles");
+  for (uint8_t i = 0; i < g_settings.wifi.profileCount && i < WIFI_MAX_PROFILES; ++i) {
+    JsonObject item = profiles.createNestedObject();
+    appendWiFiProfileJson(item, g_settings.wifi.profiles[i], i);
+  }
+  doc["count"] = g_settings.wifi.profileCount;
+}
+
+static bool isValidIpOrEmpty(const char* value) {
+  if (!value || value[0] == '\0') return true;
+  IPAddress ip;
+  return ip.fromString(value);
+}
 
 // Вспомогательные функции для строковых представлений
 static const char *getModeString(Mode mode) {
@@ -268,7 +305,7 @@ void init() {
   // WiFi Setup Wizard — при первом запуске (нет сохранённого SSID)
   // редирект на лёгкую страницу wifi.html вместо тяжёлого index.html
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (strlen(g_settings.wifi.ssid) == 0 && WiFi.status() != WL_CONNECTED) {
+    if (!hasConfiguredWiFi() && WiFi.status() != WL_CONNECTED) {
       request->redirect("/wifi.html");
       return;
     }
@@ -285,7 +322,7 @@ void init() {
 
   // Captive portal: перехват всех неизвестных хостов → wifi.html
   server.on("/generate_204", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (strlen(g_settings.wifi.ssid) == 0) {
+    if (!hasConfiguredWiFi()) {
       request->redirect("/wifi.html");
     } else {
       request->send(204);
@@ -297,7 +334,7 @@ void init() {
             });
   server.on("/connecttest.txt", HTTP_GET,
             [](AsyncWebServerRequest *request) {
-              if (strlen(g_settings.wifi.ssid) == 0) {
+              if (!hasConfiguredWiFi()) {
                 request->redirect("/wifi.html");
               } else {
                 request->send(200, "text/plain", "Microsoft Connect Test");
@@ -2387,7 +2424,8 @@ void init() {
     doc["ip"] = WiFi.localIP().toString();
     doc["rssi"] = WiFi.RSSI();
     doc["apMode"] = g_settings.wifi.apMode;
-    doc["wifiConfigured"] = (strlen(g_settings.wifi.ssid) > 0);
+    doc["wifiConfigured"] = hasConfiguredWiFi();
+    doc["savedProfiles"] = g_settings.wifi.profileCount;
 
     if (g_settings.wifi.apMode) {
       doc["apSSID"] = WIFI_AP_SSID;
@@ -2398,6 +2436,163 @@ void init() {
     serializeJson(doc, json);
     request->send(200, "application/json", json);
   });
+
+  // GET /api/wifi/profiles - сохраненные профили WiFi
+  server.on("/api/wifi/profiles", HTTP_GET, [](AsyncWebServerRequest *request) {
+    StaticJsonDocument<3072> doc;
+    buildWiFiProfilesResponse(doc);
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  // POST /api/wifi/profile - сохранить или обновить профиль WiFi
+  server.on(
+      "/api/wifi/profile", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<1024> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const char* ssid = doc["ssid"] | "";
+        if (!ssid[0]) {
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"SSID required\"}");
+          return;
+        }
+
+        WiFiProfile profile{};
+        profile.enabled = doc["enabled"] | true;
+        strlcpy(profile.ssid, ssid, sizeof(profile.ssid));
+        strlcpy(profile.password, doc["password"] | "", sizeof(profile.password));
+        profile.useStaticIp = doc["useStaticIp"] | false;
+        strlcpy(profile.ip, doc["ip"] | "", sizeof(profile.ip));
+        strlcpy(profile.gateway, doc["gateway"] | "", sizeof(profile.gateway));
+        strlcpy(profile.subnet, doc["subnet"] | "255.255.255.0", sizeof(profile.subnet));
+        strlcpy(profile.dns1, doc["dns1"] | "", sizeof(profile.dns1));
+        strlcpy(profile.dns2, doc["dns2"] | "", sizeof(profile.dns2));
+
+        if (profile.useStaticIp &&
+            (!profile.ip[0] || !profile.gateway[0] || !profile.subnet[0])) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Static IP requires IP, gateway and subnet\"}");
+          return;
+        }
+        if (!isValidIpOrEmpty(profile.ip) || !isValidIpOrEmpty(profile.gateway) ||
+            !isValidIpOrEmpty(profile.subnet) || !isValidIpOrEmpty(profile.dns1) ||
+            !isValidIpOrEmpty(profile.dns2)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid IP address format\"}");
+          return;
+        }
+
+        const bool makePreferred = doc["makePreferred"] | false;
+        if (!WiFiProfiles::upsertProfile(g_settings.wifi, profile, makePreferred)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save WiFi profile (limit reached or invalid SSID)\"}");
+          return;
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        StaticJsonDocument<3072> out;
+        out["success"] = true;
+        buildWiFiProfilesResponse(out);
+
+        String json;
+        serializeJson(out, json);
+        request->send(200, "application/json", json);
+      });
+
+  // POST /api/wifi/profile/reorder - изменить приоритет профиля
+  server.on(
+      "/api/wifi/profile/reorder", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<256> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const char* ssid = doc["ssid"] | "";
+        const char* direction = doc["direction"] | "up";
+        if (!ssid[0]) {
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"SSID required\"}");
+          return;
+        }
+
+        const int shift = (strcmp(direction, "down") == 0) ? 1 : -1;
+        if (!WiFiProfiles::moveProfile(g_settings.wifi, ssid, shift)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Cannot change profile priority\"}");
+          return;
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        StaticJsonDocument<3072> out;
+        out["success"] = true;
+        buildWiFiProfilesResponse(out);
+
+        String json;
+        serializeJson(out, json);
+        request->send(200, "application/json", json);
+      });
+
+  // POST /api/wifi/profile/delete - удалить профиль WiFi
+  server.on(
+      "/api/wifi/profile/delete", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<256> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const char* ssid = doc["ssid"] | "";
+        if (!ssid[0]) {
+          request->send(400, "application/json", "{\"success\":false,\"error\":\"SSID required\"}");
+          return;
+        }
+
+        if (!WiFiProfiles::deleteProfile(g_settings.wifi, ssid)) {
+          request->send(404, "application/json", "{\"success\":false,\"error\":\"Profile not found\"}");
+          return;
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        StaticJsonDocument<3072> out;
+        out["success"] = true;
+        buildWiFiProfilesResponse(out);
+
+        String json;
+        serializeJson(out, json);
+        request->send(200, "application/json", json);
+      });
 
   // POST /api/wifi/connect - подключение к сети
   server.on(
@@ -2410,7 +2605,7 @@ void init() {
           return; // Ждем остальные chunks
         }
 
-        StaticJsonDocument<256> doc;
+        StaticJsonDocument<1024> doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -2423,6 +2618,8 @@ void init() {
         const char *ssid = doc["ssid"];
         const bool hasPasswordField = doc.containsKey("password");
         const char *password = hasPasswordField ? (doc["password"] | "") : nullptr;
+        const bool saveProfile = doc["saveProfile"] | true;
+        const bool makePreferred = doc["makePreferred"] | false;
 
         if (!ssid || strlen(ssid) == 0) {
           request->send(400, "application/json",
@@ -2432,26 +2629,70 @@ void init() {
 
         LOG_I("WiFi: Connect request for SSID: %s", ssid);
 
-        // Сохранить в настройки
-        char prevSsid[sizeof(g_settings.wifi.ssid)];
-        strncpy(prevSsid, g_settings.wifi.ssid, sizeof(prevSsid) - 1);
-        prevSsid[sizeof(prevSsid) - 1] = '\0';
+        WiFiProfile profileToConnect{};
+        profileToConnect.enabled = true;
+        strlcpy(profileToConnect.ssid, ssid, sizeof(profileToConnect.ssid));
+        strlcpy(profileToConnect.subnet, "255.255.255.0", sizeof(profileToConnect.subnet));
 
-        strncpy(g_settings.wifi.ssid, ssid, sizeof(g_settings.wifi.ssid) - 1);
-        g_settings.wifi.ssid[sizeof(g_settings.wifi.ssid) - 1] = '\0';
-
-        const bool sameSsid = strcmp(prevSsid, ssid) == 0;
-        const bool keepExistingPassword =
-            (!hasPasswordField || !password || strlen(password) == 0) &&
-            sameSsid && strlen(g_settings.wifi.password) > 0;
-
-        if (keepExistingPassword) {
-          LOG_W("WiFi: Empty password for same SSID, keeping stored password");
-        } else {
-          strncpy(g_settings.wifi.password, password ? password : "",
-                  sizeof(g_settings.wifi.password) - 1);
-          g_settings.wifi.password[sizeof(g_settings.wifi.password) - 1] = '\0';
+        WiFiProfile savedProfile{};
+        const bool hasSavedProfile = WiFiProfiles::getProfileBySsid(g_settings.wifi, ssid, savedProfile);
+        if (hasSavedProfile) {
+          profileToConnect = savedProfile;
         }
+
+        if (hasPasswordField && password && strlen(password) > 0) {
+          strlcpy(profileToConnect.password, password, sizeof(profileToConnect.password));
+        } else if (!hasSavedProfile && (!password || strlen(password) == 0)) {
+          profileToConnect.password[0] = '\0';
+        }
+
+        if (doc.containsKey("useStaticIp")) {
+          profileToConnect.useStaticIp = doc["useStaticIp"] | false;
+        }
+        if (doc.containsKey("ip")) {
+          strlcpy(profileToConnect.ip, doc["ip"] | "", sizeof(profileToConnect.ip));
+        }
+        if (doc.containsKey("gateway")) {
+          strlcpy(profileToConnect.gateway, doc["gateway"] | "", sizeof(profileToConnect.gateway));
+        }
+        if (doc.containsKey("subnet")) {
+          strlcpy(profileToConnect.subnet, doc["subnet"] | "255.255.255.0",
+                  sizeof(profileToConnect.subnet));
+        }
+        if (doc.containsKey("dns1")) {
+          strlcpy(profileToConnect.dns1, doc["dns1"] | "", sizeof(profileToConnect.dns1));
+        }
+        if (doc.containsKey("dns2")) {
+          strlcpy(profileToConnect.dns2, doc["dns2"] | "", sizeof(profileToConnect.dns2));
+        }
+
+        if (profileToConnect.useStaticIp &&
+            (!profileToConnect.ip[0] || !profileToConnect.gateway[0] ||
+             !profileToConnect.subnet[0])) {
+          request->send(400, "application/json",
+                        "{\"error\":\"Static IP requires IP, gateway and subnet\"}");
+          return;
+        }
+        if (!isValidIpOrEmpty(profileToConnect.ip) ||
+            !isValidIpOrEmpty(profileToConnect.gateway) ||
+            !isValidIpOrEmpty(profileToConnect.subnet) ||
+            !isValidIpOrEmpty(profileToConnect.dns1) ||
+            !isValidIpOrEmpty(profileToConnect.dns2)) {
+          request->send(400, "application/json",
+                        "{\"error\":\"Invalid IP address format\"}");
+          return;
+        }
+
+        if (saveProfile) {
+          if (!WiFiProfiles::upsertProfile(g_settings.wifi, profileToConnect, makePreferred)) {
+            request->send(400, "application/json",
+                          "{\"error\":\"Failed to save WiFi profile\"}");
+            return;
+          }
+          WiFiProfiles::getProfileBySsid(g_settings.wifi, ssid, profileToConnect);
+        }
+
+        WiFiProfiles::syncLegacyFields(g_settings.wifi, &profileToConnect);
 
         // AP must stay available while STA reconnects, so local UI at 192.168.4.1
         // does not disappear during/after WiFi credential updates.
@@ -2470,16 +2711,7 @@ void init() {
           // чтобы ответ успел уйти клиенту
           delay(100);
 
-          WiFi.disconnect();
-          WiFi.mode(WIFI_AP_STA);
-          if (WiFi.getMode() != WIFI_AP_STA || WiFi.softAPIP() != IPAddress(192, 168, 4, 1)) {
-            IPAddress apIp(192, 168, 4, 1);
-            IPAddress apGw(192, 168, 4, 1);
-            IPAddress apMask(255, 255, 255, 0);
-            WiFi.softAPConfig(apIp, apGw, apMask);
-            WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
-          }
-          WiFi.begin(g_settings.wifi.ssid, g_settings.wifi.password);
+          WiFiProfiles::beginConnection(profileToConnect);
         } else {
           LOG_E("WiFi: Failed to save settings to NVS");
           request->send(500, "application/json",

@@ -40,6 +40,22 @@
     height: 220px !important;
 }
 
+@media (max-width: 768px) {
+    .operator-screen-instrument #mini-chart {
+        height: 280px !important;
+        min-height: 280px;
+    }
+
+    .operator-screen-instrument #mini-chart .apexcharts-legend {
+        justify-content: flex-start !important;
+        padding: 4px 8px 0;
+    }
+
+    .operator-screen-instrument #mini-chart .apexcharts-toolbar {
+        right: 4px !important;
+    }
+}
+
 .operator-screen-compact .operator-grid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 8px;

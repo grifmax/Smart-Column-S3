@@ -46,7 +46,21 @@ import { toggleMqttFields } from './settings/mqtt.js';
 import { loadPumpInfo, loadVersionInfo } from './settings/pump-version.js';
 import { saveSecurity, toggleAuthFields } from './settings/security.js';
 import { saveTelegramSettings, sendTelegramTest, toggleTelegramFields, loadTelegramSettings } from './settings/telegram.js';
-import { saveWiFi, initWiFiSettings, loadWiFiStatus, scanWiFiNetworks, connectWiFiNetwork, cancelWiFiSelection } from './settings/wifi.js';
+import {
+    saveWiFi,
+    initWiFiSettings,
+    loadWiFiStatus,
+    loadWiFiProfiles,
+    scanWiFiNetworks,
+    saveWiFiProfile,
+    connectWiFiNetwork,
+    connectSavedWiFiProfile,
+    moveWiFiProfile,
+    deleteWiFiProfile,
+    editWiFiProfile,
+    toggleWiFiStaticFields,
+    cancelWiFiSelection
+} from './settings/wifi.js';
 import {
     initCalibrationTab,
     loadCalibrationData,
@@ -204,8 +218,15 @@ window.toggleTelegramFields = toggleTelegramFields;
 window.loadTelegramSettings = loadTelegramSettings;
 window.saveWiFi = saveWiFi;
 window.loadWiFiStatus = loadWiFiStatus;
+window.loadWiFiProfiles = loadWiFiProfiles;
 window.scanWiFiNetworks = scanWiFiNetworks;
+window.saveWiFiProfile = saveWiFiProfile;
 window.connectWiFiNetwork = connectWiFiNetwork;
+window.connectSavedWiFiProfile = connectSavedWiFiProfile;
+window.moveWiFiProfile = moveWiFiProfile;
+window.deleteWiFiProfile = deleteWiFiProfile;
+window.editWiFiProfile = editWiFiProfile;
+window.toggleWiFiStaticFields = toggleWiFiStaticFields;
 window.cancelWiFiSelection = cancelWiFiSelection;
 window.loadCalibrationData = loadCalibrationData;
 window.scanCalibrationSensors = scanCalibrationSensors;

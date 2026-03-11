@@ -13,6 +13,7 @@ export function initMiniChart() {
 
     const miniChartContainer = document.querySelector("#mini-chart");
     if (!miniChartContainer) return;
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
 
     // Graceful fallback for offline/AP mode when CDN script is not available.
     if (typeof window.ApexCharts === 'undefined') {
@@ -26,7 +27,7 @@ export function initMiniChart() {
 
         chart: {
             type: 'line',
-            height: 220,
+            height: isMobile ? 280 : 220,
             animations: {
                 enabled: true,
                 dynamicAnimation: { speed: 500 }
@@ -34,15 +35,17 @@ export function initMiniChart() {
             toolbar: {
                 show: true,
                 tools: {
-                    download: true,
-                    selection: true,
+                    download: !isMobile,
+                    selection: !isMobile,
                     zoom: true,
-                    zoomin: true,
-                    zoomout: true,
-                    pan: true,
+                    zoomin: !isMobile,
+                    zoomout: !isMobile,
+                    pan: !isMobile,
                     reset: true
                 },
-                autoSelected: 'zoom'
+                autoSelected: 'zoom',
+                offsetX: isMobile ? -2 : 0,
+                offsetY: isMobile ? -2 : 0
             },
             zoom: {
                 enabled: true,
@@ -127,7 +130,13 @@ export function initMiniChart() {
 
             show: true,
 
-            position: 'top'
+            position: isMobile ? 'bottom' : 'top',
+            horizontalAlign: isMobile ? 'left' : 'center',
+            fontSize: isMobile ? '11px' : '12px',
+            itemMargin: {
+                horizontal: isMobile ? 10 : 12,
+                vertical: isMobile ? 6 : 4
+            }
 
         },
 
@@ -139,7 +148,27 @@ export function initMiniChart() {
 
             }
 
-        }
+        },
+
+        responsive: [
+            {
+                breakpoint: 768,
+                options: {
+                    chart: {
+                        height: 280
+                    },
+                    legend: {
+                        position: 'bottom',
+                        horizontalAlign: 'left',
+                        fontSize: '11px',
+                        itemMargin: {
+                            horizontal: 10,
+                            vertical: 6
+                        }
+                    }
+                }
+            }
+        ]
 
     };
 
