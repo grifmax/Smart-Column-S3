@@ -6,7 +6,9 @@
     MODE_DIST,
     MODE_MANUAL,
     MODE_MASH,
-    MODE_HOLD
+    MODE_HOLD,
+    MODE_NBK,
+    MODE_FERMENTATION
 } from '../globals.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { addLog } from '../core/logs.js';
@@ -17,7 +19,9 @@ const MODE_SCHEME_PATHS = {
     [MODE_MANUAL]: 'schemes/column-tesla.svg',
     [MODE_DIST]: 'schemes/distillation-animated.svg',
     [MODE_MASH]: 'schemes/mash-animated.svg',
-    [MODE_HOLD]: 'schemes/hold-animated.svg'
+    [MODE_HOLD]: 'schemes/hold-animated.svg',
+    [MODE_NBK]: 'schemes/distillation-animated.svg',
+    [MODE_FERMENTATION]: 'schemes/hold-animated.svg'
 };
 
 const MANUAL_RECT_STORAGE_KEY = 'control.manualRectSettings';

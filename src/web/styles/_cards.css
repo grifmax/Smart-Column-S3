@@ -61,6 +61,14 @@
     color: #6f42c1;
 }
 
+.mode-nbk {
+    color: #c77700;
+}
+
+.mode-fermentation {
+    color: #009688;
+}
+
 .mode-error {
     color: var(--danger);
 }

@@ -15,7 +15,9 @@ enum class Mode : uint8_t {
   DISTILLATION,
   MANUAL_RECT,
   MASHING,    // Затирка солода
-  HOLD        // Температурные ступени (Hold режим)
+  HOLD,       // Температурные ступени (Hold режим)
+  NBK,        // Непрерывная бражная колонна
+  FERMENTATION// Ферментация (брожение)
 };
 
 // Фазы ректификации
@@ -29,6 +31,23 @@ enum class RectPhase : uint8_t {
   TAILS,
   PURGE,
   FINISH,
+  COMPLETED
+};
+
+// Фазы НБК
+enum class NbkPhase : uint8_t {
+  IDLE = 0,
+  HEATING,
+  STABILIZATION,
+  WORKING,
+  FINISH,
+  COMPLETED
+};
+
+// Фазы Ферментации
+enum class FermentationPhase : uint8_t {
+  IDLE = 0,
+  RUNNING,
   COMPLETED
 };
 
@@ -248,6 +267,8 @@ struct SystemState {
   // Состояния режимов
   MashingState mashing;
   HoldState hold;
+  NbkPhase nbkPhase = NbkPhase::IDLE;
+  FermentationPhase fermPhase = FermentationPhase::IDLE;
 };
 
 // Структуры настроек (именованные для typedef)
@@ -355,6 +376,18 @@ struct SafetySettings {
   float pressureRiseRateMmHgMin = 20.0f;
 };
 
+struct NbkSettings {
+  float powerW = 2500.0f;
+  float pumpSpeedMlH = 20000.0f; // 20 л/ч
+  float columnBottomTempThresholdC = 95.0f;
+};
+
+struct FermentationSettings {
+  float targetTempC = 28.0f;
+  float hysteresisC = 0.5f;
+  bool useHeater = true;
+};
+
 // Настройки (полная версия)
 struct Settings {
   WiFiSettings wifi;
@@ -370,6 +403,8 @@ struct Settings {
   RectParams rectParams;
   DistillationUiSettings distillationUi;
   SafetySettings safety;
+  NbkSettings nbk;
+  FermentationSettings fermentation;
 
   uint8_t language = 0; // 0=RU, 1=EN
   uint8_t theme = 0;    // 0=Light, 1=Dark

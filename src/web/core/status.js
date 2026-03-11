@@ -8,6 +8,8 @@ import {
     MODE_MANUAL,
     MODE_MASH,
     MODE_HOLD,
+    MODE_NBK,
+    MODE_FERMENTATION,
     resolveMode,
     getModeLabel,
     getModeCssClass,
@@ -421,13 +423,17 @@ export function updateButtonStates() {
     const btnDist = findModeButton('distillation', 'startDistillation()');
     const btnMashing = findModeButton('mashing', 'startMashing()');
     const btnHold = findModeButton('hold', 'startHold()');
+    const btnNbk = findModeButton('nbk', 'startNbk()');
+    const btnFermentation = findModeButton('fermentation', 'startFermentation()');
 
     const modeButtons = [
         { mode: MODE_RECT, button: btnRect },
         { mode: MODE_MANUAL, button: btnManual },
         { mode: MODE_DIST, button: btnDist },
         { mode: MODE_MASH, button: btnMashing },
-        { mode: MODE_HOLD, button: btnHold }
+        { mode: MODE_HOLD, button: btnHold },
+        { mode: MODE_NBK, button: btnNbk },
+        { mode: MODE_FERMENTATION, button: btnFermentation }
     ];
 
     modeButtons.forEach(({ mode, button }) => {

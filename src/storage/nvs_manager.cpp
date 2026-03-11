@@ -72,6 +72,16 @@ bool loadSettings(Settings& settings) {
     settings.distillationUi.powerPercent = prefs.getFloat(NVS_KEY_DIST_POWER_PCT, 100.0f);
     settings.distillationUi.tailsVolumeMl = prefs.getFloat(NVS_KEY_DIST_TAILS_VOL, 0.0f);
 
+    // ???
+    settings.nbk.powerW = prefs.getFloat(NVS_KEY_NBK_POWER, 2500.0f);
+    settings.nbk.pumpSpeedMlH = prefs.getFloat(NVS_KEY_NBK_PUMP_SPEED, 20000.0f);
+    settings.nbk.columnBottomTempThresholdC = prefs.getFloat(NVS_KEY_NBK_BOTTOM_TEMP, 95.0f);
+
+    // ???????????
+    settings.fermentation.targetTempC = prefs.getFloat(NVS_KEY_FERM_TARGET_TEMP, 28.0f);
+    settings.fermentation.hysteresisC = prefs.getFloat(NVS_KEY_FERM_HYSTERESIS, 0.5f);
+    settings.fermentation.useHeater = prefs.getBool(NVS_KEY_FERM_USE_HEATER, true);
+
     // Безопасность
     settings.safety.pressureMaxMmHg = prefs.getFloat(
         NVS_KEY_SAFETY_PRESSURE_MAX, DEFAULT_SAFETY_PRESSURE_MAX_MMHG
@@ -156,6 +166,16 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_DIST_END_TEMP, settings.distillationUi.endTempC);
     prefs.putFloat(NVS_KEY_DIST_POWER_PCT, settings.distillationUi.powerPercent);
     prefs.putFloat(NVS_KEY_DIST_TAILS_VOL, settings.distillationUi.tailsVolumeMl);
+
+    // ???
+    prefs.putFloat(NVS_KEY_NBK_POWER, settings.nbk.powerW);
+    prefs.putFloat(NVS_KEY_NBK_PUMP_SPEED, settings.nbk.pumpSpeedMlH);
+    prefs.putFloat(NVS_KEY_NBK_BOTTOM_TEMP, settings.nbk.columnBottomTempThresholdC);
+
+    // ???????????
+    prefs.putFloat(NVS_KEY_FERM_TARGET_TEMP, settings.fermentation.targetTempC);
+    prefs.putFloat(NVS_KEY_FERM_HYSTERESIS, settings.fermentation.hysteresisC);
+    prefs.putBool(NVS_KEY_FERM_USE_HEATER, settings.fermentation.useHeater);
 
     // Безопасность
     prefs.putFloat(NVS_KEY_SAFETY_PRESSURE_MAX, settings.safety.pressureMaxMmHg);

@@ -415,6 +415,13 @@
                                             data-mode-select="distillation" data-mode="2"
                                             data-mode-action="distillation"
                                             onclick="selectControlMode('distillation')">🏺 Дистилляция</button>
+                                        <button class="btn btn-warning control-mode-btn" type="button"
+                                            data-mode-select="nbk" data-mode="6" data-mode-action="nbk"
+                                            onclick="selectControlMode('nbk')">НБК</button>
+                                        <button class="btn btn-info control-mode-btn" type="button"
+                                            data-mode-select="fermentation" data-mode="7"
+                                            data-mode-action="fermentation"
+                                            onclick="selectControlMode('fermentation')">Ферментация</button>
                                         <button class="btn btn-success control-mode-btn" type="button"
                                             data-mode-select="mashing" data-mode="4" data-mode-action="mashing"
                                             onclick="selectControlMode('mashing')">▶️ Затирка</button>
@@ -724,6 +731,57 @@
                                                             Вт</label>
                                                         <input type="text" id="dist-start-power-fact" value="0"
                                                             readonly>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                                                                <div id="control-panel-nbk" class="control-mode-panel-section"
+                                            data-mode-panel="nbk" style="display: none;">
+                                            <div class="control-subsection">
+                                                <div class="control-subsection-title">Параметры НБК</div>
+                                                <div class="control-form-grid">
+                                                    <div class="form-group">
+                                                        <label for="nbk-power-w">Мощность нагрева, Вт</label>
+                                                        <input type="number" id="nbk-power-w" min="500" max="5500"
+                                                            step="50" value="2500">
+                                                        <div class="control-inline-hint">Рабочая мощность парогенератора или куба для НБК.</div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="nbk-pump-speed">Подача браги, мл/ч</label>
+                                                        <input type="number" id="nbk-pump-speed" min="100" max="120000"
+                                                            step="100" value="20000">
+                                                        <div class="control-inline-hint">Насос включается на рабочей фазе после стабилизации колонны.</div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="nbk-column-bottom-threshold">Мин. температура низа колонны, °C</label>
+                                                        <input type="number" id="nbk-column-bottom-threshold" min="50" max="110"
+                                                            step="0.1" value="95">
+                                                        <div class="control-inline-hint">Если температура падает ниже порога, подача браги будет остановлена.</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div id="control-panel-fermentation" class="control-mode-panel-section"
+                                            data-mode-panel="fermentation" style="display: none;">
+                                            <div class="control-subsection">
+                                                <div class="control-subsection-title">Параметры ферментации</div>
+                                                <div class="control-form-grid">
+                                                    <div class="form-group">
+                                                        <label for="ferm-target-temp">Целевая температура, °C</label>
+                                                        <input type="number" id="ferm-target-temp" min="5" max="45"
+                                                            step="0.1" value="28">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="ferm-hysteresis">Гистерезис, °C</label>
+                                                        <input type="number" id="ferm-hysteresis" min="0.1" max="10"
+                                                            step="0.1" value="0.5">
+                                                        <div class="control-inline-hint">Нагрев включается ниже цели минус гистерезис и выключается при достижении цели.</div>
+                                                    </div>
+                                                    <div class="form-group control-checkbox-field">
+                                                        <label for="ferm-use-heater">Использовать ТЭН для поддержания</label>
+                                                        <input type="checkbox" id="ferm-use-heater" checked>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1417,6 +1475,8 @@
                                     <option value="all">Все типы</option>
                                     <option value="rectification">Ректификация</option>
                                     <option value="distillation">Дистилляция</option>
+                                    <option value="nbk">???</option>
+                                    <option value="fermentation">???????????</option>
                                     <option value="mashing">Затирка</option>
                                 </select>
                                 <select id="history-filter-status" onchange="loadHistoryList()">
@@ -1626,6 +1686,156 @@
                                     </div>
                                 </div>
                                 <button class="btn btn-primary tools-submit" onclick="calculatePotentialAlcohol()">Рассчитать</button>
+                            </div>
+
+                            <div class="card tools-card">
+                                <h2>📏 Конвертер плотности</h2>
+                                <p class="tools-card-text">
+                                    Переводит Brix, Plato, SG и Oechsle между шкалами и показывает потенциал до заданного FG.
+                                </p>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Входная шкала</label>
+                                        <select id="calc-density-scale">
+                                            <option value="brix">Brix</option>
+                                            <option value="plato">Plato</option>
+                                            <option value="sg">SG</option>
+                                            <option value="oechsle">Oechsle</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Значение</label>
+                                        <input type="number" id="calc-density-value" value="18" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Целевой FG для потенциала, SG</label>
+                                    <input type="number" id="calc-density-fg" value="1.000" step="0.001">
+                                </div>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>SG:</span>
+                                        <strong id="calc-density-sg">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Brix:</span>
+                                        <strong id="calc-density-brix">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Plato:</span>
+                                        <strong id="calc-density-plato">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Oechsle:</span>
+                                        <strong id="calc-density-oechsle">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Потенциал:</span>
+                                        <strong id="calc-density-potential">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Примечание:</span>
+                                        <strong id="calc-density-note">--</strong>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary tools-submit" onclick="calculateDensityConverter()">Рассчитать</button>
+                            </div>
+
+                            <div class="card tools-card">
+                                <h2>🫙 Калькулятор брожения</h2>
+                                <p class="tools-card-text" id="calc-ferment-helper">
+                                    Оценка OG/FG, крепости, гидромодуля, дозировки дрожжей и времени для сахарной браги.
+                                </p>
+                                <div class="form-group">
+                                    <label>Основа расчета</label>
+                                    <select id="calc-ferment-basis" onchange="updateFermentationMode()">
+                                        <option value="sugar">Сахарная брага</option>
+                                        <option value="brix">Сусло по Brix</option>
+                                        <option value="sg">Сусло по SG</option>
+                                    </select>
+                                </div>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Объем партии, л</label>
+                                        <input type="number" id="calc-ferment-volume-l" value="25" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Температура брожения, °C</label>
+                                        <input type="number" id="calc-ferment-temp" value="26" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group" id="calc-ferment-sugar-group">
+                                        <label>Сахар, кг</label>
+                                        <input type="number" id="calc-ferment-sugar-kg" value="6" step="0.1">
+                                    </div>
+                                    <div class="form-group" id="calc-ferment-water-group">
+                                        <label>Вода, л</label>
+                                        <input type="number" id="calc-ferment-water-l" value="24" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="form-group" id="calc-ferment-brix-group" hidden>
+                                    <label>Начальный Brix</label>
+                                    <input type="number" id="calc-ferment-brix" value="18" step="0.1">
+                                </div>
+                                <div class="form-group" id="calc-ferment-sg-group" hidden>
+                                    <label>Начальная плотность SG</label>
+                                    <input type="number" id="calc-ferment-sg" value="1.070" step="0.001">
+                                </div>
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Тип дрожжей</label>
+                                        <select id="calc-ferment-yeast">
+                                            <option value="turbo">Турбо / спиртовые</option>
+                                            <option value="spirit" selected>Спиртовые классические</option>
+                                            <option value="wine">Винные</option>
+                                            <option value="beer">Пивные / эль</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" id="calc-ferment-efficiency-group">
+                                        <label>КПД брожения, %</label>
+                                        <input type="number" id="calc-ferment-efficiency-pct" value="92" step="1">
+                                    </div>
+                                    <div class="form-group" id="calc-ferment-attenuation-group" hidden>
+                                        <label>Сбраживание, %</label>
+                                        <input type="number" id="calc-ferment-attenuation-pct" value="78" step="1">
+                                    </div>
+                                </div>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>OG:</span>
+                                        <strong id="calc-ferment-og">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>FG:</span>
+                                        <strong id="calc-ferment-fg">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Потенциал:</span>
+                                        <strong id="calc-ferment-abv">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Абсолютный спирт:</span>
+                                        <strong id="calc-ferment-aa">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Гидромодуль:</span>
+                                        <strong id="calc-ferment-ratio">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Дрожжи:</span>
+                                        <strong id="calc-ferment-yeast-dose">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Срок:</span>
+                                        <strong id="calc-ferment-time">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Примечание:</span>
+                                        <strong id="calc-ferment-note">--</strong>
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary tools-submit" onclick="calculateFermentation()">Рассчитать</button>
                             </div>
 
                             <div class="card tools-card">
@@ -1852,12 +2062,12 @@
                             </div>
 
                             <div class="card tools-card">
-                                <h2>🌡️ Коррекция ареометра</h2>
+                                <h2>🌡️ Коррекция спиртометра</h2>
                                 <p class="tools-card-text">
-                                    Приведение показаний спиртометра к 20°C.
+                                    Табличная интерполяция показаний спиртометра, приведенных к 20°C.
                                 </p>
                                 <div class="form-group">
-                                    <label>Показания ареометра (%)</label>
+                                    <label>Показания спиртометра (%)</label>
                                     <input type="number" id="calc-abv-raw" placeholder="Например: 45" step="0.1">
                                 </div>
                                 <div class="form-group">
@@ -1871,33 +2081,67 @@
                                     <div class="tools-result-label">Реальная крепость (при 20°C)</div>
                                     <div id="calc-abv-result" class="tools-result-value">-- %</div>
                                 </div>
+                                <div class="tools-result">
+                                    <div class="tools-result-row">
+                                        <span>Поправка:</span>
+                                        <strong id="calc-abv-correction">--</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Метод:</span>
+                                        <strong id="calc-abv-note">--</strong>
+                                    </div>
+                                </div>
                                 <button class="btn btn-primary tools-submit" onclick="calculateAbvCorrection()">Рассчитать</button>
                             </div>
 
                             <div class="card tools-card">
-                                <h2>💧 Разбавление спирта</h2>
+                                <h2>💧 Разбавление по этапам</h2>
                                 <p class="tools-card-text">
-                                    Расчет необходимого количества воды для разбавления.
+                                    Один и тот же расчет для одного, двух или трех шагов разбавления. Лишние этапы можно оставить пустыми.
                                 </p>
-                                <div class="form-group">
-                                    <label>Исходный объем (мл)</label>
-                                    <input type="number" id="calc-dil-volume" placeholder="Например: 1000">
+                                <div class="tools-inline-grid">
+                                    <div class="form-group">
+                                        <label>Исходный объем (мл)</label>
+                                        <input type="number" id="calc-dil-volume" value="1000" step="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Исходная крепость (%)</label>
+                                        <input type="number" id="calc-dil-abv-src" value="96.6" step="0.1">
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>Исходная крепость (%)</label>
-                                    <input type="number" id="calc-dil-abv-src" placeholder="Например: 96.6" step="0.1">
-                                </div>
-                                <div class="form-group">
-                                    <label>Желаемая крепость (%)</label>
-                                    <input type="number" id="calc-dil-abv-target" placeholder="Например: 40" step="0.1">
+                                <div class="tools-inline-grid tools-inline-grid-3">
+                                    <div class="form-group">
+                                        <label>Этап 1, %</label>
+                                        <input type="number" id="calc-dil-stage-1" value="70" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Этап 2, %</label>
+                                        <input type="number" id="calc-dil-stage-2" value="55" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Этап 3, %</label>
+                                        <input type="number" id="calc-dil-stage-3" value="40" step="0.1">
+                                    </div>
                                 </div>
                                 <div class="tools-result">
                                     <div class="tools-result-row">
-                                        <span>Добавить воды:</span>
+                                        <span>Этап 1:</span>
+                                        <strong id="calc-dil-stage-1-result">—</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Этап 2:</span>
+                                        <strong id="calc-dil-stage-2-result">—</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Этап 3:</span>
+                                        <strong id="calc-dil-stage-3-result">—</strong>
+                                    </div>
+                                    <div class="tools-result-row">
+                                        <span>Всего воды:</span>
                                         <strong id="calc-dil-water">-- мл</strong>
                                     </div>
                                     <div class="tools-result-row">
-                                        <span>Общий объем:</span>
+                                        <span>Итоговый объем:</span>
                                         <strong id="calc-dil-total">-- мл</strong>
                                     </div>
                                 </div>

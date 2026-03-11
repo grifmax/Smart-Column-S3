@@ -4,6 +4,8 @@ import {
     MODE_DIST,
     MODE_MASH,
     MODE_HOLD,
+    MODE_NBK,
+    MODE_FERMENTATION,
     clampFeedVolumeToCube,
     getCubeVolumeLimitL
 } from '../globals.js';
@@ -13,6 +15,12 @@ import { startRectification, loadRectificationStartSettings } from './rectificat
 import { startManual } from './rectification.js';
 import { startDistillation, collectDistillationSettings } from './distillation.js';
 import { startMashing, startHold } from './mashing-hold.js';
+import {
+    loadNbkSettings,
+    loadFermentationSettings,
+    startNbk,
+    startFermentation
+} from './nbk-fermentation.js';
 
 const CONTROL_MODE_STORAGE_KEY = 'control.selectedMode';
 const MANUAL_RECT_STORAGE_KEY = 'control.manualRectSettings';
@@ -51,11 +59,27 @@ const CONTROL_MODES = {
         startLabel: '▶️ Запустить Hold',
         startClass: 'btn-success',
         modeValue: MODE_HOLD
+    },
+    nbk: {
+        title: 'НБК',
+        subtitle: 'Непрерывная бражная колонна: мощность, подача браги и контроль температуры низа колонны',
+        startLabel: '▶️ Запустить НБК',
+        startClass: 'btn-warning',
+        modeValue: MODE_NBK
+    },
+    fermentation: {
+        title: 'Ферментация',
+        subtitle: 'Поддержание температуры брожения по датчику в кубе или ферментере',
+        startLabel: '▶️ Запустить ферментацию',
+        startClass: 'btn-info',
+        modeValue: MODE_FERMENTATION
     }
 };
 
 let selectedControlMode = 'rectification';
 let rectSettingsLoaded = false;
+let nbkSettingsLoaded = false;
+let fermentationSettingsLoaded = false;
 let manualRectInitialized = false;
 
 function getModeDefinition(mode) {
@@ -105,6 +129,16 @@ async function ensureRectificationSettingsLoaded() {
     const loaded = await loadRectificationStartSettings();
     rectSettingsLoaded = Boolean(loaded);
 }
+async function ensureNbkSettingsLoaded() {
+    if (nbkSettingsLoaded) return;
+    const loaded = await loadNbkSettings();
+    nbkSettingsLoaded = Boolean(loaded);
+}
+async function ensureFermentationSettingsLoaded() {
+    if (fermentationSettingsLoaded) return;
+    const loaded = await loadFermentationSettings();
+    fermentationSettingsLoaded = Boolean(loaded);
+}
 
 function goToMonitorTab() {
     const monitorTab = document.querySelector('.tab[data-tab="monitor"]');
@@ -124,6 +158,10 @@ export async function selectControlMode(mode, options = {}) {
 
     if (normalized === 'rectification') {
         await ensureRectificationSettingsLoaded();
+    } else if (normalized === 'nbk') {
+        await ensureNbkSettingsLoaded();
+    } else if (normalized === 'fermentation') {
+        await ensureFermentationSettingsLoaded();
     }
 
     if (options.persist !== false) {
@@ -154,6 +192,12 @@ export async function startSelectedMode() {
             break;
         case 'hold':
             started = await startHold();
+            break;
+        case 'nbk':
+            started = await startNbk();
+            break;
+        case 'fermentation':
+            started = await startFermentation();
             break;
         default:
             addLog('Не выбран режим запуска', 'warning');

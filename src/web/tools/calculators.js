@@ -610,12 +610,12 @@ export function calculatePotentialAlcohol() {
         return;
     }
 
-    let washAbv = 0;
-    let absoluteAlcoholL = 0;
-    let primaryText = '--';
-    let secondaryText = '--';
+    let washAbv;
+    let absoluteAlcoholL;
+    let primaryText;
+    let secondaryText;
     let ratioText = 'н/д';
-    let noteText = '--';
+    let noteText;
 
     if (mode === 'sugar') {
         const sugarKg = parseNumber('calc-potential-sugar-kg');
@@ -727,13 +727,13 @@ export function calculateFermentation() {
         return;
     }
 
-    let originalGravity = 1;
-    let finalGravity = 1;
-    let washAbv = 0;
-    let absoluteAlcoholL = 0;
+    let originalGravity;
+    let finalGravity;
+    let washAbv;
+    let absoluteAlcoholL;
     let ratioText = 'н/д';
     let ratioValue = NaN;
-    let noteText = '';
+    let noteText;
 
     if (mode === 'sugar') {
         const sugarKg = parseNumber('calc-ferment-sugar-kg');
@@ -775,7 +775,6 @@ export function calculateFermentation() {
                 alert('Укажите корректное SG.');
                 return;
             }
-            originalGravity = originalGravity;
         }
 
         finalGravity = attenuationToFinalGravity(originalGravity, attenuationPercent);

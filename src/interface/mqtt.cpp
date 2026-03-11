@@ -66,7 +66,7 @@ void init(const char* server, uint16_t port, const char* username, const char* p
         if (cmd == "start") {
             Mode m = Mode::IDLE;
             int reqMode = payloadStr.toInt();
-            if (reqMode > 0 && reqMode <= static_cast<int>(Mode::MASHING)) {
+            if (reqMode > 0 && reqMode <= static_cast<int>(Mode::FERMENTATION)) {
                 m = static_cast<Mode>(reqMode);
             } else {
                 // Если не указан - попробовать использовать текущий сохранённый (в UI это обычно не делается)
@@ -177,7 +177,9 @@ void publishState(const SystemState& state) {
 
     // Основные параметры
     doc["mode"] = static_cast<int>(state.mode);
-    doc["phase"] = static_cast<int>(state.rectPhase);
+    doc["phase"] = static_cast<int>(state.rectPhase); // для совместимости
+    doc["nbk_phase"] = static_cast<int>(state.nbkPhase);
+    doc["ferm_phase"] = static_cast<int>(state.fermPhase);
 
     // Температуры
     JsonObject temps = doc.createNestedObject("temperatures");

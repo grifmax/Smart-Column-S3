@@ -77,6 +77,10 @@ static const char *getModeString(Mode mode) {
     return "mashing";
   case Mode::HOLD:
     return "hold";
+  case Mode::NBK:
+    return "nbk";
+  case Mode::FERMENTATION:
+    return "fermentation";
   default:
     return "unknown";
   }
@@ -125,6 +129,39 @@ static const char *getMashPhaseString(MashPhase phase) {
     return "mash_out";
   case MashPhase::FINISH:
     return "finish";
+    return "finish";
+  default:
+    return "unknown";
+  }
+}
+
+static const char *getNbkPhaseString(NbkPhase phase) {
+  switch (phase) {
+  case NbkPhase::IDLE:
+    return "idle";
+  case NbkPhase::HEATING:
+    return "heating";
+  case NbkPhase::STABILIZATION:
+    return "stabilization";
+  case NbkPhase::WORKING:
+    return "working";
+  case NbkPhase::FINISH:
+    return "finish";
+  case NbkPhase::COMPLETED:
+    return "completed";
+  default:
+    return "unknown";
+  }
+}
+
+static const char *getFermPhaseString(FermentationPhase phase) {
+  switch (phase) {
+  case FermentationPhase::IDLE:
+    return "idle";
+  case FermentationPhase::RUNNING:
+    return "running";
+  case FermentationPhase::COMPLETED:
+    return "completed";
   default:
     return "unknown";
   }
@@ -275,13 +312,26 @@ void init() {
   // API endpoints
   // GET /api/status - полное состояние системы
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<3584> doc;
+    StaticJsonDocument<4096> doc;
 
     // Режим и состояние процесса
     doc["mode"] = static_cast<int>(g_state.mode);
     doc["modeStr"] = getModeString(g_state.mode);
-    doc["phase"] = static_cast<int>(g_state.rectPhase);
-    doc["phaseStr"] = getPhaseString(g_state.rectPhase);
+    int activePhase = static_cast<int>(g_state.rectPhase);
+    const char *activePhaseStr = getPhaseString(g_state.rectPhase);
+    if (g_state.mode == Mode::NBK) {
+      activePhase = static_cast<int>(g_state.nbkPhase);
+      activePhaseStr = getNbkPhaseString(g_state.nbkPhase);
+    } else if (g_state.mode == Mode::FERMENTATION) {
+      activePhase = static_cast<int>(g_state.fermPhase);
+      activePhaseStr = getFermPhaseString(g_state.fermPhase);
+    }
+    doc["phase"] = activePhase;
+    doc["phaseStr"] = activePhaseStr;
+    doc["nbkPhase"] = static_cast<int>(g_state.nbkPhase);
+    doc["nbkPhaseStr"] = getNbkPhaseString(g_state.nbkPhase);
+    doc["fermPhase"] = static_cast<int>(g_state.fermPhase);
+    doc["fermPhaseStr"] = getFermPhaseString(g_state.fermPhase);
     doc["paused"] = g_state.paused;
     doc["safetyOk"] = g_state.safetyOk;
     doc["uptime"] = g_state.uptime;
@@ -393,6 +443,20 @@ void init() {
     distillation["targetVolumeMl"] = distTargetVolumeMl;
     distillation["endTempC"] = distEndTempC;
     distillation["powerPercent"] = distPowerPercent;
+
+    JsonObject nbk = doc.createNestedObject("nbk");
+    nbk["powerW"] = g_settings.nbk.powerW;
+    nbk["pumpSpeedMlH"] = g_settings.nbk.pumpSpeedMlH;
+    nbk["columnBottomTempThresholdC"] = g_settings.nbk.columnBottomTempThresholdC;
+    nbk["phase"] = static_cast<int>(g_state.nbkPhase);
+    nbk["phaseStr"] = getNbkPhaseString(g_state.nbkPhase);
+
+    JsonObject fermentation = doc.createNestedObject("fermentation");
+    fermentation["targetTempC"] = g_settings.fermentation.targetTempC;
+    fermentation["hysteresisC"] = g_settings.fermentation.hysteresisC;
+    fermentation["useHeater"] = g_settings.fermentation.useHeater;
+    fermentation["phase"] = static_cast<int>(g_state.fermPhase);
+    fermentation["phaseStr"] = getFermPhaseString(g_state.fermPhase);
 
     JsonObject progress = doc.createNestedObject("progress");
     const uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
@@ -623,6 +687,10 @@ void init() {
           mode = Mode::MASHING;
         } else if (strcmp(modeStr, "hold") == 0) {
           mode = Mode::HOLD;
+        } else if (strcmp(modeStr, "nbk") == 0) {
+          mode = Mode::NBK;
+        } else if (strcmp(modeStr, "fermentation") == 0) {
+          mode = Mode::FERMENTATION;
         } else {
           request->send(400, "application/json",
                         "{\"success\":false,\"message\":\"Unknown mode\"}");
@@ -745,6 +813,8 @@ void init() {
           }
 
           FSM::Hold::start(g_state, runtimeSteps, count);
+        } else if (mode == Mode::NBK || mode == Mode::FERMENTATION) {
+          FSM::startMode(g_state, g_settings, mode);
         } else {
           FSM::startMode(g_state, g_settings, mode);
         }
@@ -974,6 +1044,102 @@ void init() {
           g_settings.safety.pressureRiseRateMmHgMin = clampFloatRange(
               doc["pressureRiseRateMmHgMin"].as<float>(), 1.0f, 200.0f
           );
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        request->send(200, "application/json", "{\"success\":true}");
+      });
+
+  // GET /api/settings/nbk - ???????? ????????? ???
+  server.on("/api/settings/nbk", HTTP_GET, [](AsyncWebServerRequest *request) {
+    StaticJsonDocument<192> doc;
+    doc["powerW"] = g_settings.nbk.powerW;
+    doc["pumpSpeedMlH"] = g_settings.nbk.pumpSpeedMlH;
+    doc["columnBottomTempThresholdC"] = g_settings.nbk.columnBottomTempThresholdC;
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  // POST /api/settings/nbk - ????????? ????????? ???
+  server.on(
+      "/api/settings/nbk", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<192> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        if (doc.containsKey("powerW")) {
+          g_settings.nbk.powerW = clampFloatRange(doc["powerW"].as<float>(), 500.0f, 5500.0f);
+        }
+        if (doc.containsKey("pumpSpeedMlH")) {
+          g_settings.nbk.pumpSpeedMlH =
+              clampFloatRange(doc["pumpSpeedMlH"].as<float>(), 100.0f, 120000.0f);
+        }
+        if (doc.containsKey("columnBottomTempThresholdC")) {
+          g_settings.nbk.columnBottomTempThresholdC = clampFloatRange(
+              doc["columnBottomTempThresholdC"].as<float>(), 50.0f, 110.0f);
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        request->send(200, "application/json", "{\"success\":true}");
+      });
+
+  // GET /api/settings/fermentation - ???????? ????????? ???????????
+  server.on("/api/settings/fermentation", HTTP_GET, [](AsyncWebServerRequest *request) {
+    StaticJsonDocument<192> doc;
+    doc["targetTempC"] = g_settings.fermentation.targetTempC;
+    doc["hysteresisC"] = g_settings.fermentation.hysteresisC;
+    doc["useHeater"] = g_settings.fermentation.useHeater;
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  // POST /api/settings/fermentation - ????????? ????????? ???????????
+  server.on(
+      "/api/settings/fermentation", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<192> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        if (doc.containsKey("targetTempC")) {
+          g_settings.fermentation.targetTempC =
+              clampFloatRange(doc["targetTempC"].as<float>(), 5.0f, 45.0f);
+        }
+        if (doc.containsKey("hysteresisC")) {
+          g_settings.fermentation.hysteresisC =
+              clampFloatRange(doc["hysteresisC"].as<float>(), 0.1f, 10.0f);
+        }
+        if (doc.containsKey("useHeater")) {
+          g_settings.fermentation.useHeater = doc["useHeater"].as<bool>();
         }
 
         if (!NVSManager::saveSettings(g_settings)) {

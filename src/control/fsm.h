@@ -148,12 +148,30 @@ namespace FSM {
         void start(SystemState& state, const TempStep* steps, uint8_t count);
     }
     
+    // =========================================================================
+    // НБК
+    // =========================================================================
+    
+    namespace Nbk {
+        void update(SystemState& state, const Settings& settings);
+    }
+
+    // =========================================================================
+    // ФЕРМЕНТАЦИЯ
+    // =========================================================================
+    
+    namespace Fermentation {
+        void update(SystemState& state, const Settings& settings);
+    }
+
     /**
      * Получение имени текущей фазы
      * @param phase Фаза
      * @return Строка с именем
      */
     const char* getPhaseName(RectPhase phase);
+    const char* getNbkPhaseName(NbkPhase phase);
+    const char* getFermPhaseName(FermentationPhase phase);
 
     /**
      * Время текущей фазы в секундах (с учетом пауз).

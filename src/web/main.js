@@ -95,7 +95,7 @@ import { connectWebSocket } from './core/websocket.js';
 import { startStatusPolling } from './ui/landing.js';
 import { loadUserInfo } from './cloud/user.js';
 import { loadDiscoveredDevices } from './cloud/devices.js';
-import { initNotifications, requestNotificationPermission, showNotification, toggleBrowserNotifications, testBrowserNotification } from './core/notifications.js';
+import { initNotifications, showNotification, toggleBrowserNotifications, testBrowserNotification } from './core/notifications.js';
 
 // ============================================================================
 // Window bindings (для onclick в HTML)

@@ -60,6 +60,8 @@ export const MODE_DIST = 2;
 export const MODE_MANUAL = 3;
 export const MODE_MASH = 4;
 export const MODE_HOLD = 5;
+export const MODE_NBK = 6;
+export const MODE_FERMENTATION = 7;
 
 export function getModeLabel(mode) {
     switch (mode) {
@@ -69,6 +71,8 @@ export function getModeLabel(mode) {
         case MODE_DIST: return 'Distillation';
         case MODE_MASH: return 'Mashing';
         case MODE_HOLD: return 'Hold';
+        case MODE_NBK: return 'NBK';
+        case MODE_FERMENTATION: return 'Fermentation';
         default: return 'Unknown';
     }
 }
@@ -81,6 +85,8 @@ export function getModeCssClass(mode) {
         case MODE_DIST: return 'mode-distillation';
         case MODE_MASH: return 'mode-mashing';
         case MODE_HOLD: return 'mode-hold';
+        case MODE_NBK: return 'mode-nbk';
+        case MODE_FERMENTATION: return 'mode-fermentation';
         default: return 'mode-idle';
     }
 }
@@ -99,7 +105,9 @@ export function resolveMode(modeValue, modeStrValue) {
         distillation: MODE_DIST,
         mash: MODE_MASH,
         mashing: MODE_MASH,
-        hold: MODE_HOLD
+        hold: MODE_HOLD,
+        nbk: MODE_NBK,
+        fermentation: MODE_FERMENTATION
     };
     return modeMap[modeStrValue.toLowerCase()] ?? MODE_IDLE;
 }
@@ -117,6 +125,7 @@ export let runtimeMonitorState = {
     power: { power: 0 },
     hydrometer: { abv: 0, valid: false },
     pump: { speedMlH: 0, totalMl: 0 },
+    temps: { cube: 0, columnBottom: 0 },
     valves: { water: false, heads: false, uno: false, tails: false },
     volumes: { heads: 0, body: 0, tails: 0 },
     equipment: {
@@ -143,6 +152,20 @@ export let runtimeMonitorState = {
         targetVolumeMl: 0,
         endTempC: 0,
         powerPercent: 0
+    },
+    nbk: {
+        powerW: 2500,
+        pumpSpeedMlH: 20000,
+        columnBottomTempThresholdC: 95,
+        phase: 0,
+        phaseStr: 'idle'
+    },
+    fermentation: {
+        targetTempC: 28,
+        hysteresisC: 0.5,
+        useHeater: true,
+        phase: 0,
+        phaseStr: 'idle'
     },
     safetySettings: {
         pressureMaxMmHg: 50,

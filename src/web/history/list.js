@@ -189,7 +189,11 @@ export function renderHistoryItem(process) {
 
         mashing: 'Затирка',
 
-        hold: 'Выдержка'
+        hold: 'Выдержка',
+
+        nbk: 'НБК',
+
+        fermentation: 'Ферментация'
 
     };
 

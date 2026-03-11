@@ -86,6 +86,10 @@ export function updateRuntimeStateFromStatus(data) {
         if (data.pump.speedMlH !== undefined) s.pump.speedMlH = toFinite(data.pump.speedMlH, s.pump.speedMlH);
         if (data.pump.totalMl !== undefined) s.pump.totalMl = toFinite(data.pump.totalMl, s.pump.totalMl);
     }
+    if (data.temps && typeof data.temps === 'object') {
+        if (data.temps.cube !== undefined) s.temps.cube = toFinite(data.temps.cube, s.temps.cube);
+        if (data.temps.columnBottom !== undefined) s.temps.columnBottom = toFinite(data.temps.columnBottom, s.temps.columnBottom);
+    }
     if (data.valves && typeof data.valves === 'object') {
         s.valves = { ...s.valves, ...data.valves };
     }
@@ -106,6 +110,16 @@ export function updateRuntimeStateFromStatus(data) {
     if (data.distillation && typeof data.distillation === 'object') {
         s.distillation = { ...s.distillation, ...data.distillation };
     }
+    if (data.nbk && typeof data.nbk === 'object') {
+        s.nbk = { ...s.nbk, ...data.nbk };
+    }
+    if (data.fermentation && typeof data.fermentation === 'object') {
+        s.fermentation = { ...s.fermentation, ...data.fermentation };
+    }
+    if (data.nbkPhase !== undefined) s.nbk.phase = toFinite(data.nbkPhase, s.nbk.phase);
+    if (data.nbkPhaseStr !== undefined) s.nbk.phaseStr = String(data.nbkPhaseStr);
+    if (data.fermPhase !== undefined) s.fermentation.phase = toFinite(data.fermPhase, s.fermentation.phase);
+    if (data.fermPhaseStr !== undefined) s.fermentation.phaseStr = String(data.fermPhaseStr);
 
     mergeSafetySettingsState(s, data);
 
@@ -135,6 +149,8 @@ export function updateRuntimeStateFromWs(data) {
     if (data.abv_valid !== undefined) s.hydrometer.valid = Boolean(data.abv_valid);
     if (data.pump_speed !== undefined) s.pump.speedMlH = toFinite(data.pump_speed, s.pump.speedMlH);
     if (data.pump_volume !== undefined) s.pump.totalMl = toFinite(data.pump_volume, s.pump.totalMl);
+    if (data.t_cube !== undefined) s.temps.cube = toFinite(data.t_cube, s.temps.cube);
+    if (data.t_column_bottom !== undefined) s.temps.columnBottom = toFinite(data.t_column_bottom, s.temps.columnBottom);
     if (data.valves && typeof data.valves === 'object') {
         s.valves = { ...s.valves, ...data.valves };
     }
@@ -162,6 +178,16 @@ export function updateRuntimeStateFromWs(data) {
     if (data.distillation && typeof data.distillation === 'object') {
         s.distillation = { ...s.distillation, ...data.distillation };
     }
+    if (data.nbk && typeof data.nbk === 'object') {
+        s.nbk = { ...s.nbk, ...data.nbk };
+    }
+    if (data.fermentation && typeof data.fermentation === 'object') {
+        s.fermentation = { ...s.fermentation, ...data.fermentation };
+    }
+    if (data.nbkPhase !== undefined) s.nbk.phase = toFinite(data.nbkPhase, s.nbk.phase);
+    if (data.nbkPhaseStr !== undefined) s.nbk.phaseStr = String(data.nbkPhaseStr);
+    if (data.fermPhase !== undefined) s.fermentation.phase = toFinite(data.fermPhase, s.fermentation.phase);
+    if (data.fermPhaseStr !== undefined) s.fermentation.phaseStr = String(data.fermPhaseStr);
 
     mergeSafetySettingsState(s, data);
     mergeEquipmentState(s, data);

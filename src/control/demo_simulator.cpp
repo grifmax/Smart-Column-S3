@@ -111,6 +111,20 @@ void update(SystemState &state, const Settings &settings) {
     targetDefleg = 75.0f + sin(sim.phase * 0.12f) * 0.2f;
   }
 
+  // Специфика симуляции НБК:
+  if (state.mode == Mode::NBK) {
+    if (sim.phase < 30) {
+      targetCube = 25.0f + (sim.phase / 30.0f) * 75.0f; // ПГ быстрее греется до 100
+      targetColumn = 25.0f + (sim.phase / 30.0f) * 20.0f; // Колонна холодная
+    } else if (sim.phase < 50) {
+      targetCube = 100.0f; 
+      targetColumn = 25.0f + ((sim.phase - 30.0f) / 20.0f) * 75.0f; // прогревается паром
+    } else {
+      targetCube = 100.0f;
+      targetColumn = 98.0f + sin(sim.phase * 0.15f) * 0.5f; // Рабочая НБК
+    }
+  }
+
   // Плавное приближение к целевым температурам
   float smoothFactor = 0.02f; // Скорость изменения
   sim.cubeTemp += (targetCube - sim.cubeTemp) * smoothFactor;
@@ -127,6 +141,13 @@ void update(SystemState &state, const Settings &settings) {
   state.temps.tsa = (state.temps.cube + state.temps.columnBottom) / 2.0f;
   state.temps.waterIn = 15.0f + noise * 0.2f;
   state.temps.waterOut = 35.0f + (sim.phase / 100.0f) * 10.0f + noise * 0.3f;
+  
+  // Симуляция Ферментации
+  if (state.mode == Mode::FERMENTATION) {
+      targetCube = settings.fermentation.targetTempC + sin(sim.phase * 0.05f) * 0.2f;
+      sim.cubeTemp += (targetCube - sim.cubeTemp) * 0.05f;
+      state.temps.cube = sim.cubeTemp + noise * 0.1f;
+  }
 
   // Все датчики "валидны" в демо-режиме
   for (int i = 0; i < 8; i++) {
@@ -187,11 +208,18 @@ void update(SystemState &state, const Settings &settings) {
     // Допустим, мы читаем реальные состояния из Valves::getHeads() и Valves::getCurrentFraction()
     if (Valves::getHeads()) {
         state.stats.headsVolume += addedVolume;
-    } else if (Valves::getCurrentFraction() == Fraction::TAILS) {
-        state.stats.tailsVolume += addedVolume;
-    } else if (Valves::getCurrentFraction() == Fraction::BODY || !Valves::getHeads()) {
-        // Упрощенно всё остальное пишем в тело, если клапан голов закрыт и не хвосты
-        state.stats.bodyVolume += addedVolume;
+    } else {
+        Fraction current = Valves::getCurrentFraction();
+        if (current == Fraction::BODY) {
+            state.stats.bodyVolume += addedVolume;
+        } else if (current == Fraction::TAILS) {
+            state.stats.tailsVolume += addedVolume;
+        } else if (current == Fraction::SUBHEADS) {
+            state.stats.headsVolume += addedVolume; // Подголовники тоже в головы (упрощенно)
+        } else {
+            // По умолчанию в тело, если ничего не выбрано явно
+            state.stats.bodyVolume += addedVolume;
+        }
     }
   } else {
     state.pump.speedMlPerHour = 0.0f;

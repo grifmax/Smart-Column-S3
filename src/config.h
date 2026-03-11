@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.8.0"
+#define FIRMWARE_VERSION "1.9.2"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -639,6 +639,12 @@ struct MenuItem {
 #define NVS_KEY_DIST_END_TEMP "dist_etmp"
 #define NVS_KEY_DIST_POWER_PCT "dist_ppct"
 #define NVS_KEY_DIST_TAILS_VOL "dist_xvol"
+#define NVS_KEY_NBK_POWER "nbk_pwr"
+#define NVS_KEY_NBK_PUMP_SPEED "nbk_spd"
+#define NVS_KEY_NBK_BOTTOM_TEMP "nbk_btm"
+#define NVS_KEY_FERM_TARGET_TEMP "ferm_tgt"
+#define NVS_KEY_FERM_HYSTERESIS "ferm_hyst"
+#define NVS_KEY_FERM_USE_HEATER "ferm_heat"
 #define NVS_KEY_SAFETY_PRESSURE_MAX "safe_pmax"
 #define NVS_KEY_SAFETY_TSA_MAX "safe_tsa"
 #define NVS_KEY_SAFETY_WATER_OUT_MAX "safe_wout"

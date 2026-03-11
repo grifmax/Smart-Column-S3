@@ -401,6 +401,14 @@ void update(SystemState& state, const Settings& settings) {
             ManualRect::update(state, settings);
             break;
             
+        case Mode::NBK:
+            Nbk::update(state, settings);
+            break;
+            
+        case Mode::FERMENTATION:
+            Fermentation::update(state, settings);
+            break;
+            
         default:
             break;
     }
@@ -476,6 +484,16 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
         state.hold.tempInRange = false;
         state.hold.inRangeStartTime = 0;
         LOG_I("FSM: Hold mode started");
+    } else if (mode == Mode::NBK) {
+        state.rectPhase = RectPhase::IDLE;
+        state.nbkPhase = NbkPhase::HEATING;
+        phaseStartTime = now;
+        LOG_I("FSM: NBK mode started");
+    } else if (mode == Mode::FERMENTATION) {
+        state.rectPhase = RectPhase::IDLE;
+        state.fermPhase = FermentationPhase::RUNNING;
+        phaseStartTime = now;
+        LOG_I("FSM: Fermentation mode started");
     }
 }
 
@@ -488,6 +506,8 @@ void stopMode(SystemState& state) {
 
     state.mode = Mode::IDLE;
     state.rectPhase = RectPhase::IDLE;
+    state.nbkPhase = NbkPhase::IDLE;
+    state.fermPhase = FermentationPhase::IDLE;
     state.mashing.phase = MashPhase::IDLE;
     state.mashing.stepCount = 0;
     state.mashing.active = false;
@@ -1172,6 +1192,8 @@ const char* getModeName(Mode mode) {
         case Mode::MANUAL_RECT: return msg(Msg::MODE_MANUAL_RECT);
         case Mode::MASHING: return msg(Msg::MODE_MASHING);
         case Mode::HOLD: return msg(Msg::MODE_HOLD);
+        case Mode::NBK: return "НБК"; // TODO: msg() localization
+        case Mode::FERMENTATION: return "Ферментация"; // TODO: msg()
         default: return "???";
     }
 }
@@ -1188,6 +1210,27 @@ const char* getPhaseName(RectPhase phase) {
         case RectPhase::PURGE: return msg(Msg::PHASE_PURGE);
         case RectPhase::FINISH: return msg(Msg::PHASE_FINISH);
         case RectPhase::COMPLETED: return msg(Msg::PHASE_COMPLETED);
+        default: return "???";
+    }
+}
+
+const char* getNbkPhaseName(NbkPhase phase) {
+    switch (phase) {
+        case NbkPhase::IDLE: return "Ожидание";
+        case NbkPhase::HEATING: return "Разогрев ПГ";
+        case NbkPhase::STABILIZATION: return "Cтабилизация";
+        case NbkPhase::WORKING: return "Подача браги";
+        case NbkPhase::FINISH: return "Завершение";
+        case NbkPhase::COMPLETED: return "Завершено";
+        default: return "???";
+    }
+}
+
+const char* getFermPhaseName(FermentationPhase phase) {
+    switch (phase) {
+        case FermentationPhase::IDLE: return "Ожидание";
+        case FermentationPhase::RUNNING: return "Поддержание Т";
+        case FermentationPhase::COMPLETED: return "Завершено";
         default: return "???";
     }
 }
@@ -1219,6 +1262,128 @@ void nextFraction(SystemState& state, const Settings& settings) {
             state.rectPhase = RectPhase::FINISH;
             phaseStartTime = millis();
             LOG_I("FSM: TAILS -> FINISH (manual next)");
+        }
+    }
+}
+
+// =============================================================================
+// НБК (Непрерывная бражная колонна)
+// =============================================================================
+
+namespace Nbk {
+    void update(SystemState& state, const Settings& settings) {
+        uint32_t now = millis();
+        // Время работы в режиме НБК
+        uint32_t elapsed = now - phaseStartTime;
+
+        switch (state.nbkPhase) {
+            case NbkPhase::IDLE:
+                break;
+                
+            case NbkPhase::HEATING:
+                // Разогрев парогенератора (ПГ)
+                Heater::setPower(100);
+                
+                // Проверки на включение воды
+                if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
+                    Valves::setWater(true);
+                }
+                
+                // Переход к стабилизации, если ПГ или низ колонны прогреты
+                if (state.temps.valid[TEMP_CUBE] && state.temps.cube > 98.0f) {
+                    LOG_I("NBK: HEATING -> STABILIZATION");
+                    state.nbkPhase = NbkPhase::STABILIZATION;
+                    phaseStartTime = now;
+                    
+                    MQTT::publishNotification(
+                        "НБК: Стабилизация",
+                        "Парогенератор разогрет, стабилизация колонны",
+                        "info"
+                    );
+                }
+                break;
+                
+            case NbkPhase::STABILIZATION:
+                // Установка рабочей мощности для НБК (можно вынести в настройки)
+                Heater::setPower(settings.equipment.heaterPowerW > 0 ? 
+                                 (getProcessHeaterPower(state, settings, 70)) : 70); 
+                
+                // Примерно 5 мин стабилизации (или по температуре низа колонны)
+                if (elapsed > 5 * 60 * 1000UL) {
+                    LOG_I("NBK: STABILIZATION -> WORKING");
+                    state.nbkPhase = NbkPhase::WORKING;
+                    phaseStartTime = now;
+                    
+                    MQTT::publishNotification(
+                        "НБК: Работа",
+                        "Подача браги включена",
+                        "info"
+                    );
+                }
+                break;
+                
+                // Включаем насос для подачи браги из настроек
+                Pump::start(settings.nbk.pumpSpeedMlH);
+                
+                // Если температура низа сильно упала - стоп насос
+                if (state.temps.valid[TEMP_COLUMN_BOTTOM] && state.temps.columnBottom < settings.nbk.columnBottomTempThresholdC) {
+                    Pump::stop();
+                    LOG_W("NBK: Temperature drop below %.1fC! Pausing pump.", settings.nbk.columnBottomTempThresholdC);
+                }
+                break;
+                
+            case NbkPhase::FINISH:
+                // Завершение работы
+                Pump::stop();
+                Heater::setPower(0);
+                // Охлаждаем 5 минут
+                if (elapsed > 5 * 60 * 1000UL) {
+                    Valves::setWater(false);
+                    state.nbkPhase = NbkPhase::COMPLETED;
+                    state.mode = Mode::IDLE;
+                    LOG_I("NBK: Process complete");
+                    
+                    MQTT::publishNotification(
+                        "НБК: Завершено",
+                        "Перегонка браги завершена",
+                        "success"
+                    );
+                }
+                break;
+                
+            case NbkPhase::COMPLETED:
+                break;
+        }
+    }
+}
+
+// =============================================================================
+// ФЕРМЕНТАЦИЯ (Брожение)
+// =============================================================================
+
+namespace Fermentation {
+    void update(SystemState& state, const Settings& settings) {
+        // Базовая логика - пока просто "работает", можно добавить термостабилизацию
+        switch (state.fermPhase) {
+            case FermentationPhase::IDLE:
+                break;
+                
+            case FermentationPhase::RUNNING:
+                // Логика поддержания температуры брожения
+                if (settings.fermentation.useHeater) {
+                    float currentTemp = state.temps.cube; // обычно датчик в кубе/ферментере
+                    if (state.temps.valid[TEMP_CUBE]) {
+                        if (currentTemp < settings.fermentation.targetTempC - settings.fermentation.hysteresisC) {
+                            Heater::setPower(10); // минимальный прогрев для брожения
+                        } else if (currentTemp > settings.fermentation.targetTempC) {
+                            Heater::setPower(0);
+                        }
+                    }
+                }
+                break;
+                
+            case FermentationPhase::COMPLETED:
+                break;
         }
     }
 }

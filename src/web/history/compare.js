@@ -114,7 +114,11 @@ export function showCompareModal(processes) {
 
             mashing: 'Затирка',
 
-            hold: 'Выдержка'
+            hold: 'Выдержка',
+
+            nbk: 'НБК',
+
+            fermentation: 'Ферментация'
 
         };
 
