@@ -1322,14 +1322,26 @@ namespace Nbk {
                 }
                 break;
                 
+            case NbkPhase::WORKING:
                 // Включаем насос для подачи браги из настроек
-                Pump::start(settings.nbk.pumpSpeedMlH);
-                
-                // Если температура низа сильно упала - стоп насос
-                if (state.temps.valid[TEMP_COLUMN_BOTTOM] && state.temps.columnBottom < settings.nbk.columnBottomTempThresholdC) {
+                // Если температура низа сильно упала - стоп насос, ждем прогрева
+                if (state.temps.valid[TEMP_COLUMN_BOTTOM]) {
+                    if (state.temps.columnBottom < settings.nbk.columnBottomTempThresholdC) {
+                        Pump::stop();
+                        LOG_W("NBK: Temp %.1f < %.1f. Pump stopped.", 
+                              state.temps.columnBottom, settings.nbk.columnBottomTempThresholdC);
+                    } else if (state.temps.columnBottom > settings.nbk.columnBottomTempThresholdC + 1.0f) {
+                        // Гистерезис 1 градус для повторного включения
+                        Pump::start(settings.nbk.pumpSpeedMlH);
+                    }
+                } else {
+                    // Если датчик отвалился - лучше стоп
                     Pump::stop();
-                    LOG_W("NBK: Temperature drop below %.1fC! Pausing pump.", settings.nbk.columnBottomTempThresholdC);
                 }
+                
+                // Мощность ТЭНа поддерживаем (парогенератор)
+                Heater::setPower(settings.equipment.heaterPowerW > 0 ? 
+                                 (getProcessHeaterPower(state, settings, 70)) : 70);
                 break;
                 
             case NbkPhase::FINISH:

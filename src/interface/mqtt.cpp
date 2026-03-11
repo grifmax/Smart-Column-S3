@@ -216,6 +216,7 @@ void publishHealth(const SystemHealth& health) {
     doc["uptime"] = health.uptime;
     doc["free_heap"] = health.freeHeap;
     doc["cpu_temp"] = health.cpuTemp;
+    doc["last_reboot_reason"] = health.lastRebootReason;
 
     // Статусы датчиков
     doc["pzem_ok"] = health.pzemOk;

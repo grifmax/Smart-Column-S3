@@ -102,6 +102,7 @@ struct PressureData {
 // Данные гидрометра
 struct HydrometerData {
   float pressure = 0.0f;
+  float density = 0.0f;     // Плотность кг/м³
   float abv = 0.0f;
   float temperature = 0.0f; // Температура замера
   bool valid = false;       // Данные валидны
@@ -185,6 +186,7 @@ struct SystemHealth {
   uint16_t pzemSpikeCount = 0;
   uint16_t tempReadErrors = 0;
   uint8_t overallHealth = 100;
+  uint8_t lastRebootReason = 0; // esp_reset_reason_t
   uint32_t lastUpdate = 0;
 };
 
@@ -425,6 +427,7 @@ struct Settings {
   uint8_t language = 0; // 0=RU, 1=EN
   uint8_t theme = 0;    // 0=Light, 1=Dark
   bool soundEnabled = true;
+  uint8_t lastRebootReason = 0; // Store last CRITICAL reboot reason
   bool demoMode = false; // Демо-режим (симуляция данных)
 };
 

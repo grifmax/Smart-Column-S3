@@ -20,6 +20,9 @@ enum class Msg : uint16_t {
     HEATER_POWER,
     TOP_T,
     REFLUX_T,
+    COLUMN_BOTTOM,
+    WATER_IN,
+    WATER_OUT,
     PUMP,
     TSA_T,
 
@@ -132,6 +135,9 @@ inline const char* msg(Msg id) {
         case Msg::HEATER_POWER:  return ru ? "МОЩНОСТЬ" : "HEATER POWER";
         case Msg::TOP_T:         return ru ? "ВЕРХ Т" : "TOP T";
         case Msg::REFLUX_T:      return ru ? "ДЕФ Т" : "REFLUX T";
+        case Msg::COLUMN_BOTTOM: return ru ? "НИЗ К Т" : "BTM T";
+        case Msg::WATER_IN:      return ru ? "ОХЛ ВХ" : "WTR IN";
+        case Msg::WATER_OUT:     return ru ? "ОХЛ ВЫХ" : "WTR OUT";
         case Msg::PUMP:          return ru ? "НАСОС" : "PUMP";
         case Msg::TSA_T:         return ru ? "ТСА Т" : "TSA T";
 

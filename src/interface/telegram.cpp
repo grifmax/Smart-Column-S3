@@ -51,8 +51,25 @@ static bool sendMessageToConfiguredChat(const char* message) {
   return sendMessageToChat(fb::ID(tgChatId), message);
 }
 
+static uint32_t lastMessageMs = 0;
+static uint8_t messageBurstCount = 0;
+
 static void handleUpdate(fb::Update& u) {
   if (!u.isMessage()) {
+    return;
+  }
+
+  // Basic rate limiting
+  uint32_t now = millis();
+  if (now - lastMessageMs < 500) {
+    messageBurstCount++;
+  } else {
+    messageBurstCount = 0;
+  }
+  lastMessageMs = now;
+
+  if (messageBurstCount > 5) {
+    LOG_W("Telegram: rate limit exceeded");
     return;
   }
 
@@ -73,18 +90,52 @@ static void handleUpdate(fb::Update& u) {
 
   fb::ID replyChat(msg.chat().id());
   if (text == "/status") {
-    char status[128];
+    char status[256];
     snprintf(status, sizeof(status),
-             "Mode: %s\nPaused: %s\nUptime: %lus",
+             "Mode: %s\nPhase: %s\nPaused: %s\nUptime: %lus\nPower: %.0fW\nTemp: %.1fC",
              FSM::getModeName(g_state.mode),
+             FSM::getPhaseName(g_state.rectPhase),
              g_state.paused ? "yes" : "no",
-             (unsigned long)g_state.uptime);
+             (unsigned long)g_state.uptime,
+             g_state.power.power,
+             g_state.temps.cube);
     sendMessageToChat(replyChat, status);
+  } else if (text == "/health") {
+    char msg[384];
+    const char* resetReason = "Unknown";
+    switch(g_state.health.lastRebootReason) {
+        case 1: resetReason = "Power On"; break;
+        case 3: resetReason = "Software Watchdog"; break;
+        case 4: resetReason = "Hardware Watchdog"; break;
+        case 5: resetReason = "Deep Sleep"; break;
+        case 6: resetReason = "Software Reset"; break;
+        case 7: resetReason = "Panic"; break;
+        default: resetReason = "Other"; break;
+    }
+    
+    snprintf(msg, sizeof(msg),
+             "System Health: %u%%\n"
+             "Reset Reason: %s\n"
+             "Free Heap: %u KB\n"
+             "CPU Temp: %.1f C\n"
+             "WiFi RSSI: %d dBm\n"
+             "PZEM: %s\n"
+             "ADS1115: %s\n"
+             "Temps: %u/%u OK",
+             g_state.health.overallHealth,
+             resetReason,
+             g_state.health.freeHeap / 1024,
+             g_state.health.cpuTemp,
+             g_state.health.wifiRSSI,
+             g_state.health.pzemOk ? "OK" : "FAIL",
+             g_state.health.ads1115Ok ? "OK" : "FAIL",
+             g_state.health.tempSensorsOk, g_state.health.tempSensorsTotal);
+    sendMessageToChat(replyChat, msg);
   } else if (text == "/stop") {
     FSM::stopMode(g_state);
     sendMessageToChat(replyChat, "Process stopped");
   } else if (text == "/help" || text == "/start") {
-    sendMessageToChat(replyChat, "Commands: /status, /stop, /help");
+    sendMessageToChat(replyChat, "Commands: /status, /health, /stop, /help");
   } else {
     sendMessageToChat(replyChat, "Unknown command. Use /help");
   }

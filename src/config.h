@@ -664,6 +664,7 @@ struct MenuItem {
 #define NVS_KEY_TOUCH_YMIN "tch_ymin"
 #define NVS_KEY_TOUCH_YMAX "tch_ymax"
 #define NVS_KEY_TOUCH_VALID "tch_valid"
+#define NVS_KEY_LAST_REBOOT_REASON "boot_reason"
 
 // =============================================================================
 // ЗУММЕР

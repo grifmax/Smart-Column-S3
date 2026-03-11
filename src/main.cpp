@@ -116,6 +116,8 @@ void setup() {
 
   // Проверка причины перезагрузки
   esp_reset_reason_t resetReason = esp_reset_reason();
+  g_state.health.lastRebootReason = (uint8_t)resetReason;
+  
   if (resetReason == ESP_RST_WDT || resetReason == ESP_RST_TASK_WDT || 
       resetReason == ESP_RST_INT_WDT) {
     Serial.println("WARNING: Previous reset was due to Watchdog!");
@@ -166,6 +168,13 @@ void setup() {
   }
   
   loadSettings();
+
+  // Сохранить причину перезагрузки, если она изменилась
+  if (g_settings.lastRebootReason != g_state.health.lastRebootReason) {
+    g_settings.lastRebootReason = g_state.health.lastRebootReason;
+    NVSManager::saveSettings(g_settings);
+    LOG_I("Reset reason updated in NVS: %d", g_settings.lastRebootReason);
+  }
 
   // Инициализация железа
   LOG_I("Initializing hardware...");

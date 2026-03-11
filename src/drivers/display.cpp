@@ -213,7 +213,8 @@ enum UiScreen : uint8_t {
   UI_MANUAL,
   UI_MASHING,
   UI_HOLD,
-  UI_VALUE_EDIT
+  UI_VALUE_EDIT,
+  UI_ALL_TEMPS
 };
 
 struct UiState {
@@ -1072,7 +1073,12 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
 static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
   switch (ui.currentScreen) {
   case UI_DASHBOARD:
-    // Tap on dashboard goes to Control
+    // Tap on temperature tiles goes to All Temps
+    if (ty >= 56 && ty <= 202) {
+      pushScreen(UI_ALL_TEMPS);
+      return true;
+    }
+    // Tap on dashboard elsewhere goes to Control
     if (ty > UI_HEADER_H && ty < (TFT_HEIGHT - UI_FOOTER_H)) {
       switchRoot(UI_CONTROL);
       return true;
@@ -1081,6 +1087,11 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
   case UI_MODE_MONITOR:
     if (ty > UI_HEADER_H && ty < (TFT_HEIGHT - UI_FOOTER_H)) {
       if (handleModeMonitorTap(tx, ty, state)) {
+        return true;
+      }
+      // Tap on temperature tiles (right side on monitor) goes to All Temps
+      if (tx >= 236 && ty >= 56 && ty <= 202) {
+        pushScreen(UI_ALL_TEMPS);
         return true;
       }
       // Fallback: tap on left status panel opens Control menu.
@@ -1364,6 +1375,15 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
       }
     }
     break;
+
+  case UI_SERVICE:
+    // Tap on diagnostic rows goes to All Temps
+    if (ty >= 180 && ty <= 260) {
+      pushScreen(UI_ALL_TEMPS);
+      return true;
+    }
+    break;
+
   default:
     break;
   }
@@ -3075,6 +3095,70 @@ static void renderService(const SystemState &state, bool full) {
   drawValueRow(230, ru ? "Диагн. TFT" : "TFT diag", buf);
 }
 
+static void renderAllTemps(const SystemState &state, bool full) {
+  if (full) {
+    tft.fillScreen(colorBg());
+    drawHeader(g_settings.language == 0 ? "ВСЕ ТЕМПЕРАТУРЫ" : "ALL TEMPERATURES", true);
+    drawTabs(ui.rootScreen);
+  }
+
+  const int16_t xStart = 10;
+  const int16_t yStart = 60;
+  const int16_t tileW = (TFT_WIDTH - 30) / 2;
+  const int16_t tileH = 48;
+  const int16_t gap = 8;
+
+  const char* labels[TEMP_COUNT] = {
+    msg(Msg::CUBE_TEMP),
+    msg(Msg::COLUMN_BOTTOM),
+    msg(Msg::TOP_T),
+    msg(Msg::REFLUX_T),
+    msg(Msg::TSA_T),
+    g_settings.language == 0 ? "ОХЛ ВХОД" : "WATER IN",
+    g_settings.language == 0 ? "ОХЛ ВЫХОД" : "WATER OUT"
+  };
+
+  float values[TEMP_COUNT] = {
+    state.temps.cube,
+    state.temps.columnBottom,
+    state.temps.columnTop,
+    state.temps.reflux,
+    state.temps.tsa,
+    state.temps.waterIn,
+    state.temps.waterOut
+  };
+
+  for (uint8_t i = 0; i < TEMP_COUNT; i++) {
+    const int16_t x = xStart + (i % 2) * (tileW + gap);
+    const int16_t y = yStart + (i / 2) * (tileH + gap);
+    
+    char valBuf[16];
+    if (state.temps.valid[i]) {
+      snprintf(valBuf, sizeof(valBuf), "%.2f", values[i]);
+    } else {
+      strncpy(valBuf, "---", sizeof(valBuf));
+    }
+
+    // Only clear value area if not full redraw
+    if (!full) {
+        tft.fillRect(x + tileW - 90, y + 2, 88, tileH - 4, colorCard());
+    } else {
+        drawCard(x, y, tileW, tileH, colorCard());
+        tft.setTextColor(tft.color565(120, 130, 140));
+        tft.setTextSize(1);
+        tft.setTextDatum(middle_left);
+        tft.drawString(labels[i], x + 8, y + tileH / 2);
+    }
+
+    tft.setTextColor(state.temps.valid[i] ? COLOR_PRIMARY : COLOR_DARK_GREY);
+    tft.setTextSize(1);
+    tft.setFont(&fonts::efontJA_16);
+    tft.setTextDatum(middle_right);
+    tft.drawString(valBuf, x + tileW - 10, y + tileH / 2);
+    tft.setTextDatum(top_left);
+  }
+}
+
 static void renderTouchCalibration() {
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE);
@@ -3477,6 +3561,9 @@ void update(const SystemState &state) {
       break;
     case UI_MANUAL:
       renderManual(state);
+      break;
+    case UI_ALL_TEMPS:
+      renderAllTemps(state, full);
       break;
     default:
       renderDashboard(state, full);

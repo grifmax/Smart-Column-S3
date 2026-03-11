@@ -206,6 +206,7 @@ bool loadSettings(Settings& settings) {
     settings.language = prefs.getUChar(NVS_KEY_LANGUAGE, 0);
     settings.theme = prefs.getUChar(NVS_KEY_THEME, 0);
     settings.soundEnabled = prefs.getBool(NVS_KEY_SOUND, true);
+    settings.lastRebootReason = prefs.getUChar(NVS_KEY_LAST_REBOOT_REASON, 0);
 
     prefs.end();
 
@@ -292,6 +293,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putUChar(NVS_KEY_LANGUAGE, settings.language);
     prefs.putUChar(NVS_KEY_THEME, settings.theme);
     prefs.putBool(NVS_KEY_SOUND, settings.soundEnabled);
+    prefs.putUChar(NVS_KEY_LAST_REBOOT_REASON, settings.lastRebootReason);
 
     prefs.end();
 

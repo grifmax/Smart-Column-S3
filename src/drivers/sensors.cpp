@@ -554,30 +554,47 @@ void updateHealth(SystemHealth& health) {
     health.cpuTemp = (uint8_t)temperatureRead(); // ESP32-S3 internal temp sensor
 
     // Расчёт общего здоровья (0-100%)
-    uint8_t score = 100;
+    int16_t score = 100;
 
     // Снижение за каждый неработающий критичный датчик
-    if (!health.pzemOk) score -= 20;
-    if (!health.ads1115Ok) score -= 10;
+    if (!health.pzemOk) score -= 30; // Критично для контроля мощности
+    if (!health.ads1115Ok) score -= 15; // Давление
     if (!health.bmp280Ok) score -= 5;
 
     // Снижение за неработающие температурные датчики
     if (health.tempSensorsTotal > 0) {
         uint8_t tempFailures = health.tempSensorsTotal - health.tempSensorsOk;
-        score -= (tempFailures * 10);
+        score -= (tempFailures * 15); // Каждый датчик важен
+    } else {
+        score -= 50; // Вообще нет датчиков
     }
 
-    // Снижение за проблемы с WiFi
-    if (!health.wifiConnected) score -= 15;
-    else if (health.wifiRSSI < -80) score -= 5;  // Слабый сигнал
+    // Снижение за проблемы с WiFi (только если не в режиме AP)
+    if (!health.wifiConnected && WiFi.getMode() != WIFI_AP) {
+        score -= 10;
+    } else if (health.wifiConnected && health.wifiRSSI < -85) {
+        score -= 5;  // Очень слабый сигнал
+    }
 
     // Снижение за высокий уровень ошибок
-    if (health.pzemSpikeCount > 100) score -= 10;
-    if (health.tempReadErrors > 50) score -= 10;
+    if (health.pzemSpikeCount > 50) score -= 5;
+    if (health.pzemSpikeCount > 200) score -= 10;
+    if (health.tempReadErrors > 20) score -= 5;
+    if (health.tempReadErrors > 100) score -= 10;
+
+    // Снижение за системные проблемы
+    if (health.freeHeap < 32768) score -= 10; // Мало памяти
+    if (health.cpuTemp > 85) score -= 20;     // Перегрев
+
+    // Штраф за WDT перезагрузку в прошлом
+    if (health.lastRebootReason == 3 || health.lastRebootReason == 4) { // ESP_RST_WDT, ESP_RST_TASK_WDT
+        score -= 20;
+    }
 
     // Ограничение 0-100
     if (score < 0) score = 0;
-    health.overallHealth = score;
+    if (score > 100) score = 100;
+    health.overallHealth = (uint8_t)score;
 
     health.lastUpdate = millis();
 }
