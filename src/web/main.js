@@ -4,7 +4,7 @@
 import { saveCloudConfig, generateCloudClaim } from './cloud/cloud-config.js';
 import { loadESP32Devices, loadESP32Device, showAddDeviceForm, loadESP32Config, toggleESP32Fields, saveESP32Device, saveESP32Config, activateESP32Device, deleteESP32Device, testESP32Connection, claimDeviceToAccount } from './cloud/devices.js';
 import { toggleUserMenu, logout, switchAccount } from './cloud/user.js';
-import { addLog, clearLogs, downloadLogs } from './core/logs.js';
+import { addLog, clearLogs, downloadLogs, initLogsPage } from './core/logs.js';
 import { toggleMemoryStats } from './core/memory.js';
 import { setTheme } from './core/theme.js';
 import { toggleTopMenu } from './core/top-menu.js';
@@ -44,7 +44,7 @@ import { loadSafetySettings, saveSafetySettings } from './settings/safety-thresh
 import { loadMqttSettings, saveMqtt, sendMqttTest } from './settings/mqtt-save.js';
 import { toggleMqttFields } from './settings/mqtt.js';
 import { loadPumpInfo, loadVersionInfo } from './settings/pump-version.js';
-import { saveSecurity, toggleAuthFields } from './settings/security.js';
+import { loadSecuritySettings, saveSecurity, toggleAuthFields } from './settings/security.js';
 import { saveTelegramSettings, sendTelegramTest, toggleTelegramFields, loadTelegramSettings } from './settings/telegram.js';
 import {
     saveWiFi,
@@ -88,8 +88,9 @@ import {
     updateFermentationMode,
     updatePotentialAlcoholMode
 } from './tools/calculators.js';
+import { initToolsWorkbench } from './tools/panel.js';
 import { toggleOperatorView } from './ui/operator-view.js';
-import { zoomScheme } from './ui/scheme.js';
+import { zoomScheme, syncSchemeZoomLayout } from './ui/scheme.js';
 
 // Функции для инициализации
 import { initTabs } from './core/tabs.js';
@@ -272,12 +273,26 @@ function initSidebarCollapse() {
     });
 }
 
+function removeTopBarAbvStatus() {
+    const abvEl = document.getElementById('abv');
+    const statusItem = abvEl?.closest('.status-item');
+    if (!statusItem) return;
+
+    const separator = statusItem.previousElementSibling;
+    if (separator?.classList?.contains('separator')) {
+        separator.remove();
+    }
+
+    statusItem.remove();
+}
+
 document.addEventListener('DOMContentLoaded', async function () {
     initTabs();
     initTopMenu();
     initSidebarCollapse();
     initOperatorViewToggle();
     initRuntimeMonitorUi();
+    removeTopBarAbvStatus();
     loadPlannedAbv();
     renderAbvValue();
 
@@ -288,15 +303,20 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     loadTheme();
     loadDemoMode();
+    initLogsPage();
     initMiniChart();
+    syncSchemeZoomLayout();
+    window.addEventListener('resize', syncSchemeZoomLayout);
     loadMemoryStatsPreference();
     loadPumpInfo();
     loadVersionInfo();
     updatePotentialAlcoholMode();
     updateFermentationMode();
+    initToolsWorkbench();
     initEquipmentSettingsUi();
     loadEquipmentSettings();
     loadSafetySettings();
+    loadSecuritySettings();
     loadMqttSettings();
     loadTelegramSettings();
     initWiFiSettings();

@@ -69,9 +69,15 @@
 /* Two-column layout: scheme left, instruments right */
 .cols-layout {
     display: grid;
-    grid-template-columns: minmax(280px, 1fr) minmax(300px, 1.2fr);
+    grid-template-columns: auto minmax(300px, 1fr);
     gap: 16px;
     align-items: start;
+}
+
+.cols-layout > .col-stack:first-child {
+    width: fit-content;
+    max-width: 100%;
+    justify-self: start;
 }
 
 .col-stack {
@@ -484,7 +490,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--scheme-scale-width, 100%);
+    width: var(--scheme-target-width, 420px);
     max-width: 100%;
     margin: 0 auto;
     border-radius: 10px;

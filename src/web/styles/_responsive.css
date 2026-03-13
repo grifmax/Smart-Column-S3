@@ -81,6 +81,10 @@
         grid-template-columns: 1fr;
     }
 
+    .cols-layout > .col-stack:first-child {
+        width: 100%;
+    }
+
     .operator-screen {
         padding: 12px;
     }

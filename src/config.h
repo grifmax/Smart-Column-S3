@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.10.0"
+#define FIRMWARE_VERSION "1.10.20"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -606,6 +606,13 @@ struct MenuItem {
 #define NVS_KEY_WIFI_SSID "wifi_ssid"
 #define NVS_KEY_WIFI_PASS "wifi_pass"
 #define NVS_KEY_WIFI_PROFILES "wifi_profiles"
+#define NVS_KEY_MQTT_ENABLED "mq_en"
+#define NVS_KEY_MQTT_SERVER "mq_srv"
+#define NVS_KEY_MQTT_PORT "mq_port"
+#define NVS_KEY_MQTT_USERNAME "mq_user"
+#define NVS_KEY_MQTT_PASSWORD "mq_pass"
+#define NVS_KEY_MQTT_BASE_TOPIC "mq_topic"
+#define NVS_KEY_MQTT_INTERVAL "mq_intvl"
 #define NVS_KEY_TG_TOKEN "tg_token"
 #define NVS_KEY_TG_CHAT "tg_chat"
 #define NVS_KEY_LANGUAGE "lang"
@@ -640,6 +647,10 @@ struct MenuItem {
 #define NVS_KEY_DIST_END_TEMP "dist_etmp"
 #define NVS_KEY_DIST_POWER_PCT "dist_ppct"
 #define NVS_KEY_DIST_TAILS_VOL "dist_xvol"
+#define NVS_KEY_WEB_AUTH_ENABLED "web_auth"
+#define NVS_KEY_WEB_RATE_LIMIT "web_rate"
+#define NVS_KEY_WEB_USERNAME "web_user"
+#define NVS_KEY_WEB_PASSWORD "web_pass"
 #define NVS_KEY_NBK_POWER "nbk_pwr"
 #define NVS_KEY_NBK_PUMP_SPEED "nbk_spd"
 #define NVS_KEY_NBK_BOTTOM_TEMP "nbk_btm"

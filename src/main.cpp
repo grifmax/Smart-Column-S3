@@ -74,6 +74,7 @@ void loadSettings();
 void runTasks();
 void resetWiFiAndRestart(); // Сброс WiFi настроек и перезагрузка
 static void showBootStage(const char* message);
+static void handleLoggerLifecycle(uint32_t now);
 
 // =============================================================================
 // BUZZER HELPER
@@ -222,21 +223,22 @@ void setup() {
   }
 
   // MQTT (только если включён и WiFi подключён)
-  if (g_settings.mqtt.enabled && WiFi.status() == WL_CONNECTED) {
+#endif
+
+  if (g_settings.mqtt.enabled && g_settings.mqtt.server[0] != '\0') {
     LOG_I("Starting MQTT...");
+    MQTT::setBaseTopic(g_settings.mqtt.baseTopic);
     MQTT::init(g_settings.mqtt.server, g_settings.mqtt.port,
                g_settings.mqtt.username[0] ? g_settings.mqtt.username : nullptr,
                g_settings.mqtt.password[0] ? g_settings.mqtt.password
                                            : nullptr);
-    if (g_settings.mqtt.baseTopic[0]) {
-      MQTT::setBaseTopic(g_settings.mqtt.baseTopic);
+    if (WiFi.status() == WL_CONNECTED) {
+      MQTT::handle();
     }
   }
-#endif
 
   // Логгер
   Logger::init();
-  Logger::log(LogEvent{millis(), 0, "System started"});
   esp_task_wdt_reset(); // Сброс watchdog перед завершением setup()
 
   // Готово
@@ -260,6 +262,84 @@ static void showBootStage(const char* message) {
 #ifdef DISPLAY_ENABLED
   Display::showMessage("BOOT", message, 0);
 #endif
+}
+
+static bool isProcessModeActive(Mode mode) {
+  return mode != Mode::IDLE;
+}
+
+static void logSessionEvent(uint8_t level, const char* message) {
+  if (!Logger::isSessionActive() || !message || !message[0]) {
+    return;
+  }
+
+  LogEvent event{};
+  event.timestamp = millis();
+  event.level = level;
+  snprintf(event.message, sizeof(event.message), "%s", message);
+  Logger::log(event);
+}
+
+static void startLoggerSession(Mode mode, uint32_t now) {
+  Logger::startSession();
+  if (!Logger::isSessionActive()) {
+    return;
+  }
+
+  char message[128];
+  snprintf(message, sizeof(message), "Run started: %s", FSM::getModeName(mode));
+  logSessionEvent(0, message);
+  Logger::writeData(g_state);
+  g_lastLogWrite = now;
+}
+
+static void stopLoggerSession(Mode mode, Mode nextMode) {
+  if (!Logger::isSessionActive()) {
+    return;
+  }
+
+  if (g_state.mode == mode || g_state.mode == Mode::IDLE) {
+    Logger::writeData(g_state);
+  }
+
+  char message[128];
+  if (Safety::isLatched(g_state)) {
+    const char* alarmMessage = g_state.currentAlarm.message[0]
+                                   ? g_state.currentAlarm.message
+                                   : "Safety latch active";
+    snprintf(message, sizeof(message), "Run aborted: %s (%s)",
+             FSM::getModeName(mode), alarmMessage);
+    logSessionEvent(2, message);
+  } else if (isProcessModeActive(nextMode) && nextMode != mode) {
+    snprintf(message, sizeof(message), "Run switched: %s -> %s",
+             FSM::getModeName(mode), FSM::getModeName(nextMode));
+    logSessionEvent(0, message);
+  } else {
+    snprintf(message, sizeof(message), "Run finished: %s",
+             FSM::getModeName(mode));
+    logSessionEvent(0, message);
+  }
+
+  Logger::stopSession();
+}
+
+static void handleLoggerLifecycle(uint32_t now) {
+  static Mode loggedMode = Mode::IDLE;
+  const Mode currentMode = g_state.mode;
+
+  if (currentMode == loggedMode) {
+    return;
+  }
+
+  if (isProcessModeActive(loggedMode)) {
+    stopLoggerSession(loggedMode, currentMode);
+  }
+
+  if (isProcessModeActive(currentMode)) {
+    startLoggerSession(currentMode, now);
+  }
+
+  loggedMode = currentMode;
 }
 
 // =============================================================================
@@ -353,7 +433,8 @@ void loop() {
   CloudTunnel::loop();
 #endif
 #if TEST_ENABLE_LOGGER
-  if (g_state.mode != Mode::IDLE &&
+  handleLoggerLifecycle(now);
+  if (Logger::isSessionActive() &&
       now - g_lastLogWrite >= INTERVAL_LOG_WRITE) {
     g_lastLogWrite = now;
     Logger::writeData(g_state);
@@ -402,34 +483,37 @@ void loop() {
   }
 #endif
 
+  // Демо-симулятор должен обновить сенсоры до safety, иначе demoMode
+  // блокируется ложным sensor_failure без реальных термометров.
+  if (g_settings.demoMode) {
+    DemoSimulator::update(g_state, g_settings);
+  }
+
   // Проверка безопасности (высший приоритет)
   if (now - g_lastSafetyCheck >= INTERVAL_SAFETY_CHECK) {
     g_lastSafetyCheck = now;
     Safety::check(g_state, g_settings);
   }
 
-  // Чтение температур
-  if (now - g_lastTempRead >= INTERVAL_TEMP_READ) {
-    g_lastTempRead = now;
-    Sensors::readTemperatures(g_state.temps);
-  }
+  if (!g_settings.demoMode) {
+    // Чтение температур
+    if (now - g_lastTempRead >= INTERVAL_TEMP_READ) {
+      g_lastTempRead = now;
+      Sensors::readTemperatures(g_state.temps);
+    }
 
-  // Чтение давления
-  if (now - g_lastPressureRead >= INTERVAL_PRESSURE_READ) {
-    g_lastPressureRead = now;
-    Sensors::readPressure(g_state.pressure);
-    Sensors::readHydrometer(g_state.hydrometer, g_state.temps.columnTop);
-  }
+    // Чтение давления
+    if (now - g_lastPressureRead >= INTERVAL_PRESSURE_READ) {
+      g_lastPressureRead = now;
+      Sensors::readPressure(g_state.pressure);
+      Sensors::readHydrometer(g_state.hydrometer, g_state.temps.columnTop);
+    }
 
-  // Чтение мощности
-  if (now - g_lastPowerRead >= INTERVAL_POWER_READ) {
-    g_lastPowerRead = now;
-    Sensors::readPower(g_state.power);
-  }
-
-  // Демо-симулятор (перезаписывает данные сенсоров если demoMode=true)
-  if (g_settings.demoMode) {
-    DemoSimulator::update(g_state, g_settings);
+    // Чтение мощности
+    if (now - g_lastPowerRead >= INTERVAL_POWER_READ) {
+      g_lastPowerRead = now;
+      Sensors::readPower(g_state.power);
+    }
   }
 
   // FSM - конечный автомат режимов
@@ -457,7 +541,8 @@ void loop() {
 #endif
 
   // Логирование
-  if (g_state.mode != Mode::IDLE &&
+  handleLoggerLifecycle(now);
+  if (Logger::isSessionActive() &&
       now - g_lastLogWrite >= INTERVAL_LOG_WRITE) {
     g_lastLogWrite = now;
     Logger::writeData(g_state);
@@ -503,12 +588,12 @@ void loop() {
   // Telegram
 #if NETWORK_SERVICES_ENABLED
   TelegramBot::update();
+#endif
 
-  // MQTT
-  if (g_settings.mqtt.enabled) {
+  if (g_settings.mqtt.enabled && WiFi.status() == WL_CONNECTED &&
+      g_settings.mqtt.server[0] != '\0') {
     MQTT::handle();
   }
-#endif
 
   // Обновление uptime
   g_state.uptime = now / 1000;

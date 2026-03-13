@@ -103,7 +103,11 @@ export async function claimDeviceToAccount() {
 
         const text = await response.text();
         let payload = null;
-        try { payload = JSON.parse(text); } catch (_) { }
+        try {
+            payload = JSON.parse(text);
+        } catch {
+            payload = null;
+        }
 
         if (!response.ok) {
             const msg = (payload && (payload.error || payload.message)) ? (payload.error || payload.message) : text;
@@ -534,7 +538,7 @@ export async function saveESP32Device() {
 
 
 
-        const result = await response.json();
+        await response.json();
 
         alert('Устройство сохранено успешно!');
 

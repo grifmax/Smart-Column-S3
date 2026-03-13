@@ -3,17 +3,162 @@
  */
 
 #include "safety.h"
+
+#include "fsm.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
 #include "../drivers/valves.h"
 #include "../interface/mqtt.h"
+#include "../storage/logger.h"
 
 namespace Safety {
+namespace {
 
-static float clampSafety(float value, float minValue, float maxValue) {
+constexpr uint32_t TEMP_SENSOR_STARTUP_GRACE_MS = 15000;
+
+float clampSafety(float value, float minValue, float maxValue) {
     if (value < minValue) return minValue;
     if (value > maxValue) return maxValue;
     return value;
+}
+
+void writeReason(char* reason, size_t reasonSize, const char* message) {
+    if (!reason || reasonSize == 0) {
+        return;
+    }
+    snprintf(reason, reasonSize, "%s", message ? message : "");
+}
+
+void forceSafeOutputs() {
+    Heater::emergencyStop();
+    Pump::stop();
+    Valves::closeAll();
+}
+
+void clearCurrentAlarm(SystemState& state) {
+    state.currentAlarm = CurrentAlarm{};
+}
+
+void latchAlarm(SystemState& state, AlarmType type, AlarmLevel level,
+                const char* message, uint32_t now) {
+    forceSafeOutputs();
+    state.safetyOk = false;
+
+    state.currentAlarm.type = type;
+    state.currentAlarm.level = level;
+    state.currentAlarm.timestamp = now;
+    state.currentAlarm.acknowledged = false;
+    snprintf(state.currentAlarm.message, sizeof(state.currentAlarm.message), "%s",
+             message ? message : "Safety alarm");
+    Logger::logf(2, "Safety alarm latched: %s", state.currentAlarm.message);
+
+    if (state.mode != Mode::IDLE) {
+        FSM::abortMode(state);
+    }
+}
+
+bool hasTempSensorTimeout(const SystemState& state, uint32_t now) {
+    // DS18B20 are read asynchronously, so after boot we need one full
+    // request/read cycle before declaring the temperature bus stale.
+    if (state.temps.lastUpdate == 0) {
+        return now > TEMP_SENSOR_STARTUP_GRACE_MS;
+    }
+
+    return (now - state.temps.lastUpdate > SAFETY_SENSOR_TIMEOUT_MS);
+}
+
+bool canResetAlarm(const SystemState& state, const Settings& settings, uint32_t now,
+                   char* reason, size_t reasonSize) {
+    const float tsaMaxC = clampSafety(settings.safety.tsaMaxC, 35.0f, 120.0f);
+    const float waterOutMaxC =
+        clampSafety(settings.safety.waterOutMaxC, 30.0f, 120.0f);
+    const float pressureMaxMmHg =
+        clampSafety(settings.safety.pressureMaxMmHg, 5.0f, 200.0f);
+
+    if (hasTempSensorTimeout(state, now)) {
+        writeReason(reason, reasonSize,
+                    "Temperature sensors are still offline or stale");
+        return false;
+    }
+
+    if (state.temps.valid[TEMP_TSA] && state.temps.tsa > tsaMaxC) {
+        char buffer[96];
+        snprintf(buffer, sizeof(buffer), "TSA temperature is still too high: %.1fC",
+                 state.temps.tsa);
+        writeReason(reason, reasonSize, buffer);
+        return false;
+    }
+
+    if (state.temps.valid[TEMP_WATER_OUT] && state.temps.waterOut > waterOutMaxC) {
+        char buffer[96];
+        snprintf(buffer, sizeof(buffer),
+                 "Cooling water outlet is still too hot: %.1fC",
+                 state.temps.waterOut);
+        writeReason(reason, reasonSize, buffer);
+        return false;
+    }
+
+    if (state.pressure.ok && state.pressure.cube > pressureMaxMmHg) {
+        char buffer[96];
+        snprintf(buffer, sizeof(buffer),
+                 "Pressure is still above the safe limit: %.1f mmHg",
+                 state.pressure.cube);
+        writeReason(reason, reasonSize, buffer);
+        return false;
+    }
+
+    writeReason(reason, reasonSize, "");
+    return true;
+}
+
+} // namespace
+
+const char* getAlarmTypeToken(AlarmType type) {
+    switch (type) {
+        case AlarmType::VAPOR_BREAKTHROUGH:
+            return "vapor_breakthrough";
+        case AlarmType::WATER_OVERHEAT:
+            return "water_overheat";
+        case AlarmType::WATER_RISE_RATE:
+            return "water_rise_rate";
+        case AlarmType::COLUMN_FLOOD:
+            return "column_flood";
+        case AlarmType::PRESSURE_RISE_RATE:
+            return "pressure_rise_rate";
+        case AlarmType::SENSOR_FAILURE:
+            return "sensor_failure";
+        case AlarmType::POWER_FAILURE:
+            return "power_failure";
+        case AlarmType::OVERHEAT:
+            return "overheat";
+        case AlarmType::LOW_WATER:
+            return "low_water";
+        case AlarmType::EMERGENCY_STOP:
+            return "emergency_stop";
+        case AlarmType::NONE:
+        default:
+            return "none";
+    }
+}
+
+const char* getAlarmLevelToken(AlarmLevel level) {
+    switch (level) {
+        case AlarmLevel::INFO:
+            return "info";
+        case AlarmLevel::WARNING:
+            return "warning";
+        case AlarmLevel::ERROR:
+            return "error";
+        case AlarmLevel::CRITICAL:
+            return "critical";
+        case AlarmLevel::NONE:
+        default:
+            return "none";
+    }
+}
+
+bool isLatched(const SystemState& state) {
+    return !state.safetyOk && state.currentAlarm.type != AlarmType::NONE;
 }
 
 void check(SystemState& state, const Settings& settings) {
@@ -29,14 +174,42 @@ void check(SystemState& state, const Settings& settings) {
     bool emergencyStop = false;
     AlarmType alarmType = AlarmType::NONE;
     AlarmLevel alarmLevel = AlarmLevel::NONE;
+    char alarmMessage[128] = "";
     const uint32_t now = millis();
 
     const float tsaMaxC = clampSafety(settings.safety.tsaMaxC, 35.0f, 120.0f);
-    const float waterOutMaxC = clampSafety(settings.safety.waterOutMaxC, 30.0f, 120.0f);
-    const float pressureMaxMmHg = clampSafety(settings.safety.pressureMaxMmHg, 5.0f, 200.0f);
-    const float waterOutRiseRateCMin = clampSafety(settings.safety.waterOutRiseRateCMin, 0.5f, 60.0f);
-    const float pressureRiseRateMmHgMin = clampSafety(settings.safety.pressureRiseRateMmHgMin, 1.0f, 200.0f);
+    const float waterOutMaxC =
+        clampSafety(settings.safety.waterOutMaxC, 30.0f, 120.0f);
+    const float pressureMaxMmHg =
+        clampSafety(settings.safety.pressureMaxMmHg, 5.0f, 200.0f);
+    const float waterOutRiseRateCMin =
+        clampSafety(settings.safety.waterOutRiseRateCMin, 0.5f, 60.0f);
+    const float pressureRiseRateMmHgMin =
+        clampSafety(settings.safety.pressureRiseRateMmHgMin, 1.0f, 200.0f);
     state.pressure.critThreshold = pressureMaxMmHg;
+
+    if (isLatched(state)) {
+        if (state.currentAlarm.type == AlarmType::SENSOR_FAILURE &&
+            (settings.demoMode || state.mode == Mode::IDLE)) {
+            if (settings.demoMode) {
+                clearCurrentAlarm(state);
+                state.safetyOk = true;
+                LOG_I("SAFETY: Sensor failure latch bypassed in demo mode");
+                return;
+            }
+
+            char reason[96];
+            if (canResetAlarm(state, settings, now, reason, sizeof(reason))) {
+                clearCurrentAlarm(state);
+                state.safetyOk = true;
+                LOG_I("SAFETY: Sensor failure latch cleared after sensor recovery");
+                return;
+            }
+        }
+
+        forceSafeOutputs();
+        return;
+    }
 
     float waterOutRiseRate = 0.0f;
     float pressureRiseRate = 0.0f;
@@ -47,7 +220,8 @@ void check(SystemState& state, const Settings& settings) {
         const float dtMin = static_cast<float>(now - prevRiseTsMs) / 60000.0f;
         if (dtMin >= 0.016f) {
             if (prevWaterOutValid && state.temps.valid[TEMP_WATER_OUT]) {
-                const float currentWaterOutRiseRate = (state.temps.waterOut - prevWaterOutC) / dtMin;
+                const float currentWaterOutRiseRate =
+                    (state.temps.waterOut - prevWaterOutC) / dtMin;
                 if (waterRateArmed) {
                     waterOutRiseRate = currentWaterOutRiseRate;
                     waterOutRateValid = true;
@@ -57,8 +231,10 @@ void check(SystemState& state, const Settings& settings) {
             } else {
                 waterRateArmed = false;
             }
+
             if (prevPressureValid && state.pressure.ok) {
-                const float currentPressureRiseRate = (state.pressure.cube - prevPressureMmHg) / dtMin;
+                const float currentPressureRiseRate =
+                    (state.pressure.cube - prevPressureMmHg) / dtMin;
                 if (pressureRateArmed) {
                     pressureRiseRate = currentPressureRiseRate;
                     pressureRateValid = true;
@@ -78,6 +254,7 @@ void check(SystemState& state, const Settings& settings) {
         prevWaterOutValid = false;
         waterRateArmed = false;
     }
+
     if (state.pressure.ok) {
         prevPressureMmHg = state.pressure.cube;
         prevPressureValid = true;
@@ -85,6 +262,7 @@ void check(SystemState& state, const Settings& settings) {
         prevPressureValid = false;
         pressureRateArmed = false;
     }
+
     prevRiseTsMs = now;
     riseBaselineReady = true;
 
@@ -93,100 +271,116 @@ void check(SystemState& state, const Settings& settings) {
         emergencyStop = true;
         alarmType = AlarmType::VAPOR_BREAKTHROUGH;
         alarmLevel = AlarmLevel::CRITICAL;
-
-        char msg[128];
-        snprintf(msg, sizeof(msg), "Vapor breakthrough! TSA: %.1fC", state.temps.tsa);
-        MQTT::publishNotification("CRITICAL", msg, "error");
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Vapor breakthrough detected at TSA: %.1fC", state.temps.tsa);
+        MQTT::publishNotification("CRITICAL", alarmMessage, "error");
     }
 
-    if (state.temps.valid[TEMP_WATER_OUT] && state.temps.waterOut > waterOutMaxC) {
+    if (!emergencyStop && state.temps.valid[TEMP_WATER_OUT] &&
+        state.temps.waterOut > waterOutMaxC) {
         LOG_E("SAFETY: Water overheat! T_water_out=%.1fC", state.temps.waterOut);
-        Heater::emergencyStop();
+        emergencyStop = true;
         alarmType = AlarmType::WATER_OVERHEAT;
         alarmLevel = AlarmLevel::CRITICAL;
-
-        char msg[128];
-        snprintf(msg, sizeof(msg), "Cooling water overheat! Temp: %.1fC", state.temps.waterOut);
-        MQTT::publishNotification("CRITICAL", msg, "error");
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Cooling water overheat: %.1fC", state.temps.waterOut);
+        MQTT::publishNotification("CRITICAL", alarmMessage, "error");
     }
 
-    if (state.pressure.cube > pressureMaxMmHg) {
-        LOG_E("SAFETY: Column flood! P=%.1f mmHg", state.pressure.cube);
-        Heater::setPower(Heater::getPower() * 0.85f);
+    if (!emergencyStop && state.pressure.ok &&
+        state.pressure.cube > pressureMaxMmHg) {
+        LOG_E("SAFETY: Pressure limit exceeded! P=%.1f mmHg",
+              state.pressure.cube);
+        emergencyStop = true;
         alarmType = AlarmType::COLUMN_FLOOD;
         alarmLevel = AlarmLevel::CRITICAL;
-
-        char msg[160];
-        snprintf(msg, sizeof(msg), "Column flood! P=%.1f mmHg. Heater power reduced", state.pressure.cube);
-        MQTT::publishNotification("WARNING", msg, "warning");
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Pressure exceeded safe limit: %.1f mmHg", state.pressure.cube);
+        MQTT::publishNotification("CRITICAL", alarmMessage, "error");
     }
 
-    if (!emergencyStop && waterOutRateValid && state.temps.waterOut > 30.0f &&
+    if (!emergencyStop && !settings.demoMode && waterOutRateValid &&
+        state.temps.waterOut > 30.0f &&
         waterOutRiseRate > waterOutRiseRateCMin) {
-        LOG_E("SAFETY: Fast water temperature rise! dT/dt=%.1f C/min", waterOutRiseRate);
+        LOG_E("SAFETY: Fast water temperature rise! dT/dt=%.1f C/min",
+              waterOutRiseRate);
         emergencyStop = true;
         alarmType = AlarmType::WATER_RISE_RATE;
         alarmLevel = AlarmLevel::CRITICAL;
-
-        char msg[160];
-        snprintf(msg, sizeof(msg), "Fast water temp rise: %.1f C/min (limit %.1f)",
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Cooling water temperature rises too fast: %.1f C/min (limit %.1f)",
                  waterOutRiseRate, waterOutRiseRateCMin);
-        MQTT::publishNotification("CRITICAL", msg, "error");
+        MQTT::publishNotification("CRITICAL", alarmMessage, "error");
     }
 
-    if (!emergencyStop && pressureRateValid && state.pressure.cube > 5.0f &&
+    if (!emergencyStop && !settings.demoMode && pressureRateValid &&
+        state.pressure.cube > 5.0f &&
         pressureRiseRate > pressureRiseRateMmHgMin) {
-        LOG_E("SAFETY: Fast pressure rise! dP/dt=%.1f mmHg/min", pressureRiseRate);
+        LOG_E("SAFETY: Fast pressure rise! dP/dt=%.1f mmHg/min",
+              pressureRiseRate);
         emergencyStop = true;
         alarmType = AlarmType::PRESSURE_RISE_RATE;
         alarmLevel = AlarmLevel::CRITICAL;
-
-        char msg[160];
-        snprintf(msg, sizeof(msg), "Fast pressure rise: %.1f mmHg/min (limit %.1f)",
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Pressure rises too fast: %.1f mmHg/min (limit %.1f)",
                  pressureRiseRate, pressureRiseRateMmHgMin);
-        MQTT::publishNotification("CRITICAL", msg, "error");
+        MQTT::publishNotification("CRITICAL", alarmMessage, "error");
     }
 
-    if (now - state.temps.lastUpdate > SAFETY_SENSOR_TIMEOUT_MS) {
+    if (!emergencyStop && !settings.demoMode && hasTempSensorTimeout(state, now)) {
         LOG_E("SAFETY: Temperature sensor timeout!");
         emergencyStop = true;
         alarmType = AlarmType::SENSOR_FAILURE;
         alarmLevel = AlarmLevel::CRITICAL;
-
-        MQTT::publishNotification(
-            "CRITICAL",
-            "Temperature sensor timeout! System stopped",
-            "error"
-        );
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Temperature sensor timeout. Heating is blocked");
+        MQTT::publishNotification("CRITICAL", alarmMessage, "error");
     }
 
     if (emergencyStop) {
-        Heater::emergencyStop();
-        Pump::stop();
-        Valves::closeAll();
-        state.safetyOk = false;
-
-        state.currentAlarm.type = alarmType;
-        state.currentAlarm.level = alarmLevel;
-        state.currentAlarm.timestamp = now;
-        state.currentAlarm.acknowledged = false;
-        snprintf(
-            state.currentAlarm.message,
-            sizeof(state.currentAlarm.message),
-            "Emergency stop (alarm=%u)",
-            static_cast<unsigned>(alarmType)
-        );
+        latchAlarm(state, alarmType, alarmLevel, alarmMessage, now);
     } else {
         state.safetyOk = true;
     }
 }
 
-void acknowledge() {
-    LOG_I("SAFETY: Alarm acknowledged");
+void acknowledge(SystemState& state) {
+    if (state.currentAlarm.type == AlarmType::NONE) {
+        return;
+    }
+
+    state.currentAlarm.acknowledged = true;
+    LOG_I("SAFETY: Alarm acknowledged (%s)",
+          getAlarmTypeToken(state.currentAlarm.type));
+    Logger::logf(0, "Safety alarm acknowledged: %s",
+                 getAlarmTypeToken(state.currentAlarm.type));
 }
 
-void reset() {
-    LOG_I("SAFETY: System reset - safety OK");
+bool reset(SystemState& state, const Settings& settings, char* reason,
+           size_t reasonSize) {
+    const uint32_t now = millis();
+    if (!isLatched(state)) {
+        clearCurrentAlarm(state);
+        state.safetyOk = true;
+        writeReason(reason, reasonSize, "");
+        return true;
+    }
+
+    if (!canResetAlarm(state, settings, now, reason, reasonSize)) {
+        LOG_W("SAFETY: Reset rejected: %s", reason ? reason : "unsafe state");
+        Logger::logf(1, "Safety reset rejected: %s",
+                     reason && reason[0] ? reason : "unsafe state");
+        forceSafeOutputs();
+        return false;
+    }
+
+    forceSafeOutputs();
+    clearCurrentAlarm(state);
+    state.safetyOk = true;
+    writeReason(reason, reasonSize, "");
+    LOG_I("SAFETY: Alarm latch cleared");
+    Logger::logf(0, "Safety alarm cleared");
+    return true;
 }
 
 } // namespace Safety

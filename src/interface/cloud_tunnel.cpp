@@ -16,6 +16,7 @@
 #include "../config.h"
 #include "../types.h"
 #include "../control/fsm.h"
+#include "../control/safety.h"
 #include "../storage/nvs_manager.h"
 
 extern SystemState g_state;
@@ -98,6 +99,19 @@ static const char* getPhaseToken(RectPhase phase) {
     case RectPhase::COMPLETED: return "completed";
     default: return "unknown";
   }
+}
+
+static void fillAlarmJson(JsonObject alarm, const SystemState& state) {
+  const bool active = (state.currentAlarm.type != AlarmType::NONE);
+  alarm["active"] = active;
+  alarm["latched"] = Safety::isLatched(state);
+  alarm["type"] = Safety::getAlarmTypeToken(state.currentAlarm.type);
+  alarm["typeCode"] = static_cast<int>(state.currentAlarm.type);
+  alarm["level"] = Safety::getAlarmLevelToken(state.currentAlarm.level);
+  alarm["levelCode"] = static_cast<int>(state.currentAlarm.level);
+  alarm["message"] = active ? state.currentAlarm.message : "";
+  alarm["timestamp"] = state.currentAlarm.timestamp;
+  alarm["acknowledged"] = state.currentAlarm.acknowledged;
 }
 
 static String base64Encode(const uint8_t* data, size_t len) {
@@ -230,7 +244,7 @@ static void handleHttpRequest(JsonDocument& req) {
   // GET /api/status
   if (strcmp(method, "GET") == 0 && strcmp(path, "/api/status") == 0) {
     // Соберём JSON как в WebServer::/api/status (минимально достаточно для UI)
-    StaticJsonDocument<2048> doc;
+    StaticJsonDocument<2560> doc;
     doc["mode"] = static_cast<int>(g_state.mode);
     doc["modeStr"] = getModeToken(g_state.mode);
     doc["phase"] = static_cast<int>(g_state.rectPhase);
@@ -239,6 +253,8 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["safetyOk"] = g_state.safetyOk;
     doc["uptime"] = g_state.uptime;
     doc["deviceId"] = deviceId;
+    JsonObject alarm = doc.createNestedObject("alarm");
+    fillAlarmJson(alarm, g_state);
 
     JsonObject temps = doc.createNestedObject("temps");
     temps["cube"] = g_state.temps.cube;
@@ -269,6 +285,38 @@ static void handleHttpRequest(JsonDocument& req) {
     sendHttpResponse(requestId, 200, "{\"success\":true}");
     return;
   }
+  if (strcmp(method, "POST") == 0 && strcmp(path, "/api/safety/ack") == 0) {
+    Safety::acknowledge(g_state);
+
+    DynamicJsonDocument doc(384);
+    doc["success"] = true;
+    doc["message"] = "Alarm acknowledged";
+    JsonObject alarm = doc.createNestedObject("alarm");
+    fillAlarmJson(alarm, g_state);
+
+    String out;
+    serializeJson(doc, out);
+    sendHttpResponse(requestId, 200, out);
+    return;
+  }
+  if (strcmp(method, "POST") == 0 && strcmp(path, "/api/safety/reset") == 0) {
+    char reason[128] = "";
+    const bool ok = Safety::reset(g_state, g_settings, reason, sizeof(reason));
+
+    DynamicJsonDocument doc(384);
+    doc["success"] = ok;
+    doc["message"] = ok ? "Safety alarm reset" : "Safety reset rejected";
+    if (!ok) {
+      doc["reason"] = reason;
+    }
+    JsonObject alarm = doc.createNestedObject("alarm");
+    fillAlarmJson(alarm, g_state);
+
+    String out;
+    serializeJson(doc, out);
+    sendHttpResponse(requestId, ok ? 200 : 409, out, ok ? nullptr : "unsafe_state");
+    return;
+  }
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/process/start") == 0) {
     String bodyJson;
     if (!base64DecodeToString(String(bodyBase64), bodyJson)) {
@@ -290,6 +338,24 @@ static void handleHttpRequest(JsonDocument& req) {
     }
 
     // Остановить текущий режим
+    const bool allowDemoSensorFailure =
+        g_settings.demoMode &&
+        g_state.currentAlarm.type == AlarmType::SENSOR_FAILURE;
+
+    if (Safety::isLatched(g_state) && !allowDemoSensorFailure) {
+      DynamicJsonDocument doc(384);
+      doc["success"] = false;
+      doc["message"] =
+          "Safety alarm is latched. Reset the alarm before starting.";
+      JsonObject alarm = doc.createNestedObject("alarm");
+      fillAlarmJson(alarm, g_state);
+
+      String out;
+      serializeJson(doc, out);
+      sendHttpResponse(requestId, 409, out, "safety_latched");
+      return;
+    }
+
     if (g_state.mode != Mode::IDLE) {
       FSM::stopMode(g_state);
     }
@@ -459,4 +525,3 @@ const char* getDeviceId() {
 }
 
 } // namespace CloudTunnel
-

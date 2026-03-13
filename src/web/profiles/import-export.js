@@ -172,7 +172,7 @@ export function showImportModal() {
 
                 document.getElementById('import-btn').disabled = false;
 
-            } catch (error) {
+            } catch {
 
                 alert('❌ Ошибка чтения файла: неверный формат JSON');
 

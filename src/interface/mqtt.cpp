@@ -22,8 +22,10 @@ extern Settings g_settings;
 
 static WiFiClient wifiClient;
 static PubSubClient mqttClient(wifiClient);
-static String baseTopic = "smartcolumn";
+static String baseTopic = "smart-column";
 static String deviceId;
+static String mqttUsername;
+static String mqttPassword;
 static uint32_t lastReconnectAttempt = 0;
 
 namespace MQTT {
@@ -36,6 +38,8 @@ void init(const char* server, uint16_t port, const char* username, const char* p
     WiFi.macAddress(mac);
     deviceId = String(mac[3], HEX) + String(mac[4], HEX) + String(mac[5], HEX);
     deviceId.toUpperCase();
+    mqttUsername = username ? String(username) : String();
+    mqttPassword = password ? String(password) : String();
 
     mqttClient.setServer(server, port);
     mqttClient.setBufferSize(1024);  // Увеличенный буфер для Discovery
@@ -127,16 +131,25 @@ void init(const char* server, uint16_t port, const char* username, const char* p
 
     LOG_I("MQTT: Device ID: %s", deviceId.c_str());
     LOG_I("MQTT: Server: %s:%d", server, port);
+    LOG_I("MQTT: Auth: %s",
+          mqttUsername.length() ? "username/password" : "anonymous");
 }
 
 bool reconnect() {
     String clientId = "SmartColumn-" + deviceId;
     String willTopic = baseTopic + "/" + deviceId + "/status";
+    const char* username = mqttUsername.length() ? mqttUsername.c_str() : nullptr;
+    const char* password = mqttUsername.length() ? mqttPassword.c_str() : nullptr;
 
     LOG_I("MQTT: Connecting as %s...", clientId.c_str());
 
     // Last Will and Testament (LWT) для индикации доступности
-    if (mqttClient.connect(clientId.c_str(), willTopic.c_str(), 1, true, "offline")) {
+    const bool connected = username
+        ? mqttClient.connect(clientId.c_str(), username, password,
+                             willTopic.c_str(), 1, true, "offline")
+        : mqttClient.connect(clientId.c_str(), willTopic.c_str(), 1, true, "offline");
+
+    if (connected) {
         LOG_I("MQTT: Connected!");
 
         // Публикация online статуса
@@ -342,8 +355,16 @@ bool isConnected() {
     return mqttClient.connected();
 }
 
+void disconnect() {
+    if (mqttClient.connected()) {
+        LOG_I("MQTT: Disconnecting");
+        mqttClient.disconnect();
+    }
+    lastReconnectAttempt = 0;
+}
+
 void setBaseTopic(const char* topic) {
-    baseTopic = String(topic);
+    baseTopic = (topic && topic[0]) ? String(topic) : String("smart-column");
 }
 
 void publishNotification(const char* title, const char* message, const char* level) {

@@ -20,7 +20,7 @@ const MODE_SCHEME_PATHS = {
     [MODE_DIST]: 'schemes/distillation-animated.svg',
     [MODE_MASH]: 'schemes/mash-animated.svg',
     [MODE_HOLD]: 'schemes/hold-animated.svg',
-    [MODE_NBK]: 'schemes/distillation-animated.svg',
+    [MODE_NBK]: 'schemes/nbk-automation.svg',
     [MODE_FERMENTATION]: 'schemes/hold-animated.svg'
 };
 
@@ -31,7 +31,11 @@ const CUBE_LIQUID_BOTTOM_Y = 743;
 const GRADIENT_TOP_Y = 38;
 const GRADIENT_LID_TOP_Y = 488;
 const GRADIENT_CUBE_TOP_Y = 553;
-const SCHEME_ASSET_VERSION = '1.10.0';
+const SCHEME_ASSET_VERSION = __APP_VERSION__;
+const DEFAULT_SCHEME_WIDTH_PX = 420;
+const MIN_SCHEME_WRAP_WIDTH_PX = 210;
+const MIN_INSTRUMENT_PANEL_WIDTH_PX = 300;
+const COLS_LAYOUT_GAP_PX = 16;
 const BOILING_TEMP_TO_CUBE_ABV_TABLE = [
     { tempC: 78.2, abvPercent: 96 },
     { tempC: 79.0, abvPercent: 92 },
@@ -777,132 +781,6 @@ function ensureDynamicLiquidClip(svg) {
     return clipPathShape;
 }
 
-function buildCubeLiquidClipPath(geom) {
-    if (!geom) return '';
-    const left = Number(geom.left);
-    const right = Number(geom.right);
-    const bottom = Number(geom.bottom);
-    const bodyTop = Number(geom.bodyTop);
-    const lidTop = Number(geom.lidTop);
-    const lidTopLeft = Number(geom.lidTopLeft);
-    const lidTopRight = Number(geom.lidTopRight);
-    if (
-        !Number.isFinite(left)
-        || !Number.isFinite(right)
-        || !Number.isFinite(bottom)
-        || !Number.isFinite(bodyTop)
-        || !Number.isFinite(lidTop)
-        || !Number.isFinite(lidTopLeft)
-        || !Number.isFinite(lidTopRight)
-        || right <= left
-        || bottom <= bodyTop
-        || bodyTop <= lidTop
-        || lidTopRight <= lidTopLeft
-    ) {
-        return '';
-    }
-
-    return [
-        `M ${left.toFixed(2)} ${bottom.toFixed(2)}`,
-        `L ${right.toFixed(2)} ${bottom.toFixed(2)}`,
-        `L ${right.toFixed(2)} ${bodyTop.toFixed(2)}`,
-        `L ${lidTopRight.toFixed(2)} ${lidTop.toFixed(2)}`,
-        `L ${lidTopLeft.toFixed(2)} ${lidTop.toFixed(2)}`,
-        `L ${left.toFixed(2)} ${bodyTop.toFixed(2)}`,
-        'Z'
-    ].join(' ');
-}
-
-function ensureCubeLiquidContainerClip(svg, geom) {
-    const clipId = 'clip-cube-liquid-volume';
-    const clipPathId = 'clip-cube-liquid-volume-path';
-    let clipPath = svg.getElementById(clipId);
-    let clipPathShape = svg.getElementById(clipPathId);
-    if (!clipPath || !clipPathShape) {
-        const ns = 'http://www.w3.org/2000/svg';
-        let defs = svg.querySelector('defs');
-        if (!defs && svg.documentElement) {
-            defs = svg.createElementNS(ns, 'defs');
-            svg.documentElement.insertBefore(defs, svg.documentElement.firstChild);
-        }
-        if (!defs) return null;
-
-        if (!clipPath) {
-            clipPath = svg.createElementNS(ns, 'clipPath');
-            clipPath.setAttribute('id', clipId);
-            defs.appendChild(clipPath);
-        }
-        if (!clipPathShape) {
-            clipPathShape = svg.createElementNS(ns, 'path');
-            clipPathShape.setAttribute('id', clipPathId);
-            clipPathShape.setAttribute('d', '');
-            clipPath.appendChild(clipPathShape);
-        }
-    }
-
-    const clipPathD = buildCubeLiquidClipPath(geom);
-    if (clipPathD) clipPathShape.setAttribute('d', clipPathD);
-    return clipPath;
-}
-
-function calculateLiquidTopYByFillPercent(fillPercent, geom) {
-    const fill = Math.max(0, Math.min(1, Number(fillPercent) || 0));
-    const left = Number(geom?.left);
-    const right = Number(geom?.right);
-    const bottom = Number(geom?.bottom);
-    const bodyTop = Number(geom?.bodyTop);
-    const lidTop = Number(geom?.lidTop);
-    const lidTopLeft = Number(geom?.lidTopLeft);
-    const lidTopRight = Number(geom?.lidTopRight);
-
-    if (
-        !Number.isFinite(left)
-        || !Number.isFinite(right)
-        || !Number.isFinite(bottom)
-        || !Number.isFinite(bodyTop)
-        || !Number.isFinite(lidTop)
-        || !Number.isFinite(lidTopLeft)
-        || !Number.isFinite(lidTopRight)
-        || right <= left
-        || bottom <= bodyTop
-    ) {
-        return CUBE_LIQUID_VISIBLE_TOP_Y;
-    }
-
-    const bodyWidth = right - left;
-    const bodyHeight = bottom - bodyTop;
-    const bodyArea = bodyWidth * bodyHeight;
-
-    const lidHeight = Math.max(0, bodyTop - lidTop);
-    const lidBottomWidth = bodyWidth;
-    const lidTopWidth = Math.max(1, lidTopRight - lidTopLeft);
-    const lidArea = ((lidBottomWidth + lidTopWidth) * 0.5) * lidHeight;
-
-    const totalArea = bodyArea + lidArea;
-    if (totalArea <= 0) return CUBE_LIQUID_VISIBLE_TOP_Y;
-
-    const targetArea = totalArea * fill;
-    if (targetArea <= bodyArea) {
-        const bodyFillHeight = targetArea / bodyWidth;
-        return bottom - bodyFillHeight;
-    }
-
-    const targetLidArea = Math.min(lidArea, Math.max(0, targetArea - bodyArea));
-    if (lidHeight <= 0 || targetLidArea <= 0.001) return bodyTop;
-
-    const slope = (lidBottomWidth - lidTopWidth) / lidHeight;
-    let depthIntoLid = 0;
-    if (Math.abs(slope) < 1e-6) {
-        depthIntoLid = targetLidArea / lidBottomWidth;
-    } else {
-        const discr = Math.max(0, (lidBottomWidth * lidBottomWidth) - (2 * slope * targetLidArea));
-        depthIntoLid = (lidBottomWidth - Math.sqrt(discr)) / slope;
-    }
-
-    depthIntoLid = Math.max(0, Math.min(lidHeight, depthIntoLid));
-    return bodyTop - depthIntoLid;
-}
-
 function drawLiquidSurfacePath(liquidPath, topY, leftX, rightX, bottomY, amplitude = 0, phase = 0) {
     if (!liquidPath) return;
 
@@ -1628,8 +1506,8 @@ export function updateInteractiveScheme(data) {
     // Индикатор фазы
     const phaseTextEl = svg.getElementById('txt-phase');
     if (phaseTextEl && data.phase !== undefined) {
-        const phases = ['ОЖИДАНИЕ', 'НАГРЕВ', 'СТАБИЛ.', 'ГОЛОВЫ', 'ПРОДУВКА', 'ТЕЛО', 'ХВОСТЫ', 'ФИНИШ', 'ОШИБКА'];
-        const colors = [
+        let phases = ['ОЖИДАНИЕ', 'НАГРЕВ', 'СТАБИЛ.', 'ГОЛОВЫ', 'ПРОДУВКА', 'ТЕЛО', 'ХВОСТЫ', 'ФИНИШ', 'ОШИБКА'];
+        let colors = [
             '#7f8c8d', // IDLE - Gray
             '#e67e22', // HEATING - Orange
             '#f1c40f', // STABIL - Yellow
@@ -1640,6 +1518,26 @@ export function updateInteractiveScheme(data) {
             '#27ae60', // FINISH - Dark Green
             '#c0392b'  // ERROR - Dark Red
         ];
+
+        if (currentMode === MODE_NBK) {
+            phases = ['ОЖИДАНИЕ', 'НАГРЕВ', 'СТАБИЛ.', 'ПОДАЧА', 'ФИНИШ', 'ГОТОВО'];
+            colors = [
+                '#7f8c8d',
+                '#e67e22',
+                '#f1c40f',
+                '#2ecc71',
+                '#16a085',
+                '#2c7a7b'
+            ];
+        } else if (currentMode === MODE_FERMENTATION) {
+            phases = ['ОЖИДАНИЕ', 'РАБОТА', 'ГОТОВО'];
+            colors = [
+                '#7f8c8d',
+                '#2ecc71',
+                '#16a085'
+            ];
+        }
+
         const idx = Number(data.phase);
         if (idx >= 0 && idx < phases.length) {
             phaseTextEl.textContent = phases[idx];
@@ -1718,21 +1616,63 @@ export function updateInteractiveScheme(data) {
 }
 
 let currentScale = 100;
+function getZoomedSchemeWidthPx(svg) {
+    const colsLayout = svg?.closest('.cols-layout');
+    const scaledWidth = Math.round((DEFAULT_SCHEME_WIDTH_PX * currentScale) / 100);
+
+    if (!colsLayout) {
+        return Math.max(MIN_SCHEME_WRAP_WIDTH_PX, scaledWidth);
+    }
+
+    const layoutWidth = colsLayout.clientWidth;
+    if (!Number.isFinite(layoutWidth) || layoutWidth <= 0) {
+        return Math.max(MIN_SCHEME_WRAP_WIDTH_PX, scaledWidth);
+    }
+
+    if (window.matchMedia('(max-width: 900px)').matches) {
+        const mobileWidth = Math.round(layoutWidth * (Math.max(50, Math.min(currentScale, 100)) / 100));
+        return Math.max(
+            MIN_SCHEME_WRAP_WIDTH_PX,
+            Math.min(mobileWidth, layoutWidth)
+        );
+    }
+
+    const availableWidth = Math.max(
+        MIN_SCHEME_WRAP_WIDTH_PX,
+        Math.floor(layoutWidth - MIN_INSTRUMENT_PANEL_WIDTH_PX - COLS_LAYOUT_GAP_PX)
+    );
+
+    return Math.max(
+        MIN_SCHEME_WRAP_WIDTH_PX,
+        Math.min(scaledWidth, availableWidth)
+    );
+}
+
+function applySchemeZoomLayout(svg) {
+    if (!svg) return;
+
+    const schemeWrap = svg.closest('.operator-scheme-wrap');
+    if (schemeWrap) {
+        const targetWidthPx = getZoomedSchemeWidthPx(svg);
+        schemeWrap.style.setProperty('--scheme-target-width', `${targetWidthPx}px`);
+    }
+
+    svg.style.width = '100%';
+    svg.style.height = 'auto';
+    svg.style.transform = 'none';
+    svg.style.maxWidth = 'none';
+}
+
+export function syncSchemeZoomLayout() {
+    const svg = document.getElementById('main-scheme-svg');
+    applySchemeZoomLayout(svg);
+}
+
 export function zoomScheme(direction) {
     if (direction > 0) {
         currentScale = Math.min(currentScale + 10, 200);
     } else {
         currentScale = Math.max(currentScale - 10, 50);
     }
-    const svg = document.getElementById('main-scheme-svg');
-    if (svg) {
-        const schemeWrap = svg.closest('.operator-scheme-wrap');
-        if (schemeWrap) {
-            schemeWrap.style.setProperty('--scheme-scale-width', `${currentScale}%`);
-        }
-        svg.style.width = '100%';
-        svg.style.height = 'auto';
-        svg.style.transform = 'none';
-        svg.style.maxWidth = 'none';
-    }
+    syncSchemeZoomLayout();
 }

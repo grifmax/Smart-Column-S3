@@ -139,9 +139,10 @@ export async function loadVersionInfo() {
 
             const psramMB = (data.board.psramSize / (1024 * 1024)).toFixed(0);
 
-            document.getElementById('board-chip').textContent =
-
-                `${data.board.chip} (Flash: ${flashMB}MB, PSRAM: ${psramMB}MB)`;
+            setNodeText(
+                'board-chip',
+                `${data.board.chip} (Flash: ${flashMB}MB, PSRAM: ${psramMB}MB)`
+            );
 
         }
 
@@ -151,13 +152,15 @@ export async function loadVersionInfo() {
 
         if (data.frontend) {
 
-            document.getElementById('frontend-build-date').textContent =
+            setNodeText(
+                'frontend-build-date',
+                data.frontend.buildDate || data.frontend.note || 'Unknown'
+            );
 
-                data.frontend.buildDate || data.frontend.note || 'Unknown';
-
-            document.getElementById('frontend-build-time').textContent =
-
-                data.frontend.buildTime || '-';
+            setNodeText(
+                'frontend-build-time',
+                data.frontend.buildTime || '-'
+            );
 
         }
 

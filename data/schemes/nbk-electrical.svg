@@ -1,0 +1,445 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 920" width="1200" height="920" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#edf4f9"/>
+      <stop offset="100%" stop-color="#d8e6f0"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f4f8fb"/>
+    </linearGradient>
+    <linearGradient id="controller" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d3d56"/>
+      <stop offset="100%" stop-color="#132b3f"/>
+    </linearGradient>
+    <filter id="shadow" x="-12%" y="-12%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#35546d" flood-opacity="0.16"/>
+    </filter>
+    <marker id="arrow-ac" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c8563f"/>
+    </marker>
+    <marker id="arrow-12v" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f9d62"/>
+    </marker>
+    <marker id="arrow-5v" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2b7dd3"/>
+    </marker>
+    <marker id="arrow-sig" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7d55c7"/>
+    </marker>
+  </defs>
+
+  <style>
+    text {
+      font-family: 'Manrope', 'Segoe UI', sans-serif;
+      fill: #183043;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+    .subtitle {
+      font-size: 12px;
+      font-weight: 600;
+      fill: #5e788d;
+    }
+    .panel {
+      fill: url(#card);
+      stroke: #c5d6e2;
+      stroke-width: 1.5;
+      filter: url(#shadow);
+    }
+    .panel-title {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.7px;
+      fill: #35536a;
+      text-transform: uppercase;
+    }
+    .box {
+      fill: #ffffff;
+      stroke: #aebfce;
+      stroke-width: 1.3;
+      rx: 16;
+      ry: 16;
+    }
+    .soft {
+      fill: #f4f8fb;
+      stroke: #c3d3df;
+      stroke-width: 1.1;
+    }
+    .chip {
+      fill: #f7fbff;
+      stroke: #bad0e0;
+      stroke-width: 1;
+      rx: 10;
+      ry: 10;
+    }
+    .chip-dark {
+      fill: rgba(255,255,255,0.08);
+      stroke: rgba(226,240,250,0.18);
+      stroke-width: 1;
+    }
+    .controller-box {
+      fill: url(#controller);
+      stroke: #0f2434;
+      stroke-width: 1.6;
+      filter: url(#shadow);
+    }
+    .controller-text {
+      fill: #eff7fd;
+    }
+    .pin {
+      fill: #f7fbff;
+      stroke: #bcd0dd;
+      stroke-width: 1;
+    }
+    .pin-text {
+      font-size: 10px;
+      font-weight: 700;
+      fill: #214058;
+    }
+    .label {
+      font-size: 12px;
+      font-weight: 700;
+      fill: #29465d;
+    }
+    .small {
+      font-size: 10px;
+      font-weight: 600;
+      fill: #5f788c;
+    }
+    .tiny {
+      font-size: 9px;
+      font-weight: 600;
+      fill: #6d8496;
+    }
+    .rail-text {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+    }
+    .wire-ac {
+      fill: none;
+      stroke: #c8563f;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .wire-12v {
+      fill: none;
+      stroke: #1f9d62;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .wire-5v {
+      fill: none;
+      stroke: #2b7dd3;
+      stroke-width: 3.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .wire-3v3 {
+      fill: none;
+      stroke: #0d9aa3;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .wire-sig {
+      fill: none;
+      stroke: #7d55c7;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .wire-bus {
+      fill: none;
+      stroke: #d28a19;
+      stroke-width: 2.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 7 5;
+    }
+    .wire-gnd {
+      fill: none;
+      stroke: #6c7784;
+      stroke-width: 2.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .connector {
+      fill: #ffffff;
+      stroke: #9cb0c1;
+      stroke-width: 1.2;
+    }
+    .danger {
+      fill: #fff0ec;
+      stroke: #dca697;
+      stroke-width: 1.1;
+    }
+    .ok {
+      fill: #eef9f3;
+      stroke: #97c8ae;
+      stroke-width: 1.1;
+    }
+    .info {
+      fill: #eef6ff;
+      stroke: #9cc1e4;
+      stroke-width: 1.1;
+    }
+  </style>
+
+  <rect x="0" y="0" width="1200" height="920" fill="url(#bg)"/>
+  <rect x="18" y="18" width="1164" height="884" rx="30" ry="30" class="panel"/>
+
+  <text x="40" y="56" class="title">Электрическая схема автоматики НБК</text>
+  <text x="40" y="80" class="subtitle">Собрано по текущему проекту Smart-Column S3: реальные GPIO из [src/config.h], питание, датчики, силовая часть и исполнительные механизмы</text>
+
+  <rect x="36" y="108" width="284" height="282" rx="22" ry="22" class="panel"/>
+  <text x="56" y="136" class="panel-title">Питание и силовая часть</text>
+
+  <rect x="52" y="160" width="110" height="64" rx="16" ry="16" class="box danger"/>
+  <text x="70" y="186" class="label">Сеть 220VAC</text>
+  <text x="70" y="204" class="small">L / N / PE</text>
+
+  <rect x="182" y="160" width="120" height="64" rx="16" ry="16" class="box danger"/>
+  <text x="200" y="186" class="label">Автомат +</text>
+  <text x="200" y="204" class="small">предохранитель</text>
+
+  <rect x="52" y="250" width="110" height="70" rx="16" ry="16" class="box info"/>
+  <text x="68" y="276" class="label">PZEM-004T</text>
+  <text x="68" y="294" class="small">V / A / W / kWh</text>
+  <text x="68" y="309" class="tiny">UART1 9600</text>
+
+  <rect x="182" y="250" width="120" height="70" rx="16" ry="16" class="box ok"/>
+  <text x="198" y="276" class="label">БП 12V 5A</text>
+  <text x="198" y="294" class="small">DR-60-12</text>
+  <text x="198" y="309" class="tiny">для клапанов и драйвера</text>
+
+  <rect x="182" y="336" width="120" height="36" rx="12" ry="12" class="chip info"/>
+  <text x="198" y="359" class="small">LM2596 → 5.1V логика</text>
+
+  <path d="M162,192 L182,192" class="wire-ac" marker-end="url(#arrow-ac)"/>
+  <path d="M107,224 L107,250" class="wire-ac" marker-end="url(#arrow-ac)"/>
+  <path d="M242,224 L242,250" class="wire-ac" marker-end="url(#arrow-ac)"/>
+
+  <text x="78" y="346" class="tiny">PE корпуса и ТЭНа — отдельно</text>
+  <text x="78" y="362" class="tiny">Ноль сети — общий только по силовой части</text>
+
+  <rect x="360" y="108" width="364" height="520" rx="24" ry="24" class="controller-box"/>
+  <text x="384" y="140" class="panel-title controller-text">Контроллер</text>
+  <text x="384" y="168" class="controller-text" style="font-size:24px;font-weight:800;">ESP32-S3 DevKitC-1 N16R8</text>
+  <text x="384" y="190" class="subtitle" fill="#c9dceb">Прошивка 1.10.4, NBK / Rectification / Distillation</text>
+
+  <rect x="382" y="214" width="320" height="76" rx="16" ry="16" class="chip-dark"/>
+  <text x="402" y="238" class="controller-text" style="font-size:12px;font-weight:700;">Питание контроллера</text>
+  <text x="402" y="258" class="controller-text" style="font-size:10px;font-weight:600;">5V от LM2596 → VIN / USB-C, затем 3.3V локально на плате</text>
+  <text x="402" y="276" class="controller-text" style="font-size:10px;font-weight:600;">Общая GND с ADS1115, TMC2209, MOSFET-модулями и датчиками</text>
+
+  <rect x="384" y="314" width="150" height="280" rx="18" ry="18" class="chip-dark"/>
+  <text x="404" y="338" class="controller-text" style="font-size:12px;font-weight:700;">Входы / шины</text>
+
+  <rect x="396" y="352" width="126" height="24" rx="8" ry="8" class="pin"/>
+  <text x="406" y="368" class="pin-text">GPIO4  OneWire DS18B20 x7</text>
+  <rect x="396" y="382" width="126" height="24" rx="8" ry="8" class="pin"/>
+  <text x="406" y="398" class="pin-text">GPIO21 SDA  I2C</text>
+  <rect x="396" y="412" width="126" height="24" rx="8" ry="8" class="pin"/>
+  <text x="406" y="428" class="pin-text">GPIO9  SCL  I2C</text>
+  <rect x="396" y="442" width="126" height="24" rx="8" ry="8" class="pin"/>
+  <text x="406" y="458" class="pin-text">GPIO3  YF-S201 flow</text>
+  <rect x="396" y="472" width="126" height="24" rx="8" ry="8" class="pin"/>
+  <text x="406" y="488" class="pin-text">GPIO1  Level sensor</text>
+  <rect x="396" y="502" width="126" height="24" rx="8" ry="8" class="pin"/>
+  <text x="406" y="518" class="pin-text">GPIO20 RX ← PZEM TX</text>
+  <rect x="396" y="532" width="126" height="24" rx="8" ry="8" class="pin"/>
+  <text x="406" y="548" class="pin-text">GPIO19 TX → PZEM RX</text>
+  <rect x="396" y="562" width="126" height="24" rx="8" ry="8" class="pin"/>
+  <text x="406" y="578" class="pin-text">GPIO38 Buzzer</text>
+
+  <rect x="548" y="314" width="154" height="280" rx="18" ry="18" class="chip-dark"/>
+  <text x="568" y="338" class="controller-text" style="font-size:12px;font-weight:700;">Выходы</text>
+
+  <rect x="560" y="352" width="130" height="24" rx="8" ry="8" class="pin"/>
+  <text x="570" y="368" class="pin-text">GPIO5  SSR heater</text>
+  <rect x="560" y="382" width="130" height="24" rx="8" ry="8" class="pin"/>
+  <text x="570" y="398" class="pin-text">GPIO6  STEP pump</text>
+  <rect x="560" y="412" width="130" height="24" rx="8" ry="8" class="pin"/>
+  <text x="570" y="428" class="pin-text">GPIO7  DIR pump</text>
+  <rect x="560" y="442" width="130" height="24" rx="8" ry="8" class="pin"/>
+  <text x="570" y="458" class="pin-text">GPIO15 EN pump</text>
+  <rect x="560" y="472" width="130" height="24" rx="8" ry="8" class="pin"/>
+  <text x="570" y="488" class="pin-text">GPIO16 Valve water</text>
+  <rect x="560" y="502" width="130" height="24" rx="8" ry="8" class="pin"/>
+  <text x="570" y="518" class="pin-text">GPIO17 Valve heads</text>
+  <rect x="560" y="532" width="130" height="24" rx="8" ry="8" class="pin"/>
+  <text x="570" y="548" class="pin-text">GPIO18 Valve UNO</text>
+  <rect x="560" y="562" width="130" height="24" rx="8" ry="8" class="pin"/>
+  <text x="570" y="578" class="pin-text">GPIO8 / 14 optional</text>
+
+  <rect x="382" y="606" width="320" height="18" rx="9" ry="9" fill="rgba(255,255,255,0.10)" stroke="rgba(221,236,247,0.14)" stroke-width="1"/>
+  <text x="398" y="619" class="controller-text" style="font-size:10px;font-weight:700;">Примечание: в SPEC указаны старые UART-пины PZEM, в текущем config.h используются GPIO19/20.</text>
+
+  <rect x="760" y="108" width="404" height="224" rx="22" ry="22" class="panel"/>
+  <text x="780" y="136" class="panel-title">Нагрев и измерение мощности</text>
+
+  <rect x="782" y="162" width="126" height="64" rx="16" ry="16" class="box danger"/>
+  <text x="800" y="188" class="label">PC817</text>
+  <text x="800" y="206" class="small">оптроразвязка SSR</text>
+
+  <rect x="932" y="162" width="104" height="64" rx="16" ry="16" class="box danger"/>
+  <text x="950" y="188" class="label">SSR-40DA</text>
+  <text x="950" y="206" class="small">управление ТЭНом</text>
+
+  <rect x="1054" y="162" width="92" height="64" rx="16" ry="16" class="box danger"/>
+  <text x="1070" y="188" class="label">ТЭН</text>
+  <text x="1070" y="206" class="small">220VAC</text>
+
+  <path d="M690,364 L782,364 L782,194" class="wire-sig" marker-end="url(#arrow-sig)"/>
+  <text x="792" y="242" class="tiny">GPIO5</text>
+  <path d="M908,194 L932,194" class="wire-sig" marker-end="url(#arrow-sig)"/>
+  <path d="M1036,194 L1054,194" class="wire-ac" marker-end="url(#arrow-ac)"/>
+  <path d="M302,192 L932,192" class="wire-ac" marker-end="url(#arrow-ac)"/>
+
+  <rect x="782" y="246" width="188" height="58" rx="16" ry="16" class="box info"/>
+  <text x="800" y="271" class="label">PZEM-004T v3.0</text>
+  <text x="800" y="289" class="small">измеряет V / A / W / f / PF / Energy</text>
+  <path d="M162,285 L782,285" class="wire-ac" marker-end="url(#arrow-ac)"/>
+  <path d="M522,516 L782,516 L782,275" class="wire-sig" marker-end="url(#arrow-sig)"/>
+  <path d="M522,546 L742,546 L742,293 L782,293" class="wire-sig" marker-end="url(#arrow-sig)"/>
+  <text x="788" y="316" class="tiny">GPIO20 RX / GPIO19 TX</text>
+
+  <rect x="760" y="352" width="404" height="338" rx="22" ry="22" class="panel"/>
+  <text x="780" y="380" class="panel-title">Исполнительные механизмы</text>
+
+  <rect x="782" y="408" width="170" height="112" rx="18" ry="18" class="box ok"/>
+  <text x="800" y="434" class="label">TMC2209</text>
+  <text x="800" y="452" class="small">STEP / DIR / EN от ESP32-S3</text>
+  <text x="800" y="468" class="small">VMOT от 12V БП</text>
+  <text x="800" y="486" class="small">логика общая GND</text>
+  <rect x="968" y="426" width="170" height="78" rx="18" ry="18" class="box ok"/>
+  <text x="986" y="452" class="label">NEMA17</text>
+  <text x="986" y="470" class="small">перистальтический насос</text>
+  <path d="M952,464 L968,464" class="wire-12v" marker-end="url(#arrow-12v)"/>
+  <path d="M690,394 L782,394" class="wire-sig" marker-end="url(#arrow-sig)"/>
+  <path d="M690,424 L782,424" class="wire-sig" marker-end="url(#arrow-sig)"/>
+  <path d="M690,454 L782,454" class="wire-sig" marker-end="url(#arrow-sig)"/>
+  <text x="722" y="388" class="tiny">GPIO6 STEP</text>
+  <text x="722" y="418" class="tiny">GPIO7 DIR</text>
+  <text x="722" y="448" class="tiny">GPIO15 EN</text>
+
+  <rect x="782" y="546" width="118" height="54" rx="14" ry="14" class="box ok"/>
+  <text x="798" y="569" class="label">MOSFET #1</text>
+  <text x="798" y="586" class="small">GPIO16</text>
+  <rect x="916" y="546" width="110" height="54" rx="14" ry="14" class="box ok"/>
+  <text x="932" y="569" class="label">Клапан воды</text>
+  <text x="932" y="586" class="small">12V NC</text>
+  <path d="M900,573 L916,573" class="wire-12v" marker-end="url(#arrow-12v)"/>
+  <path d="M690,484 L782,484 L782,573" class="wire-sig" marker-end="url(#arrow-sig)"/>
+
+  <rect x="782" y="618" width="118" height="54" rx="14" ry="14" class="box ok"/>
+  <text x="798" y="641" class="label">MOSFET #2</text>
+  <text x="798" y="658" class="small">GPIO17</text>
+  <rect x="916" y="618" width="110" height="54" rx="14" ry="14" class="box ok"/>
+  <text x="932" y="641" class="label">Клапан голов</text>
+  <text x="932" y="658" class="small">12V NC</text>
+  <path d="M900,645 L916,645" class="wire-12v" marker-end="url(#arrow-12v)"/>
+  <path d="M690,514 L764,514 L764,645 L782,645" class="wire-sig" marker-end="url(#arrow-sig)"/>
+
+  <rect x="1040" y="546" width="118" height="54" rx="14" ry="14" class="box ok"/>
+  <text x="1056" y="569" class="label">MOSFET #3</text>
+  <text x="1056" y="586" class="small">GPIO18</text>
+  <rect x="1040" y="618" width="118" height="54" rx="14" ry="14" class="box ok"/>
+  <text x="1056" y="641" class="label">Клапан УНО</text>
+  <text x="1056" y="658" class="small">12V NC</text>
+  <path d="M1099,600 L1099,618" class="wire-12v" marker-end="url(#arrow-12v)"/>
+  <path d="M690,544 L742,544 L742,573 L1040,573" class="wire-sig" marker-end="url(#arrow-sig)"/>
+
+  <rect x="968" y="516" width="152" height="18" rx="8" ry="8" class="chip info"/>
+  <text x="980" y="529" class="tiny">На каждом клапане: обратный диод + общая GND</text>
+
+  <rect x="760" y="708" width="404" height="110" rx="22" ry="22" class="panel"/>
+  <text x="780" y="736" class="panel-title">Опции</text>
+  <rect x="782" y="754" width="160" height="44" rx="14" ry="14" class="soft"/>
+  <text x="798" y="773" class="label">MG996R Servo</text>
+  <text x="798" y="790" class="small">GPIO8, PWM 50Hz</text>
+  <rect x="966" y="754" width="176" height="44" rx="14" ry="14" class="soft"/>
+  <text x="982" y="773" class="label">Клапан Start/Stop</text>
+  <text x="982" y="790" class="small">GPIO14, ШИМ, 12V NC</text>
+
+  <rect x="36" y="414" width="284" height="404" rx="22" ry="22" class="panel"/>
+  <text x="56" y="442" class="panel-title">Датчики и интерфейсы</text>
+
+  <rect x="52" y="466" width="252" height="98" rx="18" ry="18" class="box info"/>
+  <text x="70" y="490" class="label">OneWire GPIO4 + подтяжка 4.7 кОм к 3.3V</text>
+  <text x="70" y="512" class="small">DS18B20 x7: куб, низ колонны, верх, дефлегматор, ТСА, вода IN, вода OUT</text>
+  <text x="70" y="532" class="tiny">Термоконтроль НБК: прогрев, стабилизация, останов помпы при падении T низа</text>
+  <text x="70" y="550" class="tiny">Аварии: T ТСА и T воды OUT</text>
+
+  <rect x="52" y="582" width="252" height="116" rx="18" ry="18" class="box info"/>
+  <text x="70" y="606" class="label">I2C: GPIO21 SDA / GPIO9 SCL</text>
+  <text x="70" y="628" class="small">BMP280 #1 (0x76): атмосферное давление</text>
+  <text x="70" y="646" class="small">BMP280 #2 (0x77): резерв / доп. канал</text>
+  <text x="70" y="664" class="small">ADS1115 (0x48): A0 ← MPX5010DP</text>
+  <text x="70" y="682" class="small">OLED 0x3C: резервный дисплей</text>
+
+  <rect x="52" y="716" width="120" height="84" rx="16" ry="16" class="box info"/>
+  <text x="68" y="742" class="label">YF-S201</text>
+  <text x="68" y="760" class="small">GPIO3</text>
+  <text x="68" y="777" class="tiny">контроль расхода воды</text>
+
+  <rect x="184" y="716" width="120" height="84" rx="16" ry="16" class="box info"/>
+  <text x="200" y="742" class="label">Level sensor</text>
+  <text x="200" y="760" class="small">GPIO1</text>
+  <text x="200" y="777" class="tiny">опция уровня</text>
+
+  <rect x="52" y="812" width="252" height="52" rx="16" ry="16" class="box info"/>
+  <text x="70" y="836" class="label">Buzzer GPIO38</text>
+  <text x="70" y="854" class="small">предупреждения и аварийная сигнализация</text>
+
+  <rect x="344" y="650" width="380" height="214" rx="22" ry="22" class="panel"/>
+  <text x="364" y="678" class="panel-title">Шины и уровни</text>
+
+  <path d="M380,710 L686,710" class="wire-12v"/>
+  <text x="392" y="702" class="rail-text" fill="#1f9d62">12V rail</text>
+  <text x="574" y="702" class="tiny">MOSFET, клапаны, TMC2209 VMOT</text>
+
+  <path d="M380,748 L686,748" class="wire-5v"/>
+  <text x="392" y="740" class="rail-text" fill="#2b7dd3">5V rail</text>
+  <text x="574" y="740" class="tiny">ESP32 VIN / OLED / периферия при необходимости</text>
+
+  <path d="M380,786 L686,786" class="wire-3v3"/>
+  <text x="392" y="778" class="rail-text" fill="#0d9aa3">3.3V rail</text>
+  <text x="574" y="778" class="tiny">логика ESP32-S3, подтяжка OneWire, I2C сенсоры</text>
+
+  <path d="M380,824 L686,824" class="wire-gnd"/>
+  <text x="392" y="816" class="rail-text" fill="#6c7784">GND common</text>
+  <text x="574" y="816" class="tiny">ADS1115, BMP280, TMC2209, MOSFET, датчики, flow</text>
+
+  <path d="M302,286 L332,286 L332,710 L380,710" class="wire-12v" marker-end="url(#arrow-12v)"/>
+  <path d="M302,354 L334,354 L334,748 L380,748" class="wire-5v" marker-end="url(#arrow-5v)"/>
+  <path d="M334,748 L360,748 L360,246 L382,246" class="wire-5v" marker-end="url(#arrow-5v)"/>
+  <path d="M380,824 L348,824 L348,270 L382,270" class="wire-gnd"/>
+
+  <path d="M522,364 L330,364 L330,514 L304,514" class="wire-bus"/>
+  <path d="M522,394 L338,394 L338,628 L304,628" class="wire-bus"/>
+  <path d="M522,424 L346,424 L346,628 L304,628" class="wire-bus"/>
+  <path d="M522,454 L354,454 L354,758 L304,758" class="wire-bus"/>
+  <path d="M522,484 L362,484 L362,758 L304,758" class="wire-bus"/>
+  <path d="M522,574 L370,574 L370,838 L304,838" class="wire-bus"/>
+
+  <text x="314" y="503" class="tiny">GPIO4</text>
+  <text x="314" y="618" class="tiny">GPIO21/9</text>
+  <text x="314" y="747" class="tiny">GPIO3 / GPIO1</text>
+  <text x="314" y="827" class="tiny">GPIO38</text>
+
+  <path d="M242,320 L242,710" class="wire-12v"/>
+  <path d="M242,710 L782,710" class="wire-12v" marker-end="url(#arrow-12v)"/>
+  <text x="794" y="702" class="tiny">12V к TMC2209 / клапанам</text>
+
+  <path d="M52,882 L1148,882" class="wire-gnd"/>
+  <text x="62" y="874" class="rail-text" fill="#6c7784">Общий контур GND/0V логики</text>
+  <text x="930" y="874" class="tiny">PE и силовой AC-контур на отдельной защитной земле</text>
+</svg>

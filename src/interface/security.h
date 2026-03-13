@@ -39,6 +39,18 @@ namespace Security {
     bool checkRateLimit(IPAddress ip);
 
     /**
+     * Включение/отключение rate limit
+     * @param enabled Состояние
+     */
+    void setRateLimitEnabled(bool enabled);
+
+    /**
+     * Проверка включён ли rate limit
+     * @return true если включён
+     */
+    bool isRateLimitEnabled();
+
+    /**
      * Добавление security заголовков к ответу
      * @param response HTTP ответ
      */

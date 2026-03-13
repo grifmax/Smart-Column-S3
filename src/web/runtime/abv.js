@@ -1,4 +1,4 @@
-﻿import { ABV_PLAN_STORAGE_KEY, plannedAbvPercent, setPlannedAbvPercent, plannedAbvUserSet, setPlannedAbvUserSet, runtimeMonitorState } from '../globals.js';
+import { ABV_PLAN_STORAGE_KEY, plannedAbvPercent, setPlannedAbvPercent, setPlannedAbvUserSet, runtimeMonitorState } from '../globals.js';
 import { normalizeAbvPercent } from './helpers.js';
 
 export function loadPlannedAbv() {

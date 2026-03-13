@@ -12,6 +12,7 @@
 #include "watt_control.h"
 #include "../interface/mqtt.h"
 #include "../interface/localization.h"
+#include "../storage/logger.h"
 
 namespace FSM {
 
@@ -414,9 +415,38 @@ void update(SystemState& state, const Settings& settings) {
     }
 }
 
+static void resetModeState(SystemState& state) {
+    Heater::setPower(0);
+    Pump::stop();
+    Valves::closeAll();
+
+    state.mode = Mode::IDLE;
+    state.rectPhase = RectPhase::IDLE;
+    state.nbkPhase = NbkPhase::IDLE;
+    state.fermPhase = FermentationPhase::IDLE;
+    state.mashing.phase = MashPhase::IDLE;
+    state.mashing.currentStep = 0;
+    state.mashing.stepCount = 0;
+    state.mashing.active = false;
+    state.mashing.stepName[0] = '\0';
+    state.hold.active = false;
+    state.hold.currentStep = 0;
+    state.hold.stepCount = 0;
+    state.paused = false;
+
+    phaseStartTime = 0;
+    phaseStartVolumeMl = 0.0f;
+    pauseStartTime = 0;
+    rectHeadsTargetMl = 0.0f;
+    rectBodyTargetMl = 0.0f;
+    rectTailsTargetMl = 0.0f;
+    rectBodyInitialized = false;
+}
+
 void startMode(SystemState& state, const Settings& settings, Mode mode) {
     LOG_I("FSM: Starting mode %d", static_cast<int>(mode));
     uint32_t now = millis();
+    Logger::logf(0, "Mode started: %s", getModeName(mode));
 
     state.mode = mode;
     state.paused = false;
@@ -499,24 +529,9 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
 
 void stopMode(SystemState& state) {
     LOG_I("FSM: Stopping");
+    Logger::logf(0, "Mode stopped by user");
 
-    Heater::setPower(0);
-    Pump::stop();
-    Valves::closeAll();
-
-    state.mode = Mode::IDLE;
-    state.rectPhase = RectPhase::IDLE;
-    state.nbkPhase = NbkPhase::IDLE;
-    state.fermPhase = FermentationPhase::IDLE;
-    state.mashing.phase = MashPhase::IDLE;
-    state.mashing.stepCount = 0;
-    state.mashing.active = false;
-    state.mashing.stepName[0] = '\0';
-    state.hold.active = false;
-    state.paused = false;
-    rectHeadsTargetMl = 0.0f;
-    rectBodyTargetMl = 0.0f;
-    rectTailsTargetMl = 0.0f;
+    resetModeState(state);
 
     // Отправка уведомления об остановке
     MQTT::publishNotification(
@@ -524,6 +539,12 @@ void stopMode(SystemState& state) {
         "Процесс остановлен пользователем",
         "warning"
     );
+}
+
+void abortMode(SystemState& state) {
+    LOG_W("FSM: Aborting active mode due to safety event");
+    Logger::logf(2, "Mode aborted by safety");
+    resetModeState(state);
 }
 
 void pause(SystemState& state) {
@@ -546,6 +567,7 @@ void pause(SystemState& state) {
     }
 
     LOG_I("FSM: Paused (actuators stopped)");
+    Logger::logf(0, "Process paused");
 }
 
 void resume(SystemState& state) {
@@ -577,6 +599,7 @@ void resume(SystemState& state) {
     pauseStartTime = 0;
     state.paused = false;
     LOG_I("FSM: Resumed");
+    Logger::logf(0, "Process resumed");
 }
 
 // =============================================================================

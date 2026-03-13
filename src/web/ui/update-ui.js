@@ -1,5 +1,5 @@
 ﻿import { updateMemoryStats } from '../core/memory.js';
-import { runtimeMonitorState, currentMode, setCurrentMode, currentPaused, setCurrentPaused, getModeLabel, getModeCssClass, resolveMode } from '../globals.js';
+import { setCurrentMode, setCurrentPaused, getModeLabel, getModeCssClass } from '../globals.js';
 import { updateRuntimeStateFromWs } from '../runtime/state.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { renderModeRuntimeCard } from '../runtime/bars.js';
@@ -7,7 +7,7 @@ import { updateMiniChart } from './mini-chart.js';
 import { updateInteractiveScheme } from './scheme.js';
 import { updateLandingUi } from './landing.js';
 import { updateButtonStates } from '../core/status.js';
-import { pad, formatUptime } from '../core/utils.js';
+import { formatUptime } from '../core/utils.js';
 import { addLog } from '../core/logs.js';
 import { renderAbvValue } from '../runtime/abv.js';
 import { updateKpiStrip } from './kpi-strip.js';

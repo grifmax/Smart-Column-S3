@@ -27,7 +27,7 @@ export async function detectCloudProxyMode() {
         // - 404: endpoint отсутствует
         if (response.status === 404) return false;
         return response.status === 200 || response.status === 401 || response.status >= 400;
-    } catch (e) {
+    } catch {
         // Network error / timeout — считаем локальным режимом, чтобы не дергать web API
         return false;
     } finally {

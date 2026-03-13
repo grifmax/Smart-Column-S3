@@ -1,9 +1,13 @@
-const CACHE_NAME = 'smart-column-v19';
+const CACHE_NAME = 'smart-column-v1.10.12';
 const ASSETS = [
   '/',
   '/index.html',
-  '/app.js',
-  '/style.css',
+  '/logs.html',
+  '/charts.html',
+  '/app.js?v=1.10.12',
+  '/style.css?v=1.10.12',
+  '/charts.js?v=1.10.12',
+  '/charts-style.css?v=1.10.12',
   '/schemes-animation.css',
   '/manifest.json',
   '/schemes/column-tesla.svg',
@@ -49,6 +53,7 @@ self.addEventListener('fetch', (event) => {
     requestUrl.origin === self.location.origin &&
     (requestUrl.pathname === '/' ||
       requestUrl.pathname === '/index.html' ||
+      requestUrl.pathname === '/logs.html' ||
       requestUrl.pathname === '/app.js' ||
       requestUrl.pathname === '/style.css' ||
       requestUrl.pathname === '/charts.html' ||

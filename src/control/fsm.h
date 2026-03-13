@@ -32,6 +32,7 @@ namespace FSM {
      * @param state Состояние
      */
     void stopMode(SystemState& state);
+    void abortMode(SystemState& state);
     
     /**
      * Пауза

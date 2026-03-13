@@ -39,14 +39,17 @@ let chartData = {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    initCharts();
     loadChartPreferences();
     setupCheckboxListeners();
     setupPeriodButtons();
     setupAnomalyControls();
     loadAnomalySettings();
     connectWebSocket();
-    addChartLog('Страница графиков готова', 'info');
+    if (initCharts()) {
+        addChartLog('Страница графиков готова', 'info');
+    } else {
+        addChartLog('Страница графиков готова, но библиотека графиков не загрузилась', 'warning');
+    }
 });
 
 // ============================================================================
@@ -104,7 +107,7 @@ function downloadLogs() {
 
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}/ws`;
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
 
     try {
         ws = new WebSocket(wsUrl);
@@ -157,6 +160,7 @@ function connectWebSocket() {
 function updateConnectionStatus(connected) {
     const statusDot = document.getElementById('connection-status');
     const statusText = document.getElementById('connection-text');
+    if (!statusDot || !statusText) return;
 
     if (connected) {
         statusDot.className = 'status-dot online';
@@ -172,6 +176,14 @@ function updateConnectionStatus(connected) {
 // ============================================================================
 
 function initCharts() {
+    if (typeof window.ApexCharts === 'undefined') {
+        document.querySelectorAll('.chart, .chart-bar').forEach((el) => {
+            if (!el) return;
+            el.innerHTML = '<div class="info-display">Графики временно недоступны: библиотека ApexCharts не загрузилась</div>';
+        });
+        return false;
+    }
+
     // Общие настройки для всех графиков
     const commonOptions = {
         chart: {
@@ -335,6 +347,7 @@ function initCharts() {
         legend: { show: false }
     });
     chartsInstances.fractions.render();
+    return true;
 }
 
 // ============================================================================
@@ -438,13 +451,15 @@ function updateChartData(data) {
         chartData.fractions.body = data.volume_body || 0;
         chartData.fractions.tails = data.volume_tails || 0;
 
-        chartsInstances.fractions.updateSeries([{
-            data: [
-                chartData.fractions.heads,
-                chartData.fractions.body,
-                chartData.fractions.tails
-            ]
-        }]);
+        if (chartsInstances.fractions) {
+            chartsInstances.fractions.updateSeries([{
+                data: [
+                    chartData.fractions.heads,
+                    chartData.fractions.body,
+                    chartData.fractions.tails
+                ]
+            }]);
+        }
     }
 
     // Uptime
@@ -725,7 +740,9 @@ function clearCharts() {
             }
         });
 
-        chartsInstances.fractions.updateSeries([{ data: [0, 0, 0] }]);
+        if (chartsInstances.fractions) {
+            chartsInstances.fractions.updateSeries([{ data: [0, 0, 0] }]);
+        }
     }
 }
 

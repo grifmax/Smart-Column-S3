@@ -26,6 +26,7 @@ typedef enum {
 #endif
 
 #include "control/fsm.h"
+#include "control/safety.h"
 #include "control/watt_control.h"
 #include "drivers/display.h"
 #include "drivers/heater.h"
@@ -34,7 +35,9 @@ typedef enum {
 #include "drivers/sensors.h"
 #include "interface/telegram.h"
 #include "interface/mqtt.h"
+#include "interface/security.h"
 #include "interface/wifi_profiles.h"
+#include "storage/logger.h"
 #include "storage/nvs_manager.h"
 #include "cloud_tunnel.h"
 #include "../profiles.h"
@@ -204,6 +207,62 @@ static const char *getFermPhaseString(FermentationPhase phase) {
   }
 }
 
+static void fillAlarmJson(JsonObject alarm, const SystemState& state) {
+  const bool active = (state.currentAlarm.type != AlarmType::NONE);
+  alarm["active"] = active;
+  alarm["latched"] = Safety::isLatched(state);
+  alarm["type"] = Safety::getAlarmTypeToken(state.currentAlarm.type);
+  alarm["typeCode"] = static_cast<int>(state.currentAlarm.type);
+  alarm["level"] = Safety::getAlarmLevelToken(state.currentAlarm.level);
+  alarm["levelCode"] = static_cast<int>(state.currentAlarm.level);
+  alarm["message"] = active ? state.currentAlarm.message : "";
+  alarm["timestamp"] = state.currentAlarm.timestamp;
+  alarm["acknowledged"] = state.currentAlarm.acknowledged;
+}
+
+static bool isSecurityOnboardingMode() {
+  return !hasConfiguredWiFi() && WiFi.status() != WL_CONNECTED;
+}
+
+static bool isSecurityExemptPath(const String& path) {
+  if (!isSecurityOnboardingMode()) {
+    return false;
+  }
+
+  return path == "/" || path == "/wifi.html" || path == "/generate_204" ||
+         path == "/hotspot-detect.html" || path == "/connecttest.txt" ||
+         path.startsWith("/api/wifi");
+}
+
+static bool handleSecurityGate(AsyncWebServerRequest* request) {
+  if (!request || isSecurityExemptPath(request->url())) {
+    return true;
+  }
+
+  if (!Security::checkRateLimit(request->client()->remoteIP())) {
+    const bool isApi = request->url().startsWith("/api/");
+    request->send(
+        429,
+        isApi ? "application/json" : "text/plain",
+        isApi ? "{\"success\":false,\"message\":\"Too many requests\"}"
+              : "Too many requests");
+    return false;
+  }
+
+  if (!Security::checkAuth(request)) {
+    Security::requestAuth(request);
+    return false;
+  }
+
+  return true;
+}
+
+static void applySecuritySettings() {
+  Security::init(g_settings.security.username, g_settings.security.password);
+  Security::setAuthEnabled(g_settings.security.authEnabled);
+  Security::setRateLimitEnabled(g_settings.security.rateLimitEnabled);
+}
+
 static float clampFloatRange(float value, float minValue, float maxValue) {
   if (value < minValue) return minValue;
   if (value > maxValue) return maxValue;
@@ -287,6 +346,15 @@ namespace WebServer {
 void init() {
   LOG_I("WebServer: Initializing...");
 
+  applySecuritySettings();
+
+  server.addMiddleware([](AsyncWebServerRequest* request, ArMiddlewareNext next) {
+    if (!handleSecurityGate(request)) {
+      return;
+    }
+    next();
+  });
+
   // WebSocket обработчик
   ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client,
                 AwsEventType type, void *arg, uint8_t *data, size_t len) {
@@ -349,7 +417,7 @@ void init() {
   // API endpoints
   // GET /api/status - полное состояние системы
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<4096> doc;
+    StaticJsonDocument<5120> doc;
 
     // Режим и состояние процесса
     doc["mode"] = static_cast<int>(g_state.mode);
@@ -373,6 +441,8 @@ void init() {
     doc["safetyOk"] = g_state.safetyOk;
     doc["uptime"] = g_state.uptime;
     doc["deviceId"] = CloudTunnel::getDeviceId();
+    JsonObject alarm = doc.createNestedObject("alarm");
+    fillAlarmJson(alarm, g_state);
 
     // Температуры
     JsonObject temps = doc.createNestedObject("temps");
@@ -681,6 +751,57 @@ void init() {
   });
 
   // POST /api/process/start - запуск процесса
+  server.on("/api/logs/events", HTTP_GET, [](AsyncWebServerRequest *request) {
+    uint16_t limit = 100;
+    uint32_t since = 0;
+
+    if (request->hasParam("limit")) {
+      limit = static_cast<uint16_t>(request->getParam("limit")->value().toInt());
+      if (limit > 200) {
+        limit = 200;
+      }
+    }
+
+    if (request->hasParam("since")) {
+      since = static_cast<uint32_t>(request->getParam("since")->value().toInt());
+    }
+
+    request->send(200, "application/json",
+                  Logger::getRecentEventsJson(limit, since));
+  });
+
+  server.on("/api/logs/events/clear", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              Logger::clearRecentEvents();
+              request->send(200, "application/json", "{\"success\":true}");
+            });
+
+  server.on("/api/export", HTTP_GET, [](AsyncWebServerRequest *request) {
+    const char* currentLogFile = Logger::getCurrentLogFile();
+    String body;
+    String filename = "system-events.csv";
+
+    if (currentLogFile && currentLogFile[0]) {
+      body = Logger::readLog(currentLogFile);
+
+      const String currentName = currentLogFile;
+      const int slashIndex = currentName.lastIndexOf('/');
+      if (slashIndex >= 0 && slashIndex + 1 < currentName.length()) {
+        filename = currentName.substring(slashIndex + 1);
+      } else {
+        filename = currentName;
+      }
+    } else {
+      body = Logger::exportRecentEventsCsv();
+    }
+
+    AsyncWebServerResponse* response =
+        request->beginResponse(200, "text/csv; charset=utf-8", body);
+    response->addHeader("Content-Disposition",
+                        "attachment; filename=\"" + filename + "\"");
+    request->send(response);
+  });
+
   server.on(
       "/api/process/start", HTTP_POST, [](AsyncWebServerRequest *request) {},
       NULL,
@@ -735,6 +856,28 @@ void init() {
         }
 
         // Проверка термометров (только предупреждение, не блокируем запуск)
+        const bool allowDemoSensorFailure =
+            g_settings.demoMode &&
+            g_state.currentAlarm.type == AlarmType::SENSOR_FAILURE;
+
+        if (Safety::isLatched(g_state) && !allowDemoSensorFailure) {
+          Logger::logf(1, "Process start rejected: safety alarm is latched (%s)",
+                       g_state.currentAlarm.message[0]
+                           ? g_state.currentAlarm.message
+                           : Safety::getAlarmTypeToken(g_state.currentAlarm.type));
+          DynamicJsonDocument errorDoc(512);
+          errorDoc["success"] = false;
+          errorDoc["message"] =
+              "Safety alarm is latched. Reset the alarm before starting.";
+          JsonObject alarm = errorDoc.createNestedObject("alarm");
+          fillAlarmJson(alarm, g_state);
+
+          String response;
+          serializeJson(errorDoc, response);
+          request->send(409, "application/json", response);
+          return;
+        }
+
         bool sensorsOk =
             g_state.health.tempSensorsTotal > 0 && g_state.health.tempSensorsOk;
 
@@ -904,6 +1047,38 @@ void init() {
   // --------------------------------------------------------------------------
 
   // POST /api/cloud/claim - сгенерировать новый PIN для привязки
+  server.on("/api/safety/ack", HTTP_POST, [](AsyncWebServerRequest *request) {
+    Safety::acknowledge(g_state);
+
+    DynamicJsonDocument doc(384);
+    doc["success"] = true;
+    doc["message"] = "Alarm acknowledged";
+    JsonObject alarm = doc.createNestedObject("alarm");
+    fillAlarmJson(alarm, g_state);
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  server.on("/api/safety/reset", HTTP_POST, [](AsyncWebServerRequest *request) {
+    char reason[128] = "";
+    const bool ok = Safety::reset(g_state, g_settings, reason, sizeof(reason));
+
+    DynamicJsonDocument doc(384);
+    doc["success"] = ok;
+    doc["message"] = ok ? "Safety alarm reset" : "Safety reset rejected";
+    if (!ok) {
+      doc["reason"] = reason;
+    }
+    JsonObject alarm = doc.createNestedObject("alarm");
+    fillAlarmJson(alarm, g_state);
+
+    String response;
+    serializeJson(doc, response);
+    request->send(ok ? 200 : 409, "application/json", response);
+  });
+
   server.on(
       "/api/cloud/claim", HTTP_POST, [](AsyncWebServerRequest *request) {},
       NULL,
@@ -1092,6 +1267,80 @@ void init() {
         request->send(200, "application/json", "{\"success\":true}");
       });
 
+  server.on("/api/settings/security", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              StaticJsonDocument<256> doc;
+              doc["authEnabled"] = g_settings.security.authEnabled;
+              doc["rateLimitEnabled"] = g_settings.security.rateLimitEnabled;
+              doc["username"] = g_settings.security.username;
+              doc["passwordConfigured"] = (g_settings.security.password[0] != '\0');
+
+              String json;
+              serializeJson(doc, json);
+              request->send(200, "application/json", json);
+            });
+
+  server.on(
+      "/api/settings/security", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        if (index + len != total) return;
+
+        StaticJsonDocument<256> doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const bool authEnabled = doc.containsKey("authEnabled")
+                                     ? doc["authEnabled"].as<bool>()
+                                     : g_settings.security.authEnabled;
+        const bool rateLimitEnabled = doc.containsKey("rateLimitEnabled")
+                                          ? doc["rateLimitEnabled"].as<bool>()
+                                          : g_settings.security.rateLimitEnabled;
+        const bool hasUsernameField = doc.containsKey("username");
+        const bool hasPasswordField = doc.containsKey("password");
+        const char *username =
+            hasUsernameField ? (doc["username"] | "") : g_settings.security.username;
+        const char *password =
+            hasPasswordField ? (doc["password"] | "") : nullptr;
+
+        if (authEnabled && (!username || strlen(username) == 0)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Username required\"}");
+          return;
+        }
+
+        const bool hasStoredPassword = (g_settings.security.password[0] != '\0');
+        if (authEnabled && ((!hasStoredPassword && (!password || strlen(password) == 0)))) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Password required to enable auth\"}");
+          return;
+        }
+
+        g_settings.security.authEnabled = authEnabled;
+        g_settings.security.rateLimitEnabled = rateLimitEnabled;
+        if (hasUsernameField && username) {
+          strlcpy(g_settings.security.username, username,
+                  sizeof(g_settings.security.username));
+        }
+        if (hasPasswordField && password && strlen(password) > 0) {
+          strlcpy(g_settings.security.password, password,
+                  sizeof(g_settings.security.password));
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        applySecuritySettings();
+        request->send(200, "application/json", "{\"success\":true}");
+      });
+
   // GET /api/settings/nbk - ???????? ????????? ???
   server.on("/api/settings/nbk", HTTP_GET, [](AsyncWebServerRequest *request) {
     StaticJsonDocument<192> doc;
@@ -1239,7 +1488,7 @@ void init() {
                                    ? (doc["password"] | "")
                                    : g_settings.mqtt.password;
         const char* baseTopic = doc.containsKey("baseTopic")
-                                    ? (doc["baseTopic"] | "smart-column")
+                                    ? (doc["baseTopic"] | "")
                                     : g_settings.mqtt.baseTopic;
         uint32_t publishInterval = doc.containsKey("publishInterval")
                                        ? static_cast<uint32_t>(doc["publishInterval"] |
@@ -1252,6 +1501,7 @@ void init() {
           return;
         }
         if (port == 0) port = 1883;
+        if (!baseTopic || baseTopic[0] == '\0') baseTopic = "smart-column";
         if (publishInterval < 1000) publishInterval = 1000;
         if (publishInterval > 60000) publishInterval = 60000;
 
@@ -1272,13 +1522,15 @@ void init() {
         request->send(200, "application/json", "{\"success\":true}");
 
         // Применяем runtime-настройки после ответа
-        if (g_settings.mqtt.enabled && WiFi.status() == WL_CONNECTED &&
-            g_settings.mqtt.server[0] != '\0') {
+        MQTT::disconnect();
+        if (g_settings.mqtt.enabled && g_settings.mqtt.server[0] != '\0') {
           MQTT::setBaseTopic(g_settings.mqtt.baseTopic);
           MQTT::init(g_settings.mqtt.server, g_settings.mqtt.port,
                      g_settings.mqtt.username[0] ? g_settings.mqtt.username : nullptr,
                      g_settings.mqtt.password[0] ? g_settings.mqtt.password : nullptr);
-          MQTT::handle();
+          if (WiFi.status() == WL_CONNECTED) {
+            MQTT::handle();
+          }
         }
       });
 
@@ -1782,6 +2034,7 @@ void init() {
         g_settings.demoMode = enabled;
 
         LOG_I("Demo mode %s", enabled ? "ENABLED" : "DISABLED");
+        Logger::logf(0, "Demo mode %s", enabled ? "enabled" : "disabled");
 
         // Сохраняем в NVS
         Preferences prefs;
@@ -2989,6 +3242,7 @@ void init() {
 }
 
 void broadcastState(const SystemState &state) {
+  ws.cleanupClients();
   if (ws.count() == 0)
     return;
 
@@ -2996,13 +3250,16 @@ void broadcastState(const SystemState &state) {
   const auto displayStats = Display::getRuntimeStats();
 
   // Минимальный пакет для "лайв" (часто)
-  StaticJsonDocument<1024> fastDoc;
+  StaticJsonDocument<1280> fastDoc;
   fastDoc["mode"] = static_cast<int>(state.mode);
   fastDoc["modeStr"] = getModeString(state.mode);
   fastDoc["phase"] = static_cast<int>(state.rectPhase);
   fastDoc["phaseStr"] = getPhaseString(state.rectPhase);
   fastDoc["paused"] = state.paused;
+  fastDoc["safetyOk"] = state.safetyOk;
   fastDoc["uptime"] = state.uptime;
+  JsonObject fastAlarm = fastDoc.createNestedObject("alarm");
+  fillAlarmJson(fastAlarm, state);
 
   fastDoc["t_cube"] = state.temps.cube;
   fastDoc["t_column_bottom"] = state.temps.columnBottom;
@@ -3079,13 +3336,16 @@ void broadcastState(const SystemState &state) {
   }
   lastFullBroadcast = now;
 
-  StaticJsonDocument<4096> doc;
+  StaticJsonDocument<4608> doc;
   doc["mode"] = static_cast<int>(state.mode);
   doc["modeStr"] = getModeString(state.mode);
   doc["phase"] = static_cast<int>(state.rectPhase);
   doc["phaseStr"] = getPhaseString(state.rectPhase);
   doc["paused"] = state.paused;
+  doc["safetyOk"] = state.safetyOk;
   doc["uptime"] = state.uptime;
+  JsonObject alarm = doc.createNestedObject("alarm");
+  fillAlarmJson(alarm, state);
 
   doc["t_cube"] = state.temps.cube;
   doc["t_column_bottom"] = state.temps.columnBottom;
@@ -3265,7 +3525,7 @@ void broadcastState(const SystemState &state) {
   ws.textAll(json);
 }
 
-void sendEvent(const char *event, const char *message) {
+void broadcastEvent(const char *event, const char *message) {
   StaticJsonDocument<256> doc;
   doc["type"] = "event";
   doc["event"] = event;

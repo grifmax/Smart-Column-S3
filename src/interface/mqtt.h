@@ -49,6 +49,7 @@ namespace MQTT {
      * @return true если подключён
      */
     bool isConnected();
+    void disconnect();
 
     /**
      * Установка базового топика

@@ -71,11 +71,17 @@ static float totalLiters = 0;
 // Адреса DS18B20
 static DeviceAddress ds18b20Addresses[TEMP_COUNT];
 static bool ds18b20Found[TEMP_COUNT] = {false};
+static uint8_t ds18b20Count = 0;
+static uint32_t lastDs18b20DiscoveryMs = 0;
 
 // Асинхронное чтение DS18B20
 static bool conversionInProgress = false;
 static uint32_t conversionStartTime = 0;
 static const uint16_t CONVERSION_TIME_MS = 750; // 12-бит разрешение
+static const uint32_t DISCOVERY_RETRY_MS = 2000;
+static const uint8_t DISCOVERY_INIT_ATTEMPTS = 4;
+static const uint16_t DISCOVERY_INIT_DELAY_MS = 250;
+static uint8_t consecutiveTempReadFailures = 0;
 
 // =============================================================================
 // ISR ДАТЧИКА ПОТОКА
@@ -131,6 +137,84 @@ static float interpolateABV(float pressure, const HydrometerCalibration& cal) {
     return cal.abvPoints[cal.pointCount - 1];
 }
 
+static void clearDs18b20Inventory() {
+    memset(ds18b20Addresses, 0, sizeof(ds18b20Addresses));
+    memset(ds18b20Found, 0, sizeof(ds18b20Found));
+    ds18b20Count = 0;
+}
+
+static void logDs18b20Inventory(uint8_t count) {
+    LOG_I("Sensors: Found %u DS18B20 devices", count);
+    for (uint8_t i = 0; i < count; i++) {
+        LOG_D("Sensors: DS18B20[%d] = %02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+              i,
+              ds18b20Addresses[i][0], ds18b20Addresses[i][1],
+              ds18b20Addresses[i][2], ds18b20Addresses[i][3],
+              ds18b20Addresses[i][4], ds18b20Addresses[i][5],
+              ds18b20Addresses[i][6], ds18b20Addresses[i][7]);
+    }
+}
+
+static uint8_t discoverDs18b20(bool logInventory) {
+    DeviceAddress addr;
+    uint8_t count = 0;
+
+    clearDs18b20Inventory();
+    oneWire.reset_search();
+
+    while (oneWire.search(addr) && count < TEMP_COUNT) {
+        if (OneWire::crc8(addr, 7) != addr[7]) {
+            continue;
+        }
+
+        memcpy(ds18b20Addresses[count], addr, sizeof(DeviceAddress));
+        ds18b20Found[count] = true;
+        ds18b20.setResolution(ds18b20Addresses[count], 12);
+        count++;
+    }
+
+    oneWire.reset_search();
+    ds18b20Count = count;
+    lastDs18b20DiscoveryMs = millis();
+
+    if (count == 0) {
+        conversionInProgress = false;
+        conversionStartTime = 0;
+    }
+
+    if (logInventory) {
+        logDs18b20Inventory(count);
+    }
+
+    return count;
+}
+
+static void startTemperatureConversion(uint32_t now) {
+    if (ds18b20Count == 0) {
+        return;
+    }
+
+    ds18b20.requestTemperatures();
+    conversionInProgress = true;
+    conversionStartTime = now;
+}
+
+static void ensureDs18b20Available(uint32_t now) {
+    const bool shouldRetry =
+        ds18b20Count == 0 &&
+        (lastDs18b20DiscoveryMs == 0 ||
+         now - lastDs18b20DiscoveryMs >= DISCOVERY_RETRY_MS);
+
+    if (!shouldRetry) {
+        return;
+    }
+
+    const uint8_t count = discoverDs18b20(true);
+    if (count > 0) {
+        startTemperatureConversion(now);
+    }
+}
+
 // =============================================================================
 // ПУБЛИЧНЫЙ ИНТЕРФЕЙС
 // =============================================================================
@@ -144,26 +228,28 @@ void init() {
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 
     // DS18B20
+    pinMode(PIN_ONEWIRE, INPUT_PULLUP);
+    delay(10);
     ds18b20.begin();
     // Не блокировать цикл во время конвертации температуры
     ds18b20.setWaitForConversion(false);
     ds18b20.setCheckForConversion(false);
-    uint8_t deviceCount = ds18b20.getDeviceCount();
-    LOG_I("Sensors: Found %d DS18B20 devices", deviceCount);
 
-    // Сканируем адреса
-    for (uint8_t i = 0; i < TEMP_COUNT && i < deviceCount; i++) {
-        if (ds18b20.getAddress(ds18b20Addresses[i], i)) {
-            ds18b20Found[i] = true;
-            ds18b20.setResolution(ds18b20Addresses[i], 12); // 12-бит
-
-            LOG_D("Sensors: DS18B20[%d] = %02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
-                  i,
-                  ds18b20Addresses[i][0], ds18b20Addresses[i][1],
-                  ds18b20Addresses[i][2], ds18b20Addresses[i][3],
-                  ds18b20Addresses[i][4], ds18b20Addresses[i][5],
-                  ds18b20Addresses[i][6], ds18b20Addresses[i][7]);
+    uint8_t deviceCount = 0;
+    for (uint8_t attempt = 0; attempt < DISCOVERY_INIT_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+            delay(DISCOVERY_INIT_DELAY_MS);
         }
+
+        deviceCount = discoverDs18b20(false);
+        if (deviceCount > 0) {
+            break;
+        }
+    }
+    logDs18b20Inventory(deviceCount);
+
+    if (deviceCount > 0) {
+        startTemperatureConversion(millis());
     }
 
     // BMP280 #1
@@ -247,12 +333,15 @@ void init() {
 
 void readTemperatures(Temperatures& temps) {
     uint32_t now = millis();
+    ensureDs18b20Available(now);
+
+    if (ds18b20Count == 0) {
+        return;
+    }
 
     // Фаза 1: Запуск конвертации (неблокирующий)
     if (!conversionInProgress) {
-        ds18b20.requestTemperatures();
-        conversionInProgress = true;
-        conversionStartTime = now;
+        startTemperatureConversion(now);
         return; // Выходим, не блокируя выполнение
     }
 
@@ -263,6 +352,7 @@ void readTemperatures(Temperatures& temps) {
 
     // Прочитать значения (конвертация завершена)
     float values[TEMP_COUNT];
+    uint8_t validCount = 0;
     for (uint8_t i = 0; i < TEMP_COUNT; i++) {
         if (ds18b20Found[i]) {
             float raw = ds18b20.getTempC(ds18b20Addresses[i]);
@@ -274,6 +364,7 @@ void readTemperatures(Temperatures& temps) {
             } else {
                 temps.valid[i] = true;
                 values[i] = raw + tempCal.offsets[i];
+                validCount++;
             }
         } else {
             temps.valid[i] = false;
@@ -289,7 +380,20 @@ void readTemperatures(Temperatures& temps) {
     temps.tsa = values[TEMP_TSA];
     temps.waterIn = values[TEMP_WATER_IN];
     temps.waterOut = values[TEMP_WATER_OUT];
-    temps.lastUpdate = now;
+
+    if (validCount > 0) {
+        temps.lastUpdate = now;
+        consecutiveTempReadFailures = 0;
+    } else {
+        consecutiveTempReadFailures++;
+        tempReadErrorCounter++;
+
+        if (consecutiveTempReadFailures >= 3 &&
+            now - lastDs18b20DiscoveryMs >= DISCOVERY_RETRY_MS) {
+            LOG_W("Sensors: DS18B20 read failed, re-scanning temperature bus");
+            discoverDs18b20(true);
+        }
+    }
 
     // Сброс флага для следующего цикла
     conversionInProgress = false;

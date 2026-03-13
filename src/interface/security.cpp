@@ -5,15 +5,22 @@
  */
 
 #include "security.h"
-#include <mbedtls/base64.h>
+
 #include "config.h"
 
-// Настройки
 static String authUsername = "admin";
 static String authPassword = "";
 static bool authEnabled = false;
+static bool rateLimitEnabled = true;
+static bool securityHeadersInstalled = false;
+static const char* kContentSecurityPolicy =
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' data: https://fonts.gstatic.com; "
+    "img-src 'self' data: blob:; "
+    "connect-src 'self' ws: wss:;";
 
-// Rate Limiting (простая имплементация)
 struct RateLimitEntry {
     IPAddress ip;
     uint32_t lastRequest;
@@ -28,8 +35,10 @@ namespace Security {
 void init(const char* username, const char* password) {
     LOG_I("Security: Initializing...");
 
-    if (username) {
+    if (username && username[0] != '\0') {
         authUsername = String(username);
+    } else {
+        authUsername = "admin";
     }
 
     if (password && strlen(password) > 0) {
@@ -37,73 +46,55 @@ void init(const char* username, const char* password) {
         authEnabled = true;
         LOG_I("Security: Authentication enabled (user: %s)", authUsername.c_str());
     } else {
+        authPassword = "";
         authEnabled = false;
         LOG_I("Security: Authentication disabled");
     }
 
-    // Инициализация rate limit таблицы
     memset(rateLimitTable, 0, sizeof(rateLimitTable));
+
+    if (!securityHeadersInstalled) {
+        DefaultHeaders::Instance().addHeader(
+            "Content-Security-Policy",
+            kContentSecurityPolicy
+        );
+        DefaultHeaders::Instance().addHeader("X-Frame-Options", "SAMEORIGIN");
+        DefaultHeaders::Instance().addHeader("X-Content-Type-Options", "nosniff");
+        DefaultHeaders::Instance().addHeader("X-XSS-Protection", "1; mode=block");
+        DefaultHeaders::Instance().addHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+        DefaultHeaders::Instance().addHeader(
+            "Permissions-Policy",
+            "geolocation=(), microphone=(), camera=()"
+        );
+        securityHeadersInstalled = true;
+    }
 }
 
 bool checkAuth(AsyncWebServerRequest *request) {
     if (!authEnabled) {
-        return true;  // Аутентификация отключена
+        return true;
     }
 
-    if (!request->hasHeader("Authorization")) {
-        return false;
-    }
-
-    String authHeader = request->header("Authorization");
-
-    if (!authHeader.startsWith("Basic ")) {
-        return false;
-    }
-
-    // Извлечь base64 часть
-    String auth = authHeader.substring(6);
-    auth.trim();
-
-    // Декодировать base64
-    size_t outputLen;
-    unsigned char decoded[128];
-
-    int ret = mbedtls_base64_decode(decoded, sizeof(decoded), &outputLen,
-                                     (const unsigned char*)auth.c_str(), auth.length());
-
-    if (ret != 0) {
-        return false;
-    }
-
-    // Преобразовать в строку
-    String credentials = String((char*)decoded);
-
-    // Разделить на username:password
-    int colonIndex = credentials.indexOf(':');
-    if (colonIndex == -1) {
-        return false;
-    }
-
-    String user = credentials.substring(0, colonIndex);
-    String pass = credentials.substring(colonIndex + 1);
-
-    // Проверка credentials
-    return (user == authUsername && pass == authPassword);
+    return request->authenticate(authUsername.c_str(), authPassword.c_str(),
+                                 "Smart-Column S3");
 }
 
 void requestAuth(AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response = request->beginResponse(401, "text/plain", "Unauthorized");
+    AsyncWebServerResponse *response =
+        request->beginResponse(401, "text/plain", "Unauthorized");
     response->addHeader("WWW-Authenticate", "Basic realm=\"Smart-Column S3\"");
-    addSecurityHeaders(response);
     request->send(response);
 }
 
 bool checkRateLimit(IPAddress ip) {
-    uint32_t now = millis();
-    const uint32_t RATE_LIMIT_WINDOW = 60000;  // 1 минута
-    const uint16_t MAX_REQUESTS = 60;           // 60 запросов в минуту
+    if (!rateLimitEnabled) {
+        return true;
+    }
 
-    // Найти запись для этого IP
+    uint32_t now = millis();
+    const uint32_t RATE_LIMIT_WINDOW = 60000;
+    const uint16_t MAX_REQUESTS = 60;
+
     int8_t entryIndex = -1;
     int8_t oldestIndex = 0;
     uint32_t oldestTime = now;
@@ -114,14 +105,12 @@ bool checkRateLimit(IPAddress ip) {
             break;
         }
 
-        // Поиск самой старой записи для возможной замены
         if (rateLimitTable[i].lastRequest < oldestTime) {
             oldestTime = rateLimitTable[i].lastRequest;
             oldestIndex = i;
         }
     }
 
-    // Если IP не найден, создать новую запись
     if (entryIndex == -1) {
         entryIndex = oldestIndex;
         rateLimitTable[entryIndex].ip = ip;
@@ -131,19 +120,13 @@ bool checkRateLimit(IPAddress ip) {
     }
 
     RateLimitEntry& entry = rateLimitTable[entryIndex];
-
-    // Проверка окна времени
     if (now - entry.lastRequest > RATE_LIMIT_WINDOW) {
-        // Окно истекло, сбросить счётчик
         entry.lastRequest = now;
         entry.requestCount = 1;
         return true;
     }
 
-    // Увеличить счётчик
     entry.requestCount++;
-
-    // Проверка лимита
     if (entry.requestCount > MAX_REQUESTS) {
         LOG_W("Security: Rate limit exceeded for IP %s", ip.toString().c_str());
         return false;
@@ -153,30 +136,13 @@ bool checkRateLimit(IPAddress ip) {
 }
 
 void addSecurityHeaders(AsyncWebServerResponse *response) {
-    // Content Security Policy
-    response->addHeader("Content-Security-Policy",
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:;");
-
-    // X-Frame-Options (защита от clickjacking)
-    response->addHeader("X-Frame-Options", "DENY");
-
-    // X-Content-Type-Options
+    response->addHeader("Content-Security-Policy", kContentSecurityPolicy);
+    response->addHeader("X-Frame-Options", "SAMEORIGIN");
     response->addHeader("X-Content-Type-Options", "nosniff");
-
-    // X-XSS-Protection
     response->addHeader("X-XSS-Protection", "1; mode=block");
-
-    // Referrer-Policy
     response->addHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-
-    // Permissions-Policy
     response->addHeader("Permissions-Policy",
-        "geolocation=(), "
-        "microphone=(), "
-        "camera=()");
+        "geolocation=(), microphone=(), camera=()");
 }
 
 void setPassword(const char* password) {
@@ -203,6 +169,15 @@ void setAuthEnabled(bool enabled) {
 
 bool isAuthEnabled() {
     return authEnabled;
+}
+
+void setRateLimitEnabled(bool enabled) {
+    rateLimitEnabled = enabled;
+    LOG_I("Security: Rate limit %s", enabled ? "enabled" : "disabled");
+}
+
+bool isRateLimitEnabled() {
+    return rateLimitEnabled;
 }
 
 } // namespace Security

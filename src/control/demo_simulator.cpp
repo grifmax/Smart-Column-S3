@@ -25,6 +25,22 @@ static struct {
   bool running = false;
 } sim;
 
+namespace {
+
+void applyDemoHealth(SystemState& state) {
+  for (uint8_t i = 0; i < TEMP_COUNT; i++) {
+    state.temps.valid[i] = true;
+  }
+
+  state.health.tempSensorsOk = true;
+  state.health.tempSensorsTotal = TEMP_COUNT;
+  state.health.bmp280Ok = true;
+  state.health.ads1115Ok = true;
+  state.health.pzemOk = true;
+}
+
+} // namespace
+
 void init() {
   sim.startTime = millis();
   sim.lastUpdate = millis();
@@ -74,13 +90,27 @@ void update(SystemState &state, const Settings &settings) {
     state.temps.columnBottom = 24.0f + (random(0, 100) / 100.0f);
     state.temps.columnTop = 23.0f + (random(0, 100) / 100.0f);
     state.temps.deflegmator = 22.0f + (random(0, 100) / 100.0f);
+    state.temps.reflux = state.temps.deflegmator;
     state.temps.product = 21.0f + (random(0, 100) / 100.0f);
+    state.temps.tsa = 24.0f + (random(0, 80) / 100.0f);
+    state.temps.waterIn = 15.0f + (random(0, 50) / 100.0f);
+    state.temps.waterOut = 18.0f + (random(0, 50) / 100.0f);
+    state.temps.lastUpdate = now;
     state.pressure.cube = 0.5f + (random(0, 50) / 100.0f);
+    state.pressure.ok = true;
+    state.pressure.lastUpdate = now;
     state.power.power = 0.0f;
     state.power.voltage = 220.0f + (random(-5, 5));
     state.power.current = 0.0f;
+    state.power.frequency = 50.0f;
+    state.power.powerFactor = 0.98f;
+    state.power.ok = true;
+    state.power.lastUpdate = now;
     state.pump.speedMlPerHour = 0.0f;
     state.pump.running = false;
+    state.hydrometer.valid = false;
+    state.hydrometer.lastUpdate = now;
+    applyDemoHealth(state);
     return;
   }
 
@@ -138,7 +168,16 @@ void update(SystemState &state, const Settings &settings) {
   state.temps.deflegmator = targetDefleg + noise * 0.3f;
   state.temps.reflux = state.temps.deflegmator;
   state.temps.product = state.temps.columnTop - 2.0f + noise * 0.5f;
-  state.temps.tsa = (state.temps.cube + state.temps.columnBottom) / 2.0f;
+  const bool coolingOn = Valves::getWater();
+  float targetTsa = coolingOn ? 24.0f + (sim.phase * 0.05f)
+                              : 32.0f + (sim.phase * 0.08f);
+  if (state.mode == Mode::DISTILLATION) {
+    targetTsa += 2.0f;
+  } else if (state.mode == Mode::NBK) {
+    targetTsa += 1.0f;
+  }
+  targetTsa = constrain(targetTsa, 22.0f, 42.0f);
+  state.temps.tsa = targetTsa + noise * 0.2f;
   state.temps.waterIn = 15.0f + noise * 0.2f;
   state.temps.waterOut = 35.0f + (sim.phase / 100.0f) * 10.0f + noise * 0.3f;
   
@@ -150,9 +189,7 @@ void update(SystemState &state, const Settings &settings) {
   }
 
   // Все датчики "валидны" в демо-режиме
-  for (int i = 0; i < 8; i++) {
-    state.temps.valid[i] = true;
-  }
+  applyDemoHealth(state);
   state.temps.lastUpdate = now;
 
   // ==========================================
@@ -238,11 +275,7 @@ void update(SystemState &state, const Settings &settings) {
   }
 
   // Обновляем health - всё работает в демо
-  state.health.tempSensorsOk = 8;
-  state.health.tempSensorsTotal = 8;
-  state.health.bmp280Ok = true;
-  state.health.ads1115Ok = true;
-  state.health.pzemOk = true;
+  applyDemoHealth(state);
 }
 
 } // namespace DemoSimulator

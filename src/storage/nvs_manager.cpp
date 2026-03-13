@@ -123,6 +123,26 @@ bool loadSettings(Settings& settings) {
     }
     WiFiProfiles::syncLegacyFields(settings.wifi);
 
+    // MQTT
+    settings.mqtt.enabled = prefs.getBool(NVS_KEY_MQTT_ENABLED, settings.mqtt.enabled);
+    prefs.getString(NVS_KEY_MQTT_SERVER, settings.mqtt.server, sizeof(settings.mqtt.server));
+    settings.mqtt.port = prefs.getUShort(NVS_KEY_MQTT_PORT, settings.mqtt.port);
+    prefs.getString(NVS_KEY_MQTT_USERNAME, settings.mqtt.username, sizeof(settings.mqtt.username));
+    prefs.getString(NVS_KEY_MQTT_PASSWORD, settings.mqtt.password, sizeof(settings.mqtt.password));
+    prefs.getString(NVS_KEY_MQTT_BASE_TOPIC, settings.mqtt.baseTopic, sizeof(settings.mqtt.baseTopic));
+    settings.mqtt.publishInterval = prefs.getUInt(NVS_KEY_MQTT_INTERVAL, settings.mqtt.publishInterval);
+    if (settings.mqtt.port == 0) {
+        settings.mqtt.port = 1883;
+    }
+    if (settings.mqtt.baseTopic[0] == '\0') {
+        strlcpy(settings.mqtt.baseTopic, "smart-column", sizeof(settings.mqtt.baseTopic));
+    }
+    if (settings.mqtt.publishInterval < 1000) {
+        settings.mqtt.publishInterval = 1000;
+    } else if (settings.mqtt.publishInterval > 60000) {
+        settings.mqtt.publishInterval = 60000;
+    }
+
     // Telegram
     prefs.getString(NVS_KEY_TG_TOKEN, settings.telegram.token, sizeof(settings.telegram.token));
     prefs.getString(NVS_KEY_TG_CHAT, settings.telegram.chatId, sizeof(settings.telegram.chatId));
@@ -167,6 +187,15 @@ bool loadSettings(Settings& settings) {
     settings.distillationUi.endTempC = prefs.getFloat(NVS_KEY_DIST_END_TEMP, 96.0f);
     settings.distillationUi.powerPercent = prefs.getFloat(NVS_KEY_DIST_POWER_PCT, 100.0f);
     settings.distillationUi.tailsVolumeMl = prefs.getFloat(NVS_KEY_DIST_TAILS_VOL, 0.0f);
+
+    // Web security
+    settings.security.authEnabled = prefs.getBool(NVS_KEY_WEB_AUTH_ENABLED, false);
+    settings.security.rateLimitEnabled = prefs.getBool(NVS_KEY_WEB_RATE_LIMIT, true);
+    prefs.getString(NVS_KEY_WEB_USERNAME, settings.security.username, sizeof(settings.security.username));
+    prefs.getString(NVS_KEY_WEB_PASSWORD, settings.security.password, sizeof(settings.security.password));
+    if (settings.security.username[0] == '\0') {
+        strlcpy(settings.security.username, "admin", sizeof(settings.security.username));
+    }
 
     // ???
     settings.nbk.powerW = prefs.getFloat(NVS_KEY_NBK_POWER, 2500.0f);
@@ -224,6 +253,22 @@ bool saveSettings(const Settings& settings) {
     prefs.putString(NVS_KEY_WIFI_PASS, settings.wifi.password);
     saveWiFiProfilesToNvs(settings.wifi);
 
+    // MQTT
+    prefs.putBool(NVS_KEY_MQTT_ENABLED, settings.mqtt.enabled);
+    prefs.putString(NVS_KEY_MQTT_SERVER, settings.mqtt.server);
+    prefs.putUShort(NVS_KEY_MQTT_PORT, settings.mqtt.port ? settings.mqtt.port : 1883);
+    prefs.putString(NVS_KEY_MQTT_USERNAME, settings.mqtt.username);
+    prefs.putString(NVS_KEY_MQTT_PASSWORD, settings.mqtt.password);
+    prefs.putString(NVS_KEY_MQTT_BASE_TOPIC,
+                    settings.mqtt.baseTopic[0] ? settings.mqtt.baseTopic : "smart-column");
+    uint32_t mqttPublishInterval = settings.mqtt.publishInterval;
+    if (mqttPublishInterval < 1000) {
+        mqttPublishInterval = 1000;
+    } else if (mqttPublishInterval > 60000) {
+        mqttPublishInterval = 60000;
+    }
+    prefs.putUInt(NVS_KEY_MQTT_INTERVAL, mqttPublishInterval);
+
     // Telegram
     prefs.putString(NVS_KEY_TG_TOKEN, settings.telegram.token);
     prefs.putString(NVS_KEY_TG_CHAT, settings.telegram.chatId);
@@ -264,6 +309,12 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_DIST_END_TEMP, settings.distillationUi.endTempC);
     prefs.putFloat(NVS_KEY_DIST_POWER_PCT, settings.distillationUi.powerPercent);
     prefs.putFloat(NVS_KEY_DIST_TAILS_VOL, settings.distillationUi.tailsVolumeMl);
+
+    // Web security
+    prefs.putBool(NVS_KEY_WEB_AUTH_ENABLED, settings.security.authEnabled);
+    prefs.putBool(NVS_KEY_WEB_RATE_LIMIT, settings.security.rateLimitEnabled);
+    prefs.putString(NVS_KEY_WEB_USERNAME, settings.security.username);
+    prefs.putString(NVS_KEY_WEB_PASSWORD, settings.security.password);
 
     // ???
     prefs.putFloat(NVS_KEY_NBK_POWER, settings.nbk.powerW);

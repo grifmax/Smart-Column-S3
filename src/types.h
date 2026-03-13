@@ -144,6 +144,7 @@ struct EnergyHistory {
 
 // Событие для логирования
 struct LogEvent {
+  uint32_t sequence = 0;
   uint32_t timestamp;
   uint8_t level; // 0=INFO, 1=WARN, 2=ERROR
   char message[128];
@@ -386,6 +387,13 @@ struct DistillationUiSettings {
   float tailsVolumeMl = 0.0f;
 };
 
+struct SecuritySettings {
+  bool authEnabled = false;
+  bool rateLimitEnabled = true;
+  char username[32] = "admin";
+  char password[64] = "";
+};
+
 struct SafetySettings {
   float pressureMaxMmHg = 50.0f;
   float tsaMaxC = 55.0f;
@@ -420,6 +428,7 @@ struct Settings {
   FractionatorSettings fractionator;
   RectParams rectParams;
   DistillationUiSettings distillationUi;
+  SecuritySettings security;
   SafetySettings safety;
   NbkSettings nbk;
   FermentationSettings fermentation;

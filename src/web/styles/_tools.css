@@ -1,24 +1,142 @@
-.tools-cards {
+.tools-shell {
+    display: grid;
+    grid-template-columns: minmax(230px, 260px) minmax(0, 1fr);
+    gap: 20px;
     align-items: start;
+}
+
+.tools-sidebar-nav {
+    position: sticky;
+    top: 12px;
+    background: var(--bg-sidebar);
+    backdrop-filter: blur(30px) saturate(1.5);
+    -webkit-backdrop-filter: blur(30px) saturate(1.5);
+    border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
+    padding: 8px;
+}
+
+.tools-sidebar-header {
+    padding: 10px 10px 12px;
+    border-bottom: 1px solid var(--separator);
+}
+
+.tools-sidebar-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.tools-sidebar-subtitle {
+    margin-top: 4px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.tools-sidebar-nav .sidebar-section-title {
+    padding-top: 14px;
+    padding-bottom: 6px;
+}
+
+.tools-sidebar-nav .sidebar-item {
+    min-height: 38px;
+}
+
+.tools-sidebar-nav .sidebar-item.active {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.tools-main {
+    min-width: 0;
+}
+
+.tools-shell .tools-cards {
+    display: block;
 }
 
 .tools-card {
     border: 1px solid var(--border-color);
+    border-radius: 14px;
+    box-shadow: var(--shadow-card);
+}
+
+.tools-card:not([hidden]) {
+    animation: tools-card-enter 0.18s ease;
+}
+
+.tools-card-mobile-toggle {
+    display: none;
+}
+
+.tools-card-body {
+    display: block;
+}
+
+.tools-card-group-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    margin-bottom: 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 10%, white);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.tools-card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    color: var(--accent);
+}
+
+.tools-card-title-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: var(--bg-inset);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.tools-card-title-text {
+    line-height: 1.2;
 }
 
 .tools-card-text {
     color: var(--text-secondary);
-    margin-bottom: 15px;
+    margin-bottom: 18px;
+    line-height: 1.55;
+    max-width: 70ch;
 }
 
 .tools-card [hidden] {
     display: none !important;
 }
 
+.tools-card .form-group {
+    margin: 12px 0;
+}
+
+.tools-card .form-group label {
+    margin-bottom: 5px;
+    font-size: 0.96em;
+}
+
+.tools-card .form-group input,
 .tools-card .form-group select {
     width: 100%;
-    min-height: 44px;
-    padding: 10px 38px 10px 10px;
+    min-height: 42px;
+    padding: 9px 38px 9px 10px;
     border: 2px solid var(--border-color);
     border-radius: 6px;
     background-color: var(--bg-primary);
@@ -99,6 +217,10 @@
     font-variant-numeric: tabular-nums;
 }
 
+.tools-card .form-group input {
+    padding-right: 10px;
+}
+
 .tools-blend-grid input:focus {
     outline: none;
     border-color: var(--accent);
@@ -108,8 +230,8 @@
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 10px;
-    padding: 14px;
-    margin-top: 15px;
+    padding: 12px;
+    margin-top: 12px;
 }
 
 .tools-result-center {
@@ -154,7 +276,19 @@
 
 .tools-submit {
     width: 100%;
-    margin-top: 10px;
+    margin-top: 8px;
+}
+
+@keyframes tools-card-enter {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @media (max-width: 1500px) {
@@ -164,16 +298,143 @@
 }
 
 @media (max-width: 900px) {
+    .tools-shell {
+        display: block;
+    }
+
+    .tools-sidebar-nav {
+        display: none;
+    }
+
+    .tools-shell .tools-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .tools-card {
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .tools-card-mobile-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 12px;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        scroll-margin-top: 76px;
+    }
+
+    .tools-card-mobile-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: var(--bg-inset);
+        font-size: 1.05rem;
+        flex-shrink: 0;
+    }
+
+    .tools-card-mobile-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .tools-card-mobile-title {
+        color: var(--text-primary);
+        font-size: 0.95rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .tools-card-mobile-description {
+        color: var(--text-secondary);
+        font-size: 0.79rem;
+        line-height: 1.35;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+    }
+
+    .tools-card-mobile-chevron {
+        color: var(--text-tertiary);
+        font-size: 1rem;
+        transition: transform 0.18s ease;
+        flex-shrink: 0;
+    }
+
+    .tools-card-mobile-toggle.is-active .tools-card-mobile-chevron {
+        transform: rotate(180deg);
+    }
+
+    .tools-card-body {
+        padding: 0 12px 12px;
+    }
+
+    .tools-card-body > .tools-card-group-badge,
+    .tools-card-body > .tools-card-title,
+    .tools-card-body > .tools-card-text {
+        display: none;
+    }
+
     .tools-inline-grid {
         grid-template-columns: 1fr;
+        gap: 6px;
     }
 
     .tools-blend-grid {
         grid-template-columns: 56px repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        margin-bottom: 10px;
     }
 
     .tools-input-row {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .tools-card .form-group {
+        margin: 6px 0;
+    }
+
+    .tools-card .form-group label {
+        margin-bottom: 3px;
+        font-size: 0.9em;
+        line-height: 1.25;
+    }
+
+    .tools-card .form-group input,
+    .tools-card .form-group select {
+        min-height: 38px;
+        padding-top: 7px;
+        padding-bottom: 7px;
+        font-size: 0.96em;
+    }
+
+    .tools-result {
+        margin-top: 8px;
+        padding: 8px 10px;
+    }
+
+    .tools-result-row {
+        gap: 8px;
+        padding: 4px 0;
+    }
+
+    .tools-submit {
+        margin-top: 6px;
     }
 }
