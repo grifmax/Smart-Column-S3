@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.11.18"
+#define FIRMWARE_VERSION "1.11.20"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -231,9 +231,11 @@
 #define DISPLAY_TIMEOUT_MS 0  // Таймаут отключения (0 = не отключать)
 #define MAX_MENU_ITEMS 10     // Максимум элементов в меню
 
+#include "secrets.h"
+
 // Wi-Fi настройки
-#define WIFI_SSID "DistillerAP"        // Имя Wi-Fi точки доступа
-#define WIFI_PASSWORD "distiller12345" // Пароль Wi-Fi точки доступа
+#define WIFI_SSID     WIFI_SSID_DEFAULT
+#define WIFI_PASSWORD WIFI_PASSWORD_DEFAULT
 
 // Настройки регулирования мощности
 #define POWER_CONTROL_INTERVAL                                                 \

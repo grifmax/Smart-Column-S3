@@ -192,21 +192,49 @@ void init(const char* token, const char* chat) {
   LOG_I("Telegram: Scheduled for init...");
 }
 
+static uint32_t lastTickMs = 0;
+static uint32_t retryIntervalMs = 5000;
+const uint32_t MIN_RETRY_MS = 5000;
+const uint32_t MAX_RETRY_MS = 60000;
+
 void update() {
   if (!tgEnabled) return;
+
+  uint32_t now = millis();
 
   // Безопасная инициализация в основном цикле
   if (tgNeedInit) {
     performInit(pendingToken.c_str(), pendingChatId.c_str());
+    lastTickMs = now;
+    return;
   }
 
   if (!tgBot || !tgReady) return;
 
   const bool online = (WiFi.status() == WL_CONNECTED);
   tgBot->setOnline(online);
-  if (!online) return;
+  
+  if (!online) {
+    // WiFi не подключен - увеличиваем интервал до следующей проверки (backoff)
+    // чтобы не насиловать стек сетевыми вызовами
+    if (retryIntervalMs < MAX_RETRY_MS) {
+        retryIntervalMs = min(retryIntervalMs * 2, MAX_RETRY_MS);
+        LOG_W("Telegram: WiFi offline, backoff to %lu ms", retryIntervalMs);
+    }
+    return;
+  }
 
-  tgBot->tick();
+  // Обычный опрос при наличии сети
+  if (now - lastTickMs >= retryIntervalMs) {
+    lastTickMs = now;
+    tgBot->tick();
+    
+    // Если мы здесь и online - постепенно возвращаем интервал к минимуму
+    if (retryIntervalMs > MIN_RETRY_MS) {
+        retryIntervalMs = MIN_RETRY_MS;
+        LOG_I("Telegram: WiFi restored, polling resumed");
+    }
+  }
 }
 
 bool sendMessage(const char* message) {

@@ -13,6 +13,9 @@
 #include <Wire.h>
 #include <esp_task_wdt.h>
 #include <Preferences.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/queue.h>
 
 #include "config.h"
 #include "types.h"
@@ -51,6 +54,13 @@ SystemState g_state;           // Текущее состояние систем
 Settings g_settings;           // Настройки (из NVS)
 EnergyHistory g_energyHistory; // История энергопотребления
 
+// Очередь для неблокирующего зуммера (Analysis Step 1)
+struct BuzzerCmd {
+  uint8_t count;
+  uint16_t duration;
+};
+static QueueHandle_t g_buzzerQueue = nullptr;
+
 // Captive portal DNS (активен только при первом запуске без WiFi)
 static DNSServer g_dnsServer;
 static bool g_captivePortalActive = false;
@@ -75,6 +85,7 @@ void runTasks();
 void resetWiFiAndRestart(); 
 static void showBootStage(const char* message);
 static void handleLoggerLifecycle(uint32_t now);
+void buzzerTask(void* pvParameters);
 
 // =============================================================================
 // BUZZER HELPER
@@ -82,13 +93,9 @@ static void handleLoggerLifecycle(uint32_t now);
 
 namespace Buzzer {
 void beep(uint8_t count, uint16_t duration) {
-  for (uint8_t i = 0; i < count; i++) {
-    digitalWrite(PIN_BUZZER, HIGH);
-    delay(duration);
-    digitalWrite(PIN_BUZZER, LOW);
-    if (i < count - 1)
-      delay(duration);
-  }
+  if (g_buzzerQueue == nullptr) return;
+  BuzzerCmd cmd = {count, duration};
+  xQueueSend(g_buzzerQueue, &cmd, 0);
 }
 } // namespace Buzzer
 
@@ -124,14 +131,19 @@ void setup() {
   esp_task_wdt_init(60, true); 
   esp_task_wdt_add(NULL);
 
-  // 4. Файловая система
+  // 4. Очередь зуммера (Analysis Step 1)
+  g_buzzerQueue = xQueueCreate(10, sizeof(BuzzerCmd));
+  xTaskCreate(buzzerTask, "buzzer", 2048, NULL, 1, NULL);
+
+  // 5. Инициализация модуля безопасности (Analysis Step 2)
+  Safety::init();
+
+  // 6. Файловая система
   if (!LittleFS.begin(true)) {
     LOG_E("LittleFS mount failed!");
-  } else {
-    LOG_I("LittleFS: %d KB used / %d KB total", LittleFS.usedBytes() / 1024, LittleFS.totalBytes() / 1024);
   }
 
-  // 5. NVS и Настройки
+  // 7. NVS и Настройки
   NVSManager::init();
   loadSettings();
 
@@ -142,17 +154,17 @@ void setup() {
     LOG_I("Reset reason updated in NVS: %d", g_settings.lastRebootReason);
   }
 
-  // 6. Инициализация железа
+  // 8. Инициализация железа
   initHardware();
   showBootStage("Hardware initialized");
   esp_task_wdt_reset();
 
-  // 7. Сеть
+  // 9. Сеть
   initNetwork();
   showBootStage("Network ready");
   esp_task_wdt_reset();
 
-  // 8. Сервисы
+  // 10. Сервисы
 #if WEB_SERVER_ENABLED
   WebServer::init();
 #endif
@@ -322,10 +334,8 @@ void initNetwork() {
 
 void loadSettings() {
   memset(&g_settings, 0, sizeof(g_settings));
-  // Дефолты...
   g_settings.equipment.waterAutoStartCubeTempC = 45.0f;
   g_settings.safety.pressureMaxMmHg = 50.0f;
-  // Загрузка из NVS
   NVSManager::loadSettings(g_settings);
 }
 
@@ -352,9 +362,23 @@ static bool isProcessModeActive(Mode mode) {
 static void handleLoggerLifecycle(uint32_t now) {
   static Mode loggedMode = Mode::IDLE;
   if (g_state.mode == loggedMode) return;
-  
   if (isProcessModeActive(loggedMode)) Logger::stopSession();
   if (isProcessModeActive(g_state.mode)) Logger::startSession();
-  
   loggedMode = g_state.mode;
+}
+
+void buzzerTask(void* pvParameters) {
+  BuzzerCmd cmd;
+  for (;;) {
+    if (xQueueReceive(g_buzzerQueue, &cmd, portMAX_DELAY) == pdTRUE) {
+      for (uint8_t i = 0; i < cmd.count; i++) {
+        digitalWrite(PIN_BUZZER, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(cmd.duration));
+        digitalWrite(PIN_BUZZER, LOW);
+        if (i < cmd.count - 1) {
+          vTaskDelay(pdMS_TO_TICKS(cmd.duration));
+        }
+      }
+    }
+  }
 }

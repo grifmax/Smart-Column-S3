@@ -208,11 +208,62 @@ uint32_t getPhaseElapsedSec() {
 }
 
 uint32_t getPhaseTargetSec(const SystemState& state, const Settings& settings) {
-    return 0; // Заглушка
+    if (state.mode == Mode::RECTIFICATION) {
+        switch (state.rectPhase) {
+            case RectPhase::STABILIZATION:
+                return settings.rectParams.stabilizationMin * 60UL;
+            // Объемы пересчитать в секунды невозможно точно, возвращаем 0
+            default: return 0;
+        }
+    }
+    return 0;
 }
 
 uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settings) {
-    return 0; // Заглушка
+    if (state.mode == Mode::IDLE) return 0;
+
+    if (state.mode == Mode::RECTIFICATION) {
+        float headsTarget, bodyTarget, tailsTarget;
+        Rectification::getTargets(headsTarget, bodyTarget, tailsTarget);
+
+        switch (state.rectPhase) {
+            case RectPhase::STABILIZATION: {
+                uint32_t total = settings.rectParams.stabilizationMin * 60UL;
+                if (total == 0) return 100;
+                uint32_t elapsed = getPhaseElapsedSec();
+                return (elapsed >= total) ? 100 : (uint8_t)(elapsed * 100 / total);
+            }
+            case RectPhase::HEADS: {
+                if (headsTarget <= 0) return 100;
+                float current = state.pump.totalVolumeMl - getPhaseStartVolumeMl();
+                return (current >= headsTarget) ? 100 : (uint8_t)(current * 100 / headsTarget);
+            }
+            case RectPhase::BODY: {
+                if (bodyTarget <= 0) return 100;
+                float current = state.pump.totalVolumeMl - getPhaseStartVolumeMl();
+                return (current >= bodyTarget) ? 100 : (uint8_t)(current * 100 / bodyTarget);
+            }
+            case RectPhase::TAILS: {
+                if (tailsTarget <= 0) return 100;
+                float current = state.pump.totalVolumeMl - getPhaseStartVolumeMl();
+                return (current >= tailsTarget) ? 100 : (uint8_t)(current * 100 / tailsTarget);
+            }
+            default: return 0;
+        }
+    }
+    
+    // Для других режимов (дистилляция и т.д.)
+    if (state.mode == Mode::DISTILLATION) {
+        if (state.rectPhase == RectPhase::HEATING) {
+            float start = 20.0f; // Примерно
+            float end = 85.0f;
+            if (state.temps.cube <= start) return 0;
+            if (state.temps.cube >= end) return 100;
+            return (uint8_t)((state.temps.cube - start) * 100 / (end - start));
+        }
+    }
+
+    return 0;
 }
 
 void getDistillationParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl,

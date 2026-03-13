@@ -6,11 +6,15 @@
 #define SAFETY_H
 
 #include <Arduino.h>
+#include <freertos/semphr.h>
 #include "config.h"
 #include "types.h"
 
 namespace Safety {
 
+extern SemaphoreHandle_t g_safetyMutex;
+
+void init();
 void check(SystemState& state, const Settings& settings);
 void acknowledge(SystemState& state);
 bool reset(SystemState& state, const Settings& settings, char* reason = nullptr,
