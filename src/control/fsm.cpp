@@ -212,9 +212,23 @@ uint32_t getPhaseTargetSec(const SystemState& state, const Settings& settings) {
         switch (state.rectPhase) {
             case RectPhase::STABILIZATION:
                 return settings.rectParams.stabilizationMin * 60UL;
-            // Объемы пересчитать в секунды невозможно точно, возвращаем 0
             default: return 0;
         }
+    }
+    // #4 fix: Hold и Mashing — длительность текущего шага
+    if (state.mode == Mode::HOLD && state.hold.currentStep < state.hold.stepCount) {
+        return (uint32_t)state.hold.steps[state.hold.currentStep].duration * 60UL;
+    }
+    if (state.mode == Mode::MASHING) {
+        return state.mashing.stepDuration; // уже в секундах, задаётся в mashing_handler
+    }
+    // #4 fix: NBK стабилизация — 5 мин
+    if (state.mode == Mode::NBK && state.nbkPhase == NbkPhase::STABILIZATION) {
+        return 5 * 60UL;
+    }
+    // #4 fix: Ферментация — если задано время
+    if (state.mode == Mode::FERMENTATION && settings.fermentation.durationHours > 0) {
+        return (uint32_t)settings.fermentation.durationHours * 3600UL;
     }
     return 0;
 }
@@ -255,12 +269,86 @@ uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settin
     // Для других режимов (дистилляция и т.д.)
     if (state.mode == Mode::DISTILLATION) {
         if (state.rectPhase == RectPhase::HEATING) {
-            float start = 20.0f; // Примерно
+            float start = 20.0f;
             float end = 85.0f;
             if (state.temps.cube <= start) return 0;
             if (state.temps.cube >= end) return 100;
             return (uint8_t)((state.temps.cube - start) * 100 / (end - start));
         }
+    }
+
+    // #4 fix: Mashing — прогресс текущего шага по выдержке при температуре
+    if (state.mode == Mode::MASHING) {
+        if (state.mashing.stepDuration == 0) return 0;
+        uint32_t stepDurMs = state.mashing.stepDuration * 1000UL;
+        if (state.mashing.tempInRange && state.mashing.inRangeStartTime > 0) {
+            uint32_t elapsed = millis() - state.mashing.inRangeStartTime;
+            if (elapsed >= stepDurMs) return 100;
+            return (uint8_t)(elapsed * 100UL / stepDurMs);
+        }
+        // Температура ещё не достигнута — показываем прогресс нагрева
+        float target = state.mashing.targetTemp;
+        float current = state.temps.cube;
+        float prev = (state.mashing.currentStep > 0) ? 20.0f : 20.0f;
+        if (current >= target) return 0; // достигли, ждём входа в диапазон
+        if (target <= prev) return 0;
+        float p = (current - prev) / (target - prev);
+        if (p < 0.0f) p = 0.0f;
+        if (p > 1.0f) p = 1.0f;
+        return (uint8_t)(p * 50.0f); // max 50% пока не в диапазоне
+    }
+
+    // #4 fix: Hold — прогресс текущего шага
+    if (state.mode == Mode::HOLD && state.hold.currentStep < state.hold.stepCount) {
+        uint32_t stepDurSec = (uint32_t)state.hold.steps[state.hold.currentStep].duration * 60UL;
+        if (stepDurSec == 0) return 0;
+        uint32_t stepDurMs = stepDurSec * 1000UL;
+        if (state.hold.tempInRange && state.hold.inRangeStartTime > 0) {
+            uint32_t elapsed = millis() - state.hold.inRangeStartTime;
+            if (elapsed >= stepDurMs) return 100;
+            return (uint8_t)(elapsed * 100UL / stepDurMs);
+        }
+        return 0; // ещё не достигли температуры
+    }
+
+    // #4 fix: NBK — прогресс по фазам
+    if (state.mode == Mode::NBK) {
+        switch (state.nbkPhase) {
+            case NbkPhase::HEATING: {
+                // Прогресс нагрева куба 0→98°C
+                float t = state.temps.cube;
+                float tEnd = 98.0f;
+                float tStart = 20.0f;
+                if (t <= tStart) return 0;
+                if (t >= tEnd) return 100;
+                return (uint8_t)((t - tStart) * 100.0f / (tEnd - tStart));
+            }
+            case NbkPhase::STABILIZATION: {
+                uint32_t elapsed = (millis() - getPhaseStartTime());
+                uint32_t total = 5 * 60 * 1000UL;
+                if (elapsed >= total) return 100;
+                return (uint8_t)(elapsed * 100UL / total);
+            }
+            case NbkPhase::WORKING: {
+                // Если задан целевой объём — по объёму, иначе не известно
+                if (settings.nbk.targetVolumeMl > 0.1f) {
+                    float v = state.pump.totalVolumeMl;
+                    float target = settings.nbk.targetVolumeMl;
+                    if (v >= target) return 100;
+                    return (uint8_t)(v * 100.0f / target);
+                }
+                return 0; // объём не задан — прогресс неизвестен
+            }
+            default: return 0;
+        }
+    }
+
+    // #4 fix: Fermentation — прогресс по заданному времени
+    if (state.mode == Mode::FERMENTATION && settings.fermentation.durationHours > 0) {
+        uint32_t totalMs = (uint32_t)settings.fermentation.durationHours * 3600UL * 1000UL;
+        uint32_t elapsed = millis() - getPhaseStartTime();
+        if (elapsed >= totalMs) return 100;
+        return (uint8_t)(elapsed * 100UL / totalMs);
     }
 
     return 0;

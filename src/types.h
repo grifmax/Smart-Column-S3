@@ -406,12 +406,14 @@ struct NbkSettings {
   float powerW = 2500.0f;
   float pumpSpeedMlH = 20000.0f; // 20 л/ч
   float columnBottomTempThresholdC = 95.0f;
+  float targetVolumeMl = 0.0f;   // #4 fix: целевой объём (0 = неизвестно, прогресс без него — 0%)
 };
 
 struct FermentationSettings {
   float targetTempC = 28.0f;
   float hysteresisC = 0.5f;
   bool useHeater = true;
+  uint16_t durationHours = 0;    // #4 fix: плановая длительность (0 = неизвестно, прогресс без неё — 0%)
 };
 
 // Настройки (полная версия)

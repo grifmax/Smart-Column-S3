@@ -9,6 +9,18 @@
 
 ---
 
+## [1.13.0] - 2026-03-14
+
+### Добавлено
+- **#4** (`fsm.cpp`): `getPhaseProgressPercent()` и `getPhaseTargetSec()` теперь возвращают реальный прогресс для всех режимов — Mashing (по выдержке шага), Hold (по длительности шага), NBK (по темп./времени/объёму), Fermentation (по времени). Ранее возвращали 0. (gemini)
+- **#4** (`types.h`): В `NbkSettings` добавлено поле `targetVolumeMl` (0=неизвестно), в `FermentationSettings` — `durationHours` (0=бессрочно). Через Web UI эти параметры можно задать для отображения прогресса. (gemini)
+- **#14** (`main.cpp`): Self-check лог каждые 30 минут — записывает свободный heap, uptime, причину перезагрузки и счётчики ошибок датчиков в `Logger::logf()` и Serial. (gemini)
+
+### Без изменений (подтверждено)
+- **#7** `buzzerTask`: WDT не требуется — задача спит на `portMAX_DELAY` (правильный паттерн FreeRTOS). (gemini)
+- **#12** `/health` команда Telegram: уже реализована ранее. (gemini)
+- **#9** Взвешенный Health Score: уже реализован в `sensors.cpp::updateHealth()`. (gemini)
+
 ## [1.12.0] - 2026-03-14
 
 ### Исправлено

@@ -73,6 +73,7 @@ uint32_t g_lastDisplayUpdate = 0;
 uint32_t g_lastWebBroadcast = 0;
 uint32_t g_lastLogWrite = 0;
 uint32_t g_lastSafetyCheck = 0;
+uint32_t g_lastSelfCheck = 0;   // #14: self-check лог каждые 30 мин
 
 // =============================================================================
 // ПРОТОТИПЫ
@@ -292,6 +293,33 @@ void loop() {
     lastHealthUpdate = now;
     Sensors::updateHealth(g_state.health);
     if (g_settings.mqtt.enabled) MQTT::publishHealth(g_state.health);
+  }
+
+  // #14: Self-check лог: heap, uptime, ошибки — каждые 30 минут
+  static const uint32_t SELF_CHECK_INTERVAL_MS = 30UL * 60UL * 1000UL;
+  if (now - g_lastSelfCheck >= SELF_CHECK_INTERVAL_MS) {
+    g_lastSelfCheck = now;
+    const char* resetStr = "Other";
+    switch (g_state.health.lastRebootReason) {
+      case 1: resetStr = "PowerOn"; break;
+      case 3: resetStr = "SWD WDT"; break;
+      case 4: resetStr = "HWD WDT"; break;
+      case 5: resetStr = "DeepSleep"; break;
+      case 6: resetStr = "SW Reset"; break;
+      case 7: resetStr = "Panic"; break;
+    }
+    Logger::logf(0, "[SELFCHECK] Heap:%uKB Uptime:%us Reboot:%s TempErr:%u PzemSpk:%u",
+      g_state.health.freeHeap / 1024,
+      (unsigned)g_state.uptime,
+      resetStr,
+      g_state.health.tempReadErrors,
+      g_state.health.pzemSpikeCount);
+    LOG_I("[SELFCHECK] Heap:%uKB Uptime:%us Reboot:%s TempErr:%u PzemSpk:%u",
+      g_state.health.freeHeap / 1024,
+      (unsigned)g_state.uptime,
+      resetStr,
+      g_state.health.tempReadErrors,
+      g_state.health.pzemSpikeCount);
   }
 
   esp_task_wdt_reset();
