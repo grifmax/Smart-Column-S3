@@ -36,8 +36,9 @@ static bool sendMessageToChat(const fb::ID& chatId, const char* message) {
   }
 
   fb::Message out(message, chatId);
-  fb::Result res = tgBot->sendMessage(out, true);
-  if (res.type() != fb::Result::Type::OK || res.isError()) {
+  // Отправляем асинхронно (false), чтобы не блокировать основной цикл контроллера
+  fb::Result res = tgBot->sendMessage(out, false);
+  if (res.isError()) {
     LOG_W("Telegram: send failed (%s)", res.getError().toString().c_str());
     return false;
   }
@@ -172,8 +173,8 @@ void init(const char* token, const char* chat) {
 
   tgBot = new FastBot2();
   tgBot->setToken(token);
-  tgBot->setTimeout(8000);
-  tgBot->setPollMode(fb::Poll::Long, 60000);
+  tgBot->setTimeout(5000);
+  tgBot->setPollMode(fb::Poll::Long, 15000);
   tgBot->skipUpdates();
   tgBot->attachUpdate(handleUpdate);
   tgBot->setOnline(WiFi.status() == WL_CONNECTED);

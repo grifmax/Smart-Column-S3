@@ -7,7 +7,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.11.15"
+#define FIRMWARE_VERSION "1.11.16"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
