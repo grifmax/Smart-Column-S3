@@ -12,6 +12,10 @@ bool isProfileUsable(const WiFiProfile& profile) {
   return profile.enabled && profile.ssid[0] != '\0';
 }
 
+const char* getIpModeLabel(const WiFiProfile& profile) {
+  return profile.useStaticIp ? "static IP" : "DHCP";
+}
+
 const WiFiProfile* firstEnabledProfile(const WiFiSettings& wifi) {
   const uint8_t count = (wifi.profileCount > WIFI_MAX_PROFILES) ? WIFI_MAX_PROFILES : wifi.profileCount;
   for (uint8_t i = 0; i < count; ++i) {
@@ -60,6 +64,8 @@ bool applyStationConfig(const WiFiProfile& profile) {
   if (!ip.fromString(profile.ip) || !gateway.fromString(profile.gateway) ||
       !subnet.fromString(profile.subnet)) {
     LOG_W("WiFi: invalid static IP settings for SSID %s, falling back to DHCP", profile.ssid);
+    Logger::logf(1, "WiFi profile %s has invalid static IP settings, using DHCP",
+                 profile.ssid);
     return WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
   }
 
@@ -251,9 +257,12 @@ bool beginConnection(const WiFiProfile& profile) {
 
   if (!applyStationConfig(profile)) {
     LOG_W("WiFi: failed to apply STA config for %s", profile.ssid);
+    Logger::logf(1, "WiFi STA config apply failed for %s", profile.ssid);
   }
 
   LOG_I("WiFi: connecting to profile %s", profile.ssid);
+  Logger::logf(0, "WiFi connect started: %s (%s)",
+               profile.ssid, getIpModeLabel(profile));
   WiFi.begin(profile.ssid, profile.password);
   return true;
 }
@@ -264,16 +273,20 @@ bool connectProfileBlocking(WiFiSettings& wifi, const WiFiProfile& profile, uint
   if (waitForConnection(timeoutMs)) {
     syncLegacyFields(wifi, &profile);
     LOG_I("WiFi: connected to %s, IP: %s", profile.ssid, WiFi.localIP().toString().c_str());
+    Logger::logf(0, "WiFi connected: %s, IP %s",
+                 profile.ssid, WiFi.localIP().toString().c_str());
     return true;
   }
 
   LOG_W("WiFi: failed to connect to %s", profile.ssid);
+  Logger::logf(1, "WiFi connect failed: %s", profile.ssid);
   return false;
 }
 
 bool connectBestAvailable(WiFiSettings& wifi, uint32_t timeoutMs) {
   compactProfiles(wifi);
   if (!hasConfiguredProfiles(wifi)) {
+    Logger::logf(0, "WiFi setup required: no saved profiles");
     return false;
   }
 
@@ -301,14 +314,23 @@ bool connectBestAvailable(WiFiSettings& wifi, uint32_t timeoutMs) {
 
   WiFiProfile fallback;
   if (getProfileBySsid(wifi, wifi.ssid, fallback)) {
-    return connectProfileBlocking(wifi, fallback, timeoutMs);
+    const bool connected = connectProfileBlocking(wifi, fallback, timeoutMs);
+    if (!connected) {
+      Logger::logf(1, "WiFi auto-connect failed for all saved profiles");
+    }
+    return connected;
   }
 
   const WiFiProfile* firstProfile = firstEnabledProfile(wifi);
   if (firstProfile) {
-    return connectProfileBlocking(wifi, *firstProfile, timeoutMs);
+    const bool connected = connectProfileBlocking(wifi, *firstProfile, timeoutMs);
+    if (!connected) {
+      Logger::logf(1, "WiFi auto-connect failed for all saved profiles");
+    }
+    return connected;
   }
 
+  Logger::logf(1, "WiFi auto-connect failed for all saved profiles");
   return false;
 }
 

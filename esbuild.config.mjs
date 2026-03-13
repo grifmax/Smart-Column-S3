@@ -39,6 +39,25 @@ function replaceAll(text, replacements) {
     return next;
 }
 
+function writeFrontendVersionMetadata() {
+    const now = new Date();
+    const versionPayload = {
+        version: appVersion,
+        buildDate: now.toLocaleDateString('en-US', {
+            month: 'short',
+            day: '2-digit',
+            year: 'numeric',
+        }).replace(',', ''),
+        buildTime: now.toLocaleTimeString('en-GB', {
+            hour12: false,
+        }),
+        buildTimestamp: Math.floor(now.getTime() / 1000),
+        builder: 'esbuild',
+    };
+
+    fs.writeFileSync('data/version.json', `${JSON.stringify(versionPayload, null, 2)}\n`, 'utf8');
+}
+
 function stampStaticAssetVersions() {
     const htmlFiles = ['data/index.html', 'data/charts.html', 'data/logs.html', 'data/calibration.html'];
     const htmlReplacements = [
@@ -83,6 +102,7 @@ if (isWatch) {
     esbuild.buildSync(opts);
     fs.renameSync('data/main.js', 'data/app.js');
     fs.renameSync('data/main.css', 'data/style.css');
+    writeFrontendVersionMetadata();
     stampStaticAssetVersions();
     gzipBuildArtifacts();
 

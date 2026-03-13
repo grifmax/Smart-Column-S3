@@ -7,6 +7,7 @@
 #include "security.h"
 
 #include "config.h"
+#include "storage/logger.h"
 
 static String authUsername = "admin";
 static String authPassword = "";
@@ -129,6 +130,10 @@ bool checkRateLimit(IPAddress ip) {
     entry.requestCount++;
     if (entry.requestCount > MAX_REQUESTS) {
         LOG_W("Security: Rate limit exceeded for IP %s", ip.toString().c_str());
+        if (entry.requestCount == MAX_REQUESTS + 1) {
+            Logger::logf(1, "Rate limit exceeded for IP %s",
+                         ip.toString().c_str());
+        }
         return false;
     }
 

@@ -12,7 +12,8 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    headless: true
+    headless: true,
+    serviceWorkers: 'block'
   },
   webServer: {
     command: 'python -m http.server 4173 --directory ../../data',

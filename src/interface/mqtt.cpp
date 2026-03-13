@@ -8,7 +8,9 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <limits.h>
 #include "config.h"
+#include "storage/logger.h"
 
 // Для управления железом
 #include "control/fsm.h"
@@ -27,6 +29,24 @@ static String deviceId;
 static String mqttUsername;
 static String mqttPassword;
 static uint32_t lastReconnectAttempt = 0;
+static bool wasConnected = false;
+static int lastConnectErrorCode = INT_MIN;
+static uint32_t lastConnectErrorLogMs = 0;
+
+namespace {
+
+void logConnectFailureThrottled(int errorCode) {
+    const uint32_t now = millis();
+    if (errorCode != lastConnectErrorCode ||
+        now - lastConnectErrorLogMs >= 30000UL) {
+        Logger::logf(1, "MQTT connect failed: rc=%d, server=%s:%u",
+                     errorCode, g_settings.mqtt.server, g_settings.mqtt.port);
+        lastConnectErrorCode = errorCode;
+        lastConnectErrorLogMs = now;
+    }
+}
+
+} // namespace
 
 namespace MQTT {
 
@@ -65,6 +85,8 @@ void init(const char* server, uint16_t port, const char* username, const char* p
         String cmd = topicStr.substring(cmdPrefix.length());
         
         LOG_I("MQTT Command: %s = %s", cmd.c_str(), payloadStr.c_str());
+        Logger::logf(0, "MQTT command received: %s=%s",
+                     cmd.c_str(), payloadStr.c_str());
 
         // Обработка команд FSM
         if (cmd == "start") {
@@ -126,6 +148,8 @@ void init(const char* server, uint16_t port, const char* username, const char* p
         }
         else {
             LOG_W("MQTT: Unknown command: %s", cmd.c_str());
+            Logger::logf(1, "MQTT command rejected: unknown command '%s'",
+                         cmd.c_str());
         }
     });
 
@@ -151,6 +175,9 @@ bool reconnect() {
 
     if (connected) {
         LOG_I("MQTT: Connected!");
+        wasConnected = true;
+        lastConnectErrorCode = INT_MIN;
+        lastConnectErrorLogMs = 0;
 
         // Публикация online статуса
         mqttClient.publish(willTopic.c_str(), "online", true);
@@ -161,16 +188,25 @@ bool reconnect() {
 
         // Публикация Discovery при подключении
         publishDiscovery();
+        Logger::logf(0, "MQTT connected: %s:%u, topic=%s",
+                     g_settings.mqtt.server, g_settings.mqtt.port,
+                     baseTopic.c_str());
 
         return true;
     }
 
     LOG_E("MQTT: Connection failed, rc=%d", mqttClient.state());
+    wasConnected = false;
+    logConnectFailureThrottled(mqttClient.state());
     return false;
 }
 
 void handle() {
     if (!mqttClient.connected()) {
+        if (wasConnected) {
+            wasConnected = false;
+            Logger::logf(1, "MQTT disconnected: rc=%d", mqttClient.state());
+        }
         uint32_t now = millis();
         // Попытка переподключения раз в 5 секунд
         if (now - lastReconnectAttempt > 5000) {
@@ -178,6 +214,7 @@ void handle() {
             reconnect();
         }
     } else {
+        wasConnected = true;
         mqttClient.loop();
     }
 }
@@ -358,8 +395,12 @@ bool isConnected() {
 void disconnect() {
     if (mqttClient.connected()) {
         LOG_I("MQTT: Disconnecting");
+        Logger::logf(0, "MQTT disconnected");
         mqttClient.disconnect();
     }
+    wasConnected = false;
+    lastConnectErrorCode = INT_MIN;
+    lastConnectErrorLogMs = 0;
     lastReconnectAttempt = 0;
 }
 

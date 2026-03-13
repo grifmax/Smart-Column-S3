@@ -247,6 +247,8 @@ void setup() {
   showBootStage("System ready");
   LOG_I("IP: %s", WiFi.localIP().toString().c_str());
   LOG_I("=================================");
+  Logger::logf(0, "System ready: firmware %s, IP %s", FW_VERSION,
+               WiFi.localIP().toString().c_str());
 
   // Switch from BOOT status to the main UI immediately after setup.
   Display::update(g_state);
@@ -739,28 +741,35 @@ void initNetwork() {
   if (apStarted) {
     LOG_I("AP started: %s, IP: %s", WIFI_AP_SSID,
           WiFi.softAPIP().toString().c_str());
+    Logger::logf(0, "Access point started: %s (%s)", WIFI_AP_SSID,
+                 WiFi.softAPIP().toString().c_str());
   } else {
     LOG_E("AP start failed for SSID: %s", WIFI_AP_SSID);
+    Logger::logf(2, "Access point start failed: %s", WIFI_AP_SSID);
   }
 
   // Попытка подключения к внешнему WiFi (STA)
   if (WiFiProfiles::hasConfiguredProfiles(g_settings.wifi)) {
     if (WiFiProfiles::connectBestAvailable(g_settings.wifi, WIFI_CONNECT_TIMEOUT_MS)) {
       LOG_I("WiFi connected! STA IP: %s", WiFi.localIP().toString().c_str());
+      Logger::logf(0, "WiFi ready: STA %s", WiFi.localIP().toString().c_str());
     } else {
       LOG_W("WiFi connection failed for all saved profiles, AP-only access remains available");
+      Logger::logf(1, "WiFi startup fell back to AP-only mode");
     }
   } else {
     // Нет сохранённого SSID — запускаем captive portal
     g_dnsServer.start(53, "*", WiFi.softAPIP());
     g_captivePortalActive = true;
     LOG_I("Captive portal started — WiFi setup wizard active");
+    Logger::logf(0, "Captive portal started for WiFi setup");
   }
 #endif
 
   // mDNS - доступ по smart-column.local
   if (MDNS.begin("smart-column")) {
     LOG_I("mDNS responder started: smart-column.local");
+    Logger::logf(0, "mDNS started: smart-column.local");
 
     // Объявление HTTP сервиса
     MDNS.addService("http", "tcp", 80);
@@ -770,6 +779,7 @@ void initNetwork() {
     MDNS.addServiceTxt("http", "tcp", "board", "ESP32-S3");
   } else {
     LOG_E("mDNS initialization failed");
+    Logger::logf(1, "mDNS initialization failed");
   }
 }
 

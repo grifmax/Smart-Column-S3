@@ -1332,12 +1332,17 @@ void init() {
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
+          Logger::logf(2, "Security settings save failed");
           request->send(500, "application/json",
                         "{\"success\":false,\"error\":\"Failed to save settings\"}");
           return;
         }
 
         applySecuritySettings();
+        Logger::logf(0, "Security settings updated: auth=%s, rateLimit=%s, user=%s",
+                     authEnabled ? "enabled" : "disabled",
+                     rateLimitEnabled ? "enabled" : "disabled",
+                     g_settings.security.username);
         request->send(200, "application/json", "{\"success\":true}");
       });
 
@@ -1496,6 +1501,7 @@ void init() {
                                        : g_settings.mqtt.publishInterval;
 
         if (enabled && (!server || server[0] == '\0')) {
+          Logger::logf(1, "MQTT settings rejected: server is required when enabled");
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"MQTT server is required when enabled\"}");
           return;
@@ -1514,12 +1520,21 @@ void init() {
         g_settings.mqtt.publishInterval = publishInterval;
 
         if (!NVSManager::saveSettings(g_settings)) {
+          Logger::logf(2, "MQTT settings save failed");
           request->send(500, "application/json",
                         "{\"success\":false,\"error\":\"Failed to save settings\"}");
           return;
         }
 
         request->send(200, "application/json", "{\"success\":true}");
+        Logger::logf(
+            0,
+            "MQTT settings updated: %s, server=%s:%u, topic=%s, interval=%lums",
+            g_settings.mqtt.enabled ? "enabled" : "disabled",
+            g_settings.mqtt.server[0] ? g_settings.mqtt.server : "-",
+            g_settings.mqtt.port,
+            g_settings.mqtt.baseTopic,
+            static_cast<unsigned long>(g_settings.mqtt.publishInterval));
 
         // Применяем runtime-настройки после ответа
         MQTT::disconnect();
@@ -1543,16 +1558,19 @@ void init() {
         if (index + len != total) return;
 
         if (!g_settings.mqtt.enabled) {
+          Logger::logf(1, "MQTT test rejected: MQTT is disabled");
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"MQTT disabled\"}");
           return;
         }
         if (g_settings.mqtt.server[0] == '\0') {
+          Logger::logf(1, "MQTT test rejected: broker is not configured");
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"MQTT server is not configured\"}");
           return;
         }
         if (WiFi.status() != WL_CONNECTED) {
+          Logger::logf(1, "MQTT test rejected: WiFi STA is not connected");
           request->send(503, "application/json",
                         "{\"success\":false,\"error\":\"WiFi STA not connected\"}");
           return;
@@ -1579,12 +1597,14 @@ void init() {
         }
 
         if (!MQTT::isConnected()) {
+          Logger::logf(1, "MQTT test failed: broker unavailable");
           request->send(503, "application/json",
                         "{\"success\":false,\"error\":\"MQTT broker unavailable\"}");
           return;
         }
 
         MQTT::publishNotification("MQTT test", message, "info");
+        Logger::logf(0, "MQTT test notification sent");
         request->send(200, "application/json", "{\"success\":true}");
       });
 
@@ -2064,6 +2084,7 @@ void init() {
   // POST /api/reboot - перезагрузка контроллера
   server.on("/api/reboot", HTTP_POST, [](AsyncWebServerRequest *request) {
     LOG_W("Reboot requested via API");
+    Logger::logf(1, "System reboot requested via API");
     request->send(200, "application/json",
                   "{\"success\":true,\"message\":\"Rebooting...\"}");
 
@@ -2752,6 +2773,7 @@ void init() {
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
+          Logger::logf(2, "WiFi profile save failed: %s", ssid);
           request->send(500, "application/json",
                         "{\"success\":false,\"error\":\"Failed to save settings\"}");
           return;
@@ -2763,6 +2785,10 @@ void init() {
 
         String json;
         serializeJson(out, json);
+        Logger::logf(0, "WiFi profile saved: %s (%s%s)",
+                     ssid,
+                     profile.enabled ? "enabled" : "disabled",
+                     makePreferred ? ", preferred" : "");
         request->send(200, "application/json", json);
       });
 
@@ -2794,6 +2820,7 @@ void init() {
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
+          Logger::logf(2, "WiFi profile reorder save failed: %s", ssid);
           request->send(500, "application/json",
                         "{\"success\":false,\"error\":\"Failed to save settings\"}");
           return;
@@ -2805,6 +2832,8 @@ void init() {
 
         String json;
         serializeJson(out, json);
+        Logger::logf(0, "WiFi profile reordered: %s moved %s", ssid,
+                     shift > 0 ? "down" : "up");
         request->send(200, "application/json", json);
       });
 
@@ -2833,6 +2862,7 @@ void init() {
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
+          Logger::logf(2, "WiFi profile delete save failed: %s", ssid);
           request->send(500, "application/json",
                         "{\"success\":false,\"error\":\"Failed to save settings\"}");
           return;
@@ -2844,6 +2874,7 @@ void init() {
 
         String json;
         serializeJson(out, json);
+        Logger::logf(0, "WiFi profile deleted: %s", ssid);
         request->send(200, "application/json", json);
       });
 
@@ -2863,6 +2894,7 @@ void init() {
 
         if (error) {
           LOG_E("WiFi: JSON parse error: %s", error.c_str());
+          Logger::logf(1, "WiFi connect rejected: invalid JSON");
           request->send(400, "application/json",
                         "{\"error\":\"Invalid JSON\"}");
           return;
@@ -2881,6 +2913,8 @@ void init() {
         }
 
         LOG_I("WiFi: Connect request for SSID: %s", ssid);
+        Logger::logf(0, "WiFi connect requested: %s%s",
+                     ssid, saveProfile ? " (save profile)" : "");
 
         WiFiProfile profileToConnect{};
         profileToConnect.enabled = true;
@@ -2967,6 +3001,7 @@ void init() {
           WiFiProfiles::beginConnection(profileToConnect);
         } else {
           LOG_E("WiFi: Failed to save settings to NVS");
+          Logger::logf(2, "WiFi connect save failed: %s", ssid);
           request->send(500, "application/json",
                         "{\"error\":\"Failed to save settings\"}");
         }
@@ -3215,8 +3250,10 @@ void init() {
     String id = request->pathArg(0);
     
     if (applyProfile(id)) {
+      Logger::logf(0, "Profile loaded: %s", id.c_str());
       request->send(200, "application/json", "{\"success\":true,\"message\":\"Profile loaded\"}");
     } else {
+      Logger::logf(1, "Profile load failed: %s not found", id.c_str());
       request->send(404, "application/json", "{\"error\":\"Profile not found\"}");
     }
   });

@@ -4,7 +4,8 @@
         "build": "node esbuild.config.mjs",
         "watch": "node esbuild.config.mjs --watch",
         "lint": "eslint src/web/",
-        "lint:fix": "eslint src/web/ --fix"
+        "lint:fix": "eslint src/web/ --fix",
+        "test:ui-smoke": "npm --prefix tools/ui-smoke test"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",

@@ -1,6 +1,7 @@
 {
-  "buildDate": "Mar 11 2026",
-  "buildTime": "22:31:47",
-  "buildTimestamp": 1773257507,
-  "builder": "PlatformIO"
+  "version": "1.10.24",
+  "buildDate": "Mar 13 2026",
+  "buildTime": "12:03:12",
+  "buildTimestamp": 1773392592,
+  "builder": "esbuild"
 }
