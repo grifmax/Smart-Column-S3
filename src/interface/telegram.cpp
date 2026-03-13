@@ -19,6 +19,11 @@ static String tgChatId;
 static bool tgEnabled = false;
 static bool tgReady = false;
 
+// Параметры для отложенной инициализации (чтобы избежать Race Condition с веб-сервером)
+static bool tgNeedInit = false;
+static String pendingToken;
+static String pendingChatId;
+
 namespace {
 
 static bool isConfigured() {
@@ -36,8 +41,9 @@ static bool sendMessageToChat(const fb::ID& chatId, const char* message) {
   }
 
   fb::Message out(message, chatId);
-  // Отправляем асинхронно (false), чтобы не блокировать основной цикл контроллера
-  fb::Result res = tgBot->sendMessage(out, false);
+  // Используем синхронную отправку (true), так как объект 'out' живет только в этой функции.
+  // Это предотвращает краш из-за обращения к памяти после выхода из функции.
+  fb::Result res = tgBot->sendMessage(out, true);
   if (res.isError()) {
     LOG_W("Telegram: send failed (%s)", res.getError().toString().c_str());
     return false;
@@ -142,31 +148,12 @@ static void handleUpdate(fb::Update& u) {
   }
 }
 
-}  // namespace
-
-namespace TelegramBot {
-
-void init(const char* token, const char* chat) {
-  LOG_I("Telegram(FastBot2): Initializing...");
-
-  tgEnabled = (token && token[0] && chat && chat[0]);
-  tgReady = false;
-  tgChatId = "";
-
-  if (!tgEnabled) {
-    LOG_W("Telegram(FastBot2): Disabled (empty token/chat)");
-    return;
-  }
-
-  tgChatId = chat;
-  tgChatId.trim();
-  if (!tgChatId.length()) {
-    LOG_E("Telegram(FastBot2): Invalid chat id");
-    tgEnabled = false;
-    return;
-  }
-
+// Реальная инициализация бота (вызывать ТОЛЬКО из основного цикла)
+void performInit(const char* token, const char* chat) {
+  LOG_I("Telegram(FastBot2): Real init starting...");
+  
   if (tgBot) {
+    tgBot->end();
     delete tgBot;
     tgBot = nullptr;
   }
@@ -180,28 +167,50 @@ void init(const char* token, const char* chat) {
   tgBot->setOnline(WiFi.status() == WL_CONNECTED);
   tgBot->begin();
 
+  tgChatId = chat;
+  tgChatId.trim();
   tgReady = true;
-  LOG_I("Telegram(FastBot2): Ready");
+  tgNeedInit = false;
+  LOG_I("Telegram(FastBot2): Init complete");
+}
+
+}  // namespace
+
+namespace TelegramBot {
+
+void init(const char* token, const char* chat) {
+  if (!token || !token[0] || !chat || !chat[0]) {
+    tgEnabled = false;
+    return;
+  }
+
+  // Вместо немедленной инициализации ставим флаг
+  pendingToken = token;
+  pendingChatId = chat;
+  tgNeedInit = true;
+  tgEnabled = true;
+  LOG_I("Telegram: Scheduled for init...");
 }
 
 void update() {
-  if (!tgEnabled || !tgBot || !tgReady) {
-    return;
+  if (!tgEnabled) return;
+
+  // Безопасная инициализация в основном цикле
+  if (tgNeedInit) {
+    performInit(pendingToken.c_str(), pendingChatId.c_str());
   }
+
+  if (!tgBot || !tgReady) return;
 
   const bool online = (WiFi.status() == WL_CONNECTED);
   tgBot->setOnline(online);
-  if (!online) {
-    return;
-  }
+  if (!online) return;
 
   tgBot->tick();
 }
 
 bool sendMessage(const char* message) {
-  if (!isConfigured() || !message) {
-    return false;
-  }
+  if (!isConfigured() || !message) return false;
   if (WiFi.status() != WL_CONNECTED) {
     LOG_W("Telegram: send skipped, WiFi STA not connected");
     return false;
@@ -211,23 +220,19 @@ bool sendMessage(const char* message) {
 
 bool sendFormatted(const char* format, ...) {
   if (!format) return false;
-
   char buffer[384];
   va_list args;
   va_start(args, format);
   vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
-
   return sendMessage(buffer);
 }
 
 void notifyPhaseChange(RectPhase phase, const RunStats& stats) {
   const char* phases[] = {"Idle", "Heating", "Stabilization", "Heads", "Purge",
                           "Body", "Tails", "Finish", "Error"};
-
   const uint8_t idx = static_cast<uint8_t>(phase);
   const char* phaseName = (idx < (sizeof(phases) / sizeof(phases[0]))) ? phases[idx] : "Unknown";
-
   const float totalVolume = stats.headsVolume + stats.bodyVolume + stats.tailsVolume;
   sendFormatted("Phase changed: %s\nVolume: %.0f ml", phaseName, totalVolume);
 }
@@ -245,9 +250,7 @@ void notifyFinish(const RunStats& stats) {
 void notifyHealthAlert(const SystemHealth& health) {
   char msg[512];
   int len = 0;
-
   len += snprintf(msg + len, sizeof(msg) - len, "System health alert\n\nOverall: %u%%\n", health.overallHealth);
-
   if (!health.pzemOk) len += snprintf(msg + len, sizeof(msg) - len, "- PZEM power meter\n");
   if (!health.ads1115Ok) len += snprintf(msg + len, sizeof(msg) - len, "- ADS1115 ADC\n");
   if (!health.bmp280Ok) len += snprintf(msg + len, sizeof(msg) - len, "- BMP280 sensor\n");
@@ -255,46 +258,27 @@ void notifyHealthAlert(const SystemHealth& health) {
     len += snprintf(msg + len, sizeof(msg) - len, "- Temp sensors: %u/%u OK\n",
                     health.tempSensorsOk, health.tempSensorsTotal);
   }
-
-  if (health.pzemSpikeCount > 0) {
-    len += snprintf(msg + len, sizeof(msg) - len, "PZEM spikes: %u\n", health.pzemSpikeCount);
-  }
-  if (health.tempReadErrors > 0) {
-    len += snprintf(msg + len, sizeof(msg) - len, "Temp errors: %u\n", health.tempReadErrors);
-  }
-  if (health.wifiConnected && health.wifiRSSI < -80) {
-    len += snprintf(msg + len, sizeof(msg) - len, "Weak WiFi: %d dBm\n", health.wifiRSSI);
-  }
-
   sendMessage(msg);
 }
 
-bool sendScreenshot() {
-  return false;
-}
+bool sendScreenshot() { return false; }
 
 void setEnabled(bool enabled) {
   tgEnabled = enabled;
-  if (!tgBot) return;
-
-  if (enabled) {
-    tgBot->begin();
-  } else {
+  if (!enabled && tgBot) {
     tgBot->end();
+    tgReady = false;
   }
 }
 
-bool isEnabled() {
-  return tgEnabled && tgBot != nullptr && tgReady;
-}
+bool isEnabled() { return tgEnabled && tgBot != nullptr && tgReady; }
 
 void setSettings(const TelegramSettings& settings) {
-  tgEnabled = settings.enabled;
-  if (!tgEnabled) {
+  if (settings.enabled) {
+    init(settings.token, settings.chatId);
+  } else {
     setEnabled(false);
-    return;
   }
-  init(settings.token, settings.chatId);
 }
 
 }  // namespace TelegramBot
