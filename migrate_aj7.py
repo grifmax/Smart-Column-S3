@@ -5,37 +5,48 @@ def migrate_file(filepath):
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # 1. Replace Document types
-    content = re.sub(r'StaticJsonDocument<\s*\d+\s*>\s+(\w+)\s*;', r'JsonDocument \1;', content)
-    content = re.sub(r'DynamicJsonDocument\s+(\w+)\s*\(\s*\d+\s*\)\s*;', r'JsonDocument \1;', content)
-    content = re.sub(r'DynamicJsonDocument\s+(\w+)\s*\(\s*docSize\s*\)\s*;', r'JsonDocument \1;', content)
+    original_content = content
 
-    # 2. Replace createNestedObject with key
-    content = re.sub(r'\.createNestedObject\s*\(\s*([^)]+)\s*\)', r'[\1].to<JsonObject>()', content)
+    # 1. StaticJsonDocument<N> doc -> JsonDocument doc
+    content = re.sub(r'StaticJsonDocument<\s*[\w\+\-\*/\s]+\s*>\s+(\w+);', r'JsonDocument \1;', content)
     
-    # 3. Replace createNestedArray with key
-    content = re.sub(r'\.createNestedArray\s*\(\s*([^)]+)\s*\)', r'[\1].to<JsonArray>()', content)
+    # 2. DynamicJsonDocument doc(N) -> JsonDocument doc
+    content = re.sub(r'DynamicJsonDocument\s+(\w+)\(\s*[\w\+\-\*/\s]+\s*\);', r'JsonDocument \1;', content)
 
-    # 4. Replace createNestedObject without key (inside arrays)
-    content = content.replace('.createNestedObject()', '.add<JsonObject>()')
-    content = content.replace('.createNestedArray()', '.add<JsonArray>()')
+    # 3. doc.createNestedObject("key") -> doc["key"].to<JsonObject>()
+    content = re.sub(r'(\w+)\.createNestedObject\(\s*"([^"]+)"\s*\)', r'\1["\2"].to<JsonObject>()', content)
+    
+    # 4. doc.createNestedArray("key") -> doc["key"].to<JsonArray>()
+    content = re.sub(r'(\w+)\.createNestedArray\(\s*"([^"]+)"\s*\)', r'\1["\2"].to<JsonArray>()', content)
 
-    # 5. Replace containsKey with is<JsonVariant>()
-    # Example: doc.containsKey("key") -> doc["key"].is<JsonVariant>()
-    content = re.sub(r'\.containsKey\s*\(\s*([^)]+)\s*\)', r'[\1].is<JsonVariant>()', content)
+    # 5. array.createNestedObject() -> array.add<JsonObject>()
+    content = re.sub(r'(\w+)\.createNestedObject\(\)', r'\1.add<JsonObject>()', content)
+    
+    # 6. array.createNestedArray() -> array.add<JsonArray>()
+    content = re.sub(r'(\w+)\.createNestedArray\(\)', r'\1.add<JsonArray>()', content)
 
-    # 6. Fix double brackets if any (e.g. [["key"]].to<JsonObject>())
-    content = content.replace('[[', '[').replace(']]', ']')
+    # 7. containsKey -> is<JsonVariant>() или просто [] (заменяем на .containsKey -> [])
+    # В ArduinoJson 7 containsKey устарел. Обычно используется doc["key"].is<T>()
+    # Мы заменим doc.containsKey("key") на !doc["key"].isNull()
+    content = re.sub(r'(\w+)\.containsKey\(\s*"([^"]+)"\s*\)', r'!\1["\2"].isNull()', content)
 
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(content)
+    if content != original_content:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return True
+    return False
 
 def main():
-    src_dir = 'src'
-    for root, dirs, files in os.walk(src_dir):
-        for file in files:
-            if file.endswith(('.cpp', '.h')):
-                migrate_file(os.path.join(root, file))
+    targets = ['src']
+    count = 0
+    for target in targets:
+        for root, dirs, files in os.walk(target):
+            for file in files:
+                if file.endswith(('.cpp', '.h')):
+                    if migrate_file(os.path.join(root, file)):
+                        print(f"Migrated: {os.path.join(root, file)}")
+                        count += 1
+    print(f"Total files migrated: {count}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

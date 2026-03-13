@@ -88,9 +88,9 @@ static void appendWiFiProfileJson(JsonObject obj, const WiFiProfile& profile, ui
 
 static void buildWiFiProfilesResponse(JsonDocument& doc) {
   WiFiProfiles::compactProfiles(g_settings.wifi);
-  JsonArray profiles = doc.createNestedArray("profiles");
+  JsonArray profiles = doc["profiles"].to<JsonArray>();
   for (uint8_t i = 0; i < g_settings.wifi.profileCount && i < WIFI_MAX_PROFILES; ++i) {
-    JsonObject item = profiles.createNestedObject();
+    JsonObject item = profiles.add<JsonObject>();
     appendWiFiProfileJson(item, g_settings.wifi.profiles[i], i);
   }
   doc["count"] = g_settings.wifi.profileCount;
@@ -417,7 +417,7 @@ void init() {
   // API endpoints
   // GET /api/status - полное состояние системы
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<5120> doc;
+    JsonDocument doc;
 
     // Режим и состояние процесса
     doc["mode"] = static_cast<int>(g_state.mode);
@@ -441,11 +441,11 @@ void init() {
     doc["safetyOk"] = g_state.safetyOk;
     doc["uptime"] = g_state.uptime;
     doc["deviceId"] = CloudTunnel::getDeviceId();
-    JsonObject alarm = doc.createNestedObject("alarm");
+    JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state);
 
     // Температуры
-    JsonObject temps = doc.createNestedObject("temps");
+    JsonObject temps = doc["temps"].to<JsonObject>();
     temps["cube"] = g_state.temps.cube;
     temps["columnBottom"] = g_state.temps.columnBottom;
     temps["columnMiddle"] = g_state.temps.columnMiddle;
@@ -458,13 +458,13 @@ void init() {
     temps["waterOut"] = g_state.temps.waterOut;
 
     // Давление
-    JsonObject pressure = doc.createNestedObject("pressure");
+    JsonObject pressure = doc["pressure"].to<JsonObject>();
     pressure["cube"] = g_state.pressure.cube;
     pressure["atm"] = g_state.pressure.atmosphere;
     pressure["kpa"] = g_state.pressure.pressure;
 
     // Мощность (PZEM-004T)
-    JsonObject power = doc.createNestedObject("power");
+    JsonObject power = doc["power"].to<JsonObject>();
     power["voltage"] = g_state.power.voltage;
     power["current"] = g_state.power.current;
     power["power"] = g_state.power.power;
@@ -474,38 +474,38 @@ void init() {
     power["pf"] = g_state.power.powerFactor;
 
     // Насос
-    JsonObject pump = doc.createNestedObject("pump");
+    JsonObject pump = doc["pump"].to<JsonObject>();
     pump["speedMlH"] = g_state.pump.speedMlPerHour;
     pump["totalMl"] = g_state.pump.totalVolumeMl;
     pump["running"] = g_state.pump.running;
 
-    JsonObject valves = doc.createNestedObject("valves");
+    JsonObject valves = doc["valves"].to<JsonObject>();
     valves["water"] = Valves::getWater();
     valves["heads"] = Valves::getHeads();
     valves["uno"] = Valves::getUno();
     valves["tails"] = false; // Отдельного канала хвостов в драйвере нет
 
     // Ареометр
-    JsonObject hydro = doc.createNestedObject("hydrometer");
+    JsonObject hydro = doc["hydrometer"].to<JsonObject>();
     hydro["abv"] = g_state.hydrometer.abv;
     hydro["pressure"] = g_state.hydrometer.pressure;
     hydro["valid"] = g_state.hydrometer.valid;
 
     // Объёмы фракций
-    JsonObject volumes = doc.createNestedObject("volumes");
+    JsonObject volumes = doc["volumes"].to<JsonObject>();
     volumes["heads"] = g_state.stats.headsVolume;
     volumes["body"] = g_state.stats.bodyVolume;
     volumes["tails"] = g_state.stats.tailsVolume;
 
     // Настройки оборудования (для UI)
-    JsonObject equipment = doc.createNestedObject("equipment");
+    JsonObject equipment = doc["equipment"].to<JsonObject>();
     equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
     equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
     equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
     equipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
 
-    JsonObject safetySettings = doc.createNestedObject("safetySettings");
+    JsonObject safetySettings = doc["safetySettings"].to<JsonObject>();
     safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
     safetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
     safetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
@@ -520,7 +520,7 @@ void init() {
     doc["safety_pressure_rise_rate_mmhg_min"] = g_settings.safety.pressureRiseRateMmHgMin;
 
     // Runtime-параметры режимов (для экрана мониторинга)
-    JsonObject rect = doc.createNestedObject("rectification");
+    JsonObject rect = doc["rectification"].to<JsonObject>();
     rect["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
     rect["feedAbvPercent"] = g_settings.rectParams.feedAbvPercent;
     rect["headsPercent"] = g_settings.rectParams.headsPercent;
@@ -537,7 +537,7 @@ void init() {
     rect["bodyTargetMl"] = rectBodyTargetMl;
     rect["tailsTargetMl"] = rectTailsTargetMl;
 
-    JsonObject distillation = doc.createNestedObject("distillation");
+    JsonObject distillation = doc["distillation"].to<JsonObject>();
     float distSpeedMlH = 0.0f;
     float distHeadsVolumeMl = 0.0f;
     float distTargetVolumeMl = 0.0f;
@@ -551,21 +551,21 @@ void init() {
     distillation["endTempC"] = distEndTempC;
     distillation["powerPercent"] = distPowerPercent;
 
-    JsonObject nbk = doc.createNestedObject("nbk");
+    JsonObject nbk = doc["nbk"].to<JsonObject>();
     nbk["powerW"] = g_settings.nbk.powerW;
     nbk["pumpSpeedMlH"] = g_settings.nbk.pumpSpeedMlH;
     nbk["columnBottomTempThresholdC"] = g_settings.nbk.columnBottomTempThresholdC;
     nbk["phase"] = static_cast<int>(g_state.nbkPhase);
     nbk["phaseStr"] = getNbkPhaseString(g_state.nbkPhase);
 
-    JsonObject fermentation = doc.createNestedObject("fermentation");
+    JsonObject fermentation = doc["fermentation"].to<JsonObject>();
     fermentation["targetTempC"] = g_settings.fermentation.targetTempC;
     fermentation["hysteresisC"] = g_settings.fermentation.hysteresisC;
     fermentation["useHeater"] = g_settings.fermentation.useHeater;
     fermentation["phase"] = static_cast<int>(g_state.fermPhase);
     fermentation["phaseStr"] = getFermPhaseString(g_state.fermPhase);
 
-    JsonObject progress = doc.createNestedObject("progress");
+    JsonObject progress = doc["progress"].to<JsonObject>();
     const uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
     const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(g_state, g_settings);
     progress["phaseElapsedSec"] = phaseElapsedSec;
@@ -575,7 +575,7 @@ void init() {
     progress["phasePercent"] = FSM::getPhaseProgressPercent(g_state, g_settings);
 
     const auto displayStats = Display::getRuntimeStats();
-    JsonObject display = doc.createNestedObject("display");
+    JsonObject display = doc["display"].to<JsonObject>();
     display["frames"] = displayStats.framesRendered;
     display["slowFrames"] = displayStats.slowFrames;
     display["recoveries"] = displayStats.watchdogRecoveries;
@@ -589,7 +589,7 @@ void init() {
     display["gapOverruns"] = displayStats.updateGapOverruns;
 
     // Cloud tunnel status (локально полезно для привязки)
-    JsonObject cloud = doc.createNestedObject("cloud");
+    JsonObject cloud = doc["cloud"].to<JsonObject>();
     cloud["enabled"] = g_settings.cloud.enabled;
     cloud["tunnelUrl"] = g_settings.cloud.tunnelUrl;
     cloud["connected"] = CloudTunnel::isConnected();
@@ -605,7 +605,7 @@ void init() {
     // -----------------------------------------------------------------------
     const uint32_t now = millis();
 
-    JsonObject mashing = doc.createNestedObject("mashing");
+    JsonObject mashing = doc["mashing"].to<JsonObject>();
     mashing["active"] = g_state.mashing.active;
     mashing["phase"] = static_cast<int>(g_state.mashing.phase);
     mashing["phaseStr"] = getMashPhaseString(g_state.mashing.phase);
@@ -627,7 +627,7 @@ void init() {
             ? (g_state.mashing.stepDuration - mashElapsedSec)
             : 0;
 
-    JsonObject hold = doc.createNestedObject("hold");
+    JsonObject hold = doc["hold"].to<JsonObject>();
     hold["active"] = g_state.hold.active;
     hold["stepCount"] = g_state.hold.stepCount;
     hold["currentStep"] = g_state.hold.currentStep;
@@ -656,32 +656,32 @@ void init() {
 
   // GET /api/health - получить здоровье системы
   server.on("/api/health", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
 
     // Датчики температуры
-    JsonObject temps = doc.createNestedObject("temperatures");
+    JsonObject temps = doc["temperatures"].to<JsonObject>();
     temps["ok"] = g_state.health.tempSensorsOk;
     temps["total"] = g_state.health.tempSensorsTotal;
 
     // Другие датчики
-    JsonObject sensors = doc.createNestedObject("sensors");
+    JsonObject sensors = doc["sensors"].to<JsonObject>();
     sensors["bmp280"] = g_state.health.bmp280Ok;
     sensors["ads1115"] = g_state.health.ads1115Ok;
     sensors["pzem"] = g_state.health.pzemOk;
 
     // WiFi
-    JsonObject wifi = doc.createNestedObject("wifi");
+    JsonObject wifi = doc["wifi"].to<JsonObject>();
     wifi["connected"] = g_state.health.wifiConnected;
     wifi["rssi"] = g_state.health.wifiRSSI;
 
     // Система
-    JsonObject system = doc.createNestedObject("system");
+    JsonObject system = doc["system"].to<JsonObject>();
     system["uptime"] = g_state.health.uptime;
     system["freeHeap"] = g_state.health.freeHeap;
     system["cpuTemp"] = g_state.health.cpuTemp;
 
     // Ошибки
-    JsonObject errors = doc.createNestedObject("errors");
+    JsonObject errors = doc["errors"].to<JsonObject>();
     errors["pzemSpikes"] = g_state.health.pzemSpikeCount;
     errors["tempErrors"] = g_state.health.tempReadErrors;
 
@@ -696,7 +696,7 @@ void init() {
 
   // GET /api/version - получить информацию о версиях прошивки и фронтенда
   server.on("/api/version", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<768> doc;
+    JsonDocument doc;
 
     // Версия и дата компиляции прошивки
     JsonObject firmware = doc["firmware"].to<JsonObject>();
@@ -729,7 +729,7 @@ void init() {
 #endif
 
     if (versionFile) {
-      StaticJsonDocument<256> frontendDoc;
+      JsonDocument frontendDoc;
       DeserializationError error = deserializeJson(frontendDoc, versionFile);
       versionFile.close();
 
@@ -813,7 +813,7 @@ void init() {
         }
 
         // Важно: сюда могут приходить steps/profiles, поэтому нужен запас
-        DynamicJsonDocument doc(2048);
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -865,11 +865,11 @@ void init() {
                        g_state.currentAlarm.message[0]
                            ? g_state.currentAlarm.message
                            : Safety::getAlarmTypeToken(g_state.currentAlarm.type));
-          DynamicJsonDocument errorDoc(512);
+          JsonDocument errorDoc;
           errorDoc["success"] = false;
           errorDoc["message"] =
               "Safety alarm is latched. Reset the alarm before starting.";
-          JsonObject alarm = errorDoc.createNestedObject("alarm");
+          JsonObject alarm = errorDoc["alarm"].to<JsonObject>();
           fillAlarmJson(alarm, g_state);
 
           String response;
@@ -908,7 +908,7 @@ void init() {
           memset(&runtimeProfile, 0, sizeof(runtimeProfile));
 
           bool hasProfile = false;
-          if (!params.isNull() && params.containsKey("profile")) {
+          if (!params.isNull() && !params["profile"].isNull()) {
             JsonObject profileObj = params["profile"].as<JsonObject>();
             JsonArray steps = profileObj["steps"].as<JsonArray>();
             if (!profileObj.isNull() && steps.size() > 0) {
@@ -975,7 +975,7 @@ void init() {
           // params.steps: [{temperature, duration}, ...] (duration в минутах)
           static TempStep runtimeSteps[10];
           uint8_t count = 0;
-          if (!params.isNull() && params.containsKey("steps")) {
+          if (!params.isNull() && !params["steps"].isNull()) {
             JsonArray steps = params["steps"].as<JsonArray>();
             for (JsonObject s : steps) {
               if (count >= 10) break;
@@ -1050,10 +1050,10 @@ void init() {
   server.on("/api/safety/ack", HTTP_POST, [](AsyncWebServerRequest *request) {
     Safety::acknowledge(g_state);
 
-    DynamicJsonDocument doc(384);
+    JsonDocument doc;
     doc["success"] = true;
     doc["message"] = "Alarm acknowledged";
-    JsonObject alarm = doc.createNestedObject("alarm");
+    JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state);
 
     String response;
@@ -1065,13 +1065,13 @@ void init() {
     char reason[128] = "";
     const bool ok = Safety::reset(g_state, g_settings, reason, sizeof(reason));
 
-    DynamicJsonDocument doc(384);
+    JsonDocument doc;
     doc["success"] = ok;
     doc["message"] = ok ? "Safety alarm reset" : "Safety reset rejected";
     if (!ok) {
       doc["reason"] = reason;
     }
-    JsonObject alarm = doc.createNestedObject("alarm");
+    JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state);
 
     String response;
@@ -1088,7 +1088,7 @@ void init() {
 
         uint32_t ttl = 600;
         if (len > 0) {
-          StaticJsonDocument<256> doc;
+          JsonDocument doc;
           if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
             ttl = doc["ttlSeconds"] | 600;
             if (ttl < 60) ttl = 60;
@@ -1098,7 +1098,7 @@ void init() {
 
         CloudTunnel::generateClaim(ttl);
 
-        StaticJsonDocument<256> out;
+        JsonDocument out;
         out["success"] = true;
         out["deviceId"] = CloudTunnel::getDeviceId();
         out["claimCode"] = CloudTunnel::getClaimCode();
@@ -1117,7 +1117,7 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<384> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -1141,7 +1141,7 @@ void init() {
 
   // GET /api/settings/equipment - получить настройки оборудования
   server.on("/api/settings/equipment", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<384> doc;
+    JsonDocument doc;
     doc["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     doc["columnHeightMm"] = g_settings.equipment.columnHeightMm;
     doc["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
@@ -1161,34 +1161,34 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<384> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
           return;
         }
 
-        if (doc.containsKey("heaterPowerW")) {
+        if (!doc["heaterPowerW"].isNull()) {
           g_settings.equipment.heaterPowerW = clampU16Range(
               doc["heaterPowerW"].as<uint32_t>(), 1000, 10000
           );
         }
-        if (doc.containsKey("columnHeightMm")) {
+        if (!doc["columnHeightMm"].isNull()) {
           g_settings.equipment.columnHeightMm = clampU16Range(
               doc["columnHeightMm"].as<uint32_t>(), 500, 3000
           );
         }
-        if (doc.containsKey("cubeVolumeL")) {
+        if (!doc["cubeVolumeL"].isNull()) {
           g_settings.equipment.cubeVolumeL = clampFloatRange(
               doc["cubeVolumeL"].as<float>(), 5.0f, 250.0f
           );
         }
-        if (doc.containsKey("minHeaterSubmergeL")) {
+        if (!doc["minHeaterSubmergeL"].isNull()) {
           g_settings.equipment.minHeaterSubmergeL = clampFloatRange(
               doc["minHeaterSubmergeL"].as<float>(), 0.5f, 100.0f
           );
         }
-        if (doc.containsKey("waterAutoStartCubeTempC")) {
+        if (!doc["waterAutoStartCubeTempC"].isNull()) {
           g_settings.equipment.waterAutoStartCubeTempC = clampFloatRange(
               doc["waterAutoStartCubeTempC"].as<float>(), 20.0f, 60.0f
           );
@@ -1205,7 +1205,7 @@ void init() {
 
   // GET /api/settings/safety - получить пороги аварий
   server.on("/api/settings/safety", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     doc["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
     doc["tsaMaxC"] = g_settings.safety.tsaMaxC;
     doc["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
@@ -1225,34 +1225,34 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<256> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
           return;
         }
 
-        if (doc.containsKey("pressureMaxMmHg")) {
+        if (!doc["pressureMaxMmHg"].isNull()) {
           g_settings.safety.pressureMaxMmHg = clampFloatRange(
               doc["pressureMaxMmHg"].as<float>(), 5.0f, 200.0f
           );
         }
-        if (doc.containsKey("tsaMaxC")) {
+        if (!doc["tsaMaxC"].isNull()) {
           g_settings.safety.tsaMaxC = clampFloatRange(
               doc["tsaMaxC"].as<float>(), 35.0f, 120.0f
           );
         }
-        if (doc.containsKey("waterOutMaxC")) {
+        if (!doc["waterOutMaxC"].isNull()) {
           g_settings.safety.waterOutMaxC = clampFloatRange(
               doc["waterOutMaxC"].as<float>(), 30.0f, 120.0f
           );
         }
-        if (doc.containsKey("waterOutRiseRateCMin")) {
+        if (!doc["waterOutRiseRateCMin"].isNull()) {
           g_settings.safety.waterOutRiseRateCMin = clampFloatRange(
               doc["waterOutRiseRateCMin"].as<float>(), 0.5f, 60.0f
           );
         }
-        if (doc.containsKey("pressureRiseRateMmHgMin")) {
+        if (!doc["pressureRiseRateMmHgMin"].isNull()) {
           g_settings.safety.pressureRiseRateMmHgMin = clampFloatRange(
               doc["pressureRiseRateMmHgMin"].as<float>(), 1.0f, 200.0f
           );
@@ -1269,7 +1269,7 @@ void init() {
 
   server.on("/api/settings/security", HTTP_GET,
             [](AsyncWebServerRequest *request) {
-              StaticJsonDocument<256> doc;
+              JsonDocument doc;
               doc["authEnabled"] = g_settings.security.authEnabled;
               doc["rateLimitEnabled"] = g_settings.security.rateLimitEnabled;
               doc["username"] = g_settings.security.username;
@@ -1287,21 +1287,21 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<256> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
           return;
         }
 
-        const bool authEnabled = doc.containsKey("authEnabled")
+        const bool authEnabled = !doc["authEnabled"].isNull()
                                      ? doc["authEnabled"].as<bool>()
                                      : g_settings.security.authEnabled;
-        const bool rateLimitEnabled = doc.containsKey("rateLimitEnabled")
+        const bool rateLimitEnabled = !doc["rateLimitEnabled"].isNull()
                                           ? doc["rateLimitEnabled"].as<bool>()
                                           : g_settings.security.rateLimitEnabled;
-        const bool hasUsernameField = doc.containsKey("username");
-        const bool hasPasswordField = doc.containsKey("password");
+        const bool hasUsernameField = !doc["username"].isNull();
+        const bool hasPasswordField = !doc["password"].isNull();
         const char *username =
             hasUsernameField ? (doc["username"] | "") : g_settings.security.username;
         const char *password =
@@ -1348,7 +1348,7 @@ void init() {
 
   // GET /api/settings/nbk - ???????? ????????? ???
   server.on("/api/settings/nbk", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<192> doc;
+    JsonDocument doc;
     doc["powerW"] = g_settings.nbk.powerW;
     doc["pumpSpeedMlH"] = g_settings.nbk.pumpSpeedMlH;
     doc["columnBottomTempThresholdC"] = g_settings.nbk.columnBottomTempThresholdC;
@@ -1366,21 +1366,21 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<192> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
           return;
         }
 
-        if (doc.containsKey("powerW")) {
+        if (!doc["powerW"].isNull()) {
           g_settings.nbk.powerW = clampFloatRange(doc["powerW"].as<float>(), 500.0f, 5500.0f);
         }
-        if (doc.containsKey("pumpSpeedMlH")) {
+        if (!doc["pumpSpeedMlH"].isNull()) {
           g_settings.nbk.pumpSpeedMlH =
               clampFloatRange(doc["pumpSpeedMlH"].as<float>(), 100.0f, 120000.0f);
         }
-        if (doc.containsKey("columnBottomTempThresholdC")) {
+        if (!doc["columnBottomTempThresholdC"].isNull()) {
           g_settings.nbk.columnBottomTempThresholdC = clampFloatRange(
               doc["columnBottomTempThresholdC"].as<float>(), 50.0f, 110.0f);
         }
@@ -1396,7 +1396,7 @@ void init() {
 
   // GET /api/settings/fermentation - ???????? ????????? ???????????
   server.on("/api/settings/fermentation", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<192> doc;
+    JsonDocument doc;
     doc["targetTempC"] = g_settings.fermentation.targetTempC;
     doc["hysteresisC"] = g_settings.fermentation.hysteresisC;
     doc["useHeater"] = g_settings.fermentation.useHeater;
@@ -1414,22 +1414,22 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<192> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
           return;
         }
 
-        if (doc.containsKey("targetTempC")) {
+        if (!doc["targetTempC"].isNull()) {
           g_settings.fermentation.targetTempC =
               clampFloatRange(doc["targetTempC"].as<float>(), 5.0f, 45.0f);
         }
-        if (doc.containsKey("hysteresisC")) {
+        if (!doc["hysteresisC"].isNull()) {
           g_settings.fermentation.hysteresisC =
               clampFloatRange(doc["hysteresisC"].as<float>(), 0.1f, 10.0f);
         }
-        if (doc.containsKey("useHeater")) {
+        if (!doc["useHeater"].isNull()) {
           g_settings.fermentation.useHeater = doc["useHeater"].as<bool>();
         }
 
@@ -1448,7 +1448,7 @@ void init() {
 
   // GET /api/settings/mqtt - получить настройки MQTT
   server.on("/api/settings/mqtt", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
     doc["enabled"] = g_settings.mqtt.enabled;
     doc["server"] = g_settings.mqtt.server;
     doc["port"] = g_settings.mqtt.port;
@@ -1472,7 +1472,7 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -1480,22 +1480,22 @@ void init() {
         }
 
         const bool enabled = doc["enabled"] | g_settings.mqtt.enabled;
-        const char* server = doc.containsKey("server")
+        const char* server = !doc["server"].isNull()
                                  ? (doc["server"] | "")
                                  : g_settings.mqtt.server;
-        uint16_t port = doc.containsKey("port")
+        uint16_t port = !doc["port"].isNull()
                             ? static_cast<uint16_t>(doc["port"] | g_settings.mqtt.port)
                             : g_settings.mqtt.port;
-        const char* username = doc.containsKey("username")
+        const char* username = !doc["username"].isNull()
                                    ? (doc["username"] | "")
                                    : g_settings.mqtt.username;
-        const char* password = doc.containsKey("password")
+        const char* password = !doc["password"].isNull()
                                    ? (doc["password"] | "")
                                    : g_settings.mqtt.password;
-        const char* baseTopic = doc.containsKey("baseTopic")
+        const char* baseTopic = !doc["baseTopic"].isNull()
                                     ? (doc["baseTopic"] | "")
                                     : g_settings.mqtt.baseTopic;
-        uint32_t publishInterval = doc.containsKey("publishInterval")
+        uint32_t publishInterval = !doc["publishInterval"].isNull()
                                        ? static_cast<uint32_t>(doc["publishInterval"] |
                                                                 g_settings.mqtt.publishInterval)
                                        : g_settings.mqtt.publishInterval;
@@ -1576,7 +1576,7 @@ void init() {
           return;
         }
 
-        StaticJsonDocument<256> doc;
+        JsonDocument doc;
         if (len > 0 && deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -1614,7 +1614,7 @@ void init() {
 
   // GET /api/settings/telegram - получить настройки Telegram
   server.on("/api/settings/telegram", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<384> doc;
+    JsonDocument doc;
     doc["enabled"] = g_settings.telegram.enabled;
     doc["token"] = g_settings.telegram.token;
     doc["chatId"] = g_settings.telegram.chatId;
@@ -1635,7 +1635,7 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<384> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -1643,10 +1643,10 @@ void init() {
         }
 
         const bool enabled = doc["enabled"] | g_settings.telegram.enabled;
-        const char* token = doc.containsKey("token")
+        const char* token = !doc["token"].isNull()
                                 ? (doc["token"] | "")
                                 : g_settings.telegram.token;
-        const char* chatId = doc.containsKey("chatId")
+        const char* chatId = !doc["chatId"].isNull()
                                  ? (doc["chatId"] | "")
                                  : g_settings.telegram.chatId;
 
@@ -1680,7 +1680,7 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<256> doc;
+        JsonDocument doc;
         if (len > 0 && deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -1705,7 +1705,7 @@ void init() {
 
   // GET /api/settings/rect - get auto-rectification startup parameters
   server.on("/api/settings/rect", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<384> doc;
+    JsonDocument doc;
     const RectParams &params = g_settings.rectParams;
 
     doc["feedstock"] = params.feedstock;
@@ -1732,7 +1732,7 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<640> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -1747,7 +1747,7 @@ void init() {
         RectParams updated = g_settings.rectParams;
         bool fractionsUpdated = false;
 
-        if (params.containsKey("feedstock")) {
+        if (!params["feedstock"].isNull()) {
           int feedstock = params["feedstock"].as<int>();
           if (feedstock < 0) feedstock = 0;
           if (feedstock > 7) feedstock = 7;
@@ -1761,42 +1761,42 @@ void init() {
           fractionsUpdated = true;
         }
 
-        if (params.containsKey("feedVolumeL")) {
+        if (!params["feedVolumeL"].isNull()) {
           updated.feedVolumeL =
               clampFloatRange(params["feedVolumeL"].as<float>(), 1.0f, 250.0f);
         }
-        if (params.containsKey("feedAbvPercent")) {
+        if (!params["feedAbvPercent"].isNull()) {
           updated.feedAbvPercent = clampFloatRange(
               params["feedAbvPercent"].as<float>(), 1.0f, 96.0f);
         }
-        if (params.containsKey("headsPercent")) {
+        if (!params["headsPercent"].isNull()) {
           updated.headsPercent =
               clampFloatRange(params["headsPercent"].as<float>(), 0.0f, 40.0f);
           fractionsUpdated = true;
         }
-        if (params.containsKey("bodyPercent")) {
+        if (!params["bodyPercent"].isNull()) {
           updated.bodyPercent =
               clampFloatRange(params["bodyPercent"].as<float>(), 0.0f, 100.0f);
           fractionsUpdated = true;
         }
-        if (params.containsKey("tailsPercent")) {
+        if (!params["tailsPercent"].isNull()) {
           updated.tailsPercent =
               clampFloatRange(params["tailsPercent"].as<float>(), 0.0f, 100.0f);
           fractionsUpdated = true;
         }
-        if (params.containsKey("headsSpeedMlHKw")) {
+        if (!params["headsSpeedMlHKw"].isNull()) {
           updated.headsSpeedMlHKw = clampFloatRange(
               params["headsSpeedMlHKw"].as<float>(), 10.0f, 2000.0f);
         }
-        if (params.containsKey("bodySpeedMlHKw")) {
+        if (!params["bodySpeedMlHKw"].isNull()) {
           updated.bodySpeedMlHKw = clampFloatRange(
               params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
         }
-        if (params.containsKey("stabilizationMin")) {
+        if (!params["stabilizationMin"].isNull()) {
           updated.stabilizationMin = clampU16Range(
               params["stabilizationMin"].as<uint32_t>(), 1, 180);
         }
-        if (params.containsKey("purgeMin")) {
+        if (!params["purgeMin"].isNull()) {
           updated.purgeMin =
               clampU16Range(params["purgeMin"].as<uint32_t>(), 1, 120);
         }
@@ -1812,7 +1812,7 @@ void init() {
           return;
         }
 
-        StaticJsonDocument<448> out;
+        JsonDocument out;
         out["success"] = true;
         out["feedstock"] = g_settings.rectParams.feedstock;
         out["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
@@ -1838,7 +1838,7 @@ void init() {
          size_t index, size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<128> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
           return;
@@ -1863,7 +1863,7 @@ void init() {
          size_t index, size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<128> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
           return;
@@ -1886,7 +1886,7 @@ void init() {
          size_t index, size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<128> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
           return;
@@ -1916,7 +1916,7 @@ void init() {
          size_t index, size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<192> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
           return;
@@ -1929,13 +1929,13 @@ void init() {
           return;
         }
 
-        if (doc.containsKey("water")) {
+        if (!doc["water"].isNull()) {
           Valves::setWater(doc["water"].as<bool>());
         }
-        if (doc.containsKey("heads")) {
+        if (!doc["heads"].isNull()) {
           Valves::setHeads(doc["heads"].as<bool>());
         }
-        if (doc.containsKey("uno")) {
+        if (!doc["uno"].isNull()) {
           Valves::setUno(doc["uno"].as<bool>());
         }
 
@@ -1951,7 +1951,7 @@ void init() {
          size_t index, size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<128> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
           return;
@@ -1962,7 +1962,7 @@ void init() {
           return;
         }
 
-        if (!doc.containsKey("phase")) {
+        if (!!doc["phase"].isNull()) {
           request->send(400, "application/json", "{\"error\":\"Missing phase\"}");
           return;
         }
@@ -1985,24 +1985,24 @@ void init() {
          size_t index, size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<192> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
           return;
         }
 
         bool changed = false;
-        if (doc.containsKey("heads")) {
+        if (!doc["heads"].isNull()) {
           const float v = doc["heads"].as<float>();
           g_state.stats.headsVolume = (v < 0.0f) ? 0.0f : v;
           changed = true;
         }
-        if (doc.containsKey("body")) {
+        if (!doc["body"].isNull()) {
           const float v = doc["body"].as<float>();
           g_state.stats.bodyVolume = (v < 0.0f) ? 0.0f : v;
           changed = true;
         }
-        if (doc.containsKey("tails")) {
+        if (!doc["tails"].isNull()) {
           const float v = doc["tails"].as<float>();
           g_state.stats.tailsVolume = (v < 0.0f) ? 0.0f : v;
           changed = true;
@@ -2020,7 +2020,7 @@ void init() {
               g_state.stats.headsVolume + g_state.stats.bodyVolume + g_state.stats.tailsVolume;
         }
 
-        StaticJsonDocument<192> out;
+        JsonDocument out;
         out["success"] = true;
         out["heads"] = g_state.stats.headsVolume;
         out["body"] = g_state.stats.bodyVolume;
@@ -2041,7 +2041,7 @@ void init() {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        StaticJsonDocument<128> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -2099,18 +2099,18 @@ void init() {
 
   // GET /api/calibration - получить все данные калибровки
   server.on("/api/calibration", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<1024> doc;
+    JsonDocument doc;
 
     // Насос
-    JsonObject pump = doc.createNestedObject("pump");
+    JsonObject pump = doc["pump"].to<JsonObject>();
     pump["mlPerRev"] = g_settings.pumpCal.mlPerRevolution;
     pump["stepsPerRev"] = g_settings.pumpCal.stepsPerRevolution;
     pump["microsteps"] = g_settings.pumpCal.microsteps;
 
     // Термометры
-    JsonArray temps = doc.createNestedArray("temperatures");
+    JsonArray temps = doc["temperatures"].to<JsonArray>();
     for (uint8_t i = 0; i < TEMP_COUNT; i++) {
-      JsonObject t = temps.createNestedObject();
+      JsonObject t = temps.add<JsonObject>();
       t["index"] = i;
       t["offset"] = g_settings.tempCal.offsets[i];
 
@@ -2158,10 +2158,10 @@ void init() {
     }
 
     // Ареометр (гидрометр)
-    JsonObject hydro = doc.createNestedObject("hydrometer");
+    JsonObject hydro = doc["hydrometer"].to<JsonObject>();
     hydro["pointCount"] = g_settings.hydroCal.pointCount;
-    JsonArray abvPoints = hydro.createNestedArray("abvPoints");
-    JsonArray pressurePoints = hydro.createNestedArray("pressurePoints");
+    JsonArray abvPoints = hydro["abvPoints"].to<JsonArray>();
+    JsonArray pressurePoints = hydro["pressurePoints"].to<JsonArray>();
     for (uint8_t i = 0; i < g_settings.hydroCal.pointCount; i++) {
       abvPoints.add(g_settings.hydroCal.abvPoints[i]);
       pressurePoints.add(g_settings.hydroCal.pressurePoints[i]);
@@ -2182,7 +2182,7 @@ void init() {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        StaticJsonDocument<256> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -2192,12 +2192,12 @@ void init() {
         }
 
         // Метод 1: Прямая калибровка (мл на оборот и шаги)
-        if (doc.containsKey("mlPerRev") || doc.containsKey("stepsPerRev")) {
-          if (doc.containsKey("mlPerRev")) {
+        if (!doc["mlPerRev"].isNull() || !doc["stepsPerRev"].isNull()) {
+          if (!doc["mlPerRev"].isNull()) {
             g_settings.pumpCal.mlPerRevolution = doc["mlPerRev"].as<float>();
             LOG_I("Pump mlPerRev: %.3f", g_settings.pumpCal.mlPerRevolution);
           }
-          if (doc.containsKey("stepsPerRev")) {
+          if (!doc["stepsPerRev"].isNull()) {
             g_settings.pumpCal.stepsPerRevolution =
                 doc["stepsPerRev"].as<uint16_t>();
             LOG_I("Pump stepsPerRev: %u",
@@ -2210,7 +2210,7 @@ void init() {
         }
 
         // Метод 2: Калибровка по известному объёму
-        if (doc.containsKey("knownVolume") && doc.containsKey("steps")) {
+        if (!doc["knownVolume"].isNull() && !doc["steps"].isNull()) {
           float knownVolume = doc["knownVolume"].as<float>(); // мл
           uint32_t steps = doc["steps"].as<uint32_t>();       // шагов выполнено
 
@@ -2225,7 +2225,7 @@ void init() {
             LOG_I("Pump calibrated: %.3f ml/rev (from %.1f ml in %u steps)",
                   g_settings.pumpCal.mlPerRevolution, knownVolume, steps);
 
-            StaticJsonDocument<128> resp;
+            JsonDocument resp;
             resp["status"] = "ok";
             resp["method"] = "measured";
             resp["mlPerRev"] = g_settings.pumpCal.mlPerRevolution;
@@ -2250,7 +2250,7 @@ void init() {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -2268,7 +2268,7 @@ void init() {
         }
 
         // Метод 1: Прямое смещение
-        if (doc.containsKey("offset")) {
+        if (!doc["offset"].isNull()) {
           g_settings.tempCal.offsets[sensorIndex] = doc["offset"].as<float>();
 
           // Применить калибровку к драйверу
@@ -2284,7 +2284,7 @@ void init() {
         }
 
         // Метод 2: Калибровка по эталону
-        if (doc.containsKey("reference")) {
+        if (!doc["reference"].isNull()) {
           float reference =
               doc["reference"].as<float>(); // Эталонная температура
 
@@ -2324,7 +2324,7 @@ void init() {
           LOG_I("Temp[%d] calibrated to %.2f°C: offset = %.2f°C", sensorIndex,
                 reference, g_settings.tempCal.offsets[sensorIndex]);
 
-          StaticJsonDocument<128> resp;
+          JsonDocument resp;
           resp["status"] = "ok";
           resp["method"] = "reference";
           resp["offset"] = g_settings.tempCal.offsets[sensorIndex];
@@ -2345,7 +2345,7 @@ void init() {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -2355,8 +2355,8 @@ void init() {
         }
 
         // Проверка наличия массивов калибровочных точек
-        if (!doc.containsKey("abvPoints") ||
-            !doc.containsKey("pressurePoints")) {
+        if (!!doc["abvPoints"].isNull() ||
+            !!doc["pressurePoints"].isNull()) {
           request->send(400, "application/json",
                         "{\"error\":\"Missing abvPoints or pressurePoints\"}");
           return;
@@ -2382,7 +2382,7 @@ void init() {
         // Сохранить в NVS
         NVSManager::saveSettings(g_settings);
 
-        StaticJsonDocument<128> resp;
+        JsonDocument resp;
         resp["status"] = "ok";
         resp["pointCount"] = g_settings.hydroCal.pointCount;
 
@@ -2397,12 +2397,12 @@ void init() {
               uint8_t addresses[TEMP_COUNT][8];
               uint8_t count = Sensors::scanDS18B20(addresses);
 
-              StaticJsonDocument<768> doc;
+              JsonDocument doc;
               doc["count"] = count;
 
-              JsonArray sensors = doc.createNestedArray("sensors");
+              JsonArray sensors = doc["sensors"].to<JsonArray>();
               for (uint8_t i = 0; i < count; i++) {
-                JsonObject s = sensors.createNestedObject();
+                JsonObject s = sensors.add<JsonObject>();
 
                 char addrStr[24];
                 snprintf(addrStr, sizeof(addrStr),
@@ -2487,7 +2487,7 @@ void init() {
           return;
         }
 
-        StaticJsonDocument<128> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
         if (error) {
           request->send(400, "application/json",
@@ -2570,7 +2570,7 @@ void init() {
           return;
         }
 
-        StaticJsonDocument<128> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -2606,7 +2606,7 @@ void init() {
 
   // GET /api/pump/status - статус насоса
   server.on("/api/pump/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<128> doc;
+    JsonDocument doc;
     doc["running"] = Pump::isRunning();
     doc["speed"] = Pump::getSpeed();
     doc["totalVolume"] = Pump::getTotalVolume();
@@ -2624,13 +2624,13 @@ void init() {
   server.on("/api/energy", HTTP_GET, [](AsyncWebServerRequest *request) {
     // Размер JSON зависит от количества точек
     size_t docSize = 2048 + g_energyHistory.count * 128;
-    DynamicJsonDocument doc(docSize);
+    JsonDocument doc;
 
     doc["count"] = g_energyHistory.count;
     doc["maxPoints"] = EnergyHistory::MAX_POINTS;
     doc["lastUpdate"] = g_energyHistory.lastUpdate;
 
-    JsonArray dataArray = doc.createNestedArray("data");
+    JsonArray dataArray = doc["data"].to<JsonArray>();
 
     // Прочитать данные из циклического буфера в правильном порядке
     for (uint16_t i = 0; i < g_energyHistory.count; i++) {
@@ -2646,7 +2646,7 @@ void init() {
 
       const EnergyDataPoint &point = g_energyHistory.points[index];
 
-      JsonObject obj = dataArray.createNestedObject();
+      JsonObject obj = dataArray.add<JsonObject>();
       obj["t"] = point.timestamp;
       obj["p"] = round(point.power * 10) / 10;      // 1 знак после запятой
       obj["e"] = round(point.energy * 1000) / 1000; // 3 знака
@@ -2669,12 +2669,12 @@ void init() {
 
     int networksFound = WiFi.scanNetworks();
 
-    StaticJsonDocument<2048> doc;
+    JsonDocument doc;
     doc["count"] = networksFound;
 
-    JsonArray networks = doc.createNestedArray("networks");
+    JsonArray networks = doc["networks"].to<JsonArray>();
     for (int i = 0; i < networksFound; i++) {
-      JsonObject net = networks.createNestedObject();
+      JsonObject net = networks.add<JsonObject>();
       net["ssid"] = WiFi.SSID(i);
       net["rssi"] = WiFi.RSSI(i);
       net["encryption"] =
@@ -2691,7 +2691,7 @@ void init() {
 
   // GET /api/wifi/status - текущий статус WiFi
   server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
 
     doc["connected"] = (WiFi.status() == WL_CONNECTED);
     doc["ssid"] = WiFi.SSID();
@@ -2713,7 +2713,7 @@ void init() {
 
   // GET /api/wifi/profiles - сохраненные профили WiFi
   server.on("/api/wifi/profiles", HTTP_GET, [](AsyncWebServerRequest *request) {
-    StaticJsonDocument<3072> doc;
+    JsonDocument doc;
     buildWiFiProfilesResponse(doc);
 
     String json;
@@ -2728,7 +2728,7 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<1024> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
           return;
@@ -2779,7 +2779,7 @@ void init() {
           return;
         }
 
-        StaticJsonDocument<3072> out;
+        JsonDocument out;
         out["success"] = true;
         buildWiFiProfilesResponse(out);
 
@@ -2799,7 +2799,7 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<256> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
           return;
@@ -2826,7 +2826,7 @@ void init() {
           return;
         }
 
-        StaticJsonDocument<3072> out;
+        JsonDocument out;
         out["success"] = true;
         buildWiFiProfilesResponse(out);
 
@@ -2844,7 +2844,7 @@ void init() {
          size_t total) {
         if (index + len != total) return;
 
-        StaticJsonDocument<256> doc;
+        JsonDocument doc;
         if (deserializeJson(doc, data, len)) {
           request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
           return;
@@ -2868,7 +2868,7 @@ void init() {
           return;
         }
 
-        StaticJsonDocument<3072> out;
+        JsonDocument out;
         out["success"] = true;
         buildWiFiProfilesResponse(out);
 
@@ -2889,7 +2889,7 @@ void init() {
           return; // Ждем остальные chunks
         }
 
-        StaticJsonDocument<1024> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -2901,7 +2901,7 @@ void init() {
         }
 
         const char *ssid = doc["ssid"];
-        const bool hasPasswordField = doc.containsKey("password");
+        const bool hasPasswordField = !doc["password"].isNull();
         const char *password = hasPasswordField ? (doc["password"] | "") : nullptr;
         const bool saveProfile = doc["saveProfile"] | true;
         const bool makePreferred = doc["makePreferred"] | false;
@@ -2933,23 +2933,23 @@ void init() {
           profileToConnect.password[0] = '\0';
         }
 
-        if (doc.containsKey("useStaticIp")) {
+        if (!doc["useStaticIp"].isNull()) {
           profileToConnect.useStaticIp = doc["useStaticIp"] | false;
         }
-        if (doc.containsKey("ip")) {
+        if (!doc["ip"].isNull()) {
           strlcpy(profileToConnect.ip, doc["ip"] | "", sizeof(profileToConnect.ip));
         }
-        if (doc.containsKey("gateway")) {
+        if (!doc["gateway"].isNull()) {
           strlcpy(profileToConnect.gateway, doc["gateway"] | "", sizeof(profileToConnect.gateway));
         }
-        if (doc.containsKey("subnet")) {
+        if (!doc["subnet"].isNull()) {
           strlcpy(profileToConnect.subnet, doc["subnet"] | "255.255.255.0",
                   sizeof(profileToConnect.subnet));
         }
-        if (doc.containsKey("dns1")) {
+        if (!doc["dns1"].isNull()) {
           strlcpy(profileToConnect.dns1, doc["dns1"] | "", sizeof(profileToConnect.dns1));
         }
-        if (doc.containsKey("dns2")) {
+        if (!doc["dns2"].isNull()) {
           strlcpy(profileToConnect.dns2, doc["dns2"] | "", sizeof(profileToConnect.dns2));
         }
 
@@ -3147,12 +3147,12 @@ void init() {
   server.on("/api/profiles", HTTP_GET, [](AsyncWebServerRequest *request) {
     std::vector<ProfileListItem> profiles = getProfileList();
     
-    DynamicJsonDocument doc(4096);
+    JsonDocument doc;
     doc["total"] = profiles.size();
     
-    JsonArray profileArray = doc.createNestedArray("profiles");
+    JsonArray profileArray = doc["profiles"].to<JsonArray>();
     for (const auto& prof : profiles) {
-      JsonObject p = profileArray.createNestedObject();
+      JsonObject p = profileArray.add<JsonObject>();
       p["id"] = prof.id;
       p["name"] = prof.name;
       p["category"] = prof.category;
@@ -3172,16 +3172,16 @@ void init() {
     
     Profile profile;
     if (loadProfile(id, profile)) {
-      DynamicJsonDocument doc(8192);
+      JsonDocument doc;
       
       doc["id"] = profile.id;
       
-      JsonObject metadata = doc.createNestedObject("metadata");
+      JsonObject metadata = doc["metadata"].to<JsonObject>();
       metadata["name"] = profile.metadata.name;
       metadata["description"] = profile.metadata.description;
       metadata["category"] = profile.metadata.category;
       
-      JsonArray tags = metadata.createNestedArray("tags");
+      JsonArray tags = metadata["tags"].to<JsonArray>();
       for (const auto& tag : profile.metadata.tags) {
         tags.add(tag);
       }
@@ -3191,18 +3191,18 @@ void init() {
       metadata["author"] = profile.metadata.author;
       metadata["isBuiltin"] = profile.metadata.isBuiltin;
       
-      JsonObject parameters = doc.createNestedObject("parameters");
+      JsonObject parameters = doc["parameters"].to<JsonObject>();
       parameters["mode"] = profile.parameters.mode;
       parameters["model"] = profile.parameters.model;
       
-      JsonObject heater = parameters.createNestedObject("heater");
+      JsonObject heater = parameters["heater"].to<JsonObject>();
       heater["maxPower"] = profile.parameters.heater.maxPower;
       heater["autoMode"] = profile.parameters.heater.autoMode;
       heater["pidKp"] = profile.parameters.heater.pidKp;
       heater["pidKi"] = profile.parameters.heater.pidKi;
       heater["pidKd"] = profile.parameters.heater.pidKd;
       
-      JsonObject rectification = parameters.createNestedObject("rectification");
+      JsonObject rectification = parameters["rectification"].to<JsonObject>();
       rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
       rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
       rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
@@ -3212,25 +3212,25 @@ void init() {
       rectification["tailsSpeed"] = profile.parameters.rectification.tailsSpeed;
       rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
       
-      JsonObject distillation = parameters.createNestedObject("distillation");
+      JsonObject distillation = parameters["distillation"].to<JsonObject>();
       distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
       distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
       distillation["speed"] = profile.parameters.distillation.speed;
       distillation["endTemp"] = profile.parameters.distillation.endTemp;
       
-      JsonObject temperatures = parameters.createNestedObject("temperatures");
+      JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
       temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
       temperatures["maxColumn"] = profile.parameters.temperatures.maxColumn;
       temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
       temperatures["bodyStart"] = profile.parameters.temperatures.bodyStart;
       temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
       
-      JsonObject safety = parameters.createNestedObject("safety");
+      JsonObject safety = parameters["safety"].to<JsonObject>();
       safety["maxRuntime"] = profile.parameters.safety.maxRuntime;
       safety["waterFlowMin"] = profile.parameters.safety.waterFlowMin;
       safety["pressureMax"] = profile.parameters.safety.pressureMax;
       
-      JsonObject statistics = doc.createNestedObject("statistics");
+      JsonObject statistics = doc["statistics"].to<JsonObject>();
       statistics["useCount"] = profile.statistics.useCount;
       statistics["lastUsed"] = profile.statistics.lastUsed;
       statistics["avgDuration"] = profile.statistics.avgDuration;
@@ -3287,7 +3287,7 @@ void broadcastState(const SystemState &state) {
   const auto displayStats = Display::getRuntimeStats();
 
   // Минимальный пакет для "лайв" (часто)
-  StaticJsonDocument<1280> fastDoc;
+  JsonDocument fastDoc;
   fastDoc["mode"] = static_cast<int>(state.mode);
   fastDoc["modeStr"] = getModeString(state.mode);
   fastDoc["phase"] = static_cast<int>(state.rectPhase);
@@ -3295,7 +3295,7 @@ void broadcastState(const SystemState &state) {
   fastDoc["paused"] = state.paused;
   fastDoc["safetyOk"] = state.safetyOk;
   fastDoc["uptime"] = state.uptime;
-  JsonObject fastAlarm = fastDoc.createNestedObject("alarm");
+  JsonObject fastAlarm = fastDoc["alarm"].to<JsonObject>();
   fillAlarmJson(fastAlarm, state);
 
   fastDoc["t_cube"] = state.temps.cube;
@@ -3323,13 +3323,13 @@ void broadcastState(const SystemState &state) {
   fastDoc["volume_heads"] = state.stats.headsVolume;
   fastDoc["volume_body"] = state.stats.bodyVolume;
   fastDoc["volume_tails"] = state.stats.tailsVolume;
-  JsonObject fastEquipment = fastDoc.createNestedObject("equipment");
+  JsonObject fastEquipment = fastDoc["equipment"].to<JsonObject>();
   fastEquipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
   fastEquipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
   fastEquipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   fastEquipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
   fastEquipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
-  JsonObject fastSafetySettings = fastDoc.createNestedObject("safetySettings");
+  JsonObject fastSafetySettings = fastDoc["safetySettings"].to<JsonObject>();
   fastSafetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
   fastSafetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
   fastSafetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
@@ -3342,7 +3342,7 @@ void broadcastState(const SystemState &state) {
   fastDoc["safety_water_out_max_c"] = g_settings.safety.waterOutMaxC;
   fastDoc["safety_water_out_rise_rate_c_min"] = g_settings.safety.waterOutRiseRateCMin;
   fastDoc["safety_pressure_rise_rate_mmhg_min"] = g_settings.safety.pressureRiseRateMmHgMin;
-  JsonObject fastValves = fastDoc.createNestedObject("valves");
+  JsonObject fastValves = fastDoc["valves"].to<JsonObject>();
   fastValves["water"] = Valves::getWater();
   fastValves["heads"] = Valves::getHeads();
   fastValves["uno"] = Valves::getUno();
@@ -3373,7 +3373,7 @@ void broadcastState(const SystemState &state) {
   }
   lastFullBroadcast = now;
 
-  StaticJsonDocument<4608> doc;
+  JsonDocument doc;
   doc["mode"] = static_cast<int>(state.mode);
   doc["modeStr"] = getModeString(state.mode);
   doc["phase"] = static_cast<int>(state.rectPhase);
@@ -3381,7 +3381,7 @@ void broadcastState(const SystemState &state) {
   doc["paused"] = state.paused;
   doc["safetyOk"] = state.safetyOk;
   doc["uptime"] = state.uptime;
-  JsonObject alarm = doc.createNestedObject("alarm");
+  JsonObject alarm = doc["alarm"].to<JsonObject>();
   fillAlarmJson(alarm, state);
 
   doc["t_cube"] = state.temps.cube;
@@ -3409,7 +3409,7 @@ void broadcastState(const SystemState &state) {
   doc["volume_heads"] = state.stats.headsVolume;
   doc["volume_body"] = state.stats.bodyVolume;
   doc["volume_tails"] = state.stats.tailsVolume;
-  JsonObject valves = doc.createNestedObject("valves");
+  JsonObject valves = doc["valves"].to<JsonObject>();
   valves["water"] = Valves::getWater();
   valves["heads"] = Valves::getHeads();
   valves["uno"] = Valves::getUno();
@@ -3418,20 +3418,20 @@ void broadcastState(const SystemState &state) {
   doc["abv"] = state.hydrometer.abv;
   doc["abv_valid"] = state.hydrometer.valid;
 
-  JsonObject progress = doc.createNestedObject("progress");
+  JsonObject progress = doc["progress"].to<JsonObject>();
   progress["phaseElapsedSec"] = phaseElapsedSec;
   progress["phaseTargetSec"] = phaseTargetSec;
   progress["phaseRemainingSec"] =
       (phaseTargetSec > phaseElapsedSec) ? (phaseTargetSec - phaseElapsedSec) : 0;
   progress["phasePercent"] = FSM::getPhaseProgressPercent(state, g_settings);
 
-  JsonObject equipment = doc.createNestedObject("equipment");
+  JsonObject equipment = doc["equipment"].to<JsonObject>();
   equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
   equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
   equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
   equipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
-  JsonObject safetySettings = doc.createNestedObject("safetySettings");
+  JsonObject safetySettings = doc["safetySettings"].to<JsonObject>();
   safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
   safetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
   safetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
@@ -3445,7 +3445,7 @@ void broadcastState(const SystemState &state) {
   doc["safety_water_out_rise_rate_c_min"] = g_settings.safety.waterOutRiseRateCMin;
   doc["safety_pressure_rise_rate_mmhg_min"] = g_settings.safety.pressureRiseRateMmHgMin;
 
-  JsonObject rect = doc.createNestedObject("rectification");
+  JsonObject rect = doc["rectification"].to<JsonObject>();
   rect["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
   rect["feedAbvPercent"] = g_settings.rectParams.feedAbvPercent;
   rect["headsPercent"] = g_settings.rectParams.headsPercent;
@@ -3462,7 +3462,7 @@ void broadcastState(const SystemState &state) {
   rect["bodyTargetMl"] = rectBodyTargetMl;
   rect["tailsTargetMl"] = rectTailsTargetMl;
 
-  JsonObject distillation = doc.createNestedObject("distillation");
+  JsonObject distillation = doc["distillation"].to<JsonObject>();
   float distSpeedMlH = 0.0f;
   float distHeadsVolumeMl = 0.0f;
   float distTargetVolumeMl = 0.0f;
@@ -3476,7 +3476,7 @@ void broadcastState(const SystemState &state) {
   distillation["endTempC"] = distEndTempC;
   distillation["powerPercent"] = distPowerPercent;
 
-  JsonObject display = doc.createNestedObject("display");
+  JsonObject display = doc["display"].to<JsonObject>();
   display["frames"] = displayStats.framesRendered;
   display["slowFrames"] = displayStats.slowFrames;
   display["recoveries"] = displayStats.watchdogRecoveries;
@@ -3489,7 +3489,7 @@ void broadcastState(const SystemState &state) {
   display["maxGapMs"] = displayStats.maxUpdateGapMs;
   display["gapOverruns"] = displayStats.updateGapOverruns;
 
-  JsonObject mashing = doc.createNestedObject("mashing");
+  JsonObject mashing = doc["mashing"].to<JsonObject>();
   mashing["active"] = state.mashing.active;
   mashing["phase"] = static_cast<int>(state.mashing.phase);
   mashing["phaseStr"] = getMashPhaseString(state.mashing.phase);
@@ -3511,7 +3511,7 @@ void broadcastState(const SystemState &state) {
           ? (state.mashing.stepDuration - mashElapsedSec)
           : 0;
 
-  JsonObject hold = doc.createNestedObject("hold");
+  JsonObject hold = doc["hold"].to<JsonObject>();
   hold["active"] = state.hold.active;
   hold["stepCount"] = state.hold.stepCount;
   hold["currentStep"] = state.hold.currentStep;
@@ -3534,7 +3534,7 @@ void broadcastState(const SystemState &state) {
   hold["remainingSec"] =
       (holdStepDurationSec > holdElapsedSec) ? (holdStepDurationSec - holdElapsedSec) : 0;
 
-  JsonObject mem = doc.createNestedObject("memory");
+  JsonObject mem = doc["memory"].to<JsonObject>();
   mem["heap_free"] = ESP.getFreeHeap();
   mem["heap_total"] = ESP.getHeapSize();
   mem["heap_used_pct"] =
@@ -3545,7 +3545,7 @@ void broadcastState(const SystemState &state) {
   mem["flash_total"] = ESP.getFlashChipSize();
   mem["flash_used_pct"] = ESP.getSketchSize() * 100 / ESP.getFlashChipSize();
 
-  JsonObject health = doc.createNestedObject("health");
+  JsonObject health = doc["health"].to<JsonObject>();
   health["overall"] = state.health.overallHealth;
   health["tempSensorsOk"] = state.health.tempSensorsOk;
   health["tempSensorsTotal"] = state.health.tempSensorsTotal;
@@ -3563,7 +3563,7 @@ void broadcastState(const SystemState &state) {
 }
 
 void broadcastEvent(const char *event, const char *message) {
-  StaticJsonDocument<256> doc;
+  JsonDocument doc;
   doc["type"] = "event";
   doc["event"] = event;
   doc["message"] = message;

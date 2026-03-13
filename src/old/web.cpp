@@ -76,10 +76,10 @@ void updateWebSocket() {
     lastWsUpdate = currentTime;
     
     // Создаем JSON объект для отправки статуса
-    DynamicJsonDocument doc(1024);
+    JsonDocument doc;
     
     // Добавляем информацию о температуре
-    JsonObject temps = doc.createNestedObject("temperatures");
+    JsonObject temps = doc["temperatures"].to<JsonObject>();
     temps["cube"] = getTemperature(TEMP_CUBE);
     temps["column"] = getTemperature(TEMP_COLUMN);
     temps["reflux"] = getTemperature(TEMP_REFLUX);
@@ -87,26 +87,26 @@ void updateWebSocket() {
     temps["waterOut"] = getTemperature(TEMP_WATER_OUT);
     
     // Добавляем информацию о нагревателе
-    JsonObject heater = doc.createNestedObject("heater");
+    JsonObject heater = doc["heater"].to<JsonObject>();
     heater["power"] = getHeaterPowerWatts();
     heater["percent"] = getHeaterPowerPercent();
     
     // Добавляем информацию о насосе
-    JsonObject pump = doc.createNestedObject("pump");
+    JsonObject pump = doc["pump"].to<JsonObject>();
     pump["running"] = isPumpRunning();
     pump["flowRate"] = getPumpFlowRate();
     
     // Добавляем информацию о клапане
-    JsonObject valve = doc.createNestedObject("valve");
+    JsonObject valve = doc["valve"].to<JsonObject>();
     valve["open"] = isValveOpen();
     
     // Добавляем информацию о системе
-    JsonObject system = doc.createNestedObject("system");
+    JsonObject system = doc["system"].to<JsonObject>();
     system["uptime"] = millis() / 1000;
     
     // Информация о текущем процессе
     if (isRectificationRunning()) {
-        JsonObject process = doc.createNestedObject("rectification");
+        JsonObject process = doc["rectification"].to<JsonObject>();
         process["running"] = true;
         process["paused"] = isRectificationPaused();
         process["phase"] = getRectificationPhaseName();
@@ -119,7 +119,7 @@ void updateWebSocket() {
         process["refluxStatus"] = getRectificationRefluxStatus();
     }
     else if (isDistillationRunning()) {
-        JsonObject process = doc.createNestedObject("distillation");
+        JsonObject process = doc["distillation"].to<JsonObject>();
         process["running"] = true;
         process["paused"] = isDistillationPaused();
         process["phase"] = getDistillationPhaseName();
@@ -131,7 +131,7 @@ void updateWebSocket() {
     }
     
     // Добавляем информацию о безопасности
-    JsonObject safety = doc.createNestedObject("safety");
+    JsonObject safety = doc["safety"].to<JsonObject>();
     SafetyStatus safetyStatus = getSafetyStatus();
     safety["isSystemSafe"] = safetyStatus.isSystemSafe;
     safety["errorCode"] = safetyStatus.errorCode;
@@ -157,10 +157,10 @@ void updateWebSocket() {
 void setupApiRoutes() {
     // Получение статуса системы
     server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-        DynamicJsonDocument doc(1024);
+        JsonDocument doc;
         
         // Информация о температуре
-        JsonObject temps = doc.createNestedObject("temperatures");
+        JsonObject temps = doc["temperatures"].to<JsonObject>();
         temps["cube"] = getTemperature(TEMP_CUBE);
         temps["column"] = getTemperature(TEMP_COLUMN);
         temps["reflux"] = getTemperature(TEMP_REFLUX);
@@ -168,7 +168,7 @@ void setupApiRoutes() {
         temps["waterOut"] = getTemperature(TEMP_WATER_OUT);
         
         // Информация о подключенных датчиках
-        JsonObject sensors = doc.createNestedObject("sensors");
+        JsonObject sensors = doc["sensors"].to<JsonObject>();
         sensors["cube"] = isSensorConnected(TEMP_CUBE);
         sensors["column"] = isSensorConnected(TEMP_COLUMN);
         sensors["reflux"] = isSensorConnected(TEMP_REFLUX);
@@ -176,22 +176,22 @@ void setupApiRoutes() {
         sensors["waterOut"] = isSensorConnected(TEMP_WATER_OUT);
         
         // Информация о нагревателе
-        JsonObject heater = doc.createNestedObject("heater");
+        JsonObject heater = doc["heater"].to<JsonObject>();
         heater["power"] = getHeaterPowerWatts();
         heater["percent"] = getHeaterPowerPercent();
         
         // Информация о насосе
-        JsonObject pump = doc.createNestedObject("pump");
+        JsonObject pump = doc["pump"].to<JsonObject>();
         pump["running"] = isPumpRunning();
         pump["flowRate"] = getPumpFlowRate();
         
         // Информация о клапане
-        JsonObject valve = doc.createNestedObject("valve");
+        JsonObject valve = doc["valve"].to<JsonObject>();
         valve["open"] = isValveOpen();
         
         // Информация о текущем процессе
         if (isRectificationRunning()) {
-            JsonObject process = doc.createNestedObject("rectification");
+            JsonObject process = doc["rectification"].to<JsonObject>();
             process["running"] = true;
             process["paused"] = isRectificationPaused();
             process["phase"] = getRectificationPhaseName();
@@ -204,7 +204,7 @@ void setupApiRoutes() {
             process["refluxStatus"] = getRectificationRefluxStatus();
         }
         else if (isDistillationRunning()) {
-            JsonObject process = doc.createNestedObject("distillation");
+            JsonObject process = doc["distillation"].to<JsonObject>();
             process["running"] = true;
             process["paused"] = isDistillationPaused();
             process["phase"] = getDistillationPhaseName();
@@ -219,7 +219,7 @@ void setupApiRoutes() {
         }
         
         // Информация о безопасности
-        JsonObject safety = doc.createNestedObject("safety");
+        JsonObject safety = doc["safety"].to<JsonObject>();
         SafetyStatus status = getSafetyStatus();
         safety["isSystemSafe"] = status.isSystemSafe;
         safety["errorCode"] = status.errorCode;
@@ -244,14 +244,14 @@ void setupApiRoutes() {
     
     // Получение настроек
     server.on("/api/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
-        DynamicJsonDocument doc(2048);
+        JsonDocument doc;
         
         // Настройки нагревателя
-        JsonObject heater = doc.createNestedObject("heater");
+        JsonObject heater = doc["heater"].to<JsonObject>();
         heater["maxPowerWatts"] = sysSettings.heaterSettings.maxPowerWatts;
         
         // Настройки датчиков
-        JsonObject sensors = doc.createNestedObject("sensors");
+        JsonObject sensors = doc["sensors"].to<JsonObject>();
         
         for (int i = 0; i < MAX_TEMP_SENSORS; i++) {
             JsonObject sensor = sensors.createNestedObject(String(i));
@@ -270,13 +270,13 @@ void setupApiRoutes() {
         }
         
         // Настройки насоса
-        JsonObject pump = doc.createNestedObject("pump");
+        JsonObject pump = doc["pump"].to<JsonObject>();
         pump["headsFlowRate"] = sysSettings.pumpSettings.headsFlowRate;
         pump["bodyFlowRate"] = sysSettings.pumpSettings.bodyFlowRate;
         pump["tailsFlowRate"] = sysSettings.pumpSettings.tailsFlowRate;
         
         // Настройки ректификации
-        JsonObject rect = doc.createNestedObject("rectification");
+        JsonObject rect = doc["rectification"].to<JsonObject>();
         rect["model"] = sysSettings.rectificationSettings.model;
         rect["heatingPowerWatts"] = sysSettings.rectificationSettings.heatingPowerWatts;
         rect["stabilizationPowerWatts"] = sysSettings.rectificationSettings.stabilizationPowerWatts;
@@ -295,7 +295,7 @@ void setupApiRoutes() {
         rect["refluxPeriod"] = sysSettings.rectificationSettings.refluxPeriod;
         
         // Настройки дистилляции
-        JsonObject dist = doc.createNestedObject("distillation");
+        JsonObject dist = doc["distillation"].to<JsonObject>();
         dist["heatingPowerWatts"] = sysSettings.distillationSettings.heatingPowerWatts;
         dist["distillationPowerWatts"] = sysSettings.distillationSettings.distillationPowerWatts;
         dist["startCollectingTemp"] = sysSettings.distillationSettings.startCollectingTemp;
@@ -307,7 +307,7 @@ void setupApiRoutes() {
         dist["headsFlowRate"] = sysSettings.distillationSettings.headsFlowRate;
         
         // Настройки безопасности
-        JsonObject safety = doc.createNestedObject("safety");
+        JsonObject safety = doc["safety"].to<JsonObject>();
         safety["maxRuntimeHours"] = sysSettings.safetySettings.maxRuntimeHours;
         safety["maxCubeTemp"] = sysSettings.safetySettings.maxCubeTemp;
         safety["maxTempRiseRate"] = sysSettings.safetySettings.maxTempRiseRate;
@@ -326,40 +326,40 @@ void setupApiRoutes() {
     server.on("/api/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
         request->send(200);
     }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        DynamicJsonDocument doc(2048);
+        JsonDocument doc;
         deserializeJson(doc, data, len);
         
         // Обновляем настройки нагревателя
-        if (doc.containsKey("heater")) {
+        if (!doc["heater"].isNull()) {
             JsonObject heater = doc["heater"];
-            if (heater.containsKey("maxPowerWatts")) {
+            if (!heater["maxPowerWatts"].isNull()) {
                 sysSettings.heaterSettings.maxPowerWatts = heater["maxPowerWatts"];
             }
         }
         
         // Обновляем настройки насоса
-        if (doc.containsKey("pump")) {
+        if (!doc["pump"].isNull()) {
             JsonObject pump = doc["pump"];
-            if (pump.containsKey("headsFlowRate")) {
+            if (!pump["headsFlowRate"].isNull()) {
                 sysSettings.pumpSettings.headsFlowRate = pump["headsFlowRate"];
             }
-            if (pump.containsKey("bodyFlowRate")) {
+            if (!pump["bodyFlowRate"].isNull()) {
                 sysSettings.pumpSettings.bodyFlowRate = pump["bodyFlowRate"];
             }
-            if (pump.containsKey("tailsFlowRate")) {
+            if (!pump["tailsFlowRate"].isNull()) {
                 sysSettings.pumpSettings.tailsFlowRate = pump["tailsFlowRate"];
             }
         }
         
         // Обновляем настройки датчиков
-        if (doc.containsKey("sensors")) {
+        if (!doc["sensors"].isNull()) {
             JsonObject sensors = doc["sensors"];
             for (JsonPair kv : sensors) {
                 int sensorIndex = atoi(kv.key().c_str());
                 if (sensorIndex >= 0 && sensorIndex < MAX_TEMP_SENSORS) {
                     JsonObject sensor = kv.value().as<JsonObject>();
                     
-                    if (sensor.containsKey("calibration")) {
+                    if (!sensor["calibration"].isNull()) {
                         float calibration = sensor["calibration"];
                         calibrateTempSensor(sensorIndex, calibration);
                     }
@@ -368,126 +368,126 @@ void setupApiRoutes() {
         }
         
         // Обновляем настройки ректификации
-        if (doc.containsKey("rectification")) {
+        if (!doc["rectification"].isNull()) {
             JsonObject rect = doc["rectification"];
             
-            if (rect.containsKey("model")) {
+            if (!rect["model"].isNull()) {
                 sysSettings.rectificationSettings.model = rect["model"];
             }
-            if (rect.containsKey("heatingPowerWatts")) {
+            if (!rect["heatingPowerWatts"].isNull()) {
                 sysSettings.rectificationSettings.heatingPowerWatts = rect["heatingPowerWatts"];
             }
-            if (rect.containsKey("stabilizationPowerWatts")) {
+            if (!rect["stabilizationPowerWatts"].isNull()) {
                 sysSettings.rectificationSettings.stabilizationPowerWatts = rect["stabilizationPowerWatts"];
             }
-            if (rect.containsKey("bodyPowerWatts")) {
+            if (!rect["bodyPowerWatts"].isNull()) {
                 sysSettings.rectificationSettings.bodyPowerWatts = rect["bodyPowerWatts"];
             }
-            if (rect.containsKey("tailsPowerWatts")) {
+            if (!rect["tailsPowerWatts"].isNull()) {
                 sysSettings.rectificationSettings.tailsPowerWatts = rect["tailsPowerWatts"];
             }
-            if (rect.containsKey("headsTemp")) {
+            if (!rect["headsTemp"].isNull()) {
                 sysSettings.rectificationSettings.headsTemp = rect["headsTemp"];
             }
-            if (rect.containsKey("bodyTemp")) {
+            if (!rect["bodyTemp"].isNull()) {
                 sysSettings.rectificationSettings.bodyTemp = rect["bodyTemp"];
             }
-            if (rect.containsKey("tailsTemp")) {
+            if (!rect["tailsTemp"].isNull()) {
                 sysSettings.rectificationSettings.tailsTemp = rect["tailsTemp"];
             }
-            if (rect.containsKey("endTemp")) {
+            if (!rect["endTemp"].isNull()) {
                 sysSettings.rectificationSettings.endTemp = rect["endTemp"];
             }
-            if (rect.containsKey("maxCubeTemp")) {
+            if (!rect["maxCubeTemp"].isNull()) {
                 sysSettings.rectificationSettings.maxCubeTemp = rect["maxCubeTemp"];
             }
-            if (rect.containsKey("stabilizationTime")) {
+            if (!rect["stabilizationTime"].isNull()) {
                 sysSettings.rectificationSettings.stabilizationTime = rect["stabilizationTime"];
             }
-            if (rect.containsKey("postHeadsStabilizationTime")) {
+            if (!rect["postHeadsStabilizationTime"].isNull()) {
                 sysSettings.rectificationSettings.postHeadsStabilizationTime = rect["postHeadsStabilizationTime"];
             }
-            if (rect.containsKey("headsVolume")) {
+            if (!rect["headsVolume"].isNull()) {
                 sysSettings.rectificationSettings.headsVolume = rect["headsVolume"];
             }
-            if (rect.containsKey("bodyVolume")) {
+            if (!rect["bodyVolume"].isNull()) {
                 sysSettings.rectificationSettings.bodyVolume = rect["bodyVolume"];
             }
-            if (rect.containsKey("refluxRatio")) {
+            if (!rect["refluxRatio"].isNull()) {
                 sysSettings.rectificationSettings.refluxRatio = rect["refluxRatio"];
             }
-            if (rect.containsKey("refluxPeriod")) {
+            if (!rect["refluxPeriod"].isNull()) {
                 sysSettings.rectificationSettings.refluxPeriod = rect["refluxPeriod"];
             }
         }
         
         // Обновляем настройки дистилляции
-        if (doc.containsKey("distillation")) {
+        if (!doc["distillation"].isNull()) {
             JsonObject dist = doc["distillation"];
             
-            if (dist.containsKey("heatingPowerWatts")) {
+            if (!dist["heatingPowerWatts"].isNull()) {
                 sysSettings.distillationSettings.heatingPowerWatts = dist["heatingPowerWatts"];
             }
-            if (dist.containsKey("distillationPowerWatts")) {
+            if (!dist["distillationPowerWatts"].isNull()) {
                 sysSettings.distillationSettings.distillationPowerWatts = dist["distillationPowerWatts"];
             }
-            if (dist.containsKey("startCollectingTemp")) {
+            if (!dist["startCollectingTemp"].isNull()) {
                 sysSettings.distillationSettings.startCollectingTemp = dist["startCollectingTemp"];
             }
-            if (dist.containsKey("endTemp")) {
+            if (!dist["endTemp"].isNull()) {
                 sysSettings.distillationSettings.endTemp = dist["endTemp"];
             }
-            if (dist.containsKey("maxCubeTemp")) {
+            if (!dist["maxCubeTemp"].isNull()) {
                 sysSettings.distillationSettings.maxCubeTemp = dist["maxCubeTemp"];
             }
-            if (dist.containsKey("separateHeads")) {
+            if (!dist["separateHeads"].isNull()) {
                 sysSettings.distillationSettings.separateHeads = dist["separateHeads"];
             }
-            if (dist.containsKey("headsVolume")) {
+            if (!dist["headsVolume"].isNull()) {
                 sysSettings.distillationSettings.headsVolume = dist["headsVolume"];
             }
-            if (dist.containsKey("flowRate")) {
+            if (!dist["flowRate"].isNull()) {
                 sysSettings.distillationSettings.flowRate = dist["flowRate"];
             }
-            if (dist.containsKey("headsFlowRate")) {
+            if (!dist["headsFlowRate"].isNull()) {
                 sysSettings.distillationSettings.headsFlowRate = dist["headsFlowRate"];
             }
         }
         
         // Обновляем настройки безопасности
-        if (doc.containsKey("safety")) {
+        if (!doc["safety"].isNull()) {
             JsonObject safety = doc["safety"];
             
-            if (safety.containsKey("maxRuntimeHours")) {
+            if (!safety["maxRuntimeHours"].isNull()) {
                 sysSettings.safetySettings.maxRuntimeHours = safety["maxRuntimeHours"];
                 setSafetyMaxRuntime(sysSettings.safetySettings.maxRuntimeHours);
             }
             
-            if (safety.containsKey("maxCubeTemp")) {
+            if (!safety["maxCubeTemp"].isNull()) {
                 sysSettings.safetySettings.maxCubeTemp = safety["maxCubeTemp"];
                 setSafetyMaxCubeTemp(sysSettings.safetySettings.maxCubeTemp);
             }
             
-            if (safety.containsKey("maxTempRiseRate")) {
+            if (!safety["maxTempRiseRate"].isNull()) {
                 sysSettings.safetySettings.maxTempRiseRate = safety["maxTempRiseRate"];
                 setSafetyMaxTempRiseRate(sysSettings.safetySettings.maxTempRiseRate);
             }
             
-            if (safety.containsKey("minWaterOutTemp")) {
+            if (!safety["minWaterOutTemp"].isNull()) {
                 sysSettings.safetySettings.minWaterOutTemp = safety["minWaterOutTemp"];
                 setSafetyMinWaterOutTemp(sysSettings.safetySettings.minWaterOutTemp);
             }
             
-            if (safety.containsKey("maxWaterOutTemp")) {
+            if (!safety["maxWaterOutTemp"].isNull()) {
                 sysSettings.safetySettings.maxWaterOutTemp = safety["maxWaterOutTemp"];
                 setSafetyMaxWaterOutTemp(sysSettings.safetySettings.maxWaterOutTemp);
             }
             
-            if (safety.containsKey("emergencyStopEnabled")) {
+            if (!safety["emergencyStopEnabled"].isNull()) {
                 sysSettings.safetySettings.emergencyStopEnabled = safety["emergencyStopEnabled"];
             }
             
-            if (safety.containsKey("watchdogEnabled")) {
+            if (!safety["watchdogEnabled"].isNull()) {
                 sysSettings.safetySettings.watchdogEnabled = safety["watchdogEnabled"];
             }
         }
@@ -502,13 +502,13 @@ void setupApiRoutes() {
     server.on("/api/heater", HTTP_POST, [](AsyncWebServerRequest *request) {
         request->send(200);
     }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        DynamicJsonDocument doc(256);
+        JsonDocument doc;
         deserializeJson(doc, data, len);
         
-        if (doc.containsKey("power")) {
+        if (!doc["power"].isNull()) {
             int power = doc["power"];
             setHeaterPower(power);
-        } else if (doc.containsKey("percent")) {
+        } else if (!doc["percent"].isNull()) {
             int percent = doc["percent"];
             setHeaterPowerPercent(percent);
         }
@@ -520,13 +520,13 @@ void setupApiRoutes() {
     server.on("/api/pump", HTTP_POST, [](AsyncWebServerRequest *request) {
         request->send(200);
     }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        DynamicJsonDocument doc(256);
+        JsonDocument doc;
         deserializeJson(doc, data, len);
         
-        if (doc.containsKey("start")) {
+        if (!doc["start"].isNull()) {
             bool start = doc["start"];
             if (start) {
-                if (doc.containsKey("flowRate")) {
+                if (!doc["flowRate"].isNull()) {
                     float flowRate = doc["flowRate"];
                     pumpStart(flowRate);
                 } else {
@@ -535,7 +535,7 @@ void setupApiRoutes() {
             } else {
                 pumpStop();
             }
-        } else if (doc.containsKey("flowRate")) {
+        } else if (!doc["flowRate"].isNull()) {
             float flowRate = doc["flowRate"];
             setPumpFlowRate(flowRate);
         }
@@ -547,17 +547,17 @@ void setupApiRoutes() {
     server.on("/api/valve", HTTP_POST, [](AsyncWebServerRequest *request) {
         request->send(200);
     }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        DynamicJsonDocument doc(256);
+        JsonDocument doc;
         deserializeJson(doc, data, len);
         
-        if (doc.containsKey("open")) {
+        if (!doc["open"].isNull()) {
             bool open = doc["open"];
             if (open) {
                 valveOpen();
             } else {
                 valveClose();
             }
-        } else if (doc.containsKey("toggle")) {
+        } else if (!doc["toggle"].isNull()) {
             toggleValve();
         }
         
@@ -598,10 +598,10 @@ void setupApiRoutes() {
     server.on("/api/rectification/phase", HTTP_POST, [](AsyncWebServerRequest *request) {
         request->send(200);
     }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        DynamicJsonDocument doc(256);
+        JsonDocument doc;
         deserializeJson(doc, data, len);
         
-        if (doc.containsKey("phase")) {
+        if (!doc["phase"].isNull()) {
             String phase = doc["phase"].as<String>();
             bool success = false;
             
@@ -662,10 +662,10 @@ void setupApiRoutes() {
     server.on("/api/distillation/phase", HTTP_POST, [](AsyncWebServerRequest *request) {
         request->send(200);
     }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        DynamicJsonDocument doc(256);
+        JsonDocument doc;
         deserializeJson(doc, data, len);
         
-        if (doc.containsKey("phase")) {
+        if (!doc["phase"].isNull()) {
             String phase = doc["phase"].as<String>();
             bool success = false;
             
@@ -692,7 +692,7 @@ void setupApiRoutes() {
     
     // API для получения статуса безопасности
     server.on("/api/safety/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-        DynamicJsonDocument doc(512);
+        JsonDocument doc;
         SafetyStatus status = getSafetyStatus();
         
         doc["isSystemSafe"] = status.isSystemSafe;
@@ -728,7 +728,7 @@ void setupApiRoutes() {
     server.on("/api/sensors/scan", HTTP_POST, [](AsyncWebServerRequest *request) {
         int count = scanForTempSensors();
         
-        DynamicJsonDocument doc(256);
+        JsonDocument doc;
         doc["status"] = "ok";
         doc["count"] = count;
         
@@ -759,12 +759,12 @@ void setupApiRoutes() {
     server.on("/api/history", HTTP_GET, [](AsyncWebServerRequest *request) {
         std::vector<ProcessListItem> processes = getProcessList();
 
-        DynamicJsonDocument doc(4096);
+        JsonDocument doc;
         doc["total"] = processes.size();
 
-        JsonArray procArray = doc.createNestedArray("processes");
+        JsonArray procArray = doc["processes"].to<JsonArray>();
         for (const auto& proc : processes) {
-            JsonObject p = procArray.createNestedObject();
+            JsonObject p = procArray.add<JsonObject>();
             p["id"] = proc.id;
             p["type"] = proc.type;
             p["startTime"] = proc.startTime;
@@ -785,24 +785,24 @@ void setupApiRoutes() {
         ProcessHistory history;
         if (loadProcessHistory(id, history)) {
             // Создать полный JSON ответ
-            DynamicJsonDocument doc(32768);
+            JsonDocument doc;
 
             doc["id"] = history.id;
             doc["version"] = history.version;
 
-            JsonObject metadata = doc.createNestedObject("metadata");
+            JsonObject metadata = doc["metadata"].to<JsonObject>();
             metadata["startTime"] = history.metadata.startTime;
             metadata["endTime"] = history.metadata.endTime;
             metadata["duration"] = history.metadata.duration;
             metadata["completedSuccessfully"] = history.metadata.completedSuccessfully;
             metadata["deviceId"] = history.metadata.deviceId;
 
-            JsonObject process = doc.createNestedObject("process");
+            JsonObject process = doc["process"].to<JsonObject>();
             process["type"] = history.process.type;
             process["mode"] = history.process.mode;
             process["profile"] = history.process.profile;
 
-            JsonObject parameters = doc.createNestedObject("parameters");
+            JsonObject parameters = doc["parameters"].to<JsonObject>();
             parameters["targetPower"] = history.parameters.targetPower;
             parameters["headVolume"] = history.parameters.headVolume;
             parameters["bodyVolume"] = history.parameters.bodyVolume;
@@ -813,26 +813,26 @@ void setupApiRoutes() {
             parameters["wattControlEnabled"] = history.parameters.wattControlEnabled;
             parameters["smartDecrementEnabled"] = history.parameters.smartDecrementEnabled;
 
-            JsonObject metrics = doc.createNestedObject("metrics");
-            JsonObject temps = metrics.createNestedObject("temperatures");
-            JsonObject cube = temps.createNestedObject("cube");
+            JsonObject metrics = doc["metrics"].to<JsonObject>();
+            JsonObject temps = metrics["temperatures"].to<JsonObject>();
+            JsonObject cube = temps["cube"].to<JsonObject>();
             cube["min"] = history.metrics.cube.min;
             cube["max"] = history.metrics.cube.max;
             cube["avg"] = history.metrics.cube.avg;
             cube["final"] = history.metrics.cube.final;
 
-            JsonObject power = metrics.createNestedObject("power");
+            JsonObject power = metrics["power"].to<JsonObject>();
             power["energyUsed"] = history.metrics.energyUsed;
             power["avgPower"] = history.metrics.avgPower;
             power["peakPower"] = history.metrics.peakPower;
 
-            JsonObject pump = metrics.createNestedObject("pump");
+            JsonObject pump = metrics["pump"].to<JsonObject>();
             pump["totalVolume"] = history.metrics.totalVolume;
             pump["avgSpeed"] = history.metrics.avgSpeed;
 
-            JsonArray phases = doc.createNestedArray("phases");
+            JsonArray phases = doc["phases"].to<JsonArray>();
             for (const auto& phase : history.phases) {
-                JsonObject p = phases.createNestedObject();
+                JsonObject p = phases.add<JsonObject>();
                 p["name"] = phase.name;
                 p["startTime"] = phase.startTime;
                 p["endTime"] = phase.endTime;
@@ -843,11 +843,11 @@ void setupApiRoutes() {
                 p["avgSpeed"] = phase.avgSpeed;
             }
 
-            JsonObject timeseries = doc.createNestedObject("timeseries");
+            JsonObject timeseries = doc["timeseries"].to<JsonObject>();
             timeseries["interval"] = TIMESERIES_INTERVAL;
-            JsonArray data = timeseries.createNestedArray("data");
+            JsonArray data = timeseries["data"].to<JsonArray>();
             for (const auto& point : history.timeseries) {
-                JsonObject p = data.createNestedObject();
+                JsonObject p = data.add<JsonObject>();
                 p["time"] = point.time;
                 p["cube"] = point.cube;
                 p["columnTop"] = point.columnTop;
@@ -855,7 +855,7 @@ void setupApiRoutes() {
                 p["pumpSpeed"] = point.pumpSpeed;
             }
 
-            JsonObject results = doc.createNestedObject("results");
+            JsonObject results = doc["results"].to<JsonObject>();
             results["headsCollected"] = history.results.headsCollected;
             results["bodyCollected"] = history.results.bodyCollected;
             results["tailsCollected"] = history.results.tailsCollected;
@@ -929,12 +929,12 @@ void setupApiRoutes() {
     server.on("/api/profiles", HTTP_GET, [](AsyncWebServerRequest *request) {
         std::vector<ProfileListItem> profiles = getProfileList();
 
-        DynamicJsonDocument doc(4096);
+        JsonDocument doc;
         doc["total"] = profiles.size();
 
-        JsonArray profileArray = doc.createNestedArray("profiles");
+        JsonArray profileArray = doc["profiles"].to<JsonArray>();
         for (const auto& prof : profiles) {
-            JsonObject p = profileArray.createNestedObject();
+            JsonObject p = profileArray.add<JsonObject>();
             p["id"] = prof.id;
             p["name"] = prof.name;
             p["category"] = prof.category;
@@ -955,16 +955,16 @@ void setupApiRoutes() {
         Profile profile;
         if (loadProfile(id, profile)) {
             // Создать полный JSON ответ
-            DynamicJsonDocument doc(8192);
+            JsonDocument doc;
 
             doc["id"] = profile.id;
 
-            JsonObject metadata = doc.createNestedObject("metadata");
+            JsonObject metadata = doc["metadata"].to<JsonObject>();
             metadata["name"] = profile.metadata.name;
             metadata["description"] = profile.metadata.description;
             metadata["category"] = profile.metadata.category;
 
-            JsonArray tags = metadata.createNestedArray("tags");
+            JsonArray tags = metadata["tags"].to<JsonArray>();
             for (const auto& tag : profile.metadata.tags) {
                 tags.add(tag);
             }
@@ -974,18 +974,18 @@ void setupApiRoutes() {
             metadata["author"] = profile.metadata.author;
             metadata["isBuiltin"] = profile.metadata.isBuiltin;
 
-            JsonObject parameters = doc.createNestedObject("parameters");
+            JsonObject parameters = doc["parameters"].to<JsonObject>();
             parameters["mode"] = profile.parameters.mode;
             parameters["model"] = profile.parameters.model;
 
-            JsonObject heater = parameters.createNestedObject("heater");
+            JsonObject heater = parameters["heater"].to<JsonObject>();
             heater["maxPower"] = profile.parameters.heater.maxPower;
             heater["autoMode"] = profile.parameters.heater.autoMode;
             heater["pidKp"] = profile.parameters.heater.pidKp;
             heater["pidKi"] = profile.parameters.heater.pidKi;
             heater["pidKd"] = profile.parameters.heater.pidKd;
 
-            JsonObject rectification = parameters.createNestedObject("rectification");
+            JsonObject rectification = parameters["rectification"].to<JsonObject>();
             rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
             rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
             rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
@@ -995,25 +995,25 @@ void setupApiRoutes() {
             rectification["tailsSpeed"] = profile.parameters.rectification.tailsSpeed;
             rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
 
-            JsonObject distillation = parameters.createNestedObject("distillation");
+            JsonObject distillation = parameters["distillation"].to<JsonObject>();
             distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
             distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
             distillation["speed"] = profile.parameters.distillation.speed;
             distillation["endTemp"] = profile.parameters.distillation.endTemp;
 
-            JsonObject temperatures = parameters.createNestedObject("temperatures");
+            JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
             temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
             temperatures["maxColumn"] = profile.parameters.temperatures.maxColumn;
             temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
             temperatures["bodyStart"] = profile.parameters.temperatures.bodyStart;
             temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
 
-            JsonObject safety = parameters.createNestedObject("safety");
+            JsonObject safety = parameters["safety"].to<JsonObject>();
             safety["maxRuntime"] = profile.parameters.safety.maxRuntime;
             safety["waterFlowMin"] = profile.parameters.safety.waterFlowMin;
             safety["pressureMax"] = profile.parameters.safety.pressureMax;
 
-            JsonObject statistics = doc.createNestedObject("statistics");
+            JsonObject statistics = doc["statistics"].to<JsonObject>();
             statistics["useCount"] = profile.statistics.useCount;
             statistics["lastUsed"] = profile.statistics.lastUsed;
             statistics["avgDuration"] = profile.statistics.avgDuration;
@@ -1045,7 +1045,7 @@ void setupApiRoutes() {
 
         if (index + len == total) {
             // Парсим JSON
-            DynamicJsonDocument doc(8192);
+            JsonDocument doc;
             DeserializationError error = deserializeJson(doc, body);
 
             if (error) {
@@ -1146,7 +1146,7 @@ void setupApiRoutes() {
             }
 
             // Парсим JSON для обновления
-            DynamicJsonDocument doc(8192);
+            JsonDocument doc;
             DeserializationError error = deserializeJson(doc, body);
 
             if (error) {
@@ -1241,7 +1241,7 @@ void setupApiRoutes() {
 
         if (index + len == total) {
             // Парсим JSON
-            DynamicJsonDocument doc(32768);
+            JsonDocument doc;
             DeserializationError error = deserializeJson(doc, body);
 
             if (error) {
@@ -1333,11 +1333,11 @@ void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                     webSocketMessageHandler(client, message);
                 } else {
                     // Базовая обработка команд
-                    DynamicJsonDocument doc(512);
+                    JsonDocument doc;
                     DeserializationError error = deserializeJson(doc, message);
                     
                     if (!error) {
-                        if (doc.containsKey("command")) {
+                        if (!doc["command"].isNull()) {
                             String command = doc["command"];
                             
                             if (command == "getStatus") {

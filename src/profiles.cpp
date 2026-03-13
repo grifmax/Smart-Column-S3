@@ -63,17 +63,17 @@ bool saveProfile(const Profile& profile) {
     }
 
     // Создать JSON документ
-    DynamicJsonDocument doc(8192);  // 8 КБ для профиля
+    JsonDocument doc;
 
     doc["id"] = profile.id;
 
     // Метаданные
-    JsonObject metadata = doc.createNestedObject("metadata");
+    JsonObject metadata = doc["metadata"].to<JsonObject>();
     metadata["name"] = profile.metadata.name;
     metadata["description"] = profile.metadata.description;
     metadata["category"] = profile.metadata.category;
 
-    JsonArray tags = metadata.createNestedArray("tags");
+    JsonArray tags = metadata["tags"].to<JsonArray>();
     for (const auto& tag : profile.metadata.tags) {
         tags.add(tag);
     }
@@ -84,12 +84,12 @@ bool saveProfile(const Profile& profile) {
     metadata["isBuiltin"] = profile.metadata.isBuiltin;
 
     // Параметры
-    JsonObject parameters = doc.createNestedObject("parameters");
+    JsonObject parameters = doc["parameters"].to<JsonObject>();
     parameters["mode"] = profile.parameters.mode;
     parameters["model"] = profile.parameters.model;
 
     // Нагреватель
-    JsonObject heater = parameters.createNestedObject("heater");
+    JsonObject heater = parameters["heater"].to<JsonObject>();
     heater["maxPower"] = profile.parameters.heater.maxPower;
     heater["autoMode"] = profile.parameters.heater.autoMode;
     heater["pidKp"] = profile.parameters.heater.pidKp;
@@ -97,7 +97,7 @@ bool saveProfile(const Profile& profile) {
     heater["pidKd"] = profile.parameters.heater.pidKd;
 
     // Ректификация
-    JsonObject rectification = parameters.createNestedObject("rectification");
+    JsonObject rectification = parameters["rectification"].to<JsonObject>();
     rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
     rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
     rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
@@ -108,14 +108,14 @@ bool saveProfile(const Profile& profile) {
     rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
 
     // Дистилляция
-    JsonObject distillation = parameters.createNestedObject("distillation");
+    JsonObject distillation = parameters["distillation"].to<JsonObject>();
     distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
     distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
     distillation["speed"] = profile.parameters.distillation.speed;
     distillation["endTemp"] = profile.parameters.distillation.endTemp;
 
     // Температуры
-    JsonObject temperatures = parameters.createNestedObject("temperatures");
+    JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
     temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
     temperatures["maxColumn"] = profile.parameters.temperatures.maxColumn;
     temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
@@ -123,13 +123,13 @@ bool saveProfile(const Profile& profile) {
     temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
 
     // Безопасность
-    JsonObject safety = parameters.createNestedObject("safety");
+    JsonObject safety = parameters["safety"].to<JsonObject>();
     safety["maxRuntime"] = profile.parameters.safety.maxRuntime;
     safety["waterFlowMin"] = profile.parameters.safety.waterFlowMin;
     safety["pressureMax"] = profile.parameters.safety.pressureMax;
 
     // Статистика
-    JsonObject statistics = doc.createNestedObject("statistics");
+    JsonObject statistics = doc["statistics"].to<JsonObject>();
     statistics["useCount"] = profile.statistics.useCount;
     statistics["lastUsed"] = profile.statistics.lastUsed;
     statistics["avgDuration"] = profile.statistics.avgDuration;
@@ -170,7 +170,7 @@ bool loadProfile(const String& id, Profile& profile) {
         return false;
     }
 
-    DynamicJsonDocument doc(8192);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, file);
     file.close();
 
@@ -197,6 +197,9 @@ bool loadProfile(const String& id, Profile& profile) {
     profile.metadata.updated = doc["metadata"]["updated"];
     profile.metadata.author = doc["metadata"]["author"].as<String>();
     profile.metadata.isBuiltin = doc["metadata"]["isBuiltin"];
+    
+    // ... (остальной код загрузки полей остается прежним, так как as<T>() и [] работают в обеих версиях)
+
 
     // Параметры
     profile.parameters.mode = doc["parameters"]["mode"].as<String>();
@@ -268,7 +271,7 @@ std::vector<ProfileListItem> getProfileList() {
             // Проверить, что это файл профиля
             if (filename.startsWith("profile_") && filename.endsWith(".json")) {
                 // Быстрая загрузка только необходимых полей
-                DynamicJsonDocument doc(512);
+                JsonDocument doc;
                 DeserializationError error = deserializeJson(doc, file);
 
                 if (!error) {
@@ -344,7 +347,7 @@ bool clearProfiles() {
             // Проверить, что это профиль
             if (filename.startsWith("profile_") && filename.endsWith(".json")) {
                 // Проверить, не встроенный ли
-                DynamicJsonDocument doc(512);
+                JsonDocument doc;
                 DeserializationError error = deserializeJson(doc, file);
 
                 if (!error && !doc["metadata"]["isBuiltin"].as<bool>()) {
@@ -546,7 +549,7 @@ void rotateProfiles() {
             String filename = file.name();
             if (filename.startsWith("profile_") && filename.endsWith(".json")) {
                 // Проверить, встроенный ли
-                DynamicJsonDocument doc(512);
+                JsonDocument doc;
                 DeserializationError error = deserializeJson(doc, file);
                 bool isBuiltin = false;
                 if (!error) {
@@ -831,17 +834,17 @@ String exportProfileToJSON(const String& id) {
         return "";
     }
 
-    DynamicJsonDocument doc(8192);
+    JsonDocument doc;
 
     // Используем ту же структуру, что и при сохранении
     doc["id"] = profile.id;
 
-    JsonObject metadata = doc.createNestedObject("metadata");
+    JsonObject metadata = doc["metadata"].to<JsonObject>();
     metadata["name"] = profile.metadata.name;
     metadata["description"] = profile.metadata.description;
     metadata["category"] = profile.metadata.category;
 
-    JsonArray tags = metadata.createNestedArray("tags");
+    JsonArray tags = metadata["tags"].to<JsonArray>();
     for (const auto& tag : profile.metadata.tags) {
         tags.add(tag);
     }
@@ -851,18 +854,18 @@ String exportProfileToJSON(const String& id) {
     metadata["author"] = profile.metadata.author;
     metadata["isBuiltin"] = profile.metadata.isBuiltin;
 
-    JsonObject parameters = doc.createNestedObject("parameters");
+    JsonObject parameters = doc["parameters"].to<JsonObject>();
     parameters["mode"] = profile.parameters.mode;
     parameters["model"] = profile.parameters.model;
 
-    JsonObject heater = parameters.createNestedObject("heater");
+    JsonObject heater = parameters["heater"].to<JsonObject>();
     heater["maxPower"] = profile.parameters.heater.maxPower;
     heater["autoMode"] = profile.parameters.heater.autoMode;
     heater["pidKp"] = profile.parameters.heater.pidKp;
     heater["pidKi"] = profile.parameters.heater.pidKi;
     heater["pidKd"] = profile.parameters.heater.pidKd;
 
-    JsonObject rectification = parameters.createNestedObject("rectification");
+    JsonObject rectification = parameters["rectification"].to<JsonObject>();
     rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
     rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
     rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
@@ -872,25 +875,25 @@ String exportProfileToJSON(const String& id) {
     rectification["tailsSpeed"] = profile.parameters.rectification.tailsSpeed;
     rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
 
-    JsonObject distillation = parameters.createNestedObject("distillation");
+    JsonObject distillation = parameters["distillation"].to<JsonObject>();
     distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
     distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
     distillation["speed"] = profile.parameters.distillation.speed;
     distillation["endTemp"] = profile.parameters.distillation.endTemp;
 
-    JsonObject temperatures = parameters.createNestedObject("temperatures");
+    JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
     temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
     temperatures["maxColumn"] = profile.parameters.temperatures.maxColumn;
     temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
     temperatures["bodyStart"] = profile.parameters.temperatures.bodyStart;
     temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
 
-    JsonObject safety = parameters.createNestedObject("safety");
+    JsonObject safety = parameters["safety"].to<JsonObject>();
     safety["maxRuntime"] = profile.parameters.safety.maxRuntime;
     safety["waterFlowMin"] = profile.parameters.safety.waterFlowMin;
     safety["pressureMax"] = profile.parameters.safety.pressureMax;
 
-    JsonObject statistics = doc.createNestedObject("statistics");
+    JsonObject statistics = doc["statistics"].to<JsonObject>();
     statistics["useCount"] = profile.statistics.useCount;
     statistics["lastUsed"] = profile.statistics.lastUsed;
     statistics["avgDuration"] = profile.statistics.avgDuration;
@@ -907,7 +910,7 @@ String exportProfileToJSON(const String& id) {
 String exportAllProfilesToJSON(bool includeBuiltin) {
     std::vector<ProfileListItem> profiles = getProfileList();
 
-    DynamicJsonDocument doc(32768); // 32 КБ для массива профилей
+    JsonDocument doc; 
     JsonArray array = doc.to<JsonArray>();
 
     int exported = 0;
@@ -920,16 +923,16 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
         // Загрузить полный профиль
         Profile profile;
         if (loadProfile(item.id, profile)) {
-            JsonObject obj = array.createNestedObject();
+            JsonObject obj = array.add<JsonObject>();
 
             obj["id"] = profile.id;
 
-            JsonObject metadata = obj.createNestedObject("metadata");
+            JsonObject metadata = obj["metadata"].to<JsonObject>();
             metadata["name"] = profile.metadata.name;
             metadata["description"] = profile.metadata.description;
             metadata["category"] = profile.metadata.category;
 
-            JsonArray tags = metadata.createNestedArray("tags");
+            JsonArray tags = metadata["tags"].to<JsonArray>();
             for (const auto& tag : profile.metadata.tags) {
                 tags.add(tag);
             }
@@ -939,18 +942,18 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
             metadata["author"] = profile.metadata.author;
             metadata["isBuiltin"] = profile.metadata.isBuiltin;
 
-            JsonObject parameters = obj.createNestedObject("parameters");
+            JsonObject parameters = obj["parameters"].to<JsonObject>();
             parameters["mode"] = profile.parameters.mode;
             parameters["model"] = profile.parameters.model;
 
-            JsonObject heater = parameters.createNestedObject("heater");
+            JsonObject heater = parameters["heater"].to<JsonObject>();
             heater["maxPower"] = profile.parameters.heater.maxPower;
             heater["autoMode"] = profile.parameters.heater.autoMode;
             heater["pidKp"] = profile.parameters.heater.pidKp;
             heater["pidKi"] = profile.parameters.heater.pidKi;
             heater["pidKd"] = profile.parameters.heater.pidKd;
 
-            JsonObject rectification = parameters.createNestedObject("rectification");
+            JsonObject rectification = parameters["rectification"].to<JsonObject>();
             rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
             rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
             rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
@@ -960,25 +963,25 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
             rectification["tailsSpeed"] = profile.parameters.rectification.tailsSpeed;
             rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
 
-            JsonObject distillation = parameters.createNestedObject("distillation");
+            JsonObject distillation = parameters["distillation"].to<JsonObject>();
             distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
             distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
             distillation["speed"] = profile.parameters.distillation.speed;
             distillation["endTemp"] = profile.parameters.distillation.endTemp;
 
-            JsonObject temperatures = parameters.createNestedObject("temperatures");
+            JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
             temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
             temperatures["maxColumn"] = profile.parameters.temperatures.maxColumn;
             temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
             temperatures["bodyStart"] = profile.parameters.temperatures.bodyStart;
             temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
 
-            JsonObject safety = parameters.createNestedObject("safety");
+            JsonObject safety = parameters["safety"].to<JsonObject>();
             safety["maxRuntime"] = profile.parameters.safety.maxRuntime;
             safety["waterFlowMin"] = profile.parameters.safety.waterFlowMin;
             safety["pressureMax"] = profile.parameters.safety.pressureMax;
 
-            JsonObject statistics = obj.createNestedObject("statistics");
+            JsonObject statistics = obj["statistics"].to<JsonObject>();
             statistics["useCount"] = profile.statistics.useCount;
             statistics["lastUsed"] = profile.statistics.lastUsed;
             statistics["avgDuration"] = profile.statistics.avgDuration;
@@ -997,7 +1000,7 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
 }
 
 String importProfileFromJSON(const String& jsonStr) {
-    DynamicJsonDocument doc(8192);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, jsonStr);
 
     if (error) {
@@ -1078,7 +1081,7 @@ String importProfileFromJSON(const String& jsonStr) {
 }
 
 uint16_t importProfilesFromJSON(const String& jsonStr) {
-    DynamicJsonDocument doc(32768);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, jsonStr);
 
     if (error) {

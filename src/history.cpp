@@ -51,13 +51,13 @@ bool saveProcessHistory(const ProcessHistory& history) {
     }
 
     // Создать JSON документ
-    DynamicJsonDocument doc(32768);  // 32 КБ для полного процесса
+    JsonDocument doc;  // 32 КБ для полного процесса
 
     // Метаданные
     doc["id"] = history.id;
     doc["version"] = history.version;
 
-    JsonObject metadata = doc.createNestedObject("metadata");
+    JsonObject metadata = doc["metadata"].to<JsonObject>();
     metadata["startTime"] = history.metadata.startTime;
     metadata["endTime"] = history.metadata.endTime;
     metadata["duration"] = history.metadata.duration;
@@ -65,13 +65,13 @@ bool saveProcessHistory(const ProcessHistory& history) {
     metadata["deviceId"] = history.metadata.deviceId;
 
     // Информация о процессе
-    JsonObject process = doc.createNestedObject("process");
+    JsonObject process = doc["process"].to<JsonObject>();
     process["type"] = history.process.type;
     process["mode"] = history.process.mode;
     process["profile"] = history.process.profile;
 
     // Параметры
-    JsonObject parameters = doc.createNestedObject("parameters");
+    JsonObject parameters = doc["parameters"].to<JsonObject>();
     parameters["targetPower"] = history.parameters.targetPower;
     parameters["headVolume"] = history.parameters.headVolume;
     parameters["bodyVolume"] = history.parameters.bodyVolume;
@@ -83,46 +83,46 @@ bool saveProcessHistory(const ProcessHistory& history) {
     parameters["smartDecrementEnabled"] = history.parameters.smartDecrementEnabled;
 
     // Метрики
-    JsonObject metrics = doc.createNestedObject("metrics");
+    JsonObject metrics = doc["metrics"].to<JsonObject>();
 
-    JsonObject temps = metrics.createNestedObject("temperatures");
-    JsonObject cube = temps.createNestedObject("cube");
+    JsonObject temps = metrics["temperatures"].to<JsonObject>();
+    JsonObject cube = temps["cube"].to<JsonObject>();
     cube["min"] = history.metrics.cube.min;
     cube["max"] = history.metrics.cube.max;
     cube["avg"] = history.metrics.cube.avg;
     cube["final"] = history.metrics.cube.final;
 
-    JsonObject columnBottom = temps.createNestedObject("columnBottom");
+    JsonObject columnBottom = temps["columnBottom"].to<JsonObject>();
     columnBottom["min"] = history.metrics.columnBottom.min;
     columnBottom["max"] = history.metrics.columnBottom.max;
     columnBottom["avg"] = history.metrics.columnBottom.avg;
     columnBottom["final"] = history.metrics.columnBottom.final;
 
-    JsonObject columnTop = temps.createNestedObject("columnTop");
+    JsonObject columnTop = temps["columnTop"].to<JsonObject>();
     columnTop["min"] = history.metrics.columnTop.min;
     columnTop["max"] = history.metrics.columnTop.max;
     columnTop["avg"] = history.metrics.columnTop.avg;
     columnTop["final"] = history.metrics.columnTop.final;
 
-    JsonObject deflegmator = temps.createNestedObject("deflegmator");
+    JsonObject deflegmator = temps["deflegmator"].to<JsonObject>();
     deflegmator["min"] = history.metrics.deflegmator.min;
     deflegmator["max"] = history.metrics.deflegmator.max;
     deflegmator["avg"] = history.metrics.deflegmator.avg;
     deflegmator["final"] = history.metrics.deflegmator.final;
 
-    JsonObject power = metrics.createNestedObject("power");
+    JsonObject power = metrics["power"].to<JsonObject>();
     power["energyUsed"] = history.metrics.energyUsed;
     power["avgPower"] = history.metrics.avgPower;
     power["peakPower"] = history.metrics.peakPower;
 
-    JsonObject pump = metrics.createNestedObject("pump");
+    JsonObject pump = metrics["pump"].to<JsonObject>();
     pump["totalVolume"] = history.metrics.totalVolume;
     pump["avgSpeed"] = history.metrics.avgSpeed;
 
     // Фазы
-    JsonArray phases = doc.createNestedArray("phases");
+    JsonArray phases = doc["phases"].to<JsonArray>();
     for (const auto& phase : history.phases) {
-        JsonObject p = phases.createNestedObject();
+        JsonObject p = phases.add<JsonObject>();
         p["name"] = phase.name;
         p["startTime"] = phase.startTime;
         p["endTime"] = phase.endTime;
@@ -134,9 +134,9 @@ bool saveProcessHistory(const ProcessHistory& history) {
     }
 
     // Временные ряды
-    JsonObject timeseries = doc.createNestedObject("timeseries");
+    JsonObject timeseries = doc["timeseries"].to<JsonObject>();
     timeseries["interval"] = TIMESERIES_INTERVAL;
-    JsonArray data = timeseries.createNestedArray("data");
+    JsonArray data = timeseries["data"].to<JsonArray>();
 
     // Ограничить количество точек для экономии памяти
     size_t step = 1;
@@ -146,7 +146,7 @@ bool saveProcessHistory(const ProcessHistory& history) {
 
     for (size_t i = 0; i < history.timeseries.size(); i += step) {
         const auto& point = history.timeseries[i];
-        JsonObject p = data.createNestedObject();
+        JsonObject p = data.add<JsonObject>();
         p["time"] = point.time;
         p["cube"] = point.cube;
         p["columnTop"] = point.columnTop;
@@ -159,24 +159,24 @@ bool saveProcessHistory(const ProcessHistory& history) {
     }
 
     // Результаты
-    JsonObject results = doc.createNestedObject("results");
+    JsonObject results = doc["results"].to<JsonObject>();
     results["headsCollected"] = history.results.headsCollected;
     results["bodyCollected"] = history.results.bodyCollected;
     results["tailsCollected"] = history.results.tailsCollected;
     results["totalCollected"] = history.results.totalCollected;
     results["status"] = history.results.status;
 
-    JsonArray errors = results.createNestedArray("errors");
+    JsonArray errors = results["errors"].to<JsonArray>();
     for (const auto& error : history.results.errors) {
-        JsonObject e = errors.createNestedObject();
+        JsonObject e = errors.add<JsonObject>();
         e["time"] = error.time;
         e["message"] = error.message;
         e["severity"] = error.severity;
     }
 
-    JsonArray warnings = results.createNestedArray("warnings");
+    JsonArray warnings = results["warnings"].to<JsonArray>();
     for (const auto& warning : history.results.warnings) {
-        JsonObject w = warnings.createNestedObject();
+        JsonObject w = warnings.add<JsonObject>();
         w["time"] = warning.time;
         w["message"] = warning.message;
         w["severity"] = warning.severity;
@@ -220,7 +220,7 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
         return false;
     }
 
-    DynamicJsonDocument doc(32768);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, file);
     file.close();
 
@@ -367,7 +367,7 @@ std::vector<ProcessListItem> getProcessList() {
             // Проверить, что это файл процесса
             if (filename.startsWith("process_") && filename.endsWith(".json")) {
                 // Быстрая загрузка только необходимых полей
-                DynamicJsonDocument doc(1024);
+                JsonDocument doc;
                 DeserializationError error = deserializeJson(doc, file);
 
                 if (!error) {
@@ -562,7 +562,7 @@ String exportProcessToCSV(const ProcessHistory& history) {
 // ============================================================================
 
 String exportProcessToJSON(const ProcessHistory& history) {
-    DynamicJsonDocument doc(32768);
+    JsonDocument doc;
 
     // Используем ту же структуру, что и для сохранения
     doc["id"] = history.id;

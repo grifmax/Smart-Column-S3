@@ -279,10 +279,10 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
 
   const size_t returnedCount =
       sinceSequence == 0 ? min(matchedCount, effectiveLimit) : matchedCount;
-  const size_t capacity = 256 + (returnedCount * 192);
-  DynamicJsonDocument doc(capacity);
+  
+  JsonDocument doc;
   JsonObject root = doc.to<JsonObject>();
-  JsonArray events = root.createNestedArray("events");
+  JsonArray events = root["events"].to<JsonArray>();
 
   const size_t skipCount =
       (sinceSequence == 0 && matchedCount > returnedCount)
@@ -306,7 +306,7 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
       continue;
     }
 
-    JsonObject item = events.createNestedObject();
+    JsonObject item = events.add<JsonObject>();
     item["seq"] = event->sequence;
     item["timestamp"] = event->timestamp;
     item["level"] = event->level;
