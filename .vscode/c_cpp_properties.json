@@ -542,6 +542,7 @@
                 "USE_LITTLEFS",
                 "ARDUINO_USB_CDC_ON_BOOT=0",
                 "PZEM_ENABLED=1",
+                "ASYNCWEBSERVER_REGEX=1",
                 "HAVE_CONFIG_H",
                 "MBEDTLS_CONFIG_FILE=\"mbedtls/esp_config.h\"",
                 "UNITY_INCLUDE_CONFIG_H",
@@ -556,7 +557,7 @@
                 "ARDUINO=10812",
                 "ARDUINO_VARIANT=\"esp32s3\"",
                 "ARDUINO_BOARD=\"Espressif ESP32-S3-DevKitC-1-N16R8 (16 MB QD, 8 MB OPI PSRAM)\"",
-                "ARDUINO_PARTITION_partitions_8mb",
+                "ARDUINO_PARTITION_partitions",
                 ""
             ],
             "cStandard": "gnu99",

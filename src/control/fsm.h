@@ -14,123 +14,51 @@
 namespace FSM {
     /**
      * Обновление состояния (вызывать в loop)
-     * @param state Состояние системы
-     * @param settings Настройки
      */
     void update(SystemState& state, const Settings& settings);
     
     /**
      * Запуск режима
-     * @param state Состояние
-     * @param settings Настройки
-     * @param mode Режим
      */
     void startMode(SystemState& state, const Settings& settings, Mode mode);
     
     /**
      * Остановка текущего режима
-     * @param state Состояние
      */
     void stopMode(SystemState& state);
     void abortMode(SystemState& state);
     
     /**
-     * Пауза
-     * @param state Состояние
+     * Пауза / Продолжение
      */
     void pause(SystemState& state);
-    
-    /**
-     * Продолжение после паузы
-     * @param state Состояние
-     */
     void resume(SystemState& state);
     
     /**
      * Переход на следующую фракцию (ручной)
-     * @param state Состояние
-     * @param settings Настройки
      */
     void nextFraction(SystemState& state, const Settings& settings);
     
     // =========================================================================
-    // АВТО-РЕКТИФИКАЦИЯ
+    // ОБРАБОТЧИКИ РЕЖИМОВ (Реализованы в src/control/modes/*.cpp)
     // =========================================================================
     
     namespace Rectification {
-        /**
-         * Обработка фазы HEATING
-         */
-        void handleHeating(SystemState& state, const Settings& settings);
-        
-        /**
-         * Обработка фазы STABILIZATION
-         */
-        void handleStabilization(SystemState& state, const Settings& settings);
-        
-        /**
-         * Обработка фазы HEADS
-         */
-        void handleHeads(SystemState& state, const Settings& settings);
-        
-        /**
-         * Обработка фазы PURGE
-         */
-        void handlePurge(SystemState& state, const Settings& settings);
-        
-        /**
-         * Обработка фазы BODY (с Smart Decrement)
-         */
-        void handleBody(SystemState& state, const Settings& settings);
-        
-        /**
-         * Обработка фазы TAILS
-         */
-        void handleTails(SystemState& state, const Settings& settings);
-        
-        /**
-         * Обработка фазы FINISH
-         */
-        void handleFinish(SystemState& state, const Settings& settings);
-        
-        /**
-         * Переход на следующую фазу
-         */
-        void transitionTo(SystemState& state, RectPhase newPhase);
+        void update(SystemState& state, const Settings& settings);
+        void initSession(const SystemState& state, const Settings& settings);
+        void getTargets(float& heads, float& body, float& tails);
     }
-    
-    // =========================================================================
-    // РУЧНАЯ РЕКТИФИКАЦИЯ
-    // =========================================================================
     
     namespace ManualRect {
         void update(SystemState& state, const Settings& settings);
         void setPhase(SystemState& state, RectPhase phase);
     }
     
-    // =========================================================================
-    // ДИСТИЛЛЯЦИЯ
-    // =========================================================================
-    
     namespace Distillation {
-        /**
-         * Установить параметры дистилляции (используются при старте/в процессе)
-         * @param speedMlH Скорость отбора (мл/ч)
-         * @param headsVolumeMl Объём голов (мл, может быть 0)
-         * @param targetVolumeMl Целевой объём отбора (мл, может быть 0)
-         * @param endTempC Температура завершения по кубу (°C, может быть 0)
-         */
-        void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC);
-        /**
-         * Установить мощность нагрева для дистилляции (0..100%)
-         */
-        void setPowerPercent(uint8_t powerPercent);
         void update(SystemState& state, const Settings& settings);
+        void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC);
+        void setPowerPercent(uint8_t powerPercent);
     }
-    
-    // =========================================================================
-    // ЗАТИРКА
-    // =========================================================================
     
     namespace Mashing {
         void update(SystemState& state, const Settings& settings);
@@ -139,73 +67,35 @@ namespace FSM {
         void start(SystemState& state, const MashProfile* profile);
     }
     
-    // =========================================================================
-    // HOLD
-    // =========================================================================
-    
     namespace Hold {
         void update(SystemState& state, const Settings& settings);
-        void setSteps(const TempStep* steps, uint8_t count);
         void start(SystemState& state, const TempStep* steps, uint8_t count);
     }
-    
-    // =========================================================================
-    // НБК
-    // =========================================================================
     
     namespace Nbk {
         void update(SystemState& state, const Settings& settings);
     }
 
-    // =========================================================================
-    // ФЕРМЕНТАЦИЯ
-    // =========================================================================
-    
     namespace Fermentation {
         void update(SystemState& state, const Settings& settings);
     }
 
-    /**
-     * Получение имени текущей фазы
-     * @param phase Фаза
-     * @return Строка с именем
-     */
+    // =========================================================================
+    // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+    // =========================================================================
+
+    const char* getModeName(Mode mode);
     const char* getPhaseName(RectPhase phase);
     const char* getNbkPhaseName(NbkPhase phase);
     const char* getFermPhaseName(FermentationPhase phase);
 
-    /**
-     * Время текущей фазы в секундах (с учетом пауз).
-     */
     uint32_t getPhaseElapsedSec();
-
-    /**
-     * Оценка целевой длительности текущей фазы в секундах (0, если не применимо).
-     */
     uint32_t getPhaseTargetSec(const SystemState& state, const Settings& settings);
-
-    /**
-     * Прогресс текущей фазы в процентах (0..100), 0 если цель не определена.
-     */
     uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settings);
 
-    /**
-     * Целевые объёмы фракций для текущей/последней авто-ректификации.
-     */
     void getRectTargetsMl(float& headsMl, float& bodyMl, float& tailsMl);
-
-    /**
-     * Runtime-параметры дистилляции.
-     */
     void getDistillationParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl,
                                float& endTempC, uint8_t& powerPercent);
-    
-    /**
-     * Получение имени режима
-     * @param mode Режим
-     * @return Строка с именем
-     */
-    const char* getModeName(Mode mode);
 }
 
 #endif // FSM_H
