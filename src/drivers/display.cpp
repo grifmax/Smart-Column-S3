@@ -594,9 +594,18 @@ struct DisplayRuntimeStatsInternal {
 
 static DisplayRuntimeStatsInternal g_displayStats;
 
+static uint32_t getForceRefreshIntervalMs() {
+  extern Settings g_settings;
+  switch (g_settings.displaySettings.refreshProfile) {
+    case DisplayRefreshProfile::SAFE:   return 5000;
+    case DisplayRefreshProfile::FAST:   return 500;
+    case DisplayRefreshProfile::NORMAL:
+    default:                            return 1000;
+  }
+}
+
 static const uint16_t DISPLAY_SLOW_FRAME_MS = 120;
 static const uint16_t DISPLAY_HARD_FRAME_MS = 250;
-static const uint32_t DISPLAY_FORCE_REFRESH_MS = 5000;
 static const uint8_t DISPLAY_SOFT_WD_THRESHOLD = 3;
 static const uint8_t DISPLAY_HARD_FRAME_BURST_THRESHOLD = 6;
 static const uint8_t DISPLAY_SOFT_WD_BURST_FOR_HARD = 3;
@@ -3449,7 +3458,7 @@ void update(const SystemState &state) {
   }
 
   if (!ui.needsRedraw && g_displayStats.lastFrameAtMs > 0 &&
-      (now - g_displayStats.lastFrameAtMs) > DISPLAY_FORCE_REFRESH_MS) {
+      (now - g_displayStats.lastFrameAtMs) > getForceRefreshIntervalMs()) {
     ui.needsRedraw = true;
   }
 

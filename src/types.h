@@ -416,6 +416,24 @@ struct FermentationSettings {
   uint16_t durationHours = 0;    // #4 fix: плановая длительность (0 = неизвестно, прогресс без неё — 0%)
 };
 
+enum class DisplayRefreshProfile : uint8_t {
+  NORMAL = 0, // 1000ms
+  SAFE = 1,   // 5000ms
+  FAST = 2    // 500ms
+};
+
+// Настройки дисплея
+struct DisplaySettings {
+  bool enabled = true;      // Включен ли дисплей
+  uint8_t brightness = 255; // Яркость (0-255)
+  int8_t rotation = 1;      // Поворот дисплея (0, 1, 2, 3)
+  bool invertColors = false; // Инвертировать цвета
+  uint8_t contrast = 128;   // Контрастность (0-255)
+  int timeout = 0;          // Таймаут отключения (0 = не отключать)
+  bool showLogo = true;     // Показывать логотип при запуске
+  DisplayRefreshProfile refreshProfile = DisplayRefreshProfile::NORMAL;
+};
+
 // Настройки (полная версия)
 struct Settings {
   WiFiSettings wifi;
@@ -428,6 +446,7 @@ struct Settings {
   CloudSettings cloud;
   EquipmentSettings equipment;
   FractionatorSettings fractionator;
+  DisplaySettings displaySettings; // Настройки дисплея
   RectParams rectParams;
   DistillationUiSettings distillationUi;
   SecuritySettings security;

@@ -99,7 +99,6 @@ namespace NVSManager {
 
 bool init() {
     LOG_I("NVS: Initializing...");
-    // Preferences автоматически инициализируется
     LOG_I("NVS: Ready");
     return true;
 }
@@ -113,35 +112,16 @@ bool loadSettings(Settings& settings) {
     prefs.getString(NVS_KEY_WIFI_SSID, settings.wifi.ssid, sizeof(settings.wifi.ssid));
     prefs.getString(NVS_KEY_WIFI_PASS, settings.wifi.password, sizeof(settings.wifi.password));
     loadWiFiProfilesFromNvs(settings.wifi);
-    if (settings.wifi.profileCount == 0 && settings.wifi.ssid[0] != '\0') {
-        WiFiProfile& migrated = settings.wifi.profiles[0];
-        migrated.enabled = true;
-        strlcpy(migrated.ssid, settings.wifi.ssid, sizeof(migrated.ssid));
-        strlcpy(migrated.password, settings.wifi.password, sizeof(migrated.password));
-        strlcpy(migrated.subnet, "255.255.255.0", sizeof(migrated.subnet));
-        settings.wifi.profileCount = 1;
-    }
     WiFiProfiles::syncLegacyFields(settings.wifi);
 
     // MQTT
     settings.mqtt.enabled = prefs.getBool(NVS_KEY_MQTT_ENABLED, settings.mqtt.enabled);
     prefs.getString(NVS_KEY_MQTT_SERVER, settings.mqtt.server, sizeof(settings.mqtt.server));
-    settings.mqtt.port = prefs.getUShort(NVS_KEY_MQTT_PORT, settings.mqtt.port);
+    settings.mqtt.port = prefs.getUShort(NVS_KEY_MQTT_PORT, 1883);
     prefs.getString(NVS_KEY_MQTT_USERNAME, settings.mqtt.username, sizeof(settings.mqtt.username));
     prefs.getString(NVS_KEY_MQTT_PASSWORD, settings.mqtt.password, sizeof(settings.mqtt.password));
     prefs.getString(NVS_KEY_MQTT_BASE_TOPIC, settings.mqtt.baseTopic, sizeof(settings.mqtt.baseTopic));
-    settings.mqtt.publishInterval = prefs.getUInt(NVS_KEY_MQTT_INTERVAL, settings.mqtt.publishInterval);
-    if (settings.mqtt.port == 0) {
-        settings.mqtt.port = 1883;
-    }
-    if (settings.mqtt.baseTopic[0] == '\0') {
-        strlcpy(settings.mqtt.baseTopic, "smart-column", sizeof(settings.mqtt.baseTopic));
-    }
-    if (settings.mqtt.publishInterval < 1000) {
-        settings.mqtt.publishInterval = 1000;
-    } else if (settings.mqtt.publishInterval > 60000) {
-        settings.mqtt.publishInterval = 60000;
-    }
+    settings.mqtt.publishInterval = prefs.getUInt(NVS_KEY_MQTT_INTERVAL, 10000);
 
     // Telegram
     prefs.getString(NVS_KEY_TG_TOKEN, settings.telegram.token, sizeof(settings.telegram.token));
@@ -156,21 +136,24 @@ bool loadSettings(Settings& settings) {
     // Оборудование
     settings.equipment.columnHeightMm = prefs.getUShort(NVS_KEY_COLUMN_HEIGHT, DEFAULT_COLUMN_HEIGHT_MM);
     settings.equipment.heaterPowerW = prefs.getUShort(NVS_KEY_HEATER_POWER, DEFAULT_HEATER_POWER_W);
-    settings.equipment.cubeVolumeL = prefs.getUShort(NVS_KEY_CUBE_VOLUME, DEFAULT_CUBE_VOLUME_L);
+    settings.equipment.cubeVolumeL = prefs.getFloat(NVS_KEY_CUBE_VOLUME, (float)DEFAULT_CUBE_VOLUME_L);
     settings.equipment.packingCoeff = prefs.getFloat(NVS_KEY_PACKING_COEFF, DEFAULT_PACKING_COEFF);
-    settings.equipment.minHeaterSubmergeL = prefs.getFloat(
-        NVS_KEY_MIN_HEATER_SUBMERGE, DEFAULT_MIN_HEATER_SUBMERGE_L
-    );
-    settings.equipment.waterAutoStartCubeTempC = prefs.getFloat(
-        NVS_KEY_WATER_AUTOSTART_CUBE_TEMP, DEFAULT_WATER_AUTOSTART_CUBE_TEMP_C
-    );
+    settings.equipment.minHeaterSubmergeL = prefs.getFloat(NVS_KEY_MIN_HEATER_SUBMERGE, DEFAULT_MIN_HEATER_SUBMERGE_L);
+    settings.equipment.waterAutoStartCubeTempC = prefs.getFloat(NVS_KEY_WATER_AUTOSTART_CUBE_TEMP, DEFAULT_WATER_AUTOSTART_CUBE_TEMP_C);
+
+    // Дисплей
+    settings.displaySettings.enabled = prefs.getBool("disp_en", true);
+    settings.displaySettings.brightness = prefs.getUChar("disp_br", 255);
+    settings.displaySettings.rotation = prefs.getChar("disp_rot", 1);
+    settings.displaySettings.showLogo = prefs.getBool("disp_logo", true);
+    settings.displaySettings.refreshProfile = (DisplayRefreshProfile)prefs.getUChar(NVS_KEY_DISPLAY_REFRESH, 0);
 
     // Калибровка насоса
     settings.pumpCal.mlPerRevolution = prefs.getFloat(NVS_KEY_PUMP_ML_REV, DEFAULT_PUMP_ML_PER_REV);
 
     // Ректификация
     settings.rectParams.feedstock = prefs.getUChar(NVS_KEY_RECT_FEEDSTOCK, 0);
-    settings.rectParams.feedVolumeL = prefs.getFloat(NVS_KEY_RECT_FEED_VOL, DEFAULT_CUBE_VOLUME_L);
+    settings.rectParams.feedVolumeL = prefs.getFloat(NVS_KEY_RECT_FEED_VOL, (float)DEFAULT_CUBE_VOLUME_L);
     settings.rectParams.feedAbvPercent = prefs.getFloat(NVS_KEY_RECT_FEED_ABV, RECT_FEED_ABV_DEFAULT);
     settings.rectParams.headsPercent = prefs.getFloat(NVS_KEY_RECT_HEADS_PCT, RECT_HEADS_PERCENT_DEFAULT);
     settings.rectParams.bodyPercent = prefs.getFloat(NVS_KEY_RECT_BODY_PCT, RECT_BODY_PERCENT_DEFAULT);
@@ -180,7 +163,7 @@ bool loadSettings(Settings& settings) {
     settings.rectParams.stabilizationMin = prefs.getUShort(NVS_KEY_RECT_STAB_MIN, RECT_STABILIZATION_TIME_MIN);
     settings.rectParams.purgeMin = prefs.getUShort(NVS_KEY_RECT_PURGE_MIN, RECT_PURGE_TIME_MIN);
 
-    // Дистилляция (UI/оперативные уставки)
+    // Дистилляция
     settings.distillationUi.speedMlH = prefs.getFloat(NVS_KEY_DIST_SPEED, 500.0f);
     settings.distillationUi.headsVolumeMl = prefs.getFloat(NVS_KEY_DIST_HEADS_VOL, 0.0f);
     settings.distillationUi.targetVolumeMl = prefs.getFloat(NVS_KEY_DIST_TARGET_VOL, 3000.0f);
@@ -193,36 +176,21 @@ bool loadSettings(Settings& settings) {
     settings.security.rateLimitEnabled = prefs.getBool(NVS_KEY_WEB_RATE_LIMIT, true);
     prefs.getString(NVS_KEY_WEB_USERNAME, settings.security.username, sizeof(settings.security.username));
     prefs.getString(NVS_KEY_WEB_PASSWORD, settings.security.password, sizeof(settings.security.password));
-    if (settings.security.username[0] == '\0') {
-        strlcpy(settings.security.username, "admin", sizeof(settings.security.username));
-    }
 
-    // ???
+    // NBK & Fermentation
     settings.nbk.powerW = prefs.getFloat(NVS_KEY_NBK_POWER, 2500.0f);
     settings.nbk.pumpSpeedMlH = prefs.getFloat(NVS_KEY_NBK_PUMP_SPEED, 20000.0f);
     settings.nbk.columnBottomTempThresholdC = prefs.getFloat(NVS_KEY_NBK_BOTTOM_TEMP, 95.0f);
-
-    // ???????????
     settings.fermentation.targetTempC = prefs.getFloat(NVS_KEY_FERM_TARGET_TEMP, 28.0f);
     settings.fermentation.hysteresisC = prefs.getFloat(NVS_KEY_FERM_HYSTERESIS, 0.5f);
     settings.fermentation.useHeater = prefs.getBool(NVS_KEY_FERM_USE_HEATER, true);
 
     // Безопасность
-    settings.safety.pressureMaxMmHg = prefs.getFloat(
-        NVS_KEY_SAFETY_PRESSURE_MAX, DEFAULT_SAFETY_PRESSURE_MAX_MMHG
-    );
-    settings.safety.tsaMaxC = prefs.getFloat(
-        NVS_KEY_SAFETY_TSA_MAX, DEFAULT_SAFETY_TSA_MAX_C
-    );
-    settings.safety.waterOutMaxC = prefs.getFloat(
-        NVS_KEY_SAFETY_WATER_OUT_MAX, DEFAULT_SAFETY_WATER_OUT_MAX_C
-    );
-    settings.safety.waterOutRiseRateCMin = prefs.getFloat(
-        NVS_KEY_SAFETY_WATER_OUT_RISE_RATE, DEFAULT_SAFETY_WATER_OUT_RISE_RATE_C_MIN
-    );
-    settings.safety.pressureRiseRateMmHgMin = prefs.getFloat(
-        NVS_KEY_SAFETY_PRESSURE_RISE_RATE, DEFAULT_SAFETY_PRESSURE_RISE_RATE_MMHG_MIN
-    );
+    settings.safety.pressureMaxMmHg = prefs.getFloat(NVS_KEY_SAFETY_PRESSURE_MAX, DEFAULT_SAFETY_PRESSURE_MAX_MMHG);
+    settings.safety.tsaMaxC = prefs.getFloat(NVS_KEY_SAFETY_TSA_MAX, DEFAULT_SAFETY_TSA_MAX_C);
+    settings.safety.waterOutMaxC = prefs.getFloat(NVS_KEY_SAFETY_WATER_OUT_MAX, DEFAULT_SAFETY_WATER_OUT_MAX_C);
+    settings.safety.waterOutRiseRateCMin = prefs.getFloat(NVS_KEY_SAFETY_WATER_OUT_RISE_RATE, DEFAULT_SAFETY_WATER_OUT_RISE_RATE_C_MIN);
+    settings.safety.pressureRiseRateMmHgMin = prefs.getFloat(NVS_KEY_SAFETY_PRESSURE_RISE_RATE, DEFAULT_SAFETY_PRESSURE_RISE_RATE_MMHG_MIN);
 
     // Калибровка тача
     settings.touchCal.xMin = prefs.getInt(NVS_KEY_TOUCH_XMIN, TOUCH_CAL_X_MIN);
@@ -238,7 +206,6 @@ bool loadSettings(Settings& settings) {
     settings.lastRebootReason = prefs.getUChar(NVS_KEY_LAST_REBOOT_REASON, 0);
 
     prefs.end();
-
     LOG_I("NVS: Settings loaded");
     return true;
 }
@@ -256,18 +223,11 @@ bool saveSettings(const Settings& settings) {
     // MQTT
     prefs.putBool(NVS_KEY_MQTT_ENABLED, settings.mqtt.enabled);
     prefs.putString(NVS_KEY_MQTT_SERVER, settings.mqtt.server);
-    prefs.putUShort(NVS_KEY_MQTT_PORT, settings.mqtt.port ? settings.mqtt.port : 1883);
+    prefs.putUShort(NVS_KEY_MQTT_PORT, settings.mqtt.port);
     prefs.putString(NVS_KEY_MQTT_USERNAME, settings.mqtt.username);
     prefs.putString(NVS_KEY_MQTT_PASSWORD, settings.mqtt.password);
-    prefs.putString(NVS_KEY_MQTT_BASE_TOPIC,
-                    settings.mqtt.baseTopic[0] ? settings.mqtt.baseTopic : "smart-column");
-    uint32_t mqttPublishInterval = settings.mqtt.publishInterval;
-    if (mqttPublishInterval < 1000) {
-        mqttPublishInterval = 1000;
-    } else if (mqttPublishInterval > 60000) {
-        mqttPublishInterval = 60000;
-    }
-    prefs.putUInt(NVS_KEY_MQTT_INTERVAL, mqttPublishInterval);
+    prefs.putString(NVS_KEY_MQTT_BASE_TOPIC, settings.mqtt.baseTopic);
+    prefs.putUInt(NVS_KEY_MQTT_INTERVAL, settings.mqtt.publishInterval);
 
     // Telegram
     prefs.putString(NVS_KEY_TG_TOKEN, settings.telegram.token);
@@ -282,10 +242,17 @@ bool saveSettings(const Settings& settings) {
     // Оборудование
     prefs.putUShort(NVS_KEY_COLUMN_HEIGHT, settings.equipment.columnHeightMm);
     prefs.putUShort(NVS_KEY_HEATER_POWER, settings.equipment.heaterPowerW);
-    prefs.putUShort(NVS_KEY_CUBE_VOLUME, settings.equipment.cubeVolumeL);
+    prefs.putFloat(NVS_KEY_CUBE_VOLUME, settings.equipment.cubeVolumeL);
     prefs.putFloat(NVS_KEY_PACKING_COEFF, settings.equipment.packingCoeff);
     prefs.putFloat(NVS_KEY_MIN_HEATER_SUBMERGE, settings.equipment.minHeaterSubmergeL);
     prefs.putFloat(NVS_KEY_WATER_AUTOSTART_CUBE_TEMP, settings.equipment.waterAutoStartCubeTempC);
+
+    // Дисплей
+    prefs.putBool("disp_en", settings.displaySettings.enabled);
+    prefs.putUChar("disp_br", settings.displaySettings.brightness);
+    prefs.putChar("disp_rot", settings.displaySettings.rotation);
+    prefs.putBool("disp_logo", settings.displaySettings.showLogo);
+    prefs.putUChar(NVS_KEY_DISPLAY_REFRESH, (uint8_t)settings.displaySettings.refreshProfile);
 
     // Калибровка насоса
     prefs.putFloat(NVS_KEY_PUMP_ML_REV, settings.pumpCal.mlPerRevolution);
@@ -302,7 +269,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putUShort(NVS_KEY_RECT_STAB_MIN, settings.rectParams.stabilizationMin);
     prefs.putUShort(NVS_KEY_RECT_PURGE_MIN, settings.rectParams.purgeMin);
 
-    // Дистилляция (UI/оперативные уставки)
+    // Дистилляция
     prefs.putFloat(NVS_KEY_DIST_SPEED, settings.distillationUi.speedMlH);
     prefs.putFloat(NVS_KEY_DIST_HEADS_VOL, settings.distillationUi.headsVolumeMl);
     prefs.putFloat(NVS_KEY_DIST_TARGET_VOL, settings.distillationUi.targetVolumeMl);
@@ -316,12 +283,10 @@ bool saveSettings(const Settings& settings) {
     prefs.putString(NVS_KEY_WEB_USERNAME, settings.security.username);
     prefs.putString(NVS_KEY_WEB_PASSWORD, settings.security.password);
 
-    // ???
+    // NBK & Fermentation
     prefs.putFloat(NVS_KEY_NBK_POWER, settings.nbk.powerW);
     prefs.putFloat(NVS_KEY_NBK_PUMP_SPEED, settings.nbk.pumpSpeedMlH);
     prefs.putFloat(NVS_KEY_NBK_BOTTOM_TEMP, settings.nbk.columnBottomTempThresholdC);
-
-    // ???????????
     prefs.putFloat(NVS_KEY_FERM_TARGET_TEMP, settings.fermentation.targetTempC);
     prefs.putFloat(NVS_KEY_FERM_HYSTERESIS, settings.fermentation.hysteresisC);
     prefs.putBool(NVS_KEY_FERM_USE_HEATER, settings.fermentation.useHeater);
@@ -347,7 +312,6 @@ bool saveSettings(const Settings& settings) {
     prefs.putUChar(NVS_KEY_LAST_REBOOT_REASON, settings.lastRebootReason);
 
     prefs.end();
-
     LOG_I("NVS: Settings saved");
     return true;
 }

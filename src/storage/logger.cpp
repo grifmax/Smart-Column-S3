@@ -8,6 +8,8 @@
 #include <ArduinoJson.h>
 #include <stdarg.h>
 #include <time.h>
+#include <vector>
+#include <algorithm>
 
 static File currentLogFile;
 static char currentFilename[64] = "";
@@ -58,6 +60,43 @@ void buildLogFilename(char* buffer, size_t bufferSize) {
 
   snprintf(buffer, bufferSize, "%ssession_%010lu_fallback%s", LOG_FILE_PREFIX,
            millis(), LOG_FILE_EXT);
+}
+
+void enforceRotation() {
+  LOG_I("Logger: Checking for log rotation...");
+  
+  File root = LittleFS.open(LOG_FILE_PREFIX);
+  if (!root || !root.isDirectory()) {
+    return;
+  }
+
+  std::vector<String> logFiles;
+  File file = root.openNextFile();
+  while (file) {
+    String name = file.name();
+    if (!file.isDirectory() && name.endsWith(LOG_FILE_EXT)) {
+      // LittleFS file.name() может возвращать полный путь или только имя
+      if (!name.startsWith(LOG_FILE_PREFIX)) {
+          logFiles.push_back(String(LOG_FILE_PREFIX) + name);
+      } else {
+          logFiles.push_back(name);
+      }
+    }
+    file = root.openNextFile();
+  }
+  root.close();
+
+  // Сортировка по имени (формат ГГГГММДД_ЧЧММСС обеспечивает хронологический порядок)
+  std::sort(logFiles.begin(), logFiles.end());
+
+  if (logFiles.size() >= LOG_MAX_FILES) {
+    int toDelete = logFiles.size() - LOG_MAX_FILES + 1;
+    LOG_I("Logger: Rotation needed, deleting %d old files", toDelete);
+    for (int i = 0; i < toDelete; ++i) {
+      LOG_I("Logger: Deleting %s", logFiles[i].c_str());
+      LittleFS.remove(logFiles[i]);
+    }
+  }
 }
 
 const char* getLevelToken(uint8_t level) {
@@ -121,6 +160,9 @@ void startSession() {
   if (currentLogFile) {
     currentLogFile.close();
   }
+
+  // Ротация перед созданием нового файла (Analysis Step 15)
+  enforceRotation();
 
   sessionStart = millis();
   lastFlushMs = sessionStart;
