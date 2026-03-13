@@ -168,7 +168,7 @@ static void sendHello() {
   if (!wsConnected) return;
   computeDeviceId();
 
-  StaticJsonDocument<512> doc;
+  JsonDocument doc;
   doc["type"] = "hello";
   doc["deviceId"] = deviceId;
   doc["fwVersion"] = FW_VERSION;
@@ -195,7 +195,7 @@ static void sendHeartbeat() {
   if (!wsConnected) return;
   computeDeviceId();
 
-  StaticJsonDocument<256> doc;
+  JsonDocument doc;
   doc["type"] = "heartbeat";
   doc["deviceId"] = deviceId;
   doc["uptime"] = g_state.uptime;
@@ -209,7 +209,7 @@ static void sendHeartbeat() {
 }
 
 static void sendHttpResponse(const char* requestId, int status, const String& bodyJson, const char* error = nullptr) {
-  StaticJsonDocument<768> doc;
+  JsonDocument doc;
   doc["type"] = "http_response";
   doc["requestId"] = requestId;
   doc["status"] = status;
@@ -244,7 +244,7 @@ static void handleHttpRequest(JsonDocument& req) {
   // GET /api/status
   if (strcmp(method, "GET") == 0 && strcmp(path, "/api/status") == 0) {
     // Соберём JSON как в WebServer::/api/status (минимально достаточно для UI)
-    StaticJsonDocument<2560> doc;
+    JsonDocument doc;
     doc["mode"] = static_cast<int>(g_state.mode);
     doc["modeStr"] = getModeToken(g_state.mode);
     doc["phase"] = static_cast<int>(g_state.rectPhase);
@@ -253,10 +253,10 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["safetyOk"] = g_state.safetyOk;
     doc["uptime"] = g_state.uptime;
     doc["deviceId"] = deviceId;
-    JsonObject alarm = doc.createNestedObject("alarm");
+    JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state);
 
-    JsonObject temps = doc.createNestedObject("temps");
+    JsonObject temps = doc["temps"].to<JsonObject>();
     temps["cube"] = g_state.temps.cube;
     temps["columnBottom"] = g_state.temps.columnBottom;
     temps["columnTop"] = g_state.temps.columnTop;
@@ -288,10 +288,10 @@ static void handleHttpRequest(JsonDocument& req) {
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/safety/ack") == 0) {
     Safety::acknowledge(g_state);
 
-    DynamicJsonDocument doc(384);
+    JsonDocument doc;
     doc["success"] = true;
     doc["message"] = "Alarm acknowledged";
-    JsonObject alarm = doc.createNestedObject("alarm");
+    JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state);
 
     String out;
@@ -303,13 +303,13 @@ static void handleHttpRequest(JsonDocument& req) {
     char reason[128] = "";
     const bool ok = Safety::reset(g_state, g_settings, reason, sizeof(reason));
 
-    DynamicJsonDocument doc(384);
+    JsonDocument doc;
     doc["success"] = ok;
     doc["message"] = ok ? "Safety alarm reset" : "Safety reset rejected";
     if (!ok) {
       doc["reason"] = reason;
     }
-    JsonObject alarm = doc.createNestedObject("alarm");
+    JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state);
 
     String out;
@@ -324,7 +324,7 @@ static void handleHttpRequest(JsonDocument& req) {
       return;
     }
 
-    DynamicJsonDocument body(2048);
+    JsonDocument body;
     DeserializationError err = deserializeJson(body, bodyJson);
     if (err) {
       sendHttpResponse(requestId, 400, "", "invalid_json");
@@ -343,11 +343,11 @@ static void handleHttpRequest(JsonDocument& req) {
         g_state.currentAlarm.type == AlarmType::SENSOR_FAILURE;
 
     if (Safety::isLatched(g_state) && !allowDemoSensorFailure) {
-      DynamicJsonDocument doc(384);
+      JsonDocument doc;
       doc["success"] = false;
       doc["message"] =
           "Safety alarm is latched. Reset the alarm before starting.";
-      JsonObject alarm = doc.createNestedObject("alarm");
+      JsonObject alarm = doc["alarm"].to<JsonObject>();
       fillAlarmJson(alarm, g_state);
 
       String out;
@@ -396,7 +396,7 @@ static void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
       LOG_W("CloudTunnel: WS disconnected");
       break;
     case WStype_TEXT: {
-      DynamicJsonDocument doc(2048);
+      JsonDocument doc;
       DeserializationError err = deserializeJson(doc, payload, length);
       if (err) return;
 

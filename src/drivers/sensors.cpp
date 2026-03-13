@@ -634,7 +634,7 @@ void updateHealth(SystemHealth& health) {
         if (ds18b20Found[i]) {
             health.tempSensorsTotal++;
             if (isTempSensorValid(i)) {
-                health.tempSensorsOk++;
+                health.tempSensorsOk = true;
             }
         }
     }

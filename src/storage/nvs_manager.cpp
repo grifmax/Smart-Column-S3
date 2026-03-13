@@ -31,7 +31,7 @@ void loadWiFiProfilesFromNvs(WiFiSettings& wifi) {
         return;
     }
 
-    DynamicJsonDocument doc(4096);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, json);
     if (error) {
         LOG_W("NVS: WiFi profiles JSON parse failed: %s", error.c_str());
@@ -72,11 +72,11 @@ void saveWiFiProfilesToNvs(const WiFiSettings& source) {
     WiFiSettings wifi = source;
     WiFiProfiles::compactProfiles(wifi);
 
-    DynamicJsonDocument doc(4096);
-    JsonArray profiles = doc.createNestedArray("profiles");
+    JsonDocument doc;
+    JsonArray profiles = doc["profiles"].to<JsonArray>();
     for (uint8_t i = 0; i < wifi.profileCount && i < WIFI_MAX_PROFILES; ++i) {
         const WiFiProfile& profile = wifi.profiles[i];
-        JsonObject item = profiles.createNestedObject();
+        JsonObject item = profiles.add<JsonObject>();
         item["enabled"] = profile.enabled;
         item["ssid"] = profile.ssid;
         item["password"] = profile.password;

@@ -223,7 +223,7 @@ void publishState(const SystemState& state) {
     if (!mqttClient.connected()) return;
 
     String topic = baseTopic + "/" + deviceId + "/state";
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
 
     // Основные параметры
     doc["mode"] = static_cast<int>(state.mode);
@@ -232,7 +232,7 @@ void publishState(const SystemState& state) {
     doc["ferm_phase"] = static_cast<int>(state.fermPhase);
 
     // Температуры
-    JsonObject temps = doc.createNestedObject("temperatures");
+    JsonObject temps = doc["temperatures"].to<JsonObject>();
     temps["cube"] = round(state.temps.cube * 10) / 10;
     temps["column_top"] = round(state.temps.columnTop * 10) / 10;
     temps["column_bottom"] = round(state.temps.columnBottom * 10) / 10;
@@ -240,7 +240,7 @@ void publishState(const SystemState& state) {
     temps["tsa"] = round(state.temps.tsa * 10) / 10;
 
     // Мощность
-    JsonObject power = doc.createNestedObject("power");
+    JsonObject power = doc["power"].to<JsonObject>();
     power["voltage"] = round(state.power.voltage * 10) / 10;
     power["current"] = round(state.power.current * 100) / 100;
     power["power"] = round(state.power.power);
@@ -259,7 +259,7 @@ void publishHealth(const SystemHealth& health) {
     if (!mqttClient.connected()) return;
 
     String topic = baseTopic + "/" + deviceId + "/health";
-    StaticJsonDocument<384> doc;
+    JsonDocument doc;
 
     doc["overall"] = health.overallHealth;
     doc["wifi_rssi"] = health.wifiRSSI;
@@ -416,7 +416,7 @@ void publishNotification(const char* title, const char* message, const char* lev
 
     // Публикация в топик уведомлений для sensor
     String notifTopic = baseTopic + "/" + deviceId + "/notification";
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
 
     doc["title"] = title;
     doc["message"] = message;
@@ -430,7 +430,7 @@ void publishNotification(const char* title, const char* message, const char* lev
     // Публикация в топик для Home Assistant notify service
     // Формат для MQTT notify: {"title": "...", "message": "..."}
     String notifyTopic = baseTopic + "/" + deviceId + "/notify";
-    StaticJsonDocument<384> notifyDoc;
+    JsonDocument notifyDoc;
 
     // Добавляем эмодзи в зависимости от уровня
     String titleWithIcon = String(title);
