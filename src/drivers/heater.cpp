@@ -13,6 +13,7 @@
 
 static uint8_t currentPower = 0;    // Текущая мощность 0-100%
 static uint8_t targetPower = 0;     // Целевая мощность (для ramp)
+static uint8_t rampStartPower = 0;  // BUG-2 fix: начальная мощность для линейной интерполяции
 static uint32_t rampStartTime = 0;
 static uint32_t rampDuration = 0;
 static bool ramping = false;
@@ -70,6 +71,7 @@ void rampTo(uint8_t targetPercent, uint32_t rampTimeMs) {
     LOG_I("Heater: Ramping from %d%% to %d%% over %lu ms",
           currentPower, targetPercent, rampTimeMs);
 
+    rampStartPower = currentPower;  // BUG-2 fix: сохраняем стартовую мощность
     targetPower = targetPercent;
     rampStartTime = millis();
     rampDuration = rampTimeMs;
@@ -100,7 +102,6 @@ bool checkHealth(float actualPower) {
     return true;
 }
 
-// Обновление плавного разгона (вызывать из основного loop)
 void update() {
     if (!ramping) return;
 
@@ -111,10 +112,14 @@ void update() {
         setPower(targetPower);
         ramping = false;
     } else {
-        // Интерполяция
+        // Линейная интерполяция от rampStartPower до targetPower
+        // BUG-2 fix: используем rampStartPower вместо currentPower
         float progress = (float)elapsed / (float)rampDuration;
-        uint8_t newPower = currentPower + progress * (targetPower - currentPower);
-        setPower(newPower);
+        uint8_t newPower = rampStartPower + (uint8_t)(progress * (float)(targetPower - rampStartPower));
+        // Напрямую обновляем LEDC без изменения currentPower — иначе следующий шаг сломается
+        currentPower = newPower;
+        uint8_t duty = map(newPower, 0, 100, 0, 255);
+        ledcWrite(LEDC_CHANNEL_HEATER, duty);
     }
 }
 

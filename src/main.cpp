@@ -271,6 +271,8 @@ void loop() {
   }
 
   Pump::update();
+  Heater::update();     // PERF-3 fix: плавный разгон ТЭНа (ramp) был реализован, но не вызывался
+  Valves::update();     // ARCH-3 fix: неблокирующий движок сервопривода фракционника
   g_state.pump.running = Pump::isRunning();
   g_state.pump.speedMlPerHour = Pump::getSpeed();
   g_state.pump.totalVolumeMl = Pump::getTotalVolume();

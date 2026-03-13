@@ -47,6 +47,12 @@ namespace Heater {
      * @return true если ТЭН работает корректно
      */
     bool checkHealth(float actualPower);
+
+    /**
+     * Обновление плавного разгона (вызывать из loop каждую итерацию)
+     * PERF-3 fix: активирует логику rampTo() через millis()
+     */
+    void update();
 }
 
 #endif // HEATER_H

@@ -101,6 +101,12 @@ namespace Valves {
      * @param params Параметры цикла
      */
     void updateUno(UnoParams& params);
+
+    /**
+     * Неблокирующее обновление сервопривода (вызывать из loop каждую итерацию)
+     * ARCH-3 fix: заменяет блокирующие delay() в setFraction(smooth=true)
+     */
+    void update();
 }
 
 #endif // VALVES_H

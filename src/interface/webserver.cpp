@@ -169,7 +169,6 @@ static const char *getMashPhaseString(MashPhase phase) {
     return "mash_out";
   case MashPhase::FINISH:
     return "finish";
-    return "finish";
   default:
     return "unknown";
   }

@@ -9,6 +9,18 @@
 
 ---
 
+## [1.12.0] - 2026-03-14
+
+### Исправлено
+- **BUG-1** (`sensors.cpp`, `types.h`): `SystemHealth::tempSensorsOk` исправлен с `bool` на `uint8_t` — Health Score теперь правильно считает количество рабочих датчиков, а не просто `true/false`. (gemini)
+- **BUG-2** (`heater.cpp`): Плавный разгон ТЭНа (ramp) теперь линейный — добавлена переменная `rampStartPower` для корректной интерполяции. Ранее `currentPower` перезаписывался на каждом шаге, давая экспоненциальную кривую. (gemini)
+- **BUG-3** (`webserver.cpp`): Удалён дупликат `return "finish"` в `getMashPhaseString()` (dead code). (gemini)
+- **BUG-4** (`sensors.cpp`): Исправлена race condition при чтении `flowPulseCount` из ISR — счётчик теперь атомарно копируется за одну критическую секцию (`noInterrupts`), а не читается 4 раза с промежуточными изменениями от прерываний. (gemini)
+- **BUG-5** (`pump.cpp`): `totalSteps` изменён с `uint32_t` на `int32_t` — устраняло потенциальное переполнение объёма при неявном преобразовании signed → unsigned. (gemini)
+- **ARCH-2** (`cloud_tunnel.cpp`): В `getModeToken()` добавлены case'ы для `Mode::NBK` и `Mode::FERMENTATION` — ранее они возвращали `"unknown"` из облачного тоннеля. (gemini)
+- **ARCH-3** (`valves.cpp`, `valves.h`): Убраны блокирующие `delay(15)×N + delay(2000)` в `Valves::setFraction()` и `initFractionator()`. Плавное движение сервопривода переведено на неблокирующий автомат через `millis()` с вызовом `Valves::update()` из loop. (gemini)
+- **PERF-3** (`main.cpp`): `Heater::update()` и `Valves::update()` теперь вызываются в основном loop — ранее функция плавного разгона ТЭНа (`rampTo`) была реализована, но никогда не вызывалась. (gemini)
+
 ## [1.11.20] - 2026-03-14
 
 ### Добавлено

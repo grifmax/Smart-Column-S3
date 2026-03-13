@@ -570,24 +570,25 @@ void readWaterFlow(WaterFlow& flow) {
     uint32_t elapsed = now - lastFlowCheck;
 
     if (elapsed >= 1000) { // Обновляем раз в секунду
+        // BUG-4 fix: атомарно копируем и сбрасываем счётчик за одну критическую секцию
+        noInterrupts();
+        uint32_t pulses = flowPulseCount;
+        flowPulseCount = 0;
+        interrupts();
+
         // YF-S201: ~7.5 импульсов на литр (зависит от модели)
         const float pulsesPerLiter = 7.5f;
 
-        // Вычислить л/мин
-        float litersPerSec = flowPulseCount / pulsesPerLiter;
-        flow.litersPerMin = litersPerSec * 60.0f * (1000.0f / elapsed);
+        // Вычислить л/мин из скопированного значения
+        float litersThisSec = (float)pulses / pulsesPerLiter;
+        flow.litersPerMin = litersThisSec * 60.0f * (1000.0f / (float)elapsed);
 
         // Общий объём
-        totalLiters += litersPerSec;
+        totalLiters += litersThisSec;
         flow.totalLiters = totalLiters;
 
         // Проверка потока
-        flow.flowing = (flowPulseCount > 0);
-
-        // Обнулить счётчик
-        noInterrupts();
-        flowPulseCount = 0;
-        interrupts();
+        flow.flowing = (pulses > 0);
 
         lastFlowCheck = now;
     }
@@ -634,7 +635,7 @@ void updateHealth(SystemHealth& health) {
         if (ds18b20Found[i]) {
             health.tempSensorsTotal++;
             if (isTempSensorValid(i)) {
-                health.tempSensorsOk = true;
+                health.tempSensorsOk++;  // BUG-1 fix: считаем количество, не bool
             }
         }
     }

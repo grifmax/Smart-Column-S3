@@ -22,7 +22,7 @@ static AccelStepper stepper(AccelStepper::DRIVER, PIN_PUMP_STEP, PIN_PUMP_DIR);
 static float mlPerRevolution = DEFAULT_PUMP_ML_PER_REV;
 static float currentSpeedMlH = 0;
 static bool running = false;
-static uint32_t totalSteps = 0;
+static int32_t totalSteps = 0;  // BUG-5 fix: signed, как AccelStepper::currentPosition()
 static float totalVolumeMl = 0;
 
 // =============================================================================

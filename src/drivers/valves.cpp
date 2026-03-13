@@ -37,6 +37,16 @@ static uint8_t fractionAngles[FRACTION_COUNT] = {
     FRACTION_ANGLE_TAILS
 };
 
+// ARCH-3 fix: неблокирующий автомат плавного движения серво
+struct ServoMove {
+    bool active = false;
+    uint8_t targetAngle = 0;
+    uint8_t startAngle = 0;
+    uint32_t startTime = 0;
+    uint32_t totalMs = 0;   // общее время движения
+};
+static ServoMove g_servoMove;
+
 // =============================================================================
 // ПУБЛИЧНЫЙ ИНТЕРФЕЙС
 // =============================================================================
@@ -82,11 +92,10 @@ void initFractionator() {
     currentFraction = Fraction::HEADS;
     currentAngle = FRACTION_ANGLE_HEADS;
     fractionatorEnabled = true;
+    g_servoMove.active = false;
 
     LOG_I("Valves: Fractionator ready (angle=%d)", currentAngle);
-
-    // Пауза для установки серво
-    delay(SERVO_MOVE_DELAY_MS);
+    // ARCH-3 fix: убран delay() при инициализации — серво успеет занять позицию пока проходит первый loop
 }
 
 // =========================================================================
@@ -159,19 +168,6 @@ void setFraction(Fraction fraction, bool smooth) {
 
     uint8_t targetAngle = fractionAngles[idx];
 
-    if (smooth && abs(targetAngle - currentAngle) > 10) {
-        // Плавный поворот
-        int8_t step = (targetAngle > currentAngle) ? 1 : -1;
-        for (int angle = currentAngle; angle != targetAngle; angle += step) {
-            fractionatorServo.write(angle);
-            delay(15); // ~1 секунда на 60 градусов
-        }
-    }
-
-    fractionatorServo.write(targetAngle);
-    currentAngle = targetAngle;
-    currentFraction = fraction;
-
     const char* names[] = {
         FRACTION_NAME_HEADS,
         FRACTION_NAME_SUBHEADS,
@@ -182,8 +178,23 @@ void setFraction(Fraction fraction, bool smooth) {
 
     LOG_I("Valves: Fractionator → %s (angle=%d)", names[idx], targetAngle);
 
-    // Пауза для стабилизации
-    delay(SERVO_MOVE_DELAY_MS);
+    if (smooth && abs((int)targetAngle - (int)currentAngle) > 10) {
+        // ARCH-3 fix: запускаем неблокирующий движок через update()
+        // Скорость: ~60° за 1 секунду
+        uint8_t angleDist = (uint8_t)abs((int)targetAngle - (int)currentAngle);
+        g_servoMove.active = true;
+        g_servoMove.startAngle = currentAngle;
+        g_servoMove.targetAngle = targetAngle;
+        g_servoMove.startTime = millis();
+        g_servoMove.totalMs = (uint32_t)angleDist * 1000UL / 60UL + 200UL; // +200ms запас
+    } else {
+        // Быстрое перемещение
+        fractionatorServo.write(targetAngle);
+        g_servoMove.active = false;
+    }
+
+    currentAngle = targetAngle;
+    currentFraction = fraction;
 }
 
 void setFractionAngle(uint8_t angle) {
@@ -254,6 +265,26 @@ void updateUno(UnoParams& params) {
             params.lastToggle = now;
             LOG_D("UNO: Valve opened (cycle)");
         }
+    }
+}
+
+// ARCH-3 fix: \u043d\u0435\u0431\u043b\u043e\u043a\u0438\u0440\u0443\u044e\u0449\u0435\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0441\u0435\u0440\u0432\u043e\u043f\u0440\u0438\u0432\u043e\u0434\u0430 (\u0432\u044b\u0437\u044b\u0432\u0430\u0442\u044c \u0438\u0437 loop \u043a\u0430\u0436\u0434\u0443\u044e \u0438\u0442\u0435\u0440\u0430\u0446\u0438\u044e)
+void update() {
+    if (!g_servoMove.active || !fractionatorEnabled) return;
+
+    uint32_t elapsed = millis() - g_servoMove.startTime;
+
+    if (elapsed >= g_servoMove.totalMs) {
+        // \u0414\u0432\u0438\u0436\u0435\u043d\u0438\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e
+        fractionatorServo.write(g_servoMove.targetAngle);
+        g_servoMove.active = false;
+        LOG_D("Valves: Servo move done, angle=%d", g_servoMove.targetAngle);
+    } else {
+        // \u041b\u0438\u043d\u0435\u0439\u043d\u0430\u044f \u0438\u043d\u0442\u0435\u0440\u043f\u043e\u043b\u044f\u0446\u0438\u044f \u0443\u0433\u043b\u0430 \u0441\u0435\u0440\u0432\u043e\u043f\u0440\u0438\u0432\u043e\u0434\u0430
+        float progress = (float)elapsed / (float)g_servoMove.totalMs;
+        int newAngle = (int)g_servoMove.startAngle +
+                       (int)(progress * (float)((int)g_servoMove.targetAngle - (int)g_servoMove.startAngle));
+        fractionatorServo.write(newAngle);
     }
 }
 

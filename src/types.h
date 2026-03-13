@@ -174,7 +174,7 @@ struct MashProfile {
 
 // Здоровье системы
 struct SystemHealth {
-  bool tempSensorsOk = false;
+  uint8_t tempSensorsOk = 0;    // количество рабочих датчиков (было bool — баг)
   uint8_t tempSensorsTotal = 0;
   bool bmp280Ok = false;
   bool ads1115Ok = false;

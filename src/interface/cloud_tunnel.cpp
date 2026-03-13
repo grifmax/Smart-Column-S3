@@ -81,6 +81,8 @@ static const char* getModeToken(Mode mode) {
     case Mode::MANUAL_RECT: return "manual";
     case Mode::MASHING: return "mashing";
     case Mode::HOLD: return "hold";
+    case Mode::NBK: return "nbk";               // ARCH-2 fix: был "unknown"
+    case Mode::FERMENTATION: return "fermentation"; // ARCH-2 fix: был "unknown"
     default: return "unknown";
   }
 }
