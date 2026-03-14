@@ -53,6 +53,7 @@
 SystemState g_state;           // Текущее состояние системы
 Settings g_settings;           // Настройки (из NVS)
 EnergyHistory g_energyHistory; // История энергопотребления
+RebootTracker g_rebootTracker; // Отслеживание перезагрузок (Analysis Step 1)
 
 // Очередь для неблокирующего зуммера (Analysis Step 1)
 struct BuzzerCmd {
@@ -122,6 +123,23 @@ void setup() {
   // 2. Проверка причины перезагрузки
   esp_reset_reason_t resetReason = esp_reset_reason();
   g_state.health.lastRebootReason = (uint8_t)resetReason;
+  g_rebootTracker.lastReason = (uint8_t)resetReason;
+  
+  const char* resetStr = "Unknown";
+  switch (resetReason) {
+    case ESP_RST_POWERON: resetStr = "Power On"; break;
+    case ESP_RST_EXT:     resetStr = "External Pin"; break;
+    case ESP_RST_SW:      resetStr = "Software Reset"; break;
+    case ESP_RST_PANIC:   resetStr = "Exception/Panic"; break;
+    case ESP_RST_INT_WDT: resetStr = "Interrupt WDT"; break;
+    case ESP_RST_TASK_WDT:resetStr = "Task WDT"; break;
+    case ESP_RST_WDT:     resetStr = "Other WDT"; break;
+    case ESP_RST_DEEPSLEEP: resetStr = "Deep Sleep"; break;
+    case ESP_RST_BROWNOUT: resetStr = "Brownout"; break;
+    case ESP_RST_SDIO:    resetStr = "SDIO Reset"; break;
+    default:              resetStr = "Other"; break;
+  }
+  strncpy(g_rebootTracker.lastReasonStr, resetStr, sizeof(g_rebootTracker.lastReasonStr)-1);
   
   if (resetReason == ESP_RST_WDT || resetReason == ESP_RST_TASK_WDT || 
       resetReason == ESP_RST_INT_WDT) {
@@ -206,34 +224,115 @@ void setup() {
 // LOOP
 // =============================================================================
 
-static void runPeriodicSelfCheck(uint32_t now) {
-  static uint32_t lastSelfCheck = 0;
-  if (now - lastSelfCheck < 1800000) return; // Раз в 30 минут
-  lastSelfCheck = now;
+// Улучшенная функция самоконтроля системы с event logging
+static void performSystemHealthCheck(uint32_t now) {
+  static uint32_t lastCheck = 0;
+  if (now - lastCheck < 1800000) return; // Раз в 30 минут
+  lastCheck = now;
 
-  LOG_I("Self-Check: Starting periodic diagnostic...");
+  LOG_I("Health Check: Starting comprehensive system diagnostic...");
   
-  // 1. Проверка памяти
+  // 1. Основные системные метрики
   uint32_t freeHeap = ESP.getFreeHeap();
-  LOG_I("Self-Check: Free Heap: %u KB", freeHeap / 1024);
-
-  // 2. Проверка датчиков (накопленные ошибки)
-  char sensorStatus[128] = "Sensors: ";
+  uint32_t uptimeSec = now / 1000;
+  
+  // 2. Проверка датчиков температуры на стабильность
   bool sensorsStable = true;
   for (int i = 0; i < 7; i++) {
     if (g_state.health.tempErrors[i] > 50) {
       sensorsStable = false;
-      LOG_W("Self-Check: Sensor %d is unstable (%u errors)", i, g_state.health.tempErrors[i]);
+      LOG_W("Health Check: Sensor %d unstable (%u errors)", i, g_state.health.tempErrors[i]);
     }
   }
 
-  // 3. Запись в системный лог
-  Logger::logf(0, "Periodic Self-Check: Uptime %lu sec, Heap %u KB, Sensors %s", 
-               now/1000, freeHeap/1024, sensorsStable ? "Stable" : "UNSTABLE");
+  // 3. Проверка критических систем
+  bool wifiOk = (WiFi.status() == WL_CONNECTED);
+  int32_t wifiRssi = wifiOk ? WiFi.RSSI() : 0;
+  bool criticalSensorsOk = g_state.health.tempSensorsOk >= 2; // Минимум куб и царга низ
+  
+  // 4. Формирование расширенного сообщения для логов
+  char logMsg[256];
+  const char* resetStr = "Other";
+  switch (g_state.health.lastRebootReason) {
+    case 1: resetStr = "PowerOn"; break;
+    case 3: resetStr = "SWD WDT"; break;
+    case 4: resetStr = "HWD WDT"; break;
+    case 5: resetStr = "DeepSleep"; break;
+    case 6: resetStr = "SW Reset"; break;
+    case 7: resetStr = "Panic"; break;
+    default: resetStr = "Unknown"; break;
+  }
+  
+  snprintf(logMsg, sizeof(logMsg),
+           "[HEALTHCHECK] H:%uKB U:%us Rb:%s T:%u/%u PzemSp:%u Wifi:%s(%d) Healh:%u%%",
+           freeHeap / 1024,
+           uptimeSec,
+           resetStr,
+           g_state.health.tempSensorsOk,
+           g_state.health.tempSensorsTotal,
+           g_state.health.pzemSpikeCount,
+           wifiOk ? "OK" : "FAIL",
+           wifiRssi,
+           g_state.health.overallHealth);
 
-  // 4. Уведомление в Telegram если есть проблемы
-  if (!sensorsStable) {
-    TelegramBot::sendMessage("🩺 *Self-Check Warning*\nНекоторые датчики работают нестабильно. Проверьте контакты.");
+  // 5. Запись в системный лог
+  Logger::logf(0, "%s", logMsg);
+  LOG_I("%s", logMsg);
+
+  // 6. Анализ состояния и принятие решений
+  bool needsAttention = false;
+  String alertMessage = "🩺 *Системная диагностика*\n";
+  
+  if (!criticalSensorsOk) {
+    needsAttention = true;
+    alertMessage += "- ❌ Критические датчики недоступны\n";
+  }
+  
+  if (!wifiOk && !g_settings.wifi.apMode) {
+    needsAttention = true;
+    alertMessage += "- ❌ Потеря соединения WiFi\n";
+  } else if (wifiOk && wifiRssi < -85) {
+    needsAttention = true;
+    alertMessage += "- ⚠️ Слабый сигнал WiFi\n";
+  }
+  
+  if (freeHeap < 32768) {
+    needsAttention = true;
+    alertMessage += "- ⚠️ Критически низкая память\n";
+  } else if (freeHeap < 65536) {
+    needsAttention = true;
+    alertMessage += "- ⚠️ Низкая память\n";
+  }
+  
+  if (g_state.health.cpuTemp > 85) {
+    needsAttention = true;
+    alertMessage += "- ⚠️ Перегрев процессора\n";
+  }
+  
+  // Проверка на нестабильные датчики
+  bool hasUnstableSensors = false;
+  for (int i = 0; i < 7; i++) {
+    if (g_state.health.tempErrors[i] > 50) {
+      hasUnstableSensors = true;
+      break;
+    }
+  }
+  if (hasUnstableSensors) {
+    needsAttention = true;
+    alertMessage += "- ⚠️ Нестабильные датчики температуры\n";
+  }
+  
+  // Отправляем уведомление в Telegram только если есть проблемы
+  if (needsAttention) {
+    TelegramBot::sendMessage(alertMessage.c_str());
+  } else {
+    // В нормальном режиме просто логируем OK статус раз в 4 проверки (2 часа)
+    static uint32_t lastOkLog = 0;
+    if (now - lastOkLog >= 7200000) { // 2 часа
+      lastOkLog = now;
+      Logger::logf(0, "[HEALTHCHECK] System OK - all parameters nominal");
+      LOG_I("[HEALTHCHECK] System OK - all parameters nominal");
+    }
   }
 }
 
@@ -244,8 +343,8 @@ void loop() {
 
   uint32_t now = millis();
   
-  // Периодическая диагностика
-  runPeriodicSelfCheck(now);
+  // Периодическая диагностика и самоконтроль
+  performSystemHealthCheck(now);
 
   // OTA Updates
   OTA::handle();
@@ -321,40 +420,13 @@ void loop() {
 
   g_state.uptime = now / 1000;
   
-  // Здоровье системы
-  static uint32_t lastHealthUpdate = 0;
-  if (now - lastHealthUpdate >= 5000) {
-    lastHealthUpdate = now;
-    Sensors::updateHealth(g_state.health);
-    if (g_settings.mqtt.enabled) MQTT::publishHealth(g_state.health);
-  }
-
-  // #14: Self-check лог: heap, uptime, ошибки — каждые 30 минут
-  static const uint32_t SELF_CHECK_INTERVAL_MS = 30UL * 60UL * 1000UL;
-  if (now - g_lastSelfCheck >= SELF_CHECK_INTERVAL_MS) {
-    g_lastSelfCheck = now;
-    const char* resetStr = "Other";
-    switch (g_state.health.lastRebootReason) {
-      case 1: resetStr = "PowerOn"; break;
-      case 3: resetStr = "SWD WDT"; break;
-      case 4: resetStr = "HWD WDT"; break;
-      case 5: resetStr = "DeepSleep"; break;
-      case 6: resetStr = "SW Reset"; break;
-      case 7: resetStr = "Panic"; break;
-    }
-    Logger::logf(0, "[SELFCHECK] Heap:%uKB Uptime:%us Reboot:%s TempErr:%u PzemSpk:%u",
-      g_state.health.freeHeap / 1024,
-      (unsigned)g_state.uptime,
-      resetStr,
-      g_state.health.tempReadErrors,
-      g_state.health.pzemSpikeCount);
-    LOG_I("[SELFCHECK] Heap:%uKB Uptime:%us Reboot:%s TempErr:%u PzemSpk:%u",
-      g_state.health.freeHeap / 1024,
-      (unsigned)g_state.uptime,
-      resetStr,
-      g_state.health.tempReadErrors,
-      g_state.health.pzemSpikeCount);
-  }
+// Здоровье системы (обновление каждые 5 секунд для MQTT и базового мониторинга)
+static uint32_t lastHealthUpdate = 0;
+if (now - lastHealthUpdate >= 5000) {
+  lastHealthUpdate = now;
+  Sensors::updateHealth(g_state.health);
+  if (g_settings.mqtt.enabled) MQTT::publishHealth(g_state.health);
+}
 
   esp_task_wdt_reset();
   yield();

@@ -19,7 +19,6 @@
 
 // =============================================================================
 // ГЛОБАЛЬНЫЕ ОБЪЕКТЫ
-// =============================================================================
 
 // OneWire и DS18B20
 static OneWire oneWire(PIN_ONEWIRE);
@@ -666,41 +665,71 @@ void updateHealth(SystemHealth& health) {
     health.cpuTemp = (uint8_t)temperatureRead();
 
     // РАСЧЁТ ВЗВЕШЕННОГО ЗДОРОВЬЯ (0-100%)
-    // (Analysis Step 14 - Weighted Health Score)
-    int16_t score = 100;
+    // (0=SENSORS, 1=WIFI, 2=POWER, 3=STORAGE, 4=OTA, 5=SAFETY)
 
-    // 1. Критические датчики (Куб и Царга Низ) - без них процесс невозможен
-    if (!tempOk[TEMP_CUBE]) score -= 40;
-    if (!tempOk[TEMP_COLUMN_BOTTOM]) score -= 40;
+    // 0. SENSORS (Датчики температуры + Давление + Поток)
+    float sensorsScore = 100.0f;
+    // Критические датчики - Куб и Царга Низ
+    if (!tempOk[TEMP_CUBE]) sensorsScore -= 40.0f;
+    if (!tempOk[TEMP_COLUMN_BOTTOM]) sensorsScore -= 40.0f;
+    // Датчики безопасности - ТСА и Давление (через ADS1115)
+    if (!tempOk[TEMP_TSA]) sensorsScore -= 10.0f;
+    if (!health.ads1115Ok) sensorsScore -= 10.0f;
+    // Информационные датчики
+    if (!tempOk[TEMP_COLUMN_TOP]) sensorsScore -= 5.0f;
+    if (!tempOk[TEMP_REFLUX]) sensorsScore -= 2.0f;
+    if (!tempOk[TEMP_WATER_IN]) sensorsScore -= 2.0f;
+    if (!tempOk[TEMP_WATER_OUT]) sensorsScore -= 2.0f;
+    health.healthScores[0] = fmaxf(0.0f, fminf(100.0f, sensorsScore));
 
-    // 2. Датчики безопасности (ТСА и Давление)
-    if (!tempOk[TEMP_TSA]) score -= 20;
-    if (!health.ads1115Ok) score -= 20;
-
-    // 3. Оборудование (Мощность и Охлаждение)
-    if (!health.pzemOk) score -= 15;
-    if (!tempOk[TEMP_WATER_OUT]) score -= 10;
-
-    // 4. Информационные датчики
-    if (!tempOk[TEMP_COLUMN_TOP]) score -= 5;
-    if (!tempOk[TEMP_REFLUX]) score -= 5;
-    if (!tempOk[TEMP_WATER_IN]) score -= 5;
-
-    // 5. Системные штрафы
-    if (health.freeHeap < 32768) score -= 10; // Мало памяти
-    if (health.cpuTemp > 85) score -= 20;     // Перегрев CPU
-    if (health.wifiConnected && health.wifiRSSI < -85) score -= 5; // Слабый WiFi
-
-    // 6. Штрафы за нестабильность (накопленные ошибки)
-    // Если на датчике много CRC ошибок, снижаем здоровье даже если он "valid"
-    for (int i = 0; i < 7; i++) {
-        if (health.tempErrors[i] > 100) score -= 5;
+    // 1. WIFI (Связь и сетевые интерфейсы)
+    float wifiScore = 100.0f;
+    if (!health.wifiConnected) wifiScore -= 50.0f; // Нет связи
+    else {
+        // Штраф за плохой сигнал
+        if (health.wifiRSSI < -90) wifiScore -= 30.0f;
+        else if (health.wifiRSSI < -80) wifiScore -= 15.0f;
+        else if (health.wifiRSSI < -70) wifiScore -= 5.0f;
     }
+    health.healthScores[1] = fmaxf(0.0f, fminf(100.0f, wifiScore));
 
-    // Ограничение 0-100
-    if (score < 0) score = 0;
-    if (score > 100) score = 100;
-    health.overallHealth = (uint8_t)score;
+    // 2. POWER (Питание и контроль мощности)
+    float powerScore = 100.0f;
+    if (!health.pzemOk) powerScore -= 50.0f; // Нет контроля мощности
+    if (health.pzemSpikeCount > 10) powerScore -= 20.0f; // Нестабильность
+    health.healthScores[2] = fmaxf(0.0f, fminf(100.0f, powerScore));
+
+    // 3. STORAGE (Память и LittleFS)
+    float storageScore = 100.0f;
+    if (health.freeHeap < 32768) storageScore -= 40.0f; // Критически мало памяти
+    else if (health.freeHeap < 65536) storageScore -= 20.0f; // Мало памяти
+    // Проверка LittleFS (заглушка, так как LittleFS.usedBytes() медленный)
+    health.healthScores[3] = fmaxf(0.0f, fminf(100.0f, storageScore));
+
+    // 4. OTA (Стабильность прошивки и версия)
+    float otaScore = 100.0f;
+    if (health.tempReadErrors > 100) otaScore -= 20.0f; // Проблемы с шиной могут мешать OTA
+    health.healthScores[4] = fmaxf(0.0f, fminf(100.0f, otaScore));
+
+    // 5. SAFETY (Аварии и перегрев)
+    float safetyScore = 100.0f;
+    if (health.cpuTemp > 90) safetyScore -= 50.0f; // Критический перегрев ESP
+    else if (health.cpuTemp > 85) safetyScore -= 20.0f;
+    // Штрафы за нестабильность датчиков
+    int errorPenalty = 0;
+    for (int i = 0; i < 7; i++) {
+        if (health.tempErrors[i] > 100) errorPenalty += 10;
+        else if (health.tempErrors[i] > 50) errorPenalty += 5;
+    }
+    safetyScore -= errorPenalty;
+    health.healthScores[5] = fmaxf(0.0f, fminf(100.0f, safetyScore));
+
+    // Вычисление итогового взвешенного здоровья
+    float overall = 0.0f;
+    for (int i = 0; i < 6; i++) {
+        overall += health.healthScores[i] * SystemHealth::healthWeights[i];
+    }
+    health.overallHealth = (uint8_t)fmaxf(0.0f, fminf(100.0f, overall));
 
     health.lastUpdate = millis();
 }

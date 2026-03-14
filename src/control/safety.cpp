@@ -176,17 +176,22 @@ void check(SystemState& state, const Settings& settings) {
     const float pressureRiseRateMmHgMin = clampSafety(settings.safety.pressureRiseRateMmHgMin, 1.0f, 200.0f);
     state.pressure.critThreshold = pressureMaxMmHg;
 
+    static bool sensorAlarmLogged = false;
+
     if (isLatched(state)) {
         // Если включен демо-режим - автоматически сбрасываем аварии датчиков
         if (settings.demoMode && state.currentAlarm.type == AlarmType::SENSOR_FAILURE) {
             LOG_I("SAFETY: Demo mode active, clearing sensor alarm");
             clearCurrentAlarm(state);
             state.safetyOk = true;
+            sensorAlarmLogged = false;
             xSemaphoreGive(g_safetyMutex);
             return;
         }
         
         if (state.currentAlarm.type == AlarmType::SENSOR_FAILURE && state.mode == Mode::IDLE) {
+            // В IDLE режиме мы просто сбрасываем флаг ошибки, чтобы не блокировать систему,
+            // но логируем это только один раз при возникновении.
             clearCurrentAlarm(state);
             state.safetyOk = true;
             xSemaphoreGive(g_safetyMutex);
@@ -195,6 +200,11 @@ void check(SystemState& state, const Settings& settings) {
         forceSafeOutputs();
         xSemaphoreGive(g_safetyMutex);
         return;
+    }
+
+    // Если ошибки нет - сбрасываем флаг логирования
+    if (state.temps.valid[TEMP_CUBE] && state.temps.valid[TEMP_COLUMN_BOTTOM]) {
+        sensorAlarmLogged = false;
     }
 
     float waterOutRiseRate = 0.0f;
@@ -288,12 +298,21 @@ void check(SystemState& state, const Settings& settings) {
     // 6. Проверка датчиков температуры (Critical vs Safety)
     if (!settings.demoMode) {
         if (!state.temps.valid[TEMP_CUBE] || !state.temps.valid[TEMP_COLUMN_BOTTOM]) {
-            emergencyStop = true;
             alarmType = AlarmType::SENSOR_FAILURE;
             alarmLevel = AlarmLevel::CRITICAL;
             snprintf(alarmMessage, sizeof(alarmMessage), "CRITICAL sensor failure: %s %s",
                      !state.temps.valid[TEMP_CUBE] ? "CUBE" : "",
                      !state.temps.valid[TEMP_COLUMN_BOTTOM] ? "BASE" : "");
+            
+            if (state.mode == Mode::IDLE) {
+                if (!sensorAlarmLogged) {
+                    Logger::logf(2, "Safety: %s (Suppressed in IDLE)", alarmMessage);
+                    sensorAlarmLogged = true;
+                }
+                // В IDLE не переходим в состояние emergencyStop, чтобы не блокировать UI
+            } else {
+                emergencyStop = true;
+            }
         }
         else if (state.mode != Mode::IDLE) {
             if (!state.temps.valid[TEMP_TSA] || !state.temps.valid[TEMP_WATER_OUT] || !state.pressure.ok) {
@@ -315,7 +334,9 @@ void check(SystemState& state, const Settings& settings) {
         latchAlarm(state, alarmType, alarmLevel, alarmMessage, now);
         MQTT::publishNotification("CRITICAL", alarmMessage, "error");
     } else {
-        state.safetyOk = (alarmLevel != AlarmLevel::ERROR && alarmLevel != AlarmLevel::CRITICAL);
+        // Если мы не в аварии, но были ошибки (которые мы подавили в IDLE), 
+        // state.safetyOk все равно должен быть true для IDLE.
+        state.safetyOk = (alarmLevel != AlarmLevel::ERROR && alarmLevel != AlarmLevel::CRITICAL) || (state.mode == Mode::IDLE);
     }
 
     xSemaphoreGive(g_safetyMutex);

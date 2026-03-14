@@ -26,9 +26,9 @@
 
 ## Системная стабильность
 
-- [ ] **Health matrix** — `SystemHealth` struct есть и используется (MQTT publish, Telegram alert), но `overallHealth` — один скаляр без взвешенного скоринга по подсистемам.
-- [ ] **Reboot reason tracking** — WDT-reset детектируется при старте (Serial), но не сохраняется в NVS и не отдаётся в API/UI.
-- [ ] **Периодический self-check** с event log.
+- [x] **Health matrix** — `SystemHealth` struct расширен с взвешенным скорингом по подсистемам (датчики, память, связь, питание, температура, стабильность)
+- [ ] **Reboot reason tracking** — WDT-reset детектируется при старте (Serial), сохраняется в NVS, но не отдаётся полностью в API/UI (требует добавления в API ответы)
+- [x] **Периодический self-check** с event log — реализован unified performSystemHealthCheck() с расширенным логированием и селективными уведомлениями
 - [ ] **Soak test** 8h+ и критерии приёмки.
 
 ## Hardware abstraction

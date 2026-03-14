@@ -190,7 +190,24 @@ struct SystemHealth {
   uint8_t overallHealth = 100;
   uint8_t lastRebootReason = 0; // esp_reset_reason_t
   uint32_t lastUpdate = 0;
+
+  // Взвешенные оценки подсистем для детального анализа: 0=SENSORS, 1=WIFI, 2=POWER, 3=STORAGE, 4=OTA, 5=SAFETY
+  float healthScores[6] = {100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f};
+  // Весовые коэффициенты для подсистем (должны в сумме давать 1.0)
+  inline static constexpr float healthWeights[6] = {0.4f, 0.1f, 0.2f, 0.05f, 0.05f, 0.2f};
 };
+
+// Структура для отслеживания перезагрузок
+struct RebootTracker {
+  uint32_t totalReboots = 0;
+  uint32_t wdtReboots = 0;
+  uint32_t crashReboots = 0;
+  uint32_t userReboots = 0;
+  uint8_t lastReason = 0;
+  char lastReasonStr[32] = "Unknown";
+};
+
+extern RebootTracker g_rebootTracker;
 
 // Состояние насоса
 struct PumpState {

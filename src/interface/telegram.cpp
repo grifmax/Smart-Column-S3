@@ -92,27 +92,17 @@ static void sendStatus(const fb::ID& chatId) {
 
 static void sendHealth(const fb::ID& chatId) {
     char msg[384];
-    const char* resetReason = "Other";
-    switch(g_state.health.lastRebootReason) {
-        case 1: resetReason = "Power On"; break;
-        case 3: resetReason = "SW Watchdog"; break;
-        case 4: resetReason = "HW Watchdog"; break;
-        case 5: resetReason = "Deep Sleep"; break;
-        case 6: resetReason = "SW Reset"; break;
-        case 7: resetReason = "Panic"; break;
-    }
-    
     snprintf(msg, sizeof(msg),
              "🩺 *Здоровье системы*\n"
              "Общий статус: %u%%\n"
              "Причина ребута: %s\n"
              "Свободно Heap: %u КБ\n"
              "Темп. CPU: %.1f °C\n"
-             "Сигнал WiFi: % d dBm\n"
+             "Сигнал WiFi: %d dBm\n"
              "PZEM: %s, ADS: %s\n"
              "Датчики: %u/%u OK",
              g_state.health.overallHealth,
-             resetReason,
+             g_rebootTracker.lastReasonStr,
              g_state.health.freeHeap / 1024,
              g_state.health.cpuTemp,
              g_state.health.wifiRSSI,
@@ -121,8 +111,36 @@ static void sendHealth(const fb::ID& chatId) {
              g_state.health.tempSensorsOk, g_state.health.tempSensorsTotal);
 
     fb::InlineMenu menu;
+    menu.addButton("📊 ДЕТАЛИ", "tg_diag");
     menu.addButton("🔄 ОБНОВИТЬ", "tg_health");
     menu.addButton("⬅️ НАЗАД", "tg_status");
+    
+    sendMessageWithKeyb(chatId, msg, &menu);
+}
+
+static void sendDetailedHealth(const fb::ID& chatId) {
+    char msg[512];
+    int len = snprintf(msg, sizeof(msg), "📊 *Детальная диагностика*\n\n");
+    
+    const char* subs[] = {"Сенсоры", "WiFi", "Питание", "Память", "OTA", "Безопасность"};
+    for (int i = 0; i < 6; i++) {
+        const char* icon = (g_state.health.healthScores[i] > 90) ? "✅" : (g_state.health.healthScores[i] > 70 ? "⚠️" : "❌");
+        len += snprintf(msg + len, sizeof(msg) - len, "%s %s: %.0f%%\n", icon, subs[i], g_state.health.healthScores[i]);
+    }
+    
+    len += snprintf(msg + len, sizeof(msg) - len, "\n🛠 *Ошибки датчиков:*\n");
+    for (int i = 0; i < 7; i++) {
+        if (g_state.health.tempErrors[i] > 0) {
+            len += snprintf(msg + len, sizeof(msg) - len, "- Датчик %d: %u\n", i, g_state.health.tempErrors[i]);
+        }
+    }
+    
+    len += snprintf(msg + len, sizeof(msg) - len, "\n📈 *Система:*\n- Uptime: %lu сек\n- Heap: %u B\n- WiFi RSSI: %d",
+                    (unsigned long)g_state.uptime, g_state.health.freeHeap, g_state.health.wifiRSSI);
+
+    fb::InlineMenu menu;
+    menu.addButton("🔄 ОБНОВИТЬ", "tg_diag");
+    menu.addButton("⬅️ НАЗАД", "tg_health");
     
     sendMessageWithKeyb(chatId, msg, &menu);
 }
@@ -143,6 +161,8 @@ static void handleUpdate(fb::Update& u) {
       sendStatus(chatId);
     } else if (text == "/health") {
       sendHealth(chatId);
+    } else if (text == "/diag") {
+      sendDetailedHealth(chatId);
     } else if (text == "/stop") {
       FSM::stopMode(g_state);
       sendMessageToChat(chatId, "🛑 Процесс остановлен");
@@ -162,6 +182,8 @@ static void handleUpdate(fb::Update& u) {
       sendStatus(chatId);
     } else if (data == "tg_health") {
       sendHealth(chatId);
+    } else if (data == "tg_diag") {
+      sendDetailedHealth(chatId);
     } else if (data == "tg_pause") {
       if (g_state.paused) FSM::resume(g_state);
       else FSM::pause(g_state);

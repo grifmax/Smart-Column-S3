@@ -687,6 +687,17 @@ void init() {
     // Общая оценка
     doc["overallHealth"] = g_state.health.overallHealth;
     doc["lastUpdate"] = g_state.health.lastUpdate;
+    
+    // Детальные оценки
+    JsonArray scores = doc["healthScores"].to<JsonArray>();
+    for (int i = 0; i < 6; i++) {
+        scores.add(g_state.health.healthScores[i]);
+    }
+    
+    // Информация о перезагрузке
+    JsonObject reboot = doc["reboot"].to<JsonObject>();
+    reboot["reason"] = g_rebootTracker.lastReason;
+    reboot["reasonStr"] = g_rebootTracker.lastReasonStr;
 
     String json;
     serializeJson(doc, json);
@@ -2079,6 +2090,19 @@ void init() {
   // ==========================================================================
   // ПЕРЕЗАГРУЗКА
   // ==========================================================================
+
+  // GET /api/reboot/status - получить информацию о последней перезагрузке
+  server.on("/api/reboot/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    doc["lastReason"] = g_rebootTracker.lastReason;
+    doc["lastReasonStr"] = g_rebootTracker.lastReasonStr;
+    doc["totalReboots"] = g_rebootTracker.totalReboots;
+    doc["wdtReboots"] = g_rebootTracker.wdtReboots;
+    
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
 
   // POST /api/reboot - перезагрузка контроллера
   server.on("/api/reboot", HTTP_POST, [](AsyncWebServerRequest *request) {
