@@ -2471,7 +2471,13 @@ void init() {
               g_pumpCalSession.startMs = millis();
               g_pumpCalSession.stopMs = 0;
 
-              const float speed = Pump::getMaxSpeedMlH();
+              float speed = Pump::getMaxSpeedMlH();
+              if (request->hasParam("speed")) {
+                  float reqSpeed = request->getParam("speed")->value().toFloat();
+                  if (reqSpeed > 0) {
+                      speed = reqSpeed;
+                  }
+              }
               Pump::start(speed);
               LOG_I("Pump calibration started at %.1f ml/h", speed);
 

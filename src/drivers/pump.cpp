@@ -34,14 +34,12 @@ static TaskHandle_t pumpTaskHandle = NULL;
  * Задача управления насосом (FreeRTOS)
  */
 static void pumpTask(void* pvParameters) {
-    TickType_t lastWakeTime = xTaskGetTickCount();
-    const TickType_t frequency = pdMS_TO_TICKS(1); // 1 кГц (1 мс)
-    
     while (1) {
         if (running) {
+            // Крутим мотор максимально часто для обеспечения высокой частоты шагов
             stepper.runSpeed();
             
-            // Обновить счётчики (не слишком часто)
+            // Обновить счётчики раз в 100 мс
             static uint32_t lastCounterUpdate = 0;
             uint32_t now = millis();
             if (now - lastCounterUpdate >= 100) {
@@ -53,8 +51,18 @@ static void pumpTask(void* pvParameters) {
                     totalVolumeMl = revolutions * mlPerRevolution;
                 }
             }
+            
+            // Отдаем квант времени другим задачам, но очень короткий
+            // portYIELD_FROM_ISR или taskYIELD тут не подходят, 
+            // так как нам нужно не вешать ядро на 100%, но и не спать 1мс.
+            // На ESP32 при включенном планировщике даже пустой цикл 
+            // будет прерываться системным тиком.
+            // Но лучше использовать yield() для Arduino-совместимости.
+            yield();
+        } else {
+            // Если не работаем, спим 10 мс
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
-        vTaskDelayUntil(&lastWakeTime, frequency);
     }
 }
 
@@ -230,23 +238,6 @@ void setCalibration(float mlPerRev) {
         }
     } else {
         LOG_E("Pump: Invalid calibration value %.3f", mlPerRev);
-    }
-}
-
-void update() {
-    if (!running) return;
-
-    // Выполнить шаг (константная скорость)
-    stepper.runSpeed();
-
-    // Обновить счётчики
-    long currentPos = stepper.currentPosition();
-    if (currentPos != totalSteps) {
-        totalSteps = currentPos;
-
-        // Пересчитать объём
-        float revolutions = (float)totalSteps / (PUMP_STEPS_PER_REV * PUMP_MICROSTEPS);
-        totalVolumeMl = revolutions * mlPerRevolution;
     }
 }
 

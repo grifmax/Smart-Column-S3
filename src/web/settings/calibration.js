@@ -253,19 +253,11 @@ export async function startCalibration() {
 
     try {
         // Инициируем сессию калибровки на сервере (фиксирует начальные шаги)
-        const calStartResp = await fetch('/api/pump/calibrate/start', { method: 'POST' });
+        const calStartResp = await fetch(`/api/pump/calibrate/start?speed=${speed}`, { method: 'POST' });
         if (!calStartResp.ok) {
             const err = await calStartResp.json().catch(() => ({}));
             throw new Error(err.message || `Старт сессии: HTTP ${calStartResp.status}`);
         }
-
-        // Запускаем насос с нужной скоростью
-        const response = await fetch('/api/pump/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ speed })
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         setMessage('pumpResult', `Калибровка запущена: ${volume} мл @ ${speed} мл/ч`, 'success');
         addLog(`Калибровка насоса стартовала (${speed} мл/ч)`, 'info');

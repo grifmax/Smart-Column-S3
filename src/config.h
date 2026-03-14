@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "1.13.10"
+#define FIRMWARE_VERSION "1.13.11"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -221,7 +221,7 @@
 #define DEFAULT_PUMP_ML_PER_REV 0.5f // мл на оборот
 #define PUMP_STEPS_PER_REV 200       // Шагов на оборот
 #define PUMP_MICROSTEPS 16           // Микрошаги TMC2209
-#define PUMP_MAX_SPEED 1000          // Макс. шагов/сек
+#define PUMP_MAX_SPEED 4000          // Макс. шагов/сек (было 1000)
 #define PUMP_ACCELERATION 500        // Ускорение
 
 // Серво фракционник
