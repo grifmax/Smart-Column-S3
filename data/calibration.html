@@ -1,10 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калибровка - Smart Column S3</title>
-    <link rel="stylesheet" href="style.css?v=1.13.5">
+    <link rel="stylesheet" href="style.css?v=1.13.9">
     <script>
         // Загрузить тему из localStorage перед отрисовкой (как на других страницах)
         (function () {
@@ -599,7 +599,20 @@
             document.getElementById('cal-total').textContent =
                 `${Math.floor(calibrationState.targetTime / 60000)} мин`;
 
-            // Запустить насос через API
+            // Инициируем сессию калибровки на сервере (фиксирует начальные шаги)
+            try {
+                const calStartResp = await fetch('/api/pump/calibrate/start', { method: 'POST' });
+                if (!calStartResp.ok) {
+                    const err = await calStartResp.json().catch(() => ({}));
+                    throw new Error(err.message || `Старт сессии: HTTP ${calStartResp.status}`);
+                }
+            } catch (e) {
+                showResult('pumpResult', 'Ошибка старта сессии калибровки: ' + e.message, 'error');
+                cancelCalibration();
+                return;
+            }
+
+            // Запускаем насос через API
             try {
                 const response = await fetch('/api/pump/start', {
                     method: 'POST',
@@ -652,6 +665,12 @@
 
             // Остановить насос через API
             try {
+                // Фиксируем конечные шаги в сессии калибровки
+                await fetch('/api/pump/calibrate/stop', { method: 'POST' });
+            } catch (error) {
+                console.error('Error stopping calibration session:', error);
+            }
+            try {
                 await fetch('/api/pump/stop', { method: 'POST' });
             } catch (error) {
                 console.error('Error stopping pump:', error);
@@ -687,14 +706,11 @@
             // Рассчитать новое значение мл/оборот на основе фактических данных
             // Это упрощённый расчёт, реальная логика должна быть на сервере
             try {
-                const response = await fetch(`${API_BASE}/pump`, {
+                // Используем /api/pump/calibrate/finish — сервер знает точное количество шагов
+                const response = await fetch('/api/pump/calibrate/finish', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        knownVolume: actualVolume,
-                        elapsedMs: elapsed,
-                        targetSpeed: calibrationState.speed
-                    })
+                    body: JSON.stringify({ volume: actualVolume })
                 });
 
                 if (response.ok) {
@@ -705,7 +721,8 @@
                     loadCalibration();
                     resetCalibrationUI();
                 } else {
-                    showResult('pumpResult', 'Ошибка применения калибровки', 'error');
+                    const errData = await response.json().catch(() => ({}));
+                    showResult('pumpResult', 'Ошибка применения калибровки: ' + (errData.message || `HTTP ${response.status}`), 'error');
                 }
             } catch (error) {
                 showResult('pumpResult', 'Ошибка соединения', 'error');

@@ -7,10 +7,11 @@ import { closeTopMenu } from './top-menu.js';
 const tabTitles = {
     monitor: 'Главная',
     control: 'Режимы',
+    profiles: 'Профили',
     settings: 'Настройки',
     wifi: 'WiFi',
     equipment: 'Оборудование',
-    safety: '\u0411\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0441\u0442\u044c',
+    safety: 'Безопасность',
     history: 'История',
     tools: 'Инструменты'
 };

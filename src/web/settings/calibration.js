@@ -1,4 +1,4 @@
-﻿import { addLog } from '../core/logs.js';
+import { addLog } from '../core/logs.js';
 import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const API_BASE = '/api/calibration';
@@ -251,6 +251,14 @@ export async function startCalibration() {
     if (totalEl) totalEl.textContent = `${Math.max(1, Math.floor(calibrationState.targetTime / 60000))} мин`;
 
     try {
+        // Инициируем сессию калибровки на сервере (фиксирует начальные шаги)
+        const calStartResp = await fetch('/api/pump/calibrate/start', { method: 'POST' });
+        if (!calStartResp.ok) {
+            const err = await calStartResp.json().catch(() => ({}));
+            throw new Error(err.message || `Старт сессии: HTTP ${calStartResp.status}`);
+        }
+
+        // Запускаем насос с нужной скоростью
         const response = await fetch('/api/pump/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -297,6 +305,12 @@ export async function stopCalibration(autoStop = false) {
     }
 
     try {
+        // Останавливаем насос и фиксируем конечные шаги в сессии калибровки
+        await fetch('/api/pump/calibrate/stop', { method: 'POST' });
+    } catch {
+        // ignore
+    }
+    try {
         await fetch('/api/pump/stop', { method: 'POST' });
     } catch {
         // ignore
@@ -326,20 +340,18 @@ export async function applyCalibration() {
         return;
     }
 
-    const elapsedMs = Math.max(1000, Date.now() - Number(calibrationState.startTime || Date.now()));
-
     try {
-        const response = await fetch(`${API_BASE}/pump`, {
+        // Используем /api/pump/calibrate/finish — он знает количество шагов из сессии
+        const response = await fetch('/api/pump/calibrate/finish', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                knownVolume: actualVolume,
-                elapsedMs,
-                targetSpeed: calibrationState.speed
-            })
+            body: JSON.stringify({ volume: actualVolume })
         });
 
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.message || `HTTP ${response.status}`);
+        }
         const data = await response.json();
         const mlPerRev = Number(data?.mlPerRev);
 
@@ -358,10 +370,11 @@ export async function applyCalibration() {
 export async function cancelCalibration() {
     if (calibrationState.running) {
         try {
+            await fetch('/api/pump/calibrate/stop', { method: 'POST' });
+        } catch { /* ignore */ }
+        try {
             await fetch('/api/pump/stop', { method: 'POST' });
-        } catch {
-            // ignore
-        }
+        } catch { /* ignore */ }
     }
 
     if (calibrationState.interval) {

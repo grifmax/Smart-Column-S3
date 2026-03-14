@@ -161,8 +161,11 @@ void stop() {
     digitalWrite(PIN_PUMP_EN, HIGH); // Отключить драйвер
     running = false;
     currentSpeedMlH = 0;
+    
+    // Обновить финальную позицию
+    totalSteps = stepper.currentPosition();
 
-    LOG_I("Pump: Stopped");
+    LOG_I("Pump: Stopped at %d", totalSteps);
 }
 
 void setSpeed(float mlPerHour) {
@@ -202,7 +205,7 @@ float getTotalVolume() {
 }
 
 uint32_t getTotalSteps() {
-    return totalSteps;
+    return (uint32_t)stepper.currentPosition();
 }
 
 float getMaxSpeedMlH() {
