@@ -58,6 +58,7 @@ function resetCalibrationUi() {
         progressBar.textContent = '';
     }
     if (actualVolume) actualVolume.value = '';
+    setMessage('pumpResult', '', '');
 }
 
 export function updateCalibrationTime() {
@@ -323,12 +324,12 @@ export async function stopCalibration(autoStop = false) {
 
     if (stopBtn) stopBtn.style.display = 'none';
     if (applyBtn) applyBtn.style.display = '';
+    if (manualWrap) manualWrap.style.display = '';
 
     if (autoStop) {
         if (actualVolume) actualVolume.value = String(calibrationState.targetVolume);
-        setMessage('pumpResult', 'Калибровка завершена. Нажмите «Применить».', 'success');
+        setMessage('pumpResult', 'Калибровка завершена. Проверьте фактически налитый объём и нажмите «Применить».', 'success');
     } else {
-        if (manualWrap) manualWrap.style.display = '';
         setMessage('pumpResult', 'Калибровка остановлена. Укажите фактический объём и примените.', 'info');
     }
 }
@@ -368,14 +369,13 @@ export async function applyCalibration() {
 }
 
 export async function cancelCalibration() {
-    if (calibrationState.running) {
-        try {
-            await fetch('/api/pump/calibrate/stop', { method: 'POST' });
-        } catch { /* ignore */ }
-        try {
-            await fetch('/api/pump/stop', { method: 'POST' });
-        } catch { /* ignore */ }
-    }
+    // Используем эндпоинт отмены, который гарантированно сбрасывает флаг active на сервере
+    try {
+        await fetch('/api/pump/calibrate/cancel', { method: 'POST' });
+    } catch { /* ignore */ }
+    try {
+        await fetch('/api/pump/stop', { method: 'POST' });
+    } catch { /* ignore */ }
 
     if (calibrationState.interval) {
         clearInterval(calibrationState.interval);

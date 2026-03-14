@@ -2499,6 +2499,17 @@ void init() {
                             "{\"success\":true,\"running\":false}");
             });
 
+  // POST /api/pump/calibrate/cancel - отмена калибровки (сброс флага active)
+  server.on("/api/pump/calibrate/cancel", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              Pump::stop();
+              g_pumpCalSession.active = false;
+              LOG_I("Pump calibration cancelled and reset");
+
+              request->send(200, "application/json",
+                            "{\"success\":true,\"active\":false}");
+            });
+
   // POST /api/pump/calibrate/finish - завершение калибровки насоса
   server.on(
       "/api/pump/calibrate/finish", HTTP_POST,
