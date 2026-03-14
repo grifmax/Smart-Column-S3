@@ -3268,6 +3268,43 @@ void init() {
     }
   });
 
+  // POST /api/profiles - Создать новый профиль
+  server.on("/api/profiles", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (index == 0) {
+        String jsonStr = "";
+        for (size_t i = 0; i < len; i++) jsonStr += (char)data[i];
+        
+        String newId = importProfileFromJSON(jsonStr);
+        if (!newId.isEmpty()) {
+          request->send(201, "application/json", "{\"success\":true,\"id\":\"" + newId + "\"}");
+        } else {
+          request->send(400, "application/json", "{\"error\":\"Failed to create profile\"}");
+        }
+      }
+    }
+  );
+
+  // GET /api/profiles/export - Экспорт всех профилей
+  server.on("/api/profiles/export", HTTP_GET, [](AsyncWebServerRequest *request) {
+    bool includeBuiltin = request->hasParam("includeBuiltin");
+    String json = exportAllProfilesToJSON(includeBuiltin);
+    request->send(200, "application/json", json);
+  });
+
+  // POST /api/profiles/import - Импорт профилей
+  server.on("/api/profiles/import", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (index == 0) {
+        String jsonStr = "";
+        for (size_t i = 0; i < len; i++) jsonStr += (char)data[i];
+        
+        uint16_t count = importProfilesFromJSON(jsonStr);
+        request->send(200, "application/json", "{\"success\":true,\"count\":" + String(count) + "}");
+      }
+    }
+  );
+
   // 404
   server.onNotFound([](AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not Found");

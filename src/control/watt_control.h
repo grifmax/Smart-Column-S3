@@ -46,6 +46,16 @@ namespace WattControl {
      * @return Мощность 0-100%
      */
     uint8_t getRecommendedPower(float pressure);
+
+#if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+    /**
+     * Расчет задержки отпирания симистора (Фазовое управление)
+     * @param targetPowerPercent Требуемая мощность 0-100% (от TRIAC_MAX_POWER_W)
+     * @param currentVoltage Текущее Vrms напряжение (измеряется PZEM)
+     * @return Задержка в микросекундах (от TRIAC_MIN_ALPHA_US до TRIAC_MAX_ALPHA_US)
+     */
+    uint16_t calculateTriacDelay(uint8_t targetPowerPercent, float currentVoltage);
+#endif
     
     /**
      * Ручной override мощности

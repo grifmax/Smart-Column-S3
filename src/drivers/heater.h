@@ -10,6 +10,10 @@
 #include <Arduino.h>
 #include "config.h"
 #include "types.h"
+#if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+#include "driver/gptimer.h"
+#include "driver/gpio.h"
+#endif
 
 namespace Heater {
     /**
@@ -28,6 +32,12 @@ namespace Heater {
      * @return Мощность 0-100%
      */
     uint8_t getPower();
+
+    /**
+     * Установка угла отсечки для симистора (только для HEATER_MODE_TRIAC)
+     * @param delayUs Задержка в микросекундах (0-10000) после перехода через ноль
+     */
+    void setTriacDelay(uint16_t delayUs);
     
     /**
      * Аварийное отключение

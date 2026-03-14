@@ -32,6 +32,11 @@
   #define PIN_BUZZER          38
   #define PIN_TEMP_SENSORS    4
 
+  // --- Пины для симисторного регулятора (Phase Control) ---
+  // Используются свободные GPIO ESP32-S3 (например, 45 и 46)
+  #define PIN_ZERO_CROSS      45 
+  #define PIN_TRIAC           46
+
   // --- PZEM-004T (UART1) ---
   #define PIN_PZEM_RX         20
   #define PIN_PZEM_TX         19

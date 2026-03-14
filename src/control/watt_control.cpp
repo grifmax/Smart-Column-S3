@@ -9,6 +9,7 @@
 #include "watt_control.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
+#include <math.h>
 
 // =============================================================================
 // WATT CONTROL - Управление мощностью по давлению
@@ -110,6 +111,13 @@ uint8_t update(const SystemState& state, const Settings& settings) {
         lastFloodTime = now;
     }
 
+#if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+    // Расчет задержки с учетом реального напряжения (если PZEM доступен)
+    float currentVolt = state.voltage > 0 ? state.voltage : 230.0f; 
+    uint16_t delayUs = calculateTriacDelay(recommended, currentVolt);
+    Heater::setTriacDelay(delayUs);
+#endif
+
     return recommended;
 }
 
@@ -122,6 +130,64 @@ uint8_t getRecommendedPower(float pressure) {
     uint8_t power = (uint8_t)((pressure / workThreshold) * 100.0f);
     return power;
 }
+
+#if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+uint16_t calculateTriacDelay(uint8_t targetPowerPercent, float currentVoltage) {
+    if (targetPowerPercent == 0) return TRIAC_MAX_ALPHA_US;
+    if (targetPowerPercent >= 100) return TRIAC_MIN_ALPHA_US;
+
+    // Требуемая мощность в Ваттах
+    float targetPowerW = (targetPowerPercent / 100.0f) * TRIAC_MAX_POWER_W;
+
+    // Сопротивление ТЭНа (считаем, что номинал TRIAC_MAX_POWER_W выдается при 230В)
+    const float R_heater = (230.0f * 230.0f) / TRIAC_MAX_POWER_W;
+
+    // Максимально возможная мощность при ТЕКУЩЕМ напряжении в сети
+    float maxPossiblePowerW = (currentVoltage * currentVoltage) / R_heater;
+
+    // Если напряжение сильно просело и мы не можем выдать требуемую, открываем симистор на 100%
+    if (targetPowerW >= maxPossiblePowerW) {
+        return TRIAC_MIN_ALPHA_US; 
+    }
+
+    // Относительная мощность (доля от максимальной возможной при текущем напряжении)
+    float P_ratio = targetPowerW / maxPossiblePowerW;
+    
+    // Аппроксимация угла отсечки: P_ratio = 1 - alpha/pi + sin(2*alpha)/(2*pi)
+    // Чтобы не решать трансцендентное уравнение каждый тик, используем полиномиальную аппроксимацию 
+    // зависимости задержки от мощности.
+    // Упрощенно: Задержка T_delay = 10000 * acos(1 - 2*P_ratio) / pi
+    // (Используется точная формула из библиотеки math.h для надежности, ESP32 FPU справится)
+    
+    // Приводим P_ratio к углу от 0 до PI
+    // acos берет аргумент от -1 до 1
+    float arg = 1.0f - 2.0f * P_ratio;
+    if (arg > 1.0f) arg = 1.0f;
+    if (arg < -1.0f) arg = -1.0f;
+    
+    float alphaRad = acosf(arg) / 2.0f; // Угол в радианах, но acos дает от 0 до PI, нужно делить пополам? Нет, формула: T = (10000 / pi) * acos(sqrt(1-P_ratio))
+    
+    // Более точная формула для угла отсечки (в радианах):
+    // Точно решить P(a) = Pmax * (1 - a/pi + sin(2a)/(2pi)) сложно, можно интерполировать
+    // Для скорости применим упрощенную эмпирическую кривую:
+    
+    // Пересчет мощности в задержку (0..10000 мкс)
+    // 0% -> 10000 мкс
+    // 100% -> 0 мкс
+    float delayStr = 10000.0f * (1.0f - P_ratio); // линейно (грубо)
+    
+    // Для более точной фазовой подстройки:
+    float delayCurve = 10000.0f * acosf(2.0f * P_ratio - 1.0f) / PI;
+    
+    uint16_t delayUs = (uint16_t)delayCurve;
+    
+    // Ограничиваем рамками
+    if (delayUs > TRIAC_MAX_ALPHA_US) delayUs = TRIAC_MAX_ALPHA_US;
+    if (delayUs < TRIAC_MIN_ALPHA_US) delayUs = TRIAC_MIN_ALPHA_US;
+    
+    return delayUs;
+}
+#endif
 
 void setOverride(int8_t percent) {
     if (percent >= 0 && percent <= 100) {

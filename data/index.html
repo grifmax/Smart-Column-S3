@@ -99,11 +99,14 @@
                 </button>
 
                 <div class="sidebar-section-title">Управление</div>
-                <button class="sidebar-item tab" data-tab="control">
-                    <span class="icon">🎛️</span><span class="label">Режимы</span>
+                <button class="sidebar-item" data-tab="control">
+                    <span class="icon">🧭</span><span class="label">Режимы</span>
                 </button>
-                <button class="sidebar-item tab" data-tab="equipment">
-                    <span class="icon">🧰</span><span class="label">Оборудование</span>
+                <button class="sidebar-item" data-tab="profiles">
+                    <span class="icon">📋</span><span class="label">Профили</span>
+                </button>
+                <button class="sidebar-item" data-tab="charts">
+                    <span class="icon">📈</span><span class="label">Графики</span>
                 </button>
                 <button class="sidebar-item tab" data-tab="safety">
                     <span class="icon">🛡️</span><span class="label">Безопасность</span>
@@ -833,6 +836,40 @@
                                             type="button" onclick="startSelectedMode()">▶️ Запустить режим</button>
                                     </div>
                                 </section>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Вкладка: Профили -->
+                    <div id="profiles" class="tab-content">
+                        <div class="card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+                                <h2>📋 Профили и рецепты</h2>
+                                <div class="controls" style="margin: 0;">
+                                    <button class="btn btn-success" onclick="showCreateProfileModal()">➕ Создать профиль</button>
+                                    <button class="btn btn-primary" onclick="showImportModal()">📥 Импорт</button>
+                                    <button class="btn btn-primary" onclick="exportAllProfiles()">📤 Экспорт всех</button>
+                                </div>
+                            </div>
+                            
+                            <p style="color: var(--text-secondary); margin-bottom: 20px;">
+                                Сохраняйте настройки процессов (мощность, объемы, скорости) как готовые рецепты для быстрого запуска.
+                            </p>
+
+                            <!-- Фильтры -->
+                            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                                <select id="profile-filter-category" onchange="renderProfileList()" style="padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary);">
+                                    <option value="all">Все категории</option>
+                                    <option value="rectification">Ректификация</option>
+                                    <option value="distillation">Дистилляция</option>
+                                    <option value="mashing">Затирка солода</option>
+                                </select>
+                                <input type="text" id="profile-search" placeholder="Поиск по названию..." oninput="renderProfileList()" style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary);">
+                            </div>
+
+                            <!-- Список профилей -->
+                            <div id="profile-list" class="history-list">
+                                <p class="info-text">Загрузка профилей...</p>
                             </div>
                         </div>
                     </div>
