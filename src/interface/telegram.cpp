@@ -19,7 +19,7 @@ static String tgChatId;
 static bool tgEnabled = false;
 static bool tgReady = false;
 
-// Параметры для отложенной инициализации (чтобы избежать Race Condition с веб-сервером)
+// Параметры для отложенной инициализации
 static bool tgNeedInit = false;
 static String pendingToken;
 static String pendingChatId;
@@ -30,19 +30,19 @@ static bool isConfigured() {
   return tgEnabled && tgBot && tgReady && tgChatId.length();
 }
 
-static bool isAuthorizedMessage(fb::MessageRead msg) {
+static bool isAuthorizedChat(const fb::ID& id) {
   if (!tgChatId.length()) return false;
-  return msg.chat().id().toString() == tgChatId;
+  String idStr;
+  su::Text(id).toString(idStr);
+  return idStr == tgChatId;
 }
 
-static bool sendMessageToChat(const fb::ID& chatId, const char* message) {
-  if (!tgBot || !message || !message[0]) {
-    return false;
-  }
+static bool sendMessageWithKeyb(const fb::ID& chatId, const char* message, fb::InlineMenu* menu = nullptr) {
+  if (!tgBot || !message || !message[0]) return false;
 
   fb::Message out(message, chatId);
-  // Используем синхронную отправку (true), так как объект 'out' живет только в этой функции.
-  // Это предотвращает краш из-за обращения к памяти после выхода из функции.
+  if (menu) out.setInlineMenu(*menu);
+  
   fb::Result res = tgBot->sendMessage(out, true);
   if (res.isError()) {
     LOG_W("Telegram: send failed (%s)", res.getError().toString().c_str());
@@ -51,84 +51,66 @@ static bool sendMessageToChat(const fb::ID& chatId, const char* message) {
   return true;
 }
 
+static bool sendMessageToChat(const fb::ID& chatId, const char* message) {
+  return sendMessageWithKeyb(chatId, message, nullptr);
+}
+
 static bool sendMessageToConfiguredChat(const char* message) {
-  if (!tgChatId.length()) {
-    return false;
-  }
+  if (!tgChatId.length()) return false;
   return sendMessageToChat(fb::ID(tgChatId), message);
 }
 
-static uint32_t lastMessageMs = 0;
-static uint8_t messageBurstCount = 0;
-
-static void handleUpdate(fb::Update& u) {
-  if (!u.isMessage()) {
-    return;
-  }
-
-  // Basic rate limiting
-  uint32_t now = millis();
-  if (now - lastMessageMs < 500) {
-    messageBurstCount++;
-  } else {
-    messageBurstCount = 0;
-  }
-  lastMessageMs = now;
-
-  if (messageBurstCount > 5) {
-    LOG_W("Telegram: rate limit exceeded");
-    return;
-  }
-
-  fb::MessageRead msg = u.message();
-  if (!isAuthorizedMessage(msg)) {
-    LOG_W("Telegram: unauthorized chat %s", msg.chat().id().toString().c_str());
-    return;
-  }
-
-  String text = msg.text().toString();
-  text.trim();
-  text.toLowerCase();
-  if (!text.length()) {
-    return;
-  }
-
-  LOG_I("Telegram: command from %s: %s", tgChatId.c_str(), text.c_str());
-
-  fb::ID replyChat(msg.chat().id());
-  if (text == "/status") {
+static void sendStatus(const fb::ID& chatId) {
     char status[256];
+    const bool active = (g_state.mode != Mode::IDLE);
     snprintf(status, sizeof(status),
-             "Mode: %s\nPhase: %s\nPaused: %s\nUptime: %lus\nPower: %.0fW\nTemp: %.1fC",
+             "🤖 *Статус системы*\n"
+             "Режим: %s\n"
+             "Фаза: %s\n"
+             "Состояние: %s\n"
+             "Мощность: %.0f Вт\n"
+             "Куб: %.1f °C\n"
+             "Аптайм: %lu сек",
              FSM::getModeName(g_state.mode),
              FSM::getPhaseName(g_state.rectPhase),
-             g_state.paused ? "yes" : "no",
-             (unsigned long)g_state.uptime,
+             g_state.paused ? "ПАУЗА" : (active ? "РАБОТА" : "ОЖИДАНИЕ"),
              g_state.power.power,
-             g_state.temps.cube);
-    sendMessageToChat(replyChat, status);
-  } else if (text == "/health") {
+             g_state.temps.cube,
+             (unsigned long)g_state.uptime);
+
+    fb::InlineMenu menu;
+    if (active) {
+        menu.addButton("▶️ ПУСК/⏸ ПАУЗА", "tg_pause");
+        menu.addButton("🛑 СТОП", "tg_stop");
+        menu.newRow();
+    }
+    menu.addButton("🩺 ЗДОРОВЬЕ", "tg_health");
+    menu.addButton("❓ ПОМОЩЬ", "tg_help");
+    
+    sendMessageWithKeyb(chatId, status, &menu);
+}
+
+static void sendHealth(const fb::ID& chatId) {
     char msg[384];
-    const char* resetReason = "Unknown";
+    const char* resetReason = "Other";
     switch(g_state.health.lastRebootReason) {
         case 1: resetReason = "Power On"; break;
-        case 3: resetReason = "Software Watchdog"; break;
-        case 4: resetReason = "Hardware Watchdog"; break;
+        case 3: resetReason = "SW Watchdog"; break;
+        case 4: resetReason = "HW Watchdog"; break;
         case 5: resetReason = "Deep Sleep"; break;
-        case 6: resetReason = "Software Reset"; break;
+        case 6: resetReason = "SW Reset"; break;
         case 7: resetReason = "Panic"; break;
-        default: resetReason = "Other"; break;
     }
     
     snprintf(msg, sizeof(msg),
-             "System Health: %u%%\n"
-             "Reset Reason: %s\n"
-             "Free Heap: %u KB\n"
-             "CPU Temp: %.1f C\n"
-             "WiFi RSSI: %d dBm\n"
-             "PZEM: %s\n"
-             "ADS1115: %s\n"
-             "Temps: %u/%u OK",
+             "🩺 *Здоровье системы*\n"
+             "Общий статус: %u%%\n"
+             "Причина ребута: %s\n"
+             "Свободно Heap: %u КБ\n"
+             "Темп. CPU: %.1f °C\n"
+             "Сигнал WiFi: % d dBm\n"
+             "PZEM: %s, ADS: %s\n"
+             "Датчики: %u/%u OK",
              g_state.health.overallHealth,
              resetReason,
              g_state.health.freeHeap / 1024,
@@ -137,21 +119,70 @@ static void handleUpdate(fb::Update& u) {
              g_state.health.pzemOk ? "OK" : "FAIL",
              g_state.health.ads1115Ok ? "OK" : "FAIL",
              g_state.health.tempSensorsOk, g_state.health.tempSensorsTotal);
-    sendMessageToChat(replyChat, msg);
-  } else if (text == "/stop") {
-    FSM::stopMode(g_state);
-    sendMessageToChat(replyChat, "Process stopped");
-  } else if (text == "/help" || text == "/start") {
-    sendMessageToChat(replyChat, "Commands: /status, /health, /stop, /help");
-  } else {
-    sendMessageToChat(replyChat, "Unknown command. Use /help");
+
+    fb::InlineMenu menu;
+    menu.addButton("🔄 ОБНОВИТЬ", "tg_health");
+    menu.addButton("⬅️ НАЗАД", "tg_status");
+    
+    sendMessageWithKeyb(chatId, msg, &menu);
+}
+
+static void handleUpdate(fb::Update& u) {
+  if (u.isMessage()) {
+    fb::MessageRead msg = u.message();
+    if (!isAuthorizedChat(msg.chat().id())) return;
+
+    String text;
+    msg.text().toString(text);
+    text.trim();
+    text.toLowerCase();
+    if (!text.length()) return;
+
+    fb::ID chatId = msg.chat().id();
+    if (text == "/status" || text == "/start") {
+      sendStatus(chatId);
+    } else if (text == "/health") {
+      sendHealth(chatId);
+    } else if (text == "/stop") {
+      FSM::stopMode(g_state);
+      sendMessageToChat(chatId, "🛑 Процесс остановлен");
+    } else {
+      sendStatus(chatId);
+    }
+  } 
+  else if (u.isQuery()) {
+    fb::QueryRead callback = u.query();
+    if (!isAuthorizedChat(callback.message().chat().id())) return;
+
+    String data;
+    callback.data().toString(data);
+    fb::ID chatId = callback.message().chat().id();
+    
+    if (data == "tg_status") {
+      sendStatus(chatId);
+    } else if (data == "tg_health") {
+      sendHealth(chatId);
+    } else if (data == "tg_pause") {
+      if (g_state.paused) FSM::resume(g_state);
+      else FSM::pause(g_state);
+      sendStatus(chatId);
+    } else if (data == "tg_stop") {
+      fb::InlineMenu menu;
+      menu.addButton("✅ ДА, ОСТАНОВИТЬ", "tg_stop_confirm");
+      menu.addButton("❌ ОТМЕНА", "tg_status");
+      sendMessageWithKeyb(chatId, "⚠️ *Вы уверены, что хотите остановить процесс?*", &menu);
+    } else if (data == "tg_stop_confirm") {
+      FSM::stopMode(g_state);
+      sendMessageToChat(chatId, "🛑 Процесс полностью остановлен");
+    } else if (data == "tg_help") {
+        sendMessageToChat(chatId, "Доступные команды: /status, /health, /stop");
+    }
+
+    tgBot->answerCallbackQuery(callback.id());
   }
 }
 
-// Реальная инициализация бота (вызывать ТОЛЬКО из основного цикла)
 void performInit(const char* token, const char* chat) {
-  LOG_I("Telegram(FastBot2): Real init starting...");
-  
   if (tgBot) {
     tgBot->end();
     delete tgBot;
@@ -160,7 +191,6 @@ void performInit(const char* token, const char* chat) {
 
   tgBot = new FastBot2();
   tgBot->setToken(token);
-  tgBot->setTimeout(5000);
   tgBot->setPollMode(fb::Poll::Long, 15000);
   tgBot->skipUpdates();
   tgBot->attachUpdate(handleUpdate);
@@ -171,7 +201,7 @@ void performInit(const char* token, const char* chat) {
   tgChatId.trim();
   tgReady = true;
   tgNeedInit = false;
-  LOG_I("Telegram(FastBot2): Init complete");
+  LOG_I("Telegram: Init complete");
 }
 
 }  // namespace
@@ -183,13 +213,10 @@ void init(const char* token, const char* chat) {
     tgEnabled = false;
     return;
   }
-
-  // Вместо немедленной инициализации ставим флаг
   pendingToken = token;
   pendingChatId = chat;
   tgNeedInit = true;
   tgEnabled = true;
-  LOG_I("Telegram: Scheduled for init...");
 }
 
 static uint32_t lastTickMs = 0;
@@ -199,10 +226,8 @@ const uint32_t MAX_RETRY_MS = 60000;
 
 void update() {
   if (!tgEnabled) return;
-
   uint32_t now = millis();
 
-  // Безопасная инициализация в основном цикле
   if (tgNeedInit) {
     performInit(pendingToken.c_str(), pendingChatId.c_str());
     lastTickMs = now;
@@ -215,34 +240,21 @@ void update() {
   tgBot->setOnline(online);
   
   if (!online) {
-    // WiFi не подключен - увеличиваем интервал до следующей проверки (backoff)
-    // чтобы не насиловать стек сетевыми вызовами
     if (retryIntervalMs < MAX_RETRY_MS) {
         retryIntervalMs = min(retryIntervalMs * 2, MAX_RETRY_MS);
-        LOG_W("Telegram: WiFi offline, backoff to %lu ms", retryIntervalMs);
     }
     return;
   }
 
-  // Обычный опрос при наличии сети
   if (now - lastTickMs >= retryIntervalMs) {
     lastTickMs = now;
     tgBot->tick();
-    
-    // Если мы здесь и online - постепенно возвращаем интервал к минимуму
-    if (retryIntervalMs > MIN_RETRY_MS) {
-        retryIntervalMs = MIN_RETRY_MS;
-        LOG_I("Telegram: WiFi restored, polling resumed");
-    }
+    if (retryIntervalMs > MIN_RETRY_MS) retryIntervalMs = MIN_RETRY_MS;
   }
 }
 
 bool sendMessage(const char* message) {
   if (!isConfigured() || !message) return false;
-  if (WiFi.status() != WL_CONNECTED) {
-    LOG_W("Telegram: send skipped, WiFi STA not connected");
-    return false;
-  }
   return sendMessageToConfiguredChat(message);
 }
 
@@ -257,33 +269,32 @@ bool sendFormatted(const char* format, ...) {
 }
 
 void notifyPhaseChange(RectPhase phase, const RunStats& stats) {
-  const char* phases[] = {"Idle", "Heating", "Stabilization", "Heads", "Purge",
-                          "Body", "Tails", "Finish", "Error"};
+  const char* phases[] = {"Ожидание", "Нагрев", "Стабилизация", "Головы", "Продувка",
+                          "Тело", "Хвосты", "Финиш", "Ошибка"};
   const uint8_t idx = static_cast<uint8_t>(phase);
-  const char* phaseName = (idx < (sizeof(phases) / sizeof(phases[0]))) ? phases[idx] : "Unknown";
+  const char* phaseName = (idx < (sizeof(phases) / sizeof(phases[0]))) ? phases[idx] : "???";
   const float totalVolume = stats.headsVolume + stats.bodyVolume + stats.tailsVolume;
-  sendFormatted("Phase changed: %s\nVolume: %.0f ml", phaseName, totalVolume);
+  sendFormatted("🚀 Смена фазы: %s\nСобрано: %.0f мл", phaseName, totalVolume);
 }
 
 void notifyAlarm(const Alarm& alarm) {
-  sendFormatted("ALARM: %s", alarm.message);
+  sendFormatted("⚠️ ТРЕВОГА: %s", alarm.message);
 }
 
 void notifyFinish(const RunStats& stats) {
   const float totalVolume = stats.headsVolume + stats.bodyVolume + stats.tailsVolume;
-  sendFormatted("Process finished\nHeads: %.0f ml\nBody: %.0f ml\nTails: %.0f ml\nTotal: %.0f ml",
+  sendFormatted("✅ Процесс завершен\nГоловы: %.0f мл\nТело: %.0f мл\nХвосты: %.0f мл\nВсего: %.0f мл",
                 stats.headsVolume, stats.bodyVolume, stats.tailsVolume, totalVolume);
 }
 
 void notifyHealthAlert(const SystemHealth& health) {
   char msg[512];
   int len = 0;
-  len += snprintf(msg + len, sizeof(msg) - len, "System health alert\n\nOverall: %u%%\n", health.overallHealth);
-  if (!health.pzemOk) len += snprintf(msg + len, sizeof(msg) - len, "- PZEM power meter\n");
-  if (!health.ads1115Ok) len += snprintf(msg + len, sizeof(msg) - len, "- ADS1115 ADC\n");
-  if (!health.bmp280Ok) len += snprintf(msg + len, sizeof(msg) - len, "- BMP280 sensor\n");
+  len += snprintf(msg + len, sizeof(msg) - len, "🛑 Критическое состояние системы!\n\nЗдоровье: %u%%\n", health.overallHealth);
+  if (!health.pzemOk) len += snprintf(msg + len, sizeof(msg) - len, "- Ошибка PZEM (питание)\n");
+  if (!health.ads1115Ok) len += snprintf(msg + len, sizeof(msg) - len, "- Ошибка ADS1115 (давление)\n");
   if (health.tempSensorsOk < health.tempSensorsTotal) {
-    len += snprintf(msg + len, sizeof(msg) - len, "- Temp sensors: %u/%u OK\n",
+    len += snprintf(msg + len, sizeof(msg) - len, "- Отказ датчиков: %u/%u OK\n",
                     health.tempSensorsOk, health.tempSensorsTotal);
   }
   sendMessage(msg);
