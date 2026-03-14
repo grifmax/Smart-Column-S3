@@ -361,6 +361,8 @@ void readTemperatures(Temperatures& temps) {
             if (raw == DEVICE_DISCONNECTED_C || raw < -50 || raw > 150) {
                 temps.valid[i] = false;
                 values[i] = 0;
+                // Инкремент счетчика ошибок конкретного датчика
+                if (i < 7) g_state.health.tempErrors[i]++;
             } else {
                 temps.valid[i] = true;
                 values[i] = raw + tempCal.offsets[i];
@@ -369,6 +371,8 @@ void readTemperatures(Temperatures& temps) {
         } else {
             temps.valid[i] = false;
             values[i] = 0;
+            // Датчик не найден - тоже считаем ошибкой если он должен быть включен
+            if (i < 7) g_state.health.tempErrors[i]++;
         }
     }
 
@@ -631,11 +635,14 @@ void updateHealth(SystemHealth& health) {
     // Подсчёт работающих датчиков температуры
     health.tempSensorsTotal = 0;
     health.tempSensorsOk = 0;
-    for (uint8_t i = 0; i < TEMP_COUNT; i++) {
+    
+    bool tempOk[7] = {false};
+    for (uint8_t i = 0; i < 7; i++) {
         if (ds18b20Found[i]) {
             health.tempSensorsTotal++;
             if (isTempSensorValid(i)) {
-                health.tempSensorsOk++;  // BUG-1 fix: считаем количество, не bool
+                health.tempSensorsOk++;
+                tempOk[i] = true;
             }
         }
     }
@@ -645,7 +652,7 @@ void updateHealth(SystemHealth& health) {
     health.ads1115Ok = ads_ok;
     health.pzemOk = pzem_ok;
 
-    // Счётчики ошибок
+    // Счётчики ошибок (интегральные)
     health.pzemSpikeCount = pzemSpikeCounter;
     health.tempReadErrors = tempReadErrorCounter;
 
@@ -656,44 +663,38 @@ void updateHealth(SystemHealth& health) {
     // Системная информация
     health.uptime = millis() / 1000;
     health.freeHeap = ESP.getFreeHeap();
-    health.cpuTemp = (uint8_t)temperatureRead(); // ESP32-S3 internal temp sensor
+    health.cpuTemp = (uint8_t)temperatureRead();
 
-    // Расчёт общего здоровья (0-100%)
+    // РАСЧЁТ ВЗВЕШЕННОГО ЗДОРОВЬЯ (0-100%)
+    // (Analysis Step 14 - Weighted Health Score)
     int16_t score = 100;
 
-    // Снижение за каждый неработающий критичный датчик
-    if (!health.pzemOk) score -= 30; // Критично для контроля мощности
-    if (!health.ads1115Ok) score -= 15; // Давление
-    if (!health.bmp280Ok) score -= 5;
+    // 1. Критические датчики (Куб и Царга Низ) - без них процесс невозможен
+    if (!tempOk[TEMP_CUBE]) score -= 40;
+    if (!tempOk[TEMP_COLUMN_BOTTOM]) score -= 40;
 
-    // Снижение за неработающие температурные датчики
-    if (health.tempSensorsTotal > 0) {
-        uint8_t tempFailures = health.tempSensorsTotal - health.tempSensorsOk;
-        score -= (tempFailures * 15); // Каждый датчик важен
-    } else {
-        score -= 50; // Вообще нет датчиков
-    }
+    // 2. Датчики безопасности (ТСА и Давление)
+    if (!tempOk[TEMP_TSA]) score -= 20;
+    if (!health.ads1115Ok) score -= 20;
 
-    // Снижение за проблемы с WiFi (только если не в режиме AP)
-    if (!health.wifiConnected && WiFi.getMode() != WIFI_AP) {
-        score -= 10;
-    } else if (health.wifiConnected && health.wifiRSSI < -85) {
-        score -= 5;  // Очень слабый сигнал
-    }
+    // 3. Оборудование (Мощность и Охлаждение)
+    if (!health.pzemOk) score -= 15;
+    if (!tempOk[TEMP_WATER_OUT]) score -= 10;
 
-    // Снижение за высокий уровень ошибок
-    if (health.pzemSpikeCount > 50) score -= 5;
-    if (health.pzemSpikeCount > 200) score -= 10;
-    if (health.tempReadErrors > 20) score -= 5;
-    if (health.tempReadErrors > 100) score -= 10;
+    // 4. Информационные датчики
+    if (!tempOk[TEMP_COLUMN_TOP]) score -= 5;
+    if (!tempOk[TEMP_REFLUX]) score -= 5;
+    if (!tempOk[TEMP_WATER_IN]) score -= 5;
 
-    // Снижение за системные проблемы
+    // 5. Системные штрафы
     if (health.freeHeap < 32768) score -= 10; // Мало памяти
-    if (health.cpuTemp > 85) score -= 20;     // Перегрев
+    if (health.cpuTemp > 85) score -= 20;     // Перегрев CPU
+    if (health.wifiConnected && health.wifiRSSI < -85) score -= 5; // Слабый WiFi
 
-    // Штраф за WDT перезагрузку в прошлом
-    if (health.lastRebootReason == 3 || health.lastRebootReason == 4) { // ESP_RST_WDT, ESP_RST_TASK_WDT
-        score -= 20;
+    // 6. Штрафы за нестабильность (накопленные ошибки)
+    // Если на датчике много CRC ошибок, снижаем здоровье даже если он "valid"
+    for (int i = 0; i < 7; i++) {
+        if (health.tempErrors[i] > 100) score -= 5;
     }
 
     // Ограничение 0-100

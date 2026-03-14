@@ -283,18 +283,43 @@ void check(SystemState& state, const Settings& settings) {
         snprintf(alarmMessage, sizeof(alarmMessage), "Pressure rises too fast: %.1f mmHg/min", pressureRiseRate);
     }
 
-    if (!emergencyStop && !settings.demoMode && hasTempSensorTimeout(state, now)) {
-        emergencyStop = true;
-        alarmType = AlarmType::SENSOR_FAILURE;
-        alarmLevel = AlarmLevel::CRITICAL;
-        snprintf(alarmMessage, sizeof(alarmMessage), "Temperature sensor timeout");
+    // 6. Проверка датчиков температуры (Analysis Step 14 - Critical vs Safety)
+    if (!settings.demoMode) {
+        // КРИТИЧЕСКИЕ: Куб и Царга низ
+        if (!state.temps.valid[TEMP_CUBE] || !state.temps.valid[TEMP_COLUMN_BOTTOM]) {
+            emergencyStop = true;
+            alarmType = AlarmType::SENSOR_FAILURE;
+            alarmLevel = AlarmLevel::CRITICAL;
+            snprintf(alarmMessage, sizeof(alarmMessage), "CRITICAL sensor failure: %s %s",
+                     !state.temps.valid[TEMP_CUBE] ? "CUBE" : "",
+                     !state.temps.valid[TEMP_COLUMN_BOTTOM] ? "BASE" : "");
+        }
+        // БЕЗОПАСНОСТЬ: ТСА и Вода выход (если процесс активен)
+        else if (state.mode != Mode::IDLE) {
+            if (!state.temps.valid[TEMP_TSA] || !state.temps.valid[TEMP_WATER_OUT] || !state.pressure.ok) {
+                // Это серьезно, но не фатально для продолжения (на риск пользователя)
+                alarmType = AlarmType::SENSOR_FAILURE;
+                alarmLevel = AlarmLevel::ERROR; // Уровень ERROR вместо CRITICAL
+                snprintf(alarmMessage, sizeof(alarmMessage), "Safety sensor failure: %s %s %s",
+                         !state.temps.valid[TEMP_TSA] ? "TSA" : "",
+                         !state.temps.valid[TEMP_WATER_OUT] ? "WATER" : "",
+                         !state.pressure.ok ? "PRESS" : "");
+                
+                // Если авария еще не защелкнута - защелкиваем, но НЕ ставим emergencyStop = true
+                // чтобы не вызывать немедленный abortMode в latchAlarm
+                if (!isLatched(state)) {
+                    latchAlarm(state, alarmType, alarmLevel, alarmMessage, now);
+                    // Мы НЕ останавливаем механизмы здесь, даем пользователю выбрать в UI
+                }
+            }
+        }
     }
 
     if (emergencyStop) {
         latchAlarm(state, alarmType, alarmLevel, alarmMessage, now);
         MQTT::publishNotification("CRITICAL", alarmMessage, "error");
     } else {
-        state.safetyOk = true;
+        state.safetyOk = (alarmLevel != AlarmLevel::ERROR && alarmLevel != AlarmLevel::CRITICAL);
     }
 
     xSemaphoreGive(g_safetyMutex);

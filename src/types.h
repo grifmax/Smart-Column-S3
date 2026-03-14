@@ -174,8 +174,9 @@ struct MashProfile {
 
 // Здоровье системы
 struct SystemHealth {
-  uint8_t tempSensorsOk = 0;    // количество рабочих датчиков (было bool — баг)
+  uint8_t tempSensorsOk = 0;    // количество рабочих датчиков
   uint8_t tempSensorsTotal = 0;
+  uint16_t tempErrors[7] = {0}; // ошибки по каждому датчику (Analysis Step 14)
   bool bmp280Ok = false;
   bool ads1115Ok = false;
   bool pzemOk = false;

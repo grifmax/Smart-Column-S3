@@ -206,12 +206,46 @@ void setup() {
 // LOOP
 // =============================================================================
 
+static void runPeriodicSelfCheck(uint32_t now) {
+  static uint32_t lastSelfCheck = 0;
+  if (now - lastSelfCheck < 1800000) return; // Раз в 30 минут
+  lastSelfCheck = now;
+
+  LOG_I("Self-Check: Starting periodic diagnostic...");
+  
+  // 1. Проверка памяти
+  uint32_t freeHeap = ESP.getFreeHeap();
+  LOG_I("Self-Check: Free Heap: %u KB", freeHeap / 1024);
+
+  // 2. Проверка датчиков (накопленные ошибки)
+  char sensorStatus[128] = "Sensors: ";
+  bool sensorsStable = true;
+  for (int i = 0; i < 7; i++) {
+    if (g_state.health.tempErrors[i] > 50) {
+      sensorsStable = false;
+      LOG_W("Self-Check: Sensor %d is unstable (%u errors)", i, g_state.health.tempErrors[i]);
+    }
+  }
+
+  // 3. Запись в системный лог
+  Logger::logf(0, "Periodic Self-Check: Uptime %lu sec, Heap %u KB, Sensors %s", 
+               now/1000, freeHeap/1024, sensorsStable ? "Stable" : "UNSTABLE");
+
+  // 4. Уведомление в Telegram если есть проблемы
+  if (!sensorsStable) {
+    TelegramBot::sendMessage("🩺 *Self-Check Warning*\nНекоторые датчики работают нестабильно. Проверьте контакты.");
+  }
+}
+
 void loop() {
   if (g_captivePortalActive) {
     g_dnsServer.processNextRequest();
   }
 
   uint32_t now = millis();
+  
+  // Периодическая диагностика
+  runPeriodicSelfCheck(now);
 
   // OTA Updates
   OTA::handle();
