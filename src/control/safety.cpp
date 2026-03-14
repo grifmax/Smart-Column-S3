@@ -52,6 +52,13 @@ void clearCurrentAlarm(SystemState& state) {
 
 void latchAlarm(SystemState& state, AlarmType type, AlarmLevel level,
                 const char* message, uint32_t now) {
+    // Пишем в лог только если это новая авария или изменился тип
+    if (state.currentAlarm.type != type) {
+        Logger::logf(2, "Safety alarm latched: %s", message ? message : "Safety alarm");
+        // Форсированная запись лога при аварии
+        Logger::writeData(state);
+    }
+
     forceSafeOutputs();
     state.safetyOk = false;
 
@@ -61,11 +68,6 @@ void latchAlarm(SystemState& state, AlarmType type, AlarmLevel level,
     state.currentAlarm.acknowledged = false;
     snprintf(state.currentAlarm.message, sizeof(state.currentAlarm.message), "%s",
              message ? message : "Safety alarm");
-    
-    Logger::logf(2, "Safety alarm latched: %s", state.currentAlarm.message);
-    
-    // Форсированная запись лога при аварии
-    Logger::writeData(state);
 
     if (state.mode != Mode::IDLE) {
         FSM::abortMode(state);
