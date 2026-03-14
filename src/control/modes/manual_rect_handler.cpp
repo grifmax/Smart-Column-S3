@@ -51,8 +51,22 @@ void update(SystemState& state, const Settings& settings) {
 void setPhase(SystemState& state, RectPhase phase) {
     state.rectPhase = phase;
     setPhaseStartVolumeMl(state.pump.totalVolumeMl);
+    setPhaseStartTime(millis());
     alertSent = false;
-    LOG_I("ManualRect: phase changed to %d", (int)phase);
+    
+    const char* phaseName = "Unknown";
+    switch(phase) {
+        case RectPhase::IDLE: phaseName = "Ожидание"; break;
+        case RectPhase::HEATING: phaseName = "Нагрев"; break;
+        case RectPhase::STABILIZATION: phaseName = "Стабилизация"; break;
+        case RectPhase::HEADS: phaseName = "Головы"; break;
+        case RectPhase::BODY: phaseName = "Тело"; break;
+        case RectPhase::TAILS: phaseName = "Хвосты"; break;
+        case RectPhase::FINISH: phaseName = "Завершено"; break;
+    }
+    
+    LOG_I("ManualRect: phase changed to %s", phaseName);
+    Logger::logf(0, "ManualRect: Фаза изменена на %s", phaseName);
 }
 
 } // namespace ManualRect

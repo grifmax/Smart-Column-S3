@@ -64,7 +64,7 @@ void latchAlarm(SystemState& state, AlarmType type, AlarmLevel level,
     
     Logger::logf(2, "Safety alarm latched: %s", state.currentAlarm.message);
     
-    // Форсированная запись лога при аварии (Analysis Step 6)
+    // Форсированная запись лога при аварии
     Logger::writeData(state);
 
     if (state.mode != Mode::IDLE) {
@@ -175,20 +175,20 @@ void check(SystemState& state, const Settings& settings) {
     state.pressure.critThreshold = pressureMaxMmHg;
 
     if (isLatched(state)) {
-        if (state.currentAlarm.type == AlarmType::SENSOR_FAILURE && (settings.demoMode || state.mode == Mode::IDLE)) {
-            if (settings.demoMode) {
-                clearCurrentAlarm(state);
-                state.safetyOk = true;
-                xSemaphoreGive(g_safetyMutex);
-                return;
-            }
-            char reason[96];
-            if (canResetAlarm(state, settings, now, reason, sizeof(reason))) {
-                clearCurrentAlarm(state);
-                state.safetyOk = true;
-                xSemaphoreGive(g_safetyMutex);
-                return;
-            }
+        // Если включен демо-режим - автоматически сбрасываем аварии датчиков
+        if (settings.demoMode && state.currentAlarm.type == AlarmType::SENSOR_FAILURE) {
+            LOG_I("SAFETY: Demo mode active, clearing sensor alarm");
+            clearCurrentAlarm(state);
+            state.safetyOk = true;
+            xSemaphoreGive(g_safetyMutex);
+            return;
+        }
+        
+        if (state.currentAlarm.type == AlarmType::SENSOR_FAILURE && state.mode == Mode::IDLE) {
+            clearCurrentAlarm(state);
+            state.safetyOk = true;
+            xSemaphoreGive(g_safetyMutex);
+            return;
         }
         forceSafeOutputs();
         xSemaphoreGive(g_safetyMutex);
@@ -283,9 +283,8 @@ void check(SystemState& state, const Settings& settings) {
         snprintf(alarmMessage, sizeof(alarmMessage), "Pressure rises too fast: %.1f mmHg/min", pressureRiseRate);
     }
 
-    // 6. Проверка датчиков температуры (Analysis Step 14 - Critical vs Safety)
+    // 6. Проверка датчиков температуры (Critical vs Safety)
     if (!settings.demoMode) {
-        // КРИТИЧЕСКИЕ: Куб и Царга низ
         if (!state.temps.valid[TEMP_CUBE] || !state.temps.valid[TEMP_COLUMN_BOTTOM]) {
             emergencyStop = true;
             alarmType = AlarmType::SENSOR_FAILURE;
@@ -294,22 +293,17 @@ void check(SystemState& state, const Settings& settings) {
                      !state.temps.valid[TEMP_CUBE] ? "CUBE" : "",
                      !state.temps.valid[TEMP_COLUMN_BOTTOM] ? "BASE" : "");
         }
-        // БЕЗОПАСНОСТЬ: ТСА и Вода выход (если процесс активен)
         else if (state.mode != Mode::IDLE) {
             if (!state.temps.valid[TEMP_TSA] || !state.temps.valid[TEMP_WATER_OUT] || !state.pressure.ok) {
-                // Это серьезно, но не фатально для продолжения (на риск пользователя)
                 alarmType = AlarmType::SENSOR_FAILURE;
-                alarmLevel = AlarmLevel::ERROR; // Уровень ERROR вместо CRITICAL
+                alarmLevel = AlarmLevel::ERROR;
                 snprintf(alarmMessage, sizeof(alarmMessage), "Safety sensor failure: %s %s %s",
                          !state.temps.valid[TEMP_TSA] ? "TSA" : "",
                          !state.temps.valid[TEMP_WATER_OUT] ? "WATER" : "",
                          !state.pressure.ok ? "PRESS" : "");
                 
-                // Если авария еще не защелкнута - защелкиваем, но НЕ ставим emergencyStop = true
-                // чтобы не вызывать немедленный abortMode в latchAlarm
                 if (!isLatched(state)) {
                     latchAlarm(state, alarmType, alarmLevel, alarmMessage, now);
-                    // Мы НЕ останавливаем механизмы здесь, даем пользователю выбрать в UI
                 }
             }
         }
