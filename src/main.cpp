@@ -404,7 +404,7 @@ void loop() {
     Logger::writeData(g_state);
   }
 
-  Pump::update();
+  // Pump::update() теперь вызывается в отдельной высокоприоритетной задаче (src/drivers/pump.cpp)
   Heater::update();     // PERF-3 fix: плавный разгон ТЭНа (ramp) был реализован, но не вызывался
   Valves::update();     // ARCH-3 fix: неблокирующий движок сервопривода фракционника
   g_state.pump.running = Pump::isRunning();

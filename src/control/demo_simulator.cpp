@@ -12,6 +12,7 @@
 #include <Arduino.h>
 #include <math.h>
 #include "drivers/valves.h"
+#include "drivers/pump.h"
 
 namespace DemoSimulator {
 
@@ -232,11 +233,15 @@ void update(SystemState &state, const Settings &settings) {
   if (sim.phase > 50) {
     // Начинаем отбор после стабилизации
     float targetSpeed = 200.0f + sin(sim.phase * 0.1f) * 50.0f; // 150-250 мл/ч
-    state.pump.speedMlPerHour = targetSpeed + (random(-20, 20));
-    state.pump.running = true;
+    float currentSpeed = targetSpeed + (random(-20, 20));
     
-    float addedVolume = (state.pump.speedMlPerHour / 3600.0f) * dt;
-    state.pump.totalVolumeMl += addedVolume;
+    // Управляем реальным драйвером насоса в демо-режиме
+    if (!Pump::isRunning() || abs(Pump::getSpeed() - currentSpeed) > 10.0f) {
+        Pump::setSpeed(currentSpeed);
+    }
+    
+    float addedVolume = (currentSpeed / 3600.0f) * dt;
+    // state.pump.totalVolumeMl обновится из драйвера автоматически
     
     // Симуляция распределения по банкам (зависит от открытых клапанов)
     // В реальности клапаны переключаются FSM (или вручную). 

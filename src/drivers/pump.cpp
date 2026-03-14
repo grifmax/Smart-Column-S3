@@ -21,13 +21,42 @@ static AccelStepper stepper(AccelStepper::DRIVER, PIN_PUMP_STEP, PIN_PUMP_DIR);
 
 static float mlPerRevolution = DEFAULT_PUMP_ML_PER_REV;
 static float currentSpeedMlH = 0;
-static bool running = false;
-static int32_t totalSteps = 0;  // BUG-5 fix: signed, как AccelStepper::currentPosition()
+static volatile bool running = false;
+static int32_t totalSteps = 0;
 static float totalVolumeMl = 0;
+static TaskHandle_t pumpTaskHandle = NULL;
 
 // =============================================================================
 // ВНУТРЕННИЕ ФУНКЦИИ
 // =============================================================================
+
+/**
+ * Задача управления насосом (FreeRTOS)
+ */
+static void pumpTask(void* pvParameters) {
+    TickType_t lastWakeTime = xTaskGetTickCount();
+    const TickType_t frequency = pdMS_TO_TICKS(1); // 1 кГц (1 мс)
+    
+    while (1) {
+        if (running) {
+            stepper.runSpeed();
+            
+            // Обновить счётчики (не слишком часто)
+            static uint32_t lastCounterUpdate = 0;
+            uint32_t now = millis();
+            if (now - lastCounterUpdate >= 100) {
+                lastCounterUpdate = now;
+                long currentPos = stepper.currentPosition();
+                if (currentPos != totalSteps) {
+                    totalSteps = currentPos;
+                    float revolutions = (float)totalSteps / (PUMP_STEPS_PER_REV * PUMP_MICROSTEPS);
+                    totalVolumeMl = revolutions * mlPerRevolution;
+                }
+            }
+        }
+        vTaskDelayUntil(&lastWakeTime, frequency);
+    }
+}
 
 /**
  * Преобразование мл/час в шаги/сек
@@ -82,6 +111,19 @@ void init() {
     totalSteps = 0;
     totalVolumeMl = 0;
     running = false;
+
+    // Создание задачи управления насосом
+    if (pumpTaskHandle == NULL) {
+        xTaskCreatePinnedToCore(
+            pumpTask,
+            "PumpTask",
+            2048,
+            NULL,
+            configMAX_PRIORITIES - 1, // Высочайший приоритет
+            &pumpTaskHandle,
+            1 // Ядро 1
+        );
+    }
 
     LOG_I("Pump: Init complete (microsteps=%d, ml/rev=%.2f)",
           PUMP_MICROSTEPS, mlPerRevolution);
