@@ -2,9 +2,10 @@
 # Использование: .\build_apk.ps1 [--release|--debug]
 
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateSet("release", "debug")]
-    [string]$BuildType = "release"
+    [string]$BuildType = "release",
+    [switch]$Clean
 )
 
 Write-Host "========================================" -ForegroundColor Cyan
@@ -21,7 +22,8 @@ try {
     }
     Write-Host "✓ Flutter найден" -ForegroundColor Green
     Write-Host $flutterVersion[0] -ForegroundColor Gray
-} catch {
+}
+catch {
     Write-Host "✗ Ошибка: Flutter не установлен или не в PATH" -ForegroundColor Red
     Write-Host ""
     Write-Host "Установите Flutter SDK:" -ForegroundColor Yellow
@@ -38,13 +40,26 @@ $doctorOutput = flutter doctor 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "⚠ Предупреждения в Flutter Doctor:" -ForegroundColor Yellow
     Write-Host $doctorOutput -ForegroundColor Gray
-} else {
+}
+else {
     Write-Host "✓ Окружение настроено" -ForegroundColor Green
 }
 
 # Переход в директорию приложения
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $scriptPath
+
+# Очистка проекта (если указан флаг -Clean)
+if ($Clean) {
+    Write-Host ""
+    Write-Host "Очистка проекта..." -ForegroundColor Yellow
+    flutter clean
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "✗ Ошибка при очистке проекта" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "✓ Проект очищен" -ForegroundColor Green
+}
 
 # Установка зависимостей
 Write-Host ""
@@ -71,7 +86,8 @@ Write-Host ""
 Write-Host "Сборка APK ($BuildType)..." -ForegroundColor Yellow
 if ($BuildType -eq "release") {
     flutter build apk --release
-} else {
+}
+else {
     flutter build apk --debug
 }
 
@@ -83,7 +99,8 @@ if ($LASTEXITCODE -ne 0) {
 # Определение пути к APK
 $apkPath = if ($BuildType -eq "release") {
     "build\app\outputs\flutter-apk\app-release.apk"
-} else {
+}
+else {
     "build\app\outputs\flutter-apk\app-debug.apk"
 }
 
@@ -101,11 +118,8 @@ if (Test-Path $apkPath) {
     Write-Host "  flutter install" -ForegroundColor Gray
     Write-Host "  или" -ForegroundColor Gray
     Write-Host "  adb install $apkPath" -ForegroundColor Gray
-} else {
+}
+else {
     Write-Host "✗ APK файл не найден по пути: $apkPath" -ForegroundColor Red
     exit 1
 }
-
-
-
-

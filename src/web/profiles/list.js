@@ -23,23 +23,15 @@ export function loadProfilesList() {
 
 
     fetch('/api/profiles')
-
         .then(response => response.json())
-
         .then(data => {
-
-            if (data.profiles && data.profiles.length > 0) {
-
-                renderProfilesList(data.profiles);
-
-                updateProfilesStats(data.profiles);
-
+            const profiles = Array.isArray(data) ? data : (data.profiles || []);
+            if (profiles.length > 0) {
+                renderProfilesList(profiles);
+                updateProfilesStats(profiles);
             } else {
-
                 listEl.innerHTML = '<p class="info-text">📁 Профили не найдены. Создайте первый профиль!</p>';
-
             }
-
         })
 
         .catch(error => {

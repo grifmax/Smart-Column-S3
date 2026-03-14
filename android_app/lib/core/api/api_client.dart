@@ -152,9 +152,10 @@ class ApiClient {
   }
 
   // Calibration
-  Future<Map<String, dynamic>> getCalibration() async {
+  Future<CalibrationData> getCalibration() async {
     final response = await _dio.get(ApiEndpoints.calibration);
-    return response.data as Map<String, dynamic>;
+    // Предполагается, что вы создадите модель CalibrationData с методом fromJson
+    return CalibrationData.fromJson(response.data);
   }
 
   Future<ApiResponse> calibratePump(Map<String, dynamic> data) async {
@@ -173,11 +174,14 @@ class ApiClient {
     return ApiResponse.fromJson(response.data);
   }
 
-  Future<List<Map<String, dynamic>>> scanSensors() async {
+  Future<List<SensorInfo>> scanSensors() async {
     final response = await _dio.get(ApiEndpoints.calibrationScan);
     final data = response.data as Map<String, dynamic>;
     final sensors = data['sensors'] as List;
-    return sensors.cast<Map<String, dynamic>>();
+    // Предполагается, что вы создадите модель SensorInfo с методом fromJson
+    return sensors
+        .map((s) => SensorInfo.fromJson(s as Map<String, dynamic>))
+        .toList();
   }
 
   // System
@@ -210,4 +214,3 @@ class ApiClient {
     return 'Неизвестная ошибка: ${error.message}';
   }
 }
-

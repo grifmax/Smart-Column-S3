@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=1.13.2">
+    <link rel="stylesheet" href="style.css?v=1.13.5">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=1.13.2" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=1.13.5" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -856,19 +856,39 @@
                                 Сохраняйте настройки процессов (мощность, объемы, скорости) как готовые рецепты для быстрого запуска.
                             </p>
 
+                            <!-- Статистика профилей -->
+                            <div class="stats-row" style="margin-bottom: 20px;">
+                                <div>
+                                    <div style="color: var(--text-secondary); font-size: 0.9em;">Всего</div>
+                                    <div style="font-size: 1.5em; font-weight: 600;" id="prof-stat-total">0</div>
+                                </div>
+                                <div>
+                                    <div style="color: var(--text-secondary); font-size: 0.9em;">Встроенных</div>
+                                    <div style="font-size: 1.5em; font-weight: 600;" id="prof-stat-builtin">0</div>
+                                </div>
+                                <div>
+                                    <div style="color: var(--text-secondary); font-size: 0.9em;">Ваших</div>
+                                    <div style="font-size: 1.5em; font-weight: 600;" id="prof-stat-user">0</div>
+                                </div>
+                                <div>
+                                    <div style="color: var(--text-secondary); font-size: 0.9em;">Популярный</div>
+                                    <div style="font-size: 1.2em; font-weight: 600;" id="prof-stat-popular">—</div>
+                                </div>
+                            </div>
+
                             <!-- Фильтры -->
                             <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                                <select id="profile-filter-category" onchange="renderProfileList()" style="padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary);">
+                                <select id="profile-filter-category" onchange="loadProfilesList()" style="padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary);">
                                     <option value="all">Все категории</option>
                                     <option value="rectification">Ректификация</option>
                                     <option value="distillation">Дистилляция</option>
                                     <option value="mashing">Затирка солода</option>
                                 </select>
-                                <input type="text" id="profile-search" placeholder="Поиск по названию..." oninput="renderProfileList()" style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary);">
+                                <input type="text" id="profile-search" placeholder="Поиск по названию..." oninput="loadProfilesList()" style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary);">
                             </div>
 
                             <!-- Список профилей -->
-                            <div id="profile-list" class="history-list">
+                            <div id="profiles-list" class="history-list">
                                 <p class="info-text">Загрузка профилей...</p>
                             </div>
                         </div>
@@ -2549,7 +2569,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=1.13.2"></script>
+    <script src="app.js?v=1.13.5"></script>
 </body>
 
 </html>

@@ -319,6 +319,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     loadSecuritySettings();
     loadMqttSettings();
     loadTelegramSettings();
+    loadProfilesList();
     initWiFiSettings();
     initCalibrationTab();
     initNotifications();
