@@ -27,6 +27,8 @@ uint32_t g_prevPhaseStartMs = 0;
 float g_prevPhaseStartVolumeMl = 0.0f;
 float g_prevPhaseStartTempC = 0.0f;
 bool g_initialized = false;
+SafetyDecisionV2 g_prevSafetyDecision;
+bool g_prevSafetyInitialized = false;
 
 struct PendingPhaseTransitionV2 {
     bool active = false;
@@ -106,6 +108,116 @@ bool isSuccessfulCompletion(Mode previousMode, uint16_t previousPhaseId,
     }
 }
 
+bool isHistorySafetyState(const SafetyDecisionV2& decision) {
+    return decision.severity == SafetySeverityV2::LIMITED ||
+           decision.severity == SafetySeverityV2::RECOVERY ||
+           decision.severity == SafetySeverityV2::TRIP ||
+           decision.severity == SafetySeverityV2::LATCHED_TRIP;
+}
+
+bool sameHistorySafetyState(const SafetyDecisionV2& left,
+                            const SafetyDecisionV2& right) {
+    return left.severity == right.severity &&
+           left.primaryEvent == right.primaryEvent &&
+           left.reasonCode == right.reasonCode &&
+           left.limits.powerCapped == right.limits.powerCapped &&
+           left.limits.takeoffBlocked == right.limits.takeoffBlocked &&
+           left.limits.phaseAdvanceBlocked == right.limits.phaseAdvanceBlocked;
+}
+
+const char* getHistorySeverity(const SafetyDecisionV2& decision) {
+    switch (decision.severity) {
+        case SafetySeverityV2::TRIP:
+        case SafetySeverityV2::LATCHED_TRIP:
+            return "error";
+        case SafetySeverityV2::RECOVERY:
+            return "info";
+        case SafetySeverityV2::LIMITED:
+        default:
+            return "warning";
+    }
+}
+
+bool lastHistoryEventMatches(const char* severity, ReasonCodeV2 reasonCode,
+                             const char* message, const char* operatorMessage) {
+    if (!processRecorder.isRecording()) {
+        return false;
+    }
+
+    ProcessHistory& history = processRecorder.getHistory();
+    const std::vector<ProcessWarning>& events =
+        (strcmp(severity, "error") == 0) ? history.results.errors
+                                          : history.results.warnings;
+    if (events.empty()) {
+        return false;
+    }
+
+    const ProcessWarning& last = events.back();
+    const String expectedReason = reasonCodeToString(reasonCode);
+    const String expectedMessage =
+        (message != nullptr && message[0] != '\0') ? String(message)
+                                                   : String(expectedReason);
+    const String expectedOperatorMessage =
+        (operatorMessage != nullptr && operatorMessage[0] != '\0')
+            ? String(operatorMessage)
+            : String();
+
+    return last.severity == severity &&
+           last.reasonCode == expectedReason &&
+           last.message == expectedMessage &&
+           last.operatorMessage == expectedOperatorMessage;
+}
+
+void appendHistorySafetyEvent(const char* severity, ReasonCodeV2 reasonCode,
+                              const char* message,
+                              const char* operatorMessage = nullptr) {
+    if (!processRecorder.isRecording()) {
+        return;
+    }
+
+    const char* resolvedMessage =
+        (message != nullptr && message[0] != '\0') ? message
+                                                   : reasonCodeToString(reasonCode);
+    if (lastHistoryEventMatches(severity, reasonCode, resolvedMessage,
+                                operatorMessage)) {
+        return;
+    }
+
+    processRecorder.addWarning(resolvedMessage, severity,
+                               reasonCodeToString(reasonCode),
+                               operatorMessage != nullptr ? String(operatorMessage)
+                                                          : String());
+}
+
+void recordHistorySafetyDecision(const SafetyDecisionV2& decision,
+                                 bool force = false) {
+    if (!processRecorder.isRecording() || !isHistorySafetyState(decision)) {
+        return;
+    }
+    if (!force && g_prevSafetyInitialized &&
+        sameHistorySafetyState(decision, g_prevSafetyDecision)) {
+        return;
+    }
+
+    appendHistorySafetyEvent(getHistorySeverity(decision), decision.reasonCode,
+                             decision.message);
+}
+
+void recordHistorySafetyRecoveryExit(const SafetyDecisionV2& previousDecision,
+                                     const SafetyDecisionV2& currentDecision) {
+    if (!processRecorder.isRecording()) {
+        return;
+    }
+    if (previousDecision.severity != SafetySeverityV2::RECOVERY ||
+        currentDecision.severity == SafetySeverityV2::RECOVERY) {
+        return;
+    }
+
+    appendHistorySafetyEvent(
+        "info", ReasonCodeV2::RC_SAFETY_RECOVERY_EXITED,
+        "Safety recovery completed, process returned to normal operation");
+}
+
 void startHistoryTracking(const SystemState& state) {
     if (state.mode == Mode::IDLE) {
         return;
@@ -164,8 +276,12 @@ void stopHistoryTracking(bool success, ReasonCodeV2 reasonCode,
         String message = g_lastMetrics.safety.message[0] != '\0'
                              ? String(g_lastMetrics.safety.message)
                              : String("Safety stop");
-        processRecorder.addWarning(message, "error", reasonCodeToString(reasonCode),
-                                   operatorMessage != nullptr ? String(operatorMessage) : String());
+        if (!lastHistoryEventMatches("error", reasonCode, message.c_str(),
+                                     operatorMessage)) {
+            processRecorder.addWarning(
+                message, "error", reasonCodeToString(reasonCode),
+                operatorMessage != nullptr ? String(operatorMessage) : String());
+        }
     }
 
     processRecorder.stopRecording(success);
@@ -443,6 +559,10 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
         g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
     }
+    if (!g_prevSafetyInitialized) {
+        g_prevSafetyDecision = safety;
+        g_prevSafetyInitialized = true;
+    }
 
     const uint16_t currentPhaseId = getActivePhaseId(state);
     PendingPhaseTransitionV2 explicitTransition;
@@ -481,6 +601,7 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
                                  state, now);
         }
         if (state.mode == Mode::IDLE) {
+            recordHistorySafetyDecision(safety);
             stopHistoryTracking(
                 isSuccessfulCompletion(g_prevMode, g_prevPhaseId, modeChangeReason),
                 modeChangeReason,
@@ -488,6 +609,7 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
                 state);
         } else {
             startHistoryTracking(state);
+            recordHistorySafetyDecision(safety, true);
         }
         g_prevMode = state.mode;
         g_prevPhaseId = currentPhaseId;
@@ -511,7 +633,12 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
     }
 
+    recordHistorySafetyRecoveryExit(g_prevSafetyDecision, safety);
+    recordHistorySafetyDecision(safety);
+
     fillStatus(state, g_lastIndicators, g_lastMetrics, g_lastStatus);
+    g_prevSafetyDecision = safety;
+    g_prevSafetyInitialized = true;
 }
 
 const ProcessIndicatorsV2& getLatestIndicators() {

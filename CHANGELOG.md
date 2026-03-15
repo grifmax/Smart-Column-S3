@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.16] - 2026-03-15
+
+### Изменено
+- `src/control/v2/status_adapter.cpp` теперь пишет в persistent history не только финальный `safety stop`, но и live safety transitions `limited`, `recovery` и `latched trip`, когда меняются v2 `severity/reasonCode`, так что history получает более полную safety-хронологию процесса. (codex)
+- Для recovery добавлен отдельный history-event `RC_SAFETY_RECOVERY_EXITED`, а финальная запись safety stop теперь дедуплицируется относительно уже сохранённого transition event, чтобы post-mortem timeline не засорялся одинаковыми аварийными сообщениями. (codex)
+- `ProcessRecorder::addWarning()` в `src/history.cpp` теперь защищён проверкой `recording`, чтобы warning/error события не могли попасть в history вне активной process-сессии. (codex)
+- Версия прошивки поднята до `2.0.16` как отдельный шаг миграции persistent history к полноценной v2 safety timeline. (codex)
+
 ## [2.0.15] - 2026-03-15
 
 ### Изменено

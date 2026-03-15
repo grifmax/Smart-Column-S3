@@ -786,6 +786,8 @@ void ProcessRecorder::addPhase(const ProcessPhase& phase) {
 void ProcessRecorder::addWarning(const String& message, const String& severity,
                                  const String& reasonCode,
                                  const String& operatorMessage) {
+    if (!recording) return;
+
     ProcessWarning warning;
     warning.time = millis() / 1000;
     warning.message = message;
