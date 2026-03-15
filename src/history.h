@@ -136,6 +136,9 @@ struct ProcessListItem {
     uint32_t duration;
     String status;
     uint16_t totalVolume;
+    String lastPhaseName;
+    String lastReasonCode;
+    String lastOperatorMessage;
     bool safetyTrip = false;
     bool safetyAck = false;
     bool safetyReset = false;

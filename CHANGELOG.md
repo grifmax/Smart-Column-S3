@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.19] - 2026-03-15
+
+### Изменено
+- `src/history.h`, `src/history.cpp` и `src/interface/webserver.cpp` расширены compact summary последнего фазового исхода: history list теперь без полной загрузки details получает `lastPhaseName`, `lastReasonCode` и `lastOperatorMessage` из последней записанной фазы процесса. (codex)
+- `src/web/history/list.js` теперь показывает в карточке процесса короткую v2-aware строку итогового перехода по последней фазе, причине и операторскому сообщению, чтобы рядом с safety badge было сразу видно, чем закончился последний значимый этап. (codex)
+- Для новой summary-строки в `src/web/history/list.js` добавлено HTML-экранирование, а `src/web/styles/_history.css` получил компактный ellipsis-стиль, чтобы `operatorMessage` безопасно и аккуратно отображался в списке history. (codex)
+- Версия прошивки поднята до `2.0.19` как отдельный шаг миграции history list к v2 phase outcome summary. (codex)
+
 ## [2.0.18] - 2026-03-15
 
 ### Изменено

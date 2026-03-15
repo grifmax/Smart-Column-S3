@@ -461,6 +461,17 @@ void finalizeSafetySummary(ProcessListItem& item,
     }
 }
 
+void applyLastPhaseSummary(const JsonArrayConst& phases, ProcessListItem& item) {
+    if (phases.isNull() || phases.size() == 0) {
+        return;
+    }
+
+    JsonObjectConst phase = phases[phases.size() - 1].as<JsonObjectConst>();
+    item.lastPhaseName = phase["name"].as<String>();
+    item.lastReasonCode = phase["reasonCode"].as<String>();
+    item.lastOperatorMessage = phase["operatorMessage"].as<String>();
+}
+
 } // namespace
 
 std::vector<ProcessListItem> getProcessList() {
@@ -491,6 +502,8 @@ std::vector<ProcessListItem> getProcessList() {
                     item.duration = doc["metadata"]["duration"];
                     item.status = doc["results"]["status"].as<String>();
                     item.totalVolume = doc["results"]["totalCollected"];
+                    applyLastPhaseSummary(
+                        doc["phases"].as<JsonArrayConst>(), item);
                     applySafetyEventSummary(
                         doc["results"]["errors"].as<JsonArrayConst>(), true,
                         safetySummary);

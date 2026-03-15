@@ -169,6 +169,17 @@ export function renderHistoryList(processes) {
 
 export let selectedProcesses = new Set();
 
+function escapeHtml(text) {
+
+    return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+}
+
 function getSafetyBadgeTitle(process) {
 
     const parts = [];
@@ -180,6 +191,77 @@ function getSafetyBadgeTitle(process) {
     if (process.safetyLimited) parts.push('limited');
 
     return parts.length > 0 ? `Safety: ${parts.join(' -> ')}` : '';
+
+}
+
+function formatReasonCode(reasonCode) {
+
+    const raw = String(reasonCode || '').trim();
+
+    if (!raw || raw === 'RC_NONE' || raw === 'RC_UNSPECIFIED') {
+
+        return '';
+
+    }
+
+    return raw
+        .replace(/^RC_/, '')
+        .toLowerCase()
+        .split('_')
+        .map((chunk) => chunk ? chunk[0].toUpperCase() + chunk.slice(1) : '')
+        .join(' ');
+
+}
+
+function formatPhaseName(phaseName) {
+
+    const phaseNames = {
+        heating: 'Нагрев',
+        stabilization: 'Стабилизация',
+        post_heads_stabilization: 'Пост-стабилизация',
+        heads: 'Отбор голов',
+        body: 'Отбор тела',
+        tails: 'Отбор хвостов',
+        purge: 'Продувка',
+        finish: 'Завершение',
+        completed: 'Завершено',
+        working: 'Работа',
+        running: 'Выполнение',
+        acid_rest: 'Кислотная пауза',
+        protein_rest: 'Белковая пауза',
+        beta_amylase: 'Бета-амилаза',
+        alpha_amylase: 'Альфа-амилаза',
+        mash_out: 'Мэш-аут',
+        hold_step: 'Шаг выдержки'
+    };
+
+    const raw = String(phaseName || '').trim();
+
+    if (!raw) {
+
+        return '';
+
+    }
+
+    return phaseNames[raw] || raw;
+
+}
+
+function buildOutcomeSummary(process) {
+
+    const phaseName = formatPhaseName(process.lastPhaseName);
+    const operatorMessage = String(process.lastOperatorMessage || '').trim();
+    const reason = formatReasonCode(process.lastReasonCode);
+
+    if (!phaseName && !operatorMessage && !reason) {
+
+        return '';
+
+    }
+
+    const detail = operatorMessage || reason;
+
+    return detail ? `${phaseName || 'Итог'}: ${detail}` : phaseName;
 
 }
 
@@ -238,8 +320,13 @@ export function renderHistoryItem(process) {
     const isSelected = selectedProcesses.has(process.id);
     const safetySummary = String(process.safetySummary || '').trim();
     const safetyState = String(process.safetyState || 'none').trim() || 'none';
+    const safetyBadgeTitle = getSafetyBadgeTitle(process);
     const safetyBadge = safetySummary
-        ? `<span class="history-safety-badge history-safety-${safetyState}" title="${getSafetyBadgeTitle(process)}">Safety ${safetySummary}</span>`
+        ? `<span class="history-safety-badge history-safety-${safetyState}" title="${escapeHtml(safetyBadgeTitle)}">Safety ${escapeHtml(safetySummary)}</span>`
+        : '';
+    const outcomeSummary = buildOutcomeSummary(process);
+    const outcomeLine = outcomeSummary
+        ? `<div class="history-outcome" title="${escapeHtml(outcomeSummary)}">${escapeHtml(outcomeSummary)}</div>`
         : '';
 
 
@@ -267,6 +354,8 @@ export function renderHistoryItem(process) {
                     <span class="history-status history-status-${process.status}">${statusName}</span>
 
                     ${safetyBadge}
+
+                    ${outcomeLine}
 
                 </div>
 
