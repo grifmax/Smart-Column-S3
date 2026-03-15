@@ -67,6 +67,30 @@ function mergeSafetySettingsState(s, data) {
     ]);
 }
 
+function mergeAlarmState(s, data) {
+    const alarm = (data?.currentAlarm && typeof data.currentAlarm === 'object')
+        ? data.currentAlarm
+        : ((data?.alarm && typeof data.alarm === 'object') ? data.alarm : null);
+    if (!alarm) return;
+
+    s.currentAlarm = {
+        ...s.currentAlarm,
+        active: Boolean(alarm.active),
+        latched: Boolean(alarm.latched),
+        type: alarm.type !== undefined ? String(alarm.type) : s.currentAlarm.type,
+        typeCode: toFinite(alarm.typeCode ?? alarm.type, s.currentAlarm.typeCode),
+        level: alarm.level !== undefined ? String(alarm.level) : s.currentAlarm.level,
+        levelCode: toFinite(alarm.levelCode ?? alarm.level, s.currentAlarm.levelCode),
+        message: alarm.message !== undefined ? String(alarm.message) : s.currentAlarm.message,
+        timestamp: toFinite(alarm.timestamp, s.currentAlarm.timestamp),
+        acknowledged: alarm.acknowledged !== undefined ? Boolean(alarm.acknowledged) : s.currentAlarm.acknowledged,
+        resetAvailable: alarm.resetAvailable !== undefined ? Boolean(alarm.resetAvailable) : s.currentAlarm.resetAvailable,
+        resetBlockedReason: alarm.resetBlockedReason !== undefined
+            ? String(alarm.resetBlockedReason)
+            : s.currentAlarm.resetBlockedReason
+    };
+}
+
 export function updateRuntimeStateFromStatus(data) {
     if (!data || typeof data !== 'object') return;
     const s = runtimeMonitorState;
@@ -74,6 +98,8 @@ export function updateRuntimeStateFromStatus(data) {
     if (data.modeStr !== undefined) s.modeStr = String(data.modeStr);
     if (data.phase !== undefined) s.phase = toFinite(data.phase, s.phase);
     if (data.phaseStr !== undefined) s.phaseStr = String(data.phaseStr);
+    if (data.safetyOk !== undefined) s.safetyOk = Boolean(data.safetyOk);
+    mergeAlarmState(s, data);
 
     if (data.power && typeof data.power === 'object') {
         if (data.power.power !== undefined) s.power.power = toFinite(data.power.power, s.power.power);
@@ -143,6 +169,8 @@ export function updateRuntimeStateFromWs(data) {
     if (data.modeStr !== undefined) s.modeStr = String(data.modeStr);
     if (data.phase !== undefined) s.phase = toFinite(data.phase, s.phase);
     if (data.phaseStr !== undefined) s.phaseStr = String(data.phaseStr);
+    if (data.safetyOk !== undefined) s.safetyOk = Boolean(data.safetyOk);
+    mergeAlarmState(s, data);
 
     if (data.power !== undefined) s.power.power = toFinite(data.power, s.power.power);
     if (data.abv !== undefined) s.hydrometer.abv = toFinite(data.abv, s.hydrometer.abv);

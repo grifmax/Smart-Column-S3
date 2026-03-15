@@ -6,14 +6,24 @@ export function updateSafetyModal(state) {
     
     if (!modal || !msgElem) return;
 
+    const alarm = state?.currentAlarm && typeof state.currentAlarm === 'object'
+        ? state.currentAlarm
+        : ((state?.alarm && typeof state.alarm === 'object') ? state.alarm : null);
+    const alarmTypeCode = Number(alarm?.typeCode ?? alarm?.type ?? 0);
+
     // Показываем окно только если safetyOk == false и есть активная тревога, 
     // которая еще не была подтверждена (acknowledged)
-    if (state.safetyOk === false && state.currentAlarm && state.currentAlarm.type !== 0) {
+    if (state.safetyOk === false && alarm && alarmTypeCode !== 0) {
         // Если тревога критическая (level >= 3), контроллер сам все выключил, 
         // но мы все равно показываем уведомление.
         // Если это Soft Failure (level < 3), процесс идет, и нам нужно решение.
         
-        const alarmMsg = state.currentAlarm.message || "Неизвестная ошибка датчика";
+        let alarmMsg = alarm.message || "Неизвестная ошибка датчика";
+        if (alarm.resetAvailable) {
+            alarmMsg += "\n\nУсловия безопасности восстановлены. Теперь можно выполнить сброс аварии.";
+        } else if (alarm.resetBlockedReason) {
+            alarmMsg += `\n\nСброс пока недоступен: ${alarm.resetBlockedReason}`;
+        }
         msgElem.textContent = alarmMsg;
         
         if (modal.style.display === 'none') {

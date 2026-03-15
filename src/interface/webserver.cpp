@@ -207,10 +207,16 @@ static const char *getFermPhaseString(FermentationPhase phase) {
   }
 }
 
-static void fillAlarmJson(JsonObject alarm, const SystemState& state) {
+static void fillAlarmJson(JsonObject alarm, const SystemState& state, const Settings& settings) {
   const bool active = (state.currentAlarm.type != AlarmType::NONE);
+  const bool latched = Safety::isLatched(state);
+  char resetBlockedReason[128] = "";
+  const bool resetAvailable = latched
+                                  ? Safety::canResetNow(state, settings, resetBlockedReason,
+                                                        sizeof(resetBlockedReason))
+                                  : !active;
   alarm["active"] = active;
-  alarm["latched"] = Safety::isLatched(state);
+  alarm["latched"] = latched;
   alarm["type"] = Safety::getAlarmTypeToken(state.currentAlarm.type);
   alarm["typeCode"] = static_cast<int>(state.currentAlarm.type);
   alarm["level"] = Safety::getAlarmLevelToken(state.currentAlarm.level);
@@ -218,6 +224,8 @@ static void fillAlarmJson(JsonObject alarm, const SystemState& state) {
   alarm["message"] = active ? state.currentAlarm.message : "";
   alarm["timestamp"] = state.currentAlarm.timestamp;
   alarm["acknowledged"] = state.currentAlarm.acknowledged;
+  alarm["resetAvailable"] = resetAvailable;
+  alarm["resetBlockedReason"] = latched && !resetAvailable ? resetBlockedReason : "";
 }
 
 static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& status,
@@ -297,6 +305,13 @@ static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& statu
   safety["reasonCode"] = ControlV2::reasonCodeToString(metrics.safety.reasonCode);
   safety["requiresAcknowledge"] = metrics.safety.requiresAcknowledge;
   safety["message"] = metrics.safety.message;
+  safety["resetAvailable"] = !status.safetyLatched ||
+                             metrics.safety.severity == ControlV2::SafetySeverityV2::RECOVERY;
+  safety["resetBlockedReason"] =
+      status.safetyLatched &&
+              metrics.safety.severity != ControlV2::SafetySeverityV2::RECOVERY
+          ? metrics.safety.message
+          : "";
 }
 
 static bool isSecurityOnboardingMode() {
@@ -521,7 +536,7 @@ void init() {
     doc["uptime"] = g_state.uptime;
     doc["deviceId"] = CloudTunnel::getDeviceId();
     JsonObject alarm = doc["alarm"].to<JsonObject>();
-    fillAlarmJson(alarm, g_state);
+    fillAlarmJson(alarm, g_state, g_settings);
 
     // Температуры
     JsonObject temps = doc["temps"].to<JsonObject>();
@@ -964,7 +979,7 @@ void init() {
           errorDoc["message"] =
               "Safety alarm is latched. Reset the alarm before starting.";
           JsonObject alarm = errorDoc["alarm"].to<JsonObject>();
-          fillAlarmJson(alarm, g_state);
+          fillAlarmJson(alarm, g_state, g_settings);
 
           String response;
           serializeJson(errorDoc, response);
@@ -1148,7 +1163,7 @@ void init() {
     doc["success"] = true;
     doc["message"] = "Alarm acknowledged";
     JsonObject alarm = doc["alarm"].to<JsonObject>();
-    fillAlarmJson(alarm, g_state);
+    fillAlarmJson(alarm, g_state, g_settings);
 
     String response;
     serializeJson(doc, response);
@@ -1166,7 +1181,7 @@ void init() {
       doc["reason"] = reason;
     }
     JsonObject alarm = doc["alarm"].to<JsonObject>();
-    fillAlarmJson(alarm, g_state);
+    fillAlarmJson(alarm, g_state, g_settings);
 
     String response;
     serializeJson(doc, response);
@@ -3457,7 +3472,7 @@ void broadcastState(const SystemState &state) {
   fastDoc["safetyOk"] = state.safetyOk;
   fastDoc["uptime"] = state.uptime;
   JsonObject fastAlarm = fastDoc["alarm"].to<JsonObject>();
-  fillAlarmJson(fastAlarm, state);
+  fillAlarmJson(fastAlarm, state, g_settings);
 
   fastDoc["t_cube"] = state.temps.cube;
   fastDoc["t_column_bottom"] = state.temps.columnBottom;
@@ -3543,7 +3558,7 @@ void broadcastState(const SystemState &state) {
   doc["safetyOk"] = state.safetyOk;
   doc["uptime"] = state.uptime;
   JsonObject alarm = doc["alarm"].to<JsonObject>();
-  fillAlarmJson(alarm, state);
+  fillAlarmJson(alarm, state, g_settings);
 
   doc["t_cube"] = state.temps.cube;
   doc["t_column_bottom"] = state.temps.columnBottom;

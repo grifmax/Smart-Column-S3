@@ -103,10 +103,16 @@ static const char* getPhaseToken(RectPhase phase) {
   }
 }
 
-static void fillAlarmJson(JsonObject alarm, const SystemState& state) {
+static void fillAlarmJson(JsonObject alarm, const SystemState& state, const Settings& settings) {
   const bool active = (state.currentAlarm.type != AlarmType::NONE);
+  const bool latched = Safety::isLatched(state);
+  char resetBlockedReason[128] = "";
+  const bool resetAvailable = latched
+                                  ? Safety::canResetNow(state, settings, resetBlockedReason,
+                                                        sizeof(resetBlockedReason))
+                                  : !active;
   alarm["active"] = active;
-  alarm["latched"] = Safety::isLatched(state);
+  alarm["latched"] = latched;
   alarm["type"] = Safety::getAlarmTypeToken(state.currentAlarm.type);
   alarm["typeCode"] = static_cast<int>(state.currentAlarm.type);
   alarm["level"] = Safety::getAlarmLevelToken(state.currentAlarm.level);
@@ -114,6 +120,8 @@ static void fillAlarmJson(JsonObject alarm, const SystemState& state) {
   alarm["message"] = active ? state.currentAlarm.message : "";
   alarm["timestamp"] = state.currentAlarm.timestamp;
   alarm["acknowledged"] = state.currentAlarm.acknowledged;
+  alarm["resetAvailable"] = resetAvailable;
+  alarm["resetBlockedReason"] = latched && !resetAvailable ? resetBlockedReason : "";
 }
 
 static String base64Encode(const uint8_t* data, size_t len) {
@@ -256,7 +264,7 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["uptime"] = g_state.uptime;
     doc["deviceId"] = deviceId;
     JsonObject alarm = doc["alarm"].to<JsonObject>();
-    fillAlarmJson(alarm, g_state);
+    fillAlarmJson(alarm, g_state, g_settings);
 
     JsonObject temps = doc["temps"].to<JsonObject>();
     temps["cube"] = g_state.temps.cube;
@@ -294,7 +302,7 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["success"] = true;
     doc["message"] = "Alarm acknowledged";
     JsonObject alarm = doc["alarm"].to<JsonObject>();
-    fillAlarmJson(alarm, g_state);
+    fillAlarmJson(alarm, g_state, g_settings);
 
     String out;
     serializeJson(doc, out);
@@ -312,7 +320,7 @@ static void handleHttpRequest(JsonDocument& req) {
       doc["reason"] = reason;
     }
     JsonObject alarm = doc["alarm"].to<JsonObject>();
-    fillAlarmJson(alarm, g_state);
+    fillAlarmJson(alarm, g_state, g_settings);
 
     String out;
     serializeJson(doc, out);
@@ -350,7 +358,7 @@ static void handleHttpRequest(JsonDocument& req) {
       doc["message"] =
           "Safety alarm is latched. Reset the alarm before starting.";
       JsonObject alarm = doc["alarm"].to<JsonObject>();
-      fillAlarmJson(alarm, g_state);
+      fillAlarmJson(alarm, g_state, g_settings);
 
       String out;
       serializeJson(doc, out);

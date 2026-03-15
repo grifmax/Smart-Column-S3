@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.6] - 2026-03-15
+
+### Изменено
+- `alarm` JSON в `webserver.cpp` и `cloud_tunnel.cpp` расширен полями `resetAvailable` и `resetBlockedReason`, чтобы UI и внешние клиенты могли понимать, можно ли уже выполнить `safety reset` без повторного угадывания локально. (codex)
+- `v2.safety` в `/api/status` теперь тоже публикует доступность сброса аварии и причину блокировки reset, что связывает новый `recovery`-статус с практическим действием оператора. (codex)
+- Frontend runtime приведён к единому формату safety alarm: `state.js` теперь нормализует `alarm/currentAlarm`, `globals.js` хранит их в общем runtime state, а `safety-modal.js` показывает, восстановились ли условия безопасности или почему reset ещё недоступен. (codex)
+- Версия прошивки поднята до `2.0.6` как отдельный шаг интеграции recovery/reset readiness в API и UI слой. (codex)
+
 ## [2.0.5] - 2026-03-15
 
 ### Добавлено
