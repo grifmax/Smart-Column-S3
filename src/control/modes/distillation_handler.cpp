@@ -29,7 +29,7 @@ ControlV2::ReasonCodeV2 getBodyExitReason(bool endByTemp, bool endByVolume) {
     if (endByVolume) {
         return ControlV2::ReasonCodeV2::RC_DISTILLATION_TARGET_VOLUME_REACHED;
     }
-    return ControlV2::ReasonCodeV2::RC_UNSPECIFIED;
+    return ControlV2::ReasonCodeV2::RC_BODY_END_DETECTED;
 }
 
 const char* getBodyExitMessage(bool endByTemp, bool endByVolume) {
@@ -39,7 +39,7 @@ const char* getBodyExitMessage(bool endByTemp, bool endByVolume) {
     if (endByVolume) {
         return "Distillation target volume reached";
     }
-    return "Distillation body ended";
+    return "Distillation body end detected";
 }
 
 } // namespace

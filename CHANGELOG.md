@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.34] - 2026-03-15
+
+### Изменено
+- `src/control/modes/distillation_handler.cpp` больше не возвращает `RC_UNSPECIFIED` во внутреннем helper для завершения body-phase: даже защитный fallback теперь использует осмысленный `RC_BODY_END_DETECTED`. (codex)
+- Fallback message для завершения body-phase в `DISTILLATION` тоже выровнен до явного `"Distillation body end detected"`, чтобы history, transition log и live status не теряли смысл даже в защитной ветке. (codex)
+- Это закрывает ещё один остаточный источник runtime `RC_UNSPECIFIED` и делает `v2` reason contracts практически полным источником правды на реальных mode paths. (codex)
+- Версия прошивки поднята до `2.0.34` как отдельный шаг финальной зачистки legacy fallback reasons после runtime-audit inferred paths. (codex)
+
 ## [2.0.33] - 2026-03-15
 
 ### Изменено
