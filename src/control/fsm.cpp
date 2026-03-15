@@ -27,6 +27,8 @@ ControlV2::ReasonCodeV2 getSafetyAbortReason(const SystemState& state) {
             return ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_PRESSURE;
         case AlarmType::SENSOR_FAILURE:
             return ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_SENSOR;
+        case AlarmType::POWER_FAILURE:
+            return ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_POWER;
         case AlarmType::VAPOR_BREAKTHROUGH:
         case AlarmType::WATER_OVERHEAT:
         case AlarmType::WATER_RISE_RATE:
@@ -35,7 +37,7 @@ ControlV2::ReasonCodeV2 getSafetyAbortReason(const SystemState& state) {
         case AlarmType::EMERGENCY_STOP:
             return ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_OVERHEAT;
         default:
-            return ControlV2::ReasonCodeV2::RC_UNSPECIFIED;
+            return ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_GENERIC;
     }
 }
 

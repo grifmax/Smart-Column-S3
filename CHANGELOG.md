@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.31] - 2026-03-15
+
+### Изменено
+- `src/control/fsm.cpp` выровнен с `src/control/v2/safety_supervisor.cpp`: `abortMode()` теперь маппит `POWER_FAILURE` в явный `RC_SAFETY_TRIP_POWER`, а не теряет эту причину в старом fallback-маршруте. (codex)
+- Generic safety abort в `FSM` больше не уходит в `RC_UNSPECIFIED`: для нераспознанных alarm типов теперь выставляется `RC_SAFETY_TRIP_GENERIC`, чтобы history, transition log и live status сохраняли осмысленный `v2` reason code. (codex)
+- Это закрывает ещё одно расхождение между runtime stop path и новым `SafetySupervisorV2`, уменьшая остаточную legacy-semantics в `Wave 4` audit. (codex)
+- Версия прошивки поднята до `2.0.31` как отдельный шаг точечной зачистки safety reason mappings после перевода phase fallback в explicit inferred transitions. (codex)
+
 ## [2.0.30] - 2026-03-15
 
 ### Изменено
