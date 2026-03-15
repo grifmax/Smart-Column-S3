@@ -12,10 +12,12 @@ import { addLog } from '../core/logs.js';
 import { renderAbvValue } from '../runtime/abv.js';
 import { updateKpiStrip } from './kpi-strip.js';
 import { updateSafetyModal } from '../runtime/safety-modal.js';
+import { updateProcessNotifications } from '../runtime/process-notifications.js';
 
 export function updateUI(data) {
     let phaseText = undefined;
     updateRuntimeStateFromWs(data);
+    updateProcessNotifications();
 
     // Режим
 

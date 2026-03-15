@@ -26,6 +26,7 @@ import { syncOperatorViewAuto } from '../ui/operator-view.js';
 import { updateCloudUiFromStatus } from '../cloud/cloud-config.js';
 import { formatUptime } from './utils.js';
 import { addLog } from './logs.js';
+import { updateProcessNotifications } from '../runtime/process-notifications.js';
 
 // ============================================================================
 
@@ -105,31 +106,11 @@ export async function loadStatus() {
 
 
 
-let prevModeForNotify = null;
-let prevPhaseForNotify = null;
-
 export function updateUIFromStatus(data) {
     let phaseText = '-';
     updateRuntimeStateFromStatus(data);
     syncOperatorViewAuto();
-
-    const resolvedMode = (data.modeStr !== undefined || data.mode !== undefined) ? resolveMode(data.mode, data.modeStr) : currentMode;
-    const currentPhase = data.phaseStr || '';
-
-    // Отправка уведомлений о смене статуса
-    if (typeof window.showNotification === 'function') {
-        if (prevModeForNotify !== null && prevModeForNotify !== resolvedMode) {
-            if (resolvedMode === MODE_IDLE) {
-                window.showNotification('Процесс завершён', { body: `Режим: ${getModeLabel(prevModeForNotify)}` });
-            } else if (prevModeForNotify === MODE_IDLE) {
-                window.showNotification('Процесс запущен', { body: `Режим: ${getModeLabel(resolvedMode)}` });
-            }
-        } else if (prevPhaseForNotify !== null && prevPhaseForNotify !== currentPhase && resolvedMode !== MODE_IDLE && currentPhase && currentPhase !== '-') {
-            window.showNotification('Смена этапа', { body: `Новый этап: ${currentPhase}` });
-        }
-    }
-    prevModeForNotify = resolvedMode;
-    prevPhaseForNotify = currentPhase;
+    updateProcessNotifications();
 
     // Режим
 
