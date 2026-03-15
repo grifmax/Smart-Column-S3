@@ -216,7 +216,7 @@ void init() {
     pinMode(PIN_PUMP_EN, OUTPUT);
     pinMode(PIN_PUMP_DIR, OUTPUT);
     digitalWrite(PIN_PUMP_EN, HIGH);
-    digitalWrite(PIN_PUMP_DIR, LOW);
+    digitalWrite(PIN_PUMP_DIR, HIGH);
 
     totalSteps = 0;
     totalStepsExact = 0.0;
@@ -269,7 +269,7 @@ void start(float mlPerHour) {
 
     if (lockPump(portMAX_DELAY)) {
         ensurePumpPwmReady();
-        digitalWrite(PIN_PUMP_DIR, LOW);
+        digitalWrite(PIN_PUMP_DIR, HIGH);
         digitalWrite(PIN_PUMP_EN, LOW);
         syncMotionLocked(micros());
         setTargetSpeedLocked(mlPerHour);
