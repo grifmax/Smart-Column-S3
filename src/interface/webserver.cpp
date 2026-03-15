@@ -2910,6 +2910,7 @@ void init() {
     doc["taskAlive"] = diag.taskAlive;
     doc["mutexReady"] = diag.mutexReady;
     doc["speedMlH"] = diag.speedMlH;
+    doc["appliedSpeedMlH"] = diag.appliedSpeedMlH;
     doc["totalSteps"] = diag.totalSteps;
     doc["totalVolumeMl"] = diag.totalVolumeMl;
     doc["taskLoopCount"] = diag.taskLoopCount;

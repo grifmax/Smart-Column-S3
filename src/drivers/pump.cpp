@@ -9,12 +9,16 @@
 #include "pump.h"
 
 #include <AccelStepper.h>
+#include <math.h>
 #include <freertos/semphr.h>
 
 static AccelStepper stepper(AccelStepper::DRIVER, PIN_PUMP_STEP, PIN_PUMP_DIR);
 
 static float mlPerRevolution = DEFAULT_PUMP_ML_PER_REV;
 static float currentSpeedMlH = 0.0f;
+static float appliedSpeedMlH = 0.0f;
+static float targetStepsPerSec = 0.0f;
+static float appliedStepsPerSec = 0.0f;
 static volatile bool running = false;
 static int32_t totalSteps = 0;
 static float totalVolumeMl = 0.0f;
@@ -29,9 +33,9 @@ static uint32_t pumpLastLoopAtMs = 0;
 static uint32_t pumpLastYieldAtMs = 0;
 
 static constexpr uint32_t kPumpCounterUpdateMs = 100;
-static constexpr uint32_t kPumpCooperativeSliceUs = 10000;
 static constexpr TickType_t kPumpIdleDelayTicks = pdMS_TO_TICKS(10);
-static constexpr TickType_t kPumpYieldDelayTicks = pdMS_TO_TICKS(PUMP_TASK_DELAY_MS);
+static constexpr float kPumpSpeedRampStepsPerSec2 = 2000.0f;
+static constexpr uint8_t kPumpMinPulseWidthUs = 4;
 
 static void updateTotalsFromPosition(long currentPos) {
     totalSteps = currentPos;
@@ -70,16 +74,57 @@ static float stepsPerSecToMlPerHour(float stepsPerSec) {
     return revPerHour * mlPerRevolution;
 }
 
+static float clampStepsPerSec(float stepsPerSec) {
+    if (stepsPerSec < 0.0f) {
+        return 0.0f;
+    }
+    if (stepsPerSec > PUMP_MAX_SPEED) {
+        return PUMP_MAX_SPEED;
+    }
+    return stepsPerSec;
+}
+
+static void applyTargetSpeed(float mlPerHour) {
+    float stepsPerSec = mlPerHourToStepsPerSec(mlPerHour);
+    stepsPerSec = clampStepsPerSec(stepsPerSec);
+    targetStepsPerSec = stepsPerSec;
+    currentSpeedMlH = stepsPerSecToMlPerHour(stepsPerSec);
+}
+
+static void updateAppliedSpeed(uint32_t nowUs) {
+    static uint32_t lastSpeedUpdateUs = 0;
+
+    if (lastSpeedUpdateUs == 0) {
+        lastSpeedUpdateUs = nowUs;
+    }
+
+    const uint32_t deltaUs = nowUs - lastSpeedUpdateUs;
+    lastSpeedUpdateUs = nowUs;
+    const float deltaSec = static_cast<float>(deltaUs) / 1000000.0f;
+    const float maxDelta = kPumpSpeedRampStepsPerSec2 * deltaSec;
+    const float speedError = targetStepsPerSec - appliedStepsPerSec;
+
+    if (fabsf(speedError) <= maxDelta || maxDelta <= 0.0f) {
+        appliedStepsPerSec = targetStepsPerSec;
+    } else if (speedError > 0.0f) {
+        appliedStepsPerSec += maxDelta;
+    } else {
+        appliedStepsPerSec -= maxDelta;
+    }
+
+    appliedStepsPerSec = clampStepsPerSec(appliedStepsPerSec);
+    appliedSpeedMlH = stepsPerSecToMlPerHour(appliedStepsPerSec);
+    stepper.setSpeed(appliedStepsPerSec);
+}
+
 static void pumpTask(void* pvParameters) {
     uint32_t lastCounterUpdate = 0;
-    uint32_t lastCooperativeYieldUs = micros();
 
     while (1) {
         pumpTaskLoopCount++;
         pumpLastLoopAtMs = millis();
 
         if (!running) {
-            lastCooperativeYieldUs = micros();
             pumpCooperativeSleepCount++;
             pumpLastYieldAtMs = pumpLastLoopAtMs;
             vTaskDelay(kPumpIdleDelayTicks);
@@ -87,6 +132,7 @@ static void pumpTask(void* pvParameters) {
         }
 
         if (lockPump(portMAX_DELAY)) {
+            updateAppliedSpeed(micros());
             stepper.runSpeed();
 
             const uint32_t nowMs = millis();
@@ -102,16 +148,9 @@ static void pumpTask(void* pvParameters) {
             unlockPump();
         }
 
-        const uint32_t nowUs = micros();
-        if (nowUs - lastCooperativeYieldUs >= kPumpCooperativeSliceUs) {
-            lastCooperativeYieldUs = nowUs;
-            pumpCooperativeSleepCount++;
-            pumpLastYieldAtMs = millis();
-            vTaskDelay(kPumpYieldDelayTicks);
-        } else {
-            pumpFastYieldCount++;
-            taskYIELD();
-        }
+        pumpFastYieldCount++;
+        pumpLastYieldAtMs = millis();
+        taskYIELD();
     }
 }
 
@@ -125,11 +164,15 @@ void init() {
 
     stepper.setMaxSpeed(PUMP_MAX_SPEED);
     stepper.setAcceleration(PUMP_ACCELERATION);
+    stepper.setMinPulseWidth(kPumpMinPulseWidthUs);
     stepper.setCurrentPosition(0);
 
     totalSteps = 0;
     totalVolumeMl = 0.0f;
     currentSpeedMlH = 0.0f;
+    appliedSpeedMlH = 0.0f;
+    targetStepsPerSec = 0.0f;
+    appliedStepsPerSec = 0.0f;
     running = false;
     pumpTaskLoopCount = 0;
     pumpCounterUpdateCount = 0;
@@ -153,13 +196,13 @@ void init() {
             "PumpTask",
             2048,
             NULL,
-            2,
+            tskIDLE_PRIORITY,
             &pumpTaskHandle,
             1);
     }
 
-    LOG_I("Pump: Init complete (microsteps=%d, ml/rev=%.2f)",
-          PUMP_MICROSTEPS, mlPerRevolution);
+    LOG_I("Pump: Init complete (microsteps=%d, ml/rev=%.2f, minPulse=%u us)",
+          PUMP_MICROSTEPS, mlPerRevolution, kPumpMinPulseWidthUs);
 }
 
 void start(float mlPerHour) {
@@ -168,28 +211,28 @@ void start(float mlPerHour) {
         return;
     }
 
-    float stepsPerSec = mlPerHourToStepsPerSec(mlPerHour);
-    if (stepsPerSec > PUMP_MAX_SPEED) {
-        stepsPerSec = PUMP_MAX_SPEED;
-        mlPerHour = stepsPerSecToMlPerHour(stepsPerSec);
-    }
-
     digitalWrite(PIN_PUMP_EN, LOW);
 
     if (lockPump(portMAX_DELAY)) {
-        stepper.setSpeed(stepsPerSec);
+        appliedStepsPerSec = 0.0f;
+        appliedSpeedMlH = 0.0f;
+        stepper.setSpeed(0.0f);
         unlockPump();
     }
 
-    currentSpeedMlH = mlPerHour;
+    applyTargetSpeed(mlPerHour);
     running = true;
 
-    LOG_I("Pump: Started at %.1f ml/h (%.1f steps/s)", mlPerHour, stepsPerSec);
+    LOG_I("Pump: Started at %.1f ml/h target (%.1f steps/s target)",
+          currentSpeedMlH, targetStepsPerSec);
 }
 
 void stop() {
     running = false;
     currentSpeedMlH = 0.0f;
+    targetStepsPerSec = 0.0f;
+    appliedSpeedMlH = 0.0f;
+    appliedStepsPerSec = 0.0f;
 
     if (lockPump(portMAX_DELAY)) {
         stepper.setSpeed(0.0f);
@@ -213,19 +256,8 @@ void setSpeed(float mlPerHour) {
         return;
     }
 
-    float stepsPerSec = mlPerHourToStepsPerSec(mlPerHour);
-    if (stepsPerSec > PUMP_MAX_SPEED) {
-        stepsPerSec = PUMP_MAX_SPEED;
-        mlPerHour = stepsPerSecToMlPerHour(stepsPerSec);
-    }
-
-    if (lockPump(portMAX_DELAY)) {
-        stepper.setSpeed(stepsPerSec);
-        unlockPump();
-    }
-
-    currentSpeedMlH = mlPerHour;
-    LOG_D("Pump: Speed changed to %.1f ml/h", mlPerHour);
+    applyTargetSpeed(mlPerHour);
+    LOG_D("Pump: Speed changed to %.1f ml/h target", currentSpeedMlH);
 }
 
 float getSpeed() {
@@ -293,6 +325,7 @@ Diagnostics getDiagnostics() {
     diagnostics.lastLoopAtMs = pumpLastLoopAtMs;
     diagnostics.lastYieldAtMs = pumpLastYieldAtMs;
     diagnostics.speedMlH = currentSpeedMlH;
+    diagnostics.appliedSpeedMlH = appliedSpeedMlH;
     diagnostics.totalSteps = static_cast<uint32_t>(totalSteps);
     diagnostics.totalVolumeMl = totalVolumeMl;
     return diagnostics;
