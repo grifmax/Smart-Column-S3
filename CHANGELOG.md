@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.30] - 2026-03-15
+
+### Изменено
+- `src/control/v2/status_adapter.cpp` больше не пытается угадывать доменные причины phase changes по косвенным признакам, если explicit `notePhaseTransition(...)` не был получен: такой случай теперь честно маркируется как `RC_PHASE_TRANSITION_INFERRED`. (codex)
+- Для inferred phase fallback добавлено явное операторское сообщение `from -> to`, поэтому history, transition log и live status теперь показывают, что переход был восстановлен адаптером, а не пришёл из настоящего mode contract. (codex)
+- Это дополнительно уменьшает роль `inferPhaseReason(...)` как источника “магических” причин и делает оставшиеся дыры в explicit contracts наблюдаемыми вместо молчаливой подмены правдоподобными reason codes. (codex)
+- Версия прошивки поднята до `2.0.30` как отдельный шаг финальной зачистки semantic fallback-логики в `status_adapter`. (codex)
+
 ## [2.0.29] - 2026-03-15
 
 ### Изменено

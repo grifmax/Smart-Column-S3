@@ -413,69 +413,19 @@ const char* getPhaseToken(Mode mode, uint16_t phaseId) {
 
 ReasonCodeV2 inferPhaseReason(const SystemState& state, uint16_t previousPhaseId,
                               uint16_t currentPhaseId, const ProcessIndicatorsV2& indicators) {
-    switch (state.mode) {
-        case Mode::RECTIFICATION:
-            switch (static_cast<RectPhase>(currentPhaseId)) {
-                case RectPhase::STABILIZATION: return ReasonCodeV2::RC_HEATING_COMPLETE;
-                case RectPhase::HEADS:
-                    return indicators.columnStable ? ReasonCodeV2::RC_STABILITY_WINDOW_REACHED
-                                                   : ReasonCodeV2::RC_STABILIZATION_TIMER_OK;
-                case RectPhase::POST_HEADS_STABILIZATION:
-                    return indicators.headsCompletionScore >= 0.999f
-                               ? ReasonCodeV2::RC_HEADS_SCORE_REACHED
-                               : ReasonCodeV2::RC_HEADS_VOLUME_REACHED;
-                case RectPhase::PURGE: return ReasonCodeV2::RC_POST_HEADS_STABILIZATION_COMPLETE;
-                case RectPhase::BODY: return ReasonCodeV2::RC_PURGE_COMPLETE;
-                case RectPhase::TAILS:
-                    return indicators.bodyEndScore >= 0.999f
-                               ? ReasonCodeV2::RC_BODY_END_DETECTED
-                               : ReasonCodeV2::RC_BODY_TARGET_VOLUME_REACHED;
-                case RectPhase::FINISH: return ReasonCodeV2::RC_TAILS_TARGET_REACHED;
-                case RectPhase::IDLE:
-                    return previousPhaseId == static_cast<uint16_t>(RectPhase::FINISH)
-                               ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE
-                               : ReasonCodeV2::RC_MODE_STOP_REQUEST;
-                default: return ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
-            }
-        case Mode::DISTILLATION:
-            switch (static_cast<RectPhase>(currentPhaseId)) {
-                case RectPhase::HEADS: return ReasonCodeV2::RC_HEATING_COMPLETE;
-                case RectPhase::BODY:
-                    return previousPhaseId == static_cast<uint16_t>(RectPhase::HEATING)
-                               ? ReasonCodeV2::RC_DISTILLATION_HEADS_OPTIONAL_SKIPPED
-                               : ReasonCodeV2::RC_HEADS_VOLUME_REACHED;
-                case RectPhase::FINISH:
-                    return indicators.distBodyNearEnd
-                               ? ReasonCodeV2::RC_DISTILLATION_END_TEMP_REACHED
-                               : ReasonCodeV2::RC_DISTILLATION_TARGET_VOLUME_REACHED;
-                case RectPhase::IDLE:
-                    return previousPhaseId == static_cast<uint16_t>(RectPhase::FINISH)
-                               ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE
-                               : ReasonCodeV2::RC_MODE_STOP_REQUEST;
-                default: return ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
-            }
-        case Mode::MANUAL_RECT:
-            switch (static_cast<RectPhase>(currentPhaseId)) {
-                case RectPhase::HEATING: return ReasonCodeV2::RC_MODE_START_REQUEST;
-                case RectPhase::IDLE: return ReasonCodeV2::RC_MANUAL_OPERATOR_STOP;
-                default: return ReasonCodeV2::RC_MANUAL_OPERATOR_SWITCH;
-            }
-        case Mode::NBK:
-            switch (static_cast<NbkPhase>(currentPhaseId)) {
-                case NbkPhase::STABILIZATION: return ReasonCodeV2::RC_NBK_STEAM_READY;
-                case NbkPhase::WORKING: return ReasonCodeV2::RC_NBK_STABILIZATION_COMPLETE;
-                case NbkPhase::FINISH: return ReasonCodeV2::RC_NBK_FINISH_LIKELY;
-                case NbkPhase::COMPLETED: return ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE;
-                default: return ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
-            }
-        case Mode::MASHING:
-        case Mode::HOLD:
-            return ReasonCodeV2::RC_TEMP_STEP_REACHED;
-        case Mode::FERMENTATION:
-            return ReasonCodeV2::RC_FERM_TARGET_REACHED;
-        default:
-            return ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
-    }
+    (void)state;
+    (void)previousPhaseId;
+    (void)currentPhaseId;
+    (void)indicators;
+    return ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
+}
+
+const char* getInferredTransitionMessage(Mode mode, uint16_t fromPhaseId,
+                                         uint16_t toPhaseId) {
+    static char message[96];
+    snprintf(message, sizeof(message), "Transition inferred by adapter: %s -> %s",
+             getPhaseToken(mode, fromPhaseId), getPhaseToken(mode, toPhaseId));
+    return message;
 }
 
 void setStatusReason(ReasonCodeV2 reasonCode, const char* operatorMessage) {
@@ -692,15 +642,19 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
     } else if (currentPhaseId != g_prevPhaseId) {
         ReasonCodeV2 phaseReason = explicitTransition.reasonCode;
+        const char* phaseMessage =
+            hasExplicitTransition ? explicitTransition.operatorMessage : nullptr;
         if (!hasExplicitTransition) {
             phaseReason = inferPhaseReason(state, g_prevPhaseId, currentPhaseId, g_lastIndicators);
-            g_lastStatus.lastReasonCode = phaseReason;
+            phaseMessage = getInferredTransitionMessage(state.mode, g_prevPhaseId,
+                                                       currentPhaseId);
+            setStatusReason(phaseReason, phaseMessage);
             logTransitionEvent(state.mode, g_prevPhaseId, currentPhaseId, phaseReason,
-                               nullptr, g_lastIndicators, limits, now, state.pump.totalVolumeMl);
+                               phaseMessage, g_lastIndicators, limits, now,
+                               state.pump.totalVolumeMl);
         }
         recordCompletedPhase(state.mode, g_prevPhaseId, phaseReason,
-                             hasExplicitTransition ? explicitTransition.operatorMessage : nullptr,
-                             state, now);
+                             phaseMessage, state, now);
         g_prevPhaseId = currentPhaseId;
         g_prevPhaseStartMs = now;
         g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
