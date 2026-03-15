@@ -2,15 +2,10 @@
 
 import { runtimeMonitorState } from '../globals.js';
 import { updateRuntimeStateFromStatus } from './state.js';
+import { deriveSafetyUiState } from './safety-state.js';
 
 function getSafetyActionButton(modal) {
     return modal?.querySelector('.btn.btn-primary');
-}
-
-function getAlarmState(state) {
-    return state?.currentAlarm && typeof state.currentAlarm === 'object'
-        ? state.currentAlarm
-        : ((state?.alarm && typeof state.alarm === 'object') ? state.alarm : null);
 }
 
 export function updateSafetyModal(state) {
@@ -19,28 +14,26 @@ export function updateSafetyModal(state) {
     
     if (!modal || !msgElem) return;
 
-    const alarm = getAlarmState(state);
-    const alarmTypeCode = Number(alarm?.typeCode ?? alarm?.type ?? 0);
-    const v2Safety = state?.v2?.safety && typeof state.v2.safety === 'object' ? state.v2.safety : null;
+    const safetyState = deriveSafetyUiState(state);
     const actionButton = getSafetyActionButton(modal);
     if (actionButton) {
-        actionButton.textContent = alarm?.resetAvailable ? '♻ СБРОСИТЬ АВАРИЮ' : '✅ ИГНОРИРОВАТЬ И ПРОДОЛЖИТЬ';
-        actionButton.style.background = alarm?.resetAvailable ? '#0d6efd' : '#6c757d';
+        actionButton.textContent = safetyState.primaryActionLabel;
+        actionButton.style.background = safetyState.primaryActionBackground;
     }
 
     // Показываем окно только если safetyOk == false и есть активная тревога, 
     // которая еще не была подтверждена (acknowledged)
-    if (state.safetyOk === false && alarm && alarmTypeCode !== 0 && (!alarm.acknowledged || alarm.resetAvailable)) {
+    if (safetyState.shouldShowModal) {
         // Если тревога критическая (level >= 3), контроллер сам все выключил, 
         // но мы все равно показываем уведомление.
         // Если это Soft Failure (level < 3), процесс идет, и нам нужно решение.
         
-        let alarmMsg = alarm.message || "Неизвестная ошибка датчика";
-        if (v2Safety?.severity === 'recovery' || alarm.resetAvailable) {
+        let alarmMsg = safetyState.message || "Неизвестная ошибка датчика";
+        if (safetyState.severity === 'recovery' || safetyState.resetAvailable) {
             alarmMsg += "\n\nУсловия безопасности восстановлены. Теперь можно выполнить сброс аварии.";
-        } else if (alarm.resetBlockedReason) {
-            alarmMsg += `\n\nСброс пока недоступен: ${alarm.resetBlockedReason}`;
-        } else if (alarm.acknowledged) {
+        } else if (safetyState.resetBlockedReason) {
+            alarmMsg += `\n\nСброс пока недоступен: ${safetyState.resetBlockedReason}`;
+        } else if (safetyState.acknowledged) {
             alarmMsg += "\n\nАвария подтверждена оператором. Ожидаем восстановления условий безопасности.";
         }
         msgElem.textContent = alarmMsg;
@@ -60,7 +53,8 @@ export function updateSafetyModal(state) {
 
 export async function acknowledgeSafety() {
     try {
-        const endpoint = runtimeMonitorState?.currentAlarm?.resetAvailable
+        const currentSafety = deriveSafetyUiState(runtimeMonitorState);
+        const endpoint = currentSafety.resetAvailable
             ? '/api/safety/reset'
             : '/api/safety/ack';
         const response = await fetch(endpoint, {
@@ -71,17 +65,18 @@ export async function acknowledgeSafety() {
             updateRuntimeStateFromStatus(payload);
             updateSafetyModal(runtimeMonitorState);
         }
+        const nextSafety = deriveSafetyUiState(runtimeMonitorState);
         
         if (response.ok) {
             if (endpoint === '/api/safety/reset') {
                 closeSafetyModal();
                 console.log("Safety alarm reset by user");
-            } else if (runtimeMonitorState?.currentAlarm?.acknowledged) {
+            } else if (nextSafety.acknowledged) {
                 closeSafetyModal();
                 console.log("Safety alarm acknowledged by user");
             }
         } else {
-            const reason = payload?.reason || payload?.v2?.safety?.resetBlockedReason;
+            const reason = payload?.reason || nextSafety.resetBlockedReason;
             alert(reason || "Операция безопасности отклонена. Проверьте состояние датчиков.");
         }
     } catch (e) {

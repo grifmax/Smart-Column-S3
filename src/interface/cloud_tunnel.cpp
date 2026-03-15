@@ -147,6 +147,92 @@ static void fillSafetyActionV2Json(JsonObject v2, const ControlV2::ModeStatusV2&
           : "";
 }
 
+static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& status,
+                             const ControlV2::MetricsSnapshotV2& metrics) {
+  v2["available"] = true;
+  v2["mode"] = static_cast<int>(status.mode);
+  v2["lifecycle"] = ControlV2::modeLifecycleToString(status.lifecycle);
+  v2["phaseId"] = status.phaseId;
+  v2["phaseToken"] = status.phaseToken;
+  v2["phaseStartMs"] = status.phaseStartMs;
+  v2["phaseElapsedSec"] = status.phaseElapsedSec;
+  v2["modeStartMs"] = status.modeStartMs;
+  v2["modeElapsedSec"] = status.modeElapsedSec;
+  v2["paused"] = status.paused;
+  v2["safetyLatched"] = status.safetyLatched;
+  v2["lastReasonCode"] = ControlV2::reasonCodeToString(status.lastReasonCode);
+  v2["operatorMessage"] = status.operatorMessage;
+  v2["timestampMs"] = metrics.timestampMs;
+
+  JsonObject limits = v2["activeLimits"].to<JsonObject>();
+  limits["powerCapped"] = status.activeLimits.powerCapped;
+  limits["maxHeaterPowerPercent"] = status.activeLimits.maxHeaterPowerPercent;
+  limits["pumpCapped"] = status.activeLimits.pumpCapped;
+  limits["maxPumpSpeedMlH"] = status.activeLimits.maxPumpSpeedMlH;
+  limits["takeoffBlocked"] = status.activeLimits.takeoffBlocked;
+  limits["phaseAdvanceBlocked"] = status.activeLimits.phaseAdvanceBlocked;
+
+  JsonObject targets = v2["commandTargets"].to<JsonObject>();
+  targets["heaterPowerPercent"] = status.commandTargets.heaterPowerPercent;
+  targets["pumpSpeedMlH"] = status.commandTargets.pumpSpeedMlH;
+  targets["waterValveOpen"] = status.commandTargets.waterValveOpen;
+  targets["headsValveOpen"] = status.commandTargets.headsValveOpen;
+  targets["stopRequested"] = status.commandTargets.stopRequested;
+
+  JsonObject indicators = v2["indicators"].to<JsonObject>();
+  indicators["processHealth"] = status.indicators.processHealth;
+  indicators["sensorFreshnessOk"] = status.indicators.sensorFreshnessOk;
+  indicators["pressureStable"] = status.indicators.pressureStable;
+  indicators["boilingDetected"] = status.indicators.boilingDetected;
+  indicators["columnStable"] = status.indicators.columnStable;
+  indicators["targetReached"] = status.indicators.targetReached;
+  indicators["powerLimited"] = status.indicators.powerLimited;
+  indicators["recoveryActive"] = status.indicators.recoveryActive;
+  indicators["takeoffAllowed"] = status.indicators.takeoffAllowed;
+  indicators["distHeatingComplete"] = status.indicators.distHeatingComplete;
+  indicators["distHeadsOptionalComplete"] = status.indicators.distHeadsOptionalComplete;
+  indicators["distBodyNearEnd"] = status.indicators.distBodyNearEnd;
+  indicators["steamReady"] = status.indicators.steamReady;
+  indicators["nbkWorkingStable"] = status.indicators.nbkWorkingStable;
+  indicators["nbkFeedAllowed"] = status.indicators.nbkFeedAllowed;
+  indicators["finishLikely"] = status.indicators.finishLikely;
+  indicators["tempInBand"] = status.indicators.tempInBand;
+  indicators["stepReady"] = status.indicators.stepReady;
+  indicators["stepHoldStable"] = status.indicators.stepHoldStable;
+  indicators["heatingTooSlow"] = status.indicators.heatingTooSlow;
+  indicators["overshootRisk"] = status.indicators.overshootRisk;
+  indicators["fermTempInBand"] = status.indicators.fermTempInBand;
+  indicators["longDeviation"] = status.indicators.longDeviation;
+  indicators["heatingDemand"] = status.indicators.heatingDemand;
+  indicators["coolingDemand"] = status.indicators.coolingDemand;
+  indicators["heatingRateCPerMin"] = status.indicators.heatingRateCPerMin;
+  indicators["topTempRateCPerMin"] = status.indicators.topTempRateCPerMin;
+  indicators["pressureRateMmHgPerMin"] = status.indicators.pressureRateMmHgPerMin;
+  indicators["coolingMarginC"] = status.indicators.coolingMarginC;
+  indicators["distPressureMargin"] = status.indicators.distPressureMargin;
+  indicators["nbkPressureMargin"] = status.indicators.nbkPressureMargin;
+  indicators["nbkColumnLoad"] = status.indicators.nbkColumnLoad;
+  indicators["feedEnergyBalance"] = status.indicators.feedEnergyBalance;
+  indicators["stabilityIndex"] = status.indicators.stabilityIndex;
+  indicators["floodRisk"] = status.indicators.floodRisk;
+  indicators["headsCompletionScore"] = status.indicators.headsCompletionScore;
+  indicators["bodyEndScore"] = status.indicators.bodyEndScore;
+
+  JsonObject safety = v2["safety"].to<JsonObject>();
+  safety["severity"] = ControlV2::safetySeverityToString(metrics.safety.severity);
+  safety["event"] = ControlV2::safetyEventTypeToString(metrics.safety.primaryEvent);
+  safety["reasonCode"] = ControlV2::reasonCodeToString(metrics.safety.reasonCode);
+  safety["requiresAcknowledge"] = metrics.safety.requiresAcknowledge;
+  safety["message"] = metrics.safety.message;
+  safety["resetAvailable"] = !status.safetyLatched ||
+                             metrics.safety.severity == ControlV2::SafetySeverityV2::RECOVERY;
+  safety["resetBlockedReason"] =
+      status.safetyLatched &&
+              metrics.safety.severity != ControlV2::SafetySeverityV2::RECOVERY
+          ? metrics.safety.message
+          : "";
+}
+
 static String base64Encode(const uint8_t* data, size_t len) {
   size_t outLen = 0;
   // calculate size
@@ -288,6 +374,9 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["deviceId"] = deviceId;
     JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state, g_settings);
+    JsonObject v2 = doc["v2"].to<JsonObject>();
+    fillV2StatusJson(v2, ControlV2::getLatestModeStatus(),
+                     ControlV2::getLatestMetricsSnapshot());
 
     JsonObject temps = doc["temps"].to<JsonObject>();
     temps["cube"] = g_state.temps.cube;

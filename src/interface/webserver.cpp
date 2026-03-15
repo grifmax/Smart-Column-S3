@@ -3503,6 +3503,9 @@ void broadcastState(const SystemState &state) {
   fastDoc["uptime"] = state.uptime;
   JsonObject fastAlarm = fastDoc["alarm"].to<JsonObject>();
   fillAlarmJson(fastAlarm, state, g_settings);
+  JsonObject fastV2 = fastDoc["v2"].to<JsonObject>();
+  fillSafetyActionV2Json(fastV2, ControlV2::getLatestModeStatus(),
+                         ControlV2::getLatestMetricsSnapshot());
 
   fastDoc["t_cube"] = state.temps.cube;
   fastDoc["t_column_bottom"] = state.temps.columnBottom;
@@ -3589,6 +3592,9 @@ void broadcastState(const SystemState &state) {
   doc["uptime"] = state.uptime;
   JsonObject alarm = doc["alarm"].to<JsonObject>();
   fillAlarmJson(alarm, state, g_settings);
+  JsonObject v2 = doc["v2"].to<JsonObject>();
+  fillV2StatusJson(v2, ControlV2::getLatestModeStatus(),
+                   ControlV2::getLatestMetricsSnapshot());
 
   doc["t_cube"] = state.temps.cube;
   doc["t_column_bottom"] = state.temps.columnBottom;

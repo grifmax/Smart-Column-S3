@@ -102,6 +102,12 @@
     color: #9f2231;
 }
 
+.landing-chip-recovery {
+    background: rgba(13, 110, 253, 0.14);
+    border-color: rgba(13, 110, 253, 0.4);
+    color: #0b5ed7;
+}
+
 .landing-actions {
     display: flex;
     gap: 10px;

@@ -258,7 +258,12 @@ export function updateUI(data) {
 
     updateLandingUi({
         mode: data.mode,
+        modeStr: data.modeStr,
         phaseText,
+        safetyOk: data.safetyOk,
+        alarm: data.alarm,
+        currentAlarm: data.currentAlarm,
+        v2: data.v2,
         tCube: data.t_cube,
         power: data.power,
         pressureCube: data.p_cube,

@@ -1,5 +1,6 @@
 ﻿import { resolveMode, getModeLabel, getModeCssClass } from '../globals.js';
 import { loadStatus } from '../core/status.js';
+import { deriveSafetyUiState } from '../runtime/safety-state.js';
 
 export function updateLandingUi(snapshot) {
     const modeChip = document.getElementById('landing-mode-chip');
@@ -15,14 +16,11 @@ export function updateLandingUi(snapshot) {
     }
 
     const safetyChip = document.getElementById('landing-safety-chip');
-    if (safetyChip && snapshot.safetyOk !== undefined) {
-        if (snapshot.safetyOk) {
-            safetyChip.textContent = 'SAFETY OK';
-            safetyChip.className = 'landing-chip landing-chip-ok';
-        } else {
-            safetyChip.textContent = 'SAFETY ALERT';
-            safetyChip.className = 'landing-chip landing-chip-warn';
-        }
+    if (safetyChip) {
+        const safetyState = deriveSafetyUiState(snapshot);
+        safetyChip.textContent = safetyState.chipText;
+        safetyChip.className = safetyState.chipClass;
+        safetyChip.title = safetyState.chipTitle;
     }
 
     if (snapshot.tCube !== undefined) {

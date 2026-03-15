@@ -9,6 +9,13 @@
 
 ---
 
+## [2.0.9] - 2026-03-15
+
+### Изменено
+- WebSocket live-status в `webserver.cpp` расширен блоком `v2` safety summary, а cloud tunnel `/api/status` в `cloud_tunnel.cpp` теперь тоже возвращает `v2`-статус, чтобы frontend получал одну и ту же safety-модель и при локальном streaming, и при cloud/polling работе. (codex)
+- На frontend добавлен единый helper `runtime/safety-state.js`, который нормализует `alarm + v2.safety` в общую UI-модель; на него переведены `safety-modal.js` и landing safety chip, поэтому интерфейс теперь одинаково интерпретирует `alert`, `acknowledged`, `limited` и `recovery/reset ready`. (codex)
+- Landing screen теперь показывает более точный safety status (`SAFETY OK`, `SAFETY WARN`, `SAFETY LIMITED`, `SAFETY ACKED`, `RESET READY`) вместо одного только `safetyOk`, а версия прошивки поднята до `2.0.9` как отдельный шаг унификации live safety contract. (codex)
+
 ## [2.0.8] - 2026-03-15
 
 ### Изменено
