@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.32] - 2026-03-15
+
+### Изменено
+- `src/control/v2/status_adapter.cpp` перестал затирать `v2.operatorMessage` текущим safety message на каждом цикле: теперь `operatorMessage` остаётся сообщением, связанным именно с `lastReasonCode`, как и задумывалось для live status, API и уведомлений. (codex)
+- Fallback safety message теперь подставляется только тогда, когда у статуса ещё нет собственного `lastReasonCode`, поэтому `v2` contract снова корректно различает “последнюю причину перехода” и “текущее safety-состояние”. (codex)
+- Для неявных mode-change fallback веток `status_adapter` теперь использует общий `setStatusReason(...)`, чтобы `lastReasonCode` и `operatorMessage` обновлялись согласованно даже там, где explicit transition ещё не пришёл. (codex)
+- Версия прошивки поднята до `2.0.32` как отдельный шаг финального runtime-audit по выравниванию semantics в `status/status-history/API` перед добивкой последних inferred contracts. (codex)
+
 ## [2.0.31] - 2026-03-15
 
 ### Изменено

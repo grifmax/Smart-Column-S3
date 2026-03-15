@@ -433,6 +433,8 @@ void setStatusReason(ReasonCodeV2 reasonCode, const char* operatorMessage) {
     if (operatorMessage != nullptr && operatorMessage[0] != '\0') {
         strncpy(g_lastStatus.operatorMessage, operatorMessage, sizeof(g_lastStatus.operatorMessage) - 1);
         g_lastStatus.operatorMessage[sizeof(g_lastStatus.operatorMessage) - 1] = '\0';
+    } else {
+        g_lastStatus.operatorMessage[0] = '\0';
     }
 }
 
@@ -517,14 +519,14 @@ void fillStatus(const SystemState& state, const ProcessIndicatorsV2& indicators,
     status.commandTargets.headsValveOpen = Valves::getHeads();
     status.commandTargets.stopRequested = status.lifecycle == ModeLifecycleV2::FAULTED;
     status.indicators = indicators;
-    if (status.lastReasonCode == ReasonCodeV2::NONE && metrics.safety.reasonCode != ReasonCodeV2::NONE) {
+    if (status.lastReasonCode == ReasonCodeV2::NONE &&
+        metrics.safety.reasonCode != ReasonCodeV2::NONE) {
         status.lastReasonCode = metrics.safety.reasonCode;
-    }
-    if (metrics.safety.message[0] != '\0') {
-        strncpy(status.operatorMessage, metrics.safety.message, sizeof(status.operatorMessage) - 1);
-        status.operatorMessage[sizeof(status.operatorMessage) - 1] = '\0';
-    } else {
-        status.operatorMessage[0] = '\0';
+        if (metrics.safety.message[0] != '\0') {
+            strncpy(status.operatorMessage, metrics.safety.message,
+                    sizeof(status.operatorMessage) - 1);
+            status.operatorMessage[sizeof(status.operatorMessage) - 1] = '\0';
+        }
     }
 }
 
@@ -616,7 +618,7 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
             modeChangeReason = (state.mode == Mode::IDLE)
                                    ? inferModeExitReason(state, g_prevMode, g_prevPhaseId)
                                    : ReasonCodeV2::RC_MODE_START_REQUEST;
-            g_lastStatus.lastReasonCode = modeChangeReason;
+            setStatusReason(modeChangeReason, nullptr);
         }
         if (g_prevMode != Mode::IDLE) {
             recordCompletedPhase(g_prevMode, g_prevPhaseId, modeChangeReason,
