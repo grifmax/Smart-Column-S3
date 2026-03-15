@@ -91,6 +91,36 @@ function mergeAlarmState(s, data) {
     };
 }
 
+function mergeV2State(s, data) {
+    const v2 = (data?.v2 && typeof data.v2 === 'object') ? data.v2 : null;
+    if (!v2) return;
+
+    const safety = (v2?.safety && typeof v2.safety === 'object') ? v2.safety : null;
+    s.v2 = {
+        ...s.v2,
+        available: v2.available !== undefined ? Boolean(v2.available) : s.v2.available,
+        safetyLatched: v2.safetyLatched !== undefined ? Boolean(v2.safetyLatched) : s.v2.safetyLatched,
+        lastReasonCode: v2.lastReasonCode !== undefined ? String(v2.lastReasonCode) : s.v2.lastReasonCode,
+        operatorMessage: v2.operatorMessage !== undefined ? String(v2.operatorMessage) : s.v2.operatorMessage,
+        safety: safety ? {
+            ...s.v2.safety,
+            severity: safety.severity !== undefined ? String(safety.severity) : s.v2.safety.severity,
+            event: safety.event !== undefined ? String(safety.event) : s.v2.safety.event,
+            reasonCode: safety.reasonCode !== undefined ? String(safety.reasonCode) : s.v2.safety.reasonCode,
+            requiresAcknowledge: safety.requiresAcknowledge !== undefined
+                ? Boolean(safety.requiresAcknowledge)
+                : s.v2.safety.requiresAcknowledge,
+            message: safety.message !== undefined ? String(safety.message) : s.v2.safety.message,
+            resetAvailable: safety.resetAvailable !== undefined
+                ? Boolean(safety.resetAvailable)
+                : s.v2.safety.resetAvailable,
+            resetBlockedReason: safety.resetBlockedReason !== undefined
+                ? String(safety.resetBlockedReason)
+                : s.v2.safety.resetBlockedReason
+        } : s.v2.safety
+    };
+}
+
 export function updateRuntimeStateFromStatus(data) {
     if (!data || typeof data !== 'object') return;
     const s = runtimeMonitorState;
@@ -100,6 +130,7 @@ export function updateRuntimeStateFromStatus(data) {
     if (data.phaseStr !== undefined) s.phaseStr = String(data.phaseStr);
     if (data.safetyOk !== undefined) s.safetyOk = Boolean(data.safetyOk);
     mergeAlarmState(s, data);
+    mergeV2State(s, data);
 
     if (data.power && typeof data.power === 'object') {
         if (data.power.power !== undefined) s.power.power = toFinite(data.power.power, s.power.power);
@@ -171,6 +202,7 @@ export function updateRuntimeStateFromWs(data) {
     if (data.phaseStr !== undefined) s.phaseStr = String(data.phaseStr);
     if (data.safetyOk !== undefined) s.safetyOk = Boolean(data.safetyOk);
     mergeAlarmState(s, data);
+    mergeV2State(s, data);
 
     if (data.power !== undefined) s.power.power = toFinite(data.power, s.power.power);
     if (data.abv !== undefined) s.hydrometer.abv = toFinite(data.abv, s.hydrometer.abv);

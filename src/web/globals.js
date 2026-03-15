@@ -136,6 +136,21 @@ export let runtimeMonitorState = {
         resetAvailable: true,
         resetBlockedReason: ''
     },
+    v2: {
+        available: false,
+        safetyLatched: false,
+        lastReasonCode: 'RC_NONE',
+        operatorMessage: '',
+        safety: {
+            severity: 'none',
+            event: 'none',
+            reasonCode: 'RC_NONE',
+            requiresAcknowledge: false,
+            message: '',
+            resetAvailable: true,
+            resetBlockedReason: ''
+        }
+    },
     power: { power: 0 },
     hydrometer: { abv: 0, valid: false },
     pump: { speedMlH: 0, totalMl: 0 },

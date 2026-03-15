@@ -9,6 +9,13 @@
 
 ---
 
+## [2.0.8] - 2026-03-15
+
+### Изменено
+- Frontend runtime в `globals.js` и `state.js` расширен хранением `v2` safety-состояния, чтобы UI мог принимать решение по `severity`, `reasonCode`, `resetAvailable` и `resetBlockedReason` напрямую из новых v2 API-ответов. (codex)
+- `safety-modal.js` больше не ждёт следующий общий status tick после `ack/reset`: модалка сразу применяет JSON-ответ action endpoint, корректно различает подтверждение и реальный reset и не переоткрывает окно для уже acknowledged alarm без доступного сброса. (codex)
+- Основная кнопка safety modal теперь переключается между действиями `ack` и `reset` по текущему recovery/reset состоянию, а версия прошивки поднята до `2.0.8` как отдельный шаг интеграции нового v2 frontend contract. (codex)
+
 ## [2.0.7] - 2026-03-15
 
 ### Изменено
