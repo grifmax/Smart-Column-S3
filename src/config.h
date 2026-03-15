@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.0.44"
+#define FIRMWARE_VERSION "2.0.50"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -331,6 +331,7 @@
 #define NVS_KEY_MQTT_PASSWORD "mq_pass"
 #define NVS_KEY_MQTT_BASE_TOPIC "mq_topic"
 #define NVS_KEY_MQTT_INTERVAL "mq_intvl"
+#define NVS_KEY_TG_ENABLED "tg_enabled"
 #define NVS_KEY_TG_TOKEN "tg_token"
 #define NVS_KEY_TG_CHAT "tg_chat"
 #define NVS_KEY_LANGUAGE "lang"

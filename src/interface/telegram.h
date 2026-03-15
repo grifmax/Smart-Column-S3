@@ -12,6 +12,27 @@
 #include "types.h"
 
 namespace TelegramBot {
+    struct DebugStatus {
+        bool enabled = false;
+        bool ready = false;
+        bool configured = false;
+        bool online = false;
+        bool polling = false;
+        bool needInit = false;
+        bool taskRunning = false;
+        uint32_t lastInitMs = 0;
+        uint32_t lastTickMs = 0;
+        uint32_t lastUpdateMs = 0;
+        uint32_t tickCount = 0;
+        uint32_t updateCount = 0;
+        uint32_t messageCount = 0;
+        uint32_t queryCount = 0;
+        uint32_t sendOkCount = 0;
+        uint32_t sendErrorCount = 0;
+        uint32_t lockTimeoutCount = 0;
+        String lastError;
+    };
+
     /**
      * Инициализация бота
      * @param token Токен бота
@@ -87,6 +108,11 @@ namespace TelegramBot {
      * @param settings Настройки Telegram
      */
     void setSettings(const TelegramSettings& settings);
+
+    /**
+     * Диагностика runtime-состояния бота
+     */
+    DebugStatus getDebugStatus();
 }
 
 #endif // TELEGRAM_H

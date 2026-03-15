@@ -124,6 +124,7 @@ bool loadSettings(Settings& settings) {
     settings.mqtt.publishInterval = prefs.getUInt(NVS_KEY_MQTT_INTERVAL, 10000);
 
     // Telegram
+    settings.telegram.enabled = prefs.getBool(NVS_KEY_TG_ENABLED, settings.telegram.enabled);
     prefs.getString(NVS_KEY_TG_TOKEN, settings.telegram.token, sizeof(settings.telegram.token));
     prefs.getString(NVS_KEY_TG_CHAT, settings.telegram.chatId, sizeof(settings.telegram.chatId));
 
@@ -230,6 +231,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putUInt(NVS_KEY_MQTT_INTERVAL, settings.mqtt.publishInterval);
 
     // Telegram
+    prefs.putBool(NVS_KEY_TG_ENABLED, settings.telegram.enabled);
     prefs.putString(NVS_KEY_TG_TOKEN, settings.telegram.token);
     prefs.putString(NVS_KEY_TG_CHAT, settings.telegram.chatId);
 

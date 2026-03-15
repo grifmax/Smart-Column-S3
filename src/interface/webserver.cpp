@@ -1871,12 +1871,31 @@ void init() {
   // GET /api/settings/telegram - получить настройки Telegram
   server.on("/api/settings/telegram", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
+    const auto tgDebug = TelegramBot::getDebugStatus();
     doc["enabled"] = g_settings.telegram.enabled;
     doc["token"] = g_settings.telegram.token;
     doc["chatId"] = g_settings.telegram.chatId;
     doc["configured"] =
         (g_settings.telegram.token[0] != '\0' && g_settings.telegram.chatId[0] != '\0');
     doc["active"] = TelegramBot::isEnabled();
+    JsonObject runtime = doc["runtime"].to<JsonObject>();
+    runtime["ready"] = tgDebug.ready;
+    runtime["configured"] = tgDebug.configured;
+    runtime["online"] = tgDebug.online;
+    runtime["polling"] = tgDebug.polling;
+    runtime["needInit"] = tgDebug.needInit;
+    runtime["taskRunning"] = tgDebug.taskRunning;
+    runtime["lastInitMs"] = tgDebug.lastInitMs;
+    runtime["lastTickMs"] = tgDebug.lastTickMs;
+    runtime["lastUpdateMs"] = tgDebug.lastUpdateMs;
+    runtime["tickCount"] = tgDebug.tickCount;
+    runtime["updateCount"] = tgDebug.updateCount;
+    runtime["messageCount"] = tgDebug.messageCount;
+    runtime["queryCount"] = tgDebug.queryCount;
+    runtime["sendOkCount"] = tgDebug.sendOkCount;
+    runtime["sendErrorCount"] = tgDebug.sendErrorCount;
+    runtime["lockTimeoutCount"] = tgDebug.lockTimeoutCount;
+    runtime["lastError"] = tgDebug.lastError;
 
     String json;
     serializeJson(doc, json);

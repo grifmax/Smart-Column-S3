@@ -7,8 +7,13 @@
 #include "telegram.h"
 
 #include <FastBot2.h>
+#include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 
+#include <ArduinoJson.h>
 #include <cstdarg>
 #include <cstdio>
 
@@ -18,6 +23,28 @@ static FastBot2* tgBot = nullptr;
 static String tgChatId;
 static bool tgEnabled = false;
 static bool tgReady = false;
+static bool tgOnline = false;
+static bool tgPolling = false;
+static TaskHandle_t tgTaskHandle = NULL;
+static SemaphoreHandle_t tgMutex = NULL;
+static uint32_t tgLastInitMs = 0;
+static uint32_t tgLastTickMs = 0;
+static uint32_t tgLastUpdateMs = 0;
+static uint32_t tgTickCount = 0;
+static uint32_t tgUpdateCount = 0;
+static uint32_t tgMessageCount = 0;
+static uint32_t tgQueryCount = 0;
+static uint32_t tgSendOkCount = 0;
+static uint32_t tgSendErrorCount = 0;
+static uint32_t tgLockTimeoutCount = 0;
+static String tgLastError;
+static String tgToken;
+static int32_t tgNextUpdateId = 0;
+
+static constexpr TickType_t kTelegramIdleDelayTicks = pdMS_TO_TICKS(500);
+static constexpr TickType_t kTelegramOfflineDelayTicks = pdMS_TO_TICKS(2000);
+static constexpr TickType_t kTelegramPollDelayTicks = pdMS_TO_TICKS(4000);
+static constexpr TickType_t kTelegramLockTimeoutTicks = pdMS_TO_TICKS(5000);
 
 // Параметры для отложенной инициализации
 static bool tgNeedInit = false;
@@ -30,6 +57,42 @@ static bool isConfigured() {
   return tgEnabled && tgBot && tgReady && tgChatId.length();
 }
 
+static void setLastError(const String& error) {
+  tgLastError = error;
+  tgLastError.trim();
+}
+
+static void clearLastError() {
+  tgLastError = "";
+}
+
+static void ensureMutexReady() {
+  if (tgMutex == NULL) {
+    tgMutex = xSemaphoreCreateRecursiveMutex();
+  }
+}
+
+static bool lockBot(TickType_t timeoutTicks = portMAX_DELAY) {
+  ensureMutexReady();
+  if (tgMutex == NULL) {
+    setLastError("telegram mutex init failed");
+    return false;
+  }
+
+  const bool locked = xSemaphoreTakeRecursive(tgMutex, timeoutTicks) == pdTRUE;
+  if (!locked) {
+    tgLockTimeoutCount++;
+    setLastError("telegram mutex timeout");
+  }
+  return locked;
+}
+
+static void unlockBot() {
+  if (tgMutex != NULL) {
+    xSemaphoreGiveRecursive(tgMutex);
+  }
+}
+
 static bool isAuthorizedChat(const fb::ID& id) {
   if (!tgChatId.length()) return false;
   String idStr;
@@ -39,15 +102,22 @@ static bool isAuthorizedChat(const fb::ID& id) {
 
 static bool sendMessageWithKeyb(const fb::ID& chatId, const char* message, fb::InlineMenu* menu = nullptr) {
   if (!tgBot || !message || !message[0]) return false;
+  if (!lockBot(kTelegramLockTimeoutTicks)) return false;
 
   fb::Message out(message, chatId);
   if (menu) out.setInlineMenu(*menu);
   
   fb::Result res = tgBot->sendMessage(out, true);
   if (res.isError()) {
+    tgSendErrorCount++;
+    setLastError(res.getError().toString());
     LOG_W("Telegram: send failed (%s)", res.getError().toString().c_str());
+    unlockBot();
     return false;
   }
+  tgSendOkCount++;
+  clearLastError();
+  unlockBot();
   return true;
 }
 
@@ -59,6 +129,36 @@ static bool sendMessageToConfiguredChat(const char* message) {
   if (!tgChatId.length()) return false;
   return sendMessageToChat(fb::ID(tgChatId), message);
 }
+
+static fb::ID jsonIdToFbId(JsonVariantConst value) {
+  if (value.is<const char*>()) {
+    return fb::ID(String(value.as<const char*>()));
+  }
+
+  char buffer[24];
+  const long long numericId = value | 0LL;
+  snprintf(buffer, sizeof(buffer), "%lld", numericId);
+  return fb::ID(String(buffer));
+}
+
+static void answerCallbackById(const String& callbackId) {
+  if (!tgBot || !callbackId.length()) return;
+  if (!lockBot(kTelegramLockTimeoutTicks)) return;
+
+  fb::Result res = tgBot->answerCallbackQuery(callbackId, "", false, true);
+  if (res.isError()) {
+    tgSendErrorCount++;
+    setLastError(res.getError().toString());
+  } else {
+    tgSendOkCount++;
+    clearLastError();
+  }
+  unlockBot();
+}
+
+static void handleTextCommand(const fb::ID& chatId, String text);
+static void handleCallbackCommand(const fb::ID& chatId, String data, const String& callbackId);
+static void sendDetailedHealth(const fb::ID& chatId);
 
 static void sendStatus(const fb::ID& chatId) {
     char status[256];
@@ -118,6 +218,51 @@ static void sendHealth(const fb::ID& chatId) {
     sendMessageWithKeyb(chatId, msg, &menu);
 }
 
+static void handleTextCommand(const fb::ID& chatId, String text) {
+  text.trim();
+  text.toLowerCase();
+  if (!text.length()) return;
+
+  if (text == "/status" || text == "/start") {
+    sendStatus(chatId);
+  } else if (text == "/health") {
+    sendHealth(chatId);
+  } else if (text == "/diag") {
+    sendDetailedHealth(chatId);
+  } else if (text == "/stop") {
+    FSM::stopMode(g_state);
+    sendMessageToChat(chatId, "рџ›‘ РџСЂРѕС†РµСЃСЃ РѕСЃС‚Р°РЅРѕРІР»РµРЅ");
+  } else {
+    sendStatus(chatId);
+  }
+}
+
+static void handleCallbackCommand(const fb::ID& chatId, String data, const String& callbackId) {
+  if (data == "tg_status") {
+    sendStatus(chatId);
+  } else if (data == "tg_health") {
+    sendHealth(chatId);
+  } else if (data == "tg_diag") {
+    sendDetailedHealth(chatId);
+  } else if (data == "tg_pause") {
+    if (g_state.paused) FSM::resume(g_state);
+    else FSM::pause(g_state);
+    sendStatus(chatId);
+  } else if (data == "tg_stop") {
+    fb::InlineMenu menu;
+    menu.addButton("вњ… Р”Рђ, РћРЎРўРђРќРћР’РРўР¬", "tg_stop_confirm");
+    menu.addButton("вќЊ РћРўРњР•РќРђ", "tg_status");
+    sendMessageWithKeyb(chatId, "вљ пёЏ *Р’С‹ СѓРІРµСЂРµРЅС‹, С‡С‚Рѕ С…РѕС‚РёС‚Рµ РѕСЃС‚Р°РЅРѕРІРёС‚СЊ РїСЂРѕС†РµСЃСЃ?*", &menu);
+  } else if (data == "tg_stop_confirm") {
+    FSM::stopMode(g_state);
+    sendMessageToChat(chatId, "рџ›‘ РџСЂРѕС†РµСЃСЃ РїРѕР»РЅРѕСЃС‚СЊСЋ РѕСЃС‚Р°РЅРѕРІР»РµРЅ");
+  } else if (data == "tg_help") {
+    sendMessageToChat(chatId, "Р”РѕСЃС‚СѓРїРЅС‹Рµ РєРѕРјР°РЅРґС‹: /status, /health, /stop");
+  }
+
+  answerCallbackById(callbackId);
+}
+
 static void sendDetailedHealth(const fb::ID& chatId) {
     char msg[512];
     int len = snprintf(msg, sizeof(msg), "📊 *Детальная диагностика*\n\n");
@@ -146,12 +291,19 @@ static void sendDetailedHealth(const fb::ID& chatId) {
 }
 
 static void handleUpdate(fb::Update& u) {
+  tgUpdateCount++;
+  tgLastUpdateMs = millis();
+  clearLastError();
+
   if (u.isMessage()) {
+    tgMessageCount++;
     fb::MessageRead msg = u.message();
     if (!isAuthorizedChat(msg.chat().id())) return;
 
     String text;
     msg.text().toString(text);
+    handleTextCommand(msg.chat().id(), text);
+    return;
     text.trim();
     text.toLowerCase();
     if (!text.length()) return;
@@ -171,11 +323,16 @@ static void handleUpdate(fb::Update& u) {
     }
   } 
   else if (u.isQuery()) {
+    tgQueryCount++;
     fb::QueryRead callback = u.query();
     if (!isAuthorizedChat(callback.message().chat().id())) return;
 
     String data;
     callback.data().toString(data);
+    String callbackId;
+    callback.id().toString(callbackId);
+    handleCallbackCommand(callback.message().chat().id(), data, callbackId);
+    return;
     fb::ID chatId = callback.message().chat().id();
     
     if (data == "tg_status") {
@@ -204,7 +361,139 @@ static void handleUpdate(fb::Update& u) {
   }
 }
 
+static bool pollTelegramUpdates() {
+  if (!tgToken.length()) {
+    setLastError("telegram token missing");
+    return false;
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient https;
+  String url = "https://api.telegram.org/bot" + tgToken + "/getUpdates?limit=5&timeout=1";
+  if (tgNextUpdateId > 0) {
+    url += "&offset=" + String(tgNextUpdateId);
+  }
+
+  tgPolling = true;
+  https.useHTTP10(true);
+  https.setReuse(false);
+  if (!https.begin(client, url)) {
+    tgPolling = false;
+    setLastError("telegram getUpdates begin failed");
+    return false;
+  }
+
+  https.setTimeout(5000);
+  https.addHeader("Connection", "close");
+  const int httpCode = https.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    tgPolling = false;
+    setLastError("telegram getUpdates http " + String(httpCode));
+    https.end();
+    return false;
+  }
+
+  const String responseBody = https.getString();
+  https.end();
+  tgPolling = false;
+
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, responseBody);
+
+  if (error) {
+    setLastError(String("telegram json error: ") + error.c_str());
+    return false;
+  }
+
+  if (!(doc["ok"] | false)) {
+    setLastError("telegram getUpdates api error");
+    return false;
+  }
+
+  JsonArray updates = doc["result"].as<JsonArray>();
+  if (updates.isNull()) {
+    clearLastError();
+    return true;
+  }
+
+  for (JsonObject update : updates) {
+    const int32_t updateId = update["update_id"] | 0;
+    if (updateId >= tgNextUpdateId) {
+      tgNextUpdateId = updateId + 1;
+    }
+
+    JsonObject message = update["message"].as<JsonObject>();
+    if (!message.isNull()) {
+      fb::ID chatId = jsonIdToFbId(message["chat"]["id"]);
+      if (!isAuthorizedChat(chatId)) continue;
+      String text = message["text"] | "";
+      tgUpdateCount++;
+      tgMessageCount++;
+      tgLastUpdateMs = millis();
+      handleTextCommand(chatId, text);
+      continue;
+    }
+
+    JsonObject callback = update["callback_query"].as<JsonObject>();
+    if (!callback.isNull()) {
+      fb::ID chatId = jsonIdToFbId(callback["message"]["chat"]["id"]);
+      if (!isAuthorizedChat(chatId)) continue;
+      String data = callback["data"] | "";
+      String callbackId = callback["id"] | "";
+      tgUpdateCount++;
+      tgQueryCount++;
+      tgLastUpdateMs = millis();
+      handleCallbackCommand(chatId, data, callbackId);
+    }
+  }
+
+  clearLastError();
+  return true;
+}
+
+static void telegramPollTask(void* /*param*/) {
+  for (;;) {
+    if (!tgEnabled || !tgReady || tgBot == nullptr) {
+      vTaskDelay(kTelegramIdleDelayTicks);
+      continue;
+    }
+
+    tgOnline = (WiFi.status() == WL_CONNECTED);
+    if (!tgOnline) {
+      vTaskDelay(kTelegramOfflineDelayTicks);
+      continue;
+    }
+
+    tgLastTickMs = millis();
+    tgTickCount++;
+    pollTelegramUpdates();
+
+    vTaskDelay(kTelegramPollDelayTicks);
+  }
+}
+
+static void ensureTaskStarted() {
+  if (tgTaskHandle != NULL) {
+    return;
+  }
+
+  const BaseType_t taskOk =
+      xTaskCreatePinnedToCore(telegramPollTask, "telegram", 6144, NULL, 1, &tgTaskHandle, 0);
+  if (taskOk != pdPASS) {
+    tgTaskHandle = NULL;
+    setLastError("telegram task create failed");
+    LOG_E("Telegram: failed to create poll task");
+  }
+}
+
 void performInit(const char* token, const char* chat) {
+  ensureMutexReady();
+  if (!lockBot(kTelegramLockTimeoutTicks)) {
+    return;
+  }
+
   if (tgBot) {
     tgBot->end();
     delete tgBot;
@@ -213,16 +502,24 @@ void performInit(const char* token, const char* chat) {
 
   tgBot = new FastBot2();
   tgBot->setToken(token);
-  tgBot->setPollMode(fb::Poll::Long, 15000);
+  tgBot->setPollMode(fb::Poll::Sync, 4000);
   tgBot->skipUpdates();
   tgBot->attachUpdate(handleUpdate);
-  tgBot->setOnline(WiFi.status() == WL_CONNECTED);
+  tgOnline = (WiFi.status() == WL_CONNECTED);
+  tgBot->setOnline(tgOnline);
   tgBot->begin();
 
   tgChatId = chat;
   tgChatId.trim();
+  tgToken = token;
+  tgNextUpdateId = 0;
   tgReady = true;
   tgNeedInit = false;
+  tgLastInitMs = millis();
+  tgLastTickMs = 0;
+  clearLastError();
+  unlockBot();
+  ensureTaskStarted();
   LOG_I("Telegram: Init complete");
 }
 
@@ -241,38 +538,17 @@ void init(const char* token, const char* chat) {
   tgEnabled = true;
 }
 
-static uint32_t lastTickMs = 0;
-static uint32_t retryIntervalMs = 5000;
-const uint32_t MIN_RETRY_MS = 5000;
-const uint32_t MAX_RETRY_MS = 60000;
-
 void update() {
   if (!tgEnabled) return;
-  uint32_t now = millis();
 
   if (tgNeedInit) {
     performInit(pendingToken.c_str(), pendingChatId.c_str());
-    lastTickMs = now;
     return;
   }
 
   if (!tgBot || !tgReady) return;
-
-  const bool online = (WiFi.status() == WL_CONNECTED);
-  tgBot->setOnline(online);
-  
-  if (!online) {
-    if (retryIntervalMs < MAX_RETRY_MS) {
-        retryIntervalMs = min(retryIntervalMs * 2, MAX_RETRY_MS);
-    }
-    return;
-  }
-
-  if (now - lastTickMs >= retryIntervalMs) {
-    lastTickMs = now;
-    tgBot->tick();
-    if (retryIntervalMs > MIN_RETRY_MS) retryIntervalMs = MIN_RETRY_MS;
-  }
+  tgOnline = (WiFi.status() == WL_CONNECTED);
+  ensureTaskStarted();
 }
 
 bool sendMessage(const char* message) {
@@ -327,8 +603,12 @@ bool sendScreenshot() { return false; }
 void setEnabled(bool enabled) {
   tgEnabled = enabled;
   if (!enabled && tgBot) {
-    tgBot->end();
+    if (lockBot(kTelegramLockTimeoutTicks)) {
+      tgBot->end();
+      unlockBot();
+    }
     tgReady = false;
+    tgOnline = false;
   }
 }
 
@@ -340,6 +620,29 @@ void setSettings(const TelegramSettings& settings) {
   } else {
     setEnabled(false);
   }
+}
+
+DebugStatus getDebugStatus() {
+  DebugStatus status;
+  status.enabled = tgEnabled;
+  status.ready = tgReady;
+  status.configured = isConfigured();
+  status.online = tgOnline;
+  status.polling = tgPolling;
+  status.needInit = tgNeedInit;
+  status.taskRunning = tgTaskHandle != NULL;
+  status.lastInitMs = tgLastInitMs;
+  status.lastTickMs = tgLastTickMs;
+  status.lastUpdateMs = tgLastUpdateMs;
+  status.tickCount = tgTickCount;
+  status.updateCount = tgUpdateCount;
+  status.messageCount = tgMessageCount;
+  status.queryCount = tgQueryCount;
+  status.sendOkCount = tgSendOkCount;
+  status.sendErrorCount = tgSendErrorCount;
+  status.lockTimeoutCount = tgLockTimeoutCount;
+  status.lastError = tgLastError;
+  return status;
 }
 
 }  // namespace TelegramBot

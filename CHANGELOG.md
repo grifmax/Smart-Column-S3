@@ -9,6 +9,45 @@
 
 ---
 
+## [2.0.50] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` для raw `getUpdates` включены `HTTP/1.0`, `Connection: close`, `setReuse(false)` и параметр `timeout=1`, чтобы Telegram закрывал каждый polling-ответ предсказуемо и worker-задача не зависала на первом `HTTP GET`. (codex)
+- Версия прошивки поднята до `2.0.50` как отдельный hotfix по Telegram connection semantics после живой проверки, где worker-задача зависала в состоянии `polling=true` и не переходила ко второму циклу опроса. (codex)
+
+## [2.0.49] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` ответ `getUpdates` теперь читается через `HTTPClient::getString()` и только потом парсится `ArduinoJson`, вместо разбора прямо из сетевого stream. Это убирает зависание worker-задачи на первом poll при keep-alive/chunked ответах, которое оставляло `tickCount=1` и не давало перейти к следующему циклу polling. (codex)
+- Версия прошивки поднята до `2.0.49` как отдельный hotfix по Telegram response parsing после живой проверки, где очередь updates уже очищалась, но worker-задача застревала на первом HTTP-ответе. (codex)
+
+## [2.0.48] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` входящий Telegram polling переведён с проблемного библиотечного `FastBot2::tick/tickManual` на прямой HTTPS-запрос `getUpdates` к Telegram Bot API в отдельной worker-задаче. Это сохраняет рабочий `FastBot2`-путь для исходящих `sendMessage()/answerCallbackQuery()`, но убирает зависание на первом входящем polling-вызове, которое повторялось на живом устройстве. (codex)
+- В `src/interface/telegram.cpp` команды `/status`, `/health`, `/diag`, `/stop` и callback-действия `tg_*` вынесены в общие helper-обработчики, чтобы одинаково обслуживать и библиотечные updates, и новый прямой Bot API polling без дублирования бизнес-логики. (codex)
+- Версия прошивки поднята до `2.0.48` как отдельный hotfix по Telegram inbound runtime после живой проверки, где исходящие сообщения уже работали, а входящие команды всё ещё оставались в очереди Telegram. (codex)
+
+## [2.0.47] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` входящий Telegram polling вынесен из основного `loop()` в отдельную FreeRTOS-задачу, которая вызывает `FastBot2::tickManual()` каждые `4000 ms`, а доступ к объекту бота синхронизирован через recursive mutex. Это убирает зависание основного runtime на первом polling-вызове и позволяет безопасно совмещать входящие updates с исходящими `sendMessage()` из API и уведомлений. (codex)
+- В `src/interface/telegram.h` и `src/interface/webserver.cpp` runtime-диагностика Telegram расширена полями `taskRunning` и `lockTimeoutCount`, чтобы по `/api/settings/telegram` было видно, запущена ли задача polling и не упирается ли она в синхронизацию. (codex)
+- Версия прошивки поднята до `2.0.47` как отдельный runtime hotfix по Telegram worker-task после живой проверки, где исходящие сообщения работали, а входящий polling зависал уже на первом вызове. (codex)
+
+## [2.0.46] - 2026-03-15
+
+### Изменено
+- В `src/storage/nvs_manager.cpp` и `src/config.h` исправлено постоянное сохранение Telegram-настроек: флаг `telegram.enabled` теперь пишется и читается из NVS через новый ключ `NVS_KEY_TG_ENABLED`, поэтому бот больше не выключается сам после перезагрузки, пока токен и `chatId` остаются сохранёнными. (codex)
+- Версия прошивки поднята до `2.0.46` как отдельный hotfix по Telegram persistence после живой проверки на устройстве, где токен и `chatId` сохранялись, а сам флаг включения терялся после reboot. (codex)
+
+## [2.0.45] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` работа `FastBot2` приведена к его loop-driven модели: `tick()` теперь вызывается на каждом проходе основного цикла при наличии Wi-Fi, а polling переведён на `fb::Poll::Async` с периодом `4000 ms`, потому что на живом устройстве long polling зависал и не потреблял входящие команды. (codex)
+- В `src/interface/telegram.cpp` добавлены runtime-счётчики Telegram (`tick/update/message/query/send ok/error`, `lastInitMs`, `lastTickMs`, `lastUpdateMs`, `lastError`, `online/polling`), а `GET /api/settings/telegram` в `src/interface/webserver.cpp` теперь отдаёт их в объекте `runtime`, чтобы живую работу polling можно было проверять по API без догадок. (codex)
+- Версия прошивки поднята до `2.0.45` как отдельный hotfix по Telegram polling и диагностике после ручной проверки, что бот на устройстве перестал принимать входящие команды. (codex)
+
 ## [2.0.44] - 2026-03-15
 
 ### Изменено
