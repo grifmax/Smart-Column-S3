@@ -18,6 +18,124 @@ namespace FSM {
 
 static uint32_t pauseStartTime = 0;
 
+namespace {
+
+ControlV2::ReasonCodeV2 getSafetyAbortReason(const SystemState& state) {
+    switch (state.currentAlarm.type) {
+        case AlarmType::COLUMN_FLOOD:
+        case AlarmType::PRESSURE_RISE_RATE:
+            return ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_PRESSURE;
+        case AlarmType::SENSOR_FAILURE:
+            return ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_SENSOR;
+        case AlarmType::VAPOR_BREAKTHROUGH:
+        case AlarmType::WATER_OVERHEAT:
+        case AlarmType::WATER_RISE_RATE:
+        case AlarmType::OVERHEAT:
+        case AlarmType::LOW_WATER:
+        case AlarmType::EMERGENCY_STOP:
+            return ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_OVERHEAT;
+        default:
+            return ControlV2::ReasonCodeV2::RC_UNSPECIFIED;
+    }
+}
+
+const char* getOperatorStopMessage(Mode mode) {
+    switch (mode) {
+        case Mode::RECTIFICATION: return "Rectification stopped by operator";
+        case Mode::DISTILLATION: return "Distillation stopped by operator";
+        case Mode::MANUAL_RECT: return "Manual rectification stopped by operator";
+        case Mode::MASHING: return "Mashing stopped by operator";
+        case Mode::HOLD: return "Hold program stopped by operator";
+        case Mode::NBK: return "NBK stopped by operator";
+        case Mode::FERMENTATION: return "Fermentation stopped by operator";
+        case Mode::IDLE:
+        default:
+            return "Process stopped by operator";
+    }
+}
+
+void noteModeExitTransition(const SystemState& state,
+                            ControlV2::ReasonCodeV2 reasonCode,
+                            const char* operatorMessage) {
+    switch (state.mode) {
+        case Mode::RECTIFICATION:
+            if (state.rectPhase != RectPhase::IDLE) {
+                ControlV2::notePhaseTransition(
+                    Mode::RECTIFICATION, static_cast<uint16_t>(state.rectPhase),
+                    static_cast<uint16_t>(RectPhase::IDLE), reasonCode,
+                    operatorMessage);
+            }
+            break;
+        case Mode::DISTILLATION:
+            if (state.rectPhase != RectPhase::IDLE) {
+                ControlV2::notePhaseTransition(
+                    Mode::DISTILLATION, static_cast<uint16_t>(state.rectPhase),
+                    static_cast<uint16_t>(RectPhase::IDLE), reasonCode,
+                    operatorMessage);
+            }
+            break;
+        case Mode::MANUAL_RECT:
+            if (state.rectPhase != RectPhase::IDLE) {
+                ControlV2::notePhaseTransition(
+                    Mode::MANUAL_RECT, static_cast<uint16_t>(state.rectPhase),
+                    static_cast<uint16_t>(RectPhase::IDLE), reasonCode,
+                    operatorMessage);
+            }
+            break;
+        case Mode::MASHING:
+            if (state.mashing.phase != MashPhase::IDLE) {
+                ControlV2::notePhaseTransition(
+                    Mode::MASHING, static_cast<uint16_t>(state.mashing.phase),
+                    static_cast<uint16_t>(MashPhase::IDLE), reasonCode,
+                    operatorMessage);
+            }
+            break;
+        case Mode::HOLD:
+            if (state.hold.active) {
+                ControlV2::notePhaseTransition(
+                    Mode::HOLD, static_cast<uint16_t>(state.hold.currentStep),
+                    ControlV2::kNoPhaseIdV2, reasonCode, operatorMessage);
+            }
+            break;
+        case Mode::NBK:
+            if (state.nbkPhase != NbkPhase::IDLE) {
+                ControlV2::notePhaseTransition(
+                    Mode::NBK, static_cast<uint16_t>(state.nbkPhase),
+                    static_cast<uint16_t>(NbkPhase::IDLE), reasonCode,
+                    operatorMessage);
+            }
+            break;
+        case Mode::FERMENTATION:
+            if (state.fermPhase != FermentationPhase::IDLE) {
+                ControlV2::notePhaseTransition(
+                    Mode::FERMENTATION, static_cast<uint16_t>(state.fermPhase),
+                    static_cast<uint16_t>(FermentationPhase::IDLE), reasonCode,
+                    operatorMessage);
+            }
+            break;
+        case Mode::IDLE:
+        default:
+            break;
+    }
+}
+
+void finalizeModeStop(SystemState& state) {
+    Heater::setPower(0);
+    Pump::stop();
+    Valves::closeAll();
+
+    state.mode = Mode::IDLE;
+    state.rectPhase = RectPhase::IDLE;
+    state.nbkPhase = NbkPhase::IDLE;
+    state.fermPhase = FermentationPhase::IDLE;
+    state.mashing.active = false;
+    state.hold.active = false;
+    state.paused = false;
+    pauseStartTime = 0;
+}
+
+} // namespace
+
 void update(SystemState& state, const Settings& settings) {
     if (!state.paused) {
         switch (state.mode) {
@@ -123,53 +241,16 @@ void stopMode(SystemState& state) {
 
     LOG_I("FSM: Stopping %s", getModeName(state.mode));
 
-    if (state.mode == Mode::MANUAL_RECT && state.rectPhase != RectPhase::IDLE) {
-        ControlV2::notePhaseTransition(Mode::MANUAL_RECT,
-                                       static_cast<uint16_t>(state.rectPhase),
-                                       static_cast<uint16_t>(RectPhase::IDLE),
-                                       ControlV2::ReasonCodeV2::RC_MANUAL_OPERATOR_STOP,
-                                       "Manual rectification stopped by operator");
-    } else if (state.mode == Mode::DISTILLATION &&
-               state.rectPhase != RectPhase::IDLE) {
-        ControlV2::notePhaseTransition(Mode::DISTILLATION,
-                                       static_cast<uint16_t>(state.rectPhase),
-                                       static_cast<uint16_t>(RectPhase::IDLE),
-                                       ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
-                                       "Distillation stopped by operator");
-    } else if (state.mode == Mode::MASHING &&
-               state.mashing.phase != MashPhase::IDLE) {
-        ControlV2::notePhaseTransition(Mode::MASHING,
-                                       static_cast<uint16_t>(state.mashing.phase),
-                                       static_cast<uint16_t>(MashPhase::IDLE),
-                                       ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
-                                       "Mashing stopped by operator");
-    } else if (state.mode == Mode::HOLD && state.hold.active) {
-        ControlV2::notePhaseTransition(Mode::HOLD,
-                                       static_cast<uint16_t>(state.hold.currentStep),
-                                       ControlV2::kNoPhaseIdV2,
-                                       ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
-                                       "Hold program stopped by operator");
-    } else if (state.mode == Mode::FERMENTATION &&
-               state.fermPhase != FermentationPhase::IDLE) {
-        ControlV2::notePhaseTransition(Mode::FERMENTATION,
-                                       static_cast<uint16_t>(state.fermPhase),
-                                       static_cast<uint16_t>(FermentationPhase::IDLE),
-                                       ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
-                                       "Fermentation stopped by operator");
+    if (state.mode == Mode::MANUAL_RECT) {
+        noteModeExitTransition(
+            state, ControlV2::ReasonCodeV2::RC_MANUAL_OPERATOR_STOP,
+            getOperatorStopMessage(state.mode));
+    } else {
+        noteModeExitTransition(state, ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
+                               getOperatorStopMessage(state.mode));
     }
-    
-    Heater::setPower(0);
-    Pump::stop();
-    Valves::closeAll();
 
-    state.mode = Mode::IDLE;
-    state.rectPhase = RectPhase::IDLE;
-    state.nbkPhase = NbkPhase::IDLE;
-    state.fermPhase = FermentationPhase::IDLE;
-    state.mashing.active = false;
-    state.hold.active = false;
-    state.paused = false;
-    pauseStartTime = 0;
+    finalizeModeStop(state);
 
     MQTT::publishNotification("Процесс остановлен", "Процесс остановлен пользователем", "warning");
     Logger::logf(0, "Mode stopped by user");
@@ -177,7 +258,9 @@ void stopMode(SystemState& state) {
 
 void abortMode(SystemState& state) {
     LOG_W("FSM: Aborting due to safety!");
-    stopMode(state);
+    noteModeExitTransition(state, getSafetyAbortReason(state),
+                           state.currentAlarm.message);
+    finalizeModeStop(state);
     Logger::logf(2, "Mode aborted by safety");
 }
 

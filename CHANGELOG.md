@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.26] - 2026-03-15
+
+### Изменено
+- `src/control/fsm.cpp` получил общий `noteModeExitTransition(...)` для всех режимов, поэтому explicit `v2` exit contracts теперь выставляются централизованно и больше не размазаны частично по `stopMode()` fallback-веткам. (codex)
+- Для `RECTIFICATION` и `NBK` теперь тоже ставятся явные stop transitions при операторской остановке, а `abortMode()` больше не проходит через user-stop path и сохраняет safety reason code из текущей аварии. (codex)
+- Общий helper `finalizeModeStop(...)` выровнял shutdown/reset mode state без дублирования, а `status_adapter` после этого получает меньше mode-change inference и больше реальных причин завершения. (codex)
+- Версия прошивки поднята до `2.0.26` как отдельный шаг миграции stop/abort semantics к единому `v2` lifecycle contract. (codex)
+
 ## [2.0.25] - 2026-03-15
 
 ### Изменено
