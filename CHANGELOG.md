@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.29] - 2026-03-15
+
+### Изменено
+- `src/control/v2/safety_supervisor.cpp` получил явные `v2` reason mappings для `POWER_FAILURE` и generic fallback safety trip, поэтому latched safety state больше не скатывается в `RC_UNSPECIFIED` при неполном alarm mapping. (codex)
+- `src/control/v2/reason_codes.h` расширен кодами `RC_SAFETY_TRIP_POWER` и `RC_SAFETY_TRIP_GENERIC`, а также новым `power_failure` safety event token для статуса и API. (codex)
+- `src/history.cpp`, `src/web/history/details.js` и `src/web/runtime/process-notifications.js` научены распознавать и человекочитаемо показывать новые safety trip reasons, чтобы post-mortem и live UI не теряли смысл при power/generic авариях. (codex)
+- Версия прошивки поднята до `2.0.29` как отдельный шаг почти финальной зачистки fallback reason codes в safety-v2 слое. (codex)
+
 ## [2.0.28] - 2026-03-15
 
 ### Изменено

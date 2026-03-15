@@ -413,7 +413,9 @@ void applySafetyReasonCode(const String& reasonCode, SafetyListSummary& summary)
         summary.limited = true;
     } else if (reasonCode == "RC_SAFETY_TRIP_PRESSURE" ||
                reasonCode == "RC_SAFETY_TRIP_SENSOR" ||
-               reasonCode == "RC_SAFETY_TRIP_OVERHEAT") {
+               reasonCode == "RC_SAFETY_TRIP_OVERHEAT" ||
+               reasonCode == "RC_SAFETY_TRIP_POWER" ||
+               reasonCode == "RC_SAFETY_TRIP_GENERIC") {
         summary.trip = true;
     }
 }

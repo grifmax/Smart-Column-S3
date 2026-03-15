@@ -51,6 +51,8 @@ const SAFETY_REASON_LABELS = {
     RC_SAFETY_TRIP_PRESSURE: 'Авария по давлению',
     RC_SAFETY_TRIP_SENSOR: 'Авария по датчикам',
     RC_SAFETY_TRIP_OVERHEAT: 'Авария по перегреву',
+    RC_SAFETY_TRIP_POWER: 'Авария по питанию',
+    RC_SAFETY_TRIP_GENERIC: 'Неидентифицированная авария',
     RC_SAFETY_ACKNOWLEDGED: 'Авария подтверждена оператором',
     RC_SAFETY_RESET_COMPLETED: 'Авария сброшена оператором'
 };

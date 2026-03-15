@@ -17,6 +17,8 @@ ReasonCodeV2 mapAlarmToReason(const SystemState& state) {
             return ReasonCodeV2::RC_SAFETY_TRIP_PRESSURE;
         case AlarmType::SENSOR_FAILURE:
             return ReasonCodeV2::RC_SAFETY_TRIP_SENSOR;
+        case AlarmType::POWER_FAILURE:
+            return ReasonCodeV2::RC_SAFETY_TRIP_POWER;
         case AlarmType::VAPOR_BREAKTHROUGH:
         case AlarmType::WATER_OVERHEAT:
         case AlarmType::WATER_RISE_RATE:
@@ -25,7 +27,7 @@ ReasonCodeV2 mapAlarmToReason(const SystemState& state) {
         case AlarmType::EMERGENCY_STOP:
             return ReasonCodeV2::RC_SAFETY_TRIP_OVERHEAT;
         default:
-            return ReasonCodeV2::RC_UNSPECIFIED;
+            return ReasonCodeV2::RC_SAFETY_TRIP_GENERIC;
     }
 }
 
@@ -34,6 +36,7 @@ SafetyEventTypeV2 mapAlarmToEvent(const SystemState& state) {
         case AlarmType::COLUMN_FLOOD: return SafetyEventTypeV2::PRESSURE_HIGH;
         case AlarmType::PRESSURE_RISE_RATE: return SafetyEventTypeV2::PRESSURE_RISE_FAST;
         case AlarmType::SENSOR_FAILURE: return SafetyEventTypeV2::SENSOR_FAILURE;
+        case AlarmType::POWER_FAILURE: return SafetyEventTypeV2::POWER_FAILURE;
         case AlarmType::VAPOR_BREAKTHROUGH:
         case AlarmType::OVERHEAT:
             return SafetyEventTypeV2::OVERHEAT;

@@ -42,6 +42,8 @@ enum class ReasonCodeV2 : uint16_t {
     RC_SAFETY_TRIP_PRESSURE,
     RC_SAFETY_TRIP_SENSOR,
     RC_SAFETY_TRIP_OVERHEAT,
+    RC_SAFETY_TRIP_POWER,
+    RC_SAFETY_TRIP_GENERIC,
     RC_SAFETY_ACKNOWLEDGED,
     RC_SAFETY_RESET_COMPLETED,
     RC_MANUAL_OPERATOR_SWITCH,
@@ -70,6 +72,7 @@ enum class SafetyEventTypeV2 : uint8_t {
     COOLING_MARGIN_LOW,
     COLUMN_FLOOD_RISK,
     OVERHEAT,
+    POWER_FAILURE,
     EMERGENCY_STOP,
     POWER_LIMIT_APPLIED,
     TAKEOFF_LIMIT_APPLIED,
@@ -114,6 +117,8 @@ inline const char* reasonCodeToString(ReasonCodeV2 code) {
         case ReasonCodeV2::RC_SAFETY_TRIP_PRESSURE: return "RC_SAFETY_TRIP_PRESSURE";
         case ReasonCodeV2::RC_SAFETY_TRIP_SENSOR: return "RC_SAFETY_TRIP_SENSOR";
         case ReasonCodeV2::RC_SAFETY_TRIP_OVERHEAT: return "RC_SAFETY_TRIP_OVERHEAT";
+        case ReasonCodeV2::RC_SAFETY_TRIP_POWER: return "RC_SAFETY_TRIP_POWER";
+        case ReasonCodeV2::RC_SAFETY_TRIP_GENERIC: return "RC_SAFETY_TRIP_GENERIC";
         case ReasonCodeV2::RC_SAFETY_ACKNOWLEDGED: return "RC_SAFETY_ACKNOWLEDGED";
         case ReasonCodeV2::RC_SAFETY_RESET_COMPLETED: return "RC_SAFETY_RESET_COMPLETED";
         case ReasonCodeV2::RC_MANUAL_OPERATOR_SWITCH: return "RC_MANUAL_OPERATOR_SWITCH";
@@ -148,6 +153,7 @@ inline const char* safetyEventTypeToString(SafetyEventTypeV2 type) {
         case SafetyEventTypeV2::COOLING_MARGIN_LOW: return "cooling_margin_low";
         case SafetyEventTypeV2::COLUMN_FLOOD_RISK: return "column_flood_risk";
         case SafetyEventTypeV2::OVERHEAT: return "overheat";
+        case SafetyEventTypeV2::POWER_FAILURE: return "power_failure";
         case SafetyEventTypeV2::EMERGENCY_STOP: return "emergency_stop";
         case SafetyEventTypeV2::POWER_LIMIT_APPLIED: return "power_limit_applied";
         case SafetyEventTypeV2::TAKEOFF_LIMIT_APPLIED: return "takeoff_limit_applied";
