@@ -20,6 +20,13 @@ static int32_t totalSteps = 0;
 static float totalVolumeMl = 0.0f;
 static TaskHandle_t pumpTaskHandle = NULL;
 static SemaphoreHandle_t pumpMutex = NULL;
+static uint32_t pumpTaskLoopCount = 0;
+static uint32_t pumpCounterUpdateCount = 0;
+static uint32_t pumpCooperativeSleepCount = 0;
+static uint32_t pumpFastYieldCount = 0;
+static uint32_t pumpLockTimeoutCount = 0;
+static uint32_t pumpLastLoopAtMs = 0;
+static uint32_t pumpLastYieldAtMs = 0;
 
 static constexpr uint32_t kPumpCounterUpdateMs = 100;
 static constexpr uint32_t kPumpCooperativeSliceUs = 10000;
@@ -34,7 +41,15 @@ static void updateTotalsFromPosition(long currentPos) {
 }
 
 static bool lockPump(TickType_t timeoutTicks = portMAX_DELAY) {
-    return pumpMutex != NULL && xSemaphoreTake(pumpMutex, timeoutTicks) == pdTRUE;
+    if (pumpMutex == NULL) {
+        return false;
+    }
+
+    const bool locked = xSemaphoreTake(pumpMutex, timeoutTicks) == pdTRUE;
+    if (!locked) {
+        pumpLockTimeoutCount++;
+    }
+    return locked;
 }
 
 static void unlockPump() {
@@ -60,8 +75,13 @@ static void pumpTask(void* pvParameters) {
     uint32_t lastCooperativeYieldUs = micros();
 
     while (1) {
+        pumpTaskLoopCount++;
+        pumpLastLoopAtMs = millis();
+
         if (!running) {
             lastCooperativeYieldUs = micros();
+            pumpCooperativeSleepCount++;
+            pumpLastYieldAtMs = pumpLastLoopAtMs;
             vTaskDelay(kPumpIdleDelayTicks);
             continue;
         }
@@ -72,6 +92,7 @@ static void pumpTask(void* pvParameters) {
             const uint32_t nowMs = millis();
             if (nowMs - lastCounterUpdate >= kPumpCounterUpdateMs) {
                 lastCounterUpdate = nowMs;
+                pumpCounterUpdateCount++;
                 const long currentPos = stepper.currentPosition();
                 if (currentPos != totalSteps) {
                     updateTotalsFromPosition(currentPos);
@@ -84,8 +105,11 @@ static void pumpTask(void* pvParameters) {
         const uint32_t nowUs = micros();
         if (nowUs - lastCooperativeYieldUs >= kPumpCooperativeSliceUs) {
             lastCooperativeYieldUs = nowUs;
+            pumpCooperativeSleepCount++;
+            pumpLastYieldAtMs = millis();
             vTaskDelay(kPumpYieldDelayTicks);
         } else {
+            pumpFastYieldCount++;
             taskYIELD();
         }
     }
@@ -107,6 +131,13 @@ void init() {
     totalVolumeMl = 0.0f;
     currentSpeedMlH = 0.0f;
     running = false;
+    pumpTaskLoopCount = 0;
+    pumpCounterUpdateCount = 0;
+    pumpCooperativeSleepCount = 0;
+    pumpFastYieldCount = 0;
+    pumpLockTimeoutCount = 0;
+    pumpLastLoopAtMs = 0;
+    pumpLastYieldAtMs = 0;
 
     if (pumpMutex == NULL) {
         pumpMutex = xSemaphoreCreateMutex();
@@ -246,6 +277,25 @@ void setCalibration(float mlPerRev) {
     } else {
         LOG_E("Pump: Invalid calibration value %.3f", mlPerRev);
     }
+}
+
+Diagnostics getDiagnostics() {
+    Diagnostics diagnostics;
+    const uint32_t nowMs = millis();
+    diagnostics.taskAlive =
+        pumpTaskHandle != NULL && pumpLastLoopAtMs > 0 && (nowMs - pumpLastLoopAtMs) < 2000;
+    diagnostics.mutexReady = pumpMutex != NULL;
+    diagnostics.taskLoopCount = pumpTaskLoopCount;
+    diagnostics.counterUpdateCount = pumpCounterUpdateCount;
+    diagnostics.cooperativeSleepCount = pumpCooperativeSleepCount;
+    diagnostics.fastYieldCount = pumpFastYieldCount;
+    diagnostics.lockTimeoutCount = pumpLockTimeoutCount;
+    diagnostics.lastLoopAtMs = pumpLastLoopAtMs;
+    diagnostics.lastYieldAtMs = pumpLastYieldAtMs;
+    diagnostics.speedMlH = currentSpeedMlH;
+    diagnostics.totalSteps = static_cast<uint32_t>(totalSteps);
+    diagnostics.totalVolumeMl = totalVolumeMl;
+    return diagnostics;
 }
 
 } // namespace Pump

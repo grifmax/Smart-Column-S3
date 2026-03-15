@@ -123,6 +123,7 @@ void setup() {
   // 2. Проверка причины перезагрузки
   esp_reset_reason_t resetReason = esp_reset_reason();
   g_state.health.lastRebootReason = (uint8_t)resetReason;
+  g_rebootTracker.totalReboots = 1;
   g_rebootTracker.lastReason = (uint8_t)resetReason;
   
   const char* resetStr = "Unknown";
@@ -143,7 +144,12 @@ void setup() {
   
   if (resetReason == ESP_RST_WDT || resetReason == ESP_RST_TASK_WDT || 
       resetReason == ESP_RST_INT_WDT) {
+    g_rebootTracker.wdtReboots = 1;
     Serial.println("WARNING: Previous reset was due to Watchdog!");
+  } else if (resetReason == ESP_RST_PANIC) {
+    g_rebootTracker.crashReboots = 1;
+  } else if (resetReason == ESP_RST_SW || resetReason == ESP_RST_EXT) {
+    g_rebootTracker.userReboots = 1;
   }
 
   // 3. WatchDog Timer

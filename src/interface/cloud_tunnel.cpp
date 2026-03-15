@@ -362,6 +362,8 @@ static void handleHttpRequest(JsonDocument& req) {
 
   // GET /api/status
   if (strcmp(method, "GET") == 0 && strcmp(path, "/api/status") == 0) {
+    ControlV2::updateRuntime(g_state, g_settings);
+
     // Соберём JSON как в WebServer::/api/status (минимально достаточно для UI)
     JsonDocument doc;
     doc["mode"] = static_cast<int>(g_state.mode);
@@ -399,11 +401,13 @@ static void handleHttpRequest(JsonDocument& req) {
   }
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/process/pause") == 0) {
     FSM::pause(g_state);
+    ControlV2::updateRuntime(g_state, g_settings);
     sendHttpResponse(requestId, 200, "{\"success\":true}");
     return;
   }
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/process/resume") == 0) {
     FSM::resume(g_state);
+    ControlV2::updateRuntime(g_state, g_settings);
     sendHttpResponse(requestId, 200, "{\"success\":true}");
     return;
   }

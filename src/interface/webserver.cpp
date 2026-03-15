@@ -534,6 +534,8 @@ void init() {
   // API endpoints
   // GET /api/status - полное состояние системы
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    ControlV2::updateRuntime(g_state, g_settings);
+
     JsonDocument doc;
 
     // Режим и состояние процесса
@@ -1268,6 +1270,7 @@ void init() {
   server.on(
       "/api/process/pause", HTTP_POST, [](AsyncWebServerRequest *request) {
         FSM::pause(g_state);
+        ControlV2::updateRuntime(g_state, g_settings);
         LOG_I("Process paused via API");
         request->send(200, "application/json",
                       "{\"success\":true,\"message\":\"Process paused\"}");
@@ -1277,6 +1280,7 @@ void init() {
   server.on(
       "/api/process/resume", HTTP_POST, [](AsyncWebServerRequest *request) {
         FSM::resume(g_state);
+        ControlV2::updateRuntime(g_state, g_settings);
         LOG_I("Process resumed via API");
         request->send(200, "application/json",
                       "{\"success\":true,\"message\":\"Process resumed\"}");
@@ -2892,6 +2896,29 @@ void init() {
     doc["running"] = Pump::isRunning();
     doc["speed"] = Pump::getSpeed();
     doc["totalVolume"] = Pump::getTotalVolume();
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  // GET /api/pump/diag - расширенная диагностика worker-task насоса
+  server.on("/api/pump/diag", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    Pump::Diagnostics diag = Pump::getDiagnostics();
+    doc["running"] = Pump::isRunning();
+    doc["taskAlive"] = diag.taskAlive;
+    doc["mutexReady"] = diag.mutexReady;
+    doc["speedMlH"] = diag.speedMlH;
+    doc["totalSteps"] = diag.totalSteps;
+    doc["totalVolumeMl"] = diag.totalVolumeMl;
+    doc["taskLoopCount"] = diag.taskLoopCount;
+    doc["counterUpdateCount"] = diag.counterUpdateCount;
+    doc["cooperativeSleepCount"] = diag.cooperativeSleepCount;
+    doc["fastYieldCount"] = diag.fastYieldCount;
+    doc["lockTimeoutCount"] = diag.lockTimeoutCount;
+    doc["lastLoopAtMs"] = diag.lastLoopAtMs;
+    doc["lastYieldAtMs"] = diag.lastYieldAtMs;
 
     String json;
     serializeJson(doc, json);

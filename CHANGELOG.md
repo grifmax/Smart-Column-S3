@@ -9,6 +9,22 @@
 
 ---
 
+## [2.0.41] - 2026-03-15
+
+### Изменено
+- В `src/interface/webserver.cpp` локальный `GET /api/status` теперь принудительно обновляет `ControlV2` перед сериализацией ответа, чтобы `v2.lifecycle` и `v2.paused` не отставали от обычных полей `mode/paused` между тиками FSM. (codex)
+- В `src/interface/webserver.cpp` и `src/interface/cloud_tunnel.cpp` `POST /api/process/pause` и `POST /api/process/resume` теперь сразу вызывают `ControlV2::updateRuntime(...)`, поэтому после операторской паузы или возобновления `v2`-снимок обновляется в той же API-транзакции, а не ждёт следующего цикла. (codex)
+- В `src/interface/cloud_tunnel.cpp` `GET /api/status` выровнен с локальным сервером и тоже пересобирает свежий `v2` runtime прямо перед ответом, чтобы локальный и облачный status path не расходились по pause/resume семантике. (codex)
+- Версия прошивки поднята до `2.0.41` как отдельный шаг live runtime consistency fix после ручного API-smoke по режимам и диагностике насоса. (codex)
+
+## [2.0.40] - 2026-03-15
+
+### Изменено
+- В `src/drivers/pump.h` и `src/drivers/pump.cpp` добавлена лёгкая runtime-телеметрия worker-task насоса: теперь можно снять `taskAlive`, `taskLoopCount`, `cooperativeSleepCount`, `fastYieldCount`, `lockTimeoutCount`, `lastLoopAtMs` и текущие step/volume метрики без подключения отладчика. (codex)
+- В `src/interface/webserver.cpp` добавлен новый диагностический endpoint `GET /api/pump/diag`, чтобы проверять живучесть pump-task и признаки starvation/lock-problem прямо по сети с устройства. (codex)
+- В `src/main.cpp` улучшено наполнение `RebootTracker` на текущем boot: `totalReboots`, `wdtReboots`, `crashReboots` и `userReboots` теперь хотя бы отражают тип последнего рестарта, а не оставались нулями при любых причинах перезагрузки. (codex)
+- Версия прошивки поднята до `2.0.40` как отдельный шаг диагностической стабилизации и post-fix observability после hotfix насоса. (codex)
+
 ## [2.0.39] - 2026-03-15
 
 ### Изменено
