@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.33] - 2026-03-15
+
+### Изменено
+- `src/control/modes/distillation_handler.cpp` больше не использует `RC_PHASE_TRANSITION_INFERRED` в собственной recovery-ветке: восстановление некорректной distillation phase в `BODY` теперь идёт через отдельный explicit reason `RC_PHASE_RECOVERY_APPLIED`. (codex)
+- `src/control/v2/reason_codes.h` расширен новым служебным reason code для mode-level phase recovery, чтобы `RC_PHASE_TRANSITION_INFERRED` оставался маркером именно adapter fallback, а не штатных recovery-решений внутри handler. (codex)
+- `src/web/runtime/process-notifications.js` научен показывать новый reason code по-человечески, поэтому live уведомления больше не смешивают намеренно восстановленную phase recovery с adapter inference. (codex)
+- Версия прошивки поднята до `2.0.33` как отдельный шаг финальной зачистки источников `RC_PHASE_TRANSITION_INFERRED` перед точечным аудитом последних missing contracts. (codex)
+
 ## [2.0.32] - 2026-03-15
 
 ### Изменено

@@ -169,7 +169,7 @@ void update(SystemState& state, const Settings& settings) {
                 Mode::DISTILLATION,
                 static_cast<uint16_t>(state.rectPhase),
                 static_cast<uint16_t>(RectPhase::BODY),
-                ControlV2::ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED,
+                ControlV2::ReasonCodeV2::RC_PHASE_RECOVERY_APPLIED,
                 "Recovered distillation phase to body");
             state.rectPhase = RectPhase::BODY;
             setPhaseStartTime(now);
