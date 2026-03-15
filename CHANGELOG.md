@@ -9,6 +9,21 @@
 
 ---
 
+## [2.0.57] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` Telegram polling вынесен из основного `loop()` в отдельную низкоприоритетную FreeRTOS-задачу, а входящие команды и исходящие сообщения переведены на очереди, чтобы Telegram не блокировал управляющий runtime и не вызывался конкурентно из разных потоков. (codex)
+- В `src/interface/telegram.cpp` входящий `getUpdates` переведён на прямой HTTPS worker-path с `Connection: close`, ручным чтением тела и JSON-разбором, а команды `/status`, `/health`, `/stop`, `/help` и inline callback-действия теперь попадают в тот же worker-контекст без реэнтрантного HTTP внутри `FastBot2` callback. (codex)
+- В проект добавлена локальная копия `lib/FastBot2`, а в `lib/FastBot2/src/core/packet.h` для исходящих запросов Telegram добавлен `Connection: close`, чтобы transport-fix для отправки и callback answer жил прямо в репозитории, а не в внешней `libdeps`-копии. (codex)
+- Версия прошивки поднята до `2.0.57` как отдельный hotfix по Telegram runtime isolation и library-level transport fix после живой проблемы, где `/health` ронял устройство, а inline-кнопки не отвечали. (codex)
+
+## [2.0.56] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` обработка входящих Telegram updates переведена на безопасную отложенную схему: callback `FastBot2` теперь только ставит команды и inline-действия в очередь, а сами `sendStatus()`, `sendHealth()`, `pause/resume` и `stop` выполняются уже после возврата из `tick()`, чтобы убрать реэнтрантные HTTP-вызовы внутри polling-разбора библиотеки. (codex)
+- В `src/interface/telegram.cpp` ручной `answerCallbackQuery()` из callback убран, чтобы оставить подтверждение inline-кнопок штатной auto-query логике `FastBot2` и не смешивать callback-ответ с синхронной отправкой сообщений в одном сетевом проходе. (codex)
+- Версия прошивки поднята до `2.0.56` как отдельный hotfix по Telegram command/callback stability после живой проблемы, где `/health` уводил устройство в reboot, а inline-кнопки зависали без ответа. (codex)
+
 ## [2.0.55] - 2026-03-15
 
 ### Изменено
