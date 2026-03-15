@@ -386,6 +386,10 @@ struct SafetyListSummary {
     bool limited = false;
 };
 
+bool isSafetyReasonCode(const String& reasonCode) {
+    return reasonCode.startsWith("RC_SAFETY_");
+}
+
 bool looksLikeSafetyMessage(const String& rawMessage) {
     String message = rawMessage;
     message.toLowerCase();
@@ -418,7 +422,7 @@ void applySafetyEventSummary(const JsonArrayConst& events, bool isError,
                              SafetyListSummary& summary) {
     for (JsonObjectConst event : events) {
         const String reasonCode = event["reasonCode"].as<String>();
-        if (reasonCode.startsWith("RC_SAFETY_")) {
+        if (isSafetyReasonCode(reasonCode)) {
             applySafetyReasonCode(reasonCode, summary);
             continue;
         }
@@ -472,6 +476,71 @@ void applyLastPhaseSummary(const JsonArrayConst& phases, ProcessListItem& item) 
     item.lastOperatorMessage = phase["operatorMessage"].as<String>();
 }
 
+bool applyLastMatchingEvent(const JsonArrayConst& events, ProcessListItem& item,
+                            bool safetyOnly) {
+    if (events.isNull() || events.size() == 0) {
+        return false;
+    }
+
+    for (size_t index = events.size(); index > 0; --index) {
+        JsonObjectConst event = events[index - 1].as<JsonObjectConst>();
+        const String reasonCode = event["reasonCode"].as<String>();
+        const String message = event["message"].as<String>();
+
+        if (safetyOnly && !isSafetyReasonCode(reasonCode) &&
+            !looksLikeSafetyMessage(message)) {
+            continue;
+        }
+
+        item.completionReasonCode = reasonCode;
+        item.completionOperatorMessage =
+            event["operatorMessage"].as<String>();
+        if (item.completionOperatorMessage.isEmpty()) {
+            item.completionOperatorMessage = message;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+void applyCompletionSummary(const JsonArrayConst& errors,
+                            const JsonArrayConst& warnings,
+                            const SafetyListSummary& safetySummary,
+                            ProcessListItem& item) {
+    if (item.status == "completed") {
+        item.completionState = "completed";
+        item.completionReasonCode = item.lastReasonCode;
+        item.completionOperatorMessage = item.lastOperatorMessage;
+        return;
+    }
+
+    if (safetySummary.trip || item.status == "error") {
+        item.completionState = "safety_stop";
+        if (!applyLastMatchingEvent(errors, item, true)) {
+            applyLastMatchingEvent(warnings, item, true);
+        }
+        if (item.completionReasonCode.isEmpty()) {
+            item.completionReasonCode = item.lastReasonCode;
+        }
+        if (item.completionOperatorMessage.isEmpty()) {
+            item.completionOperatorMessage = item.lastOperatorMessage;
+        }
+        return;
+    }
+
+    if (item.status == "stopped") {
+        item.completionState = "operator_stop";
+        item.completionReasonCode = item.lastReasonCode;
+        item.completionOperatorMessage = item.lastOperatorMessage;
+        return;
+    }
+
+    item.completionState = item.status;
+    item.completionReasonCode = item.lastReasonCode;
+    item.completionOperatorMessage = item.lastOperatorMessage;
+}
+
 } // namespace
 
 std::vector<ProcessListItem> getProcessList() {
@@ -511,6 +580,10 @@ std::vector<ProcessListItem> getProcessList() {
                         doc["results"]["warnings"].as<JsonArrayConst>(), false,
                         safetySummary);
                     finalizeSafetySummary(item, safetySummary);
+                    applyCompletionSummary(
+                        doc["results"]["errors"].as<JsonArrayConst>(),
+                        doc["results"]["warnings"].as<JsonArrayConst>(),
+                        safetySummary, item);
 
                     list.push_back(item);
                 }

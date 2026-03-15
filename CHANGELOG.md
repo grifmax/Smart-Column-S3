@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.20] - 2026-03-15
+
+### Изменено
+- `src/history.h`, `src/history.cpp` и `src/interface/webserver.cpp` расширены compact итогом завершения процесса: history list теперь получает `completionState`, `completionReasonCode` и `completionOperatorMessage`, чтобы различать normal finish, operator stop и safety stop без полной загрузки details. (codex)
+- `src/web/history/list.js` теперь показывает отдельный completion badge в карточке history и использует новый v2-aware итоговый state поверх legacy `status`, не пряча важное различие между `FINISH`, `OPERATOR STOP` и `SAFETY STOP`. (codex)
+- `src/web/styles/_history.css` дополнен стилями completion badge, а подсказка `title` оставлена только как вспомогательная detail-информация, не как единственный способ понять исход процесса. (codex)
+- Версия прошивки поднята до `2.0.20` как отдельный шаг миграции history list к v2 completion state summary. (codex)
+
 ## [2.0.19] - 2026-03-15
 
 ### Изменено

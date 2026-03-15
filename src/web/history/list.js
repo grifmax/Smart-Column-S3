@@ -247,6 +247,37 @@ function formatPhaseName(phaseName) {
 
 }
 
+function formatCompletionState(state) {
+
+    const labels = {
+        completed: 'FINISH',
+        operator_stop: 'OPERATOR STOP',
+        safety_stop: 'SAFETY STOP',
+        error: 'ERROR'
+    };
+
+    return labels[String(state || '').trim()] || '';
+
+}
+
+function getCompletionBadgeTitle(process) {
+
+    const stateLabel = formatCompletionState(process.completionState);
+    const operatorMessage = String(process.completionOperatorMessage || '').trim();
+    const reason = formatReasonCode(process.completionReasonCode);
+
+    if (!stateLabel) {
+
+        return '';
+
+    }
+
+    return operatorMessage || reason
+        ? `${stateLabel}: ${operatorMessage || reason}`
+        : stateLabel;
+
+}
+
 function buildOutcomeSummary(process) {
 
     const phaseName = formatPhaseName(process.lastPhaseName);
@@ -324,6 +355,12 @@ export function renderHistoryItem(process) {
     const safetyBadge = safetySummary
         ? `<span class="history-safety-badge history-safety-${safetyState}" title="${escapeHtml(safetyBadgeTitle)}">Safety ${escapeHtml(safetySummary)}</span>`
         : '';
+    const completionState = String(process.completionState || '').trim();
+    const completionBadgeTitle = getCompletionBadgeTitle(process);
+    const completionBadgeLabel = formatCompletionState(completionState);
+    const completionBadge = completionBadgeLabel
+        ? `<span class="history-completion-badge history-completion-${completionState}" title="${escapeHtml(completionBadgeTitle)}">${escapeHtml(completionBadgeLabel)}</span>`
+        : '';
     const outcomeSummary = buildOutcomeSummary(process);
     const outcomeLine = outcomeSummary
         ? `<div class="history-outcome" title="${escapeHtml(outcomeSummary)}">${escapeHtml(outcomeSummary)}</div>`
@@ -352,6 +389,8 @@ export function renderHistoryItem(process) {
                     <span class="history-type history-type-${process.type}">${typeName}</span>
 
                     <span class="history-status history-status-${process.status}">${statusName}</span>
+
+                    ${completionBadge}
 
                     ${safetyBadge}
 

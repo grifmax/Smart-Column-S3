@@ -136,6 +136,9 @@ struct ProcessListItem {
     uint32_t duration;
     String status;
     uint16_t totalVolume;
+    String completionState;
+    String completionReasonCode;
+    String completionOperatorMessage;
     String lastPhaseName;
     String lastReasonCode;
     String lastOperatorMessage;

@@ -949,6 +949,9 @@ void init() {
       item["duration"] = process.duration;
       item["status"] = process.status;
       item["totalVolume"] = process.totalVolume;
+      item["completionState"] = process.completionState;
+      item["completionReasonCode"] = process.completionReasonCode;
+      item["completionOperatorMessage"] = process.completionOperatorMessage;
       item["lastPhaseName"] = process.lastPhaseName;
       item["lastReasonCode"] = process.lastReasonCode;
       item["lastOperatorMessage"] = process.lastOperatorMessage;
