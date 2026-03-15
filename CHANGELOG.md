@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.38] - 2026-03-15
+
+### Изменено
+- `tools/ui-smoke/tests/helpers/smoke-helpers.js` расширен поддержкой `GET /api/history` и `GET /api/history/{id}`: общий smoke harness теперь умеет мокать список истории и детали процесса так же удобно, как уже мокал `status` и `logs`. (codex)
+- Добавлен новый smoke-тест `tools/ui-smoke/tests/history-v2.smoke.spec.js`, который проходит путь `history list -> details modal` и проверяет `v2` safety summary, completion badge, outcome summary, phase `reasonCode/operatorMessage` и `Safety timeline`. (codex)
+- Это закрывает важный post-migration verification gap: после завершения v2 migration история процессов теперь закреплена не только кодом и manual UI-проверками, но и автоматическим smoke-сценарием на ключевые `v2`-поля. (codex)
+- Версия прошивки поднята до `2.0.38` как отдельный шаг финальной verification и post-migration polish перед загрузкой на устройство. (codex)
+
 ## [2.0.37] - 2026-03-15
 
 ### Изменено

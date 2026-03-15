@@ -352,6 +352,8 @@ export async function installCommonApiMocks(page, options = {}) {
   const requests = {
     clearLogs: 0,
     exportRequests: 0,
+    historyDetailRequests: [],
+    historyListRequests: 0,
     logQueries: [],
     processStarts: [],
     statusRequests: 0,
@@ -359,6 +361,8 @@ export async function installCommonApiMocks(page, options = {}) {
 
   const versionPayload = options.versionPayload || buildVersionPayload();
   const statusPayload = options.statusPayload || buildStatusPayload();
+  const historyListPayload = options.historyListPayload || { processes: [] };
+  const historyDetailsPayloads = options.historyDetailsPayloads || {};
   const logEvents = options.logEvents || [];
   const processStartResponse = options.processStartResponse || { success: true };
 
@@ -387,6 +391,44 @@ export async function installCommonApiMocks(page, options = {}) {
       const payload = typeof statusPayload === 'function'
         ? statusPayload({ pathname, searchParams, method, requests })
         : statusPayload;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (pathname === '/api/history' && method === 'GET') {
+      requests.historyListRequests += 1;
+      const payload = typeof historyListPayload === 'function'
+        ? historyListPayload({ pathname, searchParams, method, requests })
+        : historyListPayload;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (pathname.startsWith('/api/history/') && !pathname.endsWith('/export') && method === 'GET') {
+      const historyId = decodeURIComponent(pathname.slice('/api/history/'.length));
+      requests.historyDetailRequests.push(historyId);
+      const payload = typeof historyDetailsPayloads === 'function'
+        ? historyDetailsPayloads({ historyId, pathname, searchParams, method, requests })
+        : historyDetailsPayloads[historyId];
+
+      if (!payload) {
+        await route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: `Missing history fixture for ${historyId}` }),
+        });
+        return;
+      }
 
       await route.fulfill({
         status: 200,
