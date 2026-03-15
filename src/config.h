@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.0.42"
+#define FIRMWARE_VERSION "2.0.43"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -165,6 +165,7 @@
 // Каналы LEDC
 #define LEDC_CHANNEL_HEATER 0
 #define LEDC_CHANNEL_VALVE 1
+#define LEDC_CHANNEL_PUMP 2
 
 // =============================================================================
 // НАСТРОЙКИ КНОПОК
