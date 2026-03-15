@@ -128,6 +128,13 @@ void stopMode(SystemState& state) {
                                        static_cast<uint16_t>(state.hold.currentStep),
                                        ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
                                        "Hold program stopped by operator");
+    } else if (state.mode == Mode::FERMENTATION &&
+               state.fermPhase != FermentationPhase::IDLE) {
+        ControlV2::notePhaseTransition(Mode::FERMENTATION,
+                                       static_cast<uint16_t>(state.fermPhase),
+                                       static_cast<uint16_t>(FermentationPhase::IDLE),
+                                       ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
+                                       "Fermentation stopped by operator");
     }
     
     Heater::setPower(0);

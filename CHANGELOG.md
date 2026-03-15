@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.23] - 2026-03-15
+
+### Изменено
+- `src/control/modes/fermentation_handler.cpp` теперь завершает ферментацию по `settings.fermentation.durationHours`, ставит явный `v2` transition `RUNNING -> COMPLETED` с `RC_FERM_TARGET_REACHED` и корректно выключает нагреватель при финале режима. (codex)
+- Для `FERMENTATION` в `src/control/fsm.cpp` добавлена явная операторская остановка через `RC_MODE_STOP_REQUEST`, чтобы ручной stop этого режима не терялся в history и transition log. (codex)
+- `src/control/v2/status_adapter.cpp` теперь считает `FERMENTATION` успешным завершением при `RC_FERM_TARGET_REACHED`, поэтому completion summary/history больше не выглядят как простой `stopped`, если режим закончил работу штатно по времени. (codex)
+- Версия прошивки поднята до `2.0.23` как отдельный шаг `Wave 4` для перевода `fermentation` на явные v2 completion transitions. (codex)
+
 ## [2.0.22] - 2026-03-15
 
 ### Изменено

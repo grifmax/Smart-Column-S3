@@ -114,6 +114,8 @@ bool isSuccessfulCompletion(Mode previousMode, uint16_t previousPhaseId,
         case Mode::MASHING:
         case Mode::HOLD:
             return reasonCode == ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE;
+        case Mode::FERMENTATION:
+            return reasonCode == ReasonCodeV2::RC_FERM_TARGET_REACHED;
         default:
             return false;
     }
