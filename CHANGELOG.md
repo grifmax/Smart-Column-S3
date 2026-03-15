@@ -9,6 +9,13 @@
 
 ---
 
+## [2.0.11] - 2026-03-15
+
+### Изменено
+- Экспорт последних событий в `src/storage/logger.cpp` расширен structured-полями для v2 phase transition log: JSON `/api/logs/events` теперь, помимо исходного `message`, отдаёт `kind`, `mode`, `fromPhase`, `toPhase`, `reasonCode` и `operatorMessage`, если запись распознана как `phase_transition`. (codex)
+- CSV-выгрузка recent events дополнена колонками `kind`, `mode`, `from_phase`, `to_phase`, `reason_code` и `operator_message`, поэтому transition log можно анализировать как структурированный журнал причин переходов, а не только как плоский текст. (codex)
+- Версия прошивки поднята до `2.0.11` как отдельный шаг миграции, который протягивает v2 причинную модель из live runtime в event log export слой. (codex)
+
 ## [2.0.10] - 2026-03-15
 
 ### Изменено

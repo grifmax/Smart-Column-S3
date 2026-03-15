@@ -6,10 +6,11 @@
 
 #include "../fs_compat.h"
 #include <ArduinoJson.h>
+#include <cstring>
 #include <stdarg.h>
 #include <time.h>
-#include <vector>
 #include <algorithm>
+#include <vector>
 
 static File currentLogFile;
 static char currentFilename[64] = "";
@@ -23,6 +24,15 @@ LogEvent recentEvents[EVENT_BUFFER_SIZE];
 size_t recentEventCount = 0;
 size_t recentEventWriteIndex = 0;
 uint32_t nextEventSequence = 1;
+
+struct ParsedPhaseTransitionEvent {
+  bool matched = false;
+  char mode[24] = "";
+  char fromPhase[24] = "";
+  char toPhase[24] = "";
+  char reasonCode[40] = "";
+  char operatorMessage[80] = "";
+};
 
 bool hasValidRtc(time_t now, const tm& timeinfo) {
   return now >= 1704067200 && timeinfo.tm_year >= (2024 - 1900);
@@ -108,6 +118,111 @@ const char* getLevelToken(uint8_t level) {
     default:
       return "info";
   }
+}
+
+void copyToken(char* dest, size_t destSize, const char* start, size_t length) {
+  if (!dest || destSize == 0) {
+    return;
+  }
+
+  const size_t copyLength = min(length, destSize - 1);
+  if (copyLength > 0) {
+    memcpy(dest, start, copyLength);
+  }
+  dest[copyLength] = '\0';
+}
+
+bool parseNextTransitionField(const char*& cursor, char* key, size_t keySize,
+                              char* value, size_t valueSize) {
+  while (*cursor == ' ') {
+    ++cursor;
+  }
+  if (*cursor == '\0') {
+    return false;
+  }
+
+  const char* keyStart = cursor;
+  while (*cursor != '\0' && *cursor != '=' && *cursor != ' ') {
+    ++cursor;
+  }
+  if (*cursor != '=') {
+    while (*cursor != '\0' && *cursor != ' ') {
+      ++cursor;
+    }
+    return false;
+  }
+
+  copyToken(key, keySize, keyStart, static_cast<size_t>(cursor - keyStart));
+  ++cursor;
+
+  const char* valueStart = cursor;
+  if (*cursor == '"') {
+    ++valueStart;
+    ++cursor;
+    while (*cursor != '\0' && *cursor != '"') {
+      ++cursor;
+    }
+    copyToken(value, valueSize, valueStart,
+              static_cast<size_t>(cursor - valueStart));
+    if (*cursor == '"') {
+      ++cursor;
+    }
+    return true;
+  }
+
+  while (*cursor != '\0' && *cursor != ' ') {
+    ++cursor;
+  }
+  copyToken(value, valueSize, valueStart, static_cast<size_t>(cursor - valueStart));
+  return true;
+}
+
+ParsedPhaseTransitionEvent parsePhaseTransitionEvent(const char* message) {
+  ParsedPhaseTransitionEvent parsed;
+  if (!message) {
+    return parsed;
+  }
+
+  constexpr const char* kPrefix = "phase_transition";
+  constexpr size_t kPrefixLength = 16;
+  if (strncmp(message, kPrefix, kPrefixLength) != 0) {
+    return parsed;
+  }
+
+  parsed.matched = true;
+
+  const char* cursor = message + kPrefixLength;
+  char key[24] = "";
+  char value[96] = "";
+
+  while (*cursor != '\0') {
+    key[0] = '\0';
+    value[0] = '\0';
+    if (!parseNextTransitionField(cursor, key, sizeof(key), value, sizeof(value))) {
+      continue;
+    }
+
+    if (strcmp(key, "mode") == 0) {
+      copyToken(parsed.mode, sizeof(parsed.mode), value, strlen(value));
+    } else if (strcmp(key, "from") == 0) {
+      copyToken(parsed.fromPhase, sizeof(parsed.fromPhase), value, strlen(value));
+    } else if (strcmp(key, "to") == 0) {
+      copyToken(parsed.toPhase, sizeof(parsed.toPhase), value, strlen(value));
+    } else if (strcmp(key, "reason") == 0) {
+      copyToken(parsed.reasonCode, sizeof(parsed.reasonCode), value, strlen(value));
+    } else if (strcmp(key, "message") == 0) {
+      copyToken(parsed.operatorMessage, sizeof(parsed.operatorMessage), value,
+                strlen(value));
+    }
+  }
+
+  return parsed;
+}
+
+String escapeCsvField(const char* value) {
+  String escaped = value ? String(value) : String();
+  escaped.replace("\"", "\"\"");
+  return escaped;
 }
 
 void pushRecentEvent(const LogEvent& rawEvent) {
@@ -354,6 +469,27 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
     item["level"] = event->level;
     item["levelStr"] = getLevelToken(event->level);
     item["message"] = event->message;
+
+    const ParsedPhaseTransitionEvent parsed =
+        parsePhaseTransitionEvent(event->message);
+    item["kind"] = parsed.matched ? "phase_transition" : "log";
+    if (parsed.matched) {
+      if (parsed.mode[0] != '\0') {
+        item["mode"] = parsed.mode;
+      }
+      if (parsed.fromPhase[0] != '\0') {
+        item["fromPhase"] = parsed.fromPhase;
+      }
+      if (parsed.toPhase[0] != '\0') {
+        item["toPhase"] = parsed.toPhase;
+      }
+      if (parsed.reasonCode[0] != '\0') {
+        item["reasonCode"] = parsed.reasonCode;
+      }
+      if (parsed.operatorMessage[0] != '\0') {
+        item["operatorMessage"] = parsed.operatorMessage;
+      }
+    }
   }
 
   root["count"] = events.size();
@@ -365,7 +501,9 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
 }
 
 String exportRecentEventsCsv(uint16_t limit) {
-  String csv = "sequence,timestamp_ms,level,message\n";
+  String csv =
+      "sequence,timestamp_ms,level,message,kind,mode,from_phase,to_phase,"
+      "reason_code,operator_message\n";
   const size_t effectiveLimit =
       limit == 0 ? recentEventCount
                  : (recentEventCount < static_cast<size_t>(limit)
@@ -380,15 +518,36 @@ String exportRecentEventsCsv(uint16_t limit) {
       continue;
     }
 
-    String message = event->message;
-    message.replace("\"", "\"\"");
+    const ParsedPhaseTransitionEvent parsed =
+        parsePhaseTransitionEvent(event->message);
+    const String kind = parsed.matched ? "phase_transition" : "log";
+    const String mode = escapeCsvField(parsed.mode);
+    const String fromPhase = escapeCsvField(parsed.fromPhase);
+    const String toPhase = escapeCsvField(parsed.toPhase);
+    const String reasonCode = escapeCsvField(parsed.reasonCode);
+    const String operatorMessage = escapeCsvField(parsed.operatorMessage);
+    const String message = escapeCsvField(event->message);
+
     csv += String(event->sequence);
     csv += ",";
     csv += String(event->timestamp);
     csv += ",";
     csv += getLevelToken(event->level);
-    csv += ",\"";
+    csv += ",";
+    csv += "\"";
     csv += message;
+    csv += "\",";
+    csv += kind;
+    csv += ",\"";
+    csv += mode;
+    csv += "\",\"";
+    csv += fromPhase;
+    csv += "\",\"";
+    csv += toPhase;
+    csv += "\",\"";
+    csv += reasonCode;
+    csv += "\",\"";
+    csv += operatorMessage;
     csv += "\"\n";
   }
 
