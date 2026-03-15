@@ -17,6 +17,7 @@
 #include "../types.h"
 #include "../control/fsm.h"
 #include "../control/safety.h"
+#include "../control/v2/status_adapter.h"
 #include "../storage/nvs_manager.h"
 
 extern SystemState g_state;
@@ -122,6 +123,28 @@ static void fillAlarmJson(JsonObject alarm, const SystemState& state, const Sett
   alarm["acknowledged"] = state.currentAlarm.acknowledged;
   alarm["resetAvailable"] = resetAvailable;
   alarm["resetBlockedReason"] = latched && !resetAvailable ? resetBlockedReason : "";
+}
+
+static void fillSafetyActionV2Json(JsonObject v2, const ControlV2::ModeStatusV2& status,
+                                   const ControlV2::MetricsSnapshotV2& metrics) {
+  v2["available"] = true;
+  v2["safetyLatched"] = status.safetyLatched;
+  v2["lastReasonCode"] = ControlV2::reasonCodeToString(status.lastReasonCode);
+  v2["operatorMessage"] = status.operatorMessage;
+
+  JsonObject safety = v2["safety"].to<JsonObject>();
+  safety["severity"] = ControlV2::safetySeverityToString(metrics.safety.severity);
+  safety["event"] = ControlV2::safetyEventTypeToString(metrics.safety.primaryEvent);
+  safety["reasonCode"] = ControlV2::reasonCodeToString(metrics.safety.reasonCode);
+  safety["requiresAcknowledge"] = metrics.safety.requiresAcknowledge;
+  safety["message"] = metrics.safety.message;
+  safety["resetAvailable"] = !status.safetyLatched ||
+                             metrics.safety.severity == ControlV2::SafetySeverityV2::RECOVERY;
+  safety["resetBlockedReason"] =
+      status.safetyLatched &&
+              metrics.safety.severity != ControlV2::SafetySeverityV2::RECOVERY
+          ? metrics.safety.message
+          : "";
 }
 
 static String base64Encode(const uint8_t* data, size_t len) {
@@ -297,12 +320,16 @@ static void handleHttpRequest(JsonDocument& req) {
   }
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/safety/ack") == 0) {
     Safety::acknowledge(g_state);
+    ControlV2::updateRuntime(g_state, g_settings);
 
     JsonDocument doc;
     doc["success"] = true;
     doc["message"] = "Alarm acknowledged";
     JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state, g_settings);
+    JsonObject v2 = doc["v2"].to<JsonObject>();
+    fillSafetyActionV2Json(v2, ControlV2::getLatestModeStatus(),
+                           ControlV2::getLatestMetricsSnapshot());
 
     String out;
     serializeJson(doc, out);
@@ -312,6 +339,7 @@ static void handleHttpRequest(JsonDocument& req) {
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/safety/reset") == 0) {
     char reason[128] = "";
     const bool ok = Safety::reset(g_state, g_settings, reason, sizeof(reason));
+    ControlV2::updateRuntime(g_state, g_settings);
 
     JsonDocument doc;
     doc["success"] = ok;
@@ -321,6 +349,9 @@ static void handleHttpRequest(JsonDocument& req) {
     }
     JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state, g_settings);
+    JsonObject v2 = doc["v2"].to<JsonObject>();
+    fillSafetyActionV2Json(v2, ControlV2::getLatestModeStatus(),
+                           ControlV2::getLatestMetricsSnapshot());
 
     String out;
     serializeJson(doc, out);

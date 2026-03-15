@@ -9,6 +9,13 @@
 
 ---
 
+## [2.0.7] - 2026-03-15
+
+### Изменено
+- `/api/safety/ack` и `/api/safety/reset` в `webserver.cpp` и `cloud_tunnel.cpp` теперь возвращают не только legacy `success/alarm`, но и отдельный блок `v2` с `severity`, `reasonCode`, `requiresAcknowledge`, `resetAvailable`, `resetBlockedReason`, `safetyLatched` и `lastReasonCode`. (codex)
+- После `ack/reset` runtime v2 принудительно обновляется через `ControlV2::updateRuntime(...)`, чтобы ответ API отражал уже актуальное safety/recovery состояние, а не предыдущий snapshot. (codex)
+- Версия прошивки поднята до `2.0.7` как отдельный шаг миграции safety action endpoints на более явный v2 response contract. (codex)
+
 ## [2.0.6] - 2026-03-15
 
 ### Изменено

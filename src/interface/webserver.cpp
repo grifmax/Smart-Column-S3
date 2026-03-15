@@ -314,6 +314,28 @@ static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& statu
           : "";
 }
 
+static void fillSafetyActionV2Json(JsonObject v2, const ControlV2::ModeStatusV2& status,
+                                   const ControlV2::MetricsSnapshotV2& metrics) {
+  v2["available"] = true;
+  v2["safetyLatched"] = status.safetyLatched;
+  v2["lastReasonCode"] = ControlV2::reasonCodeToString(status.lastReasonCode);
+  v2["operatorMessage"] = status.operatorMessage;
+
+  JsonObject safety = v2["safety"].to<JsonObject>();
+  safety["severity"] = ControlV2::safetySeverityToString(metrics.safety.severity);
+  safety["event"] = ControlV2::safetyEventTypeToString(metrics.safety.primaryEvent);
+  safety["reasonCode"] = ControlV2::reasonCodeToString(metrics.safety.reasonCode);
+  safety["requiresAcknowledge"] = metrics.safety.requiresAcknowledge;
+  safety["message"] = metrics.safety.message;
+  safety["resetAvailable"] = !status.safetyLatched ||
+                             metrics.safety.severity == ControlV2::SafetySeverityV2::RECOVERY;
+  safety["resetBlockedReason"] =
+      status.safetyLatched &&
+              metrics.safety.severity != ControlV2::SafetySeverityV2::RECOVERY
+          ? metrics.safety.message
+          : "";
+}
+
 static bool isSecurityOnboardingMode() {
   return !hasConfiguredWiFi() && WiFi.status() != WL_CONNECTED;
 }
@@ -1158,12 +1180,16 @@ void init() {
   // POST /api/cloud/claim - сгенерировать новый PIN для привязки
   server.on("/api/safety/ack", HTTP_POST, [](AsyncWebServerRequest *request) {
     Safety::acknowledge(g_state);
+    ControlV2::updateRuntime(g_state, g_settings);
 
     JsonDocument doc;
     doc["success"] = true;
     doc["message"] = "Alarm acknowledged";
     JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state, g_settings);
+    JsonObject v2 = doc["v2"].to<JsonObject>();
+    fillSafetyActionV2Json(v2, ControlV2::getLatestModeStatus(),
+                           ControlV2::getLatestMetricsSnapshot());
 
     String response;
     serializeJson(doc, response);
@@ -1173,6 +1199,7 @@ void init() {
   server.on("/api/safety/reset", HTTP_POST, [](AsyncWebServerRequest *request) {
     char reason[128] = "";
     const bool ok = Safety::reset(g_state, g_settings, reason, sizeof(reason));
+    ControlV2::updateRuntime(g_state, g_settings);
 
     JsonDocument doc;
     doc["success"] = ok;
@@ -1182,6 +1209,9 @@ void init() {
     }
     JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state, g_settings);
+    JsonObject v2 = doc["v2"].to<JsonObject>();
+    fillSafetyActionV2Json(v2, ControlV2::getLatestModeStatus(),
+                           ControlV2::getLatestMetricsSnapshot());
 
     String response;
     serializeJson(doc, response);
