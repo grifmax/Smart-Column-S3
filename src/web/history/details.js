@@ -42,6 +42,17 @@ export let tempChart = null;
 
 export let powerChart = null;
 
+const SAFETY_REASON_LABELS = {
+    RC_SAFETY_LIMIT_POWER: 'Ограничение мощности',
+    RC_SAFETY_LIMIT_TAKEOFF: 'Ограничение отбора',
+    RC_SAFETY_PHASE_BLOCKED: 'Переход фазы заблокирован',
+    RC_SAFETY_RECOVERY_ENTERED: 'Условия безопасности восстановлены',
+    RC_SAFETY_RECOVERY_EXITED: 'Режим восстановления завершён',
+    RC_SAFETY_TRIP_PRESSURE: 'Авария по давлению',
+    RC_SAFETY_TRIP_SENSOR: 'Авария по датчикам',
+    RC_SAFETY_TRIP_OVERHEAT: 'Авария по перегреву'
+};
+
 function formatReasonCode(reasonCode) {
 
     const raw = String(reasonCode || '').trim();
@@ -97,6 +108,194 @@ function appendPhaseDetail(container, label, value) {
     detail.appendChild(strong);
 
     container.appendChild(detail);
+
+}
+
+function getReasonLabel(reasonCode) {
+
+    const raw = String(reasonCode || '').trim();
+
+    if (!raw || raw === 'RC_NONE') {
+
+        return '';
+
+    }
+
+    return SAFETY_REASON_LABELS[raw] || formatReasonCode(raw);
+
+}
+
+function isSafetyEvent(eventItem) {
+
+    const reasonCode = String(eventItem?.reasonCode || '').trim();
+    const message = String(eventItem?.message || '').toLowerCase();
+
+    return reasonCode.startsWith('RC_SAFETY_') ||
+        message.includes('safety') ||
+        message.includes('авари') ||
+        message.includes('перегрев') ||
+        message.includes('давлен');
+
+}
+
+function getSafetyTimelineTone(eventItem) {
+
+    const reasonCode = String(eventItem?.reasonCode || '').trim();
+    const severity = String(eventItem?.severity || '').trim().toLowerCase();
+
+    if (reasonCode === 'RC_SAFETY_RECOVERY_ENTERED' || reasonCode === 'RC_SAFETY_RECOVERY_EXITED') {
+
+        return 'recovery';
+
+    }
+
+    if (
+        reasonCode === 'RC_SAFETY_LIMIT_POWER' ||
+        reasonCode === 'RC_SAFETY_LIMIT_TAKEOFF' ||
+        reasonCode === 'RC_SAFETY_PHASE_BLOCKED'
+    ) {
+
+        return 'limited';
+
+    }
+
+    if (severity === 'error' || reasonCode.startsWith('RC_SAFETY_TRIP_')) {
+
+        return 'error';
+
+    }
+
+    return 'warning';
+
+}
+
+function buildSafetyTimeline(process) {
+
+    const errors = Array.isArray(process?.results?.errors) ? process.results.errors : [];
+    const warnings = Array.isArray(process?.results?.warnings) ? process.results.warnings : [];
+
+    return [...errors, ...warnings]
+        .filter(isSafetyEvent)
+        .map((eventItem) => ({
+            ...eventItem,
+            tone: getSafetyTimelineTone(eventItem),
+            title: getReasonLabel(eventItem?.reasonCode) || String(eventItem?.severity || 'Событие')
+        }))
+        .sort((left, right) => Number(left?.time || 0) - Number(right?.time || 0));
+
+}
+
+function appendSafetyTimelineSection(container, process) {
+
+    const events = buildSafetyTimeline(process);
+
+    if (events.length === 0) {
+
+        return;
+
+    }
+
+    const section = document.createElement('div');
+
+    section.className = 'modal-info-item modal-info-item-wide';
+
+    const titleEl = document.createElement('div');
+
+    titleEl.className = 'modal-info-label';
+
+    titleEl.textContent = 'Safety timeline';
+
+    const countEl = document.createElement('div');
+
+    countEl.className = 'modal-info-value';
+
+    countEl.textContent = `${events.length} ${events.length === 1 ? 'событие' : (events.length < 5 ? 'события' : 'событий')}`;
+
+    const listEl = document.createElement('div');
+
+    listEl.className = 'modal-event-list';
+
+    events.forEach((eventItem) => {
+
+        const row = document.createElement('div');
+
+        row.className = `modal-event-item is-${eventItem.tone}`;
+
+        const headerEl = document.createElement('div');
+
+        headerEl.className = 'modal-event-header';
+
+        const kindEl = document.createElement('div');
+
+        kindEl.className = `modal-event-kind is-${eventItem.tone}`;
+
+        kindEl.textContent = eventItem.title;
+
+        headerEl.appendChild(kindEl);
+
+        const timestamp = Number(eventItem?.time || 0);
+
+        if (timestamp > 0) {
+
+            const metaEl = document.createElement('div');
+
+            metaEl.className = 'modal-event-meta';
+
+            metaEl.textContent = new Date(timestamp * 1000).toLocaleString('ru-RU');
+
+            headerEl.appendChild(metaEl);
+
+        }
+
+        row.appendChild(headerEl);
+
+        const messageEl = document.createElement('div');
+
+        messageEl.className = 'modal-event-message';
+
+        messageEl.textContent = String(eventItem?.message || 'Без текста');
+
+        row.appendChild(messageEl);
+
+        const reasonLabel = getReasonLabel(eventItem?.reasonCode);
+
+        if (reasonLabel) {
+
+            const reasonEl = document.createElement('div');
+
+            reasonEl.className = 'modal-event-extra';
+
+            reasonEl.textContent = `Код: ${reasonLabel}`;
+
+            row.appendChild(reasonEl);
+
+        }
+
+        const operatorMessage = String(eventItem?.operatorMessage || '').trim();
+
+        if (operatorMessage) {
+
+            const operatorEl = document.createElement('div');
+
+            operatorEl.className = 'modal-event-extra';
+
+            operatorEl.textContent = `Комментарий: ${operatorMessage}`;
+
+            row.appendChild(operatorEl);
+
+        }
+
+        listEl.appendChild(row);
+
+    });
+
+    section.appendChild(titleEl);
+
+    section.appendChild(countEl);
+
+    section.appendChild(listEl);
+
+    container.appendChild(section);
 
 }
 
@@ -368,6 +567,7 @@ export function showHistoryDetailsModal(process) {
     appendInfoItem(resultsGrid, 'Тело', `${process.results.bodyCollected || 0} мл`);
     appendInfoItem(resultsGrid, 'Хвосты', `${process.results.tailsCollected || 0} мл`);
     appendInfoItem(resultsGrid, 'Всего собрано', `${process.results.totalCollected || 0} мл`);
+    appendSafetyTimelineSection(resultsGrid, process);
     appendEventSection(resultsGrid, 'Ошибки и аварии', process.results?.errors || [], 'error');
     appendEventSection(resultsGrid, 'Предупреждения', process.results?.warnings || [], 'warning');
     appendNotesSection(resultsGrid, process.notes);

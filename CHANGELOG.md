@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.15] - 2026-03-15
+
+### Изменено
+- History details modal в `src/web/history/details.js` теперь собирает отдельный `Safety timeline` из сохранённых `results.errors` и `results.warnings`, сортирует события по времени и показывает в post-mortem виде аварии, recovery и safety-ограничения процесса. (codex)
+- Safety timeline использует существующие v2 `reasonCode` (`RC_SAFETY_TRIP_*`, `RC_SAFETY_RECOVERY_*`, `RC_SAFETY_LIMIT_*`) для человекочитаемых заголовков событий, так что оператор видит не просто raw message, а структуру safety-сценария процесса. (codex)
+- В `src/web/styles/_modal.css` добавлены визуальные состояния для safety timeline card/badge (`error`, `limited`, `recovery`), чтобы критические trip-события, ограничения и восстановление условий безопасности визуально различались в истории. (codex)
+- Версия прошивки поднята до `2.0.15` как отдельный шаг миграции history UI в сторону полноценного safety post-mortem экрана. (codex)
+
 ## [2.0.14] - 2026-03-15
 
 ### Изменено
