@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.35] - 2026-03-15
+
+### Изменено
+- `src/control/v2/status_adapter.cpp` теперь умеет потреблять explicit terminal transition даже если handler в той же итерации уже перевёл верхнеуровневый `mode` в `IDLE`. (codex)
+- Это закрывает важный semantic gap для `NBK`, `FERMENTATION`, `HOLD` и `MASHING`: их финальные `notePhaseTransition(...)` больше не должны теряться и сваливаться в adapter fallback только из-за порядка обновления state внутри одного loop-pass. (codex)
+- В результате `lastReasonCode`, transition log, history completion и live `v2` status получают именно explicit финальную причину перехода, а не post-factum inferred mode-exit reason. (codex)
+- Версия прошивки поднята до `2.0.35` как отдельный шаг финального runtime-audit по сохранению terminal transitions на happy-path completion сценариях. (codex)
+
 ## [2.0.34] - 2026-03-15
 
 ### Изменено

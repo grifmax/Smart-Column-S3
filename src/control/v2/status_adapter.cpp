@@ -476,7 +476,16 @@ bool consumeExplicitTransition(Mode previousMode, uint16_t previousPhaseId, Mode
          g_pendingTransition.fromPhaseId == kNoPhaseIdV2) &&
         g_pendingTransition.toPhaseId == currentPhaseId;
 
-    if (!isModeStartTransition) {
+    // Some handlers emit a terminal phase transition and switch mode to IDLE
+    // in the same loop iteration. Preserve that explicit transition instead of
+    // letting the adapter fall back to inferred mode-exit semantics.
+    const bool isModeExitTransition =
+        currentMode == Mode::IDLE &&
+        previousMode != Mode::IDLE &&
+        g_pendingTransition.mode == previousMode &&
+        g_pendingTransition.fromPhaseId == previousPhaseId;
+
+    if (!isModeStartTransition && !isModeExitTransition) {
         if (g_pendingTransition.mode != previousMode ||
             g_pendingTransition.fromPhaseId != previousPhaseId) {
             return false;
