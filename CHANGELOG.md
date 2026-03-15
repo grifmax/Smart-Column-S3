@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.28] - 2026-03-15
+
+### Изменено
+- `src/control/v2/reason_codes.h` добавлен технический `RC_PHASE_TRANSITION_INFERRED`, чтобы остаточные fallback-переходы больше не попадали в runtime/history как безликий `RC_UNSPECIFIED`. (codex)
+- `src/control/v2/status_adapter.cpp` переведён на новый fallback reason для неявных phase changes, так что даже если адаптеру всё ещё приходится восстанавливать причину перехода, он теперь делает это явно и трассируемо. (codex)
+- `src/control/modes/distillation_handler.cpp` получил explicit recovery transition в аварийной `default`-ветке: восстановление distillation phase в `BODY` теперь тоже идёт через `notePhaseTransition(...)`, а не через немой phase reset. (codex)
+- `src/web/runtime/process-notifications.js` научен человекочитаемо показывать `RC_PHASE_TRANSITION_INFERRED`, а версия прошивки поднята до `2.0.28` как отдельный шаг зачистки остаточных fallback semantics. (codex)
+
 ## [2.0.27] - 2026-03-15
 
 ### Изменено

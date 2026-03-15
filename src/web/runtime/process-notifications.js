@@ -40,7 +40,8 @@ const REASON_LABELS = {
     RC_SAFETY_ACKNOWLEDGED: 'Авария подтверждена оператором',
     RC_SAFETY_RESET_COMPLETED: 'Авария сброшена оператором',
     RC_MANUAL_OPERATOR_SWITCH: 'Ручное переключение оператором',
-    RC_MANUAL_OPERATOR_STOP: 'Ручная остановка оператором'
+    RC_MANUAL_OPERATOR_STOP: 'Ручная остановка оператором',
+    RC_PHASE_TRANSITION_INFERRED: 'Переход фазы восстановлен системой'
 };
 
 let prevMode = null;

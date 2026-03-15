@@ -46,6 +46,7 @@ enum class ReasonCodeV2 : uint16_t {
     RC_SAFETY_RESET_COMPLETED,
     RC_MANUAL_OPERATOR_SWITCH,
     RC_MANUAL_OPERATOR_STOP,
+    RC_PHASE_TRANSITION_INFERRED,
     RC_UNSPECIFIED
 };
 
@@ -117,6 +118,7 @@ inline const char* reasonCodeToString(ReasonCodeV2 code) {
         case ReasonCodeV2::RC_SAFETY_RESET_COMPLETED: return "RC_SAFETY_RESET_COMPLETED";
         case ReasonCodeV2::RC_MANUAL_OPERATOR_SWITCH: return "RC_MANUAL_OPERATOR_SWITCH";
         case ReasonCodeV2::RC_MANUAL_OPERATOR_STOP: return "RC_MANUAL_OPERATOR_STOP";
+        case ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED: return "RC_PHASE_TRANSITION_INFERRED";
         case ReasonCodeV2::RC_UNSPECIFIED: return "RC_UNSPECIFIED";
         default: return "RC_UNKNOWN";
     }

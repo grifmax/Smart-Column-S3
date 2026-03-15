@@ -435,7 +435,7 @@ ReasonCodeV2 inferPhaseReason(const SystemState& state, uint16_t previousPhaseId
                     return previousPhaseId == static_cast<uint16_t>(RectPhase::FINISH)
                                ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE
                                : ReasonCodeV2::RC_MODE_STOP_REQUEST;
-                default: return ReasonCodeV2::RC_UNSPECIFIED;
+                default: return ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
             }
         case Mode::DISTILLATION:
             switch (static_cast<RectPhase>(currentPhaseId)) {
@@ -452,7 +452,7 @@ ReasonCodeV2 inferPhaseReason(const SystemState& state, uint16_t previousPhaseId
                     return previousPhaseId == static_cast<uint16_t>(RectPhase::FINISH)
                                ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE
                                : ReasonCodeV2::RC_MODE_STOP_REQUEST;
-                default: return ReasonCodeV2::RC_UNSPECIFIED;
+                default: return ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
             }
         case Mode::MANUAL_RECT:
             switch (static_cast<RectPhase>(currentPhaseId)) {
@@ -466,7 +466,7 @@ ReasonCodeV2 inferPhaseReason(const SystemState& state, uint16_t previousPhaseId
                 case NbkPhase::WORKING: return ReasonCodeV2::RC_NBK_STABILIZATION_COMPLETE;
                 case NbkPhase::FINISH: return ReasonCodeV2::RC_NBK_FINISH_LIKELY;
                 case NbkPhase::COMPLETED: return ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE;
-                default: return ReasonCodeV2::RC_UNSPECIFIED;
+                default: return ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
             }
         case Mode::MASHING:
         case Mode::HOLD:
@@ -474,7 +474,7 @@ ReasonCodeV2 inferPhaseReason(const SystemState& state, uint16_t previousPhaseId
         case Mode::FERMENTATION:
             return ReasonCodeV2::RC_FERM_TARGET_REACHED;
         default:
-            return ReasonCodeV2::RC_UNSPECIFIED;
+            return ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
     }
 }
 
