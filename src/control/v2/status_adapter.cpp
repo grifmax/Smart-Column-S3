@@ -104,24 +104,40 @@ bool isIdleLikePhase(Mode mode, uint16_t phaseId) {
     }
 }
 
-bool isSuccessfulCompletion(Mode previousMode, uint16_t previousPhaseId,
-                            ReasonCodeV2 reasonCode) {
+bool isSuccessfulCompletionReason(ReasonCodeV2 reasonCode) {
+    switch (reasonCode) {
+        case ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE:
+        case ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE:
+        case ReasonCodeV2::RC_FERM_TARGET_REACHED:
+            return true;
+        default:
+            return false;
+    }
+}
+
+ReasonCodeV2 inferModeExitReason(const SystemState& state, Mode previousMode,
+                                 uint16_t previousPhaseId) {
+    if (!state.safetyOk && state.currentAlarm.type != AlarmType::NONE) {
+        return g_lastMetrics.safety.reasonCode;
+    }
+
+    if (isSuccessfulCompletionReason(g_lastStatus.lastReasonCode)) {
+        return g_lastStatus.lastReasonCode;
+    }
+
     switch (previousMode) {
         case Mode::RECTIFICATION:
         case Mode::DISTILLATION:
-            return previousPhaseId == static_cast<uint16_t>(RectPhase::FINISH) &&
-                   reasonCode == ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE;
+            return previousPhaseId == static_cast<uint16_t>(RectPhase::FINISH)
+                       ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE
+                       : ReasonCodeV2::RC_MODE_STOP_REQUEST;
         case Mode::NBK:
             return (previousPhaseId == static_cast<uint16_t>(NbkPhase::FINISH) ||
-                    previousPhaseId == static_cast<uint16_t>(NbkPhase::COMPLETED)) &&
-                   reasonCode == ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE;
-        case Mode::MASHING:
-        case Mode::HOLD:
-            return reasonCode == ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE;
-        case Mode::FERMENTATION:
-            return reasonCode == ReasonCodeV2::RC_FERM_TARGET_REACHED;
+                    previousPhaseId == static_cast<uint16_t>(NbkPhase::COMPLETED))
+                       ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE
+                       : ReasonCodeV2::RC_MODE_STOP_REQUEST;
         default:
-            return false;
+            return ReasonCodeV2::RC_MODE_STOP_REQUEST;
     }
 }
 
@@ -647,19 +663,9 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         g_modeStartMs = (state.mode == Mode::IDLE) ? 0 : now;
         ReasonCodeV2 modeChangeReason = explicitTransition.reasonCode;
         if (!hasExplicitTransition) {
-            modeChangeReason =
-                (state.mode == Mode::IDLE)
-                    ? ((!state.safetyOk && state.currentAlarm.type != AlarmType::NONE)
-                           ? g_lastMetrics.safety.reasonCode
-                           : ((g_prevMode == Mode::RECTIFICATION || g_prevMode == Mode::DISTILLATION) &&
-                                      g_prevPhaseId == static_cast<uint16_t>(RectPhase::FINISH)
-                                  ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE
-                                  : ((g_prevMode == Mode::NBK &&
-                                      (g_prevPhaseId == static_cast<uint16_t>(NbkPhase::FINISH) ||
-                                       g_prevPhaseId == static_cast<uint16_t>(NbkPhase::COMPLETED)))
-                                         ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE
-                                         : ReasonCodeV2::RC_MODE_STOP_REQUEST)))
-                    : ReasonCodeV2::RC_MODE_START_REQUEST;
+            modeChangeReason = (state.mode == Mode::IDLE)
+                                   ? inferModeExitReason(state, g_prevMode, g_prevPhaseId)
+                                   : ReasonCodeV2::RC_MODE_START_REQUEST;
             g_lastStatus.lastReasonCode = modeChangeReason;
         }
         if (g_prevMode != Mode::IDLE) {
@@ -669,11 +675,12 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         }
         if (state.mode == Mode::IDLE) {
             recordHistorySafetyDecision(safety);
-            stopHistoryTracking(
-                isSuccessfulCompletion(g_prevMode, g_prevPhaseId, modeChangeReason),
-                modeChangeReason,
-                hasExplicitTransition ? explicitTransition.operatorMessage : nullptr,
-                state);
+            stopHistoryTracking(isSuccessfulCompletionReason(modeChangeReason),
+                                modeChangeReason,
+                                hasExplicitTransition
+                                    ? explicitTransition.operatorMessage
+                                    : nullptr,
+                                state);
         } else {
             startHistoryTracking(state);
             recordHistorySafetyDecision(safety, true);

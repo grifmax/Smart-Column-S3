@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.27] - 2026-03-15
+
+### Изменено
+- `src/control/v2/status_adapter.cpp` теперь на `mode -> IDLE` сначала доверяет уже зафиксированному terminal `v2` reason code, а не пытается заново выводить завершение только по `previousPhaseId` и legacy mode-change эвристикам. (codex)
+- Для normal completion классификация success вынесена в `isSuccessfulCompletionReason(...)`, поэтому `mashing`, `hold` и `fermentation` корректно сохраняют свой explicit completion reason при выходе в `IDLE` без лишнего пересчёта. (codex)
+- Fallback для mode exit сжат в отдельный `inferModeExitReason(...)`: safety stop по-прежнему берётся из latched alarm, а фазовые допущения остаются только как запасной путь для legacy завершений `RECTIFICATION/DISTILLATION/NBK`. (codex)
+- Версия прошивки поднята до `2.0.27` как отдельный шаг уменьшения inference-layer в `status_adapter` перед дальнейшей зачисткой оставшихся `RC_UNSPECIFIED` fallback paths. (codex)
+
 ## [2.0.26] - 2026-03-15
 
 ### Изменено
