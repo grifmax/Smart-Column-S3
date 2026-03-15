@@ -1,136 +1,130 @@
 /**
- * Smart-Column S3 - Драйвер перистальтического насоса
+ * Smart-Column S3 - Pump driver
  *
- * Шаговый двигатель NEMA17 + драйвер TMC2209
- * Библиотека AccelStepper для плавного управления
+ * Stepper motor NEMA17 + TMC2209 driver.
+ * AccelStepper is kept, but the worker task is now cooperative so it does not
+ * starve the idle task and trigger Task WDT resets while the pump is running.
  */
 
 #include "pump.h"
+
 #include <AccelStepper.h>
+#include <freertos/semphr.h>
 
-// =============================================================================
-// ГЛОБАЛЬНЫЕ ОБЪЕКТЫ
-// =============================================================================
-
-// Драйвер шагового двигателя (интерфейс STEP/DIR)
 static AccelStepper stepper(AccelStepper::DRIVER, PIN_PUMP_STEP, PIN_PUMP_DIR);
 
-// =============================================================================
-// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
-// =============================================================================
-
 static float mlPerRevolution = DEFAULT_PUMP_ML_PER_REV;
-static float currentSpeedMlH = 0;
+static float currentSpeedMlH = 0.0f;
 static volatile bool running = false;
 static int32_t totalSteps = 0;
-static float totalVolumeMl = 0;
+static float totalVolumeMl = 0.0f;
 static TaskHandle_t pumpTaskHandle = NULL;
+static SemaphoreHandle_t pumpMutex = NULL;
 
-// =============================================================================
-// ВНУТРЕННИЕ ФУНКЦИИ
-// =============================================================================
+static constexpr uint32_t kPumpCounterUpdateMs = 100;
+static constexpr uint32_t kPumpCooperativeSliceUs = 10000;
+static constexpr TickType_t kPumpIdleDelayTicks = pdMS_TO_TICKS(10);
+static constexpr TickType_t kPumpYieldDelayTicks = pdMS_TO_TICKS(PUMP_TASK_DELAY_MS);
 
-/**
- * Задача управления насосом (FreeRTOS)
- */
-static void pumpTask(void* pvParameters) {
-    while (1) {
-        if (running) {
-            // Крутим мотор максимально часто для обеспечения высокой частоты шагов
-            stepper.runSpeed();
-            
-            // Обновить счётчики раз в 100 мс
-            static uint32_t lastCounterUpdate = 0;
-            uint32_t now = millis();
-            if (now - lastCounterUpdate >= 100) {
-                lastCounterUpdate = now;
-                long currentPos = stepper.currentPosition();
-                if (currentPos != totalSteps) {
-                    totalSteps = currentPos;
-                    float revolutions = (float)totalSteps / (PUMP_STEPS_PER_REV * PUMP_MICROSTEPS);
-                    totalVolumeMl = revolutions * mlPerRevolution;
-                }
-            }
-            
-            // Отдаем квант времени другим задачам, но очень короткий
-            // portYIELD_FROM_ISR или taskYIELD тут не подходят, 
-            // так как нам нужно не вешать ядро на 100%, но и не спать 1мс.
-            // На ESP32 при включенном планировщике даже пустой цикл 
-            // будет прерываться системным тиком.
-            // Но лучше использовать yield() для Arduino-совместимости.
-            yield();
-        } else {
-            // Если не работаем, спим 10 мс
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
+static void updateTotalsFromPosition(long currentPos) {
+    totalSteps = currentPos;
+    const float revolutions =
+        static_cast<float>(totalSteps) / (PUMP_STEPS_PER_REV * PUMP_MICROSTEPS);
+    totalVolumeMl = revolutions * mlPerRevolution;
+}
+
+static bool lockPump(TickType_t timeoutTicks = portMAX_DELAY) {
+    return pumpMutex != NULL && xSemaphoreTake(pumpMutex, timeoutTicks) == pdTRUE;
+}
+
+static void unlockPump() {
+    if (pumpMutex != NULL) {
+        xSemaphoreGive(pumpMutex);
     }
 }
 
-/**
- * Преобразование мл/час в шаги/сек
- */
 static float mlPerHourToStepsPerSec(float mlPerHour) {
-    // мл/час → оборотов/час
-    float revPerHour = mlPerHour / mlPerRevolution;
-
-    // оборотов/час → оборотов/сек
-    float revPerSec = revPerHour / 3600.0f;
-
-    // оборотов/сек → шагов/сек
-    float stepsPerSec = revPerSec * PUMP_STEPS_PER_REV * PUMP_MICROSTEPS;
-
-    return stepsPerSec;
+    const float revPerHour = mlPerHour / mlPerRevolution;
+    const float revPerSec = revPerHour / 3600.0f;
+    return revPerSec * PUMP_STEPS_PER_REV * PUMP_MICROSTEPS;
 }
 
-/**
- * Преобразование шагов/сек в мл/час
- */
 static float stepsPerSecToMlPerHour(float stepsPerSec) {
-    // шагов/сек → оборотов/сек
-    float revPerSec = stepsPerSec / (PUMP_STEPS_PER_REV * PUMP_MICROSTEPS);
-
-    // оборотов/сек → оборотов/час
-    float revPerHour = revPerSec * 3600.0f;
-
-    // оборотов/час → мл/час
-    float mlPerHour = revPerHour * mlPerRevolution;
-
-    return mlPerHour;
+    const float revPerSec = stepsPerSec / (PUMP_STEPS_PER_REV * PUMP_MICROSTEPS);
+    const float revPerHour = revPerSec * 3600.0f;
+    return revPerHour * mlPerRevolution;
 }
 
-// =============================================================================
-// ПУБЛИЧНЫЙ ИНТЕРФЕЙС
-// =============================================================================
+static void pumpTask(void* pvParameters) {
+    uint32_t lastCounterUpdate = 0;
+    uint32_t lastCooperativeYieldUs = micros();
+
+    while (1) {
+        if (!running) {
+            lastCooperativeYieldUs = micros();
+            vTaskDelay(kPumpIdleDelayTicks);
+            continue;
+        }
+
+        if (lockPump(portMAX_DELAY)) {
+            stepper.runSpeed();
+
+            const uint32_t nowMs = millis();
+            if (nowMs - lastCounterUpdate >= kPumpCounterUpdateMs) {
+                lastCounterUpdate = nowMs;
+                const long currentPos = stepper.currentPosition();
+                if (currentPos != totalSteps) {
+                    updateTotalsFromPosition(currentPos);
+                }
+            }
+
+            unlockPump();
+        }
+
+        const uint32_t nowUs = micros();
+        if (nowUs - lastCooperativeYieldUs >= kPumpCooperativeSliceUs) {
+            lastCooperativeYieldUs = nowUs;
+            vTaskDelay(kPumpYieldDelayTicks);
+        } else {
+            taskYIELD();
+        }
+    }
+}
 
 namespace Pump {
 
 void init() {
     LOG_I("Pump: Initializing...");
 
-    // Пины управления
     pinMode(PIN_PUMP_EN, OUTPUT);
-    digitalWrite(PIN_PUMP_EN, HIGH); // Отключено (TMC2209: EN активен LOW)
+    digitalWrite(PIN_PUMP_EN, HIGH);
 
-    // Настройка AccelStepper
     stepper.setMaxSpeed(PUMP_MAX_SPEED);
     stepper.setAcceleration(PUMP_ACCELERATION);
     stepper.setCurrentPosition(0);
 
     totalSteps = 0;
-    totalVolumeMl = 0;
+    totalVolumeMl = 0.0f;
+    currentSpeedMlH = 0.0f;
     running = false;
 
-    // Создание задачи управления насосом
+    if (pumpMutex == NULL) {
+        pumpMutex = xSemaphoreCreateMutex();
+    }
+    if (pumpMutex == NULL) {
+        LOG_E("Pump: Failed to create mutex");
+        return;
+    }
+
     if (pumpTaskHandle == NULL) {
         xTaskCreatePinnedToCore(
             pumpTask,
             "PumpTask",
             2048,
             NULL,
-            configMAX_PRIORITIES - 1, // Высочайший приоритет
+            2,
             &pumpTaskHandle,
-            1 // Ядро 1
-        );
+            1);
     }
 
     LOG_I("Pump: Init complete (microsteps=%d, ml/rev=%.2f)",
@@ -138,41 +132,42 @@ void init() {
 }
 
 void start(float mlPerHour) {
-    if (mlPerHour <= 0) {
+    if (mlPerHour <= 0.0f) {
         stop();
         return;
     }
 
-    // Включить драйвер
-    digitalWrite(PIN_PUMP_EN, LOW);
-
-    // Установить скорость
     float stepsPerSec = mlPerHourToStepsPerSec(mlPerHour);
-
-    // Ограничить максимум
     if (stepsPerSec > PUMP_MAX_SPEED) {
         stepsPerSec = PUMP_MAX_SPEED;
         mlPerHour = stepsPerSecToMlPerHour(stepsPerSec);
     }
 
-    stepper.setSpeed(stepsPerSec);
+    digitalWrite(PIN_PUMP_EN, LOW);
+
+    if (lockPump(portMAX_DELAY)) {
+        stepper.setSpeed(stepsPerSec);
+        unlockPump();
+    }
+
     currentSpeedMlH = mlPerHour;
     running = true;
 
-    LOG_I("Pump: Started at %.1f ml/h (%.1f steps/s)",
-          mlPerHour, stepsPerSec);
+    LOG_I("Pump: Started at %.1f ml/h (%.1f steps/s)", mlPerHour, stepsPerSec);
 }
 
 void stop() {
-    stepper.setSpeed(0);
-    stepper.stop();
-    digitalWrite(PIN_PUMP_EN, HIGH); // Отключить драйвер
     running = false;
-    currentSpeedMlH = 0;
-    
-    // Обновить финальную позицию
-    totalSteps = stepper.currentPosition();
+    currentSpeedMlH = 0.0f;
 
+    if (lockPump(portMAX_DELAY)) {
+        stepper.setSpeed(0.0f);
+        stepper.stop();
+        updateTotalsFromPosition(stepper.currentPosition());
+        unlockPump();
+    }
+
+    digitalWrite(PIN_PUMP_EN, HIGH);
     LOG_I("Pump: Stopped at %d", totalSteps);
 }
 
@@ -182,21 +177,23 @@ void setSpeed(float mlPerHour) {
         return;
     }
 
-    if (mlPerHour <= 0) {
+    if (mlPerHour <= 0.0f) {
         stop();
         return;
     }
 
     float stepsPerSec = mlPerHourToStepsPerSec(mlPerHour);
-
     if (stepsPerSec > PUMP_MAX_SPEED) {
         stepsPerSec = PUMP_MAX_SPEED;
         mlPerHour = stepsPerSecToMlPerHour(stepsPerSec);
     }
 
-    stepper.setSpeed(stepsPerSec);
-    currentSpeedMlH = mlPerHour;
+    if (lockPump(portMAX_DELAY)) {
+        stepper.setSpeed(stepsPerSec);
+        unlockPump();
+    }
 
+    currentSpeedMlH = mlPerHour;
     LOG_D("Pump: Speed changed to %.1f ml/h", mlPerHour);
 }
 
@@ -213,7 +210,13 @@ float getTotalVolume() {
 }
 
 uint32_t getTotalSteps() {
-    return (uint32_t)stepper.currentPosition();
+    if (lockPump(pdMS_TO_TICKS(5))) {
+        const uint32_t currentSteps = static_cast<uint32_t>(stepper.currentPosition());
+        unlockPump();
+        return currentSteps;
+    }
+
+    return static_cast<uint32_t>(totalSteps);
 }
 
 float getMaxSpeedMlH() {
@@ -222,17 +225,21 @@ float getMaxSpeedMlH() {
 
 void resetVolume() {
     totalSteps = 0;
-    totalVolumeMl = 0;
-    stepper.setCurrentPosition(0);
+    totalVolumeMl = 0.0f;
+
+    if (lockPump(portMAX_DELAY)) {
+        stepper.setCurrentPosition(0);
+        unlockPump();
+    }
+
     LOG_I("Pump: Volume reset");
 }
 
 void setCalibration(float mlPerRev) {
-    if (mlPerRev > 0 && mlPerRev < 10.0f) {
+    if (mlPerRev > 0.0f && mlPerRev < 10.0f) {
         mlPerRevolution = mlPerRev;
         LOG_I("Pump: Calibration set to %.3f ml/rev", mlPerRev);
 
-        // Пересчитать скорость если работает
         if (running) {
             setSpeed(currentSpeedMlH);
         }
