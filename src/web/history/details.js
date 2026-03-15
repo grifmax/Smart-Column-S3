@@ -42,6 +42,196 @@ export let tempChart = null;
 
 export let powerChart = null;
 
+function formatReasonCode(reasonCode) {
+
+    const raw = String(reasonCode || '').trim();
+
+    if (!raw || raw === 'RC_NONE') {
+
+        return '';
+
+    }
+
+    return raw.replace(/^RC_/, '').replace(/_/g, ' ').toLowerCase();
+
+}
+
+function appendInfoItem(container, label, value) {
+
+    const item = document.createElement('div');
+
+    item.className = 'modal-info-item';
+
+    const labelEl = document.createElement('div');
+
+    labelEl.className = 'modal-info-label';
+
+    labelEl.textContent = label;
+
+    const valueEl = document.createElement('div');
+
+    valueEl.className = 'modal-info-value';
+
+    valueEl.textContent = value;
+
+    item.appendChild(labelEl);
+
+    item.appendChild(valueEl);
+
+    container.appendChild(item);
+
+}
+
+function appendPhaseDetail(container, label, value) {
+
+    const detail = document.createElement('div');
+
+    detail.className = 'modal-phase-detail';
+
+    detail.appendChild(document.createTextNode(`${label}: `));
+
+    const strong = document.createElement('strong');
+
+    strong.textContent = value;
+
+    detail.appendChild(strong);
+
+    container.appendChild(detail);
+
+}
+
+function appendEventSection(container, title, events, tone) {
+
+    if (!Array.isArray(events) || events.length === 0) {
+
+        return;
+
+    }
+
+    const section = document.createElement('div');
+
+    section.className = 'modal-info-item modal-info-item-wide';
+
+    const titleEl = document.createElement('div');
+
+    titleEl.className = 'modal-info-label';
+
+    titleEl.textContent = title;
+
+    const countEl = document.createElement('div');
+
+    countEl.className = 'modal-info-value';
+
+    countEl.textContent = `${events.length} ${events.length === 1 ? 'событие' : (events.length < 5 ? 'события' : 'событий')}`;
+
+    const listEl = document.createElement('div');
+
+    listEl.className = 'modal-event-list';
+
+    events.forEach((eventItem) => {
+
+        const row = document.createElement('div');
+
+        row.className = `modal-event-item ${tone === 'error' ? 'is-error' : 'is-warning'}`;
+
+        const timestamp = Number(eventItem?.time || 0);
+
+        if (timestamp > 0) {
+
+            const metaEl = document.createElement('div');
+
+            metaEl.className = 'modal-event-meta';
+
+            metaEl.textContent = new Date(timestamp * 1000).toLocaleString('ru-RU');
+
+            row.appendChild(metaEl);
+
+        }
+
+        const messageEl = document.createElement('div');
+
+        messageEl.className = 'modal-event-message';
+
+        messageEl.textContent = String(eventItem?.message || 'Без текста');
+
+        row.appendChild(messageEl);
+
+        const reasonCode = formatReasonCode(eventItem?.reasonCode);
+
+        if (reasonCode) {
+
+            const reasonEl = document.createElement('div');
+
+            reasonEl.className = 'modal-event-extra';
+
+            reasonEl.textContent = `Причина: ${reasonCode}`;
+
+            row.appendChild(reasonEl);
+
+        }
+
+        const operatorMessage = String(eventItem?.operatorMessage || '').trim();
+
+        if (operatorMessage) {
+
+            const operatorEl = document.createElement('div');
+
+            operatorEl.className = 'modal-event-extra';
+
+            operatorEl.textContent = `Комментарий: ${operatorMessage}`;
+
+            row.appendChild(operatorEl);
+
+        }
+
+        listEl.appendChild(row);
+
+    });
+
+    section.appendChild(titleEl);
+
+    section.appendChild(countEl);
+
+    section.appendChild(listEl);
+
+    container.appendChild(section);
+
+}
+
+function appendNotesSection(container, notes) {
+
+    const text = String(notes || '').trim();
+
+    if (!text) {
+
+        return;
+
+    }
+
+    const section = document.createElement('div');
+
+    section.className = 'modal-info-item modal-info-item-wide';
+
+    const titleEl = document.createElement('div');
+
+    titleEl.className = 'modal-info-label';
+
+    titleEl.textContent = 'Заметки';
+
+    const textEl = document.createElement('div');
+
+    textEl.className = 'modal-note-text';
+
+    textEl.textContent = text;
+
+    section.appendChild(titleEl);
+
+    section.appendChild(textEl);
+
+    container.appendChild(section);
+
+}
+
 
 
 export function showHistoryDetailsModal(process) {
@@ -170,45 +360,17 @@ export function showHistoryDetailsModal(process) {
 
 
 
-    // Заполнить результаты
-
     const resultsGrid = document.getElementById('modal-results-grid');
 
-    resultsGrid.innerHTML = `
+    resultsGrid.innerHTML = '';
 
-        <div class="modal-info-item">
-
-            <div class="modal-info-label">Головы</div>
-
-            <div class="modal-info-value">${process.results.headsCollected || 0} мл</div>
-
-        </div>
-
-        <div class="modal-info-item">
-
-            <div class="modal-info-label">Тело</div>
-
-            <div class="modal-info-value">${process.results.bodyCollected || 0} мл</div>
-
-        </div>
-
-        <div class="modal-info-item">
-
-            <div class="modal-info-label">Хвосты</div>
-
-            <div class="modal-info-value">${process.results.tailsCollected || 0} мл</div>
-
-        </div>
-
-        <div class="modal-info-item">
-
-            <div class="modal-info-label">Всего собрано</div>
-
-            <div class="modal-info-value">${process.results.totalCollected || 0} мл</div>
-
-        </div>
-
-    `;
+    appendInfoItem(resultsGrid, 'Головы', `${process.results.headsCollected || 0} мл`);
+    appendInfoItem(resultsGrid, 'Тело', `${process.results.bodyCollected || 0} мл`);
+    appendInfoItem(resultsGrid, 'Хвосты', `${process.results.tailsCollected || 0} мл`);
+    appendInfoItem(resultsGrid, 'Всего собрано', `${process.results.totalCollected || 0} мл`);
+    appendEventSection(resultsGrid, 'Ошибки и аварии', process.results?.errors || [], 'error');
+    appendEventSection(resultsGrid, 'Предупреждения', process.results?.warnings || [], 'warning');
+    appendNotesSection(resultsGrid, process.notes);
 
 
 
@@ -614,14 +776,6 @@ export function renderPhases(process) {
 
     };
 
-    const formatReasonCode = (reasonCode) => {
-        const raw = String(reasonCode || '').trim();
-        if (!raw || raw === 'RC_NONE') {
-            return '';
-        }
-        return raw.replace(/^RC_/, '').replace(/_/g, ' ').toLowerCase();
-    };
-
 
 
     phasesEl.innerHTML = '';
@@ -644,29 +798,34 @@ export function renderPhases(process) {
 
 
 
-        phaseEl.innerHTML = `
+        const nameEl = document.createElement('div');
 
-            <div class="modal-phase-name">${phaseName}</div>
+        nameEl.className = 'modal-phase-name';
 
-            <div class="modal-phase-details">
+        nameEl.textContent = phaseName;
 
-                <div class="modal-phase-detail">Начало: <strong>${startDate.toLocaleTimeString('ru-RU')}</strong></div>
+        const detailsEl = document.createElement('div');
 
-                <div class="modal-phase-detail">Окончание: <strong>${endDate.toLocaleTimeString('ru-RU')}</strong></div>
+        detailsEl.className = 'modal-phase-details';
 
-                <div class="modal-phase-detail">Длительность: <strong>${(phase.duration / 60).toFixed(0)} мин</strong></div>
+        appendPhaseDetail(detailsEl, 'Начало', startDate.toLocaleTimeString('ru-RU'));
+        appendPhaseDetail(detailsEl, 'Окончание', endDate.toLocaleTimeString('ru-RU'));
+        appendPhaseDetail(detailsEl, 'Длительность', `${(phase.duration / 60).toFixed(0)} мин`);
+        appendPhaseDetail(detailsEl, 'Объём', `${phase.volume || 0} мл`);
+        appendPhaseDetail(detailsEl, 'Средняя скорость', `${phase.avgSpeed || 0} мл/ч`);
 
-                <div class="modal-phase-detail">Объём: <strong>${phase.volume || 0} мл</strong></div>
+        const reasonCode = formatReasonCode(phase.reasonCode);
+        if (reasonCode) {
+            appendPhaseDetail(detailsEl, 'Причина', reasonCode);
+        }
 
-                <div class="modal-phase-detail">Средняя скорость: <strong>${phase.avgSpeed || 0} мл/ч</strong></div>
+        const operatorMessage = String(phase.operatorMessage || '').trim();
+        if (operatorMessage) {
+            appendPhaseDetail(detailsEl, 'Комментарий', operatorMessage);
+        }
 
-                ${phase.reasonCode ? `<div class="modal-phase-detail">Причина: <strong>${formatReasonCode(phase.reasonCode)}</strong></div>` : ''}
-
-                ${phase.operatorMessage ? `<div class="modal-phase-detail">Комментарий: <strong>${phase.operatorMessage}</strong></div>` : ''}
-
-            </div>
-
-        `;
+        phaseEl.appendChild(nameEl);
+        phaseEl.appendChild(detailsEl);
 
 
 

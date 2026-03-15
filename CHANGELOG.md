@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.14] - 2026-03-15
+
+### Изменено
+- History details modal в `src/web/history/details.js` расширен блоками `Ошибки и аварии`, `Предупреждения` и `Заметки`, которые показывают сохранённые `results.errors`, `results.warnings` и `notes`, включая `reasonCode` и `operatorMessage` для post-mortem анализа процесса. (codex)
+- Отрисовка фаз и новых history event-блоков переведена на безопасное создание DOM-узлов через `textContent` вместо прямой подстановки произвольных строк в `innerHTML`, чтобы `operatorMessage` и заметки не расширяли XSS-поверхность UI. (codex)
+- В `src/web/styles/_modal.css` добавлены лёгкие стили для history events и full-width history sections, чтобы safety warnings/errors читались как отдельные карточки внутри модального окна. (codex)
+- Версия прошивки поднята до `2.0.14` как отдельный шаг миграции, который делает history UI полезным для разбора ошибок и safety-сценариев после завершения процесса. (codex)
+
 ## [2.0.13] - 2026-03-15
 
 ### Изменено
