@@ -77,6 +77,8 @@ struct ProcessPhase {
     float endTemp;                   // Конечная температура
     uint16_t volume;                 // Объём отобранный (мл)
     uint16_t avgSpeed;               // Средняя скорость насоса (мл/час)
+    String reasonCode;               // Причина завершения фазы в терминах v2
+    String operatorMessage;          // Дополнительное пояснение для оператора
 };
 
 // Точка временного ряда
@@ -97,6 +99,8 @@ struct ProcessWarning {
     uint32_t time;                   // Unix timestamp
     String message;                  // Сообщение
     String severity;                 // info, warning, error
+    String reasonCode;               // Safety/transition reason в терминах v2
+    String operatorMessage;          // Дополнительное пояснение для оператора
 };
 
 // Результаты процесса
@@ -196,7 +200,9 @@ public:
     void addPhase(const ProcessPhase& phase);
 
     // Добавить предупреждение
-    void addWarning(const String& message, const String& severity);
+    void addWarning(const String& message, const String& severity,
+                    const String& reasonCode = "",
+                    const String& operatorMessage = "");
 
     // Установить результаты
     void setResults(const ProcessResults& results);

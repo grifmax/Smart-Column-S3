@@ -1,4 +1,5 @@
 #include "history.h"
+#include "config.h"
 #include <FS.h>
 #include <algorithm>
 
@@ -131,6 +132,12 @@ bool saveProcessHistory(const ProcessHistory& history) {
         p["endTemp"] = phase.endTemp;
         p["volume"] = phase.volume;
         p["avgSpeed"] = phase.avgSpeed;
+        if (!phase.reasonCode.isEmpty()) {
+            p["reasonCode"] = phase.reasonCode;
+        }
+        if (!phase.operatorMessage.isEmpty()) {
+            p["operatorMessage"] = phase.operatorMessage;
+        }
     }
 
     // Временные ряды
@@ -172,6 +179,12 @@ bool saveProcessHistory(const ProcessHistory& history) {
         e["time"] = error.time;
         e["message"] = error.message;
         e["severity"] = error.severity;
+        if (!error.reasonCode.isEmpty()) {
+            e["reasonCode"] = error.reasonCode;
+        }
+        if (!error.operatorMessage.isEmpty()) {
+            e["operatorMessage"] = error.operatorMessage;
+        }
     }
 
     JsonArray warnings = results["warnings"].to<JsonArray>();
@@ -180,6 +193,12 @@ bool saveProcessHistory(const ProcessHistory& history) {
         w["time"] = warning.time;
         w["message"] = warning.message;
         w["severity"] = warning.severity;
+        if (!warning.reasonCode.isEmpty()) {
+            w["reasonCode"] = warning.reasonCode;
+        }
+        if (!warning.operatorMessage.isEmpty()) {
+            w["operatorMessage"] = warning.operatorMessage;
+        }
     }
 
     // Заметки
@@ -294,6 +313,8 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
         p.endTemp = phase["endTemp"];
         p.volume = phase["volume"];
         p.avgSpeed = phase["avgSpeed"];
+        p.reasonCode = phase["reasonCode"].as<String>();
+        p.operatorMessage = phase["operatorMessage"].as<String>();
         history.phases.push_back(p);
     }
 
@@ -328,6 +349,8 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
         w.time = error["time"];
         w.message = error["message"].as<String>();
         w.severity = error["severity"].as<String>();
+        w.reasonCode = error["reasonCode"].as<String>();
+        w.operatorMessage = error["operatorMessage"].as<String>();
         history.results.errors.push_back(w);
     }
 
@@ -338,6 +361,8 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
         w.time = warning["time"];
         w.message = warning["message"].as<String>();
         w.severity = warning["severity"].as<String>();
+        w.reasonCode = warning["reasonCode"].as<String>();
+        w.operatorMessage = warning["operatorMessage"].as<String>();
         history.results.warnings.push_back(w);
     }
 
@@ -588,7 +613,7 @@ void ProcessRecorder::startRecording(const String& type, const String& mode) {
 
     uint32_t now = millis() / 1000;  // или использовать NTP время
     currentHistory.id = String(now);
-    currentHistory.version = "1.3.0";
+    currentHistory.version = FIRMWARE_VERSION;
     currentHistory.metadata.startTime = now;
     currentHistory.process.type = type;
     currentHistory.process.mode = mode;
@@ -635,11 +660,15 @@ void ProcessRecorder::addPhase(const ProcessPhase& phase) {
     currentHistory.phases.push_back(phase);
 }
 
-void ProcessRecorder::addWarning(const String& message, const String& severity) {
+void ProcessRecorder::addWarning(const String& message, const String& severity,
+                                 const String& reasonCode,
+                                 const String& operatorMessage) {
     ProcessWarning warning;
     warning.time = millis() / 1000;
     warning.message = message;
     warning.severity = severity;
+    warning.reasonCode = reasonCode;
+    warning.operatorMessage = operatorMessage;
 
     if (severity == "error") {
         currentHistory.results.errors.push_back(warning);

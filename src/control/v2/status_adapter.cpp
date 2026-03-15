@@ -5,6 +5,7 @@
 #include "../../drivers/heater.h"
 #include "../../drivers/pump.h"
 #include "../../drivers/valves.h"
+#include "../../history.h"
 #include "../../storage/logger.h"
 #include "../fsm.h"
 #include "../fsm_utils.h"
@@ -22,6 +23,9 @@ ModeStatusV2 g_lastStatus;
 Mode g_prevMode = Mode::IDLE;
 uint16_t g_prevPhaseId = 0;
 uint32_t g_modeStartMs = 0;
+uint32_t g_prevPhaseStartMs = 0;
+float g_prevPhaseStartVolumeMl = 0.0f;
+float g_prevPhaseStartTempC = 0.0f;
 bool g_initialized = false;
 
 struct PendingPhaseTransitionV2 {
@@ -34,6 +38,138 @@ struct PendingPhaseTransitionV2 {
 };
 
 PendingPhaseTransitionV2 g_pendingTransition;
+const char* getPhaseToken(Mode mode, uint16_t phaseId);
+
+const char* getHistoryProcessType(Mode mode) {
+    switch (mode) {
+        case Mode::RECTIFICATION: return "rectification";
+        case Mode::DISTILLATION: return "distillation";
+        case Mode::MANUAL_RECT: return "rectification";
+        case Mode::MASHING: return "mashing";
+        case Mode::HOLD: return "hold";
+        case Mode::NBK: return "nbk";
+        case Mode::FERMENTATION: return "fermentation";
+        case Mode::IDLE:
+        default:
+            return "idle";
+    }
+}
+
+const char* getHistoryProcessMode(Mode mode) {
+    return mode == Mode::MANUAL_RECT ? "manual" : "auto";
+}
+
+float getRepresentativePhaseTemp(const SystemState& state) {
+    if (state.temps.valid[TEMP_COLUMN_TOP]) {
+        return state.temps.columnTop;
+    }
+    if (state.temps.valid[TEMP_COLUMN_BOTTOM]) {
+        return state.temps.columnBottom;
+    }
+    if (state.temps.valid[TEMP_CUBE]) {
+        return state.temps.cube;
+    }
+    return 0.0f;
+}
+
+bool isIdleLikePhase(Mode mode, uint16_t phaseId) {
+    switch (mode) {
+        case Mode::NBK:
+            return static_cast<NbkPhase>(phaseId) == NbkPhase::IDLE;
+        case Mode::FERMENTATION:
+            return static_cast<FermentationPhase>(phaseId) == FermentationPhase::IDLE;
+        case Mode::MASHING:
+            return static_cast<MashPhase>(phaseId) == MashPhase::IDLE;
+        case Mode::HOLD:
+            return false;
+        case Mode::RECTIFICATION:
+        case Mode::DISTILLATION:
+        case Mode::MANUAL_RECT:
+        default:
+            return static_cast<RectPhase>(phaseId) == RectPhase::IDLE;
+    }
+}
+
+bool isSuccessfulCompletion(Mode previousMode, uint16_t previousPhaseId,
+                            ReasonCodeV2 reasonCode) {
+    switch (previousMode) {
+        case Mode::RECTIFICATION:
+        case Mode::DISTILLATION:
+            return previousPhaseId == static_cast<uint16_t>(RectPhase::FINISH) &&
+                   reasonCode == ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE;
+        case Mode::NBK:
+            return (previousPhaseId == static_cast<uint16_t>(NbkPhase::FINISH) ||
+                    previousPhaseId == static_cast<uint16_t>(NbkPhase::COMPLETED)) &&
+                   reasonCode == ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE;
+        default:
+            return false;
+    }
+}
+
+void startHistoryTracking(const SystemState& state) {
+    if (state.mode == Mode::IDLE) {
+        return;
+    }
+    if (!processRecorder.isRecording()) {
+        processRecorder.startRecording(getHistoryProcessType(state.mode),
+                                       getHistoryProcessMode(state.mode));
+    }
+    g_prevPhaseStartMs = millis();
+    g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
+    g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
+}
+
+void recordCompletedPhase(Mode mode, uint16_t phaseId, ReasonCodeV2 reasonCode,
+                          const char* operatorMessage, const SystemState& state,
+                          uint32_t nowMs) {
+    if (!processRecorder.isRecording() || mode == Mode::IDLE ||
+        isIdleLikePhase(mode, phaseId)) {
+        return;
+    }
+
+    const uint32_t startMs = g_prevPhaseStartMs > 0 ? g_prevPhaseStartMs : nowMs;
+    const uint32_t durationSec = (nowMs >= startMs) ? (nowMs - startMs) / 1000UL : 0;
+    float phaseVolumeMl = state.pump.totalVolumeMl - g_prevPhaseStartVolumeMl;
+    if (phaseVolumeMl < 0.0f) {
+        phaseVolumeMl = 0.0f;
+    }
+
+    ProcessPhase phase;
+    phase.name = getPhaseToken(mode, phaseId);
+    phase.startTime = startMs / 1000UL;
+    phase.endTime = nowMs / 1000UL;
+    phase.duration = durationSec;
+    phase.startTemp = g_prevPhaseStartTempC;
+    phase.endTemp = getRepresentativePhaseTemp(state);
+    phase.volume = static_cast<uint16_t>(phaseVolumeMl);
+    phase.avgSpeed =
+        (durationSec > 0 && phaseVolumeMl > 0.0f)
+            ? static_cast<uint16_t>((phaseVolumeMl * 3600.0f) / durationSec)
+            : 0;
+    phase.reasonCode = reasonCodeToString(reasonCode);
+    if (operatorMessage != nullptr && operatorMessage[0] != '\0') {
+        phase.operatorMessage = operatorMessage;
+    }
+
+    processRecorder.addPhase(phase);
+}
+
+void stopHistoryTracking(bool success, ReasonCodeV2 reasonCode,
+                         const char* operatorMessage, const SystemState& state) {
+    if (!processRecorder.isRecording()) {
+        return;
+    }
+
+    if (!state.safetyOk && state.currentAlarm.type != AlarmType::NONE) {
+        String message = g_lastMetrics.safety.message[0] != '\0'
+                             ? String(g_lastMetrics.safety.message)
+                             : String("Safety stop");
+        processRecorder.addWarning(message, "error", reasonCodeToString(reasonCode),
+                                   operatorMessage != nullptr ? String(operatorMessage) : String());
+    }
+
+    processRecorder.stopRecording(success);
+}
 
 uint16_t getActivePhaseId(const SystemState& state) {
     switch (state.mode) {
@@ -303,6 +439,9 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         g_prevMode = state.mode;
         g_prevPhaseId = getActivePhaseId(state);
         g_modeStartMs = (state.mode == Mode::IDLE) ? 0 : now;
+        g_prevPhaseStartMs = now;
+        g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
+        g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
     }
 
     const uint16_t currentPhaseId = getActivePhaseId(state);
@@ -319,8 +458,9 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
 
     if (state.mode != g_prevMode) {
         g_modeStartMs = (state.mode == Mode::IDLE) ? 0 : now;
+        ReasonCodeV2 modeChangeReason = explicitTransition.reasonCode;
         if (!hasExplicitTransition) {
-            g_lastStatus.lastReasonCode =
+            modeChangeReason =
                 (state.mode == Mode::IDLE)
                     ? ((!state.safetyOk && state.currentAlarm.type != AlarmType::NONE)
                            ? g_lastMetrics.safety.reasonCode
@@ -333,17 +473,42 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
                                          ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE
                                          : ReasonCodeV2::RC_MODE_STOP_REQUEST)))
                     : ReasonCodeV2::RC_MODE_START_REQUEST;
+            g_lastStatus.lastReasonCode = modeChangeReason;
+        }
+        if (g_prevMode != Mode::IDLE) {
+            recordCompletedPhase(g_prevMode, g_prevPhaseId, modeChangeReason,
+                                 hasExplicitTransition ? explicitTransition.operatorMessage : nullptr,
+                                 state, now);
+        }
+        if (state.mode == Mode::IDLE) {
+            stopHistoryTracking(
+                isSuccessfulCompletion(g_prevMode, g_prevPhaseId, modeChangeReason),
+                modeChangeReason,
+                hasExplicitTransition ? explicitTransition.operatorMessage : nullptr,
+                state);
+        } else {
+            startHistoryTracking(state);
         }
         g_prevMode = state.mode;
         g_prevPhaseId = currentPhaseId;
+        g_prevPhaseStartMs = now;
+        g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
+        g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
     } else if (currentPhaseId != g_prevPhaseId) {
+        ReasonCodeV2 phaseReason = explicitTransition.reasonCode;
         if (!hasExplicitTransition) {
-            g_lastStatus.lastReasonCode =
-                inferPhaseReason(state, g_prevPhaseId, currentPhaseId, g_lastIndicators);
-            logTransitionEvent(state.mode, g_prevPhaseId, currentPhaseId, g_lastStatus.lastReasonCode,
+            phaseReason = inferPhaseReason(state, g_prevPhaseId, currentPhaseId, g_lastIndicators);
+            g_lastStatus.lastReasonCode = phaseReason;
+            logTransitionEvent(state.mode, g_prevPhaseId, currentPhaseId, phaseReason,
                                nullptr, g_lastIndicators, limits, now, state.pump.totalVolumeMl);
         }
+        recordCompletedPhase(state.mode, g_prevPhaseId, phaseReason,
+                             hasExplicitTransition ? explicitTransition.operatorMessage : nullptr,
+                             state, now);
         g_prevPhaseId = currentPhaseId;
+        g_prevPhaseStartMs = now;
+        g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
+        g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
     }
 
     fillStatus(state, g_lastIndicators, g_lastMetrics, g_lastStatus);

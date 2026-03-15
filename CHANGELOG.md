@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.12] - 2026-03-15
+
+### Изменено
+- История процессов в `src/history.*` расширена v2-полями `reasonCode` и `operatorMessage` для фаз и предупреждений, а загрузка старых JSON-файлов остаётся обратносуместимой за счёт optional-deserialization новых полей. (codex)
+- `ProcessRecorder` больше не пишет устаревшую версию схемы `1.3.0`: новые history-сессии теперь помечаются текущей версией прошивки, а warning-записи тоже могут хранить v2 reason context. (codex)
+- `src/control/v2/status_adapter.cpp` подключён к persistent history recorder: при старте режима автоматически открывается history-сессия, при фазовых переходах сохраняются завершённые фазы с `reasonCode/operatorMessage`, а при остановке процесса history закрывается с учётом natural finish vs stop/safety stop. (codex)
+- Версия прошивки поднята до `2.0.12` как отдельный шаг миграции, который переносит v2 причинную модель из live/event log слоя в постоянную process history. (codex)
+
 ## [2.0.11] - 2026-03-15
 
 ### Изменено
