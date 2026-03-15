@@ -9,6 +9,17 @@
 
 ---
 
+## [2.0.5] - 2026-03-15
+
+### Добавлено
+- Добавлен отдельный read-only `SafetySupervisorV2` в `src/control/v2/safety_supervisor.*`, который стал единой точкой расчёта `activeLimits` и `SafetyDecisionV2` для v2 runtime/export слоя. (codex)
+- В `Safety` открыт helper `canResetNow(...)`, использующий ту же внутреннюю проверку, что и реальный `reset`, чтобы recovery-статус в v2 опирался на ту же safety-логику, а не на дублированные эвристики. (codex)
+
+### Изменено
+- `status_adapter` больше не держит локальную safety-эвристику: расчёт `severity`, `reasonCode`, `message`, `requiresAcknowledge` и `activeLimits` делегирован в `SafetySupervisorV2`. (codex)
+- `v2` теперь различает `latched_trip` и `recovery`: когда авария уже может быть снята, `metrics.safety.severity` переходит в `recovery`, а `indicators.recoveryActive` поднимается в `true`. (codex)
+- Версия прошивки поднята до `2.0.5` как отдельный шаг миграции к единому v2 safety supervisor слою. (codex)
+
 ## [2.0.4] - 2026-03-15
 
 ### Изменено

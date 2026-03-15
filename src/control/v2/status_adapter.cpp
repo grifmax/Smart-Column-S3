@@ -8,7 +8,7 @@
 #include "../../storage/logger.h"
 #include "../fsm.h"
 #include "../fsm_utils.h"
-#include "safety_policy.h"
+#include "safety_supervisor.h"
 #include "transition_logger.h"
 
 namespace ControlV2 {
@@ -106,25 +106,6 @@ const char* getPhaseToken(Mode mode, uint16_t phaseId) {
             return "hold_step";
         default:
             return "idle";
-    }
-}
-
-ReasonCodeV2 mapAlarmToReason(const SystemState& state) {
-    switch (state.currentAlarm.type) {
-        case AlarmType::COLUMN_FLOOD:
-        case AlarmType::PRESSURE_RISE_RATE:
-            return ReasonCodeV2::RC_SAFETY_TRIP_PRESSURE;
-        case AlarmType::SENSOR_FAILURE:
-            return ReasonCodeV2::RC_SAFETY_TRIP_SENSOR;
-        case AlarmType::VAPOR_BREAKTHROUGH:
-        case AlarmType::WATER_OVERHEAT:
-        case AlarmType::WATER_RISE_RATE:
-        case AlarmType::OVERHEAT:
-        case AlarmType::LOW_WATER:
-        case AlarmType::EMERGENCY_STOP:
-            return ReasonCodeV2::RC_SAFETY_TRIP_OVERHEAT;
-        default:
-            return ReasonCodeV2::RC_UNSPECIFIED;
     }
 }
 
@@ -244,72 +225,6 @@ bool consumeExplicitTransition(Mode previousMode, uint16_t previousPhaseId, Mode
     return true;
 }
 
-ActiveLimitsV2 buildActiveLimits(const SystemState& state, const Settings& settings,
-                                 const ProcessIndicatorsV2& indicators) {
-    ActiveLimitsV2 limits;
-    limits.powerCapped = indicators.powerLimited;
-    if (state.mode == Mode::NBK) {
-        const HeaterPowerPolicyV2 powerPolicy = SafetyPolicyV2::evaluateNbkHeaterPower(
-            SafetyPolicyV2::getDefaultNbkHeaterPowerPercent(state, settings), state, settings);
-        limits.maxHeaterPowerPercent = powerPolicy.limited ? powerPolicy.appliedPowerPercent : 100;
-    } else if (state.mode == Mode::MANUAL_RECT &&
-               SafetyPolicyV2::isManualRectFloodPowerLimitActive(state, settings)) {
-        limits.maxHeaterPowerPercent = Heater::getPower();
-    } else {
-        limits.maxHeaterPowerPercent = indicators.powerLimited ? Heater::getPower() : 100;
-    }
-    limits.pumpCapped = (state.mode == Mode::NBK) && !indicators.nbkFeedAllowed;
-    limits.maxPumpSpeedMlH = limits.pumpCapped ? state.pump.speedMlPerHour : 0.0f;
-    limits.takeoffBlocked =
-        (state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT) &&
-        !indicators.takeoffAllowed;
-    limits.phaseAdvanceBlocked = !indicators.sensorFreshnessOk || indicators.floodRisk >= 0.80f;
-    return limits;
-}
-
-SafetyDecisionV2 buildSafetyDecision(const SystemState& state, const ActiveLimitsV2& limits,
-                                     const ProcessIndicatorsV2& indicators) {
-    SafetyDecisionV2 decision;
-    decision.limits = limits;
-
-    if (!state.safetyOk && state.currentAlarm.type != AlarmType::NONE) {
-        decision.severity = SafetySeverityV2::LATCHED_TRIP;
-        decision.primaryEvent = SafetyEventTypeV2::EMERGENCY_STOP;
-        decision.reasonCode = mapAlarmToReason(state);
-        decision.requiresAcknowledge = !state.currentAlarm.acknowledged;
-        strncpy(decision.message, state.currentAlarm.message, sizeof(decision.message) - 1);
-        decision.message[sizeof(decision.message) - 1] = '\0';
-        return decision;
-    }
-
-    if (limits.powerCapped || limits.takeoffBlocked || limits.phaseAdvanceBlocked) {
-        decision.severity = SafetySeverityV2::LIMITED;
-        decision.primaryEvent = limits.powerCapped ? SafetyEventTypeV2::POWER_LIMIT_APPLIED
-                                                   : (limits.takeoffBlocked ? SafetyEventTypeV2::TAKEOFF_LIMIT_APPLIED
-                                                                            : SafetyEventTypeV2::PHASE_ADVANCE_BLOCKED);
-        decision.reasonCode = limits.powerCapped ? ReasonCodeV2::RC_SAFETY_LIMIT_POWER
-                                                 : (limits.takeoffBlocked ? ReasonCodeV2::RC_SAFETY_LIMIT_TAKEOFF
-                                                                          : ReasonCodeV2::RC_SAFETY_PHASE_BLOCKED);
-        const char* message = limits.powerCapped
-                                  ? "Power is capped by safety margin"
-                                  : (limits.takeoffBlocked ? "Takeoff is blocked by process limits"
-                                                           : "Phase advance is blocked by sensor or flood constraints");
-        strncpy(decision.message, message, sizeof(decision.message) - 1);
-        decision.message[sizeof(decision.message) - 1] = '\0';
-        return decision;
-    }
-
-    if (!indicators.sensorFreshnessOk) {
-        decision.severity = SafetySeverityV2::WARNING;
-        decision.primaryEvent = SafetyEventTypeV2::SENSOR_STALE;
-        decision.reasonCode = ReasonCodeV2::RC_PRECHECK_FAIL_SENSOR;
-        strncpy(decision.message, "Sensor data is stale", sizeof(decision.message) - 1);
-        decision.message[sizeof(decision.message) - 1] = '\0';
-    }
-
-    return decision;
-}
-
 ModeLifecycleV2 getLifecycle(const SystemState& state) {
     if (state.mode == Mode::IDLE) return ModeLifecycleV2::IDLE;
     if (!state.safetyOk && state.currentAlarm.type != AlarmType::NONE) return ModeLifecycleV2::FAULTED;
@@ -369,8 +284,11 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
     const uint32_t now = millis();
     g_lastIndicators = ProcessIndicatorsEngineV2::evaluate(state, settings, g_indicatorRuntime);
 
-    const ActiveLimitsV2 limits = buildActiveLimits(state, settings, g_lastIndicators);
-    const SafetyDecisionV2 safety = buildSafetyDecision(state, limits, g_lastIndicators);
+    const ActiveLimitsV2 limits =
+        SafetySupervisorV2::evaluateActiveLimits(state, settings, g_lastIndicators);
+    const SafetyDecisionV2 safety =
+        SafetySupervisorV2::evaluateDecision(state, settings, g_lastIndicators, limits);
+    SafetySupervisorV2::applyDecisionToIndicators(safety, g_lastIndicators);
 
     g_lastMetrics.timestampMs = now;
     g_lastMetrics.temperatures = state.temps;
@@ -405,7 +323,7 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
             g_lastStatus.lastReasonCode =
                 (state.mode == Mode::IDLE)
                     ? ((!state.safetyOk && state.currentAlarm.type != AlarmType::NONE)
-                           ? mapAlarmToReason(state)
+                           ? g_lastMetrics.safety.reasonCode
                            : ((g_prevMode == Mode::RECTIFICATION || g_prevMode == Mode::DISTILLATION) &&
                                       g_prevPhaseId == static_cast<uint16_t>(RectPhase::FINISH)
                                   ? ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE

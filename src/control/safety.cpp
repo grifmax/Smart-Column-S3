@@ -149,6 +149,15 @@ bool isLatched(const SystemState& state) {
     return !state.safetyOk && state.currentAlarm.type != AlarmType::NONE;
 }
 
+bool canResetNow(const SystemState& state, const Settings& settings, char* reason, size_t reasonSize) {
+    const uint32_t now = millis();
+    if (!isLatched(state)) {
+        writeReason(reason, reasonSize, "");
+        return true;
+    }
+    return canResetAlarm(state, settings, now, reason, reasonSize);
+}
+
 void check(SystemState& state, const Settings& settings) {
     if (g_safetyMutex == nullptr || xSemaphoreTake(g_safetyMutex, pdMS_TO_TICKS(50)) != pdTRUE) {
         return;

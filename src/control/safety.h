@@ -20,6 +20,8 @@ void acknowledge(SystemState& state);
 bool reset(SystemState& state, const Settings& settings, char* reason = nullptr,
            size_t reasonSize = 0);
 bool isLatched(const SystemState& state);
+bool canResetNow(const SystemState& state, const Settings& settings, char* reason = nullptr,
+                 size_t reasonSize = 0);
 
 const char* getAlarmTypeToken(AlarmType type);
 const char* getAlarmLevelToken(AlarmLevel level);
