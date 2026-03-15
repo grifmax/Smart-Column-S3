@@ -2,6 +2,33 @@
 
 Этот документ фиксирует стартовую инженерную базу для миграции к архитектуре v2 без переписывания проекта с нуля.
 
+## Current status after Wave 4 audit
+
+As of firmware `2.0.35`, the migration is effectively in finalization mode rather than active architectural rewrite.
+
+- `Wave 1` is complete in practice: mode transitions, reason codes, unified runtime status and transition logging are already wired into the real runtime.
+- `Wave 2` is complete in practice: `ProcessIndicatorsV2`, `activeLimits`, `lastReasonCode` and unified `v2` snapshots are exported through local API, cloud tunnel, WebSocket/live UI and history.
+- `Wave 3` is complete in practice: NBK pressure derating, manual anti-flood derating, recovery/readiness semantics and safety summaries were lifted into shared `v2` policy/supervisor layers.
+- `Wave 4` is functionally complete: `RECTIFICATION`, `NBK`, `MANUAL_RECT`, `DISTILLATION`, `HOLD`, `MASHING` and `FERMENTATION` now emit explicit start/phase/finish contracts, and terminal transitions survive mode-to-idle completion in the same loop pass.
+
+Current realistic migration estimate: `98-99%`.
+
+### What is still intentionally open
+
+- `RC_PHASE_TRANSITION_INFERRED` still exists, but now mainly as an honest adapter fallback for any future missing explicit contract; it is no longer used as a normal business reason for known recovery paths.
+- `RC_UNSPECIFIED` still exists in the enum and UI compatibility layer, but primary runtime happy-path and safety-path logic has been reduced to near-zero usage.
+- The remaining high-value work is verification, not redesign: run through real process scenarios and confirm that `RC_PHASE_TRANSITION_INFERRED` does not appear on normal start/phase/finish flows.
+- If inferred transitions still show up during real device runs, the next change should be surgical: add the missing explicit `notePhaseTransition(...)` in that exact handler path instead of expanding fallback logic in the adapter.
+
+### Practical definition of final done
+
+The migration can be treated as operationally complete when all of the following are true:
+
+- normal scenario runs for `rectification`, `distillation`, `nbk`, `manual rect`, `hold`, `mashing` and `fermentation` complete without unexpected `RC_PHASE_TRANSITION_INFERRED`;
+- history, live `/api/status`, safety action endpoints and UI notifications show the same explicit terminal reasons for the same run;
+- no primary runtime path emits `RC_UNSPECIFIED`;
+- any remaining fallback reason is clearly intentional and documented as compatibility reserve rather than active behavior.
+
 ## 1. Что уже есть и должно быть сохранено
 
 - `src/control/fsm.*` уже выступает центральным оркестратором режимов.
