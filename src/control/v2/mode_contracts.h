@@ -10,6 +10,8 @@
 
 namespace ControlV2 {
 
+constexpr uint16_t kNoPhaseIdV2 = 0xFFFF;
+
 enum class ModeLifecycleV2 : uint8_t {
     IDLE = 0,
     STARTING,

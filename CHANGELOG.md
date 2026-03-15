@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.25] - 2026-03-15
+
+### Изменено
+- `src/control/v2/mode_contracts.h` добавлен общий `kNoPhaseIdV2`, чтобы `v2`-контракты могли явно обозначать отсутствие активной фазы и не подменять этот случай локальными эвристиками разных режимов. (codex)
+- `src/control/v2/status_adapter.cpp` теперь трактует `kNoPhaseIdV2` как `idle` phase token, считает его idle-like для history и разрешает explicit start transition из `IDLE`, если handler передал sentinel вместо legacy phase id. (codex)
+- `src/control/modes/hold_handler.cpp` и `src/control/fsm.cpp` переведены на новый контракт для `HOLD`: старт логируется как `idle -> hold_step`, а операторская остановка как `hold_step -> idle`, без двусмысленного `hold_step -> hold_step`. (codex)
+- Версия прошивки поднята до `2.0.25` как отдельный шаг выравнивания phase semantics для `HOLD` перед дальнейшей зачисткой остаточных fallback-эвристик `Wave 4`. (codex)
+
 ## [2.0.24] - 2026-03-15
 
 ### Изменено

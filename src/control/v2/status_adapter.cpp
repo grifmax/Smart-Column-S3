@@ -83,6 +83,10 @@ float getRepresentativePhaseTemp(const SystemState& state) {
 }
 
 bool isIdleLikePhase(Mode mode, uint16_t phaseId) {
+    if (phaseId == kNoPhaseIdV2) {
+        return true;
+    }
+
     switch (mode) {
         case Mode::NBK:
             return static_cast<NbkPhase>(phaseId) == NbkPhase::IDLE;
@@ -332,6 +336,10 @@ uint16_t getActivePhaseId(const SystemState& state) {
 }
 
 const char* getPhaseToken(Mode mode, uint16_t phaseId) {
+    if (phaseId == kNoPhaseIdV2) {
+        return "idle";
+    }
+
     switch (mode) {
         case Mode::RECTIFICATION:
         case Mode::DISTILLATION:
@@ -496,7 +504,8 @@ bool consumeExplicitTransition(Mode previousMode, uint16_t previousPhaseId, Mode
     const bool isModeStartTransition =
         previousMode == Mode::IDLE &&
         g_pendingTransition.mode == currentMode &&
-        g_pendingTransition.fromPhaseId == previousPhaseId &&
+        (g_pendingTransition.fromPhaseId == previousPhaseId ||
+         g_pendingTransition.fromPhaseId == kNoPhaseIdV2) &&
         g_pendingTransition.toPhaseId == currentPhaseId;
 
     if (!isModeStartTransition) {

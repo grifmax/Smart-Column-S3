@@ -146,7 +146,7 @@ void stopMode(SystemState& state) {
     } else if (state.mode == Mode::HOLD && state.hold.active) {
         ControlV2::notePhaseTransition(Mode::HOLD,
                                        static_cast<uint16_t>(state.hold.currentStep),
-                                       static_cast<uint16_t>(state.hold.currentStep),
+                                       ControlV2::kNoPhaseIdV2,
                                        ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
                                        "Hold program stopped by operator");
     } else if (state.mode == Mode::FERMENTATION &&

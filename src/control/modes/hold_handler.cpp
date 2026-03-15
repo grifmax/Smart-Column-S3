@@ -100,7 +100,7 @@ void start(SystemState& state, const TempStep* steps, uint8_t count) {
     state.mode = Mode::HOLD;
     state.rectPhase = RectPhase::IDLE;
     ControlV2::notePhaseTransition(
-        Mode::HOLD, 0, 0, ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
+        Mode::HOLD, ControlV2::kNoPhaseIdV2, 0, ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
         "Hold program started");
     LOG_I("Hold: Started with %d steps", count);
 }
