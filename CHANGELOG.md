@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.24] - 2026-03-15
+
+### Изменено
+- `src/control/v2/status_adapter.cpp` расширен поддержкой explicit start transitions: `notePhaseTransition(...)` теперь корректно подхватывается не только для фаз внутри режима и остановок, но и для старта режима из `IDLE`, если handler явно задал стартовый контракт. (codex)
+- `src/control/fsm.cpp` теперь ставит явный `RC_MODE_START_REQUEST` для старта `RECTIFICATION`, `DISTILLATION`, `NBK` и `FERMENTATION`, а `src/control/modes/mashing_handler.cpp` и `src/control/modes/hold_handler.cpp` делают то же для прямых `Mashing::start(...)` и `Hold::start(...)`. (codex)
+- Это убирает ещё один слой fallback-эвристики из `Wave 4`: history, transition log и live `lastReasonCode` получают реальный стартовый reason contract вместо молчаливого восстановления из mode-change fallback. (codex)
+- Версия прошивки поднята до `2.0.24` как отдельный шаг миграции стартовых контрактов к полноценному v2 mode lifecycle. (codex)
+
 ## [2.0.23] - 2026-03-15
 
 ### Изменено

@@ -492,12 +492,24 @@ bool consumeExplicitTransition(Mode previousMode, uint16_t previousPhaseId, Mode
     if (!g_pendingTransition.active) {
         return false;
     }
-    if (g_pendingTransition.mode != previousMode || g_pendingTransition.fromPhaseId != previousPhaseId) {
-        return false;
+
+    const bool isModeStartTransition =
+        previousMode == Mode::IDLE &&
+        g_pendingTransition.mode == currentMode &&
+        g_pendingTransition.fromPhaseId == previousPhaseId &&
+        g_pendingTransition.toPhaseId == currentPhaseId;
+
+    if (!isModeStartTransition) {
+        if (g_pendingTransition.mode != previousMode ||
+            g_pendingTransition.fromPhaseId != previousPhaseId) {
+            return false;
+        }
+        if (currentMode == previousMode &&
+            g_pendingTransition.toPhaseId != currentPhaseId) {
+            return false;
+        }
     }
-    if (currentMode == previousMode && g_pendingTransition.toPhaseId != currentPhaseId) {
-        return false;
-    }
+
     transition = g_pendingTransition;
     g_pendingTransition.active = false;
     return true;

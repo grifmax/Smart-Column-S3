@@ -71,10 +71,20 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
         case Mode::RECTIFICATION:
             Rectification::initSession(state, settings);
             state.rectPhase = RectPhase::HEATING;
+            ControlV2::notePhaseTransition(
+                Mode::RECTIFICATION, static_cast<uint16_t>(RectPhase::IDLE),
+                static_cast<uint16_t>(RectPhase::HEATING),
+                ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
+                "Rectification started");
             MQTT::publishNotification("Процесс запущен", "Начат процесс ректификации", "info");
             break;
         case Mode::DISTILLATION:
             state.rectPhase = RectPhase::HEATING;
+            ControlV2::notePhaseTransition(
+                Mode::DISTILLATION, static_cast<uint16_t>(RectPhase::IDLE),
+                static_cast<uint16_t>(RectPhase::HEATING),
+                ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
+                "Distillation started");
             break;
         case Mode::MANUAL_RECT:
             ManualRect::setPhase(state, RectPhase::HEATING);
@@ -87,9 +97,20 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
             break;
         case Mode::NBK:
             state.nbkPhase = NbkPhase::HEATING;
+            ControlV2::notePhaseTransition(
+                Mode::NBK, static_cast<uint16_t>(NbkPhase::IDLE),
+                static_cast<uint16_t>(NbkPhase::HEATING),
+                ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
+                "NBK started");
             break;
         case Mode::FERMENTATION:
             state.fermPhase = FermentationPhase::RUNNING;
+            ControlV2::notePhaseTransition(
+                Mode::FERMENTATION,
+                static_cast<uint16_t>(FermentationPhase::IDLE),
+                static_cast<uint16_t>(FermentationPhase::RUNNING),
+                ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
+                "Fermentation started");
             break;
         default: break;
     }

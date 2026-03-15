@@ -92,6 +92,11 @@ void start(SystemState& state, const MashProfile* profile) {
     state.mashing.stepName[sizeof(state.mashing.stepName) - 1] = '\0';
     state.mode = Mode::MASHING;
     state.rectPhase = RectPhase::IDLE;
+    ControlV2::notePhaseTransition(
+        Mode::MASHING, static_cast<uint16_t>(MashPhase::IDLE),
+        static_cast<uint16_t>(MashPhase::ACID_REST),
+        ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
+        "Mashing started");
     LOG_I("Mashing: Started profile '%s' (%d steps)", profile->name, profile->stepCount);
 }
 
