@@ -376,6 +376,93 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
 // Получение списка всех процессов
 // ============================================================================
 
+namespace {
+
+struct SafetyListSummary {
+    bool trip = false;
+    bool ack = false;
+    bool reset = false;
+    bool recovery = false;
+    bool limited = false;
+};
+
+bool looksLikeSafetyMessage(const String& rawMessage) {
+    String message = rawMessage;
+    message.toLowerCase();
+    return message.indexOf("safety") >= 0 ||
+           message.indexOf("авар") >= 0 ||
+           message.indexOf("перегрев") >= 0 ||
+           message.indexOf("давлен") >= 0;
+}
+
+void applySafetyReasonCode(const String& reasonCode, SafetyListSummary& summary) {
+    if (reasonCode == "RC_SAFETY_ACKNOWLEDGED") {
+        summary.ack = true;
+    } else if (reasonCode == "RC_SAFETY_RESET_COMPLETED") {
+        summary.reset = true;
+    } else if (reasonCode == "RC_SAFETY_RECOVERY_ENTERED" ||
+               reasonCode == "RC_SAFETY_RECOVERY_EXITED") {
+        summary.recovery = true;
+    } else if (reasonCode == "RC_SAFETY_LIMIT_POWER" ||
+               reasonCode == "RC_SAFETY_LIMIT_TAKEOFF" ||
+               reasonCode == "RC_SAFETY_PHASE_BLOCKED") {
+        summary.limited = true;
+    } else if (reasonCode == "RC_SAFETY_TRIP_PRESSURE" ||
+               reasonCode == "RC_SAFETY_TRIP_SENSOR" ||
+               reasonCode == "RC_SAFETY_TRIP_OVERHEAT") {
+        summary.trip = true;
+    }
+}
+
+void applySafetyEventSummary(const JsonArrayConst& events, bool isError,
+                             SafetyListSummary& summary) {
+    for (JsonObjectConst event : events) {
+        const String reasonCode = event["reasonCode"].as<String>();
+        if (reasonCode.startsWith("RC_SAFETY_")) {
+            applySafetyReasonCode(reasonCode, summary);
+            continue;
+        }
+
+        const String message = event["message"].as<String>();
+        if (isError && looksLikeSafetyMessage(message)) {
+            summary.trip = true;
+        } else if (!isError && looksLikeSafetyMessage(message)) {
+            summary.limited = true;
+        }
+    }
+}
+
+void finalizeSafetySummary(ProcessListItem& item,
+                           const SafetyListSummary& summary) {
+    item.safetyTrip = summary.trip;
+    item.safetyAck = summary.ack;
+    item.safetyReset = summary.reset;
+    item.safetyRecovery = summary.recovery;
+    item.safetyLimited = summary.limited;
+
+    if (summary.reset) {
+        item.safetyState = "reset";
+        item.safetySummary = summary.ack ? "ACK + RESET" : "RESET";
+    } else if (summary.ack) {
+        item.safetyState = "acked";
+        item.safetySummary = summary.recovery ? "ACK + RECOVERY" : "ACK";
+    } else if (summary.recovery) {
+        item.safetyState = "recovery";
+        item.safetySummary = "RECOVERY";
+    } else if (summary.trip) {
+        item.safetyState = "trip";
+        item.safetySummary = "TRIP";
+    } else if (summary.limited) {
+        item.safetyState = "limited";
+        item.safetySummary = "LIMITED";
+    } else {
+        item.safetyState = "none";
+        item.safetySummary = "";
+    }
+}
+
+} // namespace
+
 std::vector<ProcessListItem> getProcessList() {
     std::vector<ProcessListItem> list;
 
@@ -397,12 +484,20 @@ std::vector<ProcessListItem> getProcessList() {
 
                 if (!error) {
                     ProcessListItem item;
+                    SafetyListSummary safetySummary;
                     item.id = doc["id"].as<String>();
                     item.type = doc["process"]["type"].as<String>();
                     item.startTime = doc["metadata"]["startTime"];
                     item.duration = doc["metadata"]["duration"];
                     item.status = doc["results"]["status"].as<String>();
                     item.totalVolume = doc["results"]["totalCollected"];
+                    applySafetyEventSummary(
+                        doc["results"]["errors"].as<JsonArrayConst>(), true,
+                        safetySummary);
+                    applySafetyEventSummary(
+                        doc["results"]["warnings"].as<JsonArrayConst>(), false,
+                        safetySummary);
+                    finalizeSafetySummary(item, safetySummary);
 
                     list.push_back(item);
                 }

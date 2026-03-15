@@ -949,6 +949,13 @@ void init() {
       item["duration"] = process.duration;
       item["status"] = process.status;
       item["totalVolume"] = process.totalVolume;
+      item["safetyTrip"] = process.safetyTrip;
+      item["safetyAck"] = process.safetyAck;
+      item["safetyReset"] = process.safetyReset;
+      item["safetyRecovery"] = process.safetyRecovery;
+      item["safetyLimited"] = process.safetyLimited;
+      item["safetyState"] = process.safetyState;
+      item["safetySummary"] = process.safetySummary;
     }
 
     String response;

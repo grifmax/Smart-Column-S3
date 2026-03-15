@@ -104,3 +104,41 @@
     font-size: 0.8em;
     font-weight: 600;
 }
+
+.history-safety-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.76em;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.history-safety-trip {
+    background: rgba(220, 53, 69, 0.14);
+    color: var(--danger);
+}
+
+.history-safety-acked {
+    background: rgba(13, 110, 253, 0.14);
+    color: var(--accent);
+}
+
+.history-safety-reset {
+    background: rgba(25, 135, 84, 0.14);
+    color: var(--success);
+}
+
+.history-safety-recovery {
+    background: rgba(25, 135, 84, 0.12);
+    color: var(--success);
+}
+
+.history-safety-limited {
+    background: rgba(255, 193, 7, 0.16);
+    color: #9a6a00;
+}

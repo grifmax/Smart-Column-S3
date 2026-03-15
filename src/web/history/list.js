@@ -169,6 +169,20 @@ export function renderHistoryList(processes) {
 
 export let selectedProcesses = new Set();
 
+function getSafetyBadgeTitle(process) {
+
+    const parts = [];
+
+    if (process.safetyTrip) parts.push('trip');
+    if (process.safetyAck) parts.push('ack');
+    if (process.safetyRecovery) parts.push('recovery');
+    if (process.safetyReset) parts.push('reset');
+    if (process.safetyLimited) parts.push('limited');
+
+    return parts.length > 0 ? `Safety: ${parts.join(' -> ')}` : '';
+
+}
+
 
 
 export function renderHistoryItem(process) {
@@ -222,6 +236,11 @@ export function renderHistoryItem(process) {
     const durationHours = (process.duration / 3600).toFixed(1);
 
     const isSelected = selectedProcesses.has(process.id);
+    const safetySummary = String(process.safetySummary || '').trim();
+    const safetyState = String(process.safetyState || 'none').trim() || 'none';
+    const safetyBadge = safetySummary
+        ? `<span class="history-safety-badge history-safety-${safetyState}" title="${getSafetyBadgeTitle(process)}">Safety ${safetySummary}</span>`
+        : '';
 
 
 
@@ -246,6 +265,8 @@ export function renderHistoryItem(process) {
                     <span class="history-type history-type-${process.type}">${typeName}</span>
 
                     <span class="history-status history-status-${process.status}">${statusName}</span>
+
+                    ${safetyBadge}
 
                 </div>
 

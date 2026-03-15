@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.18] - 2026-03-15
+
+### Изменено
+- `src/history.h` и `src/history.cpp` расширены compact safety summary для `ProcessListItem`: history list теперь при быстрой загрузке процесса вычисляет флаги `trip/ack/recovery/reset/limited` и собирает короткий итоговый `safetySummary` без полной загрузки details JSON. (codex)
+- `/api/history` в `src/interface/webserver.cpp` теперь отдаёт `safetyState`, `safetySummary` и связанные safety-флаги, чтобы список процессов мог сразу показать, завершился ли safety-сценарий полным `ACK + RESET`. (codex)
+- `src/web/history/list.js` и `src/web/styles/_history.css` теперь рисуют safety badge прямо в карточке процесса, поэтому в history list сразу видно `TRIP`, `ACK`, `RECOVERY` или `ACK + RESET` без открытия details modal. (codex)
+- Версия прошивки поднята до `2.0.18` как отдельный шаг миграции history list к v2-aware safety summary. (codex)
+
 ## [2.0.17] - 2026-03-15
 
 ### Изменено
