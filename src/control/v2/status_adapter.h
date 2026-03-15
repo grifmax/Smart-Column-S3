@@ -7,6 +7,8 @@ namespace ControlV2 {
 
 void notePhaseTransition(Mode mode, uint16_t fromPhaseId, uint16_t toPhaseId,
                          ReasonCodeV2 reasonCode, const char* operatorMessage = nullptr);
+void noteSafetyOperatorAction(ReasonCodeV2 reasonCode, const char* message,
+                              const char* operatorMessage = nullptr);
 
 void updateRuntime(const SystemState& state, const Settings& settings);
 

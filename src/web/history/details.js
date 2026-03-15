@@ -50,7 +50,9 @@ const SAFETY_REASON_LABELS = {
     RC_SAFETY_RECOVERY_EXITED: 'Режим восстановления завершён',
     RC_SAFETY_TRIP_PRESSURE: 'Авария по давлению',
     RC_SAFETY_TRIP_SENSOR: 'Авария по датчикам',
-    RC_SAFETY_TRIP_OVERHEAT: 'Авария по перегреву'
+    RC_SAFETY_TRIP_OVERHEAT: 'Авария по перегреву',
+    RC_SAFETY_ACKNOWLEDGED: 'Авария подтверждена оператором',
+    RC_SAFETY_RESET_COMPLETED: 'Авария сброшена оператором'
 };
 
 function formatReasonCode(reasonCode) {
@@ -146,6 +148,12 @@ function getSafetyTimelineTone(eventItem) {
     if (reasonCode === 'RC_SAFETY_RECOVERY_ENTERED' || reasonCode === 'RC_SAFETY_RECOVERY_EXITED') {
 
         return 'recovery';
+
+    }
+
+    if (reasonCode === 'RC_SAFETY_ACKNOWLEDGED' || reasonCode === 'RC_SAFETY_RESET_COMPLETED') {
+
+        return 'info';
 
     }
 

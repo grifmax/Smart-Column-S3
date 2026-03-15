@@ -40,6 +40,14 @@ struct PendingPhaseTransitionV2 {
 };
 
 PendingPhaseTransitionV2 g_pendingTransition;
+struct PendingSafetyOperatorActionV2 {
+    bool active = false;
+    ReasonCodeV2 reasonCode = ReasonCodeV2::NONE;
+    char message[96] = "";
+    char operatorMessage[96] = "";
+};
+
+PendingSafetyOperatorActionV2 g_pendingSafetyAction;
 const char* getPhaseToken(Mode mode, uint16_t phaseId);
 
 const char* getHistoryProcessType(Mode mode) {
@@ -216,6 +224,19 @@ void recordHistorySafetyRecoveryExit(const SafetyDecisionV2& previousDecision,
     appendHistorySafetyEvent(
         "info", ReasonCodeV2::RC_SAFETY_RECOVERY_EXITED,
         "Safety recovery completed, process returned to normal operation");
+}
+
+void flushPendingSafetyOperatorAction() {
+    if (!g_pendingSafetyAction.active) {
+        return;
+    }
+
+    appendHistorySafetyEvent("info", g_pendingSafetyAction.reasonCode,
+                             g_pendingSafetyAction.message,
+                             g_pendingSafetyAction.operatorMessage[0] != '\0'
+                                 ? g_pendingSafetyAction.operatorMessage
+                                 : nullptr);
+    g_pendingSafetyAction.active = false;
 }
 
 void startHistoryTracking(const SystemState& state) {
@@ -532,6 +553,26 @@ void notePhaseTransition(Mode mode, uint16_t fromPhaseId, uint16_t toPhaseId,
     }
 }
 
+void noteSafetyOperatorAction(ReasonCodeV2 reasonCode, const char* message,
+                              const char* operatorMessage) {
+    g_pendingSafetyAction.active = true;
+    g_pendingSafetyAction.reasonCode = reasonCode;
+    g_pendingSafetyAction.message[0] = '\0';
+    g_pendingSafetyAction.operatorMessage[0] = '\0';
+
+    if (message != nullptr && message[0] != '\0') {
+        strncpy(g_pendingSafetyAction.message, message,
+                sizeof(g_pendingSafetyAction.message) - 1);
+        g_pendingSafetyAction.message[sizeof(g_pendingSafetyAction.message) - 1] = '\0';
+    }
+
+    if (operatorMessage != nullptr && operatorMessage[0] != '\0') {
+        strncpy(g_pendingSafetyAction.operatorMessage, operatorMessage,
+                sizeof(g_pendingSafetyAction.operatorMessage) - 1);
+        g_pendingSafetyAction.operatorMessage[sizeof(g_pendingSafetyAction.operatorMessage) - 1] = '\0';
+    }
+}
+
 void updateRuntime(const SystemState& state, const Settings& settings) {
     const uint32_t now = millis();
     g_lastIndicators = ProcessIndicatorsEngineV2::evaluate(state, settings, g_indicatorRuntime);
@@ -635,6 +676,7 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
 
     recordHistorySafetyRecoveryExit(g_prevSafetyDecision, safety);
     recordHistorySafetyDecision(safety);
+    flushPendingSafetyOperatorAction();
 
     fillStatus(state, g_lastIndicators, g_lastMetrics, g_lastStatus);
     g_prevSafetyDecision = safety;

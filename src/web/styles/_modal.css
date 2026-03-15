@@ -188,6 +188,10 @@
     border-left: 4px solid var(--success);
 }
 
+.modal-event-item.is-info {
+    border-left: 4px solid var(--accent);
+}
+
 .modal-event-header {
     display: flex;
     flex-wrap: wrap;
@@ -224,6 +228,11 @@
 .modal-event-kind.is-recovery {
     background: rgba(25, 135, 84, 0.14);
     color: var(--success);
+}
+
+.modal-event-kind.is-info {
+    background: rgba(13, 110, 253, 0.14);
+    color: var(--accent);
 }
 
 .modal-event-meta {

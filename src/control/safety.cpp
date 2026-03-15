@@ -7,6 +7,7 @@
 #include <freertos/semphr.h>
 
 #include "fsm.h"
+#include "v2/status_adapter.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
 #include "../drivers/valves.h"
@@ -355,9 +356,13 @@ void acknowledge(SystemState& state) {
     if (g_safetyMutex == nullptr || xSemaphoreTake(g_safetyMutex, pdMS_TO_TICKS(50)) != pdTRUE) {
         return;
     }
-    if (state.currentAlarm.type != AlarmType::NONE) {
+    if (state.currentAlarm.type != AlarmType::NONE && !state.currentAlarm.acknowledged) {
         state.currentAlarm.acknowledged = true;
         Logger::logf(0, "Safety alarm acknowledged: %s", getAlarmTypeToken(state.currentAlarm.type));
+        ControlV2::noteSafetyOperatorAction(
+            ControlV2::ReasonCodeV2::RC_SAFETY_ACKNOWLEDGED,
+            "Safety alarm acknowledged by operator",
+            state.currentAlarm.message);
     }
     xSemaphoreGive(g_safetyMutex);
 }
@@ -383,9 +388,15 @@ bool reset(SystemState& state, const Settings& settings, char* reason, size_t re
     }
 
     forceSafeOutputs();
+    char previousAlarmMessage[sizeof(state.currentAlarm.message)] = "";
+    snprintf(previousAlarmMessage, sizeof(previousAlarmMessage), "%s",
+             state.currentAlarm.message);
     clearCurrentAlarm(state);
     state.safetyOk = true;
     Logger::logf(0, "Safety alarm cleared");
+    ControlV2::noteSafetyOperatorAction(
+        ControlV2::ReasonCodeV2::RC_SAFETY_RESET_COMPLETED,
+        "Safety alarm reset by operator", previousAlarmMessage);
     xSemaphoreGive(g_safetyMutex);
     return true;
 }

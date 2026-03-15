@@ -37,6 +37,8 @@ const REASON_LABELS = {
     RC_SAFETY_TRIP_PRESSURE: 'Авария по давлению',
     RC_SAFETY_TRIP_SENSOR: 'Авария по датчикам',
     RC_SAFETY_TRIP_OVERHEAT: 'Авария по перегреву',
+    RC_SAFETY_ACKNOWLEDGED: 'Авария подтверждена оператором',
+    RC_SAFETY_RESET_COMPLETED: 'Авария сброшена оператором',
     RC_MANUAL_OPERATOR_SWITCH: 'Ручное переключение оператором',
     RC_MANUAL_OPERATOR_STOP: 'Ручная остановка оператором'
 };

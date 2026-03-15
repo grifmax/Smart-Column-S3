@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.17] - 2026-03-15
+
+### Изменено
+- `src/control/safety.cpp` теперь ставит централизованные v2 operator actions для `ack` и успешного `reset`, а `src/control/v2/status_adapter.cpp` записывает их в persistent history как отдельные события `RC_SAFETY_ACKNOWLEDGED` и `RC_SAFETY_RESET_COMPLETED`, не размазывая логику по `webserver` и `cloud_tunnel`. (codex)
+- Запись operator actions проходит через pending hook внутри `status_adapter`, поэтому порядок safety timeline остаётся согласованным с runtime-переходами `recovery/trip`, а `ack/reset` не спорят с `RC_SAFETY_RECOVERY_EXITED` в тот же цикл обновления. (codex)
+- Frontend history и runtime labels обновлены для новых reason codes: `src/web/history/details.js`, `src/web/styles/_modal.css` и `src/web/runtime/process-notifications.js` теперь показывают подтверждение и сброс аварии как отдельные info-события. (codex)
+- Версия прошивки поднята до `2.0.17` как отдельный шаг миграции safety history к полному сценарию `trip -> ack -> recovery -> reset`. (codex)
+
 ## [2.0.16] - 2026-03-15
 
 ### Изменено
