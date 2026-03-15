@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.37] - 2026-03-15
+
+### Изменено
+- `src/types.h` и `src/drivers/sensors.cpp` очищены от старого `inline static constexpr` warning: `SystemHealth::healthWeights` вынесен в обычное `static const` определение, совместимое с текущим стандартом сборки Arduino/PlatformIO. (codex)
+- Это убирает основной шум из firmware build после завершения v2 migration и делает post-migration сборку заметно чище без изменения поведения health scoring. (codex)
+- Дополнительно прогнан `npm run test:ui-smoke`: все 5 smoke-тестов Web UI прошли успешно на текущем post-migration состоянии проекта. (codex)
+- Версия прошивки поднята до `2.0.37` как отдельный шаг post-migration cleanup и verification. (codex)
+
 ## [2.0.36] - 2026-03-15
 
 ### Изменено
