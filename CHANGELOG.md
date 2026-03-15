@@ -9,6 +9,34 @@
 
 ---
 
+## [2.0.54] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` входящий `getUpdates` переведён с проблемного polling-стека `FastBot2` на собственный HTTPS-запрос через `WiFiClientSecure` с явным `Connection: close`, ручным чтением тела ответа и `ArduinoJson`-разбором, чтобы убрать зависания Telegram polling и сохранить рабочий исходящий `FastBot2` только для отправки сообщений и `answerCallbackQuery()`. (codex)
+- В `src/interface/telegram.cpp` восстановлены собственный `offset` (`tgNextUpdateId`) и прямой разбор `message/callback_query`, поэтому устройство само подтверждает обработанные updates и может последовательно потреблять очередь Telegram без опоры на внутренний parser-state библиотеки. (codex)
+- Версия прошивки поднята до `2.0.54` как отдельный hotfix после live-диагностики `2.0.53`, где основной runtime уже перестал ловить `Task WDT`, но Telegram task всё ещё мог залипать на одном библиотечном polling-вызове. (codex)
+
+## [2.0.53] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` Telegram polling переведён на гибридную схему: отдельная FreeRTOS-задача снова используется, но теперь она крутит неблокирующий `FastBot2::tick()` с `fb::Poll::Async`, а не подвисающий `tickManual()` и не основной `loop()`, чтобы снять `Task WDT` с главного runtime и при этом сохранить штатный transport библиотеки. (codex)
+- В `src/interface/telegram.cpp` polling-задача теперь работает короткими циклами с `vTaskDelay(...)`, а `TelegramBot::update()` снова отвечает только за deferred init и запуск task orchestration, чтобы web/API отправка и входящий polling были разделены по времени и не душили основной цикл контроллера. (codex)
+- Версия прошивки поднята до `2.0.53` как отдельный hotfix после живой проверки `2.0.52`, где входящие обновления частично начали проходить, но основной runtime словил `Task WDT` и перезагрузку. (codex)
+
+## [2.0.52] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` Telegram polling переведён с подвисающего `tickManual()` в отдельной FreeRTOS-задаче на штатный loop-driven `FastBot2::tick()` с `fb::Poll::Async`, чтобы библиотека сама вела неблокирующий цикл `getUpdates` в основном runtime вместо зависания worker-потока на живом устройстве. (codex)
+- В `src/interface/telegram.cpp` убрана отдельная task-based orchestration Telegram polling, а доступ к боту в `update()` переведён на неблокирующий `lockBot(0)` без ложных timeout-ошибок, чтобы web/API отправка и background polling больше не мешали друг другу через recursive mutex. (codex)
+- Версия прошивки поднята до `2.0.52` как отдельный hotfix после live-проверки `2.0.51`, где устройство уже работало на новом бинаре, но `tickManual()` всё равно останавливал рост `tickCount` и не потреблял входящие `/help` из очереди Telegram. (codex)
+
+## [2.0.51] - 2026-03-15
+
+### Изменено
+- В `src/interface/telegram.cpp` входящий polling Telegram переведён с самодельного raw `HTTPClient` пути обратно на нативный `FastBot2::tickManual()`, чтобы входящие апдейты и исходящие `sendMessage()/answerCallbackQuery()` шли через один и тот же transport-стек библиотеки вместо двух расходящихся реализаций. (codex)
+- В `src/interface/telegram.cpp` удалён мёртвый дублирующий код в `handleUpdate()` и добавлен `attachError(...)` callback с `setTimeout(5000)`, чтобы runtime-диагностика через `/api/settings/telegram` показывала реальные library-level ошибки polling, а не только побочный `http -1` из временного обходного решения. (codex)
+- Версия прошивки поднята до `2.0.51` как отдельный hotfix по Telegram inbound path после живой диагностики, где тестовая отправка уже работала, а входящие команды всё ещё не доходили до обработчиков бота. (codex)
+
 ## [2.0.50] - 2026-03-15
 
 ### Изменено
