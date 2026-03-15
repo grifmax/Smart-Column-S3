@@ -108,6 +108,13 @@ void stopMode(SystemState& state) {
                                        static_cast<uint16_t>(RectPhase::IDLE),
                                        ControlV2::ReasonCodeV2::RC_MANUAL_OPERATOR_STOP,
                                        "Manual rectification stopped by operator");
+    } else if (state.mode == Mode::DISTILLATION &&
+               state.rectPhase != RectPhase::IDLE) {
+        ControlV2::notePhaseTransition(Mode::DISTILLATION,
+                                       static_cast<uint16_t>(state.rectPhase),
+                                       static_cast<uint16_t>(RectPhase::IDLE),
+                                       ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
+                                       "Distillation stopped by operator");
     }
     
     Heater::setPower(0);

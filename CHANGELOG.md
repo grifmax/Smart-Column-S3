@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.21] - 2026-03-15
+
+### Изменено
+- `src/control/modes/distillation_handler.cpp` переведён на явные `v2` phase contracts: переходы `HEATING -> HEADS/BODY`, `HEADS -> BODY`, `BODY -> FINISH` и `FINISH -> IDLE` теперь ставят `ReasonCodeV2` и операторские сообщения прямо в месте смены фазы. (codex)
+- Для `DISTILLATION` в `src/control/fsm.cpp` добавлена явная фиксация операторской остановки через `RC_MODE_STOP_REQUEST`, чтобы history и transition log не падали обратно в fallback-эвристику при ручном stop режима. (codex)
+- Это закрывает следующий кусок `Wave 4` из `docs/v2/migration_preparation.md`: distillation стал ещё одним режимом, который уже живёт с реальными v2 transition reasons, а не только экспортируется через v2 status/read-only слой. (codex)
+- Версия прошивки поднята до `2.0.21` как отдельный шаг миграции `DISTILLATION` к явным v2 phase transitions. (codex)
+
 ## [2.0.20] - 2026-03-15
 
 ### Изменено

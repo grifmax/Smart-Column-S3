@@ -1,4 +1,6 @@
 #include "../fsm_utils.h"
+#include "../v2/reason_codes.h"
+#include "../v2/status_adapter.h"
 #include "../../drivers/heater.h"
 #include "../../drivers/pump.h"
 #include "../../drivers/valves.h"
@@ -17,6 +19,30 @@ struct ParamsRuntime {
 };
 
 static ParamsRuntime g_params;
+
+namespace {
+
+ControlV2::ReasonCodeV2 getBodyExitReason(bool endByTemp, bool endByVolume) {
+    if (endByTemp) {
+        return ControlV2::ReasonCodeV2::RC_DISTILLATION_END_TEMP_REACHED;
+    }
+    if (endByVolume) {
+        return ControlV2::ReasonCodeV2::RC_DISTILLATION_TARGET_VOLUME_REACHED;
+    }
+    return ControlV2::ReasonCodeV2::RC_UNSPECIFIED;
+}
+
+const char* getBodyExitMessage(bool endByTemp, bool endByVolume) {
+    if (endByTemp) {
+        return "Distillation body ended by cube temperature";
+    }
+    if (endByVolume) {
+        return "Distillation target volume reached";
+    }
+    return "Distillation body ended";
+}
+
+} // namespace
 
 void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC) {
     if (speedMlH > 0) g_params.speedMlH = speedMlH;
@@ -56,9 +82,20 @@ void update(SystemState& state, const Settings& settings) {
                 setPhaseStartTime(now);
                 setPhaseStartVolumeMl(state.pump.totalVolumeMl);
                 if (g_params.headsVolumeMl > 0.0f) {
+                    ControlV2::notePhaseTransition(Mode::DISTILLATION,
+                                                   static_cast<uint16_t>(RectPhase::HEATING),
+                                                   static_cast<uint16_t>(RectPhase::HEADS),
+                                                   ControlV2::ReasonCodeV2::RC_HEATING_COMPLETE,
+                                                   "Distillation heating complete, starting heads");
                     state.rectPhase = RectPhase::HEADS;
                     LOG_I("Distillation: HEATING -> HEADS");
                 } else {
+                    ControlV2::notePhaseTransition(
+                        Mode::DISTILLATION,
+                        static_cast<uint16_t>(RectPhase::HEATING),
+                        static_cast<uint16_t>(RectPhase::BODY),
+                        ControlV2::ReasonCodeV2::RC_DISTILLATION_HEADS_OPTIONAL_SKIPPED,
+                        "Distillation heads skipped, starting body collection");
                     state.rectPhase = RectPhase::BODY;
                     LOG_I("Distillation: HEATING -> BODY");
                 }
@@ -75,6 +112,11 @@ void update(SystemState& state, const Settings& settings) {
                 Valves::setHeads(false);
                 setPhaseStartTime(now);
                 setPhaseStartVolumeMl(state.pump.totalVolumeMl);
+                ControlV2::notePhaseTransition(Mode::DISTILLATION,
+                                               static_cast<uint16_t>(RectPhase::HEADS),
+                                               static_cast<uint16_t>(RectPhase::BODY),
+                                               ControlV2::ReasonCodeV2::RC_HEADS_VOLUME_REACHED,
+                                               "Distillation heads volume reached");
                 state.rectPhase = RectPhase::BODY;
                 LOG_I("Distillation: HEADS -> BODY");
             }
@@ -90,7 +132,15 @@ void update(SystemState& state, const Settings& settings) {
             const bool endByTemp = (g_params.endTempC > 0.0f && state.temps.valid[TEMP_CUBE] && state.temps.cube >= g_params.endTempC);
             const bool endByVolume = (g_params.targetVolumeMl > 0.0f && state.pump.totalVolumeMl >= g_params.targetVolumeMl);
             if (endByTemp || endByVolume) {
+                const ControlV2::ReasonCodeV2 finishReason =
+                    getBodyExitReason(endByTemp, endByVolume);
                 setPhaseStartTime(now);
+                ControlV2::notePhaseTransition(
+                    Mode::DISTILLATION,
+                    static_cast<uint16_t>(RectPhase::BODY),
+                    static_cast<uint16_t>(RectPhase::FINISH),
+                    finishReason,
+                    getBodyExitMessage(endByTemp, endByVolume));
                 state.rectPhase = RectPhase::FINISH;
                 LOG_I("Distillation: BODY -> FINISH (%s%s)", endByTemp ? "temp" : "", endByVolume ? " volume" : "");
             }
@@ -104,6 +154,11 @@ void update(SystemState& state, const Settings& settings) {
             Valves::setWater(true);
             if (now - startTime > 5 * 60 * 1000UL) {
                 Valves::closeAll();
+                ControlV2::notePhaseTransition(Mode::DISTILLATION,
+                                               static_cast<uint16_t>(RectPhase::FINISH),
+                                               static_cast<uint16_t>(RectPhase::IDLE),
+                                               ControlV2::ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE,
+                                               "Distillation cooldown complete");
                 state.rectPhase = RectPhase::IDLE;
                 state.mode = Mode::IDLE;
                 LOG_I("Distillation: Process complete!");
