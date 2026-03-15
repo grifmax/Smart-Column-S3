@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.22] - 2026-03-15
+
+### Изменено
+- `src/control/modes/hold_handler.cpp` и `src/control/modes/mashing_handler.cpp` переведены на явные `v2` phase contracts для температурных шагов: завершение шага и финал программы теперь ставят `ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE` с операторским сообщением прямо в месте перехода. (codex)
+- Для `MASHING` и `HOLD` в `src/control/fsm.cpp` добавлена явная операторская остановка через `RC_MODE_STOP_REQUEST`, чтобы manual stop этих режимов не терялся в history и transition log. (codex)
+- `src/control/v2/status_adapter.cpp` теперь считает `MASHING` и `HOLD` успешным завершением при `RC_TEMP_STEP_HOLD_COMPLETE`, так что history и completion summary для этих температурных программ больше не выглядят как обычный `stopped`. (codex)
+- Версия прошивки поднята до `2.0.22` как отдельный шаг `Wave 4` для перевода `hold/mashing` на явные v2 phase transitions и корректный completion outcome. (codex)
+
 ## [2.0.21] - 2026-03-15
 
 ### Изменено

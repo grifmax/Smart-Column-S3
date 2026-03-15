@@ -1,4 +1,6 @@
 #include "../fsm_utils.h"
+#include "../v2/reason_codes.h"
+#include "../v2/status_adapter.h"
 #include "../../drivers/heater.h"
 #include "../../drivers/pump.h"
 #include "../../drivers/valves.h"
@@ -12,6 +14,28 @@ namespace Mashing {
 
 static const MashProfile* currentProfile = nullptr;
 
+namespace {
+
+MashPhase getPhaseForStep(uint8_t stepIndex) {
+    switch (stepIndex) {
+        case 0: return MashPhase::ACID_REST;
+        case 1: return MashPhase::PROTEIN_REST;
+        case 2: return MashPhase::BETA_AMYLASE;
+        case 3: return MashPhase::ALPHA_AMYLASE;
+        case 4: return MashPhase::MASH_OUT;
+        default: return MashPhase::FINISH;
+    }
+}
+
+const char* getStepAdvanceMessage(uint8_t completedStep, uint8_t totalSteps) {
+    static char message[96];
+    snprintf(message, sizeof(message), "Mashing step %u of %u completed",
+             completedStep + 1, totalSteps);
+    return message;
+}
+
+} // namespace
+
 void setProfile(const MashProfile* profile) {
     currentProfile = profile;
     LOG_I("Mashing: Profile set to %s", profile ? profile->name : "NULL");
@@ -19,6 +43,8 @@ void setProfile(const MashProfile* profile) {
 
 void nextStep(SystemState& state) {
     if (!currentProfile) return;
+    const uint8_t completedStep = state.mashing.currentStep;
+    const MashPhase previousPhase = state.mashing.phase;
     state.mashing.currentStep++;
     if (state.mashing.currentStep < currentProfile->stepCount) {
         state.mashing.targetTemp = currentProfile->steps[state.mashing.currentStep].temperature;
@@ -29,15 +55,12 @@ void nextStep(SystemState& state) {
         state.mashing.stepCount = currentProfile->stepCount;
         strncpy(state.mashing.stepName, currentProfile->steps[state.mashing.currentStep].name, sizeof(state.mashing.stepName) - 1);
         state.mashing.stepName[sizeof(state.mashing.stepName) - 1] = '\0';
-
-        switch (state.mashing.currentStep) {
-          case 0: state.mashing.phase = MashPhase::ACID_REST; break;
-          case 1: state.mashing.phase = MashPhase::PROTEIN_REST; break;
-          case 2: state.mashing.phase = MashPhase::BETA_AMYLASE; break;
-          case 3: state.mashing.phase = MashPhase::ALPHA_AMYLASE; break;
-          case 4: state.mashing.phase = MashPhase::MASH_OUT; break;
-          default: break;
-        }
+        state.mashing.phase = getPhaseForStep(state.mashing.currentStep);
+        ControlV2::notePhaseTransition(
+            Mode::MASHING, static_cast<uint16_t>(previousPhase),
+            static_cast<uint16_t>(state.mashing.phase),
+            ControlV2::ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE,
+            getStepAdvanceMessage(completedStep, currentProfile->stepCount));
         
         LOG_I("Mashing: Step %d/%d - Target %.1f°C, Duration %d min",
               state.mashing.currentStep + 1, currentProfile->stepCount,
@@ -103,7 +126,14 @@ void update(SystemState& state, const Settings& settings) {
             (now - state.mashing.inRangeStartTime) >= (state.mashing.stepDuration * 1000UL);
         if (timeElapsed) nextStep(state);
     } else {
+        const MashPhase previousPhase = state.mashing.phase;
         state.mashing.phase = MashPhase::FINISH;
+        ControlV2::notePhaseTransition(
+            Mode::MASHING, static_cast<uint16_t>(previousPhase),
+            static_cast<uint16_t>(MashPhase::FINISH),
+            ControlV2::ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE,
+            "Mashing program completed");
+        state.mashing.active = false;
         state.mode = Mode::IDLE;
         Heater::setPower(0);
         LOG_I("Mashing: Process complete!");

@@ -1,4 +1,6 @@
 #include "../fsm_utils.h"
+#include "../v2/reason_codes.h"
+#include "../v2/status_adapter.h"
 #include "../../drivers/heater.h"
 #include "../../drivers/pump.h"
 #include "../../drivers/valves.h"
@@ -9,6 +11,17 @@
 
 namespace FSM {
 namespace Hold {
+
+namespace {
+
+const char* getStepCompleteMessage(uint8_t completedStep, uint8_t totalSteps) {
+    static char message[96];
+    snprintf(message, sizeof(message), "Hold step %u of %u completed",
+             completedStep + 1, totalSteps);
+    return message;
+}
+
+} // namespace
 
 void update(SystemState& state, const Settings& settings) {
     if (!state.hold.active || state.hold.stepCount == 0) return;
@@ -44,8 +57,13 @@ void update(SystemState& state, const Settings& settings) {
             (now - state.hold.inRangeStartTime) >= (stepDurationSec * 1000UL);
 
         if (timeElapsed) {
+            const uint8_t completedStep = state.hold.currentStep;
             state.hold.currentStep++;
             if (state.hold.currentStep < state.hold.stepCount) {
+                ControlV2::notePhaseTransition(
+                    Mode::HOLD, completedStep, state.hold.currentStep,
+                    ControlV2::ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE,
+                    getStepCompleteMessage(completedStep, state.hold.stepCount));
                 state.hold.targetTemp = state.hold.steps[state.hold.currentStep].temperature;
                 state.hold.stepStartTime = now;
                 state.hold.tempInRange = false;
@@ -53,6 +71,10 @@ void update(SystemState& state, const Settings& settings) {
                 LOG_I("Hold: Step %d/%d - Target %.1f°C", state.hold.currentStep + 1, state.hold.stepCount, state.hold.targetTemp);
                 MQTT::publishNotification("Hold: Новый шаг", "Переход к следующей ступени", "info");
             } else {
+                ControlV2::notePhaseTransition(
+                    Mode::HOLD, completedStep, state.hold.currentStep,
+                    ControlV2::ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE,
+                    "Hold program completed");
                 state.hold.active = false;
                 state.mode = Mode::IDLE;
                 Heater::setPower(0);

@@ -115,6 +115,19 @@ void stopMode(SystemState& state) {
                                        static_cast<uint16_t>(RectPhase::IDLE),
                                        ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
                                        "Distillation stopped by operator");
+    } else if (state.mode == Mode::MASHING &&
+               state.mashing.phase != MashPhase::IDLE) {
+        ControlV2::notePhaseTransition(Mode::MASHING,
+                                       static_cast<uint16_t>(state.mashing.phase),
+                                       static_cast<uint16_t>(MashPhase::IDLE),
+                                       ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
+                                       "Mashing stopped by operator");
+    } else if (state.mode == Mode::HOLD && state.hold.active) {
+        ControlV2::notePhaseTransition(Mode::HOLD,
+                                       static_cast<uint16_t>(state.hold.currentStep),
+                                       static_cast<uint16_t>(state.hold.currentStep),
+                                       ControlV2::ReasonCodeV2::RC_MODE_STOP_REQUEST,
+                                       "Hold program stopped by operator");
     }
     
     Heater::setPower(0);

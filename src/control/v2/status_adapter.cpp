@@ -111,6 +111,9 @@ bool isSuccessfulCompletion(Mode previousMode, uint16_t previousPhaseId,
             return (previousPhaseId == static_cast<uint16_t>(NbkPhase::FINISH) ||
                     previousPhaseId == static_cast<uint16_t>(NbkPhase::COMPLETED)) &&
                    reasonCode == ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE;
+        case Mode::MASHING:
+        case Mode::HOLD:
+            return reasonCode == ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE;
         default:
             return false;
     }
