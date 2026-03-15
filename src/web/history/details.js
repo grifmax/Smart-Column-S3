@@ -614,6 +614,14 @@ export function renderPhases(process) {
 
     };
 
+    const formatReasonCode = (reasonCode) => {
+        const raw = String(reasonCode || '').trim();
+        if (!raw || raw === 'RC_NONE') {
+            return '';
+        }
+        return raw.replace(/^RC_/, '').replace(/_/g, ' ').toLowerCase();
+    };
+
 
 
     phasesEl.innerHTML = '';
@@ -651,6 +659,10 @@ export function renderPhases(process) {
                 <div class="modal-phase-detail">Объём: <strong>${phase.volume || 0} мл</strong></div>
 
                 <div class="modal-phase-detail">Средняя скорость: <strong>${phase.avgSpeed || 0} мл/ч</strong></div>
+
+                ${phase.reasonCode ? `<div class="modal-phase-detail">Причина: <strong>${formatReasonCode(phase.reasonCode)}</strong></div>` : ''}
+
+                ${phase.operatorMessage ? `<div class="modal-phase-detail">Комментарий: <strong>${phase.operatorMessage}</strong></div>` : ''}
 
             </div>
 

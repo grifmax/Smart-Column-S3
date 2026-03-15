@@ -7,6 +7,7 @@
 #include "webserver.h"
 #include "../config.h"
 #include "../fs_compat.h"
+#include "../history.h"
 #include "../types.h"
 #include <AsyncTCP.h>
 #include <WiFi.h>
@@ -931,6 +932,105 @@ void init() {
     response->addHeader("Content-Disposition",
                         "attachment; filename=\"" + filename + "\"");
     request->send(response);
+  });
+
+  server.on("/api/history", HTTP_GET, [](AsyncWebServerRequest *request) {
+    const std::vector<ProcessListItem> processes = getProcessList();
+
+    JsonDocument doc;
+    doc["total"] = processes.size();
+    JsonArray processArray = doc["processes"].to<JsonArray>();
+
+    for (const auto& process : processes) {
+      JsonObject item = processArray.add<JsonObject>();
+      item["id"] = process.id;
+      item["type"] = process.type;
+      item["startTime"] = process.startTime;
+      item["duration"] = process.duration;
+      item["status"] = process.status;
+      item["totalVolume"] = process.totalVolume;
+    }
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
+
+  server.on("^\\/api\\/history\\/([0-9]+)$", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              const String id = request->pathArg(0);
+              ProcessHistory history;
+              if (!loadProcessHistory(id, history)) {
+                request->send(404, "application/json",
+                              "{\"error\":\"Process not found\"}");
+                return;
+              }
+
+              request->send(200, "application/json",
+                            exportProcessToJSON(history));
+            });
+
+  server.on("^\\/api\\/history\\/([0-9]+)\\/export$", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              const String id = request->pathArg(0);
+              const String format = request->hasParam("format")
+                                        ? request->getParam("format")->value()
+                                        : "csv";
+
+              ProcessHistory history;
+              if (!loadProcessHistory(id, history)) {
+                request->send(404, "application/json",
+                              "{\"error\":\"Process not found\"}");
+                return;
+              }
+
+              String body;
+              String contentType;
+              String filename;
+              if (format == "json") {
+                body = exportProcessToJSON(history);
+                contentType = "application/json; charset=utf-8";
+                filename = "process_" + id + ".json";
+              } else if (format == "csv") {
+                body = exportProcessToCSV(history);
+                contentType = "text/csv; charset=utf-8";
+                filename = "process_" + id + ".csv";
+              } else {
+                request->send(400, "application/json",
+                              "{\"error\":\"Invalid format. Use csv or json\"}");
+                return;
+              }
+
+              AsyncWebServerResponse* response =
+                  request->beginResponse(200, contentType, body);
+              response->addHeader(
+                  "Content-Disposition",
+                  "attachment; filename=\"" + filename + "\"");
+              request->send(response);
+            });
+
+  server.on("^\\/api\\/history\\/([0-9]+)$", HTTP_DELETE,
+            [](AsyncWebServerRequest *request) {
+              const String id = request->pathArg(0);
+              if (deleteProcess(id)) {
+                request->send(200, "application/json",
+                              "{\"success\":true,\"message\":\"Process deleted\"}");
+                return;
+              }
+
+              request->send(404, "application/json",
+                            "{\"error\":\"Process not found\"}");
+            });
+
+  server.on("/api/history", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+    if (clearHistory()) {
+      request->send(200, "application/json",
+                    "{\"success\":true,\"message\":\"All history cleared\"}");
+      return;
+    }
+
+    request->send(500, "application/json",
+                  "{\"error\":\"Failed to clear history\"}");
   });
 
   server.on(

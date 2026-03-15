@@ -9,6 +9,14 @@
 
 ---
 
+## [2.0.13] - 2026-03-15
+
+### Изменено
+- В актуальный `src/interface/webserver.cpp` возвращены рабочие history-endpoints: `/api/history`, `/api/history/{id}`, `/api/history/{id}/export`, а также удаление одного процесса и очистка всей истории, чтобы Web UI снова работал с текущим сервером, а не зависел от устаревшего `src/old/web.cpp`. (codex)
+- `exportProcessToJSON()` в `src/history.cpp` больше не является заглушкой: JSON-export теперь включает полную историю процесса, включая `timeseries`, `results`, `phases` и новые v2-поля `reasonCode/operatorMessage`. (codex)
+- History modal на фронтенде (`src/web/history/details.js`) теперь показывает причину завершения фазы и операторский комментарий, если они были сохранены в history, так что v2 причинная модель стала видна не только в live runtime, но и в UI истории. (codex)
+- Версия прошивки поднята до `2.0.13` как отдельный шаг миграции, который возвращает history API в актуальный runtime и открывает доступ к новым v2 history-данным через Web UI. (codex)
+
 ## [2.0.12] - 2026-03-15
 
 ### Изменено

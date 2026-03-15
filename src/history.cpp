@@ -560,6 +560,133 @@ size_t getHistorySize() {
     return totalSize;
 }
 
+namespace {
+void appendWarningJson(JsonArray array, const std::vector<ProcessWarning>& warnings) {
+    for (const auto& warning : warnings) {
+        JsonObject item = array.add<JsonObject>();
+        item["time"] = warning.time;
+        item["message"] = warning.message;
+        item["severity"] = warning.severity;
+        if (!warning.reasonCode.isEmpty()) {
+            item["reasonCode"] = warning.reasonCode;
+        }
+        if (!warning.operatorMessage.isEmpty()) {
+            item["operatorMessage"] = warning.operatorMessage;
+        }
+    }
+}
+
+void appendProcessHistoryJson(JsonDocument& doc, const ProcessHistory& history) {
+    doc["id"] = history.id;
+    doc["version"] = history.version;
+
+    JsonObject metadata = doc["metadata"].to<JsonObject>();
+    metadata["startTime"] = history.metadata.startTime;
+    metadata["endTime"] = history.metadata.endTime;
+    metadata["duration"] = history.metadata.duration;
+    metadata["completedSuccessfully"] = history.metadata.completedSuccessfully;
+    metadata["deviceId"] = history.metadata.deviceId;
+
+    JsonObject process = doc["process"].to<JsonObject>();
+    process["type"] = history.process.type;
+    process["mode"] = history.process.mode;
+    process["profile"] = history.process.profile;
+
+    JsonObject parameters = doc["parameters"].to<JsonObject>();
+    parameters["targetPower"] = history.parameters.targetPower;
+    parameters["headVolume"] = history.parameters.headVolume;
+    parameters["bodyVolume"] = history.parameters.bodyVolume;
+    parameters["tailVolume"] = history.parameters.tailVolume;
+    parameters["pumpSpeedHead"] = history.parameters.pumpSpeedHead;
+    parameters["pumpSpeedBody"] = history.parameters.pumpSpeedBody;
+    parameters["stabilizationTime"] = history.parameters.stabilizationTime;
+    parameters["wattControlEnabled"] = history.parameters.wattControlEnabled;
+    parameters["smartDecrementEnabled"] = history.parameters.smartDecrementEnabled;
+
+    JsonObject metrics = doc["metrics"].to<JsonObject>();
+    JsonObject temps = metrics["temperatures"].to<JsonObject>();
+
+    JsonObject cube = temps["cube"].to<JsonObject>();
+    cube["min"] = history.metrics.cube.min;
+    cube["max"] = history.metrics.cube.max;
+    cube["avg"] = history.metrics.cube.avg;
+    cube["final"] = history.metrics.cube.final;
+
+    JsonObject columnBottom = temps["columnBottom"].to<JsonObject>();
+    columnBottom["min"] = history.metrics.columnBottom.min;
+    columnBottom["max"] = history.metrics.columnBottom.max;
+    columnBottom["avg"] = history.metrics.columnBottom.avg;
+    columnBottom["final"] = history.metrics.columnBottom.final;
+
+    JsonObject columnTop = temps["columnTop"].to<JsonObject>();
+    columnTop["min"] = history.metrics.columnTop.min;
+    columnTop["max"] = history.metrics.columnTop.max;
+    columnTop["avg"] = history.metrics.columnTop.avg;
+    columnTop["final"] = history.metrics.columnTop.final;
+
+    JsonObject deflegmator = temps["deflegmator"].to<JsonObject>();
+    deflegmator["min"] = history.metrics.deflegmator.min;
+    deflegmator["max"] = history.metrics.deflegmator.max;
+    deflegmator["avg"] = history.metrics.deflegmator.avg;
+    deflegmator["final"] = history.metrics.deflegmator.final;
+
+    JsonObject power = metrics["power"].to<JsonObject>();
+    power["energyUsed"] = history.metrics.energyUsed;
+    power["avgPower"] = history.metrics.avgPower;
+    power["peakPower"] = history.metrics.peakPower;
+
+    JsonObject pump = metrics["pump"].to<JsonObject>();
+    pump["totalVolume"] = history.metrics.totalVolume;
+    pump["avgSpeed"] = history.metrics.avgSpeed;
+
+    JsonArray phases = doc["phases"].to<JsonArray>();
+    for (const auto& phase : history.phases) {
+        JsonObject p = phases.add<JsonObject>();
+        p["name"] = phase.name;
+        p["startTime"] = phase.startTime;
+        p["endTime"] = phase.endTime;
+        p["duration"] = phase.duration;
+        p["startTemp"] = phase.startTemp;
+        p["endTemp"] = phase.endTemp;
+        p["volume"] = phase.volume;
+        p["avgSpeed"] = phase.avgSpeed;
+        if (!phase.reasonCode.isEmpty()) {
+            p["reasonCode"] = phase.reasonCode;
+        }
+        if (!phase.operatorMessage.isEmpty()) {
+            p["operatorMessage"] = phase.operatorMessage;
+        }
+    }
+
+    JsonObject timeseries = doc["timeseries"].to<JsonObject>();
+    timeseries["interval"] = TIMESERIES_INTERVAL;
+    JsonArray data = timeseries["data"].to<JsonArray>();
+    for (const auto& point : history.timeseries) {
+        JsonObject p = data.add<JsonObject>();
+        p["time"] = point.time;
+        p["cube"] = point.cube;
+        p["columnTop"] = point.columnTop;
+        p["columnBottom"] = point.columnBottom;
+        p["deflegmator"] = point.deflegmator;
+        p["power"] = point.power;
+        p["voltage"] = point.voltage;
+        p["current"] = point.current;
+        p["pumpSpeed"] = point.pumpSpeed;
+    }
+
+    JsonObject results = doc["results"].to<JsonObject>();
+    results["headsCollected"] = history.results.headsCollected;
+    results["bodyCollected"] = history.results.bodyCollected;
+    results["tailsCollected"] = history.results.tailsCollected;
+    results["totalCollected"] = history.results.totalCollected;
+    results["status"] = history.results.status;
+    appendWarningJson(results["errors"].to<JsonArray>(), history.results.errors);
+    appendWarningJson(results["warnings"].to<JsonArray>(), history.results.warnings);
+
+    doc["notes"] = history.notes;
+}
+} // namespace
+
 // ============================================================================
 // Экспорт в CSV
 // ============================================================================
@@ -588,11 +715,7 @@ String exportProcessToCSV(const ProcessHistory& history) {
 
 String exportProcessToJSON(const ProcessHistory& history) {
     JsonDocument doc;
-
-    // Используем ту же структуру, что и для сохранения
-    doc["id"] = history.id;
-    doc["version"] = history.version;
-    // ... (аналогично saveProcessHistory)
+    appendProcessHistoryJson(doc, history);
 
     String json;
     serializeJson(doc, json);
