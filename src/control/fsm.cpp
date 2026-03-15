@@ -6,6 +6,7 @@
 
 #include "fsm.h"
 #include "fsm_utils.h"
+#include "v2/status_adapter.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
 #include "../drivers/valves.h"
@@ -18,33 +19,35 @@ namespace FSM {
 static uint32_t pauseStartTime = 0;
 
 void update(SystemState& state, const Settings& settings) {
-    if (state.paused) return;
-
-    switch (state.mode) {
-        case Mode::RECTIFICATION:
-            Rectification::update(state, settings);
-            break;
-        case Mode::DISTILLATION:
-            Distillation::update(state, settings);
-            break;
-        case Mode::MASHING:
-            Mashing::update(state, settings);
-            break;
-        case Mode::HOLD:
-            Hold::update(state, settings);
-            break;
-        case Mode::MANUAL_RECT:
-            ManualRect::update(state, settings);
-            break;
-        case Mode::NBK:
-            Nbk::update(state, settings);
-            break;
-        case Mode::FERMENTATION:
-            Fermentation::update(state, settings);
-            break;
-        default:
-            break;
+    if (!state.paused) {
+        switch (state.mode) {
+            case Mode::RECTIFICATION:
+                Rectification::update(state, settings);
+                break;
+            case Mode::DISTILLATION:
+                Distillation::update(state, settings);
+                break;
+            case Mode::MASHING:
+                Mashing::update(state, settings);
+                break;
+            case Mode::HOLD:
+                Hold::update(state, settings);
+                break;
+            case Mode::MANUAL_RECT:
+                ManualRect::update(state, settings);
+                break;
+            case Mode::NBK:
+                Nbk::update(state, settings);
+                break;
+            case Mode::FERMENTATION:
+                Fermentation::update(state, settings);
+                break;
+            default:
+                break;
+        }
     }
+
+    ControlV2::updateRuntime(state, settings);
 }
 
 void startMode(SystemState& state, const Settings& settings, Mode mode) {
@@ -74,7 +77,6 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
             state.rectPhase = RectPhase::HEATING;
             break;
         case Mode::MANUAL_RECT:
-            state.rectPhase = RectPhase::HEATING;
             ManualRect::setPhase(state, RectPhase::HEATING);
             break;
         case Mode::MASHING:
@@ -99,6 +101,14 @@ void stopMode(SystemState& state) {
     if (state.mode == Mode::IDLE) return;
 
     LOG_I("FSM: Stopping %s", getModeName(state.mode));
+
+    if (state.mode == Mode::MANUAL_RECT && state.rectPhase != RectPhase::IDLE) {
+        ControlV2::notePhaseTransition(Mode::MANUAL_RECT,
+                                       static_cast<uint16_t>(state.rectPhase),
+                                       static_cast<uint16_t>(RectPhase::IDLE),
+                                       ControlV2::ReasonCodeV2::RC_MANUAL_OPERATOR_STOP,
+                                       "Manual rectification stopped by operator");
+    }
     
     Heater::setPower(0);
     Pump::stop();

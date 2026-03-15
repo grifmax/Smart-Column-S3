@@ -2,13 +2,43 @@
 #include "../../drivers/heater.h"
 #include "../../drivers/pump.h"
 #include "../../drivers/valves.h"
-#include "../watt_control.h"
+#include "../v2/reason_codes.h"
+#include "../v2/safety_policy.h"
+#include "../v2/status_adapter.h"
 #include "../../interface/mqtt.h"
 #include "../../storage/logger.h"
 #include <Arduino.h>
 
 namespace FSM {
 namespace ManualRect {
+
+namespace {
+
+ControlV2::ReasonCodeV2 getPhaseTransitionReason(RectPhase fromPhase, RectPhase toPhase) {
+    if (toPhase == RectPhase::HEATING && fromPhase == RectPhase::IDLE) {
+        return ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST;
+    }
+    if (toPhase == RectPhase::IDLE) {
+        return ControlV2::ReasonCodeV2::RC_MANUAL_OPERATOR_STOP;
+    }
+    return ControlV2::ReasonCodeV2::RC_MANUAL_OPERATOR_SWITCH;
+}
+
+const char* getPhaseTransitionMessage(RectPhase fromPhase, RectPhase toPhase) {
+    if (toPhase == RectPhase::HEATING && fromPhase == RectPhase::IDLE) {
+        return "Manual rectification started";
+    }
+    switch (toPhase) {
+        case RectPhase::HEADS: return "Manual switch to heads";
+        case RectPhase::BODY: return "Manual switch to body";
+        case RectPhase::TAILS: return "Manual switch to tails";
+        case RectPhase::FINISH: return "Manual switch to finish";
+        case RectPhase::IDLE: return "Manual rectification stopped by operator";
+        default: return "Manual rectification phase switched";
+    }
+}
+
+} // namespace
 
 static bool alertSent = false;
 static uint32_t lastFloodTime = 0;
@@ -18,15 +48,14 @@ void update(SystemState& state, const Settings& settings) {
         if (!Valves::getWater()) Valves::setWater(true);
     }
 
-    float floodP = WattControl::calculateFloodPressure(settings.equipment.columnHeightMm, settings.equipment.packingCoeff);
-    float critP = floodP * PRESSURE_CRIT_MULT;
+    const uint32_t now = millis();
+    const ControlV2::ManualRectFloodPolicyV2 floodPolicy =
+        ControlV2::SafetyPolicyV2::evaluateManualRectFloodPower(Heater::getPower(), state, settings, now,
+                                                                lastFloodTime);
 
-    if (state.pressure.ok && state.pressure.cube >= critP && (millis() - lastFloodTime > 5000)) {
-        lastFloodTime = millis();
-        uint8_t power = Heater::getPower();
-        uint8_t newP = (uint8_t)(power * 0.85f);
-        if (newP < 30) newP = 30;
-        Heater::setPower(newP);
+    if (floodPolicy.stepdownRecommended) {
+        lastFloodTime = now;
+        Heater::setPower(floodPolicy.appliedPowerPercent);
         MQTT::publishNotification("Захлёб!", "Давление критическое! Мощность ТЭНа снижена.", "warning");
     }
 
@@ -49,6 +78,15 @@ void update(SystemState& state, const Settings& settings) {
 }
 
 void setPhase(SystemState& state, RectPhase phase) {
+    const RectPhase previousPhase = state.rectPhase;
+    if (state.mode == Mode::MANUAL_RECT && previousPhase != phase) {
+        ControlV2::notePhaseTransition(Mode::MANUAL_RECT,
+                                       static_cast<uint16_t>(previousPhase),
+                                       static_cast<uint16_t>(phase),
+                                       getPhaseTransitionReason(previousPhase, phase),
+                                       getPhaseTransitionMessage(previousPhase, phase));
+    }
+
     state.rectPhase = phase;
     setPhaseStartVolumeMl(state.pump.totalVolumeMl);
     setPhaseStartTime(millis());

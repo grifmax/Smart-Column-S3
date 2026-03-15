@@ -4,6 +4,8 @@
 #include "../../drivers/valves.h"
 #include "../../drivers/sensors.h"
 #include "../watt_control.h"
+#include "../v2/reason_codes.h"
+#include "../v2/status_adapter.h"
 #include "../../interface/mqtt.h"
 #include "../../storage/logger.h"
 #include <Arduino.h>
@@ -68,6 +70,10 @@ void update(SystemState& state, const Settings& settings) {
             }
             if (state.temps.valid[TEMP_COLUMN_BOTTOM] && state.temps.columnBottom > 78.0f) {
                 LOG_I("FSM: HEATING -> STABILIZATION");
+                ControlV2::notePhaseTransition(Mode::RECTIFICATION,
+                                               static_cast<uint16_t>(RectPhase::HEATING),
+                                               static_cast<uint16_t>(RectPhase::STABILIZATION),
+                                               ControlV2::ReasonCodeV2::RC_HEATING_COMPLETE);
                 state.rectPhase = RectPhase::STABILIZATION;
                 setPhaseStartTime(now);
                 setPhaseStartVolumeMl(state.pump.totalVolumeMl);
@@ -83,6 +89,10 @@ void update(SystemState& state, const Settings& settings) {
             Heater::setPower(getProcessHeaterPower(state, settings, 70));
             if (elapsed > settings.rectParams.stabilizationMin * 60 * 1000UL) {
                 LOG_I("FSM: STABILIZATION -> HEADS");
+                ControlV2::notePhaseTransition(Mode::RECTIFICATION,
+                                               static_cast<uint16_t>(RectPhase::STABILIZATION),
+                                               static_cast<uint16_t>(RectPhase::HEADS),
+                                               ControlV2::ReasonCodeV2::RC_STABILIZATION_TIMER_OK);
                 state.rectPhase = RectPhase::HEADS;
                 setPhaseStartTime(now);
                 setPhaseStartVolumeMl(state.pump.totalVolumeMl);
@@ -100,6 +110,10 @@ void update(SystemState& state, const Settings& settings) {
             state.stats.headsVolume = headsCollected;
             if (headsTargetMl > 0.0f && headsCollected >= headsTargetMl) {
                 LOG_I("FSM: HEADS -> POST_HEADS_STABILIZATION (%.0f/%.0f ml)", headsCollected, headsTargetMl);
+                ControlV2::notePhaseTransition(Mode::RECTIFICATION,
+                                               static_cast<uint16_t>(RectPhase::HEADS),
+                                               static_cast<uint16_t>(RectPhase::POST_HEADS_STABILIZATION),
+                                               ControlV2::ReasonCodeV2::RC_HEADS_VOLUME_REACHED);
                 state.rectPhase = RectPhase::POST_HEADS_STABILIZATION;
                 setPhaseStartTime(now);
                 Pump::stop();
@@ -116,6 +130,10 @@ void update(SystemState& state, const Settings& settings) {
             Heater::setPower(getProcessHeaterPower(state, settings, 65));
             if (elapsed > 5 * 60 * 1000UL) {
                 LOG_I("FSM: POST_HEADS_STABILIZATION -> PURGE");
+                ControlV2::notePhaseTransition(Mode::RECTIFICATION,
+                                               static_cast<uint16_t>(RectPhase::POST_HEADS_STABILIZATION),
+                                               static_cast<uint16_t>(RectPhase::PURGE),
+                                               ControlV2::ReasonCodeV2::RC_POST_HEADS_STABILIZATION_COMPLETE);
                 state.rectPhase = RectPhase::PURGE;
                 setPhaseStartTime(now);
             }
@@ -128,6 +146,10 @@ void update(SystemState& state, const Settings& settings) {
             Heater::setPower(getProcessHeaterPower(state, settings, 65));
             if (elapsed > settings.rectParams.purgeMin * 60 * 1000UL) {
                 LOG_I("FSM: PURGE -> BODY");
+                ControlV2::notePhaseTransition(Mode::RECTIFICATION,
+                                               static_cast<uint16_t>(RectPhase::PURGE),
+                                               static_cast<uint16_t>(RectPhase::BODY),
+                                               ControlV2::ReasonCodeV2::RC_PURGE_COMPLETE);
                 state.rectPhase = RectPhase::BODY;
                 setPhaseStartTime(now);
                 setPhaseStartVolumeMl(state.pump.totalVolumeMl);
@@ -150,10 +172,21 @@ void update(SystemState& state, const Settings& settings) {
                 Pump::start(bodySpeed);
                 const float bodyCollected = state.pump.totalVolumeMl - getPhaseStartVolumeMl();
                 state.stats.bodyVolume = bodyCollected;
-                if ((bodyTargetMl > 0.0f && bodyCollected >= bodyTargetMl) ||
-                    (bodyInitialized && SmartDecrement::update(state, settings)) ||
-                    (state.temps.valid[TEMP_CUBE] && state.temps.cube >= pressureAdjustedCubeTemp(RECT_CUBE_BODY_TO_TAILS_BASE_C, state))) {
+                ControlV2::ReasonCodeV2 bodyExitReason = ControlV2::ReasonCodeV2::NONE;
+                if (bodyTargetMl > 0.0f && bodyCollected >= bodyTargetMl) {
+                    bodyExitReason = ControlV2::ReasonCodeV2::RC_BODY_TARGET_VOLUME_REACHED;
+                } else if (bodyInitialized && SmartDecrement::update(state, settings)) {
+                    bodyExitReason = ControlV2::ReasonCodeV2::RC_BODY_END_DETECTED;
+                } else if (state.temps.valid[TEMP_CUBE] &&
+                           state.temps.cube >= pressureAdjustedCubeTemp(RECT_CUBE_BODY_TO_TAILS_BASE_C, state)) {
+                    bodyExitReason = ControlV2::ReasonCodeV2::RC_BODY_END_DETECTED;
+                }
+                if (bodyExitReason != ControlV2::ReasonCodeV2::NONE) {
                     LOG_I("FSM: BODY -> TAILS");
+                    ControlV2::notePhaseTransition(Mode::RECTIFICATION,
+                                                   static_cast<uint16_t>(RectPhase::BODY),
+                                                   static_cast<uint16_t>(RectPhase::TAILS),
+                                                   bodyExitReason);
                     state.rectPhase = RectPhase::TAILS;
                     setPhaseStartTime(now);
                     setPhaseStartVolumeMl(state.pump.totalVolumeMl);
@@ -168,9 +201,19 @@ void update(SystemState& state, const Settings& settings) {
                 Pump::start(tailsSpeed);
                 const float tailsCollected = state.pump.totalVolumeMl - getPhaseStartVolumeMl();
                 state.stats.tailsVolume = tailsCollected;
-                if ((tailsTargetMl > 0.0f && tailsCollected >= tailsTargetMl) ||
-                    (state.temps.valid[TEMP_CUBE] && state.temps.cube >= pressureAdjustedCubeTemp(RECT_CUBE_FINISH_BASE_C, state))) {
+                ControlV2::ReasonCodeV2 tailsExitReason = ControlV2::ReasonCodeV2::NONE;
+                if (tailsTargetMl > 0.0f && tailsCollected >= tailsTargetMl) {
+                    tailsExitReason = ControlV2::ReasonCodeV2::RC_TAILS_TARGET_REACHED;
+                } else if (state.temps.valid[TEMP_CUBE] &&
+                           state.temps.cube >= pressureAdjustedCubeTemp(RECT_CUBE_FINISH_BASE_C, state)) {
+                    tailsExitReason = ControlV2::ReasonCodeV2::RC_TAILS_TARGET_REACHED;
+                }
+                if (tailsExitReason != ControlV2::ReasonCodeV2::NONE) {
                     LOG_I("FSM: TAILS -> FINISH");
+                    ControlV2::notePhaseTransition(Mode::RECTIFICATION,
+                                                   static_cast<uint16_t>(RectPhase::TAILS),
+                                                   static_cast<uint16_t>(RectPhase::FINISH),
+                                                   tailsExitReason);
                     state.rectPhase = RectPhase::FINISH;
                     setPhaseStartTime(now);
                 }
@@ -183,6 +226,10 @@ void update(SystemState& state, const Settings& settings) {
             Valves::setWater(true);
             if (elapsed > 5 * 60 * 1000UL) {
                 Valves::closeAll();
+                ControlV2::notePhaseTransition(Mode::RECTIFICATION,
+                                               static_cast<uint16_t>(RectPhase::FINISH),
+                                               static_cast<uint16_t>(RectPhase::IDLE),
+                                               ControlV2::ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE);
                 state.rectPhase = RectPhase::IDLE;
                 state.mode = Mode::IDLE;
                 MQTT::publishNotification("Процесс завершён", "Процесс завершён! Охлаждение выключено.", "success");

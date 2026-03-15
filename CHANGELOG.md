@@ -9,6 +9,54 @@
 
 ---
 
+## [2.0.4] - 2026-03-15
+
+### Изменено
+- `MANUAL_RECT` переведён на explicit `ReasonCodeV2` для ручных фазовых переключений и пользовательской остановки: `manual_rect_handler.cpp` теперь сам отправляет `notePhaseTransition(...)` с понятными причинами и operator message вместо одной общей эвристики в адаптере. (codex)
+- `FSM::startMode()` и `FSM::stopMode()` скорректированы так, чтобы старт ручной ректификации и её ручная остановка попадали в v2 transition log как явные события, а не только как постфактум-угаданный `mode change`. (codex)
+- Fallback-логика `status_adapter` для `MANUAL_RECT` уточнена: если explicit transition по какой-то причине не пришёл, адаптер теперь различает старт режима и операторскую остановку вместо одного универсального `RC_MANUAL_OPERATOR_SWITCH`. (codex)
+- Версия прошивки поднята до `2.0.4` как отдельный шаг миграции ручной ректификации на явные v2 transition contracts. (codex)
+
+## [2.0.3] - 2026-03-15
+
+### Добавлено
+- `SafetyPolicyV2` расширен общим policy-блоком для `MANUAL_RECT`: вынесены критерий захлёба, расчёт критического порога, cooldown между step-down событиями и расчёт новой мощности ТЭНа в `src/control/v2/safety_policy.*`. (codex)
+
+### Изменено
+- `manual_rect_handler.cpp` больше не содержит собственную anti-flood формулу: handler теперь получает готовое policy-решение из `SafetyPolicyV2`, применяет его и сохраняет прежнее поведение по уведомлению и пошаговому снижению мощности. (codex)
+- `ProcessIndicatorsV2` и `status_adapter` подключены к той же manual rect policy, поэтому `powerLimited` и `activeLimits.maxHeaterPowerPercent` для `MANUAL_RECT` теперь рассчитываются по той же логике, что и реальное anti-flood ограничение в runtime. (codex)
+- Версия прошивки поднята до `2.0.3` как отдельный шаг миграции, который переносит manual rect anti-flood / derating из mode handler в общий v2 policy слой. (codex)
+
+## [2.0.2] - 2026-03-15
+
+### Добавлено
+- Добавлен общий v2 helper `SafetyPolicyV2` в `src/control/v2/safety_policy.*`, который централизует формулу NBK pressure-derating и делает её переиспользуемой для handler/runtime/status слоя. (codex)
+
+### Изменено
+- `NBK` больше не держит собственную формулу снижения мощности в `nbk_handler.cpp`: теперь handler запрашивает решение у общего policy helper и применяет уже готовый `appliedPowerPercent`. (codex)
+- `ProcessIndicatorsV2` и `status_adapter` переведены на ту же общую политику, чтобы флаг `powerLimited`, `activeLimits.maxHeaterPowerPercent` и реальное ограничение мощности считались по одной и той же логике. (codex)
+- Ветка v2 продолжена до версии `2.0.2` как отдельный шаг миграции безопасности из mode handlers в общий policy/runtime слой. (codex)
+
+## [2.0.1] - 2026-03-15
+
+### Добавлено
+- В read-only v2 runtime добавлен explicit transition bridge `ControlV2::notePhaseTransition(...)`, чтобы handlers могли передавать точные причины фазовых переходов без угадывания их в адаптере постфактум. (codex)
+
+### Изменено
+- `RECTIFICATION` переведён на явные `ReasonCodeV2` в точках переходов `HEATING -> STABILIZATION`, `STABILIZATION -> HEADS`, `HEADS -> POST_HEADS_STABILIZATION`, `POST_HEADS_STABILIZATION -> PURGE`, `PURGE -> BODY`, `BODY -> TAILS`, `TAILS -> FINISH` и `FINISH -> IDLE`. (codex)
+- `NBK` переведён на явные `ReasonCodeV2` для переходов `HEATING -> STABILIZATION`, `STABILIZATION -> WORKING` и `FINISH -> COMPLETED`, чтобы v2 status/logging больше не зависели от одной общей эвристики. (codex)
+- `status_adapter` обновлён так, чтобы приоритетно использовать explicit phase transition reason codes, корректно логировать финальные переходы при выходе режима в `IDLE` и только затем падать обратно на старую эвристику как fallback. (codex)
+
+## [2.0.0] - 2026-03-15
+
+### Добавлено
+- Добавлен изолированный v2 groundwork: документы миграции `docs/v2/*` и новый каркас `src/control/v2/*` для `reason codes`, `mode contracts`, `process indicators` и `transition logger`. (codex)
+- Введён read-only runtime adapter v2, который собирает `ProcessIndicatorsV2`, `MetricsSnapshotV2` и `ModeStatusV2` поверх текущего `SystemState` без изменения поведения режимов. (codex)
+
+### Изменено
+- `/api/status` расширен новым блоком `v2` с lifecycle, phase token, active limits, command targets, safety state и process indicators для безопасного старта миграции на архитектуру 2.x. (codex)
+- Версия прошивки переведена на ветку `2.0.0`, чтобы дальше все v2-изменения шли уже в новой мажорной линии. (codex)
+
 ## [1.13.11] - 2026-03-14
 
 ### Исправлено
