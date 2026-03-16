@@ -9,6 +9,13 @@
 
 ---
 
+## [2.1.6] - 2026-03-17
+
+### Изменено
+- В сервисном экране `Оборудование -> Тестирование` для клапанов добавлены импульсные тесты с настраиваемой длительностью: оператор может давать короткий щелчок на `Воду`, `Головы` и `УНО`, не переводя клапан в постоянное открытое состояние. (codex)
+- Драйвер [src/drivers/valves.cpp](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\drivers\valves.cpp) получил неблокирующий timer для импульсов клапанов, а backend [src/interface/webserver.cpp](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\interface\webserver.cpp) теперь экспортирует живой статус `waterPulse/headsPulse/unoPulse` и принимает `POST /api/testing/valves` с `action: "pulse"`. (codex)
+- Во фронтенде [src/web/settings/equipment-testing.js](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\settings\equipment-testing.js) и [src/web/styles/_equipment.css](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\styles\_equipment.css) клапанные карточки получили поле длительности импульса, отдельные кнопки `Импульс` и живую подсказку с оставшимся временем, а smoke-сценарий `tools/ui-smoke/tests/equipment-testing.smoke.spec.js` теперь проверяет и этот сервисный путь. (codex)
+
 ## [2.1.5] - 2026-03-17
 
 ### Изменено

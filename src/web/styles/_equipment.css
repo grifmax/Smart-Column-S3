@@ -478,6 +478,23 @@
     background: var(--bg-primary);
 }
 
+.equipment-actuator-meta {
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+}
+
+.equipment-actuator-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.equipment-actuator-actions .btn {
+    min-width: 132px;
+}
+
 .equipment-preset-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -701,6 +718,7 @@
     }
 
     .equipment-actuator-row .btn,
+    .equipment-actuator-actions,
     .equipment-servo-manual-row .btn {
         width: 100%;
     }

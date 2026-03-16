@@ -52,6 +52,9 @@ function buildTestingStatus(overrides = {}) {
       heads: false,
       uno: false,
       startStopDuty: false,
+      waterPulse: { active: false, remainingMs: 0 },
+      headsPulse: { active: false, remainingMs: 0 },
+      unoPulse: { active: false, remainingMs: 0 },
     },
     servo: {
       enabled: true,
@@ -164,6 +167,21 @@ test('equipment testing workspace renders and sends service actions', async ({ p
         return testingState;
       }
 
+      if (pathname === '/api/testing/valves' && postData?.action === 'pulse') {
+        const target = postData.target;
+        const durationMs = Number(postData.durationMs || 0);
+        testingState = buildTestingStatus({
+          activeTests: {
+            [`${target}Valve`]: true,
+          },
+          valves: {
+            [`${target}`]: true,
+            [`${target}Pulse`]: { active: true, remainingMs: durationMs },
+          },
+        });
+        return testingState;
+      }
+
       if (pathname === '/api/testing/servo' && postData?.action === 'preset') {
         testingState = buildTestingStatus({
           activeTests: { servoMoving: true },
@@ -215,6 +233,19 @@ test('equipment testing workspace renders and sends service actions', async ({ p
   await page.locator('[data-servo-preset="heads"]').click();
   await expect(page.locator('#equipment-test-servo-badge')).toContainText('Движение');
   await expect(page.locator('#equipment-test-servo-fraction')).toContainText('Головы');
+
+  await page.locator('#equipment-test-valve-pulse-duration').fill('1800');
+  await page.locator('#equipment-test-water-pulse').click();
+  await expect(page.locator('#equipment-test-water-toggle-badge')).toContainText('Импульс');
+  await expect(page.locator('#equipment-test-water-toggle-pulse-hint')).toContainText('1.8 с');
+  await expect.poll(() =>
+    requests.testingActions.some((entry) =>
+      entry.pathname === '/api/testing/valves' &&
+      entry.body?.target === 'water' &&
+      entry.body?.action === 'pulse' &&
+      Number(entry.body?.durationMs) === 1800
+    )
+  ).toBeTruthy();
 
   await page.getByRole('button', { name: 'Остановить все тесты' }).click();
   await expect(page.locator('#equipment-test-pump-badge')).toContainText('IDLE');

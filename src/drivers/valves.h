@@ -13,6 +13,12 @@
 #include "types.h"
 
 namespace Valves {
+    enum class ValveId : uint8_t {
+        WATER = 0,
+        HEADS = 1,
+        UNO = 2
+    };
+
     /**
      * Инициализация клапанов
      */
@@ -44,6 +50,23 @@ namespace Valves {
      */
     void setUno(bool open);
     bool getUno();
+
+    /**
+     * Кратковременно открыть клапан для сервисного теста
+     * @param valve Клапан
+     * @param durationMs Длительность импульса
+     */
+    void pulse(ValveId valve, uint32_t durationMs);
+
+    /**
+     * Активен ли сейчас импульсный тест указанного клапана
+     */
+    bool isPulseActive(ValveId valve);
+
+    /**
+     * Оставшееся время текущего импульса
+     */
+    uint32_t getPulseRemainingMs(ValveId valve);
     
     /**
      * Клапан старт-стоп (опциональный, ШИМ)

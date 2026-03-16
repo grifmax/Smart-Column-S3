@@ -343,6 +343,18 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   valves["heads"] = Valves::getHeads();
   valves["uno"] = Valves::getUno();
   valves["startStopDuty"] = Valves::getStartStop();
+  JsonObject waterPulse = valves["waterPulse"].to<JsonObject>();
+  waterPulse["active"] = Valves::isPulseActive(Valves::ValveId::WATER);
+  waterPulse["remainingMs"] =
+      Valves::getPulseRemainingMs(Valves::ValveId::WATER);
+  JsonObject headsPulse = valves["headsPulse"].to<JsonObject>();
+  headsPulse["active"] = Valves::isPulseActive(Valves::ValveId::HEADS);
+  headsPulse["remainingMs"] =
+      Valves::getPulseRemainingMs(Valves::ValveId::HEADS);
+  JsonObject unoPulse = valves["unoPulse"].to<JsonObject>();
+  unoPulse["active"] = Valves::isPulseActive(Valves::ValveId::UNO);
+  unoPulse["remainingMs"] =
+      Valves::getPulseRemainingMs(Valves::ValveId::UNO);
 
   JsonObject servo = doc["servo"].to<JsonObject>();
   servo["enabled"] = g_settings.fractionator.enabled;
@@ -3233,23 +3245,49 @@ void init() {
         }
 
         const String target = doc["target"] | "";
+        const String action = doc["action"] | "";
         const bool open = doc["open"] | false;
+        uint32_t durationMs = doc["durationMs"] | 0;
 
         if (target == "all") {
           Valves::closeAll();
           Logger::logf(0, "Equipment testing: all valves closed");
         } else if (target == "water") {
-          Valves::setWater(open);
-          Logger::logf(0, "Equipment testing: water valve %s",
-                       open ? "opened" : "closed");
+          if (action == "pulse") {
+            if (durationMs < 100) durationMs = 100;
+            if (durationMs > 10000) durationMs = 10000;
+            Valves::pulse(Valves::ValveId::WATER, durationMs);
+            Logger::logf(0, "Equipment testing: water valve pulse %lu ms",
+                         (unsigned long)durationMs);
+          } else {
+            Valves::setWater(open);
+            Logger::logf(0, "Equipment testing: water valve %s",
+                         open ? "opened" : "closed");
+          }
         } else if (target == "heads") {
-          Valves::setHeads(open);
-          Logger::logf(0, "Equipment testing: heads valve %s",
-                       open ? "opened" : "closed");
+          if (action == "pulse") {
+            if (durationMs < 100) durationMs = 100;
+            if (durationMs > 10000) durationMs = 10000;
+            Valves::pulse(Valves::ValveId::HEADS, durationMs);
+            Logger::logf(0, "Equipment testing: heads valve pulse %lu ms",
+                         (unsigned long)durationMs);
+          } else {
+            Valves::setHeads(open);
+            Logger::logf(0, "Equipment testing: heads valve %s",
+                         open ? "opened" : "closed");
+          }
         } else if (target == "uno") {
-          Valves::setUno(open);
-          Logger::logf(0, "Equipment testing: UNO valve %s",
-                       open ? "opened" : "closed");
+          if (action == "pulse") {
+            if (durationMs < 100) durationMs = 100;
+            if (durationMs > 10000) durationMs = 10000;
+            Valves::pulse(Valves::ValveId::UNO, durationMs);
+            Logger::logf(0, "Equipment testing: UNO valve pulse %lu ms",
+                         (unsigned long)durationMs);
+          } else {
+            Valves::setUno(open);
+            Logger::logf(0, "Equipment testing: UNO valve %s",
+                         open ? "opened" : "closed");
+          }
         } else {
           request->send(
               400, "application/json",
