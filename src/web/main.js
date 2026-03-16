@@ -45,7 +45,6 @@ import { loadMqttSettings, saveMqtt, sendMqttTest } from './settings/mqtt-save.j
 import { toggleMqttFields } from './settings/mqtt.js';
 import { loadPumpInfo, loadVersionInfo } from './settings/pump-version.js';
 import { loadSecuritySettings, saveSecurity, toggleAuthFields } from './settings/security.js';
-import { saveTelegramSettings, sendTelegramTest, toggleTelegramFields, loadTelegramSettings } from './settings/telegram.js';
 import {
     saveWiFi,
     initWiFiSettings,
@@ -213,10 +212,6 @@ window.loadPumpInfo = loadPumpInfo;
 window.loadVersionInfo = loadVersionInfo;
 window.saveSecurity = saveSecurity;
 window.toggleAuthFields = toggleAuthFields;
-window.saveTelegramSettings = saveTelegramSettings;
-window.sendTelegramTest = sendTelegramTest;
-window.toggleTelegramFields = toggleTelegramFields;
-window.loadTelegramSettings = loadTelegramSettings;
 window.saveWiFi = saveWiFi;
 window.loadWiFiStatus = loadWiFiStatus;
 window.loadWiFiProfiles = loadWiFiProfiles;
@@ -318,7 +313,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     loadSafetySettings();
     loadSecuritySettings();
     loadMqttSettings();
-    loadTelegramSettings();
     loadProfilesList();
     initWiFiSettings();
     initCalibrationTab();

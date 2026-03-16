@@ -344,12 +344,6 @@ struct MqttSettings {
   uint32_t publishInterval = 10000;
 };
 
-struct TelegramSettings {
-  bool enabled = false;
-  char token[64] = "";
-  char chatId[32] = "";
-};
-
 // Cloud tunnel (IoT модель, без входящих портов на ESP32)
 struct CloudSettings {
   bool enabled = false;
@@ -460,7 +454,6 @@ struct Settings {
   TempCalibration tempCal;
   HydrometerCalibration hydroCal; // Калибровка гидрометра
   MqttSettings mqtt;
-  TelegramSettings telegram;
   CloudSettings cloud;
   EquipmentSettings equipment;
   FractionatorSettings fractionator;

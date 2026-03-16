@@ -5,6 +5,7 @@
 #include "cloud_tunnel.h"
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>

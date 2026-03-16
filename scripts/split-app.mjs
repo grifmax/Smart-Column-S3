@@ -63,8 +63,6 @@ const modules = [
     ['settings/equipment.js', 3132, 3223],
     // settings/mqtt.js: toggleMqttFields, saveMqtt
     ['settings/mqtt.js', 3224, 3234],
-    // settings/telegram.js: toggleTelegramFields, loadTelegramSettings, saveTelegramSettings, sendTelegramTest
-    ['settings/telegram.js', 3236, 3424],
     // settings/mqtt-save.js: saveMqtt
     ['settings/mqtt-save.js', 3426, 3465],
     // settings/security.js: toggleAuthFields, saveSecurity

@@ -37,7 +37,6 @@
 #include "interface/buttons.h"
 #include "interface/mqtt.h"
 #include "interface/ota.h"
-#include "interface/telegram.h"
 #include "interface/webserver.h"
 #include "interface/cloud_tunnel.h"
 #include "interface/wifi_profiles.h"
@@ -196,11 +195,6 @@ void setup() {
 
   CloudTunnel::init();
 
-  if (g_settings.telegram.enabled) {
-    LOG_I("Starting Telegram bot...");
-    TelegramBot::init(g_settings.telegram.token, g_settings.telegram.chatId);
-  }
-
   if (WiFi.status() == WL_CONNECTED || g_settings.wifi.apMode) {
     OTA::init();
   }
@@ -328,9 +322,8 @@ static void performSystemHealthCheck(uint32_t now) {
     alertMessage += "- ⚠️ Нестабильные датчики температуры\n";
   }
   
-  // Отправляем уведомление в Telegram только если есть проблемы
   if (needsAttention) {
-    TelegramBot::sendMessage(alertMessage.c_str());
+    Logger::logf(1, "%s", alertMessage.c_str());
   } else {
     // В нормальном режиме просто логируем OK статус раз в 4 проверки (2 часа)
     static uint32_t lastOkLog = 0;
@@ -418,7 +411,6 @@ void loop() {
   g_state.pump.totalVolumeMl = Pump::getTotalVolume();
 
   Buttons::update();
-  TelegramBot::update();
 
   if (g_settings.mqtt.enabled) {
     MQTT::handle();

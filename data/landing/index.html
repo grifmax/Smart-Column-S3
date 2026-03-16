@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Smart-Column S3 — Автоматика ректификационной колонны на ESP32-S3</title>
-  <meta name="description" content="Полная автоматизация ректификации: 7 датчиков температуры, Watt-Control по давлению, 5 режимов работы, MQTT/Home Assistant, Telegram. DIY контроллер на ESP32-S3.">
+  <meta name="description" content="Полная автоматизация ректификации: 7 датчиков температуры, Watt-Control по давлению, 5 режимов работы, MQTT/Home Assistant. DIY контроллер на ESP32-S3.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -61,7 +61,6 @@
       <div class="lnd-hero-badges">
         <span class="lnd-chip lnd-chip--teal">ESP32-S3</span>
         <span class="lnd-chip lnd-chip--accent">MQTT + Home Assistant</span>
-        <span class="lnd-chip lnd-chip--subtle">Telegram</span>
         <span class="lnd-chip lnd-chip--success">OTA Updates</span>
         <span class="lnd-chip lnd-chip--warm">Watt-Control</span>
       </div>
@@ -469,7 +468,7 @@
             <span class="lnd-phase-num">7</span>
           </div>
           <div class="lnd-phase-label">Финиш</div>
-          <div class="lnd-phase-tooltip">Охлаждение, закрытие клапанов<br>Уведомление в Telegram</div>
+          <div class="lnd-phase-tooltip">Охлаждение, закрытие клапанов<br>Сохранение истории процесса</div>
         </div>
 
       </div><!-- /timeline -->
@@ -647,12 +646,11 @@
 
       <div class="lnd-connect-card" data-animate="fade-up" style="transition-delay:160ms">
         <div class="lnd-connect-badges">
-          <span class="lnd-proto-badge lnd-proto-badge--tg">Telegram</span>
           <span class="lnd-proto-badge lnd-proto-badge--ota">OTA</span>
         </div>
         <h3 class="lnd-connect-title">Уведомления + обновления</h3>
         <p class="lnd-connect-desc">
-          Telegram-бот уведомляет о смене фаз, аварийных событиях и завершении процесса. Cloud Tunnel — удалённый доступ к панели без VPN и проброса портов. OTA-обновление прошивки из браузера.
+          Браузерные уведомления сообщают о смене фаз, аварийных событиях и завершении процесса. Cloud Tunnel — удалённый доступ к панели без VPN и проброса портов. OTA-обновление прошивки из браузера.
         </p>
       </div>
 
@@ -804,12 +802,6 @@
             <td class="cell-no">Нет</td>
           </tr>
           <tr>
-            <td class="col-param">Telegram-уведомления</td>
-            <td class="col-s3 cell-yes">Да</td>
-            <td class="cell-no">Нет</td>
-            <td class="cell-no">Нет</td>
-          </tr>
-          <tr>
             <td class="col-param">Облачный туннель (без VPN)</td>
             <td class="col-s3 cell-yes">Да</td>
             <td class="cell-no">Нет</td>
@@ -889,7 +881,6 @@
           <div class="lnd-spec-row"><span class="lnd-spec-key">WebSocket</span><span class="lnd-spec-val">/ws, real-time дашборд 500&nbsp;мс</span></div>
           <div class="lnd-spec-row"><span class="lnd-spec-key">REST API</span><span class="lnd-spec-val">JSON, /api/status /api/process /api/settings</span></div>
           <div class="lnd-spec-row"><span class="lnd-spec-key">MQTT</span><span class="lnd-spec-val">v3.1.1, HA MQTT Discovery, QoS 0/1</span></div>
-          <div class="lnd-spec-row"><span class="lnd-spec-key">Telegram</span><span class="lnd-spec-val">Bot API, уведомления о фазах и аварийных событиях</span></div>
           <div class="lnd-spec-row"><span class="lnd-spec-key">Cloud Tunnel</span><span class="lnd-spec-val">WSS reverse proxy, без port-forward</span></div>
           <div class="lnd-spec-row"><span class="lnd-spec-key">OTA</span><span class="lnd-spec-val">ArduinoOTA + веб-загрузка firmware</span></div>
           <div class="lnd-spec-row"><span class="lnd-spec-key">Безопасность</span><span class="lnd-spec-val">HTTP Basic Auth, Rate Limiting (HTTP 429)</span></div>

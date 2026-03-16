@@ -16,7 +16,6 @@
 - **Smart Decrement** -- адаптивное снижение скорости отбора
 - **Электронный ареометр** на MPX5010DP + ADS1115
 - **MQTT / Home Assistant** -- автообнаружение, Energy Dashboard, push-уведомления
-- **Telegram-бот** (FastBot2) -- уведомления и удалённое управление
 - **История процессов** -- сохранение, просмотр, сравнение, экспорт CSV/JSON
 - **Профили процессов** -- встроенные рецепты и пользовательские конфигурации
 - **Безопасность** -- 10 типов проверок, HTTP Basic Auth, Rate Limiting
@@ -48,7 +47,7 @@ pio run -e esp32s3 -t uploadfs  # Загрузка Web UI
 ```
 
 После прошивки ESP32 создаст точку доступа **Smart-Column-S3** (пароль `12345678`).
-Откройте `http://192.168.4.1` и настройте WiFi/MQTT/Telegram.
+Откройте `http://192.168.4.1` и настройте WiFi/MQTT.
 
 ## Структура проекта
 
@@ -59,7 +58,7 @@ Smart-Column-S3/
 │   ├── config.h                # Пины, константы
 │   ├── control/                # FSM, watt_control, safety
 │   ├── drivers/                # sensors, heater, pump, valves, display
-│   ├── interface/              # webserver, telegram, mqtt, buttons
+│   ├── interface/              # webserver, mqtt, buttons
 │   └── storage/                # nvs_manager, logger
 ├── src/web/                    # Исходники Web UI (JS/CSS, собираются в data/)
 ├── data/                       # SPIFFS -- Web UI (html/js/css/svg)

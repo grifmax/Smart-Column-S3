@@ -35,7 +35,6 @@ typedef enum {
 #include "drivers/pump.h"
 #include "drivers/valves.h"
 #include "drivers/sensors.h"
-#include "interface/telegram.h"
 #include "interface/mqtt.h"
 #include "interface/security.h"
 #include "interface/wifi_profiles.h"
@@ -1861,120 +1860,6 @@ void init() {
 
         MQTT::publishNotification("MQTT test", message, "info");
         Logger::logf(0, "MQTT test notification sent");
-        request->send(200, "application/json", "{\"success\":true}");
-      });
-
-  // --------------------------------------------------------------------------
-  // TELEGRAM SETTINGS API
-  // --------------------------------------------------------------------------
-
-  // GET /api/settings/telegram - получить настройки Telegram
-  server.on("/api/settings/telegram", HTTP_GET, [](AsyncWebServerRequest *request) {
-    JsonDocument doc;
-    const auto tgDebug = TelegramBot::getDebugStatus();
-    doc["enabled"] = g_settings.telegram.enabled;
-    doc["token"] = g_settings.telegram.token;
-    doc["chatId"] = g_settings.telegram.chatId;
-    doc["configured"] =
-        (g_settings.telegram.token[0] != '\0' && g_settings.telegram.chatId[0] != '\0');
-    doc["active"] = TelegramBot::isEnabled();
-    JsonObject runtime = doc["runtime"].to<JsonObject>();
-    runtime["ready"] = tgDebug.ready;
-    runtime["configured"] = tgDebug.configured;
-    runtime["online"] = tgDebug.online;
-    runtime["polling"] = tgDebug.polling;
-    runtime["needInit"] = tgDebug.needInit;
-    runtime["taskRunning"] = tgDebug.taskRunning;
-    runtime["lastInitMs"] = tgDebug.lastInitMs;
-    runtime["lastTickMs"] = tgDebug.lastTickMs;
-    runtime["lastUpdateMs"] = tgDebug.lastUpdateMs;
-    runtime["tickCount"] = tgDebug.tickCount;
-    runtime["updateCount"] = tgDebug.updateCount;
-    runtime["messageCount"] = tgDebug.messageCount;
-    runtime["queryCount"] = tgDebug.queryCount;
-    runtime["sendOkCount"] = tgDebug.sendOkCount;
-    runtime["sendErrorCount"] = tgDebug.sendErrorCount;
-    runtime["lockTimeoutCount"] = tgDebug.lockTimeoutCount;
-    runtime["lastError"] = tgDebug.lastError;
-
-    String json;
-    serializeJson(doc, json);
-    request->send(200, "application/json", json);
-  });
-
-  // POST /api/settings/telegram - сохранить настройки Telegram
-  server.on(
-      "/api/settings/telegram", HTTP_POST, [](AsyncWebServerRequest *request) {},
-      NULL,
-      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
-         size_t total) {
-        if (index + len != total) return;
-
-        JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
-          return;
-        }
-
-        const bool enabled = doc["enabled"] | g_settings.telegram.enabled;
-        const char* token = !doc["token"].isNull()
-                                ? (doc["token"] | "")
-                                : g_settings.telegram.token;
-        const char* chatId = !doc["chatId"].isNull()
-                                 ? (doc["chatId"] | "")
-                                 : g_settings.telegram.chatId;
-
-        if (enabled && (!token[0] || !chatId[0])) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Token and chatId required when enabled\"}");
-          return;
-        }
-
-        g_settings.telegram.enabled = enabled;
-        strlcpy(g_settings.telegram.token, token, sizeof(g_settings.telegram.token));
-        strlcpy(g_settings.telegram.chatId, chatId, sizeof(g_settings.telegram.chatId));
-
-        if (!NVSManager::saveSettings(g_settings)) {
-          request->send(500, "application/json",
-                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
-          return;
-        }
-
-        request->send(200, "application/json", "{\"success\":true}");
-
-        // Apply runtime settings after HTTP response to avoid blocking request.
-        TelegramBot::setSettings(g_settings.telegram);
-      });
-
-  // POST /api/settings/telegram/test - отправить тестовое сообщение
-  server.on(
-      "/api/settings/telegram/test", HTTP_POST, [](AsyncWebServerRequest *request) {},
-      NULL,
-      [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
-         size_t total) {
-        if (index + len != total) return;
-
-        JsonDocument doc;
-        if (len > 0 && deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
-          return;
-        }
-
-        if (WiFi.status() != WL_CONNECTED) {
-          request->send(503, "application/json",
-                        "{\"success\":false,\"error\":\"WiFi STA not connected\"}");
-          return;
-        }
-
-        const char* msg = doc["message"] | "Smart-Column S3: test notification";
-        if (!TelegramBot::sendMessage(msg)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Telegram not configured or send failed\"}");
-          return;
-        }
-
         request->send(200, "application/json", "{\"success\":true}");
       });
 

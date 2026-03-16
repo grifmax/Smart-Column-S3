@@ -173,7 +173,6 @@ The migration can be treated as operationally complete when all of the following
 
 - `src/storage/logger.cpp`
 - `src/history.cpp`
-- `src/interface/telegram.cpp`
 
 ## 7. Definition of done для следующей практической итерации
 

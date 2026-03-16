@@ -45,9 +45,6 @@ namespace NVSManager {
     bool loadWiFi(WiFiSettings& wifi);
     bool saveWiFi(const WiFiSettings& wifi);
     
-    bool loadTelegram(TelegramSettings& tg);
-    bool saveTelegram(const TelegramSettings& tg);
-    
     bool loadEquipment(EquipmentSettings& eq);
     bool saveEquipment(const EquipmentSettings& eq);
     

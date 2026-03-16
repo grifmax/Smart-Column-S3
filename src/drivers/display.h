@@ -78,7 +78,7 @@ namespace Display {
     void setTheme(bool dark);
     
     /**
-     * Получение скриншота (для Telegram)
+     * Получение скриншота
      * @param buffer Буфер для JPEG
      * @param maxSize Максимальный размер
      * @return Размер данных

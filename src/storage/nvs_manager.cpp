@@ -123,11 +123,6 @@ bool loadSettings(Settings& settings) {
     prefs.getString(NVS_KEY_MQTT_BASE_TOPIC, settings.mqtt.baseTopic, sizeof(settings.mqtt.baseTopic));
     settings.mqtt.publishInterval = prefs.getUInt(NVS_KEY_MQTT_INTERVAL, 10000);
 
-    // Telegram
-    settings.telegram.enabled = prefs.getBool(NVS_KEY_TG_ENABLED, settings.telegram.enabled);
-    prefs.getString(NVS_KEY_TG_TOKEN, settings.telegram.token, sizeof(settings.telegram.token));
-    prefs.getString(NVS_KEY_TG_CHAT, settings.telegram.chatId, sizeof(settings.telegram.chatId));
-
     // Cloud tunnel
     settings.cloud.enabled = prefs.getBool(NVS_KEY_CLOUD_ENABLED, false);
     prefs.getString(NVS_KEY_CLOUD_URL, settings.cloud.tunnelUrl, sizeof(settings.cloud.tunnelUrl));
@@ -229,11 +224,6 @@ bool saveSettings(const Settings& settings) {
     prefs.putString(NVS_KEY_MQTT_PASSWORD, settings.mqtt.password);
     prefs.putString(NVS_KEY_MQTT_BASE_TOPIC, settings.mqtt.baseTopic);
     prefs.putUInt(NVS_KEY_MQTT_INTERVAL, settings.mqtt.publishInterval);
-
-    // Telegram
-    prefs.putBool(NVS_KEY_TG_ENABLED, settings.telegram.enabled);
-    prefs.putString(NVS_KEY_TG_TOKEN, settings.telegram.token);
-    prefs.putString(NVS_KEY_TG_CHAT, settings.telegram.chatId);
 
     // Cloud tunnel
     prefs.putBool(NVS_KEY_CLOUD_ENABLED, settings.cloud.enabled);

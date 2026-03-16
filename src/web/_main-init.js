@@ -16,7 +16,6 @@ import { loadDiscoveredDevices, loadESP32Devices } from './cloud/devices.js';
 import { startStatusPolling } from './ui/landing.js';
 import { connectWebSocket } from './core/websocket.js';
 import { loadPumpInfo, loadVersionInfo } from './settings/pump-version.js';
-import { loadTelegramSettings } from './settings/telegram.js';
 
 // Инициализация при загрузке страницы
 
@@ -43,7 +42,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     loadPumpInfo();
 
     loadVersionInfo();
-    loadTelegramSettings();
 
     initServiceWorker();
 

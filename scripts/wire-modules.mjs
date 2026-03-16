@@ -88,7 +88,6 @@ const HTML_ONCLICK_FUNCTIONS = [
     'saveWiFi', 'saveEquipment', 'saveMqtt', 'saveSecurity',
     'toggleMqttFields', 'toggleAuthFields',
     'toggleDemoMode', 'rebootController',
-    'saveTelegramSettings', 'sendTelegramTest', 'toggleTelegramFields', 'loadTelegramSettings',
     // control
     'updateHeater', 'updatePump', 'toggleValve',
     // theme
@@ -240,7 +239,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     loadMemoryStatsPreference();
     loadPumpInfo();
     loadVersionInfo();
-    loadTelegramSettings();
     initServiceWorker();
 
     // Определяем режим: локально на ESP32 или через cloud-proxy кабинет

@@ -173,31 +173,6 @@ Override мощности ТЭНа в авто-ректификации.
 - Обязателен минимум один из: `heads`, `body`, `tails`
 - При `syncTotal=true` суммарный `pump.totalVolumeMl` пересчитывается автоматически
 
-## Telegram
-
-### `GET /api/settings/telegram`
-Статус и настройки Telegram.
-
-### `POST /api/settings/telegram`
-Сохранить настройки:
-
-```json
-{
-  "enabled": true,
-  "token": "123456:ABCDEF...",
-  "chatId": "123456789"
-}
-```
-
-### `POST /api/settings/telegram/test`
-Отправить тестовое сообщение.
-
-```json
-{ "message": "Smart-Column S3: test" }
-```
-
-Примечание: backend Telegram в прошивке реализован на **FastBot2**.
-
 ## Калибровка и оборудование
 
 - `GET /api/calibration`
@@ -267,7 +242,7 @@ ws://<device-ip>/ws
 - `401` — требуется авторизация
 - `404` — endpoint/ресурс не найден
 - `500` — ошибка сохранения/внутренняя ошибка
-- `503` — внешняя зависимость недоступна (например, Wi‑Fi STA для Telegram test)
+- `503` — внешняя зависимость недоступна
 
 ## Quick cURL Examples
 

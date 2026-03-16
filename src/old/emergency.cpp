@@ -198,7 +198,6 @@ void notifyUserEmergency(const String& message) {
     // TODO: Интеграция с системой уведомлений
     // sendWebSocketNotification("emergency", message);
     // sendEmailNotification(message);
-    // sendTelegramNotification(message);
 }
 
 // Получение времени с момента аварии

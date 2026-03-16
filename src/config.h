@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.0.57"
+#define FIRMWARE_VERSION "2.1.0"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -23,7 +23,7 @@
 #define PUMP_TASK_ENABLED 0
 #define PUMP_TASK_CORE 0
 #define PUMP_TASK_DELAY_MS 1
-// Временное отключение сетевых сервисов (OTA/MQTT/Telegram/Cloud)
+// Временное отключение сетевых сервисов (OTA/MQTT/Cloud)
 #define NETWORK_SERVICES_ENABLED 1
 // Включить веб-интерфейс
 #define WEB_SERVER_ENABLED 1
@@ -331,9 +331,6 @@
 #define NVS_KEY_MQTT_PASSWORD "mq_pass"
 #define NVS_KEY_MQTT_BASE_TOPIC "mq_topic"
 #define NVS_KEY_MQTT_INTERVAL "mq_intvl"
-#define NVS_KEY_TG_ENABLED "tg_enabled"
-#define NVS_KEY_TG_TOKEN "tg_token"
-#define NVS_KEY_TG_CHAT "tg_chat"
 #define NVS_KEY_LANGUAGE "lang"
 #define NVS_KEY_THEME "theme"
 #define NVS_KEY_SOUND "sound"
