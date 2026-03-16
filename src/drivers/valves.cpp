@@ -226,18 +226,49 @@ void setFractionAngle(uint8_t angle) {
     if (angle > 180) angle = 180;
 
     if (isDemoHardwareSuppressed()) {
+        g_servoMove.active = false;
+        currentFraction = Fraction::UNKNOWN;
         currentAngle = angle;
         return;
     }
 
+    g_servoMove.active = false;
     fractionatorServo.write(angle);
     currentAngle = angle;
+    currentFraction = Fraction::UNKNOWN;
 
     LOG_D("Valves: Fractionator angle set to %d", angle);
 }
 
 Fraction getCurrentFraction() {
     return currentFraction;
+}
+
+uint8_t getFractionAngle() {
+    if (!g_servoMove.active || g_servoMove.totalMs == 0) {
+        return currentAngle;
+    }
+
+    const uint32_t elapsed = millis() - g_servoMove.startTime;
+    if (elapsed >= g_servoMove.totalMs) {
+        return g_servoMove.targetAngle;
+    }
+
+    const float progress = (float)elapsed / (float)g_servoMove.totalMs;
+    const int interpolated =
+        (int)g_servoMove.startAngle +
+        (int)(progress * (float)((int)g_servoMove.targetAngle - (int)g_servoMove.startAngle));
+    if (interpolated < 0) return 0;
+    if (interpolated > 180) return 180;
+    return (uint8_t)interpolated;
+}
+
+bool isServoMoving() {
+    return g_servoMove.active;
+}
+
+bool isFractionatorEnabled() {
+    return fractionatorEnabled;
 }
 
 Fraction getNextEnabledFraction(const FractionatorSettings& settings) {

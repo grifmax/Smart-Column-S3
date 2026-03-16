@@ -136,6 +136,13 @@ bool loadSettings(Settings& settings) {
     settings.equipment.packingCoeff = prefs.getFloat(NVS_KEY_PACKING_COEFF, DEFAULT_PACKING_COEFF);
     settings.equipment.minHeaterSubmergeL = prefs.getFloat(NVS_KEY_MIN_HEATER_SUBMERGE, DEFAULT_MIN_HEATER_SUBMERGE_L);
     settings.equipment.waterAutoStartCubeTempC = prefs.getFloat(NVS_KEY_WATER_AUTOSTART_CUBE_TEMP, DEFAULT_WATER_AUTOSTART_CUBE_TEMP_C);
+    settings.fractionator.enabled = prefs.getBool(NVS_KEY_FRACTION_MASTER, settings.fractionator.enabled);
+    if (prefs.getBytesLength(NVS_KEY_FRACTION_ANGLES) == sizeof(settings.fractionator.angles)) {
+        prefs.getBytes(NVS_KEY_FRACTION_ANGLES, settings.fractionator.angles, sizeof(settings.fractionator.angles));
+    }
+    if (prefs.getBytesLength(NVS_KEY_FRACTION_ENABLED) == sizeof(settings.fractionator.positionsEnabled)) {
+        prefs.getBytes(NVS_KEY_FRACTION_ENABLED, settings.fractionator.positionsEnabled, sizeof(settings.fractionator.positionsEnabled));
+    }
 
     // Дисплей
     settings.displaySettings.enabled = prefs.getBool("disp_en", true);
@@ -238,6 +245,9 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_PACKING_COEFF, settings.equipment.packingCoeff);
     prefs.putFloat(NVS_KEY_MIN_HEATER_SUBMERGE, settings.equipment.minHeaterSubmergeL);
     prefs.putFloat(NVS_KEY_WATER_AUTOSTART_CUBE_TEMP, settings.equipment.waterAutoStartCubeTempC);
+    prefs.putBool(NVS_KEY_FRACTION_MASTER, settings.fractionator.enabled);
+    prefs.putBytes(NVS_KEY_FRACTION_ANGLES, settings.fractionator.angles, sizeof(settings.fractionator.angles));
+    prefs.putBytes(NVS_KEY_FRACTION_ENABLED, settings.fractionator.positionsEnabled, sizeof(settings.fractionator.positionsEnabled));
 
     // Дисплей
     prefs.putBool("disp_en", settings.displaySettings.enabled);

@@ -263,6 +263,329 @@
     font-variant-numeric: tabular-nums;
 }
 
+.equipment-shell {
+    display: grid;
+    gap: 18px;
+}
+
+.equipment-local-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--bg-card), var(--bg-secondary));
+}
+
+.equipment-local-nav-btn {
+    appearance: none;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.equipment-local-nav-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+.equipment-local-nav-btn.active {
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--primary));
+    border-color: transparent;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.equipment-pane {
+    display: none;
+}
+
+.equipment-pane.active {
+    display: block;
+}
+
+.equipment-testing-stack {
+    display: grid;
+    gap: 16px;
+}
+
+.equipment-testing-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+
+.equipment-test-card,
+.equipment-test-status-card {
+    display: grid;
+    gap: 14px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, var(--bg-card), var(--bg-primary));
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.06);
+}
+
+.equipment-test-card-danger {
+    border-color: rgba(220, 53, 69, 0.35);
+    background: linear-gradient(180deg, rgba(220, 53, 69, 0.05), var(--bg-card));
+}
+
+.equipment-test-card-head,
+.equipment-test-status-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.equipment-test-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.equipment-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 0.84rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    border: 1px solid transparent;
+}
+
+.equipment-status-badge.success {
+    color: #166534;
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(34, 197, 94, 0.24);
+}
+
+.equipment-status-badge.warning {
+    color: #92400e;
+    background: rgba(245, 158, 11, 0.16);
+    border-color: rgba(245, 158, 11, 0.26);
+}
+
+.equipment-status-badge.danger {
+    color: #991b1b;
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.24);
+}
+
+.equipment-status-badge.muted {
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.equipment-status-badge.neutral {
+    color: var(--text-primary);
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
+.equipment-test-alert {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(59, 130, 246, 0.16);
+    background: rgba(59, 130, 246, 0.08);
+    color: var(--text-primary);
+}
+
+.equipment-test-alert.subtle {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.equipment-test-alert.danger {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.22);
+    color: #991b1b;
+}
+
+.equipment-test-metrics,
+.equipment-test-power-grid,
+.equipment-test-sensors-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.equipment-test-metrics,
+.equipment-test-power-grid {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.equipment-test-metric,
+.equipment-test-sensor,
+.equipment-inline-stat {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
+}
+
+.equipment-test-metric span,
+.equipment-inline-stat span {
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+}
+
+.equipment-test-metric strong,
+.equipment-inline-stat strong {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.equipment-quick-actions,
+.equipment-inline-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.equipment-test-summary-stats .equipment-inline-stat {
+    min-width: 180px;
+    flex: 1 1 220px;
+}
+
+.equipment-actuator-list {
+    display: grid;
+    gap: 10px;
+}
+
+.equipment-actuator-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+
+.equipment-preset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+}
+
+.equipment-preset-button {
+    display: grid;
+    gap: 6px;
+    align-items: start;
+    justify-items: start;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.equipment-preset-button:hover:not(:disabled) {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+
+.equipment-preset-button.is-active {
+    border-color: rgba(34, 197, 94, 0.35);
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.equipment-preset-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.equipment-preset-angle {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.equipment-servo-manual-row {
+    align-items: stretch;
+}
+
+.equipment-servo-manual-row input {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.equipment-servo-config-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.equipment-servo-config-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(120px, 160px);
+    gap: 12px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
+}
+
+.equipment-servo-config-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.equipment-servo-config-row input[type="number"] {
+    width: 100%;
+    margin: 0;
+}
+
+.equipment-test-sensors-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.equipment-test-sensor {
+    min-height: 88px;
+    align-content: start;
+}
+
+.equipment-test-sensor.is-valid {
+    border-color: rgba(34, 197, 94, 0.22);
+    background: rgba(34, 197, 94, 0.06);
+}
+
+.equipment-test-sensor.is-invalid {
+    border-color: rgba(239, 68, 68, 0.22);
+    background: rgba(239, 68, 68, 0.05);
+}
+
+.equipment-test-sensor-name {
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+}
+
+.equipment-test-sensor-value {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
 @media (max-width: 900px) {
     .equipment-grid {
         grid-template-columns: 1fr;
@@ -344,5 +667,41 @@
         min-width: 98px;
         flex: 0 0 auto;
         padding-inline: 12px;
+    }
+
+    .equipment-local-nav {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .equipment-local-nav-btn {
+        width: 100%;
+    }
+
+    .equipment-testing-grid,
+    .equipment-test-power-grid,
+    .equipment-test-metrics,
+    .equipment-test-sensors-grid,
+    .equipment-preset-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .equipment-test-status-head,
+    .equipment-test-card-head,
+    .equipment-servo-manual-row,
+    .equipment-quick-actions,
+    .equipment-inline-stats {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .equipment-actuator-row,
+    .equipment-servo-config-row {
+        grid-template-columns: 1fr;
+    }
+
+    .equipment-actuator-row .btn,
+    .equipment-servo-manual-row .btn {
+        width: 100%;
     }
 }

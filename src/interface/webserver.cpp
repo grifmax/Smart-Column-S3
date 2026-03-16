@@ -207,6 +207,242 @@ static const char *getFermPhaseString(FermentationPhase phase) {
   }
 }
 
+static const char *getFractionToken(Fraction fraction) {
+  switch (fraction) {
+  case Fraction::HEADS:
+    return "heads";
+  case Fraction::SUBHEADS:
+    return "subheads";
+  case Fraction::BODY:
+    return "body";
+  case Fraction::PRETAILS:
+    return "pretails";
+  case Fraction::TAILS:
+    return "tails";
+  default:
+    return "manual";
+  }
+}
+
+static const char *getFractionLabel(Fraction fraction) {
+  switch (fraction) {
+  case Fraction::HEADS:
+    return FRACTION_NAME_HEADS;
+  case Fraction::SUBHEADS:
+    return FRACTION_NAME_SUBHEADS;
+  case Fraction::BODY:
+    return FRACTION_NAME_BODY;
+  case Fraction::PRETAILS:
+    return FRACTION_NAME_PRETAILS;
+  case Fraction::TAILS:
+    return FRACTION_NAME_TAILS;
+  default:
+    return "Ручная позиция";
+  }
+}
+
+static const char *getTempSensorLabel(uint8_t index) {
+  switch (index) {
+  case TEMP_CUBE:
+    return "Куб";
+  case TEMP_COLUMN_BOTTOM:
+    return "Царга низ";
+  case TEMP_COLUMN_TOP:
+    return "Царга верх";
+  case TEMP_REFLUX:
+    return "Дефлегматор";
+  case TEMP_TSA:
+    return "ТСА";
+  case TEMP_WATER_IN:
+    return "Вода вход";
+  case TEMP_WATER_OUT:
+    return "Вода выход";
+  default:
+    return "Датчик";
+  }
+}
+
+static bool isEquipmentTestingBlocked(char *reason, size_t reasonSize) {
+  if (g_state.mode != Mode::IDLE) {
+    snprintf(reason, reasonSize, "Тестирование доступно только в режиме IDLE");
+    return true;
+  }
+
+  if (Safety::isLatched(g_state)) {
+    snprintf(reason, reasonSize, "Сначала снимите защелкнутую аварию безопасности");
+    return true;
+  }
+
+  if (g_state.currentAlarm.type != AlarmType::NONE) {
+    snprintf(reason, reasonSize, "Активна авария: %s", g_state.currentAlarm.message);
+    return true;
+  }
+
+  if (!g_state.safetyOk) {
+    snprintf(reason, reasonSize, "Система находится в небезопасном состоянии");
+    return true;
+  }
+
+  reason[0] = '\0';
+  return false;
+}
+
+static void fillEquipmentTestingStatus(JsonDocument &doc) {
+  char reason[160] = "";
+  const bool blocked = isEquipmentTestingBlocked(reason, sizeof(reason));
+  const bool processActive = g_state.mode != Mode::IDLE;
+  const bool latched = Safety::isLatched(g_state);
+  const bool alarmActive = (g_state.currentAlarm.type != AlarmType::NONE);
+  const bool heaterActive = Heater::getPower() > 0;
+  const bool servoAvailable =
+      g_settings.fractionator.enabled && Valves::isFractionatorEnabled();
+  const Pump::Diagnostics pumpDiag = Pump::getDiagnostics();
+
+  doc["success"] = true;
+  doc["mode"] = getModeString(g_state.mode);
+  doc["processActive"] = processActive;
+  doc["testingAllowed"] = !blocked;
+  doc["availabilityReason"] = blocked ? reason : "";
+  doc["demoMode"] = g_settings.demoMode;
+  doc["physicalActuationAllowed"] = !blocked && !g_settings.demoMode;
+  doc["alarmActive"] = alarmActive;
+  doc["alarmMessage"] = alarmActive ? g_state.currentAlarm.message : "";
+  doc["safetyOk"] = g_state.safetyOk;
+  doc["safetyLatched"] = latched;
+
+  JsonObject activeTests = doc["activeTests"].to<JsonObject>();
+  activeTests["pump"] = Pump::isRunning();
+  activeTests["heater"] = heaterActive;
+  activeTests["waterValve"] = Valves::getWater();
+  activeTests["headsValve"] = Valves::getHeads();
+  activeTests["unoValve"] = Valves::getUno();
+  activeTests["servoMoving"] = Valves::isServoMoving();
+
+  JsonObject pump = doc["pump"].to<JsonObject>();
+  pump["running"] = Pump::isRunning();
+  pump["speedMlH"] = Pump::getSpeed();
+  pump["targetSpeedMlH"] = pumpDiag.speedMlH;
+  pump["appliedSpeedMlH"] = pumpDiag.appliedSpeedMlH;
+  pump["totalVolumeMl"] = Pump::getTotalVolume();
+  pump["totalSteps"] = pumpDiag.totalSteps;
+  pump["taskAlive"] = pumpDiag.taskAlive;
+  pump["mutexReady"] = pumpDiag.mutexReady;
+  pump["lockTimeoutCount"] = pumpDiag.lockTimeoutCount;
+  pump["taskLoopCount"] = pumpDiag.taskLoopCount;
+  pump["cooperativeSleepCount"] = pumpDiag.cooperativeSleepCount;
+  pump["fastYieldCount"] = pumpDiag.fastYieldCount;
+
+  JsonObject heater = doc["heater"].to<JsonObject>();
+  heater["active"] = heaterActive;
+  heater["powerPercent"] = Heater::getPower();
+  heater["powerSetPercent"] = Heater::getPower();
+  heater["minSubmergeLiters"] = g_settings.equipment.minHeaterSubmergeL;
+
+  JsonObject valves = doc["valves"].to<JsonObject>();
+  valves["water"] = Valves::getWater();
+  valves["heads"] = Valves::getHeads();
+  valves["uno"] = Valves::getUno();
+  valves["startStopDuty"] = Valves::getStartStop();
+
+  JsonObject servo = doc["servo"].to<JsonObject>();
+  servo["enabled"] = g_settings.fractionator.enabled;
+  servo["available"] = servoAvailable;
+  servo["moving"] = Valves::isServoMoving();
+  servo["fraction"] = getFractionToken(Valves::getCurrentFraction());
+  servo["fractionLabel"] = getFractionLabel(Valves::getCurrentFraction());
+  servo["angle"] = Valves::getFractionAngle();
+  JsonArray presets = servo["presets"].to<JsonArray>();
+  for (uint8_t i = 0; i < FRACTION_COUNT; ++i) {
+    JsonObject preset = presets.add<JsonObject>();
+    preset["index"] = i;
+    preset["token"] = getFractionToken(static_cast<Fraction>(i));
+    preset["label"] = getFractionLabel(static_cast<Fraction>(i));
+    preset["enabled"] = g_settings.fractionator.positionsEnabled[i];
+    preset["angle"] = g_settings.fractionator.angles[i];
+  }
+
+  JsonArray temps = doc["temperatures"].to<JsonArray>();
+  for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+    JsonObject temp = temps.add<JsonObject>();
+    temp["index"] = i;
+    temp["label"] = getTempSensorLabel(i);
+    temp["valid"] = g_state.temps.valid[i];
+    switch (i) {
+    case TEMP_CUBE:
+      temp["value"] = g_state.temps.cube;
+      break;
+    case TEMP_COLUMN_BOTTOM:
+      temp["value"] = g_state.temps.columnBottom;
+      break;
+    case TEMP_COLUMN_TOP:
+      temp["value"] = g_state.temps.columnTop;
+      break;
+    case TEMP_REFLUX:
+      temp["value"] = g_state.temps.reflux;
+      break;
+    case TEMP_TSA:
+      temp["value"] = g_state.temps.tsa;
+      break;
+    case TEMP_WATER_IN:
+      temp["value"] = g_state.temps.waterIn;
+      break;
+    case TEMP_WATER_OUT:
+      temp["value"] = g_state.temps.waterOut;
+      break;
+    default:
+      temp["value"] = 0.0f;
+      break;
+    }
+  }
+
+  JsonObject pressure = doc["pressure"].to<JsonObject>();
+  pressure["cubeMmHg"] = g_state.pressure.cube;
+  pressure["atmosphere"] = g_state.pressure.atmosphere;
+  pressure["ok"] = g_state.pressure.ok;
+  pressure["lastUpdate"] = g_state.pressure.lastUpdate;
+
+  JsonObject hydrometer = doc["hydrometer"].to<JsonObject>();
+  hydrometer["pressure"] = g_state.hydrometer.pressure;
+  hydrometer["density"] = g_state.hydrometer.density;
+  hydrometer["abv"] = g_state.hydrometer.abv;
+  hydrometer["temperature"] = g_state.hydrometer.temperature;
+  hydrometer["valid"] = g_state.hydrometer.valid;
+  hydrometer["ok"] = g_state.hydrometer.ok;
+  hydrometer["lastUpdate"] = g_state.hydrometer.lastUpdate;
+
+  JsonObject power = doc["power"].to<JsonObject>();
+  power["voltage"] = g_state.power.voltage;
+  power["current"] = g_state.power.current;
+  power["power"] = g_state.power.power;
+  power["energy"] = g_state.power.energy;
+  power["frequency"] = g_state.power.frequency;
+  power["powerFactor"] = g_state.power.powerFactor;
+}
+
+static bool parseFractionPresetToken(const String &token, Fraction &fraction) {
+  if (token == "heads") {
+    fraction = Fraction::HEADS;
+    return true;
+  }
+  if (token == "subheads") {
+    fraction = Fraction::SUBHEADS;
+    return true;
+  }
+  if (token == "body") {
+    fraction = Fraction::BODY;
+    return true;
+  }
+  if (token == "pretails") {
+    fraction = Fraction::PRETAILS;
+    return true;
+  }
+  if (token == "tails") {
+    fraction = Fraction::TAILS;
+    return true;
+  }
+  return false;
+}
+
 static void fillAlarmJson(JsonObject alarm, const SystemState& state, const Settings& settings) {
   const bool active = (state.currentAlarm.type != AlarmType::NONE);
   const bool latched = Safety::isLatched(state);
@@ -2829,6 +3065,305 @@ void init() {
     serializeJson(doc, json);
     request->send(200, "application/json", json);
   });
+
+  // ==========================================================================
+  // EQUIPMENT TESTING
+  // ==========================================================================
+
+  server.on("/api/testing/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    fillEquipmentTestingStatus(doc);
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  server.on("/api/testing/stop-all", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              Pump::stop();
+              Heater::setPower(0);
+              Valves::closeAll();
+              if (Valves::isFractionatorEnabled()) {
+                Valves::setFractionAngle(Valves::getFractionAngle());
+              }
+              Logger::logf(0, "Equipment testing: all manual tests stopped");
+              request->send(200, "application/json",
+                            "{\"success\":true,\"message\":\"All tests stopped\"}");
+            });
+
+  server.on(
+      "/api/testing/pump", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const String action = doc["action"] | "";
+        if (action != "start" && action != "stop") {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Invalid pump action\"}");
+          return;
+        }
+
+        if (action == "start") {
+          char reason[160] = "";
+          if (isEquipmentTestingBlocked(reason, sizeof(reason))) {
+            JsonDocument resp;
+            resp["success"] = false;
+            resp["message"] = reason;
+            String json;
+            serializeJson(resp, json);
+            request->send(409, "application/json", json);
+            return;
+          }
+
+          const float speed = doc["speedMlH"] | 0.0f;
+          if (speed <= 0.0f) {
+            request->send(
+                400, "application/json",
+                "{\"success\":false,\"message\":\"Speed must be greater than zero\"}");
+            return;
+          }
+
+          Pump::start(speed);
+          Logger::logf(0, "Equipment testing: pump started at %.1f ml/h", speed);
+        } else {
+          Pump::stop();
+          Logger::logf(0, "Equipment testing: pump stopped");
+        }
+
+        JsonDocument resp;
+        fillEquipmentTestingStatus(resp);
+        String json;
+        serializeJson(resp, json);
+        request->send(200, "application/json", json);
+      });
+
+  server.on(
+      "/api/testing/heater", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const String action = doc["action"] | "";
+        if (action != "start" && action != "stop") {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Invalid heater action\"}");
+          return;
+        }
+
+        if (action == "start") {
+          char reason[160] = "";
+          if (isEquipmentTestingBlocked(reason, sizeof(reason))) {
+            JsonDocument resp;
+            resp["success"] = false;
+            resp["message"] = reason;
+            String json;
+            serializeJson(resp, json);
+            request->send(409, "application/json", json);
+            return;
+          }
+
+          if (!(doc["confirmed"] | false)) {
+            request->send(
+                400, "application/json",
+                "{\"success\":false,\"message\":\"Heater start requires confirmation\"}");
+            return;
+          }
+
+          int power = doc["powerPercent"] | 0;
+          if (power < 1) power = 1;
+          if (power > 100) power = 100;
+          Heater::setPower((uint8_t)power);
+          Logger::logf(0, "Equipment testing: heater started at %d%%", power);
+        } else {
+          Heater::setPower(0);
+          Logger::logf(0, "Equipment testing: heater stopped");
+        }
+
+        JsonDocument resp;
+        fillEquipmentTestingStatus(resp);
+        String json;
+        serializeJson(resp, json);
+        request->send(200, "application/json", json);
+      });
+
+  server.on(
+      "/api/testing/valves", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+          return;
+        }
+
+        char reason[160] = "";
+        if (isEquipmentTestingBlocked(reason, sizeof(reason))) {
+          JsonDocument resp;
+          resp["success"] = false;
+          resp["message"] = reason;
+          String json;
+          serializeJson(resp, json);
+          request->send(409, "application/json", json);
+          return;
+        }
+
+        const String target = doc["target"] | "";
+        const bool open = doc["open"] | false;
+
+        if (target == "all") {
+          Valves::closeAll();
+          Logger::logf(0, "Equipment testing: all valves closed");
+        } else if (target == "water") {
+          Valves::setWater(open);
+          Logger::logf(0, "Equipment testing: water valve %s",
+                       open ? "opened" : "closed");
+        } else if (target == "heads") {
+          Valves::setHeads(open);
+          Logger::logf(0, "Equipment testing: heads valve %s",
+                       open ? "opened" : "closed");
+        } else if (target == "uno") {
+          Valves::setUno(open);
+          Logger::logf(0, "Equipment testing: UNO valve %s",
+                       open ? "opened" : "closed");
+        } else {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Unknown valve target\"}");
+          return;
+        }
+
+        JsonDocument resp;
+        fillEquipmentTestingStatus(resp);
+        String json;
+        serializeJson(resp, json);
+        request->send(200, "application/json", json);
+      });
+
+  server.on(
+      "/api/testing/servo", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const String action = doc["action"] | "";
+        if (action.isEmpty()) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Missing servo action\"}");
+          return;
+        }
+
+        if (action == "saveConfig") {
+          JsonArray angles = doc["angles"].as<JsonArray>();
+          JsonArray enabled = doc["enabled"].as<JsonArray>();
+          if (angles.isNull() || enabled.isNull() || angles.size() != FRACTION_COUNT ||
+              enabled.size() != FRACTION_COUNT) {
+            request->send(
+                400, "application/json",
+                "{\"success\":false,\"message\":\"Invalid servo config payload\"}");
+            return;
+          }
+
+          for (uint8_t i = 0; i < FRACTION_COUNT; ++i) {
+            int angle = angles[i].as<int>();
+            if (angle < 0) angle = 0;
+            if (angle > 180) angle = 180;
+            g_settings.fractionator.angles[i] = (uint16_t)angle;
+            g_settings.fractionator.positionsEnabled[i] = enabled[i].as<bool>();
+          }
+          NVSManager::saveSettings(g_settings);
+          Logger::logf(0, "Equipment testing: servo presets updated");
+
+          JsonDocument resp;
+          fillEquipmentTestingStatus(resp);
+          String json;
+          serializeJson(resp, json);
+          request->send(200, "application/json", json);
+          return;
+        }
+
+        char reason[160] = "";
+        if (isEquipmentTestingBlocked(reason, sizeof(reason))) {
+          JsonDocument resp;
+          resp["success"] = false;
+          resp["message"] = reason;
+          String json;
+          serializeJson(resp, json);
+          request->send(409, "application/json", json);
+          return;
+        }
+
+        if (!g_settings.fractionator.enabled || !Valves::isFractionatorEnabled()) {
+          request->send(
+              409, "application/json",
+              "{\"success\":false,\"message\":\"Fractionator is not enabled in configuration\"}");
+          return;
+        }
+
+        if (action == "preset") {
+          Fraction fraction = Fraction::UNKNOWN;
+          if (!parseFractionPresetToken(doc["preset"] | "", fraction) ||
+              fraction == Fraction::UNKNOWN) {
+            request->send(
+                400, "application/json",
+                "{\"success\":false,\"message\":\"Unknown servo preset\"}");
+            return;
+          }
+          Valves::setFraction(fraction, true);
+          Logger::logf(0, "Equipment testing: servo moved to %s",
+                       getFractionLabel(fraction));
+        } else if (action == "angle") {
+          int angle = doc["angle"] | 0;
+          if (angle < 0) angle = 0;
+          if (angle > 180) angle = 180;
+          Valves::setFractionAngle((uint8_t)angle);
+          Logger::logf(0, "Equipment testing: servo moved to %d degrees", angle);
+        } else {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Unknown servo action\"}");
+          return;
+        }
+
+        JsonDocument resp;
+        fillEquipmentTestingStatus(resp);
+        String json;
+        serializeJson(resp, json);
+        request->send(200, "application/json", json);
+      });
 
   // ==========================================================================
   // ENERGY CONSUMPTION GRAPH

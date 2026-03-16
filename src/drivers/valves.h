@@ -78,6 +78,21 @@ namespace Valves {
      * Текущая фракция
      */
     Fraction getCurrentFraction();
+
+    /**
+     * Текущий угол сервопривода фракционника
+     */
+    uint8_t getFractionAngle();
+
+    /**
+     * Идет ли плавное движение сервопривода
+     */
+    bool isServoMoving();
+
+    /**
+     * Доступен ли фракционник в текущей конфигурации
+     */
+    bool isFractionatorEnabled();
     
     /**
      * Следующая активная фракция
