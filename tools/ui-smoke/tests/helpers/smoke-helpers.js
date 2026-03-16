@@ -357,6 +357,8 @@ export async function installCommonApiMocks(page, options = {}) {
     logQueries: [],
     processStarts: [],
     statusRequests: 0,
+    testingActions: [],
+    testingStatusRequests: 0,
   };
 
   const versionPayload = options.versionPayload || buildVersionPayload();
@@ -365,6 +367,16 @@ export async function installCommonApiMocks(page, options = {}) {
   const historyDetailsPayloads = options.historyDetailsPayloads || {};
   const logEvents = options.logEvents || [];
   const processStartResponse = options.processStartResponse || { success: true };
+  const calibrationPayload = options.calibrationPayload || {
+    pump: {
+      mlPerRev: 0.12,
+      stepsPerRev: 200,
+      microsteps: 32,
+    },
+    temperatures: [],
+  };
+  const testingStatusPayload = options.testingStatusPayload || null;
+  const testingActionResponse = options.testingActionResponse || null;
 
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -391,6 +403,58 @@ export async function installCommonApiMocks(page, options = {}) {
       const payload = typeof statusPayload === 'function'
         ? statusPayload({ pathname, searchParams, method, requests })
         : statusPayload;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (pathname === '/api/calibration' && method === 'GET') {
+      const payload = typeof calibrationPayload === 'function'
+        ? calibrationPayload({ pathname, searchParams, method, requests })
+        : calibrationPayload;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (pathname === '/api/testing/status' && method === 'GET') {
+      requests.testingStatusRequests += 1;
+      const payload = typeof testingStatusPayload === 'function'
+        ? testingStatusPayload({ pathname, searchParams, method, requests })
+        : (testingStatusPayload || {});
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (pathname.startsWith('/api/testing/') && method === 'POST') {
+      let postData = null;
+      try {
+        postData = request.postDataJSON();
+      } catch {
+        postData = request.postData() || null;
+      }
+
+      requests.testingActions.push({
+        pathname,
+        body: postData,
+      });
+
+      const payload = typeof testingActionResponse === 'function'
+        ? testingActionResponse({ pathname, searchParams, method, requests, postData })
+        : (testingActionResponse || { success: true });
 
       await route.fulfill({
         status: 200,
