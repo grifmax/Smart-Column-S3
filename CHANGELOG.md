@@ -9,6 +9,13 @@
 
 ---
 
+## [2.1.7] - 2026-03-17
+
+### Изменено
+- Экран `Оборудование -> Тестирование` визуально перестроен под тот же паттерн, что и `Инструменты`: появился компактный sidebar-menu на desktop и mobile-аккордеоны с одной рабочей карточкой вместо длинной растянутой простыни из всех сервисных блоков сразу. (codex)
+- Во фронтенде [src/web/settings/equipment-testing.js](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\settings\equipment-testing.js) добавлен workbench-слой для сервисных групп `Насос / Клапаны / Сервопривод / ТЭН / Термометры / Давление / Ареометр / Питание`, с сохранением активной карточки и единым меню навигации. (codex)
+- В стилях [src/web/styles/_equipment.css](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\styles\_equipment.css) уменьшены разрывы, ужаты action-строки и мобильные кнопки, а карточки тестирования переведены на более плотную компоновку без лишнего вертикального растягивания экрана. (codex)
+
 ## [2.1.6] - 2026-03-17
 
 ### Изменено

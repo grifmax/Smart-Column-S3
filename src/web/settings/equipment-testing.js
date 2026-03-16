@@ -2,12 +2,96 @@ import { addLog } from '../core/logs.js';
 import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const STORAGE_KEY = 'equipment.activeSection';
+const TESTING_CARD_STORAGE_KEY = 'equipment.testing.activeCard';
 const TESTING_STATUS_URL = '/api/testing/status';
 const TESTING_POLL_MS = 1500;
 const PRESSURE_SUCCESS_DELTA = 1.0;
+const TESTING_LAYOUT_MEDIA = '(max-width: 900px)';
+
+const TESTING_GROUPS = [
+    { id: 'actuators', label: 'Исполнительные узлы' },
+    { id: 'sensors', label: 'Датчики и отклик' },
+    { id: 'service', label: 'Сервис и питание' },
+];
+
+const TESTING_CARD_DEFS = [
+    {
+        id: 'pump',
+        selector: '#equipment-test-pump-toggle',
+        group: 'actuators',
+        icon: '🧪',
+        title: 'Насос',
+        shortTitle: 'Насос',
+        description: 'Ручной старт, живая скорость, объём и быстрый переход к калибровке.',
+    },
+    {
+        id: 'valves',
+        selector: '#equipment-test-water-toggle',
+        group: 'actuators',
+        icon: '🚰',
+        title: 'Клапаны',
+        shortTitle: 'Клапаны',
+        description: 'Поштучное открытие и импульсные щелчки по гидравлическим каналам.',
+    },
+    {
+        id: 'servo',
+        selector: '#equipment-test-servo-angle-apply',
+        group: 'actuators',
+        icon: '🎯',
+        title: 'Сервопривод фракционника',
+        shortTitle: 'Сервопривод',
+        description: 'Быстрые позиции, ручной угол и редактирование сервисных пресетов.',
+    },
+    {
+        id: 'heater',
+        selector: '#equipment-test-heater-start',
+        group: 'actuators',
+        icon: '⚡',
+        title: 'ТЭН',
+        shortTitle: 'ТЭН',
+        description: 'Ручной силовой тест с обязательным подтверждением запуска.',
+    },
+    {
+        id: 'temps',
+        selector: '#equipment-test-temps-refresh',
+        group: 'sensors',
+        icon: '🌡️',
+        title: 'Термометры',
+        shortTitle: 'Термометры',
+        description: 'Живые показания всех температурных датчиков рядом с сервисными действиями.',
+    },
+    {
+        id: 'pressure',
+        selector: '#equipment-test-pressure-start',
+        group: 'sensors',
+        icon: '💨',
+        title: 'Датчик давления',
+        shortTitle: 'Давление',
+        description: 'Проверка отклика датчика продувкой с подсветкой изменения сигнала.',
+    },
+    {
+        id: 'hydrometer',
+        selector: '#equipment-test-hydrometer-badge',
+        group: 'sensors',
+        icon: '🧫',
+        title: 'Ареометр',
+        shortTitle: 'Ареометр',
+        description: 'Текущие данные и аккуратная сервисная заглушка под будущий активный тест.',
+    },
+    {
+        id: 'power',
+        selector: '#equipment-test-power-voltage',
+        group: 'service',
+        icon: '🔌',
+        title: 'Питание и силовая диагностика',
+        shortTitle: 'Питание',
+        description: 'Напряжение, ток, мощность, частота и cos φ рядом с тестами оборудования.',
+    },
+];
 
 const state = {
     activeSection: 'parameters',
+    activeTestingCard: 'pump',
     pollingHandle: null,
     lastStatus: null,
     heaterPendingPower: 0,
@@ -316,6 +400,17 @@ function qsa(selector, root = document) {
     return [...root.querySelectorAll(selector)];
 }
 
+function createElement(tag, className, textContent) {
+    const element = document.createElement(tag);
+    if (className) {
+        element.className = className;
+    }
+    if (typeof textContent === 'string') {
+        element.textContent = textContent;
+    }
+    return element;
+}
+
 function toNumber(value, fallback = 0) {
     const parsed = Number(String(value ?? '').trim().replace(',', '.'));
     return Number.isFinite(parsed) ? parsed : fallback;
@@ -363,6 +458,127 @@ function formatSensorValue(sensor) {
     return formatNumber(sensor.value, 2, ' °C');
 }
 
+function getTestingGroupLabel(groupId) {
+    return TESTING_GROUPS.find((group) => group.id === groupId)?.label ?? 'Тестирование';
+}
+
+function buildTestingMobileToggle(meta) {
+    const button = createElement('button', 'equipment-test-mobile-toggle');
+    button.type = 'button';
+
+    const icon = createElement('span', 'equipment-test-mobile-icon', meta.icon);
+    icon.setAttribute('aria-hidden', 'true');
+
+    const copy = createElement('span', 'equipment-test-mobile-copy');
+    copy.append(
+        createElement('span', 'equipment-test-mobile-title', meta.shortTitle),
+        createElement('span', 'equipment-test-mobile-description', meta.description),
+    );
+
+    const chevron = createElement('span', 'equipment-test-mobile-chevron', '▾');
+    chevron.setAttribute('aria-hidden', 'true');
+
+    button.append(icon, copy, chevron);
+    return button;
+}
+
+function buildTestingDesktopNav(cards) {
+    const nav = createElement('aside', 'equipment-testing-sidebar');
+    nav.setAttribute('aria-label', 'Навигация по сервисным тестам');
+
+    const navHeader = createElement('div', 'equipment-testing-sidebar-header');
+    navHeader.append(
+        createElement('div', 'equipment-testing-sidebar-title', 'Тестирование'),
+        createElement('div', 'equipment-testing-sidebar-subtitle', 'Открыт один сервисный узел, остальные доступны через компактное меню.'),
+    );
+    nav.appendChild(navHeader);
+
+    const buttonsById = new Map();
+
+    for (const group of TESTING_GROUPS) {
+        const groupCards = group.id
+            ? cards.filter((card) => card.meta.group === group.id)
+            : [];
+
+        if (!groupCards.length) continue;
+
+        nav.appendChild(createElement('div', 'sidebar-section-title', group.label));
+
+        for (const card of groupCards) {
+            const button = createElement('button', 'sidebar-item equipment-testing-nav-item');
+            button.type = 'button';
+            button.dataset.testingCardId = card.meta.id;
+            button.append(
+                createElement('span', 'icon', card.meta.icon),
+                createElement('span', 'label', card.meta.shortTitle),
+            );
+            nav.appendChild(button);
+            buttonsById.set(card.meta.id, button);
+        }
+    }
+
+    return { nav, buttonsById };
+}
+
+function enhanceTestingCard(card, meta) {
+    if (card.dataset.testingEnhanced === '1') {
+        return {
+            card,
+            meta,
+            body: card.querySelector('.equipment-test-card-body'),
+            toggle: card.querySelector('.equipment-test-mobile-toggle'),
+        };
+    }
+
+    card.dataset.testingEnhanced = '1';
+    card.dataset.testingCardId = meta.id;
+    card.dataset.testingCardGroup = meta.group;
+
+    const children = [...card.childNodes];
+    const body = createElement('div', 'equipment-test-card-body');
+    for (const child of children) {
+        body.appendChild(child);
+    }
+
+    const titleEl = body.querySelector('h2');
+    if (titleEl) {
+        titleEl.classList.add('equipment-test-card-title');
+        titleEl.textContent = '';
+
+        const titleIcon = createElement('span', 'equipment-test-card-title-icon', meta.icon);
+        titleIcon.setAttribute('aria-hidden', 'true');
+        const titleText = createElement('span', 'equipment-test-card-title-text', meta.title);
+        titleEl.append(titleIcon, titleText);
+
+        const groupBadge = createElement('div', 'equipment-test-card-group-badge', getTestingGroupLabel(meta.group));
+        titleEl.before(groupBadge);
+    }
+
+    const descriptionEl = body.querySelector('.equipment-subtitle');
+    if (descriptionEl) {
+        descriptionEl.textContent = meta.description;
+        descriptionEl.classList.add('equipment-test-card-description');
+    }
+
+    const toggle = buildTestingMobileToggle(meta);
+    card.textContent = '';
+    card.append(toggle, body);
+
+    return { card, meta, body, toggle };
+}
+
+function resolveTestingCards(cards) {
+    const resolved = [];
+
+    for (const meta of TESTING_CARD_DEFS) {
+        const card = cards.find((candidate) => candidate.querySelector(meta.selector));
+        if (!card) continue;
+        resolved.push(enhanceTestingCard(card, meta));
+    }
+
+    return resolved;
+}
+
 function ensureEquipmentShell() {
     const root = byId('equipment');
     if (!root || qs('.equipment-local-nav', root)) return;
@@ -400,6 +616,108 @@ function ensureEquipmentShell() {
     root.appendChild(shell);
 }
 
+function initEquipmentTestingWorkbench() {
+    const testingPane = qs('[data-equipment-section-pane="testing"]');
+    const grid = qs('.equipment-testing-grid', testingPane);
+    if (!testingPane || !grid || grid.dataset.testingWorkbench === '1') return;
+
+    const cards = [...grid.querySelectorAll('.equipment-test-card')];
+    const resolvedCards = resolveTestingCards(cards);
+    if (!resolvedCards.length) return;
+
+    grid.dataset.testingWorkbench = '1';
+
+    const shell = createElement('div', 'equipment-testing-shell');
+    const main = createElement('div', 'equipment-testing-main');
+    const desktopWrapper = createElement('div', 'equipment-testing-card-stack');
+    const { nav, buttonsById } = buildTestingDesktopNav(resolvedCards);
+
+    grid.parentNode.insertBefore(shell, grid);
+    shell.append(nav, main);
+    main.appendChild(desktopWrapper);
+    desktopWrapper.appendChild(grid);
+
+    const mediaQuery = window.matchMedia(TESTING_LAYOUT_MEDIA);
+    state.activeTestingCard = readSavedTestingCard();
+
+    function scrollToggleIntoView(cardId) {
+        const card = resolvedCards.find((entry) => entry.meta.id === cardId);
+        if (!card) return;
+        requestAnimationFrame(() => {
+            card.toggle.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+    }
+
+    function syncTestingLayout() {
+        const isMobile = mediaQuery.matches;
+        testingPane.dataset.testingLayout = isMobile ? 'mobile' : 'desktop';
+        nav.hidden = isMobile;
+
+        if (!isMobile && !state.activeTestingCard) {
+            state.activeTestingCard = resolvedCards[0]?.meta.id || null;
+        }
+
+        for (const card of resolvedCards) {
+            const isActive = card.meta.id === state.activeTestingCard;
+            card.card.classList.toggle('is-active', isActive);
+            card.toggle.classList.toggle('is-active', isActive);
+            card.toggle.setAttribute('aria-expanded', String(isActive));
+            card.body.hidden = isMobile ? !isActive : false;
+            card.card.hidden = isMobile ? false : !isActive;
+
+            const navButton = buttonsById.get(card.meta.id);
+            if (navButton) {
+                navButton.classList.toggle('active', isActive);
+                navButton.setAttribute('aria-current', isActive ? 'true' : 'false');
+            }
+        }
+    }
+
+    function setActiveTestingCard(cardId) {
+        if (cardId !== null && !resolvedCards.some((entry) => entry.meta.id === cardId)) {
+            return;
+        }
+
+        state.activeTestingCard = cardId;
+        if (cardId) {
+            saveActiveTestingCard(cardId);
+        }
+        syncTestingLayout();
+    }
+
+    for (const card of resolvedCards) {
+        card.toggle.addEventListener('click', () => {
+            const isMobile = mediaQuery.matches;
+            const isSame = state.activeTestingCard === card.meta.id;
+
+            if (isMobile && isSame) {
+                setActiveTestingCard(null);
+                return;
+            }
+
+            setActiveTestingCard(card.meta.id);
+            if (isMobile) {
+                scrollToggleIntoView(card.meta.id);
+            }
+        });
+    }
+
+    for (const [cardId, button] of buttonsById.entries()) {
+        button.addEventListener('click', () => {
+            setActiveTestingCard(cardId);
+            main.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+    }
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+        mediaQuery.addEventListener('change', syncTestingLayout);
+    } else if (typeof mediaQuery.addListener === 'function') {
+        mediaQuery.addListener(syncTestingLayout);
+    }
+
+    syncTestingLayout();
+}
+
 function ensureHeaterConfirmModal() {
     if (byId('equipment-heater-confirm-modal')) return;
     document.body.insertAdjacentHTML('beforeend', HEATER_MODAL_TEMPLATE);
@@ -424,6 +742,26 @@ function readSavedSection() {
 function saveActiveSection(sectionId) {
     try {
         localStorage.setItem(STORAGE_KEY, sectionId);
+    } catch {
+        // ignore storage failures
+    }
+}
+
+function readSavedTestingCard() {
+    try {
+        const stored = localStorage.getItem(TESTING_CARD_STORAGE_KEY);
+        if (TESTING_CARD_DEFS.some((card) => card.id === stored)) {
+            return stored;
+        }
+    } catch {
+        // ignore storage failures
+    }
+    return TESTING_CARD_DEFS[0]?.id || 'pump';
+}
+
+function saveActiveTestingCard(cardId) {
+    try {
+        localStorage.setItem(TESTING_CARD_STORAGE_KEY, cardId);
     } catch {
         // ignore storage failures
     }
@@ -1023,10 +1361,12 @@ export function initEquipmentTestingUi() {
     if (!root) return;
 
     ensureEquipmentShell();
+    initEquipmentTestingWorkbench();
     ensureHeaterConfirmModal();
     initEquipmentNumberSteppers(root);
     bindSectionNav();
     bindTestingActions();
     ensurePolling();
     setEquipmentSection(readSavedSection());
+    state.activeTestingCard = readSavedTestingCard();
 }

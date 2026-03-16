@@ -21,10 +21,12 @@
 .equipment-actions {
     margin-top: 10px;
     gap: 10px;
+    display: flex;
+    flex-wrap: wrap;
 }
 
 .equipment-actions .btn {
-    min-width: 160px;
+    min-width: 112px;
 }
 
 .equipment-card .form-group select {
@@ -312,23 +314,135 @@
 
 .equipment-testing-stack {
     display: grid;
-    gap: 16px;
+    gap: 14px;
 }
 
-.equipment-testing-grid {
+.equipment-testing-shell {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(220px, 250px) minmax(0, 1fr);
     gap: 16px;
     align-items: start;
+}
+
+.equipment-testing-sidebar {
+    position: sticky;
+    top: 12px;
+    background: var(--bg-sidebar);
+    backdrop-filter: blur(30px) saturate(1.4);
+    -webkit-backdrop-filter: blur(30px) saturate(1.4);
+    border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
+    padding: 8px;
+}
+
+.equipment-testing-sidebar-header {
+    padding: 10px 10px 12px;
+    border-bottom: 1px solid var(--separator);
+}
+
+.equipment-testing-sidebar-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.equipment-testing-sidebar-subtitle {
+    margin-top: 4px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.equipment-testing-sidebar .sidebar-section-title {
+    padding-top: 14px;
+    padding-bottom: 6px;
+}
+
+.equipment-testing-sidebar .sidebar-item {
+    min-height: 38px;
+}
+
+.equipment-testing-sidebar .sidebar-item.active {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.equipment-testing-main,
+.equipment-testing-card-stack {
+    min-width: 0;
+}
+
+.equipment-testing-main .equipment-testing-grid {
+    display: block;
 }
 
 .equipment-test-card,
 .equipment-test-status-card {
     display: grid;
-    gap: 14px;
+    gap: 12px;
     border-radius: 14px;
     background: linear-gradient(180deg, var(--bg-card), var(--bg-primary));
     box-shadow: 0 10px 22px rgba(0, 0, 0, 0.06);
+}
+
+.equipment-test-card {
+    border: 1px solid var(--border-color);
+}
+
+.equipment-test-card:not([hidden]) {
+    animation: tools-card-enter 0.18s ease;
+}
+
+.equipment-test-mobile-toggle {
+    display: none;
+}
+
+.equipment-test-card-body {
+    display: block;
+}
+
+.equipment-test-card-group-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    margin-bottom: 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 10%, white);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.equipment-test-card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    color: var(--accent);
+}
+
+.equipment-test-card-title-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: var(--bg-inset);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.equipment-test-card-title-text {
+    line-height: 1.2;
+}
+
+.equipment-test-card-description {
+    margin-bottom: 16px;
+    line-height: 1.55;
+    max-width: 68ch;
 }
 
 .equipment-test-card-danger {
@@ -430,7 +544,7 @@
 .equipment-inline-stat {
     display: grid;
     gap: 6px;
-    padding: 12px;
+    padding: 10px 11px;
     border: 1px solid var(--border-color);
     border-radius: 10px;
     background: var(--bg-primary);
@@ -470,9 +584,9 @@
 .equipment-actuator-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 12px;
+    gap: 10px;
     align-items: center;
-    padding: 12px;
+    padding: 10px 11px;
     border-radius: 10px;
     border: 1px solid var(--border-color);
     background: var(--bg-primary);
@@ -492,7 +606,7 @@
 }
 
 .equipment-actuator-actions .btn {
-    min-width: 132px;
+    min-width: 106px;
 }
 
 .equipment-preset-grid {
@@ -552,9 +666,9 @@
 .equipment-servo-config-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(120px, 160px);
-    gap: 12px;
+    gap: 10px;
     align-items: center;
-    padding: 12px;
+    padding: 10px 11px;
     border: 1px solid var(--border-color);
     border-radius: 10px;
     background: var(--bg-primary);
@@ -695,7 +809,98 @@
         width: 100%;
     }
 
-    .equipment-testing-grid,
+    .equipment-testing-shell {
+        display: block;
+    }
+
+    .equipment-testing-sidebar {
+        display: none;
+    }
+
+    .equipment-testing-main .equipment-testing-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .equipment-test-card {
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .equipment-test-mobile-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 12px;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        scroll-margin-top: 76px;
+    }
+
+    .equipment-test-mobile-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: var(--bg-inset);
+        font-size: 1.05rem;
+        flex-shrink: 0;
+    }
+
+    .equipment-test-mobile-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .equipment-test-mobile-title {
+        color: var(--text-primary);
+        font-size: 0.95rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .equipment-test-mobile-description {
+        color: var(--text-secondary);
+        font-size: 0.79rem;
+        line-height: 1.35;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+    }
+
+    .equipment-test-mobile-chevron {
+        color: var(--text-tertiary);
+        font-size: 1rem;
+        transition: transform 0.18s ease;
+        flex-shrink: 0;
+    }
+
+    .equipment-test-mobile-toggle.is-active .equipment-test-mobile-chevron {
+        transform: rotate(180deg);
+    }
+
+    .equipment-test-card-body {
+        padding: 0 12px 12px;
+    }
+
+    .equipment-test-card-body > .equipment-test-card-group-badge,
+    .equipment-test-card-body > .equipment-test-card-title,
+    .equipment-test-card-body > .equipment-test-card-description {
+        display: none;
+    }
+
     .equipment-test-power-grid,
     .equipment-test-metrics,
     .equipment-test-sensors-grid,
@@ -708,8 +913,7 @@
     .equipment-servo-manual-row,
     .equipment-quick-actions,
     .equipment-inline-stats {
-        flex-direction: column;
-        align-items: stretch;
+        gap: 6px;
     }
 
     .equipment-actuator-row,
@@ -717,9 +921,56 @@
         grid-template-columns: 1fr;
     }
 
-    .equipment-actuator-row .btn,
-    .equipment-actuator-actions,
-    .equipment-servo-manual-row .btn {
+    .equipment-test-status-head,
+    .equipment-test-card-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .equipment-servo-manual-row {
+        flex-direction: row;
+        align-items: stretch;
+    }
+
+    .equipment-actuator-actions {
+        justify-content: stretch;
+    }
+
+    .equipment-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .equipment-actions .btn,
+    .equipment-actuator-actions .btn,
+    .equipment-servo-manual-row .btn,
+    .equipment-quick-actions .btn {
+        min-width: 0;
         width: 100%;
+        min-height: 38px;
+        padding: 8px 10px;
+        font-size: 0.92em;
+    }
+
+    .equipment-quick-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .equipment-inline-stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .equipment-test-summary-stats .equipment-inline-stat {
+        min-width: 0;
+    }
+
+    .equipment-test-card,
+    .equipment-test-status-card {
+        gap: 8px;
     }
 }
