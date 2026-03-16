@@ -47,6 +47,10 @@ struct ServoMove {
 };
 static ServoMove g_servoMove;
 
+static bool isDemoHardwareSuppressed() {
+    return g_settings.demoMode;
+}
+
 // =============================================================================
 // ПУБЛИЧНЫЙ ИНТЕРФЕЙС
 // =============================================================================
@@ -103,8 +107,11 @@ void initFractionator() {
 // =========================================================================
 
 void setWater(bool open) {
-    digitalWrite(PIN_VALVE_WATER, open ? HIGH : LOW);
     valveWater = open;
+    if (isDemoHardwareSuppressed()) {
+        return;
+    }
+    digitalWrite(PIN_VALVE_WATER, open ? HIGH : LOW);
     LOG_D("Valves: Water %s", open ? "OPEN" : "CLOSED");
 }
 
@@ -113,8 +120,11 @@ bool getWater() {
 }
 
 void setHeads(bool open) {
-    digitalWrite(PIN_VALVE_HEADS, open ? HIGH : LOW);
     valveHeads = open;
+    if (isDemoHardwareSuppressed()) {
+        return;
+    }
+    digitalWrite(PIN_VALVE_HEADS, open ? HIGH : LOW);
     LOG_D("Valves: Heads %s", open ? "OPEN" : "CLOSED");
 }
 
@@ -123,8 +133,11 @@ bool getHeads() {
 }
 
 void setUno(bool open) {
-    digitalWrite(PIN_VALVE_UNO, open ? HIGH : LOW);
     valveUno = open;
+    if (isDemoHardwareSuppressed()) {
+        return;
+    }
+    digitalWrite(PIN_VALVE_UNO, open ? HIGH : LOW);
     LOG_D("Valves: UNO %s", open ? "OPEN" : "CLOSED");
 }
 
@@ -133,8 +146,11 @@ bool getUno() {
 }
 
 void setStartStop(uint8_t duty) {
-    ledcWrite(LEDC_CHANNEL_VALVE, duty);
     valveStartStopDuty = duty;
+    if (isDemoHardwareSuppressed()) {
+        return;
+    }
+    ledcWrite(LEDC_CHANNEL_VALVE, duty);
     LOG_D("Valves: StartStop PWM=%d", duty);
 }
 
@@ -163,6 +179,13 @@ void setFraction(Fraction fraction, bool smooth) {
     uint8_t idx = static_cast<uint8_t>(fraction);
     if (idx >= FRACTION_COUNT) {
         LOG_E("Valves: Invalid fraction index %d", idx);
+        return;
+    }
+
+    if (isDemoHardwareSuppressed()) {
+        g_servoMove.active = false;
+        currentFraction = fraction;
+        currentAngle = fractionAngles[idx];
         return;
     }
 
@@ -201,6 +224,11 @@ void setFractionAngle(uint8_t angle) {
     if (!fractionatorEnabled) return;
 
     if (angle > 180) angle = 180;
+
+    if (isDemoHardwareSuppressed()) {
+        currentAngle = angle;
+        return;
+    }
 
     fractionatorServo.write(angle);
     currentAngle = angle;
@@ -271,6 +299,11 @@ void updateUno(UnoParams& params) {
 // ARCH-3 fix: \u043d\u0435\u0431\u043b\u043e\u043a\u0438\u0440\u0443\u044e\u0449\u0435\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0441\u0435\u0440\u0432\u043e\u043f\u0440\u0438\u0432\u043e\u0434\u0430 (\u0432\u044b\u0437\u044b\u0432\u0430\u0442\u044c \u0438\u0437 loop \u043a\u0430\u0436\u0434\u0443\u044e \u0438\u0442\u0435\u0440\u0430\u0446\u0438\u044e)
 void update() {
     if (!g_servoMove.active || !fractionatorEnabled) return;
+
+    if (isDemoHardwareSuppressed()) {
+        g_servoMove.active = false;
+        return;
+    }
 
     uint32_t elapsed = millis() - g_servoMove.startTime;
 

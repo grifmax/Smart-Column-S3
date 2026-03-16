@@ -9,6 +9,18 @@
 
 ---
 
+## [2.1.3] - 2026-03-16
+
+### Изменено
+- В demo-режиме полностью отключено физическое управление исполнительными устройствами: драйверы насоса, ТЭНа и клапанов теперь не подают реальные команды на железо при `demoMode=true`, сохраняя только логическое состояние для интерфейса и симуляции. (codex)
+- [src/main.cpp](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\main.cpp) больше не перетирает demo-состояние помпы данными физического драйвера, поэтому UI показывает смоделированную скорость без попыток реально крутить мотор. (codex)
+
+## [2.1.2] - 2026-03-16
+
+### Изменено
+- В [src/control/demo_simulator.cpp](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\control\demo_simulator.cpp) демо-режим перестал дёргать насос на каждом цикле с рандомным `setSpeed()`: модель теперь обновляет целевую скорость реже и сглаживает её. (codex)
+- Добавлена отдельная синхронизация демо-помпы после FSM через [src/main.cpp](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\main.cpp) и [src/control/demo_simulator.h](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\control\demo_simulator.h), чтобы в demo насос держал реальную смоделированную скорость, но не гудел волнами от частых команд. (codex)
+
 ## [2.1.1] - 2026-03-16
 
 ### Изменено

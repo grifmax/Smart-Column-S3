@@ -40,6 +40,10 @@ static constexpr uint8_t kPumpLedcResolutionBits = 8;
 
 static bool g_pumpPwmReady = false;
 
+static bool isDemoHardwareSuppressed() {
+    return g_settings.demoMode;
+}
+
 static void updateTotalsFromExactSteps() {
     totalSteps = static_cast<int32_t>(totalStepsExact);
     const double revolutions =
@@ -267,6 +271,15 @@ void start(float mlPerHour) {
         return;
     }
 
+    if (isDemoHardwareSuppressed()) {
+        running = true;
+        currentSpeedMlH = mlPerHour;
+        appliedSpeedMlH = mlPerHour;
+        targetStepsPerSec = 0.0f;
+        appliedStepsPerSec = 0.0f;
+        return;
+    }
+
     if (lockPump(portMAX_DELAY)) {
         ensurePumpPwmReady();
         digitalWrite(PIN_PUMP_DIR, HIGH);
@@ -282,6 +295,15 @@ void start(float mlPerHour) {
 }
 
 void stop() {
+    if (isDemoHardwareSuppressed()) {
+        running = false;
+        currentSpeedMlH = 0.0f;
+        appliedSpeedMlH = 0.0f;
+        targetStepsPerSec = 0.0f;
+        appliedStepsPerSec = 0.0f;
+        return;
+    }
+
     if (lockPump(portMAX_DELAY)) {
         syncMotionLocked(micros());
         running = false;
@@ -305,6 +327,14 @@ void setSpeed(float mlPerHour) {
 
     if (mlPerHour <= 0.0f) {
         stop();
+        return;
+    }
+
+    if (isDemoHardwareSuppressed()) {
+        currentSpeedMlH = mlPerHour;
+        appliedSpeedMlH = mlPerHour;
+        targetStepsPerSec = 0.0f;
+        appliedStepsPerSec = 0.0f;
         return;
     }
 

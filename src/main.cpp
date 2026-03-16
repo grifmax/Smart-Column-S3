@@ -381,6 +381,9 @@ void loop() {
   if (g_state.safetyOk && !g_state.paused) {
     FSM::update(g_state, g_settings);
   }
+  if (g_settings.demoMode) {
+    DemoSimulator::syncHardware(g_state, g_settings);
+  }
 
   // Интерфейсы
   if (now - g_lastDisplayUpdate >= INTERVAL_DISPLAY_UPDATE) {
@@ -406,9 +409,11 @@ void loop() {
   // Pump::update() теперь вызывается в отдельной высокоприоритетной задаче (src/drivers/pump.cpp)
   Heater::update();     // PERF-3 fix: плавный разгон ТЭНа (ramp) был реализован, но не вызывался
   Valves::update();     // ARCH-3 fix: неблокирующий движок сервопривода фракционника
-  g_state.pump.running = Pump::isRunning();
-  g_state.pump.speedMlPerHour = Pump::getSpeed();
-  g_state.pump.totalVolumeMl = Pump::getTotalVolume();
+  if (!g_settings.demoMode) {
+    g_state.pump.running = Pump::isRunning();
+    g_state.pump.speedMlPerHour = Pump::getSpeed();
+    g_state.pump.totalVolumeMl = Pump::getTotalVolume();
+  }
 
   Buttons::update();
 

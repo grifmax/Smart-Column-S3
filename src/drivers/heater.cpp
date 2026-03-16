@@ -18,6 +18,10 @@ static uint32_t rampStartTime = 0;
 static uint32_t rampDuration = 0;
 static bool ramping = false;
 
+static bool isDemoHardwareSuppressed() {
+    return g_settings.demoMode;
+}
+
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
 // Переменные для симистора
 static gptimer_handle_t triac_timer = NULL;
@@ -147,6 +151,9 @@ void setPower(uint8_t percent) {
 
     currentPower = percent;
     ramping = false;
+    if (isDemoHardwareSuppressed()) {
+        return;
+    }
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     // Для TRIAC: переводим проценты мощности (по умолчанию линейно) в угол
@@ -183,6 +190,12 @@ uint8_t getPower() {
 
 void emergencyStop() {
     LOG_I("Heater: EMERGENCY STOP!");
+    if (isDemoHardwareSuppressed()) {
+        currentPower = 0;
+        targetPower = 0;
+        ramping = false;
+        return;
+    }
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     triac_delay_us = TRIAC_MAX_ALPHA_US;
     gpio_set_level((gpio_num_t)PIN_TRIAC, 0);
@@ -247,7 +260,10 @@ void update() {
         uint8_t newPower = rampStartPower + (uint8_t)(progress * (float)(targetPower - rampStartPower));
         // Напрямую обновляем, не вызывая setPower, чтобы не сбросить ramping=false
         currentPower = newPower;
-        
+        if (isDemoHardwareSuppressed()) {
+            return;
+        }
+
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
         triac_delay_us = map(newPower, 0, 100, TRIAC_MAX_ALPHA_US, TRIAC_MIN_ALPHA_US);
 #else
