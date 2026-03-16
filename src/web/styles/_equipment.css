@@ -372,6 +372,37 @@
     min-width: 0;
 }
 
+.equipment-pane-workbench-main .cards,
+.equipment-pane-workbench-stack > .cards {
+    display: block;
+}
+
+.equipment-pane-card .equipment-grid {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 10px;
+}
+
+.equipment-pane-card .equipment-actions {
+    margin-top: 14px;
+}
+
+.equipment-pane-card .equipment-actions .btn {
+    min-width: 0;
+}
+
+.equipment-pane-card .equipment-inline-row {
+    align-items: stretch;
+}
+
+.equipment-pane-card .equipment-inline-row input {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.equipment-pane-card .equipment-inline-row .btn {
+    flex: 0 0 auto;
+}
+
 .equipment-testing-main .equipment-testing-grid {
     display: block;
 }
@@ -811,6 +842,25 @@
 
     .equipment-testing-shell {
         display: block;
+    }
+
+    .equipment-pane-workbench-main .cards {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .equipment-pane-card .equipment-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .equipment-pane-card .equipment-inline-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .equipment-pane-card .equipment-inline-row .btn {
+        width: 100%;
     }
 
     .equipment-testing-sidebar {

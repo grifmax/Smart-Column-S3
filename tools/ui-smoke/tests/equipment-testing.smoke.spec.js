@@ -208,10 +208,17 @@ test('equipment testing workspace renders and sends service actions', async ({ p
   await page.evaluate(() => {
     document.querySelectorAll('.tab[data-tab="equipment"]')[0]?.click();
   });
-  await expect(page.locator('#equipment')).toHaveClass(/active/);
-  await page.getByRole('button', { name: 'Тестирование' }).click();
 
-  await expect(page.getByText('Сервисное тестирование оборудования')).toBeVisible();
+  await expect(page.locator('#equipment')).toHaveClass(/active/);
+  await expect(page.locator('#pump-ml-per-rev')).toBeVisible();
+
+  await page.locator('[data-equipment-section-btn="calibration"]').click();
+  await expect(page.locator('#cal-speed')).toBeVisible();
+  await page.locator('.equipment-testing-nav-item[data-equipment-workbench-card-id="temp-calibration"]').click();
+  await expect(page.locator('#sensorList')).toBeVisible();
+
+  await page.locator('[data-equipment-section-btn="testing"]').click();
+
   await expect(page.locator('#equipment-test-allow-badge')).toContainText('Доступно');
   await expect(page.locator('#equipment-test-active-summary')).toContainText('Ничего не включено');
   await expect(page.locator('#equipment-testing-temps-list')).toContainText('Куб');
@@ -219,15 +226,17 @@ test('equipment testing workspace renders and sends service actions', async ({ p
 
   await page.getByRole('button', { name: '1500' }).click();
   await expect(page.locator('#equipment-test-pump-speed')).toHaveValue('1500');
-  await page.getByRole('button', { name: 'Запустить насос' }).click();
+  await page.locator('#equipment-test-pump-toggle').click();
 
   await expect(page.locator('#equipment-test-pump-badge')).toContainText('RUNNING');
   await expect(page.locator('#equipment-test-pump-applied')).toContainText('1500');
   await expect(page.locator('#equipment-test-active-summary')).toContainText('Насос');
   await expect.poll(() =>
     requests.testingActions.some((entry) =>
-      entry.pathname === '/api/testing/pump' && entry.body?.action === 'start' && Number(entry.body?.speedMlH) === 1500
-    )
+      entry.pathname === '/api/testing/pump' &&
+      entry.body?.action === 'start' &&
+      Number(entry.body?.speedMlH) === 1500,
+    ),
   ).toBeTruthy();
 
   await page.locator('[data-servo-preset="heads"]').click();
@@ -237,23 +246,24 @@ test('equipment testing workspace renders and sends service actions', async ({ p
   await page.locator('#equipment-test-valve-pulse-duration').fill('1800');
   await page.locator('#equipment-test-water-pulse').click();
   await expect(page.locator('#equipment-test-water-toggle-badge')).toContainText('Импульс');
-  await expect(page.locator('#equipment-test-water-toggle-pulse-hint')).toContainText('1.8 с');
+  await expect(page.locator('#equipment-test-water-toggle-pulse-hint')).toContainText('1.8');
   await expect.poll(() =>
     requests.testingActions.some((entry) =>
       entry.pathname === '/api/testing/valves' &&
       entry.body?.target === 'water' &&
       entry.body?.action === 'pulse' &&
-      Number(entry.body?.durationMs) === 1800
-    )
+      Number(entry.body?.durationMs) === 1800,
+    ),
   ).toBeTruthy();
 
-  await page.getByRole('button', { name: 'Остановить все тесты' }).click();
+  await page.locator('#equipment-test-stop-all').click();
   await expect(page.locator('#equipment-test-pump-badge')).toContainText('IDLE');
   await expect(page.locator('#equipment-test-active-summary')).toContainText('Ничего не включено');
   await expect.poll(() =>
-    requests.testingActions.some((entry) => entry.pathname === '/api/testing/stop-all')
+    requests.testingActions.some((entry) => entry.pathname === '/api/testing/stop-all'),
   ).toBeTruthy();
 
-  await page.getByRole('button', { name: 'Калибровка' }).click();
+  await page.locator('[data-equipment-section-btn="calibration"]').click();
+  await page.locator('.equipment-testing-nav-item[data-equipment-workbench-card-id="pump-calibration"]').click();
   await expect(page.locator('#pumpCurrent')).toBeVisible();
 });

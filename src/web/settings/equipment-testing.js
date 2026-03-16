@@ -2,6 +2,8 @@ import { addLog } from '../core/logs.js';
 import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const STORAGE_KEY = 'equipment.activeSection';
+const PARAMETERS_CARD_STORAGE_KEY = 'equipment.parameters.activeCard';
+const CALIBRATION_CARD_STORAGE_KEY = 'equipment.calibration.activeCard';
 const TESTING_CARD_STORAGE_KEY = 'equipment.testing.activeCard';
 const TESTING_STATUS_URL = '/api/testing/status';
 const TESTING_POLL_MS = 1500;
@@ -89,8 +91,71 @@ const TESTING_CARD_DEFS = [
     },
 ];
 
+const PARAMETERS_GROUPS = [
+    { id: 'core', label: 'Базовые узлы' },
+    { id: 'process', label: 'Куб и процесс' },
+];
+
+const PARAMETERS_CARD_DEFS = [
+    {
+        id: 'pump-settings',
+        selector: '#pump-ml-per-rev',
+        group: 'core',
+        icon: '🧪',
+        title: 'Насос и дозирование',
+        shortTitle: 'Насос',
+        description: 'Шаги, объём на оборот и базовые параметры дозирования для стабильной подачи.',
+    },
+    {
+        id: 'cube-settings',
+        selector: '#heater-power-w',
+        group: 'process',
+        icon: '🥃',
+        title: 'Куб, ТЭН и колонна',
+        shortTitle: 'Куб и ТЭН',
+        description: 'Мощность нагрева, геометрия колонны и рабочий объём куба в одном компактном блоке.',
+    },
+    {
+        id: 'cooling-settings',
+        selector: '#water-autostart-cube-temp',
+        group: 'process',
+        icon: '💧',
+        title: 'Охлаждение и автостарт',
+        shortTitle: 'Охлаждение',
+        description: 'Порог автоматического запуска воды и связанные технологические настройки.',
+    },
+];
+
+const CALIBRATION_GROUPS = [
+    { id: 'actuators', label: 'Исполнительные узлы' },
+    { id: 'sensors', label: 'Датчики' },
+];
+
+const CALIBRATION_CARD_DEFS = [
+    {
+        id: 'pump-calibration',
+        selector: '#cal-speed',
+        group: 'actuators',
+        icon: '🧪',
+        title: 'Калибровка насоса',
+        shortTitle: 'Насос',
+        description: 'Налив по таре, расчёт времени и обновление коэффициента подачи без лишних переходов.',
+    },
+    {
+        id: 'temp-calibration',
+        selector: '#sensorList',
+        group: 'sensors',
+        icon: '🌡️',
+        title: 'Калибровка термометров',
+        shortTitle: 'Термометры',
+        description: 'Сканирование датчиков, ручная коррекция и быстрый сервисный доступ к каждому термометру.',
+    },
+];
+
 const state = {
     activeSection: 'parameters',
+    activeParameterCard: 'pump-settings',
+    activeCalibrationCard: 'pump-calibration',
     activeTestingCard: 'pump',
     pollingHandle: null,
     lastStatus: null,
@@ -103,6 +168,8 @@ const state = {
         success: false
     }
 };
+
+const paneWorkbenchControllers = new Map();
 
 const TESTING_TEMPLATE = `
     <div class="equipment-testing-stack">
@@ -462,6 +529,10 @@ function getTestingGroupLabel(groupId) {
     return TESTING_GROUPS.find((group) => group.id === groupId)?.label ?? 'Тестирование';
 }
 
+function getWorkbenchGroupLabel(groups, groupId, fallback = 'Раздел оборудования') {
+    return groups.find((group) => group.id === groupId)?.label ?? fallback;
+}
+
 function buildTestingMobileToggle(meta) {
     const button = createElement('button', 'equipment-test-mobile-toggle');
     button.type = 'button';
@@ -480,6 +551,10 @@ function buildTestingMobileToggle(meta) {
 
     button.append(icon, copy, chevron);
     return button;
+}
+
+function buildWorkbenchMobileToggle(meta) {
+    return buildTestingMobileToggle(meta);
 }
 
 function buildTestingDesktopNav(cards) {
@@ -508,6 +583,41 @@ function buildTestingDesktopNav(cards) {
             const button = createElement('button', 'sidebar-item equipment-testing-nav-item');
             button.type = 'button';
             button.dataset.testingCardId = card.meta.id;
+            button.append(
+                createElement('span', 'icon', card.meta.icon),
+                createElement('span', 'label', card.meta.shortTitle),
+            );
+            nav.appendChild(button);
+            buttonsById.set(card.meta.id, button);
+        }
+    }
+
+    return { nav, buttonsById };
+}
+
+function buildWorkbenchDesktopNav(cards, groups, title, subtitle) {
+    const nav = createElement('aside', 'equipment-testing-sidebar');
+    nav.setAttribute('aria-label', `${title}: навигация по карточкам`);
+
+    const navHeader = createElement('div', 'equipment-testing-sidebar-header');
+    navHeader.append(
+        createElement('div', 'equipment-testing-sidebar-title', title),
+        createElement('div', 'equipment-testing-sidebar-subtitle', subtitle),
+    );
+    nav.appendChild(navHeader);
+
+    const buttonsById = new Map();
+
+    for (const group of groups) {
+        const groupCards = cards.filter((card) => card.meta.group === group.id);
+        if (!groupCards.length) continue;
+
+        nav.appendChild(createElement('div', 'sidebar-section-title', group.label));
+
+        for (const card of groupCards) {
+            const button = createElement('button', 'sidebar-item equipment-testing-nav-item');
+            button.type = 'button';
+            button.dataset.equipmentWorkbenchCardId = card.meta.id;
             button.append(
                 createElement('span', 'icon', card.meta.icon),
                 createElement('span', 'label', card.meta.shortTitle),
@@ -567,6 +677,58 @@ function enhanceTestingCard(card, meta) {
     return { card, meta, body, toggle };
 }
 
+function enhanceWorkbenchCard(card, meta, groups) {
+    if (card.dataset.equipmentWorkbenchEnhanced === '1') {
+        return {
+            card,
+            meta,
+            body: card.querySelector('.equipment-test-card-body'),
+            toggle: card.querySelector('.equipment-test-mobile-toggle'),
+        };
+    }
+
+    card.dataset.equipmentWorkbenchEnhanced = '1';
+    card.dataset.equipmentWorkbenchCardId = meta.id;
+    card.dataset.equipmentWorkbenchGroup = meta.group;
+    card.classList.add('equipment-test-card');
+
+    const children = [...card.childNodes];
+    const body = createElement('div', 'equipment-test-card-body');
+    for (const child of children) {
+        body.appendChild(child);
+    }
+
+    const titleEl = body.querySelector('h2');
+    if (titleEl) {
+        titleEl.classList.add('equipment-test-card-title');
+        titleEl.textContent = '';
+
+        const titleIcon = createElement('span', 'equipment-test-card-title-icon', meta.icon);
+        titleIcon.setAttribute('aria-hidden', 'true');
+        const titleText = createElement('span', 'equipment-test-card-title-text', meta.title);
+        titleEl.append(titleIcon, titleText);
+
+        const groupBadge = createElement(
+            'div',
+            'equipment-test-card-group-badge',
+            getWorkbenchGroupLabel(groups, meta.group),
+        );
+        titleEl.before(groupBadge);
+    }
+
+    const descriptionEl = body.querySelector('.equipment-subtitle');
+    if (descriptionEl) {
+        descriptionEl.textContent = meta.description;
+        descriptionEl.classList.add('equipment-test-card-description');
+    }
+
+    const toggle = buildWorkbenchMobileToggle(meta);
+    card.textContent = '';
+    card.append(toggle, body);
+
+    return { card, meta, body, toggle };
+}
+
 function resolveTestingCards(cards) {
     const resolved = [];
 
@@ -577,6 +739,249 @@ function resolveTestingCards(cards) {
     }
 
     return resolved;
+}
+
+function resolveWorkbenchCards(cards, defs, groups) {
+    const resolved = [];
+
+    for (const meta of defs) {
+        const card = cards.find((candidate) => candidate.querySelector(meta.selector));
+        if (!card) continue;
+        resolved.push(enhanceWorkbenchCard(card, meta, groups));
+    }
+
+    return resolved;
+}
+
+function buildEquipmentCard({ className = '', title, subtitle, actionsHtml = '' }) {
+    const card = document.createElement('div');
+    card.className = `card equipment-card ${className}`.trim();
+    card.innerHTML = `
+        <h2>${title}</h2>
+        <p class="equipment-subtitle">${subtitle}</p>
+        <div class="equipment-grid"></div>
+        ${actionsHtml}
+    `;
+    return card;
+}
+
+function findGroupByInputId(groups, inputId) {
+    return groups.find((group) => group.querySelector(`#${inputId}`)) ?? null;
+}
+
+function appendUniqueGroups(target, groups, inputIds) {
+    const used = new Set();
+    for (const inputId of inputIds) {
+        const group = findGroupByInputId(groups, inputId);
+        if (!group || used.has(group)) continue;
+        used.add(group);
+        target.appendChild(group);
+    }
+}
+
+function ensureParameterWorkbenchCards() {
+    const cardsHost = qs('[data-equipment-section-pane="parameters"] .cards');
+    const sourceCard = qs('.equipment-card-params', cardsHost);
+    if (!cardsHost || !sourceCard || cardsHost.dataset.parametersPrepared === '1') return;
+
+    const sourceGrid = qs('.equipment-grid', sourceCard);
+    if (!sourceGrid) return;
+
+    cardsHost.dataset.parametersPrepared = '1';
+
+    const formGroups = [...sourceGrid.querySelectorAll('.form-group')];
+
+    const pumpCard = buildEquipmentCard({
+        className: 'equipment-pane-card equipment-pane-card-parameters',
+        title: 'Насос и дозирование',
+        subtitle: 'Коэффициенты подачи и шаги на оборот, которые влияют на точность насоса во всех режимах.',
+        actionsHtml: `
+            <div class="controls equipment-actions">
+                <button class="btn btn-primary" type="button" onclick="saveEquipment()">Сохранить параметры</button>
+            </div>
+        `,
+    });
+    appendUniqueGroups(qs('.equipment-grid', pumpCard), formGroups, [
+        'pump-ml-per-rev',
+        'pump-steps-per-rev',
+    ]);
+
+    const cubeCard = buildEquipmentCard({
+        className: 'equipment-pane-card equipment-pane-card-parameters',
+        title: 'Куб, ТЭН и колонна',
+        subtitle: 'Габариты, мощность и рабочий объём, от которых зависит поведение нагрева и ограничения процесса.',
+        actionsHtml: `
+            <div class="controls equipment-actions">
+                <button class="btn btn-primary" type="button" onclick="saveEquipment()">Сохранить параметры</button>
+            </div>
+        `,
+    });
+    appendUniqueGroups(qs('.equipment-grid', cubeCard), formGroups, [
+        'heater-power-w',
+        'column-height',
+        'cube-volume-l',
+        'cube-extender-add-l',
+    ]);
+
+    const coolingCard = buildEquipmentCard({
+        className: 'equipment-pane-card equipment-pane-card-parameters',
+        title: 'Охлаждение и автостарт',
+        subtitle: 'Порог автоматического запуска воды и сервисные настройки, которые оператор обычно ищет перед запуском.',
+        actionsHtml: `
+            <div class="controls equipment-actions">
+                <button class="btn btn-primary" type="button" onclick="saveEquipment()">Сохранить параметры</button>
+            </div>
+        `,
+    });
+    appendUniqueGroups(qs('.equipment-grid', coolingCard), formGroups, [
+        'water-autostart-cube-temp',
+    ]);
+
+    cardsHost.innerHTML = '';
+    cardsHost.append(pumpCard, cubeCard, coolingCard);
+}
+
+function readSavedWorkbenchCard(storageKey, defs, fallbackId) {
+    try {
+        const stored = localStorage.getItem(storageKey);
+        if (defs.some((card) => card.id === stored)) {
+            return stored;
+        }
+    } catch {
+        // ignore storage failures
+    }
+    return fallbackId;
+}
+
+function saveWorkbenchCard(storageKey, cardId) {
+    try {
+        localStorage.setItem(storageKey, cardId);
+    } catch {
+        // ignore storage failures
+    }
+}
+
+function initEquipmentPaneWorkbench({
+    sectionId,
+    paneSelector,
+    storageKey,
+    groups,
+    defs,
+    title,
+    subtitle,
+    stateKey,
+}) {
+    const pane = qs(paneSelector);
+    const cardsHost = qs('.cards', pane);
+    if (!pane || !cardsHost || cardsHost.dataset.equipmentWorkbench === '1') return;
+
+    const cards = [...cardsHost.querySelectorAll('.equipment-card')];
+    const resolvedCards = resolveWorkbenchCards(cards, defs, groups);
+    if (!resolvedCards.length) return;
+
+    cardsHost.dataset.equipmentWorkbench = '1';
+
+    const shell = createElement('div', 'equipment-testing-shell equipment-pane-workbench-shell');
+    const main = createElement('div', 'equipment-testing-main equipment-pane-workbench-main');
+    const desktopWrapper = createElement('div', 'equipment-testing-card-stack equipment-pane-workbench-stack');
+    const { nav, buttonsById } = buildWorkbenchDesktopNav(resolvedCards, groups, title, subtitle);
+
+    cardsHost.parentNode.insertBefore(shell, cardsHost);
+    shell.append(nav, main);
+    main.appendChild(desktopWrapper);
+    desktopWrapper.appendChild(cardsHost);
+
+    const mediaQuery = window.matchMedia(TESTING_LAYOUT_MEDIA);
+    state[stateKey] = readSavedWorkbenchCard(storageKey, defs, defs[0]?.id || null);
+
+    function scrollToggleIntoView(cardId) {
+        const card = resolvedCards.find((entry) => entry.meta.id === cardId);
+        if (!card) return;
+        requestAnimationFrame(() => {
+            card.toggle.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+    }
+
+    function syncLayout() {
+        const isMobile = mediaQuery.matches;
+        pane.dataset.equipmentWorkbenchLayout = isMobile ? 'mobile' : 'desktop';
+        nav.hidden = isMobile;
+
+        if (!isMobile && !state[stateKey]) {
+            state[stateKey] = resolvedCards[0]?.meta.id || null;
+        }
+
+        for (const card of resolvedCards) {
+            const isActive = card.meta.id === state[stateKey];
+            card.card.classList.toggle('is-active', isActive);
+            card.toggle.classList.toggle('is-active', isActive);
+            card.toggle.setAttribute('aria-expanded', String(isActive));
+            card.body.hidden = isMobile ? !isActive : false;
+            card.card.hidden = isMobile ? false : !isActive;
+
+            const navButton = buttonsById.get(card.meta.id);
+            if (navButton) {
+                navButton.classList.toggle('active', isActive);
+                navButton.setAttribute('aria-current', isActive ? 'true' : 'false');
+            }
+        }
+    }
+
+    function setActiveCard(cardId) {
+        if (cardId !== null && !resolvedCards.some((entry) => entry.meta.id === cardId)) {
+            return;
+        }
+
+        state[stateKey] = cardId;
+        if (cardId) {
+            saveWorkbenchCard(storageKey, cardId);
+        }
+        syncLayout();
+    }
+
+    paneWorkbenchControllers.set(sectionId, {
+        setActiveCard,
+        firstCardId: defs[0]?.id || null,
+    });
+
+    for (const card of resolvedCards) {
+        card.toggle.addEventListener('click', () => {
+            const isMobile = mediaQuery.matches;
+            const isSame = state[stateKey] === card.meta.id;
+
+            if (isMobile && isSame) {
+                setActiveCard(null);
+                return;
+            }
+
+            setActiveCard(card.meta.id);
+            if (isMobile) {
+                scrollToggleIntoView(card.meta.id);
+            }
+        });
+    }
+
+    for (const [cardId, button] of buttonsById.entries()) {
+        button.addEventListener('click', () => {
+            setActiveCard(cardId);
+            main.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+    }
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+        mediaQuery.addEventListener('change', syncLayout);
+    } else if (typeof mediaQuery.addListener === 'function') {
+        mediaQuery.addListener(syncLayout);
+    }
+
+    syncLayout();
+}
+
+function setEquipmentPaneCard(sectionId, cardId) {
+    const controller = paneWorkbenchControllers.get(sectionId);
+    if (controller) {
+        controller.setActiveCard(cardId ?? controller.firstCardId);
+    }
 }
 
 function ensureEquipmentShell() {
@@ -716,6 +1121,33 @@ function initEquipmentTestingWorkbench() {
     }
 
     syncTestingLayout();
+}
+
+function initEquipmentParametersWorkbench() {
+    ensureParameterWorkbenchCards();
+    initEquipmentPaneWorkbench({
+        sectionId: 'parameters',
+        paneSelector: '[data-equipment-section-pane="parameters"]',
+        storageKey: PARAMETERS_CARD_STORAGE_KEY,
+        groups: PARAMETERS_GROUPS,
+        defs: PARAMETERS_CARD_DEFS,
+        title: 'Параметры',
+        subtitle: 'Открыт один компактный блок настроек, остальные доступны через меню без длинной простыни форм.',
+        stateKey: 'activeParameterCard',
+    });
+}
+
+function initEquipmentCalibrationWorkbench() {
+    initEquipmentPaneWorkbench({
+        sectionId: 'calibration',
+        paneSelector: '[data-equipment-section-pane="calibration"]',
+        storageKey: CALIBRATION_CARD_STORAGE_KEY,
+        groups: CALIBRATION_GROUPS,
+        defs: CALIBRATION_CARD_DEFS,
+        title: 'Калибровка',
+        subtitle: 'Открыт один сервисный мастер, остальные остаются под рукой через компактное меню.',
+        stateKey: 'activeCalibrationCard',
+    });
 }
 
 function ensureHeaterConfirmModal() {
@@ -1342,9 +1774,11 @@ function bindTestingActions() {
     });
     byId('equipment-test-temps-open-calibration')?.addEventListener('click', () => {
         setEquipmentSection('calibration');
+        setEquipmentPaneCard('calibration', 'temp-calibration');
     });
     byId('equipment-test-pump-open-calibration')?.addEventListener('click', () => {
         setEquipmentSection('calibration');
+        setEquipmentPaneCard('calibration', 'pump-calibration');
     });
 
     byId('equipment-test-pressure-start')?.addEventListener('click', () => {
@@ -1361,6 +1795,8 @@ export function initEquipmentTestingUi() {
     if (!root) return;
 
     ensureEquipmentShell();
+    initEquipmentParametersWorkbench();
+    initEquipmentCalibrationWorkbench();
     initEquipmentTestingWorkbench();
     ensureHeaterConfirmModal();
     initEquipmentNumberSteppers(root);
@@ -1368,5 +1804,15 @@ export function initEquipmentTestingUi() {
     bindTestingActions();
     ensurePolling();
     setEquipmentSection(readSavedSection());
+    state.activeParameterCard = readSavedWorkbenchCard(
+        PARAMETERS_CARD_STORAGE_KEY,
+        PARAMETERS_CARD_DEFS,
+        PARAMETERS_CARD_DEFS[0]?.id || 'pump-settings',
+    );
+    state.activeCalibrationCard = readSavedWorkbenchCard(
+        CALIBRATION_CARD_STORAGE_KEY,
+        CALIBRATION_CARD_DEFS,
+        CALIBRATION_CARD_DEFS[0]?.id || 'pump-calibration',
+    );
     state.activeTestingCard = readSavedTestingCard();
 }

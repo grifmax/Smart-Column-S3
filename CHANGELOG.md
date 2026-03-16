@@ -9,6 +9,14 @@
 
 ---
 
+## [2.1.8] - 2026-03-17
+
+### Изменено
+- Раздел `Оборудование` доведён до единого компактного паттерна: `Параметры` и `Калибровка` теперь, как и `Тестирование`, открываются через workbench-слой с sidebar-навигацией на desktop и мобильными аккордеонами, без длинных растянутых полотен из карточек. (codex)
+- Во фронтенде [src/web/settings/equipment-testing.js](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\settings\equipment-testing.js) `Параметры` рационально разбиты на группы `Насос и дозирование`, `Куб, ТЭН и колонна`, `Охлаждение и автостарт`, а `Калибровка` получила компактное переключение между насосом и термометрами с сохранением активной карточки. (codex)
+- В стилях [src/web/styles/_equipment.css](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\styles\_equipment.css) добавлена общая плотная компоновка для всех внутренних карточек `Оборудования`: меньше разрывов, уже mobile-формы и одинаковое поведение action-рядов во всех трёх подразделах. (codex)
+- Smoke-сценарий [tools/ui-smoke/tests/equipment-testing.smoke.spec.js](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\tools\ui-smoke\tests\equipment-testing.smoke.spec.js) расширен и теперь проверяет не только сервисные тесты, но и новую навигацию `Параметры/Калибровка`, чтобы единый workbench не деградировал незаметно. (codex)
+
 ## [2.1.7] - 2026-03-17
 
 ### Изменено
