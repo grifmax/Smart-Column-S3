@@ -9,6 +9,12 @@
 
 ---
 
+## [2.1.1] - 2026-03-16
+
+### Изменено
+- Исправлен скрипт [scripts/build_web.py](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\scripts\build_web.py): из логов убраны Unicode-символы, из-за которых `uploadfs` падал в Windows-консоли и не доливал LittleFS на устройство. (codex)
+- После фикса LittleFS перезалита на контроллер, так что Web UI на устройстве теперь соответствует версии без Telegram-настроек. (codex)
+
 ## [2.1.0] - 2026-03-16
 
 ### Изменено
