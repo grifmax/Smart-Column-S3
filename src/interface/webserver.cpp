@@ -67,6 +67,36 @@ struct PumpCalibrationSession {
 
 static PumpCalibrationSession g_pumpCalSession;
 
+struct EquipmentTestingAction {
+  uint32_t timestampMs = 0;
+  char tone[12] = "";
+  char title[72] = "";
+  char detail[160] = "";
+};
+
+static constexpr uint8_t EQUIPMENT_TESTING_ACTION_CAPACITY = 10;
+static EquipmentTestingAction
+    g_equipmentTestingActions[EQUIPMENT_TESTING_ACTION_CAPACITY];
+static uint8_t g_equipmentTestingActionCount = 0;
+static uint8_t g_equipmentTestingActionNext = 0;
+
+static void recordEquipmentTestingAction(const char *tone, const char *title,
+                                         const char *detail) {
+  EquipmentTestingAction &entry =
+      g_equipmentTestingActions[g_equipmentTestingActionNext];
+  entry.timestampMs = millis();
+  strlcpy(entry.tone, tone ? tone : "info", sizeof(entry.tone));
+  strlcpy(entry.title, title ? title : "Сервисное действие",
+          sizeof(entry.title));
+  strlcpy(entry.detail, detail ? detail : "", sizeof(entry.detail));
+
+  g_equipmentTestingActionNext =
+      (g_equipmentTestingActionNext + 1) % EQUIPMENT_TESTING_ACTION_CAPACITY;
+  if (g_equipmentTestingActionCount < EQUIPMENT_TESTING_ACTION_CAPACITY) {
+    g_equipmentTestingActionCount++;
+  }
+}
+
 static bool hasConfiguredWiFi() {
   return WiFiProfiles::hasConfiguredProfiles(g_settings.wifi);
 }
@@ -429,6 +459,21 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   power["energy"] = g_state.power.energy;
   power["frequency"] = g_state.power.frequency;
   power["powerFactor"] = g_state.power.powerFactor;
+
+  JsonArray recentActions = doc["recentActions"].to<JsonArray>();
+  for (uint8_t i = 0; i < g_equipmentTestingActionCount; ++i) {
+    const int16_t rawIndex =
+        static_cast<int16_t>(g_equipmentTestingActionNext) - 1 - i;
+    const uint8_t index =
+        static_cast<uint8_t>((rawIndex + EQUIPMENT_TESTING_ACTION_CAPACITY) %
+                             EQUIPMENT_TESTING_ACTION_CAPACITY);
+    const EquipmentTestingAction &entry = g_equipmentTestingActions[index];
+    JsonObject item = recentActions.add<JsonObject>();
+    item["timestampMs"] = entry.timestampMs;
+    item["tone"] = entry.tone;
+    item["title"] = entry.title;
+    item["detail"] = entry.detail;
+  }
 }
 
 static bool parseFractionPresetToken(const String &token, Fraction &fraction) {
@@ -3090,18 +3135,21 @@ void init() {
     request->send(200, "application/json", json);
   });
 
-  server.on("/api/testing/stop-all", HTTP_POST,
-            [](AsyncWebServerRequest *request) {
-              Pump::stop();
-              Heater::setPower(0);
-              Valves::closeAll();
-              if (Valves::isFractionatorEnabled()) {
-                Valves::setFractionAngle(Valves::getFractionAngle());
-              }
-              Logger::logf(0, "Equipment testing: all manual tests stopped");
-              request->send(200, "application/json",
-                            "{\"success\":true,\"message\":\"All tests stopped\"}");
-            });
+    server.on("/api/testing/stop-all", HTTP_POST,
+              [](AsyncWebServerRequest *request) {
+                Pump::stop();
+                Heater::setPower(0);
+                Valves::closeAll();
+                if (Valves::isFractionatorEnabled()) {
+                  Valves::setFractionAngle(Valves::getFractionAngle());
+                }
+                recordEquipmentTestingAction(
+                    "warning", "Остановить все тесты",
+                    "Все ручные сервисные воздействия остановлены одной командой.");
+                Logger::logf(0, "Equipment testing: all manual tests stopped");
+                request->send(200, "application/json",
+                              "{\"success\":true,\"message\":\"All tests stopped\"}");
+              });
 
   server.on(
       "/api/testing/pump", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
@@ -3143,14 +3191,19 @@ void init() {
                 400, "application/json",
                 "{\"success\":false,\"message\":\"Speed must be greater than zero\"}");
             return;
-          }
+            }
 
-          Pump::start(speed);
-          Logger::logf(0, "Equipment testing: pump started at %.1f ml/h", speed);
-        } else {
-          Pump::stop();
-          Logger::logf(0, "Equipment testing: pump stopped");
-        }
+            Pump::start(speed);
+            char detail[128];
+            snprintf(detail, sizeof(detail), "Насос запущен вручную со скоростью %.1f мл/ч.", speed);
+            recordEquipmentTestingAction("success", "Тест насоса", detail);
+            Logger::logf(0, "Equipment testing: pump started at %.1f ml/h", speed);
+          } else {
+            Pump::stop();
+            recordEquipmentTestingAction("warning", "Тест насоса",
+                                         "Насос остановлен из сервисного экрана.");
+            Logger::logf(0, "Equipment testing: pump stopped");
+          }
 
         JsonDocument resp;
         fillEquipmentTestingStatus(resp);
@@ -3201,15 +3254,21 @@ void init() {
             return;
           }
 
-          int power = doc["powerPercent"] | 0;
-          if (power < 1) power = 1;
-          if (power > 100) power = 100;
-          Heater::setPower((uint8_t)power);
-          Logger::logf(0, "Equipment testing: heater started at %d%%", power);
-        } else {
-          Heater::setPower(0);
-          Logger::logf(0, "Equipment testing: heater stopped");
-        }
+            int power = doc["powerPercent"] | 0;
+            if (power < 1) power = 1;
+            if (power > 100) power = 100;
+            Heater::setPower((uint8_t)power);
+            char detail[128];
+            snprintf(detail, sizeof(detail),
+                     "ТЭН включен вручную на %d%% мощности после подтверждения.", power);
+            recordEquipmentTestingAction("danger", "Тест ТЭНа", detail);
+            Logger::logf(0, "Equipment testing: heater started at %d%%", power);
+          } else {
+            Heater::setPower(0);
+            recordEquipmentTestingAction("warning", "Тест ТЭНа",
+                                         "ТЭН выключен из сервисного экрана.");
+            Logger::logf(0, "Equipment testing: heater stopped");
+          }
 
         JsonDocument resp;
         fillEquipmentTestingStatus(resp);
@@ -3249,45 +3308,70 @@ void init() {
         const bool open = doc["open"] | false;
         uint32_t durationMs = doc["durationMs"] | 0;
 
-        if (target == "all") {
-          Valves::closeAll();
-          Logger::logf(0, "Equipment testing: all valves closed");
-        } else if (target == "water") {
-          if (action == "pulse") {
-            if (durationMs < 100) durationMs = 100;
-            if (durationMs > 10000) durationMs = 10000;
-            Valves::pulse(Valves::ValveId::WATER, durationMs);
-            Logger::logf(0, "Equipment testing: water valve pulse %lu ms",
-                         (unsigned long)durationMs);
-          } else {
-            Valves::setWater(open);
-            Logger::logf(0, "Equipment testing: water valve %s",
-                         open ? "opened" : "closed");
-          }
-        } else if (target == "heads") {
-          if (action == "pulse") {
-            if (durationMs < 100) durationMs = 100;
-            if (durationMs > 10000) durationMs = 10000;
-            Valves::pulse(Valves::ValveId::HEADS, durationMs);
-            Logger::logf(0, "Equipment testing: heads valve pulse %lu ms",
-                         (unsigned long)durationMs);
-          } else {
-            Valves::setHeads(open);
-            Logger::logf(0, "Equipment testing: heads valve %s",
-                         open ? "opened" : "closed");
-          }
-        } else if (target == "uno") {
-          if (action == "pulse") {
-            if (durationMs < 100) durationMs = 100;
-            if (durationMs > 10000) durationMs = 10000;
-            Valves::pulse(Valves::ValveId::UNO, durationMs);
-            Logger::logf(0, "Equipment testing: UNO valve pulse %lu ms",
-                         (unsigned long)durationMs);
-          } else {
-            Valves::setUno(open);
-            Logger::logf(0, "Equipment testing: UNO valve %s",
-                         open ? "opened" : "closed");
-          }
+          if (target == "all") {
+            Valves::closeAll();
+            recordEquipmentTestingAction("warning", "Клапаны",
+                                         "Все клапаны закрыты одной сервисной командой.");
+            Logger::logf(0, "Equipment testing: all valves closed");
+          } else if (target == "water") {
+            if (action == "pulse") {
+              if (durationMs < 100) durationMs = 100;
+              if (durationMs > 10000) durationMs = 10000;
+              Valves::pulse(Valves::ValveId::WATER, durationMs);
+              char detail[128];
+              snprintf(detail, sizeof(detail),
+                       "Клапан воды дал импульс %lu мс.",
+                       (unsigned long)durationMs);
+              recordEquipmentTestingAction("info", "Клапан воды", detail);
+              Logger::logf(0, "Equipment testing: water valve pulse %lu ms",
+                           (unsigned long)durationMs);
+            } else {
+              Valves::setWater(open);
+              recordEquipmentTestingAction("info", "Клапан воды",
+                                           open ? "Клапан воды открыт вручную."
+                                                : "Клапан воды закрыт вручную.");
+              Logger::logf(0, "Equipment testing: water valve %s",
+                           open ? "opened" : "closed");
+            }
+          } else if (target == "heads") {
+            if (action == "pulse") {
+              if (durationMs < 100) durationMs = 100;
+              if (durationMs > 10000) durationMs = 10000;
+              Valves::pulse(Valves::ValveId::HEADS, durationMs);
+              char detail[128];
+              snprintf(detail, sizeof(detail),
+                       "Клапан голов дал импульс %lu мс.",
+                       (unsigned long)durationMs);
+              recordEquipmentTestingAction("info", "Клапан голов", detail);
+              Logger::logf(0, "Equipment testing: heads valve pulse %lu ms",
+                           (unsigned long)durationMs);
+            } else {
+              Valves::setHeads(open);
+              recordEquipmentTestingAction("info", "Клапан голов",
+                                           open ? "Клапан голов открыт вручную."
+                                                : "Клапан голов закрыт вручную.");
+              Logger::logf(0, "Equipment testing: heads valve %s",
+                           open ? "opened" : "closed");
+            }
+          } else if (target == "uno") {
+            if (action == "pulse") {
+              if (durationMs < 100) durationMs = 100;
+              if (durationMs > 10000) durationMs = 10000;
+              Valves::pulse(Valves::ValveId::UNO, durationMs);
+              char detail[128];
+              snprintf(detail, sizeof(detail), "УНО дало импульс %lu мс.",
+                       (unsigned long)durationMs);
+              recordEquipmentTestingAction("info", "УНО", detail);
+              Logger::logf(0, "Equipment testing: UNO valve pulse %lu ms",
+                           (unsigned long)durationMs);
+            } else {
+              Valves::setUno(open);
+              recordEquipmentTestingAction("info", "УНО",
+                                           open ? "УНО открыто вручную."
+                                                : "УНО закрыто вручную.");
+              Logger::logf(0, "Equipment testing: UNO valve %s",
+                           open ? "opened" : "closed");
+            }
         } else {
           request->send(
               400, "application/json",
@@ -3335,15 +3419,18 @@ void init() {
             return;
           }
 
-          for (uint8_t i = 0; i < FRACTION_COUNT; ++i) {
-            int angle = angles[i].as<int>();
-            if (angle < 0) angle = 0;
-            if (angle > 180) angle = 180;
-            g_settings.fractionator.angles[i] = (uint16_t)angle;
-            g_settings.fractionator.positionsEnabled[i] = enabled[i].as<bool>();
-          }
-          NVSManager::saveSettings(g_settings);
-          Logger::logf(0, "Equipment testing: servo presets updated");
+            for (uint8_t i = 0; i < FRACTION_COUNT; ++i) {
+              int angle = angles[i].as<int>();
+              if (angle < 0) angle = 0;
+              if (angle > 180) angle = 180;
+              g_settings.fractionator.angles[i] = (uint16_t)angle;
+              g_settings.fractionator.positionsEnabled[i] = enabled[i].as<bool>();
+            }
+            NVSManager::saveSettings(g_settings);
+            recordEquipmentTestingAction(
+                "success", "Сервопривод",
+                "Сервисные пресеты сервопривода сохранены в настройках.");
+            Logger::logf(0, "Equipment testing: servo presets updated");
 
           JsonDocument resp;
           fillEquipmentTestingStatus(resp);
@@ -3379,17 +3466,25 @@ void init() {
                 400, "application/json",
                 "{\"success\":false,\"message\":\"Unknown servo preset\"}");
             return;
-          }
-          Valves::setFraction(fraction, true);
-          Logger::logf(0, "Equipment testing: servo moved to %s",
-                       getFractionLabel(fraction));
-        } else if (action == "angle") {
-          int angle = doc["angle"] | 0;
-          if (angle < 0) angle = 0;
-          if (angle > 180) angle = 180;
-          Valves::setFractionAngle((uint8_t)angle);
-          Logger::logf(0, "Equipment testing: servo moved to %d degrees", angle);
-        } else {
+            }
+            Valves::setFraction(fraction, true);
+            char detail[128];
+            snprintf(detail, sizeof(detail), "Сервопривод переведён в позицию %s.",
+                     getFractionLabel(fraction));
+            recordEquipmentTestingAction("success", "Сервопривод", detail);
+            Logger::logf(0, "Equipment testing: servo moved to %s",
+                         getFractionLabel(fraction));
+          } else if (action == "angle") {
+            int angle = doc["angle"] | 0;
+            if (angle < 0) angle = 0;
+            if (angle > 180) angle = 180;
+            Valves::setFractionAngle((uint8_t)angle);
+            char detail[128];
+            snprintf(detail, sizeof(detail),
+                     "Сервопривод переведён в ручной угол %d°.", angle);
+            recordEquipmentTestingAction("success", "Сервопривод", detail);
+            Logger::logf(0, "Equipment testing: servo moved to %d degrees", angle);
+          } else {
           request->send(
               400, "application/json",
               "{\"success\":false,\"message\":\"Unknown servo action\"}");

@@ -9,6 +9,13 @@
 
 ---
 
+## [2.1.9] - 2026-03-17
+
+### Изменено
+- В [src/web/styles/_equipment.css](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\styles\_equipment.css) исправлено отображение активного подпункта `Оборудования` в светлой теме: вместо невалидного градиента с `var(--primary)` теперь используется корректная связка `var(--accent) -> var(--accent-hover)`, поэтому выбранный пункт больше не превращается в белый текст на светлой кнопке. (codex)
+- Backend [src/interface/webserver.cpp](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\interface\webserver.cpp) теперь хранит кольцевой буфер последних сервисных действий оператора из раздела `Оборудование -> Тестирование`: старт/стоп насоса, ТЭН, клапаны, импульсы, позиции сервопривода и общий `stop-all` попадают в `recentActions` внутри `/api/testing/status`. (codex)
+- Во фронтенде [src/web/settings/equipment-testing.js](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\settings\equipment-testing.js) добавлен компактный живой журнал сервисных действий прямо в статусной карточке `Тестирования`, а smoke-сценарий [tools/ui-smoke/tests/equipment-testing.smoke.spec.js](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\tools\ui-smoke\tests\equipment-testing.smoke.spec.js) расширен проверкой этого журнала. (codex)
+
 ## [2.1.8] - 2026-03-17
 
 ### Изменено

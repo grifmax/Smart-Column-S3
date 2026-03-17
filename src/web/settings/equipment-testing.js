@@ -189,6 +189,15 @@ const TESTING_TEMPLATE = `
             </div>
             <div class="equipment-inline-stats equipment-test-summary-stats" id="equipment-test-active-summary"></div>
             <div class="equipment-test-alert" id="equipment-test-availability-hint">Загрузка сервисного статуса…</div>
+            <div class="equipment-test-journal">
+                <div class="equipment-test-journal-head">
+                    <h3>Последние действия оператора</h3>
+                    <span class="equipment-hint">Живой журнал ручных сервисных команд</span>
+                </div>
+                <div class="equipment-test-journal-list" id="equipment-test-action-journal">
+                    <div class="equipment-test-journal-empty">Пока без сервисных действий.</div>
+                </div>
+            </div>
         </div>
 
         <div class="equipment-testing-grid">
@@ -1325,6 +1334,26 @@ function renderPowerStatus(power) {
     setText('equipment-test-power-pf', formatNumber(power?.powerFactor, 2, ''));
 }
 
+function renderRecentActions(actions = []) {
+    const host = byId('equipment-test-action-journal');
+    if (!host) return;
+
+    if (!Array.isArray(actions) || !actions.length) {
+        host.innerHTML = '<div class="equipment-test-journal-empty">Пока без сервисных действий.</div>';
+        return;
+    }
+
+    host.innerHTML = actions.map((action, index) => `
+        <div class="equipment-test-journal-item ${action?.tone || 'neutral'}">
+            <div class="equipment-test-journal-line">
+                <strong>${action?.title || 'Сервисное действие'}</strong>
+                <span>${index === 0 ? 'только что' : `#${index + 1}`}</span>
+            </div>
+            <div class="equipment-test-journal-detail">${action?.detail || ''}</div>
+        </div>
+    `).join('');
+}
+
 function renderPumpStatus(pump, testingAllowed, demoMode) {
     updateBadge(
         byId('equipment-test-pump-badge'),
@@ -1492,6 +1521,7 @@ function renderTestingStatus(status) {
     renderPressureStatus(status.pressure);
     renderHydrometerStatus(status.hydrometer);
     renderPowerStatus(status.power);
+    renderRecentActions(status.recentActions);
 
     const stopAllButton = byId('equipment-test-stop-all');
     if (stopAllButton) {

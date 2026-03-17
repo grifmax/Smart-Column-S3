@@ -19,6 +19,7 @@ function buildTestingStatus(overrides = {}) {
     alarmMessage: '',
     safetyOk: true,
     safetyLatched: false,
+    recentActions: [],
     activeTests: {
       pump: false,
       heater: false,
@@ -136,7 +137,12 @@ function buildTestingStatus(overrides = {}) {
       ...base.power,
       ...(overrides.power || {}),
     },
+    recentActions: overrides.recentActions || base.recentActions,
   };
+}
+
+function prependRecentAction(currentState, action) {
+  return [action, ...(currentState.recentActions || [])].slice(0, 6);
 }
 
 test('equipment testing workspace renders and sends service actions', async ({ page }) => {
@@ -151,18 +157,30 @@ test('equipment testing workspace renders and sends service actions', async ({ p
     testingActionResponse: ({ pathname, postData }) => {
       if (pathname === '/api/testing/pump') {
         if (postData?.action === 'start') {
+          const speed = Number(postData.speedMlH || 0);
           testingState = buildTestingStatus({
             activeTests: { pump: true },
             pump: {
               running: true,
-              speedMlH: Number(postData.speedMlH || 0),
-              targetSpeedMlH: Number(postData.speedMlH || 0),
-              appliedSpeedMlH: Number(postData.speedMlH || 0),
+              speedMlH: speed,
+              targetSpeedMlH: speed,
+              appliedSpeedMlH: speed,
               totalVolumeMl: 12.4,
             },
+            recentActions: prependRecentAction(testingState, {
+              tone: 'success',
+              title: 'Тест насоса',
+              detail: `Насос запущен вручную со скоростью ${speed} мл/ч.`,
+            }),
           });
         } else {
-          testingState = buildTestingStatus();
+          testingState = buildTestingStatus({
+            recentActions: prependRecentAction(testingState, {
+              tone: 'warning',
+              title: 'Тест насоса',
+              detail: 'Насос остановлен из сервисного экрана.',
+            }),
+          });
         }
         return testingState;
       }
@@ -178,6 +196,11 @@ test('equipment testing workspace renders and sends service actions', async ({ p
             [`${target}`]: true,
             [`${target}Pulse`]: { active: true, remainingMs: durationMs },
           },
+          recentActions: prependRecentAction(testingState, {
+            tone: 'info',
+            title: target === 'water' ? 'Клапан воды' : target === 'heads' ? 'Клапан голов' : 'УНО',
+            detail: `Импульс ${durationMs} мс.`,
+          }),
         });
         return testingState;
       }
@@ -191,12 +214,23 @@ test('equipment testing workspace renders and sends service actions', async ({ p
             fractionLabel: postData.preset === 'heads' ? 'Головы' : 'Тело',
             angle: postData.preset === 'heads' ? 0 : 72,
           },
+          recentActions: prependRecentAction(testingState, {
+            tone: 'success',
+            title: 'Сервопривод',
+            detail: `Сервопривод переведён в позицию ${postData.preset}.`,
+          }),
         });
         return testingState;
       }
 
       if (pathname === '/api/testing/stop-all') {
-        testingState = buildTestingStatus();
+        testingState = buildTestingStatus({
+          recentActions: prependRecentAction(testingState, {
+            tone: 'warning',
+            title: 'Остановить все тесты',
+            detail: 'Все ручные сервисные воздействия остановлены одной командой.',
+          }),
+        });
         return testingState;
       }
 
@@ -231,6 +265,8 @@ test('equipment testing workspace renders and sends service actions', async ({ p
   await expect(page.locator('#equipment-test-pump-badge')).toContainText('RUNNING');
   await expect(page.locator('#equipment-test-pump-applied')).toContainText('1500');
   await expect(page.locator('#equipment-test-active-summary')).toContainText('Насос');
+  await expect(page.locator('#equipment-test-action-journal')).toContainText('Тест насоса');
+  await expect(page.locator('#equipment-test-action-journal')).toContainText('1500 мл/ч');
   await expect.poll(() =>
     requests.testingActions.some((entry) =>
       entry.pathname === '/api/testing/pump' &&
@@ -247,6 +283,7 @@ test('equipment testing workspace renders and sends service actions', async ({ p
   await page.locator('#equipment-test-water-pulse').click();
   await expect(page.locator('#equipment-test-water-toggle-badge')).toContainText('Импульс');
   await expect(page.locator('#equipment-test-water-toggle-pulse-hint')).toContainText('1.8');
+  await expect(page.locator('#equipment-test-action-journal')).toContainText('Клапан воды');
   await expect.poll(() =>
     requests.testingActions.some((entry) =>
       entry.pathname === '/api/testing/valves' &&
