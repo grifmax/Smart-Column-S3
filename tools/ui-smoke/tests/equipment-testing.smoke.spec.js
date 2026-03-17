@@ -262,7 +262,7 @@ test('equipment testing workspace renders and sends service actions', async ({ p
   await expect(page.locator('#equipment-test-pump-speed')).toHaveValue('1500');
   await page.locator('#equipment-test-pump-toggle').click();
 
-  await expect(page.locator('#equipment-test-pump-badge')).toContainText('RUNNING');
+  await expect(page.locator('#equipment-test-pump-badge')).toContainText('Работает');
   await expect(page.locator('#equipment-test-pump-applied')).toContainText('1500');
   await expect(page.locator('#equipment-test-active-summary')).toContainText('Насос');
   await expect(page.locator('#equipment-test-action-journal')).toContainText('Тест насоса');
@@ -294,7 +294,7 @@ test('equipment testing workspace renders and sends service actions', async ({ p
   ).toBeTruthy();
 
   await page.locator('#equipment-test-stop-all').click();
-  await expect(page.locator('#equipment-test-pump-badge')).toContainText('IDLE');
+  await expect(page.locator('#equipment-test-pump-badge')).toContainText('Ожидание');
   await expect(page.locator('#equipment-test-active-summary')).toContainText('Ничего не включено');
   await expect.poll(() =>
     requests.testingActions.some((entry) => entry.pathname === '/api/testing/stop-all'),

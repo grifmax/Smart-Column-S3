@@ -109,14 +109,20 @@ function renderSystemEvents(events) {
     }
 
     events.forEach((event) => {
+        const kind = String(event?.kind || '').trim();
+        const title = String(event?.title || '').trim();
+        const detail = String(event?.detail || '').trim();
         const message = String(event?.message || '').trim();
         if (!message) return;
 
         const sequence = Number(event?.seq) || 0;
         const timestamp = formatDeviceTimestamp(event?.timestamp);
-        const type = normalizeLogType(event?.levelStr ?? event?.level);
+        const type = normalizeLogType((event?.tone || event?.levelStr) ?? event?.level);
         const key = sequence > 0 ? `sys:${sequence}` : `sys:${timestamp}:${message}`;
-        appendLogEntry(`[${timestamp}] ${message}`, type, key);
+        const text = kind === 'equipment_test'
+            ? `[${timestamp}] Сервис: ${title || 'Действие'}${detail ? ` — ${detail}` : ''}`
+            : `[${timestamp}] ${message}`;
+        appendLogEntry(text, type, key);
 
         if (sequence > lastSystemSeq) {
             lastSystemSeq = sequence;

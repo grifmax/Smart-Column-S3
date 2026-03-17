@@ -6,7 +6,7 @@
 
         if (!response.ok) {
 
-            throw new Error('Failed to load history details');
+            throw new Error('Не удалось загрузить детали истории');
 
         }
 
@@ -26,7 +26,7 @@
 
     } catch (error) {
 
-        console.error('Error loading history details:', error);
+        console.error('Ошибка загрузки деталей истории:', error);
 
         addLog('❌ Ошибка загрузки деталей процесса', 'error');
 
@@ -54,7 +54,8 @@ const SAFETY_REASON_LABELS = {
     RC_SAFETY_TRIP_POWER: 'Авария по питанию',
     RC_SAFETY_TRIP_GENERIC: 'Неидентифицированная авария',
     RC_SAFETY_ACKNOWLEDGED: 'Авария подтверждена оператором',
-    RC_SAFETY_RESET_COMPLETED: 'Авария сброшена оператором'
+    RC_SAFETY_RESET_COMPLETED: 'Авария сброшена оператором',
+    RC_OPERATOR_SERVICE_ACTION: 'Сервисное действие оператора'
 };
 
 function formatReasonCode(reasonCode) {
@@ -213,7 +214,7 @@ function appendSafetyTimelineSection(container, process) {
 
     titleEl.className = 'modal-info-label';
 
-    titleEl.textContent = 'Safety timeline';
+    titleEl.textContent = 'Хронология безопасности';
 
     const countEl = document.createElement('div');
 

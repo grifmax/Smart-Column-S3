@@ -9,6 +9,14 @@
 
 ---
 
+## [2.1.13] - 2026-03-17
+
+### Изменено
+- Сервисные действия из `Оборудование -> Тестирование` теперь идут не только в локальный live-журнал, но и в общий event-log, а при активной записи процесса дополнительно сохраняются в `history.results.warnings` как операторские сервисные события с reason code `RC_OPERATOR_SERVICE_ACTION`. (codex)
+- Общий журнал событий научился различать `equipment_test`-события и отдавать их структурно через `/api/logs/events` и CSV-экспорт, а фронтенд [src/web/core/logs.js](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\core\logs.js) теперь показывает их как отдельные сервисные записи вместо сырого технического текста. (codex)
+- В тексты сервисного экрана внесён UI-polish: в [src/web/settings/equipment-testing.js](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\settings\equipment-testing.js) укорочены описания карточек, `interlock` заменён на `блокировки`, статусы `SIMULATED/RUNNING/IDLE/ON/OFF` переведены на нормальные русские подписи, а журнал последних действий стал показывать человекочитаемые метки времени. (codex)
+- В деталях истории [src/web/history/details.js](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\history\details.js) добавлена человекочитаемая подпись для `RC_OPERATOR_SERVICE_ACTION`, а `Safety timeline` переведён на русский как `Хронология безопасности`. (codex)
+
 ## [2.1.12] - 2026-03-17
 
 ### Изменено

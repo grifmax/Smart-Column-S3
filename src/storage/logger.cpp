@@ -34,6 +34,13 @@ struct ParsedPhaseTransitionEvent {
   char operatorMessage[80] = "";
 };
 
+struct ParsedEquipmentTestEvent {
+  bool matched = false;
+  char tone[16] = "";
+  char title[48] = "";
+  char detail[96] = "";
+};
+
 bool hasValidRtc(time_t now, const tm& timeinfo) {
   return now >= 1704067200 && timeinfo.tm_year >= (2024 - 1900);
 }
@@ -213,6 +220,44 @@ ParsedPhaseTransitionEvent parsePhaseTransitionEvent(const char* message) {
     } else if (strcmp(key, "message") == 0) {
       copyToken(parsed.operatorMessage, sizeof(parsed.operatorMessage), value,
                 strlen(value));
+    }
+  }
+
+  return parsed;
+}
+
+ParsedEquipmentTestEvent parseEquipmentTestEvent(const char* message) {
+  ParsedEquipmentTestEvent parsed;
+  if (!message) {
+    return parsed;
+  }
+
+  constexpr const char* kPrefix = "equipment_test";
+  constexpr size_t kPrefixLength = 14;
+  if (strncmp(message, kPrefix, kPrefixLength) != 0) {
+    return parsed;
+  }
+
+  parsed.matched = true;
+
+  const char* cursor = message + kPrefixLength;
+  char key[24] = "";
+  char value[128] = "";
+
+  while (*cursor != '\0') {
+    key[0] = '\0';
+    value[0] = '\0';
+    if (!parseNextTransitionField(cursor, key, sizeof(key), value,
+                                  sizeof(value))) {
+      continue;
+    }
+
+    if (strcmp(key, "tone") == 0) {
+      copyToken(parsed.tone, sizeof(parsed.tone), value, strlen(value));
+    } else if (strcmp(key, "title") == 0) {
+      copyToken(parsed.title, sizeof(parsed.title), value, strlen(value));
+    } else if (strcmp(key, "detail") == 0) {
+      copyToken(parsed.detail, sizeof(parsed.detail), value, strlen(value));
     }
   }
 
@@ -472,7 +517,11 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
 
     const ParsedPhaseTransitionEvent parsed =
         parsePhaseTransitionEvent(event->message);
-    item["kind"] = parsed.matched ? "phase_transition" : "log";
+    const ParsedEquipmentTestEvent equipment =
+        parseEquipmentTestEvent(event->message);
+    item["kind"] = parsed.matched
+                       ? "phase_transition"
+                       : (equipment.matched ? "equipment_test" : "log");
     if (parsed.matched) {
       if (parsed.mode[0] != '\0') {
         item["mode"] = parsed.mode;
@@ -489,6 +538,16 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
       if (parsed.operatorMessage[0] != '\0') {
         item["operatorMessage"] = parsed.operatorMessage;
       }
+    } else if (equipment.matched) {
+      if (equipment.tone[0] != '\0') {
+        item["tone"] = equipment.tone;
+      }
+      if (equipment.title[0] != '\0') {
+        item["title"] = equipment.title;
+      }
+      if (equipment.detail[0] != '\0') {
+        item["detail"] = equipment.detail;
+      }
     }
   }
 
@@ -503,7 +562,8 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
 String exportRecentEventsCsv(uint16_t limit) {
   String csv =
       "sequence,timestamp_ms,level,message,kind,mode,from_phase,to_phase,"
-      "reason_code,operator_message\n";
+      "reason_code,operator_message,equipment_tone,equipment_title,"
+      "equipment_detail\n";
   const size_t effectiveLimit =
       limit == 0 ? recentEventCount
                  : (recentEventCount < static_cast<size_t>(limit)
@@ -520,12 +580,19 @@ String exportRecentEventsCsv(uint16_t limit) {
 
     const ParsedPhaseTransitionEvent parsed =
         parsePhaseTransitionEvent(event->message);
-    const String kind = parsed.matched ? "phase_transition" : "log";
+    const ParsedEquipmentTestEvent equipment =
+        parseEquipmentTestEvent(event->message);
+    const String kind = parsed.matched
+                            ? "phase_transition"
+                            : (equipment.matched ? "equipment_test" : "log");
     const String mode = escapeCsvField(parsed.mode);
     const String fromPhase = escapeCsvField(parsed.fromPhase);
     const String toPhase = escapeCsvField(parsed.toPhase);
     const String reasonCode = escapeCsvField(parsed.reasonCode);
     const String operatorMessage = escapeCsvField(parsed.operatorMessage);
+    const String equipmentTone = escapeCsvField(equipment.tone);
+    const String equipmentTitle = escapeCsvField(equipment.title);
+    const String equipmentDetail = escapeCsvField(equipment.detail);
     const String message = escapeCsvField(event->message);
 
     csv += String(event->sequence);
@@ -548,6 +615,12 @@ String exportRecentEventsCsv(uint16_t limit) {
     csv += reasonCode;
     csv += "\",\"";
     csv += operatorMessage;
+    csv += "\",\"";
+    csv += equipmentTone;
+    csv += "\",\"";
+    csv += equipmentTitle;
+    csv += "\",\"";
+    csv += equipmentDetail;
     csv += "\"\n";
   }
 

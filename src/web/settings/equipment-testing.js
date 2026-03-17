@@ -24,7 +24,7 @@ const TESTING_CARD_DEFS = [
         icon: '🧪',
         title: 'Насос',
         shortTitle: 'Насос',
-        description: 'Ручной старт, живая скорость, объём и быстрый переход к калибровке.',
+        description: 'Ручной запуск, контроль скорости и быстрый переход к калибровке.',
     },
     {
         id: 'valves',
@@ -33,7 +33,7 @@ const TESTING_CARD_DEFS = [
         icon: '🚰',
         title: 'Клапаны',
         shortTitle: 'Клапаны',
-        description: 'Поштучное открытие и импульсные щелчки по гидравлическим каналам.',
+        description: 'Открытие по одному и короткие импульсы по гидравлическим каналам.',
     },
     {
         id: 'servo',
@@ -42,7 +42,7 @@ const TESTING_CARD_DEFS = [
         icon: '🎯',
         title: 'Сервопривод фракционника',
         shortTitle: 'Сервопривод',
-        description: 'Быстрые позиции, ручной угол и редактирование сервисных пресетов.',
+        description: 'Быстрые позиции, ручной угол и сохранение сервисных пресетов.',
     },
     {
         id: 'heater',
@@ -51,7 +51,7 @@ const TESTING_CARD_DEFS = [
         icon: '⚡',
         title: 'ТЭН',
         shortTitle: 'ТЭН',
-        description: 'Ручной силовой тест с обязательным подтверждением запуска.',
+        description: 'Ручной силовой тест с обязательным подтверждением.',
     },
     {
         id: 'temps',
@@ -60,7 +60,7 @@ const TESTING_CARD_DEFS = [
         icon: '🌡️',
         title: 'Термометры',
         shortTitle: 'Термометры',
-        description: 'Живые показания всех температурных датчиков рядом с сервисными действиями.',
+        description: 'Текущие показания всех датчиков температуры рядом с сервисными действиями.',
     },
     {
         id: 'pressure',
@@ -78,7 +78,7 @@ const TESTING_CARD_DEFS = [
         icon: '🧫',
         title: 'Ареометр',
         shortTitle: 'Ареометр',
-        description: 'Текущие данные и аккуратная сервисная заглушка под будущий активный тест.',
+        description: 'Текущие данные и понятная заглушка под будущий активный тест.',
     },
     {
         id: 'power',
@@ -177,7 +177,7 @@ const TESTING_TEMPLATE = `
             <div class="equipment-test-status-head">
                 <div>
                     <h2>Сервисное тестирование оборудования</h2>
-                    <p class="equipment-subtitle">Каждый физический узел вынесен в отдельную группу. Сначала смотри на interlock и только потом запускай исполнительные тесты.</p>
+                    <p class="equipment-subtitle">Каждый физический узел вынесен в отдельную группу. Сначала проверь блокировки и только потом запускай исполнительные тесты.</p>
                 </div>
                 <button class="btn btn-danger" type="button" id="equipment-test-stop-all">Остановить все тесты</button>
             </div>
@@ -192,10 +192,10 @@ const TESTING_TEMPLATE = `
             <div class="equipment-test-journal">
                 <div class="equipment-test-journal-head">
                     <h3>Последние действия оператора</h3>
-                    <span class="equipment-hint">Живой журнал ручных сервисных команд</span>
+                    <span class="equipment-hint">Последние ручные команды из сервисного экрана</span>
                 </div>
                 <div class="equipment-test-journal-list" id="equipment-test-action-journal">
-                    <div class="equipment-test-journal-empty">Пока без сервисных действий.</div>
+                    <div class="equipment-test-journal-empty">Сервисных действий пока не было.</div>
                 </div>
             </div>
         </div>
@@ -205,7 +205,7 @@ const TESTING_TEMPLATE = `
                 <div class="equipment-test-card-head">
                     <div>
                         <h2>Насос</h2>
-                        <p class="equipment-subtitle">Ручной старт, живая скорость, объём и быстрый переход к калибровке.</p>
+                        <p class="equipment-subtitle">Ручной запуск, контроль скорости, объёма и быстрый переход к калибровке.</p>
                     </div>
                     <span class="equipment-status-badge muted" id="equipment-test-pump-badge">—</span>
                 </div>
@@ -226,9 +226,9 @@ const TESTING_TEMPLATE = `
                     <button type="button" class="btn btn-sm btn-secondary" data-pump-speed-preset="5000">5000</button>
                 </div>
                 <div class="equipment-inline-stats">
-                    <div class="equipment-inline-stat"><span>Worker</span><strong id="equipment-test-pump-task">--</strong></div>
-                    <div class="equipment-inline-stat"><span>Loops</span><strong id="equipment-test-pump-loops">--</strong></div>
-                    <div class="equipment-inline-stat"><span>Timeouts</span><strong id="equipment-test-pump-locks">--</strong></div>
+                    <div class="equipment-inline-stat"><span>Задача</span><strong id="equipment-test-pump-task">--</strong></div>
+                    <div class="equipment-inline-stat"><span>Циклы</span><strong id="equipment-test-pump-loops">--</strong></div>
+                    <div class="equipment-inline-stat"><span>Таймауты</span><strong id="equipment-test-pump-locks">--</strong></div>
                 </div>
                 <div class="controls equipment-actions">
                     <button class="btn btn-success" type="button" id="equipment-test-pump-toggle">Запустить насос</button>
@@ -240,7 +240,7 @@ const TESTING_TEMPLATE = `
                 <div class="equipment-test-card-head">
                     <div>
                         <h2>Клапаны</h2>
-                        <p class="equipment-subtitle">Поштучное открытие физических клапанов, импульсный щелчок на заданное время и быстрый общий сброс.</p>
+                        <p class="equipment-subtitle">Открытие по одному, импульс на заданное время и быстрый общий сброс.</p>
                     </div>
                 </div>
                 <div class="form-group">
@@ -294,7 +294,7 @@ const TESTING_TEMPLATE = `
                 <div class="equipment-test-card-head">
                     <div>
                         <h2>Сервопривод фракционника</h2>
-                        <p class="equipment-subtitle">Быстрые позиции, ручной угол и редактирование сервисных пресетов.</p>
+                        <p class="equipment-subtitle">Быстрые позиции, ручной угол и сохранение сервисных пресетов.</p>
                     </div>
                     <span class="equipment-status-badge muted" id="equipment-test-servo-badge">—</span>
                 </div>
@@ -350,7 +350,7 @@ const TESTING_TEMPLATE = `
                 <div class="equipment-test-card-head">
                     <div>
                         <h2>ТЭН</h2>
-                        <p class="equipment-subtitle">Ручной силовой тест. Включение только после явного подтверждения через модальное окно.</p>
+                        <p class="equipment-subtitle">Ручной силовой тест. Включение только после явного подтверждения.</p>
                     </div>
                     <span class="equipment-status-badge muted" id="equipment-test-heater-badge">—</span>
                 </div>
@@ -374,7 +374,7 @@ const TESTING_TEMPLATE = `
                 <div class="equipment-test-card-head">
                     <div>
                         <h2>Термометры</h2>
-                        <p class="equipment-subtitle">Живые показания всех датчиков температуры рядом с быстрыми сервисными действиями.</p>
+                        <p class="equipment-subtitle">Текущие показания всех датчиков температуры рядом с быстрыми сервисными действиями.</p>
                     </div>
                 </div>
                 <div class="controls equipment-actions">
@@ -408,7 +408,7 @@ const TESTING_TEMPLATE = `
                 <div class="equipment-test-card-head">
                     <div>
                         <h2>Ареометр</h2>
-                        <p class="equipment-subtitle">Подготовлена сервисная заглушка: показываем текущие поля и оставляем место под будущий сценарий активного теста.</p>
+                        <p class="equipment-subtitle">Показываем текущие поля и оставляем место под будущий сценарий активной проверки.</p>
                     </div>
                     <span class="equipment-status-badge muted" id="equipment-test-hydrometer-badge">—</span>
                 </div>
@@ -1339,7 +1339,7 @@ function renderRecentActions(actions = []) {
     if (!host) return;
 
     if (!Array.isArray(actions) || !actions.length) {
-        host.innerHTML = '<div class="equipment-test-journal-empty">Пока без сервисных действий.</div>';
+        host.innerHTML = '<div class="equipment-test-journal-empty">Сервисных действий пока не было.</div>';
         return;
     }
 
@@ -1347,17 +1347,31 @@ function renderRecentActions(actions = []) {
         <div class="equipment-test-journal-item ${action?.tone || 'neutral'}">
             <div class="equipment-test-journal-line">
                 <strong>${action?.title || 'Сервисное действие'}</strong>
-                <span>${index === 0 ? 'только что' : `#${index + 1}`}</span>
+                <span>${formatActionAge(action?.timestampMs, index)}</span>
             </div>
             <div class="equipment-test-journal-detail">${action?.detail || ''}</div>
         </div>
     `).join('');
 }
 
+function formatActionAge(timestampMs, index) {
+    const ts = Number(timestampMs || 0);
+    if (!Number.isFinite(ts) || ts <= 0) {
+        return index === 0 ? 'только что' : `#${index + 1}`;
+    }
+
+    const totalSec = Math.max(0, Math.floor(ts / 1000));
+    const minutes = Math.floor(totalSec / 60);
+    const seconds = totalSec % 60;
+    return index === 0
+        ? 'только что'
+        : `T+${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 function renderPumpStatus(pump, testingAllowed, demoMode) {
     updateBadge(
         byId('equipment-test-pump-badge'),
-        pump?.running ? (demoMode ? 'SIMULATED' : 'RUNNING') : 'IDLE',
+        pump?.running ? (demoMode ? 'Симуляция' : 'Работает') : 'Ожидание',
         pump?.running ? (demoMode ? 'warning' : 'success') : 'muted'
     );
     setText('equipment-test-pump-target', formatNumber(pump?.targetSpeedMlH, 0, ' мл/ч'));
@@ -1400,7 +1414,7 @@ function renderValveButtonState(id, open, label, testingAllowed, pulse, demoMode
     const hint = byId(`${id}-pulse-hint`);
     if (hint) {
         if (pulseActive) {
-            hint.textContent = `${demoMode ? 'SIMULATED' : 'Импульс'}: автозакрытие через ${formatNumber(remainingMs / 1000, 1, ' с')}`;
+            hint.textContent = `${demoMode ? 'Симуляция' : 'Импульс'}: автозакрытие через ${formatNumber(remainingMs / 1000, 1, ' с')}`;
         } else {
             hint.textContent = 'Импульсный тест готов.';
         }
@@ -1457,7 +1471,7 @@ function renderServoStatus(servo, testingAllowed) {
 function renderHeaterStatus(heater, testingAllowed, demoMode) {
     updateBadge(
         byId('equipment-test-heater-badge'),
-        heater?.active ? (demoMode ? 'SIMULATED' : 'ON') : 'OFF',
+        heater?.active ? (demoMode ? 'Симуляция' : 'Вкл') : 'Выкл',
         heater?.active ? (demoMode ? 'warning' : 'danger') : 'muted'
     );
     setText('equipment-test-heater-power', formatNumber(heater?.powerPercent, 0, ' %'));
@@ -1478,12 +1492,12 @@ function renderServiceSummary(status) {
     );
     updateBadge(
         byId('equipment-test-demo-badge'),
-        status.demoMode ? 'SIMULATED' : 'LIVE',
+        status.demoMode ? 'Симуляция' : 'Живой контур',
         status.demoMode ? 'warning' : 'success'
     );
     updateBadge(
         byId('equipment-test-process-badge'),
-        status.processActive ? 'Процесс активен' : 'IDLE',
+        status.processActive ? 'Процесс активен' : 'Простой',
         status.processActive ? 'warning' : 'success'
     );
     updateBadge(
@@ -1502,8 +1516,8 @@ function renderServiceSummary(status) {
         'equipment-test-availability-hint',
         status.testingAllowed
             ? (status.demoMode
-                ? 'Demo mode активен: тесты разрешены, но физическое железо не трогается.'
-                : 'Сервисные тесты разрешены. Следи за блоками interlock и останавливай узлы после проверки.')
+                ? 'Демо-режим активен: тесты разрешены, но физическое железо не затрагивается.'
+                : 'Сервисные тесты разрешены. Следи за блокировками и останавливай узлы после проверки.')
             : (status.availabilityReason || 'Тестирование сейчас недоступно.')
     );
 }

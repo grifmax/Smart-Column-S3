@@ -28,6 +28,7 @@ typedef enum {
 
 #include "control/fsm.h"
 #include "control/safety.h"
+#include "control/v2/reason_codes.h"
 #include "control/v2/status_adapter.h"
 #include "control/watt_control.h"
 #include "drivers/display.h"
@@ -80,6 +81,77 @@ static EquipmentTestingAction
 static uint8_t g_equipmentTestingActionCount = 0;
 static uint8_t g_equipmentTestingActionNext = 0;
 
+static const char *equipmentTestingToneToHistorySeverity(const char *tone) {
+  if (!tone) {
+    return "info";
+  }
+  if (strcmp(tone, "danger") == 0 || strcmp(tone, "warning") == 0) {
+    return "warning";
+  }
+  return "info";
+}
+
+static uint8_t equipmentTestingToneToLogLevel(const char *tone) {
+  return (tone && strcmp(tone, "danger") == 0) ? 1 : 0;
+}
+
+static void sanitizeEquipmentTestingLogValue(char *dest, size_t destSize,
+                                             const char *src) {
+  if (!dest || destSize == 0) {
+    return;
+  }
+  if (!src) {
+    dest[0] = '\0';
+    return;
+  }
+
+  size_t out = 0;
+  while (*src != '\0' && out + 1 < destSize) {
+    char ch = *src++;
+    if (ch == '"' || ch == '\r' || ch == '\n') {
+      ch = '\'';
+    }
+    dest[out++] = ch;
+  }
+  dest[out] = '\0';
+}
+
+static void appendEquipmentTestingHistoryAction(const char *tone,
+                                                const char *title,
+                                                const char *detail) {
+  if (!processRecorder.isRecording()) {
+    return;
+  }
+
+  processRecorder.addWarning(
+      detail ? detail : "Сервисное действие оператора",
+      equipmentTestingToneToHistorySeverity(tone),
+      ControlV2::reasonCodeToString(
+          ControlV2::ReasonCodeV2::RC_OPERATOR_SERVICE_ACTION),
+      title ? String(title) : String("Сервисное действие"));
+}
+
+static void appendEquipmentTestingSystemLog(const char *tone, const char *title,
+                                            const char *detail) {
+  char safeTone[16];
+  char safeTitle[56];
+  char safeDetail[104];
+  sanitizeEquipmentTestingLogValue(safeTone, sizeof(safeTone),
+                                   tone ? tone : "info");
+  sanitizeEquipmentTestingLogValue(safeTitle, sizeof(safeTitle),
+                                   title ? title : "Сервисное действие");
+  sanitizeEquipmentTestingLogValue(safeDetail, sizeof(safeDetail),
+                                   detail ? detail : "");
+
+  LogEvent event{};
+  event.timestamp = millis();
+  event.level = equipmentTestingToneToLogLevel(tone);
+  snprintf(event.message, sizeof(event.message),
+           "equipment_test tone=%s title=\"%s\" detail=\"%s\"", safeTone,
+           safeTitle, safeDetail);
+  Logger::log(event);
+}
+
 static void recordEquipmentTestingAction(const char *tone, const char *title,
                                          const char *detail) {
   EquipmentTestingAction &entry =
@@ -95,6 +167,9 @@ static void recordEquipmentTestingAction(const char *tone, const char *title,
   if (g_equipmentTestingActionCount < EQUIPMENT_TESTING_ACTION_CAPACITY) {
     g_equipmentTestingActionCount++;
   }
+
+  appendEquipmentTestingSystemLog(tone, title, detail);
+  appendEquipmentTestingHistoryAction(tone, title, detail);
 }
 
 static bool hasConfiguredWiFi() {
@@ -294,7 +369,7 @@ static const char *getTempSensorLabel(uint8_t index) {
 
 static bool isEquipmentTestingBlocked(char *reason, size_t reasonSize) {
   if (g_state.mode != Mode::IDLE) {
-    snprintf(reason, reasonSize, "Тестирование доступно только в режиме IDLE");
+    snprintf(reason, reasonSize, "Тестирование доступно только в режиме простоя");
     return true;
   }
 
@@ -3146,9 +3221,8 @@ void init() {
                 recordEquipmentTestingAction(
                     "warning", "Остановить все тесты",
                     "Все ручные сервисные воздействия остановлены одной командой.");
-                Logger::logf(0, "Equipment testing: all manual tests stopped");
                 request->send(200, "application/json",
-                              "{\"success\":true,\"message\":\"All tests stopped\"}");
+                              "{\"success\":true,\"message\":\"Все тесты остановлены\"}");
               });
 
   server.on(
@@ -3197,12 +3271,10 @@ void init() {
             char detail[128];
             snprintf(detail, sizeof(detail), "Насос запущен вручную со скоростью %.1f мл/ч.", speed);
             recordEquipmentTestingAction("success", "Тест насоса", detail);
-            Logger::logf(0, "Equipment testing: pump started at %.1f ml/h", speed);
           } else {
             Pump::stop();
             recordEquipmentTestingAction("warning", "Тест насоса",
                                          "Насос остановлен из сервисного экрана.");
-            Logger::logf(0, "Equipment testing: pump stopped");
           }
 
         JsonDocument resp;
@@ -3262,12 +3334,10 @@ void init() {
             snprintf(detail, sizeof(detail),
                      "ТЭН включен вручную на %d%% мощности после подтверждения.", power);
             recordEquipmentTestingAction("danger", "Тест ТЭНа", detail);
-            Logger::logf(0, "Equipment testing: heater started at %d%%", power);
           } else {
             Heater::setPower(0);
             recordEquipmentTestingAction("warning", "Тест ТЭНа",
                                          "ТЭН выключен из сервисного экрана.");
-            Logger::logf(0, "Equipment testing: heater stopped");
           }
 
         JsonDocument resp;
@@ -3312,66 +3382,53 @@ void init() {
             Valves::closeAll();
             recordEquipmentTestingAction("warning", "Клапаны",
                                          "Все клапаны закрыты одной сервисной командой.");
-            Logger::logf(0, "Equipment testing: all valves closed");
           } else if (target == "water") {
             if (action == "pulse") {
               if (durationMs < 100) durationMs = 100;
               if (durationMs > 10000) durationMs = 10000;
               Valves::pulse(Valves::ValveId::WATER, durationMs);
               char detail[128];
-              snprintf(detail, sizeof(detail),
-                       "Клапан воды дал импульс %lu мс.",
-                       (unsigned long)durationMs);
-              recordEquipmentTestingAction("info", "Клапан воды", detail);
-              Logger::logf(0, "Equipment testing: water valve pulse %lu ms",
-                           (unsigned long)durationMs);
-            } else {
-              Valves::setWater(open);
-              recordEquipmentTestingAction("info", "Клапан воды",
-                                           open ? "Клапан воды открыт вручную."
-                                                : "Клапан воды закрыт вручную.");
-              Logger::logf(0, "Equipment testing: water valve %s",
-                           open ? "opened" : "closed");
-            }
+               snprintf(detail, sizeof(detail),
+                        "Клапан воды дал импульс %lu мс.",
+                        (unsigned long)durationMs);
+               recordEquipmentTestingAction("info", "Клапан воды", detail);
+             } else {
+               Valves::setWater(open);
+               recordEquipmentTestingAction("info", "Клапан воды",
+                                            open ? "Клапан воды открыт вручную."
+                                                 : "Клапан воды закрыт вручную.");
+             }
           } else if (target == "heads") {
             if (action == "pulse") {
               if (durationMs < 100) durationMs = 100;
               if (durationMs > 10000) durationMs = 10000;
               Valves::pulse(Valves::ValveId::HEADS, durationMs);
               char detail[128];
-              snprintf(detail, sizeof(detail),
-                       "Клапан голов дал импульс %lu мс.",
-                       (unsigned long)durationMs);
-              recordEquipmentTestingAction("info", "Клапан голов", detail);
-              Logger::logf(0, "Equipment testing: heads valve pulse %lu ms",
-                           (unsigned long)durationMs);
-            } else {
-              Valves::setHeads(open);
-              recordEquipmentTestingAction("info", "Клапан голов",
-                                           open ? "Клапан голов открыт вручную."
-                                                : "Клапан голов закрыт вручную.");
-              Logger::logf(0, "Equipment testing: heads valve %s",
-                           open ? "opened" : "closed");
-            }
+               snprintf(detail, sizeof(detail),
+                        "Клапан голов дал импульс %lu мс.",
+                        (unsigned long)durationMs);
+               recordEquipmentTestingAction("info", "Клапан голов", detail);
+             } else {
+               Valves::setHeads(open);
+               recordEquipmentTestingAction("info", "Клапан голов",
+                                            open ? "Клапан голов открыт вручную."
+                                                 : "Клапан голов закрыт вручную.");
+             }
           } else if (target == "uno") {
             if (action == "pulse") {
               if (durationMs < 100) durationMs = 100;
               if (durationMs > 10000) durationMs = 10000;
               Valves::pulse(Valves::ValveId::UNO, durationMs);
               char detail[128];
-              snprintf(detail, sizeof(detail), "УНО дало импульс %lu мс.",
-                       (unsigned long)durationMs);
-              recordEquipmentTestingAction("info", "УНО", detail);
-              Logger::logf(0, "Equipment testing: UNO valve pulse %lu ms",
-                           (unsigned long)durationMs);
-            } else {
-              Valves::setUno(open);
-              recordEquipmentTestingAction("info", "УНО",
-                                           open ? "УНО открыто вручную."
-                                                : "УНО закрыто вручную.");
-              Logger::logf(0, "Equipment testing: UNO valve %s",
-                           open ? "opened" : "closed");
-            }
+               snprintf(detail, sizeof(detail), "УНО дало импульс %lu мс.",
+                        (unsigned long)durationMs);
+               recordEquipmentTestingAction("info", "УНО", detail);
+             } else {
+               Valves::setUno(open);
+               recordEquipmentTestingAction("info", "УНО",
+                                            open ? "УНО открыто вручную."
+                                                 : "УНО закрыто вручную.");
+             }
         } else {
           request->send(
               400, "application/json",
@@ -3430,7 +3487,6 @@ void init() {
             recordEquipmentTestingAction(
                 "success", "Сервопривод",
                 "Сервисные пресеты сервопривода сохранены в настройках.");
-            Logger::logf(0, "Equipment testing: servo presets updated");
 
           JsonDocument resp;
           fillEquipmentTestingStatus(resp);
@@ -3472,8 +3528,6 @@ void init() {
             snprintf(detail, sizeof(detail), "Сервопривод переведён в позицию %s.",
                      getFractionLabel(fraction));
             recordEquipmentTestingAction("success", "Сервопривод", detail);
-            Logger::logf(0, "Equipment testing: servo moved to %s",
-                         getFractionLabel(fraction));
           } else if (action == "angle") {
             int angle = doc["angle"] | 0;
             if (angle < 0) angle = 0;
@@ -3483,7 +3537,6 @@ void init() {
             snprintf(detail, sizeof(detail),
                      "Сервопривод переведён в ручной угол %d°.", angle);
             recordEquipmentTestingAction("success", "Сервопривод", detail);
-            Logger::logf(0, "Equipment testing: servo moved to %d degrees", angle);
           } else {
           request->send(
               400, "application/json",

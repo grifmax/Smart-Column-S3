@@ -123,7 +123,7 @@ test('history tab renders v2 safety summary and details modal', async ({ page })
   await expect.poll(() => requests.historyDetailRequests).toEqual(['process-v2-1']);
   await expect(page.locator('#modal-phases')).toContainText('body end detected');
   await expect(page.locator('#modal-phases')).toContainText('Тело завершено по температуре');
-  await expect(page.locator('#modal-results-grid')).toContainText('Safety timeline');
+  await expect(page.locator('#modal-results-grid')).toContainText('Хронология безопасности');
   await expect(page.locator('#modal-results-grid')).toContainText('Авария по перегреву');
   await expect(page.locator('#modal-results-grid')).toContainText('Температура вернулась в норму');
 });
