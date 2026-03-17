@@ -9,6 +9,13 @@
 
 ---
 
+## [2.1.11] - 2026-03-17
+
+### Изменено
+- Для вкладки `Настройки` добавлен отдельный компактный слой стилей в [src/web/styles/_settings.css](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\styles\_settings.css), подключённый через [src/web/styles/main.css](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\styles\main.css): карточки, form-group и action-строки теперь плотнее и визуально ближе к `Инструментам` и `Оборудованию`. (codex)
+- Кнопки внутри `Настроек` больше не растягиваются без необходимости на всю ширину карточек: локальные переопределения задают им рабочий диапазон ширины на desktop и аккуратную сетку на mobile, даже если старый HTML содержал inline `width: 100%` или `flex: 1`. (codex)
+- Информационные блоки во вкладке `Настройки` тоже уплотнены: уменьшены лишние `margin/padding` у вложенных секций со статусами и версиями, поэтому экран воспринимается как компактный сервисный dashboard, а не как длинная анкета. (codex)
+
 ## [2.1.10] - 2026-03-17
 
 ### Изменено
