@@ -1,8 +1,8 @@
-﻿/**
- * Smart-Column S3 - Р”СЂР°Р№РІРµСЂ РґРёСЃРїР»РµСЏ
+/**
+ * Smart-Column S3 - Драйвер дисплея
  *
- * TFT 3.5" ILI9488 (РѕСЃРЅРѕРІРЅРѕР№)
- * РСЃРїРѕР»СЊР·СѓРµС‚ LovyanGFX РґР»СЏ TFT
+ * TFT 3.5" ILI9488 (основной)
+ * Использует LovyanGFX для TFT
  */
 
 #include "display.h"
@@ -21,8 +21,8 @@
 #if TFT_ENABLED
 #define LGFX_USE_V1
 // =============================================================================
-// LovyanGFX РєРѕРЅС„РёРіСѓСЂР°С†РёСЏ РґР»СЏ ILI9488 (С‚РѕР»СЊРєРѕ
-// РґРёСЃРїР»РµР№)
+// LovyanGFX конфигурация для ILI9488 (только
+// дисплей)
 // =============================================================================
 
 class LGFX : public lgfx::LGFX_Device {
@@ -36,8 +36,8 @@ public:
       auto cfg = _bus_instance.config();
       cfg.spi_host = SPI2_HOST; // HSPI
       cfg.spi_mode = 0;
-      // 40MHz РЅР° ILI9488 С‡Р°СЃС‚Рѕ РЅРµСЃС‚Р°Р±РёР»РµРЅ РЅР° РґР»РёРЅРЅС‹С…
-      // РїСЂРѕРІРѕРґР°С…/РєР»РѕРЅР°С….
+      // 40MHz на ILI9488 часто нестабилен на длинных
+      // проводах/клонах.
       cfg.freq_write = 27000000;
       cfg.freq_read = 8000000;
       cfg.spi_3wire = false;
@@ -184,11 +184,11 @@ static bool detectCalibrationRequest() {
 // =============================================================================
 // UI helpers
 // =============================================================================
-static const int16_t UI_HEADER_H = 40; // РќРµРјРЅРѕРіРѕ СѓРјРµРЅСЊС€РёР»
+static const int16_t UI_HEADER_H = 40; // Немного уменьшил
 static const int16_t UI_FOOTER_H =
-    65; // РќРµРјРЅРѕРіРѕ СѓРІРµР»РёС‡РёР» РґР»СЏ С€СЂРёС„С‚Р°
+    65; // Немного увеличил для шрифта
 static const int16_t UI_CONTENT_Y =
-    10; // РќР°С‡РёРЅР°РµРј РїРѕС‡С‚Рё СЃРІРµСЂС…Сѓ
+    10; // Начинаем почти сверху
 static const int16_t UI_CONTENT_H = TFT_HEIGHT - UI_FOOTER_H - 10;
 
 // Colors matching web UI
@@ -910,8 +910,8 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
     return false;
   }
 
-  // РљРЅРѕРїРєР° РќРђР—РђР” (С‚РµРїРµСЂСЊ РІ РІРµСЂС…РЅРµРј РїСЂР°РІРѕРј
-  // СѓРіР»Сѓ РЅР° РїРѕРґ-СЌРєСЂР°РЅР°С…)
+  // Кнопка НАЗАД (теперь в верхнем правом
+  // углу на под-экранах)
   bool isRoot =
       (isMonitorRootScreen(ui.currentScreen) ||
        ui.currentScreen == UI_CONTROL || ui.currentScreen == UI_SETTINGS ||
@@ -1420,10 +1420,10 @@ static void clearRow(int16_t y, int16_t h = 24) {
 
 static void drawHeader(const char *title, bool showBack) {
   if (!showBack)
-    return; // РЈР±РёСЂР°РµРј РґСѓР±Р»РёСЂСѓСЋС‰РёР№ С‚СѓР»Р±Р°СЂ РЅР°
-            // РіР»Р°РІРЅС‹С… СЌРєСЂР°РЅР°С…
+    return; // Убираем дублирующий тулбар на
+            // главных экранах
 
-  // РћС‚СЂРёСЃРѕРІС‹РІР°РµРј С‚РѕР»СЊРєРѕ РЅР° РїРѕРґ-СЌРєСЂР°РЅР°С…
+  // Отрисовываем только на под-экранах
   tft.fillRect(0, 0, TFT_WIDTH, UI_HEADER_H, colorCard());
   tft.drawFastHLine(0, UI_HEADER_H - 1, TFT_WIDTH, tft.color565(200, 200, 200));
 
@@ -1517,7 +1517,7 @@ static void drawValueRow(int16_t y, const char *label, const char *value,
   int16_t boxX = TFT_WIDTH - boxW - 15;
 
   if (highlighted) {
-    // Р”РµР»Р°РµРј Р·РЅР°С‡РµРЅРёРµ РїРѕС…РѕР¶РёРј РЅР° РєРЅРѕРїРєСѓ
+    // Делаем значение похожим на кнопку
     tft.fillRoundRect(boxX, y - 7, boxW, 32, 8, COLOR_PRIMARY);
     tft.drawRoundRect(boxX, y - 7, boxW, 32, 8, tft.color565(255, 255, 255));
     tft.setTextColor(TFT_WHITE);
@@ -1811,7 +1811,7 @@ static void renderDashboard(const SystemState &state, bool full) {
   const char *tileLabels[6] = {nullptr, nullptr, nullptr,
                                nullptr, nullptr, nullptr};
   const char *tileUnits[6] = {
-      "В°C", "В°C", "В°C", "В°C", msg(Msg::UNIT_W), msg(Msg::UNIT_ML_H)};
+      "°C", "°C", "°C", "°C", msg(Msg::UNIT_W), msg(Msg::UNIT_ML_H)};
   uint16_t tileColors[6] = {COLOR_DANGER,  colorAccent(), COLOR_INFO,
                             COLOR_WARNING, COLOR_WARNING, COLOR_SUCCESS};
   char tileValues[6][16] = {};
@@ -1834,7 +1834,7 @@ static void renderDashboard(const SystemState &state, bool full) {
     if (hasWaterIn) {
       snprintf(tileValues[4], sizeof(tileValues[4]), "%.1f",
                state.temps.waterIn);
-      tileUnits[4] = "В°C";
+      tileUnits[4] = "°C";
       tileColors[4] = COLOR_INFO;
     } else {
       snprintf(tileValues[4], sizeof(tileValues[4]), "%.0f",
@@ -1845,7 +1845,7 @@ static void renderDashboard(const SystemState &state, bool full) {
     if (hasWaterOut) {
       snprintf(tileValues[5], sizeof(tileValues[5]), "%.1f",
                state.temps.waterOut);
-      tileUnits[5] = "В°C";
+      tileUnits[5] = "°C";
       tileColors[5] = COLOR_INFO;
     } else {
       snprintf(tileValues[5], sizeof(tileValues[5]), "%.0f", state.power.power);
@@ -1859,7 +1859,7 @@ static void renderDashboard(const SystemState &state, bool full) {
       tileLabels[5] = ru ? "ОХЛ ВЫХ" : "WATER OUT";
       snprintf(tileValues[5], sizeof(tileValues[5]), "%.1f",
                state.temps.waterOut);
-      tileUnits[5] = "В°C";
+      tileUnits[5] = "°C";
       tileColors[5] = COLOR_INFO;
     } else {
       tileLabels[5] = ru ? "ОТБОР" : "TAKEOFF";
@@ -1876,7 +1876,7 @@ static void renderDashboard(const SystemState &state, bool full) {
     if (hasWaterOut) {
       snprintf(tileValues[5], sizeof(tileValues[5]), "%.1f",
                state.temps.waterOut);
-      tileUnits[5] = "В°C";
+      tileUnits[5] = "°C";
       tileColors[5] = COLOR_INFO;
     } else {
       snprintf(tileValues[5], sizeof(tileValues[5]), "%.0f",
@@ -2190,28 +2190,28 @@ static void renderModeMonitor(const SystemState &state, bool full) {
 
   snprintf(val, sizeof(val), "%.1f", state.temps.cube);
   if (full || strcmp(g_dashboardCache.cube, val) != 0) {
-    drawValueTileValue(rightX, panelY, tileW, tileH, val, "В°C", COLOR_DANGER);
+    drawValueTileValue(rightX, panelY, tileW, tileH, val, "°C", COLOR_DANGER);
     strncpy(g_dashboardCache.cube, val, sizeof(g_dashboardCache.cube));
     g_dashboardCache.cube[sizeof(g_dashboardCache.cube) - 1] = '\0';
   }
   snprintf(val, sizeof(val), "%.1f", state.temps.columnTop);
   if (full || strcmp(g_dashboardCache.top, val) != 0) {
     drawValueTileValue(rightX + tileW + colGap, panelY, tileW, tileH, val,
-                       "В°C", colorAccent());
+                       "°C", colorAccent());
     strncpy(g_dashboardCache.top, val, sizeof(g_dashboardCache.top));
     g_dashboardCache.top[sizeof(g_dashboardCache.top) - 1] = '\0';
   }
   snprintf(val, sizeof(val), "%.1f", state.temps.reflux);
   if (full || strcmp(g_dashboardCache.reflux, val) != 0) {
     drawValueTileValue(rightX, panelY + tileH + rowGap, tileW, tileH, val,
-                       "В°C", COLOR_INFO);
+                       "°C", COLOR_INFO);
     strncpy(g_dashboardCache.reflux, val, sizeof(g_dashboardCache.reflux));
     g_dashboardCache.reflux[sizeof(g_dashboardCache.reflux) - 1] = '\0';
   }
   snprintf(val, sizeof(val), "%.1f", state.temps.tsa);
   if (full || strcmp(g_dashboardCache.tsa, val) != 0) {
     drawValueTileValue(rightX + tileW + colGap, panelY + tileH + rowGap, tileW,
-                       tileH, val, "В°C", COLOR_WARNING);
+                       tileH, val, "°C", COLOR_WARNING);
     strncpy(g_dashboardCache.tsa, val, sizeof(g_dashboardCache.tsa));
     g_dashboardCache.tsa[sizeof(g_dashboardCache.tsa) - 1] = '\0';
   }
@@ -2230,7 +2230,7 @@ static void renderModeMonitor(const SystemState &state, bool full) {
   if (full || strcmp(g_dashboardCache.pump, val) != 0) {
     drawValueTileValue(
         rightX + tileW + colGap, panelY + (tileH + rowGap) * 2, tileW, tileH,
-        val, state.temps.valid[TEMP_WATER_OUT] ? "В°C" : msg(Msg::UNIT_ML_H),
+        val, state.temps.valid[TEMP_WATER_OUT] ? "°C" : msg(Msg::UNIT_ML_H),
         state.temps.valid[TEMP_WATER_OUT] ? COLOR_INFO : COLOR_SUCCESS);
     strncpy(g_dashboardCache.pump, val, sizeof(g_dashboardCache.pump));
     g_dashboardCache.pump[sizeof(g_dashboardCache.pump) - 1] = '\0';
@@ -3291,13 +3291,13 @@ void init() {
   LOG_I("Display: Initializing...");
 
 #if TFT_ENABLED
-  // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ TFT
+  // Инициализация TFT
   LOG_I("Display: Init TFT (LovyanGFX)...");
 
   if (initDisplayHardware(true)) {
     LOG_I("Display: TFT + Touch initialized");
 
-    // РџСЂРѕС„РёР»СЊ Р·Р°С‚РёСЂРєРё РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
+    // Профиль затирки по умолчанию
     memset(&mashProfileDefault, 0, sizeof(mashProfileDefault));
     strncpy(mashProfileDefault.name, "Default mash",
             sizeof(mashProfileDefault.name) - 1);
@@ -3506,7 +3506,7 @@ void update(const SystemState &state) {
 
   if (ev.tapped) {
     bool handled = false;
-    // РџСЂРѕР±СѓРµРј РїСЂСЏРјС‹Рµ РєРѕРѕСЂРґРёРЅР°С‚С‹
+    // Пробуем прямые координаты
     handled = handleNavigationTap(ev.x, ev.y, state);
     if (!handled) {
       handled = handleScreenTap(ev.x, ev.y, state);
@@ -3736,7 +3736,7 @@ void showError(const char *error) {
     tft.fillScreen(TFT_RED);
     tft.setTextColor(TFT_WHITE);
     tft.setCursor(20, 20);
-    tft.println("РћРЁРР‘РљРђ!"); // localized manually for
+    tft.println("ОШИБКА!"); // localized manually for
                                                // simplicity or add to Msg
     tft.setCursor(20, 80);
     tft.println(error);

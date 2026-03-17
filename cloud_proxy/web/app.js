@@ -1,4 +1,4 @@
-﻿// Smart-Column S3 - Web UI JavaScript
+// Smart-Column S3 - Web UI JavaScript
 
 let ws = null;
 let reconnectInterval = null;
@@ -10,28 +10,28 @@ let miniChartData = {
     columnTop: [],
     reflux: []
 };
-const MINI_CHART_MAX_POINTS = 60; // 5 РјРёРЅСѓС‚ РїСЂРё РѕР±РЅРѕРІР»РµРЅРёРё РєР°Р¶РґС‹Рµ 5 СЃРµРєСѓРЅРґ
+const MINI_CHART_MAX_POINTS = 60; // 5 минут при обновлении каждые 5 секунд
 
-// РЎРѕСЃС‚РѕСЏРЅРёРµ РїСЂРѕС†РµСЃСЃР°
+// Состояние процесса
 let currentMode = 0;  // 0 = IDLE
 let currentPaused = false;
-let maxHeaterPower = 3000;  // Р‘СѓРґРµС‚ РѕР±РЅРѕРІР»РµРЅРѕ РёР· РЅР°СЃС‚СЂРѕРµРє
+let maxHeaterPower = 3000;  // Будет обновлено из настроек
 
-// РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РїСЂРё Р·Р°РіСЂСѓР·РєРµ СЃС‚СЂР°РЅРёС†С‹
+// Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function () {
     initTabs();
     loadTheme();
-    loadDemoMode();  // Р—Р°РіСЂСѓР·РёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РґРµРјРѕ-СЂРµР¶РёРјР°
+    loadDemoMode();  // Загрузить состояние демо-режима
     initMiniChart();
     loadMemoryStatsPreference();
     loadPumpInfo();
     loadVersionInfo();
-    loadUserInfo();  // Р—Р°РіСЂСѓР·РёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РїРѕР»СЊР·РѕРІР°С‚РµР»Рµ
-    loadESP32Config();  // Р—Р°РіСЂСѓР·РёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё ESP32
-    loadStatus();  // Р—Р°РіСЂСѓР·РёС‚СЊ РЅР°С‡Р°Р»СЊРЅС‹Р№ СЃС‚Р°С‚СѓСЃ
+    loadUserInfo();  // Загрузить информацию о пользователе
+    loadESP32Config();  // Загрузить настройки ESP32
+    loadStatus();  // Загрузить начальный статус
     connectWebSocket();
 
-    // РџРµСЂРёРѕРґРёС‡РµСЃРєРёР№ РѕРїСЂРѕСЃ СЃС‚Р°С‚СѓСЃР° (СЂРµР·РµСЂРІРЅС‹Р№ РІР°СЂРёР°РЅС‚ РµСЃР»Рё WebSocket РѕС‚РєР»СЋС‡С‘РЅ)
+    // Периодический опрос статуса (резервный вариант если WebSocket отключён)
     setInterval(loadStatus, 2000);
 });
 
@@ -43,7 +43,7 @@ function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.hostname}/ws`;
 
-    addLog('РџРѕРґРєР»СЋС‡РµРЅРёРµ Рє WebSocket...');
+    addLog('Подключение к WebSocket...');
 
     try {
         ws = new WebSocket(wsUrl);
@@ -51,9 +51,9 @@ function connectWebSocket() {
         ws.onopen = function () {
             isConnected = true;
             updateConnectionStatus(true);
-            addLog('вњ… РџРѕРґРєР»СЋС‡РµРЅРѕ Рє РєРѕРЅС‚СЂРѕР»Р»РµСЂСѓ', 'info');
+            addLog('✅ Подключено к контроллеру', 'info');
 
-            // РћСЃС‚Р°РЅРѕРІРёС‚СЊ РїРѕРїС‹С‚РєРё РїРµСЂРµРїРѕРґРєР»СЋС‡РµРЅРёСЏ
+            // Остановить попытки переподключения
             if (reconnectInterval) {
                 clearInterval(reconnectInterval);
                 reconnectInterval = null;
@@ -65,21 +65,21 @@ function connectWebSocket() {
                 const data = JSON.parse(event.data);
                 updateUI(data);
             } catch (e) {
-                console.error('РћС€РёР±РєР° РїР°СЂСЃРёРЅРіР° JSON:', e);
+                console.error('Ошибка парсинга JSON:', e);
             }
         };
 
         ws.onerror = function (error) {
             console.error('WebSocket error:', error);
-            addLog('вќЊ РћС€РёР±РєР° РїРѕРґРєР»СЋС‡РµРЅРёСЏ', 'error');
+            addLog('❌ Ошибка подключения', 'error');
         };
 
         ws.onclose = function () {
             isConnected = false;
             updateConnectionStatus(false);
-            addLog('вљ пёЏ РЎРѕРµРґРёРЅРµРЅРёРµ СЂР°Р·РѕСЂРІР°РЅРѕ. РџРµСЂРµРїРѕРґРєР»СЋС‡РµРЅРёРµ...', 'warning');
+            addLog('⚠️ Соединение разорвано. Переподключение...', 'warning');
 
-            // РџРѕРїС‹С‚РєР° РїРµСЂРµРїРѕРґРєР»СЋС‡РµРЅРёСЏ РєР°Р¶РґС‹Рµ 5 СЃРµРєСѓРЅРґ
+            // Попытка переподключения каждые 5 секунд
             if (!reconnectInterval) {
                 reconnectInterval = setInterval(() => {
                     if (!isConnected) {
@@ -89,7 +89,7 @@ function connectWebSocket() {
             }
         };
     } catch (e) {
-        console.error('РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ WebSocket:', e);
+        console.error('Ошибка создания WebSocket:', e);
         updateConnectionStatus(false);
     }
 }
@@ -98,9 +98,9 @@ function sendCommand(action, param = '', value = 0) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         const cmd = { action, param, value };
         ws.send(JSON.stringify(cmd));
-        addLog(`рџ“¤ РљРѕРјР°РЅРґР°: ${action} ${param} ${value}`);
+        addLog(`📤 Команда: ${action} ${param} ${value}`);
     } else {
-        addLog('вќЊ РќРµС‚ РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рє РєРѕРЅС‚СЂРѕР»Р»РµСЂСѓ', 'error');
+        addLog('❌ Нет подключения к контроллеру', 'error');
     }
 }
 
@@ -110,10 +110,10 @@ function updateConnectionStatus(connected) {
 
     if (connected) {
         statusDot.className = 'status-dot online';
-        statusText.textContent = 'РџРѕРґРєР»СЋС‡РµРЅРѕ';
+        statusText.textContent = 'Подключено';
     } else {
         statusDot.className = 'status-dot offline';
-        statusText.textContent = 'РћС‚РєР»СЋС‡РµРЅРѕ';
+        statusText.textContent = 'Отключено';
     }
 }
 
@@ -142,15 +142,15 @@ function initMiniChart() {
         },
         series: [
             {
-                name: 'РљСѓР±',
+                name: 'Куб',
                 data: []
             },
             {
-                name: 'Р¦Р°СЂРіР° РІРµСЂС…',
+                name: 'Царга верх',
                 data: []
             },
             {
-                name: 'Р”РµС„Р»РµРіРјР°С‚РѕСЂ',
+                name: 'Дефлегматор',
                 data: []
             }
         ],
@@ -164,7 +164,7 @@ function initMiniChart() {
         },
         yaxis: {
             title: {
-                text: 'В°C'
+                text: '°C'
             },
             decimalsInFloat: 1
         },
@@ -193,14 +193,14 @@ function updateMiniChart(data) {
 
     const now = new Date().getTime();
 
-    // Р”РѕР±Р°РІРёС‚СЊ РЅРѕРІС‹Рµ РґР°РЅРЅС‹Рµ
+    // Добавить новые данные
     if (data.t_cube !== undefined) {
         miniChartData.timestamps.push(now);
         miniChartData.cube.push(data.t_cube);
         miniChartData.columnTop.push(data.t_column_top || null);
         miniChartData.reflux.push(data.t_reflux || null);
 
-        // РћРіСЂР°РЅРёС‡РёС‚СЊ РєРѕР»РёС‡РµСЃС‚РІРѕ С‚РѕС‡РµРє
+        // Ограничить количество точек
         if (miniChartData.timestamps.length > MINI_CHART_MAX_POINTS) {
             miniChartData.timestamps.shift();
             miniChartData.cube.shift();
@@ -208,24 +208,24 @@ function updateMiniChart(data) {
             miniChartData.reflux.shift();
         }
 
-        // РћР±РЅРѕРІРёС‚СЊ РіСЂР°С„РёРє
+        // Обновить график
         miniChart.updateSeries([
             {
-                name: 'РљСѓР±',
+                name: 'Куб',
                 data: miniChartData.timestamps.map((t, i) => ({
                     x: t,
                     y: miniChartData.cube[i]
                 }))
             },
             {
-                name: 'Р¦Р°СЂРіР° РІРµСЂС…',
+                name: 'Царга верх',
                 data: miniChartData.timestamps.map((t, i) => ({
                     x: t,
                     y: miniChartData.columnTop[i]
                 }))
             },
             {
-                name: 'Р”РµС„Р»РµРіРјР°С‚РѕСЂ',
+                name: 'Дефлегматор',
                 data: miniChartData.timestamps.map((t, i) => ({
                     x: t,
                     y: miniChartData.reflux[i]
@@ -240,7 +240,7 @@ function updateMiniChart(data) {
 // ============================================================================
 
 function updateUI(data) {
-    // Р РµР¶РёРј
+    // Режим
     if (data.mode !== undefined) {
         const modeNames = ['IDLE', 'RECT', 'MANUAL', 'DIST', 'MASH', 'HOLD'];
         const modeName = modeNames[data.mode] || 'UNKNOWN';
@@ -249,41 +249,41 @@ function updateUI(data) {
         modeEl.className = `value mode-${modeName.toLowerCase()}`;
     }
 
-    // Р¤Р°Р·Р°
+    // Фаза
     if (data.phase !== undefined) {
         const phaseNames = ['IDLE', 'HEATING', 'STABIL', 'HEADS', 'PURGE', 'BODY', 'TAILS', 'FINISH', 'ERROR'];
-        document.getElementById('phase').textContent = phaseNames[data.phase] || 'вЂ”';
+        document.getElementById('phase').textContent = phaseNames[data.phase] || '—';
     }
 
-    // РўРµРјРїРµСЂР°С‚СѓСЂС‹
+    // Температуры
     if (data.t_cube !== undefined) {
-        document.getElementById('temp-cube').textContent = data.t_cube.toFixed(1) + 'В°C';
+        document.getElementById('temp-cube').textContent = data.t_cube.toFixed(1) + '°C';
     }
     if (data.t_column_bottom !== undefined) {
-        document.getElementById('temp-column-bottom').textContent = data.t_column_bottom.toFixed(1) + 'В°C';
+        document.getElementById('temp-column-bottom').textContent = data.t_column_bottom.toFixed(1) + '°C';
     }
     if (data.t_column_top !== undefined) {
-        document.getElementById('temp-column-top').textContent = data.t_column_top.toFixed(1) + 'В°C';
+        document.getElementById('temp-column-top').textContent = data.t_column_top.toFixed(1) + '°C';
     }
     if (data.t_reflux !== undefined) {
-        document.getElementById('temp-reflux').textContent = data.t_reflux.toFixed(1) + 'В°C';
+        document.getElementById('temp-reflux').textContent = data.t_reflux.toFixed(1) + '°C';
     }
     if (data.t_tsa !== undefined) {
-        document.getElementById('temp-tsa').textContent = data.t_tsa.toFixed(1) + 'В°C';
+        document.getElementById('temp-tsa').textContent = data.t_tsa.toFixed(1) + '°C';
     }
 
-    // Р”Р°РІР»РµРЅРёРµ
+    // Давление
     if (data.p_cube !== undefined) {
-        document.getElementById('pressure-cube').textContent = data.p_cube.toFixed(1) + ' РјРј СЂС‚.СЃС‚.';
+        document.getElementById('pressure-cube').textContent = data.p_cube.toFixed(1) + ' мм рт.ст.';
     }
     if (data.p_atm !== undefined) {
-        document.getElementById('pressure-atm').textContent = data.p_atm.toFixed(1) + ' РіРџР°';
+        document.getElementById('pressure-atm').textContent = data.p_atm.toFixed(1) + ' гПа';
     }
     if (data.p_flood !== undefined) {
-        document.getElementById('pressure-flood').textContent = data.p_flood.toFixed(1) + ' РјРј';
+        document.getElementById('pressure-flood').textContent = data.p_flood.toFixed(1) + ' мм';
     }
 
-    // РњРѕС‰РЅРѕСЃС‚СЊ (PZEM-004T)
+    // Мощность (PZEM-004T)
     if (data.voltage !== undefined) {
         document.getElementById('power-voltage').textContent = data.voltage.toFixed(1) + ' V';
     }
@@ -294,35 +294,35 @@ function updateUI(data) {
         document.getElementById('power-power').textContent = data.power.toFixed(0) + ' W';
     }
     if (data.energy !== undefined) {
-        document.getElementById('power-energy').textContent = data.energy.toFixed(3) + ' РєР’С‚В·С‡';
+        document.getElementById('power-energy').textContent = data.energy.toFixed(3) + ' кВт·ч';
     }
     if (data.frequency !== undefined) {
-        document.getElementById('power-frequency').textContent = data.frequency.toFixed(1) + ' Р“С†';
+        document.getElementById('power-frequency').textContent = data.frequency.toFixed(1) + ' Гц';
     }
     if (data.pf !== undefined) {
         document.getElementById('power-pf').textContent = data.pf.toFixed(2);
     }
 
-    // РќР°СЃРѕСЃ
+    // Насос
     if (data.pump_speed !== undefined) {
-        document.getElementById('pump-speed').textContent = data.pump_speed.toFixed(0) + ' РјР»/С‡';
+        document.getElementById('pump-speed').textContent = data.pump_speed.toFixed(0) + ' мл/С‡';
     }
     if (data.pump_volume !== undefined) {
-        document.getElementById('pump-volume').textContent = data.pump_volume.toFixed(0) + ' РјР»';
+        document.getElementById('pump-volume').textContent = data.pump_volume.toFixed(0) + ' мл';
     }
 
-    // РћР±СЉС‘РјС‹ С„СЂР°РєС†РёР№
+    // Объёмы фракций
     if (data.volume_heads !== undefined) {
-        document.getElementById('volume-heads').textContent = data.volume_heads.toFixed(0) + ' РјР»';
+        document.getElementById('volume-heads').textContent = data.volume_heads.toFixed(0) + ' мл';
     }
     if (data.volume_body !== undefined) {
-        document.getElementById('volume-body').textContent = data.volume_body.toFixed(0) + ' РјР»';
+        document.getElementById('volume-body').textContent = data.volume_body.toFixed(0) + ' мл';
     }
     if (data.volume_tails !== undefined) {
-        document.getElementById('volume-tails').textContent = data.volume_tails.toFixed(0) + ' РјР»';
+        document.getElementById('volume-tails').textContent = data.volume_tails.toFixed(0) + ' мл';
     }
 
-    // РђСЂРµРѕРјРµС‚СЂ
+    // Ареометр
     if (data.abv !== undefined) {
         document.getElementById('abv').textContent = data.abv.toFixed(1) + '%';
     }
@@ -332,20 +332,20 @@ function updateUI(data) {
         document.getElementById('uptime').textContent = formatUptime(data.uptime);
     }
 
-    // РЎРѕР±С‹С‚РёСЏ
+    // События
     if (data.type === 'event') {
         addLog(data.message, data.level || 'info');
     }
 
-    // РћР±РЅРѕРІРёС‚СЊ РјРёРЅРё-РіСЂР°С„РёРє
+    // Обновить мини-график
     updateMiniChart(data);
 
-    // РћР±РЅРѕРІРёС‚СЊ СЃС‚Р°С‚РёСЃС‚РёРєСѓ РїР°РјСЏС‚Рё
+    // Обновить статистику памяти
     if (data.memory !== undefined) {
         updateMemoryStats(data.memory);
     }
 
-    // РћР±РЅРѕРІРёС‚СЊ Р°РЅРёРјР°С†РёСЋ РєРѕР»РѕРЅРЅС‹
+    // Обновить анимацию колонны
     if (typeof updateColumnAnimation === 'function') {
         updateColumnAnimation(data);
     }
@@ -372,17 +372,17 @@ function initTabs() {
         tab.addEventListener('click', () => {
             const targetId = tab.getAttribute('data-tab');
 
-            // РЈР±СЂР°С‚СЊ Р°РєС‚РёРІРЅС‹Р№ РєР»Р°СЃСЃ СЃРѕ РІСЃРµС… РІРєР»Р°РґРѕРє
+            // Убрать активный класс со всех вкладок
             tabs.forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => {
                 content.classList.remove('active');
             });
 
-            // Р”РѕР±Р°РІРёС‚СЊ Р°РєС‚РёРІРЅС‹Р№ РєР»Р°СЃСЃ Рє РІС‹Р±СЂР°РЅРЅРѕР№ РІРєР»Р°РґРєРµ
+            // Добавить активный класс к выбранной вкладке
             tab.classList.add('active');
             document.getElementById(targetId).classList.add('active');
 
-            // Р—Р°РіСЂСѓР·РёС‚СЊ РёСЃС‚РѕСЂРёСЋ РїСЂРё РїРµСЂРµРєР»СЋС‡РµРЅРёРё РЅР° РІРєР»Р°РґРєСѓ "РСЃС‚РѕСЂРёСЏ"
+            // Загрузить историю при переключении на вкладку "История"
             if (targetId === 'history') {
                 loadHistoryList();
             }
@@ -396,7 +396,7 @@ function initTabs() {
 
 async function startRectification() {
     try {
-        addLog('рџ“¤ РћС‚РїСЂР°РІРєР° РєРѕРјР°РЅРґС‹ Р·Р°РїСѓСЃРєР° Р°РІС‚Рѕ-СЂРµРєС‚РёС„РёРєР°С†РёРё...', 'info');
+        addLog('📤 Отправка команды запуска авто-ректификации...', 'info');
 
         const response = await fetch('/api/process/start', {
             method: 'POST',
@@ -406,29 +406,29 @@ async function startRectification() {
 
         if (response.ok) {
             const data = await response.json();
-            addLog('вњ… РђРІС‚Рѕ-СЂРµРєС‚РёС„РёРєР°С†РёСЏ Р·Р°РїСѓС‰РµРЅР°', 'success');
+            addLog('✅ Авто-ректификация запущена', 'success');
             if (data.warning) {
-                addLog('вљ пёЏ ' + data.warning, 'warning');
+                addLog('⚠️ ' + data.warning, 'warning');
             }
-            setTimeout(loadStatus, 500); // РћР±РЅРѕРІРёС‚СЊ СЃС‚Р°С‚СѓСЃ
+            setTimeout(loadStatus, 500); // Обновить статус
         } else {
             const error = await response.text();
-            addLog('вќЊ РћС€РёР±РєР° (' + response.status + '): ' + error, 'error');
+            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
         }
     } catch (e) {
-        addLog('вќЊ РћС€РёР±РєР° СЃРµС‚Рё: ' + e.message, 'error');
+        addLog('❌ Ошибка сети: ' + e.message, 'error');
         console.error('Start rectification error:', e);
     }
 }
 
 function startManual() {
-    // РџРµСЂРµС…РѕРґ РЅР° СЃС‚СЂР°РЅРёС†Сѓ СЂСѓС‡РЅРѕРіРѕ СѓРїСЂР°РІР»РµРЅРёСЏ
+    // Переход на страницу ручного управления
     window.location.href = 'manual.html';
 }
 
 async function startDistillation() {
     try {
-        addLog('рџ“¤ РћС‚РїСЂР°РІРєР° РєРѕРјР°РЅРґС‹ Р·Р°РїСѓСЃРєР° РґРёСЃС‚РёР»Р»СЏС†РёРё...', 'info');
+        addLog('📤 Отправка команды запуска дистилляции...', 'info');
 
         const response = await fetch('/api/process/start', {
             method: 'POST',
@@ -438,23 +438,23 @@ async function startDistillation() {
 
         if (response.ok) {
             const data = await response.json();
-            addLog('вњ… Р”РёСЃС‚РёР»Р»СЏС†РёСЏ Р·Р°РїСѓС‰РµРЅР°', 'success');
+            addLog('✅ Дистилляция запущена', 'success');
             if (data.warning) {
-                addLog('вљ пёЏ ' + data.warning, 'warning');
+                addLog('⚠️ ' + data.warning, 'warning');
             }
-            setTimeout(loadStatus, 500); // РћР±РЅРѕРІРёС‚СЊ СЃС‚Р°С‚СѓСЃ
+            setTimeout(loadStatus, 500); // Обновить статус
         } else {
             const error = await response.text();
-            addLog('вќЊ РћС€РёР±РєР° (' + response.status + '): ' + error, 'error');
+            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
         }
     } catch (e) {
-        addLog('вќЊ РћС€РёР±РєР° СЃРµС‚Рё: ' + e.message, 'error');
+        addLog('❌ Ошибка сети: ' + e.message, 'error');
         console.error('Start distillation error:', e);
     }
 }
 
 async function stopProcess() {
-    if (!confirm('РћСЃС‚Р°РЅРѕРІРёС‚СЊ РїСЂРѕС†РµСЃСЃ?')) return;
+    if (!confirm('Остановить процесс?')) return;
 
     try {
         const response = await fetch('/api/process/stop', {
@@ -462,13 +462,13 @@ async function stopProcess() {
         });
 
         if (response.ok) {
-            addLog('вњ… РџСЂРѕС†РµСЃСЃ РѕСЃС‚Р°РЅРѕРІР»РµРЅ', 'warning');
-            setTimeout(loadStatus, 500); // РћР±РЅРѕРІРёС‚СЊ СЃС‚Р°С‚СѓСЃ
+            addLog('✅ Процесс остановлен', 'warning');
+            setTimeout(loadStatus, 500); // Обновить статус
         } else {
-            addLog('вќЊ РћС€РёР±РєР° РѕСЃС‚Р°РЅРѕРІРєРё', 'error');
+            addLog('❌ Ошибка остановки', 'error');
         }
     } catch (e) {
-        addLog('вќЊ РћС€РёР±РєР°: ' + e.message, 'error');
+        addLog('❌ Ошибка: ' + e.message, 'error');
     }
 }
 
@@ -479,13 +479,13 @@ async function pauseProcess() {
         });
 
         if (response.ok) {
-            addLog('вњ… РџСЂРѕС†РµСЃСЃ РїСЂРёРѕСЃС‚Р°РЅРѕРІР»РµРЅ', 'info');
-            setTimeout(loadStatus, 500); // РћР±РЅРѕРІРёС‚СЊ СЃС‚Р°С‚СѓСЃ
+            addLog('✅ Процесс приостановлен', 'info');
+            setTimeout(loadStatus, 500); // Обновить статус
         } else {
-            addLog('вќЊ РћС€РёР±РєР° РїР°СѓР·С‹', 'error');
+            addLog('❌ Ошибка паузы', 'error');
         }
     } catch (e) {
-        addLog('вќЊ РћС€РёР±РєР°: ' + e.message, 'error');
+        addLog('❌ Ошибка: ' + e.message, 'error');
     }
 }
 
@@ -496,13 +496,13 @@ async function resumeProcess() {
         });
 
         if (response.ok) {
-            addLog('вњ… РџСЂРѕС†РµСЃСЃ РІРѕР·РѕР±РЅРѕРІР»РµРЅ', 'info');
-            setTimeout(loadStatus, 500); // РћР±РЅРѕРІРёС‚СЊ СЃС‚Р°С‚СѓСЃ
+            addLog('✅ Процесс возобновлен', 'info');
+            setTimeout(loadStatus, 500); // Обновить статус
         } else {
-            addLog('вќЊ РћС€РёР±РєР° РІРѕР·РѕР±РЅРѕРІР»РµРЅРёСЏ', 'error');
+            addLog('❌ Ошибка возобновления', 'error');
         }
     } catch (e) {
-        addLog('вќЊ РћС€РёР±РєР°: ' + e.message, 'error');
+        addLog('❌ Ошибка: ' + e.message, 'error');
     }
 }
 
@@ -518,11 +518,11 @@ function updatePump(value) {
 
 function toggleValve(name) {
     sendCommand('valve', name, 1);
-    addLog(`рџ”„ РџРµСЂРµРєР»СЋС‡РµРЅРёРµ РєР»Р°РїР°РЅР°: ${name}`);
+    addLog(`🔄 Переключение клапана: ${name}`);
 }
 
 // ============================================================================
-// Р—Р°РіСЂСѓР·РєР° СЃС‚Р°С‚СѓСЃР° Рё РѕР±РЅРѕРІР»РµРЅРёРµ РєРЅРѕРїРѕРє
+// Загрузка статуса и обновление кнопок
 // ============================================================================
 
 async function loadStatus() {
@@ -532,29 +532,29 @@ async function loadStatus() {
 
         const data = await response.json();
 
-        // РћР±РЅРѕРІРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РїСЂРѕС†РµСЃСЃР°
+        // Обновить состояние процесса
         currentMode = data.mode || 0;
         currentPaused = data.paused || false;
 
-        // РЎРѕС…СЂР°РЅРёС‚СЊ РјРѕС‰РЅРѕСЃС‚СЊ РўР­РќР° РёР· РЅР°СЃС‚СЂРѕРµРє
+        // Сохранить мощность ТЭНа из настроек
         if (data.equipment && data.equipment.heaterPowerW) {
             maxHeaterPower = data.equipment.heaterPowerW;
             updateHeaterSlider();
         }
 
-        // РћР±РЅРѕРІРёС‚СЊ UI СЃ РЅРѕРІС‹Рј С„РѕСЂРјР°С‚РѕРј РґР°РЅРЅС‹С…
+        // Обновить UI с новым форматом данных
         updateUIFromStatus(data);
 
-        // РћР±РЅРѕРІРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РєРЅРѕРїРѕРє
+        // Обновить состояние кнопок
         updateButtonStates();
 
     } catch (e) {
-        console.error('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё СЃС‚Р°С‚СѓСЃР°:', e);
+        console.error('Ошибка загрузки статуса:', e);
     }
 }
 
 function updateUIFromStatus(data) {
-    // Р РµР¶РёРј
+    // Режим
     if (data.modeStr !== undefined) {
         const modeEl = document.getElementById('mode');
         if (modeEl) {
@@ -563,51 +563,51 @@ function updateUIFromStatus(data) {
         }
     }
 
-    // Р¤Р°Р·Р°
+    // Фаза
     if (data.phaseStr !== undefined) {
         const phaseEl = document.getElementById('phase');
         if (phaseEl) {
-            phaseEl.textContent = data.phaseStr.toUpperCase() || 'вЂ”';
+            phaseEl.textContent = data.phaseStr.toUpperCase() || '—';
         }
     }
 
-    // РўРµРјРїРµСЂР°С‚СѓСЂС‹
+    // Температуры
     if (data.temps) {
         if (data.temps.cube !== undefined) {
             const el = document.getElementById('temp-cube');
-            if (el) el.textContent = data.temps.cube.toFixed(1) + 'В°C';
+            if (el) el.textContent = data.temps.cube.toFixed(1) + '°C';
         }
         if (data.temps.columnBottom !== undefined) {
             const el = document.getElementById('temp-column-bottom');
-            if (el) el.textContent = data.temps.columnBottom.toFixed(1) + 'В°C';
+            if (el) el.textContent = data.temps.columnBottom.toFixed(1) + '°C';
         }
         if (data.temps.columnTop !== undefined) {
             const el = document.getElementById('temp-column-top');
-            if (el) el.textContent = data.temps.columnTop.toFixed(1) + 'В°C';
+            if (el) el.textContent = data.temps.columnTop.toFixed(1) + '°C';
         }
         if (data.temps.reflux !== undefined) {
             const el = document.getElementById('temp-reflux');
-            if (el) el.textContent = data.temps.reflux.toFixed(1) + 'В°C';
+            if (el) el.textContent = data.temps.reflux.toFixed(1) + '°C';
         }
         if (data.temps.tsa !== undefined) {
             const el = document.getElementById('temp-tsa');
-            if (el) el.textContent = data.temps.tsa.toFixed(1) + 'В°C';
+            if (el) el.textContent = data.temps.tsa.toFixed(1) + '°C';
         }
     }
 
-    // Р”Р°РІР»РµРЅРёРµ
+    // Давление
     if (data.pressure) {
         if (data.pressure.cube !== undefined) {
             const el = document.getElementById('pressure-cube');
-            if (el) el.textContent = data.pressure.cube.toFixed(1) + ' РјРј СЂС‚.СЃС‚.';
+            if (el) el.textContent = data.pressure.cube.toFixed(1) + ' мм рт.ст.';
         }
         if (data.pressure.atm !== undefined) {
             const el = document.getElementById('pressure-atm');
-            if (el) el.textContent = data.pressure.atm.toFixed(1) + ' РіРџР°';
+            if (el) el.textContent = data.pressure.atm.toFixed(1) + ' гПа';
         }
     }
 
-    // РњРѕС‰РЅРѕСЃС‚СЊ
+    // Мощность
     if (data.power) {
         if (data.power.voltage !== undefined) {
             const el = document.getElementById('power-voltage');
@@ -623,11 +623,11 @@ function updateUIFromStatus(data) {
         }
         if (data.power.energy !== undefined) {
             const el = document.getElementById('power-energy');
-            if (el) el.textContent = data.power.energy.toFixed(3) + ' РєР’С‚В·С‡';
+            if (el) el.textContent = data.power.energy.toFixed(3) + ' кВт·ч';
         }
         if (data.power.frequency !== undefined) {
             const el = document.getElementById('power-frequency');
-            if (el) el.textContent = data.power.frequency.toFixed(1) + ' Р“С†';
+            if (el) el.textContent = data.power.frequency.toFixed(1) + ' Гц';
         }
         if (data.power.pf !== undefined) {
             const el = document.getElementById('power-pf');
@@ -635,35 +635,35 @@ function updateUIFromStatus(data) {
         }
     }
 
-    // РќР°СЃРѕСЃ
+    // Насос
     if (data.pump) {
         if (data.pump.speedMlH !== undefined) {
             const el = document.getElementById('pump-speed');
-            if (el) el.textContent = data.pump.speedMlH.toFixed(0) + ' РјР»/С‡';
+            if (el) el.textContent = data.pump.speedMlH.toFixed(0) + ' мл/С‡';
         }
         if (data.pump.totalMl !== undefined) {
             const el = document.getElementById('pump-volume');
-            if (el) el.textContent = data.pump.totalMl.toFixed(0) + ' РјР»';
+            if (el) el.textContent = data.pump.totalMl.toFixed(0) + ' мл';
         }
     }
 
-    // РћР±СЉС‘РјС‹ С„СЂР°РєС†РёР№
+    // Объёмы фракций
     if (data.volumes) {
         if (data.volumes.heads !== undefined) {
             const el = document.getElementById('volume-heads');
-            if (el) el.textContent = data.volumes.heads.toFixed(0) + ' РјР»';
+            if (el) el.textContent = data.volumes.heads.toFixed(0) + ' мл';
         }
         if (data.volumes.body !== undefined) {
             const el = document.getElementById('volume-body');
-            if (el) el.textContent = data.volumes.body.toFixed(0) + ' РјР»';
+            if (el) el.textContent = data.volumes.body.toFixed(0) + ' мл';
         }
         if (data.volumes.tails !== undefined) {
             const el = document.getElementById('volume-tails');
-            if (el) el.textContent = data.volumes.tails.toFixed(0) + ' РјР»';
+            if (el) el.textContent = data.volumes.tails.toFixed(0) + ' мл';
         }
     }
 
-    // РђСЂРµРѕРјРµС‚СЂ
+    // Ареометр
     if (data.hydrometer && data.hydrometer.abv !== undefined) {
         const el = document.getElementById('abv');
         if (el) el.textContent = data.hydrometer.abv.toFixed(1) + '%';
@@ -679,17 +679,17 @@ function updateUIFromStatus(data) {
 function updateButtonStates() {
     const isIdle = currentMode === 0;
 
-    // РљРЅРѕРїРєРё Р·Р°РїСѓСЃРєР° СЂРµР¶РёРјРѕРІ
+    // Кнопки запуска режимов
     const btnRect = document.querySelector('button[onclick="startRectification()"]');
     const btnManual = document.querySelector('button[onclick="startManual()"]');
     const btnDist = document.querySelector('button[onclick="startDistillation()"]');
 
-    // РљРЅРѕРїРєРё СѓРїСЂР°РІР»РµРЅРёСЏ
+    // Кнопки управления
     const btnStop = document.querySelector('button[onclick="stopProcess()"]');
     const btnPause = document.querySelector('button[onclick="pauseProcess()"]');
     const btnResume = document.querySelector('button[onclick="resumeProcess()"]');
 
-    // РќР°СЃС‚СЂРѕР№РєР° СЃРѕСЃС‚РѕСЏРЅРёР№
+    // Настройка состояний
     if (btnRect) {
         btnRect.disabled = !isIdle;
         btnRect.classList.toggle('btn-disabled', !isIdle);
@@ -723,11 +723,11 @@ function updateHeaterSlider() {
 
     if (slider) {
         slider.max = maxHeaterPower;
-        slider.step = 50;  // РЁР°Рі 50 Р’С‚
+        slider.step = 50;  // Шаг 50 Вт
     }
 
     if (label) {
-        label.innerHTML = `РњРѕС‰РЅРѕСЃС‚СЊ РЅР°РіСЂРµРІР°: <span id="heater-value">0</span> Р’С‚ (РјР°РєСЃ ${maxHeaterPower})`;
+        label.innerHTML = `Мощность нагрева: <span id="heater-value">0</span> Вт (макс ${maxHeaterPower})`;
     }
 }
 
@@ -741,8 +741,8 @@ function saveWiFi() {
 
     if (ssid) {
         sendCommand('wifi', 'save', 0);
-        addLog('рџ’ѕ WiFi РЅР°СЃС‚СЂРѕР№РєРё СЃРѕС…СЂР°РЅРµРЅС‹', 'info');
-        alert('WiFi РЅР°СЃС‚СЂРѕР№РєРё СЃРѕС…СЂР°РЅРµРЅС‹. РџРµСЂРµР·Р°РіСЂСѓР·РёС‚Рµ РєРѕРЅС‚СЂРѕР»Р»РµСЂ.');
+        addLog('💾 WiFi настройки сохранены', 'info');
+        alert('WiFi настройки сохранены. Перезагрузите контроллер.');
     }
 }
 
@@ -752,7 +752,7 @@ async function saveEquipment() {
     const mlPerRev = parseFloat(document.getElementById('pump-ml-per-rev').value);
     const stepsPerRev = parseInt(document.getElementById('pump-steps-per-rev').value);
 
-    // РџСЂРѕРІРµСЂРєР° Рё СЃРѕС…СЂР°РЅРµРЅРёРµ РїР°СЂР°РјРµС‚СЂРѕРІ РЅР°СЃРѕСЃР°
+    // Проверка и сохранение параметров насоса
     const pumpData = {};
     let hasPumpData = false;
 
@@ -775,21 +775,21 @@ async function saveEquipment() {
             });
 
             if (response.ok) {
-                let msg = 'вњ“ РџР°СЂР°РјРµС‚СЂС‹ РЅР°СЃРѕСЃР° СЃРѕС…СЂР°РЅРµРЅС‹:';
-                if (pumpData.mlPerRev) msg += ' ' + pumpData.mlPerRev.toFixed(3) + ' РјР»/РѕР±';
-                if (pumpData.stepsPerRev) msg += ', ' + pumpData.stepsPerRev + ' С€Р°РіРѕРІ/РѕР±';
+                let msg = '✓ Параметры насоса сохранены:';
+                if (pumpData.mlPerRev) msg += ' ' + pumpData.mlPerRev.toFixed(3) + ' мл/об';
+                if (pumpData.stepsPerRev) msg += ', ' + pumpData.stepsPerRev + ' шагов/об';
                 addLog(msg, 'success');
             } else {
-                addLog('вњ— РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РїР°СЂР°РјРµС‚СЂРѕРІ РЅР°СЃРѕСЃР°', 'error');
+                addLog('✗ Ошибка сохранения параметров насоса', 'error');
             }
         } catch (error) {
-            addLog('вњ— РћС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ РїСЂРё СЃРѕС…СЂР°РЅРµРЅРёРё РЅР°СЃРѕСЃР°', 'error');
+            addLog('✗ Ошибка соединения при сохранении насоса', 'error');
         }
     }
 
-    // РЎРѕС…СЂР°РЅРµРЅРёРµ РґСЂСѓРіРёС… РїР°СЂР°РјРµС‚СЂРѕРІ РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ (С‡РµСЂРµР· WebSocket)
+    // Сохранение других параметров оборудования (через WebSocket)
     sendCommand('equipment', 'save', 0);
-    addLog('рџ’ѕ РќР°СЃС‚СЂРѕР№РєРё РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ СЃРѕС…СЂР°РЅРµРЅС‹', 'info');
+    addLog('💾 Настройки оборудования сохранены', 'info');
 }
 
 function toggleMqttFields() {
@@ -809,13 +809,13 @@ function saveMqtt() {
     const publishInterval = document.getElementById('mqtt-publish-interval').value;
 
     if (enabled && !server) {
-        alert('РЈРєР°Р¶РёС‚Рµ Р°РґСЂРµСЃ MQTT СЃРµСЂРІРµСЂР°');
+        alert('Укажите адрес MQTT сервера');
         return;
     }
 
     sendCommand('mqtt', 'save', 0);
-    addLog('рџ’ѕ MQTT РЅР°СЃС‚СЂРѕР№РєРё СЃРѕС…СЂР°РЅРµРЅС‹', 'info');
-    alert('MQTT РЅР°СЃС‚СЂРѕР№РєРё СЃРѕС…СЂР°РЅРµРЅС‹. РџРµСЂРµР·Р°РіСЂСѓР·РёС‚Рµ РєРѕРЅС‚СЂРѕР»Р»РµСЂ.');
+    addLog('💾 MQTT настройки сохранены', 'info');
+    alert('MQTT настройки сохранены. Перезагрузите контроллер.');
 }
 
 function toggleAuthFields() {
@@ -831,34 +831,34 @@ function saveSecurity() {
     const rateLimitEnabled = document.getElementById('rate-limit-enabled').checked;
 
     if (authEnabled && (!username || !password)) {
-        alert('РЈРєР°Р¶РёС‚Рµ РёРјСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ Рё РїР°СЂРѕР»СЊ');
+        alert('Укажите имя пользователя и пароль');
         return;
     }
 
     sendCommand('security', 'save', 0);
-    addLog('рџ’ѕ РќР°СЃС‚СЂРѕР№РєРё Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё СЃРѕС…СЂР°РЅРµРЅС‹', 'info');
-    alert('РќР°СЃС‚СЂРѕР№РєРё Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё СЃРѕС…СЂР°РЅРµРЅС‹. РџРµСЂРµР·Р°РіСЂСѓР·РёС‚Рµ РєРѕРЅС‚СЂРѕР»Р»РµСЂ.');
+    addLog('💾 Настройки безопасности сохранены', 'info');
+    alert('Настройки безопасности сохранены. Перезагрузите контроллер.');
 }
 
 function toggleDemoMode() {
     const enabled = document.getElementById('demo-mode-enabled').checked;
 
-    // РЎРѕС…СЂР°РЅРёС‚СЊ РІ localStorage
+    // Сохранить в localStorage
     localStorage.setItem('demoMode', enabled ? 'true' : 'false');
 
-    // РћС‚РїСЂР°РІРёС‚СЊ РЅР° СЃРµСЂРІРµСЂ
+    // Отправить на сервер
     fetch('/api/settings/demo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: enabled })
     }).then(response => {
         if (response.ok) {
-            addLog(enabled ? 'рџ§Є Р”РµРјРѕ-СЂРµР¶РёРј Р’РљР›Р®Р§РЃРќ' : 'вњ… Р”РµРјРѕ-СЂРµР¶РёРј РѕС‚РєР»СЋС‡С‘РЅ', 'info');
+            addLog(enabled ? '🧪 Демо-режим ВКЛЮЧЁН' : '✅ Демо-режим отключён', 'info');
         } else {
-            addLog('вљ пёЏ РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РґРµРјРѕ-СЂРµР¶РёРјР° РЅР° СЃРµСЂРІРµСЂ', 'warning');
+            addLog('⚠️ Ошибка сохранения демо-режима на сервер', 'warning');
         }
     }).catch(err => {
-        addLog('вљ пёЏ Р”РµРјРѕ-СЂРµР¶РёРј СЃРѕС…СЂР°РЅС‘РЅ Р»РѕРєР°Р»СЊРЅРѕ (СЃРµСЂРІРµСЂ РЅРµРґРѕСЃС‚СѓРїРµРЅ)', 'warning');
+        addLog('⚠️ Демо-режим сохранён локально (сервер недоступен)', 'warning');
     });
 }
 
@@ -870,29 +870,29 @@ function loadDemoMode() {
     }
 }
 
-// РџРµСЂРµР·Р°РіСЂСѓР·РєР° РєРѕРЅС‚СЂРѕР»Р»РµСЂР°
+// Перезагрузка контроллера
 function rebootController() {
-    if (!confirm('РџРµСЂРµР·Р°РіСЂСѓР·РёС‚СЊ РєРѕРЅС‚СЂРѕР»Р»РµСЂ ESP32?\n\nР’СЃРµ С‚РµРєСѓС‰РёРµ РїСЂРѕС†РµСЃСЃС‹ Р±СѓРґСѓС‚ РѕСЃС‚Р°РЅРѕРІР»РµРЅС‹!')) {
+    if (!confirm('Перезагрузить контроллер ESP32?\n\nВсе текущие процессы будут остановлены!')) {
         return;
     }
 
-    addLog('рџ”„ РћС‚РїСЂР°РІРєР° РєРѕРјР°РЅРґС‹ РїРµСЂРµР·Р°РіСЂСѓР·РєРё...', 'warning');
+    addLog('🔄 Отправка команды перезагрузки...', 'warning');
 
     fetch('/api/reboot', {
         method: 'POST'
     }).then(response => {
         if (response.ok) {
-            addLog('вњ… РљРѕРЅС‚СЂРѕР»Р»РµСЂ РїРµСЂРµР·Р°РіСЂСѓР¶Р°РµС‚СЃСЏ...', 'success');
-            // РџРѕРєР°Р·Р°С‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ Рё РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РїРµСЂРµРїРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ С‡РµСЂРµР· 5 СЃРµРє
+            addLog('✅ Контроллер перезагружается...', 'success');
+            // Показать сообщение и попробовать переподключиться через 5 сек
             setTimeout(() => {
-                addLog('рџ”Њ РџРѕРїС‹С‚РєР° РїРµСЂРµРїРѕРґРєР»СЋС‡РµРЅРёСЏ...', 'info');
+                addLog('🔌 Попытка переподключения...', 'info');
                 window.location.reload();
             }, 5000);
         } else {
-            addLog('вќЊ РћС€РёР±РєР° РїРµСЂРµР·Р°РіСЂСѓР·РєРё', 'error');
+            addLog('❌ Ошибка перезагрузки', 'error');
         }
     }).catch(err => {
-        addLog('вќЊ РћС€РёР±РєР° СЃРµС‚Рё: ' + err.message, 'error');
+        addLog('❌ Ошибка сети: ' + err.message, 'error');
     });
 }
 
@@ -900,7 +900,7 @@ function setTheme(theme) {
     document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
 
-    // РћР±РЅРѕРІРёС‚СЊ С‚РµРјСѓ РјРёРЅРё-РіСЂР°С„РёРєР°
+    // Обновить тему мини-графика
     if (miniChart) {
         miniChart.updateOptions({
             theme: {
@@ -909,7 +909,7 @@ function setTheme(theme) {
         });
     }
 
-    addLog(`рџЋЁ РўРµРјР° РёР·РјРµРЅРµРЅР°: ${theme}`, 'info');
+    addLog(`🎨 Тема изменена: ${theme}`, 'info');
 }
 
 function loadTheme() {
@@ -930,10 +930,10 @@ function addLog(message, type = 'info') {
 
     logContainer.appendChild(entry);
 
-    // РђРІС‚РѕСЃРєСЂРѕР»Р» РІРЅРёР·
+    // Автоскролл вниз
     logContainer.scrollTop = logContainer.scrollHeight;
 
-    // РћРіСЂР°РЅРёС‡РёС‚СЊ РєРѕР»РёС‡РµСЃС‚РІРѕ Р·Р°РїРёСЃРµР№ (РїРѕСЃР»РµРґРЅРёРµ 100)
+    // Ограничить количество записей (последние 100)
     const entries = logContainer.querySelectorAll('.log-entry');
     if (entries.length > 100) {
         entries[0].remove();
@@ -941,14 +941,14 @@ function addLog(message, type = 'info') {
 }
 
 function clearLogs() {
-    if (confirm('РћС‡РёСЃС‚РёС‚СЊ Р»РѕРіРё?')) {
+    if (confirm('Очистить логи?')) {
         document.getElementById('log-container').innerHTML = '';
-        addLog('Р›РѕРіРё РѕС‡РёС‰РµРЅС‹', 'info');
+        addLog('Логи очищены', 'info');
     }
 }
 
 function downloadLogs() {
-    addLog('рџ“Ґ Р—Р°РїСЂРѕСЃ СЌРєСЃРїРѕСЂС‚Р° Р»РѕРіРѕРІ...', 'info');
+    addLog('📥 Запрос экспорта логов...', 'info');
     window.open('/api/export', '_blank');
 }
 
@@ -960,7 +960,7 @@ function updateMemoryStats(mem) {
     const memStatsDiv = document.getElementById('memory-stats');
     if (memStatsDiv.style.display === 'none') return;
 
-    // Р¤РѕСЂРјР°С‚РёСЂРѕРІР°РЅРёРµ Р±Р°Р№С‚РѕРІ РІ KB/MB
+    // Форматирование байтов в KB/MB
     const formatBytes = (bytes) => {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -1009,7 +1009,7 @@ function loadMemoryStatsPreference() {
 }
 
 // ============================================================================
-// Р—Р°РіСЂСѓР·РєР° РёРЅС„РѕСЂРјР°С†РёРё Рѕ РЅР°СЃРѕСЃРµ
+// Загрузка информации о насосе
 // ============================================================================
 
 async function loadPumpInfo() {
@@ -1021,17 +1021,17 @@ async function loadPumpInfo() {
 
         const data = await response.json();
 
-        // РћР±РЅРѕРІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РЅР°СЃРѕСЃРµ
+        // Обновить информацию о насосе
         const mlPerRevEl = document.getElementById('pump-ml-per-rev');
         const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
 
         if (mlPerRevEl && data.pump) {
-            // РўРµРїРµСЂСЊ СЌС‚Рѕ input РїРѕР»Рµ, СѓСЃС‚Р°РЅР°РІР»РёРІР°РµРј value
+            // Теперь это input поле, устанавливаем value
             mlPerRevEl.value = data.pump.mlPerRev.toFixed(3);
         }
 
         if (stepsPerRevEl && data.pump) {
-            // РџРѕРєР°Р·С‹РІР°РµРј РѕР±С‰РµРµ РєРѕР»РёС‡РµСЃС‚РІРѕ С€Р°РіРѕРІ
+            // Показываем общее количество шагов
             const totalSteps = data.pump.stepsPerRev * data.pump.microsteps;
             stepsPerRevEl.value = totalSteps;
         }
@@ -1040,12 +1040,12 @@ async function loadPumpInfo() {
         const mlPerRevEl = document.getElementById('pump-ml-per-rev');
         const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
 
-        if (mlPerRevEl) mlPerRevEl.placeholder = 'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё';
-        if (stepsPerRevEl) stepsPerRevEl.placeholder = 'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё';
+        if (mlPerRevEl) mlPerRevEl.placeholder = 'Ошибка загрузки';
+        if (stepsPerRevEl) stepsPerRevEl.placeholder = 'Ошибка загрузки';
     }
 }
 
-// Р—Р°РіСЂСѓР·РєР° РёРЅС„РѕСЂРјР°С†РёРё Рѕ РІРµСЂСЃРёСЏС…
+// Загрузка информации о версиях
 async function loadVersionInfo() {
     try {
         const response = await fetch('/api/version');
@@ -1055,7 +1055,7 @@ async function loadVersionInfo() {
 
         const data = await response.json();
 
-        // РћР±РЅРѕРІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РїСЂРѕС€РёРІРєРµ
+        // Обновить информацию о прошивке
         if (data.firmware) {
             document.getElementById('firmware-version').textContent = data.firmware.version || 'Unknown';
             document.getElementById('firmware-build-date').textContent = data.firmware.buildDate || 'Unknown';
@@ -1069,7 +1069,7 @@ async function loadVersionInfo() {
                 `${data.board.chip} (Flash: ${flashMB}MB, PSRAM: ${psramMB}MB)`;
         }
 
-        // РћР±РЅРѕРІРёС‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ С„СЂРѕРЅС‚РµРЅРґРµ
+        // Обновить информацию о фронтенде
         if (data.frontend) {
             document.getElementById('frontend-build-date').textContent =
                 data.frontend.buildDate || data.frontend.note || 'Unknown';
@@ -1077,17 +1077,17 @@ async function loadVersionInfo() {
                 data.frontend.buildTime || '-';
         }
 
-        addLog('вњ“ РРЅС„РѕСЂРјР°С†РёСЏ Рѕ РІРµСЂСЃРёСЏС… РѕР±РЅРѕРІР»РµРЅР°', 'success');
+        addLog('✓ Информация о версиях обновлена', 'success');
     } catch (error) {
         console.error('Error loading version info:', error);
-        document.getElementById('firmware-version').textContent = 'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё';
-        document.getElementById('frontend-build-date').textContent = 'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё';
-        addLog('вњ— РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РІРµСЂСЃРёР№', 'error');
+        document.getElementById('firmware-version').textContent = 'Ошибка загрузки';
+        document.getElementById('frontend-build-date').textContent = 'Ошибка загрузки';
+        addLog('✗ Ошибка загрузки версий', 'error');
     }
 }
 
 // ============================================================================
-// РСЃС‚РѕСЂРёСЏ РїСЂРѕС†РµСЃСЃРѕРІ
+// История процессов
 // ============================================================================
 
 let historyData = [];
@@ -1102,18 +1102,18 @@ async function loadHistoryList() {
         const data = await response.json();
         historyData = data.processes || [];
 
-        // РџСЂРёРјРµРЅРёС‚СЊ С„РёР»СЊС‚СЂС‹
+        // Применить фильтры
         applyHistoryFilters();
 
-        addLog(`рџ“љ Р—Р°РіСЂСѓР¶РµРЅРѕ РїСЂРѕС†РµСЃСЃРѕРІ: ${historyData.length}`, 'info');
+        addLog(`📚 Загружено процессов: ${historyData.length}`, 'info');
     } catch (error) {
         console.error('Error loading history:', error);
-        addLog('вќЊ РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РёСЃС‚РѕСЂРёРё', 'error');
+        addLog('❌ Ошибка загрузки истории', 'error');
 
-        // РџРѕРєР°Р·Р°С‚СЊ РїСѓСЃС‚РѕР№ СЃРїРёСЃРѕРє
+        // Показать пустой список
         const historyListEl = document.getElementById('history-list');
         if (historyListEl) {
-            historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">РќРµС‚ РґР°РЅРЅС‹С… РёР»Рё РѕС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё</div>';
+            historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет данных или ошибка загрузки</div>';
         }
     }
 }
@@ -1124,12 +1124,12 @@ function applyHistoryFilters() {
 
     let filtered = [...historyData];
 
-    // Р¤РёР»СЊС‚СЂ РїРѕ С‚РёРїСѓ
+    // Фильтр по типу
     if (typeFilter !== 'all') {
         filtered = filtered.filter(p => p.type === typeFilter);
     }
 
-    // РЎРѕСЂС‚РёСЂРѕРІРєР°
+    // Сортировка
     filtered.sort((a, b) => {
         switch (sortBy) {
             case 'date-desc':
@@ -1145,10 +1145,10 @@ function applyHistoryFilters() {
         }
     });
 
-    // РћС‚СЂРёСЃРѕРІР°С‚СЊ СЃРїРёСЃРѕРє
+    // Отрисовать список
     renderHistoryList(filtered);
 
-    // РћР±РЅРѕРІРёС‚СЊ СЃС‚Р°С‚РёСЃС‚РёРєСѓ
+    // Обновить статистику
     updateHistoryStats(filtered);
 }
 
@@ -1157,7 +1157,7 @@ function renderHistoryList(processes) {
     if (!historyListEl) return;
 
     if (processes.length === 0) {
-        historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">РќРµС‚ РїСЂРѕС†РµСЃСЃРѕРІ РґР»СЏ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ</div>';
+        historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет процессов для отображения</div>';
         return;
     }
 
@@ -1177,16 +1177,16 @@ function renderHistoryItem(process) {
     div.dataset.processId = process.id;
 
     const typeNames = {
-        rectification: 'Р РµРєС‚РёС„РёРєР°С†РёСЏ',
-        distillation: 'Р”РёСЃС‚РёР»Р»СЏС†РёСЏ',
-        mashing: 'Р—Р°С‚РёСЂРєР°',
-        hold: 'Р’С‹РґРµСЂР¶РєР°'
+        rectification: 'Ректификация',
+        distillation: 'Дистилляция',
+        mashing: 'Затирка',
+        hold: 'Выдержка'
     };
 
     const statusNames = {
-        completed: 'Р—Р°РІРµСЂС€РµРЅ',
-        stopped: 'РћСЃС‚Р°РЅРѕРІР»РµРЅ',
-        error: 'РћС€РёР±РєР°'
+        completed: 'Завершен',
+        stopped: 'Остановлен',
+        error: 'Ошибка'
     };
 
     const typeName = typeNames[process.type] || process.type;
@@ -1213,18 +1213,18 @@ function renderHistoryItem(process) {
         </div>
         <div class="history-info">
             <div class="history-metric">
-                <span class="metric-label">вЏ±пёЏ Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ:</span>
+                <span class="metric-label">⏱️ Длительность:</span>
                 <span class="metric-value">${durationHours} С‡</span>
             </div>
             <div class="history-metric">
-                <span class="metric-label">рџ’§ РћР±СЉС‘Рј:</span>
-                <span class="metric-value">${process.totalVolume || 0} РјР»</span>
+                <span class="metric-label">💧 Объём:</span>
+                <span class="metric-value">${process.totalVolume || 0} мл</span>
             </div>
         </div>
         <div class="history-actions">
-            <button class="btn-secondary" onclick="viewHistoryDetails('${process.id}')">рџ‘ЃпёЏ РџРѕРґСЂРѕР±РЅРѕ</button>
-            <button class="btn-secondary" onclick="exportHistory('${process.id}')">рџ“Ґ Р­РєСЃРїРѕСЂС‚</button>
-            <button class="btn-danger" onclick="deleteHistoryItem('${process.id}')">рџ—‘пёЏ РЈРґР°Р»РёС‚СЊ</button>
+            <button class="btn-secondary" onclick="viewHistoryDetails('${process.id}')">🔍 Подробно</button>
+            <button class="btn-secondary" onclick="exportHistory('${process.id}')">📥 Экспорт</button>
+            <button class="btn-danger" onclick="deleteHistoryItem('${process.id}')">🗑️ Удалить</button>
         </div>
     `;
 
@@ -1244,7 +1244,7 @@ function updateCompareButton() {
     const compareBtn = document.getElementById('compare-processes-btn');
     if (compareBtn) {
         compareBtn.disabled = selectedProcesses.size < 2;
-        compareBtn.textContent = `рџ“Љ РЎСЂР°РІРЅРёС‚СЊ РІС‹Р±СЂР°РЅРЅС‹Рµ (${selectedProcesses.size})`;
+        compareBtn.textContent = `📊 Сравнить выбранные (${selectedProcesses.size})`;
     }
 }
 
@@ -1259,16 +1259,16 @@ function updateHistoryStats(processes) {
     const total = processes.length;
     const completed = processes.filter(p => p.status === 'completed').length;
     const totalTime = processes.reduce((sum, p) => sum + (p.duration || 0), 0);
-    const totalEnergy = 0; // Р‘СѓРґРµС‚ СЂРµР°Р»РёР·РѕРІР°РЅРѕ РїРѕР·Р¶Рµ, РєРѕРіРґР° РїРѕСЏРІРёС‚СЃСЏ РїРѕР»Рµ energy РІ РїСЂРѕС†РµСЃСЃР°С…
+    const totalEnergy = 0; // Будет реализовано позже, когда появится поле energy в процессах
 
     totalEl.textContent = total;
     completedEl.textContent = completed;
     timeEl.textContent = (totalTime / 3600).toFixed(1) + ' С‡';
-    energyEl.textContent = totalEnergy.toFixed(1) + ' РєР’С‚В·С‡';
+    energyEl.textContent = totalEnergy.toFixed(1) + ' кВт·ч';
 }
 
 async function clearHistory() {
-    if (!confirm('РЈРґР°Р»РёС‚СЊ Р’РЎР® РёСЃС‚РѕСЂРёСЋ РїСЂРѕС†РµСЃСЃРѕРІ? Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµРѕР±СЂР°С‚РёРјРѕ!')) {
+    if (!confirm('Удалить ВСЮ историю процессов? Это действие необратимо!')) {
         return;
     }
 
@@ -1284,17 +1284,17 @@ async function clearHistory() {
             throw new Error('Failed to clear history');
         }
 
-        addLog('рџ—‘пёЏ РСЃС‚РѕСЂРёСЏ РїРѕР»РЅРѕСЃС‚СЊСЋ РѕС‡РёС‰РµРЅР°', 'info');
+        addLog('🗑️ История полностью очищена', 'info');
         await loadHistoryList();
     } catch (error) {
         console.error('Error clearing history:', error);
-        addLog('вќЊ РћС€РёР±РєР° РїСЂРё РѕС‡РёСЃС‚РєРµ РёСЃС‚РѕСЂРёРё', 'error');
-        alert('РћС€РёР±РєР° РїСЂРё РѕС‡РёСЃС‚РєРµ РёСЃС‚РѕСЂРёРё');
+        addLog('❌ Ошибка при очистке истории', 'error');
+        alert('Ошибка при очистке истории');
     }
 }
 
 async function deleteHistoryItem(id) {
-    if (!confirm('РЈРґР°Р»РёС‚СЊ СЌС‚РѕС‚ РїСЂРѕС†РµСЃСЃ РёР· РёСЃС‚РѕСЂРёРё?')) {
+    if (!confirm('Удалить этот процесс из истории?')) {
         return;
     }
 
@@ -1310,12 +1310,12 @@ async function deleteHistoryItem(id) {
             throw new Error('Failed to delete history item');
         }
 
-        addLog(`рџ—‘пёЏ РџСЂРѕС†РµСЃСЃ ${id} СѓРґР°Р»РµРЅ РёР· РёСЃС‚РѕСЂРёРё`, 'info');
+        addLog(`🗑️ Процесс ${id} удален из истории`, 'info');
         await loadHistoryList();
     } catch (error) {
         console.error('Error deleting history item:', error);
-        addLog('вќЊ РћС€РёР±РєР° РїСЂРё СѓРґР°Р»РµРЅРёРё РїСЂРѕС†РµСЃСЃР°', 'error');
-        alert('РћС€РёР±РєР° РїСЂРё СѓРґР°Р»РµРЅРёРё РїСЂРѕС†РµСЃСЃР°');
+        addLog('❌ Ошибка при удалении процесса', 'error');
+        alert('Ошибка при удалении процесса');
     }
 }
 
@@ -1328,14 +1328,14 @@ async function viewHistoryDetails(id) {
 
         const process = await response.json();
 
-        // РЎРѕР·РґР°С‚СЊ РјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ СЃ РґРµС‚Р°Р»СЏРјРё
+        // Создать модальное окно с деталями
         showHistoryDetailsModal(process);
 
-        addLog(`рџ‘ЃпёЏ РџСЂРѕСЃРјРѕС‚СЂ РїСЂРѕС†РµСЃСЃР° ${id}`, 'info');
+        addLog(`👁️ Просмотр процесса ${id}`, 'info');
     } catch (error) {
         console.error('Error loading history details:', error);
-        addLog('вќЊ РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РґРµС‚Р°Р»РµР№ РїСЂРѕС†РµСЃСЃР°', 'error');
-        alert('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РґРµС‚Р°Р»РµР№ РїСЂРѕС†РµСЃСЃР°');
+        addLog('❌ Ошибка загрузки деталей процесса', 'error');
+        alert('Ошибка загрузки деталей процесса');
     }
 }
 
@@ -1344,87 +1344,87 @@ let powerChart = null;
 
 function showHistoryDetailsModal(process) {
     const typeNames = {
-        rectification: 'Р РµРєС‚РёС„РёРєР°С†РёСЏ',
-        distillation: 'Р”РёСЃС‚РёР»Р»СЏС†РёСЏ',
-        mashing: 'Р—Р°С‚РёСЂРєР°',
-        hold: 'Р’С‹РґРµСЂР¶РєР°'
+        rectification: 'Ректификация',
+        distillation: 'Дистилляция',
+        mashing: 'Затирка',
+        hold: 'Выдержка'
     };
 
     const startDate = new Date(process.metadata.startTime * 1000);
     const endDate = new Date(process.metadata.endTime * 1000);
     const typeName = typeNames[process.process.type] || process.process.type;
 
-    // РЈСЃС‚Р°РЅРѕРІРёС‚СЊ Р·Р°РіРѕР»РѕРІРѕРє
+    // Установить заголовок
     document.getElementById('modal-title').textContent = `${typeName} - ${startDate.toLocaleDateString('ru-RU')}`;
 
-    // Р—Р°РїРѕР»РЅРёС‚СЊ РѕСЃРЅРѕРІРЅСѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ
+    // Заполнить основную информацию
     const infoGrid = document.getElementById('modal-info-grid');
     infoGrid.innerHTML = `
         <div class="modal-info-item">
-            <div class="modal-info-label">РўРёРї РїСЂРѕС†РµСЃСЃР°</div>
+            <div class="modal-info-label">Тип процесса</div>
             <div class="modal-info-value">${typeName}</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">Р РµР¶РёРј</div>
-            <div class="modal-info-value">${process.process.mode === 'auto' ? 'РђРІС‚Рѕ' : 'Р СѓС‡РЅРѕР№'}</div>
+            <div class="modal-info-label">Режим</div>
+            <div class="modal-info-value">${process.process.mode === 'auto' ? 'Авто' : 'Ручной'}</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">РќР°С‡Р°Р»Рѕ</div>
+            <div class="modal-info-label">Начало</div>
             <div class="modal-info-value">${startDate.toLocaleString('ru-RU')}</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">РћРєРѕРЅС‡Р°РЅРёРµ</div>
+            <div class="modal-info-label">Окончание</div>
             <div class="modal-info-value">${endDate.toLocaleString('ru-RU')}</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ</div>
+            <div class="modal-info-label">Длительность</div>
             <div class="modal-info-value">${(process.metadata.duration / 3600).toFixed(1)} С‡</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">РЎС‚Р°С‚СѓСЃ</div>
-            <div class="modal-info-value">${process.metadata.completedSuccessfully ? 'вњ… РЈСЃРїРµС€РЅРѕ' : 'вљ пёЏ РџСЂРµСЂРІР°РЅРѕ'}</div>
+            <div class="modal-info-label">Статус</div>
+            <div class="modal-info-value">${process.metadata.completedSuccessfully ? '✅ Успешно' : '⚠️ Прервано'}</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">РЎСЂРµРґРЅСЏСЏ РјРѕС‰РЅРѕСЃС‚СЊ</div>
-            <div class="modal-info-value">${process.metrics?.power?.avgPower || 0} Р’С‚</div>
+            <div class="modal-info-label">Средняя мощность</div>
+            <div class="modal-info-value">${process.metrics?.power?.avgPower || 0} Вт</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">РџРѕС‚СЂРµР±Р»РµРЅРѕ СЌРЅРµСЂРіРёРё</div>
-            <div class="modal-info-value">${(process.metrics?.power?.energyUsed || 0).toFixed(2)} РєР’С‚В·С‡</div>
+            <div class="modal-info-label">Потреблено энергии</div>
+            <div class="modal-info-value">${(process.metrics?.power?.energyUsed || 0).toFixed(2)} кВт·ч</div>
         </div>
     `;
 
-    // РџРѕСЃС‚СЂРѕРёС‚СЊ РіСЂР°С„РёРє С‚РµРјРїРµСЂР°С‚СѓСЂ
+    // Построить график температур
     renderTempChart(process);
 
-    // РџРѕСЃС‚СЂРѕРёС‚СЊ РіСЂР°С„РёРє РјРѕС‰РЅРѕСЃС‚Рё
+    // Построить график мощности
     renderPowerChart(process);
 
-    // Р—Р°РїРѕР»РЅРёС‚СЊ С„Р°Р·С‹
+    // Заполнить фазы
     renderPhases(process);
 
-    // Р—Р°РїРѕР»РЅРёС‚СЊ СЂРµР·СѓР»СЊС‚Р°С‚С‹
+    // Заполнить результаты
     const resultsGrid = document.getElementById('modal-results-grid');
     resultsGrid.innerHTML = `
         <div class="modal-info-item">
-            <div class="modal-info-label">Р“РѕР»РѕРІС‹</div>
-            <div class="modal-info-value">${process.results.headsCollected || 0} РјР»</div>
+            <div class="modal-info-label">Головы</div>
+            <div class="modal-info-value">${process.results.headsCollected || 0} мл</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">РўРµР»Рѕ</div>
-            <div class="modal-info-value">${process.results.bodyCollected || 0} РјР»</div>
+            <div class="modal-info-label">Тело</div>
+            <div class="modal-info-value">${process.results.bodyCollected || 0} мл</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">РҐРІРѕСЃС‚С‹</div>
-            <div class="modal-info-value">${process.results.tailsCollected || 0} РјР»</div>
+            <div class="modal-info-label">Хвосты</div>
+            <div class="modal-info-value">${process.results.tailsCollected || 0} мл</div>
         </div>
         <div class="modal-info-item">
-            <div class="modal-info-label">Р’СЃРµРіРѕ СЃРѕР±СЂР°РЅРѕ</div>
-            <div class="modal-info-value">${process.results.totalCollected || 0} РјР»</div>
+            <div class="modal-info-label">Всего собрано</div>
+            <div class="modal-info-value">${process.results.totalCollected || 0} мл</div>
         </div>
     `;
 
-    // РџСЂРёРІСЏР·Р°С‚СЊ РѕР±СЂР°Р±РѕС‚С‡РёРєРё Рє РєРЅРѕРїРєР°Рј СЌРєСЃРїРѕСЂС‚Р°
+    // Привязать обработчики к кнопкам экспорта
     const exportCsvBtn = document.getElementById('modal-export-csv');
     const exportJsonBtn = document.getElementById('modal-export-json');
 
@@ -1436,7 +1436,7 @@ function showHistoryDetailsModal(process) {
         exportJsonBtn.onclick = () => exportHistoryJSON(process.id);
     }
 
-    // РџРѕРєР°Р·Р°С‚СЊ РјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ
+    // Показать модальное окно
     document.getElementById('history-modal').classList.add('active');
     document.body.style.overflow = 'hidden';
 }
@@ -1445,7 +1445,7 @@ function closeHistoryModal() {
     document.getElementById('history-modal').classList.remove('active');
     document.body.style.overflow = '';
 
-    // РЈРЅРёС‡С‚РѕР¶РёС‚СЊ РіСЂР°С„РёРєРё
+    // Уничтожить графики
     if (tempChart) {
         tempChart.destroy();
         tempChart = null;
@@ -1461,7 +1461,7 @@ function renderTempChart(process) {
     chartEl.innerHTML = '';
 
     if (!process.timeseries || process.timeseries.data.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">РќРµС‚ РґР°РЅРЅС‹С… РІСЂРµРјРµРЅРЅРѕРіРѕ СЂСЏРґР°</p>';
+        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';
         return;
     }
 
@@ -1484,11 +1484,11 @@ function renderTempChart(process) {
         },
         series: [
             {
-                name: 'РљСѓР±',
+                name: 'Куб',
                 data: data.map(p => ({ x: p.time * 1000, y: p.cube }))
             },
             {
-                name: 'Р¦Р°СЂРіР° РІРµСЂС…',
+                name: 'Царга верх',
                 data: data.map(p => ({ x: p.time * 1000, y: p.columnTop }))
             }
         ],
@@ -1502,7 +1502,7 @@ function renderTempChart(process) {
         },
         yaxis: {
             title: {
-                text: 'РўРµРјРїРµСЂР°С‚СѓСЂР° (В°C)'
+                text: 'Температура (°C)'
             },
             decimalsInFloat: 1
         },
@@ -1531,7 +1531,7 @@ function renderPowerChart(process) {
     chartEl.innerHTML = '';
 
     if (!process.timeseries || process.timeseries.data.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">РќРµС‚ РґР°РЅРЅС‹С… РІСЂРµРјРµРЅРЅРѕРіРѕ СЂСЏРґР°</p>';
+        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';
         return;
     }
 
@@ -1554,7 +1554,7 @@ function renderPowerChart(process) {
         },
         series: [
             {
-                name: 'РњРѕС‰РЅРѕСЃС‚СЊ',
+                name: 'Мощность',
                 data: data.map(p => ({ x: p.time * 1000, y: p.power }))
             }
         ],
@@ -1568,7 +1568,7 @@ function renderPowerChart(process) {
         },
         yaxis: {
             title: {
-                text: 'РњРѕС‰РЅРѕСЃС‚СЊ (Р’С‚)'
+                text: 'Мощность (Вт)'
             },
             decimalsInFloat: 0
         },
@@ -1600,18 +1600,18 @@ function renderPhases(process) {
     const phasesEl = document.getElementById('modal-phases');
 
     if (!process.phases || process.phases.length === 0) {
-        phasesEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">РќРµС‚ РёРЅС„РѕСЂРјР°С†РёРё Рѕ С„Р°Р·Р°С…</p>';
+        phasesEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет информации о фазах</p>';
         return;
     }
 
     const phaseNames = {
-        heating: 'РќР°РіСЂРµРІ',
-        stabilization: 'РЎС‚Р°Р±РёР»РёР·Р°С†РёСЏ',
-        heads: 'РћС‚Р±РѕСЂ РіРѕР»РѕРІ',
-        body: 'РћС‚Р±РѕСЂ С‚РµР»Р°',
-        tails: 'РћС‚Р±РѕСЂ С…РІРѕСЃС‚РѕРІ',
-        purge: 'РћС‡РёСЃС‚РєР°',
-        finish: 'Р—Р°РІРµСЂС€РµРЅРёРµ'
+        heating: 'Нагрев',
+        stabilization: 'Стабилизация',
+        heads: 'Отбор голов',
+        body: 'Отбор тела',
+        tails: 'Отбор хвостов',
+        purge: 'Очистка',
+        finish: 'Завершение'
     };
 
     phasesEl.innerHTML = '';
@@ -1627,11 +1627,11 @@ function renderPhases(process) {
         phaseEl.innerHTML = `
             <div class="modal-phase-name">${phaseName}</div>
             <div class="modal-phase-details">
-                <div class="modal-phase-detail">РќР°С‡Р°Р»Рѕ: <strong>${startDate.toLocaleTimeString('ru-RU')}</strong></div>
-                <div class="modal-phase-detail">РћРєРѕРЅС‡Р°РЅРёРµ: <strong>${endDate.toLocaleTimeString('ru-RU')}</strong></div>
-                <div class="modal-phase-detail">Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ: <strong>${(phase.duration / 60).toFixed(0)} РјРёРЅ</strong></div>
-                <div class="modal-phase-detail">РћР±СЉС‘Рј: <strong>${phase.volume || 0} РјР»</strong></div>
-                <div class="modal-phase-detail">РЎСЂРµРґРЅСЏСЏ СЃРєРѕСЂРѕСЃС‚СЊ: <strong>${phase.avgSpeed || 0} РјР»/С‡</strong></div>
+                <div class="modal-phase-detail">Начало: <strong>${startDate.toLocaleTimeString('ru-RU')}</strong></div>
+                <div class="modal-phase-detail">Окончание: <strong>${endDate.toLocaleTimeString('ru-RU')}</strong></div>
+                <div class="modal-phase-detail">Длительность: <strong>${(phase.duration / 60).toFixed(0)} мин</strong></div>
+                <div class="modal-phase-detail">Объём: <strong>${phase.volume || 0} мл</strong></div>
+                <div class="modal-phase-detail">Средняя скорость: <strong>${phase.avgSpeed || 0} мл/ч</strong></div>
             </div>
         `;
 
@@ -1639,7 +1639,7 @@ function renderPhases(process) {
     });
 }
 
-// Р—Р°РєСЂС‹С‚РёРµ РјРѕРґР°Р»СЊРЅРѕРіРѕ РѕРєРЅР° РїСЂРё РєР»РёРєРµ РЅР° overlay
+// Закрытие модального окна при клике на overlay
 document.addEventListener('DOMContentLoaded', function () {
     const modalOverlay = document.getElementById('history-modal');
     if (modalOverlay) {
@@ -1653,21 +1653,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
 async function exportHistory(id, format = null) {
     try {
-        // Р•СЃР»Рё С„РѕСЂРјР°С‚ РЅРµ СѓРєР°Р·Р°РЅ, СЃРїСЂРѕСЃРёС‚СЊ Сѓ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+        // Если формат не указан, спросить у пользователя
         if (!format) {
-            const choice = confirm('Р’С‹Р±РµСЂРёС‚Рµ С„РѕСЂРјР°С‚ СЌРєСЃРїРѕСЂС‚Р°:\n\nРћРљ - CSV (С‚Р°Р±Р»РёС†Р°)\nРћС‚РјРµРЅР° - JSON (РґР°РЅРЅС‹Рµ)');
+            const choice = confirm('Выберите формат экспорта:\n\nОК - CSV (таблица)\nОтмена - JSON (данные)');
             format = choice ? 'csv' : 'json';
         }
 
-        addLog(`рџ“Ґ Р­РєСЃРїРѕСЂС‚ РїСЂРѕС†РµСЃСЃР° ${id} РІ С„РѕСЂРјР°С‚Рµ ${format.toUpperCase()}...`, 'info');
+        addLog(`📥 Экспорт процесса ${id} в формате ${format.toUpperCase()}...`, 'info');
 
-        // РћС‚РєСЂС‹С‚СЊ СЌРєСЃРїРѕСЂС‚ РІ РЅРѕРІРѕР№ РІРєР»Р°РґРєРµ
+        // Открыть экспорт в новой вкладке
         window.open(`/api/history/${id}/export?format=${format}`, '_blank');
 
-        addLog(`вњ… Р­РєСЃРїРѕСЂС‚ РїСЂРѕС†РµСЃСЃР° ${id} РЅР°С‡Р°С‚`, 'info');
+        addLog(`✅ Экспорт процесса ${id} начат`, 'info');
     } catch (error) {
         console.error('Error exporting history:', error);
-        addLog('вќЊ РћС€РёР±РєР° СЌРєСЃРїРѕСЂС‚Р°', 'error');
+        addLog('❌ Ошибка экспорта', 'error');
     }
 }
 
@@ -1680,7 +1680,7 @@ async function exportHistoryJSON(id) {
 }
 
 // ============================================================================
-// РЎСЂР°РІРЅРµРЅРёРµ РїСЂРѕС†РµСЃСЃРѕРІ
+// Сравнение процессов
 // ============================================================================
 
 let compareTempChart = null;
@@ -1688,19 +1688,19 @@ let comparePowerChart = null;
 
 async function compareSelected() {
     if (selectedProcesses.size < 2) {
-        alert('Р’С‹Р±РµСЂРёС‚Рµ РјРёРЅРёРјСѓРј 2 РїСЂРѕС†РµСЃСЃР° РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ');
+        alert('Выберите минимум 2 процесса для сравнения');
         return;
     }
 
     if (selectedProcesses.size > 5) {
-        alert('РњРѕР¶РЅРѕ СЃСЂР°РІРЅРёС‚СЊ РјР°РєСЃРёРјСѓРј 5 РїСЂРѕС†РµСЃСЃРѕРІ РѕРґРЅРѕРІСЂРµРјРµРЅРЅРѕ');
+        alert('Можно сравнить максимум 5 процессов одновременно');
         return;
     }
 
     try {
-        addLog(`рџ“Љ Р—Р°РіСЂСѓР·РєР° ${selectedProcesses.size} РїСЂРѕС†РµСЃСЃРѕРІ РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ...`, 'info');
+        addLog(`📊 Загрузка ${selectedProcesses.size} процессов для сравнения...`, 'info');
 
-        // Р—Р°РіСЂСѓР·РёС‚СЊ РІСЃРµ РІС‹Р±СЂР°РЅРЅС‹Рµ РїСЂРѕС†РµСЃСЃС‹
+        // Загрузить все выбранные процессы
         const processes = [];
         for (const processId of selectedProcesses) {
             const response = await fetch(`/api/history/${processId}`);
@@ -1711,21 +1711,21 @@ async function compareSelected() {
         }
 
         if (processes.length < 2) {
-            alert('РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РїСЂРѕС†РµСЃСЃС‹ РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ');
+            alert('Не удалось загрузить процессы для сравнения');
             return;
         }
 
         showCompareModal(processes);
-        addLog(`вњ… РЎСЂР°РІРЅРµРЅРёРµ ${processes.length} РїСЂРѕС†РµСЃСЃРѕРІ`, 'info');
+        addLog(`✅ Сравнение ${processes.length} процессов`, 'info');
     } catch (error) {
         console.error('Error comparing processes:', error);
-        addLog('вќЊ РћС€РёР±РєР° РїСЂРё СЃСЂР°РІРЅРµРЅРёРё РїСЂРѕС†РµСЃСЃРѕРІ', 'error');
-        alert('РћС€РёР±РєР° РїСЂРё СЃСЂР°РІРЅРµРЅРёРё РїСЂРѕС†РµСЃСЃРѕРІ');
+        addLog('❌ Ошибка при сравнении процессов', 'error');
+        alert('Ошибка при сравнении процессов');
     }
 }
 
 function showCompareModal(processes) {
-    // Р—Р°РїРѕР»РЅРёС‚СЊ СЃРїРёСЃРѕРє РїСЂРѕС†РµСЃСЃРѕРІ
+    // Заполнить список процессов
     const processList = document.getElementById('compare-process-list');
     processList.innerHTML = '';
 
@@ -1733,10 +1733,10 @@ function showCompareModal(processes) {
 
     processes.forEach((process, index) => {
         const typeNames = {
-            rectification: 'Р РµРєС‚РёС„РёРєР°С†РёСЏ',
-            distillation: 'Р”РёСЃС‚РёР»Р»СЏС†РёСЏ',
-            mashing: 'Р—Р°С‚РёСЂРєР°',
-            hold: 'Р’С‹РґРµСЂР¶РєР°'
+            rectification: 'Ректификация',
+            distillation: 'Дистилляция',
+            mashing: 'Затирка',
+            hold: 'Выдержка'
         };
 
         const badge = document.createElement('div');
@@ -1752,12 +1752,12 @@ function showCompareModal(processes) {
         processList.appendChild(badge);
     });
 
-    // РџРѕСЃС‚СЂРѕРёС‚СЊ РіСЂР°С„РёРєРё СЃСЂР°РІРЅРµРЅРёСЏ
+    // Построить графики сравнения
     renderCompareTempChart(processes, colors);
     renderComparePowerChart(processes, colors);
     renderCompareTable(processes);
 
-    // РџРѕРєР°Р·Р°С‚СЊ РјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ
+    // Показать модальное окно
     document.getElementById('compare-modal').classList.add('active');
     document.body.style.overflow = 'hidden';
 }
@@ -1766,7 +1766,7 @@ function closeCompareModal() {
     document.getElementById('compare-modal').classList.remove('active');
     document.body.style.overflow = '';
 
-    // РЈРЅРёС‡С‚РѕР¶РёС‚СЊ РіСЂР°С„РёРєРё
+    // Уничтожить графики
     if (compareTempChart) {
         compareTempChart.destroy();
         compareTempChart = null;
@@ -1787,7 +1787,7 @@ function renderCompareTempChart(processes, colors) {
         if (process.timeseries && process.timeseries.data && process.timeseries.data.length > 0) {
             const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
             series.push({
-                name: `РџСЂРѕС†РµСЃСЃ ${index + 1} (${startDate})`,
+                name: `Процесс ${index + 1} (${startDate})`,
                 data: process.timeseries.data.map(p => ({
                     x: p.time * 1000,
                     y: p.cube
@@ -1797,7 +1797,7 @@ function renderCompareTempChart(processes, colors) {
     });
 
     if (series.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ</p>';
+        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';
         return;
     }
 
@@ -1827,7 +1827,7 @@ function renderCompareTempChart(processes, colors) {
         },
         yaxis: {
             title: {
-                text: 'РўРµРјРїРµСЂР°С‚СѓСЂР° РєСѓР±Р° (В°C)'
+                text: 'Температура куба (°C)'
             },
             decimalsInFloat: 1
         },
@@ -1861,7 +1861,7 @@ function renderComparePowerChart(processes, colors) {
         if (process.timeseries && process.timeseries.data && process.timeseries.data.length > 0) {
             const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
             series.push({
-                name: `РџСЂРѕС†РµСЃСЃ ${index + 1} (${startDate})`,
+                name: `Процесс ${index + 1} (${startDate})`,
                 data: process.timeseries.data.map(p => ({
                     x: p.time * 1000,
                     y: p.power
@@ -1871,7 +1871,7 @@ function renderComparePowerChart(processes, colors) {
     });
 
     if (series.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ</p>';
+        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';
         return;
     }
 
@@ -1901,7 +1901,7 @@ function renderComparePowerChart(processes, colors) {
         },
         yaxis: {
             title: {
-                text: 'РњРѕС‰РЅРѕСЃС‚СЊ (Р’С‚)'
+                text: 'Мощность (Вт)'
             },
             decimalsInFloat: 0
         },
@@ -1930,25 +1930,25 @@ function renderCompareTable(processes) {
 
     let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';
     html += '<thead><tr style="background: var(--bg-secondary);">';
-    html += '<th style="padding: 10px; border: 1px solid var(--border-color);">РџР°СЂР°РјРµС‚СЂ</th>';
+    html += '<th style="padding: 10px; border: 1px solid var(--border-color);">Параметр</th>';
 
     processes.forEach((process, index) => {
         const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
-        html += `<th style="padding: 10px; border: 1px solid var(--border-color);">РџСЂРѕС†РµСЃСЃ ${index + 1}<br><span style="font-size: 0.8em; font-weight: normal;">${startDate}</span></th>`;
+        html += `<th style="padding: 10px; border: 1px solid var(--border-color);">Процесс ${index + 1}<br><span style="font-size: 0.8em; font-weight: normal;">${startDate}</span></th>`;
     });
 
     html += '</tr></thead><tbody>';
 
-    // РЎС‚СЂРѕРєРё С‚Р°Р±Р»РёС†С‹
+    // Строки таблицы
     const rows = [
-        { label: 'Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ', getValue: (p) => (p.metadata.duration / 3600).toFixed(1) + ' С‡' },
-        { label: 'РЎСЂРµРґРЅСЏСЏ РјРѕС‰РЅРѕСЃС‚СЊ', getValue: (p) => (p.metrics?.power?.avgPower || 0) + ' Р’С‚' },
-        { label: 'РџРѕС‚СЂРµР±Р»РµРЅРѕ СЌРЅРµСЂРіРёРё', getValue: (p) => (p.metrics?.power?.energyUsed || 0).toFixed(2) + ' РєР’С‚В·С‡' },
-        { label: 'Р“РѕР»РѕРІС‹', getValue: (p) => (p.results?.headsCollected || 0) + ' РјР»' },
-        { label: 'РўРµР»Рѕ', getValue: (p) => (p.results?.bodyCollected || 0) + ' РјР»' },
-        { label: 'РҐРІРѕСЃС‚С‹', getValue: (p) => (p.results?.tailsCollected || 0) + ' РјР»' },
-        { label: 'Р’СЃРµРіРѕ СЃРѕР±СЂР°РЅРѕ', getValue: (p) => (p.results?.totalCollected || 0) + ' РјР»' },
-        { label: 'РЎС‚Р°С‚СѓСЃ', getValue: (p) => p.metadata.completedSuccessfully ? 'вњ… РЈСЃРїРµС€РЅРѕ' : 'вљ пёЏ РџСЂРµСЂРІР°РЅРѕ' }
+        { label: 'Длительность', getValue: (p) => (p.metadata.duration / 3600).toFixed(1) + ' ч' },
+        { label: 'Средняя мощность', getValue: (p) => (p.metrics?.power?.avgPower || 0) + ' Вт' },
+        { label: 'Потреблено энергии', getValue: (p) => (p.metrics?.power?.energyUsed || 0).toFixed(2) + ' кВт·ч' },
+        { label: 'Головы', getValue: (p) => (p.results?.headsCollected || 0) + ' мл' },
+        { label: 'Тело', getValue: (p) => (p.results?.bodyCollected || 0) + ' мл' },
+        { label: 'Хвосты', getValue: (p) => (p.results?.tailsCollected || 0) + ' мл' },
+        { label: 'Всего собрано', getValue: (p) => (p.results?.totalCollected || 0) + ' мл' },
+        { label: 'Статус', getValue: (p) => p.metadata.completedSuccessfully ? '✅ Успешно' : '⚠️ Прервано' }
     ];
 
     rows.forEach(row => {
@@ -1965,17 +1965,17 @@ function renderCompareTable(processes) {
 }
 
 // ============================================================================
-// PROFILES - РЈРїСЂР°РІР»РµРЅРёРµ РїСЂРѕС„РёР»СЏРјРё РїСЂРѕС†РµСЃСЃРѕРІ
+// PROFILES - Управление профилями процессов
 // ============================================================================
 
-let currentProfileId = null; // ID РїСЂРѕС„РёР»СЏ РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР°/СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРёСЏ
+let currentProfileId = null; // ID профиля для просмотра/редактирования
 
-// Р—Р°РіСЂСѓР·РєР° СЃРїРёСЃРєР° РїСЂРѕС„РёР»РµР№
+// Загрузка списка профилей
 function loadProfilesList() {
     const listEl = document.getElementById('profiles-list');
     if (!listEl) return;
 
-    listEl.innerHTML = '<p class="info-text">Р—Р°РіСЂСѓР·РєР° РїСЂРѕС„РёР»РµР№...</p>';
+    listEl.innerHTML = '<p class="info-text">Загрузка профилей...</p>';
 
     fetch('/api/profiles')
         .then(response => response.json())
@@ -1984,27 +1984,27 @@ function loadProfilesList() {
                 renderProfilesList(data.profiles);
                 updateProfilesStats(data.profiles);
             } else {
-                listEl.innerHTML = '<p class="info-text">рџ“Ѓ РџСЂРѕС„РёР»Рё РЅРµ РЅР°Р№РґРµРЅС‹. РЎРѕР·РґР°Р№С‚Рµ РїРµСЂРІС‹Р№ РїСЂРѕС„РёР»СЊ!</p>';
+                listEl.innerHTML = '<p class="info-text">📁 Профили не найдены. Создайте первый профиль!</p>';
             }
         })
         .catch(error => {
-            console.error('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»РµР№:', error);
-            listEl.innerHTML = '<p class="error-text">вќЊ РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»РµР№</p>';
+            console.error('Ошибка загрузки профилей:', error);
+            listEl.innerHTML = '<p class="error-text">❌ Ошибка загрузки профилей</p>';
         });
 }
 
-// РћС‚СЂРёСЃРѕРІРєР° СЃРїРёСЃРєР° РїСЂРѕС„РёР»РµР№
+// Отрисовка списка профилей
 function renderProfilesList(profiles) {
     const listEl = document.getElementById('profiles-list');
     const filter = document.getElementById('profile-filter-category').value;
 
-    // РџСЂРёРјРµРЅРёС‚СЊ С„РёР»СЊС‚СЂ
+    // Применить фильтр
     const filtered = filter === 'all'
         ? profiles
         : profiles.filter(p => p.category === filter);
 
     if (filtered.length === 0) {
-        listEl.innerHTML = '<p class="info-text">рџ“Ѓ РџСЂРѕС„РёР»Рё РЅРµ РЅР°Р№РґРµРЅС‹ РґР»СЏ РІС‹Р±СЂР°РЅРЅРѕР№ РєР°С‚РµРіРѕСЂРёРё</p>';
+        listEl.innerHTML = '<p class="info-text">📁 Профили не найдены для выбранной категории</p>';
         return;
     }
 
@@ -2016,27 +2016,27 @@ function renderProfilesList(profiles) {
     listEl.innerHTML = html;
 }
 
-// РћС‚СЂРёСЃРѕРІРєР° СЌР»РµРјРµРЅС‚Р° РїСЂРѕС„РёР»СЏ
+// Отрисовка элемента профиля
 function renderProfileItem(profile) {
     const categoryIcons = {
-        'rectification': 'рџЊЂ',
-        'distillation': 'рџ”Ґ',
+        'rectification': '🌀',
+        'distillation': '🔥',
         'mashing': 'рџЊѕ'
     };
 
     const categoryNames = {
-        'rectification': 'Р РµРєС‚РёС„РёРєР°С†РёСЏ',
-        'distillation': 'Р”РёСЃС‚РёР»Р»СЏС†РёСЏ',
-        'mashing': 'Р—Р°С‚РёСЂРєР°'
+        'rectification': 'Ректификация',
+        'distillation': 'Дистилляция',
+        'mashing': 'Затирка'
     };
 
-    const icon = categoryIcons[profile.category] || 'рџ“Ѓ';
+    const icon = categoryIcons[profile.category] || 'рџ"Ѓ';
     const catName = categoryNames[profile.category] || profile.category;
-    const builtinBadge = profile.isBuiltin ? '<span style="background: #2196F3; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Р’СЃС‚СЂРѕРµРЅРЅС‹Р№</span>' : '';
+    const builtinBadge = profile.isBuiltin ? '<span style="background: #2196F3; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Встроенный</span>' : '';
 
     const lastUsed = profile.lastUsed > 0
         ? new Date(profile.lastUsed * 1000).toLocaleDateString('ru-RU')
-        : 'РќРµ РёСЃРїРѕР»СЊР·РѕРІР°Р»СЃСЏ';
+        : 'Не использовался';
 
     return `
         <div class="profile-item" style="background: var(--bg-primary); padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--accent-color);">
@@ -2046,21 +2046,21 @@ function renderProfileItem(profile) {
                         ${icon} ${profile.name}${builtinBadge}
                     </div>
                     <div style="color: var(--text-secondary); font-size: 0.9em;">
-                        ${catName} вЂў РСЃРїРѕР»СЊР·РѕРІР°РЅРёР№: ${profile.useCount} вЂў РџРѕСЃР»РµРґРЅРµРµ: ${lastUsed}
+                        ${catName} • Использований: ${profile.useCount} • Последнее: ${lastUsed}
                     </div>
                 </div>
                 <div style="display: flex; gap: 5px;">
-                    <button class="btn-icon" onclick="viewProfile('${profile.id}')" title="РџСЂРѕСЃРјРѕС‚СЂ">рџ‘ЃпёЏ</button>
-                    <button class="btn-icon btn-success" onclick="quickLoadProfile('${profile.id}')" title="Р—Р°РіСЂСѓР·РёС‚СЊ">рџ“Ґ</button>
-                    <button class="btn-icon" onclick="exportProfile('${profile.id}')" title="Р­РєСЃРїРѕСЂС‚">рџ“¤</button>
-                    ${!profile.isBuiltin ? `<button class="btn-icon btn-danger" onclick="deleteProfile('${profile.id}')" title="РЈРґР°Р»РёС‚СЊ">рџ—‘пёЏ</button>` : ''}
+                    <button class="btn-icon" onclick="viewProfile('${profile.id}')" title="Просмотр">👁️</button>
+                    <button class="btn-icon btn-success" onclick="quickLoadProfile('${profile.id}')" title="Загрузить">📥</button>
+                    <button class="btn-icon" onclick="exportProfile('${profile.id}')" title="Экспорт">📤</button>
+                    ${!profile.isBuiltin ? `<button class="btn-icon btn-danger" onclick="deleteProfile('${profile.id}')" title="Удалить">🗑️</button>` : ''}
                 </div>
             </div>
         </div>
     `;
 }
 
-// РћР±РЅРѕРІР»РµРЅРёРµ СЃС‚Р°С‚РёСЃС‚РёРєРё РїСЂРѕС„РёР»РµР№
+// Обновление статистики профилей
 function updateProfilesStats(profiles) {
     document.getElementById('prof-stat-total').textContent = profiles.length;
 
@@ -2070,22 +2070,22 @@ function updateProfilesStats(profiles) {
     document.getElementById('prof-stat-builtin').textContent = builtin;
     document.getElementById('prof-stat-user').textContent = user;
 
-    // РЎР°РјС‹Р№ РёСЃРїРѕР»СЊР·СѓРµРјС‹Р№
+    // Самый используемый
     if (profiles.length > 0) {
         const mostUsed = profiles.reduce((prev, current) =>
             (prev.useCount > current.useCount) ? prev : current
         );
         document.getElementById('prof-stat-popular').textContent =
-            mostUsed.useCount > 0 ? mostUsed.name : 'вЂ”';
+            mostUsed.useCount > 0 ? mostUsed.name : '—';
     } else {
-        document.getElementById('prof-stat-popular').textContent = 'вЂ”';
+        document.getElementById('prof-stat-popular').textContent = '—';
     }
 }
 
-// РџРѕРєР°Р·Р°С‚СЊ РјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ СЃРѕР·РґР°РЅРёСЏ РїСЂРѕС„РёР»СЏ
+// Показать модальное окно создания профиля
 function showCreateProfileModal() {
     currentProfileId = null;
-    document.getElementById('profile-modal-title').textContent = 'РЎРѕР·РґР°РЅРёРµ РїСЂРѕС„РёР»СЏ';
+    document.getElementById('profile-modal-title').textContent = 'Создание профиля';
     document.getElementById('profile-name').value = '';
     document.getElementById('profile-description').value = '';
     document.getElementById('profile-category').value = 'rectification';
@@ -2093,12 +2093,12 @@ function showCreateProfileModal() {
     document.getElementById('profile-modal').style.display = 'flex';
 }
 
-// Р—Р°РєСЂС‹С‚СЊ РјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ СЃРѕР·РґР°РЅРёСЏ
+// Закрыть модальное окно создания
 function closeProfileModal() {
     document.getElementById('profile-modal').style.display = 'none';
 }
 
-// РЎРѕС…СЂР°РЅРёС‚СЊ РїСЂРѕС„РёР»СЊ
+// Сохранить профиль
 function saveProfile() {
     const name = document.getElementById('profile-name').value.trim();
     const description = document.getElementById('profile-description').value.trim();
@@ -2107,12 +2107,12 @@ function saveProfile() {
     const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
 
     if (!name) {
-        alert('РџРѕР¶Р°Р»СѓР№СЃС‚Р°, РІРІРµРґРёС‚Рµ РЅР°Р·РІР°РЅРёРµ РїСЂРѕС„РёР»СЏ');
+        alert('Пожалуйста, введите название профиля');
         return;
     }
 
-    // TODO: РџРѕР»СѓС‡РёС‚СЊ С‚РµРєСѓС‰РёРµ РїР°СЂР°РјРµС‚СЂС‹ РёР· С„РѕСЂРјС‹ СѓРїСЂР°РІР»РµРЅРёСЏ
-    // РџРѕРєР° РёСЃРїРѕР»СЊР·СѓРµРј Р·РЅР°С‡РµРЅРёСЏ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
+    // TODO: Получить текущие параметры из формы управления
+    // Пока используем значения по умолчанию
     const profile = {
         metadata: {
             name: name,
@@ -2172,18 +2172,18 @@ function saveProfile() {
             if (data.success) {
                 closeProfileModal();
                 loadProfilesList();
-                alert('вњ… РџСЂРѕС„РёР»СЊ СѓСЃРїРµС€РЅРѕ СЃРѕР·РґР°РЅ!');
+                alert('✅ Профиль успешно создан!');
             } else {
-                alert('вќЊ РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ РїСЂРѕС„РёР»СЏ: ' + (data.error || 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'));
+                alert('❌ Ошибка создания профиля: ' + (data.error || 'Неизвестная ошибка'));
             }
         })
         .catch(error => {
-            console.error('РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РїСЂРѕС„РёР»СЏ:', error);
-            alert('вќЊ РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РїСЂРѕС„РёР»СЏ');
+            console.error('Ошибка сохранения профиля:', error);
+            alert('❌ Ошибка сохранения профиля');
         });
 }
 
-// РџСЂРѕСЃРјРѕС‚СЂ РїСЂРѕС„РёР»СЏ
+// Просмотр профиля
 function viewProfile(id) {
     fetch(`/api/profiles/${id}`)
         .then(response => response.json())
@@ -2191,66 +2191,66 @@ function viewProfile(id) {
             showProfileViewModal(profile);
         })
         .catch(error => {
-            console.error('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»СЏ:', error);
-            alert('вќЊ РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»СЏ');
+            console.error('Ошибка загрузки профиля:', error);
+            alert('❌ Ошибка загрузки профиля');
         });
 }
 
-// РџРѕРєР°Р·Р°С‚СЊ РјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ РїСЂРѕСЃРјРѕС‚СЂР° РїСЂРѕС„РёР»СЏ
+// Показать модальное окно просмотра профиля
 function showProfileViewModal(profile) {
     currentProfileId = profile.id;
     document.getElementById('profile-view-title').textContent = profile.metadata.name;
 
     const body = document.getElementById('profile-view-body');
     const catNames = {
-        'rectification': 'Р РµРєС‚РёС„РёРєР°С†РёСЏ',
-        'distillation': 'Р”РёСЃС‚РёР»Р»СЏС†РёСЏ',
-        'mashing': 'Р—Р°С‚РёСЂРєР°'
+        'rectification': 'Ректификация',
+        'distillation': 'Дистилляция',
+        'mashing': 'Затирка'
     };
 
     let html = `
         <div class="modal-section">
-            <div class="modal-section-title">рџ“‹ РњРµС‚Р°РґР°РЅРЅС‹Рµ</div>
+            <div class="modal-section-title">📋 Метаданные</div>
             <div class="modal-info-grid">
-                <div><strong>РќР°Р·РІР°РЅРёРµ:</strong> ${profile.metadata.name}</div>
-                <div><strong>РљР°С‚РµРіРѕСЂРёСЏ:</strong> ${catNames[profile.metadata.category] || profile.metadata.category}</div>
-                <div><strong>РћРїРёСЃР°РЅРёРµ:</strong> ${profile.metadata.description || 'вЂ”'}</div>
-                <div><strong>РђРІС‚РѕСЂ:</strong> ${profile.metadata.author}</div>
-                <div><strong>РўРµРіРё:</strong> ${profile.metadata.tags.join(', ') || 'вЂ”'}</div>
-                <div><strong>Р’СЃС‚СЂРѕРµРЅРЅС‹Р№:</strong> ${profile.metadata.isBuiltin ? 'Р”Р°' : 'РќРµС‚'}</div>
+                <div><strong>Название:</strong> ${profile.metadata.name}</div>
+                <div><strong>Категория:</strong> ${catNames[profile.metadata.category] || profile.metadata.category}</div>
+                <div><strong>Описание:</strong> ${profile.metadata.description || '—'}</div>
+                <div><strong>Автор:</strong> ${profile.metadata.author}</div>
+                <div><strong>Теги:</strong> ${profile.metadata.tags.join(', ') || '—'}</div>
+                <div><strong>Встроенный:</strong> ${profile.metadata.isBuiltin ? 'Да' : 'Нет'}</div>
             </div>
         </div>
 
         <div class="modal-section">
-            <div class="modal-section-title">вљ™пёЏ РџР°СЂР°РјРµС‚СЂС‹ СЂРµРєС‚РёС„РёРєР°С†РёРё</div>
+            <div class="modal-section-title">⚙️ Параметры ректификации</div>
             <div class="modal-info-grid">
-                <div><strong>РЎС‚Р°Р±РёР»РёР·Р°С†РёСЏ:</strong> ${profile.parameters.rectification.stabilizationMin} РјРёРЅ</div>
-                <div><strong>РћР±СЉС‘Рј РіРѕР»РѕРІ:</strong> ${profile.parameters.rectification.headsVolume} РјР»</div>
-                <div><strong>РћР±СЉС‘Рј С‚РµР»Р°:</strong> ${profile.parameters.rectification.bodyVolume} РјР»</div>
-                <div><strong>РћР±СЉС‘Рј С…РІРѕСЃС‚РѕРІ:</strong> ${profile.parameters.rectification.tailsVolume} РјР»</div>
-                <div><strong>РЎРєРѕСЂРѕСЃС‚СЊ РіРѕР»РѕРІ:</strong> ${profile.parameters.rectification.headsSpeed} РјР»/С‡/РєР’С‚</div>
-                <div><strong>РЎРєРѕСЂРѕСЃС‚СЊ С‚РµР»Р°:</strong> ${profile.parameters.rectification.bodySpeed} РјР»/С‡/РєР’С‚</div>
+                <div><strong>Стабилизация:</strong> ${profile.parameters.rectification.stabilizationMin} мин</div>
+                <div><strong>Объём голов:</strong> ${profile.parameters.rectification.headsVolume} мл</div>
+                <div><strong>Объём тела:</strong> ${profile.parameters.rectification.bodyVolume} мл</div>
+                <div><strong>Объём хвостов:</strong> ${profile.parameters.rectification.tailsVolume} мл</div>
+                <div><strong>Скорость голов:</strong> ${profile.parameters.rectification.headsSpeed} мл/ч/кВт</div>
+                <div><strong>Скорость тела:</strong> ${profile.parameters.rectification.bodySpeed} мл/ч/кВт</div>
             </div>
         </div>
 
         <div class="modal-section">
-            <div class="modal-section-title">рџЊЎпёЏ РўРµРјРїРµСЂР°С‚СѓСЂРЅС‹Рµ РїРѕСЂРѕРіРё</div>
+            <div class="modal-section-title">🌡️ Температурные пороги</div>
             <div class="modal-info-grid">
-                <div><strong>РњР°РєСЃ. РєСѓР±:</strong> ${profile.parameters.temperatures.maxCube}В°C</div>
-                <div><strong>РњР°РєСЃ. РєРѕР»РѕРЅРЅР°:</strong> ${profile.parameters.temperatures.maxColumn}В°C</div>
-                <div><strong>РћРєРѕРЅС‡Р°РЅРёРµ РіРѕР»РѕРІ:</strong> ${profile.parameters.temperatures.headsEnd}В°C</div>
-                <div><strong>РќР°С‡Р°Р»Рѕ С‚РµР»Р°:</strong> ${profile.parameters.temperatures.bodyStart}В°C</div>
-                <div><strong>РћРєРѕРЅС‡Р°РЅРёРµ С‚РµР»Р°:</strong> ${profile.parameters.temperatures.bodyEnd}В°C</div>
+                <div><strong>Макс. куб:</strong> ${profile.parameters.temperatures.maxCube}°C</div>
+                <div><strong>Макс. колонна:</strong> ${profile.parameters.temperatures.maxColumn}°C</div>
+                <div><strong>Окончание голов:</strong> ${profile.parameters.temperatures.headsEnd}°C</div>
+                <div><strong>Начало тела:</strong> ${profile.parameters.temperatures.bodyStart}°C</div>
+                <div><strong>Окончание тела:</strong> ${profile.parameters.temperatures.bodyEnd}°C</div>
             </div>
         </div>
 
         <div class="modal-section">
-            <div class="modal-section-title">рџ“Љ РЎС‚Р°С‚РёСЃС‚РёРєР° РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ</div>
+            <div class="modal-section-title">📊 Статистика использования</div>
             <div class="modal-info-grid">
-                <div><strong>РСЃРїРѕР»СЊР·РѕРІР°РЅРёР№:</strong> ${profile.statistics.useCount}</div>
-                <div><strong>РЎСЂРµРґРЅСЏСЏ РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ:</strong> ${Math.round(profile.statistics.avgDuration / 60)} РјРёРЅ</div>
-                <div><strong>РЎСЂРµРґРЅРёР№ РІС‹С…РѕРґ:</strong> ${profile.statistics.avgYield} РјР»</div>
-                <div><strong>РЈСЃРїРµС€РЅРѕСЃС‚СЊ:</strong> ${profile.statistics.successRate.toFixed(1)}%</div>
+                <div><strong>Использований:</strong> ${profile.statistics.useCount}</div>
+                <div><strong>Средняя длительность:</strong> ${Math.round(profile.statistics.avgDuration / 60)} мин</div>
+                <div><strong>Средний выход:</strong> ${profile.statistics.avgYield} мл</div>
+                <div><strong>Успешность:</strong> ${profile.statistics.successRate.toFixed(1)}%</div>
             </div>
         </div>
     `;
@@ -2259,15 +2259,15 @@ function showProfileViewModal(profile) {
     document.getElementById('profile-view-modal').style.display = 'flex';
 }
 
-// Р—Р°РєСЂС‹С‚СЊ РјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ РїСЂРѕСЃРјРѕС‚СЂР°
+// Закрыть модальное окно просмотра
 function closeProfileViewModal() {
     document.getElementById('profile-view-modal').style.display = 'none';
     currentProfileId = null;
 }
 
-// Р‘С‹СЃС‚СЂР°СЏ Р·Р°РіСЂСѓР·РєР° РїСЂРѕС„РёР»СЏ
+// Быстрая загрузка профиля
 function quickLoadProfile(id) {
-    if (!confirm('Р—Р°РіСЂСѓР·РёС‚СЊ СЌС‚РѕС‚ РїСЂРѕС„РёР»СЊ РІ С‚РµРєСѓС‰РёРµ РЅР°СЃС‚СЂРѕР№РєРё?')) return;
+    if (!confirm('Загрузить этот профиль в текущие настройки?')) return;
 
     fetch(`/api/profiles/${id}/load`, {
         method: 'POST'
@@ -2275,27 +2275,27 @@ function quickLoadProfile(id) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('вњ… РџСЂРѕС„РёР»СЊ СѓСЃРїРµС€РЅРѕ Р·Р°РіСЂСѓР¶РµРЅ! РџСЂРѕРІРµСЂСЊС‚Рµ РЅР°СЃС‚СЂРѕР№РєРё РІ СЂР°Р·РґРµР»Рµ "РЈРїСЂР°РІР»РµРЅРёРµ".');
+                alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
             } else {
-                alert('вќЊ РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»СЏ: ' + (data.error || 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'));
+                alert('❌ Ошибка загрузки профиля: ' + (data.error || 'Неизвестная ошибка'));
             }
         })
         .catch(error => {
-            console.error('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»СЏ:', error);
-            alert('вќЊ РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»СЏ');
+            console.error('Ошибка загрузки профиля:', error);
+            alert('❌ Ошибка загрузки профиля');
         });
 }
 
-// Р—Р°РіСЂСѓР·РєР° РїСЂРѕС„РёР»СЏ РІ РЅР°СЃС‚СЂРѕР№РєРё (РёР· РјРѕРґР°Р»СЊРЅРѕРіРѕ РѕРєРЅР°)
+// Загрузка профиля в настройки (из модального окна)
 function loadProfileToSettings() {
     if (!currentProfileId) return;
     closeProfileViewModal();
     quickLoadProfile(currentProfileId);
 }
 
-// РЈРґР°Р»РµРЅРёРµ РїСЂРѕС„РёР»СЏ
+// Удаление профиля
 function deleteProfile(id) {
-    if (!confirm('РЈРґР°Р»РёС‚СЊ СЌС‚РѕС‚ РїСЂРѕС„РёР»СЊ? Р”РµР№СЃС‚РІРёРµ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ.')) return;
+    if (!confirm('Удалить этот профиль? Действие нельзя отменить.')) return;
 
     fetch(`/api/profiles/${id}`, {
         method: 'DELETE'
@@ -2304,20 +2304,20 @@ function deleteProfile(id) {
         .then(data => {
             if (data.success) {
                 loadProfilesList();
-                alert('вњ… РџСЂРѕС„РёР»СЊ СѓРґР°Р»С‘РЅ');
+                alert('✅ Профиль удалён');
             } else {
-                alert('вќЊ ' + (data.error || 'РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ РїСЂРѕС„РёР»СЏ'));
+                alert('❌ ' + (data.error || 'Ошибка удаления профиля'));
             }
         })
         .catch(error => {
-            console.error('РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ РїСЂРѕС„РёР»СЏ:', error);
-            alert('вќЊ РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ РїСЂРѕС„РёР»СЏ');
+            console.error('Ошибка удаления профиля:', error);
+            alert('❌ Ошибка удаления профиля');
         });
 }
 
-// РћС‡РёСЃС‚РєР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёС… РїСЂРѕС„РёР»РµР№
+// Очистка пользовательских профилей
 function clearUserProfiles() {
-    if (!confirm('РЈРґР°Р»РёС‚СЊ Р’РЎР• РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёРµ РїСЂРѕС„РёР»Рё? Р’СЃС‚СЂРѕРµРЅРЅС‹Рµ СЂРµС†РµРїС‚С‹ РѕСЃС‚Р°РЅСѓС‚СЃСЏ. Р”РµР№СЃС‚РІРёРµ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ!')) return;
+    if (!confirm('Удалить ВСЕ пользовательские профили? Встроенные рецепты останутся. Действие нельзя отменить!')) return;
 
     fetch('/api/profiles', {
         method: 'DELETE'
@@ -2326,23 +2326,23 @@ function clearUserProfiles() {
         .then(data => {
             if (data.success) {
                 loadProfilesList();
-                alert('вњ… Р’СЃРµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёРµ РїСЂРѕС„РёР»Рё СѓРґР°Р»РµРЅС‹');
+                alert('✅ Все пользовательские профили удалены');
             } else {
-                alert('вќЊ РћС€РёР±РєР° РѕС‡РёСЃС‚РєРё РїСЂРѕС„РёР»РµР№');
+                alert('❌ Ошибка очистки профилей');
             }
         })
         .catch(error => {
-            console.error('РћС€РёР±РєР° РѕС‡РёСЃС‚РєРё РїСЂРѕС„РёР»РµР№:', error);
-            alert('вќЊ РћС€РёР±РєР° РѕС‡РёСЃС‚РєРё РїСЂРѕС„РёР»РµР№');
+            console.error('Ошибка очистки профилей:', error);
+            alert('❌ Ошибка очистки профилей');
         });
 }
 
-// Р­РєСЃРїРѕСЂС‚ РѕРґРЅРѕРіРѕ РїСЂРѕС„РёР»СЏ
+// Экспорт одного профиля
 function exportProfile(id) {
     fetch(`/api/profiles/${id}/export`)
         .then(response => response.json())
         .then(data => {
-            // РЎРѕР·РґР°РµРј blob Рё СЃРєР°С‡РёРІР°РµРј
+            // Создаем blob и скачиваем
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -2354,24 +2354,24 @@ function exportProfile(id) {
             URL.revokeObjectURL(url);
         })
         .catch(error => {
-            console.error('РћС€РёР±РєР° СЌРєСЃРїРѕСЂС‚Р° РїСЂРѕС„РёР»СЏ:', error);
-            alert('вќЊ РћС€РёР±РєР° СЌРєСЃРїРѕСЂС‚Р° РїСЂРѕС„РёР»СЏ');
+            console.error('Ошибка экспорта профиля:', error);
+            alert('❌ Ошибка экспорта профиля');
         });
 }
 
-// Р­РєСЃРїРѕСЂС‚ РІСЃРµС… РїСЂРѕС„РёР»РµР№
+// Экспорт всех профилей
 function exportAllProfiles() {
-    const includeBuiltin = confirm('Р’РєР»СЋС‡РёС‚СЊ РІСЃС‚СЂРѕРµРЅРЅС‹Рµ СЂРµС†РµРїС‚С‹ РІ СЌРєСЃРїРѕСЂС‚?');
+    const includeBuiltin = confirm('Включить встроенные рецепты в экспорт?');
 
     fetch(`/api/profiles/export${includeBuiltin ? '?includeBuiltin=true' : ''}`)
         .then(response => response.json())
         .then(data => {
             if (!data || data.length === 0) {
-                alert('РќРµС‚ РїСЂРѕС„РёР»РµР№ РґР»СЏ СЌРєСЃРїРѕСЂС‚Р°');
+                alert('Нет профилей для экспорта');
                 return;
             }
 
-            // РЎРѕР·РґР°РµРј blob Рё СЃРєР°С‡РёРІР°РµРј
+            // Создаем blob и скачиваем
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -2383,15 +2383,15 @@ function exportAllProfiles() {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            alert(`вњ… Р­РєСЃРїРѕСЂС‚РёСЂРѕРІР°РЅРѕ РїСЂРѕС„РёР»РµР№: ${data.length}`);
+            alert(`✅ Экспортировано профилей: ${data.length}`);
         })
         .catch(error => {
-            console.error('РћС€РёР±РєР° СЌРєСЃРїРѕСЂС‚Р° РїСЂРѕС„РёР»РµР№:', error);
-            alert('вќЊ РћС€РёР±РєР° СЌРєСЃРїРѕСЂС‚Р° РїСЂРѕС„РёР»РµР№');
+            console.error('Ошибка экспорта профилей:', error);
+            alert('❌ Ошибка экспорта профилей');
         });
 }
 
-// РџРѕРєР°Р·Р°С‚СЊ РјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ РёРјРїРѕСЂС‚Р°
+// Показать модальное окно импорта
 let importFileData = null;
 
 function showImportModal() {
@@ -2401,7 +2401,7 @@ function showImportModal() {
     document.getElementById('import-btn').disabled = true;
     document.getElementById('profile-import-modal').style.display = 'flex';
 
-    // Р”РѕР±Р°РІР»СЏРµРј РѕР±СЂР°Р±РѕС‚С‡РёРє РІС‹Р±РѕСЂР° С„Р°Р№Р»Р°
+    // Добавляем обработчик выбора файла
     document.getElementById('import-file-input').onchange = function (e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -2411,21 +2411,21 @@ function showImportModal() {
             try {
                 importFileData = JSON.parse(event.target.result);
 
-                // РџРѕРєР°Р·С‹РІР°РµРј РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂ
+                // Показываем предпросмотр
                 let previewText = '';
                 if (Array.isArray(importFileData)) {
-                    previewText = `РњР°СЃСЃРёРІ РёР· ${importFileData.length} РїСЂРѕС„РёР»РµР№`;
+                    previewText = `Массив из ${importFileData.length} профилей`;
                 } else if (importFileData.metadata) {
-                    previewText = `РџСЂРѕС„РёР»СЊ: ${importFileData.metadata.name}`;
+                    previewText = `Профиль: ${importFileData.metadata.name}`;
                 } else {
-                    throw new Error('РќРµРІРµСЂРЅС‹Р№ С„РѕСЂРјР°С‚ JSON');
+                    throw new Error('Неверный формат JSON');
                 }
 
                 document.getElementById('import-preview-text').textContent = previewText;
                 document.getElementById('import-preview').style.display = 'block';
                 document.getElementById('import-btn').disabled = false;
             } catch (error) {
-                alert('вќЊ РћС€РёР±РєР° С‡С‚РµРЅРёСЏ С„Р°Р№Р»Р°: РЅРµРІРµСЂРЅС‹Р№ С„РѕСЂРјР°С‚ JSON');
+                alert('❌ Ошибка чтения файла: неверный формат JSON');
                 importFileData = null;
                 document.getElementById('import-btn').disabled = true;
             }
@@ -2434,16 +2434,16 @@ function showImportModal() {
     };
 }
 
-// Р—Р°РєСЂС‹С‚СЊ РјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ РёРјРїРѕСЂС‚Р°
+// Закрыть модальное окно импорта
 function closeImportModal() {
     document.getElementById('profile-import-modal').style.display = 'none';
     importFileData = null;
 }
 
-// Р’С‹РїРѕР»РЅРёС‚СЊ РёРјРїРѕСЂС‚ РїСЂРѕС„РёР»РµР№
+// Выполнить импорт профилей
 function doImportProfiles() {
     if (!importFileData) {
-        alert('Р’С‹Р±РµСЂРёС‚Рµ С„Р°Р№Р» РґР»СЏ РёРјРїРѕСЂС‚Р°');
+        alert('Выберите файл для импорта');
         return;
     }
 
@@ -2457,20 +2457,20 @@ function doImportProfiles() {
             if (data.success) {
                 closeImportModal();
                 loadProfilesList();
-                alert(`вњ… РРјРїРѕСЂС‚РёСЂРѕРІР°РЅРѕ РїСЂРѕС„РёР»РµР№: ${data.imported}`);
+                alert(`✅ Импортировано профилей: ${data.imported}`);
             } else {
-                alert('вќЊ РћС€РёР±РєР° РёРјРїРѕСЂС‚Р°: ' + (data.error || 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°'));
+                alert('❌ Ошибка импорта: ' + (data.error || 'Неизвестная ошибка'));
             }
         })
         .catch(error => {
-            console.error('РћС€РёР±РєР° РёРјРїРѕСЂС‚Р° РїСЂРѕС„РёР»РµР№:', error);
-            alert('вќЊ РћС€РёР±РєР° РёРјРїРѕСЂС‚Р° РїСЂРѕС„РёР»РµР№');
+            console.error('Ошибка импорта профилей:', error);
+            alert('❌ Ошибка импорта профилей');
         });
 }
 
 // ============================================================================
 
-// Р—Р°РєСЂС‹С‚РёРµ РјРѕРґР°Р»СЊРЅРѕРіРѕ РѕРєРЅР° СЃСЂР°РІРЅРµРЅРёСЏ РїСЂРё РєР»РёРєРµ РЅР° overlay
+// Закрытие модального окна сравнения при клике на overlay
 document.addEventListener('DOMContentLoaded', function () {
     const compareOverlay = document.getElementById('compare-modal');
     if (compareOverlay) {
@@ -2482,7 +2482,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 // ============================================================================
-// РРЅС„РѕСЂРјР°С†РёСЏ Рѕ РїРѕР»СЊР·РѕРІР°С‚РµР»Рµ
+// Информация о пользователе
 // ============================================================================
 
 async function loadUserInfo() {
@@ -2494,19 +2494,19 @@ async function loadUserInfo() {
         const user = await response.json();
         const usernameElement = document.getElementById('current-username');
         if (usernameElement) {
-            usernameElement.textContent = user.username || 'РќРµРёР·РІРµСЃС‚РЅРѕ';
+            usernameElement.textContent = user.username || 'Неизвестно';
         }
     } catch (error) {
         console.error('Error loading user info:', error);
         const usernameElement = document.getElementById('current-username');
         if (usernameElement) {
-            usernameElement.textContent = 'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё';
+            usernameElement.textContent = 'Ошибка загрузки';
         }
     }
 }
 
 // ============================================================================
-// РќР°СЃС‚СЂРѕР№РєРё ESP32
+// Настройки ESP32
 // ============================================================================
 
 async function loadESP32Config() {
@@ -2517,16 +2517,16 @@ async function loadESP32Config() {
         }
         const config = await response.json();
         
-        // Р—Р°РїРѕР»РЅСЏРµРј РїРѕР»СЏ С„РѕСЂРјС‹
+        // Заполняем поля формы
         document.getElementById('esp32-enabled').checked = config.enabled || false;
         document.getElementById('esp32-host').value = config.host || '';
         document.getElementById('esp32-port').value = config.port || 80;
         document.getElementById('esp32-use-https').checked = config.useHttps || false;
         document.getElementById('esp32-username').value = config.username || '';
-        document.getElementById('esp32-password').value = ''; // РќРµ РїРѕРєР°Р·С‹РІР°РµРј РїР°СЂРѕР»СЊ
+        document.getElementById('esp32-password').value = ''; // Не показываем пароль
         document.getElementById('esp32-timeout').value = config.timeout || 5;
         
-        // РџРѕРєР°Р·С‹РІР°РµРј/СЃРєСЂС‹РІР°РµРј РїРѕР»СЏ РІ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕС‚ СЃРѕСЃС‚РѕСЏРЅРёСЏ
+        // Показываем/скрываем поля в зависимости от состояния
         toggleESP32Fields();
     } catch (error) {
         console.error('Error loading ESP32 config:', error);
@@ -2552,9 +2552,9 @@ async function saveESP32Config() {
         timeout: parseInt(document.getElementById('esp32-timeout').value) || 5
     };
     
-    // Р’Р°Р»РёРґР°С†РёСЏ
+    // Валидация
     if (config.enabled && !config.host) {
-        alert('РЈРєР°Р¶РёС‚Рµ Р°РґСЂРµСЃ ESP32');
+        alert('Укажите адрес ESP32');
         return;
     }
     
@@ -2573,15 +2573,15 @@ async function saveESP32Config() {
         }
         
         const result = await response.json();
-        alert('РќР°СЃС‚СЂРѕР№РєРё СЃРѕС…СЂР°РЅРµРЅС‹ СѓСЃРїРµС€РЅРѕ!');
+        alert('Настройки сохранены успешно!');
         
-        // Р•СЃР»Рё РїР°СЂРѕР»СЊ Р±С‹Р» РІРІРµРґРµРЅ, РѕС‡РёС‰Р°РµРј РїРѕР»Рµ
+        // Если пароль был введен, очищаем поле
         if (config.password) {
             document.getElementById('esp32-password').value = '';
         }
     } catch (error) {
         console.error('Error saving ESP32 config:', error);
-        alert('РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РЅР°СЃС‚СЂРѕРµРє: ' + error.message);
+        alert('Ошибка сохранения настроек: ' + error.message);
     }
 }
 
@@ -2590,7 +2590,7 @@ async function testESP32Connection() {
     if (!resultDiv) return;
     
     resultDiv.style.display = 'block';
-    resultDiv.innerHTML = 'РџСЂРѕРІРµСЂРєР° РїРѕРґРєР»СЋС‡РµРЅРёСЏ...';
+    resultDiv.innerHTML = 'Проверка подключения...';
     resultDiv.style.background = 'var(--bg-secondary)';
     resultDiv.style.color = 'var(--text-primary)';
     
@@ -2608,19 +2608,18 @@ async function testESP32Connection() {
             resultDiv.style.background = 'rgba(40, 167, 69, 0.2)';
             resultDiv.style.color = '#28a745';
             resultDiv.style.border = '1px solid #28a745';
-            resultDiv.innerHTML = 'вњ… ' + (result.message || 'РџРѕРґРєР»СЋС‡РµРЅРёРµ СѓСЃРїРµС€РЅРѕ!');
+            resultDiv.innerHTML = '✅ ' + (result.message || 'Подключение успешно!');
         } else {
             resultDiv.style.background = 'rgba(220, 53, 69, 0.2)';
             resultDiv.style.color = '#dc3545';
             resultDiv.style.border = '1px solid #dc3545';
-            resultDiv.innerHTML = 'вќЊ ' + (result.error || 'РћС€РёР±РєР° РїРѕРґРєР»СЋС‡РµРЅРёСЏ');
+            resultDiv.innerHTML = '❌ ' + (result.error || 'Ошибка подключения');
         }
     } catch (error) {
         console.error('Error testing ESP32 connection:', error);
         resultDiv.style.background = 'rgba(220, 53, 69, 0.2)';
         resultDiv.style.color = '#dc3545';
         resultDiv.style.border = '1px solid #dc3545';
-        resultDiv.innerHTML = 'вќЊ РћС€РёР±РєР°: ' + error.message;
+        resultDiv.innerHTML = '❌ Ошибка: ' + error.message;
     }
 }
-
