@@ -454,7 +454,7 @@ export function showHistoryDetailsModal(process) {
 
         mashing: 'Затирка',
 
-        hold: 'Выдержка',
+        hold: 'Пастеризация',
 
         nbk: 'НБК',
 

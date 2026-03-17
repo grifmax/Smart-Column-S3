@@ -187,7 +187,9 @@ bool reconnect() {
         mqttClient.subscribe(cmdTopic.c_str());
 
         // Публикация Discovery при подключении
-        publishDiscovery();
+        if (g_settings.mqtt.discovery) {
+            publishDiscovery();
+        }
         Logger::logf(0, "MQTT connected: %s:%u, topic=%s",
                      g_settings.mqtt.server, g_settings.mqtt.port,
                      baseTopic.c_str());

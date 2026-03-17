@@ -10,8 +10,8 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.1.13">
-    <link rel="stylesheet" href="charts-style.css?v=2.1.13">
+    <link rel="stylesheet" href="style.css?v=2.1.15">
+    <link rel="stylesheet" href="charts-style.css?v=2.1.15">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
     <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
@@ -263,7 +263,7 @@
         </div>
     </div>
 
-    <script src="charts.js?v=2.1.13"></script>
+    <script src="charts.js?v=2.1.15"></script>
     <script>
         (function () {
             const btn = document.getElementById('sidebar-collapse-btn');
@@ -273,6 +273,32 @@
             btn.addEventListener('click', () => {
                 sidebar.classList.toggle('collapsed');
                 localStorage.setItem('sidebar-collapsed', sidebar.classList.contains('collapsed') ? '1' : '0');
+            });
+        })();
+    </script>
+    <script>
+        (function () {
+            const toggle = document.getElementById('top-menu-toggle');
+            const dropdown = document.getElementById('top-menu-dropdown');
+            if (!toggle || !dropdown) return;
+
+            window.toggleTopMenu = function (event) {
+                if (event) event.stopPropagation();
+                const isOpen = dropdown.classList.toggle('open');
+                toggle.setAttribute('aria-expanded', String(isOpen));
+            };
+
+            document.addEventListener('click', (event) => {
+                if (!dropdown.classList.contains('open')) return;
+                if (dropdown.contains(event.target) || toggle.contains(event.target)) return;
+                dropdown.classList.remove('open');
+                toggle.setAttribute('aria-expanded', 'false');
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape') return;
+                dropdown.classList.remove('open');
+                toggle.setAttribute('aria-expanded', 'false');
             });
         })();
     </script>

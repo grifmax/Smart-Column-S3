@@ -24,6 +24,10 @@
 
 /* Mobile/tablet: hide sidebar, show hamburger */
 @media (max-width: 900px) {
+    .toolbar-title:empty {
+        display: none;
+    }
+
     .sidebar {
         display: none;
     }
@@ -210,7 +214,8 @@
         flex-direction: column;
     }
 
-    .btn {
+    .controls > .btn,
+    .operator-action-row .btn {
         width: 100%;
     }
 }

@@ -1,7 +1,7 @@
 import { closeTopMenu } from './top-menu.js';
 
 // ============================================================================
-// Tabs — syncs sidebar + dropdown active states
+// Tabs - syncs sidebar + dropdown active states
 // ============================================================================
 
 const tabTitles = {
@@ -16,6 +16,14 @@ const tabTitles = {
     tools: 'Инструменты'
 };
 
+function updateToolbarTitle(targetId) {
+    const titleEl = document.getElementById('toolbar-page-title');
+    if (!titleEl) return;
+
+    const compactMonitor = targetId === 'monitor' && window.matchMedia('(max-width: 900px)').matches;
+    titleEl.textContent = compactMonitor ? '' : (tabTitles[targetId] || '');
+}
+
 export function initTabs() {
     const tabs = document.querySelectorAll('.tab');
 
@@ -23,23 +31,19 @@ export function initTabs() {
         tab.addEventListener('click', () => {
             const targetId = tab.getAttribute('data-tab');
 
-            // External link (charts/logs), just close menu
             if (!targetId) {
                 closeTopMenu();
                 return;
             }
 
-            // Deactivate all tabs (both sidebar and dropdown)
             tabs.forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
-            // Also deactivate sidebar-item links (non-tab items like charts/logs)
             document.querySelectorAll('.sidebar-item').forEach(s => {
                 if (!s.getAttribute('data-tab')) return;
                 s.classList.remove('active');
             });
 
-            // Activate ALL matching tabs (sidebar + dropdown may both have same data-tab)
             document.querySelectorAll(`.tab[data-tab="${targetId}"]`).forEach(t => t.classList.add('active'));
 
             const targetEl = document.getElementById(targetId);
@@ -47,14 +51,9 @@ export function initTabs() {
                 targetEl.classList.add('active');
             }
 
-            // Update toolbar page title
-            const titleEl = document.getElementById('toolbar-page-title');
-            if (titleEl && tabTitles[targetId]) {
-                titleEl.textContent = tabTitles[targetId];
-            }
+            updateToolbarTitle(targetId);
 
-            // Load history on tab switch
-            if (targetId === 'history') {
+            if (targetId === 'history' && typeof loadHistoryList === 'function') {
                 loadHistoryList();
             }
 
@@ -68,3 +67,9 @@ export function activateTabById(targetId) {
     if (tab) tab.click();
 }
 
+window.addEventListener('resize', () => {
+    const activeTab = document.querySelector('.tab.active[data-tab]');
+    if (activeTab) {
+        updateToolbarTitle(activeTab.getAttribute('data-tab'));
+    }
+});

@@ -1,4 +1,4 @@
-﻿// Smart-Column S3 - Web UI JavaScript
+// Smart-Column S3 - Web UI JavaScript
 
 
 
@@ -70,7 +70,7 @@ export function getModeLabel(mode) {
         case MODE_MANUAL: return 'Manual';
         case MODE_DIST: return 'Distillation';
         case MODE_MASH: return 'Mashing';
-        case MODE_HOLD: return 'Hold';
+        case MODE_HOLD: return 'Пастеризация';
         case MODE_NBK: return 'NBK';
         case MODE_FERMENTATION: return 'Fermentation';
         default: return 'Unknown';

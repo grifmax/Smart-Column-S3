@@ -236,7 +236,8 @@ struct ProcessStats {
 // Шаг температурной программы (Hold)
 struct TempStep {
   float temperature = 0.0f;
-  uint16_t duration = 0; // минуты
+  uint16_t duration = 0; // ??????
+  bool useCooling = false;
 };
 
 // Состояние затирки
@@ -342,6 +343,7 @@ struct MqttSettings {
   char password[64] = "";
   char baseTopic[32] = "smart-column";
   uint32_t publishInterval = 10000;
+  bool discovery = true;
 };
 
 // Cloud tunnel (IoT модель, без входящих портов на ESP32)

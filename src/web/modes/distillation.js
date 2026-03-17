@@ -13,9 +13,9 @@ function clampDistillationInput(value, min, max, fallback) {
 
 export function collectDistillationSettings() {
     return {
-        speed: clampDistillationInput(document.getElementById('dist-start-speed')?.value, 10, 6000, 500),
-        headsVolume: clampDistillationInput(document.getElementById('dist-start-heads-volume')?.value, 0, 3000, 0),
-        targetVolume: clampDistillationInput(document.getElementById('dist-start-target-volume')?.value, 0, 50000, 0),
+
+
+
         endTemp: clampDistillationInput(document.getElementById('dist-start-end-temp')?.value, 70, 110, 96),
         powerPercent: clampDistillationInput(document.getElementById('dist-start-power-percent')?.value, 0, 100, 60)
     };
@@ -27,7 +27,7 @@ export async function startDistillation(paramsOverride = null) {
     const params = paramsOverride || collectDistillationSettings();
 
     try {
-        addLog('Sending distillation start command...', 'info');
+        addLog('Отправка команды запуска дистилляции...', 'info');
 
         const response = await fetch('/api/process/start', {
             method: 'POST',
@@ -40,17 +40,17 @@ export async function startDistillation(paramsOverride = null) {
 
         if (response.ok) {
             const data = await response.json();
-            addLog('Distillation started', 'success');
-            if (data.warning) addLog(`Warning: ${data.warning}`, 'warning');
+            addLog('Дистилляция запущена', 'success');
+            if (data.warning) addLog(`Предупреждение: ${data.warning}`, 'warning');
             setTimeout(loadStatus, 500);
             return true;
         } else {
             const error = await response.text();
-            addLog(`Distillation start error (${response.status}): ${error}`, 'error');
+            addLog(`Ошибка запуска дистилляции (${response.status}): ${error}`, 'error');
             return false;
         }
     } catch (e) {
-        addLog(`Distillation network error: ${e.message}`, 'error');
+        addLog(`Сетевая ошибка дистилляции: ${e.message}`, 'error');
         console.error('Start distillation error:', e);
         return false;
     }

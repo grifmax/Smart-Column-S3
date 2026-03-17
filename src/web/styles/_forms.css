@@ -53,7 +53,7 @@
     font-weight: 500;
 }
 
-.form-group input {
+.form-group input:not([type="checkbox"]):not([type="radio"]) {
     width: 100%;
     padding: 10px;
     border: 2px solid var(--border-color);
@@ -63,9 +63,20 @@
     font-size: 1em;
 }
 
-.form-group input:focus {
+.form-group input:not([type="checkbox"]):not([type="radio"]):focus {
     outline: none;
     border-color: var(--accent);
+}
+
+.form-group input[type="checkbox"],
+.form-group input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+    margin: 0;
+    padding: 0;
+    accent-color: var(--accent);
 }
 
 .info-display {

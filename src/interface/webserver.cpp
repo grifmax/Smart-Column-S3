@@ -1594,6 +1594,7 @@ void init() {
               if (count >= 10) break;
               runtimeSteps[count].temperature = s["temperature"] | 0.0f;
               runtimeSteps[count].duration = s["duration"] | 0;
+              runtimeSteps[count].useCooling = s["useCooling"] | false;
               count++;
             }
           }
@@ -1602,6 +1603,7 @@ void init() {
           if (count == 0) {
             runtimeSteps[0].temperature = 65.0f;
             runtimeSteps[0].duration = 60;
+            runtimeSteps[0].useCooling = false;
             count = 1;
           }
 
@@ -2079,7 +2081,7 @@ void init() {
     doc["password"] = g_settings.mqtt.password;
     doc["baseTopic"] = g_settings.mqtt.baseTopic;
     doc["publishInterval"] = g_settings.mqtt.publishInterval;
-    doc["discovery"] = true; // Discovery публикуется автоматически при коннекте
+    doc["discovery"] = g_settings.mqtt.discovery;
     doc["connected"] = MQTT::isConnected();
 
     String json;
@@ -2118,6 +2120,9 @@ void init() {
         const char* baseTopic = !doc["baseTopic"].isNull()
                                     ? (doc["baseTopic"] | "")
                                     : g_settings.mqtt.baseTopic;
+        const bool discovery = !doc["discovery"].isNull()
+                                   ? static_cast<bool>(doc["discovery"])
+                                   : g_settings.mqtt.discovery;
         uint32_t publishInterval = !doc["publishInterval"].isNull()
                                        ? static_cast<uint32_t>(doc["publishInterval"] |
                                                                 g_settings.mqtt.publishInterval)
@@ -2141,6 +2146,7 @@ void init() {
         strlcpy(g_settings.mqtt.password, password, sizeof(g_settings.mqtt.password));
         strlcpy(g_settings.mqtt.baseTopic, baseTopic, sizeof(g_settings.mqtt.baseTopic));
         g_settings.mqtt.publishInterval = publishInterval;
+        g_settings.mqtt.discovery = discovery;
 
         if (!NVSManager::saveSettings(g_settings)) {
           Logger::logf(2, "MQTT settings save failed");

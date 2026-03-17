@@ -1,4 +1,28 @@
-﻿/* History List */
+.history-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+    align-items: center;
+}
+
+.history-toolbar select {
+    min-height: 38px;
+    min-width: 180px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.history-toolbar select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* History List */
 .history-list {
     display: flex;
     flex-direction: column;
@@ -181,4 +205,12 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+@media (max-width: 900px) {
+    .history-toolbar select,
+    .history-toolbar .btn {
+        width: 100%;
+        min-width: 0;
+    }
 }

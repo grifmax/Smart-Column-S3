@@ -160,12 +160,13 @@ export function renderModeRuntimeCard() {
             });
         }
     } else if (mode === MODE_HOLD) {
-        titleEl.textContent = 'Режим выдержки';
+        titleEl.textContent = 'Пастеризация';
         const duration = Math.max(0, toFinite(s.hold.stepDurationSec, 0));
         const elapsed = Math.max(0, toFinite(s.hold.elapsedSec, 0));
         const pct = duration > 0 ? clampPercent((elapsed / duration) * 100) : clampPercent(s.progress.phasePercent);
         const remSec = duration > elapsed ? (duration - elapsed) : toFinite(s.progress.phaseRemainingSec, 0);
-        captionEl.textContent = `Цель ${toFinite(s.hold.targetTemp, 0).toFixed(1)}°C`;
+        const targetTemp = toFinite(s.hold.targetTemp, 0);
+        captionEl.textContent = targetTemp > 0 ? `Цель ${targetTemp.toFixed(1)}°C` : 'Шаг-пауза без нагрева';
         items.push({
             label: 'Обратный отсчет',
             percent: pct,

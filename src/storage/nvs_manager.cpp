@@ -122,6 +122,7 @@ bool loadSettings(Settings& settings) {
     prefs.getString(NVS_KEY_MQTT_PASSWORD, settings.mqtt.password, sizeof(settings.mqtt.password));
     prefs.getString(NVS_KEY_MQTT_BASE_TOPIC, settings.mqtt.baseTopic, sizeof(settings.mqtt.baseTopic));
     settings.mqtt.publishInterval = prefs.getUInt(NVS_KEY_MQTT_INTERVAL, 10000);
+    settings.mqtt.discovery = prefs.getBool(NVS_KEY_MQTT_DISCOVERY, settings.mqtt.discovery);
 
     // Cloud tunnel
     settings.cloud.enabled = prefs.getBool(NVS_KEY_CLOUD_ENABLED, false);
@@ -231,6 +232,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putString(NVS_KEY_MQTT_PASSWORD, settings.mqtt.password);
     prefs.putString(NVS_KEY_MQTT_BASE_TOPIC, settings.mqtt.baseTopic);
     prefs.putUInt(NVS_KEY_MQTT_INTERVAL, settings.mqtt.publishInterval);
+    prefs.putBool(NVS_KEY_MQTT_DISCOVERY, settings.mqtt.discovery);
 
     // Cloud tunnel
     prefs.putBool(NVS_KEY_CLOUD_ENABLED, settings.cloud.enabled);

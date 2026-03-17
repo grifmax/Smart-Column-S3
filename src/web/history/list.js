@@ -68,6 +68,7 @@ export async function loadHistoryList() {
 export function applyHistoryFilters() {
 
     const typeFilter = document.getElementById('history-filter-type')?.value || 'all';
+    const statusFilter = document.getElementById('history-filter-status')?.value || 'all';
 
     const sortBy = document.getElementById('history-sort')?.value || 'date-desc';
 
@@ -82,6 +83,12 @@ export function applyHistoryFilters() {
     if (typeFilter !== 'all') {
 
         filtered = filtered.filter(p => p.type === typeFilter);
+
+    }
+
+    if (statusFilter !== 'all') {
+
+        filtered = filtered.filter(p => p.status === statusFilter);
 
     }
 
@@ -316,7 +323,7 @@ export function renderHistoryItem(process) {
 
         mashing: 'Затирка',
 
-        hold: 'Выдержка',
+        hold: 'Пастеризация',
 
         nbk: 'НБК',
 

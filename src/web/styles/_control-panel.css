@@ -40,10 +40,17 @@
 .control-mode-btn {
     text-align: left;
     width: 100%;
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    box-shadow: none;
 }
 
 .control-mode-btn.control-mode-selected {
-    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2), 0 6px 14px var(--shadow);
+    color: #fff;
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+    box-shadow: 0 6px 14px var(--shadow);
 }
 
 .control-runtime {
@@ -106,6 +113,14 @@
 
 .control-subsection:last-child {
     margin-bottom: 0;
+}
+
+.control-group {
+    margin: 10px 0;
+}
+
+.control-group label {
+    margin-bottom: 6px;
 }
 
 .control-subsection-title {

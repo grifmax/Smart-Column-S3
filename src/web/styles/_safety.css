@@ -5,7 +5,15 @@
 .safety-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 8px;
+}
+
+.safety-grid .form-group {
+    margin: 8px 0;
+}
+
+.safety-grid .form-group label {
+    margin-bottom: 4px;
 }
 
 .safety-notes {

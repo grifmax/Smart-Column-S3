@@ -54,9 +54,9 @@ const CONTROL_MODES = {
         modeValue: MODE_MASH
     },
     hold: {
-        title: 'Hold',
-        subtitle: 'Температурные ступени выдержки',
-        startLabel: '▶️ Запустить Hold',
+        title: 'Пастеризация',
+        subtitle: 'Температурные шаги, паузы и управляемое охлаждение',
+        startLabel: '▶️ Запустить пастеризацию',
         startClass: 'btn-success',
         modeValue: MODE_HOLD
     },
@@ -109,18 +109,127 @@ function renderControlModePanels(mode) {
 }
 
 function renderControlModeHeader(mode) {
-    const def = getModeDefinition(mode);
     const title = document.getElementById('control-mode-title');
     const subtitle = document.getElementById('control-mode-subtitle');
     const startButton = document.getElementById('mode-start-button');
+    const labels = {
+        rectification: {
+            title: 'Авто-ректификация',
+            subtitle: 'Параметры запуска процесса',
+            startLabel: 'Сохранить и запустить авто-ректификацию'
+        },
+        manual: {
+            title: 'Ручная ректификация',
+            subtitle: 'Старт режима и ручное управление нагревом с настройкой отбора тела',
+            startLabel: 'Запустить ручную ректификацию'
+        },
+        distillation: {
+            title: 'Дистилляция',
+            subtitle: 'Быстрые параметры запуска дистилляции',
+            startLabel: 'Запустить дистилляцию'
+        },
+        mashing: {
+            title: 'Затирка',
+            subtitle: 'Температурный профиль и шаги затирки',
+            startLabel: 'Запустить затирку'
+        },
+        hold: {
+            title: 'Пастеризация',
+            subtitle: 'Температурные шаги, паузы и управляемое охлаждение',
+            startLabel: 'Запустить пастеризацию'
+        },
+        nbk: {
+            title: 'НБК',
+            subtitle: 'Непрерывная бражная колонна: мощность, подача браги и контроль низа колонны',
+            startLabel: 'Запустить НБК'
+        },
+        fermentation: {
+            title: 'Ферментация',
+            subtitle: 'Поддержание температуры брожения по датчику в кубе или ферментере',
+            startLabel: 'Запустить ферментацию'
+        }
+    };
+    const def = getModeDefinition(mode);
+    const ui = labels[mode] || labels.rectification;
 
-    if (title) title.textContent = def.title;
-    if (subtitle) subtitle.textContent = def.subtitle;
+    if (title) title.textContent = ui.title;
+    if (subtitle) subtitle.textContent = ui.subtitle;
     if (startButton) {
-        startButton.textContent = def.startLabel;
+        startButton.textContent = ui.startLabel;
         startButton.dataset.mode = String(def.modeValue);
-        startButton.classList.remove('btn-primary', 'btn-success', 'btn-warning', 'btn-info');
-        startButton.classList.add(def.startClass);
+        startButton.classList.remove('btn-success', 'btn-warning', 'btn-info');
+        startButton.classList.add('btn-primary');
+    }
+}
+
+function normalizeControlPanelMarkup() {
+    const titles = {
+        rectification: 'Авто-ректификация',
+        manual: 'Ручная ректификация',
+        distillation: 'Дистилляция',
+        nbk: 'НБК',
+        fermentation: 'Ферментация',
+        mashing: 'Затирка',
+        hold: 'Пастеризация'
+    };
+
+    document.querySelectorAll('[data-mode-select]').forEach((button) => {
+        const mode = button.dataset.modeSelect;
+        button.classList.remove('btn-success', 'btn-warning', 'btn-info');
+        button.classList.add('btn');
+        if (titles[mode]) {
+            button.textContent = titles[mode];
+        }
+    });
+
+    const historyType = document.getElementById('history-filter-type');
+    if (historyType) {
+        historyType.innerHTML = `
+            <option value="all">Все типы</option>
+            <option value="rectification">Ректификация</option>
+            <option value="distillation">Дистилляция</option>
+            <option value="nbk">НБК</option>
+            <option value="fermentation">Ферментация</option>
+            <option value="mashing">Затирка</option>
+            <option value="hold">Пастеризация</option>
+        `;
+        historyType.closest('div')?.classList.add('history-toolbar');
+    }
+
+    const pumpControl = document.getElementById('pump-speed-control')?.closest('.control-group');
+    const bodyDecrementField = document.getElementById('manual-body-speed-decrement')?.closest('.form-group');
+    if (pumpControl && bodyDecrementField && !document.getElementById('manual-body-pump-hint')) {
+        pumpControl.style.gridColumn = '1 / -1';
+        const hint = document.createElement('div');
+        hint.id = 'manual-body-pump-hint';
+        hint.className = 'control-inline-hint';
+        hint.textContent = 'Ручная подача для отбора тела и сервисной настройки потока.';
+        pumpControl.appendChild(hint);
+        bodyDecrementField.insertAdjacentElement('afterend', pumpControl);
+    }
+
+    document.querySelector('#control-panel-manual .controls button[onclick*="toggleValve"]')?.closest('.control-group')?.remove();
+    document.getElementById('dist-start-speed')?.closest('.form-group')?.remove();
+    document.getElementById('dist-start-heads-volume')?.closest('.form-group')?.remove();
+    document.getElementById('dist-start-target-volume')?.closest('.form-group')?.remove();
+
+    const holdTitle = document.querySelector('#control-panel-hold .control-subsection-title');
+    if (holdTitle) {
+        holdTitle.textContent = 'Пастеризация';
+    }
+
+    const holdLabel = document.querySelector('#control-panel-hold .form-group > label');
+    if (holdLabel) {
+        holdLabel.textContent = 'Шаги (температура °C, длительность мин)';
+    }
+
+    const holdSteps = document.getElementById('hold-steps');
+    if (holdSteps && !document.getElementById('hold-steps-hint')) {
+        const hint = document.createElement('div');
+        hint.id = 'hold-steps-hint';
+        hint.className = 'control-inline-hint';
+        hint.textContent = 'Если температура не указана, это пауза без нагрева. Охлаждение используется только для шага с температурой ниже предыдущего.';
+        holdSteps.insertAdjacentElement('beforebegin', hint);
     }
 }
 
@@ -218,6 +327,7 @@ export async function initControlModePanel() {
     }
 
     initManualRectSettings();
+    normalizeControlPanelMarkup();
 
     let initialMode = 'rectification';
     try {

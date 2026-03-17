@@ -1034,6 +1034,8 @@ function initEquipmentTestingWorkbench() {
     const testingPane = qs('[data-equipment-section-pane="testing"]');
     const grid = qs('.equipment-testing-grid', testingPane);
     if (!testingPane || !grid || grid.dataset.testingWorkbench === '1') return;
+    const statusCard = qs('.equipment-test-status-card', testingPane);
+    const journal = qs('.equipment-test-journal', testingPane);
 
     const cards = [...grid.querySelectorAll('.equipment-test-card')];
     const resolvedCards = resolveTestingCards(cards);
@@ -1046,10 +1048,26 @@ function initEquipmentTestingWorkbench() {
     const desktopWrapper = createElement('div', 'equipment-testing-card-stack');
     const { nav, buttonsById } = buildTestingDesktopNav(resolvedCards);
 
-    grid.parentNode.insertBefore(shell, grid);
+    grid.parentNode.insertBefore(shell, statusCard || grid);
     shell.append(nav, main);
+    if (statusCard) {
+        main.appendChild(statusCard);
+    }
     main.appendChild(desktopWrapper);
     desktopWrapper.appendChild(grid);
+
+    if (journal && statusCard) {
+        const accordion = createElement('details', 'equipment-test-journal-accordion');
+        accordion.open = false;
+        accordion.innerHTML = `
+            <summary class="equipment-test-journal-summary">
+                <span>Последние действия оператора</span>
+                <small>Журнал сервисных команд</small>
+            </summary>
+        `;
+        accordion.appendChild(journal);
+        main.appendChild(accordion);
+    }
 
     const mediaQuery = window.matchMedia(TESTING_LAYOUT_MEDIA);
     state.activeTestingCard = readSavedTestingCard();

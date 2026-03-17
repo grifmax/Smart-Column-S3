@@ -29,10 +29,17 @@
     font-size: 0.92rem;
 }
 
-#settings .form-group input,
+#settings .form-group input:not([type="checkbox"]):not([type="radio"]),
 #settings .form-group select {
     min-height: 40px;
     padding: 8px 10px;
+}
+
+#settings .form-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    min-height: 18px;
+    padding: 0;
 }
 
 #settings .controls {
@@ -69,6 +76,12 @@
 
 #settings .card [style*="grid-template-columns: auto 1fr"] {
     gap: 8px !important;
+}
+
+#settings .form-group label[style*="display: flex"] {
+    align-items: center !important;
+    gap: 10px !important;
+    line-height: 1.35;
 }
 
 @media (max-width: 900px) {

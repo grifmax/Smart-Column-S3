@@ -1,7 +1,7 @@
 .wifi-card {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
 }
 
 .wifi-status,
@@ -17,14 +17,14 @@
 .wifi-layout {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
+    gap: 10px;
 }
 
 .wifi-panel {
     border: 1px solid var(--border-color);
     border-radius: 12px;
     background: rgba(255, 255, 255, 0.5);
-    padding: 14px;
+    padding: 12px;
 }
 
 [data-theme="dark"] .wifi-panel {
@@ -32,7 +32,7 @@
 }
 
 .wifi-panel-header {
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .wifi-panel-header h3 {
@@ -63,7 +63,7 @@
 
 .wifi-saved-item + .wifi-saved-item,
 .wifi-scan-item + .wifi-scan-item {
-    margin-top: 10px;
+    margin-top: 8px;
 }
 
 .wifi-saved-item.is-connected {
@@ -142,7 +142,7 @@
 .wifi-grid-2,
 .wifi-grid-3 {
     display: grid;
-    gap: 12px;
+    gap: 8px;
 }
 
 .wifi-toggle-grid,
@@ -158,8 +158,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 44px;
-    padding: 10px 12px;
+    min-height: 38px;
+    padding: 8px 10px;
     border: 1px solid var(--border-color);
     border-radius: 10px;
     background: var(--bg-secondary);
@@ -172,7 +172,17 @@
 
 .wifi-static-fields {
     display: grid;
-    gap: 12px;
+    gap: 4px;
+}
+
+.wifi-static-fields .form-group,
+.wifi-card .form-group {
+    margin: 8px 0;
+}
+
+.wifi-static-fields .form-group label,
+.wifi-card .form-group label {
+    margin-bottom: 4px;
 }
 
 .wifi-field-hint {
@@ -195,6 +205,18 @@
 }
 
 @media (max-width: 640px) {
+    .wifi-card {
+        gap: 8px;
+    }
+
+    .wifi-panel {
+        padding: 10px;
+    }
+
+    .wifi-panel-header {
+        margin-bottom: 6px;
+    }
+
     .wifi-item-top {
         flex-direction: column;
     }

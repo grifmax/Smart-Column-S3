@@ -31,17 +31,40 @@ void update(SystemState& state, const Settings& settings) {
     Valves::setHeads(false);
     
     if (state.hold.currentStep < state.hold.stepCount) {
-        float targetTemp = state.hold.targetTemp;
-        float error = targetTemp - currentTemp;
-        float Kp = 2.0f;
-        int powerDelta = (int)(error * Kp);
-        int currentPower = (int)Heater::getPower();
-        int newPower = (int)(currentPower + powerDelta);
-        if (newPower > 100) newPower = 100;
-        if (newPower < 0) newPower = 0;
-        Heater::setPower((uint8_t)newPower);
-        
-        const bool tempReached = fabs(currentTemp - targetTemp) < 1.0f;
+        const TempStep& step = state.hold.steps[state.hold.currentStep];
+        const bool isPauseStep = step.temperature <= 0.0f;
+
+        if (isPauseStep) {
+            Heater::setPower(0);
+            Valves::setWater(false);
+            if (state.hold.stepStartTime == 0) {
+                state.hold.stepStartTime = now;
+            }
+            state.hold.tempInRange = true;
+            state.hold.inRangeStartTime = state.hold.stepStartTime;
+        } else {
+            float targetTemp = state.hold.targetTemp;
+            const bool coolingRequested =
+                step.useCooling && state.hold.currentStep > 0 &&
+                targetTemp < state.hold.steps[state.hold.currentStep - 1].temperature;
+
+            if (coolingRequested && currentTemp > targetTemp + 0.5f) {
+                Heater::setPower(0);
+                Valves::setWater(true);
+            } else {
+                Valves::setWater(false);
+                float error = targetTemp - currentTemp;
+                float Kp = 2.0f;
+                int powerDelta = (int)(error * Kp);
+                int currentPower = (int)Heater::getPower();
+                int newPower = (int)(currentPower + powerDelta);
+                if (newPower > 100) newPower = 100;
+                if (newPower < 0) newPower = 0;
+                Heater::setPower((uint8_t)newPower);
+            }
+        }
+
+        const bool tempReached = isPauseStep || fabs(currentTemp - state.hold.targetTemp) < 1.0f;
         if (tempReached) {
             if (!state.hold.tempInRange) {
                 state.hold.tempInRange = true;
@@ -78,6 +101,7 @@ void update(SystemState& state, const Settings& settings) {
                 state.hold.active = false;
                 state.mode = Mode::IDLE;
                 Heater::setPower(0);
+                Valves::setWater(false);
                 LOG_I("Hold: Process complete!");
                 MQTT::publishNotification("Hold режим завершён", "Все температурные ступени завершены", "success");
             }

@@ -76,7 +76,7 @@ export function initMashingHoldControls() {
     }
 }
 
-export function createStepRow({ mode, temperature, duration, name }) {
+export function createStepRow({ mode, temperature, duration, name, useCooling }) {
     const row = document.createElement('div');
     row.dataset.stepRow = mode;
     row.style.display = 'flex';
@@ -89,7 +89,7 @@ export function createStepRow({ mode, temperature, duration, name }) {
     tempInput.type = 'number';
     tempInput.step = '0.1';
     tempInput.min = '0';
-    tempInput.placeholder = 'Темп, °C';
+    tempInput.placeholder = mode === 'hold' ? 'Темп. или пауза' : 'Темп., °C';
     tempInput.value = (temperature ?? '') === '' ? '' : String(temperature);
     tempInput.dataset.field = 'temperature';
     tempInput.style.width = '140px';
@@ -105,6 +105,26 @@ export function createStepRow({ mode, temperature, duration, name }) {
 
     row.appendChild(tempInput);
     row.appendChild(durInput);
+
+    if (mode === 'hold') {
+        const coolingLabel = document.createElement('label');
+        coolingLabel.className = 'checkbox-label';
+        coolingLabel.style.display = 'inline-flex';
+        coolingLabel.style.alignItems = 'center';
+        coolingLabel.style.gap = '8px';
+        coolingLabel.style.minHeight = '38px';
+
+        const coolingInput = document.createElement('input');
+        coolingInput.type = 'checkbox';
+        coolingInput.dataset.field = 'useCooling';
+        coolingInput.checked = Boolean(useCooling);
+
+        const coolingText = document.createElement('span');
+        coolingText.textContent = 'Охлаждение';
+
+        coolingLabel.append(coolingInput, coolingText);
+        row.appendChild(coolingLabel);
+    }
 
     if (mode === 'mash') {
         const nameInput = document.createElement('input');
@@ -144,7 +164,8 @@ export function addHoldStep(step = {}) {
     el.appendChild(createStepRow({
         mode: 'hold',
         temperature: step.temperature,
-        duration: step.duration
+        duration: step.duration,
+        useCooling: step.useCooling
     }));
 }
 
@@ -161,13 +182,21 @@ export function readStepsFromUI(containerId, mode) {
         const temperature = Number.parseFloat(tempStr);
         const duration = Number.parseInt(durStr, 10);
 
-        if (!Number.isFinite(temperature) || temperature <= 0) continue;
         if (!Number.isFinite(duration) || duration <= 0) continue;
+        if (mode === 'mash' && (!Number.isFinite(temperature) || temperature <= 0)) continue;
 
-        const step = { temperature, duration };
+        const step = { duration };
         if (mode === 'mash') {
+            step.temperature = temperature;
             const name = (row.querySelector('input[data-field="name"]')?.value ?? '').trim();
             if (name) step.name = name;
+        } else if (mode === 'hold') {
+            if (Number.isFinite(temperature) && temperature > 0) {
+                step.temperature = temperature;
+            } else {
+                step.temperature = 0;
+            }
+            step.useCooling = Boolean(row.querySelector('input[data-field="useCooling"]')?.checked);
         }
         steps.push(step);
     }
@@ -222,17 +251,17 @@ export async function startMashing() {
 }
 
 export async function startHold() {
-    if (!confirmModeSwitch(MODE_HOLD, 'Hold')) return false;
+    if (!confirmModeSwitch(MODE_HOLD, 'Пастеризация')) return false;
 
     try {
         const steps = readStepsFromUI('hold-steps', 'hold');
 
         if (!steps.length) {
-            addLog('✗ Hold: добавьте хотя бы один корректный шаг (температура и длительность)', 'error');
+            addLog('✗ Пастеризация: добавьте хотя бы один корректный шаг или паузу с длительностью', 'error');
             return false;
         }
 
-        addLog('📤 Отправка команды запуска Hold...', 'info');
+        addLog('📤 Отправка команды запуска пастеризации...', 'info');
 
         const response = await fetch('/api/process/start', {
             method: 'POST',
@@ -245,7 +274,7 @@ export async function startHold() {
 
         if (response.ok) {
             const data = await response.json();
-            addLog('✓ Hold запущен', 'success');
+            addLog('✓ Пастеризация запущена', 'success');
             if (data.warning) addLog(`⚠️ ${data.warning}`, 'warning');
             setTimeout(loadStatus, 500);
             return true;

@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.1.13">
+    <link rel="stylesheet" href="style.css?v=2.1.15">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -65,7 +65,7 @@
                         <nav class="tabs tabs-dropdown">
                             <button class="tab active" data-tab="monitor">📊</button>
                             <a href="charts.html" class="tab">📈 Графики</a>
-                            <a href="charts.html#logs" class="tab">📝 Логи</a>
+                            <a href="logs.html" class="tab">📝 Логи</a>
                             <button class="tab" data-tab="control">🎛️ Режимы</button>
                             <button class="tab" data-tab="equipment">🧰 Оборудование</button>
                             <button class="tab" data-tab="safety">🛡️ Безопасность</button>
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.1.13" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.1.15" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -410,14 +410,14 @@
                                         <button class="btn btn-success control-mode-btn" type="button"
                                             data-mode-select="rectification" data-mode="1"
                                             data-mode-action="rectification"
-                                            onclick="selectControlMode('rectification')">▶️ Авто-ректификация</button>
+                                            onclick="selectControlMode('rectification')">Авто-ректификация</button>
                                         <button class="btn btn-warning control-mode-btn" type="button"
                                             data-mode-select="manual" data-mode="3" data-mode-action="manual"
-                                            onclick="selectControlMode('manual')">🎛️ Ручная ректификация</button>
+                                            onclick="selectControlMode('manual')">Ручная ректификация</button>
                                         <button class="btn btn-info control-mode-btn" type="button"
                                             data-mode-select="distillation" data-mode="2"
                                             data-mode-action="distillation"
-                                            onclick="selectControlMode('distillation')">🏺 Дистилляция</button>
+                                            onclick="selectControlMode('distillation')">Дистилляция</button>
                                         <button class="btn btn-warning control-mode-btn" type="button"
                                             data-mode-select="nbk" data-mode="6" data-mode-action="nbk"
                                             onclick="selectControlMode('nbk')">НБК</button>
@@ -427,10 +427,10 @@
                                             onclick="selectControlMode('fermentation')">Ферментация</button>
                                         <button class="btn btn-success control-mode-btn" type="button"
                                             data-mode-select="mashing" data-mode="4" data-mode-action="mashing"
-                                            onclick="selectControlMode('mashing')">▶️ Затирка</button>
-                                        <button class="btn btn-success control-mode-btn" type="button"
+                                            onclick="selectControlMode('mashing')">Затирка</button>
+                                          <button class="btn btn-success control-mode-btn" type="button"
                                             data-mode-select="hold" data-mode="5" data-mode-action="hold"
-                                            onclick="selectControlMode('hold')">▶️ Hold</button>
+                                            onclick="selectControlMode('hold')">Пастеризация</button>
                                     </div>
 
                                 </aside>
@@ -534,24 +534,13 @@
                                                     <input type="range" id="heater-power" min="0" max="5500" step="50"
                                                         value="0" oninput="updateHeater(this.value)">
                                                 </div>
-                                                <div class="control-group">
-                                                    <label for="pump-speed-control">Скорость насоса: <span
-                                                            id="pump-value">0</span> мл/ч</label>
-                                                    <input type="range" id="pump-speed-control" min="0" max="500"
-                                                        value="0" oninput="updatePump(this.value)">
-                                                </div>
-                                                <div class="control-group">
-                                                    <label>Клапаны</label>
-                                                    <div class="controls">
-                                                        <button class="btn btn-sm" type="button"
-                                                            onclick="toggleValve('water')">💧 Вода</button>
-                                                        <button class="btn btn-sm" type="button"
-                                                            onclick="toggleValve('heads')">🥃 Головы</button>
-                                                        <button class="btn btn-sm" type="button"
-                                                            onclick="toggleValve('uno')">🔄 УНО</button>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                                  <div class="control-group">
+                                                      <label for="pump-speed-control">Скорость насоса: <span
+                                                              id="pump-value">0</span> мл/ч</label>
+                                                      <input type="range" id="pump-speed-control" min="0" max="500"
+                                                          value="0" oninput="updatePump(this.value)">
+                                                  </div>
+                                              </div>
                                             <div class="control-subsection">
                                                 <div class="control-subsection-title">Параметры ручной ректификации
                                                 </div>
@@ -702,24 +691,9 @@
                                             <div class="control-subsection">
                                                 <div class="control-subsection-title">Параметры дистилляции</div>
                                                 <div class="control-form-grid">
-                                                    <div class="form-group">
-                                                        <label for="dist-start-speed">Скорость отбора, мл/ч</label>
-                                                        <input type="number" id="dist-start-speed" min="10" max="6000"
-                                                            step="10" value="500">
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="dist-start-heads-volume">Головы, мл</label>
-                                                        <input type="number" id="dist-start-heads-volume" min="0"
-                                                            max="3000" step="10" value="0">
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="dist-start-target-volume">Целевой объем, мл</label>
-                                                        <input type="number" id="dist-start-target-volume" min="0"
-                                                            max="50000" step="50" value="0">
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <label for="dist-start-end-temp">Температура окончания,
-                                                            °C</label>
+                                                      <div class="form-group">
+                                                         <label for="dist-start-end-temp">Температура окончания,
+                                                              °C</label>
                                                         <input type="number" id="dist-start-end-temp" min="70" max="110"
                                                             step="0.1" value="96">
                                                     </div>
@@ -815,8 +789,8 @@
 
                                         <div id="control-panel-hold" class="control-mode-panel-section"
                                             data-mode-panel="hold" style="display: none;">
-                                            <div id="hold-controls" class="control-group">
-                                                <div class="control-subsection-title">Hold (выдержка)</div>
+                                                <div id="hold-controls" class="control-group">
+                                                  <div class="control-subsection-title">Пастеризация</div>
 
                                                 <div class="form-group">
                                                     <label>Шаги (температура °C, длительность мин)</label>
@@ -1574,8 +1548,9 @@
                                     <option value="all">Все типы</option>
                                     <option value="rectification">Ректификация</option>
                                     <option value="distillation">Дистилляция</option>
-                                    <option value="nbk">???</option>
-                                    <option value="fermentation">???????????</option>
+                                      <option value="nbk">НБК</option>
+                                      <option value="fermentation">Ферментация</option>
+                                      <option value="hold">Пастеризация</option>
                                     <option value="mashing">Затирка</option>
                                 </select>
                                 <select id="history-filter-status" onchange="loadHistoryList()">
@@ -2537,7 +2512,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.1.13"></script>
+    <script src="app.js?v=2.1.15"></script>
 </body>
 
 </html>
