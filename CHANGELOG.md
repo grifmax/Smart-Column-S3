@@ -9,6 +9,13 @@
 
 ---
 
+## [2.1.10] - 2026-03-17
+
+### Изменено
+- В [src/web/styles/_equipment.css](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\styles\_equipment.css) раздел `Оборудование` переведён на более плотный сервисный ритм: ужаты отступы между блоками, заголовками и action-рядом, чтобы экран больше не выглядел как растянутая форма с пустым воздухом. (codex)
+- Карточки `Параметров` теперь ограничивают ширину одиночных input/stepper-контролов и больше не растягивают один показатель на всю строку: числовые поля, inline-строки и кнопки `Сохранить/Добавить` получили фиксированные рабочие размеры и более собранную компоновку. (codex)
+- Метрики и сервисные действия в `Тестировании` тоже уплотнены: [src/web/styles/_equipment.css](C:\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\Smart-Column-S3-claude-smart-column-s3-01BtHoqGVyMaVAPXERRPFJq7\src\web\styles\_equipment.css) теперь не растягивает одиночные KPI-карточки и preset-кнопки на всю ширину контейнера, а mobile-кнопки стали ниже и компактнее. (codex)
+
 ## [2.1.9] - 2026-03-17
 
 ### Изменено
