@@ -40,7 +40,7 @@ import { renderAbvValue } from './runtime/abv.js';
 import { openRuntimeEditModal, closeRuntimeEditModal, submitRuntimeEditModal, onRuntimeEditUnitToggle } from './runtime/edit-modal.js';
 import { toggleDemoMode, rebootController } from './settings/demo.js';
 import { saveEquipment, loadEquipmentSettings, initEquipmentSettingsUi, addCubeExtenderVolume } from './settings/equipment.js';
-import { initEquipmentTestingUi } from './settings/equipment-testing.js';
+import { initEquipmentTestingUi, initSettingsWorkbenchUi } from './settings/equipment-testing.js';
 import { loadSafetySettings, saveSafetySettings } from './settings/safety-thresholds.js';
 import { loadMqttSettings, saveMqtt, sendMqttTest } from './settings/mqtt-save.js';
 import { toggleMqttFields } from './settings/mqtt.js';
@@ -311,6 +311,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     initToolsWorkbench();
     initEquipmentSettingsUi();
     initEquipmentTestingUi();
+    initSettingsWorkbenchUi();
     loadEquipmentSettings();
     loadSafetySettings();
     loadSecuritySettings();

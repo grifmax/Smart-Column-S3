@@ -2,6 +2,7 @@ import { addLog } from '../core/logs.js';
 import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const STORAGE_KEY = 'equipment.activeSection';
+const SETTINGS_SECTION_STORAGE_KEY = 'settings.activeSection';
 const PARAMETERS_CARD_STORAGE_KEY = 'equipment.parameters.activeCard';
 const CALIBRATION_CARD_STORAGE_KEY = 'equipment.calibration.activeCard';
 const TESTING_CARD_STORAGE_KEY = 'equipment.testing.activeCard';
@@ -131,6 +132,71 @@ const CALIBRATION_GROUPS = [
     { id: 'sensors', label: 'Датчики' },
 ];
 
+const SETTINGS_CARD_GROUPS = [{ id: 'main', label: '' }];
+
+const SETTINGS_SECTION_DEFS = [
+    {
+        id: 'connection',
+        label: 'Подключение',
+        title: 'Подключение',
+        subtitle: 'Облако и привязка контроллера без длинной ленты карточек.',
+        storageKey: 'settings.connection.activeCard',
+        stateKey: 'activeSettingsConnectionCard',
+        defs: [
+            { id: 'cloud', selector: '#cloud-enabled', group: 'main', icon: '☁️', title: 'Облако', shortTitle: 'Облако', description: 'WSS-туннель и статус привязки устройства.' },
+            { id: 'esp32', selector: '#esp32-device-select', group: 'main', icon: '📡', title: 'Подключение к ESP32', shortTitle: 'ESP32', description: 'Привязка устройства, список контроллеров и сетевые параметры.' },
+        ],
+    },
+    {
+        id: 'integrations',
+        label: 'Интеграции',
+        title: 'Интеграции',
+        subtitle: 'MQTT и уведомления собраны в один компактный рабочий раздел.',
+        storageKey: 'settings.integrations.activeCard',
+        stateKey: 'activeSettingsIntegrationsCard',
+        defs: [
+            { id: 'mqtt', selector: '#mqtt-enabled', group: 'main', icon: '📡', title: 'MQTT', shortTitle: 'MQTT', description: 'Брокер, discovery и публикация состояний.' },
+            { id: 'notifications', selector: '#browser-notifications-enabled', group: 'main', icon: '🔔', title: 'Браузерные уведомления', shortTitle: 'Уведомления', description: 'Локальные push-уведомления в браузере.' },
+        ],
+    },
+    {
+        id: 'access',
+        label: 'Доступ',
+        title: 'Доступ и защита',
+        subtitle: 'Управление аутентификацией и ограничением запросов.',
+        storageKey: 'settings.access.activeCard',
+        stateKey: 'activeSettingsAccessCard',
+        defs: [
+            { id: 'security', selector: '#auth-enabled', group: 'main', icon: '🔒', title: 'Безопасность', shortTitle: 'Безопасность', description: 'Аутентификация и rate limit.' },
+        ],
+    },
+    {
+        id: 'interface',
+        label: 'Интерфейс',
+        title: 'Интерфейс',
+        subtitle: 'Тема и визуальное поведение интерфейса без перегруженного экрана.',
+        storageKey: 'settings.interface.activeCard',
+        stateKey: 'activeSettingsInterfaceCard',
+        defs: [
+            { id: 'theme', selector: 'button[onclick="setTheme(\'light\')"]', group: 'main', icon: '🎨', title: 'Тема интерфейса', shortTitle: 'Тема', description: 'Переключение цветовой схемы.' },
+            { id: 'display', selector: '#show-memory-stats', group: 'main', icon: '🖥️', title: 'Отображение', shortTitle: 'Отображение', description: 'Небольшие системные опции отображения.' },
+        ],
+    },
+    {
+        id: 'system',
+        label: 'Система',
+        title: 'Система',
+        subtitle: 'Сервисные системные карточки с быстрым доступом к ключевым действиям.',
+        storageKey: 'settings.system.activeCard',
+        stateKey: 'activeSettingsSystemCard',
+        defs: [
+            { id: 'demo', selector: '#demo-mode-enabled', group: 'main', icon: '🧪', title: 'Демо-режим', shortTitle: 'Демо', description: 'Симуляция оборудования без реального железа.' },
+            { id: 'reboot', selector: 'button[onclick="rebootController()"]', group: 'main', icon: '🔄', title: 'Перезагрузка', shortTitle: 'Перезагрузка', description: 'Безопасный перезапуск контроллера.' },
+            { id: 'versions', selector: '#firmware-version', group: 'main', icon: 'ℹ️', title: 'Информация о версиях', shortTitle: 'Версии', description: 'Backend/frontend build info и плата.' },
+        ],
+    },
+];
+
 const CALIBRATION_CARD_DEFS = [
     {
         id: 'pump-calibration',
@@ -166,7 +232,8 @@ const state = {
         min: null,
         max: null,
         success: false
-    }
+    },
+    activeSettingsSection: 'connection'
 };
 
 const paneWorkbenchControllers = new Map();
@@ -621,7 +688,9 @@ function buildWorkbenchDesktopNav(cards, groups, title, subtitle) {
         const groupCards = cards.filter((card) => card.meta.group === group.id);
         if (!groupCards.length) continue;
 
-        nav.appendChild(createElement('div', 'sidebar-section-title', group.label));
+        if (group.label) {
+            nav.appendChild(createElement('div', 'sidebar-section-title', group.label));
+        }
 
         for (const card of groupCards) {
             const button = createElement('button', 'sidebar-item equipment-testing-nav-item');
@@ -1030,6 +1099,54 @@ function ensureEquipmentShell() {
     root.appendChild(shell);
 }
 
+function ensureSettingsShell() {
+    const root = byId('settings');
+    if (!root || qs('.settings-shell', root)) return;
+
+    const cardsHost = qs('.cards', root);
+    if (!cardsHost) return;
+
+    const cards = [...cardsHost.querySelectorAll('.card')];
+    if (!cards.length) return;
+
+    const shell = document.createElement('div');
+    shell.className = 'equipment-shell settings-shell';
+
+    const nav = document.createElement('div');
+    nav.className = 'equipment-local-nav settings-local-nav';
+    nav.setAttribute('role', 'tablist');
+    nav.setAttribute('aria-label', 'Подразделы настроек');
+
+    const paneHost = document.createElement('div');
+    paneHost.className = 'settings-pane-host';
+
+    for (const section of SETTINGS_SECTION_DEFS) {
+        const button = createElement('button', 'equipment-local-nav-btn');
+        button.type = 'button';
+        button.dataset.settingsSectionBtn = section.id;
+        button.textContent = section.label;
+        nav.appendChild(button);
+
+        const pane = createElement('div', 'equipment-pane settings-pane');
+        pane.dataset.settingsSectionPane = section.id;
+        pane.innerHTML = '<div class="cards"></div>';
+        const paneCards = qs('.cards', pane);
+
+        for (const meta of section.defs) {
+            const card = cards.find((candidate) => candidate.querySelector(meta.selector));
+            if (card) {
+                paneCards.appendChild(card);
+            }
+        }
+
+        paneHost.appendChild(pane);
+    }
+
+    shell.append(nav, paneHost);
+    root.innerHTML = '';
+    root.appendChild(shell);
+}
+
 function initEquipmentTestingWorkbench() {
     const testingPane = qs('[data-equipment-section-pane="testing"]');
     const grid = qs('.equipment-testing-grid', testingPane);
@@ -1238,11 +1355,56 @@ export function setEquipmentSection(sectionId) {
         pane.classList.toggle('active', pane.dataset.equipmentSectionPane === sectionId);
     });
 
+    setEquipmentPaneCard(sectionId, null);
+
     if (sectionId === 'calibration') {
         window.loadCalibrationData?.();
     } else if (sectionId === 'testing') {
         void refreshEquipmentTestingStatus();
     }
+}
+
+function readSavedSettingsSection() {
+    try {
+        const stored = localStorage.getItem(SETTINGS_SECTION_STORAGE_KEY);
+        if (SETTINGS_SECTION_DEFS.some((section) => section.id === stored)) {
+            return stored;
+        }
+    } catch {
+        // ignore storage failures
+    }
+    return SETTINGS_SECTION_DEFS[0]?.id || 'connection';
+}
+
+function saveSettingsSection(sectionId) {
+    try {
+        localStorage.setItem(SETTINGS_SECTION_STORAGE_KEY, sectionId);
+    } catch {
+        // ignore storage failures
+    }
+}
+
+function bindSettingsSectionNav() {
+    qsa('[data-settings-section-btn]').forEach((button) => {
+        button.addEventListener('click', () => {
+            setSettingsSection(button.dataset.settingsSectionBtn);
+        });
+    });
+}
+
+export function setSettingsSection(sectionId) {
+    state.activeSettingsSection = sectionId;
+    saveSettingsSection(sectionId);
+
+    qsa('[data-settings-section-btn]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.settingsSectionBtn === sectionId);
+    });
+
+    qsa('[data-settings-section-pane]').forEach((pane) => {
+        pane.classList.toggle('active', pane.dataset.settingsSectionPane === sectionId);
+    });
+
+    setEquipmentPaneCard(`settings:${sectionId}`, null);
 }
 
 function getActiveTestsSummary(activeTests = {}) {
@@ -1877,4 +2039,27 @@ export function initEquipmentTestingUi() {
         CALIBRATION_CARD_DEFS[0]?.id || 'pump-calibration',
     );
     state.activeTestingCard = readSavedTestingCard();
+}
+
+export function initSettingsWorkbenchUi() {
+    const root = byId('settings');
+    if (!root) return;
+
+    ensureSettingsShell();
+
+    for (const section of SETTINGS_SECTION_DEFS) {
+        initEquipmentPaneWorkbench({
+            sectionId: `settings:${section.id}`,
+            paneSelector: `[data-settings-section-pane="${section.id}"]`,
+            storageKey: section.storageKey,
+            groups: SETTINGS_CARD_GROUPS,
+            defs: section.defs,
+            title: section.title,
+            subtitle: section.subtitle,
+            stateKey: section.stateKey,
+        });
+    }
+
+    bindSettingsSectionNav();
+    setSettingsSection(readSavedSettingsSection());
 }
