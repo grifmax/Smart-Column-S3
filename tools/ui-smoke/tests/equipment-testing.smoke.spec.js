@@ -275,10 +275,14 @@ test('equipment testing workspace renders and sends service actions', async ({ p
     ),
   ).toBeTruthy();
 
+  await page.locator('.equipment-testing-nav-item[data-testing-card-id="servo"]').click();
+  await expect(page.locator('[data-servo-preset="heads"]')).toBeVisible();
   await page.locator('[data-servo-preset="heads"]').click();
   await expect(page.locator('#equipment-test-servo-badge')).toContainText('Движение');
   await expect(page.locator('#equipment-test-servo-fraction')).toContainText('Головы');
 
+  await page.locator('.equipment-testing-nav-item[data-testing-card-id="valves"]').click();
+  await expect(page.locator('#equipment-test-water-pulse')).toBeVisible();
   await page.locator('#equipment-test-valve-pulse-duration').fill('1800');
   await page.locator('#equipment-test-water-pulse').click();
   await expect(page.locator('#equipment-test-water-toggle-badge')).toContainText('Импульс');

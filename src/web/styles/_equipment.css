@@ -336,6 +336,35 @@
     padding: 8px;
 }
 
+.equipment-testing-sidebar-extras {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.equipment-testing-sidebar-extras .equipment-test-status-card,
+.equipment-testing-sidebar-extras .equipment-test-journal-accordion {
+    width: 100%;
+    margin: 0;
+}
+
+.equipment-testing-sidebar-extras .equipment-test-status-card {
+    padding: 12px;
+}
+
+.equipment-testing-sidebar-extras .equipment-test-status-head {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.equipment-testing-sidebar-extras .equipment-test-chip-row {
+    gap: 6px;
+}
+
+.equipment-testing-sidebar-extras .equipment-test-journal-summary {
+    padding: 10px 12px;
+}
+
 .equipment-testing-sidebar-header {
     padding: 10px 10px 12px;
     border-bottom: 1px solid var(--separator);
@@ -470,6 +499,11 @@
 
 .equipment-testing-main .equipment-testing-grid {
     display: block;
+}
+
+.equipment-testing-grid > .equipment-test-card:not(.is-active),
+.equipment-pane-workbench-stack > .cards > .equipment-card:not(.is-active) {
+    display: none !important;
 }
 
 .equipment-test-card,
@@ -1064,6 +1098,11 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
+    }
+
+    .equipment-testing-grid > .equipment-test-card,
+    .equipment-pane-workbench-stack > .cards > .equipment-card {
+        display: block !important;
     }
 
     .equipment-test-card {

@@ -668,7 +668,10 @@ function buildTestingDesktopNav(cards) {
         }
     }
 
-    return { nav, buttonsById };
+    const sidebarExtras = createElement('div', 'equipment-testing-sidebar-extras');
+    nav.appendChild(sidebarExtras);
+
+    return { nav, buttonsById, sidebarExtras };
 }
 
 function buildWorkbenchDesktopNav(cards, groups, title, subtitle) {
@@ -1163,18 +1166,16 @@ function initEquipmentTestingWorkbench() {
     const shell = createElement('div', 'equipment-testing-shell');
     const main = createElement('div', 'equipment-testing-main');
     const desktopWrapper = createElement('div', 'equipment-testing-card-stack');
-    const { nav, buttonsById } = buildTestingDesktopNav(resolvedCards);
+    const { nav, buttonsById, sidebarExtras } = buildTestingDesktopNav(resolvedCards);
 
     grid.parentNode.insertBefore(shell, statusCard || grid);
     shell.append(nav, main);
-    if (statusCard) {
-        main.appendChild(statusCard);
-    }
     main.appendChild(desktopWrapper);
     desktopWrapper.appendChild(grid);
 
+    let accordion = null;
     if (journal && statusCard) {
-        const accordion = createElement('details', 'equipment-test-journal-accordion');
+        accordion = createElement('details', 'equipment-test-journal-accordion');
         accordion.open = false;
         accordion.innerHTML = `
             <summary class="equipment-test-journal-summary">
@@ -1183,7 +1184,6 @@ function initEquipmentTestingWorkbench() {
             </summary>
         `;
         accordion.appendChild(journal);
-        main.appendChild(accordion);
     }
 
     const mediaQuery = window.matchMedia(TESTING_LAYOUT_MEDIA);
@@ -1201,6 +1201,26 @@ function initEquipmentTestingWorkbench() {
         const isMobile = mediaQuery.matches;
         testingPane.dataset.testingLayout = isMobile ? 'mobile' : 'desktop';
         nav.hidden = isMobile;
+
+        if (statusCard) {
+            if (isMobile) {
+                if (statusCard.parentNode !== main) {
+                    main.insertBefore(statusCard, desktopWrapper);
+                }
+            } else if (statusCard.parentNode !== sidebarExtras) {
+                sidebarExtras.prepend(statusCard);
+            }
+        }
+
+        if (accordion) {
+            if (isMobile) {
+                if (accordion.parentNode !== main) {
+                    main.appendChild(accordion);
+                }
+            } else if (accordion.parentNode !== sidebarExtras) {
+                sidebarExtras.appendChild(accordion);
+            }
+        }
 
         if (!isMobile && !state.activeTestingCard) {
             state.activeTestingCard = resolvedCards[0]?.meta.id || null;
@@ -2046,20 +2066,6 @@ export function initSettingsWorkbenchUi() {
     if (!root) return;
 
     ensureSettingsShell();
-
-    for (const section of SETTINGS_SECTION_DEFS) {
-        initEquipmentPaneWorkbench({
-            sectionId: `settings:${section.id}`,
-            paneSelector: `[data-settings-section-pane="${section.id}"]`,
-            storageKey: section.storageKey,
-            groups: SETTINGS_CARD_GROUPS,
-            defs: section.defs,
-            title: section.title,
-            subtitle: section.subtitle,
-            stateKey: section.stateKey,
-        });
-    }
-
     bindSettingsSectionNav();
     setSettingsSection(readSavedSettingsSection());
 }
