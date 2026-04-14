@@ -34,6 +34,7 @@ typedef enum {
 #include "drivers/display.h"
 #include "drivers/heater.h"
 #include "drivers/pump.h"
+#include "drivers/stirrer.h"
 #include "drivers/valves.h"
 #include "drivers/sensors.h"
 #include "interface/mqtt.h"
@@ -4540,6 +4541,13 @@ void broadcastState(const SystemState &state) {
   health["pzemSpikes"] = state.health.pzemSpikeCount;
   health["tempErrors"] = state.health.tempReadErrors;
   health["cpuTemp"] = state.health.cpuTemp;
+
+  // Мешалка
+  JsonObject stirrer = doc["stirrer"].to<JsonObject>();
+  stirrer["running"]   = state.stirrer.running;
+  stirrer["speed"]     = state.stirrer.speedPercent;
+  stirrer["available"] = state.stirrer.available;
+  stirrer["autoMode"]  = state.stirrer.autoMode;
 
   String json;
   serializeJson(doc, json);

@@ -10,6 +10,7 @@
 #include "v2/status_adapter.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
+#include "../drivers/stirrer.h"
 #include "../drivers/valves.h"
 #include "../interface/mqtt.h"
 #include "../storage/logger.h"
@@ -44,6 +45,7 @@ void writeReason(char* reason, size_t reasonSize, const char* message) {
 void forceSafeOutputs() {
     Heater::emergencyStop();
     Pump::stop();
+    Stirrer::stop(); // аварийная остановка мешалки
     Valves::closeAll();
 }
 

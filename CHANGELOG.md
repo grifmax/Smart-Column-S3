@@ -9,6 +9,19 @@
 
 ---
 
+## [2.1.18] - 2026-04-14
+
+### Добавлено
+- Реализован драйвер управления мешалкой куба через аналоговый сигнал 0-10В на базе **MCP4725** (12-бит DAC, I2C) и операционного усилителя **MCP6001** (усиление ×3, 0–3.3В → 0–10В). (gemini)
+- Добавлены структуры `StirrerState` и `StirrerSettings` в `types.h` для хранения состояния и настроек мешалки. (gemini)
+- Новый драйвер `src/drivers/stirrer.h/.cpp`: инициализация MCP4725 по I2C, установка скорости (0–100%), старт/стоп, синхронизация с `g_state.stirrer`. (gemini)
+- Добавлена библиотека `adafruit/Adafruit MCP4725@^2.0.2` в зависимости `platformio.ini`. (gemini)
+- Добавлены NVS-ключи для настроек мешалки (`stir_en`, `stir_spd`, `stir_amash`, `stir_aferm`, `stir_anbk`) в `config.h`. (gemini)
+- Добавлена константа `I2C_ADDR_MCP4725 0x60` в `config.h`. (gemini)
+- Авто-запуск мешалки в FSM (`fsm.cpp`) при активации режимов: Затирание (`autoMashing`), Ферментация (`autoFermentation`), НБК (`autoNbk`). (gemini)
+- Мешалка останавливается через `Stirrer::stop()` при выходе из любого режима (`finalizeModeStop`) и при срабатывании аварийной защиты (`forceSafeOutputs` в `safety.cpp`). (gemini)
+- Телеметрия мешалки (`running`, `speed`, `available`, `autoMode`) добавлена в WebSocket broadcastState. (gemini)
+
 ## [2.1.17] - 2026-03-18
 
 ### Изменено

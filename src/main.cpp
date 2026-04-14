@@ -25,6 +25,7 @@
 #include "drivers/heater.h"
 #include "drivers/pump.h"
 #include "drivers/sensors.h"
+#include "drivers/stirrer.h"
 #include "drivers/valves.h"
 
 // Управление
@@ -413,6 +414,7 @@ void loop() {
     g_state.pump.running = Pump::isRunning();
     g_state.pump.speedMlPerHour = Pump::getSpeed();
     g_state.pump.totalVolumeMl = Pump::getTotalVolume();
+    Stirrer::syncState(g_state); // обновить g_state.stirrer
   }
 
   Buttons::update();
@@ -449,6 +451,7 @@ void initHardware() {
   Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
   Valves::init();
   if (g_settings.fractionator.enabled) Valves::initFractionator();
+  Stirrer::init(); // MCP4725 DAC мешалки
   Display::init();
   Buttons::init();
   pinMode(PIN_BUZZER, OUTPUT);

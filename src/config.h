@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.1.17"
+#define FIRMWARE_VERSION "2.1.18"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -88,6 +88,7 @@
 #define I2C_ADDR_BMP280_1 0x76 // Атмосферное давление
 #define I2C_ADDR_BMP280_2 0x77 // Резерв
 #define I2C_ADDR_ADS1115 0x48  // АЦП 16-бит
+#define I2C_ADDR_MCP4725 0x60  // DAC мешалки (A0=GND → 0x60, A0=VCC → 0x61)
 
 // =============================================================================
 // ADS1115 КАНАЛЫ
@@ -386,6 +387,13 @@
 #define NVS_KEY_CLOUD_URL "cl_url"
 #define NVS_KEY_CLOUD_TOKEN "cl_tok"
 #define NVS_KEY_CLOUD_TOKEN_ID "cl_tid"
+
+// Мешалка
+#define NVS_KEY_STIRRER_ENABLED "stir_en"
+#define NVS_KEY_STIRRER_SPEED   "stir_spd"
+#define NVS_KEY_STIRRER_AUTO_MASH "stir_amash"
+#define NVS_KEY_STIRRER_AUTO_FERM "stir_aferm"
+#define NVS_KEY_STIRRER_AUTO_NBK  "stir_anbk"
 
 // Touch calibration
 #define NVS_KEY_TOUCH_XMIN "tch_xmin"

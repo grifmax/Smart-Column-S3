@@ -1,0 +1,36 @@
+                    ┌────────────────────────────────────┐
+                    │         ESP32-S3 N16R8             │
+                    │                                    │
+     DS18B20 ×7 ────┤ GPIO4 (OneWire + 4.7kΩ pullup)     │
+                    │                                    │
+    BMP280 #1/2 ────┤ GPIO21 (SDA) ──┬── I2C Bus         │
+      ADS1115   ────┤ GPIO9 (SCL) ───┘ (GPIO22 нет на S3)│
+                    │                                    │
+     MPX5010DP ─────┤ ADS1115 A0                         │
+                    │                                    │
+    SSR-40DA ◄──────┤ GPIO5 (через PC817)                │
+ Zero-cross det. ◄──┤ GPIO45 [опция для TRIAC]           │
+ TRIAC gate    ◄────┤ GPIO46 [опция для TRIAC]           │
+                    │                                    │
+   TMC2209 STEP ◄───┤ GPIO6                              │
+   TMC2209 DIR  ◄───┤ GPIO7                              │
+   TMC2209 EN   ◄───┤ GPIO15                             │
+                    │                                    │
+  Клапан воды  ◄────┤ GPIO16 (MOSFET)                    │
+  Клапан голов ◄────┤ GPIO17 (MOSFET)                    │
+  Клапан УНО   ◄────┤ GPIO18 (MOSFET)                    │
+                    │                                    │
+  Серво MG996R ◄────┤ GPIO8 (PWM 50Hz) [опция]           │
+  Клапан старт ◄────┤ GPIO14 (ШИМ) [опция]               │
+                    │                                    │
+  PZEM-004T RX ─────┤ GPIO20 (UART1 RX)                  │
+  PZEM-004T TX ─────┤ GPIO19 (UART1 TX)                  │
+     YF-S201   ─────┤ GPIO3 (счётчик импульсов)          │
+ Датчик уровня ─────┤ GPIO1                              │
+                    │                                    │
+      Зуммер   ◄────┤ GPIO38                             │
+   Boot / Flash ────┤ GPIO0                              │
+                    │                                    │
+ TFT ILI9488  ◄─────┤ GPIO2,10,11,13,39,40               │
+ Touch XPT2046 ─────┤ GPIO12,41,42,47,48                 │
+                    └────────────────────────────────────┘

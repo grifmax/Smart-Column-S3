@@ -216,6 +216,24 @@ struct PumpState {
   float totalVolumeMl = 0.0f;
 };
 
+// Состояние мешалки (0-10В через MCP4725)
+struct StirrerState {
+  bool running = false;
+  uint8_t speedPercent = 0;  // 0–100%
+  bool available = false;    // MCP4725 обнаружен
+  bool autoMode = false;     // работает в авто-режиме (из FSM)
+  uint32_t lastUpdate = 0;
+};
+
+// Настройки мешалки
+struct StirrerSettings {
+  bool enabled = false;
+  uint8_t defaultSpeedPercent = 50;   // % скорости по умолчанию
+  bool autoMashing = true;             // авто-запуск при затирании
+  bool autoFermentation = false;       // авто-запуск при ферментации
+  bool autoNbk = false;                // авто-запуск при НБК
+};
+
 // Текущая тревога
 struct CurrentAlarm {
   AlarmType type = AlarmType::NONE;
@@ -283,6 +301,7 @@ struct SystemState {
 
   SystemHealth health;
   PumpState pump;
+  StirrerState stirrer;
   CurrentAlarm currentAlarm;
   ProcessStats stats;
   
@@ -466,6 +485,7 @@ struct Settings {
   SafetySettings safety;
   NbkSettings nbk;
   FermentationSettings fermentation;
+  StirrerSettings stirrer;
 
   uint8_t language = 0; // 0=RU, 1=EN
   uint8_t theme = 0;    // 0=Light, 1=Dark

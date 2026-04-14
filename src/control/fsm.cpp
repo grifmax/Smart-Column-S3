@@ -9,6 +9,7 @@
 #include "v2/status_adapter.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
+#include "../drivers/stirrer.h"
 #include "../drivers/valves.h"
 #include "../interface/mqtt.h"
 #include "../interface/localization.h"
@@ -124,6 +125,7 @@ void noteModeExitTransition(const SystemState& state,
 void finalizeModeStop(SystemState& state) {
     Heater::setPower(0);
     Pump::stop();
+    Stirrer::stop(); // остановить мешалку при выходе из любого режима
     Valves::closeAll();
 
     state.mode = Mode::IDLE;
@@ -133,6 +135,7 @@ void finalizeModeStop(SystemState& state) {
     state.mashing.active = false;
     state.hold.active = false;
     state.paused = false;
+    state.stirrer.autoMode = false;
     pauseStartTime = 0;
 }
 
@@ -211,6 +214,12 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
             break;
         case Mode::MASHING:
             state.mashing.active = true;
+            // Авто-запуск мешалки при затирании
+            if (settings.stirrer.enabled && settings.stirrer.autoMashing) {
+                state.stirrer.autoMode = true;
+                Stirrer::start(settings.stirrer.defaultSpeedPercent);
+                LOG_I("FSM: Stirrer auto-start for MASHING at %u%%", settings.stirrer.defaultSpeedPercent);
+            }
             break;
         case Mode::HOLD:
             state.hold.active = true;
@@ -222,6 +231,11 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
                 static_cast<uint16_t>(NbkPhase::HEATING),
                 ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
                 "NBK started");
+            // Авто-запуск мешалки при НБК
+            if (settings.stirrer.enabled && settings.stirrer.autoNbk) {
+                state.stirrer.autoMode = true;
+                Stirrer::start(settings.stirrer.defaultSpeedPercent);
+            }
             break;
         case Mode::FERMENTATION:
             state.fermPhase = FermentationPhase::RUNNING;
@@ -231,6 +245,11 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
                 static_cast<uint16_t>(FermentationPhase::RUNNING),
                 ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
                 "Fermentation started");
+            // Авто-запуск мешалки при ферментации
+            if (settings.stirrer.enabled && settings.stirrer.autoFermentation) {
+                state.stirrer.autoMode = true;
+                Stirrer::start(settings.stirrer.defaultSpeedPercent);
+            }
             break;
         default: break;
     }
