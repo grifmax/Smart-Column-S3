@@ -368,6 +368,9 @@ static const char *getTempSensorLabel(uint8_t index) {
   }
 }
 
+static void syncStirrerState();
+static void fillStirrerJson(JsonObject stirrer, const SystemState &state);
+
 static bool isEquipmentTestingBlocked(char *reason, size_t reasonSize) {
   if (g_state.mode != Mode::IDLE) {
     snprintf(reason, reasonSize, "Тестирование доступно только в режиме простоя");
@@ -404,6 +407,8 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
       g_settings.fractionator.enabled && Valves::isFractionatorEnabled();
   const Pump::Diagnostics pumpDiag = Pump::getDiagnostics();
 
+  syncStirrerState();
+
   doc["success"] = true;
   doc["mode"] = getModeString(g_state.mode);
   doc["processActive"] = processActive;
@@ -418,6 +423,7 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
 
   JsonObject activeTests = doc["activeTests"].to<JsonObject>();
   activeTests["pump"] = Pump::isRunning();
+  activeTests["stirrer"] = g_state.stirrer.running;
   activeTests["heater"] = heaterActive;
   activeTests["waterValve"] = Valves::getWater();
   activeTests["headsValve"] = Valves::getHeads();
@@ -437,6 +443,11 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   pump["taskLoopCount"] = pumpDiag.taskLoopCount;
   pump["cooperativeSleepCount"] = pumpDiag.cooperativeSleepCount;
   pump["fastYieldCount"] = pumpDiag.fastYieldCount;
+
+  JsonObject stirrer = doc["stirrer"].to<JsonObject>();
+  fillStirrerJson(stirrer, g_state);
+  stirrer["enabled"] = g_settings.stirrer.enabled;
+  stirrer["defaultSpeedPercent"] = g_settings.stirrer.defaultSpeedPercent;
 
   JsonObject heater = doc["heater"].to<JsonObject>();
   heater["active"] = heaterActive;
@@ -3493,6 +3504,8 @@ void init() {
     server.on("/api/testing/stop-all", HTTP_POST,
               [](AsyncWebServerRequest *request) {
                 Pump::stop();
+                g_state.stirrer.autoMode = false;
+                Stirrer::stop();
                 Heater::setPower(0);
                 Valves::closeAll();
                 if (Valves::isFractionatorEnabled()) {
@@ -3556,6 +3569,115 @@ void init() {
             recordEquipmentTestingAction("warning", "Тест насоса",
                                          "Насос остановлен из сервисного экрана.");
           }
+
+        JsonDocument resp;
+        fillEquipmentTestingStatus(resp);
+        String json;
+        serializeJson(resp, json);
+        request->send(200, "application/json", json);
+      });
+
+  server.on(
+      "/api/testing/stirrer", HTTP_POST,
+      [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const String action = doc["action"] | "";
+        if (action != "start" && action != "stop" && action != "set") {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"message\":\"Invalid stirrer action\"}");
+          return;
+        }
+
+        if (action == "start" || action == "set") {
+          char reason[160] = "";
+          if (isEquipmentTestingBlocked(reason, sizeof(reason))) {
+            JsonDocument resp;
+            resp["success"] = false;
+            resp["message"] = reason;
+            String json;
+            serializeJson(resp, json);
+            request->send(409, "application/json", json);
+            return;
+          }
+
+          if (!g_settings.stirrer.enabled) {
+            request->send(
+                409, "application/json",
+                "{\"success\":false,\"message\":\"Stirrer is disabled in settings\"}");
+            return;
+          }
+
+          if (!Stirrer::isAvailable()) {
+            request->send(
+                409, "application/json",
+                "{\"success\":false,\"message\":\"Stirrer DAC is not available\"}");
+            return;
+          }
+        }
+
+        if (action == "start") {
+          int speedPercent = g_settings.stirrer.defaultSpeedPercent;
+          if (!doc["speedPercent"].isNull()) {
+            speedPercent = doc["speedPercent"].as<int>();
+          } else if (!doc["speed"].isNull()) {
+            speedPercent = doc["speed"].as<int>();
+          }
+          speedPercent = clampU8Range(speedPercent, 1, 100);
+          g_state.stirrer.autoMode = false;
+          Stirrer::start(static_cast<uint8_t>(speedPercent));
+
+          char detail[128];
+          snprintf(detail, sizeof(detail),
+                   "Мешалка запущена вручную на %d%%.", speedPercent);
+          recordEquipmentTestingAction("success", "Тест мешалки", detail);
+        } else if (action == "set") {
+          if (!Stirrer::isRunning()) {
+            request->send(
+                409, "application/json",
+                "{\"success\":false,\"message\":\"Stirrer is not running\"}");
+            return;
+          }
+
+          int speedPercent = 0;
+          if (!doc["speedPercent"].isNull()) {
+            speedPercent = doc["speedPercent"].as<int>();
+          } else if (!doc["speed"].isNull()) {
+            speedPercent = doc["speed"].as<int>();
+          }
+          if (speedPercent < 1 || speedPercent > 100) {
+            request->send(
+                400, "application/json",
+                "{\"success\":false,\"message\":\"Speed must be between 1 and 100\"}");
+            return;
+          }
+
+          g_state.stirrer.autoMode = false;
+          Stirrer::setSpeed(static_cast<uint8_t>(speedPercent));
+
+          char detail[128];
+          snprintf(detail, sizeof(detail),
+                   "Скорость мешалки изменена до %d%%.", speedPercent);
+          recordEquipmentTestingAction("info", "Тест мешалки", detail);
+        } else {
+          g_state.stirrer.autoMode = false;
+          Stirrer::stop();
+          recordEquipmentTestingAction(
+              "warning", "Тест мешалки",
+              "Мешалка остановлена из сервисного экрана.");
+        }
 
         JsonDocument resp;
         fillEquipmentTestingStatus(resp);

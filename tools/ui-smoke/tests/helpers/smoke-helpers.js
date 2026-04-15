@@ -33,6 +33,7 @@ export function buildStatusPayload(mode = 0, paused = false, overrides = {}) {
     pressure: { cube: 0, atm: 1013, kpa: 101.3 },
     power: { voltage: 230, current: 3.2, power: 736, energy: 0.1, frequency: 50, pf: 0.98 },
     pump: { speedMlH: 0, totalMl: 0, running: false },
+    stirrer: { running: false, speed: 0, available: true, autoMode: false },
     hydrometer: { abv: 0, density: 0, valid: false },
     volumes: { heads: 0, body: 0, tails: 0 },
     equipment: { heaterPowerW: 3000, columnHeightMm: 1500 },
@@ -57,6 +58,10 @@ export function buildStatusPayload(mode = 0, paused = false, overrides = {}) {
       ...basePayload.pump,
       ...(overrides.pump || {}),
     },
+    stirrer: {
+      ...basePayload.stirrer,
+      ...(overrides.stirrer || {}),
+    },
     hydrometer: {
       ...basePayload.hydrometer,
       ...(overrides.hydrometer || {}),
@@ -69,6 +74,40 @@ export function buildStatusPayload(mode = 0, paused = false, overrides = {}) {
       ...basePayload.equipment,
       ...(overrides.equipment || {}),
     },
+  };
+}
+
+export function buildEquipmentSettingsPayload(overrides = {}) {
+  const basePayload = {
+    heaterPowerW: 3000,
+    columnHeightMm: 1500,
+    cubeVolumeL: 37,
+    minHeaterSubmergeL: 7.5,
+    waterAutoStartCubeTempC: 45,
+  };
+
+  return {
+    ...basePayload,
+    ...overrides,
+  };
+}
+
+export function buildStirrerSettingsPayload(overrides = {}) {
+  const basePayload = {
+    enabled: true,
+    defaultSpeedPercent: 50,
+    autoMashing: true,
+    autoFermentation: false,
+    autoNbk: false,
+    available: true,
+    running: false,
+    autoMode: false,
+    speed: 0,
+  };
+
+  return {
+    ...basePayload,
+    ...overrides,
   };
 }
 
@@ -351,18 +390,25 @@ export async function installMockApexCharts(page) {
 export async function installCommonApiMocks(page, options = {}) {
   const requests = {
     clearLogs: 0,
+    equipmentSettingsRequests: 0,
+    equipmentSettingsSaves: [],
     exportRequests: 0,
     historyDetailRequests: [],
     historyListRequests: 0,
     logQueries: [],
     processStarts: [],
     statusRequests: 0,
+    stirrerActions: [],
+    stirrerSettingsRequests: 0,
+    stirrerSettingsSaves: [],
     testingActions: [],
     testingStatusRequests: 0,
   };
 
   const versionPayload = options.versionPayload || buildVersionPayload();
   const statusPayload = options.statusPayload || buildStatusPayload();
+  const equipmentSettingsPayload = options.equipmentSettingsPayload || buildEquipmentSettingsPayload();
+  const stirrerSettingsPayload = options.stirrerSettingsPayload || buildStirrerSettingsPayload();
   const historyListPayload = options.historyListPayload || { processes: [] };
   const historyDetailsPayloads = options.historyDetailsPayloads || {};
   const logEvents = options.logEvents || [];
@@ -377,6 +423,8 @@ export async function installCommonApiMocks(page, options = {}) {
   };
   const testingStatusPayload = options.testingStatusPayload || null;
   const testingActionResponse = options.testingActionResponse || null;
+  const stirrerActionResponse = options.stirrerActionResponse || null;
+  const stirrerSettingsSaveResponse = options.stirrerSettingsSaveResponse || null;
 
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -403,6 +451,118 @@ export async function installCommonApiMocks(page, options = {}) {
       const payload = typeof statusPayload === 'function'
         ? statusPayload({ pathname, searchParams, method, requests })
         : statusPayload;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (pathname === '/api/settings/equipment' && method === 'GET') {
+      requests.equipmentSettingsRequests += 1;
+      const payload = typeof equipmentSettingsPayload === 'function'
+        ? equipmentSettingsPayload({ pathname, searchParams, method, requests })
+        : equipmentSettingsPayload;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (pathname === '/api/settings/equipment' && method === 'POST') {
+      let postData = null;
+      try {
+        postData = request.postDataJSON();
+      } catch {
+        postData = request.postData() || null;
+      }
+
+      requests.equipmentSettingsSaves.push(postData);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+      return;
+    }
+
+    if (pathname === '/api/settings/stirrer' && method === 'GET') {
+      requests.stirrerSettingsRequests += 1;
+      const payload = typeof stirrerSettingsPayload === 'function'
+        ? stirrerSettingsPayload({ pathname, searchParams, method, requests })
+        : stirrerSettingsPayload;
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (pathname === '/api/settings/stirrer' && method === 'POST') {
+      let postData = null;
+      try {
+        postData = request.postDataJSON();
+      } catch {
+        postData = request.postData() || null;
+      }
+
+      requests.stirrerSettingsSaves.push(postData);
+      const payload = typeof stirrerSettingsSaveResponse === 'function'
+        ? stirrerSettingsSaveResponse({ pathname, searchParams, method, requests, postData })
+        : (stirrerSettingsSaveResponse || {
+          success: true,
+          settings: {
+            ...(typeof stirrerSettingsPayload === 'function' ? buildStirrerSettingsPayload() : stirrerSettingsPayload),
+            ...(postData || {}),
+          },
+          stirrer: {
+            running: false,
+            speed: 0,
+            available: true,
+            autoMode: false,
+          },
+        });
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
+      });
+      return;
+    }
+
+    if (pathname.startsWith('/api/stirrer/') && method === 'POST') {
+      let postData = null;
+      try {
+        postData = request.postDataJSON();
+      } catch {
+        postData = request.postData() || null;
+      }
+
+      requests.stirrerActions.push({
+        pathname,
+        body: postData,
+      });
+
+      const payload = typeof stirrerActionResponse === 'function'
+        ? stirrerActionResponse({ pathname, searchParams, method, requests, postData })
+        : (stirrerActionResponse || {
+          success: true,
+          message: 'ok',
+          stirrer: {
+            running: pathname !== '/api/stirrer/stop',
+            speed: pathname === '/api/stirrer/stop' ? 0 : Number(postData?.speed || 50),
+            available: true,
+            autoMode: false,
+          },
+        });
 
       await route.fulfill({
         status: 200,

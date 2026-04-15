@@ -13,6 +13,7 @@ import { renderAbvValue } from '../runtime/abv.js';
 import { updateKpiStrip } from './kpi-strip.js';
 import { updateSafetyModal } from '../runtime/safety-modal.js';
 import { updateProcessNotifications } from '../runtime/process-notifications.js';
+import { syncStirrerUi } from '../settings/equipment.js';
 
 export function updateUI(data) {
     let phaseText = undefined;
@@ -275,6 +276,7 @@ export function updateUI(data) {
         waterOut: data.t_water_out,
         voltage: data.voltage
     });
+    syncStirrerUi({ syncSpeedInput: true });
 
     renderModeRuntimeCard();
     updateButtonStates();

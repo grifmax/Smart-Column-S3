@@ -154,6 +154,13 @@ export let runtimeMonitorState = {
     power: { power: 0 },
     hydrometer: { abv: 0, valid: false },
     pump: { speedMlH: 0, totalMl: 0 },
+    stirrer: {
+        running: false,
+        speedPercent: 0,
+        available: false,
+        autoMode: false,
+        lastUpdate: 0
+    },
     temps: { cube: 0, columnBottom: 0 },
     valves: { water: false, heads: false, uno: false, tails: false },
     volumes: { heads: 0, body: 0, tails: 0 },
@@ -162,6 +169,13 @@ export let runtimeMonitorState = {
         cubeVolumeL: DEFAULT_CUBE_VOLUME_L,
         minHeaterSubmergeL: 7.5,
         waterAutoStartCubeTempC: 45
+    },
+    stirrerSettings: {
+        enabled: false,
+        defaultSpeedPercent: 50,
+        autoMashing: true,
+        autoFermentation: false,
+        autoNbk: false
     },
     rectification: {
         feedVolumeL: DEFAULT_CUBE_VOLUME_L,

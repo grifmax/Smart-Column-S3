@@ -22,6 +22,7 @@ function buildTestingStatus(overrides = {}) {
     recentActions: [],
     activeTests: {
       pump: false,
+      stirrer: false,
       heater: false,
       waterValve: false,
       headsValve: false,
@@ -41,6 +42,14 @@ function buildTestingStatus(overrides = {}) {
       taskLoopCount: 42,
       cooperativeSleepCount: 2,
       fastYieldCount: 10,
+    },
+    stirrer: {
+      enabled: true,
+      available: true,
+      running: false,
+      speed: 0,
+      autoMode: false,
+      defaultSpeedPercent: 50,
     },
     heater: {
       active: false,
@@ -113,6 +122,10 @@ function buildTestingStatus(overrides = {}) {
       ...base.pump,
       ...(overrides.pump || {}),
     },
+    stirrer: {
+      ...base.stirrer,
+      ...(overrides.stirrer || {}),
+    },
     heater: {
       ...base.heater,
       ...(overrides.heater || {}),
@@ -179,6 +192,49 @@ test('equipment testing workspace renders and sends service actions', async ({ p
               tone: 'warning',
               title: 'Тест насоса',
               detail: 'Насос остановлен из сервисного экрана.',
+            }),
+          });
+        }
+        return testingState;
+      }
+
+      if (pathname === '/api/testing/stirrer') {
+        if (postData?.action === 'start') {
+          const speed = Number(postData.speedPercent || 0);
+          testingState = buildTestingStatus({
+            activeTests: { stirrer: true },
+            stirrer: {
+              running: true,
+              speed,
+              autoMode: false,
+            },
+            recentActions: prependRecentAction(testingState, {
+              tone: 'success',
+              title: 'Тест мешалки',
+              detail: `Мешалка запущена вручную на ${speed}%.`,
+            }),
+          });
+        } else if (postData?.action === 'set') {
+          const speed = Number(postData.speedPercent || 0);
+          testingState = buildTestingStatus({
+            activeTests: { stirrer: true },
+            stirrer: {
+              running: true,
+              speed,
+              autoMode: false,
+            },
+            recentActions: prependRecentAction(testingState, {
+              tone: 'info',
+              title: 'Тест мешалки',
+              detail: `Скорость мешалки изменена до ${speed}%.`,
+            }),
+          });
+        } else {
+          testingState = buildTestingStatus({
+            recentActions: prependRecentAction(testingState, {
+              tone: 'warning',
+              title: 'Тест мешалки',
+              detail: 'Мешалка остановлена из сервисного экрана.',
             }),
           });
         }
@@ -272,6 +328,26 @@ test('equipment testing workspace renders and sends service actions', async ({ p
       entry.pathname === '/api/testing/pump' &&
       entry.body?.action === 'start' &&
       Number(entry.body?.speedMlH) === 1500,
+    ),
+  ).toBeTruthy();
+
+  await page.locator('.equipment-testing-nav-item[data-testing-card-id="stirrer"]').click();
+  await expect(page.locator('#equipment-test-stirrer-start')).toBeVisible();
+  await page.getByRole('button', { name: '75%' }).click();
+  await expect(page.locator('#equipment-test-stirrer-speed')).toHaveValue('75');
+  await page.locator('#equipment-test-stirrer-start').click();
+  await expect(page.locator('#equipment-test-stirrer-badge')).toContainText('Работает');
+  await expect(page.locator('#equipment-test-stirrer-speed-live')).toContainText('75');
+  await expect(page.locator('#equipment-test-active-summary')).toContainText('Мешалка');
+  await page.locator('#equipment-test-stirrer-speed').fill('60');
+  await page.locator('#equipment-test-stirrer-apply').click();
+  await expect(page.locator('#equipment-test-stirrer-speed-live')).toContainText('60');
+  await expect(page.locator('#equipment-test-action-journal')).toContainText('Скорость мешалки изменена до 60%');
+  await expect.poll(() =>
+    requests.testingActions.some((entry) =>
+      entry.pathname === '/api/testing/stirrer' &&
+      entry.body?.action === 'set' &&
+      Number(entry.body?.speedPercent) === 60,
     ),
   ).toBeTruthy();
 

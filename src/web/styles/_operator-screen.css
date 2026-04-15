@@ -127,6 +127,33 @@
     font-weight: 800;
 }
 
+.operator-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.operator-card-head .operator-card-title {
+    margin-bottom: 0;
+}
+
+.operator-card-stirrer .equipment-inline-stats {
+    margin-bottom: 10px;
+}
+
+.operator-stirrer-actions .btn {
+    flex: 1 1 120px;
+}
+
+.operator-stirrer-hint {
+    margin-top: 6px;
+    color: var(--landing-muted);
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+
 .operator-scheme-controls {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

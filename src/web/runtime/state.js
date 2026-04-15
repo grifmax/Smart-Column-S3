@@ -36,6 +36,20 @@ function mergeEquipmentState(s, data) {
     ]);
 }
 
+function mergeStirrerState(s, data) {
+    const stirrer = (data?.stirrer && typeof data.stirrer === 'object') ? data.stirrer : null;
+    if (!stirrer) return;
+
+    if (stirrer.running !== undefined) s.stirrer.running = Boolean(stirrer.running);
+    if (stirrer.speed !== undefined || stirrer.speedPercent !== undefined) {
+        const speed = toFinite(stirrer.speedPercent ?? stirrer.speed, s.stirrer.speedPercent);
+        s.stirrer.speedPercent = Math.max(0, Math.min(100, speed));
+    }
+    if (stirrer.available !== undefined) s.stirrer.available = Boolean(stirrer.available);
+    if (stirrer.autoMode !== undefined) s.stirrer.autoMode = Boolean(stirrer.autoMode);
+    if (stirrer.lastUpdate !== undefined) s.stirrer.lastUpdate = toFinite(stirrer.lastUpdate, s.stirrer.lastUpdate);
+}
+
 function mergeSafetySettingsState(s, data) {
     const sources = [];
     if (data?.safetySettings && typeof data.safetySettings === 'object') sources.push(data.safetySettings);
@@ -157,6 +171,7 @@ export function updateRuntimeStateFromStatus(data) {
     }
 
     mergeEquipmentState(s, data);
+    mergeStirrerState(s, data);
 
     if (data.rectification && typeof data.rectification === 'object') {
         s.rectification = { ...s.rectification, ...data.rectification };
@@ -251,6 +266,7 @@ export function updateRuntimeStateFromWs(data) {
 
     mergeSafetySettingsState(s, data);
     mergeEquipmentState(s, data);
+    mergeStirrerState(s, data);
 }
 
 export function estimateRectTargets(rect, abvPercentOverride = null) {

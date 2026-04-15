@@ -27,6 +27,7 @@ import { updateCloudUiFromStatus } from '../cloud/cloud-config.js';
 import { formatUptime } from './utils.js';
 import { addLog } from './logs.js';
 import { updateProcessNotifications } from '../runtime/process-notifications.js';
+import { syncStirrerUi } from '../settings/equipment.js';
 
 // ============================================================================
 
@@ -384,6 +385,7 @@ export function updateUIFromStatus(data) {
         waterOut: data.temps?.waterOut,
         voltage: data.power?.voltage
     });
+    syncStirrerUi({ syncSpeedInput: true });
 
     // Обновить интерактивную схему (SVG) — также в polling-режиме
     updateInteractiveScheme(data);

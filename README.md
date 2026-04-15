@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.1.19-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.1.20-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -123,6 +123,7 @@ POST /api/process/resume        # Возобновление
 POST /api/stirrer/start         # Запуск мешалки (новое)
 POST /api/stirrer/stop          # Остановка мешалки (новое)
 POST /api/stirrer/set           # Изменение скорости мешалки (новое)
+POST /api/testing/stirrer       # Сервисный тест мешалки
 GET  /api/history               # История процессов
 WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полный)
 ```
@@ -143,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.1.20 | 2026-04-15 | Главный виджет мешалки, настройки в оборудовании и сервисный тест |
 | 2.1.19 | 2026-04-15 | REST API и NVS-настройки мешалки, синхронизация версии frontend |
 | 2.1.18 | 2026-04-14 | Мешалка куба 0-10В (MCP4725 + MCP6001) |
 | 2.1.17 | 2026-03-18 | UI настройки sidebar, тестирование оборудования |

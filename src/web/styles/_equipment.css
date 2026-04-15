@@ -69,6 +69,17 @@
     font-size: 0.95em;
 }
 
+.equipment-checkbox-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.equipment-checkbox-field label {
+    margin-bottom: 0;
+}
+
 .equipment-manual-wrap {
     margin: 20px 0;
 }

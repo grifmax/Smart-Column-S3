@@ -1,10 +1,17 @@
-﻿import { addLog } from '../core/logs.js';
+import { addLog } from '../core/logs.js';
 import { runtimeMonitorState, DEFAULT_CUBE_VOLUME_L } from '../globals.js';
 import { syncRectificationFeedVolumeLimit } from '../modes/rectification.js';
 import { syncManualFeedVolumeLimit } from '../modes/control-panel.js';
 import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const CUBE_EXTENDER_PRESET_STORAGE_KEY = 'equipment.cubeExtenderPresetL';
+const DEFAULT_STIRRER_SETTINGS = Object.freeze({
+    enabled: false,
+    defaultSpeedPercent: 50,
+    autoMashing: true,
+    autoFermentation: false,
+    autoNbk: false
+});
 
 function toFiniteNumber(value, fallback = 0) {
     const parsed = Number(String(value ?? '').trim().replace(',', '.'));
@@ -38,8 +45,34 @@ function setInputValue(id, value) {
     }
 }
 
+function setCheckboxValue(id, checked) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.checked = Boolean(checked);
+    }
+}
+
+function setTextValue(id, value) {
+    const el = document.getElementById(id);
+    if (el && value !== undefined && value !== null) {
+        el.textContent = String(value);
+    }
+}
+
+function setBadgeState(id, text, tone) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = `equipment-status-badge ${tone}`;
+}
+
 function getInputValue(id, fallback = 0) {
     return parseLocalizedNumber(document.getElementById(id)?.value, fallback);
+}
+
+function getCheckboxValue(id, fallback = false) {
+    const el = document.getElementById(id);
+    return el ? Boolean(el.checked) : fallback;
 }
 
 function syncFeedVolumeLimits() {
@@ -98,6 +131,193 @@ function saveCubeExtenderPreset(value) {
     }
 }
 
+function requestJson(url, options = {}) {
+    return fetch(url, options).then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const message = payload?.message || payload?.error || `HTTP ${response.status}`;
+            throw new Error(message);
+        }
+        return payload;
+    });
+}
+
+function extractStirrerSettingsSource(payload) {
+    if (payload?.settings && typeof payload.settings === 'object') {
+        return payload.settings;
+    }
+    return payload && typeof payload === 'object' ? payload : {};
+}
+
+function extractStirrerStateSource(payload) {
+    if (payload?.stirrer && typeof payload.stirrer === 'object') {
+        return payload.stirrer;
+    }
+    return payload && typeof payload === 'object' ? payload : {};
+}
+
+function updateStirrerSettingsState(payload = {}) {
+    const source = extractStirrerSettingsSource(payload);
+    runtimeMonitorState.stirrerSettings = {
+        ...runtimeMonitorState.stirrerSettings,
+        enabled: source.enabled !== undefined ? Boolean(source.enabled) : runtimeMonitorState.stirrerSettings.enabled,
+        defaultSpeedPercent: clamp(
+            source.defaultSpeedPercent,
+            1,
+            100,
+            runtimeMonitorState.stirrerSettings.defaultSpeedPercent ?? DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent
+        ),
+        autoMashing: source.autoMashing !== undefined
+            ? Boolean(source.autoMashing)
+            : runtimeMonitorState.stirrerSettings.autoMashing,
+        autoFermentation: source.autoFermentation !== undefined
+            ? Boolean(source.autoFermentation)
+            : runtimeMonitorState.stirrerSettings.autoFermentation,
+        autoNbk: source.autoNbk !== undefined
+            ? Boolean(source.autoNbk)
+            : runtimeMonitorState.stirrerSettings.autoNbk
+    };
+}
+
+function updateStirrerState(payload = {}) {
+    const source = extractStirrerStateSource(payload);
+    const current = runtimeMonitorState.stirrer || {};
+    runtimeMonitorState.stirrer = {
+        ...current,
+        running: source.running !== undefined ? Boolean(source.running) : current.running,
+        speedPercent: clamp(source.speedPercent ?? source.speed, 0, 100, current.speedPercent ?? 0),
+        available: source.available !== undefined ? Boolean(source.available) : current.available,
+        autoMode: source.autoMode !== undefined ? Boolean(source.autoMode) : current.autoMode,
+        lastUpdate: toFiniteNumber(source.lastUpdate, current.lastUpdate ?? 0)
+    };
+}
+
+function getEnabledAutoModes(settings) {
+    const modes = [];
+    if (settings.autoMashing) modes.push('затирка');
+    if (settings.autoNbk) modes.push('НБК');
+    if (settings.autoFermentation) modes.push('ферментация');
+    return modes;
+}
+
+function getStirrerMonitorSpeed(settings, stirrer) {
+    return stirrer.running
+        ? clamp(stirrer.speedPercent, 0, 100, settings.defaultSpeedPercent)
+        : clamp(settings.defaultSpeedPercent, 1, 100, DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent);
+}
+
+function getStirrerStatusMeta(settings, stirrer) {
+    const safetyBlocked = !runtimeMonitorState.safetyOk || Boolean(runtimeMonitorState.currentAlarm?.latched);
+    const autoModes = getEnabledAutoModes(settings);
+
+    if (!settings.enabled) {
+        return {
+            badgeText: 'Отключена',
+            badgeTone: 'danger',
+            modeText: 'Выкл',
+            availabilityText: stirrer.available ? 'MCP4725 OK' : 'Нет MCP4725',
+            settingsHint: 'Ручной запуск и автоуправление отключены.',
+            monitorHint: 'Включите мешалку в параметрах оборудования.'
+        };
+    }
+
+    if (!stirrer.available) {
+        return {
+            badgeText: 'Нет DAC',
+            badgeTone: 'danger',
+            modeText: 'Недоступна',
+            availabilityText: 'Нет MCP4725',
+            settingsHint: autoModes.length
+                ? `Автостарт настроен для режимов: ${autoModes.join(', ')}.`
+                : 'Автостарт не включен ни для одного режима.',
+            monitorHint: 'MCP4725 не обнаружен на шине I2C.'
+        };
+    }
+
+    if (stirrer.running) {
+        return {
+            badgeText: stirrer.autoMode ? 'Авто' : 'Ручной ход',
+            badgeTone: stirrer.autoMode ? 'warning' : 'success',
+            modeText: stirrer.autoMode ? 'Авто' : 'Ручной',
+            availabilityText: 'MCP4725 OK',
+            settingsHint: autoModes.length
+                ? `Автостарт настроен для режимов: ${autoModes.join(', ')}.`
+                : 'Автостарт не включен ни для одного режима.',
+            monitorHint: stirrer.autoMode
+                ? 'Скорость управляется автоматически из FSM.'
+                : 'Ручное управление активно.'
+        };
+    }
+
+    if (safetyBlocked) {
+        return {
+            badgeText: 'Блокировка',
+            badgeTone: 'warning',
+            modeText: 'Ожидание',
+            availabilityText: 'MCP4725 OK',
+            settingsHint: autoModes.length
+                ? `Автостарт настроен для режимов: ${autoModes.join(', ')}.`
+                : 'Автостарт не включен ни для одного режима.',
+            monitorHint: 'Ручной запуск временно заблокирован защитой.'
+        };
+    }
+
+    return {
+        badgeText: 'Готова',
+        badgeTone: 'muted',
+        modeText: 'Ожидание',
+        availabilityText: 'MCP4725 OK',
+        settingsHint: autoModes.length
+            ? `Автостарт настроен для режимов: ${autoModes.join(', ')}.`
+            : 'Автостарт не включен ни для одного режима.',
+        monitorHint: 'Готова к ручному запуску.'
+    };
+}
+
+export function syncStirrerUi(options = {}) {
+    const { syncSettingsForm = false, syncSpeedInput = true } = options;
+    const settings = runtimeMonitorState.stirrerSettings || DEFAULT_STIRRER_SETTINGS;
+    const stirrer = runtimeMonitorState.stirrer || {};
+    const meta = getStirrerStatusMeta(settings, stirrer);
+    const monitorSpeed = getStirrerMonitorSpeed(settings, stirrer);
+    const safetyBlocked = !runtimeMonitorState.safetyOk || Boolean(runtimeMonitorState.currentAlarm?.latched);
+    const canControl = settings.enabled && stirrer.available && !safetyBlocked;
+
+    if (syncSettingsForm) {
+        setCheckboxValue('stirrer-enabled', settings.enabled);
+        setInputValue('stirrer-default-speed', clamp(settings.defaultSpeedPercent, 1, 100, DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent));
+        setCheckboxValue('stirrer-auto-mashing', settings.autoMashing);
+        setCheckboxValue('stirrer-auto-fermentation', settings.autoFermentation);
+        setCheckboxValue('stirrer-auto-nbk', settings.autoNbk);
+    }
+
+    if (syncSpeedInput) {
+        const speedInput = document.getElementById('monitor-stirrer-speed-input');
+        if (speedInput && document.activeElement !== speedInput) {
+            speedInput.value = String(Math.round(monitorSpeed));
+        }
+    }
+
+    setBadgeState('monitor-stirrer-badge', meta.badgeText, meta.badgeTone);
+    setTextValue('monitor-stirrer-speed', `${Math.round(clamp(stirrer.speedPercent, 0, 100, 0))} %`);
+    setTextValue('monitor-stirrer-mode', meta.modeText);
+    setTextValue('monitor-stirrer-availability', meta.availabilityText);
+    setTextValue('monitor-stirrer-hint', meta.monitorHint);
+
+    setTextValue(
+        'stirrer-settings-state',
+        `${meta.badgeText} • ${Math.round(clamp(stirrer.speedPercent, 0, 100, 0))}% • ${meta.availabilityText}`
+    );
+    setTextValue('stirrer-settings-hint', meta.settingsHint);
+
+    const startButton = document.getElementById('monitor-stirrer-start');
+    if (startButton) startButton.disabled = !canControl || stirrer.running;
+    const applyButton = document.getElementById('monitor-stirrer-apply');
+    if (applyButton) applyButton.disabled = !canControl || !stirrer.running;
+    const stopButton = document.getElementById('monitor-stirrer-stop');
+    if (stopButton) stopButton.disabled = !stirrer.running;
+}
+
 export function addCubeExtenderVolume() {
     const cubeInput = document.getElementById('cube-volume-l');
     const extenderInput = document.getElementById('cube-extender-add-l');
@@ -111,6 +331,18 @@ export function addCubeExtenderVolume() {
     extenderInput.value = extenderVolume.toFixed(0);
     saveCubeExtenderPreset(extenderVolume.toFixed(0));
     updateCubeVolumeHint({ normalizeInput: true });
+}
+
+export async function loadStirrerSettings() {
+    try {
+        const data = await requestJson('/api/settings/stirrer');
+        updateStirrerSettingsState(data);
+        updateStirrerState(data);
+    } catch (error) {
+        addLog(`✗ Ошибка загрузки настроек мешалки: ${error.message}`, 'error');
+    } finally {
+        syncStirrerUi({ syncSettingsForm: true, syncSpeedInput: true });
+    }
 }
 
 export async function loadEquipmentSettings() {
@@ -132,12 +364,10 @@ export async function loadEquipmentSettings() {
             minHeaterSubmergeL: clamp(data.minHeaterSubmergeL, 0.5, 100, 7.5),
             waterAutoStartCubeTempC: clamp(data.waterAutoStartCubeTempC, 20, 60, 45)
         };
-
-        initEquipmentNumberSteppers();
-        loadCubeExtenderPreset();
-        updateCubeVolumeHint({ normalizeInput: true });
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
+    } finally {
+        await loadStirrerSettings();
         initEquipmentNumberSteppers();
         loadCubeExtenderPreset();
         updateCubeVolumeHint({ normalizeInput: true });
@@ -208,6 +438,89 @@ export async function saveEquipment() {
     }
 }
 
+export async function saveStirrerSettings() {
+    const payload = {
+        enabled: getCheckboxValue('stirrer-enabled', DEFAULT_STIRRER_SETTINGS.enabled),
+        defaultSpeedPercent: clamp(
+            getInputValue('stirrer-default-speed', DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent),
+            1,
+            100,
+            DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent
+        ),
+        autoMashing: getCheckboxValue('stirrer-auto-mashing', DEFAULT_STIRRER_SETTINGS.autoMashing),
+        autoFermentation: getCheckboxValue('stirrer-auto-fermentation', DEFAULT_STIRRER_SETTINGS.autoFermentation),
+        autoNbk: getCheckboxValue('stirrer-auto-nbk', DEFAULT_STIRRER_SETTINGS.autoNbk)
+    };
+
+    try {
+        const data = await requestJson('/api/settings/stirrer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        updateStirrerSettingsState(data);
+        updateStirrerState(data);
+        syncStirrerUi({ syncSettingsForm: true, syncSpeedInput: true });
+        addLog('💾 Настройки мешалки сохранены', 'success');
+    } catch (error) {
+        addLog(`✗ Ошибка сети при сохранении мешалки: ${error.message}`, 'error');
+    }
+}
+
+function getRequestedMonitorStirrerSpeed() {
+    return clamp(
+        getInputValue(
+            'monitor-stirrer-speed-input',
+            runtimeMonitorState.stirrerSettings?.defaultSpeedPercent ?? DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent
+        ),
+        1,
+        100,
+        runtimeMonitorState.stirrerSettings?.defaultSpeedPercent ?? DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent
+    );
+}
+
+async function submitStirrerAction(url, payload, successMessage) {
+    const options = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    };
+    if (payload !== undefined) {
+        options.body = JSON.stringify(payload);
+    }
+
+    const data = await requestJson(url, options);
+    updateStirrerState(data);
+    syncStirrerUi({ syncSpeedInput: true });
+    addLog(successMessage, 'success');
+}
+
+async function startMonitorStirrer() {
+    const speed = getRequestedMonitorStirrerSpeed();
+    await submitStirrerAction('/api/stirrer/start', { speed }, `✓ Мешалка запущена на ${speed}%`);
+}
+
+async function applyMonitorStirrerSpeed() {
+    const speed = getRequestedMonitorStirrerSpeed();
+    await submitStirrerAction('/api/stirrer/set', { speed }, `✓ Скорость мешалки изменена: ${speed}%`);
+}
+
+async function stopMonitorStirrer() {
+    await submitStirrerAction('/api/stirrer/stop', undefined, '✓ Мешалка остановлена');
+}
+
+function normalizeStirrerSettingsInput() {
+    const input = document.getElementById('stirrer-default-speed');
+    if (!input) return;
+    input.value = String(clamp(input.value, 1, 100, DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent));
+}
+
+function normalizeMonitorStirrerInput() {
+    const input = document.getElementById('monitor-stirrer-speed-input');
+    if (!input) return;
+    input.value = String(getRequestedMonitorStirrerSpeed());
+}
+
 export function initEquipmentSettingsUi() {
     initEquipmentNumberSteppers();
 
@@ -227,6 +540,37 @@ export function initEquipmentSettingsUi() {
         });
     }
 
+    const stirrerDefaultSpeedInput = document.getElementById('stirrer-default-speed');
+    if (stirrerDefaultSpeedInput) {
+        stirrerDefaultSpeedInput.addEventListener('change', normalizeStirrerSettingsInput);
+        stirrerDefaultSpeedInput.addEventListener('blur', normalizeStirrerSettingsInput);
+    }
+
+    const monitorStirrerSpeedInput = document.getElementById('monitor-stirrer-speed-input');
+    if (monitorStirrerSpeedInput) {
+        monitorStirrerSpeedInput.addEventListener('change', normalizeMonitorStirrerInput);
+        monitorStirrerSpeedInput.addEventListener('blur', normalizeMonitorStirrerInput);
+    }
+
+    document.querySelectorAll('[data-stirrer-speed-preset]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const nextSpeed = clamp(button.dataset.stirrerSpeedPreset, 1, 100, DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent);
+            setInputValue('monitor-stirrer-speed-input', nextSpeed);
+        });
+    });
+
+    document.getElementById('monitor-stirrer-start')?.addEventListener('click', () => {
+        void startMonitorStirrer().catch((error) => addLog(`✗ Мешалка: ${error.message}`, 'error'));
+    });
+    document.getElementById('monitor-stirrer-apply')?.addEventListener('click', () => {
+        void applyMonitorStirrerSpeed().catch((error) => addLog(`✗ Мешалка: ${error.message}`, 'error'));
+    });
+    document.getElementById('monitor-stirrer-stop')?.addEventListener('click', () => {
+        void stopMonitorStirrer().catch((error) => addLog(`✗ Мешалка: ${error.message}`, 'error'));
+    });
+
     loadCubeExtenderPreset();
     updateCubeVolumeHint({ normalizeInput: true });
+    updateStirrerSettingsState(DEFAULT_STIRRER_SETTINGS);
+    syncStirrerUi({ syncSettingsForm: true, syncSpeedInput: true });
 }

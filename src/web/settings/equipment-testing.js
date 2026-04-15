@@ -28,6 +28,15 @@ const TESTING_CARD_DEFS = [
         description: 'Ручной запуск, контроль скорости и быстрый переход к калибровке.',
     },
     {
+        id: 'stirrer',
+        selector: '#equipment-test-stirrer-start',
+        group: 'actuators',
+        icon: '🌀',
+        title: 'Мешалка куба',
+        shortTitle: 'Мешалка',
+        description: 'Ручной запуск 0-10 В, оперативная смена скорости и остановка без перехода на главный экран.',
+    },
+    {
         id: 'valves',
         selector: '#equipment-test-water-toggle',
         group: 'actuators',
@@ -95,6 +104,7 @@ const TESTING_CARD_DEFS = [
 const PARAMETERS_GROUPS = [
     { id: 'core', label: 'Базовые узлы' },
     { id: 'process', label: 'Куб и процесс' },
+    { id: 'automation', label: 'Автоматика' },
 ];
 
 const PARAMETERS_CARD_DEFS = [
@@ -124,6 +134,15 @@ const PARAMETERS_CARD_DEFS = [
         title: 'Охлаждение и автостарт',
         shortTitle: 'Охлаждение',
         description: 'Порог автоматического запуска воды и связанные технологические настройки.',
+    },
+    {
+        id: 'stirrer-settings',
+        selector: '#stirrer-enabled',
+        group: 'automation',
+        icon: '🌀',
+        title: 'Мешалка куба',
+        shortTitle: 'Мешалка',
+        description: 'Ручное включение, скорость по умолчанию и автозапуск для режимов, где перемешивание нужно постоянно.',
     },
 ];
 
@@ -298,6 +317,37 @@ const TESTING_TEMPLATE = `
                 <div class="controls equipment-actions">
                     <button class="btn btn-success" type="button" id="equipment-test-pump-toggle">Запустить насос</button>
                     <button class="btn btn-secondary" type="button" id="equipment-test-pump-open-calibration">К калибровке</button>
+                </div>
+            </div>
+
+            <div class="card equipment-card equipment-test-card">
+                <div class="equipment-test-card-head">
+                    <div>
+                        <h2>Мешалка куба</h2>
+                        <p class="equipment-subtitle">Ручной тест выхода 0-10 В, смена скорости на лету и быстрый переход в режим ручного управления.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-test-stirrer-badge">—</span>
+                </div>
+                <div class="equipment-test-metrics">
+                    <div class="equipment-test-metric"><span>Скорость</span><strong id="equipment-test-stirrer-speed-live">--</strong></div>
+                    <div class="equipment-test-metric"><span>Режим</span><strong id="equipment-test-stirrer-mode">--</strong></div>
+                    <div class="equipment-test-metric"><span>DAC</span><strong id="equipment-test-stirrer-available">--</strong></div>
+                </div>
+                <div class="form-group">
+                    <label for="equipment-test-stirrer-speed">Скорость мешалки, %</label>
+                    <input type="number" id="equipment-test-stirrer-speed" value="50" min="1" max="100" step="1" data-stepper-mode="pair" data-stepper-step="1">
+                    <small class="equipment-hint" id="equipment-test-stirrer-hint">Загрузка статуса мешалки…</small>
+                </div>
+                <div class="equipment-quick-actions">
+                    <button type="button" class="btn btn-sm btn-secondary" data-stirrer-speed-preset="25">25%</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-stirrer-speed-preset="50">50%</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-stirrer-speed-preset="75">75%</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-stirrer-speed-preset="100">100%</button>
+                </div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-success" type="button" id="equipment-test-stirrer-start">Запустить мешалку</button>
+                    <button class="btn btn-secondary" type="button" id="equipment-test-stirrer-apply">Применить скорость</button>
+                    <button class="btn btn-danger" type="button" id="equipment-test-stirrer-stop">Стоп</button>
                 </div>
             </div>
 
@@ -916,8 +966,27 @@ function ensureParameterWorkbenchCards() {
         'water-autostart-cube-temp',
     ]);
 
+    const stirrerCard = buildEquipmentCard({
+        className: 'equipment-pane-card equipment-pane-card-parameters',
+        title: 'Мешалка куба',
+        subtitle: 'Включение, скорость по умолчанию и автозапуск для затирки, НБК и ферментации.',
+        actionsHtml: `
+            <div class="controls equipment-actions">
+                <button class="btn btn-primary" type="button" onclick="saveStirrerSettings()">Сохранить мешалку</button>
+            </div>
+        `,
+    });
+    appendUniqueGroups(qs('.equipment-grid', stirrerCard), formGroups, [
+        'stirrer-settings-state',
+        'stirrer-enabled',
+        'stirrer-default-speed',
+        'stirrer-auto-mashing',
+        'stirrer-auto-nbk',
+        'stirrer-auto-fermentation',
+    ]);
+
     cardsHost.innerHTML = '';
-    cardsHost.append(pumpCard, cubeCard, coolingCard);
+    cardsHost.append(pumpCard, cubeCard, coolingCard, stirrerCard);
 }
 
 function readSavedWorkbenchCard(storageKey, defs, fallbackId) {
@@ -1428,6 +1497,7 @@ export function setSettingsSection(sectionId) {
 function getActiveTestsSummary(activeTests = {}) {
     const active = [];
     if (activeTests.pump) active.push('Насос');
+    if (activeTests.stirrer) active.push('Мешалка');
     if (activeTests.heater) active.push('ТЭН');
     if (activeTests.waterValve) active.push('Вода');
     if (activeTests.headsValve) active.push('Головы');
@@ -1588,6 +1658,56 @@ function renderPumpStatus(pump, testingAllowed, demoMode) {
     }
 }
 
+function renderStirrerStatus(stirrer, testingAllowed, demoMode) {
+    const available = !!stirrer?.available;
+    const enabled = stirrer?.enabled !== false;
+    const running = !!stirrer?.running;
+    const autoMode = !!stirrer?.autoMode;
+
+    updateBadge(
+        byId('equipment-test-stirrer-badge'),
+        !enabled ? 'Отключена' : !available ? 'Нет DAC' : running ? (demoMode ? 'Симуляция' : (autoMode ? 'Авто' : 'Работает')) : 'Готова',
+        !enabled || !available ? 'danger' : running ? (autoMode || demoMode ? 'warning' : 'success') : 'muted'
+    );
+    setText('equipment-test-stirrer-speed-live', formatNumber(stirrer?.speed ?? stirrer?.speedPercent, 0, ' %'));
+    setText('equipment-test-stirrer-mode', !enabled ? 'Выкл' : running ? (autoMode ? 'Авто' : 'Ручной') : 'Ожидание');
+    setText('equipment-test-stirrer-available', available ? 'MCP4725 OK' : 'Нет MCP4725');
+
+    const hint = byId('equipment-test-stirrer-hint');
+    if (hint) {
+        if (!enabled) {
+            hint.textContent = 'Включите мешалку в параметрах оборудования.';
+        } else if (!available) {
+            hint.textContent = 'Контроллер MCP4725 недоступен на I2C.';
+        } else if (running && autoMode) {
+            hint.textContent = 'Скорость управляется автоматически из FSM.';
+        } else if (running) {
+            hint.textContent = 'Ручной тест мешалки активен.';
+        } else {
+            hint.textContent = 'Готова к запуску из сервисного экрана.';
+        }
+    }
+
+    const speedInput = byId('equipment-test-stirrer-speed');
+    if (speedInput && !speedInput.matches(':focus')) {
+        const nextSpeed = running
+            ? clamp(stirrer?.speed ?? stirrer?.speedPercent, 1, 100, stirrer?.defaultSpeedPercent || 50)
+            : clamp(stirrer?.defaultSpeedPercent, 1, 100, 50);
+        speedInput.value = String(nextSpeed);
+    }
+
+    const canControl = testingAllowed && enabled && available;
+
+    const startButton = byId('equipment-test-stirrer-start');
+    if (startButton) startButton.disabled = !canControl || running;
+
+    const applyButton = byId('equipment-test-stirrer-apply');
+    if (applyButton) applyButton.disabled = !canControl || !running;
+
+    const stopButton = byId('equipment-test-stirrer-stop');
+    if (stopButton) stopButton.disabled = !running;
+}
+
 function renderValveButtonState(id, open, label, testingAllowed, pulse, demoMode) {
     const button = byId(id);
     const badge = byId(`${id}-badge`);
@@ -1724,6 +1844,7 @@ function renderTestingStatus(status) {
     state.lastStatus = status;
     renderServiceSummary(status);
     renderPumpStatus(status.pump, status.testingAllowed, status.demoMode);
+    renderStirrerStatus(status.stirrer, status.testingAllowed, status.demoMode);
     renderValveButtonState('equipment-test-water-toggle', !!status.valves?.water, 'воду', status.testingAllowed, status.valves?.waterPulse, status.demoMode);
     renderValveButtonState('equipment-test-heads-toggle', !!status.valves?.heads, 'головы', status.testingAllowed, status.valves?.headsPulse, status.demoMode);
     renderValveButtonState('equipment-test-uno-toggle', !!status.valves?.uno, 'УНО', status.testingAllowed, status.valves?.unoPulse, status.demoMode);
@@ -1802,6 +1923,30 @@ async function handlePumpToggle() {
     });
     renderTestingStatus(status);
     addLog(running ? 'Остановлен тест насоса' : `Запущен тест насоса: ${payload.speedMlH} мл/ч`, 'success');
+}
+
+async function handleStirrerAction(action) {
+    const speedPercent = clamp(
+        byId('equipment-test-stirrer-speed')?.value,
+        1,
+        100,
+        Number(state.lastStatus?.stirrer?.defaultSpeedPercent || 50)
+    );
+    const payload = action === 'stop' ? { action } : { action, speedPercent };
+    const status = await requestJson('/api/testing/stirrer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    renderTestingStatus(status);
+
+    if (action === 'start') {
+        addLog(`Запущен тест мешалки: ${speedPercent}%`, 'success');
+    } else if (action === 'set') {
+        addLog(`Скорость мешалки изменена: ${speedPercent}%`, 'info');
+    } else {
+        addLog('Мешалка остановлена из сервисного экрана', 'warning');
+    }
 }
 
 async function handleValveToggle(target, nextOpen) {
@@ -1945,6 +2090,24 @@ function bindTestingActions() {
             const input = byId('equipment-test-pump-speed');
             if (input) input.value = String(speed);
         });
+    });
+
+    qsa('[data-stirrer-speed-preset]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const speed = button.dataset.stirrerSpeedPreset;
+            const input = byId('equipment-test-stirrer-speed');
+            if (input) input.value = String(speed);
+        });
+    });
+
+    byId('equipment-test-stirrer-start')?.addEventListener('click', () => {
+        void handleStirrerAction('start').catch((error) => addLog(`✗ Мешалка: ${error.message}`, 'error'));
+    });
+    byId('equipment-test-stirrer-apply')?.addEventListener('click', () => {
+        void handleStirrerAction('set').catch((error) => addLog(`✗ Мешалка: ${error.message}`, 'error'));
+    });
+    byId('equipment-test-stirrer-stop')?.addEventListener('click', () => {
+        void handleStirrerAction('stop').catch((error) => addLog(`✗ Мешалка: ${error.message}`, 'error'));
     });
 
     byId('equipment-test-stop-all')?.addEventListener('click', () => {
