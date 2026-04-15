@@ -1,9 +1,9 @@
 # Smart-Column S3 — Спецификация
 
-**Версия:** 1.5.17
-**Дата:** 2026-03
-**Платформа:** ESP32-S3 DevKitC-1 N16R8
-**Бюджет:** ~11,250₽  
+**Версия:** 2.1.18
+**Дата:** 2026-04-14
+**Платформа:** ESP32-S3 DevKitC-1 N16R8 (16MB Flash, 8MB PSRAM)
+**Бюджет:** ~12,500₽ (с мешалкой и опциями)
 
 ---
 
@@ -13,15 +13,19 @@ Smart-Column S3 — универсальный контроллер автома
 
 ### Ключевые возможности
 
-- 5 режимов работы: авто-ректификация, ручная ректификация, дистилляция, затирка солода, Hold
-- Watt-Control — автоподбор мощности по давлению
+- 8 режимов работы: авто-ректификация, ручная ректификация, дистилляция, затирание солода, Hold (пастеризация), НБК, ферментация, IDLE
+- **Мешалка куба 0-10В** — MCP4725 (12-bit I2C DAC) + MCP6001 (Op-Amp ×3), авто-запуск из FSM
+- Watt-Control — автоподбор мощности по давлению (обратная связь PZEM)
 - Smart Decrement — адаптивное снижение скорости отбора
-- Электронный ареометр на базе дифференциального датчика давления
-- Web UI с анимированной схемой оборудования
-- MQTT интеграция с Home Assistant (MQTT Discovery)
-- HTTP Basic Auth и Rate Limiting для защиты веб-интерфейса
-- OTA-обновления прошивки
-- Логирование на SPIFFS с экспортом в CSV
+- Электронный ареометр на базе MPX5010DP + ADS1115
+- Web UI с анимированной SVG-схемой оборудования
+- История процессов v2 с reason codes, safety timeline, экспортом
+- MQTT интеграция с Home Assistant (Discovery, Energy Dashboard)
+- Cloud Tunnel — удалённый доступ через spiritcontrol.ru
+- HTTP Basic Auth, Rate Limiting, security headers
+- OTA-обновления прошивки (firmware + LittleFS)
+- TFT cockpit 3.5" ILI9488 с тачскрином
+- Сервисный экран тестирования оборудования в Web UI
 
 ---
 
@@ -68,7 +72,18 @@ Smart-Column S3 — универсальный контроллер автома
 | MOSFET модули | IRF520/IRF3205 | 3 | 300₽ |
 | **Итого исполнители** | | | **2950₽** |
 
-### 2.5 Опциональные компоненты
+### 2.5 Мешалка куба (новое)
+
+| Компонент | Модель | Цена |
+|-----------|--------|------|
+| DAC 12-бит | MCP4725 (I2C, 0x60) | 250₽ |
+| Операционный усилитель | MCP6001 (Rail-to-Rail, gain×3) | 100₽ |
+| Резистор защиты | 100 Ом на выходе | 5₽ |
+| **Итого мешалка** | | **355₽** |
+
+Выход: 0–10В аналоговый сигнал для промышленных регуляторов мешалки.
+
+### 2.6 Опциональные компоненты
 
 | Компонент | Модель | Цена |
 |-----------|--------|------|
@@ -98,9 +113,9 @@ Smart-Column S3 — универсальный контроллер автома
 
 | Интерфейс | GPIO | Устройства |
 |-----------|------|------------|
-| I2C SDA | GPIO21 | BMP280 Г—2, ADS1115 |
-| I2C SCL | GPIO9 | BMP280 ×2, ADS1115 (GPIO22 не существует на ESP32-S3, используется GPIO9) |
-| OneWire | GPIO4 | DS18B20 ×7 (подтяжка 4.7кОм) |
+| I2C SDA | GPIO21 | BMP280 ×2, ADS1115, **MCP4725 (мешалка)** |
+| I2C SCL | GPIO9  | BMP280 ×2, ADS1115, **MCP4725 (мешалка)** |
+| OneWire | GPIO4  | DS18B20 ×7 (подтяжка 4.7кОм) |
 
 ### 3.2 Управление нагревом
 
@@ -277,9 +292,9 @@ if T_column > T_base + 0.15°C:
 - Электронный ареометр (попугай)
 - Без насоса и клапанов переключения
 
-### 5.4 Затирка солода
+### 5.4 Затирание солода
 
-Перенос из Distiller Control v1.4.0:
+Многошаговое затирание с температурными паузами:
 
 | Профиль | Паузы | Время |
 |---------|-------|-------|
@@ -288,11 +303,47 @@ if T_column > T_base + 0.15°C:
 | Быстрый | 4 паузы | 70 мин |
 
 Особенности:
-- Центробежный насос (не перистальтика)
+- Центробежный насос (не перистальтика) или управление без насоса
 - Клапаны не используются
-- UI: куб с мешалкой, один датчик T
+- **Мешалка куба** — авто-запуск при включении затирания (`autoMashing = true`)
+- UI: куб с мешалкой + анимация, один датчик T
+- Поддерживаются кастомные профили с произвольным числом шагов через Web UI
 
-### 5.5 Hold (температурные ступени)
+```
+IDLE → HEATING → STABILIZATION → HEATING → STABILIZATION → WORKING → FINISH → COMPLETED
+```
+
+Особенности:
+- Управление мощностью по давлению (Watt-Control)
+- Контроль температуры куба и царги
+- Опциональный авто-запуск мешалки (`autoNbk = true`)
+
+### 5.6 Ферментация
+
+Режим поддержания температуры для брожения:
+
+```
+IDLE → RUNNING → COMPLETED
+```
+
+Особенности:
+- Поддержание целевой температуры нагревателем
+- Завершение по таймеру (`durationHours`)
+- Опциональный авто-запуск мешалки (`autoFermentation = true`)
+
+### 5.7 Управление мешалкой куба (0-10В)
+
+Ypavление мешалкой через аналоговый сигнал 0–10В:
+
+```
+ESP32 I2C → MCP4725 (DAC 12-бит, 0–3.3В) → MCP6001 (Op-Amp ×3) → 0–10В
+```
+
+- **Схема:** MCP4725 (I2C 0x60) → неинвертирующий усилитель MCP6001 (R1=20кОм, R2=10кОм, gain=3)
+- **Защита:** 100 Ом на выходе (защита от КЗ), питание Op-Amp от 12В
+- **Управление:** 0–100% → DAC 0–4095 → 0–3.3В → 0–10В
+- **Авто-режим:** запускается FSM при старте Затирания, Ферментации, НБК
+- **Безопасность:** принудительный стоп в `forceSafeOutputs()` и `finalizeModeStop()`
 
 Универсальный режим поддержания температуры:
 
@@ -754,26 +805,38 @@ smart-column-s3/
 ```ini
 [env:esp32s3]
 platform = espressif32
-board = esp32-s3-devkitc-1
+board = esp32-s3-devkitc-1-n16r8
 framework = arduino
+board_build.filesystem = littlefs
 
 lib_deps =
-    paulstoffregen/OneWire
-    milesburton/DallasTemperature
-    adafruit/Adafruit BMP280 Library
-    adafruit/Adafruit ADS1X15
-    me-no-dev/ESPAsyncWebServer
-    bblanchon/ArduinoJson
-    knolleary/PubSubClient
-    bodmer/TFT_eSPI
-    waspinator/AccelStepper
+    paulstoffregen/OneWire@^2.3.8
+    milesburton/DallasTemperature@^3.11.0
+    adafruit/Adafruit BMP280 Library@^2.6.8
+    adafruit/Adafruit ADS1X15@^2.5.0
+    adafruit/Adafruit GFX Library@^1.11.5
+    adafruit/Adafruit SSD1306@^2.5.7
+    adafruit/Adafruit MCP4725@^2.0.2          # DAC мешалки
+    mandulaj/PZEM-004T-v30@^1.1.2
+    https://github.com/me-no-dev/ESPAsyncWebServer.git
+    https://github.com/me-no-dev/AsyncTCP.git
+    bblanchon/ArduinoJson@^7.0.4
+    lovyan03/LovyanGFX@^1.1.16
+    https://github.com/PaulStoffregen/XPT2046_Touchscreen.git
+    waspinator/AccelStepper@^1.64
+    madhephaestus/ESP32Servo@^1.1.2
+    knolleary/PubSubClient@^2.8
+    links2004/WebSockets
 
 build_flags =
-    -DCORE_DEBUG_LEVEL=0
+    -DCORE_DEBUG_LEVEL=3
     -DBOARD_HAS_PSRAM
+    -DUSE_LITTLEFS
+    -DPZEM_ENABLED=1
+    -DASYNCWEBSERVER_REGEX=1
 
 monitor_speed = 115200
-upload_speed = 921600
+upload_speed = 115200
 ```
 
 ---
@@ -782,18 +845,23 @@ upload_speed = 921600
 
 | Блок | Статус |
 |------|--------|
-| Ядро (драйверы, датчики, SSR, насос) | Готово |
-| FSM, Watt-Control, Smart Decrement | Готово |
-| Web UI, REST API, WebSocket | Готово |
-| MQTT / HA | Готово |
-| История процессов, профили, экспорт | Готово |
-| HTTP Auth, Rate Limiting, OTA | Готово |
-| TFT cockpit + mode-specific экраны | Готово |
-| Вкладка безопасности + пороги | Готово |
-| Затирка / Hold — FSM логика | Не реализовано |
-| Ручная ректификация — FSM логика | Не реализовано |
-| Калибровка — полный UI | Частично |
-| Профили — полный UI (CRUD) | Частично |
+| Ядро (драйверы, датчики, SSR, насос) | ✅ Готово |
+| FSM: Ректификация, Дистилляция, Ручная | ✅ Готово |
+| FSM: Затирание, Hold/Пастеризация | ✅ Готово |
+| FSM: НБК, Ферментация | ✅ Готово |
+| Мешалка куба 0-10В (MCP4725 + MCP6001) | ✅ Готово v2.1.18 |
+| Watt-Control, Smart Decrement | ✅ Готово |
+| Web UI: REST API, WebSocket, Auth | ✅ Готово |
+| Web UI: Тестирование оборудования | ✅ Готово |
+| MQTT / Home Assistant Discovery | ✅ Готово |
+| История процессов v2 + reason codes | ✅ Готово |
+| Cloud Tunnel (spiritcontrol.ru) | ✅ Готово |
+| HTTP Auth / Rate Limiting / OTA | ✅ Готово |
+| TFT ILI9488 + mode-specific экраны | ✅ Готово |
+| WiFi профили (несколько сетей) | ✅ Готово |
+| Web UI мешалки (слайдер, настройки) | ⏳ В плане v2.2 |
+| Профили — полный CRUD UI | ⏳ В плане |
+| Калибровка — полный UI | 🔧 Частично |
 
 Актуальный роадмап: [TODO2.0.md](TODO2.0.md)
 
