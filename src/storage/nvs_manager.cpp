@@ -189,6 +189,21 @@ bool loadSettings(Settings& settings) {
     settings.fermentation.hysteresisC = prefs.getFloat(NVS_KEY_FERM_HYSTERESIS, 0.5f);
     settings.fermentation.useHeater = prefs.getBool(NVS_KEY_FERM_USE_HEATER, true);
 
+    // Мешалка
+    settings.stirrer.enabled = prefs.getBool(NVS_KEY_STIRRER_ENABLED, settings.stirrer.enabled);
+    settings.stirrer.defaultSpeedPercent =
+        prefs.getUChar(NVS_KEY_STIRRER_SPEED, settings.stirrer.defaultSpeedPercent);
+    if (settings.stirrer.defaultSpeedPercent == 0 ||
+        settings.stirrer.defaultSpeedPercent > 100) {
+        settings.stirrer.defaultSpeedPercent = 50;
+    }
+    settings.stirrer.autoMashing =
+        prefs.getBool(NVS_KEY_STIRRER_AUTO_MASH, settings.stirrer.autoMashing);
+    settings.stirrer.autoFermentation =
+        prefs.getBool(NVS_KEY_STIRRER_AUTO_FERM, settings.stirrer.autoFermentation);
+    settings.stirrer.autoNbk =
+        prefs.getBool(NVS_KEY_STIRRER_AUTO_NBK, settings.stirrer.autoNbk);
+
     // Безопасность
     settings.safety.pressureMaxMmHg = prefs.getFloat(NVS_KEY_SAFETY_PRESSURE_MAX, DEFAULT_SAFETY_PRESSURE_MAX_MMHG);
     settings.safety.tsaMaxC = prefs.getFloat(NVS_KEY_SAFETY_TSA_MAX, DEFAULT_SAFETY_TSA_MAX_C);
@@ -294,6 +309,16 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_FERM_TARGET_TEMP, settings.fermentation.targetTempC);
     prefs.putFloat(NVS_KEY_FERM_HYSTERESIS, settings.fermentation.hysteresisC);
     prefs.putBool(NVS_KEY_FERM_USE_HEATER, settings.fermentation.useHeater);
+
+    // Мешалка
+    prefs.putBool(NVS_KEY_STIRRER_ENABLED, settings.stirrer.enabled);
+    prefs.putUChar(
+        NVS_KEY_STIRRER_SPEED,
+        settings.stirrer.defaultSpeedPercent == 0 ? 50
+                                                  : settings.stirrer.defaultSpeedPercent);
+    prefs.putBool(NVS_KEY_STIRRER_AUTO_MASH, settings.stirrer.autoMashing);
+    prefs.putBool(NVS_KEY_STIRRER_AUTO_FERM, settings.stirrer.autoFermentation);
+    prefs.putBool(NVS_KEY_STIRRER_AUTO_NBK, settings.stirrer.autoNbk);
 
     // Безопасность
     prefs.putFloat(NVS_KEY_SAFETY_PRESSURE_MAX, settings.safety.pressureMaxMmHg);

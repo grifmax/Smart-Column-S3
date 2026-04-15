@@ -132,8 +132,6 @@ const CALIBRATION_GROUPS = [
     { id: 'sensors', label: 'Датчики' },
 ];
 
-const SETTINGS_CARD_GROUPS = [{ id: 'main', label: '' }];
-
 const SETTINGS_SECTION_DEFS = [
     {
         id: 'connection',

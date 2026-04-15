@@ -9,6 +9,17 @@
 
 ---
 
+## [2.1.19] - 2026-04-15
+
+### Добавлено
+- В `src/interface/webserver.cpp` реализованы REST endpoints мешалки: `POST /api/stirrer/start`, `POST /api/stirrer/stop`, `POST /api/stirrer/set`, а также `GET/POST /api/settings/stirrer` для чтения и сохранения конфигурации. (codex)
+- Ответы `GET /api/status` и WebSocket broadcast теперь включают актуальный блок `stirrer`, синхронизированный прямо перед сериализацией ответа, чтобы ручные команды не ждали следующего тика `loop()`. (codex)
+
+### Изменено
+- В `src/storage/nvs_manager.cpp` завершена интеграция настроек мешалки с NVS: `enabled`, `defaultSpeedPercent`, `autoMashing`, `autoFermentation`, `autoNbk` теперь загружаются и сохраняются вместе с остальными настройками. (codex)
+- Ручные API-команды мешалки теперь переводят её в manual override, сбрасывая `autoMode`, а отключение мешалки в настройках сразу вызывает `Stirrer::stop()` для предсказуемого состояния выхода. (codex)
+- Версия прошивки поднята до `2.1.19`, пересобран frontend bundle и обновлены version-stamps в `data/version.json` и статических HTML-ассетах. (codex)
+
 ## [2.1.18] - 2026-04-14
 
 ### Добавлено

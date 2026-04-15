@@ -705,6 +705,71 @@ static void fillSafetyActionV2Json(JsonObject v2, const ControlV2::ModeStatusV2&
           : "";
 }
 
+static uint8_t clampU8Range(uint32_t value, uint8_t minValue, uint8_t maxValue) {
+  if (value < minValue) return minValue;
+  if (value > maxValue) return maxValue;
+  return static_cast<uint8_t>(value);
+}
+
+static void syncStirrerState() {
+  Stirrer::syncState(g_state);
+}
+
+static void fillStirrerJson(JsonObject stirrer, const SystemState &state) {
+  stirrer["running"] = state.stirrer.running;
+  stirrer["speed"] = state.stirrer.speedPercent;
+  stirrer["available"] = state.stirrer.available;
+  stirrer["autoMode"] = state.stirrer.autoMode;
+  stirrer["lastUpdate"] = state.stirrer.lastUpdate;
+}
+
+static void fillStirrerSettingsJson(JsonObject settings,
+                                    const Settings &source) {
+  settings["enabled"] = source.stirrer.enabled;
+  settings["defaultSpeedPercent"] = source.stirrer.defaultSpeedPercent;
+  settings["autoMashing"] = source.stirrer.autoMashing;
+  settings["autoFermentation"] = source.stirrer.autoFermentation;
+  settings["autoNbk"] = source.stirrer.autoNbk;
+}
+
+static void sendStirrerStateResponse(AsyncWebServerRequest *request,
+                                     int statusCode, bool success,
+                                     const char *message) {
+  syncStirrerState();
+
+  JsonDocument doc;
+  doc["success"] = success;
+  doc["message"] = message;
+  JsonObject stirrer = doc["stirrer"].to<JsonObject>();
+  fillStirrerJson(stirrer, g_state);
+
+  String json;
+  serializeJson(doc, json);
+  request->send(statusCode, "application/json", json);
+}
+
+static bool ensureStirrerReady(AsyncWebServerRequest *request) {
+  if (!g_settings.stirrer.enabled) {
+    sendStirrerStateResponse(request, 409, false,
+                             "Stirrer is disabled in settings");
+    return false;
+  }
+
+  if (!Stirrer::isAvailable()) {
+    sendStirrerStateResponse(request, 503, false,
+                             "Stirrer DAC is not available");
+    return false;
+  }
+
+  if (!g_state.safetyOk || Safety::isLatched(g_state)) {
+    sendStirrerStateResponse(request, 409, false,
+                             "Safety lockout is active");
+    return false;
+  }
+
+  return true;
+}
+
 static bool isSecurityOnboardingMode() {
   return !hasConfiguredWiFi() && WiFi.status() != WL_CONNECTED;
 }
@@ -903,6 +968,7 @@ void init() {
   // GET /api/status - полное состояние системы
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
     ControlV2::updateRuntime(g_state, g_settings);
+    syncStirrerState();
 
     JsonDocument doc;
 
@@ -965,6 +1031,9 @@ void init() {
     pump["speedMlH"] = g_state.pump.speedMlPerHour;
     pump["totalMl"] = g_state.pump.totalVolumeMl;
     pump["running"] = g_state.pump.running;
+
+    JsonObject stirrer = doc["stirrer"].to<JsonObject>();
+    fillStirrerJson(stirrer, g_state);
 
     JsonObject valves = doc["valves"].to<JsonObject>();
     valves["water"] = Valves::getWater();
@@ -1656,6 +1725,126 @@ void init() {
                       "{\"success\":true,\"message\":\"Process resumed\"}");
       });
 
+  // POST /api/stirrer/start - запуск мешалки
+  server.on(
+      "/api/stirrer/start", HTTP_POST,
+      [](AsyncWebServerRequest *request) {
+        if (request->contentLength() != 0) {
+          return;
+        }
+
+        if (!ensureStirrerReady(request)) {
+          return;
+        }
+
+        const uint8_t speed = g_settings.stirrer.defaultSpeedPercent;
+        g_state.stirrer.autoMode = false;
+        Stirrer::start(speed);
+        LOG_I("Stirrer started via API at %u%%", speed);
+        sendStirrerStateResponse(request, 200, true, "Stirrer started");
+      },
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        if (total == 0) {
+          return;
+        }
+
+        if (!ensureStirrerReady(request)) {
+          return;
+        }
+
+        uint8_t speed = g_settings.stirrer.defaultSpeedPercent;
+        if (len > 0) {
+          JsonDocument doc;
+          if (deserializeJson(doc, data, len)) {
+            request->send(400, "application/json",
+                          "{\"success\":false,\"error\":\"Invalid JSON\"}");
+            return;
+          }
+
+          const int requestedSpeed = doc["speed"] | 0;
+          if (requestedSpeed < 0 || requestedSpeed > 100) {
+            request->send(400, "application/json",
+                          "{\"success\":false,\"error\":\"Speed must be between 0 and 100\"}");
+            return;
+          }
+
+          if (requestedSpeed > 0) {
+            speed = static_cast<uint8_t>(requestedSpeed);
+          }
+        }
+
+        g_state.stirrer.autoMode = false;
+        Stirrer::start(speed);
+        LOG_I("Stirrer started via API at %u%%", speed);
+        sendStirrerStateResponse(request, 200, true, "Stirrer started");
+      });
+
+  // POST /api/stirrer/stop - остановка мешалки
+  server.on("/api/stirrer/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
+    g_state.stirrer.autoMode = false;
+    Stirrer::stop();
+    LOG_I("Stirrer stopped via API");
+    sendStirrerStateResponse(request, 200, true, "Stirrer stopped");
+  });
+
+  // POST /api/stirrer/set - изменить скорость мешалки
+  server.on(
+      "/api/stirrer/set", HTTP_POST,
+      [](AsyncWebServerRequest *request) {
+        if (request->contentLength() == 0) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Speed is required\"}");
+        }
+      },
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        if (total == 0) {
+          return;
+        }
+
+        if (!ensureStirrerReady(request)) {
+          return;
+        }
+
+        if (!Stirrer::isRunning()) {
+          sendStirrerStateResponse(request, 409, false,
+                                   "Stirrer is not running");
+          return;
+        }
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        if (doc["speed"].isNull()) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Speed is required\"}");
+          return;
+        }
+
+        const int requestedSpeed = doc["speed"].as<int>();
+        if (requestedSpeed < 1 || requestedSpeed > 100) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Speed must be between 1 and 100\"}");
+          return;
+        }
+
+        g_state.stirrer.autoMode = false;
+        Stirrer::setSpeed(static_cast<uint8_t>(requestedSpeed));
+        LOG_I("Stirrer speed changed via API to %d%%", requestedSpeed);
+        sendStirrerStateResponse(request, 200, true, "Stirrer speed updated");
+      });
+
   // ==========================================================================
   // MANUAL CONTROL API (для manual.html)
   // ==========================================================================
@@ -2066,6 +2255,90 @@ void init() {
         }
 
         request->send(200, "application/json", "{\"success\":true}");
+      });
+
+  // GET /api/settings/stirrer - получить настройки мешалки
+  server.on("/api/settings/stirrer", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              syncStirrerState();
+
+              JsonDocument doc;
+              fillStirrerSettingsJson(doc.to<JsonObject>(), g_settings);
+              doc["available"] = g_state.stirrer.available;
+              doc["running"] = g_state.stirrer.running;
+              doc["autoMode"] = g_state.stirrer.autoMode;
+
+              String json;
+              serializeJson(doc, json);
+              request->send(200, "application/json", json);
+            });
+
+  // POST /api/settings/stirrer - сохранить настройки мешалки
+  server.on(
+      "/api/settings/stirrer", HTTP_POST,
+      [](AsyncWebServerRequest *request) {
+        if (request->contentLength() == 0) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Request body is required\"}");
+        }
+      },
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) return;
+
+        if (total == 0) {
+          return;
+        }
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        if (!doc["enabled"].isNull()) {
+          g_settings.stirrer.enabled = doc["enabled"].as<bool>();
+        }
+        if (!doc["defaultSpeedPercent"].isNull()) {
+          g_settings.stirrer.defaultSpeedPercent = clampU8Range(
+              doc["defaultSpeedPercent"].as<uint32_t>(), 1, 100);
+        }
+        if (!doc["autoMashing"].isNull()) {
+          g_settings.stirrer.autoMashing = doc["autoMashing"].as<bool>();
+        }
+        if (!doc["autoFermentation"].isNull()) {
+          g_settings.stirrer.autoFermentation =
+              doc["autoFermentation"].as<bool>();
+        }
+        if (!doc["autoNbk"].isNull()) {
+          g_settings.stirrer.autoNbk = doc["autoNbk"].as<bool>();
+        }
+
+        if (!g_settings.stirrer.enabled) {
+          g_state.stirrer.autoMode = false;
+          Stirrer::stop();
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        syncStirrerState();
+
+        JsonDocument responseDoc;
+        responseDoc["success"] = true;
+        JsonObject settingsJson = responseDoc["settings"].to<JsonObject>();
+        fillStirrerSettingsJson(settingsJson, g_settings);
+        JsonObject stirrer = responseDoc["stirrer"].to<JsonObject>();
+        fillStirrerJson(stirrer, g_state);
+
+        String json;
+        serializeJson(responseDoc, json);
+        request->send(200, "application/json", json);
       });
 
   // --------------------------------------------------------------------------
@@ -4262,6 +4535,8 @@ void broadcastState(const SystemState &state) {
   if (ws.count() == 0)
     return;
 
+  syncStirrerState();
+
   const uint32_t now = millis();
   const auto displayStats = Display::getRuntimeStats();
 
@@ -4305,6 +4580,8 @@ void broadcastState(const SystemState &state) {
   fastDoc["volume_heads"] = state.stats.headsVolume;
   fastDoc["volume_body"] = state.stats.bodyVolume;
   fastDoc["volume_tails"] = state.stats.tailsVolume;
+  JsonObject fastStirrer = fastDoc["stirrer"].to<JsonObject>();
+  fillStirrerJson(fastStirrer, g_state);
   JsonObject fastEquipment = fastDoc["equipment"].to<JsonObject>();
   fastEquipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
   fastEquipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
@@ -4544,10 +4821,7 @@ void broadcastState(const SystemState &state) {
 
   // Мешалка
   JsonObject stirrer = doc["stirrer"].to<JsonObject>();
-  stirrer["running"]   = state.stirrer.running;
-  stirrer["speed"]     = state.stirrer.speedPercent;
-  stirrer["available"] = state.stirrer.available;
-  stirrer["autoMode"]  = state.stirrer.autoMode;
+  fillStirrerJson(stirrer, g_state);
 
   String json;
   serializeJson(doc, json);

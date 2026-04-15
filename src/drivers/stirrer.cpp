@@ -50,7 +50,21 @@ bool init() {
 void setSpeed(uint8_t percent) {
     if (!s_available) return;
     if (percent > 100) percent = 100;
+
+    if (percent == 0) {
+        s_running = false;
+        s_speedPct = 0;
+        s_dac.setVoltage(0, false);
+        LOG_D("Stirrer: setSpeed 0%% → output off");
+        return;
+    }
+
     s_speedPct = percent;
+    if (!s_running) {
+        LOG_D("Stirrer: speed preset to %u%% while stopped", percent);
+        return;
+    }
+
     uint16_t dacVal = percentToDac(percent);
     s_dac.setVoltage(dacVal, false);
     LOG_D("Stirrer: setSpeed %u%% → DAC %u", percent, dacVal);
@@ -58,7 +72,7 @@ void setSpeed(uint8_t percent) {
 
 void start(uint8_t percent) {
     if (!s_available) return;
-    if (percent == 0) percent = 50; // fallback: 50% если не указано
+    if (percent == 0) percent = (s_speedPct > 0) ? s_speedPct : 50; // fallback: last speed or 50%
     s_running = true;
     setSpeed(percent);
     LOG_I("Stirrer: started at %u%%", percent);
