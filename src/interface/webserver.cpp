@@ -760,6 +760,17 @@ static void sendStirrerStateResponse(AsyncWebServerRequest *request,
 }
 
 static bool ensureStirrerReady(AsyncWebServerRequest *request) {
+  if (g_state.mode != Mode::IDLE) {
+    char reason[128];
+    snprintf(reason, sizeof(reason),
+             g_state.paused
+                 ? "Manual stirrer control is unavailable while %s is paused"
+                 : "Manual stirrer control is unavailable while %s is active",
+             getModeString(g_state.mode));
+    sendStirrerStateResponse(request, 409, false, reason);
+    return false;
+  }
+
   if (!g_settings.stirrer.enabled) {
     sendStirrerStateResponse(request, 409, false,
                              "Stirrer is disabled in settings");
@@ -1796,6 +1807,9 @@ void init() {
 
   // POST /api/stirrer/stop - остановка мешалки
   server.on("/api/stirrer/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!ensureStirrerReady(request)) {
+      return;
+    }
     g_state.stirrer.autoMode = false;
     Stirrer::stop();
     LOG_I("Stirrer stopped via API");

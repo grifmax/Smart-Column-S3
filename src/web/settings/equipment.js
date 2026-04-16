@@ -1,5 +1,5 @@
 import { addLog } from '../core/logs.js';
-import { runtimeMonitorState, DEFAULT_CUBE_VOLUME_L } from '../globals.js';
+import { runtimeMonitorState, DEFAULT_CUBE_VOLUME_L, currentMode, currentPaused, MODE_IDLE } from '../globals.js';
 import { syncRectificationFeedVolumeLimit } from '../modes/rectification.js';
 import { syncManualFeedVolumeLimit } from '../modes/control-panel.js';
 import { initEquipmentNumberSteppers } from './number-stepper.js';
@@ -206,9 +206,28 @@ function getStirrerMonitorSpeed(settings, stirrer) {
         : clamp(settings.defaultSpeedPercent, 1, 100, DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent);
 }
 
+function getCurrentModeNameRu() {
+    switch (currentMode) {
+        case 1: return 'ректификация';
+        case 2: return 'дистилляция';
+        case 3: return 'ручной режим';
+        case 4: return 'затирка';
+        case 5: return 'пастеризация';
+        case 6: return 'НБК';
+        case 7: return 'ферментация';
+        default: return 'активный режим';
+    }
+}
+
 function getStirrerStatusMeta(settings, stirrer) {
     const safetyBlocked = !runtimeMonitorState.safetyOk || Boolean(runtimeMonitorState.currentAlarm?.latched);
     const autoModes = getEnabledAutoModes(settings);
+    const settingsHintBase = autoModes.length
+        ? `Автостарт настроен для режимов: ${autoModes.join(', ')}.`
+        : 'Автостарт не включен ни для одного режима.';
+    const modeBlocked = currentMode !== MODE_IDLE;
+    const modeName = getCurrentModeNameRu();
+    const modeSuffix = currentPaused ? `${modeName} на паузе` : modeName;
 
     if (!settings.enabled) {
         return {
@@ -227,9 +246,7 @@ function getStirrerStatusMeta(settings, stirrer) {
             badgeTone: 'danger',
             modeText: 'Недоступна',
             availabilityText: 'Нет MCP4725',
-            settingsHint: autoModes.length
-                ? `Автостарт настроен для режимов: ${autoModes.join(', ')}.`
-                : 'Автостарт не включен ни для одного режима.',
+            settingsHint: settingsHintBase,
             monitorHint: 'MCP4725 не обнаружен на шине I2C.'
         };
     }
@@ -240,11 +257,9 @@ function getStirrerStatusMeta(settings, stirrer) {
             badgeTone: stirrer.autoMode ? 'warning' : 'success',
             modeText: stirrer.autoMode ? 'Авто' : 'Ручной',
             availabilityText: 'MCP4725 OK',
-            settingsHint: autoModes.length
-                ? `Автостарт настроен для режимов: ${autoModes.join(', ')}.`
-                : 'Автостарт не включен ни для одного режима.',
+            settingsHint: settingsHintBase,
             monitorHint: stirrer.autoMode
-                ? 'Скорость управляется автоматически из FSM.'
+                ? `Скорость управляется автоматически из FSM. Активен режим: ${modeSuffix}.`
                 : 'Ручное управление активно.'
         };
     }
@@ -255,10 +270,19 @@ function getStirrerStatusMeta(settings, stirrer) {
             badgeTone: 'warning',
             modeText: 'Ожидание',
             availabilityText: 'MCP4725 OK',
-            settingsHint: autoModes.length
-                ? `Автостарт настроен для режимов: ${autoModes.join(', ')}.`
-                : 'Автостарт не включен ни для одного режима.',
+            settingsHint: settingsHintBase,
             monitorHint: 'Ручной запуск временно заблокирован защитой.'
+        };
+    }
+
+    if (modeBlocked) {
+        return {
+            badgeText: 'FSM',
+            badgeTone: 'warning',
+            modeText: 'Занята',
+            availabilityText: 'MCP4725 OK',
+            settingsHint: `${settingsHintBase} Ручное управление доступно только в простое.`,
+            monitorHint: `Ручное управление доступно только в простое. Сейчас активен ${modeSuffix}.`
         };
     }
 
@@ -267,9 +291,7 @@ function getStirrerStatusMeta(settings, stirrer) {
         badgeTone: 'muted',
         modeText: 'Ожидание',
         availabilityText: 'MCP4725 OK',
-        settingsHint: autoModes.length
-            ? `Автостарт настроен для режимов: ${autoModes.join(', ')}.`
-            : 'Автостарт не включен ни для одного режима.',
+        settingsHint: settingsHintBase,
         monitorHint: 'Готова к ручному запуску.'
     };
 }
@@ -281,7 +303,8 @@ export function syncStirrerUi(options = {}) {
     const meta = getStirrerStatusMeta(settings, stirrer);
     const monitorSpeed = getStirrerMonitorSpeed(settings, stirrer);
     const safetyBlocked = !runtimeMonitorState.safetyOk || Boolean(runtimeMonitorState.currentAlarm?.latched);
-    const canControl = settings.enabled && stirrer.available && !safetyBlocked;
+    const modeBlocked = currentMode !== MODE_IDLE;
+    const canControl = settings.enabled && stirrer.available && !safetyBlocked && !modeBlocked;
 
     if (syncSettingsForm) {
         setCheckboxValue('stirrer-enabled', settings.enabled);
@@ -297,6 +320,9 @@ export function syncStirrerUi(options = {}) {
             speedInput.value = String(Math.round(monitorSpeed));
         }
     }
+
+    const speedInput = document.getElementById('monitor-stirrer-speed-input');
+    if (speedInput) speedInput.disabled = !canControl;
 
     setBadgeState('monitor-stirrer-badge', meta.badgeText, meta.badgeTone);
     setTextValue('monitor-stirrer-speed', `${Math.round(clamp(stirrer.speedPercent, 0, 100, 0))} %`);

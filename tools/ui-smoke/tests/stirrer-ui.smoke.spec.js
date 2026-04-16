@@ -122,3 +122,41 @@ test('stirrer widget and equipment settings stay in sync', async ({ page }) => {
   await expect.poll(() => requests.stirrerSettingsSaves[0]?.autoFermentation).toBeTruthy();
   await expect(page.locator('#stirrer-settings-state')).toContainText('MCP4725 OK');
 });
+
+test('stirrer widget blocks manual control while process is active', async ({ page }) => {
+  await installMockWebSocket(page);
+  await installMockApexCharts(page);
+
+  const requests = await installCommonApiMocks(page, {
+    statusPayload: () => buildStatusPayload(4, true, {
+      stirrer: {
+        running: false,
+        speed: 0,
+        available: true,
+        autoMode: false,
+      },
+    }),
+    stirrerSettingsPayload: () => buildStirrerSettingsPayload({
+      enabled: true,
+      defaultSpeedPercent: 50,
+      autoMashing: true,
+      autoFermentation: false,
+      autoNbk: false,
+      available: true,
+      running: false,
+      autoMode: false,
+      speed: 0,
+    }),
+  });
+
+  await page.goto('/index.html');
+
+  await expect(page.locator('#monitor-stirrer-badge')).toContainText('FSM');
+  await expect(page.locator('#monitor-stirrer-mode')).toContainText('Занята');
+  await expect(page.locator('#monitor-stirrer-hint')).toContainText('только в простое');
+  await expect(page.locator('#monitor-stirrer-speed-input')).toBeDisabled();
+  await expect(page.locator('#monitor-stirrer-start')).toBeDisabled();
+  await expect(page.locator('#monitor-stirrer-apply')).toBeDisabled();
+  await expect(page.locator('#monitor-stirrer-stop')).toBeDisabled();
+  await expect.poll(() => requests.stirrerActions.length).toBe(0);
+});
