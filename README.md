@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.1.21-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.0-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -144,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.2.0 | 2026-04-16 | Первый HMI-редизайн IPS UI: прямоугольные панели, полный список режимов, monitor-layouts для НБК и ферментации |
 | 2.1.21 | 2026-04-16 | Policy ручного управления мешалкой только в IDLE, блокировка UI и smoke-покрытие |
 | 2.1.20 | 2026-04-15 | Главный виджет мешалки, настройки в оборудовании и сервисный тест |
 | 2.1.19 | 2026-04-15 | REST API и NVS-настройки мешалки, синхронизация версии frontend |

@@ -126,7 +126,7 @@ inline const char* msg(Msg id) {
     switch (id) {
         // Tabs
         case Msg::MONITOR:       return ru ? "Монитор" : "Monitor";
-        case Msg::CONTROL:       return ru ? "Управление" : "Control";
+        case Msg::CONTROL:       return ru ? "Режимы" : "Modes";
         case Msg::SETTINGS:      return ru ? "Настройки" : "Settings";
         case Msg::SERVICE:       return ru ? "Сервис" : "Service";
 
@@ -142,12 +142,12 @@ inline const char* msg(Msg id) {
         case Msg::TSA_T:         return ru ? "ТСА Т" : "TSA T";
 
         // Control
-        case Msg::AUTO_RECTIFY:  return ru ? "Авто Ректиф" : "Auto Rectify";
+        case Msg::AUTO_RECTIFY:  return ru ? "Ректификация" : "Rectification";
         case Msg::DISTILLATION:  return ru ? "Дистилляция" : "Distillation";
-        case Msg::MANUAL_RECT:   return ru ? "Ручная Рекст" : "Manual Rect";
+        case Msg::MANUAL_RECT:   return ru ? "Ручной режим" : "Manual Mode";
         case Msg::MASHING:       return ru ? "Затирка" : "Mashing";
-        case Msg::HOLD_MODE:     return ru ? "Удержание" : "Hold Mode";
-        case Msg::MANUAL_PUMP:   return ru ? "Ручной Насос" : "Manual Pump";
+        case Msg::HOLD_MODE:     return ru ? "Пастеризация" : "Pasteurization";
+        case Msg::MANUAL_PUMP:   return ru ? "Ручное" : "Manual";
         case Msg::STOP:          return ru ? "СТОП" : "STOP";
         case Msg::PAUSE:         return ru ? "ПАУЗА" : "PAUSE";
         case Msg::RESUME:        return ru ? "ПУСК" : "RESUME";
@@ -184,7 +184,7 @@ inline const char* msg(Msg id) {
         case Msg::TOUCH_CALIBRATION: return ru ? "КАЛИБР. ТАЧА" : "TOUCH CALIBRATION";
 
         // Manual
-        case Msg::MANUAL_MODE:   return ru ? "Ручной Режим" : "Manual Mode";
+        case Msg::MANUAL_MODE:   return ru ? "Ручное управление" : "Manual Control";
         case Msg::VALVE_WATER:   return ru ? "ВОДА" : "WATER";
         case Msg::VALVE_HEADS:   return ru ? "ГОЛОВЫ" : "HEADS";
         case Msg::VALVE_UNO:     return ru ? "УНО" : "UNO";
@@ -208,9 +208,9 @@ inline const char* msg(Msg id) {
         case Msg::MODE_IDLE:          return ru ? "Ожидание" : "Idle";
         case Msg::MODE_RECTIFICATION: return ru ? "Ректификация" : "Rectification";
         case Msg::MODE_DISTILLATION:  return ru ? "Дистилляция" : "Distillation";
-        case Msg::MODE_MANUAL_RECT:   return ru ? "Ручная Рекст." : "Manual Rect.";
+        case Msg::MODE_MANUAL_RECT:   return ru ? "Ручной режим" : "Manual Mode";
         case Msg::MODE_MASHING:       return ru ? "Затирка" : "Mashing";
-        case Msg::MODE_HOLD:          return ru ? "Удержание" : "Hold Mode";
+        case Msg::MODE_HOLD:          return ru ? "Пастеризация" : "Pasteurization";
 
         // Phases
         case Msg::PHASE_IDLE:           return ru ? "Ожидание" : "Idle";

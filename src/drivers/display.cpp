@@ -617,6 +617,12 @@ static const int16_t CTRL_BW = 225;
 static const int16_t CTRL_BH = 48;
 static const int16_t CTRL_X1 = 10;
 static const int16_t CTRL_X2 = 245;
+static const int16_t CTRL_STATUS_Y = 8;
+static const int16_t CTRL_STATUS_H = 30;
+static const int16_t CTRL_ACTION_BW = 82;
+static const int16_t CTRL_ACTION_BH = 22;
+static const int16_t CTRL_ACTION_Y = 12;
+static const int16_t CTRL_ACTION_GAP = 6;
 static const int16_t CTRL_Y1 = 44;
 static const int16_t CTRL_Y2 = 96;
 static const int16_t CTRL_Y3 = 148;
@@ -640,6 +646,10 @@ static bool isMonitorRootScreen(UiScreen screen) {
   return (screen == UI_DASHBOARD || screen == UI_MODE_MONITOR);
 }
 
+static bool isManualAccessAllowed(const SystemState &state) {
+  return (state.mode == Mode::IDLE || state.mode == Mode::MANUAL_RECT);
+}
+
 static uint16_t dimmedButtonColor() { return tft.color565(140, 140, 140); }
 
 static uint16_t modeButtonColor(const SystemState &state, Mode target,
@@ -656,6 +666,8 @@ static void startModeFromControl(Mode mode) {
   case Mode::RECTIFICATION:
   case Mode::DISTILLATION:
   case Mode::MANUAL_RECT:
+  case Mode::NBK:
+  case Mode::FERMENTATION:
     if (mode == Mode::DISTILLATION) {
       FSM::Distillation::setParams(distUi.speedMlH, distUi.headsVolumeMl,
                                    distUi.targetVolumeMl, distUi.endTempC);
@@ -1132,6 +1144,26 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
       return true;
     }
 
+    {
+      const int16_t stopX = TFT_WIDTH - CTRL_ACTION_BW - 10;
+      const int16_t pauseX = stopX - CTRL_ACTION_BW - CTRL_ACTION_GAP;
+      if (hit(tx, ty, pauseX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH)) {
+        if (state.mode != Mode::IDLE) {
+          if (state.paused)
+            FSM::resume(g_state);
+          else
+            FSM::pause(g_state);
+        }
+        return true;
+      }
+      if (hit(tx, ty, stopX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH)) {
+        if (state.mode != Mode::IDLE) {
+          FSM::stopMode(g_state);
+        }
+        return true;
+      }
+    }
+
     if (hit(tx, ty, CTRL_X1, CTRL_Y1, CTRL_BW, CTRL_BH)) {
       startOrRequestMode(state, Mode::RECTIFICATION);
       return true;
@@ -1148,21 +1180,14 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
       startOrRequestMode(state, Mode::HOLD);
       return true;
     } else if (hit(tx, ty, CTRL_X2, CTRL_Y3, CTRL_BW, CTRL_BH)) {
-      if (state.mode == Mode::IDLE || state.mode == Mode::MANUAL_RECT) {
-        pushScreen(UI_MANUAL);
-      }
+      startOrRequestMode(state, Mode::NBK);
       return true;
     } else if (hit(tx, ty, CTRL_X1, CTRL_Y4, CTRL_BW, CTRL_BH)) {
-      if (state.mode != Mode::IDLE) {
-        if (state.paused)
-          FSM::resume(g_state);
-        else
-          FSM::pause(g_state);
-      }
+      startOrRequestMode(state, Mode::FERMENTATION);
       return true;
     } else if (hit(tx, ty, CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH)) {
-      if (state.mode != Mode::IDLE) {
-        FSM::stopMode(g_state);
+      if (isManualAccessAllowed(state)) {
+        pushScreen(UI_MANUAL);
       }
       return true;
     }
@@ -1360,6 +1385,9 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     }
     break;
   case UI_MANUAL:
+    if (!isManualAccessAllowed(state)) {
+      return true;
+    }
     if (ty >= 65 && ty < 185) {
       if (ty >= 65 && ty < 125) {
         openValueEdit(msg(Msg::HEATER_POWER), Heater::getPower(), 0, 100, 1, 10,
@@ -1401,21 +1429,99 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
 }
 
 static uint16_t colorBg() {
-  return (g_settings.theme == 1) ? TFT_BLACK : tft.color565(248, 249, 250);
+  return (g_settings.theme == 1) ? tft.color565(12, 14, 16)
+                                 : tft.color565(232, 236, 240);
 }
 
 static uint16_t colorFg() {
-  return (g_settings.theme == 1) ? TFT_WHITE : COLOR_DARK_GREY;
+  return (g_settings.theme == 1) ? TFT_WHITE : tft.color565(28, 32, 36);
 }
 
-static uint16_t colorAccent() { return COLOR_PRIMARY; }
+static uint16_t colorAccent() { return tft.color565(0, 108, 178); }
 
 static uint16_t colorCard() {
-  return (g_settings.theme == 1) ? tft.color565(33, 37, 41) : TFT_WHITE;
+  return (g_settings.theme == 1) ? tft.color565(26, 30, 34)
+                                 : tft.color565(248, 250, 252);
+}
+
+static uint16_t colorBorder() {
+  return (g_settings.theme == 1) ? tft.color565(82, 88, 96)
+                                 : tft.color565(132, 142, 152);
+}
+
+static uint16_t colorMuted() {
+  return (g_settings.theme == 1) ? tft.color565(162, 168, 176)
+                                 : tft.color565(96, 104, 116);
+}
+
+static uint16_t colorNavBg() {
+  return (g_settings.theme == 1) ? tft.color565(16, 18, 20)
+                                 : tft.color565(220, 226, 232);
+}
+
+static uint16_t colorNavInactive() {
+  return (g_settings.theme == 1) ? tft.color565(42, 46, 52)
+                                 : tft.color565(204, 212, 220);
+}
+
+static uint16_t colorSoftFill() {
+  return (g_settings.theme == 1) ? tft.color565(34, 39, 44)
+                                 : tft.color565(236, 242, 247);
 }
 
 static void clearRow(int16_t y, int16_t h = 24) {
   tft.fillRect(10, y - 2, TFT_WIDTH - 20, h + 4, colorBg());
+}
+
+static void drawProgressBar(int16_t x, int16_t y, int16_t w, int16_t h,
+                            uint8_t percent, uint16_t fill) {
+  if (w <= 0 || h <= 0)
+    return;
+  tft.fillRect(x, y, w, h, colorBg());
+  tft.drawRect(x, y, w, h, colorBorder());
+  if (percent == 0)
+    return;
+  const int16_t innerW = (w > 4) ? (w - 4) : 0;
+  const int16_t innerH = (h > 4) ? (h - 4) : 0;
+  const uint8_t cappedPercent = (percent > 100) ? 100 : percent;
+  const int16_t fillW = (innerW * cappedPercent) / 100;
+  if (fillW > 0 && innerH > 0) {
+    tft.fillRect(x + 2, y + 2, fillW, innerH, fill);
+  }
+}
+
+static void drawStateBadge(int16_t x, int16_t y, int16_t w, int16_t h,
+                           const char *label, uint16_t bg) {
+  tft.fillRect(x, y, w, h, bg);
+  tft.drawRect(x, y, w, h, colorBorder());
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(1);
+  tft.setTextDatum(middle_center);
+  tft.drawString(label, x + w / 2, y + h / 2);
+  tft.setTextDatum(top_left);
+}
+
+static const char *getDisplayPhaseName(const SystemState &state) {
+  const bool ru = (g_settings.language == 0);
+  switch (state.mode) {
+  case Mode::RECTIFICATION:
+  case Mode::DISTILLATION:
+  case Mode::MANUAL_RECT:
+    return FSM::getPhaseName(state.rectPhase);
+  case Mode::MASHING:
+    if (state.mashing.stepName[0] != '\0')
+      return state.mashing.stepName;
+    return ru ? "Шаг затирки" : "Mash step";
+  case Mode::HOLD:
+    return ru ? "Пастеризация" : "Hold";
+  case Mode::NBK:
+    return FSM::getNbkPhaseName(state.nbkPhase);
+  case Mode::FERMENTATION:
+    return FSM::getFermPhaseName(state.fermPhase);
+  case Mode::IDLE:
+  default:
+    return ru ? "Ожидание" : "Idle";
+  }
 }
 
 static void drawHeader(const char *title, bool showBack) {
@@ -1425,7 +1531,8 @@ static void drawHeader(const char *title, bool showBack) {
 
   // Отрисовываем только на под-экранах
   tft.fillRect(0, 0, TFT_WIDTH, UI_HEADER_H, colorCard());
-  tft.drawFastHLine(0, UI_HEADER_H - 1, TFT_WIDTH, tft.color565(200, 200, 200));
+  tft.drawFastHLine(0, UI_HEADER_H - 1, TFT_WIDTH, colorBorder());
+  tft.drawFastHLine(0, 0, TFT_WIDTH, colorAccent());
 
   tft.setTextColor(colorFg());
   tft.setTextSize(1);
@@ -1434,11 +1541,13 @@ static void drawHeader(const char *title, bool showBack) {
 
   int16_t bw = 110;
   int16_t bh = UI_HEADER_H - 10;
-  tft.fillRoundRect(TFT_WIDTH - bw - 5, (UI_HEADER_H - bh) / 2, bw, bh, 8,
-                    COLOR_PRIMARY);
+  const int16_t bx = TFT_WIDTH - bw - 5;
+  const int16_t by = (UI_HEADER_H - bh) / 2;
+  tft.fillRect(bx, by, bw, bh, colorAccent());
+  tft.drawRect(bx, by, bw, bh, colorBorder());
   tft.setTextColor(TFT_WHITE);
   tft.setTextDatum(middle_center);
-  tft.drawString(msg(Msg::BTN_BACK), TFT_WIDTH - bw / 2 - 5, UI_HEADER_H / 2);
+  tft.drawString(msg(Msg::BTN_BACK), bx + bw / 2, UI_HEADER_H / 2);
 
   tft.setTextDatum(top_left);
 }
@@ -1449,17 +1558,13 @@ static void drawTabs(UiScreen current) {
                            ru ? "НАСТРОЙ" : "SET", ru ? "СЕРВИС" : "INFO"};
 
   const int16_t navY = TFT_HEIGHT - UI_FOOTER_H;
-  const int16_t gap = 8;
+  const int16_t gap = 6;
   const int16_t bw = (TFT_WIDTH - (gap * 5)) / 4;
   const int16_t bh = UI_FOOTER_H - 14;
-  const uint16_t navBg = (g_settings.theme == 1) ? tft.color565(20, 22, 24)
-                                                 : tft.color565(236, 240, 244);
-  const uint16_t navInactive = (g_settings.theme == 1)
-                                   ? tft.color565(52, 58, 64)
-                                   : tft.color565(222, 228, 234);
 
-  tft.fillRect(0, navY, TFT_WIDTH, UI_FOOTER_H, navBg);
-  tft.drawFastHLine(0, navY, TFT_WIDTH, tft.color565(160, 170, 180));
+  tft.fillRect(0, navY, TFT_WIDTH, UI_FOOTER_H, colorNavBg());
+  tft.drawFastHLine(0, navY, TFT_WIDTH, colorBorder());
+  tft.drawFastHLine(0, navY + 1, TFT_WIDTH, colorAccent());
 
   for (int i = 0; i < 4; i++) {
     const int16_t x = gap + i * (bw + gap);
@@ -1473,16 +1578,13 @@ static void drawTabs(UiScreen current) {
       active = (current == UI_SETTINGS);
     else
       active = (current == UI_SERVICE);
-    const uint16_t bg = active ? COLOR_PRIMARY : navInactive;
-    const uint16_t border =
-        active ? tft.color565(240, 245, 250) : tft.color565(145, 155, 165);
+    const uint16_t bg = active ? colorAccent() : colorNavInactive();
     const uint16_t fg = active ? TFT_WHITE : colorFg();
 
-    tft.fillRoundRect(x, y, bw, bh, 12, bg);
-    tft.drawRoundRect(x, y, bw, bh, 12, border);
+    tft.fillRect(x, y, bw, bh, bg);
+    tft.drawRect(x, y, bw, bh, colorBorder());
     if (active) {
-      tft.fillRoundRect(x + 16, y + 4, bw - 32, 3, 2,
-                        tft.color565(210, 236, 255));
+      tft.fillRect(x + 4, y + 4, bw - 8, 3, tft.color565(210, 236, 255));
     }
 
     tft.setTextColor(fg);
@@ -1494,10 +1596,10 @@ static void drawTabs(UiScreen current) {
     // Quick status dots to improve at-a-glance readability.
     if (i == 1 && g_state.mode != Mode::IDLE) {
       const uint16_t dot = g_state.paused ? COLOR_WARNING : COLOR_SUCCESS;
-      tft.fillCircle(x + bw - 10, y + 10, 4, dot);
+      tft.fillRect(x + bw - 11, y + 7, 6, 6, dot);
     }
     if (i == 3 && !g_state.safetyOk) {
-      tft.fillCircle(x + bw - 10, y + 10, 4, COLOR_DANGER);
+      tft.fillRect(x + bw - 11, y + 7, 6, 6, COLOR_DANGER);
     }
   }
 
@@ -1518,13 +1620,13 @@ static void drawValueRow(int16_t y, const char *label, const char *value,
 
   if (highlighted) {
     // Делаем значение похожим на кнопку
-    tft.fillRoundRect(boxX, y - 7, boxW, 32, 8, COLOR_PRIMARY);
-    tft.drawRoundRect(boxX, y - 7, boxW, 32, 8, tft.color565(255, 255, 255));
+    tft.fillRect(boxX, y - 7, boxW, 32, colorAccent());
+    tft.drawRect(boxX, y - 7, boxW, 32, colorBorder());
     tft.setTextColor(TFT_WHITE);
   } else {
-    tft.fillRoundRect(boxX, y - 7, boxW, 32, 8, colorCard());
-    tft.drawRoundRect(boxX, y - 7, boxW, 32, 8, tft.color565(200, 200, 200));
-    tft.setTextColor(COLOR_PRIMARY);
+    tft.fillRect(boxX, y - 7, boxW, 32, colorCard());
+    tft.drawRect(boxX, y - 7, boxW, 32, colorBorder());
+    tft.setTextColor(colorAccent());
   }
 
   tft.setTextDatum(middle_center);
@@ -1535,9 +1637,9 @@ static void drawValueRow(int16_t y, const char *label, const char *value,
 
 static void drawButton(int16_t x, int16_t y, int16_t w, int16_t h,
                        const char *label, uint16_t bg, uint16_t fg) {
-  tft.fillRoundRect(x, y, w, h, 10, bg);
-  // Darker border
-  tft.drawRoundRect(x, y, w, h, 10, tft.color565(100, 100, 100));
+  tft.fillRect(x, y, w, h, bg);
+  tft.drawRect(x, y, w, h, colorBorder());
+  tft.drawFastHLine(x + 1, y + 1, w - 2, colorSoftFill());
 
   tft.setTextColor(fg);
   tft.setTextSize(2);
@@ -1548,8 +1650,9 @@ static void drawButton(int16_t x, int16_t y, int16_t w, int16_t h,
 }
 
 static void drawCard(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t bg) {
-  tft.fillRoundRect(x, y, w, h, 12, bg);
-  tft.drawRoundRect(x, y, w, h, 12, tft.color565(200, 200, 200));
+  tft.fillRect(x, y, w, h, bg);
+  tft.drawRect(x, y, w, h, colorBorder());
+  tft.drawFastHLine(x + 1, y + 1, w - 2, colorSoftFill());
 }
 
 static void drawValueTileShell(int16_t x, int16_t y, int16_t w, int16_t h,
@@ -1571,7 +1674,7 @@ static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h,
   const int16_t valueAreaY = y + 20;
   const int16_t valueAreaH = h - 22;
   if (valueAreaH > 0) {
-    tft.fillRoundRect(x + 2, valueAreaY, w - 4, valueAreaH, 8, colorCard());
+    tft.fillRect(x + 2, valueAreaY, w - 4, valueAreaH, colorCard());
   }
 
   uint8_t valueSize = (w >= 135 && h >= 64) ? 3 : 2;
@@ -1710,7 +1813,7 @@ static void renderDashboard(const SystemState &state, bool full) {
 
   char statusBuf[64];
   snprintf(statusBuf, sizeof(statusBuf), "%s / %s",
-           FSM::getModeName(state.mode), FSM::getPhaseName(state.rectPhase));
+           FSM::getModeName(state.mode), getDisplayPhaseName(state));
 
   const char *procState =
       (state.mode == Mode::IDLE)
@@ -1758,11 +1861,7 @@ static void renderDashboard(const SystemState &state, bool full) {
     const int16_t pbY = statusY + 27;
     const int16_t pbW = statusW - 6;
     const int16_t pbH = 6;
-    tft.fillRoundRect(pbX, pbY, pbW, pbH, 3, tft.color565(210, 216, 224));
-    if (phaseProgress > 0) {
-      const int16_t fillW = (pbW * phaseProgress) / 100;
-      tft.fillRoundRect(pbX, pbY, fillW, pbH, 3, COLOR_PRIMARY);
-    }
+    drawProgressBar(pbX, pbY, pbW, pbH, phaseProgress, colorAccent());
     tft.setFont(&fonts::efontJA_16);
     tft.setTextDatum(top_left);
     strncpy(g_dashboardCache.status, statusBuf,
@@ -1780,20 +1879,8 @@ static void renderDashboard(const SystemState &state, bool full) {
       tft.fillRect(badgeX - 4, barY + 4, badgeW + 8, 34, colorCard());
     }
 
-    tft.fillRoundRect(badgeX, barY + 6, badgeW, badgeH, 7, procColor);
-    tft.drawRoundRect(badgeX, barY + 6, badgeW, badgeH, 7,
-                      tft.color565(220, 230, 240));
-    tft.setTextColor(TFT_WHITE);
-    tft.setTextSize(1);
-    tft.setTextDatum(middle_center);
-    tft.drawString(procState, badgeX + badgeW / 2, barY + 6 + badgeH / 2);
-
-    tft.fillRoundRect(badgeX, barY + 24, badgeW, badgeH, 7, safetyColor);
-    tft.drawRoundRect(badgeX, barY + 24, badgeW, badgeH, 7,
-                      tft.color565(220, 230, 240));
-    tft.setTextColor(TFT_WHITE);
-    tft.setTextDatum(middle_center);
-    tft.drawString(safetyState, badgeX + badgeW / 2, barY + 24 + badgeH / 2);
+    drawStateBadge(badgeX, barY + 6, badgeW, badgeH, procState, procColor);
+    drawStateBadge(badgeX, barY + 24, badgeW, badgeH, safetyState, safetyColor);
 
     strncpy(g_dashboardCache.processState, procState,
             sizeof(g_dashboardCache.processState));
@@ -2043,7 +2130,7 @@ static void renderModeMonitor(const SystemState &state, bool full) {
 
   char statusBuf[64];
   snprintf(statusBuf, sizeof(statusBuf), "%s / %s",
-           FSM::getModeName(state.mode), FSM::getPhaseName(state.rectPhase));
+           FSM::getModeName(state.mode), getDisplayPhaseName(state));
 
   const char *procState =
       state.paused ? (ru ? "ПАУЗА" : "PAUSE") : (ru ? "РАБОТА" : "RUN");
@@ -2086,11 +2173,7 @@ static void renderModeMonitor(const SystemState &state, bool full) {
     const int16_t pbY = statusY + 27;
     const int16_t pbW = statusW - 6;
     const int16_t pbH = 6;
-    tft.fillRoundRect(pbX, pbY, pbW, pbH, 3, tft.color565(210, 216, 224));
-    if (phaseProgress > 0) {
-      const int16_t fillW = (pbW * phaseProgress) / 100;
-      tft.fillRoundRect(pbX, pbY, fillW, pbH, 3, COLOR_PRIMARY);
-    }
+    drawProgressBar(pbX, pbY, pbW, pbH, phaseProgress, colorAccent());
 
     strncpy(g_dashboardCache.status, statusBuf,
             sizeof(g_dashboardCache.status));
@@ -2106,18 +2189,8 @@ static void renderModeMonitor(const SystemState &state, bool full) {
     if (!full) {
       tft.fillRect(badgeX - 4, barY + 4, badgeW + 8, 34, colorCard());
     }
-    tft.fillRoundRect(badgeX, barY + 6, badgeW, badgeH, 7, procColor);
-    tft.drawRoundRect(badgeX, barY + 6, badgeW, badgeH, 7,
-                      tft.color565(220, 230, 240));
-    tft.setTextColor(TFT_WHITE);
-    tft.setTextSize(1);
-    tft.setTextDatum(middle_center);
-    tft.drawString(procState, badgeX + badgeW / 2, barY + 6 + badgeH / 2);
-
-    tft.fillRoundRect(badgeX, barY + 24, badgeW, badgeH, 7, safetyColor);
-    tft.drawRoundRect(badgeX, barY + 24, badgeW, badgeH, 7,
-                      tft.color565(220, 230, 240));
-    tft.drawString(safetyState, badgeX + badgeW / 2, barY + 24 + badgeH / 2);
+    drawStateBadge(badgeX, barY + 6, badgeW, badgeH, procState, procColor);
+    drawStateBadge(badgeX, barY + 24, badgeW, badgeH, safetyState, safetyColor);
 
     strncpy(g_dashboardCache.processState, procState,
             sizeof(g_dashboardCache.processState));
@@ -2297,7 +2370,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
 
   char statusBuf[64];
   snprintf(statusBuf, sizeof(statusBuf), "%s / %s",
-           FSM::getModeName(state.mode), FSM::getPhaseName(state.rectPhase));
+           FSM::getModeName(state.mode), getDisplayPhaseName(state));
 
   const char *procState =
       state.paused ? (ru ? "PAUSE" : "PAUSE") : (ru ? "RUN" : "RUN");
@@ -2354,11 +2427,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
     const int16_t pbY = statusY + 27;
     const int16_t pbW = statusW - 6;
     const int16_t pbH = 6;
-    tft.fillRoundRect(pbX, pbY, pbW, pbH, 3, tft.color565(210, 216, 224));
-    if (phaseProgress > 0) {
-      const int16_t fillW = (pbW * phaseProgress) / 100;
-      tft.fillRoundRect(pbX, pbY, fillW, pbH, 3, COLOR_PRIMARY);
-    }
+    drawProgressBar(pbX, pbY, pbW, pbH, phaseProgress, colorAccent());
     strncpy(g_dashboardCache.status, statusBuf,
             sizeof(g_dashboardCache.status));
     g_dashboardCache.status[sizeof(g_dashboardCache.status) - 1] = '\0';
@@ -2373,18 +2442,8 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
     if (!full) {
       tft.fillRect(badgeX - 4, barY + 4, badgeW + 8, 34, colorCard());
     }
-    tft.fillRoundRect(badgeX, barY + 6, badgeW, badgeH, 7, procColor);
-    tft.drawRoundRect(badgeX, barY + 6, badgeW, badgeH, 7,
-                      tft.color565(220, 230, 240));
-    tft.setTextColor(TFT_WHITE);
-    tft.setTextSize(1);
-    tft.setTextDatum(middle_center);
-    tft.drawString(procState, badgeX + badgeW / 2, barY + 6 + badgeH / 2);
-
-    tft.fillRoundRect(badgeX, barY + 24, badgeW, badgeH, 7, safetyColor);
-    tft.drawRoundRect(badgeX, barY + 24, badgeW, badgeH, 7,
-                      tft.color565(220, 230, 240));
-    tft.drawString(safetyState, badgeX + badgeW / 2, barY + 24 + badgeH / 2);
+    drawStateBadge(badgeX, barY + 6, badgeW, badgeH, procState, procColor);
+    drawStateBadge(badgeX, barY + 24, badgeW, badgeH, safetyState, safetyColor);
 
     strncpy(g_dashboardCache.processState, procState,
             sizeof(g_dashboardCache.processState));
@@ -2665,11 +2724,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
         const int16_t pbX = listX + 10;
         const int16_t pbY = ry + rowH - 9;
         const int16_t pbW = listW - 20;
-        tft.fillRoundRect(pbX, pbY, pbW, 5, 2, tft.color565(210, 216, 224));
-        if (progress > 0) {
-          const int16_t fillW = (pbW * progress) / 100;
-          tft.fillRoundRect(pbX, pbY, fillW, 5, 2, COLOR_PRIMARY);
-        }
+        drawProgressBar(pbX, pbY, pbW, 5, progress, colorAccent());
         tft.drawFastVLine(listX + listW / 2, ry + 6, rowH - 12,
                           tft.color565(214, 220, 228));
       }
@@ -2688,6 +2743,92 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
                static_cast<unsigned>(state.hold.currentStep + 1),
                static_cast<unsigned>(steps), state.temps.cube);
     }
+  } else if (state.mode == Mode::NBK) {
+    const int16_t g = 6;
+    const int16_t tileW = (TFT_WIDTH - 20 - g * 2) / 3;
+    const int16_t tileH = (panelH - g) / 2;
+    const int16_t x1 = 10;
+    const int16_t x2 = x1 + tileW + g;
+    const int16_t x3 = x2 + tileW + g;
+    const int16_t y2 = panelY + tileH + g;
+
+    if (layoutChanged) {
+      drawValueTileShell(x1, panelY, tileW, tileH, msg(Msg::COLUMN_BOTTOM));
+      drawValueTileShell(x2, panelY, tileW, tileH, msg(Msg::CUBE_TEMP));
+      drawValueTileShell(x3, panelY, tileW, tileH, msg(Msg::HEATER_POWER));
+      drawValueTileShell(x1, y2, tileW, tileH, msg(Msg::PUMP));
+      drawValueTileShell(x2, y2, tileW, tileH, ru ? "ДАВЛЕНИЕ" : "PRESSURE");
+      drawValueTileShell(x3, y2, tileW, tileH,
+                         hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
+                                     : (ru ? "ЦЕЛЬ" : "TARGET"));
+    }
+
+    char v[6][20];
+    snprintf(v[0], sizeof(v[0]), "%.1f", state.temps.columnBottom);
+    snprintf(v[1], sizeof(v[1]), "%.1f", state.temps.cube);
+    snprintf(v[2], sizeof(v[2]), "%.0f", state.power.power);
+    snprintf(v[3], sizeof(v[3]), "%.0f", state.pump.speedMlPerHour);
+    snprintf(v[4], sizeof(v[4]), "%.0f", state.pressure.cube);
+    if (hasWaterOut) {
+      snprintf(v[5], sizeof(v[5]), "%.1f", state.temps.waterOut);
+    } else {
+      snprintf(v[5], sizeof(v[5]), "%.0f", g_settings.nbk.pumpSpeedMlH);
+    }
+
+    updateTile(0, x1, panelY, tileW, tileH, v[0], "C", colorAccent());
+    updateTile(1, x2, panelY, tileW, tileH, v[1], "C", COLOR_DANGER);
+    updateTile(2, x3, panelY, tileW, tileH, v[2], msg(Msg::UNIT_W), COLOR_WARNING);
+    updateTile(3, x1, y2, tileW, tileH, v[3], msg(Msg::UNIT_ML_H), COLOR_SUCCESS);
+    updateTile(4, x2, y2, tileW, tileH, v[4], "mm", COLOR_INFO);
+    updateTile(5, x3, y2, tileW, tileH, v[5], hasWaterOut ? "C" : msg(Msg::UNIT_ML_H),
+               hasWaterOut ? COLOR_INFO : colorAccent());
+
+    snprintf(infoLine, sizeof(infoLine),
+             ru ? "НБК: низ колонны и подача в одном окне"
+                : "NBK: bottom temp and feed rate");
+    snprintf(auxLine, sizeof(auxLine), "%s %.1fC | %s %.0f",
+             ru ? "Порог" : "Threshold", g_settings.nbk.columnBottomTempThresholdC,
+             ru ? "Цель" : "Target", g_settings.nbk.targetVolumeMl);
+  } else if (state.mode == Mode::FERMENTATION) {
+    const int16_t g = 6;
+    const int16_t tileW = (TFT_WIDTH - 20 - g) / 2;
+    const int16_t tileH = (panelH - g) / 2;
+    const int16_t x1 = 10;
+    const int16_t x2 = x1 + tileW + g;
+    const int16_t y2 = panelY + tileH + g;
+
+    if (layoutChanged) {
+      drawValueTileShell(x1, panelY, tileW, tileH, msg(Msg::CUBE_TEMP));
+      drawValueTileShell(x2, panelY, tileW, tileH, ru ? "ЦЕЛЬ" : "TARGET");
+      drawValueTileShell(x1, y2, tileW, tileH, ru ? "ДОПУСК" : "BAND");
+      drawValueTileShell(x2, y2, tileW, tileH, ru ? "ВРЕМЯ" : "RUN TIME");
+    }
+
+    char v[4][20];
+    char runBuf[20];
+    formatDurationCompact(getModeRunElapsedSec(state), runBuf, sizeof(runBuf));
+    snprintf(v[0], sizeof(v[0]), "%.1f", state.temps.cube);
+    snprintf(v[1], sizeof(v[1]), "%.1f", g_settings.fermentation.targetTempC);
+    snprintf(v[2], sizeof(v[2]), "%.1f", g_settings.fermentation.hysteresisC);
+    snprintf(v[3], sizeof(v[3]), "%s", runBuf);
+
+    updateTile(0, x1, panelY, tileW, tileH, v[0], "C",
+               state.temps.cube > g_settings.fermentation.targetTempC +
+                                     g_settings.fermentation.hysteresisC
+                   ? COLOR_WARNING
+                   : COLOR_SUCCESS);
+    updateTile(1, x2, panelY, tileW, tileH, v[1], "C", colorAccent());
+    updateTile(2, x1, y2, tileW, tileH, v[2], "C", COLOR_INFO);
+    updateTile(3, x2, y2, tileW, tileH, v[3], "", COLOR_PRIMARY);
+
+    snprintf(infoLine, sizeof(infoLine),
+             ru ? "Ферментация: держим температуру в полосе"
+                : "Fermentation: keep temp in band");
+    snprintf(auxLine, sizeof(auxLine), "%s | %s %.0f h",
+             g_settings.fermentation.useHeater
+                 ? (ru ? "Подогрев включен" : "Heater enabled")
+                 : (ru ? "Подогрев выключен" : "Heater disabled"),
+             ru ? "План" : "Plan", g_settings.fermentation.durationHours);
   } else {
     drawCard(10, panelY, TFT_WIDTH - 20, panelH, colorCard());
     snprintf(infoLine, sizeof(infoLine),
@@ -2734,47 +2875,61 @@ static void renderControl(const SystemState &state, bool full) {
     drawTabs(UI_CONTROL);
   }
 
-  char modeBuf[64];
+  char modeBuf[96];
   const bool ru = (g_settings.language == 0);
+  const int16_t stopX = TFT_WIDTH - CTRL_ACTION_BW - 10;
+  const int16_t pauseX = stopX - CTRL_ACTION_BW - CTRL_ACTION_GAP;
+  const bool manualAllowed = isManualAccessAllowed(state);
   snprintf(modeBuf, sizeof(modeBuf),
            (state.mode == Mode::IDLE) ? (ru ? "Режим: %s" : "Mode: %s")
                                       : (ru ? "Активен: %s" : "Active: %s"),
            FSM::getModeName(state.mode));
+  if (state.mode == Mode::IDLE) {
+    snprintf(modeBuf, sizeof(modeBuf), "%s",
+             ru ? "ГОТОВ. Выберите режим." : "Ready. Select a mode.");
+  } else {
+    snprintf(modeBuf, sizeof(modeBuf), "%s / %s", FSM::getModeName(state.mode),
+             getDisplayPhaseName(state));
+  }
 
-  drawCard(10, 8, TFT_WIDTH - 20, 30, colorCard());
-  tft.setTextColor((state.mode == Mode::IDLE) ? COLOR_INFO : COLOR_SUCCESS);
-  tft.setTextDatum(middle_center);
+  drawCard(10, CTRL_STATUS_Y, TFT_WIDTH - 20, CTRL_STATUS_H, colorCard());
+  tft.setTextColor((state.mode == Mode::IDLE) ? colorAccent() : COLOR_SUCCESS);
+  tft.setTextDatum(middle_left);
   tft.setTextSize(1);
-  tft.drawString(modeBuf, TFT_WIDTH / 2, 23);
+  tft.drawString(modeBuf, 20, CTRL_STATUS_Y + CTRL_STATUS_H / 2);
   tft.setTextDatum(top_left);
-
-  drawButton(CTRL_X1, CTRL_Y1, CTRL_BW, CTRL_BH, msg(Msg::AUTO_RECTIFY),
-             modeButtonColor(state, Mode::RECTIFICATION, COLOR_SUCCESS),
-             TFT_WHITE);
-  drawButton(CTRL_X2, CTRL_Y1, CTRL_BW, CTRL_BH, msg(Msg::DISTILLATION),
-             modeButtonColor(state, Mode::DISTILLATION, COLOR_SUCCESS),
-             TFT_WHITE);
-
-  drawButton(CTRL_X1, CTRL_Y2, CTRL_BW, CTRL_BH, msg(Msg::MANUAL_RECT),
-             modeButtonColor(state, Mode::MANUAL_RECT, COLOR_PRIMARY),
-             TFT_WHITE);
-  drawButton(CTRL_X2, CTRL_Y2, CTRL_BW, CTRL_BH, msg(Msg::MASHING),
-             modeButtonColor(state, Mode::MASHING, COLOR_PRIMARY), TFT_WHITE);
-
-  drawButton(CTRL_X1, CTRL_Y3, CTRL_BW, CTRL_BH, msg(Msg::HOLD_MODE),
-             modeButtonColor(state, Mode::HOLD, COLOR_PRIMARY), TFT_WHITE);
-
-  const bool manualScreenAllowed =
-      (state.mode == Mode::IDLE || state.mode == Mode::MANUAL_RECT);
-  drawButton(CTRL_X2, CTRL_Y3, CTRL_BW, CTRL_BH, msg(Msg::MANUAL_PUMP),
-             manualScreenAllowed ? COLOR_INFO : dimmedButtonColor(), TFT_WHITE);
-
-  drawButton(CTRL_X1, CTRL_Y4, CTRL_BW, CTRL_BH,
+  drawButton(pauseX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH,
              state.paused ? msg(Msg::RESUME) : msg(Msg::PAUSE),
              (state.mode == Mode::IDLE) ? dimmedButtonColor() : COLOR_WARNING,
              TFT_WHITE);
-  drawButton(CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH, msg(Msg::STOP),
+  drawButton(stopX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH, msg(Msg::STOP),
              (state.mode == Mode::IDLE) ? dimmedButtonColor() : COLOR_DANGER,
+             TFT_WHITE);
+
+  drawButton(CTRL_X1, CTRL_Y1, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::RECTIFICATION),
+             modeButtonColor(state, Mode::RECTIFICATION, colorAccent()),
+             TFT_WHITE);
+  drawButton(CTRL_X2, CTRL_Y1, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::DISTILLATION),
+             modeButtonColor(state, Mode::DISTILLATION, COLOR_INFO),
+             TFT_WHITE);
+
+  drawButton(CTRL_X1, CTRL_Y2, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::MANUAL_RECT),
+             modeButtonColor(state, Mode::MANUAL_RECT, tft.color565(96, 128, 48)),
+             TFT_WHITE);
+  drawButton(CTRL_X2, CTRL_Y2, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::MASHING),
+             modeButtonColor(state, Mode::MASHING, tft.color565(136, 92, 40)), TFT_WHITE);
+
+  drawButton(CTRL_X1, CTRL_Y3, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::HOLD),
+             modeButtonColor(state, Mode::HOLD, tft.color565(136, 76, 32)), TFT_WHITE);
+
+  drawButton(CTRL_X2, CTRL_Y3, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::NBK),
+             modeButtonColor(state, Mode::NBK, tft.color565(72, 108, 156)), TFT_WHITE);
+
+  drawButton(CTRL_X1, CTRL_Y4, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::FERMENTATION),
+             modeButtonColor(state, Mode::FERMENTATION, tft.color565(56, 122, 110)),
+             TFT_WHITE);
+  drawButton(CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH, ru ? "Ручное" : "Manual",
+             manualAllowed ? COLOR_DARK_GREY : dimmedButtonColor(),
              TFT_WHITE);
 
   if (ui.modeSwitchConfirm) {
@@ -3013,6 +3168,24 @@ static void renderManual(const SystemState &state) {
   tft.fillScreen(colorBg());
   drawHeader(msg(Msg::MANUAL_MODE), true);
   drawTabs(UI_CONTROL);
+
+  if (!isManualAccessAllowed(state)) {
+    const bool ru = (g_settings.language == 0);
+    drawCard(10, 65, TFT_WIDTH - 20, 120, colorCard());
+    tft.setTextColor(COLOR_WARNING);
+    tft.setTextSize(2);
+    tft.setTextDatum(middle_center);
+    tft.drawString(ru ? "РУЧНОЕ ЗАБЛОКИРОВАНО" : "MANUAL LOCKED",
+                   TFT_WIDTH / 2, 100);
+    tft.setTextColor(colorFg());
+    tft.setTextSize(1);
+    tft.drawString(ru ? "Остановите процесс или войдите в ручной режим."
+                      : "Stop the process or switch to manual mode.",
+                   TFT_WIDTH / 2, 135);
+    tft.drawString(FSM::getModeName(state.mode), TFT_WIDTH / 2, 158);
+    tft.setTextDatum(top_left);
+    return;
+  }
 
   int16_t y = 65;
   char buf[32];
