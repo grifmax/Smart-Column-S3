@@ -1274,42 +1274,50 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_EQUIPMENT:
-    if (ty >= 65 && ty < 245) {
-      if (ty >= 65 && ty < 110) {
+    if (hit(tx, ty, 10, 48, 225, 78)) {
         openValueEdit(msg(Msg::HEATER_POWER), g_settings.equipment.heaterPowerW,
                       1000, 10000, 100, 500, saveHeaterPower, "W", 0);
         return true;
-      } else if (ty >= 110 && ty < 155) {
+    } else if (hit(tx, ty, 245, 48, 225, 78)) {
         openValueEdit(msg(Msg::COLUMN_HEIGHT),
                       g_settings.equipment.columnHeightMm, 500, 3000, 50, 200,
                       saveColumnHeight, "mm", 0);
         return true;
-      } else if (ty >= 155 && ty < 200) {
+    } else if (hit(tx, ty, 10, 138, 225, 78)) {
         openValueEdit(msg(Msg::CUBE_VOLUME), g_settings.equipment.cubeVolumeL,
                       5, 200, 1, 10, saveCubeVolume, "L", 1);
         return true;
-      } else if (ty >= 200 && ty < 245) {
+    } else if (hit(tx, ty, 245, 138, 225, 78)) {
         openValueEdit(msg(Msg::PACKING_COEFF),
                       g_settings.equipment.packingCoeff, 1, 15, 0.1, 1,
                       savePackingCoeff, "", 2);
         return true;
-      }
     }
     break;
 
   case UI_RECT_PARAMS:
-    if (hit(tx, ty, 330, 44, 140, 22)) {
+    if (hit(tx, ty, 10, 48, 460, 26)) {
       rectParamsPage = (rectParamsPage == 0) ? 1 : 0;
       return true;
     }
 
-    if (ty >= 68 && ty < 250) {
-      const int16_t rowStep = 31;
-      const int16_t row = (ty - 68) / rowStep;
+    if (ty >= 82 && ty < 232) {
+      const int16_t rowH = 46;
+      const int16_t rowGap = 6;
+      const int16_t rowPitch = rowH + rowGap;
+      const int16_t row = (ty - 82) / rowPitch;
+      const int16_t col = (tx >= 245) ? 1 : 0;
+      if (row < 0 || row > 2) {
+        break;
+      }
+      const int16_t rowTop = 82 + row * rowPitch;
+      if (!hit(tx, ty, col == 0 ? 10 : 245, rowTop, 225, rowH)) {
+        break;
+      }
       const bool ru = (g_settings.language == 0);
 
       if (rectParamsPage == 0) {
-        switch (row) {
+        switch ((row * 2) + col) {
         case 0:
           applyRectFeedstockDefaultsAndSave(
               (g_settings.rectParams.feedstock + 1) % 8);
@@ -1343,7 +1351,7 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
           break;
         }
       } else {
-        switch (row) {
+        switch ((row * 2) + col) {
         case 0:
           openValueEdit(msg(Msg::HEADS_SPEED),
                         g_settings.rectParams.headsSpeedMlHKw, 10, 1000, 10,
@@ -1371,24 +1379,22 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_DIST_PARAMS:
-    if (ty >= 65 && ty < 245) {
-      if (ty >= 65 && ty < 110) {
+    if (hit(tx, ty, 10, 48, 225, 78)) {
         openValueEdit(msg(Msg::DIST_SPEED), distUi.speedMlH, 50, 5000, 50, 500,
                       saveDistSpeed, "ml/h", 0);
         return true;
-      } else if (ty >= 110 && ty < 155) {
+    } else if (hit(tx, ty, 245, 48, 225, 78)) {
         openValueEdit(msg(Msg::HEADS_VOLUME), distUi.headsVolumeMl, 0, 5000, 10,
                       100, saveDistHeads, "ml", 0);
         return true;
-      } else if (ty >= 155 && ty < 200) {
+    } else if (hit(tx, ty, 10, 138, 225, 78)) {
         openValueEdit(msg(Msg::TARGET_VOLUME), distUi.targetVolumeMl, 0, 50000,
                       100, 1000, saveDistTarget, "ml", 0);
         return true;
-      } else if (ty >= 200 && ty < 245) {
+    } else if (hit(tx, ty, 245, 138, 225, 78)) {
         openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1, 1,
                       saveDistEndTemp, "C", 1);
         return true;
-      }
     }
     break;
 
@@ -4053,27 +4059,29 @@ static void renderEquipment() {
   drawHeader(msg(Msg::EQUIPMENT), true);
   drawTabs(UI_SETTINGS);
 
-  int16_t y = 65;
-  int16_t step = 45;
+  const int16_t x1 = 10;
+  const int16_t x2 = 245;
+  const int16_t y1 = 48;
+  const int16_t y2 = 138;
+  const int16_t tileW = 225;
+  const int16_t tileH = 78;
   char buf[32];
 
-  snprintf(buf, sizeof(buf), "%u %s", g_settings.equipment.heaterPowerW,
-           msg(Msg::UNIT_W));
-  drawValueRow(y, msg(Msg::HEATER_POWER), buf);
-  y += step;
+  snprintf(buf, sizeof(buf), "%u", g_settings.equipment.heaterPowerW);
+  drawValueTile(x1, y1, tileW, tileH, msg(Msg::HEATER_POWER), buf,
+                msg(Msg::UNIT_W), COLOR_WARNING);
 
-  snprintf(buf, sizeof(buf), "%u %s", g_settings.equipment.columnHeightMm,
-           msg(Msg::UNIT_MM));
-  drawValueRow(y, msg(Msg::COLUMN_HEIGHT), buf);
-  y += step;
+  snprintf(buf, sizeof(buf), "%u", g_settings.equipment.columnHeightMm);
+  drawValueTile(x2, y1, tileW, tileH, msg(Msg::COLUMN_HEIGHT), buf,
+                msg(Msg::UNIT_MM), COLOR_INFO);
 
-  snprintf(buf, sizeof(buf), "%.1f %s", g_settings.equipment.cubeVolumeL,
-           msg(Msg::UNIT_L));
-  drawValueRow(y, msg(Msg::CUBE_VOLUME), buf);
-  y += step;
+  snprintf(buf, sizeof(buf), "%.1f", g_settings.equipment.cubeVolumeL);
+  drawValueTile(x1, y2, tileW, tileH, msg(Msg::CUBE_VOLUME), buf,
+                msg(Msg::UNIT_L), COLOR_SUCCESS);
 
   snprintf(buf, sizeof(buf), "%.2f", g_settings.equipment.packingCoeff);
-  drawValueRow(y, msg(Msg::PACKING_COEFF), buf);
+  drawValueTile(x2, y2, tileW, tileH, msg(Msg::PACKING_COEFF), buf, "",
+                colorAccent());
   drawFooterHint(msg(Msg::TAP_TO_EDIT), colorAccent());
 }
 
@@ -4082,6 +4090,90 @@ static void renderRectParams() {
   const bool ru = (g_settings.language == 0);
   drawHeader(ru ? "РЕКТ. ПАРАМ." : "RECT PARAMS", true);
   drawTabs(UI_SETTINGS);
+
+  const int16_t tileW = 225;
+  const int16_t tileH = 46;
+  const int16_t x1 = 10;
+  const int16_t x2 = 245;
+  const int16_t y1 = 82;
+  const int16_t y2 = 134;
+  const int16_t y3 = 186;
+  char tileBuf[32];
+  char pageBuf[80];
+
+  snprintf(pageBuf, sizeof(pageBuf), "%s",
+           rectParamsPage == 0 ? "PAGE: TECH / CUTS"
+                               : "PAGE: PROFILE / SPEED");
+  drawButton(10, 48, 460, 26, pageBuf,
+             rectParamsPage == 0 ? COLOR_INFO : colorAccent(), TFT_WHITE);
+
+  if (rectParamsPage == 0) {
+    snprintf(tileBuf, sizeof(tileBuf), "%s",
+             rectFeedstockName(g_settings.rectParams.feedstock, ru));
+    drawValueTile(x1, y1, tileW, tileH, "FEEDSTOCK", tileBuf, "", COLOR_INFO);
+
+    snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.feedVolumeL);
+    drawValueTile(x2, y1, tileW, tileH, "FEED VOL", tileBuf,
+                  msg(Msg::UNIT_L), COLOR_PRIMARY);
+
+    snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.feedAbvPercent);
+    drawValueTile(x1, y2, tileW, tileH, "FEED ABV", tileBuf, "%",
+                  COLOR_WARNING);
+
+    snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.headsPercent);
+    drawValueTile(x2, y2, tileW, tileH, msg(Msg::HEADS_PERCENT), tileBuf, "%",
+                  COLOR_DANGER);
+
+    snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.bodyPercent);
+    drawValueTile(x1, y3, tileW, tileH, "BODY %", tileBuf, "%", COLOR_SUCCESS);
+
+    snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.tailsPercent);
+    drawValueTile(x2, y3, tileW, tileH, "TAILS %", tileBuf, "%",
+                  COLOR_WARNING);
+
+    drawFooterHint("Tap feedstock to rotate default cuts", COLOR_INFO);
+    return;
+  }
+
+  snprintf(tileBuf, sizeof(tileBuf), "%.0f", g_settings.rectParams.headsSpeedMlHKw);
+  drawValueTile(x1, y1, tileW, tileH, msg(Msg::HEADS_SPEED), tileBuf,
+                msg(Msg::UNIT_ML_H_K), COLOR_DANGER);
+
+  snprintf(tileBuf, sizeof(tileBuf), "%.0f", g_settings.rectParams.bodySpeedMlHKw);
+  drawValueTile(x2, y1, tileW, tileH, msg(Msg::BODY_SPEED), tileBuf,
+                msg(Msg::UNIT_ML_H_K), COLOR_SUCCESS);
+
+  snprintf(tileBuf, sizeof(tileBuf), "%u", g_settings.rectParams.stabilizationMin);
+  drawValueTile(x1, y2, tileW, tileH, msg(Msg::STABILIZATION), tileBuf,
+                msg(Msg::UNIT_MIN), COLOR_INFO);
+
+  snprintf(tileBuf, sizeof(tileBuf), "%u", g_settings.rectParams.purgeMin);
+  drawValueTile(x2, y2, tileW, tileH, msg(Msg::PURGE_TIME), tileBuf,
+                msg(Msg::UNIT_MIN), COLOR_WARNING);
+
+  const float atmHpaComp =
+      (g_state.pressure.ok && g_state.pressure.atmosphere > 850.0f &&
+       g_state.pressure.atmosphere < 1100.0f)
+          ? g_state.pressure.atmosphere
+          : RECT_PRESSURE_STD_HPA;
+  const float bodyToTailsComp =
+      RECT_CUBE_BODY_TO_TAILS_BASE_C +
+      (atmHpaComp - RECT_PRESSURE_STD_HPA) * RECT_TEMP_COMP_C_PER_HPA;
+  const float finishComp =
+      RECT_CUBE_FINISH_BASE_C +
+      (atmHpaComp - RECT_PRESSURE_STD_HPA) * RECT_TEMP_COMP_C_PER_HPA;
+
+  snprintf(tileBuf, sizeof(tileBuf), "%.1f", bodyToTailsComp);
+  drawValueTile(x1, y3, tileW, tileH, "BODY -> TAILS*", tileBuf, "C",
+                colorMuted());
+
+  snprintf(tileBuf, sizeof(tileBuf), "%.1f", finishComp);
+  drawValueTile(x2, y3, tileW, tileH, "TAILS FINISH*", tileBuf, "C",
+                colorMuted());
+
+  snprintf(tileBuf, sizeof(tileBuf), "P=%.0f hPa | COMP", atmHpaComp);
+  drawFooterHint(tileBuf, COLOR_INFO);
+  return;
 
   int16_t y = 68;
   const int16_t step = 31;
@@ -4182,25 +4274,32 @@ static void renderDistParams() {
   drawHeader(ru ? "ДИСТ. ПАРАМ." : "DIST PARAMS", true);
   drawTabs(UI_SETTINGS);
 
-  int16_t y = 65;
-  int16_t step = 45;
-  char buf[32];
+  const int16_t x1 = 10;
+  const int16_t x2 = 245;
+  const int16_t y1 = 48;
+  const int16_t y2 = 138;
+  const int16_t tileW = 225;
+  const int16_t tileH = 78;
+  char tileBufDist[32];
 
-  snprintf(buf, sizeof(buf), "%.0f %s", distUi.speedMlH, msg(Msg::UNIT_ML_H));
-  drawValueRow(y, msg(Msg::DIST_SPEED), buf);
-  y += step;
+  snprintf(tileBufDist, sizeof(tileBufDist), "%.0f", distUi.speedMlH);
+  drawValueTile(x1, y1, tileW, tileH, msg(Msg::DIST_SPEED), tileBufDist,
+                msg(Msg::UNIT_ML_H), COLOR_PRIMARY);
 
-  snprintf(buf, sizeof(buf), "%.0f ml", distUi.headsVolumeMl);
-  drawValueRow(y, msg(Msg::HEADS_VOLUME), buf);
-  y += step;
+  snprintf(tileBufDist, sizeof(tileBufDist), "%.0f", distUi.headsVolumeMl);
+  drawValueTile(x2, y1, tileW, tileH, msg(Msg::HEADS_VOLUME), tileBufDist, "ml",
+                COLOR_DANGER);
 
-  snprintf(buf, sizeof(buf), "%.0f ml", distUi.targetVolumeMl);
-  drawValueRow(y, msg(Msg::TARGET_VOLUME), buf);
-  y += step;
+  snprintf(tileBufDist, sizeof(tileBufDist), "%.0f", distUi.targetVolumeMl);
+  drawValueTile(x1, y2, tileW, tileH, msg(Msg::TARGET_VOLUME), tileBufDist, "ml",
+                COLOR_SUCCESS);
 
-  snprintf(buf, sizeof(buf), "%.1f C", distUi.endTempC);
-  drawValueRow(y, msg(Msg::END_TEMP), buf);
+  snprintf(tileBufDist, sizeof(tileBufDist), "%.1f", distUi.endTempC);
+  drawValueTile(x2, y2, tileW, tileH, msg(Msg::END_TEMP), tileBufDist, "C",
+                COLOR_WARNING);
   drawFooterHint(msg(Msg::TAP_TO_EDIT), COLOR_WARNING);
+  return;
+
 }
 
 static void renderCalibration() {
