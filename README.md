@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.10-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.11-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -144,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.2.11 | 2026-04-17 | На TFT уплотнены `CALIBRATION` и `VALUE_EDIT`: калибровка переведена на 2-panel layout, редактор значения — на value-плитку, компактный ряд шаговых кнопок и отдельный save |
 | 2.2.10 | 2026-04-17 | На TFT уплотнены `MANUAL` и `SERVICE`: ручной экран переведён на 2 live-плитки + ряд клапанов, сервисный экран — на 2x2 diagnostics-плитки с нижним diag-блоком |
 | 2.2.9 | 2026-04-17 | Для TFT введён компактный HMI-словарь: короткие названия режимов/фаз, укороченные русские подписи и более жёсткие подсказки в `CONTROL`, `SETTINGS`, `SERVICE` и fallback-monitor |
 | 2.2.8 | 2026-04-17 | Для TFT добавлен общий text-fit слой: длинные русские подписи и статусы теперь ужимаются в shared-примитивах и не разламывают прямоугольный HMI-layout |

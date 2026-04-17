@@ -1213,27 +1213,27 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_VALUE_EDIT:
-    if (hit(tx, ty, 10, 175, 100, 70)) {
+    if (hit(tx, ty, 10, 138, 108, 56)) {
       edit.value -= edit.fastStep;
       if (edit.value < edit.min)
         edit.value = edit.min;
       return true;
-    } else if (hit(tx, ty, 125, 175, 100, 70)) {
+    } else if (hit(tx, ty, 124, 138, 108, 56)) {
       edit.value -= edit.step;
       if (edit.value < edit.min)
         edit.value = edit.min;
       return true;
-    } else if (hit(tx, ty, 255, 175, 100, 70)) {
+    } else if (hit(tx, ty, 238, 138, 108, 56)) {
       edit.value += edit.step;
       if (edit.value > edit.max)
         edit.value = edit.max;
       return true;
-    } else if (hit(tx, ty, 370, 175, 100, 70)) {
+    } else if (hit(tx, ty, 352, 138, 108, 56)) {
       edit.value += edit.fastStep;
       if (edit.value > edit.max)
         edit.value = edit.max;
       return true;
-    } else if (hit(tx, ty, 10, 255, TFT_WIDTH - 20, 55)) {
+    } else if (hit(tx, ty, 10, 202, TFT_WIDTH - 20, 44)) {
       if (edit.onSave)
         edit.onSave(edit.value);
       if (edit.returnToModeMonitor && isModeRunning(g_state)) {
@@ -1393,12 +1393,12 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_CALIBRATION:
-    if (tx > 240 && ty >= 65 && ty < 120) {
+    if (hit(tx, ty, 10, 52, 225, 86)) {
       openValueEdit(msg(Msg::PUMP_CALIBRATION),
                     g_settings.pumpCal.mlPerRevolution, 0.001, 5.0, 0.001, 0.05,
                     savePumpCal, "ml/r", 3);
       return true;
-    } else if (hit(tx, ty, 20, 150, 440, 55)) {
+    } else if (hit(tx, ty, 245, 52, 225, 86)) {
       Display::startTouchCalibration();
       return true;
     }
@@ -4209,12 +4209,16 @@ static void renderCalibration() {
   drawHeader(ru ? "КАЛИБР." : "CALIBRATION", true);
   drawTabs(UI_SETTINGS);
 
+  const int16_t tileY = 52;
+  const int16_t tileW = 225;
+  const int16_t tileH = 86;
   char buf[32];
-  snprintf(buf, sizeof(buf), "%.3f %s", g_settings.pumpCal.mlPerRevolution,
-           msg(Msg::UNIT_ML_R));
-  drawValueRow(80, msg(Msg::PUMP_CALIBRATION), buf);
+  snprintf(buf, sizeof(buf), "%.3f", g_settings.pumpCal.mlPerRevolution);
+  drawValueTile(10, tileY, tileW, tileH, msg(Msg::PUMP_CALIBRATION), buf,
+                msg(Msg::UNIT_ML_R), COLOR_INFO);
 
-  drawButton(20, 160, 440, 55, msg(Msg::TOUCH_CALIBRATION), COLOR_WARNING,
+  drawButton(245, tileY, tileW, tileH, msg(Msg::TOUCH_CALIBRATION),
+             COLOR_WARNING,
              TFT_WHITE);
   drawFooterHint(ru ? "Сначала ml/об, потом тач"
                     : "Set ml/rev first, then calibrate touch",
@@ -4276,35 +4280,30 @@ static void renderValueEdit() {
   drawHeader(edit.label, true);
   const bool ru = (g_settings.language == 0);
 
-  // Large value display in a card
-  drawCard(20, 70, TFT_WIDTH - 40, 90, colorCard());
-  drawPanelHeader(20, 70, TFT_WIDTH - 40, ru ? "ЗНАЧЕНИЕ" : "CURRENT VALUE",
-                  colorAccent());
-  tft.setTextColor(COLOR_PRIMARY);
-  tft.setTextSize(4);
-  tft.setTextDatum(middle_center);
   char buf[32];
   if (edit.decimals == 0)
-    snprintf(buf, sizeof(buf), "%.0f %s", edit.value, edit.unit);
+    snprintf(buf, sizeof(buf), "%.0f", edit.value);
   else if (edit.decimals == 1)
-    snprintf(buf, sizeof(buf), "%.1f %s", edit.value, edit.unit);
+    snprintf(buf, sizeof(buf), "%.1f", edit.value);
   else
-    snprintf(buf, sizeof(buf), "%.3f %s", edit.value, edit.unit);
-  tft.drawString(buf, TFT_WIDTH / 2, 122);
-  tft.setTextSize(1);
+    snprintf(buf, sizeof(buf), "%.3f", edit.value);
+  drawValueTile(10, 48, TFT_WIDTH - 20, 78,
+                ru ? "ЗНАЧЕНИЕ" : "CURRENT VALUE", buf, edit.unit,
+                COLOR_PRIMARY);
 
-  // Large +/- buttons
-  int16_t bw = 100;
-  int16_t bh = 70;
-  int16_t y = 175;
+  const int16_t bw = 108;
+  const int16_t bh = 56;
+  const int16_t y = 138;
   drawButton(10, y, bw, bh, "--", tft.color565(200, 50, 50), TFT_WHITE);
-  drawButton(125, y, bw, bh, "-", tft.color565(220, 100, 100), TFT_WHITE);
-  drawButton(255, y, bw, bh, "+", tft.color565(100, 200, 100), TFT_WHITE);
-  drawButton(370, y, bw, bh, "++", tft.color565(50, 180, 50), TFT_WHITE);
+  drawButton(124, y, bw, bh, "-", tft.color565(220, 100, 100), TFT_WHITE);
+  drawButton(238, y, bw, bh, "+", tft.color565(100, 200, 100), TFT_WHITE);
+  drawButton(352, y, bw, bh, "++", tft.color565(50, 180, 50), TFT_WHITE);
 
-  // Save button
-  drawButton(10, 255, TFT_WIDTH - 20, 55, msg(Msg::SAVE_AND_CLOSE),
+  drawButton(10, 202, TFT_WIDTH - 20, 44, msg(Msg::SAVE_AND_CLOSE),
              COLOR_PRIMARY, TFT_WHITE);
+  drawFooterHint(ru ? "Слева быстро вниз, справа быстро вверх"
+                    : "Fast down on left, fast up on right",
+                 colorAccent());
   tft.setTextDatum(top_left);
 }
 
