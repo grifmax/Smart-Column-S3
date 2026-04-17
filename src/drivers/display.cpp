@@ -1519,6 +1519,56 @@ static void drawProgressBar(int16_t x, int16_t y, int16_t w, int16_t h,
   }
 }
 
+static size_t utf8PrevCodepointStart(const char *text, size_t end) {
+  if (text == nullptr || end == 0)
+    return 0;
+  size_t pos = end - 1;
+  while (pos > 0 && ((static_cast<uint8_t>(text[pos]) & 0xC0u) == 0x80u)) {
+    pos--;
+  }
+  return pos;
+}
+
+static void copyFittedText(const char *text, int16_t maxWidth, char *out,
+                           size_t outSize, const char *suffix = "...") {
+  if (out == nullptr || outSize == 0) {
+    return;
+  }
+  out[0] = '\0';
+  if (text == nullptr || text[0] == '\0' || maxWidth <= 0) {
+    return;
+  }
+
+  strncpy(out, text, outSize - 1);
+  out[outSize - 1] = '\0';
+  if (tft.textWidth(out) <= maxWidth) {
+    return;
+  }
+
+  const int16_t suffixW = tft.textWidth(suffix);
+  if (suffixW >= maxWidth) {
+    return;
+  }
+
+  char scratch[256];
+  strncpy(scratch, out, sizeof(scratch) - 1);
+  scratch[sizeof(scratch) - 1] = '\0';
+
+  size_t len = strlen(scratch);
+  while (len > 0) {
+    len = utf8PrevCodepointStart(scratch, len);
+    scratch[len] = '\0';
+
+    char candidate[256];
+    snprintf(candidate, sizeof(candidate), "%s%s", scratch, suffix);
+    if (tft.textWidth(candidate) <= maxWidth) {
+      strncpy(out, candidate, outSize - 1);
+      out[outSize - 1] = '\0';
+      return;
+    }
+  }
+}
+
 static void drawStateBadge(int16_t x, int16_t y, int16_t w, int16_t h,
                            const char *label, uint16_t bg) {
   tft.fillRect(x, y, w, h, bg);
@@ -1529,7 +1579,9 @@ static void drawStateBadge(int16_t x, int16_t y, int16_t w, int16_t h,
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(1);
   tft.setTextDatum(middle_center);
-  tft.drawString(label, x + w / 2, y + h / 2);
+  char labelBuf[32];
+  copyFittedText(label, w - 16, labelBuf, sizeof(labelBuf));
+  tft.drawString(labelBuf, x + w / 2, y + h / 2);
   tft.setTextDatum(top_left);
 }
 
@@ -1567,21 +1619,25 @@ static void drawHeader(const char *title, bool showBack) {
   tft.drawFastHLine(0, UI_HEADER_H - 1, TFT_WIDTH, colorBorder());
   tft.drawFastHLine(0, UI_HEADER_H - 2, TFT_WIDTH, colorAccent());
 
-  tft.setTextColor(TFT_WHITE);
-  tft.setTextSize(1);
-  tft.setTextDatum(middle_left);
-  tft.drawString(title, 14, UI_HEADER_H / 2);
-
   int16_t bw = 110;
   int16_t bh = UI_HEADER_H - 10;
   const int16_t bx = TFT_WIDTH - bw - 5;
   const int16_t by = (UI_HEADER_H - bh) / 2;
+
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(1);
+  tft.setTextDatum(middle_left);
+  char titleBuf[96];
+  copyFittedText(title, bx - 26, titleBuf, sizeof(titleBuf));
+  tft.drawString(titleBuf, 14, UI_HEADER_H / 2);
   tft.fillRect(bx, by, bw, bh, colorButtonBody());
   tft.drawRect(bx, by, bw, bh, colorBorder());
   tft.fillRect(bx + 2, by + 2, 8, bh - 4, colorAccent());
   tft.setTextColor(TFT_WHITE);
   tft.setTextDatum(middle_center);
-  tft.drawString(msg(Msg::BTN_BACK), bx + (bw / 2) + 4, UI_HEADER_H / 2);
+  char backBuf[32];
+  copyFittedText(msg(Msg::BTN_BACK), bw - 20, backBuf, sizeof(backBuf));
+  tft.drawString(backBuf, bx + (bw / 2) + 4, UI_HEADER_H / 2);
 
   tft.setTextDatum(top_left);
 }
@@ -1627,7 +1683,9 @@ static void drawTabs(UiScreen current) {
     tft.setTextSize(1);
     tft.setFont(&fonts::efontJA_16);
     tft.setTextDatum(middle_center);
-    tft.drawString(labels[i], x + bw / 2, y + (bh / 2) + 5);
+    char tabBuf[24];
+    copyFittedText(labels[i], bw - 20, tabBuf, sizeof(tabBuf));
+    tft.drawString(tabBuf, x + bw / 2, y + (bh / 2) + 5);
 
     // Quick status dots to improve at-a-glance readability.
     if (i == 1 && g_state.mode != Mode::IDLE) {
@@ -1656,14 +1714,17 @@ static void drawValueRow(int16_t y, const char *label, const char *value,
   tft.drawFastHLine(rowX + 8, rowY + rowH - 1, rowW - 9, colorBorder());
   tft.setTextColor(colorFg());
   tft.setTextSize(1);
-  tft.setTextDatum(middle_left);
-  tft.drawString(label, rowX + 14, rowY + (rowH / 2) + 1);
 
   uint16_t tw = tft.textWidth(value);
   int16_t boxW = (tw < 92) ? 92 : tw + 22;
   int16_t boxX = rowX + rowW - boxW - 10;
   const int16_t boxY = rowY + 4;
   const int16_t boxH = rowH - 8;
+  const int16_t labelMaxW = boxX - rowX - 22;
+  char labelBuf[96];
+  tft.setTextDatum(middle_left);
+  copyFittedText(label, labelMaxW, labelBuf, sizeof(labelBuf));
+  tft.drawString(labelBuf, rowX + 14, rowY + (rowH / 2) + 1);
 
   if (highlighted) {
     tft.fillRect(boxX, boxY, boxW, boxH, colorButtonBody());
@@ -1678,7 +1739,9 @@ static void drawValueRow(int16_t y, const char *label, const char *value,
   }
 
   tft.setTextDatum(middle_center);
-  tft.drawString(value, boxX + boxW / 2, boxY + (boxH / 2) + 1);
+  char valueBuf[48];
+  copyFittedText(value, boxW - 16, valueBuf, sizeof(valueBuf));
+  tft.drawString(valueBuf, boxX + boxW / 2, boxY + (boxH / 2) + 1);
   tft.setTextDatum(top_left);
   tft.setTextColor(colorFg());
 }
@@ -1705,7 +1768,9 @@ static void drawButton(int16_t x, int16_t y, int16_t w, int16_t h,
     tft.setTextSize(labelSize);
   }
   tft.setTextDatum(middle_center);
-  tft.drawString(label, x + w / 2, y + (h / 2) + ((labelSize > 1) ? 6 : 5));
+  char labelBuf[64];
+  copyFittedText(label, w - 18, labelBuf, sizeof(labelBuf));
+  tft.drawString(labelBuf, x + w / 2, y + (h / 2) + ((labelSize > 1) ? 6 : 5));
   tft.setTextDatum(top_left);
   tft.setTextSize(1);
 }
@@ -1726,7 +1791,9 @@ static void drawPanelHeader(int16_t x, int16_t y, int16_t w, const char *title,
   tft.setTextColor(fg);
   tft.setTextSize(1);
   tft.setTextDatum(middle_left);
-  tft.drawString(title, x + 14, y + 12);
+  char titleBuf[96];
+  copyFittedText(title, w - 24, titleBuf, sizeof(titleBuf));
+  tft.drawString(titleBuf, x + 14, y + 12);
   tft.setTextDatum(top_left);
 }
 
@@ -1736,10 +1803,14 @@ static void drawCompactKeyValueRow(int16_t x, int16_t y, int16_t w,
   tft.setTextColor(colorMuted());
   tft.setTextSize(1);
   tft.setTextDatum(middle_left);
-  tft.drawString(label, x, y);
+  char labelBuf[64];
+  char valueBuf[48];
+  copyFittedText(label, (w / 2) - 8, labelBuf, sizeof(labelBuf));
+  copyFittedText(value, (w / 2) - 8, valueBuf, sizeof(valueBuf));
+  tft.drawString(labelBuf, x, y);
   tft.setTextColor(valueColor);
   tft.setTextDatum(middle_right);
-  tft.drawString(value, x + w, y);
+  tft.drawString(valueBuf, x + w, y);
   tft.setTextDatum(top_left);
 }
 
@@ -1752,7 +1823,9 @@ static void drawValueTileShell(int16_t x, int16_t y, int16_t w, int16_t h,
   tft.setTextColor(colorMuted());
   tft.setTextSize(1);
   tft.setTextDatum(top_left);
-  tft.drawString(label, x + 12, y + 5);
+  char labelBuf[48];
+  copyFittedText(label, w - 18, labelBuf, sizeof(labelBuf));
+  tft.drawString(labelBuf, x + 12, y + 5);
   tft.setTextDatum(top_left);
 }
 
@@ -1768,7 +1841,9 @@ static void drawFooterHint(const char *text, uint16_t tone = COLOR_INFO) {
   tft.setTextColor(colorMuted());
   tft.setTextSize(1);
   tft.setTextDatum(middle_center);
-  tft.drawString(text, TFT_WIDTH / 2, y + (h / 2) + 1);
+  char hintBuf[120];
+  copyFittedText(text, w - 20, hintBuf, sizeof(hintBuf));
+  tft.drawString(hintBuf, TFT_WIDTH / 2, y + (h / 2) + 1);
   tft.setTextDatum(top_left);
 }
 
@@ -1806,7 +1881,9 @@ static int16_t drawWrappedTextBlock(int16_t x, int16_t y, int16_t w,
          word = strtok_r(nullptr, " ", &wordCtx)) {
       char candidate[200];
       if (line[0] == '\0') {
-        snprintf(candidate, sizeof(candidate), "%s", word);
+        char fittedWord[128];
+        copyFittedText(word, w - 4, fittedWord, sizeof(fittedWord));
+        snprintf(candidate, sizeof(candidate), "%s", fittedWord);
       } else {
         snprintf(candidate, sizeof(candidate), "%s %s", line, word);
       }
@@ -2073,9 +2150,13 @@ static void renderRootStatusBar(const RootHeaderState &header, bool full) {
     tft.setTextSize(1);
     tft.setFont(&fonts::efontJA_16);
     tft.setTextDatum(top_left);
-    tft.drawString(header.status, statusX + 2, statusY + 1);
+    char statusBuf[64];
+    char timerBuf[32];
+    copyFittedText(header.status, statusW - 6, statusBuf, sizeof(statusBuf));
+    copyFittedText(header.timer, statusW - 6, timerBuf, sizeof(timerBuf));
+    tft.drawString(statusBuf, statusX + 2, statusY + 1);
     tft.setTextColor(colorMuted());
-    tft.drawString(header.timer, statusX + 2, statusY + 14);
+    tft.drawString(timerBuf, statusX + 2, statusY + 14);
     drawProgressBar(statusX + 2, statusY + 27, statusW - 6, 6,
                     header.phaseProgress, colorAccent());
 
@@ -2121,9 +2202,13 @@ static void renderRootFooter(const char *infoLine, const char *auxLine,
     tft.setTextColor(colorFg());
     tft.setTextSize(1);
     tft.setTextDatum(middle_left);
-    tft.drawString(infoLine, 20, ROOT_INFO_Y + 13);
+    char infoBuf[96];
+    char auxBuf[96];
+    copyFittedText(infoLine, 350, infoBuf, sizeof(infoBuf));
+    copyFittedText(auxLine, 350, auxBuf, sizeof(auxBuf));
+    tft.drawString(infoBuf, 20, ROOT_INFO_Y + 13);
     tft.setTextColor(colorMuted());
-    tft.drawString(auxLine, 20, ROOT_INFO_Y + 28);
+    tft.drawString(auxBuf, 20, ROOT_INFO_Y + 28);
     tft.setTextColor(COLOR_PRIMARY);
     tft.setTextDatum(middle_right);
     tft.drawString(uptime, TFT_WIDTH - 18, ROOT_INFO_Y + 13);
@@ -3793,7 +3878,9 @@ static void renderControl(const SystemState &state, bool full) {
   tft.setTextColor(colorFg());
   tft.setTextDatum(middle_left);
   tft.setTextSize(1);
-  tft.drawString(modeBuf, 26, CTRL_STATUS_Y + CTRL_STATUS_H / 2);
+  char modeLineBuf[96];
+  copyFittedText(modeBuf, TFT_WIDTH - 70, modeLineBuf, sizeof(modeLineBuf));
+  tft.drawString(modeLineBuf, 26, CTRL_STATUS_Y + CTRL_STATUS_H / 2);
   tft.setTextDatum(top_left);
   drawButton(pauseX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH,
              state.paused ? msg(Msg::RESUME) : msg(Msg::PAUSE),

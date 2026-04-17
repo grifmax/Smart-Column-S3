@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.7-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.8-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -144,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.2.8 | 2026-04-17 | Для TFT добавлен общий text-fit слой: длинные русские подписи и статусы теперь ужимаются в shared-примитивах и не разламывают прямоугольный HMI-layout |
 | 2.2.7 | 2026-04-17 | Добит modal/runtime слой TFT: confirm overlay смены режима и locked-state ручного экрана переведены на общий panel-overlay, а `SERVICE` теперь явнее сигнализирует slow/watchdog/hard recovery состояния |
 | 2.2.6 | 2026-04-17 | Вторичные TFT-сцены добиты в том же HMI-стиле: touch-calibration, boot splash, системные сообщения и error overlays переведены на общий fullscreen panel/overlay язык |
 | 2.2.5 | 2026-04-17 | Вложенные TFT-экраны `SETTINGS`/`SERVICE` и `ALL TEMPS` приведены к тому же прямоугольному HMI-языку: строковые панели параметров, компактные подсказки и исправленная сетка температур без налезания на footer |
