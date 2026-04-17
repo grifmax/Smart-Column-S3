@@ -1867,6 +1867,40 @@ static void drawFullscreenOverlay(const char *title, const char *message,
   }
 }
 
+static void drawModeSwitchOverlay(const SystemState &state, bool ru) {
+  const int16_t mx = 30;
+  const int16_t my = 78;
+  const int16_t mw = TFT_WIDTH - 60;
+  const int16_t mh = 150;
+  const int16_t bodyX = mx + 16;
+  const int16_t bodyY = my + 34;
+  const int16_t bodyW = mw - 32;
+  const int16_t bodyH = 54;
+  const int16_t by = my + 102;
+
+  drawCard(mx, my, mw, mh, colorCard());
+  drawPanelHeader(mx, my, mw, ru ? "СМЕНА РЕЖИМА" : "SWITCH MODE",
+                  COLOR_WARNING);
+  drawCard(bodyX, bodyY, bodyW, bodyH, colorBg());
+  tft.fillRect(bodyX + 1, bodyY + 1, 8, bodyH - 2, COLOR_WARNING);
+
+  char cur[64];
+  char next[64];
+  char overlayText[160];
+  snprintf(cur, sizeof(cur), ru ? "Сейчас: %s" : "Current: %s",
+           FSM::getModeName(state.mode));
+  snprintf(next, sizeof(next), ru ? "Перейти: %s ?" : "Switch to: %s ?",
+           FSM::getModeName(ui.modeSwitchTarget));
+  snprintf(overlayText, sizeof(overlayText), "%s\n%s", cur, next);
+  drawWrappedTextBlock(bodyX + 24, bodyY + 10, bodyW - 48, overlayText,
+                       colorFg(), 1, 4, 4);
+
+  drawButton(mx + 20, by, 150, 42, ru ? "ОТМЕНА" : "CANCEL", COLOR_DARK_GREY,
+             TFT_WHITE);
+  drawButton(mx + mw - 170, by, 150, 42, ru ? "ПЕРЕЙТИ" : "SWITCH",
+             COLOR_DANGER, TFT_WHITE);
+}
+
 static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h,
                                const char *value, const char *unit,
                                uint16_t color) {
@@ -3796,33 +3830,7 @@ static void renderControl(const SystemState &state, bool full) {
              TFT_WHITE);
 
   if (ui.modeSwitchConfirm) {
-    const int16_t mx = 30;
-    const int16_t my = 78;
-    const int16_t mw = TFT_WIDTH - 60;
-    const int16_t mh = 150;
-    const int16_t by = my + 102;
-    drawCard(mx, my, mw, mh, colorCard());
-    tft.setTextColor(COLOR_WARNING);
-    tft.setTextDatum(middle_center);
-    tft.setTextSize(2);
-    tft.drawString(ru ? "СМЕНА РЕЖИМА" : "SWITCH MODE", TFT_WIDTH / 2, my + 20);
-    tft.setTextSize(1);
-
-    char cur[64];
-    char next[64];
-    snprintf(cur, sizeof(cur), ru ? "Сейчас: %s" : "Current: %s",
-             FSM::getModeName(state.mode));
-    snprintf(next, sizeof(next), ru ? "Перейти: %s ?" : "Switch to: %s ?",
-             FSM::getModeName(ui.modeSwitchTarget));
-    tft.setTextColor(colorFg());
-    tft.drawString(cur, TFT_WIDTH / 2, my + 56);
-    tft.drawString(next, TFT_WIDTH / 2, my + 78);
-
-    drawButton(mx + 20, by, 150, 42, ru ? "ОТМЕНА" : "CANCEL", COLOR_DARK_GREY,
-               TFT_WHITE);
-    drawButton(mx + mw - 170, by, 150, 42, ru ? "ПЕРЕЙТИ" : "SWITCH",
-               COLOR_DANGER, TFT_WHITE);
-    tft.setTextDatum(top_left);
+    drawModeSwitchOverlay(state, ru);
   }
 }
 
@@ -4039,25 +4047,17 @@ static void renderManual(const SystemState &state) {
 
   if (!isManualAccessAllowed(state)) {
     const bool ru = (g_settings.language == 0);
-    drawCard(10, 65, TFT_WIDTH - 20, 120, colorCard());
-    drawPanelHeader(10, 65, TFT_WIDTH - 20,
-                    ru ? "ДОСТУП К РУЧНОМУ УПРАВЛЕНИЮ" : "MANUAL ACCESS",
-                    COLOR_WARNING);
-    tft.setTextColor(COLOR_WARNING);
-    tft.setTextSize(2);
-    tft.setTextDatum(middle_center);
-    tft.drawString(ru ? "РУЧНОЕ ЗАБЛОКИРОВАНО" : "MANUAL LOCKED",
-                   TFT_WIDTH / 2, 100);
-    tft.setTextColor(colorFg());
-    tft.setTextSize(1);
-    tft.drawString(ru ? "Остановите процесс или войдите в ручной режим."
-                      : "Stop the process or switch to manual mode.",
-                   TFT_WIDTH / 2, 135);
-    tft.drawString(FSM::getModeName(state.mode), TFT_WIDTH / 2, 158);
-    tft.setTextDatum(top_left);
-    drawFooterHint(ru ? "Ручной экран доступен только в IDLE и MANUAL"
-                      : "Manual screen is available only in IDLE and MANUAL",
-                   COLOR_WARNING);
+    char message[160];
+    char footer[160];
+    snprintf(message, sizeof(message),
+             ru ? "Ручное управление заблокировано, пока активен автоматический процесс."
+                : "Manual control is locked while an automatic process is active.");
+    snprintf(footer, sizeof(footer),
+             ru ? "Текущий режим: %s\nРазблокировка доступна только в IDLE и MANUAL"
+                : "Current mode: %s\nAvailable only in IDLE and MANUAL",
+             FSM::getModeName(state.mode));
+    drawFullscreenOverlay(ru ? "ДОСТУП К РУЧНОМУ УПРАВЛЕНИЮ" : "MANUAL ACCESS",
+                          message, COLOR_WARNING, footer, 1);
     return;
   }
 
@@ -4151,9 +4151,22 @@ static void renderService(const SystemState &state, bool full) {
            (unsigned long)g_displayStats.hardWatchdogRecoveries,
            (unsigned int)g_displayStats.lastUpdateGapMs);
   drawValueRow(212, ru ? "Диагн. TFT" : "TFT diag", buf);
-  drawFooterHint(ru ? "Тап по нижним строкам открывает экран температур"
-                    : "Tap lower rows to open temperature screen",
-                 COLOR_INFO);
+  uint16_t hintTone = COLOR_INFO;
+  const char *hintText =
+      ru ? "Тап по нижним строкам открывает экран температур"
+         : "Tap lower rows to open temperature screen";
+  if (g_displayStats.hardWatchdogRecoveries > 0 ||
+      g_displayStats.hardWatchdogFailures > 0) {
+    hintTone = COLOR_DANGER;
+    hintText = ru ? "Обнаружены hard recovery TFT, проверьте питание и SPI"
+                  : "Hard TFT recoveries detected, check power and SPI";
+  } else if (g_displayStats.watchdogRecoveries > 0 ||
+             g_displayStats.maxFrameMs >= DISPLAY_SLOW_FRAME_MS) {
+    hintTone = COLOR_WARNING;
+    hintText = ru ? "Есть slow/watchdog кадры TFT, проверьте нагрузку экрана"
+                  : "Slow/watchdog TFT frames detected, check screen load";
+  }
+  drawFooterHint(hintText, hintTone);
 }
 
 static void renderAllTemps(const SystemState &state, bool full) {
