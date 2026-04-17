@@ -1407,25 +1407,23 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     if (!isManualAccessAllowed(state)) {
       return true;
     }
-    if (ty >= 65 && ty < 185) {
-      if (ty >= 65 && ty < 125) {
+    if (hit(tx, ty, 10, 48, 225, 86)) {
         openValueEdit(msg(Msg::HEATER_POWER), Heater::getPower(), 0, 100, 1, 10,
                       saveManualHeater, "%", 0);
         return true;
-      } else if (ty >= 125 && ty < 185) {
+    } else if (hit(tx, ty, 245, 48, 225, 86)) {
         openValueEdit(msg(Msg::PUMP), state.pump.speedMlPerHour, 0, 5000, 10,
                       100, saveManualPump, "ml/h", 0);
         return true;
-      }
     }
-    if (ty >= 185 && ty < 240) {
-      if (hit(tx, ty, 10, 185, 145, 55)) {
+    if (ty >= 146 && ty < 222) {
+      if (hit(tx, ty, 10, 146, 145, 76)) {
         Valves::setWater(!Valves::getWater());
         return true;
-      } else if (hit(tx, ty, 167, 185, 145, 55)) {
+      } else if (hit(tx, ty, 165, 146, 145, 76)) {
         Valves::setHeads(!Valves::getHeads());
         return true;
-      } else if (hit(tx, ty, 325, 185, 145, 55)) {
+      } else if (hit(tx, ty, 320, 146, 145, 76)) {
         Valves::setUno(!Valves::getUno());
         return true;
       }
@@ -4244,25 +4242,33 @@ static void renderManual(const SystemState &state) {
     return;
   }
 
-  int16_t y = 65;
   char buf[32];
-  snprintf(buf, sizeof(buf), "%u %%", Heater::getPower());
-  drawValueRow(y, msg(Msg::HEATER_POWER), buf);
-  y += 60;
+  const int16_t tileY = 48;
+  const int16_t tileW = 225;
+  const int16_t tileH = 86;
+  const int16_t valveY = 146;
+  const int16_t valveW = 145;
+  const int16_t valveH = 76;
 
-  snprintf(buf, sizeof(buf), "%.0f %s", state.pump.speedMlPerHour,
-           msg(Msg::UNIT_ML_H));
-  drawValueRow(y, msg(Msg::PUMP), buf);
-  y += 60;
+  snprintf(buf, sizeof(buf), "%u", Heater::getPower());
+  drawValueTile(10, tileY, tileW, tileH, msg(Msg::HEATER_POWER), buf, "%",
+                Heater::getPower() > 0 ? COLOR_WARNING : colorMuted());
 
-  int16_t bw = 145;
-  int16_t bh = 55;
-  drawButton(10, y, bw, bh, msg(Msg::VALVE_WATER),
+  snprintf(buf, sizeof(buf), "%.0f", state.pump.speedMlPerHour);
+  drawValueTile(245, tileY, tileW, tileH, msg(Msg::PUMP), buf,
+                msg(Msg::UNIT_ML_H),
+                state.pump.speedMlPerHour > 0.0f ? COLOR_SUCCESS : colorMuted());
+
+  drawButton(10, valveY, valveW, valveH, msg(Msg::VALVE_WATER),
              Valves::getWater() ? COLOR_SUCCESS : COLOR_DARK_GREY, TFT_WHITE);
-  drawButton(165, y, bw, bh, msg(Msg::VALVE_HEADS),
+  drawButton(165, valveY, valveW, valveH, msg(Msg::VALVE_HEADS),
              Valves::getHeads() ? COLOR_SUCCESS : COLOR_DARK_GREY, TFT_WHITE);
-  drawButton(325, y, bw, bh, msg(Msg::VALVE_UNO),
+  drawButton(320, valveY, valveW, valveH, msg(Msg::VALVE_UNO),
              Valves::getUno() ? COLOR_SUCCESS : COLOR_DARK_GREY, TFT_WHITE);
+
+  drawFooterHint(ru ? "Тап по плитке = настройка, по клапану = переключение"
+                    : "Tap tile to set, valve to toggle",
+                 colorAccent());
 }
 
 static void renderValueEdit() {
@@ -4303,37 +4309,48 @@ static void renderValueEdit() {
 }
 
 static void renderService(const SystemState &state, bool full) {
+  const bool ru = (g_settings.language == 0);
+  const int16_t tileW = 225;
+  const int16_t tileH = 64;
+  const int16_t x1 = 10;
+  const int16_t x2 = 245;
+  const int16_t y1 = 48;
+  const int16_t y2 = 118;
+  const int16_t diagY = 198;
+
   if (full) {
     tft.fillScreen(colorBg());
     drawHeader(msg(Msg::SERVICE), false);
     drawTabs(UI_SERVICE);
-    char buf[40];
-    snprintf(buf, sizeof(buf), "%s", FW_VERSION);
-    drawValueRow(40, msg(Msg::VERSION), buf, false);
+    drawValueTileShell(x1, y1, tileW, tileH, msg(Msg::VERSION));
+    drawValueTileShell(x2, y1, tileW, tileH, msg(Msg::UPTIME));
+    drawValueTileShell(x1, y2, tileW, tileH, msg(Msg::FREE_HEAP));
+    drawValueTileShell(x2, y2, tileW, tileH, ru ? "КАДР TFT" : "TFT FRAME");
   }
 
   char buf[48];
-  clearRow(68, 36);
-  snprintf(buf, sizeof(buf), "%lus", state.uptime);
-  drawValueRow(80, msg(Msg::UPTIME), buf, false);
+  char uptimeBuf[16];
+  char frameBuf[24];
 
-  clearRow(112, 36);
-  snprintf(buf, sizeof(buf), "%u KB", ESP.getFreeHeap() / 1024);
-  drawValueRow(124, msg(Msg::FREE_HEAP), buf, false);
+  snprintf(buf, sizeof(buf), "%s", FW_VERSION);
+  drawValueTileValue(x1, y1, tileW, tileH, buf, "", COLOR_PRIMARY);
 
-  const bool ru = (g_settings.language == 0);
-  clearRow(156, 36);
-  snprintf(buf, sizeof(buf), "%ums (%ums max)", g_displayStats.lastFrameMs,
+  formatUptimeCompact(state.uptime, uptimeBuf, sizeof(uptimeBuf));
+  drawValueTileValue(x2, y1, tileW, tileH, uptimeBuf, "", colorAccent());
+
+  snprintf(buf, sizeof(buf), "%u", ESP.getFreeHeap() / 1024);
+  drawValueTileValue(x1, y2, tileW, tileH, buf, "KB", COLOR_SUCCESS);
+
+  snprintf(frameBuf, sizeof(frameBuf), "%u/%u", g_displayStats.lastFrameMs,
            g_displayStats.maxFrameMs);
-  drawValueRow(168, ru ? "Кадр TFT" : "TFT frame", buf);
+  drawValueTileValue(x2, y2, tileW, tileH, frameBuf, "ms", COLOR_INFO);
 
-  clearRow(200, 36);
   snprintf(buf, sizeof(buf), "S%lu R%lu H%lu G%u",
            (unsigned long)g_displayStats.slowFrames,
            (unsigned long)g_displayStats.watchdogRecoveries,
            (unsigned long)g_displayStats.hardWatchdogRecoveries,
            (unsigned int)g_displayStats.lastUpdateGapMs);
-  drawValueRow(212, ru ? "Диагн. TFT" : "TFT diag", buf);
+  drawValueRow(diagY, ru ? "Диагн. TFT" : "TFT diag", buf);
   uint16_t hintTone = COLOR_INFO;
   const char *hintText =
       ru ? "Тап по нижним строкам -> температуры"
