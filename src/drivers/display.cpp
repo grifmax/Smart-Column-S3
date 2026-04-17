@@ -4025,32 +4025,112 @@ static void renderSettings() {
   drawHeader(msg(Msg::SETTINGS), false);
   drawTabs(UI_SETTINGS);
   const bool ru = (g_settings.language == 0);
-  char hint[80];
 
-  int16_t bw = 225;
-  int16_t bh = 50;
-  int16_t x2 = 245;
+  // Геометрия сетки 2x2 + строка переключателей
+  const int16_t COL1_X = 10;
+  const int16_t COL2_X = 245;
+  const int16_t CARD_W = 225;
+  const int16_t ROW1_Y = 53;
+  const int16_t ROW2_Y = 124;
+  const int16_t CARD_H = 63;
+  const int16_t ROW3_Y = 197;
+  const int16_t BTN3_H = 32;
+  const int16_t BTN3_W = 145;
 
-  drawButton(10, 65, bw, bh, msg(Msg::EQUIPMENT), colorAccent(), TFT_WHITE);
-  drawButton(x2, 65, bw, bh, msg(Msg::RECT_PARAMS), COLOR_INFO, TFT_WHITE);
+  // --- КАРТОЧКА 1: Оборудование ---
+  drawCard(COL1_X, ROW1_Y, CARD_W, CARD_H, colorCard());
+  drawPanelHeader(COL1_X, ROW1_Y, CARD_W, msg(Msg::EQUIPMENT), colorAccent());
+  {
+    char b1[16], b2[20];
+    snprintf(b1, sizeof(b1), "%u %s", g_settings.equipment.heaterPowerW,
+             msg(Msg::UNIT_W));
+    snprintf(b2, sizeof(b2), "%u %s", g_settings.equipment.columnHeightMm,
+             msg(Msg::UNIT_MM));
+    drawCompactKeyValueRow(COL1_X + 8, ROW1_Y + 34, CARD_W - 16,
+                           ru ? "МОЩН" : "PWR", b1, COLOR_WARNING);
+    drawCompactKeyValueRow(COL1_X + 8, ROW1_Y + 50, CARD_W - 16,
+                           ru ? "ВЫС. К." : "COL H", b2, COLOR_INFO);
+  }
 
-  drawButton(10, 125, bw, bh, msg(Msg::DIST_PARAMS), COLOR_WARNING, TFT_WHITE);
-  drawButton(x2, 125, bw, bh, msg(Msg::CALIBRATION), COLOR_SUCCESS, TFT_WHITE);
+  // --- КАРТОЧКА 2: Параметры ректификации ---
+  drawCard(COL2_X, ROW1_Y, CARD_W, CARD_H, colorCard());
+  drawPanelHeader(COL2_X, ROW1_Y, CARD_W, msg(Msg::RECT_PARAMS), COLOR_INFO);
+  {
+    char b1[24], b2[24];
+    snprintf(b1, sizeof(b1), "%s",
+             rectFeedstockName(g_settings.rectParams.feedstock, ru));
+    snprintf(b2, sizeof(b2), "%.0f/%.0f/%.0f%%",
+             g_settings.rectParams.headsPercent,
+             g_settings.rectParams.bodyPercent,
+             g_settings.rectParams.tailsPercent);
+    drawCompactKeyValueRow(COL2_X + 8, ROW1_Y + 34, CARD_W - 16,
+                           ru ? "СС" : "FEED", b1, colorAccent());
+    drawCompactKeyValueRow(COL2_X + 8, ROW1_Y + 50, CARD_W - 16,
+                           ru ? "Г/Т/Х" : "H/B/T", b2, COLOR_INFO);
+  }
 
-  int16_t bw3 = 145;
-  drawButton(10, 185, bw3, bh, msg(Msg::THEME), COLOR_DARK_GREY, TFT_WHITE);
-  drawButton(165, 185, bw3, bh, msg(Msg::SOUND),
-             g_settings.soundEnabled ? COLOR_SUCCESS : COLOR_DANGER, TFT_WHITE);
-  drawButton(320, 185, bw3, bh, g_settings.language == 0 ? "RU" : "EN",
-             COLOR_INFO, TFT_WHITE);
+  // --- КАРТОЧКА 3: Параметры дистилляции ---
+  drawCard(COL1_X, ROW2_Y, CARD_W, CARD_H, colorCard());
+  drawPanelHeader(COL1_X, ROW2_Y, CARD_W, msg(Msg::DIST_PARAMS), COLOR_WARNING);
+  {
+    char b1[16], b2[16];
+    snprintf(b1, sizeof(b1), "%.0f %s", distUi.speedMlH, msg(Msg::UNIT_ML_H));
+    snprintf(b2, sizeof(b2), "%.0f ml", distUi.targetVolumeMl);
+    drawCompactKeyValueRow(COL1_X + 8, ROW2_Y + 34, CARD_W - 16,
+                           ru ? "СКОР" : "SPEED", b1, COLOR_PRIMARY);
+    drawCompactKeyValueRow(COL1_X + 8, ROW2_Y + 50, CARD_W - 16,
+                           ru ? "ЦЕЛЬ" : "TARGET", b2, COLOR_SUCCESS);
+  }
 
-  snprintf(hint, sizeof(hint), ru ? "Тема:%s | Звук:%s | Язык:%s"
-                                  : "Theme:%s | Sound:%s | Lang:%s",
-           g_settings.theme == 1 ? (ru ? "темная" : "dark")
-                                 : (ru ? "светлая" : "light"),
-           g_settings.soundEnabled ? (ru ? "вкл" : "on")
-                                   : (ru ? "выкл" : "off"),
-           g_settings.language == 0 ? "RU" : "EN");
+  // --- КАРТОЧКА 4: Калибровка ---
+  drawCard(COL2_X, ROW2_Y, CARD_W, CARD_H, colorCard());
+  drawPanelHeader(COL2_X, ROW2_Y, CARD_W, msg(Msg::CALIBRATION), COLOR_SUCCESS);
+  {
+    char b1[20];
+    snprintf(b1, sizeof(b1), "%.3f %s", g_settings.pumpCal.mlPerRevolution,
+             msg(Msg::UNIT_ML_R));
+    drawCompactKeyValueRow(COL2_X + 8, ROW2_Y + 34, CARD_W - 16,
+                           ru ? "НАСОС" : "PUMP", b1, COLOR_INFO);
+    drawCompactKeyValueRow(COL2_X + 8, ROW2_Y + 50, CARD_W - 16,
+                           ru ? "ТАЧ" : "TOUCH",
+                           g_settings.touchCal.valid
+                               ? (ru ? "калибр." : "done")
+                               : (ru ? "не кал." : "raw"),
+                           g_settings.touchCal.valid ? COLOR_SUCCESS
+                                                     : COLOR_WARNING);
+  }
+
+  // --- СТРОКА БЫСТРЫХ ПЕРЕКЛЮЧАТЕЛЕЙ ---
+  {
+    const bool dark = (g_settings.theme == 1);
+    char themeLabel[24];
+    snprintf(themeLabel, sizeof(themeLabel), "%s:%s", msg(Msg::THEME),
+             dark ? (ru ? "Тмн" : "Drk") : (ru ? "Свт" : "Lgt"));
+    drawButton(COL1_X, ROW3_Y, BTN3_W, BTN3_H, themeLabel,
+               dark ? tft.color565(58, 64, 72) : tft.color565(160, 170, 178),
+               TFT_WHITE);
+  }
+  {
+    char soundLabel[20];
+    snprintf(soundLabel, sizeof(soundLabel), "%s:%s", msg(Msg::SOUND),
+             g_settings.soundEnabled ? (ru ? "ВКЛ" : "ON")
+                                     : (ru ? "ВЫКЛ" : "OFF"));
+    drawButton(165, ROW3_Y, BTN3_W, BTN3_H, soundLabel,
+               g_settings.soundEnabled ? COLOR_SUCCESS : COLOR_DARK_GREY,
+               TFT_WHITE);
+  }
+  {
+    char langLabel[20];
+    snprintf(langLabel, sizeof(langLabel), "%s:%s", msg(Msg::LANGUAGE),
+             g_settings.language == 0 ? "RU" : "EN");
+    drawButton(320, ROW3_Y, BTN3_W, BTN3_H, langLabel, COLOR_INFO, TFT_WHITE);
+  }
+
+  // --- FOOTER HINT ---
+  char hint[96];
+  snprintf(hint, sizeof(hint),
+           ru ? "Тап карточки = раздел | кнопки = мгновенно"
+              : "Tap card = open section | buttons = instant toggle");
   drawFooterHint(hint, colorAccent());
 }
 
@@ -4102,22 +4182,22 @@ static void renderRectParams() {
   char pageBuf[80];
 
   snprintf(pageBuf, sizeof(pageBuf), "%s",
-           rectParamsPage == 0 ? "PAGE: TECH / CUTS"
-                               : "PAGE: PROFILE / SPEED");
+           rectParamsPage == 0 ? (ru ? "ТЕХ.ПАРАМ / ФРАКЦИИ" : "TECH / CUTS")
+                               : (ru ? "ПРОФИЛЬ / СКОРОСТЬ" : "PROFILE / SPEED"));
   drawButton(10, 48, 460, 26, pageBuf,
              rectParamsPage == 0 ? COLOR_INFO : colorAccent(), TFT_WHITE);
 
   if (rectParamsPage == 0) {
     snprintf(tileBuf, sizeof(tileBuf), "%s",
              rectFeedstockName(g_settings.rectParams.feedstock, ru));
-    drawValueTile(x1, y1, tileW, tileH, "FEEDSTOCK", tileBuf, "", COLOR_INFO);
+    drawValueTile(x1, y1, tileW, tileH, msg(Msg::FEEDSTOCK), tileBuf, "", COLOR_INFO);
 
     snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.feedVolumeL);
-    drawValueTile(x2, y1, tileW, tileH, "FEED VOL", tileBuf,
+    drawValueTile(x2, y1, tileW, tileH, msg(Msg::FEED_VOLUME), tileBuf,
                   msg(Msg::UNIT_L), COLOR_PRIMARY);
 
     snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.feedAbvPercent);
-    drawValueTile(x1, y2, tileW, tileH, "FEED ABV", tileBuf, "%",
+    drawValueTile(x1, y2, tileW, tileH, msg(Msg::FEED_ABV), tileBuf, "%",
                   COLOR_WARNING);
 
     snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.headsPercent);
@@ -4125,13 +4205,15 @@ static void renderRectParams() {
                   COLOR_DANGER);
 
     snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.bodyPercent);
-    drawValueTile(x1, y3, tileW, tileH, "BODY %", tileBuf, "%", COLOR_SUCCESS);
+    drawValueTile(x1, y3, tileW, tileH, msg(Msg::BODY_PERCENT), tileBuf, "%", COLOR_SUCCESS);
 
     snprintf(tileBuf, sizeof(tileBuf), "%.1f", g_settings.rectParams.tailsPercent);
-    drawValueTile(x2, y3, tileW, tileH, "TAILS %", tileBuf, "%",
+    drawValueTile(x2, y3, tileW, tileH, msg(Msg::TAILS_PERCENT), tileBuf, "%",
                   COLOR_WARNING);
 
-    drawFooterHint("Tap feedstock to rotate default cuts", COLOR_INFO);
+    drawFooterHint(ru ? "Тап СЫРЬЁ = следующий тип, фракции по умолчанию"
+                      : "Tap feedstock to rotate type + default cuts",
+                   COLOR_INFO);
     return;
   }
 
@@ -4164,108 +4246,15 @@ static void renderRectParams() {
       (atmHpaComp - RECT_PRESSURE_STD_HPA) * RECT_TEMP_COMP_C_PER_HPA;
 
   snprintf(tileBuf, sizeof(tileBuf), "%.1f", bodyToTailsComp);
-  drawValueTile(x1, y3, tileW, tileH, "BODY -> TAILS*", tileBuf, "C",
+  drawValueTile(x1, y3, tileW, tileH, msg(Msg::BODY_TO_TAILS), tileBuf, "C",
                 colorMuted());
 
   snprintf(tileBuf, sizeof(tileBuf), "%.1f", finishComp);
-  drawValueTile(x2, y3, tileW, tileH, "TAILS FINISH*", tileBuf, "C",
+  drawValueTile(x2, y3, tileW, tileH, msg(Msg::TAILS_FINISH), tileBuf, "C",
                 colorMuted());
 
   snprintf(tileBuf, sizeof(tileBuf), "P=%.0f hPa | COMP", atmHpaComp);
   drawFooterHint(tileBuf, COLOR_INFO);
-  return;
-
-  int16_t y = 68;
-  const int16_t step = 31;
-  char buf[32];
-
-  drawButton(330, 44, 140, 22,
-             rectParamsPage == 0 ? (ru ? "ТЕХ." : "TECH")
-                                 : (ru ? "ПРОФИЛЬ" : "PROFILE"),
-             rectParamsPage == 0 ? COLOR_INFO : colorAccent(), TFT_WHITE);
-
-  if (rectParamsPage == 0) {
-    snprintf(buf, sizeof(buf), "%s",
-             rectFeedstockName(g_settings.rectParams.feedstock, ru));
-    drawValueRow(y, ru ? "Сырьё" : "Feedstock", buf);
-    y += step;
-
-    snprintf(buf, sizeof(buf), "%.1f %s", g_settings.rectParams.feedVolumeL,
-             msg(Msg::UNIT_L));
-    drawValueRow(y, ru ? "Объём" : "Feed volume", buf);
-    y += step;
-
-    snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.feedAbvPercent);
-    drawValueRow(y, ru ? "Крепость" : "Feed ABV", buf);
-    y += step;
-
-    snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.headsPercent);
-    drawValueRow(y, msg(Msg::HEADS_PERCENT), buf);
-    y += step;
-
-    snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.bodyPercent);
-    drawValueRow(y, ru ? "Тело %" : "Body %", buf);
-    y += step;
-
-    snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.tailsPercent);
-    drawValueRow(y, ru ? "Хвосты %" : "Tails %", buf);
-    tft.setTextColor(colorMuted());
-    tft.setTextSize(1);
-    tft.setTextDatum(bottom_center);
-    tft.drawString(ru ? "Тап по 'Сырьё' = дефолты фракций"
-                      : "Tap feedstock row to apply default fractions",
-                   TFT_WIDTH / 2, TFT_HEIGHT - UI_FOOTER_H - 2);
-    tft.setTextDatum(top_left);
-    return;
-  }
-
-  snprintf(buf, sizeof(buf), "%.0f %s", g_settings.rectParams.headsSpeedMlHKw,
-           msg(Msg::UNIT_ML_H_K));
-  drawValueRow(y, msg(Msg::HEADS_SPEED), buf);
-  y += step;
-
-  snprintf(buf, sizeof(buf), "%.0f %s", g_settings.rectParams.bodySpeedMlHKw,
-           msg(Msg::UNIT_ML_H_K));
-  drawValueRow(y, msg(Msg::BODY_SPEED), buf);
-  y += step;
-
-  snprintf(buf, sizeof(buf), "%u %s", g_settings.rectParams.stabilizationMin,
-           msg(Msg::UNIT_MIN));
-  drawValueRow(y, msg(Msg::STABILIZATION), buf);
-  y += step;
-
-  snprintf(buf, sizeof(buf), "%u %s", g_settings.rectParams.purgeMin,
-           msg(Msg::UNIT_MIN));
-  drawValueRow(y, msg(Msg::PURGE_TIME), buf);
-  y += step;
-
-  const float atmHpa =
-      (g_state.pressure.ok && g_state.pressure.atmosphere > 850.0f &&
-       g_state.pressure.atmosphere < 1100.0f)
-          ? g_state.pressure.atmosphere
-          : RECT_PRESSURE_STD_HPA;
-  const float bodyToTailsT =
-      RECT_CUBE_BODY_TO_TAILS_BASE_C +
-      (atmHpa - RECT_PRESSURE_STD_HPA) * RECT_TEMP_COMP_C_PER_HPA;
-  const float finishT =
-      RECT_CUBE_FINISH_BASE_C +
-      (atmHpa - RECT_PRESSURE_STD_HPA) * RECT_TEMP_COMP_C_PER_HPA;
-
-  snprintf(buf, sizeof(buf), "%.1f C", bodyToTailsT);
-  drawValueRow(y, ru ? "Тело -> хвосты*" : "Body -> tails*", buf, false);
-  y += step;
-
-  snprintf(buf, sizeof(buf), "%.1f C", finishT);
-  drawValueRow(y, ru ? "Финиш хвостов*" : "Tails finish*", buf,
-               false);
-
-  snprintf(buf, sizeof(buf), "P=%.0f hPa | %s", atmHpa,
-           ru ? "компенсация" : "compensated");
-  tft.setTextColor(colorMuted());
-  tft.setTextSize(1);
-  tft.setTextDatum(bottom_center);
-  tft.drawString(buf, TFT_WIDTH / 2, TFT_HEIGHT - UI_FOOTER_H - 2);
-  tft.setTextDatum(top_left);
 }
 
 static void renderDistParams() {

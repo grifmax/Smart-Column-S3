@@ -9,7 +9,19 @@
 
 ---
 
+## [2.2.13] - 2026-04-17
+
+### Изменено
+- Корневой экран `SETTINGS` на TFT переработан в плотный приборный стиль: вместо четырёх немых навигационных кнопок теперь четыре информативных карточки (`drawCard` + `drawPanelHeader` + `drawCompactKeyValueRow`), каждая показывает актуальные значения своего раздела (мощность/высота колонны, тип сырья/фракции Г/Т/Х, скорость/цель дистилляции, калибровка насоса/тача). Три быстрых переключателя Тема/Звук/Язык показывают текущее состояние прямо в метке кнопки. (antigravity)
+- Добавлено 7 новых ключей локализации в `localization.h`: `FEEDSTOCK`, `FEED_VOLUME`, `FEED_ABV`, `BODY_PERCENT`, `TAILS_PERCENT`, `BODY_TO_TAILS`, `TAILS_FINISH` — для RU/EN пар на обоих языках. (antigravity)
+- В `renderRectParams()` все хардкод EN-строки (`"FEEDSTOCK"`, `"FEED VOL"`, `"FEED ABV"`, `"BODY %"`, `"TAILS %"`, `"BODY -> TAILS*"`, `"TAILS FINISH*"`, `"PAGE: TECH / CUTS"`, `"PAGE: PROFILE / SPEED"`, `"Tap feedstock to rotate default cuts"`) заменены на вызовы `msg(Msg::...)`. (antigravity)
+- Удалён мёртвый блок кода (~56 строк `drawValueRow`-логики) в `renderRectParams()`, который никогда не выполнялся из-за `return;` выше. (antigravity)
+- Версия прошивки поднята до `2.2.13`. (antigravity)
+
+---
+
 ## [2.2.12] - 2026-04-17
+
 
 ### Изменено
 - Подэкраны `EQUIPMENT` и `DIST_PARAMS` на TFT переведены со старых списков строк на плотную 2x2 приборную сетку: четыре прямоугольные value-плитки с обновлёнными hitbox под новый layout. (codex)

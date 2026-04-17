@@ -46,6 +46,15 @@ enum class Msg : uint16_t {
     SOUND,
     LANGUAGE,
 
+    // Rect params tiles (новые ключи)
+    FEEDSTOCK,
+    FEED_VOLUME,
+    FEED_ABV,
+    BODY_PERCENT,
+    TAILS_PERCENT,
+    BODY_TO_TAILS,
+    TAILS_FINISH,
+
     // Equipment
     COLUMN_HEIGHT,
     CUBE_VOLUME,
@@ -108,7 +117,7 @@ enum class Msg : uint16_t {
     PHASE_PURGE,
     PHASE_FINISH,
     PHASE_COMPLETED,
-    
+
     // Units
     UNIT_W,
     UNIT_MM,
@@ -122,7 +131,7 @@ enum class Msg : uint16_t {
 
 inline const char* msg(Msg id) {
     bool ru = (g_settings.language == 0);
-    
+
     switch (id) {
         // Tabs
         case Msg::MONITOR:       return ru ? "Монитор" : "Monitor";
@@ -132,7 +141,7 @@ inline const char* msg(Msg id) {
 
         // Dashboard
         case Msg::CUBE_TEMP:     return ru ? "КУБ ТЕМП" : "CUBE TEMP";
-        case Msg::HEATER_POWER:  return ru ? "МОЩНОСТЬ" : "HEATER POWER";
+        case Msg::HEATER_POWER:  return ru ? "МОЩНОСТЬ" : "HEATER PWR";
         case Msg::TOP_T:         return ru ? "ВЕРХ Т" : "TOP T";
         case Msg::REFLUX_T:      return ru ? "ДЕФ Т" : "REFLUX T";
         case Msg::COLUMN_BOTTOM: return ru ? "НИЗ К Т" : "BTM T";
@@ -161,6 +170,15 @@ inline const char* msg(Msg id) {
         case Msg::SOUND:         return ru ? "Звук" : "Sound";
         case Msg::LANGUAGE:      return ru ? "Язык" : "Language";
 
+        // Rect params tiles
+        case Msg::FEEDSTOCK:     return ru ? "СЫРЬЁ" : "FEEDSTK";
+        case Msg::FEED_VOLUME:   return ru ? "ОБЪ. СС" : "FEED VOL";
+        case Msg::FEED_ABV:      return ru ? "КР. СС %" : "FEED ABV";
+        case Msg::BODY_PERCENT:  return ru ? "ТЕЛО %" : "BODY %";
+        case Msg::TAILS_PERCENT: return ru ? "ХВОСТЫ %" : "TAILS %";
+        case Msg::BODY_TO_TAILS: return ru ? "ТЕЛО→ХВ*" : "BODY>TAIL*";
+        case Msg::TAILS_FINISH:  return ru ? "ФИНИШ ХВ*" : "TAILS END*";
+
         // Equipment
         case Msg::COLUMN_HEIGHT: return ru ? "Высота колонны" : "Column Height";
         case Msg::CUBE_VOLUME:   return ru ? "Объем куба" : "Cube Volume";
@@ -181,7 +199,7 @@ inline const char* msg(Msg id) {
 
         // Calibration
         case Msg::PUMP_CALIBRATION:  return ru ? "Калибр. насоса" : "Pump Calibr";
-        case Msg::TOUCH_CALIBRATION: return ru ? "КАЛИБР. ТАЧА" : "TOUCH CALIBRATION";
+        case Msg::TOUCH_CALIBRATION: return ru ? "КАЛИБР. ТАЧА" : "TOUCH CAL";
 
         // Manual
         case Msg::MANUAL_MODE:   return ru ? "Ручное управление" : "Manual Control";
