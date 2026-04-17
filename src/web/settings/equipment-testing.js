@@ -242,6 +242,7 @@ const state = {
     activeTestingCard: 'pump',
     pollingHandle: null,
     lastStatus: null,
+    pendingStirrerSpeed: null,
     heaterPendingPower: 0,
     pressureTest: {
         active: false,
@@ -1689,7 +1690,7 @@ function renderStirrerStatus(stirrer, testingAllowed, demoMode) {
     }
 
     const speedInput = byId('equipment-test-stirrer-speed');
-    if (speedInput && !speedInput.matches(':focus')) {
+    if (speedInput && !speedInput.matches(':focus') && state.pendingStirrerSpeed == null) {
         const nextSpeed = running
             ? clamp(stirrer?.speed ?? stirrer?.speedPercent, 1, 100, stirrer?.defaultSpeedPercent || 50)
             : clamp(stirrer?.defaultSpeedPercent, 1, 100, 50);
@@ -1927,17 +1928,23 @@ async function handlePumpToggle() {
 
 async function handleStirrerAction(action) {
     const speedPercent = clamp(
-        byId('equipment-test-stirrer-speed')?.value,
+        state.pendingStirrerSpeed ?? byId('equipment-test-stirrer-speed')?.value,
         1,
         100,
         Number(state.lastStatus?.stirrer?.defaultSpeedPercent || 50)
     );
     const payload = action === 'stop' ? { action } : { action, speedPercent };
+    if (action !== 'stop') {
+        state.pendingStirrerSpeed = speedPercent;
+    } else {
+        state.pendingStirrerSpeed = null;
+    }
     const status = await requestJson('/api/testing/stirrer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
+    state.pendingStirrerSpeed = null;
     renderTestingStatus(status);
 
     if (action === 'start') {
@@ -2096,8 +2103,13 @@ function bindTestingActions() {
         button.addEventListener('click', () => {
             const speed = button.dataset.stirrerSpeedPreset;
             const input = byId('equipment-test-stirrer-speed');
-            if (input) input.value = String(speed);
+            state.pendingStirrerSpeed = clamp(speed, 1, 100, 50);
+            if (input) input.value = String(state.pendingStirrerSpeed);
         });
+    });
+
+    byId('equipment-test-stirrer-speed')?.addEventListener('input', (event) => {
+        state.pendingStirrerSpeed = clamp(event.currentTarget?.value, 1, 100, 50);
     });
 
     byId('equipment-test-stirrer-start')?.addEventListener('click', () => {

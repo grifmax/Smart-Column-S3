@@ -2584,17 +2584,28 @@ static void renderModeMonitor(const SystemState &state, bool full) {
 }
 
 static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
-  if (state.mode == Mode::MANUAL_RECT || state.mode == Mode::MASHING ||
-      state.mode == Mode::HOLD) {
-    renderModeMonitorCustom(state, full);
-    return;
-  }
-
   const bool ru = (g_settings.language == 0);
   const bool hasWaterOut = state.temps.valid[TEMP_WATER_OUT];
   const uint8_t layoutKey = static_cast<uint8_t>(
       0xD0 | ((static_cast<uint8_t>(state.mode) & 0x0F) << 1) |
       (hasWaterOut ? 0x01 : 0x00));
+  uint32_t phaseElapsedOverrideSec = 0xFFFFFFFFUL;
+  const uint32_t nowMs = millis();
+
+  if (state.mode == Mode::MASHING) {
+    phaseElapsedOverrideSec = 0;
+    if (state.mashing.tempInRange && state.mashing.inRangeStartTime > 0 &&
+        nowMs >= state.mashing.inRangeStartTime) {
+      phaseElapsedOverrideSec =
+          (nowMs - state.mashing.inRangeStartTime) / 1000UL;
+    }
+  } else if (state.mode == Mode::HOLD) {
+    phaseElapsedOverrideSec = 0;
+    if (state.hold.tempInRange && state.hold.inRangeStartTime > 0 &&
+        nowMs >= state.hold.inRangeStartTime) {
+      phaseElapsedOverrideSec = (nowMs - state.hold.inRangeStartTime) / 1000UL;
+    }
+  }
 
   if (full) {
     drawRootScaffold(UI_MODE_MONITOR);
@@ -2610,7 +2621,8 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
     g_dashboardCache.uptime[0] = '\0';
   }
 
-  RootHeaderState header = buildRootHeaderState(state);
+  RootHeaderState header =
+      buildRootHeaderState(state, phaseElapsedOverrideSec);
   renderRootStatusBar(header, full);
 
   auto updateTile = [&](uint8_t idx, int16_t x, int16_t y, int16_t w, int16_t h,
@@ -2625,6 +2637,7 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
   const int16_t leftX = ROOT_LEFT_X;
   const int16_t leftW = ROOT_LEFT_W;
   const int16_t rightX = ROOT_RIGHT_X;
+  const int16_t rightW = ROOT_RIGHT_W;
   const int16_t tileW = ROOT_RIGHT_TILE_W;
   const int16_t tileH = ROOT_RIGHT_TILE_H;
   const int16_t x2 = rightX + tileW + ROOT_GRID_COL_GAP;
@@ -2636,7 +2649,275 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
   char upBuf[16];
   formatDurationCompact(getModeRunElapsedSec(state), upBuf, sizeof(upBuf));
 
-  if (state.mode == Mode::DISTILLATION) {
+  if (state.mode == Mode::MANUAL_RECT) {
+    if (layoutChanged) {
+      drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+      drawValueTileShell(rightX, ROOT_PANEL_Y, tileW, tileH, msg(Msg::CUBE_TEMP));
+      drawValueTileShell(x2, ROOT_PANEL_Y, tileW, tileH, msg(Msg::TOP_T));
+      drawValueTileShell(rightX, y2, tileW, tileH, msg(Msg::REFLUX_T));
+      drawValueTileShell(x2, y2, tileW, tileH, msg(Msg::TSA_T));
+      drawValueTileShell(rightX, y3, tileW, tileH,
+                         ru ? "ДАВЛ. КУБА" : "CUBE PRESS");
+      drawValueTileShell(x2, y3, tileW, tileH, msg(Msg::PUMP));
+    }
+
+    char rowBuf[32];
+    char v[6][20];
+    snprintf(v[0], sizeof(v[0]), "%.1f", state.temps.cube);
+    snprintf(v[1], sizeof(v[1]), "%.1f", state.temps.columnTop);
+    snprintf(v[2], sizeof(v[2]), "%.1f", state.temps.reflux);
+    snprintf(v[3], sizeof(v[3]), "%.1f", state.temps.tsa);
+    snprintf(v[4], sizeof(v[4]), "%.0f", state.pressure.cube);
+    snprintf(v[5], sizeof(v[5]), "%.0f", state.pump.speedMlPerHour);
+
+    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C", COLOR_DANGER);
+    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "C", colorAccent());
+    updateTile(2, rightX, y2, tileW, tileH, v[2], "C", COLOR_INFO);
+    updateTile(3, x2, y2, tileW, tileH, v[3], "C", COLOR_WARNING);
+    updateTile(4, rightX, y3, tileW, tileH, v[4], "mm", COLOR_WARNING);
+    updateTile(5, x2, y3, tileW, tileH, v[5], msg(Msg::UNIT_ML_H),
+               COLOR_SUCCESS);
+
+    drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+    drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
+                    state.paused ? COLOR_WARNING : colorAccent());
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f ml/h", manualRectUi.speedMlH);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
+                           ru ? "СКОРОСТЬ" : "SPEED", rowBuf, COLOR_SUCCESS);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f %%", manualRectUi.powerPercent);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
+                           ru ? "МОЩНОСТЬ" : "POWER", rowBuf, COLOR_WARNING);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml", state.stats.headsVolume,
+             manualRectUi.headsTargetMl);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
+                           ru ? "ГОЛОВЫ" : "HEADS", rowBuf, COLOR_INFO);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml", state.stats.bodyVolume,
+             manualRectUi.bodyTargetMl);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
+                           ru ? "ТЕЛО" : "BODY", rowBuf, COLOR_PRIMARY);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml", state.stats.tailsVolume,
+             manualRectUi.tailsTargetMl);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
+                           ru ? "ХВОСТЫ" : "TAILS", rowBuf, COLOR_WARNING);
+    drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22, leftW - 16, 14,
+                   header.procState, header.procColor);
+
+    snprintf(infoLine, sizeof(infoLine),
+             ru ? "Ручная ректификация: цели слева, живая телеметрия справа"
+                : "Manual rect: targets left, live telemetry right");
+    if (hasWaterOut) {
+      snprintf(auxLine, sizeof(auxLine), "V %.0f | Atm %.0f | Water %.1f",
+               state.power.voltage, state.pressure.atmosphere * 0.750062f,
+               state.temps.waterOut);
+    } else {
+      snprintf(auxLine, sizeof(auxLine), "V %.0f | Atm %.0f | Pump %.0f",
+               state.power.voltage, state.pressure.atmosphere * 0.750062f,
+               state.pump.speedMlPerHour);
+    }
+  } else if (state.mode == Mode::MASHING || state.mode == Mode::HOLD) {
+    const bool isMash = (state.mode == Mode::MASHING);
+    const uint8_t steps =
+        isMash
+            ? ((state.mashing.stepCount > 0) ? state.mashing.stepCount
+                                             : mashProfileDefault.stepCount)
+            : ((state.hold.stepCount > 0) ? state.hold.stepCount
+                                          : holdStepsCount);
+    const uint8_t currentStep =
+        isMash ? state.mashing.currentStep : state.hold.currentStep;
+    const float targetTemp =
+        isMash ? state.mashing.targetTemp : state.hold.targetTemp;
+    const bool inRange =
+        isMash ? state.mashing.tempInRange : state.hold.tempInRange;
+    const uint32_t currentStepTargetSec =
+        isMash
+            ? state.mashing.stepDuration
+            : ((currentStep < state.hold.stepCount)
+                   ? static_cast<uint32_t>(state.hold.steps[currentStep].duration) *
+                         60UL
+                   : 0UL);
+    const bool useCooling =
+        (!isMash && currentStep < state.hold.stepCount)
+            ? state.hold.steps[currentStep].useCooling
+            : false;
+    const int16_t rowGap = 4;
+    const uint8_t visibleRows = (steps < 4) ? steps : 4;
+    const int16_t rowH =
+        (visibleRows > 0)
+            ? (ROOT_PANEL_H - (visibleRows - 1) * rowGap) / visibleRows
+            : ROOT_PANEL_H;
+    uint8_t startStep = 0;
+
+    if (steps > visibleRows && visibleRows > 0) {
+      startStep = (currentStep > 0) ? static_cast<uint8_t>(currentStep - 1) : 0;
+      if (startStep + visibleRows > steps) {
+        startStep = steps - visibleRows;
+      }
+    }
+
+    drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+    drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
+                    inRange ? COLOR_SUCCESS : COLOR_WARNING);
+
+    char rowBuf[40];
+    char timerBuf[24];
+    char elapsedBuf[12];
+    char targetBuf[12];
+    const uint32_t elapsedSec = (phaseElapsedOverrideSec == 0xFFFFFFFFUL)
+                                    ? FSM::getPhaseElapsedSec()
+                                    : phaseElapsedOverrideSec;
+    formatDurationCompact(elapsedSec, elapsedBuf, sizeof(elapsedBuf));
+    formatDurationCompact(currentStepTargetSec, targetBuf, sizeof(targetBuf));
+    snprintf(timerBuf, sizeof(timerBuf), "%s/%s", elapsedBuf, targetBuf);
+
+    snprintf(rowBuf, sizeof(rowBuf), "%u/%u",
+             static_cast<unsigned>(steps == 0 ? 0 : currentStep + 1),
+             static_cast<unsigned>(steps));
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
+                           ru ? "ШАГ" : "STEP", rowBuf, colorAccent());
+    if (targetTemp > 0.0f) {
+      snprintf(rowBuf, sizeof(rowBuf), "%.1f C", targetTemp);
+    } else {
+      snprintf(rowBuf, sizeof(rowBuf), "%s", ru ? "ПАУЗА" : "PAUSE");
+    }
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
+                           ru ? "ЦЕЛЬ" : "TARGET", rowBuf, COLOR_SUCCESS);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
+                           ru ? "ТАЙМЕР" : "TIMER", timerBuf, COLOR_PRIMARY);
+    snprintf(rowBuf, sizeof(rowBuf), "%.1f C", state.temps.cube);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
+                           msg(Msg::CUBE_TEMP), rowBuf, COLOR_DANGER);
+    if (isMash) {
+      if (state.stirrer.running) {
+        snprintf(rowBuf, sizeof(rowBuf), "%u%%",
+                 static_cast<unsigned>(state.stirrer.speedPercent));
+      } else {
+        snprintf(rowBuf, sizeof(rowBuf), "%s", ru ? "ВЫКЛ" : "OFF");
+      }
+      drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
+                             ru ? "МЕШАЛКА" : "STIRRER", rowBuf,
+                             state.stirrer.running ? COLOR_SUCCESS
+                                                   : colorMuted());
+    } else {
+      snprintf(rowBuf, sizeof(rowBuf), "%s",
+               useCooling ? (ru ? "ОХЛАЖД." : "COOLING")
+                          : (ru ? "НАГРЕВ" : "HEATING"));
+      drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
+                             ru ? "КОНТУР" : "LOOP", rowBuf,
+                             useCooling ? COLOR_INFO : COLOR_WARNING);
+    }
+    drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22, leftW - 16, 14,
+                   inRange ? (ru ? "В ДОПУСКЕ" : "IN RANGE")
+                           : (ru ? "НАБОР ТЕМП" : "HEATING"),
+                   inRange ? COLOR_SUCCESS : COLOR_WARNING);
+
+    drawCard(rightX, ROOT_PANEL_Y, rightW, ROOT_PANEL_H, colorCard());
+    for (uint8_t i = 0; i < visibleRows; i++) {
+      const uint8_t stepIndex = startStep + i;
+      const int16_t rowY = ROOT_PANEL_Y + i * (rowH + rowGap);
+      const bool isCurrent = stepIndex == currentStep;
+      const bool completed = stepIndex < currentStep;
+      uint8_t progress = completed ? 100 : 0;
+      float stepTemp = 0.0f;
+      uint16_t stepMinutes = 0;
+      bool stepCooling = false;
+      const char *stepName = nullptr;
+
+      if (isMash) {
+        if (stepIndex < mashProfileDefault.stepCount) {
+          stepTemp = mashProfileDefault.steps[stepIndex].temperature;
+          stepMinutes = mashProfileDefault.steps[stepIndex].duration;
+          stepName = mashProfileDefault.steps[stepIndex].name;
+        }
+        if (isCurrent && currentStepTargetSec > 0 && inRange) {
+          uint32_t p = (elapsedSec * 100UL) / currentStepTargetSec;
+          if (p > 100UL) {
+            p = 100UL;
+          }
+          progress = static_cast<uint8_t>(p);
+        }
+      } else {
+        if (stepIndex < holdStepsCount) {
+          stepTemp = holdStepsDefault[stepIndex].temperature;
+          stepMinutes = holdStepsDefault[stepIndex].duration;
+          stepCooling = holdStepsDefault[stepIndex].useCooling;
+        }
+        if (stepIndex < state.hold.stepCount) {
+          stepTemp = state.hold.steps[stepIndex].temperature;
+          stepMinutes = state.hold.steps[stepIndex].duration;
+          stepCooling = state.hold.steps[stepIndex].useCooling;
+        }
+        if (isCurrent && currentStepTargetSec > 0 && inRange) {
+          uint32_t p = (elapsedSec * 100UL) / currentStepTargetSec;
+          if (p > 100UL) {
+            p = 100UL;
+          }
+          progress = static_cast<uint8_t>(p);
+        }
+      }
+
+      const uint16_t rowBg =
+          isCurrent ? tft.color565(235, 245, 255)
+                    : (completed ? tft.color565(236, 248, 240) : colorCard());
+      drawCard(rightX, rowY, rightW, rowH, rowBg);
+      if (isCurrent) {
+        tft.fillRect(rightX + 1, rowY + 1, rightW - 2, 3,
+                     inRange ? COLOR_SUCCESS : colorAccent());
+      }
+
+      char titleBuf[28];
+      char metaBuf[16];
+      char detailBuf[32];
+      if (isMash && stepName != nullptr && stepName[0] != '\0') {
+        snprintf(titleBuf, sizeof(titleBuf), "%u. %.18s",
+                 static_cast<unsigned>(stepIndex + 1), stepName);
+      } else if (!isMash && stepCooling) {
+        snprintf(titleBuf, sizeof(titleBuf), "%u. %s",
+                 static_cast<unsigned>(stepIndex + 1),
+                 ru ? "ОХЛАЖДЕНИЕ" : "COOLING");
+      } else {
+        snprintf(titleBuf, sizeof(titleBuf), "%u. %s",
+                 static_cast<unsigned>(stepIndex + 1),
+                 ru ? "СТУПЕНЬ" : "STEP");
+      }
+      snprintf(metaBuf, sizeof(metaBuf), "%u min",
+               static_cast<unsigned>(stepMinutes));
+      if (stepTemp > 0.0f) {
+        snprintf(detailBuf, sizeof(detailBuf), "%.1f C", stepTemp);
+      } else {
+        snprintf(detailBuf, sizeof(detailBuf), "%s",
+                 ru ? "ПАУЗА БЕЗ НАГРЕВА" : "NO-HEAT PAUSE");
+      }
+
+      tft.setTextColor(isCurrent ? colorAccent() : colorFg());
+      tft.setTextSize(1);
+      tft.setTextDatum(middle_left);
+      tft.drawString(titleBuf, rightX + 10, rowY + 10);
+      tft.setTextColor(colorMuted());
+      tft.setTextDatum(middle_right);
+      tft.drawString(metaBuf, rightX + rightW - 10, rowY + 10);
+      tft.setTextColor(completed ? COLOR_SUCCESS : COLOR_PRIMARY);
+      tft.setTextDatum(middle_left);
+      tft.drawString(detailBuf, rightX + 10, rowY + 22);
+      drawProgressBar(rightX + 10, rowY + rowH - 7, rightW - 20, 4, progress,
+                      completed ? COLOR_SUCCESS : colorAccent());
+      tft.setTextDatum(top_left);
+    }
+
+    snprintf(infoLine, sizeof(infoLine),
+             isMash ? (ru ? "Затирка: шаги справа, цель и таймер слева"
+                            : "Mashing: step list right, target and timer left")
+                    : (ru ? "Пастеризация: шаги справа, контур и цель слева"
+                          : "Hold: step list right, control loop and target left"));
+    if (isMash) {
+      snprintf(auxLine, sizeof(auxLine), "P %.0fW | Stir %s | Cube %.1f",
+               state.power.power, state.stirrer.running ? "ON" : "OFF",
+               state.temps.cube);
+    } else {
+      snprintf(auxLine, sizeof(auxLine), "P %.0fW | %s | Cube %.1f",
+               state.power.power, useCooling ? "Cooling" : "Heating",
+               state.temps.cube);
+    }
+  } else if (state.mode == Mode::DISTILLATION) {
     if (layoutChanged) {
       drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
       drawValueTileShell(rightX, ROOT_PANEL_Y, tileW, tileH, msg(Msg::CUBE_TEMP));
