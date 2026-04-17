@@ -1772,6 +1772,101 @@ static void drawFooterHint(const char *text, uint16_t tone = COLOR_INFO) {
   tft.setTextDatum(top_left);
 }
 
+static int16_t drawWrappedTextBlock(int16_t x, int16_t y, int16_t w,
+                                    const char *text, uint16_t color,
+                                    uint8_t textSize = 1,
+                                    uint8_t maxLines = 8,
+                                    int16_t lineGap = 3) {
+  if (text == nullptr || text[0] == '\0' || w <= 0 || maxLines == 0)
+    return y;
+
+  char source[320];
+  strncpy(source, text, sizeof(source) - 1);
+  source[sizeof(source) - 1] = '\0';
+
+  const int16_t centerX = x + (w / 2);
+  const int16_t lineH = 12 + (textSize * 8);
+  uint8_t linesDrawn = 0;
+
+  tft.setTextColor(color);
+  tft.setTextSize(textSize);
+  tft.setTextDatum(top_center);
+
+  char *paragraphCtx = nullptr;
+  for (char *paragraph = strtok_r(source, "\n", &paragraphCtx);
+       paragraph != nullptr && linesDrawn < maxLines;
+       paragraph = strtok_r(nullptr, "\n", &paragraphCtx)) {
+    char paragraphBuf[320];
+    strncpy(paragraphBuf, paragraph, sizeof(paragraphBuf) - 1);
+    paragraphBuf[sizeof(paragraphBuf) - 1] = '\0';
+
+    char line[200] = {0};
+    char *wordCtx = nullptr;
+    for (char *word = strtok_r(paragraphBuf, " ", &wordCtx); word != nullptr;
+         word = strtok_r(nullptr, " ", &wordCtx)) {
+      char candidate[200];
+      if (line[0] == '\0') {
+        snprintf(candidate, sizeof(candidate), "%s", word);
+      } else {
+        snprintf(candidate, sizeof(candidate), "%s %s", line, word);
+      }
+
+      if (line[0] != '\0' && tft.textWidth(candidate) > (w - 4)) {
+        tft.drawString(line, centerX, y + linesDrawn * (lineH + lineGap));
+        linesDrawn++;
+        if (linesDrawn >= maxLines)
+          break;
+        strncpy(line, word, sizeof(line) - 1);
+        line[sizeof(line) - 1] = '\0';
+      } else {
+        strncpy(line, candidate, sizeof(line) - 1);
+        line[sizeof(line) - 1] = '\0';
+      }
+    }
+
+    if (linesDrawn >= maxLines)
+      break;
+    if (line[0] != '\0') {
+      tft.drawString(line, centerX, y + linesDrawn * (lineH + lineGap));
+      linesDrawn++;
+    }
+  }
+
+  tft.setTextDatum(top_left);
+  tft.setTextSize(1);
+  return y + linesDrawn * (lineH + lineGap);
+}
+
+static void drawFullscreenOverlay(const char *title, const char *message,
+                                  uint16_t tone, const char *footer = nullptr,
+                                  uint8_t messageSize = 1) {
+  const int16_t panelX = 18;
+  const int16_t panelY = 18;
+  const int16_t panelW = TFT_WIDTH - 36;
+  const int16_t panelH = TFT_HEIGHT - 36;
+  const int16_t bodyX = panelX + 18;
+  const int16_t bodyY = panelY + 44;
+  const int16_t bodyW = panelW - 36;
+  const int16_t bodyH = panelH - 68;
+
+  tft.fillScreen(colorNavBg());
+  tft.fillRect(0, 0, TFT_WIDTH, 6, tone);
+  drawCard(panelX, panelY, panelW, panelH, colorCard());
+  drawPanelHeader(panelX, panelY, panelW, title, tone);
+  drawCard(bodyX, bodyY, bodyW, bodyH, colorBg());
+  tft.fillRect(bodyX + 1, bodyY + 1, 8, bodyH - 2, tone);
+
+  int16_t textBottom = drawWrappedTextBlock(bodyX + 28, bodyY + 22, bodyW - 56,
+                                            message, colorFg(), messageSize, 8, 5);
+  if (footer != nullptr && footer[0] != '\0') {
+    const int16_t footerY =
+        (textBottom + 18 > bodyY + bodyH - 34) ? (bodyY + bodyH - 30)
+                                               : (textBottom + 18);
+    drawWrappedTextBlock(bodyX + 28, footerY, bodyW - 56, footer, colorMuted(),
+                         1, 3, 3);
+  }
+}
+
 static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h,
                                const char *value, const char *unit,
                                uint16_t color) {
@@ -4122,36 +4217,106 @@ static void renderAllTemps(const SystemState &state, bool full) {
 }
 
 static void renderTouchCalibration() {
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE);
-  tft.setTextSize(2);
-  tft.setCursor(20, 20);
-  tft.print(msg(Msg::TOUCH_CAL_TITLE));
+  const bool ru = (g_settings.language == 0);
+  const uint16_t tone = (ui.calSkip > 0) ? COLOR_WARNING : COLOR_INFO;
+  const int16_t panelX = 18;
+  const int16_t panelY = 18;
+  const int16_t panelW = TFT_WIDTH - 36;
+  const int16_t panelH = TFT_HEIGHT - 36;
+  const int16_t infoX = panelX + 18;
+  const int16_t infoY = panelY + 44;
+  const int16_t infoW = panelW - 36;
+  const int16_t infoH = 54;
+  const int16_t targetX = panelX + 18;
+  const int16_t targetY = infoY + infoH + 12;
+  const int16_t targetW = panelW - 36;
+  const int16_t targetH = panelH - (targetY - panelY) - 18;
+
+  tft.fillScreen(colorNavBg());
+  tft.fillRect(0, 0, TFT_WIDTH, 6, tone);
+  drawCard(panelX, panelY, panelW, panelH, colorCard());
+  drawPanelHeader(panelX, panelY, panelW, msg(Msg::TOUCH_CAL_TITLE), tone);
+  drawCard(infoX, infoY, infoW, infoH, colorBg());
+  tft.fillRect(infoX + 1, infoY + 1, 8, infoH - 2, tone);
+
+  for (uint8_t i = 0; i < 4; i++) {
+    const int16_t sx = panelX + panelW - 138 + i * 30;
+    const int16_t sy = panelY + 8;
+    const bool done = (i < ui.calStep);
+    const bool current = (!ui.calSkip && i == ui.calStep);
+    drawCard(sx, sy, 24, 16, done ? colorButtonBody() : colorBg());
+    tft.fillRect(sx + 2, sy + 2, 20, 4,
+                 done ? COLOR_SUCCESS
+                      : (current ? tone : colorSoftFill()));
+    tft.setTextColor(done ? COLOR_SUCCESS : (current ? colorFg() : colorMuted()));
+    tft.setTextSize(1);
+    tft.setTextDatum(middle_center);
+    char stepBuf[4];
+    snprintf(stepBuf, sizeof(stepBuf), "%u", i + 1);
+    tft.drawString(stepBuf, sx + 12, sy + 10);
+    tft.setTextDatum(top_left);
+  }
+
+  tft.setTextColor(colorFg());
   tft.setTextSize(1);
-  tft.setCursor(20, 60);
+  tft.setTextDatum(top_center);
   if (ui.calSkip > 0) {
-    // Warm-up phase: show countdown only, NO calibration target yet.
     char buf[32];
     snprintf(buf, sizeof(buf), msg(Msg::TOUCH_CAL_TAP_N), ui.calSkip);
-    tft.print(buf);
+    tft.drawString(buf, TFT_WIDTH / 2, infoY + 9);
+    tft.setTextColor(colorMuted());
+    tft.drawString(ru ? "Короткие нажатия перед замером" : "Short taps before sampling",
+                   TFT_WIDTH / 2, infoY + 28);
   } else {
-    // Actual calibration phase: show which point and draw the target.
     char buf[32];
     snprintf(buf, sizeof(buf), "%s  %d/4", msg(Msg::TOUCH_CAL_TOUCH_TARGET),
              ui.calStep + 1);
-    tft.print(buf);
+    tft.drawString(buf, TFT_WIDTH / 2, infoY + 9);
+    tft.setTextColor(colorMuted());
+    tft.drawString(ru ? "Отпускайте палец после каждого касания"
+                      : "Release finger after each target",
+                   TFT_WIDTH / 2, infoY + 28);
+  }
+  tft.setTextDatum(top_left);
 
-    const int16_t points[4][2] = {{30, 30},
-                                  {TFT_WIDTH - 30, 30},
-                                  {TFT_WIDTH - 30, TFT_HEIGHT - 30},
-                                  {30, TFT_HEIGHT - 30}};
+  drawCard(targetX, targetY, targetW, targetH, colorBg());
+  tft.fillRect(targetX + 1, targetY + 1, 8, targetH - 2, tone);
+
+  if (ui.calSkip > 0) {
+    char countBuf[8];
+    snprintf(countBuf, sizeof(countBuf), "%u", ui.calSkip);
+    tft.setTextColor(tone);
+    tft.setTextSize(5);
+    tft.setTextDatum(middle_center);
+    tft.drawString(countBuf, TFT_WIDTH / 2, targetY + (targetH / 2) - 6);
+    tft.setTextSize(1);
+    tft.setTextColor(colorMuted());
+    tft.drawString(ru ? "Подготовка тач-контроллера" : "Preparing touch controller",
+                   TFT_WIDTH / 2, targetY + targetH - 34);
+    tft.setTextDatum(top_left);
+  } else {
+    const int16_t points[4][2] = {{targetX + 34, targetY + 28},
+                                  {targetX + targetW - 34, targetY + 28},
+                                  {targetX + targetW - 34, targetY + targetH - 28},
+                                  {targetX + 34, targetY + targetH - 28}};
     const uint8_t stepIdx = (ui.calStep < 4) ? ui.calStep : 3;
     int16_t px = points[stepIdx][0];
     int16_t py = points[stepIdx][1];
-    tft.drawCircle(px, py, 15, TFT_GREEN);
-    tft.drawCircle(px, py, 3, TFT_GREEN);
-    tft.drawLine(px - 20, py, px + 20, py, TFT_GREEN);
-    tft.drawLine(px, py - 20, px, py + 20, TFT_GREEN);
+    tft.drawRect(px - 18, py - 18, 36, 36, tone);
+    tft.drawRect(px - 10, py - 10, 20, 20, tone);
+    tft.fillRect(px - 3, py - 3, 6, 6, tone);
+    tft.drawFastHLine(px - 26, py, 52, tone);
+    tft.drawFastVLine(px, py - 26, 52, tone);
+    tft.setTextColor(colorMuted());
+    tft.setTextSize(1);
+    tft.setTextDatum(middle_center);
+    tft.drawString(ru ? "Коснитесь прямоугольной мишени"
+                      : "Touch the rectangular target",
+                   TFT_WIDTH / 2, targetY + (targetH / 2) - 8);
+    tft.drawString(ru ? "Замер берется по среднему удержанию"
+                      : "Sampling uses averaged hold data",
+                   TFT_WIDTH / 2, targetY + (targetH / 2) + 12);
+    tft.setTextDatum(top_left);
   }
 }
 
@@ -4193,19 +4358,18 @@ static bool initDisplayHardware(bool showBootSplash) {
   }
 
   if (showBootSplash) {
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_WHITE);
-    tft.setTextSize(3);
-    tft.setCursor(100, 120);
-    tft.println("Smart-Column S3");
-    tft.setTextSize(2);
-    tft.setCursor(140, 170);
-    tft.setTextColor(TFT_GREEN);
-    tft.println("TFT + Touch OK");
+    char bootBuf[96];
+    snprintf(bootBuf, sizeof(bootBuf), "Smart-Column S3\nILI9488 / XPT2046");
+    drawFullscreenOverlay("SYSTEM START", bootBuf, COLOR_SUCCESS,
+                          touch_ok ? FW_VERSION : "DISPLAY ONLY", 2);
+    drawWrappedTextBlock(70, 214, TFT_WIDTH - 140,
+                         touch_ok ? "TFT + TOUCH READY"
+                                  : "TFT READY / TOUCH OFFLINE",
+                         touch_ok ? COLOR_SUCCESS : COLOR_WARNING, 1, 2, 4);
     delay(1200);
   }
 
-  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(colorNavBg());
   return true;
 }
 
@@ -4607,19 +4771,16 @@ void update(const SystemState &state) {
 void showMessage(const char *title, const char *message, uint8_t type) {
 #if TFT_ENABLED
   if (tft_ok) {
-    uint16_t color = TFT_WHITE;
+    uint16_t color = colorAccent();
     if (type == 1) {
-      color = TFT_YELLOW;
+      color = COLOR_WARNING;
     } else if (type == 2) {
-      color = TFT_RED;
+      color = COLOR_DANGER;
     }
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(color);
-    tft.setCursor(20, 40);
-    tft.println(title);
-    tft.setTextColor(TFT_WHITE);
-    tft.setCursor(20, 120);
-    tft.println(message);
+    tft.startWrite();
+    drawFullscreenOverlay(title, message, color, FW_VERSION,
+                          (message != nullptr && strlen(message) < 24) ? 2 : 1);
+    tft.endWrite();
   }
 #endif
 }
@@ -4686,13 +4847,13 @@ RuntimeStats getRuntimeStats() {
 void showError(const char *error) {
 #if TFT_ENABLED
   if (tft_ok) {
-    tft.fillScreen(TFT_RED);
-    tft.setTextColor(TFT_WHITE);
-    tft.setCursor(20, 20);
-    tft.println("ОШИБКА!"); // localized manually for
-                                               // simplicity or add to Msg
-    tft.setCursor(20, 80);
-    tft.println(error);
+    const bool ru = (g_settings.language == 0);
+    tft.startWrite();
+    drawFullscreenOverlay(ru ? "ОШИБКА" : "ERROR", error, COLOR_DANGER,
+                          ru ? "Проверьте питание, датчики и логи"
+                             : "Check power, sensors and logs",
+                          1);
+    tft.endWrite();
   }
 #endif
 }
