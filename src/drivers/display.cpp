@@ -1246,27 +1246,27 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_SETTINGS:
-    if (hit(tx, ty, 10, 65, 225, 50)) {
+    if (hit(tx, ty, 10, 53, 225, 63)) {
       pushScreen(UI_EQUIPMENT);
       return true;
-    } else if (hit(tx, ty, 245, 65, 225, 50)) {
+    } else if (hit(tx, ty, 245, 53, 225, 63)) {
       pushScreen(UI_RECT_PARAMS);
       return true;
-    } else if (hit(tx, ty, 10, 125, 225, 50)) {
+    } else if (hit(tx, ty, 10, 124, 225, 63)) {
       pushScreen(UI_DIST_PARAMS);
       return true;
-    } else if (hit(tx, ty, 245, 125, 225, 50)) {
+    } else if (hit(tx, ty, 245, 124, 225, 63)) {
       pushScreen(UI_CALIBRATION);
       return true;
-    } else if (hit(tx, ty, 10, 185, 145, 50)) {
+    } else if (hit(tx, ty, 10, 197, 145, 32)) {
       g_settings.theme = (g_settings.theme == 0) ? 1 : 0;
       NVSManager::saveSettings(g_settings);
       return true;
-    } else if (hit(tx, ty, 165, 185, 145, 50)) {
+    } else if (hit(tx, ty, 165, 197, 145, 32)) {
       g_settings.soundEnabled = !g_settings.soundEnabled;
       NVSManager::saveSettings(g_settings);
       return true;
-    } else if (hit(tx, ty, 320, 185, 145, 50)) {
+    } else if (hit(tx, ty, 320, 197, 145, 32)) {
       g_settings.language = (g_settings.language == 0) ? 1 : 0;
       NVSManager::saveSettings(g_settings);
       return true;

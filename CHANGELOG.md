@@ -9,6 +9,15 @@
 
 ---
 
+## [2.2.14] - 2026-04-17
+
+### Changed
+- Fixed TFT SETTINGS hitboxes so the touch zones match the new 2x2 HMI layout for cards and bottom toggles. (codex)
+- Resynced release versioning after 2.2.13: firmware/docs/web assets and version stamps now point to the same release again. (codex)
+- Removed the temporary local helper _remove_dead.ps1 after the dead-code cleanup in renderRectParams(). (codex)
+
+---
+
 ## [2.2.13] - 2026-04-17
 
 ### Изменено
