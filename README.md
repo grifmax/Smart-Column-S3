@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.3-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.4-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -144,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.2.4 | 2026-04-17 | Базовый TFT/HMI стиль переписан: новая палитра, прямоугольные промышленные кнопки, обновлённые header/tabs/cards/value-tiles и более строгая цветовая кодировка `CONTROL`/`SETTINGS` |
 | 2.2.3 | 2026-04-17 | HMI-редизайн IPS UI продолжен для оставшихся custom monitor режимов: `MANUAL_RECT`, `MASHING` и `HOLD` переведены на тот же root-monitor каркас с левой summary-панелью и правым step/grid layout |
 | 2.2.2 | 2026-04-17 | HMI-редизайн IPS UI продолжен для custom monitor: операторские панели добавлены для дистилляции, НБК и ферментации, а общий root-monitor переведен на единый status/footer каркас |
 | 2.2.1 | 2026-04-17 | Второй HMI-срез IPS UI: dashboard и экран ректификации переведены на операторскую панель с левой summary-зоной и унифицированной 2x3 метрикой |

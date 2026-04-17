@@ -191,14 +191,14 @@ static const int16_t UI_CONTENT_Y =
     10; // Начинаем почти сверху
 static const int16_t UI_CONTENT_H = TFT_HEIGHT - UI_FOOTER_H - 10;
 
-// Colors matching web UI
-#define COLOR_PRIMARY tft.color565(0, 123, 255)      // #007bff
-#define COLOR_SUCCESS tft.color565(40, 167, 69)      // #28a745
-#define COLOR_DANGER tft.color565(220, 53, 69)       // #dc3545
-#define COLOR_WARNING tft.color565(255, 193, 7)      // #ffc107
-#define COLOR_INFO tft.color565(23, 162, 184)        // #17a2b8
-#define COLOR_DARK_GREY tft.color565(52, 58, 64)     // #343a40
-#define COLOR_LIGHT_GREY tft.color565(233, 236, 239) // #e9ecef
+// Industrial HMI palette for the built-in TFT
+#define COLOR_PRIMARY tft.color565(0, 168, 140)
+#define COLOR_SUCCESS tft.color565(94, 184, 108)
+#define COLOR_DANGER tft.color565(208, 72, 72)
+#define COLOR_WARNING tft.color565(230, 170, 34)
+#define COLOR_INFO tft.color565(64, 154, 220)
+#define COLOR_DARK_GREY tft.color565(64, 70, 78)
+#define COLOR_LIGHT_GREY tft.color565(212, 218, 222)
 
 enum UiScreen : uint8_t {
   UI_DASHBOARD = 0,
@@ -666,7 +666,10 @@ static bool isManualAccessAllowed(const SystemState &state) {
   return (state.mode == Mode::IDLE || state.mode == Mode::MANUAL_RECT);
 }
 
-static uint16_t dimmedButtonColor() { return tft.color565(140, 140, 140); }
+static uint16_t dimmedButtonColor() {
+  return (g_settings.theme == 1) ? tft.color565(92, 98, 104)
+                                 : tft.color565(126, 132, 138);
+}
 
 static uint16_t modeButtonColor(const SystemState &state, Mode target,
                                 uint16_t idleColor) {
@@ -1445,44 +1448,49 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
 }
 
 static uint16_t colorBg() {
-  return (g_settings.theme == 1) ? tft.color565(12, 14, 16)
-                                 : tft.color565(232, 236, 240);
+  return (g_settings.theme == 1) ? tft.color565(14, 16, 18)
+                                 : tft.color565(206, 212, 216);
 }
 
 static uint16_t colorFg() {
-  return (g_settings.theme == 1) ? TFT_WHITE : tft.color565(28, 32, 36);
+  return (g_settings.theme == 1) ? TFT_WHITE : tft.color565(20, 24, 28);
 }
 
-static uint16_t colorAccent() { return tft.color565(0, 108, 178); }
+static uint16_t colorAccent() { return COLOR_PRIMARY; }
 
 static uint16_t colorCard() {
-  return (g_settings.theme == 1) ? tft.color565(26, 30, 34)
-                                 : tft.color565(248, 250, 252);
+  return (g_settings.theme == 1) ? tft.color565(28, 32, 36)
+                                 : tft.color565(232, 236, 240);
 }
 
 static uint16_t colorBorder() {
-  return (g_settings.theme == 1) ? tft.color565(82, 88, 96)
-                                 : tft.color565(132, 142, 152);
+  return (g_settings.theme == 1) ? tft.color565(116, 122, 130)
+                                 : tft.color565(88, 96, 104);
 }
 
 static uint16_t colorMuted() {
-  return (g_settings.theme == 1) ? tft.color565(162, 168, 176)
-                                 : tft.color565(96, 104, 116);
+  return (g_settings.theme == 1) ? tft.color565(172, 178, 184)
+                                 : tft.color565(76, 82, 88);
 }
 
 static uint16_t colorNavBg() {
-  return (g_settings.theme == 1) ? tft.color565(16, 18, 20)
-                                 : tft.color565(220, 226, 232);
+  return (g_settings.theme == 1) ? tft.color565(8, 10, 12)
+                                 : tft.color565(182, 190, 196);
 }
 
 static uint16_t colorNavInactive() {
-  return (g_settings.theme == 1) ? tft.color565(42, 46, 52)
-                                 : tft.color565(204, 212, 220);
+  return (g_settings.theme == 1) ? tft.color565(40, 44, 50)
+                                 : tft.color565(156, 164, 170);
 }
 
 static uint16_t colorSoftFill() {
-  return (g_settings.theme == 1) ? tft.color565(34, 39, 44)
-                                 : tft.color565(236, 242, 247);
+  return (g_settings.theme == 1) ? tft.color565(58, 62, 68)
+                                 : tft.color565(214, 220, 224);
+}
+
+static uint16_t colorButtonBody() {
+  return (g_settings.theme == 1) ? tft.color565(22, 24, 28)
+                                 : tft.color565(78, 84, 90);
 }
 
 static void clearRow(int16_t y, int16_t h = 24) {
@@ -1493,8 +1501,11 @@ static void drawProgressBar(int16_t x, int16_t y, int16_t w, int16_t h,
                             uint8_t percent, uint16_t fill) {
   if (w <= 0 || h <= 0)
     return;
-  tft.fillRect(x, y, w, h, colorBg());
+  tft.fillRect(x, y, w, h, colorNavInactive());
   tft.drawRect(x, y, w, h, colorBorder());
+  if (w > 2 && h > 2) {
+    tft.drawRect(x + 1, y + 1, w - 2, h - 2, colorBg());
+  }
   if (percent == 0)
     return;
   const int16_t innerW = (w > 4) ? (w - 4) : 0;
@@ -1510,6 +1521,9 @@ static void drawStateBadge(int16_t x, int16_t y, int16_t w, int16_t h,
                            const char *label, uint16_t bg) {
   tft.fillRect(x, y, w, h, bg);
   tft.drawRect(x, y, w, h, colorBorder());
+  if (w > 8 && h > 4) {
+    tft.fillRect(x + 1, y + 1, 6, h - 2, colorNavBg());
+  }
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(1);
   tft.setTextDatum(middle_center);
@@ -1546,24 +1560,26 @@ static void drawHeader(const char *title, bool showBack) {
             // главных экранах
 
   // Отрисовываем только на под-экранах
-  tft.fillRect(0, 0, TFT_WIDTH, UI_HEADER_H, colorCard());
+  tft.fillRect(0, 0, TFT_WIDTH, UI_HEADER_H, colorNavBg());
+  tft.fillRect(0, 0, TFT_WIDTH, 4, colorAccent());
   tft.drawFastHLine(0, UI_HEADER_H - 1, TFT_WIDTH, colorBorder());
-  tft.drawFastHLine(0, 0, TFT_WIDTH, colorAccent());
+  tft.drawFastHLine(0, UI_HEADER_H - 2, TFT_WIDTH, colorAccent());
 
-  tft.setTextColor(colorFg());
+  tft.setTextColor(TFT_WHITE);
   tft.setTextSize(1);
   tft.setTextDatum(middle_left);
-  tft.drawString(title, 15, UI_HEADER_H / 2);
+  tft.drawString(title, 14, UI_HEADER_H / 2);
 
   int16_t bw = 110;
   int16_t bh = UI_HEADER_H - 10;
   const int16_t bx = TFT_WIDTH - bw - 5;
   const int16_t by = (UI_HEADER_H - bh) / 2;
-  tft.fillRect(bx, by, bw, bh, colorAccent());
+  tft.fillRect(bx, by, bw, bh, colorButtonBody());
   tft.drawRect(bx, by, bw, bh, colorBorder());
+  tft.fillRect(bx + 2, by + 2, 8, bh - 4, colorAccent());
   tft.setTextColor(TFT_WHITE);
   tft.setTextDatum(middle_center);
-  tft.drawString(msg(Msg::BTN_BACK), bx + bw / 2, UI_HEADER_H / 2);
+  tft.drawString(msg(Msg::BTN_BACK), bx + (bw / 2) + 4, UI_HEADER_H / 2);
 
   tft.setTextDatum(top_left);
 }
@@ -1574,9 +1590,9 @@ static void drawTabs(UiScreen current) {
                            ru ? "НАСТРОЙ" : "SET", ru ? "СЕРВИС" : "INFO"};
 
   const int16_t navY = TFT_HEIGHT - UI_FOOTER_H;
-  const int16_t gap = 6;
+  const int16_t gap = 4;
   const int16_t bw = (TFT_WIDTH - (gap * 5)) / 4;
-  const int16_t bh = UI_FOOTER_H - 14;
+  const int16_t bh = UI_FOOTER_H - 12;
 
   tft.fillRect(0, navY, TFT_WIDTH, UI_FOOTER_H, colorNavBg());
   tft.drawFastHLine(0, navY, TFT_WIDTH, colorBorder());
@@ -1584,7 +1600,7 @@ static void drawTabs(UiScreen current) {
 
   for (int i = 0; i < 4; i++) {
     const int16_t x = gap + i * (bw + gap);
-    const int16_t y = navY + 7;
+    const int16_t y = navY + 6;
     bool active = false;
     if (i == 0)
       active = isMonitorRootScreen(current);
@@ -1594,28 +1610,30 @@ static void drawTabs(UiScreen current) {
       active = (current == UI_SETTINGS);
     else
       active = (current == UI_SERVICE);
-    const uint16_t bg = active ? colorAccent() : colorNavInactive();
+    const uint16_t bg = active ? colorButtonBody() : colorNavInactive();
     const uint16_t fg = active ? TFT_WHITE : colorFg();
 
     tft.fillRect(x, y, bw, bh, bg);
     tft.drawRect(x, y, bw, bh, colorBorder());
     if (active) {
-      tft.fillRect(x + 4, y + 4, bw - 8, 3, tft.color565(210, 236, 255));
+      tft.fillRect(x + 2, y + 2, bw - 4, 7, colorAccent());
+    } else {
+      tft.fillRect(x + 2, y + 2, bw - 4, 5, colorSoftFill());
     }
 
     tft.setTextColor(fg);
     tft.setTextSize(1);
     tft.setFont(&fonts::efontJA_16);
     tft.setTextDatum(middle_center);
-    tft.drawString(labels[i], x + bw / 2, y + bh / 2 + 1);
+    tft.drawString(labels[i], x + bw / 2, y + (bh / 2) + 5);
 
     // Quick status dots to improve at-a-glance readability.
     if (i == 1 && g_state.mode != Mode::IDLE) {
       const uint16_t dot = g_state.paused ? COLOR_WARNING : COLOR_SUCCESS;
-      tft.fillRect(x + bw - 11, y + 7, 6, 6, dot);
+      tft.fillRect(x + bw - 12, y + 11, 7, 7, dot);
     }
     if (i == 3 && !g_state.safetyOk) {
-      tft.fillRect(x + bw - 11, y + 7, 6, 6, COLOR_DANGER);
+      tft.fillRect(x + bw - 12, y + 11, 7, 7, COLOR_DANGER);
     }
   }
 
@@ -1636,8 +1654,9 @@ static void drawValueRow(int16_t y, const char *label, const char *value,
 
   if (highlighted) {
     // Делаем значение похожим на кнопку
-    tft.fillRect(boxX, y - 7, boxW, 32, colorAccent());
+    tft.fillRect(boxX, y - 7, boxW, 32, colorButtonBody());
     tft.drawRect(boxX, y - 7, boxW, 32, colorBorder());
+    tft.fillRect(boxX + 2, y - 5, boxW - 4, 6, colorAccent());
     tft.setTextColor(TFT_WHITE);
   } else {
     tft.fillRect(boxX, y - 7, boxW, 32, colorCard());
@@ -1653,14 +1672,27 @@ static void drawValueRow(int16_t y, const char *label, const char *value,
 
 static void drawButton(int16_t x, int16_t y, int16_t w, int16_t h,
                        const char *label, uint16_t bg, uint16_t fg) {
-  tft.fillRect(x, y, w, h, bg);
-  tft.drawRect(x, y, w, h, colorBorder());
-  tft.drawFastHLine(x + 1, y + 1, w - 2, colorSoftFill());
+  const uint16_t body = colorButtonBody();
+  const int16_t stripeH = (h >= 44) ? 8 : 6;
+  const int16_t dividerY = y + stripeH + 2;
+  uint8_t labelSize = (w >= 140 && h >= 42) ? 2 : 1;
 
-  tft.setTextColor(fg);
-  tft.setTextSize(2);
+  tft.fillRect(x, y, w, h, body);
+  tft.drawRect(x, y, w, h, colorBorder());
+  if (w > 2 && h > 2) {
+    tft.drawRect(x + 1, y + 1, w - 2, h - 2, colorBg());
+  }
+  tft.fillRect(x + 2, y + 2, w - 4, stripeH, bg);
+  tft.drawFastHLine(x + 2, dividerY, w - 4, colorBorder());
+
+  tft.setTextColor((g_settings.theme == 1) ? fg : TFT_WHITE);
+  tft.setTextSize(labelSize);
+  if (tft.textWidth(label) > (w - 20) && labelSize > 1) {
+    labelSize = 1;
+    tft.setTextSize(labelSize);
+  }
   tft.setTextDatum(middle_center);
-  tft.drawString(label, x + w / 2, y + h / 2);
+  tft.drawString(label, x + w / 2, y + (h / 2) + ((labelSize > 1) ? 6 : 5));
   tft.setTextDatum(top_left);
   tft.setTextSize(1);
 }
@@ -1668,17 +1700,20 @@ static void drawButton(int16_t x, int16_t y, int16_t w, int16_t h,
 static void drawCard(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t bg) {
   tft.fillRect(x, y, w, h, bg);
   tft.drawRect(x, y, w, h, colorBorder());
-  tft.drawFastHLine(x + 1, y + 1, w - 2, colorSoftFill());
+  if (w > 2 && h > 2) {
+    tft.drawRect(x + 1, y + 1, w - 2, h - 2, colorBg());
+  }
 }
 
 static void drawPanelHeader(int16_t x, int16_t y, int16_t w, const char *title,
                             uint16_t bg, uint16_t fg = TFT_WHITE) {
-  tft.fillRect(x + 1, y + 1, w - 2, 22, bg);
+  tft.fillRect(x + 1, y + 1, w - 2, 24, colorNavBg());
+  tft.fillRect(x + 1, y + 1, 8, 24, bg);
   tft.drawFastHLine(x + 1, y + 23, w - 2, colorBorder());
   tft.setTextColor(fg);
   tft.setTextSize(1);
   tft.setTextDatum(middle_left);
-  tft.drawString(title, x + 8, y + 12);
+  tft.drawString(title, x + 14, y + 12);
   tft.setTextDatum(top_left);
 }
 
@@ -1698,11 +1733,13 @@ static void drawCompactKeyValueRow(int16_t x, int16_t y, int16_t w,
 static void drawValueTileShell(int16_t x, int16_t y, int16_t w, int16_t h,
                                const char *label) {
   drawCard(x, y, w, h, colorCard());
-
-  tft.setTextColor(tft.color565(96, 104, 116));
+  tft.fillRect(x + 1, y + 1, w - 2, 18, colorNavBg());
+  tft.fillRect(x + 1, y + 1, 6, 18, colorAccent());
+  tft.drawFastHLine(x + 1, y + 19, w - 2, colorBorder());
+  tft.setTextColor(colorMuted());
   tft.setTextSize(1);
   tft.setTextDatum(top_left);
-  tft.drawString(label, x + 10, y + 6);
+  tft.drawString(label, x + 12, y + 5);
   tft.setTextDatum(top_left);
 }
 
@@ -3590,11 +3627,15 @@ static void renderControl(const SystemState &state, bool full) {
              getDisplayPhaseName(state));
   }
 
+  const uint16_t modeTone =
+      (state.mode == Mode::IDLE) ? colorAccent()
+                                 : (state.paused ? COLOR_WARNING : COLOR_SUCCESS);
   drawCard(10, CTRL_STATUS_Y, TFT_WIDTH - 20, CTRL_STATUS_H, colorCard());
-  tft.setTextColor((state.mode == Mode::IDLE) ? colorAccent() : COLOR_SUCCESS);
+  tft.fillRect(12, CTRL_STATUS_Y + 2, 7, CTRL_STATUS_H - 4, modeTone);
+  tft.setTextColor(colorFg());
   tft.setTextDatum(middle_left);
   tft.setTextSize(1);
-  tft.drawString(modeBuf, 20, CTRL_STATUS_Y + CTRL_STATUS_H / 2);
+  tft.drawString(modeBuf, 26, CTRL_STATUS_Y + CTRL_STATUS_H / 2);
   tft.setTextDatum(top_left);
   drawButton(pauseX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH,
              state.paused ? msg(Msg::RESUME) : msg(Msg::PAUSE),
@@ -3612,19 +3653,19 @@ static void renderControl(const SystemState &state, bool full) {
              TFT_WHITE);
 
   drawButton(CTRL_X1, CTRL_Y2, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::MANUAL_RECT),
-             modeButtonColor(state, Mode::MANUAL_RECT, tft.color565(96, 128, 48)),
+             modeButtonColor(state, Mode::MANUAL_RECT, tft.color565(128, 136, 144)),
              TFT_WHITE);
   drawButton(CTRL_X2, CTRL_Y2, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::MASHING),
-             modeButtonColor(state, Mode::MASHING, tft.color565(136, 92, 40)), TFT_WHITE);
+             modeButtonColor(state, Mode::MASHING, tft.color565(114, 170, 84)), TFT_WHITE);
 
   drawButton(CTRL_X1, CTRL_Y3, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::HOLD),
-             modeButtonColor(state, Mode::HOLD, tft.color565(136, 76, 32)), TFT_WHITE);
+             modeButtonColor(state, Mode::HOLD, tft.color565(210, 150, 56)), TFT_WHITE);
 
   drawButton(CTRL_X2, CTRL_Y3, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::NBK),
-             modeButtonColor(state, Mode::NBK, tft.color565(72, 108, 156)), TFT_WHITE);
+             modeButtonColor(state, Mode::NBK, tft.color565(80, 144, 214)), TFT_WHITE);
 
   drawButton(CTRL_X1, CTRL_Y4, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::FERMENTATION),
-             modeButtonColor(state, Mode::FERMENTATION, tft.color565(56, 122, 110)),
+             modeButtonColor(state, Mode::FERMENTATION, tft.color565(72, 168, 152)),
              TFT_WHITE);
   drawButton(CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH, ru ? "Ручное" : "Manual",
              manualAllowed ? COLOR_DARK_GREY : dimmedButtonColor(),
@@ -3670,11 +3711,11 @@ static void renderSettings() {
   int16_t bh = 50;
   int16_t x2 = 245;
 
-  drawButton(10, 65, bw, bh, msg(Msg::EQUIPMENT), COLOR_PRIMARY, TFT_WHITE);
-  drawButton(x2, 65, bw, bh, msg(Msg::RECT_PARAMS), COLOR_PRIMARY, TFT_WHITE);
+  drawButton(10, 65, bw, bh, msg(Msg::EQUIPMENT), colorAccent(), TFT_WHITE);
+  drawButton(x2, 65, bw, bh, msg(Msg::RECT_PARAMS), COLOR_INFO, TFT_WHITE);
 
-  drawButton(10, 125, bw, bh, msg(Msg::DIST_PARAMS), COLOR_PRIMARY, TFT_WHITE);
-  drawButton(x2, 125, bw, bh, msg(Msg::CALIBRATION), COLOR_PRIMARY, TFT_WHITE);
+  drawButton(10, 125, bw, bh, msg(Msg::DIST_PARAMS), COLOR_WARNING, TFT_WHITE);
+  drawButton(x2, 125, bw, bh, msg(Msg::CALIBRATION), COLOR_SUCCESS, TFT_WHITE);
 
   int16_t bw3 = 145;
   drawButton(10, 185, bw3, bh, msg(Msg::THEME), COLOR_DARK_GREY, TFT_WHITE);
