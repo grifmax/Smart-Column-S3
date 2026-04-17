@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.1-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.2-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -144,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.2.2 | 2026-04-17 | HMI-редизайн IPS UI продолжен для custom monitor: операторские панели добавлены для дистилляции, НБК и ферментации, а общий root-monitor переведен на единый status/footer каркас |
 | 2.2.1 | 2026-04-17 | Второй HMI-срез IPS UI: dashboard и экран ректификации переведены на операторскую панель с левой summary-зоной и унифицированной 2x3 метрикой |
 | 2.2.0 | 2026-04-16 | Первый HMI-редизайн IPS UI: прямоугольные панели, полный список режимов, monitor-layouts для НБК и ферментации |
 | 2.1.21 | 2026-04-16 | Policy ручного управления мешалкой только в IDLE, блокировка UI и smoke-покрытие |

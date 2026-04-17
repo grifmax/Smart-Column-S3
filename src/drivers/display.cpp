@@ -2295,10 +2295,11 @@ static void renderDashboard(const SystemState &state, bool full) {
 }
 
 static void renderModeMonitorCustom(const SystemState &state, bool full);
+static void renderModeMonitorCustomHmi(const SystemState &state, bool full);
 
 static void renderModeMonitor(const SystemState &state, bool full) {
   if (state.mode != Mode::RECTIFICATION) {
-    renderModeMonitorCustom(state, full);
+    renderModeMonitorCustomHmi(state, full);
     return;
   }
 
@@ -2582,31 +2583,21 @@ static void renderModeMonitor(const SystemState &state, bool full) {
   tft.setTextDatum(top_left);
 }
 
-static void renderModeMonitorCustom(const SystemState &state, bool full) {
-  const bool ru = (g_settings.language == 0);
-  const int16_t barY = 8;
-  const int16_t statusX = 20;
-  const int16_t statusY = barY + 5;
-  const int16_t statusW = 300;
-  const int16_t statusH = 34;
-  const int16_t badgeX = 332;
-  const int16_t badgeW = 128;
-  const int16_t badgeH = 14;
+static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
+  if (state.mode == Mode::MANUAL_RECT || state.mode == Mode::MASHING ||
+      state.mode == Mode::HOLD) {
+    renderModeMonitorCustom(state, full);
+    return;
+  }
 
-  const int16_t panelY = 56;
-  const int16_t panelH = 156;
-  const int16_t infoY = panelY + panelH + 8;
+  const bool ru = (g_settings.language == 0);
   const bool hasWaterOut = state.temps.valid[TEMP_WATER_OUT];
   const uint8_t layoutKey = static_cast<uint8_t>(
-      0xC0 | ((static_cast<uint8_t>(state.mode) & 0x0F) << 1) |
+      0xD0 | ((static_cast<uint8_t>(state.mode) & 0x0F) << 1) |
       (hasWaterOut ? 0x01 : 0x00));
 
   if (full) {
-    tft.fillScreen(colorBg());
-    drawHeader(msg(Msg::MONITOR), false);
-    drawTabs(UI_MODE_MONITOR);
-    drawCard(10, barY, TFT_WIDTH - 20, 44, colorCard());
-    drawCard(10, infoY, TFT_WIDTH - 20, 40, colorCard());
+    drawRootScaffold(UI_MODE_MONITOR);
     memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
     g_dashboardCache.layoutKey = 0xFF;
   }
@@ -2619,16 +2610,271 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
     g_dashboardCache.uptime[0] = '\0';
   }
 
-  char statusBuf[64];
-  snprintf(statusBuf, sizeof(statusBuf), "%s / %s",
-           FSM::getModeName(state.mode), getDisplayPhaseName(state));
+  RootHeaderState header = buildRootHeaderState(state);
+  renderRootStatusBar(header, full);
 
-  const char *procState =
-      state.paused ? (ru ? "PAUSE" : "PAUSE") : (ru ? "RUN" : "RUN");
-  const uint16_t procColor = state.paused ? COLOR_WARNING : COLOR_SUCCESS;
-  const char *safetyState =
-      state.safetyOk ? (ru ? "SAFE" : "SAFE") : (ru ? "ALARM" : "ALARM");
-  const uint16_t safetyColor = state.safetyOk ? COLOR_SUCCESS : COLOR_DANGER;
+  auto updateTile = [&](uint8_t idx, int16_t x, int16_t y, int16_t w, int16_t h,
+                        const char *value, const char *unit, uint16_t color) {
+    if (full || strcmp(g_modeTileCache[idx], value) != 0) {
+      drawValueTileValue(x, y, w, h, value, unit, color);
+      strncpy(g_modeTileCache[idx], value, sizeof(g_modeTileCache[idx]) - 1);
+      g_modeTileCache[idx][sizeof(g_modeTileCache[idx]) - 1] = '\0';
+    }
+  };
+
+  const int16_t leftX = ROOT_LEFT_X;
+  const int16_t leftW = ROOT_LEFT_W;
+  const int16_t rightX = ROOT_RIGHT_X;
+  const int16_t tileW = ROOT_RIGHT_TILE_W;
+  const int16_t tileH = ROOT_RIGHT_TILE_H;
+  const int16_t x2 = rightX + tileW + ROOT_GRID_COL_GAP;
+  const int16_t y2 = ROOT_PANEL_Y + tileH + ROOT_GRID_ROW_GAP;
+  const int16_t y3 = ROOT_PANEL_Y + (tileH + ROOT_GRID_ROW_GAP) * 2;
+
+  char infoLine[96] = "";
+  char auxLine[96] = "";
+  char upBuf[16];
+  formatDurationCompact(getModeRunElapsedSec(state), upBuf, sizeof(upBuf));
+
+  if (state.mode == Mode::DISTILLATION) {
+    if (layoutChanged) {
+      drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+      drawValueTileShell(rightX, ROOT_PANEL_Y, tileW, tileH, msg(Msg::CUBE_TEMP));
+      drawValueTileShell(x2, ROOT_PANEL_Y, tileW, tileH,
+                         ru ? "МОЩН. %" : "POWER %");
+      drawValueTileShell(rightX, y2, tileW, tileH, msg(Msg::DIST_SPEED));
+      drawValueTileShell(x2, y2, tileW, tileH,
+                         ru ? "ОТБОР" : "COLLECT");
+      drawValueTileShell(rightX, y3, tileW, tileH,
+                         ru ? "РАБОТА" : "RUN");
+      drawValueTileShell(x2, y3, tileW, tileH, msg(Msg::END_TEMP));
+    }
+
+    char rowBuf[24];
+    char runBuf[16];
+    char v[6][20];
+    formatDurationCompact(getModeRunElapsedSec(state), runBuf, sizeof(runBuf));
+    snprintf(v[0], sizeof(v[0]), "%.1f", state.temps.cube);
+    snprintf(v[1], sizeof(v[1]), "%.0f", distUi.powerPercent);
+    snprintf(v[2], sizeof(v[2]), "%.0f", distUi.speedMlH);
+    snprintf(v[3], sizeof(v[3]), "%.0f", state.pump.totalVolumeMl);
+    snprintf(v[4], sizeof(v[4]), "%s", runBuf);
+    snprintf(v[5], sizeof(v[5]), "%.1f", distUi.endTempC);
+
+    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C", COLOR_DANGER);
+    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "%", COLOR_WARNING);
+    updateTile(2, rightX, y2, tileW, tileH, v[2], msg(Msg::UNIT_ML_H),
+               COLOR_SUCCESS);
+    updateTile(3, x2, y2, tileW, tileH, v[3], "ml", COLOR_INFO);
+    updateTile(4, rightX, y3, tileW, tileH, v[4], "", COLOR_PRIMARY);
+    updateTile(5, x2, y3, tileW, tileH, v[5], "C", COLOR_INFO);
+
+    drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+    drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
+                    state.paused ? COLOR_WARNING : colorAccent());
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
+                           ru ? "РЕЖИМ" : "MODE",
+                           FSM::getModeName(state.mode), colorAccent());
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f ml", distUi.headsVolumeMl);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
+                           ru ? "ГОЛОВЫ" : "HEADS", rowBuf, COLOR_WARNING);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f ml", distUi.targetVolumeMl);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
+                           ru ? "ЦЕЛЬ" : "TARGET", rowBuf, COLOR_SUCCESS);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f mm", state.pressure.cube);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
+                           ru ? "ДАВЛ." : "PRESS", rowBuf, COLOR_WARNING);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f V", state.power.voltage);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
+                           ru ? "СЕТЬ" : "MAINS", rowBuf, COLOR_PRIMARY);
+    drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22, leftW - 16, 14,
+                   header.procState, header.procColor);
+
+    snprintf(infoLine, sizeof(infoLine),
+             ru ? "Дистилляция: куб, скорость, объем и финишная температура"
+                : "Distillation: cube, speed, volume and finish temp");
+    snprintf(auxLine, sizeof(auxLine), "V %.0f | P %.0f | Pump %.0f",
+             state.power.voltage, state.pressure.cube,
+             state.pump.speedMlPerHour);
+  } else if (state.mode == Mode::NBK) {
+    if (layoutChanged) {
+      drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+      drawValueTileShell(rightX, ROOT_PANEL_Y, tileW, tileH,
+                         msg(Msg::COLUMN_BOTTOM));
+      drawValueTileShell(x2, ROOT_PANEL_Y, tileW, tileH, msg(Msg::CUBE_TEMP));
+      drawValueTileShell(rightX, y2, tileW, tileH, msg(Msg::HEATER_POWER));
+      drawValueTileShell(x2, y2, tileW, tileH, msg(Msg::PUMP));
+      drawValueTileShell(rightX, y3, tileW, tileH,
+                         ru ? "ДАВЛ." : "PRESS");
+      drawValueTileShell(x2, y3, tileW, tileH,
+                         hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
+                                     : (ru ? "ЦЕЛЬ" : "TARGET"));
+    }
+
+    char rowBuf[24];
+    char v[6][20];
+    snprintf(v[0], sizeof(v[0]), "%.1f", state.temps.columnBottom);
+    snprintf(v[1], sizeof(v[1]), "%.1f", state.temps.cube);
+    snprintf(v[2], sizeof(v[2]), "%.0f", state.power.power);
+    snprintf(v[3], sizeof(v[3]), "%.0f", state.pump.speedMlPerHour);
+    snprintf(v[4], sizeof(v[4]), "%.0f", state.pressure.cube);
+    if (hasWaterOut) {
+      snprintf(v[5], sizeof(v[5]), "%.1f", state.temps.waterOut);
+    } else {
+      snprintf(v[5], sizeof(v[5]), "%.0f", g_settings.nbk.pumpSpeedMlH);
+    }
+
+    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C", colorAccent());
+    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "C", COLOR_DANGER);
+    updateTile(2, rightX, y2, tileW, tileH, v[2], msg(Msg::UNIT_W),
+               COLOR_WARNING);
+    updateTile(3, x2, y2, tileW, tileH, v[3], msg(Msg::UNIT_ML_H),
+               COLOR_SUCCESS);
+    updateTile(4, rightX, y3, tileW, tileH, v[4], "mm", COLOR_INFO);
+    updateTile(5, x2, y3, tileW, tileH, v[5],
+               hasWaterOut ? "C" : msg(Msg::UNIT_ML_H),
+               hasWaterOut ? COLOR_INFO : colorAccent());
+
+    drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+    drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
+                    state.paused ? COLOR_WARNING : colorAccent());
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
+                           ru ? "РЕЖИМ" : "MODE",
+                           FSM::getModeName(state.mode), colorAccent());
+    snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
+             g_settings.nbk.columnBottomTempThresholdC);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
+                           ru ? "ПОРОГ" : "THRESH", rowBuf, COLOR_WARNING);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f ml", g_settings.nbk.targetVolumeMl);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
+                           ru ? "ЦЕЛЬ" : "TARGET", rowBuf, COLOR_SUCCESS);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f ml", state.pump.totalVolumeMl);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
+                           ru ? "ОТБОР" : "COLLECT", rowBuf, COLOR_INFO);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f V", state.power.voltage);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
+                           ru ? "СЕТЬ" : "MAINS", rowBuf, COLOR_PRIMARY);
+    drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22, leftW - 16, 14,
+                   header.procState, header.procColor);
+
+    snprintf(infoLine, sizeof(infoLine),
+             ru ? "НБК: низ колонны, подача, давление и охлаждение"
+                : "NBK: column bottom, feed, pressure and cooling");
+    snprintf(auxLine, sizeof(auxLine), "Target %.0f | Pump %.0f",
+             g_settings.nbk.targetVolumeMl, state.pump.speedMlPerHour);
+  } else if (state.mode == Mode::FERMENTATION) {
+    if (layoutChanged) {
+      drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+      drawValueTileShell(rightX, ROOT_PANEL_Y, tileW, tileH, msg(Msg::CUBE_TEMP));
+      drawValueTileShell(x2, ROOT_PANEL_Y, tileW, tileH,
+                         ru ? "ЦЕЛЬ" : "TARGET");
+      drawValueTileShell(rightX, y2, tileW, tileH,
+                         ru ? "ДОПУСК" : "BAND");
+      drawValueTileShell(x2, y2, tileW, tileH,
+                         ru ? "РАБОТА" : "RUN");
+      drawValueTileShell(rightX, y3, tileW, tileH,
+                         ru ? "DELTA" : "DELTA");
+      drawValueTileShell(x2, y3, tileW, tileH,
+                         ru ? "НАГРЕВ" : "HEATER");
+    }
+
+    char rowBuf[24];
+    char runBuf[20];
+    char v[6][20];
+    const float delta =
+        state.temps.cube - g_settings.fermentation.targetTempC;
+    formatDurationCompact(getModeRunElapsedSec(state), runBuf, sizeof(runBuf));
+    snprintf(v[0], sizeof(v[0]), "%.1f", state.temps.cube);
+    snprintf(v[1], sizeof(v[1]), "%.1f", g_settings.fermentation.targetTempC);
+    snprintf(v[2], sizeof(v[2]), "%.1f", g_settings.fermentation.hysteresisC);
+    snprintf(v[3], sizeof(v[3]), "%s", runBuf);
+    snprintf(v[4], sizeof(v[4]), "%.1f", delta);
+    snprintf(v[5], sizeof(v[5]), "%s",
+             g_settings.fermentation.useHeater ? "ON" : "OFF");
+
+    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C",
+               fabsf(delta) > g_settings.fermentation.hysteresisC
+                   ? COLOR_WARNING
+                   : COLOR_SUCCESS);
+    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "C", colorAccent());
+    updateTile(2, rightX, y2, tileW, tileH, v[2], "C", COLOR_INFO);
+    updateTile(3, x2, y2, tileW, tileH, v[3], "", COLOR_PRIMARY);
+    updateTile(4, rightX, y3, tileW, tileH, v[4], "C",
+               (delta > 0.0f) ? COLOR_WARNING : COLOR_INFO);
+    updateTile(5, x2, y3, tileW, tileH, v[5], "",
+               g_settings.fermentation.useHeater ? COLOR_SUCCESS
+                                                 : colorMuted());
+
+    drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+    drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
+                    state.paused ? COLOR_WARNING : colorAccent());
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
+                           ru ? "РЕЖИМ" : "MODE",
+                           FSM::getModeName(state.mode), colorAccent());
+    snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
+             g_settings.fermentation.targetTempC);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
+                           ru ? "ЦЕЛЬ" : "TARGET", rowBuf, COLOR_SUCCESS);
+    snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
+             g_settings.fermentation.hysteresisC);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
+                           ru ? "ДОПУСК" : "BAND", rowBuf, COLOR_INFO);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f h",
+             g_settings.fermentation.durationHours);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
+                           ru ? "ПЛАН" : "PLAN", rowBuf, COLOR_PRIMARY);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
+                           ru ? "НАГРЕВ" : "HEATER",
+                           g_settings.fermentation.useHeater ? "ON" : "OFF",
+                           g_settings.fermentation.useHeater ? COLOR_SUCCESS
+                                                             : colorMuted());
+    drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22, leftW - 16, 14,
+                   header.procState, header.procColor);
+
+    snprintf(infoLine, sizeof(infoLine),
+             ru ? "Ферментация: температура, допуск, отклонение и нагрев"
+                : "Fermentation: temp, band, delta and heater");
+    snprintf(auxLine, sizeof(auxLine), "%s | Plan %.0f h",
+             g_settings.fermentation.useHeater ? "Heater ON" : "Heater OFF",
+             g_settings.fermentation.durationHours);
+  } else {
+    renderModeMonitorCustom(state, full);
+    return;
+  }
+
+  if (layoutChanged) {
+    g_dashboardCache.layoutKey = layoutKey;
+  }
+
+  renderRootFooter(infoLine, auxLine, upBuf, full);
+
+  tft.setFont(&fonts::efontJA_16);
+  tft.setTextDatum(top_left);
+}
+
+static void renderModeMonitorCustom(const SystemState &state, bool full) {
+  const bool ru = (g_settings.language == 0);
+  const int16_t panelY = ROOT_PANEL_Y;
+  const int16_t panelH = ROOT_PANEL_H;
+  const int16_t infoY = ROOT_INFO_Y;
+  const bool hasWaterOut = state.temps.valid[TEMP_WATER_OUT];
+  const uint8_t layoutKey = static_cast<uint8_t>(
+      0xC0 | ((static_cast<uint8_t>(state.mode) & 0x0F) << 1) |
+      (hasWaterOut ? 0x01 : 0x00));
+
+  if (full) {
+    drawRootScaffold(UI_MODE_MONITOR);
+    memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
+    g_dashboardCache.layoutKey = 0xFF;
+  }
+
+  const bool layoutChanged = full || (g_dashboardCache.layoutKey != layoutKey);
+  if (layoutChanged) {
+    memset(g_modeTileCache, 0, sizeof(g_modeTileCache));
+    g_dashboardCache.infoLine[0] = '\0';
+    g_dashboardCache.ioLine[0] = '\0';
+    g_dashboardCache.uptime[0] = '\0';
+  }
 
   uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
   const uint32_t nowMs = millis();
@@ -2645,66 +2891,8 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
       phaseElapsedSec = (nowMs - state.hold.inRangeStartTime) / 1000UL;
     }
   }
-  const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(state, g_settings);
-  const uint8_t phaseProgress = FSM::getPhaseProgressPercent(state, g_settings);
-  char elapsedBuf[16];
-  char targetBuf[16];
-  char timerBuf[32];
-  formatDurationCompact(phaseElapsedSec, elapsedBuf, sizeof(elapsedBuf));
-  if (phaseTargetSec > 0) {
-    formatDurationCompact(phaseTargetSec, targetBuf, sizeof(targetBuf));
-    snprintf(timerBuf, sizeof(timerBuf), "%s %s/%s", ru ? "Phase" : "Phase",
-             elapsedBuf, targetBuf);
-  } else {
-    snprintf(timerBuf, sizeof(timerBuf), "%s %s", ru ? "Phase" : "Phase",
-             elapsedBuf);
-  }
-
-  if (full || strcmp(g_dashboardCache.status, statusBuf) != 0 ||
-      strcmp(g_dashboardCache.phaseTimer, timerBuf) != 0 ||
-      g_dashboardCache.phaseProgress != phaseProgress) {
-    if (!full) {
-      tft.fillRect(statusX, statusY, statusW, statusH, colorCard());
-    }
-    tft.setTextColor(colorAccent());
-    tft.setTextSize(1);
-    tft.setFont(&fonts::efontJA_16);
-    tft.setTextDatum(top_left);
-    tft.drawString(statusBuf, statusX + 2, statusY + 1);
-    tft.setTextColor(tft.color565(120, 130, 140));
-    tft.drawString(timerBuf, statusX + 2, statusY + 14);
-
-    const int16_t pbX = statusX + 2;
-    const int16_t pbY = statusY + 27;
-    const int16_t pbW = statusW - 6;
-    const int16_t pbH = 6;
-    drawProgressBar(pbX, pbY, pbW, pbH, phaseProgress, colorAccent());
-    strncpy(g_dashboardCache.status, statusBuf,
-            sizeof(g_dashboardCache.status));
-    g_dashboardCache.status[sizeof(g_dashboardCache.status) - 1] = '\0';
-    strncpy(g_dashboardCache.phaseTimer, timerBuf,
-            sizeof(g_dashboardCache.phaseTimer));
-    g_dashboardCache.phaseTimer[sizeof(g_dashboardCache.phaseTimer) - 1] = '\0';
-    g_dashboardCache.phaseProgress = phaseProgress;
-  }
-
-  if (full || strcmp(g_dashboardCache.processState, procState) != 0 ||
-      strcmp(g_dashboardCache.safetyState, safetyState) != 0) {
-    if (!full) {
-      tft.fillRect(badgeX - 4, barY + 4, badgeW + 8, 34, colorCard());
-    }
-    drawStateBadge(badgeX, barY + 6, badgeW, badgeH, procState, procColor);
-    drawStateBadge(badgeX, barY + 24, badgeW, badgeH, safetyState, safetyColor);
-
-    strncpy(g_dashboardCache.processState, procState,
-            sizeof(g_dashboardCache.processState));
-    g_dashboardCache.processState[sizeof(g_dashboardCache.processState) - 1] =
-        '\0';
-    strncpy(g_dashboardCache.safetyState, safetyState,
-            sizeof(g_dashboardCache.safetyState));
-    g_dashboardCache.safetyState[sizeof(g_dashboardCache.safetyState) - 1] =
-        '\0';
-  }
+  RootHeaderState header = buildRootHeaderState(state, phaseElapsedSec);
+  renderRootStatusBar(header, full);
 
   auto updateTile = [&](uint8_t idx, int16_t x, int16_t y, int16_t w, int16_t h,
                         const char *value, const char *unit, uint16_t color) {
@@ -3091,29 +3279,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
     g_dashboardCache.layoutKey = layoutKey;
   }
 
-  if (full || strcmp(g_dashboardCache.infoLine, infoLine) != 0 ||
-      strcmp(g_dashboardCache.ioLine, auxLine) != 0 ||
-      strcmp(g_dashboardCache.uptime, upBuf) != 0) {
-    if (!full) {
-      tft.fillRect(14, infoY + 3, TFT_WIDTH - 28, 34, colorCard());
-    }
-    tft.setTextColor(colorFg());
-    tft.setTextSize(1);
-    tft.setTextDatum(middle_left);
-    tft.drawString(infoLine, 20, infoY + 13);
-    tft.setTextColor(tft.color565(120, 130, 140));
-    tft.drawString(auxLine, 20, infoY + 28);
-    tft.setTextColor(COLOR_PRIMARY);
-    tft.setTextDatum(middle_right);
-    tft.drawString(upBuf, TFT_WIDTH - 18, infoY + 13);
-    strncpy(g_dashboardCache.infoLine, infoLine,
-            sizeof(g_dashboardCache.infoLine));
-    g_dashboardCache.infoLine[sizeof(g_dashboardCache.infoLine) - 1] = '\0';
-    strncpy(g_dashboardCache.ioLine, auxLine, sizeof(g_dashboardCache.ioLine));
-    g_dashboardCache.ioLine[sizeof(g_dashboardCache.ioLine) - 1] = '\0';
-    strncpy(g_dashboardCache.uptime, upBuf, sizeof(g_dashboardCache.uptime));
-    g_dashboardCache.uptime[sizeof(g_dashboardCache.uptime) - 1] = '\0';
-  }
+  renderRootFooter(infoLine, auxLine, upBuf, full);
 
   tft.setFont(&fonts::efontJA_16);
   tft.setTextDatum(top_left);
