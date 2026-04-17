@@ -1497,6 +1497,8 @@ static void clearRow(int16_t y, int16_t h = 24) {
   tft.fillRect(10, y - 2, TFT_WIDTH - 20, h + 4, colorBg());
 }
 
+static void drawCard(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t bg);
+
 static void drawProgressBar(int16_t x, int16_t y, int16_t w, int16_t h,
                             uint8_t percent, uint16_t fill) {
   if (w <= 0 || h <= 0)
@@ -1643,29 +1645,40 @@ static void drawTabs(UiScreen current) {
 
 static void drawValueRow(int16_t y, const char *label, const char *value,
                          bool highlighted = true) {
+  const int16_t rowX = 10;
+  const int16_t rowY = y - 8;
+  const int16_t rowW = TFT_WIDTH - 20;
+  const int16_t rowH = 30;
+  const uint16_t accent = highlighted ? colorAccent() : colorNavInactive();
+
+  drawCard(rowX, rowY, rowW, rowH, colorCard());
+  tft.fillRect(rowX + 1, rowY + 1, 6, rowH - 2, accent);
+  tft.drawFastHLine(rowX + 8, rowY + rowH - 1, rowW - 9, colorBorder());
   tft.setTextColor(colorFg());
   tft.setTextSize(1);
-  tft.setCursor(20, y);
-  tft.print(label);
+  tft.setTextDatum(middle_left);
+  tft.drawString(label, rowX + 14, rowY + (rowH / 2) + 1);
 
   uint16_t tw = tft.textWidth(value);
-  int16_t boxW = (tw < 80) ? 80 : tw + 20;
-  int16_t boxX = TFT_WIDTH - boxW - 15;
+  int16_t boxW = (tw < 92) ? 92 : tw + 22;
+  int16_t boxX = rowX + rowW - boxW - 10;
+  const int16_t boxY = rowY + 4;
+  const int16_t boxH = rowH - 8;
 
   if (highlighted) {
-    // Делаем значение похожим на кнопку
-    tft.fillRect(boxX, y - 7, boxW, 32, colorButtonBody());
-    tft.drawRect(boxX, y - 7, boxW, 32, colorBorder());
-    tft.fillRect(boxX + 2, y - 5, boxW - 4, 6, colorAccent());
+    tft.fillRect(boxX, boxY, boxW, boxH, colorButtonBody());
+    tft.drawRect(boxX, boxY, boxW, boxH, colorBorder());
+    tft.fillRect(boxX + 2, boxY + 2, boxW - 4, 5, colorAccent());
     tft.setTextColor(TFT_WHITE);
   } else {
-    tft.fillRect(boxX, y - 7, boxW, 32, colorCard());
-    tft.drawRect(boxX, y - 7, boxW, 32, colorBorder());
+    tft.fillRect(boxX, boxY, boxW, boxH, colorBg());
+    tft.drawRect(boxX, boxY, boxW, boxH, colorBorder());
+    tft.fillRect(boxX + 2, boxY + 2, 6, boxH - 4, colorSoftFill());
     tft.setTextColor(colorAccent());
   }
 
   tft.setTextDatum(middle_center);
-  tft.drawString(value, boxX + boxW / 2, y + 9);
+  tft.drawString(value, boxX + boxW / 2, boxY + (boxH / 2) + 1);
   tft.setTextDatum(top_left);
   tft.setTextColor(colorFg());
 }
@@ -1740,6 +1753,22 @@ static void drawValueTileShell(int16_t x, int16_t y, int16_t w, int16_t h,
   tft.setTextSize(1);
   tft.setTextDatum(top_left);
   tft.drawString(label, x + 12, y + 5);
+  tft.setTextDatum(top_left);
+}
+
+static void drawFooterHint(const char *text, uint16_t tone = COLOR_INFO) {
+  if (text == nullptr || text[0] == '\0')
+    return;
+  const int16_t x = 10;
+  const int16_t y = TFT_HEIGHT - UI_FOOTER_H - 18;
+  const int16_t w = TFT_WIDTH - 20;
+  const int16_t h = 16;
+  drawCard(x, y, w, h, colorCard());
+  tft.fillRect(x + 1, y + 1, 6, h - 2, tone);
+  tft.setTextColor(colorMuted());
+  tft.setTextSize(1);
+  tft.setTextDatum(middle_center);
+  tft.drawString(text, TFT_WIDTH / 2, y + (h / 2) + 1);
   tft.setTextDatum(top_left);
 }
 
@@ -3706,6 +3735,8 @@ static void renderSettings() {
   tft.fillScreen(colorBg());
   drawHeader(msg(Msg::SETTINGS), false);
   drawTabs(UI_SETTINGS);
+  const bool ru = (g_settings.language == 0);
+  char hint[80];
 
   int16_t bw = 225;
   int16_t bh = 50;
@@ -3723,6 +3754,15 @@ static void renderSettings() {
              g_settings.soundEnabled ? COLOR_SUCCESS : COLOR_DANGER, TFT_WHITE);
   drawButton(320, 185, bw3, bh, g_settings.language == 0 ? "RU" : "EN",
              COLOR_INFO, TFT_WHITE);
+
+  snprintf(hint, sizeof(hint), ru ? "Тема:%s | Звук:%s | Язык:%s"
+                                  : "Theme:%s | Sound:%s | Lang:%s",
+           g_settings.theme == 1 ? (ru ? "темная" : "dark")
+                                 : (ru ? "светлая" : "light"),
+           g_settings.soundEnabled ? (ru ? "вкл" : "on")
+                                   : (ru ? "выкл" : "off"),
+           g_settings.language == 0 ? "RU" : "EN");
+  drawFooterHint(hint, colorAccent());
 }
 
 static void renderEquipment() {
@@ -3751,12 +3791,7 @@ static void renderEquipment() {
 
   snprintf(buf, sizeof(buf), "%.2f", g_settings.equipment.packingCoeff);
   drawValueRow(y, msg(Msg::PACKING_COEFF), buf);
-
-  tft.setTextColor(tft.color565(150, 150, 150));
-  tft.setTextDatum(bottom_center);
-  tft.drawString(msg(Msg::TAP_TO_EDIT), TFT_WIDTH / 2,
-                 TFT_HEIGHT - UI_FOOTER_H - 10);
-  tft.setTextDatum(top_left);
+  drawFooterHint(msg(Msg::TAP_TO_EDIT), colorAccent());
 }
 
 static void renderRectParams() {
@@ -3769,15 +3804,10 @@ static void renderRectParams() {
   const int16_t step = 31;
   char buf[32];
 
-  tft.fillRoundRect(330, 44, 140, 22, 8, COLOR_INFO);
-  tft.drawRoundRect(330, 44, 140, 22, 8, TFT_WHITE);
-  tft.setTextColor(TFT_WHITE);
-  tft.setTextSize(1);
-  tft.setTextDatum(middle_center);
-  tft.drawString(rectParamsPage == 0 ? (ru ? "ТЕХ ПАРАМЕТРЫ" : "TECH PARAMS")
-                                     : (ru ? "ПРОФИЛЬ СС" : "FEED PROFILE"),
-                 400, 55);
-  tft.setTextDatum(top_left);
+  drawButton(330, 44, 140, 22,
+             rectParamsPage == 0 ? (ru ? "ТЕХ ПАРАМ." : "TECH")
+                                 : (ru ? "ПРОФИЛЬ" : "PROFILE"),
+             rectParamsPage == 0 ? COLOR_INFO : colorAccent(), TFT_WHITE);
 
   if (rectParamsPage == 0) {
     snprintf(buf, sizeof(buf), "%s",
@@ -3804,13 +3834,12 @@ static void renderRectParams() {
 
     snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.tailsPercent);
     drawValueRow(y, ru ? "Хвосты %" : "Tails %", buf);
-
-    tft.setTextColor(tft.color565(120, 120, 120));
+    tft.setTextColor(colorMuted());
     tft.setTextSize(1);
     tft.setTextDatum(bottom_center);
     tft.drawString(ru ? "Тап по 'Сырье СС' применяет дефолты фракций"
                       : "Tap feedstock row to apply default fractions",
-                   TFT_WIDTH / 2, TFT_HEIGHT - UI_FOOTER_H - 6);
+                   TFT_WIDTH / 2, TFT_HEIGHT - UI_FOOTER_H - 2);
     tft.setTextDatum(top_left);
     return;
   }
@@ -3855,12 +3884,12 @@ static void renderRectParams() {
   drawValueRow(y, ru ? "Куб: финиш хвостов*" : "Cube: tails finish*", buf,
                false);
 
-  tft.setTextColor(tft.color565(120, 120, 120));
-  tft.setTextSize(1);
-  tft.setTextDatum(bottom_center);
   snprintf(buf, sizeof(buf), "P=%.0f hPa  *%s", atmHpa,
            ru ? "с поправкой на давление" : "pressure compensated");
-  tft.drawString(buf, TFT_WIDTH / 2, TFT_HEIGHT - UI_FOOTER_H - 6);
+  tft.setTextColor(colorMuted());
+  tft.setTextSize(1);
+  tft.setTextDatum(bottom_center);
+  tft.drawString(buf, TFT_WIDTH / 2, TFT_HEIGHT - UI_FOOTER_H - 2);
   tft.setTextDatum(top_left);
 }
 
@@ -3887,20 +3916,25 @@ static void renderDistParams() {
 
   snprintf(buf, sizeof(buf), "%.1f C", distUi.endTempC);
   drawValueRow(y, msg(Msg::END_TEMP), buf);
+  drawFooterHint(msg(Msg::TAP_TO_EDIT), COLOR_WARNING);
 }
 
 static void renderCalibration() {
   tft.fillScreen(colorBg());
   drawHeader(msg(Msg::CALIBRATION), true);
   drawTabs(UI_SETTINGS);
+  const bool ru = (g_settings.language == 0);
 
   char buf[32];
   snprintf(buf, sizeof(buf), "%.3f %s", g_settings.pumpCal.mlPerRevolution,
            msg(Msg::UNIT_ML_R));
   drawValueRow(80, msg(Msg::PUMP_CALIBRATION), buf);
 
-  drawButton(20, 160, 440, 55, msg(Msg::TOUCH_CALIBRATION), COLOR_PRIMARY,
+  drawButton(20, 160, 440, 55, msg(Msg::TOUCH_CALIBRATION), COLOR_WARNING,
              TFT_WHITE);
+  drawFooterHint(ru ? "Сначала уточните ml/об, затем калибруйте тач"
+                    : "Set ml/rev first, then calibrate touch",
+                 COLOR_WARNING);
 }
 
 static void renderManual(const SystemState &state) {
@@ -3911,6 +3945,9 @@ static void renderManual(const SystemState &state) {
   if (!isManualAccessAllowed(state)) {
     const bool ru = (g_settings.language == 0);
     drawCard(10, 65, TFT_WIDTH - 20, 120, colorCard());
+    drawPanelHeader(10, 65, TFT_WIDTH - 20,
+                    ru ? "ДОСТУП К РУЧНОМУ УПРАВЛЕНИЮ" : "MANUAL ACCESS",
+                    COLOR_WARNING);
     tft.setTextColor(COLOR_WARNING);
     tft.setTextSize(2);
     tft.setTextDatum(middle_center);
@@ -3923,6 +3960,9 @@ static void renderManual(const SystemState &state) {
                    TFT_WIDTH / 2, 135);
     tft.drawString(FSM::getModeName(state.mode), TFT_WIDTH / 2, 158);
     tft.setTextDatum(top_left);
+    drawFooterHint(ru ? "Ручной экран доступен только в IDLE и MANUAL"
+                      : "Manual screen is available only in IDLE and MANUAL",
+                   COLOR_WARNING);
     return;
   }
 
@@ -3950,9 +3990,12 @@ static void renderManual(const SystemState &state) {
 static void renderValueEdit() {
   tft.fillScreen(colorBg());
   drawHeader(edit.label, true);
+  const bool ru = (g_settings.language == 0);
 
   // Large value display in a card
   drawCard(20, 70, TFT_WIDTH - 40, 90, colorCard());
+  drawPanelHeader(20, 70, TFT_WIDTH - 40, ru ? "ТЕКУЩЕЕ ЗНАЧЕНИЕ" : "CURRENT VALUE",
+                  colorAccent());
   tft.setTextColor(COLOR_PRIMARY);
   tft.setTextSize(4);
   tft.setTextDatum(middle_center);
@@ -3963,7 +4006,7 @@ static void renderValueEdit() {
     snprintf(buf, sizeof(buf), "%.1f %s", edit.value, edit.unit);
   else
     snprintf(buf, sizeof(buf), "%.3f %s", edit.value, edit.unit);
-  tft.drawString(buf, TFT_WIDTH / 2, 115);
+  tft.drawString(buf, TFT_WIDTH / 2, 122);
   tft.setTextSize(1);
 
   // Large +/- buttons
@@ -3978,7 +4021,6 @@ static void renderValueEdit() {
   // Save button
   drawButton(10, 255, TFT_WIDTH - 20, 55, msg(Msg::SAVE_AND_CLOSE),
              COLOR_PRIMARY, TFT_WHITE);
-
   tft.setTextDatum(top_left);
 }
 
@@ -3989,31 +4031,34 @@ static void renderService(const SystemState &state, bool full) {
     drawTabs(UI_SERVICE);
     char buf[40];
     snprintf(buf, sizeof(buf), "%s", FW_VERSION);
-    drawValueRow(30, msg(Msg::VERSION), buf);
+    drawValueRow(40, msg(Msg::VERSION), buf, false);
   }
 
   char buf[48];
-  clearRow(80, 30);
+  clearRow(68, 36);
   snprintf(buf, sizeof(buf), "%lus", state.uptime);
-  drawValueRow(80, msg(Msg::UPTIME), buf);
+  drawValueRow(80, msg(Msg::UPTIME), buf, false);
 
-  clearRow(130, 30);
+  clearRow(112, 36);
   snprintf(buf, sizeof(buf), "%u KB", ESP.getFreeHeap() / 1024);
-  drawValueRow(130, msg(Msg::FREE_HEAP), buf);
+  drawValueRow(124, msg(Msg::FREE_HEAP), buf, false);
 
   const bool ru = (g_settings.language == 0);
-  clearRow(180, 30);
+  clearRow(156, 36);
   snprintf(buf, sizeof(buf), "%ums (%ums max)", g_displayStats.lastFrameMs,
            g_displayStats.maxFrameMs);
-  drawValueRow(180, ru ? "Кадр TFT" : "TFT frame", buf);
+  drawValueRow(168, ru ? "Кадр TFT" : "TFT frame", buf);
 
-  clearRow(230, 30);
+  clearRow(200, 36);
   snprintf(buf, sizeof(buf), "S%lu R%lu H%lu G%u",
            (unsigned long)g_displayStats.slowFrames,
            (unsigned long)g_displayStats.watchdogRecoveries,
            (unsigned long)g_displayStats.hardWatchdogRecoveries,
            (unsigned int)g_displayStats.lastUpdateGapMs);
-  drawValueRow(230, ru ? "Диагн. TFT" : "TFT diag", buf);
+  drawValueRow(212, ru ? "Диагн. TFT" : "TFT diag", buf);
+  drawFooterHint(ru ? "Тап по нижним строкам открывает экран температур"
+                    : "Tap lower rows to open temperature screen",
+                 COLOR_INFO);
 }
 
 static void renderAllTemps(const SystemState &state, bool full) {
@@ -4024,10 +4069,10 @@ static void renderAllTemps(const SystemState &state, bool full) {
   }
 
   const int16_t xStart = 10;
-  const int16_t yStart = 60;
+  const int16_t yStart = 48;
   const int16_t tileW = (TFT_WIDTH - 30) / 2;
-  const int16_t tileH = 48;
-  const int16_t gap = 8;
+  const int16_t tileH = 40;
+  const int16_t gap = 6;
 
   const char* labels[TEMP_COUNT] = {
     msg(Msg::CUBE_TEMP),
@@ -4062,20 +4107,16 @@ static void renderAllTemps(const SystemState &state, bool full) {
 
     // Only clear value area if not full redraw
     if (!full) {
-        tft.fillRect(x + tileW - 90, y + 2, 88, tileH - 4, colorCard());
+      tft.fillRect(x + 8, y + 20, tileW - 16, tileH - 22, colorCard());
     } else {
-        drawCard(x, y, tileW, tileH, colorCard());
-        tft.setTextColor(tft.color565(120, 130, 140));
-        tft.setTextSize(1);
-        tft.setTextDatum(middle_left);
-        tft.drawString(labels[i], x + 8, y + tileH / 2);
+      drawValueTileShell(x, y, tileW, tileH, labels[i]);
     }
 
-    tft.setTextColor(state.temps.valid[i] ? COLOR_PRIMARY : COLOR_DARK_GREY);
+    tft.setTextColor(state.temps.valid[i] ? COLOR_PRIMARY : colorMuted());
     tft.setTextSize(1);
     tft.setFont(&fonts::efontJA_16);
-    tft.setTextDatum(middle_right);
-    tft.drawString(valBuf, x + tileW - 10, y + tileH / 2);
+    tft.setTextDatum(middle_center);
+    tft.drawString(valBuf, x + (tileW / 2), y + 29);
     tft.setTextDatum(top_left);
   }
 }
