@@ -1585,26 +1585,114 @@ static void drawStateBadge(int16_t x, int16_t y, int16_t w, int16_t h,
   tft.setTextDatum(top_left);
 }
 
+static const char *getDisplayModeName(Mode mode) {
+  const bool ru = (g_settings.language == 0);
+  switch (mode) {
+  case Mode::RECTIFICATION:
+    return ru ? "Ректиф." : "Rect";
+  case Mode::DISTILLATION:
+    return ru ? "Дистил." : "Distill";
+  case Mode::MANUAL_RECT:
+    return ru ? "Ручн. рект." : "Man Rect";
+  case Mode::MASHING:
+    return ru ? "Затирка" : "Mash";
+  case Mode::HOLD:
+    return ru ? "Пастер." : "Hold";
+  case Mode::NBK:
+    return "NBK";
+  case Mode::FERMENTATION:
+    return ru ? "Брожение" : "Ferment";
+  case Mode::IDLE:
+  default:
+    return ru ? "Ожидание" : "Idle";
+  }
+}
+
+static const char *getDisplayRectPhaseName(RectPhase phase) {
+  const bool ru = (g_settings.language == 0);
+  switch (phase) {
+  case RectPhase::HEATING:
+    return ru ? "Нагрев" : "Heating";
+  case RectPhase::STABILIZATION:
+    return ru ? "Стаб." : "Stabil.";
+  case RectPhase::HEADS:
+    return ru ? "Головы" : "Heads";
+  case RectPhase::POST_HEADS_STABILIZATION:
+    return ru ? "Стаб. 2" : "Stabil. 2";
+  case RectPhase::BODY:
+    return ru ? "Тело" : "Body";
+  case RectPhase::TAILS:
+    return ru ? "Хвосты" : "Tails";
+  case RectPhase::PURGE:
+    return ru ? "Продув" : "Purge";
+  case RectPhase::FINISH:
+    return ru ? "Финиш" : "Finish";
+  case RectPhase::COMPLETED:
+    return ru ? "Готово" : "Done";
+  case RectPhase::IDLE:
+  default:
+    return ru ? "Ожид." : "Idle";
+  }
+}
+
+static const char *getDisplayNbkPhaseName(NbkPhase phase) {
+  const bool ru = (g_settings.language == 0);
+  switch (phase) {
+  case NbkPhase::HEATING:
+    return ru ? "Нагрев" : "Heating";
+  case NbkPhase::STABILIZATION:
+    return ru ? "Старт" : "Start";
+  case NbkPhase::WORKING:
+    return ru ? "Работа" : "Run";
+  case NbkPhase::FINISH:
+    return ru ? "Финиш" : "Finish";
+  case NbkPhase::COMPLETED:
+    return ru ? "Готово" : "Done";
+  case NbkPhase::IDLE:
+  default:
+    return ru ? "Ожид." : "Idle";
+  }
+}
+
+static const char *getDisplayFermPhaseName(FermentationPhase phase) {
+  const bool ru = (g_settings.language == 0);
+  switch (phase) {
+  case FermentationPhase::RUNNING:
+    return ru ? "Работа" : "Run";
+  case FermentationPhase::COMPLETED:
+    return ru ? "Готово" : "Done";
+  case FermentationPhase::IDLE:
+  default:
+    return ru ? "Ожид." : "Idle";
+  }
+}
+
 static const char *getDisplayPhaseName(const SystemState &state) {
   const bool ru = (g_settings.language == 0);
+  static char holdBuf[20];
   switch (state.mode) {
   case Mode::RECTIFICATION:
   case Mode::DISTILLATION:
   case Mode::MANUAL_RECT:
-    return FSM::getPhaseName(state.rectPhase);
+    return getDisplayRectPhaseName(state.rectPhase);
   case Mode::MASHING:
     if (state.mashing.stepName[0] != '\0')
       return state.mashing.stepName;
     return ru ? "Шаг затирки" : "Mash step";
   case Mode::HOLD:
-    return ru ? "Пастеризация" : "Hold";
+    if (state.hold.active) {
+      snprintf(holdBuf, sizeof(holdBuf), ru ? "Шаг %u" : "Step %u",
+               static_cast<unsigned>(state.hold.currentStep + 1));
+      return holdBuf;
+    }
+    return ru ? "Ожид." : "Idle";
   case Mode::NBK:
-    return FSM::getNbkPhaseName(state.nbkPhase);
+    return getDisplayNbkPhaseName(state.nbkPhase);
   case Mode::FERMENTATION:
-    return FSM::getFermPhaseName(state.fermPhase);
+    return getDisplayFermPhaseName(state.fermPhase);
   case Mode::IDLE:
   default:
-    return ru ? "Ожидание" : "Idle";
+    return ru ? "Ожид." : "Idle";
   }
 }
 
@@ -1965,9 +2053,9 @@ static void drawModeSwitchOverlay(const SystemState &state, bool ru) {
   char next[64];
   char overlayText[160];
   snprintf(cur, sizeof(cur), ru ? "Сейчас: %s" : "Current: %s",
-           FSM::getModeName(state.mode));
+           getDisplayModeName(state.mode));
   snprintf(next, sizeof(next), ru ? "Перейти: %s ?" : "Switch to: %s ?",
-           FSM::getModeName(ui.modeSwitchTarget));
+           getDisplayModeName(ui.modeSwitchTarget));
   snprintf(overlayText, sizeof(overlayText), "%s\n%s", cur, next);
   drawWrappedTextBlock(bodyX + 24, bodyY + 10, bodyW - 48, overlayText,
                        colorFg(), 1, 4, 4);
@@ -2088,8 +2176,13 @@ static RootHeaderState buildRootHeaderState(
     uint32_t phaseElapsedOverrideSec = 0xFFFFFFFFUL) {
   const bool ru = (g_settings.language == 0);
   RootHeaderState header;
-  snprintf(header.status, sizeof(header.status), "%s / %s",
-           FSM::getModeName(state.mode), getDisplayPhaseName(state));
+  if (state.mode == Mode::IDLE) {
+    snprintf(header.status, sizeof(header.status), "%s",
+             getDisplayModeName(state.mode));
+  } else {
+    snprintf(header.status, sizeof(header.status), "%s / %s",
+             getDisplayModeName(state.mode), getDisplayPhaseName(state));
+  }
 
   header.procState =
       (state.mode == Mode::IDLE)
@@ -2273,7 +2366,7 @@ static void renderDashboard(const SystemState &state, bool full) {
 
   char statusBuf[64];
   snprintf(statusBuf, sizeof(statusBuf), "%s / %s",
-           FSM::getModeName(state.mode), getDisplayPhaseName(state));
+           getDisplayModeName(state.mode), getDisplayPhaseName(state));
 
   const char *procState =
       (state.mode == Mode::IDLE)
@@ -2527,7 +2620,7 @@ static void renderDashboard(const SystemState &state, bool full) {
   } else {
     char rowBuf[24];
     drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 36, ROOT_LEFT_W - 16,
-                           ru ? "РЕЖИМ" : "MODE", FSM::getModeName(state.mode),
+                           ru ? "РЕЖИМ" : "MODE", getDisplayModeName(state.mode),
                            colorAccent());
     snprintf(rowBuf, sizeof(rowBuf), "%.0f мл", state.stats.headsVolume);
     drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 58, ROOT_LEFT_W - 16,
@@ -2634,7 +2727,7 @@ static void renderModeMonitor(const SystemState &state, bool full) {
 
   char statusBuf[64];
   snprintf(statusBuf, sizeof(statusBuf), "%s / %s",
-           FSM::getModeName(state.mode), getDisplayPhaseName(state));
+           getDisplayModeName(state.mode), getDisplayPhaseName(state));
 
   const char *procState =
       state.paused ? (ru ? "ПАУЗА" : "PAUSE") : (ru ? "РАБОТА" : "RUN");
@@ -2775,7 +2868,7 @@ static void renderModeMonitor(const SystemState &state, bool full) {
                     state.paused ? COLOR_WARNING : colorAccent());
     drawCompactKeyValueRow(leftX + 8, panelY + 36, leftW - 16,
                            ru ? "РЕЖИМ" : "MODE",
-                           FSM::getModeName(state.mode), colorAccent());
+                           getDisplayModeName(state.mode), colorAccent());
     snprintf(rowBuf, sizeof(rowBuf), "%.0f %s", state.stats.headsVolume,
              ru ? "мл" : "ml");
     drawCompactKeyValueRow(leftX + 8, panelY + 58, leftW - 16,
@@ -2983,7 +3076,7 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
                    header.procState, header.procColor);
 
     snprintf(infoLine, sizeof(infoLine),
-             ru ? "Ручная ректификация: цели слева, живая телеметрия справа"
+             ru ? "Ручн. рект.: цели слева, телеметрия справа"
                 : "Manual rect: targets left, live telemetry right");
     if (hasWaterOut) {
       snprintf(auxLine, sizeof(auxLine), "V %.0f | Atm %.0f | Water %.1f",
@@ -3184,9 +3277,9 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
     }
 
     snprintf(infoLine, sizeof(infoLine),
-             isMash ? (ru ? "Затирка: шаги справа, цель и таймер слева"
+             isMash ? (ru ? "Затирка: шаги справа, цель слева"
                             : "Mashing: step list right, target and timer left")
-                    : (ru ? "Пастеризация: шаги справа, контур и цель слева"
+                    : (ru ? "Пастер.: шаги справа, контур слева"
                           : "Hold: step list right, control loop and target left"));
     if (isMash) {
       snprintf(auxLine, sizeof(auxLine), "P %.0fW | Stir %s | Cube %.1f",
@@ -3235,7 +3328,7 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
                     state.paused ? COLOR_WARNING : colorAccent());
     drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
                            ru ? "РЕЖИМ" : "MODE",
-                           FSM::getModeName(state.mode), colorAccent());
+                           getDisplayModeName(state.mode), colorAccent());
     snprintf(rowBuf, sizeof(rowBuf), "%.0f ml", distUi.headsVolumeMl);
     drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
                            ru ? "ГОЛОВЫ" : "HEADS", rowBuf, COLOR_WARNING);
@@ -3252,7 +3345,7 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
                    header.procState, header.procColor);
 
     snprintf(infoLine, sizeof(infoLine),
-             ru ? "Дистилляция: куб, скорость, объем и финишная температура"
+             ru ? "Дистил.: куб, отбор, финиш"
                 : "Distillation: cube, speed, volume and finish temp");
     snprintf(auxLine, sizeof(auxLine), "V %.0f | P %.0f | Pump %.0f",
              state.power.voltage, state.pressure.cube,
@@ -3301,7 +3394,7 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
                     state.paused ? COLOR_WARNING : colorAccent());
     drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
                            ru ? "РЕЖИМ" : "MODE",
-                           FSM::getModeName(state.mode), colorAccent());
+                           getDisplayModeName(state.mode), colorAccent());
     snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
              g_settings.nbk.columnBottomTempThresholdC);
     drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
@@ -3319,7 +3412,7 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
                    header.procState, header.procColor);
 
     snprintf(infoLine, sizeof(infoLine),
-             ru ? "НБК: низ колонны, подача, давление и охлаждение"
+             ru ? "НБК: низ колонны, подача, давление"
                 : "NBK: column bottom, feed, pressure and cooling");
     snprintf(auxLine, sizeof(auxLine), "Target %.0f | Pump %.0f",
              g_settings.nbk.targetVolumeMl, state.pump.speedMlPerHour);
@@ -3371,7 +3464,7 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
                     state.paused ? COLOR_WARNING : colorAccent());
     drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
                            ru ? "РЕЖИМ" : "MODE",
-                           FSM::getModeName(state.mode), colorAccent());
+                           getDisplayModeName(state.mode), colorAccent());
     snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
              g_settings.fermentation.targetTempC);
     drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
@@ -3393,7 +3486,7 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
                    header.procState, header.procColor);
 
     snprintf(infoLine, sizeof(infoLine),
-             ru ? "Ферментация: температура, допуск, отклонение и нагрев"
+             ru ? "Брожение: цель, допуск, нагрев"
                 : "Fermentation: temp, band, delta and heater");
     snprintf(auxLine, sizeof(auxLine), "%s | Plan %.0f h",
              g_settings.fermentation.useHeater ? "Heater ON" : "Heater OFF",
@@ -3498,7 +3591,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
     updateTile(3, x2, y1, w2, hTile, v[3], "C", COLOR_INFO);
 
     snprintf(infoLine, sizeof(infoLine),
-             ru ? "Дистилляция: только ключевые параметры"
+             ru ? "Дистил.: только ключевые параметры"
                 : "Distillation: key parameters only");
     snprintf(auxLine, sizeof(auxLine), "V %.0f | P %.0f | Pump %.0f",
              state.power.voltage, state.pressure.cube,
@@ -3620,7 +3713,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
     }
 
     snprintf(infoLine, sizeof(infoLine),
-             ru ? "Руч. рект: скорость/мощность/фракции слева"
+             ru ? "Ручн. рект.: правка слева, датчики справа"
                 : "Manual rect: edit speed/power/fractions on left");
     snprintf(auxLine, sizeof(auxLine),
              ru ? "Куб %.0f | Атм %.0f mm | V %.0f"
@@ -3732,13 +3825,15 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
 
     if (isMash) {
       snprintf(infoLine, sizeof(infoLine),
-               "Mashing: tap left half for temp, right half for time");
+               ru ? "Затирка: слева температура, справа время"
+                  : "Mashing: tap left half for temp, right half for time");
       snprintf(auxLine, sizeof(auxLine), "Step %u/%u | Target %.1f C",
                static_cast<unsigned>(state.mashing.currentStep + 1),
                static_cast<unsigned>(steps), state.mashing.targetTemp);
     } else {
       snprintf(infoLine, sizeof(infoLine),
-               "Hold: tap left half for temp, right half for time");
+               ru ? "Пастер.: слева температура, справа время"
+                  : "Hold: tap left half for temp, right half for time");
       snprintf(auxLine, sizeof(auxLine), "Step %u/%u | Cube %.1f C",
                static_cast<unsigned>(state.hold.currentStep + 1),
                static_cast<unsigned>(steps), state.temps.cube);
@@ -3784,7 +3879,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
                hasWaterOut ? COLOR_INFO : colorAccent());
 
     snprintf(infoLine, sizeof(infoLine),
-             ru ? "НБК: низ колонны и подача в одном окне"
+             ru ? "НБК: низ колонны и подача"
                 : "NBK: bottom temp and feed rate");
     snprintf(auxLine, sizeof(auxLine), "%s %.1fC | %s %.0f",
              ru ? "Порог" : "Threshold", g_settings.nbk.columnBottomTempThresholdC,
@@ -3822,7 +3917,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
     updateTile(3, x2, y2, tileW, tileH, v[3], "", COLOR_PRIMARY);
 
     snprintf(infoLine, sizeof(infoLine),
-             ru ? "Ферментация: держим температуру в полосе"
+             ru ? "Брожение: держим температуру"
                 : "Fermentation: keep temp in band");
     snprintf(auxLine, sizeof(auxLine), "%s | %s %.0f h",
              g_settings.fermentation.useHeater
@@ -3861,12 +3956,12 @@ static void renderControl(const SystemState &state, bool full) {
   snprintf(modeBuf, sizeof(modeBuf),
            (state.mode == Mode::IDLE) ? (ru ? "Режим: %s" : "Mode: %s")
                                       : (ru ? "Активен: %s" : "Active: %s"),
-           FSM::getModeName(state.mode));
+           getDisplayModeName(state.mode));
   if (state.mode == Mode::IDLE) {
     snprintf(modeBuf, sizeof(modeBuf), "%s",
-             ru ? "ГОТОВ. Выберите режим." : "Ready. Select a mode.");
+             ru ? "ГОТОВ. ВЫБЕРИТЕ РЕЖИМ" : "READY. SELECT A MODE");
   } else {
-    snprintf(modeBuf, sizeof(modeBuf), "%s / %s", FSM::getModeName(state.mode),
+    snprintf(modeBuf, sizeof(modeBuf), "%s / %s", getDisplayModeName(state.mode),
              getDisplayPhaseName(state));
   }
 
@@ -3890,29 +3985,29 @@ static void renderControl(const SystemState &state, bool full) {
              (state.mode == Mode::IDLE) ? dimmedButtonColor() : COLOR_DANGER,
              TFT_WHITE);
 
-  drawButton(CTRL_X1, CTRL_Y1, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::RECTIFICATION),
+  drawButton(CTRL_X1, CTRL_Y1, CTRL_BW, CTRL_BH, getDisplayModeName(Mode::RECTIFICATION),
              modeButtonColor(state, Mode::RECTIFICATION, colorAccent()),
              TFT_WHITE);
-  drawButton(CTRL_X2, CTRL_Y1, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::DISTILLATION),
+  drawButton(CTRL_X2, CTRL_Y1, CTRL_BW, CTRL_BH, getDisplayModeName(Mode::DISTILLATION),
              modeButtonColor(state, Mode::DISTILLATION, COLOR_INFO),
              TFT_WHITE);
 
-  drawButton(CTRL_X1, CTRL_Y2, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::MANUAL_RECT),
+  drawButton(CTRL_X1, CTRL_Y2, CTRL_BW, CTRL_BH, getDisplayModeName(Mode::MANUAL_RECT),
              modeButtonColor(state, Mode::MANUAL_RECT, tft.color565(128, 136, 144)),
              TFT_WHITE);
-  drawButton(CTRL_X2, CTRL_Y2, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::MASHING),
+  drawButton(CTRL_X2, CTRL_Y2, CTRL_BW, CTRL_BH, getDisplayModeName(Mode::MASHING),
              modeButtonColor(state, Mode::MASHING, tft.color565(114, 170, 84)), TFT_WHITE);
 
-  drawButton(CTRL_X1, CTRL_Y3, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::HOLD),
+  drawButton(CTRL_X1, CTRL_Y3, CTRL_BW, CTRL_BH, getDisplayModeName(Mode::HOLD),
              modeButtonColor(state, Mode::HOLD, tft.color565(210, 150, 56)), TFT_WHITE);
 
-  drawButton(CTRL_X2, CTRL_Y3, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::NBK),
+  drawButton(CTRL_X2, CTRL_Y3, CTRL_BW, CTRL_BH, getDisplayModeName(Mode::NBK),
              modeButtonColor(state, Mode::NBK, tft.color565(80, 144, 214)), TFT_WHITE);
 
-  drawButton(CTRL_X1, CTRL_Y4, CTRL_BW, CTRL_BH, FSM::getModeName(Mode::FERMENTATION),
+  drawButton(CTRL_X1, CTRL_Y4, CTRL_BW, CTRL_BH, getDisplayModeName(Mode::FERMENTATION),
              modeButtonColor(state, Mode::FERMENTATION, tft.color565(72, 168, 152)),
              TFT_WHITE);
-  drawButton(CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH, ru ? "Ручное" : "Manual",
+  drawButton(CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH, ru ? "Узлы" : "Devices",
              manualAllowed ? COLOR_DARK_GREY : dimmedButtonColor(),
              TFT_WHITE);
 
@@ -3986,32 +4081,32 @@ static void renderEquipment() {
 
 static void renderRectParams() {
   tft.fillScreen(colorBg());
-  drawHeader(msg(Msg::RECT_PARAMS), true);
+  const bool ru = (g_settings.language == 0);
+  drawHeader(ru ? "РЕКТ. ПАРАМ." : "RECT PARAMS", true);
   drawTabs(UI_SETTINGS);
 
-  const bool ru = (g_settings.language == 0);
   int16_t y = 68;
   const int16_t step = 31;
   char buf[32];
 
   drawButton(330, 44, 140, 22,
-             rectParamsPage == 0 ? (ru ? "ТЕХ ПАРАМ." : "TECH")
+             rectParamsPage == 0 ? (ru ? "ТЕХ." : "TECH")
                                  : (ru ? "ПРОФИЛЬ" : "PROFILE"),
              rectParamsPage == 0 ? COLOR_INFO : colorAccent(), TFT_WHITE);
 
   if (rectParamsPage == 0) {
     snprintf(buf, sizeof(buf), "%s",
              rectFeedstockName(g_settings.rectParams.feedstock, ru));
-    drawValueRow(y, ru ? "Сырье СС" : "Feedstock", buf);
+    drawValueRow(y, ru ? "Сырьё" : "Feedstock", buf);
     y += step;
 
     snprintf(buf, sizeof(buf), "%.1f %s", g_settings.rectParams.feedVolumeL,
              msg(Msg::UNIT_L));
-    drawValueRow(y, ru ? "Объем СС" : "Feed volume", buf);
+    drawValueRow(y, ru ? "Объём" : "Feed volume", buf);
     y += step;
 
     snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.feedAbvPercent);
-    drawValueRow(y, ru ? "Крепость СС" : "Feed ABV", buf);
+    drawValueRow(y, ru ? "Крепость" : "Feed ABV", buf);
     y += step;
 
     snprintf(buf, sizeof(buf), "%.1f %%", g_settings.rectParams.headsPercent);
@@ -4027,7 +4122,7 @@ static void renderRectParams() {
     tft.setTextColor(colorMuted());
     tft.setTextSize(1);
     tft.setTextDatum(bottom_center);
-    tft.drawString(ru ? "Тап по 'Сырье СС' применяет дефолты фракций"
+    tft.drawString(ru ? "Тап по 'Сырьё' = дефолты фракций"
                       : "Tap feedstock row to apply default fractions",
                    TFT_WIDTH / 2, TFT_HEIGHT - UI_FOOTER_H - 2);
     tft.setTextDatum(top_left);
@@ -4067,15 +4162,15 @@ static void renderRectParams() {
       (atmHpa - RECT_PRESSURE_STD_HPA) * RECT_TEMP_COMP_C_PER_HPA;
 
   snprintf(buf, sizeof(buf), "%.1f C", bodyToTailsT);
-  drawValueRow(y, ru ? "Куб: тело→хвосты*" : "Cube: body->tails*", buf, false);
+  drawValueRow(y, ru ? "Тело -> хвосты*" : "Body -> tails*", buf, false);
   y += step;
 
   snprintf(buf, sizeof(buf), "%.1f C", finishT);
-  drawValueRow(y, ru ? "Куб: финиш хвостов*" : "Cube: tails finish*", buf,
+  drawValueRow(y, ru ? "Финиш хвостов*" : "Tails finish*", buf,
                false);
 
-  snprintf(buf, sizeof(buf), "P=%.0f hPa  *%s", atmHpa,
-           ru ? "с поправкой на давление" : "pressure compensated");
+  snprintf(buf, sizeof(buf), "P=%.0f hPa | %s", atmHpa,
+           ru ? "компенсация" : "compensated");
   tft.setTextColor(colorMuted());
   tft.setTextSize(1);
   tft.setTextDatum(bottom_center);
@@ -4085,7 +4180,8 @@ static void renderRectParams() {
 
 static void renderDistParams() {
   tft.fillScreen(colorBg());
-  drawHeader(msg(Msg::DIST_PARAMS), true);
+  const bool ru = (g_settings.language == 0);
+  drawHeader(ru ? "ДИСТ. ПАРАМ." : "DIST PARAMS", true);
   drawTabs(UI_SETTINGS);
 
   int16_t y = 65;
@@ -4111,9 +4207,9 @@ static void renderDistParams() {
 
 static void renderCalibration() {
   tft.fillScreen(colorBg());
-  drawHeader(msg(Msg::CALIBRATION), true);
-  drawTabs(UI_SETTINGS);
   const bool ru = (g_settings.language == 0);
+  drawHeader(ru ? "КАЛИБР." : "CALIBRATION", true);
+  drawTabs(UI_SETTINGS);
 
   char buf[32];
   snprintf(buf, sizeof(buf), "%.3f %s", g_settings.pumpCal.mlPerRevolution,
@@ -4122,28 +4218,28 @@ static void renderCalibration() {
 
   drawButton(20, 160, 440, 55, msg(Msg::TOUCH_CALIBRATION), COLOR_WARNING,
              TFT_WHITE);
-  drawFooterHint(ru ? "Сначала уточните ml/об, затем калибруйте тач"
+  drawFooterHint(ru ? "Сначала ml/об, потом тач"
                     : "Set ml/rev first, then calibrate touch",
                  COLOR_WARNING);
 }
 
 static void renderManual(const SystemState &state) {
   tft.fillScreen(colorBg());
-  drawHeader(msg(Msg::MANUAL_MODE), true);
+  const bool ru = (g_settings.language == 0);
+  drawHeader(ru ? "РУЧНЫЕ УЗЛЫ" : "MANUAL I/O", true);
   drawTabs(UI_CONTROL);
 
   if (!isManualAccessAllowed(state)) {
-    const bool ru = (g_settings.language == 0);
     char message[160];
     char footer[160];
     snprintf(message, sizeof(message),
-             ru ? "Ручное управление заблокировано, пока активен автоматический процесс."
+             ru ? "Автопроцесс активен. Ручной доступ закрыт."
                 : "Manual control is locked while an automatic process is active.");
     snprintf(footer, sizeof(footer),
-             ru ? "Текущий режим: %s\nРазблокировка доступна только в IDLE и MANUAL"
+             ru ? "Текущий режим: %s\nДоступно только в IDLE и ручном экране"
                 : "Current mode: %s\nAvailable only in IDLE and MANUAL",
-             FSM::getModeName(state.mode));
-    drawFullscreenOverlay(ru ? "ДОСТУП К РУЧНОМУ УПРАВЛЕНИЮ" : "MANUAL ACCESS",
+             getDisplayModeName(state.mode));
+    drawFullscreenOverlay(ru ? "РУЧНОЙ ДОСТУП" : "MANUAL ACCESS",
                           message, COLOR_WARNING, footer, 1);
     return;
   }
@@ -4176,7 +4272,7 @@ static void renderValueEdit() {
 
   // Large value display in a card
   drawCard(20, 70, TFT_WIDTH - 40, 90, colorCard());
-  drawPanelHeader(20, 70, TFT_WIDTH - 40, ru ? "ТЕКУЩЕЕ ЗНАЧЕНИЕ" : "CURRENT VALUE",
+  drawPanelHeader(20, 70, TFT_WIDTH - 40, ru ? "ЗНАЧЕНИЕ" : "CURRENT VALUE",
                   colorAccent());
   tft.setTextColor(COLOR_PRIMARY);
   tft.setTextSize(4);
@@ -4240,17 +4336,17 @@ static void renderService(const SystemState &state, bool full) {
   drawValueRow(212, ru ? "Диагн. TFT" : "TFT diag", buf);
   uint16_t hintTone = COLOR_INFO;
   const char *hintText =
-      ru ? "Тап по нижним строкам открывает экран температур"
+      ru ? "Тап по нижним строкам -> температуры"
          : "Tap lower rows to open temperature screen";
   if (g_displayStats.hardWatchdogRecoveries > 0 ||
       g_displayStats.hardWatchdogFailures > 0) {
     hintTone = COLOR_DANGER;
-    hintText = ru ? "Обнаружены hard recovery TFT, проверьте питание и SPI"
+    hintText = ru ? "Hard recovery TFT. Проверьте питание и SPI"
                   : "Hard TFT recoveries detected, check power and SPI";
   } else if (g_displayStats.watchdogRecoveries > 0 ||
              g_displayStats.maxFrameMs >= DISPLAY_SLOW_FRAME_MS) {
     hintTone = COLOR_WARNING;
-    hintText = ru ? "Есть slow/watchdog кадры TFT, проверьте нагрузку экрана"
+    hintText = ru ? "Slow/watchdog кадры TFT. Проверьте нагрузку"
                   : "Slow/watchdog TFT frames detected, check screen load";
   }
   drawFooterHint(hintText, hintTone);
@@ -4259,7 +4355,7 @@ static void renderService(const SystemState &state, bool full) {
 static void renderAllTemps(const SystemState &state, bool full) {
   if (full) {
     tft.fillScreen(colorBg());
-    drawHeader(g_settings.language == 0 ? "ВСЕ ТЕМПЕРАТУРЫ" : "ALL TEMPERATURES", true);
+    drawHeader(g_settings.language == 0 ? "ТЕМПЕРАТУРЫ" : "TEMPERATURES", true);
     drawTabs(ui.rootScreen);
   }
 
