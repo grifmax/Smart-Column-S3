@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.14-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.15-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -144,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.2.15 | 2026-04-17 | Unified compact TFT copy for `SETTINGS`/`RECT_PARAMS`/`SERVICE`, shortened secondary panel titles and hints, and cleaned the manual-lock overlay text |
 | 2.2.14 | 2026-04-17 | Fixed TFT `SETTINGS` hitboxes to match the new 2x2 layout and resynced firmware/docs/web asset versions after `2.2.13` |
 | 2.2.12 | 2026-04-17 | На TFT добиты подэкраны настроек: `EQUIPMENT`, `RECT_PARAMS` и `DIST_PARAMS` переведены на плотную плиточную HMI-сетку с новыми hitbox и page-strip для тех/профильных параметров |
 | 2.2.11 | 2026-04-17 | На TFT уплотнены `CALIBRATION` и `VALUE_EDIT`: калибровка переведена на 2-panel layout, редактор значения — на value-плитку, компактный ряд шаговых кнопок и отдельный save |

@@ -1700,6 +1700,109 @@ static const char *getDisplayPhaseName(const SystemState &state) {
   }
 }
 
+enum class TftTextId : uint8_t {
+  PowerShort,
+  ColumnShort,
+  FeedShort,
+  CutsShort,
+  SpeedShort,
+  TargetShort,
+  TouchShort,
+  CalDoneShort,
+  CalRawShort,
+  SettingsHint,
+  RectTitle,
+  RectPageFeedCuts,
+  RectPageFlowTemp,
+  RectFeedHint,
+  DistTitle,
+  CalibrationTitle,
+  CalibrationHint,
+  ManualTitle,
+  ManualHint,
+  ManualLockTitle,
+  ManualLockMessage,
+  ValueTitle,
+  ValueHint,
+  ServiceFrame,
+  ServiceDiag,
+  ServiceHintTemps,
+  ServiceHintHard,
+  ServiceHintSlow
+};
+
+static const char *tftText(TftTextId id) {
+  const bool ru = (g_settings.language == 0);
+  switch (id) {
+  case TftTextId::PowerShort:
+    return ru ? "МОЩН" : "PWR";
+  case TftTextId::ColumnShort:
+    return ru ? "ВЫС.К" : "COL H";
+  case TftTextId::FeedShort:
+    return ru ? "СС" : "FEED";
+  case TftTextId::CutsShort:
+    return ru ? "Г/Т/Х" : "H/B/T";
+  case TftTextId::SpeedShort:
+    return ru ? "СКОР" : "SPEED";
+  case TftTextId::TargetShort:
+    return ru ? "ЦЕЛЬ" : "TARGET";
+  case TftTextId::TouchShort:
+    return ru ? "ТАЧ" : "TOUCH";
+  case TftTextId::CalDoneShort:
+    return ru ? "калибр." : "done";
+  case TftTextId::CalRawShort:
+    return ru ? "не кал." : "raw";
+  case TftTextId::SettingsHint:
+    return ru ? "Тап карточки = раздел | кнопки = сразу"
+              : "Tap card = section | buttons = instant";
+  case TftTextId::RectTitle:
+    return ru ? "РЕКТ. ПАРАМ." : "RECT PARAMS";
+  case TftTextId::RectPageFeedCuts:
+    return ru ? "СЫРЬЁ / ФРАКЦ." : "FEED / CUTS";
+  case TftTextId::RectPageFlowTemp:
+    return ru ? "СКОР. / ТЕМП." : "FLOW / TEMP";
+  case TftTextId::RectFeedHint:
+    return ru ? "Тап СЫРЬЁ = тип и фракции"
+              : "Tap feedstock = type + cuts";
+  case TftTextId::DistTitle:
+    return ru ? "ДИСТ. ПАРАМ." : "DIST PARAMS";
+  case TftTextId::CalibrationTitle:
+    return ru ? "КАЛИБР." : "CALIBRATION";
+  case TftTextId::CalibrationHint:
+    return ru ? "Сначала ml/об, потом тач"
+              : "Set ml/rev first, then touch";
+  case TftTextId::ManualTitle:
+    return ru ? "РУЧНЫЕ УЗЛЫ" : "MANUAL I/O";
+  case TftTextId::ManualHint:
+    return ru ? "Тап плитки = настройка | клапаны = сразу"
+              : "Tap tile = set | valves = instant";
+  case TftTextId::ManualLockTitle:
+    return ru ? "РУЧНОЙ ДОСТУП" : "MANUAL ACCESS";
+  case TftTextId::ManualLockMessage:
+    return ru ? "Автопроцесс активен. Ручной доступ закрыт."
+              : "Manual control is locked while an automatic process is active.";
+  case TftTextId::ValueTitle:
+    return ru ? "ТЕКУЩЕЕ" : "VALUE";
+  case TftTextId::ValueHint:
+    return ru ? "Слева вниз, справа вверх"
+              : "Left = down, right = up";
+  case TftTextId::ServiceFrame:
+    return ru ? "КАДР TFT" : "TFT FRAME";
+  case TftTextId::ServiceDiag:
+    return ru ? "ДИАГН. TFT" : "TFT DIAG";
+  case TftTextId::ServiceHintTemps:
+    return ru ? "Тап нижнюю строку -> температуры"
+              : "Tap lower row -> temperatures";
+  case TftTextId::ServiceHintHard:
+    return ru ? "Сбои TFT recovery. Проверьте питание и SPI"
+              : "Hard TFT recoveries detected. Check power and SPI";
+  case TftTextId::ServiceHintSlow:
+    return ru ? "Медленные кадры TFT. Проверьте нагрузку"
+              : "Slow TFT frames detected. Check display load";
+  }
+  return "";
+}
+
 static void drawHeader(const char *title, bool showBack) {
   if (!showBack)
     return; // Убираем дублирующий тулбар на
@@ -4047,9 +4150,9 @@ static void renderSettings() {
     snprintf(b2, sizeof(b2), "%u %s", g_settings.equipment.columnHeightMm,
              msg(Msg::UNIT_MM));
     drawCompactKeyValueRow(COL1_X + 8, ROW1_Y + 34, CARD_W - 16,
-                           ru ? "МОЩН" : "PWR", b1, COLOR_WARNING);
+                           tftText(TftTextId::PowerShort), b1, COLOR_WARNING);
     drawCompactKeyValueRow(COL1_X + 8, ROW1_Y + 50, CARD_W - 16,
-                           ru ? "ВЫС. К." : "COL H", b2, COLOR_INFO);
+                           tftText(TftTextId::ColumnShort), b2, COLOR_INFO);
   }
 
   // --- КАРТОЧКА 2: Параметры ректификации ---
@@ -4064,9 +4167,9 @@ static void renderSettings() {
              g_settings.rectParams.bodyPercent,
              g_settings.rectParams.tailsPercent);
     drawCompactKeyValueRow(COL2_X + 8, ROW1_Y + 34, CARD_W - 16,
-                           ru ? "СС" : "FEED", b1, colorAccent());
+                           tftText(TftTextId::FeedShort), b1, colorAccent());
     drawCompactKeyValueRow(COL2_X + 8, ROW1_Y + 50, CARD_W - 16,
-                           ru ? "Г/Т/Х" : "H/B/T", b2, COLOR_INFO);
+                           tftText(TftTextId::CutsShort), b2, COLOR_INFO);
   }
 
   // --- КАРТОЧКА 3: Параметры дистилляции ---
@@ -4077,9 +4180,9 @@ static void renderSettings() {
     snprintf(b1, sizeof(b1), "%.0f %s", distUi.speedMlH, msg(Msg::UNIT_ML_H));
     snprintf(b2, sizeof(b2), "%.0f ml", distUi.targetVolumeMl);
     drawCompactKeyValueRow(COL1_X + 8, ROW2_Y + 34, CARD_W - 16,
-                           ru ? "СКОР" : "SPEED", b1, COLOR_PRIMARY);
+                           tftText(TftTextId::SpeedShort), b1, COLOR_PRIMARY);
     drawCompactKeyValueRow(COL1_X + 8, ROW2_Y + 50, CARD_W - 16,
-                           ru ? "ЦЕЛЬ" : "TARGET", b2, COLOR_SUCCESS);
+                           tftText(TftTextId::TargetShort), b2, COLOR_SUCCESS);
   }
 
   // --- КАРТОЧКА 4: Калибровка ---
@@ -4090,12 +4193,12 @@ static void renderSettings() {
     snprintf(b1, sizeof(b1), "%.3f %s", g_settings.pumpCal.mlPerRevolution,
              msg(Msg::UNIT_ML_R));
     drawCompactKeyValueRow(COL2_X + 8, ROW2_Y + 34, CARD_W - 16,
-                           ru ? "НАСОС" : "PUMP", b1, COLOR_INFO);
+                           msg(Msg::PUMP), b1, COLOR_INFO);
     drawCompactKeyValueRow(COL2_X + 8, ROW2_Y + 50, CARD_W - 16,
-                           ru ? "ТАЧ" : "TOUCH",
+                           tftText(TftTextId::TouchShort),
                            g_settings.touchCal.valid
-                               ? (ru ? "калибр." : "done")
-                               : (ru ? "не кал." : "raw"),
+                               ? tftText(TftTextId::CalDoneShort)
+                               : tftText(TftTextId::CalRawShort),
                            g_settings.touchCal.valid ? COLOR_SUCCESS
                                                      : COLOR_WARNING);
   }
@@ -4126,12 +4229,7 @@ static void renderSettings() {
     drawButton(320, ROW3_Y, BTN3_W, BTN3_H, langLabel, COLOR_INFO, TFT_WHITE);
   }
 
-  // --- FOOTER HINT ---
-  char hint[96];
-  snprintf(hint, sizeof(hint),
-           ru ? "Тап карточки = раздел | кнопки = мгновенно"
-              : "Tap card = open section | buttons = instant toggle");
-  drawFooterHint(hint, colorAccent());
+  drawFooterHint(tftText(TftTextId::SettingsHint), colorAccent());
 }
 
 static void renderEquipment() {
@@ -4168,7 +4266,7 @@ static void renderEquipment() {
 static void renderRectParams() {
   tft.fillScreen(colorBg());
   const bool ru = (g_settings.language == 0);
-  drawHeader(ru ? "РЕКТ. ПАРАМ." : "RECT PARAMS", true);
+  drawHeader(tftText(TftTextId::RectTitle), true);
   drawTabs(UI_SETTINGS);
 
   const int16_t tileW = 225;
@@ -4182,8 +4280,8 @@ static void renderRectParams() {
   char pageBuf[80];
 
   snprintf(pageBuf, sizeof(pageBuf), "%s",
-           rectParamsPage == 0 ? (ru ? "ТЕХ.ПАРАМ / ФРАКЦИИ" : "TECH / CUTS")
-                               : (ru ? "ПРОФИЛЬ / СКОРОСТЬ" : "PROFILE / SPEED"));
+           rectParamsPage == 0 ? tftText(TftTextId::RectPageFeedCuts)
+                               : tftText(TftTextId::RectPageFlowTemp));
   drawButton(10, 48, 460, 26, pageBuf,
              rectParamsPage == 0 ? COLOR_INFO : colorAccent(), TFT_WHITE);
 
@@ -4211,9 +4309,7 @@ static void renderRectParams() {
     drawValueTile(x2, y3, tileW, tileH, msg(Msg::TAILS_PERCENT), tileBuf, "%",
                   COLOR_WARNING);
 
-    drawFooterHint(ru ? "Тап СЫРЬЁ = следующий тип, фракции по умолчанию"
-                      : "Tap feedstock to rotate type + default cuts",
-                   COLOR_INFO);
+    drawFooterHint(tftText(TftTextId::RectFeedHint), COLOR_INFO);
     return;
   }
 
@@ -4253,14 +4349,15 @@ static void renderRectParams() {
   drawValueTile(x2, y3, tileW, tileH, msg(Msg::TAILS_FINISH), tileBuf, "C",
                 colorMuted());
 
-  snprintf(tileBuf, sizeof(tileBuf), "P=%.0f hPa | COMP", atmHpaComp);
+  snprintf(tileBuf, sizeof(tileBuf), ru ? "АТМ %.0f hPa | комп."
+                                        : "ATM %.0f hPa | comp",
+           atmHpaComp);
   drawFooterHint(tileBuf, COLOR_INFO);
 }
 
 static void renderDistParams() {
   tft.fillScreen(colorBg());
-  const bool ru = (g_settings.language == 0);
-  drawHeader(ru ? "ДИСТ. ПАРАМ." : "DIST PARAMS", true);
+  drawHeader(tftText(TftTextId::DistTitle), true);
   drawTabs(UI_SETTINGS);
 
   const int16_t x1 = 10;
@@ -4293,8 +4390,7 @@ static void renderDistParams() {
 
 static void renderCalibration() {
   tft.fillScreen(colorBg());
-  const bool ru = (g_settings.language == 0);
-  drawHeader(ru ? "КАЛИБР." : "CALIBRATION", true);
+  drawHeader(tftText(TftTextId::CalibrationTitle), true);
   drawTabs(UI_SETTINGS);
 
   const int16_t tileY = 52;
@@ -4308,28 +4404,24 @@ static void renderCalibration() {
   drawButton(245, tileY, tileW, tileH, msg(Msg::TOUCH_CALIBRATION),
              COLOR_WARNING,
              TFT_WHITE);
-  drawFooterHint(ru ? "Сначала ml/об, потом тач"
-                    : "Set ml/rev first, then calibrate touch",
-                 COLOR_WARNING);
+  drawFooterHint(tftText(TftTextId::CalibrationHint), COLOR_WARNING);
 }
 
 static void renderManual(const SystemState &state) {
   tft.fillScreen(colorBg());
   const bool ru = (g_settings.language == 0);
-  drawHeader(ru ? "РУЧНЫЕ УЗЛЫ" : "MANUAL I/O", true);
+  drawHeader(tftText(TftTextId::ManualTitle), true);
   drawTabs(UI_CONTROL);
 
   if (!isManualAccessAllowed(state)) {
     char message[160];
     char footer[160];
-    snprintf(message, sizeof(message),
-             ru ? "Автопроцесс активен. Ручной доступ закрыт."
-                : "Manual control is locked while an automatic process is active.");
+    snprintf(message, sizeof(message), "%s", tftText(TftTextId::ManualLockMessage));
     snprintf(footer, sizeof(footer),
-             ru ? "Текущий режим: %s\nДоступно только в IDLE и ручном экране"
-                : "Current mode: %s\nAvailable only in IDLE and MANUAL",
+             ru ? "Текущий режим: %s\nДоступно только в ожидании и ручном режиме"
+                : "Current mode: %s\nAvailable only in idle and manual mode",
              getDisplayModeName(state.mode));
-    drawFullscreenOverlay(ru ? "РУЧНОЙ ДОСТУП" : "MANUAL ACCESS",
+    drawFullscreenOverlay(tftText(TftTextId::ManualLockTitle),
                           message, COLOR_WARNING, footer, 1);
     return;
   }
@@ -4358,16 +4450,12 @@ static void renderManual(const SystemState &state) {
   drawButton(320, valveY, valveW, valveH, msg(Msg::VALVE_UNO),
              Valves::getUno() ? COLOR_SUCCESS : COLOR_DARK_GREY, TFT_WHITE);
 
-  drawFooterHint(ru ? "Тап по плитке = настройка, по клапану = переключение"
-                    : "Tap tile to set, valve to toggle",
-                 colorAccent());
+  drawFooterHint(tftText(TftTextId::ManualHint), colorAccent());
 }
 
 static void renderValueEdit() {
   tft.fillScreen(colorBg());
   drawHeader(edit.label, true);
-  const bool ru = (g_settings.language == 0);
-
   char buf[32];
   if (edit.decimals == 0)
     snprintf(buf, sizeof(buf), "%.0f", edit.value);
@@ -4376,7 +4464,7 @@ static void renderValueEdit() {
   else
     snprintf(buf, sizeof(buf), "%.3f", edit.value);
   drawValueTile(10, 48, TFT_WIDTH - 20, 78,
-                ru ? "ЗНАЧЕНИЕ" : "CURRENT VALUE", buf, edit.unit,
+                tftText(TftTextId::ValueTitle), buf, edit.unit,
                 COLOR_PRIMARY);
 
   const int16_t bw = 108;
@@ -4389,14 +4477,11 @@ static void renderValueEdit() {
 
   drawButton(10, 202, TFT_WIDTH - 20, 44, msg(Msg::SAVE_AND_CLOSE),
              COLOR_PRIMARY, TFT_WHITE);
-  drawFooterHint(ru ? "Слева быстро вниз, справа быстро вверх"
-                    : "Fast down on left, fast up on right",
-                 colorAccent());
+  drawFooterHint(tftText(TftTextId::ValueHint), colorAccent());
   tft.setTextDatum(top_left);
 }
 
 static void renderService(const SystemState &state, bool full) {
-  const bool ru = (g_settings.language == 0);
   const int16_t tileW = 225;
   const int16_t tileH = 64;
   const int16_t x1 = 10;
@@ -4412,7 +4497,7 @@ static void renderService(const SystemState &state, bool full) {
     drawValueTileShell(x1, y1, tileW, tileH, msg(Msg::VERSION));
     drawValueTileShell(x2, y1, tileW, tileH, msg(Msg::UPTIME));
     drawValueTileShell(x1, y2, tileW, tileH, msg(Msg::FREE_HEAP));
-    drawValueTileShell(x2, y2, tileW, tileH, ru ? "КАДР TFT" : "TFT FRAME");
+    drawValueTileShell(x2, y2, tileW, tileH, tftText(TftTextId::ServiceFrame));
   }
 
   char buf[48];
@@ -4437,21 +4522,17 @@ static void renderService(const SystemState &state, bool full) {
            (unsigned long)g_displayStats.watchdogRecoveries,
            (unsigned long)g_displayStats.hardWatchdogRecoveries,
            (unsigned int)g_displayStats.lastUpdateGapMs);
-  drawValueRow(diagY, ru ? "Диагн. TFT" : "TFT diag", buf);
+  drawValueRow(diagY, tftText(TftTextId::ServiceDiag), buf);
   uint16_t hintTone = COLOR_INFO;
-  const char *hintText =
-      ru ? "Тап по нижним строкам -> температуры"
-         : "Tap lower rows to open temperature screen";
+  const char *hintText = tftText(TftTextId::ServiceHintTemps);
   if (g_displayStats.hardWatchdogRecoveries > 0 ||
       g_displayStats.hardWatchdogFailures > 0) {
     hintTone = COLOR_DANGER;
-    hintText = ru ? "Hard recovery TFT. Проверьте питание и SPI"
-                  : "Hard TFT recoveries detected, check power and SPI";
+    hintText = tftText(TftTextId::ServiceHintHard);
   } else if (g_displayStats.watchdogRecoveries > 0 ||
              g_displayStats.maxFrameMs >= DISPLAY_SLOW_FRAME_MS) {
     hintTone = COLOR_WARNING;
-    hintText = ru ? "Slow/watchdog кадры TFT. Проверьте нагрузку"
-                  : "Slow/watchdog TFT frames detected, check screen load";
+    hintText = tftText(TftTextId::ServiceHintSlow);
   }
   drawFooterHint(hintText, hintTone);
 }

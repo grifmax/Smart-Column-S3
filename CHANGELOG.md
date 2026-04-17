@@ -9,6 +9,15 @@
 
 ---
 
+## [2.2.15] - 2026-04-17
+
+### Changed
+- Unified the remaining TFT settings/service copy behind a local `tftText()` dictionary so compact labels, headers, and footer hints no longer drift between mixed RU/EN variants. (codex)
+- Tightened the secondary TFT screens: `SETTINGS`, `RECT_PARAMS`, `CALIBRATION`, `MANUAL`, `VALUE_EDIT`, and `SERVICE` now use shorter panel titles and more compact operator hints. (codex)
+- Fixed the manual-lock overlay text on TFT so it describes access policy in plain operator language instead of raw `IDLE/MANUAL` state names. (codex)
+
+---
+
 ## [2.2.14] - 2026-04-17
 
 ### Changed
