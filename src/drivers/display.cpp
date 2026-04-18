@@ -613,20 +613,47 @@ static const uint32_t DISPLAY_SOFT_WD_WINDOW_MS = 12000;
 static const uint32_t DISPLAY_HARD_RECOVERY_COOLDOWN_MS = 15000;
 static const uint16_t DISPLAY_UPDATE_GAP_WARN_MS = INTERVAL_DISPLAY_UPDATE * 3;
 
-static const int16_t CTRL_BW = 225;
-static const int16_t CTRL_BH = 48;
-static const int16_t CTRL_X1 = 10;
-static const int16_t CTRL_X2 = 245;
+static const int16_t TFT_BUTTON_GAP = 3;
+static const int16_t TFT_BUTTON_MARGIN_X = 6;
+static const int16_t CTRL_BW = 232;
+static const int16_t CTRL_BH = 50;
+static const int16_t CTRL_X1 = TFT_BUTTON_MARGIN_X;
+static const int16_t CTRL_X2 = CTRL_X1 + CTRL_BW + TFT_BUTTON_GAP;
 static const int16_t CTRL_STATUS_Y = 8;
 static const int16_t CTRL_STATUS_H = 30;
-static const int16_t CTRL_ACTION_BW = 82;
+static const int16_t CTRL_ACTION_BW = 84;
 static const int16_t CTRL_ACTION_BH = 22;
 static const int16_t CTRL_ACTION_Y = 12;
-static const int16_t CTRL_ACTION_GAP = 6;
+static const int16_t CTRL_ACTION_GAP = TFT_BUTTON_GAP;
 static const int16_t CTRL_Y1 = 44;
-static const int16_t CTRL_Y2 = 96;
-static const int16_t CTRL_Y3 = 148;
-static const int16_t CTRL_Y4 = 200;
+static const int16_t CTRL_Y2 = CTRL_Y1 + CTRL_BH + TFT_BUTTON_GAP;
+static const int16_t CTRL_Y3 = CTRL_Y2 + CTRL_BH + TFT_BUTTON_GAP;
+static const int16_t CTRL_Y4 = CTRL_Y3 + CTRL_BH + TFT_BUTTON_GAP;
+static const int16_t SETTINGS_CARD_X1 = TFT_BUTTON_MARGIN_X;
+static const int16_t SETTINGS_CARD_W = 232;
+static const int16_t SETTINGS_CARD_X2 = SETTINGS_CARD_X1 + SETTINGS_CARD_W + TFT_BUTTON_GAP;
+static const int16_t SETTINGS_CARD_Y1 = 53;
+static const int16_t SETTINGS_CARD_H = 63;
+static const int16_t SETTINGS_CARD_Y2 = SETTINGS_CARD_Y1 + SETTINGS_CARD_H + TFT_BUTTON_GAP;
+static const int16_t SETTINGS_TOGGLE_Y = SETTINGS_CARD_Y2 + SETTINGS_CARD_H + TFT_BUTTON_GAP;
+static const int16_t SETTINGS_TOGGLE_W = 154;
+static const int16_t SETTINGS_TOGGLE_H = 32;
+static const int16_t SETTINGS_TOGGLE_X1 = TFT_BUTTON_MARGIN_X;
+static const int16_t SETTINGS_TOGGLE_X2 = SETTINGS_TOGGLE_X1 + SETTINGS_TOGGLE_W + TFT_BUTTON_GAP;
+static const int16_t SETTINGS_TOGGLE_X3 = SETTINGS_TOGGLE_X2 + SETTINGS_TOGGLE_W + TFT_BUTTON_GAP;
+static const int16_t MANUAL_VALVE_Y = 146;
+static const int16_t MANUAL_VALVE_W = 154;
+static const int16_t MANUAL_VALVE_H = 76;
+static const int16_t MANUAL_VALVE_X1 = TFT_BUTTON_MARGIN_X;
+static const int16_t MANUAL_VALVE_X2 = MANUAL_VALVE_X1 + MANUAL_VALVE_W + TFT_BUTTON_GAP;
+static const int16_t MANUAL_VALVE_X3 = MANUAL_VALVE_X2 + MANUAL_VALVE_W + TFT_BUTTON_GAP;
+static const int16_t VALUE_EDIT_BTN_W = 114;
+static const int16_t VALUE_EDIT_BTN_H = 56;
+static const int16_t VALUE_EDIT_BTN_Y = 138;
+static const int16_t VALUE_EDIT_BTN_X1 = TFT_BUTTON_MARGIN_X;
+static const int16_t VALUE_EDIT_BTN_X2 = VALUE_EDIT_BTN_X1 + VALUE_EDIT_BTN_W + TFT_BUTTON_GAP;
+static const int16_t VALUE_EDIT_BTN_X3 = VALUE_EDIT_BTN_X2 + VALUE_EDIT_BTN_W + TFT_BUTTON_GAP;
+static const int16_t VALUE_EDIT_BTN_X4 = VALUE_EDIT_BTN_X3 + VALUE_EDIT_BTN_W + TFT_BUTTON_GAP;
 static const int16_t ROOT_STATUS_Y = 8;
 static const int16_t ROOT_STATUS_H = 44;
 static const int16_t ROOT_PANEL_Y = 56;
@@ -1149,11 +1176,15 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
       const int16_t my = 78;
       const int16_t mw = TFT_WIDTH - 60;
       const int16_t by = my + 102;
-      if (hit(tx, ty, mx + 20, by, 150, 42)) {
+      const int16_t overlayBtnW = (mw - 43) / 2;
+      const int16_t overlayBtnX1 = mx + 20;
+      const int16_t overlayBtnX2 =
+          overlayBtnX1 + overlayBtnW + TFT_BUTTON_GAP;
+      if (hit(tx, ty, overlayBtnX1, by, overlayBtnW, 42)) {
         ui.modeSwitchConfirm = false;
         return true;
       }
-      if (hit(tx, ty, mx + mw - 170, by, 150, 42)) {
+      if (hit(tx, ty, overlayBtnX2, by, overlayBtnW, 42)) {
         const Mode target = ui.modeSwitchTarget;
         ui.modeSwitchConfirm = false;
         FSM::stopMode(g_state);
@@ -1213,22 +1244,26 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_VALUE_EDIT:
-    if (hit(tx, ty, 10, 138, 108, 56)) {
+    if (hit(tx, ty, VALUE_EDIT_BTN_X1, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
+            VALUE_EDIT_BTN_H)) {
       edit.value -= edit.fastStep;
       if (edit.value < edit.min)
         edit.value = edit.min;
       return true;
-    } else if (hit(tx, ty, 124, 138, 108, 56)) {
+    } else if (hit(tx, ty, VALUE_EDIT_BTN_X2, VALUE_EDIT_BTN_Y,
+                   VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H)) {
       edit.value -= edit.step;
       if (edit.value < edit.min)
         edit.value = edit.min;
       return true;
-    } else if (hit(tx, ty, 238, 138, 108, 56)) {
+    } else if (hit(tx, ty, VALUE_EDIT_BTN_X3, VALUE_EDIT_BTN_Y,
+                   VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H)) {
       edit.value += edit.step;
       if (edit.value > edit.max)
         edit.value = edit.max;
       return true;
-    } else if (hit(tx, ty, 352, 138, 108, 56)) {
+    } else if (hit(tx, ty, VALUE_EDIT_BTN_X4, VALUE_EDIT_BTN_Y,
+                   VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H)) {
       edit.value += edit.fastStep;
       if (edit.value > edit.max)
         edit.value = edit.max;
@@ -1246,27 +1281,34 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_SETTINGS:
-    if (hit(tx, ty, 10, 53, 225, 63)) {
+    if (hit(tx, ty, SETTINGS_CARD_X1, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
+            SETTINGS_CARD_H)) {
       pushScreen(UI_EQUIPMENT);
       return true;
-    } else if (hit(tx, ty, 245, 53, 225, 63)) {
+    } else if (hit(tx, ty, SETTINGS_CARD_X2, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
+                   SETTINGS_CARD_H)) {
       pushScreen(UI_RECT_PARAMS);
       return true;
-    } else if (hit(tx, ty, 10, 124, 225, 63)) {
+    } else if (hit(tx, ty, SETTINGS_CARD_X1, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
+                   SETTINGS_CARD_H)) {
       pushScreen(UI_DIST_PARAMS);
       return true;
-    } else if (hit(tx, ty, 245, 124, 225, 63)) {
+    } else if (hit(tx, ty, SETTINGS_CARD_X2, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
+                   SETTINGS_CARD_H)) {
       pushScreen(UI_CALIBRATION);
       return true;
-    } else if (hit(tx, ty, 10, 197, 145, 32)) {
+    } else if (hit(tx, ty, SETTINGS_TOGGLE_X1, SETTINGS_TOGGLE_Y,
+                   SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H)) {
       g_settings.theme = (g_settings.theme == 0) ? 1 : 0;
       NVSManager::saveSettings(g_settings);
       return true;
-    } else if (hit(tx, ty, 165, 197, 145, 32)) {
+    } else if (hit(tx, ty, SETTINGS_TOGGLE_X2, SETTINGS_TOGGLE_Y,
+                   SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H)) {
       g_settings.soundEnabled = !g_settings.soundEnabled;
       NVSManager::saveSettings(g_settings);
       return true;
-    } else if (hit(tx, ty, 320, 197, 145, 32)) {
+    } else if (hit(tx, ty, SETTINGS_TOGGLE_X3, SETTINGS_TOGGLE_Y,
+                   SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H)) {
       g_settings.language = (g_settings.language == 0) ? 1 : 0;
       NVSManager::saveSettings(g_settings);
       return true;
@@ -1422,14 +1464,18 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
                       100, saveManualPump, "ml/h", 0);
         return true;
     }
-    if (ty >= 146 && ty < 222) {
-      if (hit(tx, ty, 10, 146, 145, 76)) {
+    if (ty >= MANUAL_VALVE_Y &&
+        ty < (MANUAL_VALVE_Y + MANUAL_VALVE_H)) {
+      if (hit(tx, ty, MANUAL_VALVE_X1, MANUAL_VALVE_Y, MANUAL_VALVE_W,
+              MANUAL_VALVE_H)) {
         Valves::setWater(!Valves::getWater());
         return true;
-      } else if (hit(tx, ty, 165, 146, 145, 76)) {
+      } else if (hit(tx, ty, MANUAL_VALVE_X2, MANUAL_VALVE_Y, MANUAL_VALVE_W,
+                     MANUAL_VALVE_H)) {
         Valves::setHeads(!Valves::getHeads());
         return true;
-      } else if (hit(tx, ty, 320, 146, 145, 76)) {
+      } else if (hit(tx, ty, MANUAL_VALVE_X3, MANUAL_VALVE_Y, MANUAL_VALVE_W,
+                     MANUAL_VALVE_H)) {
         Valves::setUno(!Valves::getUno());
         return true;
       }
@@ -1843,7 +1889,7 @@ static void drawTabs(UiScreen current) {
                            ru ? "НАСТРОЙ" : "SET", ru ? "СЕРВИС" : "INFO"};
 
   const int16_t navY = TFT_HEIGHT - UI_FOOTER_H;
-  const int16_t gap = 4;
+  const int16_t gap = TFT_BUTTON_GAP;
   const int16_t bw = (TFT_WIDTH - (gap * 5)) / 4;
   const int16_t bh = UI_FOOTER_H - 12;
 
@@ -2149,6 +2195,9 @@ static void drawModeSwitchOverlay(const SystemState &state, bool ru) {
   const int16_t bodyW = mw - 32;
   const int16_t bodyH = 54;
   const int16_t by = my + 102;
+  const int16_t btnW = (mw - 43) / 2;
+  const int16_t btnX1 = mx + 20;
+  const int16_t btnX2 = btnX1 + btnW + TFT_BUTTON_GAP;
 
   drawCard(mx, my, mw, mh, colorCard());
   drawPanelHeader(mx, my, mw, ru ? "СМЕНА РЕЖИМА" : "SWITCH MODE",
@@ -2167,9 +2216,9 @@ static void drawModeSwitchOverlay(const SystemState &state, bool ru) {
   drawWrappedTextBlock(bodyX + 24, bodyY + 10, bodyW - 48, overlayText,
                        colorFg(), 1, 4, 4);
 
-  drawButton(mx + 20, by, 150, 42, ru ? "ОТМЕНА" : "CANCEL", COLOR_DARK_GREY,
+  drawButton(btnX1, by, btnW, 42, ru ? "ОТМЕНА" : "CANCEL", COLOR_DARK_GREY,
              TFT_WHITE);
-  drawButton(mx + mw - 170, by, 150, 42, ru ? "ПЕРЕЙТИ" : "SWITCH",
+  drawButton(btnX2, by, btnW, 42, ru ? "ПЕРЕЙТИ" : "SWITCH",
              COLOR_DANGER, TFT_WHITE);
 }
 
@@ -4129,35 +4178,30 @@ static void renderSettings() {
   drawTabs(UI_SETTINGS);
   const bool ru = (g_settings.language == 0);
 
-  // Геометрия сетки 2x2 + строка переключателей
-  const int16_t COL1_X = 10;
-  const int16_t COL2_X = 245;
-  const int16_t CARD_W = 225;
-  const int16_t ROW1_Y = 53;
-  const int16_t ROW2_Y = 124;
-  const int16_t CARD_H = 63;
-  const int16_t ROW3_Y = 197;
-  const int16_t BTN3_H = 32;
-  const int16_t BTN3_W = 145;
-
   // --- КАРТОЧКА 1: Оборудование ---
-  drawCard(COL1_X, ROW1_Y, CARD_W, CARD_H, colorCard());
-  drawPanelHeader(COL1_X, ROW1_Y, CARD_W, msg(Msg::EQUIPMENT), colorAccent());
+  drawCard(SETTINGS_CARD_X1, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
+           SETTINGS_CARD_H, colorCard());
+  drawPanelHeader(SETTINGS_CARD_X1, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
+                  msg(Msg::EQUIPMENT), colorAccent());
   {
     char b1[16], b2[20];
     snprintf(b1, sizeof(b1), "%u %s", g_settings.equipment.heaterPowerW,
              msg(Msg::UNIT_W));
     snprintf(b2, sizeof(b2), "%u %s", g_settings.equipment.columnHeightMm,
              msg(Msg::UNIT_MM));
-    drawCompactKeyValueRow(COL1_X + 8, ROW1_Y + 34, CARD_W - 16,
+    drawCompactKeyValueRow(SETTINGS_CARD_X1 + 8, SETTINGS_CARD_Y1 + 34,
+                           SETTINGS_CARD_W - 16,
                            tftText(TftTextId::PowerShort), b1, COLOR_WARNING);
-    drawCompactKeyValueRow(COL1_X + 8, ROW1_Y + 50, CARD_W - 16,
+    drawCompactKeyValueRow(SETTINGS_CARD_X1 + 8, SETTINGS_CARD_Y1 + 50,
+                           SETTINGS_CARD_W - 16,
                            tftText(TftTextId::ColumnShort), b2, COLOR_INFO);
   }
 
   // --- КАРТОЧКА 2: Параметры ректификации ---
-  drawCard(COL2_X, ROW1_Y, CARD_W, CARD_H, colorCard());
-  drawPanelHeader(COL2_X, ROW1_Y, CARD_W, msg(Msg::RECT_PARAMS), COLOR_INFO);
+  drawCard(SETTINGS_CARD_X2, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
+           SETTINGS_CARD_H, colorCard());
+  drawPanelHeader(SETTINGS_CARD_X2, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
+                  msg(Msg::RECT_PARAMS), COLOR_INFO);
   {
     char b1[24], b2[24];
     snprintf(b1, sizeof(b1), "%s",
@@ -4166,35 +4210,45 @@ static void renderSettings() {
              g_settings.rectParams.headsPercent,
              g_settings.rectParams.bodyPercent,
              g_settings.rectParams.tailsPercent);
-    drawCompactKeyValueRow(COL2_X + 8, ROW1_Y + 34, CARD_W - 16,
+    drawCompactKeyValueRow(SETTINGS_CARD_X2 + 8, SETTINGS_CARD_Y1 + 34,
+                           SETTINGS_CARD_W - 16,
                            tftText(TftTextId::FeedShort), b1, colorAccent());
-    drawCompactKeyValueRow(COL2_X + 8, ROW1_Y + 50, CARD_W - 16,
+    drawCompactKeyValueRow(SETTINGS_CARD_X2 + 8, SETTINGS_CARD_Y1 + 50,
+                           SETTINGS_CARD_W - 16,
                            tftText(TftTextId::CutsShort), b2, COLOR_INFO);
   }
 
   // --- КАРТОЧКА 3: Параметры дистилляции ---
-  drawCard(COL1_X, ROW2_Y, CARD_W, CARD_H, colorCard());
-  drawPanelHeader(COL1_X, ROW2_Y, CARD_W, msg(Msg::DIST_PARAMS), COLOR_WARNING);
+  drawCard(SETTINGS_CARD_X1, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
+           SETTINGS_CARD_H, colorCard());
+  drawPanelHeader(SETTINGS_CARD_X1, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
+                  msg(Msg::DIST_PARAMS), COLOR_WARNING);
   {
     char b1[16], b2[16];
     snprintf(b1, sizeof(b1), "%.0f %s", distUi.speedMlH, msg(Msg::UNIT_ML_H));
     snprintf(b2, sizeof(b2), "%.0f ml", distUi.targetVolumeMl);
-    drawCompactKeyValueRow(COL1_X + 8, ROW2_Y + 34, CARD_W - 16,
+    drawCompactKeyValueRow(SETTINGS_CARD_X1 + 8, SETTINGS_CARD_Y2 + 34,
+                           SETTINGS_CARD_W - 16,
                            tftText(TftTextId::SpeedShort), b1, COLOR_PRIMARY);
-    drawCompactKeyValueRow(COL1_X + 8, ROW2_Y + 50, CARD_W - 16,
+    drawCompactKeyValueRow(SETTINGS_CARD_X1 + 8, SETTINGS_CARD_Y2 + 50,
+                           SETTINGS_CARD_W - 16,
                            tftText(TftTextId::TargetShort), b2, COLOR_SUCCESS);
   }
 
   // --- КАРТОЧКА 4: Калибровка ---
-  drawCard(COL2_X, ROW2_Y, CARD_W, CARD_H, colorCard());
-  drawPanelHeader(COL2_X, ROW2_Y, CARD_W, msg(Msg::CALIBRATION), COLOR_SUCCESS);
+  drawCard(SETTINGS_CARD_X2, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
+           SETTINGS_CARD_H, colorCard());
+  drawPanelHeader(SETTINGS_CARD_X2, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
+                  msg(Msg::CALIBRATION), COLOR_SUCCESS);
   {
     char b1[20];
     snprintf(b1, sizeof(b1), "%.3f %s", g_settings.pumpCal.mlPerRevolution,
              msg(Msg::UNIT_ML_R));
-    drawCompactKeyValueRow(COL2_X + 8, ROW2_Y + 34, CARD_W - 16,
+    drawCompactKeyValueRow(SETTINGS_CARD_X2 + 8, SETTINGS_CARD_Y2 + 34,
+                           SETTINGS_CARD_W - 16,
                            msg(Msg::PUMP), b1, COLOR_INFO);
-    drawCompactKeyValueRow(COL2_X + 8, ROW2_Y + 50, CARD_W - 16,
+    drawCompactKeyValueRow(SETTINGS_CARD_X2 + 8, SETTINGS_CARD_Y2 + 50,
+                           SETTINGS_CARD_W - 16,
                            tftText(TftTextId::TouchShort),
                            g_settings.touchCal.valid
                                ? tftText(TftTextId::CalDoneShort)
@@ -4209,7 +4263,8 @@ static void renderSettings() {
     char themeLabel[24];
     snprintf(themeLabel, sizeof(themeLabel), "%s:%s", msg(Msg::THEME),
              dark ? (ru ? "Тмн" : "Drk") : (ru ? "Свт" : "Lgt"));
-    drawButton(COL1_X, ROW3_Y, BTN3_W, BTN3_H, themeLabel,
+    drawButton(SETTINGS_TOGGLE_X1, SETTINGS_TOGGLE_Y, SETTINGS_TOGGLE_W,
+               SETTINGS_TOGGLE_H, themeLabel,
                dark ? tft.color565(58, 64, 72) : tft.color565(160, 170, 178),
                TFT_WHITE);
   }
@@ -4218,7 +4273,8 @@ static void renderSettings() {
     snprintf(soundLabel, sizeof(soundLabel), "%s:%s", msg(Msg::SOUND),
              g_settings.soundEnabled ? (ru ? "ВКЛ" : "ON")
                                      : (ru ? "ВЫКЛ" : "OFF"));
-    drawButton(165, ROW3_Y, BTN3_W, BTN3_H, soundLabel,
+    drawButton(SETTINGS_TOGGLE_X2, SETTINGS_TOGGLE_Y, SETTINGS_TOGGLE_W,
+               SETTINGS_TOGGLE_H, soundLabel,
                g_settings.soundEnabled ? COLOR_SUCCESS : COLOR_DARK_GREY,
                TFT_WHITE);
   }
@@ -4226,7 +4282,8 @@ static void renderSettings() {
     char langLabel[20];
     snprintf(langLabel, sizeof(langLabel), "%s:%s", msg(Msg::LANGUAGE),
              g_settings.language == 0 ? "RU" : "EN");
-    drawButton(320, ROW3_Y, BTN3_W, BTN3_H, langLabel, COLOR_INFO, TFT_WHITE);
+    drawButton(SETTINGS_TOGGLE_X3, SETTINGS_TOGGLE_Y, SETTINGS_TOGGLE_W,
+               SETTINGS_TOGGLE_H, langLabel, COLOR_INFO, TFT_WHITE);
   }
 
   drawFooterHint(tftText(TftTextId::SettingsHint), colorAccent());
@@ -4430,10 +4487,6 @@ static void renderManual(const SystemState &state) {
   const int16_t tileY = 48;
   const int16_t tileW = 225;
   const int16_t tileH = 86;
-  const int16_t valveY = 146;
-  const int16_t valveW = 145;
-  const int16_t valveH = 76;
-
   snprintf(buf, sizeof(buf), "%u", Heater::getPower());
   drawValueTile(10, tileY, tileW, tileH, msg(Msg::HEATER_POWER), buf, "%",
                 Heater::getPower() > 0 ? COLOR_WARNING : colorMuted());
@@ -4443,11 +4496,14 @@ static void renderManual(const SystemState &state) {
                 msg(Msg::UNIT_ML_H),
                 state.pump.speedMlPerHour > 0.0f ? COLOR_SUCCESS : colorMuted());
 
-  drawButton(10, valveY, valveW, valveH, msg(Msg::VALVE_WATER),
+  drawButton(MANUAL_VALVE_X1, MANUAL_VALVE_Y, MANUAL_VALVE_W, MANUAL_VALVE_H,
+             msg(Msg::VALVE_WATER),
              Valves::getWater() ? COLOR_SUCCESS : COLOR_DARK_GREY, TFT_WHITE);
-  drawButton(165, valveY, valveW, valveH, msg(Msg::VALVE_HEADS),
+  drawButton(MANUAL_VALVE_X2, MANUAL_VALVE_Y, MANUAL_VALVE_W, MANUAL_VALVE_H,
+             msg(Msg::VALVE_HEADS),
              Valves::getHeads() ? COLOR_SUCCESS : COLOR_DARK_GREY, TFT_WHITE);
-  drawButton(320, valveY, valveW, valveH, msg(Msg::VALVE_UNO),
+  drawButton(MANUAL_VALVE_X3, MANUAL_VALVE_Y, MANUAL_VALVE_W, MANUAL_VALVE_H,
+             msg(Msg::VALVE_UNO),
              Valves::getUno() ? COLOR_SUCCESS : COLOR_DARK_GREY, TFT_WHITE);
 
   drawFooterHint(tftText(TftTextId::ManualHint), colorAccent());
@@ -4467,13 +4523,14 @@ static void renderValueEdit() {
                 tftText(TftTextId::ValueTitle), buf, edit.unit,
                 COLOR_PRIMARY);
 
-  const int16_t bw = 108;
-  const int16_t bh = 56;
-  const int16_t y = 138;
-  drawButton(10, y, bw, bh, "--", tft.color565(200, 50, 50), TFT_WHITE);
-  drawButton(124, y, bw, bh, "-", tft.color565(220, 100, 100), TFT_WHITE);
-  drawButton(238, y, bw, bh, "+", tft.color565(100, 200, 100), TFT_WHITE);
-  drawButton(352, y, bw, bh, "++", tft.color565(50, 180, 50), TFT_WHITE);
+  drawButton(VALUE_EDIT_BTN_X1, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
+             VALUE_EDIT_BTN_H, "--", tft.color565(200, 50, 50), TFT_WHITE);
+  drawButton(VALUE_EDIT_BTN_X2, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
+             VALUE_EDIT_BTN_H, "-", tft.color565(220, 100, 100), TFT_WHITE);
+  drawButton(VALUE_EDIT_BTN_X3, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
+             VALUE_EDIT_BTN_H, "+", tft.color565(100, 200, 100), TFT_WHITE);
+  drawButton(VALUE_EDIT_BTN_X4, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
+             VALUE_EDIT_BTN_H, "++", tft.color565(50, 180, 50), TFT_WHITE);
 
   drawButton(10, 202, TFT_WIDTH - 20, 44, msg(Msg::SAVE_AND_CLOSE),
              COLOR_PRIMARY, TFT_WHITE);

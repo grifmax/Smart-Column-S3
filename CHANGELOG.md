@@ -9,6 +9,14 @@
 
 ---
 
+## [2.2.16] - 2026-04-18
+
+### Changed
+- Tightened TFT button geometry to a 3 px gap standard on the built-in IPS panel: `CONTROL`, footer tabs, mode-switch confirmation, `SETTINGS` quick toggles, `MANUAL` valve buttons, and `VALUE_EDIT` step buttons now sit with minimal spacing. (codex)
+- Synced the corresponding touch hitboxes for `CONTROL`, `SETTINGS`, `MANUAL`, `VALUE_EDIT`, and the mode-switch overlay so the tighter layout still matches the rendered buttons exactly. (codex)
+
+---
+
 ## [2.2.15] - 2026-04-17
 
 ### Changed
