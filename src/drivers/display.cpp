@@ -654,18 +654,20 @@ static const int16_t VALUE_EDIT_BTN_X1 = TFT_BUTTON_MARGIN_X;
 static const int16_t VALUE_EDIT_BTN_X2 = VALUE_EDIT_BTN_X1 + VALUE_EDIT_BTN_W + TFT_BUTTON_GAP;
 static const int16_t VALUE_EDIT_BTN_X3 = VALUE_EDIT_BTN_X2 + VALUE_EDIT_BTN_W + TFT_BUTTON_GAP;
 static const int16_t VALUE_EDIT_BTN_X4 = VALUE_EDIT_BTN_X3 + VALUE_EDIT_BTN_W + TFT_BUTTON_GAP;
+static const int16_t ROOT_FRAME_X = TFT_BUTTON_MARGIN_X;
+static const int16_t ROOT_FRAME_W = TFT_WIDTH - ROOT_FRAME_X * 2;
 static const int16_t ROOT_STATUS_Y = 8;
 static const int16_t ROOT_STATUS_H = 44;
-static const int16_t ROOT_PANEL_Y = 56;
+static const int16_t ROOT_PANEL_Y = ROOT_STATUS_Y + ROOT_STATUS_H + TFT_BUTTON_GAP;
 static const int16_t ROOT_PANEL_H = 154;
-static const int16_t ROOT_INFO_Y = ROOT_PANEL_Y + ROOT_PANEL_H + 8;
+static const int16_t ROOT_INFO_Y = ROOT_PANEL_Y + ROOT_PANEL_H + TFT_BUTTON_GAP;
 static const int16_t ROOT_INFO_H = 40;
-static const int16_t ROOT_LEFT_X = 10;
+static const int16_t ROOT_LEFT_X = ROOT_FRAME_X;
 static const int16_t ROOT_LEFT_W = 154;
-static const int16_t ROOT_RIGHT_X = ROOT_LEFT_X + ROOT_LEFT_W + 6;
-static const int16_t ROOT_RIGHT_W = TFT_WIDTH - ROOT_RIGHT_X - 10;
-static const int16_t ROOT_GRID_COL_GAP = 6;
-static const int16_t ROOT_GRID_ROW_GAP = 5;
+static const int16_t ROOT_RIGHT_X = ROOT_LEFT_X + ROOT_LEFT_W + TFT_BUTTON_GAP;
+static const int16_t ROOT_RIGHT_W = TFT_WIDTH - ROOT_RIGHT_X - ROOT_FRAME_X;
+static const int16_t ROOT_GRID_COL_GAP = TFT_BUTTON_GAP;
+static const int16_t ROOT_GRID_ROW_GAP = TFT_BUTTON_GAP;
 static const int16_t ROOT_RIGHT_TILE_W =
     (ROOT_RIGHT_W - ROOT_GRID_COL_GAP) / 2;
 static const int16_t ROOT_RIGHT_TILE_H =
@@ -1003,21 +1005,21 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
 static bool handleModeMonitorTap(int16_t tx, int16_t ty,
                                  const SystemState &state) {
   const bool ru = (g_settings.language == 0);
-  const int16_t y0 = 56;
+  const int16_t y0 = ROOT_PANEL_Y;
   const int16_t hTile = 48;
-  const int16_t g = 6;
-  const int16_t w3 = (TFT_WIDTH - 20 - g * 2) / 3;
-  const int16_t x1 = 10;
+  const int16_t g = TFT_BUTTON_GAP;
+  const int16_t w3 = (ROOT_FRAME_W - g * 2) / 3;
+  const int16_t x1 = ROOT_FRAME_X;
   const int16_t x2 = x1 + w3 + g;
   const int16_t x3 = x2 + w3 + g;
   const int16_t y1 = y0 + hTile + g;
   const int16_t y2 = y1 + hTile + g;
 
   if (state.mode == Mode::DISTILLATION) {
-    const int16_t g2 = 6;
-    const int16_t w2 = (TFT_WIDTH - 20 - g2) / 2;
+    const int16_t g2 = TFT_BUTTON_GAP;
+    const int16_t w2 = (ROOT_FRAME_W - g2) / 2;
     const int16_t x2d = x1 + w2 + g2;
-    const int16_t y1d = y0 + 48 + g2;
+    const int16_t y1d = y0 + 74 + g2;
     if (hit(tx, ty, x2d, y0, w2, 74)) {
       openValueEdit(ru ? "Мощность дист." : "Dist power", distUi.powerPercent,
                     0, 100, 1, 10, saveDistPower, "%", 0, true);
@@ -1032,10 +1034,10 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
   }
 
   if (state.mode == Mode::MANUAL_RECT) {
-    const int16_t leftX = 10;
-    const int16_t leftW = 154;
-    const int16_t rowH = 28;
-    const int16_t rowGap = 4;
+    const int16_t leftX = ROOT_LEFT_X;
+    const int16_t leftW = ROOT_LEFT_W;
+    const int16_t rowGap = ROOT_GRID_ROW_GAP;
+    const int16_t rowH = (ROOT_PANEL_H - rowGap * 4) / 5;
     for (uint8_t i = 0; i < 5; i++) {
       const int16_t ry = y0 + i * (rowH + rowGap);
       if (!hit(tx, ty, leftX, ry, leftW, rowH))
@@ -1077,10 +1079,10 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
     const uint8_t steps = mashProfileDefault.stepCount;
     if (steps == 0)
       return false;
-    const int16_t listX = 10;
-    const int16_t listW = TFT_WIDTH - 20;
-    const int16_t rowGap = 4;
-    const int16_t listH = 156;
+    const int16_t listX = ROOT_FRAME_X;
+    const int16_t listW = ROOT_FRAME_W;
+    const int16_t rowGap = ROOT_GRID_ROW_GAP;
+    const int16_t listH = ROOT_PANEL_H;
     int16_t rowH = (listH - (steps - 1) * rowGap) / steps;
     if (rowH < 28)
       rowH = 28;
@@ -1107,10 +1109,10 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
     const uint8_t steps = holdStepsCount;
     if (steps == 0)
       return false;
-    const int16_t listX = 10;
-    const int16_t listW = TFT_WIDTH - 20;
-    const int16_t rowGap = 4;
-    const int16_t listH = 156;
+    const int16_t listX = ROOT_FRAME_X;
+    const int16_t listW = ROOT_FRAME_W;
+    const int16_t rowGap = ROOT_GRID_ROW_GAP;
+    const int16_t listH = ROOT_PANEL_H;
     int16_t rowH = (listH - (steps - 1) * rowGap) / steps;
     if (rowH < 32)
       rowH = 32;
@@ -1156,8 +1158,9 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
       if (handleModeMonitorTap(tx, ty, state)) {
         return true;
       }
-      // Tap on temperature tiles (right side on monitor) goes to All Temps
-      if (tx >= 236 && ty >= 56 && ty <= 202) {
+      // Tap on the right metrics grid on monitor opens All Temps.
+      if (tx >= ROOT_RIGHT_X && ty >= ROOT_PANEL_Y &&
+          ty <= (ROOT_PANEL_Y + ROOT_PANEL_H)) {
         pushScreen(UI_ALL_TEMPS);
         return true;
       }
@@ -2376,8 +2379,8 @@ static void drawRootScaffold(UiScreen screen) {
   tft.fillScreen(colorBg());
   drawHeader(msg(Msg::MONITOR), false);
   drawTabs(screen);
-  drawCard(10, ROOT_STATUS_Y, TFT_WIDTH - 20, ROOT_STATUS_H, colorCard());
-  drawCard(10, ROOT_INFO_Y, TFT_WIDTH - 20, ROOT_INFO_H, colorCard());
+  drawCard(ROOT_FRAME_X, ROOT_STATUS_Y, ROOT_FRAME_W, ROOT_STATUS_H, colorCard());
+  drawCard(ROOT_FRAME_X, ROOT_INFO_Y, ROOT_FRAME_W, ROOT_INFO_H, colorCard());
 }
 
 static void renderRootStatusBar(const RootHeaderState &header, bool full) {
@@ -2514,8 +2517,8 @@ static void renderDashboard(const SystemState &state, bool full) {
     tft.fillScreen(colorBg());
     drawHeader(msg(Msg::MONITOR), false);
     drawTabs(UI_DASHBOARD);
-    drawCard(10, barY, TFT_WIDTH - 20, 44, colorCard());
-    drawCard(10, infoY, TFT_WIDTH - 20, 40, colorCard());
+    drawCard(ROOT_FRAME_X, barY, ROOT_FRAME_W, 44, colorCard());
+    drawCard(ROOT_FRAME_X, infoY, ROOT_FRAME_W, 40, colorCard());
     memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
     g_dashboardCache.layoutKey = 0xFF;
   }
@@ -2859,7 +2862,7 @@ static void renderModeMonitor(const SystemState &state, bool full) {
     tft.fillScreen(colorBg());
     drawHeader(msg(Msg::MONITOR), false);
     drawTabs(UI_MODE_MONITOR);
-    drawCard(10, barY, TFT_WIDTH - 20, 44, colorCard());
+    drawCard(ROOT_FRAME_X, barY, ROOT_FRAME_W, 44, colorCard());
     drawCard(leftX, panelY, leftW, panelH, colorCard());
 
     drawValueTileShell(rightX, panelY, tileW, tileH, msg(Msg::CUBE_TEMP));
@@ -2876,7 +2879,7 @@ static void renderModeMonitor(const SystemState &state, bool full) {
         state.temps.valid[TEMP_WATER_OUT] ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
                                           : msg(Msg::PUMP));
 
-    drawCard(10, infoY, TFT_WIDTH - 20, 40, colorCard());
+    drawCard(ROOT_FRAME_X, infoY, ROOT_FRAME_W, 40, colorCard());
     memset(&g_dashboardCache, 0, sizeof(g_dashboardCache));
     g_dashboardCache.layoutKey = 0xEE;
   }
@@ -3268,7 +3271,7 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
         (!isMash && currentStep < state.hold.stepCount)
             ? state.hold.steps[currentStep].useCooling
             : false;
-    const int16_t rowGap = 4;
+    const int16_t rowGap = ROOT_GRID_ROW_GAP;
     const uint8_t visibleRows = (steps < 4) ? steps : 4;
     const int16_t rowH =
         (visibleRows > 0)
@@ -3719,10 +3722,10 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
   formatDurationCompact(getModeRunElapsedSec(state), upBuf, sizeof(upBuf));
 
   if (state.mode == Mode::DISTILLATION) {
-    const int16_t g = 6;
+    const int16_t g = TFT_BUTTON_GAP;
     const int16_t hTile = 74;
-    const int16_t w2 = (TFT_WIDTH - 20 - g) / 2;
-    const int16_t x1 = 10;
+    const int16_t w2 = (ROOT_FRAME_W - g) / 2;
+    const int16_t x1 = ROOT_FRAME_X;
     const int16_t x2 = x1 + w2 + g;
     const int16_t y1 = panelY + hTile + g;
 
@@ -3753,15 +3756,15 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
              state.power.voltage, state.pressure.cube,
              state.pump.speedMlPerHour);
   } else if (state.mode == Mode::MANUAL_RECT) {
-    const int16_t leftX = 10;
-    const int16_t leftW = 154;
-    const int16_t rowH = 28;
-    const int16_t rowGap = 4;
-    const int16_t rightX = 170;
-    const int16_t rightW = TFT_WIDTH - rightX - 10;
-    const int16_t colW = (rightW - 6) / 2;
-    const int16_t rightRowH = 36;
-    const int16_t rightGap = 4;
+    const int16_t leftX = ROOT_LEFT_X;
+    const int16_t leftW = ROOT_LEFT_W;
+    const int16_t rowGap = ROOT_GRID_ROW_GAP;
+    const int16_t rowH = (panelH - rowGap * 4) / 5;
+    const int16_t rightX = ROOT_RIGHT_X;
+    const int16_t rightW = ROOT_RIGHT_W;
+    const int16_t colW = (rightW - ROOT_GRID_COL_GAP) / 2;
+    const int16_t rightRowH = (panelH - ROOT_GRID_ROW_GAP * 3) / 4;
+    const int16_t rightGap = ROOT_GRID_ROW_GAP;
 
     if (layoutChanged) {
       drawCard(leftX, panelY, leftW, panelH, colorCard());
@@ -3774,7 +3777,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
                                ru ? "СЕТЬ"      : "MAINS",
                                hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT") : msg(Msg::PUMP)};
       for (uint8_t i = 0; i < 8; i++) {
-        const int16_t cx = rightX + ((i % 2) * (colW + 6));
+        const int16_t cx = rightX + ((i % 2) * (colW + ROOT_GRID_COL_GAP));
         const int16_t cy = panelY + ((i / 2) * (rightRowH + rightGap));
         drawCard(cx, cy, colW, rightRowH, colorCard());
         tft.setTextColor(tft.color565(96, 104, 116));
@@ -3841,7 +3844,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
       snprintf(v[7], sizeof(v[7]), "%.0f", state.pump.speedMlPerHour);
 
     for (uint8_t i = 0; i < 8; i++) {
-      const int16_t cx = rightX + ((i % 2) * (colW + 6));
+      const int16_t cx = rightX + ((i % 2) * (colW + ROOT_GRID_COL_GAP));
       const int16_t cy = panelY + ((i / 2) * (rightRowH + rightGap));
       const char *unit = "C";
       if (i == 4)
@@ -3881,9 +3884,9 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
     uint8_t steps = isMash ? mashProfileDefault.stepCount : holdStepsCount;
     if (!isMash && steps == 0 && state.hold.stepCount > 0)
       steps = state.hold.stepCount;
-    const int16_t listX = 10;
-    const int16_t listW = TFT_WIDTH - 20;
-    const int16_t rowGap = 4;
+    const int16_t listX = ROOT_FRAME_X;
+    const int16_t listW = ROOT_FRAME_W;
+    const int16_t rowGap = ROOT_GRID_ROW_GAP;
     const int16_t listH = panelH;
     int16_t rowH = (steps > 0) ? (listH - (steps - 1) * rowGap) / steps : listH;
     if (rowH < (isMash ? 28 : 32))
@@ -3995,10 +3998,10 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
                static_cast<unsigned>(steps), state.temps.cube);
     }
   } else if (state.mode == Mode::NBK) {
-    const int16_t g = 6;
-    const int16_t tileW = (TFT_WIDTH - 20 - g * 2) / 3;
+    const int16_t g = TFT_BUTTON_GAP;
+    const int16_t tileW = (ROOT_FRAME_W - g * 2) / 3;
     const int16_t tileH = (panelH - g) / 2;
-    const int16_t x1 = 10;
+    const int16_t x1 = ROOT_FRAME_X;
     const int16_t x2 = x1 + tileW + g;
     const int16_t x3 = x2 + tileW + g;
     const int16_t y2 = panelY + tileH + g;
@@ -4041,10 +4044,10 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
              ru ? "Порог" : "Threshold", g_settings.nbk.columnBottomTempThresholdC,
              ru ? "Цель" : "Target", g_settings.nbk.targetVolumeMl);
   } else if (state.mode == Mode::FERMENTATION) {
-    const int16_t g = 6;
-    const int16_t tileW = (TFT_WIDTH - 20 - g) / 2;
+    const int16_t g = TFT_BUTTON_GAP;
+    const int16_t tileW = (ROOT_FRAME_W - g) / 2;
     const int16_t tileH = (panelH - g) / 2;
-    const int16_t x1 = 10;
+    const int16_t x1 = ROOT_FRAME_X;
     const int16_t x2 = x1 + tileW + g;
     const int16_t y2 = panelY + tileH + g;
 
@@ -4081,7 +4084,7 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
                  : (ru ? "Подогрев выключен" : "Heater disabled"),
              ru ? "План" : "Plan", g_settings.fermentation.durationHours);
   } else {
-    drawCard(10, panelY, TFT_WIDTH - 20, panelH, colorCard());
+    drawCard(ROOT_FRAME_X, panelY, ROOT_FRAME_W, panelH, colorCard());
     snprintf(infoLine, sizeof(infoLine),
              "Mode has no dedicated monitor layout");
     snprintf(auxLine, sizeof(auxLine), "");

@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.16-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.17-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -144,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.2.17 | 2026-04-18 | Tightened TFT monitor and mode-monitor spacing to the same 3 px gap system, reduced gaps between summary and metric panels, and synced the matching monitor touch zones |
 | 2.2.16 | 2026-04-18 | Tightened TFT button spacing to a 3 px gap standard across `CONTROL`, footer tabs, settings toggles, manual valves, value-edit step buttons, and synced the matching touch hitboxes |
 | 2.2.15 | 2026-04-17 | Unified compact TFT copy for `SETTINGS`/`RECT_PARAMS`/`SERVICE`, shortened secondary panel titles and hints, and cleaned the manual-lock overlay text |
 | 2.2.14 | 2026-04-17 | Fixed TFT `SETTINGS` hitboxes to match the new 2x2 layout and resynced firmware/docs/web asset versions after `2.2.13` |

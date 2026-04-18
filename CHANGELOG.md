@@ -9,6 +9,14 @@
 
 ---
 
+## [2.2.17] - 2026-04-18
+
+### Changed
+- Tightened TFT monitor geometry to the same 3 px gap system: the root monitor, rectification monitor, custom monitor grids, and right-side live metric tiles now sit with denser spacing and a smaller gap between summary and metric panels. (codex)
+- Synced monitor touch geometry with the denser layout, including the distillation mode-monitor edit tiles, manual-rect rows, mash/hold step lists, and the rectification monitor tap-zone for `All Temps`. (codex)
+
+---
+
 ## [2.2.16] - 2026-04-18
 
 ### Changed
