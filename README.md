@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.18-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.19-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -144,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.2.19 | 2026-04-18 | Reworked the TFT left summary panels for rectification, distillation, and NBK into hero-style operator blocks with one primary value and three supporting rows |
 | 2.2.18 | 2026-04-18 | Rebalanced TFT runtime hierarchy: main process metrics on dashboard and monitor screens are larger, tile headers are slimmer, and footer/status copy is visually quieter |
 | 2.2.17 | 2026-04-18 | Tightened TFT monitor and mode-monitor spacing to the same 3 px gap system, reduced gaps between summary and metric panels, and synced the matching monitor touch zones |
 | 2.2.16 | 2026-04-18 | Tightened TFT button spacing to a 3 px gap standard across `CONTROL`, footer tabs, settings toggles, manual valves, value-edit step buttons, and synced the matching touch hitboxes |

@@ -2058,6 +2058,43 @@ static void drawCompactKeyValueRow(int16_t x, int16_t y, int16_t w,
   tft.setTextDatum(top_left);
 }
 
+static void drawSummaryHeroBlock(int16_t x, int16_t y, int16_t w, int16_t h,
+                                 const char *label, const char *value,
+                                 uint16_t tone) {
+  drawCard(x, y, w, h, colorBg());
+  tft.fillRect(x + 1, y + 1, 6, h - 2, tone);
+  tft.drawFastHLine(x + 8, y + h - 1, w - 9, colorBorder());
+
+  tft.setTextColor(colorMuted());
+  tft.setTextSize(1);
+  tft.setTextDatum(top_left);
+  char labelBuf[40];
+  copyFittedText(label, w - 18, labelBuf, sizeof(labelBuf));
+  tft.drawString(labelBuf, x + 12, y + 5);
+
+  uint8_t valueSize = (w >= 136 && h >= 42) ? 3 : 2;
+  while (valueSize > 1) {
+    tft.setTextSize(valueSize);
+    if (tft.textWidth(value) <= (w - 18)) {
+      break;
+    }
+    valueSize--;
+  }
+
+  tft.setTextColor(tone);
+  tft.setTextSize(valueSize);
+  tft.setTextDatum(middle_center);
+  const int16_t valueY =
+      y + ((h >= 42) ? (h / 2 + ((valueSize >= 3) ? 6 : 4)) : (h / 2 + 3));
+  tft.drawString(value, x + (w / 2) + 2, valueY);
+  if (valueSize >= 3) {
+    tft.drawString(value, x + (w / 2) + 3, valueY);
+  }
+
+  tft.setTextSize(1);
+  tft.setTextDatum(top_left);
+}
+
 enum class TileValueTone : uint8_t {
   Normal = 0,
   Primary = 1,
@@ -3066,6 +3103,13 @@ static void renderModeMonitor(const SystemState &state, bool full) {
   }
 
   {
+    const int16_t summaryX = leftX + 8;
+    const int16_t summaryW = leftW - 16;
+    const int16_t heroY = panelY + 32;
+    const int16_t heroH = 42;
+    const int16_t rowY1 = panelY + 86;
+    const int16_t rowY2 = panelY + 104;
+    const int16_t rowY3 = panelY + 122;
     const char *k1 = Valves::getWater() ? "ON" : "--";
     const char *k2 = Valves::getHeads() ? "ON" : "--";
     const char *k3 = (Heater::getPower() > 0) ? "ON" : "--";
@@ -3091,6 +3135,26 @@ static void renderModeMonitor(const SystemState &state, bool full) {
     snprintf(rowBuf, sizeof(rowBuf), "K1%s K2%s K3%s", k1, k2, k3);
     drawStateBadge(leftX + 8, panelY + panelH - 22, leftW - 16, 14, rowBuf,
                    header.safetyColor);
+    drawCard(leftX, panelY, leftW, panelH, colorCard());
+    drawPanelHeader(leftX, panelY, leftW, getDisplayPhaseName(state),
+                    state.paused ? COLOR_WARNING : colorAccent());
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f %s", state.stats.bodyVolume,
+             ru ? "мл" : "ml");
+    drawSummaryHeroBlock(summaryX, heroY, summaryW, heroH,
+                         ru ? "ТЕЛО" : "BODY", rowBuf, COLOR_SUCCESS);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f %s", state.stats.headsVolume,
+             ru ? "мл" : "ml");
+    drawCompactKeyValueRow(summaryX, rowY1, summaryW,
+                           ru ? "ГОЛОВЫ" : "HEADS", rowBuf, COLOR_WARNING);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f %s", state.stats.tailsVolume,
+             ru ? "мл" : "ml");
+    drawCompactKeyValueRow(summaryX, rowY2, summaryW,
+                           ru ? "ХВОСТЫ" : "TAILS", rowBuf, COLOR_DANGER);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f mm", state.pressure.cube);
+    drawCompactKeyValueRow(summaryX, rowY3, summaryW,
+                           ru ? "ДАВЛ." : "PRESS", rowBuf, COLOR_WARNING);
+    drawStateBadge(summaryX, panelY + panelH - 22, summaryW, 14,
+                   header.safetyState, header.safetyColor);
   }
 
   snprintf(val, sizeof(val), "%.1f", state.temps.cube);
@@ -3561,6 +3625,24 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
                            ru ? "СЕТЬ" : "MAINS", rowBuf, COLOR_PRIMARY);
     drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22, leftW - 16, 14,
                    header.procState, header.procColor);
+    drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+    drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
+                    state.paused ? COLOR_WARNING : colorAccent());
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml", state.pump.totalVolumeMl,
+             distUi.targetVolumeMl);
+    drawSummaryHeroBlock(leftX + 8, ROOT_PANEL_Y + 32, leftW - 16, 42,
+                         ru ? "ОТБОР" : "COLLECT", rowBuf, COLOR_SUCCESS);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f ml", distUi.headsVolumeMl);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 86, leftW - 16,
+                           ru ? "ГОЛОВЫ" : "HEADS", rowBuf, COLOR_WARNING);
+    snprintf(rowBuf, sizeof(rowBuf), "%.1f C", distUi.endTempC);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 104, leftW - 16,
+                           ru ? "ФИНИШ" : "END", rowBuf, COLOR_INFO);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f mm", state.pressure.cube);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 122, leftW - 16,
+                           ru ? "ДАВЛ." : "PRESS", rowBuf, COLOR_WARNING);
+    drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22, leftW - 16, 14,
+                   header.procState, header.procColor);
 
     snprintf(infoLine, sizeof(infoLine),
              ru ? "Дистил.: куб, отбор, финиш"
@@ -3629,6 +3711,25 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
                            ru ? "ОТБОР" : "COLLECT", rowBuf, COLOR_INFO);
     snprintf(rowBuf, sizeof(rowBuf), "%.0f V", state.power.voltage);
     drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
+                           ru ? "СЕТЬ" : "MAINS", rowBuf, COLOR_PRIMARY);
+    drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22, leftW - 16, 14,
+                   header.procState, header.procColor);
+    drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
+    drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
+                    state.paused ? COLOR_WARNING : colorAccent());
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml", state.pump.totalVolumeMl,
+             g_settings.nbk.targetVolumeMl);
+    drawSummaryHeroBlock(leftX + 8, ROOT_PANEL_Y + 32, leftW - 16, 42,
+                         ru ? "ОТБОР" : "COLLECT", rowBuf, COLOR_SUCCESS);
+    snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
+             g_settings.nbk.columnBottomTempThresholdC);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 86, leftW - 16,
+                           ru ? "ПОРОГ" : "THRESH", rowBuf, COLOR_WARNING);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f ml/h", g_settings.nbk.pumpSpeedMlH);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 104, leftW - 16,
+                           ru ? "ПОДАЧА" : "FEED", rowBuf, COLOR_INFO);
+    snprintf(rowBuf, sizeof(rowBuf), "%.0f V", state.power.voltage);
+    drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 122, leftW - 16,
                            ru ? "СЕТЬ" : "MAINS", rowBuf, COLOR_PRIMARY);
     drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22, leftW - 16, 14,
                    header.procState, header.procColor);

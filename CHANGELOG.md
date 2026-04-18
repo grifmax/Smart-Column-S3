@@ -9,6 +9,14 @@
 
 ---
 
+## [2.2.19] - 2026-04-18
+
+### Changed
+- Reworked the left runtime summary panels on the built-in TFT for `RECTIFICATION`, `DISTILLATION`, and `NBK`: each screen now has one large primary indicator and three smaller support rows instead of five equal-weight rows. (codex)
+- Promoted the most important operator values in those left panels to dedicated hero blocks: `BODY` for rectification, `COLLECT / TARGET` for distillation, and `COLLECT / TARGET` for NBK. (codex)
+
+---
+
 ## [2.2.18] - 2026-04-18
 
 ### Changed
