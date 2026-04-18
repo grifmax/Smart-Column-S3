@@ -9,6 +9,14 @@
 
 ---
 
+## [2.2.18] - 2026-04-18
+
+### Changed
+- Rebalanced the built-in TFT runtime hierarchy so the main process numbers on `DASHBOARD`, `MONITOR`, and custom mode-monitor screens render larger, while support metrics stay quieter. (codex)
+- Tightened the metric tile chrome for runtime screens by slimming the tile header strip and muting the root footer text, so the eye lands on values first and status copy second. (codex)
+
+---
+
 ## [2.2.17] - 2026-04-18
 
 ### Changed

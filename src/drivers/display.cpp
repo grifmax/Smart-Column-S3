@@ -2058,18 +2058,30 @@ static void drawCompactKeyValueRow(int16_t x, int16_t y, int16_t w,
   tft.setTextDatum(top_left);
 }
 
+enum class TileValueTone : uint8_t {
+  Normal = 0,
+  Primary = 1,
+  Secondary = 2,
+  Duration = 3,
+};
+
+static int16_t getValueTileHeaderHeight(int16_t h) {
+  return (h >= 60) ? 18 : 16;
+}
+
 static void drawValueTileShell(int16_t x, int16_t y, int16_t w, int16_t h,
                                const char *label) {
+  const int16_t headerH = getValueTileHeaderHeight(h);
   drawCard(x, y, w, h, colorCard());
-  tft.fillRect(x + 1, y + 1, w - 2, 18, colorNavBg());
-  tft.fillRect(x + 1, y + 1, 6, 18, colorAccent());
-  tft.drawFastHLine(x + 1, y + 19, w - 2, colorBorder());
+  tft.fillRect(x + 1, y + 1, w - 2, headerH, colorNavBg());
+  tft.fillRect(x + 1, y + 1, 5, headerH, colorAccent());
+  tft.drawFastHLine(x + 1, y + headerH + 1, w - 2, colorBorder());
   tft.setTextColor(colorMuted());
   tft.setTextSize(1);
   tft.setTextDatum(top_left);
   char labelBuf[48];
-  copyFittedText(label, w - 18, labelBuf, sizeof(labelBuf));
-  tft.drawString(labelBuf, x + 12, y + 5);
+  copyFittedText(label, w - 16, labelBuf, sizeof(labelBuf));
+  tft.drawString(labelBuf, x + 11, y + ((headerH >= 18) ? 5 : 4));
   tft.setTextDatum(top_left);
 }
 
@@ -2225,20 +2237,47 @@ static void drawModeSwitchOverlay(const SystemState &state, bool ru) {
              COLOR_DANGER, TFT_WHITE);
 }
 
-static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h,
-                               const char *value, const char *unit,
-                               uint16_t color) {
+static void drawValueTileValueStyled(int16_t x, int16_t y, int16_t w, int16_t h,
+                                     const char *value, const char *unit,
+                                     uint16_t color, TileValueTone tone) {
   // Clear only value area to avoid visible full-tile flicker on periodic
   // updates.
-  const int16_t valueAreaY = y + 20;
-  const int16_t valueAreaH = h - 22;
+  const int16_t headerH = getValueTileHeaderHeight(h);
+  const int16_t valueAreaY = y + headerH + 2;
+  const int16_t valueAreaH = h - headerH - 4;
   if (valueAreaH > 0) {
     tft.fillRect(x + 2, valueAreaY, w - 4, valueAreaH, colorCard());
   }
 
-  uint8_t valueSize = (w >= 135 && h >= 64) ? 3 : 2;
-  tft.setTextSize(valueSize);
-  if (tft.textWidth(value) > (w - 18) && valueSize > 1) {
+  const bool timeLike = (value != nullptr && strchr(value, ':') != nullptr);
+  uint8_t valueSize = 2;
+  switch (tone) {
+  case TileValueTone::Primary:
+    valueSize = (w >= 145 && h >= 46) ? 3 : ((w >= 110 && h >= 64) ? 3 : 2);
+    if (!timeLike && w >= 150 && h >= 72) {
+      valueSize = 4;
+    }
+    break;
+  case TileValueTone::Duration:
+    valueSize = (w >= 145 && h >= 72) ? 3 : 2;
+    break;
+  case TileValueTone::Secondary:
+    valueSize = (w >= 150 && h >= 84) ? 3 : 2;
+    break;
+  case TileValueTone::Normal:
+  default:
+    valueSize =
+        (!timeLike && w >= 145 && h >= 46) ? 3 : ((w >= 135 && h >= 64) ? 3 : 2);
+    break;
+  }
+
+  const int16_t maxValueW =
+      (tone == TileValueTone::Primary && h >= 46) ? (w - 14) : (w - 18);
+  while (valueSize > 1) {
+    tft.setTextSize(valueSize);
+    if (tft.textWidth(value) <= maxValueW) {
+      break;
+    }
     valueSize--;
   }
 
@@ -2262,9 +2301,10 @@ static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h,
   } else {
     tft.setTextDatum(middle_center);
     const int16_t valueX = x + w / 2;
-    const int16_t valueY = y + h / 2 + ((valueSize >= 3) ? 5 : 3);
+    const int16_t valueY =
+        valueAreaY + (valueAreaH / 2) + ((valueSize >= 3) ? 4 : 2);
     tft.drawString(value, valueX, valueY);
-    if (valueSize >= 3) {
+    if (tone == TileValueTone::Primary && valueSize >= 3) {
       // Slight overdraw to visually thicken key numbers without changing fonts.
       tft.drawString(value, valueX + 1, valueY);
     }
@@ -2276,6 +2316,13 @@ static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h,
   }
 
   tft.setTextDatum(top_left);
+}
+
+static void drawValueTileValue(int16_t x, int16_t y, int16_t w, int16_t h,
+                               const char *value, const char *unit,
+                               uint16_t color) {
+  drawValueTileValueStyled(x, y, w, h, value, unit, color,
+                           TileValueTone::Normal);
 }
 
 static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
@@ -2451,7 +2498,7 @@ static void renderRootFooter(const char *infoLine, const char *auxLine,
     if (!full) {
       tft.fillRect(14, ROOT_INFO_Y + 3, TFT_WIDTH - 28, 34, colorCard());
     }
-    tft.setTextColor(colorFg());
+    tft.setTextColor(colorMuted());
     tft.setTextSize(1);
     tft.setTextDatum(middle_left);
     char infoBuf[96];
@@ -2459,7 +2506,7 @@ static void renderRootFooter(const char *infoLine, const char *auxLine,
     copyFittedText(infoLine, 350, infoBuf, sizeof(infoBuf));
     copyFittedText(auxLine, 350, auxBuf, sizeof(auxBuf));
     tft.drawString(infoBuf, 20, ROOT_INFO_Y + 13);
-    tft.setTextColor(colorMuted());
+    tft.setTextColor(tft.color565(96, 104, 114));
     tft.drawString(auxBuf, 20, ROOT_INFO_Y + 28);
     tft.setTextColor(COLOR_PRIMARY);
     tft.setTextDatum(middle_right);
@@ -2707,8 +2754,9 @@ static void renderDashboard(const SystemState &state, bool full) {
 
   for (uint8_t i = 0; i < 6; i++) {
     if (full || strcmp(tileCache[i], tileValues[i]) != 0) {
-      drawValueTileValue(tileX[i], tileY[i], tileW, tileH, tileValues[i],
-                         tileUnits[i], tileColors[i]);
+      drawValueTileValueStyled(tileX[i], tileY[i], tileW, tileH, tileValues[i],
+                               tileUnits[i], tileColors[i],
+                               TileValueTone::Primary);
       strncpy(tileCache[i], tileValues[i], 15);
       tileCache[i][15] = '\0';
     }
@@ -3158,9 +3206,10 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
   renderRootStatusBar(header, full);
 
   auto updateTile = [&](uint8_t idx, int16_t x, int16_t y, int16_t w, int16_t h,
-                        const char *value, const char *unit, uint16_t color) {
+                        const char *value, const char *unit, uint16_t color,
+                        TileValueTone tone = TileValueTone::Primary) {
     if (full || strcmp(g_modeTileCache[idx], value) != 0) {
-      drawValueTileValue(x, y, w, h, value, unit, color);
+      drawValueTileValueStyled(x, y, w, h, value, unit, color, tone);
       strncpy(g_modeTileCache[idx], value, sizeof(g_modeTileCache[idx]) - 1);
       g_modeTileCache[idx][sizeof(g_modeTileCache[idx]) - 1] = '\0';
     }
@@ -3202,13 +3251,18 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
     snprintf(v[4], sizeof(v[4]), "%.0f", state.pressure.cube);
     snprintf(v[5], sizeof(v[5]), "%.0f", state.pump.speedMlPerHour);
 
-    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C", COLOR_DANGER);
-    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "C", colorAccent());
-    updateTile(2, rightX, y2, tileW, tileH, v[2], "C", COLOR_INFO);
-    updateTile(3, x2, y2, tileW, tileH, v[3], "C", COLOR_WARNING);
-    updateTile(4, rightX, y3, tileW, tileH, v[4], "mm", COLOR_WARNING);
+    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C", COLOR_DANGER,
+               TileValueTone::Primary);
+    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "C", colorAccent(),
+               TileValueTone::Primary);
+    updateTile(2, rightX, y2, tileW, tileH, v[2], "C", COLOR_INFO,
+               TileValueTone::Secondary);
+    updateTile(3, x2, y2, tileW, tileH, v[3], "C", COLOR_WARNING,
+               TileValueTone::Secondary);
+    updateTile(4, rightX, y3, tileW, tileH, v[4], "mm", COLOR_WARNING,
+               TileValueTone::Secondary);
     updateTile(5, x2, y3, tileW, tileH, v[5], msg(Msg::UNIT_ML_H),
-               COLOR_SUCCESS);
+               COLOR_SUCCESS, TileValueTone::Primary);
 
     drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
     drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
@@ -3474,13 +3528,18 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
     snprintf(v[4], sizeof(v[4]), "%s", runBuf);
     snprintf(v[5], sizeof(v[5]), "%.1f", distUi.endTempC);
 
-    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C", COLOR_DANGER);
-    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "%", COLOR_WARNING);
+    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C", COLOR_DANGER,
+               TileValueTone::Primary);
+    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "%", COLOR_WARNING,
+               TileValueTone::Primary);
     updateTile(2, rightX, y2, tileW, tileH, v[2], msg(Msg::UNIT_ML_H),
-               COLOR_SUCCESS);
-    updateTile(3, x2, y2, tileW, tileH, v[3], "ml", COLOR_INFO);
-    updateTile(4, rightX, y3, tileW, tileH, v[4], "", COLOR_PRIMARY);
-    updateTile(5, x2, y3, tileW, tileH, v[5], "C", COLOR_INFO);
+               COLOR_SUCCESS, TileValueTone::Primary);
+    updateTile(3, x2, y2, tileW, tileH, v[3], "ml", COLOR_INFO,
+               TileValueTone::Secondary);
+    updateTile(4, rightX, y3, tileW, tileH, v[4], "", COLOR_PRIMARY,
+               TileValueTone::Duration);
+    updateTile(5, x2, y3, tileW, tileH, v[5], "C", COLOR_INFO,
+               TileValueTone::Secondary);
 
     drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
     drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
@@ -3537,16 +3596,20 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
       snprintf(v[5], sizeof(v[5]), "%.0f", g_settings.nbk.pumpSpeedMlH);
     }
 
-    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C", colorAccent());
-    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "C", COLOR_DANGER);
+    updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C", colorAccent(),
+               TileValueTone::Primary);
+    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "C", COLOR_DANGER,
+               TileValueTone::Primary);
     updateTile(2, rightX, y2, tileW, tileH, v[2], msg(Msg::UNIT_W),
-               COLOR_WARNING);
+               COLOR_WARNING, TileValueTone::Primary);
     updateTile(3, x2, y2, tileW, tileH, v[3], msg(Msg::UNIT_ML_H),
-               COLOR_SUCCESS);
-    updateTile(4, rightX, y3, tileW, tileH, v[4], "mm", COLOR_INFO);
+               COLOR_SUCCESS, TileValueTone::Primary);
+    updateTile(4, rightX, y3, tileW, tileH, v[4], "mm", COLOR_INFO,
+               TileValueTone::Secondary);
     updateTile(5, x2, y3, tileW, tileH, v[5],
                hasWaterOut ? "C" : msg(Msg::UNIT_ML_H),
-               hasWaterOut ? COLOR_INFO : colorAccent());
+               hasWaterOut ? COLOR_INFO : colorAccent(),
+               TileValueTone::Secondary);
 
     drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
     drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
@@ -3608,15 +3671,21 @@ static void renderModeMonitorCustomHmi(const SystemState &state, bool full) {
     updateTile(0, rightX, ROOT_PANEL_Y, tileW, tileH, v[0], "C",
                fabsf(delta) > g_settings.fermentation.hysteresisC
                    ? COLOR_WARNING
-                   : COLOR_SUCCESS);
-    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "C", colorAccent());
-    updateTile(2, rightX, y2, tileW, tileH, v[2], "C", COLOR_INFO);
-    updateTile(3, x2, y2, tileW, tileH, v[3], "", COLOR_PRIMARY);
+                   : COLOR_SUCCESS,
+               TileValueTone::Primary);
+    updateTile(1, x2, ROOT_PANEL_Y, tileW, tileH, v[1], "C", colorAccent(),
+               TileValueTone::Primary);
+    updateTile(2, rightX, y2, tileW, tileH, v[2], "C", COLOR_INFO,
+               TileValueTone::Secondary);
+    updateTile(3, x2, y2, tileW, tileH, v[3], "", COLOR_PRIMARY,
+               TileValueTone::Duration);
     updateTile(4, rightX, y3, tileW, tileH, v[4], "C",
-               (delta > 0.0f) ? COLOR_WARNING : COLOR_INFO);
+               (delta > 0.0f) ? COLOR_WARNING : COLOR_INFO,
+               TileValueTone::Secondary);
     updateTile(5, x2, y3, tileW, tileH, v[5], "",
                g_settings.fermentation.useHeater ? COLOR_SUCCESS
-                                                 : colorMuted());
+                                                 : colorMuted(),
+               TileValueTone::Secondary);
 
     drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
     drawPanelHeader(leftX, ROOT_PANEL_Y, leftW, getDisplayPhaseName(state),
@@ -3708,9 +3777,10 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
   renderRootStatusBar(header, full);
 
   auto updateTile = [&](uint8_t idx, int16_t x, int16_t y, int16_t w, int16_t h,
-                        const char *value, const char *unit, uint16_t color) {
+                        const char *value, const char *unit, uint16_t color,
+                        TileValueTone tone = TileValueTone::Primary) {
     if (full || strcmp(g_modeTileCache[idx], value) != 0) {
-      drawValueTileValue(x, y, w, h, value, unit, color);
+      drawValueTileValueStyled(x, y, w, h, value, unit, color, tone);
       strncpy(g_modeTileCache[idx], value, sizeof(g_modeTileCache[idx]) - 1);
       g_modeTileCache[idx][sizeof(g_modeTileCache[idx]) - 1] = '\0';
     }
@@ -3744,10 +3814,14 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
     snprintf(v[2], sizeof(v[2]), "%s", runBuf);
     snprintf(v[3], sizeof(v[3]), "%.1f", distUi.endTempC);
 
-    updateTile(0, x1, panelY, w2, hTile, v[0], "C", COLOR_DANGER);
-    updateTile(1, x2, panelY, w2, hTile, v[1], "%", COLOR_WARNING);
-    updateTile(2, x1, y1, w2, hTile, v[2], "", COLOR_PRIMARY);
-    updateTile(3, x2, y1, w2, hTile, v[3], "C", COLOR_INFO);
+    updateTile(0, x1, panelY, w2, hTile, v[0], "C", COLOR_DANGER,
+               TileValueTone::Primary);
+    updateTile(1, x2, panelY, w2, hTile, v[1], "%", COLOR_WARNING,
+               TileValueTone::Primary);
+    updateTile(2, x1, y1, w2, hTile, v[2], "", COLOR_PRIMARY,
+               TileValueTone::Duration);
+    updateTile(3, x2, y1, w2, hTile, v[3], "C", COLOR_INFO,
+               TileValueTone::Secondary);
 
     snprintf(infoLine, sizeof(infoLine),
              ru ? "Дистил.: только ключевые параметры"
@@ -3868,7 +3942,10 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
         color = COLOR_INFO;
       if (i == 7)
         color = hasWaterOut ? COLOR_INFO : COLOR_SUCCESS;
-      updateTile(i, cx, cy, colW, rightRowH, v[i], unit, color);
+      const TileValueTone tone =
+          (i <= 1 || (i == 7 && !hasWaterOut)) ? TileValueTone::Primary
+                                               : TileValueTone::Secondary;
+      updateTile(i, cx, cy, colW, rightRowH, v[i], unit, color, tone);
     }
 
     snprintf(infoLine, sizeof(infoLine),
@@ -4029,13 +4106,19 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
       snprintf(v[5], sizeof(v[5]), "%.0f", g_settings.nbk.pumpSpeedMlH);
     }
 
-    updateTile(0, x1, panelY, tileW, tileH, v[0], "C", colorAccent());
-    updateTile(1, x2, panelY, tileW, tileH, v[1], "C", COLOR_DANGER);
-    updateTile(2, x3, panelY, tileW, tileH, v[2], msg(Msg::UNIT_W), COLOR_WARNING);
-    updateTile(3, x1, y2, tileW, tileH, v[3], msg(Msg::UNIT_ML_H), COLOR_SUCCESS);
-    updateTile(4, x2, y2, tileW, tileH, v[4], "mm", COLOR_INFO);
+    updateTile(0, x1, panelY, tileW, tileH, v[0], "C", colorAccent(),
+               TileValueTone::Primary);
+    updateTile(1, x2, panelY, tileW, tileH, v[1], "C", COLOR_DANGER,
+               TileValueTone::Primary);
+    updateTile(2, x3, panelY, tileW, tileH, v[2], msg(Msg::UNIT_W),
+               COLOR_WARNING, TileValueTone::Primary);
+    updateTile(3, x1, y2, tileW, tileH, v[3], msg(Msg::UNIT_ML_H),
+               COLOR_SUCCESS, TileValueTone::Primary);
+    updateTile(4, x2, y2, tileW, tileH, v[4], "mm", COLOR_INFO,
+               TileValueTone::Secondary);
     updateTile(5, x3, y2, tileW, tileH, v[5], hasWaterOut ? "C" : msg(Msg::UNIT_ML_H),
-               hasWaterOut ? COLOR_INFO : colorAccent());
+               hasWaterOut ? COLOR_INFO : colorAccent(),
+               TileValueTone::Secondary);
 
     snprintf(infoLine, sizeof(infoLine),
              ru ? "НБК: низ колонны и подача"
@@ -4070,10 +4153,14 @@ static void renderModeMonitorCustom(const SystemState &state, bool full) {
                state.temps.cube > g_settings.fermentation.targetTempC +
                                      g_settings.fermentation.hysteresisC
                    ? COLOR_WARNING
-                   : COLOR_SUCCESS);
-    updateTile(1, x2, panelY, tileW, tileH, v[1], "C", colorAccent());
-    updateTile(2, x1, y2, tileW, tileH, v[2], "C", COLOR_INFO);
-    updateTile(3, x2, y2, tileW, tileH, v[3], "", COLOR_PRIMARY);
+                   : COLOR_SUCCESS,
+               TileValueTone::Primary);
+    updateTile(1, x2, panelY, tileW, tileH, v[1], "C", colorAccent(),
+               TileValueTone::Primary);
+    updateTile(2, x1, y2, tileW, tileH, v[2], "C", COLOR_INFO,
+               TileValueTone::Secondary);
+    updateTile(3, x2, y2, tileW, tileH, v[3], "", COLOR_PRIMARY,
+               TileValueTone::Duration);
 
     snprintf(infoLine, sizeof(infoLine),
              ru ? "Брожение: держим температуру"
