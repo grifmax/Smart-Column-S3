@@ -9,6 +9,14 @@
 
 ---
 
+## [2.2.20] - 2026-04-18
+
+### Changed
+- Reworked the built-in TFT `DASHBOARD` left summary panel into the same hero-style operator layout already used by the updated process screens: one dominant block plus three compact support rows. (codex)
+- Simplified the idle and active dashboard summary cards so the operator lands on the next action or main collected volume first, with mains/pressure/cooling and fraction support data moved below. (codex)
+
+---
+
 ## [2.2.19] - 2026-04-18
 
 ### Changed

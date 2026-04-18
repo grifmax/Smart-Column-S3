@@ -2844,40 +2844,47 @@ static void renderDashboard(const SystemState &state, bool full) {
   drawCard(ROOT_LEFT_X, ROOT_PANEL_Y, ROOT_LEFT_W, ROOT_PANEL_H, colorCard());
   drawPanelHeader(ROOT_LEFT_X, ROOT_PANEL_Y, ROOT_LEFT_W, header.procState,
                   header.procColor);
-  if (state.mode == Mode::IDLE) {
-    char mainsBuf[24];
-    char pressBuf[24];
-    snprintf(mainsBuf, sizeof(mainsBuf), "%.0f V", state.power.voltage);
-    snprintf(pressBuf, sizeof(pressBuf), "%.0f mm", state.pressure.cube);
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 36, ROOT_LEFT_W - 16,
+  {
+    const int16_t summaryX = ROOT_LEFT_X + 8;
+    const int16_t summaryW = ROOT_LEFT_W - 16;
+    const int16_t heroY = ROOT_PANEL_Y + 32;
+    const int16_t heroH = 42;
+    const int16_t rowY1 = ROOT_PANEL_Y + 86;
+    const int16_t rowY2 = ROOT_PANEL_Y + 104;
+    const int16_t rowY3 = ROOT_PANEL_Y + 122;
+    char rowBuf[24];
+
+    if (state.mode == Mode::IDLE) {
+      char mainsBuf[24];
+      char pressBuf[24];
+      snprintf(mainsBuf, sizeof(mainsBuf), "%.0f V", state.power.voltage);
+      snprintf(pressBuf, sizeof(pressBuf), "%.0f mm", state.pressure.cube);
+      drawSummaryHeroBlock(summaryX, heroY, summaryW, heroH,
                            ru ? "ДАЛЕЕ" : "NEXT",
                            ru ? "УПРАВЛ." : "CONTROL", colorAccent());
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 58, ROOT_LEFT_W - 16,
-                           ru ? "СЕТЬ" : "MAINS", mainsBuf, COLOR_PRIMARY);
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 80, ROOT_LEFT_W - 16,
-                           ru ? "ДАВЛ." : "PRESS", pressBuf, COLOR_WARNING);
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 102, ROOT_LEFT_W - 16,
-                           ru ? "ОХЛ." : "COOL", waterBuf, COLOR_INFO);
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 124, ROOT_LEFT_W - 16,
-                           ru ? "ФАЗА" : "PHASE", getDisplayPhaseName(state),
-                           colorAccent());
-  } else {
-    char rowBuf[24];
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 36, ROOT_LEFT_W - 16,
-                           ru ? "РЕЖИМ" : "MODE", getDisplayModeName(state.mode),
-                           colorAccent());
-    snprintf(rowBuf, sizeof(rowBuf), "%.0f мл", state.stats.headsVolume);
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 58, ROOT_LEFT_W - 16,
-                           ru ? "ГОЛОВЫ" : "HEADS", rowBuf, COLOR_WARNING);
-    snprintf(rowBuf, sizeof(rowBuf), "%.0f мл", state.stats.bodyVolume);
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 80, ROOT_LEFT_W - 16,
+      drawCompactKeyValueRow(summaryX, rowY1, summaryW,
+                             ru ? "СЕТЬ" : "MAINS", mainsBuf, COLOR_PRIMARY);
+      drawCompactKeyValueRow(summaryX, rowY2, summaryW,
+                             ru ? "ДАВЛ." : "PRESS", pressBuf, COLOR_WARNING);
+      drawCompactKeyValueRow(summaryX, rowY3, summaryW, ru ? "ОХЛ." : "COOL",
+                             waterBuf, COLOR_INFO);
+    } else {
+      snprintf(rowBuf, sizeof(rowBuf), "%.0f %s", state.stats.bodyVolume,
+               ru ? "мл" : "ml");
+      drawSummaryHeroBlock(summaryX, heroY, summaryW, heroH,
                            ru ? "ТЕЛО" : "BODY", rowBuf, COLOR_SUCCESS);
-    snprintf(rowBuf, sizeof(rowBuf), "%.0f мл", state.stats.tailsVolume);
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 102, ROOT_LEFT_W - 16,
-                           ru ? "ХВОСТЫ" : "TAILS", rowBuf, COLOR_DANGER);
-    drawCompactKeyValueRow(ROOT_LEFT_X + 8, ROOT_PANEL_Y + 124, ROOT_LEFT_W - 16,
-                           ru ? "ФАЗА" : "PHASE", getDisplayPhaseName(state),
-                           colorAccent());
+      snprintf(rowBuf, sizeof(rowBuf), "%.0f %s", state.stats.headsVolume,
+               ru ? "мл" : "ml");
+      drawCompactKeyValueRow(summaryX, rowY1, summaryW,
+                             ru ? "ГОЛОВЫ" : "HEADS", rowBuf, COLOR_WARNING);
+      snprintf(rowBuf, sizeof(rowBuf), "%.0f %s", state.stats.tailsVolume,
+               ru ? "мл" : "ml");
+      drawCompactKeyValueRow(summaryX, rowY2, summaryW,
+                             ru ? "ХВОСТЫ" : "TAILS", rowBuf, COLOR_DANGER);
+      snprintf(rowBuf, sizeof(rowBuf), "%.0f mm", state.pressure.cube);
+      drawCompactKeyValueRow(summaryX, rowY3, summaryW,
+                             ru ? "ДАВЛ." : "PRESS", rowBuf, COLOR_WARNING);
+    }
   }
   drawStateBadge(ROOT_LEFT_X + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22,
                  ROOT_LEFT_W - 16, 14, header.safetyState, header.safetyColor);
