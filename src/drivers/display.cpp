@@ -3289,29 +3289,28 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                            ? COLOR_SUCCESS
                                                            : colorMuted());
                               } else if (profile == DASH_PROFILE_MANUAL) {
+                                snprintf(rowBuf, sizeof(rowBuf), "%.0f ml/h",
+                                         state.pump.speedMlPerHour);
+                                drawSummaryHeroBlock(summaryX, heroY, summaryW,
+                                                     heroH,
+                                                     ru ? "РћРўР‘РћР " : "TAKEOFF",
+                                                     rowBuf, COLOR_SUCCESS);
+                                snprintf(rowBuf, sizeof(rowBuf), "%.0f %%", 
+                                         manualRectUi.powerPercent);
+                                drawCompactKeyValueRow(summaryX, rowY1, summaryW,
+                                                       ru ? "РњРћР©Рќ." : "POWER",
+                                                       rowBuf, COLOR_WARNING);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
                                          state.stats.bodyVolume,
                                          manualRectUi.bodyTargetMl);
-                                drawSummaryHeroBlock(summaryX, heroY, summaryW,
-                                                     heroH,
-                                                     ru ? "РўР•Р›Рћ" : "BODY",
-                                                     rowBuf, COLOR_SUCCESS);
-                                snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
-                                         state.stats.headsVolume,
-                                         manualRectUi.headsTargetMl);
-                                drawCompactKeyValueRow(summaryX, rowY1, summaryW,
-                                                       ru ? "Р“РћР›РћР’Р«" : "HEADS",
-                                                       rowBuf, COLOR_WARNING);
-                                snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
-                                         state.stats.tailsVolume,
-                                         manualRectUi.tailsTargetMl);
                                 drawCompactKeyValueRow(summaryX, rowY2, summaryW,
-                                                       ru ? "РҐР’РћРЎРўР«" : "TAILS",
-                                                       rowBuf, COLOR_DANGER);
-                                snprintf(rowBuf, sizeof(rowBuf), "%.0f ml/h",
-                                         manualRectUi.speedMlH);
+                                                       ru ? "РўР•Р›Рћ" : "BODY",
+                                                       rowBuf, COLOR_PRIMARY);
+                                snprintf(rowBuf, sizeof(rowBuf), "H %.0f T %.0f",
+                                         state.stats.headsVolume,
+                                         state.stats.tailsVolume);
                                 drawCompactKeyValueRow(summaryX, rowY3, summaryW,
-                                                       ru ? "РЎРљРћР РћРЎРўР¬" : "SPEED",
+                                                       ru ? "Р¤Р РђРљР¦." : "CUTS",
                                                        rowBuf, COLOR_INFO);
                               } else if (profile == DASH_PROFILE_MASH ||
                                          profile == DASH_PROFILE_HOLD) {
@@ -3350,25 +3349,30 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 const uint32_t elapsedSec = FSM::getPhaseElapsedSec();
                                 char elapsedBuf[12];
                                 char targetBuf[12];
+                                char heroLabelBuf[24];
                                 formatDurationCompact(elapsedSec, elapsedBuf,
                                                       sizeof(elapsedBuf));
                                 formatDurationCompact(targetSec, targetBuf,
                                                       sizeof(targetBuf));
-                                snprintf(rowBuf, sizeof(rowBuf), "%.1f/%.1f C",
-                                         state.temps.cube, targetTemp);
-                                drawSummaryHeroBlock(summaryX, heroY, summaryW,
-                                                     heroH,
-                                                     ru ? "РўР•РњРџ." : "TEMP",
-                                                     rowBuf,
-                                                     inRange ? COLOR_SUCCESS
-                                                             : COLOR_WARNING);
-                                snprintf(rowBuf, sizeof(rowBuf), "%u/%u",
+                                snprintf(heroLabelBuf, sizeof(heroLabelBuf),
+                                         "%s %u/%u",
+                                         ru ? "РЁРђР“" : "STEP",
                                          static_cast<unsigned>(
                                              steps == 0 ? 0 : currentStep + 1),
                                          static_cast<unsigned>(steps));
+                                snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
+                                         state.temps.cube);
+                                drawSummaryHeroBlock(summaryX, heroY, summaryW,
+                                                     heroH,
+                                                     heroLabelBuf,
+                                                     rowBuf,
+                                                     inRange ? COLOR_SUCCESS
+                                                             : COLOR_WARNING);
+                                snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
+                                         targetTemp);
                                 drawCompactKeyValueRow(summaryX, rowY1, summaryW,
-                                                       ru ? "РЁРђР“" : "STEP",
-                                                       rowBuf, colorAccent());
+                                                       ru ? "Р¦Р•Р›Р¬" : "TARGET",
+                                                       rowBuf, COLOR_SUCCESS);
                                 snprintf(rowBuf, sizeof(rowBuf), "%s/%s",
                                          elapsedBuf, targetBuf);
                                 drawCompactKeyValueRow(summaryX, rowY2, summaryW,
