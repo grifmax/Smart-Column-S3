@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.20-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.21-brightgreen.svg)](CHANGELOG.md)
 
 ## Возможности
 
@@ -144,6 +144,7 @@ WS   ws://<ip>/ws               # WebSocket (2с быстрый / 10с полн�
 
 | Версия | Дата | Ключевые изменения |
 |--------|------|-------------------|
+| 2.2.21 | 2026-04-19 | Added TFT HMI widgets (`SparklineBuffer`, `HMIIndicators`), fixed their integration in `display.cpp`, and finished mode-specific dashboard summary blocks for manual rectification, mashing, and hold |
 | 2.2.20 | 2026-04-18 | Reworked the TFT `DASHBOARD` left summary panel into the same hero-style operator block layout, with one dominant value and three compact support rows |
 | 2.2.19 | 2026-04-18 | Reworked the TFT left summary panels for rectification, distillation, and NBK into hero-style operator blocks with one primary value and three supporting rows |
 | 2.2.18 | 2026-04-18 | Rebalanced TFT runtime hierarchy: main process metrics on dashboard and monitor screens are larger, tile headers are slimmer, and footer/status copy is visually quieter |
