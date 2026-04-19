@@ -1,8 +1,8 @@
 ﻿/**
- * Smart-Column S3 - Р”СЂР°Р№РІРµСЂ РґРёСЃРїР»РµСЏ
+ * Smart-Column S3 - Драйвер дисплея
  *
- * TFT 3.5" ILI9488 (РѕСЃРЅРѕРІРЅРѕР№)
- * РСЃРїРѕР»СЊР·СѓРµС‚ LovyanGFX РґР»СЏ TFT
+ * TFT 3.5" ILI9488 (основной)
+ * Использует LovyanGFX для TFT
  */
 
 #include "display.h"
@@ -21,8 +21,8 @@
 #if TFT_ENABLED
 #define LGFX_USE_V1
 // =============================================================================
-// LovyanGFX РєРѕРЅС„РёРіСѓСЂР°С†РёСЏ РґР»СЏ ILI9488 (С‚РѕР»СЊРєРѕ
-// РґРёСЃРїР»РµР№)
+// LovyanGFX конфигурация для ILI9488 (только
+// дисплей)
 // =============================================================================
 
 class LGFX : public lgfx::LGFX_Device {
@@ -36,8 +36,8 @@ public:
       auto cfg = _bus_instance.config();
       cfg.spi_host = SPI2_HOST; // HSPI
       cfg.spi_mode = 0;
-      // 40MHz РЅР° ILI9488 С‡Р°СЃС‚Рѕ РЅРµСЃС‚Р°Р±РёР»РµРЅ РЅР° РґР»РёРЅРЅС‹С…
-      // РїСЂРѕРІРѕРґР°С…/РєР»РѕРЅР°С….
+      // 40MHz на ILI9488 часто нестабилен на длинных
+      // проводах/клонах.
       cfg.freq_write = 27000000;
       cfg.freq_read = 8000000;
       cfg.spi_3wire = false;
@@ -184,9 +184,9 @@ static bool detectCalibrationRequest() {
 // =============================================================================
 // UI helpers
 // =============================================================================
-static const int16_t UI_HEADER_H = 40;  // РќРµРјРЅРѕРіРѕ СѓРјРµРЅСЊС€РёР»
-static const int16_t UI_FOOTER_H = 65;  // РќРµРјРЅРѕРіРѕ СѓРІРµР»РёС‡РёР» РґР»СЏ С€СЂРёС„С‚Р°
-static const int16_t UI_CONTENT_Y = 10; // РќР°С‡РёРЅР°РµРј РїРѕС‡С‚Рё СЃРІРµСЂС…Сѓ
+static const int16_t UI_HEADER_H = 40;  // Немного уменьшил
+static const int16_t UI_FOOTER_H = 65;  // Немного увеличил для шрифта
+static const int16_t UI_CONTENT_Y = 10; // Начинаем почти сверху
 static const int16_t UI_CONTENT_H = TFT_HEIGHT - UI_FOOTER_H - 10;
 
 // Industrial HMI palette for the built-in TFT
@@ -405,7 +405,7 @@ struct ManualRectUiParams {
 };
 
 static ManualRectUiParams manualRectUi;
-static uint8_t rectParamsPage = 0; // 0 = РїСЂРѕС„РёР»СЊ РЎРЎ/С„СЂР°РєС†РёРё, 1 = С‚РµС…РїР°СЂР°РјРµС‚СЂС‹
+static uint8_t rectParamsPage = 0; // 0 = профиль СС/фракции, 1 = техпараметры
 static uint8_t g_editMashStepIdx = 0;
 static uint8_t g_editHoldStepIdx = 0;
 
@@ -420,58 +420,58 @@ static float clampUiFloat(float v, float vmin, float vmax) {
 static const char *rectFeedstockName(uint8_t feedstock, bool ru) {
   switch (feedstock) {
   case 0:
-    return ru ? "РЎР°С…Р°СЂ" : "Sugar";
+    return ru ? "Сахар" : "Sugar";
   case 1:
-    return ru ? "РњСѓРєР°/Р·РµСЂРЅРѕ" : "Flour/Grain";
+    return ru ? "Мука/зерно" : "Flour/Grain";
   case 2:
-    return ru ? "РЎРѕР»РѕРґ" : "Malt";
+    return ru ? "Солод" : "Malt";
   case 3:
-    return ru ? "Р¤СЂСѓРєС‚С‹" : "Fruit";
+    return ru ? "Фрукты" : "Fruit";
   case 4:
-    return ru ? "РњРµР»Р°СЃСЃР°" : "Molasses";
+    return ru ? "Меласса" : "Molasses";
   case 5:
-    return ru ? "Р’РёРЅРѕРіСЂР°Рґ" : "Grape/Wine";
+    return ru ? "Виноград" : "Grape/Wine";
   case 6:
-    return ru ? "РњРµРґ" : "Honey";
+    return ru ? "Мед" : "Honey";
   default:
-    return ru ? "Р”СЂСѓРіРѕРµ" : "Other";
+    return ru ? "Другое" : "Other";
   }
 }
 
 static void rectFeedstockDefaults(uint8_t feedstock, float &headsPct,
                                   float &bodyPct, float &tailsPct) {
   switch (feedstock) {
-  case 0: // РЎР°С…Р°СЂ
+  case 0: // Сахар
     headsPct = 6.0f;
     bodyPct = 84.0f;
     tailsPct = 10.0f;
     break;
-  case 1: // РњСѓРєР°/Р·РµСЂРЅРѕ
+  case 1: // Мука/зерно
     headsPct = 8.0f;
     bodyPct = 80.0f;
     tailsPct = 12.0f;
     break;
-  case 2: // РЎРѕР»РѕРґ
+  case 2: // Солод
     headsPct = 7.0f;
     bodyPct = 81.0f;
     tailsPct = 12.0f;
     break;
-  case 3: // Р¤СЂСѓРєС‚С‹
+  case 3: // Фрукты
     headsPct = 5.0f;
     bodyPct = 75.0f;
     tailsPct = 20.0f;
     break;
-  case 4: // РњРµР»Р°СЃСЃР°
+  case 4: // Меласса
     headsPct = 8.0f;
     bodyPct = 74.0f;
     tailsPct = 18.0f;
     break;
-  case 5: // Р’РёРЅРѕРіСЂР°Рґ/РІРёРЅРѕ
+  case 5: // Виноград/вино
     headsPct = 6.0f;
     bodyPct = 78.0f;
     tailsPct = 16.0f;
     break;
-  case 6: // РњРµРґ
+  case 6: // Мед
     headsPct = 7.0f;
     bodyPct = 79.0f;
     tailsPct = 14.0f;
@@ -984,8 +984,8 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
     return false;
   }
 
-  // РљРЅРѕРїРєР° РќРђР—РђР” (С‚РµРїРµСЂСЊ РІ РІРµСЂС…РЅРµРј РїСЂР°РІРѕРј
-  // СѓРіР»Сѓ РЅР° РїРѕРґ-СЌРєСЂР°РЅР°С…)
+  // Кнопка НАЗАД (теперь в верхнем правом
+  // углу на под-экранах)
   bool isRoot =
       (isMonitorRootScreen(ui.currentScreen) ||
        ui.currentScreen == UI_CONTROL || ui.currentScreen == UI_SETTINGS ||
@@ -1035,7 +1035,7 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
     const int16_t x2d = x1 + w2 + g2;
     const int16_t y1d = y0 + 74 + g2;
     if (hit(tx, ty, x2d, y0, w2, 74)) {
-      openValueEdit(ru ? "РњРѕС‰РЅРѕСЃС‚СЊ РґРёСЃС‚." : "Dist power", distUi.powerPercent,
+      openValueEdit(ru ? "Мощность дист." : "Dist power", distUi.powerPercent,
                     0, 100, 1, 10, saveDistPower, "%", 0, true);
       return true;
     }
@@ -1058,27 +1058,27 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
         continue;
       switch (i) {
       case 0:
-        openValueEdit(ru ? "РЎРєРѕСЂРѕСЃС‚СЊ РѕС‚Р±РѕСЂР°" : "Takeoff speed",
+        openValueEdit(ru ? "Скорость отбора" : "Takeoff speed",
                       manualRectUi.speedMlH, 0, 5000, 10, 100,
                       saveManualRectSpeed, "ml/h", 0, true);
         return true;
       case 1:
-        openValueEdit(ru ? "РњРѕС‰РЅРѕСЃС‚СЊ СЂСѓС‡." : "Manual power",
+        openValueEdit(ru ? "Мощность руч." : "Manual power",
                       manualRectUi.powerPercent, 0, 100, 1, 10,
                       saveManualRectPower, "%", 0, true);
         return true;
       case 2:
-        openValueEdit(ru ? "Р“РѕР»РѕРІС‹ С†РµР»СЊ" : "Heads target",
+        openValueEdit(ru ? "Головы цель" : "Heads target",
                       manualRectUi.headsTargetMl, 0, 10000, 10, 100,
                       saveManualRectHeadsTarget, "ml", 0, true);
         return true;
       case 3:
-        openValueEdit(ru ? "РўРµР»Рѕ С†РµР»СЊ" : "Body target",
+        openValueEdit(ru ? "Тело цель" : "Body target",
                       manualRectUi.bodyTargetMl, 0, 50000, 100, 1000,
                       saveManualRectBodyTarget, "ml", 0, true);
         return true;
       case 4:
-        openValueEdit(ru ? "РҐРІРѕСЃС‚С‹ С†РµР»СЊ" : "Tails target",
+        openValueEdit(ru ? "Хвосты цель" : "Tails target",
                       manualRectUi.tailsTargetMl, 0, 50000, 100, 1000,
                       saveManualRectTailsTarget, "ml", 0, true);
         return true;
@@ -1106,11 +1106,11 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
         continue;
       g_editMashStepIdx = i;
       if (tx < (listX + listW / 2)) {
-        openValueEdit(ru ? "РўРµРјРїРµСЂР°С‚СѓСЂР° С€Р°РіР°" : "Step temperature",
+        openValueEdit(ru ? "Температура шага" : "Step temperature",
                       mashProfileDefault.steps[i].temperature, 30, 90, 0.1f,
                       1.0f, saveMashStepTemp, "C", 1, true);
       } else {
-        openValueEdit(ru ? "Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ С€Р°РіР°" : "Step duration",
+        openValueEdit(ru ? "Длительность шага" : "Step duration",
                       mashProfileDefault.steps[i].duration, 1, 240, 1, 10,
                       saveMashStepDuration, "min", 0, true);
       }
@@ -1136,11 +1136,11 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
         continue;
       g_editHoldStepIdx = i;
       if (tx < (listX + listW / 2)) {
-        openValueEdit(ru ? "РўРµРјРїРµСЂР°С‚СѓСЂР° СѓРґРµСЂР¶." : "Hold temperature",
+        openValueEdit(ru ? "Температура удерж." : "Hold temperature",
                       holdStepsDefault[i].temperature, 30, 95, 0.1f, 1.0f,
                       saveHoldStepTemp, "C", 1, true);
       } else {
-        openValueEdit(ru ? "Р’СЂРµРјСЏ СѓРґРµСЂР¶." : "Hold duration",
+        openValueEdit(ru ? "Время удерж." : "Hold duration",
                       holdStepsDefault[i].duration, 1, 720, 1, 15,
                       saveHoldStepDuration, "min", 0, true);
       }
@@ -1380,12 +1380,12 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
               (g_settings.rectParams.feedstock + 1) % 8);
           return true;
         case 1:
-          openValueEdit(ru ? "РћР±СЉРµРј РЎРЎ" : "Feed volume",
+          openValueEdit(ru ? "Объем СС" : "Feed volume",
                         g_settings.rectParams.feedVolumeL, 1.0f, 250.0f, 0.5f,
                         5.0f, saveFeedVolume, "L", 1);
           return true;
         case 2:
-          openValueEdit(ru ? "РљСЂРµРїРѕСЃС‚СЊ РЎРЎ" : "Feed ABV",
+          openValueEdit(ru ? "Крепость СС" : "Feed ABV",
                         g_settings.rectParams.feedAbvPercent, 1.0f, 96.0f, 0.5f,
                         2.0f, saveFeedAbv, "%", 1);
           return true;
@@ -1395,12 +1395,12 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
                         saveHeadsPercent, "%", 1);
           return true;
         case 4:
-          openValueEdit(ru ? "РўРµР»Рѕ %" : "Body %",
+          openValueEdit(ru ? "Тело %" : "Body %",
                         g_settings.rectParams.bodyPercent, 40, 98, 0.5f, 2.0f,
                         saveBodyPercent, "%", 1);
           return true;
         case 5:
-          openValueEdit(ru ? "РҐРІРѕСЃС‚С‹ %" : "Tails %",
+          openValueEdit(ru ? "Хвосты %" : "Tails %",
                         g_settings.rectParams.tailsPercent, 0, 40, 0.5f, 2.0f,
                         saveTailsPercent, "%", 1);
           return true;
@@ -1595,84 +1595,15 @@ static size_t utf8PrevCodepointStart(const char *text, size_t end) {
   return pos;
 }
 
-static uint8_t unicodeToCp1251(uint16_t codepoint) {
-  if (codepoint < 0x80u) {
-    return static_cast<uint8_t>(codepoint);
-  }
-  if (codepoint >= 0x0410u && codepoint <= 0x044Fu) {
-    return static_cast<uint8_t>(codepoint - 0x0350u);
-  }
-  switch (codepoint) {
-  case 0x0401u:
-    return 0xA8u;
-  case 0x0451u:
-    return 0xB8u;
-  case 0x00B0u:
-    return 0xB0u;
-  case 0x2116u:
-    return 0xB9u;
-  case 0x2026u:
-    return 0x85u;
-  case 0x2013u:
-  case 0x2014u:
-    return '-';
-  case 0x00ABu:
-    return 0xABu;
-  case 0x00BBu:
-    return 0xBBu;
-  default:
-    return '?';
-  }
-}
-
-static void utf8ToCp1251(const char *src, char *dst, size_t dstSize) {
-  if (dst == nullptr || dstSize == 0) {
-    return;
-  }
-  dst[0] = '\0';
-  if (src == nullptr) {
-    return;
-  }
-
-  size_t di = 0;
-  const uint8_t *p = reinterpret_cast<const uint8_t *>(src);
-  while (*p != 0 && di + 1 < dstSize) {
-    uint16_t codepoint = 0;
-    if (*p < 0x80u) {
-      codepoint = *p++;
-    } else if ((*p & 0xE0u) == 0xC0u && p[1] != 0) {
-      codepoint =
-          static_cast<uint16_t>((*p & 0x1Fu) << 6) |
-          static_cast<uint16_t>(p[1] & 0x3Fu);
-      p += 2;
-    } else if ((*p & 0xF0u) == 0xE0u && p[1] != 0 && p[2] != 0) {
-      codepoint =
-          static_cast<uint16_t>((*p & 0x0Fu) << 12) |
-          static_cast<uint16_t>((p[1] & 0x3Fu) << 6) |
-          static_cast<uint16_t>(p[2] & 0x3Fu);
-      p += 3;
-    } else {
-      // Some strings in the project already arrive as single-byte CP1251
-      // literals/escapes. Pass those bytes through unchanged instead of
-      // treating them as broken UTF-8 and replacing with '?'.
-      dst[di++] = static_cast<char>(*p++);
-      continue;
-    }
-    dst[di++] = static_cast<char>(unicodeToCp1251(codepoint));
-  }
-  dst[di] = '\0';
-}
-
 static int16_t displayTextWidth(const char *text) {
-  char encoded[384];
-  utf8ToCp1251(text, encoded, sizeof(encoded));
-  return tft.textWidth(encoded);
+  return text ? tft.textWidth(text) : 0;
 }
 
 static void drawDisplayString(const char *text, int32_t x, int32_t y) {
-  char encoded[384];
-  utf8ToCp1251(text, encoded, sizeof(encoded));
-  tft.drawString(encoded, x, y);
+  if (text == nullptr) {
+    return;
+  }
+  tft.drawString(text, x, y);
 }
 
 static void copyFittedText(const char *text, int16_t maxWidth, char *out,
@@ -1735,22 +1666,22 @@ static const char *getDisplayModeName(Mode mode) {
   const bool ru = (g_settings.language == 0);
   switch (mode) {
   case Mode::RECTIFICATION:
-    return ru ? "Р РµРєС‚РёС„." : "Rect";
+    return ru ? "Ректиф." : "Rect";
   case Mode::DISTILLATION:
-    return ru ? "Р”РёСЃС‚РёР»." : "Distill";
+    return ru ? "Дистил." : "Distill";
   case Mode::MANUAL_RECT:
-    return ru ? "Р СѓС‡РЅ. СЂРµРєС‚." : "Man Rect";
+    return ru ? "Ручн. рект." : "Man Rect";
   case Mode::MASHING:
-    return ru ? "Р—Р°С‚РёСЂРєР°" : "Mash";
+    return ru ? "Затирка" : "Mash";
   case Mode::HOLD:
-    return ru ? "РџР°СЃС‚РµСЂ." : "Hold";
+    return ru ? "Пастер." : "Hold";
   case Mode::NBK:
     return "NBK";
   case Mode::FERMENTATION:
-    return ru ? "Р‘СЂРѕР¶РµРЅРёРµ" : "Ferment";
+    return ru ? "Брожение" : "Ferment";
   case Mode::IDLE:
   default:
-    return ru ? "РћР¶РёРґР°РЅРёРµ" : "Idle";
+    return ru ? "Ожидание" : "Idle";
   }
 }
 
@@ -1758,26 +1689,26 @@ static const char *getDisplayRectPhaseName(RectPhase phase) {
   const bool ru = (g_settings.language == 0);
   switch (phase) {
   case RectPhase::HEATING:
-    return ru ? "РќР°РіСЂРµРІ" : "Heating";
+    return ru ? "Нагрев" : "Heating";
   case RectPhase::STABILIZATION:
-    return ru ? "РЎС‚Р°Р±." : "Stabil.";
+    return ru ? "Стаб." : "Stabil.";
   case RectPhase::HEADS:
-    return ru ? "Р“РѕР»РѕРІС‹" : "Heads";
+    return ru ? "Головы" : "Heads";
   case RectPhase::POST_HEADS_STABILIZATION:
-    return ru ? "РЎС‚Р°Р±. 2" : "Stabil. 2";
+    return ru ? "Стаб. 2" : "Stabil. 2";
   case RectPhase::BODY:
-    return ru ? "РўРµР»Рѕ" : "Body";
+    return ru ? "Тело" : "Body";
   case RectPhase::TAILS:
-    return ru ? "РҐРІРѕСЃС‚С‹" : "Tails";
+    return ru ? "Хвосты" : "Tails";
   case RectPhase::PURGE:
-    return ru ? "РџСЂРѕРґСѓРІ" : "Purge";
+    return ru ? "Продув" : "Purge";
   case RectPhase::FINISH:
-    return ru ? "Р¤РёРЅРёС€" : "Finish";
+    return ru ? "Финиш" : "Finish";
   case RectPhase::COMPLETED:
-    return ru ? "Р“РѕС‚РѕРІРѕ" : "Done";
+    return ru ? "Готово" : "Done";
   case RectPhase::IDLE:
   default:
-    return ru ? "РћР¶РёРґ." : "Idle";
+    return ru ? "Ожид." : "Idle";
   }
 }
 
@@ -1785,18 +1716,18 @@ static const char *getDisplayNbkPhaseName(NbkPhase phase) {
   const bool ru = (g_settings.language == 0);
   switch (phase) {
   case NbkPhase::HEATING:
-    return ru ? "РќР°РіСЂРµРІ" : "Heating";
+    return ru ? "Нагрев" : "Heating";
   case NbkPhase::STABILIZATION:
-    return ru ? "РЎС‚Р°СЂС‚" : "Start";
+    return ru ? "Старт" : "Start";
   case NbkPhase::WORKING:
-    return ru ? "Р Р°Р±РѕС‚Р°" : "Run";
+    return ru ? "Работа" : "Run";
   case NbkPhase::FINISH:
-    return ru ? "Р¤РёРЅРёС€" : "Finish";
+    return ru ? "Финиш" : "Finish";
   case NbkPhase::COMPLETED:
-    return ru ? "Р“РѕС‚РѕРІРѕ" : "Done";
+    return ru ? "Готово" : "Done";
   case NbkPhase::IDLE:
   default:
-    return ru ? "РћР¶РёРґ." : "Idle";
+    return ru ? "Ожид." : "Idle";
   }
 }
 
@@ -1804,12 +1735,12 @@ static const char *getDisplayFermPhaseName(FermentationPhase phase) {
   const bool ru = (g_settings.language == 0);
   switch (phase) {
   case FermentationPhase::RUNNING:
-    return ru ? "Р Р°Р±РѕС‚Р°" : "Run";
+    return ru ? "Работа" : "Run";
   case FermentationPhase::COMPLETED:
-    return ru ? "Р“РѕС‚РѕРІРѕ" : "Done";
+    return ru ? "Готово" : "Done";
   case FermentationPhase::IDLE:
   default:
-    return ru ? "РћР¶РёРґ." : "Idle";
+    return ru ? "Ожид." : "Idle";
   }
 }
 
@@ -1824,21 +1755,21 @@ static const char *getDisplayPhaseName(const SystemState &state) {
   case Mode::MASHING:
     if (state.mashing.stepName[0] != '\0')
       return state.mashing.stepName;
-    return ru ? "РЁР°Рі Р·Р°С‚РёСЂРєРё" : "Mash step";
+    return ru ? "Шаг затирки" : "Mash step";
   case Mode::HOLD:
     if (state.hold.active) {
-      snprintf(holdBuf, sizeof(holdBuf), ru ? "РЁР°Рі %u" : "Step %u",
+      snprintf(holdBuf, sizeof(holdBuf), ru ? "Шаг %u" : "Step %u",
                static_cast<unsigned>(state.hold.currentStep + 1));
       return holdBuf;
     }
-    return ru ? "РћР¶РёРґ." : "Idle";
+    return ru ? "Ожид." : "Idle";
   case Mode::NBK:
     return getDisplayNbkPhaseName(state.nbkPhase);
   case Mode::FERMENTATION:
     return getDisplayFermPhaseName(state.fermPhase);
   case Mode::IDLE:
   default:
-    return ru ? "РћР¶РёРґ." : "Idle";
+    return ru ? "Ожид." : "Idle";
   }
 }
 
@@ -1877,67 +1808,67 @@ static const char *tftText(TftTextId id) {
   const bool ru = (g_settings.language == 0);
   switch (id) {
   case TftTextId::PowerShort:
-    return ru ? "РњРћР©Рќ" : "PWR";
+    return ru ? "МОЩН" : "PWR";
   case TftTextId::ColumnShort:
-    return ru ? "Р’Р«РЎ.Рљ" : "COL H";
+    return ru ? "ВЫС.К" : "COL H";
   case TftTextId::FeedShort:
-    return ru ? "РЎРЎ" : "FEED";
+    return ru ? "СС" : "FEED";
   case TftTextId::CutsShort:
-    return ru ? "Р“/Рў/РҐ" : "H/B/T";
+    return ru ? "Г/Т/Х" : "H/B/T";
   case TftTextId::SpeedShort:
-    return ru ? "РЎРљРћР " : "SPEED";
+    return ru ? "СКОР" : "SPEED";
   case TftTextId::TargetShort:
-    return ru ? "Р¦Р•Р›Р¬" : "TARGET";
+    return ru ? "ЦЕЛЬ" : "TARGET";
   case TftTextId::TouchShort:
-    return ru ? "РўРђР§" : "TOUCH";
+    return ru ? "ТАЧ" : "TOUCH";
   case TftTextId::CalDoneShort:
-    return ru ? "РєР°Р»РёР±СЂ." : "done";
+    return ru ? "калибр." : "done";
   case TftTextId::CalRawShort:
-    return ru ? "РЅРµ РєР°Р»." : "raw";
+    return ru ? "не кал." : "raw";
   case TftTextId::SettingsHint:
-    return ru ? "РўР°Рї РєР°СЂС‚РѕС‡РєРё = СЂР°Р·РґРµР» | РєРЅРѕРїРєРё = СЃСЂР°Р·Сѓ"
+    return ru ? "Тап карточки = раздел | кнопки = сразу"
               : "Tap card = section | buttons = instant";
   case TftTextId::RectTitle:
-    return ru ? "Р Р•РљРў. РџРђР РђРњ." : "RECT PARAMS";
+    return ru ? "РЕКТ. ПАРАМ." : "RECT PARAMS";
   case TftTextId::RectPageFeedCuts:
-    return ru ? "РЎР«Р Р¬РЃ / Р¤Р РђРљР¦." : "FEED / CUTS";
+    return ru ? "СЫРЬЁ / ФРАКЦ." : "FEED / CUTS";
   case TftTextId::RectPageFlowTemp:
-    return ru ? "РЎРљРћР . / РўР•РњРџ." : "FLOW / TEMP";
+    return ru ? "СКОР. / ТЕМП." : "FLOW / TEMP";
   case TftTextId::RectFeedHint:
-    return ru ? "РўР°Рї РЎР«Р Р¬РЃ = С‚РёРї Рё С„СЂР°РєС†РёРё" : "Tap feedstock = type + cuts";
+    return ru ? "Тап СЫРЬЁ = тип и фракции" : "Tap feedstock = type + cuts";
   case TftTextId::DistTitle:
-    return ru ? "Р”РРЎРў. РџРђР РђРњ." : "DIST PARAMS";
+    return ru ? "ДИСТ. ПАРАМ." : "DIST PARAMS";
   case TftTextId::CalibrationTitle:
-    return ru ? "РљРђР›РР‘Р ." : "CALIBRATION";
+    return ru ? "КАЛИБР." : "CALIBRATION";
   case TftTextId::CalibrationHint:
-    return ru ? "РЎРЅР°С‡Р°Р»Р° ml/РѕР±, РїРѕС‚РѕРј С‚Р°С‡" : "Set ml/rev first, then touch";
+    return ru ? "Сначала ml/об, потом тач" : "Set ml/rev first, then touch";
   case TftTextId::ManualTitle:
-    return ru ? "Р РЈР§РќР«Р• РЈР—Р›Р«" : "MANUAL I/O";
+    return ru ? "РУЧНЫЕ УЗЛЫ" : "MANUAL I/O";
   case TftTextId::ManualHint:
-    return ru ? "РўР°Рї РїР»РёС‚РєРё = РЅР°СЃС‚СЂРѕР№РєР° | РєР»Р°РїР°РЅС‹ = СЃСЂР°Р·Сѓ"
+    return ru ? "Тап плитки = настройка | клапаны = сразу"
               : "Tap tile = set | valves = instant";
   case TftTextId::ManualLockTitle:
-    return ru ? "Р РЈР§РќРћР™ Р”РћРЎРўРЈРџ" : "MANUAL ACCESS";
+    return ru ? "РУЧНОЙ ДОСТУП" : "MANUAL ACCESS";
   case TftTextId::ManualLockMessage:
-    return ru ? "РђРІС‚РѕРїСЂРѕС†РµСЃСЃ Р°РєС‚РёРІРµРЅ. Р СѓС‡РЅРѕР№ РґРѕСЃС‚СѓРї Р·Р°РєСЂС‹С‚."
+    return ru ? "Автопроцесс активен. Ручной доступ закрыт."
               : "Manual control is locked while an automatic process is "
                 "active.";
   case TftTextId::ValueTitle:
-    return ru ? "РўР•РљРЈР©Р•Р•" : "VALUE";
+    return ru ? "ТЕКУЩЕЕ" : "VALUE";
   case TftTextId::ValueHint:
-    return ru ? "РЎР»РµРІР° РІРЅРёР·, СЃРїСЂР°РІР° РІРІРµСЂС…" : "Left = down, right = up";
+    return ru ? "Слева вниз, справа вверх" : "Left = down, right = up";
   case TftTextId::ServiceFrame:
-    return ru ? "РљРђР”Р  TFT" : "TFT FRAME";
+    return ru ? "КАДР TFT" : "TFT FRAME";
   case TftTextId::ServiceDiag:
-    return ru ? "Р”РРђР“Рќ. TFT" : "TFT DIAG";
+    return ru ? "ДИАГН. TFT" : "TFT DIAG";
   case TftTextId::ServiceHintTemps:
-    return ru ? "РўР°Рї РЅРёР¶РЅСЋСЋ СЃС‚СЂРѕРєСѓ -> С‚РµРјРїРµСЂР°С‚СѓСЂС‹"
+    return ru ? "Тап нижнюю строку -> температуры"
               : "Tap lower row -> temperatures";
   case TftTextId::ServiceHintHard:
-    return ru ? "РЎР±РѕРё TFT recovery. РџСЂРѕРІРµСЂСЊС‚Рµ РїРёС‚Р°РЅРёРµ Рё SPI"
+    return ru ? "Сбои TFT recovery. Проверьте питание и SPI"
               : "Hard TFT recoveries detected. Check power and SPI";
   case TftTextId::ServiceHintSlow:
-    return ru ? "РњРµРґР»РµРЅРЅС‹Рµ РєР°РґСЂС‹ TFT. РџСЂРѕРІРµСЂСЊС‚Рµ РЅР°РіСЂСѓР·РєСѓ"
+    return ru ? "Медленные кадры TFT. Проверьте нагрузку"
               : "Slow TFT frames detected. Check display load";
   }
   return "";
@@ -1945,10 +1876,10 @@ static const char *tftText(TftTextId id) {
 
 static void drawHeader(const char *title, bool showBack) {
   if (!showBack)
-    return; // РЈР±РёСЂР°РµРј РґСѓР±Р»РёСЂСѓСЋС‰РёР№ С‚СѓР»Р±Р°СЂ РЅР°
-            // РіР»Р°РІРЅС‹С… СЌРєСЂР°РЅР°С…
+    return; // Убираем дублирующий тулбар на
+            // главных экранах
 
-  // РћС‚СЂРёСЃРѕРІС‹РІР°РµРј С‚РѕР»СЊРєРѕ РЅР° РїРѕРґ-СЌРєСЂР°РЅР°С…
+  // Отрисовываем только на под-экранах
   tft.fillRect(0, 0, TFT_WIDTH, UI_HEADER_H, colorNavBg());
   tft.fillRect(0, 0, TFT_WIDTH, 4, colorAccent());
   tft.drawFastHLine(0, UI_HEADER_H - 1, TFT_WIDTH, colorBorder());
@@ -1979,8 +1910,8 @@ static void drawHeader(const char *title, bool showBack) {
 
 static void drawTabs(UiScreen current) {
   const bool ru = (g_settings.language == 0);
-  const char *labels[4] = {ru ? "РњРћРќРРўРћР " : "DASH", ru ? "РЈРџР РђР’Р›" : "CTRL",
-                           ru ? "РќРђРЎРўР РћР™" : "SET", ru ? "РЎР•Р Р’РРЎ" : "INFO"};
+  const char *labels[4] = {ru ? "МОНИТОР" : "DASH", ru ? "УПРАВЛ" : "CTRL",
+                           ru ? "НАСТРОЙ" : "SET", ru ? "СЕРВИС" : "INFO"};
 
   const int16_t navY = TFT_HEIGHT - UI_FOOTER_H;
   const int16_t gap = TFT_BUTTON_GAP;
@@ -2343,7 +2274,7 @@ static void drawModeSwitchOverlay(const SystemState &state, bool ru) {
   const int16_t btnX2 = btnX1 + btnW + TFT_BUTTON_GAP;
 
   drawCard(mx, my, mw, mh, colorCard());
-  drawPanelHeader(mx, my, mw, ru ? "РЎРњР•РќРђ Р Р•Р–РРњРђ" : "SWITCH MODE",
+  drawPanelHeader(mx, my, mw, ru ? "СМЕНА РЕЖИМА" : "SWITCH MODE",
                   COLOR_WARNING);
   drawCard(bodyX, bodyY, bodyW, bodyH, colorBg());
   tft.fillRect(bodyX + 1, bodyY + 1, 8, bodyH - 2, COLOR_WARNING);
@@ -2351,17 +2282,17 @@ static void drawModeSwitchOverlay(const SystemState &state, bool ru) {
   char cur[64];
   char next[64];
   char overlayText[160];
-  snprintf(cur, sizeof(cur), ru ? "РЎРµР№С‡Р°СЃ: %s" : "Current: %s",
+  snprintf(cur, sizeof(cur), ru ? "Сейчас: %s" : "Current: %s",
            getDisplayModeName(state.mode));
-  snprintf(next, sizeof(next), ru ? "РџРµСЂРµР№С‚Рё: %s ?" : "Switch to: %s ?",
+  snprintf(next, sizeof(next), ru ? "Перейти: %s ?" : "Switch to: %s ?",
            getDisplayModeName(ui.modeSwitchTarget));
   snprintf(overlayText, sizeof(overlayText), "%s\n%s", cur, next);
   drawWrappedTextBlock(bodyX + 24, bodyY + 10, bodyW - 48, overlayText,
                        colorFg(), 1, 4, 4);
 
-  drawButton(btnX1, by, btnW, 42, ru ? "РћРўРњР•РќРђ" : "CANCEL", COLOR_DARK_GREY,
+  drawButton(btnX1, by, btnW, 42, ru ? "ОТМЕНА" : "CANCEL", COLOR_DARK_GREY,
              TFT_WHITE);
-  drawButton(btnX2, by, btnW, 42, ru ? "РџР•Р Р•Р™РўР" : "SWITCH", COLOR_DANGER,
+  drawButton(btnX2, by, btnW, 42, ru ? "ПЕРЕЙТИ" : "SWITCH", COLOR_DANGER,
              TFT_WHITE);
 }
 
@@ -2529,17 +2460,17 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 
                             header.procState =
                                 (state.mode == Mode::IDLE)
-                                    ? (ru ? "Р“РћРўРћР’" : "READY")
-                                    : (state.paused ? (ru ? "РџРђРЈР—Рђ" : "PAUSE")
-                                                    : (ru ? "Р РђР‘РћРўРђ" : "RUN"));
+                                    ? (ru ? "ГОТОВ" : "READY")
+                                    : (state.paused ? (ru ? "ПАУЗА" : "PAUSE")
+                                                    : (ru ? "РАБОТА" : "RUN"));
                             header.procColor =
                                 (state.mode == Mode::IDLE)
                                     ? COLOR_INFO
                                     : (state.paused ? COLOR_WARNING
                                                     : COLOR_SUCCESS);
                             header.safetyState =
-                                state.safetyOk ? (ru ? "РќРћР РњРђ" : "SAFE")
-                                               : (ru ? "РђР’РђР РРЇ" : "ALARM");
+                                state.safetyOk ? (ru ? "НОРМА" : "SAFE")
+                                               : (ru ? "АВАРИЯ" : "ALARM");
                             header.safetyColor =
                                 state.safetyOk ? COLOR_SUCCESS : COLOR_DANGER;
 
@@ -2560,11 +2491,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               formatDurationCompact(phaseTargetSec, targetBuf,
                                                     sizeof(targetBuf));
                               snprintf(header.timer, sizeof(header.timer),
-                                       "%s %s/%s", ru ? "Р¤Р°Р·Р°" : "Phase",
+                                       "%s %s/%s", ru ? "Фаза" : "Phase",
                                        elapsedBuf, targetBuf);
                             } else {
                               snprintf(header.timer, sizeof(header.timer),
-                                       "%s %s", ru ? "Р¤Р°Р·Р°" : "Phase",
+                                       "%s %s", ru ? "Фаза" : "Phase",
                                        elapsedBuf);
                             }
                             return header;
@@ -2796,17 +2727,17 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 
                             const char *procState =
                                 (state.mode == Mode::IDLE)
-                                    ? (ru ? "РћР–РР”." : "IDLE")
-                                    : (state.paused ? (ru ? "РџРђРЈР—Рђ" : "PAUSE")
-                                                    : (ru ? "Р РђР‘РћРўРђ" : "RUN"));
+                                    ? (ru ? "ОЖИД." : "IDLE")
+                                    : (state.paused ? (ru ? "ПАУЗА" : "PAUSE")
+                                                    : (ru ? "РАБОТА" : "RUN"));
                             const uint16_t procColor =
                                 (state.mode == Mode::IDLE)
                                     ? COLOR_INFO
                                     : (state.paused ? COLOR_WARNING
                                                     : COLOR_SUCCESS);
                             const char *safetyState =
-                                state.safetyOk ? (ru ? "Р‘Р•Р—РћРџ." : "SAFE")
-                                               : (ru ? "РўР Р•Р’РћР“Рђ" : "ALARM");
+                                state.safetyOk ? (ru ? "БЕЗОП." : "SAFE")
+                                               : (ru ? "ТРЕВОГА" : "ALARM");
                             const uint16_t safetyColor =
                                 state.safetyOk ? COLOR_SUCCESS : COLOR_DANGER;
 
@@ -2825,11 +2756,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               formatDurationCompact(phaseTargetSec, targetBuf,
                                                     sizeof(targetBuf));
                               snprintf(timerBuf, sizeof(timerBuf), "%s %s/%s",
-                                       ru ? "Р¤Р°Р·Р°" : "Phase", elapsedBuf,
+                                       ru ? "Фаза" : "Phase", elapsedBuf,
                                        targetBuf);
                             } else {
                               snprintf(timerBuf, sizeof(timerBuf), "%s %s",
-                                       ru ? "Р¤Р°Р·Р°" : "Phase", elapsedBuf);
+                                       ru ? "Фаза" : "Phase", elapsedBuf);
                             }
 
                             if (full ||
@@ -2910,10 +2841,10 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             const char *tileLabels[6] = {nullptr, nullptr,
                                                          nullptr, nullptr,
                                                          nullptr, nullptr};
-                            const char *tileUnits[6] = {"В°C",
-                                                        "В°C",
-                                                        "В°C",
-                                                        "В°C",
+                            const char *tileUnits[6] = {"°C",
+                                                        "°C",
+                                                        "°C",
+                                                        "°C",
                                                         msg(Msg::UNIT_W),
                                                         msg(Msg::UNIT_ML_H)};
                             uint16_t tileColors[6] = {
@@ -2937,15 +2868,15 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 
                             if (profile == DASH_PROFILE_IDLE) {
                               tileLabels[4] = hasWaterIn
-                                                  ? (ru ? "РћРҐР› Р’РҐ" : "WATER IN")
-                                                  : (ru ? "РЎР•РўР¬" : "MAINS");
+                                                  ? (ru ? "ОХЛ ВХ" : "WATER IN")
+                                                  : (ru ? "СЕТЬ" : "MAINS");
                               tileLabels[5] =
-                                  hasWaterOut ? (ru ? "РћРҐР› Р’Р«РҐ" : "WATER OUT")
-                                              : (ru ? "РњРћР©РќРћРЎРўР¬" : "POWER");
+                                  hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
+                                              : (ru ? "МОЩНОСТЬ" : "POWER");
                               if (hasWaterIn) {
                                 snprintf(tileValues[4], sizeof(tileValues[4]),
                                          "%.1f", state.temps.waterIn);
-                                tileUnits[4] = "В°C";
+                                tileUnits[4] = "°C";
                                 tileColors[4] = COLOR_INFO;
                               } else {
                                 snprintf(tileValues[4], sizeof(tileValues[4]),
@@ -2956,7 +2887,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               if (hasWaterOut) {
                                 snprintf(tileValues[5], sizeof(tileValues[5]),
                                          "%.1f", state.temps.waterOut);
-                                tileUnits[5] = "В°C";
+                                tileUnits[5] = "°C";
                                 tileColors[5] = COLOR_INFO;
                               } else {
                                 snprintf(tileValues[5], sizeof(tileValues[5]),
@@ -2969,13 +2900,13 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               snprintf(tileValues[4], sizeof(tileValues[4]),
                                        "%.0f", state.power.power);
                               if (hasWaterOut) {
-                                tileLabels[5] = ru ? "РћРҐР› Р’Р«РҐ" : "WATER OUT";
+                                tileLabels[5] = ru ? "ОХЛ ВЫХ" : "WATER OUT";
                                 snprintf(tileValues[5], sizeof(tileValues[5]),
                                          "%.1f", state.temps.waterOut);
-                                tileUnits[5] = "В°C";
+                                tileUnits[5] = "°C";
                                 tileColors[5] = COLOR_INFO;
                               } else {
-                                tileLabels[5] = ru ? "РћРўР‘РћР " : "TAKEOFF";
+                                tileLabels[5] = ru ? "ОТБОР" : "TAKEOFF";
                                 snprintf(tileValues[5], sizeof(tileValues[5]),
                                          "%.0f", state.pump.speedMlPerHour);
                                 tileUnits[5] = msg(Msg::UNIT_ML_H);
@@ -2983,7 +2914,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               }
                             } else if (profile == DASH_PROFILE_DIST) {
                               tileLabels[4] = msg(Msg::HEATER_POWER);
-                              tileLabels[5] = ru ? "РћРўР‘РћР " : "COLLECT";
+                              tileLabels[5] = ru ? "ОТБОР" : "COLLECT";
                               snprintf(tileValues[4], sizeof(tileValues[4]),
                                        "%.0f", state.power.power);
                               snprintf(tileValues[5], sizeof(tileValues[5]),
@@ -2991,10 +2922,10 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               tileUnits[5] = "ml";
                               tileColors[5] = COLOR_SUCCESS;
                             } else if (profile == DASH_PROFILE_NBK) {
-                              tileLabels[4] = ru ? "Р”РђР’Р›." : "PRESS";
+                              tileLabels[4] = ru ? "ДАВЛ." : "PRESS";
                               tileLabels[5] = hasWaterOut
-                                                  ? (ru ? "РћРҐР› Р’Р«РҐ" : "WATER OUT")
-                                                  : (ru ? "РџРћР”РђР§Рђ" : "FEED");
+                                                  ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
+                                                  : (ru ? "ПОДАЧА" : "FEED");
                               snprintf(tileValues[4], sizeof(tileValues[4]),
                                        "%.0f", state.pressure.cube);
                               tileUnits[4] = "mm";
@@ -3002,7 +2933,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               if (hasWaterOut) {
                                 snprintf(tileValues[5], sizeof(tileValues[5]),
                                          "%.1f", state.temps.waterOut);
-                                tileUnits[5] = "В°C";
+                                tileUnits[5] = "°C";
                                 tileColors[5] = COLOR_INFO;
                               } else {
                                 snprintf(tileValues[5], sizeof(tileValues[5]),
@@ -3011,7 +2942,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 tileColors[5] = COLOR_SUCCESS;
                               }
                             } else if (profile == DASH_PROFILE_FERM) {
-                              tileLabels[4] = ru ? "Р”РћРџРЈРЎРљ" : "BAND";
+                              tileLabels[4] = ru ? "ДОПУСК" : "BAND";
                               tileLabels[5] = ru ? "DELTA" : "DELTA";
                               snprintf(tileValues[4], sizeof(tileValues[4]),
                                        "%.1f", g_settings.fermentation.hysteresisC);
@@ -3019,8 +2950,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                        "%.1f",
                                        state.temps.cube -
                                            g_settings.fermentation.targetTempC);
-                              tileUnits[4] = "В°C";
-                              tileUnits[5] = "В°C";
+                              tileUnits[4] = "°C";
+                              tileUnits[5] = "°C";
                               tileColors[4] = COLOR_INFO;
                               tileColors[5] =
                                   (state.temps.cube >
@@ -3030,7 +2961,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                       : COLOR_SUCCESS;
                             } else if (profile == DASH_PROFILE_MANUAL) {
                               tileLabels[4] = msg(Msg::HEATER_POWER);
-                              tileLabels[5] = ru ? "РћРўР‘РћР " : "TAKEOFF";
+                              tileLabels[5] = ru ? "ОТБОР" : "TAKEOFF";
                               snprintf(tileValues[4], sizeof(tileValues[4]),
                                        "%.0f", state.power.power);
                               snprintf(tileValues[5], sizeof(tileValues[5]),
@@ -3040,7 +2971,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               tileColors[5] = COLOR_SUCCESS;
                             } else if (profile == DASH_PROFILE_MASH) {
                               tileLabels[4] = msg(Msg::HEATER_POWER);
-                              tileLabels[5] = ru ? "РњР•РЁРђР›РљРђ" : "STIRRER";
+                              tileLabels[5] = ru ? "МЕШАЛКА" : "STIRRER";
                               snprintf(tileValues[4], sizeof(tileValues[4]),
                                        "%.0f", state.power.power);
                               if (state.stirrer.running) {
@@ -3059,7 +2990,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               tileColors[4] = COLOR_WARNING;
                             } else if (profile == DASH_PROFILE_HOLD) {
                               tileLabels[4] = msg(Msg::HEATER_POWER);
-                              tileLabels[5] = ru ? "РљРћРќРўРЈР " : "LOOP";
+                              tileLabels[5] = ru ? "КОНТУР" : "LOOP";
                               snprintf(tileValues[4], sizeof(tileValues[4]),
                                        "%.0f", state.power.power);
                               snprintf(tileValues[5], sizeof(tileValues[5]),
@@ -3069,8 +3000,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                             state.hold.stepCount &&
                                         state.hold.steps[state.hold.currentStep]
                                             .useCooling)
-                                           ? (ru ? "РћРҐР›." : "COOL")
-                                           : (ru ? "РќРђР“Р ." : "HEAT"));
+                                           ? (ru ? "ОХЛ." : "COOL")
+                                           : (ru ? "НАГР." : "HEAT"));
                               tileUnits[5] = "";
                               tileColors[4] = COLOR_WARNING;
                               tileColors[5] =
@@ -3083,14 +3014,14 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             } else {
                               tileLabels[4] = msg(Msg::HEATER_POWER);
                               tileLabels[5] =
-                                  hasWaterOut ? (ru ? "РћРҐР› Р’Р«РҐ" : "WATER OUT")
+                                  hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
                                               : msg(Msg::PUMP);
                               snprintf(tileValues[4], sizeof(tileValues[4]),
                                        "%.0f", state.power.power);
                               if (hasWaterOut) {
                                 snprintf(tileValues[5], sizeof(tileValues[5]),
                                          "%.1f", state.temps.waterOut);
-                                tileUnits[5] = "В°C";
+                                tileUnits[5] = "°C";
                                 tileColors[5] = COLOR_INFO;
                               } else {
                                 snprintf(tileValues[5], sizeof(tileValues[5]),
@@ -3144,32 +3075,32 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             if (profile == DASH_PROFILE_IDLE) {
                               snprintf(
                                   infoBuf, sizeof(infoBuf), "%s",
-                                  ru ? "РћР¶РёРґР°РЅРёРµ: РІС‹Р±РµСЂРёС‚Рµ СЂРµР¶РёРј РІ РЈРїСЂР°РІР»РµРЅРёРё"
+                                  ru ? "Ожидание: выберите режим в Управлении"
                                      : "Idle: choose mode in Control");
                             } else if (profile == DASH_PROFILE_DIST) {
                               snprintf(infoBuf, sizeof(infoBuf),
-                                       ru ? "Р”РёСЃС‚.: %.0f/%.0f РјР» | Р“РѕР» %.0f"
+                                       ru ? "Дист.: %.0f/%.0f мл | Гол %.0f"
                                           : "Dist: %.0f/%.0f ml | Heads %.0f",
                                        state.pump.totalVolumeMl,
                                        distUi.targetVolumeMl,
                                        distUi.headsVolumeMl);
                             } else if (profile == DASH_PROFILE_NBK) {
                               snprintf(infoBuf, sizeof(infoBuf),
-                                       ru ? "РќР‘Рљ: %.0f/%.0f РјР» | РџРѕРґР°С‡Р° %.0f"
+                                       ru ? "НБК: %.0f/%.0f мл | Подача %.0f"
                                           : "NBK: %.0f/%.0f ml | Feed %.0f",
                                        state.pump.totalVolumeMl,
                                        g_settings.nbk.targetVolumeMl,
                                        g_settings.nbk.pumpSpeedMlH);
                             } else if (profile == DASH_PROFILE_FERM) {
                               snprintf(infoBuf, sizeof(infoBuf),
-                                       ru ? "Р‘СЂРѕР¶.: С†РµР»СЊ %.1f | dT %.1f"
+                                       ru ? "Брож.: цель %.1f | dT %.1f"
                                           : "Ferm: target %.1f | dT %.1f",
                                        g_settings.fermentation.targetTempC,
                                        state.temps.cube -
                                            g_settings.fermentation.targetTempC);
                             } else if (profile == DASH_PROFILE_MANUAL) {
                               snprintf(infoBuf, sizeof(infoBuf),
-                                       ru ? "Р СѓС‡РЅ.: С‚РµР»Рѕ %.0f/%.0f | СЃРєРѕСЂ. %.0f"
+                                       ru ? "Ручн.: тело %.0f/%.0f | скор. %.0f"
                                           : "Manual: body %.0f/%.0f | speed %.0f",
                                        state.stats.bodyVolume,
                                        manualRectUi.bodyTargetMl,
@@ -3180,7 +3111,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                       ? state.mashing.stepCount
                                       : mashProfileDefault.stepCount;
                               snprintf(infoBuf, sizeof(infoBuf),
-                                       ru ? "Р—Р°С‚РёСЂРєР°: С€Р°Рі %u/%u | С†РµР»СЊ %.1f"
+                                       ru ? "Затирка: шаг %u/%u | цель %.1f"
                                           : "Mash: step %u/%u | target %.1f",
                                        static_cast<unsigned>(
                                            steps == 0 ? 0
@@ -3192,7 +3123,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   (state.hold.stepCount > 0) ? state.hold.stepCount
                                                              : holdStepsCount;
                               snprintf(infoBuf, sizeof(infoBuf),
-                                       ru ? "Р’С‹РґРµСЂР¶РєР°: С€Р°Рі %u/%u | С†РµР»СЊ %.1f"
+                                       ru ? "Выдержка: шаг %u/%u | цель %.1f"
                                           : "Hold: step %u/%u | target %.1f",
                                        static_cast<unsigned>(
                                            steps == 0 ? 0
@@ -3201,7 +3132,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                        state.hold.targetTemp);
                             } else if (ru) {
                               snprintf(infoBuf, sizeof(infoBuf),
-                                       "Р“РѕР» %.0f | РўРµР»Рѕ %.0f | РҐРІ %.0f РјР»",
+                                       "Гол %.0f | Тело %.0f | Хв %.0f мл",
                                        state.stats.headsVolume,
                                        state.stats.bodyVolume,
                                        state.stats.tailsVolume);
@@ -3275,41 +3206,41 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                          state.pressure.cube);
                                 drawSummaryHeroBlock(
                                     summaryX, heroY, summaryW, heroH,
-                                    ru ? "Р”РђР›Р•Р•" : "NEXT",
-                                    ru ? "РЈРџР РђР’Р›." : "CONTROL", colorAccent());
+                                    ru ? "ДАЛЕЕ" : "NEXT",
+                                    ru ? "УПРАВЛ." : "CONTROL", colorAccent());
                                 drawCompactKeyValueRow(summaryX, rowY1,
                                                        summaryW,
-                                                       ru ? "РЎР•РўР¬" : "MAINS",
+                                                       ru ? "СЕТЬ" : "MAINS",
                                                        mainsBuf, COLOR_PRIMARY);
                                 drawCompactKeyValueRow(summaryX, rowY2,
                                                        summaryW,
-                                                       ru ? "Р”РђР’Р›." : "PRESS",
+                                                       ru ? "ДАВЛ." : "PRESS",
                                                        pressBuf, COLOR_WARNING);
                                 drawCompactKeyValueRow(
                                     summaryX, rowY3, summaryW,
-                                    ru ? "РћРҐР›." : "COOL", waterBuf, COLOR_INFO);
+                                    ru ? "ОХЛ." : "COOL", waterBuf, COLOR_INFO);
                               } else if (profile == DASH_PROFILE_DIST) {
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
                                          state.pump.totalVolumeMl,
                                          distUi.targetVolumeMl);
                                 drawSummaryHeroBlock(summaryX, heroY, summaryW,
                                                      heroH,
-                                                     ru ? "РћРўР‘РћР " : "COLLECT",
+                                                     ru ? "ОТБОР" : "COLLECT",
                                                      rowBuf, COLOR_SUCCESS);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
                                          distUi.headsVolumeMl);
                                 drawCompactKeyValueRow(summaryX, rowY1, summaryW,
-                                                       ru ? "Р“РћР›РћР’Р«" : "HEADS",
+                                                       ru ? "ГОЛОВЫ" : "HEADS",
                                                        rowBuf, COLOR_WARNING);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                                          distUi.endTempC);
                                 drawCompactKeyValueRow(summaryX, rowY2, summaryW,
-                                                       ru ? "Р¤РРќРРЁ" : "END",
+                                                       ru ? "ФИНИШ" : "END",
                                                        rowBuf, COLOR_INFO);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f mm",
                                          state.pressure.cube);
                                 drawCompactKeyValueRow(summaryX, rowY3, summaryW,
-                                                       ru ? "Р”РђР’Р›." : "PRESS",
+                                                       ru ? "ДАВЛ." : "PRESS",
                                                        rowBuf, COLOR_WARNING);
                               } else if (profile == DASH_PROFILE_NBK) {
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
@@ -3317,22 +3248,22 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                          g_settings.nbk.targetVolumeMl);
                                 drawSummaryHeroBlock(summaryX, heroY, summaryW,
                                                      heroH,
-                                                     ru ? "РћРўР‘РћР " : "COLLECT",
+                                                     ru ? "ОТБОР" : "COLLECT",
                                                      rowBuf, COLOR_SUCCESS);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                                          g_settings.nbk.columnBottomTempThresholdC);
                                 drawCompactKeyValueRow(summaryX, rowY1, summaryW,
-                                                       ru ? "РџРћР РћР“" : "THRESH",
+                                                       ru ? "ПОРОГ" : "THRESH",
                                                        rowBuf, COLOR_WARNING);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f ml/h",
                                          g_settings.nbk.pumpSpeedMlH);
                                 drawCompactKeyValueRow(summaryX, rowY2, summaryW,
-                                                       ru ? "РџРћР”РђР§Рђ" : "FEED",
+                                                       ru ? "ПОДАЧА" : "FEED",
                                                        rowBuf, COLOR_INFO);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f V",
                                          state.power.voltage);
                                 drawCompactKeyValueRow(summaryX, rowY3, summaryW,
-                                                       ru ? "РЎР•РўР¬" : "MAINS",
+                                                       ru ? "СЕТЬ" : "MAINS",
                                                        rowBuf, COLOR_PRIMARY);
                               } else if (profile == DASH_PROFILE_FERM) {
                                 const float delta =
@@ -3343,7 +3274,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                          g_settings.fermentation.targetTempC);
                                 drawSummaryHeroBlock(summaryX, heroY, summaryW,
                                                      heroH,
-                                                     ru ? "РўР•РњРџ." : "TEMP",
+                                                     ru ? "ТЕМП." : "TEMP",
                                                      rowBuf,
                                                      fabsf(delta) >
                                                              g_settings.fermentation.hysteresisC
@@ -3352,7 +3283,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                                          g_settings.fermentation.hysteresisC);
                                 drawCompactKeyValueRow(summaryX, rowY1, summaryW,
-                                                       ru ? "Р”РћРџРЈРЎРљ" : "BAND",
+                                                       ru ? "ДОПУСК" : "BAND",
                                                        rowBuf, COLOR_INFO);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.1f C", delta);
                                 drawCompactKeyValueRow(summaryX, rowY2, summaryW,
@@ -3361,7 +3292,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                        (delta > 0.0f) ? COLOR_WARNING
                                                                       : COLOR_SUCCESS);
                                 drawCompactKeyValueRow(summaryX, rowY3, summaryW,
-                                                       ru ? "РќРђР“Р Р•Р’" : "HEATER",
+                                                       ru ? "НАГРЕВ" : "HEATER",
                                                        g_settings.fermentation.useHeater
                                                            ? "ON"
                                                            : "OFF",
@@ -3373,24 +3304,24 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                          state.pump.speedMlPerHour);
                                 drawSummaryHeroBlock(summaryX, heroY, summaryW,
                                                      heroH,
-                                                     ru ? "РћРўР‘РћР " : "TAKEOFF",
+                                                     ru ? "ОТБОР" : "TAKEOFF",
                                                      rowBuf, COLOR_SUCCESS);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f %%", 
                                          manualRectUi.powerPercent);
                                 drawCompactKeyValueRow(summaryX, rowY1, summaryW,
-                                                       ru ? "РњРћР©Рќ." : "POWER",
+                                                       ru ? "МОЩН." : "POWER",
                                                        rowBuf, COLOR_WARNING);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
                                          state.stats.bodyVolume,
                                          manualRectUi.bodyTargetMl);
                                 drawCompactKeyValueRow(summaryX, rowY2, summaryW,
-                                                       ru ? "РўР•Р›Рћ" : "BODY",
+                                                       ru ? "ТЕЛО" : "BODY",
                                                        rowBuf, COLOR_PRIMARY);
                                 snprintf(rowBuf, sizeof(rowBuf), "H %.0f T %.0f",
                                          state.stats.headsVolume,
                                          state.stats.tailsVolume);
                                 drawCompactKeyValueRow(summaryX, rowY3, summaryW,
-                                                       ru ? "Р¤Р РђРљР¦." : "CUTS",
+                                                       ru ? "ФРАКЦ." : "CUTS",
                                                        rowBuf, COLOR_INFO);
                               } else if (profile == DASH_PROFILE_MASH ||
                                          profile == DASH_PROFILE_HOLD) {
@@ -3436,7 +3367,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                       sizeof(targetBuf));
                                 snprintf(heroLabelBuf, sizeof(heroLabelBuf),
                                          "%s %u/%u",
-                                         ru ? "РЁРђР“" : "STEP",
+                                         ru ? "ШАГ" : "STEP",
                                          static_cast<unsigned>(
                                              steps == 0 ? 0 : currentStep + 1),
                                          static_cast<unsigned>(steps));
@@ -3451,12 +3382,12 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                                          targetTemp);
                                 drawCompactKeyValueRow(summaryX, rowY1, summaryW,
-                                                       ru ? "Р¦Р•Р›Р¬" : "TARGET",
+                                                       ru ? "ЦЕЛЬ" : "TARGET",
                                                        rowBuf, COLOR_SUCCESS);
                                 snprintf(rowBuf, sizeof(rowBuf), "%s/%s",
                                          elapsedBuf, targetBuf);
                                 drawCompactKeyValueRow(summaryX, rowY2, summaryW,
-                                                       ru ? "РўРђР™РњР•Р " : "TIMER",
+                                                       ru ? "ТАЙМЕР" : "TIMER",
                                                        rowBuf, COLOR_PRIMARY);
                                 if (isMash) {
                                   if (state.stirrer.running) {
@@ -3465,48 +3396,48 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                  state.stirrer.speedPercent));
                                   } else {
                                     snprintf(rowBuf, sizeof(rowBuf), "%s",
-                                             ru ? "Р’Р«РљР›" : "OFF");
+                                             ru ? "ВЫКЛ" : "OFF");
                                   }
                                   drawCompactKeyValueRow(
                                       summaryX, rowY3, summaryW,
-                                      ru ? "РњР•РЁРђР›РљРђ" : "STIRRER", rowBuf,
+                                      ru ? "МЕШАЛКА" : "STIRRER", rowBuf,
                                       state.stirrer.running ? COLOR_SUCCESS
                                                             : colorMuted());
                                 } else {
                                   drawCompactKeyValueRow(
                                       summaryX, rowY3, summaryW,
-                                      ru ? "РљРћРќРўРЈР " : "LOOP",
-                                      useCooling ? (ru ? "РћРҐР›." : "COOL")
-                                                 : (ru ? "РќРђР“Р ." : "HEAT"),
+                                      ru ? "КОНТУР" : "LOOP",
+                                      useCooling ? (ru ? "ОХЛ." : "COOL")
+                                                 : (ru ? "НАГР." : "HEAT"),
                                       useCooling ? COLOR_INFO : COLOR_WARNING);
                                 }
                               } else {
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
                                          state.stats.bodyVolume,
-                                         ru ? "РјР»" : "ml");
+                                         ru ? "мл" : "ml");
                                 drawSummaryHeroBlock(summaryX, heroY, summaryW,
                                                      heroH,
-                                                     ru ? "РўР•Р›Рћ" : "BODY",
+                                                     ru ? "ТЕЛО" : "BODY",
                                                      rowBuf, COLOR_SUCCESS);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
                                          state.stats.headsVolume,
-                                         ru ? "РјР»" : "ml");
+                                         ru ? "мл" : "ml");
                                 drawCompactKeyValueRow(summaryX, rowY1,
                                                        summaryW,
-                                                       ru ? "Р“РћР›РћР’Р«" : "HEADS",
+                                                       ru ? "ГОЛОВЫ" : "HEADS",
                                                        rowBuf, COLOR_WARNING);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
                                          state.stats.tailsVolume,
-                                         ru ? "РјР»" : "ml");
+                                         ru ? "мл" : "ml");
                                 drawCompactKeyValueRow(summaryX, rowY2,
                                                        summaryW,
-                                                       ru ? "РҐР’РћРЎРўР«" : "TAILS",
+                                                       ru ? "ХВОСТЫ" : "TAILS",
                                                        rowBuf, COLOR_DANGER);
                                 snprintf(rowBuf, sizeof(rowBuf), "%.0f mm",
                                          state.pressure.cube);
                                 drawCompactKeyValueRow(summaryX, rowY3,
                                                        summaryW,
-                                                       ru ? "Р”РђР’Р›." : "PRESS",
+                                                       ru ? "ДАВЛ." : "PRESS",
                                                        rowBuf, COLOR_WARNING);
                               }
                             }
@@ -3619,7 +3550,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   rightX + tileW + colGap,
                                   panelY + (tileH + rowGap) * 2, tileW, tileH,
                                   state.temps.valid[TEMP_WATER_OUT]
-                                      ? (ru ? "РћРҐР› Р’Р«РҐ" : "WATER OUT")
+                                      ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
                                       : msg(Msg::PUMP));
 
                               drawCard(ROOT_FRAME_X, infoY, ROOT_FRAME_W, 40,
@@ -3635,13 +3566,13 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                      getDisplayPhaseName(state));
 
                             const char *procState =
-                                state.paused ? (ru ? "РџРђРЈР—Рђ" : "PAUSE")
-                                             : (ru ? "Р РђР‘РћРўРђ" : "RUN");
+                                state.paused ? (ru ? "ПАУЗА" : "PAUSE")
+                                             : (ru ? "РАБОТА" : "RUN");
                             const uint16_t procColor =
                                 state.paused ? COLOR_WARNING : COLOR_SUCCESS;
                             const char *safetyState =
-                                state.safetyOk ? (ru ? "Р‘Р•Р—РћРџ." : "SAFE")
-                                               : (ru ? "РўР Р•Р’РћР“Рђ" : "ALARM");
+                                state.safetyOk ? (ru ? "БЕЗОП." : "SAFE")
+                                               : (ru ? "ТРЕВОГА" : "ALARM");
                             const uint16_t safetyColor =
                                 state.safetyOk ? COLOR_SUCCESS : COLOR_DANGER;
 
@@ -3660,11 +3591,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               formatDurationCompact(phaseTargetSec, targetBuf,
                                                     sizeof(targetBuf));
                               snprintf(timerBuf, sizeof(timerBuf), "%s %s/%s",
-                                       ru ? "Р¤Р°Р·Р°" : "Phase", elapsedBuf,
+                                       ru ? "Фаза" : "Phase", elapsedBuf,
                                        targetBuf);
                             } else {
                               snprintf(timerBuf, sizeof(timerBuf), "%s %s",
-                                       ru ? "Р¤Р°Р·Р°" : "Phase", elapsedBuf);
+                                       ru ? "Фаза" : "Phase", elapsedBuf);
                             }
 
                             if (full ||
@@ -3738,7 +3669,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             if (ru) {
                               snprintf(
                                   summaryBuf, sizeof(summaryBuf),
-                                  "РћРљРќРћ Р Р•Р–РРњРђ\nР“РѕР» %.0f  РўРµР»Рѕ %.0f  РҐРІ %.0f",
+                                  "ОКНО РЕЖИМА\nГол %.0f  Тело %.0f  Хв %.0f",
                                   state.stats.headsVolume,
                                   state.stats.bodyVolume,
                                   state.stats.tailsVolume);
@@ -3765,20 +3696,20 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               tft.setTextColor(colorFg());
                               tft.setTextSize(1);
                               tft.setTextDatum(top_left);
-                              drawDisplayString(ru ? "Р Р•Р–РРњРќРћР• РћРљРќРћ"
+                              drawDisplayString(ru ? "РЕЖИМНОЕ ОКНО"
                                                 : "MODE WINDOW",
                                              leftX + 10, panelY + 10);
                               tft.setTextColor(tft.color565(120, 130, 140));
                               drawDisplayString(topLine, leftX + 10, panelY + 28);
                               tft.setTextColor(colorFg());
                               if (ru) {
-                                snprintf(val, sizeof(val), "Р“РѕР» %.0f РјР»",
+                                snprintf(val, sizeof(val), "Гол %.0f мл",
                                          state.stats.headsVolume);
                                 drawDisplayString(val, leftX + 10, panelY + 52);
-                                snprintf(val, sizeof(val), "РўРµР»Рѕ %.0f РјР»",
+                                snprintf(val, sizeof(val), "Тело %.0f мл",
                                          state.stats.bodyVolume);
                                 drawDisplayString(val, leftX + 10, panelY + 72);
-                                snprintf(val, sizeof(val), "РҐРІ %.0f РјР»",
+                                snprintf(val, sizeof(val), "Хв %.0f мл",
                                          state.stats.tailsVolume);
                                 drawDisplayString(val, leftX + 10, panelY + 92);
                               } else {
@@ -3835,28 +3766,28 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                            : colorAccent());
                               drawCompactKeyValueRow(
                                   leftX + 8, panelY + 36, leftW - 16,
-                                  ru ? "Р Р•Р–РРњ" : "MODE",
+                                  ru ? "РЕЖИМ" : "MODE",
                                   getDisplayModeName(state.mode),
                                   colorAccent());
                               snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
                                        state.stats.headsVolume,
-                                       ru ? "РјР»" : "ml");
+                                       ru ? "мл" : "ml");
                               drawCompactKeyValueRow(leftX + 8, panelY + 58,
                                                      leftW - 16,
-                                                     ru ? "Р“РћР›РћР’Р«" : "HEADS",
+                                                     ru ? "ГОЛОВЫ" : "HEADS",
                                                      rowBuf, COLOR_WARNING);
                               snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
                                        state.stats.bodyVolume,
-                                       ru ? "РјР»" : "ml");
+                                       ru ? "мл" : "ml");
                               drawCompactKeyValueRow(
                                   leftX + 8, panelY + 80, leftW - 16,
-                                  ru ? "РўР•Р›Рћ" : "BODY", rowBuf, COLOR_SUCCESS);
+                                  ru ? "ТЕЛО" : "BODY", rowBuf, COLOR_SUCCESS);
                               snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
                                        state.stats.tailsVolume,
-                                       ru ? "РјР»" : "ml");
+                                       ru ? "мл" : "ml");
                               drawCompactKeyValueRow(leftX + 8, panelY + 102,
                                                      leftW - 16,
-                                                     ru ? "РҐР’РћРЎРўР«" : "TAILS",
+                                                     ru ? "ХВОСТЫ" : "TAILS",
                                                      rowBuf, COLOR_DANGER);
                               snprintf(rowBuf, sizeof(rowBuf), "K1%s K2%s K3%s",
                                        k1, k2, k3);
@@ -3871,26 +3802,26 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                            : colorAccent());
                               snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
                                        state.stats.bodyVolume,
-                                       ru ? "РјР»" : "ml");
+                                       ru ? "мл" : "ml");
                               drawSummaryHeroBlock(summaryX, heroY, summaryW,
-                                                   heroH, ru ? "РўР•Р›Рћ" : "BODY",
+                                                   heroH, ru ? "ТЕЛО" : "BODY",
                                                    rowBuf, COLOR_SUCCESS);
                               snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
                                        state.stats.headsVolume,
-                                       ru ? "РјР»" : "ml");
+                                       ru ? "мл" : "ml");
                               drawCompactKeyValueRow(summaryX, rowY1, summaryW,
-                                                     ru ? "Р“РћР›РћР’Р«" : "HEADS",
+                                                     ru ? "ГОЛОВЫ" : "HEADS",
                                                      rowBuf, COLOR_WARNING);
                               snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
                                        state.stats.tailsVolume,
-                                       ru ? "РјР»" : "ml");
+                                       ru ? "мл" : "ml");
                               drawCompactKeyValueRow(summaryX, rowY2, summaryW,
-                                                     ru ? "РҐР’РћРЎРўР«" : "TAILS",
+                                                     ru ? "ХВОСТЫ" : "TAILS",
                                                      rowBuf, COLOR_DANGER);
                               snprintf(rowBuf, sizeof(rowBuf), "%.0f mm",
                                        state.pressure.cube);
                               drawCompactKeyValueRow(summaryX, rowY3, summaryW,
-                                                     ru ? "Р”РђР’Р›." : "PRESS",
+                                                     ru ? "ДАВЛ." : "PRESS",
                                                      rowBuf, COLOR_WARNING);
                               drawStateBadge(summaryX, panelY + panelH - 22,
                                              summaryW, 14, header.safetyState,
@@ -3902,9 +3833,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             if (full ||
                                 strcmp(g_dashboardCache.cube, val) != 0) {
                               drawValueTileValue(rightX, panelY, tileW, tileH,
-                                                 val, "В°C", COLOR_DANGER);
+                                                 val, "°C", COLOR_DANGER);
                               drawValueTileValue(rightX, panelY, tileW, tileH,
-                                                 val, "В°C", COLOR_DANGER,
+                                                 val, "°C", COLOR_DANGER,
                                                  &cubeTempHistory);
                               strncpy(g_dashboardCache.cube, val,
                                       sizeof(g_dashboardCache.cube));
@@ -3918,7 +3849,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 strcmp(g_dashboardCache.top, val) != 0) {
                               drawValueTileValue(rightX + tileW + colGap,
                                                  panelY, tileW, tileH, val,
-                                                 "В°C", colorAccent(),
+                                                 "°C", colorAccent(),
                                                  &topTempHistory);
                        strncpy(g_dashboardCache.top, val,
                                sizeof(g_dashboardCache.top));
@@ -3931,7 +3862,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 strcmp(g_dashboardCache.reflux, val) != 0) {
                               drawValueTileValue(rightX,
                                                  panelY + tileH + rowGap, tileW,
-                                                 tileH, val, "В°C", COLOR_INFO);
+                                                 tileH, val, "°C", COLOR_INFO);
                               strncpy(g_dashboardCache.reflux, val,
                                       sizeof(g_dashboardCache.reflux));
                               g_dashboardCache
@@ -3943,7 +3874,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 strcmp(g_dashboardCache.tsa, val) != 0) {
                               drawValueTileValue(rightX + tileW + colGap,
                                                  panelY + tileH + rowGap, tileW,
-                                                 tileH, val, "В°C",
+                                                 tileH, val, "°C",
                                                  COLOR_WARNING);
                               strncpy(g_dashboardCache.tsa, val,
                                       sizeof(g_dashboardCache.tsa));
@@ -3977,7 +3908,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   panelY + (tileH + rowGap) * 2, tileW, tileH,
                                   val,
                                   state.temps.valid[TEMP_WATER_OUT]
-                                      ? "В°C"
+                                      ? "°C"
                                       : msg(Msg::UNIT_ML_H),
                                   state.temps.valid[TEMP_WATER_OUT]
                                       ? COLOR_INFO
@@ -4001,7 +3932,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               tft.setTextColor(tft.color565(120, 130, 140));
                               tft.setTextSize(1);
                               tft.setTextDatum(middle_left);
-                              drawDisplayString(ru ? "РћРєРЅРѕ СЂРµР¶РёРјР° Р°РєС‚РёРІРЅРѕ"
+                              drawDisplayString(ru ? "Окно режима активно"
                                                 : "Mode window active",
                                              20, infoY + 20);
                               tft.setTextColor(COLOR_PRIMARY);
@@ -4123,7 +4054,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             drawValueTileShell(x2, y2, tileW, tileH,
                                                msg(Msg::TSA_T));
                             drawValueTileShell(rightX, y3, tileW, tileH,
-                                               ru ? "Р”РђР’Р›. РљРЈР‘Рђ"
+                                               ru ? "ДАВЛ. КУБА"
                                                   : "CUBE PRESS");
                             drawValueTileShell(x2, y3, tileW, tileH,
                                                msg(Msg::PUMP));
@@ -4165,34 +4096,34 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                snprintf(rowBuf, sizeof(rowBuf), "%.0f ml/h",
                         manualRectUi.speedMlH);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
-                                      ru ? "РЎРљРћР РћРЎРўР¬" : "SPEED", rowBuf,
+                                      ru ? "СКОРОСТЬ" : "SPEED", rowBuf,
                                       COLOR_SUCCESS);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f %%",
                         manualRectUi.powerPercent);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
-                                      ru ? "РњРћР©РќРћРЎРўР¬" : "POWER", rowBuf,
+                                      ru ? "МОЩНОСТЬ" : "POWER", rowBuf,
                                       COLOR_WARNING);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
                         state.stats.headsVolume, manualRectUi.headsTargetMl);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
-                                      ru ? "Р“РћР›РћР’Р«" : "HEADS", rowBuf,
+                                      ru ? "ГОЛОВЫ" : "HEADS", rowBuf,
                                       COLOR_INFO);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
                         state.stats.bodyVolume, manualRectUi.bodyTargetMl);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
-                                      ru ? "РўР•Р›Рћ" : "BODY", rowBuf,
+                                      ru ? "ТЕЛО" : "BODY", rowBuf,
                                       COLOR_PRIMARY);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
                         state.stats.tailsVolume, manualRectUi.tailsTargetMl);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
-                                      ru ? "РҐР’РћРЎРўР«" : "TAILS", rowBuf,
+                                      ru ? "ХВОСТЫ" : "TAILS", rowBuf,
                                       COLOR_WARNING);
                drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22,
                               leftW - 16, 14, header.procState,
                               header.procColor);
 
                snprintf(infoLine, sizeof(infoLine),
-                        ru ? "Р СѓС‡РЅ. СЂРµРєС‚.: С†РµР»Рё СЃР»РµРІР°, С‚РµР»РµРјРµС‚СЂРёСЏ СЃРїСЂР°РІР°"
+                        ru ? "Ручн. рект.: цели слева, телеметрия справа"
                            : "Manual rect: targets left, live telemetry right");
                if (hasWaterOut) {
                  snprintf(auxLine, sizeof(auxLine),
@@ -4283,20 +4214,20 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                    static_cast<unsigned>(steps));
                           drawCompactKeyValueRow(
                               leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
-                              ru ? "РЁРђР“" : "STEP", rowBuf, colorAccent());
+                              ru ? "ШАГ" : "STEP", rowBuf, colorAccent());
                           if (targetTemp > 0.0f) {
                             snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                                      targetTemp);
                           } else {
                             snprintf(rowBuf, sizeof(rowBuf), "%s",
-                                     ru ? "РџРђРЈР—Рђ" : "PAUSE");
+                                     ru ? "ПАУЗА" : "PAUSE");
                           }
                           drawCompactKeyValueRow(
                               leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
-                              ru ? "Р¦Р•Р›Р¬" : "TARGET", rowBuf, COLOR_SUCCESS);
+                              ru ? "ЦЕЛЬ" : "TARGET", rowBuf, COLOR_SUCCESS);
                           drawCompactKeyValueRow(
                               leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
-                              ru ? "РўРђР™РњР•Р " : "TIMER", timerBuf, COLOR_PRIMARY);
+                              ru ? "ТАЙМЕР" : "TIMER", timerBuf, COLOR_PRIMARY);
                           snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                                    state.temps.cube);
                           drawCompactKeyValueRow(
@@ -4309,27 +4240,27 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                            state.stirrer.speedPercent));
                             } else {
                               snprintf(rowBuf, sizeof(rowBuf), "%s",
-                                       ru ? "Р’Р«РљР›" : "OFF");
+                                       ru ? "ВЫКЛ" : "OFF");
                             }
                             drawCompactKeyValueRow(
                                 leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
-                                ru ? "РњР•РЁРђР›РљРђ" : "STIRRER", rowBuf,
+                                ru ? "МЕШАЛКА" : "STIRRER", rowBuf,
                                 state.stirrer.running ? COLOR_SUCCESS
                                                       : colorMuted());
                           } else {
                             snprintf(rowBuf, sizeof(rowBuf), "%s",
-                                     useCooling ? (ru ? "РћРҐР›РђР–Р”." : "COOLING")
-                                                : (ru ? "РќРђР“Р Р•Р’" : "HEATING"));
+                                     useCooling ? (ru ? "ОХЛАЖД." : "COOLING")
+                                                : (ru ? "НАГРЕВ" : "HEATING"));
                             drawCompactKeyValueRow(
                                 leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
-                                ru ? "РљРћРќРўРЈР " : "LOOP", rowBuf,
+                                ru ? "КОНТУР" : "LOOP", rowBuf,
                                 useCooling ? COLOR_INFO : COLOR_WARNING);
                           }
                           drawStateBadge(
                               leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22,
                               leftW - 16, 14,
-                              inRange ? (ru ? "Р’ Р”РћРџРЈРЎРљР•" : "IN RANGE")
-                                      : (ru ? "РќРђР‘РћР  РўР•РњРџ" : "HEATING"),
+                              inRange ? (ru ? "В ДОПУСКЕ" : "IN RANGE")
+                                      : (ru ? "НАБОР ТЕМП" : "HEATING"),
                               inRange ? COLOR_SUCCESS : COLOR_WARNING);
 
                           drawCard(rightX, ROOT_PANEL_Y, rightW, ROOT_PANEL_H,
@@ -4416,11 +4347,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             } else if (!isMash && stepCooling) {
                               snprintf(titleBuf, sizeof(titleBuf), "%u. %s",
                                        static_cast<unsigned>(stepIndex + 1),
-                                       ru ? "РћРҐР›РђР–Р”Р•РќРР•" : "COOLING");
+                                       ru ? "ОХЛАЖДЕНИЕ" : "COOLING");
                             } else {
                               snprintf(titleBuf, sizeof(titleBuf), "%u. %s",
                                        static_cast<unsigned>(stepIndex + 1),
-                                       ru ? "РЎРўРЈРџР•РќР¬" : "STEP");
+                                       ru ? "СТУПЕНЬ" : "STEP");
                             }
                             snprintf(metaBuf, sizeof(metaBuf), "%u min",
                                      static_cast<unsigned>(stepMinutes));
@@ -4429,7 +4360,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                        stepTemp);
                             } else {
                               snprintf(detailBuf, sizeof(detailBuf), "%s",
-                                       ru ? "РџРђРЈР—Рђ Р‘Р•Р— РќРђР“Р Р•Р’Рђ"
+                                       ru ? "ПАУЗА БЕЗ НАГРЕВА"
                                           : "NO-HEAT PAUSE");
                             }
 
@@ -4456,10 +4387,10 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                           snprintf(
                               infoLine, sizeof(infoLine),
                               isMash
-                                  ? (ru ? "Р—Р°С‚РёСЂРєР°: С€Р°РіРё СЃРїСЂР°РІР°, С†РµР»СЊ СЃР»РµРІР°"
+                                  ? (ru ? "Затирка: шаги справа, цель слева"
                                         : "Mashing: step list right, target "
                                           "and timer left")
-                                  : (ru ? "РџР°СЃС‚РµСЂ.: С€Р°РіРё СЃРїСЂР°РІР°, РєРѕРЅС‚СѓСЂ СЃР»РµРІР°"
+                                  : (ru ? "Пастер.: шаги справа, контур слева"
                                         : "Hold: step list right, control loop "
                                           "and target left"));
                           if (isMash) {
@@ -4482,13 +4413,13 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             drawValueTileShell(rightX, ROOT_PANEL_Y, tileW,
                                                tileH, msg(Msg::CUBE_TEMP));
                             drawValueTileShell(x2, ROOT_PANEL_Y, tileW, tileH,
-                                               ru ? "РњРћР©Рќ. %" : "POWER %");
+                                               ru ? "МОЩН. %" : "POWER %");
                             drawValueTileShell(rightX, y2, tileW, tileH,
                                                msg(Msg::DIST_SPEED));
                             drawValueTileShell(x2, y2, tileW, tileH,
-                                               ru ? "РћРўР‘РћР " : "COLLECT");
+                                               ru ? "ОТБОР" : "COLLECT");
                             drawValueTileShell(rightX, y3, tileW, tileH,
-                                               ru ? "Р РђР‘РћРўРђ" : "RUN");
+                                               ru ? "РАБОТА" : "RUN");
                             drawValueTileShell(x2, y3, tileW, tileH,
                                                msg(Msg::END_TEMP));
                           }
@@ -4528,26 +4459,26 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                getDisplayPhaseName(state),
                                state.paused ? COLOR_WARNING : colorAccent());
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
-                                      ru ? "Р Р•Р–РРњ" : "MODE",
+                                      ru ? "РЕЖИМ" : "MODE",
                                       getDisplayModeName(state.mode),
                                       colorAccent());
                snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
                         distUi.headsVolumeMl);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
-                                      ru ? "Р“РћР›РћР’Р«" : "HEADS", rowBuf,
+                                      ru ? "ГОЛОВЫ" : "HEADS", rowBuf,
                                       COLOR_WARNING);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
                         distUi.targetVolumeMl);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
-                                      ru ? "Р¦Р•Р›Р¬" : "TARGET", rowBuf,
+                                      ru ? "ЦЕЛЬ" : "TARGET", rowBuf,
                                       COLOR_SUCCESS);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f mm", state.pressure.cube);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
-                                      ru ? "Р”РђР’Р›." : "PRESS", rowBuf,
+                                      ru ? "ДАВЛ." : "PRESS", rowBuf,
                                       COLOR_WARNING);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f V", state.power.voltage);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
-                                      ru ? "РЎР•РўР¬" : "MAINS", rowBuf,
+                                      ru ? "СЕТЬ" : "MAINS", rowBuf,
                                       COLOR_PRIMARY);
                drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22,
                               leftW - 16, 14, header.procState,
@@ -4559,19 +4490,19 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
                         state.pump.totalVolumeMl, distUi.targetVolumeMl);
                drawSummaryHeroBlock(leftX + 8, ROOT_PANEL_Y + 32, leftW - 16,
-                                    42, ru ? "РћРўР‘РћР " : "COLLECT", rowBuf,
+                                    42, ru ? "ОТБОР" : "COLLECT", rowBuf,
                                     COLOR_SUCCESS);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
                         distUi.headsVolumeMl);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 86, leftW - 16,
-                                      ru ? "Р“РћР›РћР’Р«" : "HEADS", rowBuf,
+                                      ru ? "ГОЛОВЫ" : "HEADS", rowBuf,
                                       COLOR_WARNING);
                snprintf(rowBuf, sizeof(rowBuf), "%.1f C", distUi.endTempC);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 104, leftW - 16,
-                                      ru ? "Р¤РРќРРЁ" : "END", rowBuf, COLOR_INFO);
+                                      ru ? "ФИНИШ" : "END", rowBuf, COLOR_INFO);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f mm", state.pressure.cube);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 122, leftW - 16,
-                                      ru ? "Р”РђР’Р›." : "PRESS", rowBuf,
+                                      ru ? "ДАВЛ." : "PRESS", rowBuf,
                                       COLOR_WARNING);
                drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22,
                               leftW - 16, 14, header.procState,
@@ -4579,7 +4510,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 
                snprintf(
                    infoLine, sizeof(infoLine),
-                   ru ? "Р”РёСЃС‚РёР».: РєСѓР±, РѕС‚Р±РѕСЂ, С„РёРЅРёС€"
+                   ru ? "Дистил.: куб, отбор, финиш"
                       : "Distillation: cube, speed, volume and finish temp");
                snprintf(auxLine, sizeof(auxLine), "V %.0f | P %.0f | Pump %.0f",
                         state.power.voltage, state.pressure.cube,
@@ -4597,11 +4528,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             drawValueTileShell(x2, y2, tileW, tileH,
                                                msg(Msg::PUMP));
                             drawValueTileShell(rightX, y3, tileW, tileH,
-                                               ru ? "Р”РђР’Р›." : "PRESS");
+                                               ru ? "ДАВЛ." : "PRESS");
                             drawValueTileShell(
                                 x2, y3, tileW, tileH,
-                                hasWaterOut ? (ru ? "РћРҐР› Р’Р«РҐ" : "WATER OUT")
-                                            : (ru ? "Р¦Р•Р›Р¬" : "TARGET"));
+                                hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
+                                            : (ru ? "ЦЕЛЬ" : "TARGET"));
                           }
 
                           char rowBuf[24];
@@ -4648,27 +4579,27 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                getDisplayPhaseName(state),
                                state.paused ? COLOR_WARNING : colorAccent());
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
-                                      ru ? "Р Р•Р–РРњ" : "MODE",
+                                      ru ? "РЕЖИМ" : "MODE",
                                       getDisplayModeName(state.mode),
                                       colorAccent());
                snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                         g_settings.nbk.columnBottomTempThresholdC);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
-                                      ru ? "РџРћР РћР“" : "THRESH", rowBuf,
+                                      ru ? "ПОРОГ" : "THRESH", rowBuf,
                                       COLOR_WARNING);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
                         g_settings.nbk.targetVolumeMl);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
-                                      ru ? "Р¦Р•Р›Р¬" : "TARGET", rowBuf,
+                                      ru ? "ЦЕЛЬ" : "TARGET", rowBuf,
                                       COLOR_SUCCESS);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
                         state.pump.totalVolumeMl);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
-                                      ru ? "РћРўР‘РћР " : "COLLECT", rowBuf,
+                                      ru ? "ОТБОР" : "COLLECT", rowBuf,
                                       COLOR_INFO);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f V", state.power.voltage);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
-                                      ru ? "РЎР•РўР¬" : "MAINS", rowBuf,
+                                      ru ? "СЕТЬ" : "MAINS", rowBuf,
                                       COLOR_PRIMARY);
                drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22,
                               leftW - 16, 14, header.procState,
@@ -4681,28 +4612,28 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                         state.pump.totalVolumeMl,
                         g_settings.nbk.targetVolumeMl);
                drawSummaryHeroBlock(leftX + 8, ROOT_PANEL_Y + 32, leftW - 16,
-                                    42, ru ? "РћРўР‘РћР " : "COLLECT", rowBuf,
+                                    42, ru ? "ОТБОР" : "COLLECT", rowBuf,
                                     COLOR_SUCCESS);
                snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                         g_settings.nbk.columnBottomTempThresholdC);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 86, leftW - 16,
-                                      ru ? "РџРћР РћР“" : "THRESH", rowBuf,
+                                      ru ? "ПОРОГ" : "THRESH", rowBuf,
                                       COLOR_WARNING);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f ml/h",
                         g_settings.nbk.pumpSpeedMlH);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 104, leftW - 16,
-                                      ru ? "РџРћР”РђР§Рђ" : "FEED", rowBuf,
+                                      ru ? "ПОДАЧА" : "FEED", rowBuf,
                                       COLOR_INFO);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f V", state.power.voltage);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 122, leftW - 16,
-                                      ru ? "РЎР•РўР¬" : "MAINS", rowBuf,
+                                      ru ? "СЕТЬ" : "MAINS", rowBuf,
                                       COLOR_PRIMARY);
                drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22,
                               leftW - 16, 14, header.procState,
                               header.procColor);
 
                snprintf(infoLine, sizeof(infoLine),
-                        ru ? "РќР‘Рљ: РЅРёР· РєРѕР»РѕРЅРЅС‹, РїРѕРґР°С‡Р°, РґР°РІР»РµРЅРёРµ"
+                        ru ? "НБК: низ колонны, подача, давление"
                            : "NBK: column bottom, feed, pressure and cooling");
                snprintf(auxLine, sizeof(auxLine), "Target %.0f | Pump %.0f",
                         g_settings.nbk.targetVolumeMl,
@@ -4714,15 +4645,15 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             drawValueTileShell(rightX, ROOT_PANEL_Y, tileW,
                                                tileH, msg(Msg::CUBE_TEMP));
                             drawValueTileShell(x2, ROOT_PANEL_Y, tileW, tileH,
-                                               ru ? "Р¦Р•Р›Р¬" : "TARGET");
+                                               ru ? "ЦЕЛЬ" : "TARGET");
                             drawValueTileShell(rightX, y2, tileW, tileH,
-                                               ru ? "Р”РћРџРЈРЎРљ" : "BAND");
+                                               ru ? "ДОПУСК" : "BAND");
                             drawValueTileShell(x2, y2, tileW, tileH,
-                                               ru ? "Р РђР‘РћРўРђ" : "RUN");
+                                               ru ? "РАБОТА" : "RUN");
                             drawValueTileShell(rightX, y3, tileW, tileH,
                                                ru ? "DELTA" : "DELTA");
                             drawValueTileShell(x2, y3, tileW, tileH,
-                                               ru ? "РќРђР“Р Р•Р’" : "HEATER");
+                                               ru ? "НАГРЕВ" : "HEATER");
                           }
 
                           char rowBuf[24];
@@ -4771,27 +4702,27 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                getDisplayPhaseName(state),
                                state.paused ? COLOR_WARNING : colorAccent());
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
-                                      ru ? "Р Р•Р–РРњ" : "MODE",
+                                      ru ? "РЕЖИМ" : "MODE",
                                       getDisplayModeName(state.mode),
                                       colorAccent());
                snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                         g_settings.fermentation.targetTempC);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
-                                      ru ? "Р¦Р•Р›Р¬" : "TARGET", rowBuf,
+                                      ru ? "ЦЕЛЬ" : "TARGET", rowBuf,
                                       COLOR_SUCCESS);
                snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
                         g_settings.fermentation.hysteresisC);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
-                                      ru ? "Р”РћРџРЈРЎРљ" : "BAND", rowBuf,
+                                      ru ? "ДОПУСК" : "BAND", rowBuf,
                                       COLOR_INFO);
                snprintf(rowBuf, sizeof(rowBuf), "%.0f h",
                         g_settings.fermentation.durationHours);
                drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
-                                      ru ? "РџР›РђРќ" : "PLAN", rowBuf,
+                                      ru ? "ПЛАН" : "PLAN", rowBuf,
                                       COLOR_PRIMARY);
                drawCompactKeyValueRow(
                    leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
-                   ru ? "РќРђР“Р Р•Р’" : "HEATER",
+                   ru ? "НАГРЕВ" : "HEATER",
                    g_settings.fermentation.useHeater ? "ON" : "OFF",
                    g_settings.fermentation.useHeater ? COLOR_SUCCESS
                                                      : colorMuted());
@@ -4800,7 +4731,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               header.procColor);
 
                snprintf(infoLine, sizeof(infoLine),
-                        ru ? "Р‘СЂРѕР¶РµРЅРёРµ: С†РµР»СЊ, РґРѕРїСѓСЃРє, РЅР°РіСЂРµРІ"
+                        ru ? "Брожение: цель, допуск, нагрев"
                            : "Fermentation: temp, band, delta and heater");
                snprintf(auxLine, sizeof(auxLine), "%s | Plan %.0f h",
                         g_settings.fermentation.useHeater ? "Heater ON"
@@ -4917,9 +4848,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             drawValueTileShell(x1, panelY, w2, hTile,
                                                msg(Msg::CUBE_TEMP));
                             drawValueTileShell(x2, panelY, w2, hTile,
-                                               ru ? "РњРћР©Рќ. %" : "POWER %");
+                                               ru ? "МОЩН. %" : "POWER %");
                             drawValueTileShell(x1, y1, w2, hTile,
-                                               ru ? "Р’Р Р•РњРЇ Р РђР‘РћРўР«"
+                                               ru ? "ВРЕМЯ РАБОТЫ"
                                                   : "RUN TIME");
                             drawValueTileShell(x2, y1, w2, hTile,
                                                msg(Msg::END_TEMP));
@@ -4947,7 +4878,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                           TileValueTone::Secondary);
 
                snprintf(infoLine, sizeof(infoLine),
-                        ru ? "Р”РёСЃС‚РёР».: С‚РѕР»СЊРєРѕ РєР»СЋС‡РµРІС‹Рµ РїР°СЂР°РјРµС‚СЂС‹"
+                        ru ? "Дистил.: только ключевые параметры"
                            : "Distillation: key parameters only");
                snprintf(auxLine, sizeof(auxLine), "V %.0f | P %.0f | Pump %.0f",
                         state.power.voltage, state.pressure.cube,
@@ -4971,10 +4902,10 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 msg(Msg::TOP_T),
                                 msg(Msg::REFLUX_T),
                                 msg(Msg::TSA_T),
-                                ru ? "Р”РђР’Р› РљРЈР‘Рђ" : "CUBE PRESS",
-                                ru ? "Р”РђР’Р› РђРўРњ" : "ATM PRESS",
-                                ru ? "РЎР•РўР¬" : "MAINS",
-                                hasWaterOut ? (ru ? "РћРҐР› Р’Р«РҐ" : "WATER OUT")
+                                ru ? "ДАВЛ КУБА" : "CUBE PRESS",
+                                ru ? "ДАВЛ АТМ" : "ATM PRESS",
+                                ru ? "СЕТЬ" : "MAINS",
+                                hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
                                             : msg(Msg::PUMP)};
                             for (uint8_t i = 0; i < 8; i++) {
                               const int16_t cx =
@@ -5005,11 +4936,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             }
                           }
 
-                          const char *rowLabels[5] = {ru ? "РЎРєРѕСЂРѕСЃС‚СЊ" : "Speed",
-                                                      ru ? "РњРѕС‰РЅРѕСЃС‚СЊ" : "Power",
-                                                      ru ? "Р“РѕР»РѕРІС‹" : "Heads",
-                                                      ru ? "РўРµР»Рѕ" : "Body",
-                                                      ru ? "РҐРІРѕСЃС‚С‹" : "Tails"};
+                          const char *rowLabels[5] = {ru ? "Скорость" : "Speed",
+                                                      ru ? "Мощность" : "Power",
+                                                      ru ? "Головы" : "Heads",
+                                                      ru ? "Тело" : "Body",
+                                                      ru ? "Хвосты" : "Tails"};
                           char rowVals[5][24];
                           snprintf(rowVals[0], sizeof(rowVals[0]), "%.0f ml/h",
                                    manualRectUi.speedMlH);
@@ -5107,11 +5038,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 
                           snprintf(
                               infoLine, sizeof(infoLine),
-                              ru ? "Р СѓС‡РЅ. СЂРµРєС‚.: РїСЂР°РІРєР° СЃР»РµРІР°, РґР°С‚С‡РёРєРё СЃРїСЂР°РІР°"
+                              ru ? "Ручн. рект.: правка слева, датчики справа"
                                  : "Manual rect: edit speed/power/fractions on "
                                    "left");
                           snprintf(auxLine, sizeof(auxLine),
-                                   ru ? "РљСѓР± %.0f | РђС‚Рј %.0f mm | V %.0f"
+                                   ru ? "Куб %.0f | Атм %.0f mm | V %.0f"
                                       : "Cube %.0f | Atm %.0f mm | V %.0f",
                                    state.pressure.cube,
                                    state.pressure.atmosphere * 0.750062f,
@@ -5248,7 +5179,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                           if (isMash) {
                             snprintf(
                                 infoLine, sizeof(infoLine),
-                                ru ? "Р—Р°С‚РёСЂРєР°: СЃР»РµРІР° С‚РµРјРїРµСЂР°С‚СѓСЂР°, СЃРїСЂР°РІР° РІСЂРµРјСЏ"
+                                ru ? "Затирка: слева температура, справа время"
                                    : "Mashing: tap left half for temp, right "
                                      "half for time");
                             snprintf(auxLine, sizeof(auxLine),
@@ -5260,7 +5191,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                           } else {
                             snprintf(
                                 infoLine, sizeof(infoLine),
-                                ru ? "РџР°СЃС‚РµСЂ.: СЃР»РµРІР° С‚РµРјРїРµСЂР°С‚СѓСЂР°, СЃРїСЂР°РІР° РІСЂРµРјСЏ"
+                                ru ? "Пастер.: слева температура, справа время"
                                    : "Hold: tap left half for temp, right half "
                                      "for time");
                             snprintf(auxLine, sizeof(auxLine),
@@ -5289,11 +5220,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             drawValueTileShell(x1, y2, tileW, tileH,
                                                msg(Msg::PUMP));
                             drawValueTileShell(x2, y2, tileW, tileH,
-                                               ru ? "Р”РђР’Р›Р•РќРР•" : "PRESSURE");
+                                               ru ? "ДАВЛЕНИЕ" : "PRESSURE");
                             drawValueTileShell(
                                 x3, y2, tileW, tileH,
-                                hasWaterOut ? (ru ? "РћРҐР› Р’Р«РҐ" : "WATER OUT")
-                                            : (ru ? "Р¦Р•Р›Р¬" : "TARGET"));
+                                hasWaterOut ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
+                                            : (ru ? "ЦЕЛЬ" : "TARGET"));
                           }
 
                           char v[6][20];
@@ -5334,12 +5265,12 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                      TileValueTone::Secondary);
 
                snprintf(infoLine, sizeof(infoLine),
-                        ru ? "РќР‘Рљ: РЅРёР· РєРѕР»РѕРЅРЅС‹ Рё РїРѕРґР°С‡Р°"
+                        ru ? "НБК: низ колонны и подача"
                            : "NBK: bottom temp and feed rate");
                snprintf(auxLine, sizeof(auxLine), "%s %.1fC | %s %.0f",
-                        ru ? "РџРѕСЂРѕРі" : "Threshold",
+                        ru ? "Порог" : "Threshold",
                         g_settings.nbk.columnBottomTempThresholdC,
-                        ru ? "Р¦РµР»СЊ" : "Target", g_settings.nbk.targetVolumeMl);
+                        ru ? "Цель" : "Target", g_settings.nbk.targetVolumeMl);
                         } else if (state.mode == Mode::FERMENTATION) {
                           const int16_t g = TFT_BUTTON_GAP;
                           const int16_t tileW = (ROOT_FRAME_W - g) / 2;
@@ -5352,11 +5283,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             drawValueTileShell(x1, panelY, tileW, tileH,
                                                msg(Msg::CUBE_TEMP));
                             drawValueTileShell(x2, panelY, tileW, tileH,
-                                               ru ? "Р¦Р•Р›Р¬" : "TARGET");
+                                               ru ? "ЦЕЛЬ" : "TARGET");
                             drawValueTileShell(x1, y2, tileW, tileH,
-                                               ru ? "Р”РћРџРЈРЎРљ" : "BAND");
+                                               ru ? "ДОПУСК" : "BAND");
                             drawValueTileShell(x2, y2, tileW, tileH,
-                                               ru ? "Р’Р Р•РњРЇ" : "RUN TIME");
+                                               ru ? "ВРЕМЯ" : "RUN TIME");
                           }
 
                           char v[4][20];
@@ -5387,13 +5318,13 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                           TileValueTone::Duration);
 
                snprintf(infoLine, sizeof(infoLine),
-                        ru ? "Р‘СЂРѕР¶РµРЅРёРµ: РґРµСЂР¶РёРј С‚РµРјРїРµСЂР°С‚СѓСЂСѓ"
+                        ru ? "Брожение: держим температуру"
                            : "Fermentation: keep temp in band");
                snprintf(auxLine, sizeof(auxLine), "%s | %s %.0f h",
                         g_settings.fermentation.useHeater
-                            ? (ru ? "РџРѕРґРѕРіСЂРµРІ РІРєР»СЋС‡РµРЅ" : "Heater enabled")
-                            : (ru ? "РџРѕРґРѕРіСЂРµРІ РІС‹РєР»СЋС‡РµРЅ" : "Heater disabled"),
-                        ru ? "РџР»Р°РЅ" : "Plan",
+                            ? (ru ? "Подогрев включен" : "Heater enabled")
+                            : (ru ? "Подогрев выключен" : "Heater disabled"),
+                        ru ? "План" : "Plan",
                         g_settings.fermentation.durationHours);
                         } else {
                           drawCard(ROOT_FRAME_X, panelY, ROOT_FRAME_W, panelH,
@@ -5433,12 +5364,12 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 snprintf(
                                     modeBuf, sizeof(modeBuf),
                                     (state.mode == Mode::IDLE)
-                                        ? (ru ? "Р РµР¶РёРј: %s" : "Mode: %s")
-                                        : (ru ? "РђРєС‚РёРІРµРЅ: %s" : "Active: %s"),
+                                        ? (ru ? "Режим: %s" : "Mode: %s")
+                                        : (ru ? "Активен: %s" : "Active: %s"),
                                     getDisplayModeName(state.mode));
                                 if (state.mode == Mode::IDLE) {
                                   snprintf(modeBuf, sizeof(modeBuf), "%s",
-                                           ru ? "Р“РћРўРћР’. Р’Р«Р‘Р•Р РРўР• Р Р•Р–РРњ"
+                                           ru ? "ГОТОВ. ВЫБЕРИТЕ РЕЖИМ"
                                               : "READY. SELECT A MODE");
                                 } else {
                                   snprintf(modeBuf, sizeof(modeBuf), "%s / %s",
@@ -5529,7 +5460,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                     tft.color565(72, 168, 152)),
                                     TFT_WHITE);
                                 drawButton(CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH,
-                                           ru ? "РЈР·Р»С‹" : "Devices",
+                                           ru ? "Узлы" : "Devices",
                                            manualAllowed ? COLOR_DARK_GREY
                                                          : dimmedButtonColor(),
                                            TFT_WHITE);
@@ -5545,7 +5476,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 drawTabs(UI_SETTINGS);
                                 const bool ru = (g_settings.language == 0);
 
-                                // --- РљРђР РўРћР§РљРђ 1: РћР±РѕСЂСѓРґРѕРІР°РЅРёРµ ---
+                                // --- КАРТОЧКА 1: Оборудование ---
                                 drawCard(SETTINGS_CARD_X1, SETTINGS_CARD_Y1,
                                          SETTINGS_CARD_W, SETTINGS_CARD_H,
                                          colorCard());
@@ -5575,7 +5506,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                       COLOR_INFO);
                                 }
 
-                                // --- РљРђР РўРћР§РљРђ 2: РџР°СЂР°РјРµС‚СЂС‹ СЂРµРєС‚РёС„РёРєР°С†РёРё ---
+                                // --- КАРТОЧКА 2: Параметры ректификации ---
                                 drawCard(SETTINGS_CARD_X2, SETTINGS_CARD_Y1,
                                          SETTINGS_CARD_W, SETTINGS_CARD_H,
                                          colorCard());
@@ -5607,7 +5538,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                       COLOR_INFO);
                                 }
 
-                                // --- РљРђР РўРћР§РљРђ 3: РџР°СЂР°РјРµС‚СЂС‹ РґРёСЃС‚РёР»Р»СЏС†РёРё ---
+                                // --- КАРТОЧКА 3: Параметры дистилляции ---
                                 drawCard(SETTINGS_CARD_X1, SETTINGS_CARD_Y2,
                                          SETTINGS_CARD_W, SETTINGS_CARD_H,
                                          colorCard());
@@ -5636,7 +5567,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                       COLOR_SUCCESS);
                                 }
 
-                                // --- РљРђР РўРћР§РљРђ 4: РљР°Р»РёР±СЂРѕРІРєР° ---
+                                // --- КАРТОЧКА 4: Калибровка ---
                                 drawCard(SETTINGS_CARD_X2, SETTINGS_CARD_Y2,
                                          SETTINGS_CARD_W, SETTINGS_CARD_H,
                                          colorCard());
@@ -5667,14 +5598,14 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                           : COLOR_WARNING);
                                 }
 
-                                // --- РЎРўР РћРљРђ Р‘Р«РЎРўР Р«РҐ РџР•Р Р•РљР›Р®Р§РђРўР•Р›Р•Р™ ---
+                                // --- СТРОКА БЫСТРЫХ ПЕРЕКЛЮЧАТЕЛЕЙ ---
                                 {
                                   const bool dark = (g_settings.theme == 1);
                                   char themeLabel[24];
                                   snprintf(themeLabel, sizeof(themeLabel),
                                            "%s:%s", msg(Msg::THEME),
-                                           dark ? (ru ? "РўРјРЅ" : "Drk")
-                                                : (ru ? "РЎРІС‚" : "Lgt"));
+                                           dark ? (ru ? "Тмн" : "Drk")
+                                                : (ru ? "Свт" : "Lgt"));
                                   drawButton(SETTINGS_TOGGLE_X1,
                                              SETTINGS_TOGGLE_Y,
                                              SETTINGS_TOGGLE_W,
@@ -5688,8 +5619,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   snprintf(soundLabel, sizeof(soundLabel),
                                            "%s:%s", msg(Msg::SOUND),
                                            g_settings.soundEnabled
-                                               ? (ru ? "Р’РљР›" : "ON")
-                                               : (ru ? "Р’Р«РљР›" : "OFF"));
+                                               ? (ru ? "ВКЛ" : "ON")
+                                               : (ru ? "ВЫКЛ" : "OFF"));
                                   drawButton(
                                       SETTINGS_TOGGLE_X2, SETTINGS_TOGGLE_Y,
                                       SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H,
@@ -5882,7 +5813,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                               "C", colorMuted());
 
                                 snprintf(tileBuf, sizeof(tileBuf),
-                                         ru ? "РђРўРњ %.0f hPa | РєРѕРјРї."
+                                         ru ? "АТМ %.0f hPa | комп."
                                             : "ATM %.0f hPa | comp",
                                          atmHpaComp);
                                 drawFooterHint(tileBuf, COLOR_INFO);
@@ -5970,8 +5901,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                       tftText(TftTextId::ManualLockMessage));
                                   snprintf(
                                       footer, sizeof(footer),
-                                      ru ? "РўРµРєСѓС‰РёР№ СЂРµР¶РёРј: %s\nР”РѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ "
-                                           "РІ РѕР¶РёРґР°РЅРёРё Рё СЂСѓС‡РЅРѕРј СЂРµР¶РёРјРµ"
+                                      ru ? "Текущий режим: %s\nДоступно только "
+                                           "в ожидании и ручном режиме"
                                          : "Current mode: %s\nAvailable only "
                                            "in idle and manual mode",
                                       getDisplayModeName(state.mode));
@@ -6153,7 +6084,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 if (full) {
                                   tft.fillScreen(colorBg());
                                   drawHeader(g_settings.language == 0
-                                                 ? "РўР•РњРџР•Р РђРўРЈР Р«"
+                                                 ? "ТЕМПЕРАТУРЫ"
                                                  : "TEMPERATURES",
                                              true);
                                   drawTabs(ui.rootScreen);
@@ -6171,9 +6102,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                     msg(Msg::TOP_T),
                                     msg(Msg::REFLUX_T),
                                     msg(Msg::TSA_T),
-                                    g_settings.language == 0 ? "РћРҐР› Р’РҐРћР”"
+                                    g_settings.language == 0 ? "ОХЛ ВХОД"
                                                              : "WATER IN",
-                                    g_settings.language == 0 ? "РћРҐР› Р’Р«РҐРћР”"
+                                    g_settings.language == 0 ? "ОХЛ ВЫХОД"
                                                              : "WATER OUT"};
 
                                 float values[TEMP_COUNT] = {
@@ -6289,7 +6220,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   drawDisplayString(buf, TFT_WIDTH / 2, infoY + 9);
                                   tft.setTextColor(colorMuted());
                                   drawDisplayString(
-                                      ru ? "РљРѕСЂРѕС‚РєРёРµ РЅР°Р¶Р°С‚РёСЏ РїРµСЂРµРґ Р·Р°РјРµСЂРѕРј"
+                                      ru ? "Короткие нажатия перед замером"
                                          : "Short taps before sampling",
                                       TFT_WIDTH / 2, infoY + 28);
                                 } else {
@@ -6300,8 +6231,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   drawDisplayString(buf, TFT_WIDTH / 2, infoY + 9);
                                   tft.setTextColor(colorMuted());
                                   drawDisplayString(
-                                      ru ? "РћС‚РїСѓСЃРєР°Р№С‚Рµ РїР°Р»РµС† РїРѕСЃР»Рµ РєР°Р¶РґРѕРіРѕ "
-                                           "РєР°СЃР°РЅРёСЏ"
+                                      ru ? "Отпускайте палец после каждого "
+                                           "касания"
                                          : "Release finger after each target",
                                       TFT_WIDTH / 2, infoY + 28);
                                 }
@@ -6324,7 +6255,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   tft.setTextSize(1);
                                   tft.setTextColor(colorMuted());
                                   drawDisplayString(
-                                      ru ? "РџРѕРґРіРѕС‚РѕРІРєР° С‚Р°С‡-РєРѕРЅС‚СЂРѕР»Р»РµСЂР°"
+                                      ru ? "Подготовка тач-контроллера"
                                          : "Preparing touch controller",
                                       TFT_WIDTH / 2, targetY + targetH - 34);
                                   tft.setTextDatum(top_left);
@@ -6348,12 +6279,12 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   tft.setTextSize(1);
                                   tft.setTextDatum(middle_center);
                                   drawDisplayString(
-                                      ru ? "РљРѕСЃРЅРёС‚РµСЃСЊ РїСЂСЏРјРѕСѓРіРѕР»СЊРЅРѕР№ РјРёС€РµРЅРё"
+                                      ru ? "Коснитесь прямоугольной мишени"
                                          : "Touch the rectangular target",
                                       TFT_WIDTH / 2,
                                       targetY + (targetH / 2) - 8);
                                   drawDisplayString(
-                                      ru ? "Р—Р°РјРµСЂ Р±РµСЂРµС‚СЃСЏ РїРѕ СЃСЂРµРґРЅРµРјСѓ СѓРґРµСЂР¶Р°РЅРёСЋ"
+                                      ru ? "Замер берется по среднему удержанию"
                                          : "Sampling uses averaged hold data",
                                       TFT_WIDTH / 2,
                                       targetY + (targetH / 2) + 12);
@@ -6392,6 +6323,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 tft.setSwapBytes(true);
                                 tft.setTextScroll(false);
                                 tft.setTextSize(1);
+                                tft.setAttribute(lgfx::v1::attribute::UTF8_SWITCH, true);
                                 tft.setFont(&fonts::efontJA_16);
 
                                 // Re-init dedicated touch SPI to recover after
@@ -6466,13 +6398,13 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 LOG_I("Display: Initializing...");
 
 #if TFT_ENABLED
-                                // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ TFT
+                                // Инициализация TFT
                                 LOG_I("Display: Init TFT (LovyanGFX)...");
 
                                 if (initDisplayHardware(true)) {
                                   LOG_I("Display: TFT + Touch initialized");
 
-                                  // РџСЂРѕС„РёР»СЊ Р·Р°С‚РёСЂРєРё РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
+                                  // Профиль затирки по умолчанию
                                   memset(&mashProfileDefault, 0,
                                          sizeof(mashProfileDefault));
                                   strncpy(mashProfileDefault.name,
@@ -6529,8 +6461,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   holdStepsDefault[0].duration = 60;
                                   holdStepsCount = 1;
 
-                                  // Р—Р°РіСЂСѓР¶Р°РµРј СѓСЃС‚Р°РІРєРё РґРёСЃС‚РёР»Р»СЏС†РёРё РёР·
-                                  // NVS-РїСЂРѕС„РёР»СЏ РЅР°СЃС‚СЂРѕРµРє.
+                                  // Загружаем уставки дистилляции из
+                                  // NVS-профиля настроек.
                                   distUi.speedMlH =
                                       g_settings.distillationUi.speedMlH;
                                   distUi.headsVolumeMl =
@@ -6579,10 +6511,10 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   }
                                   lastSparklineUpdateMs = now;
 
-                                  // РџСЂРёРЅСѓРґРёС‚РµР»СЊРЅРѕ РёРЅРІР°Р»РёРґРёСЂСѓРµРј РєСЌС€ РёРЅС‚РµСЂС„РµР№СЃР°,
-                                  // С‡С‚РѕР±С‹ РіСЂР°С„РёРєРё РѕР±РЅРѕРІР»СЏР»РёСЃСЊ РєР°Р¶РґС‹Рµ 5 СЃРµРєСѓРЅРґ,
-                                  // РґР°Р¶Рµ РµСЃР»Рё С‚РµРјРїРµСЂР°С‚СѓСЂР° (С†РёС„СЂС‹) Р°Р±СЃРѕР»СЋС‚РЅРѕ
-                                  // СЃС‚Р°Р±РёР»СЊРЅР°.
+                                  // Принудительно инвалидируем кэш интерфейса,
+                                  // чтобы графики обновлялись каждые 5 секунд,
+                                  // даже если температура (цифры) абсолютно
+                                  // стабильна.
                                   g_dashboardCache.cube[0] = '\0';
                                   g_dashboardCache.top[0] = '\0';
                                   memset(g_modeTileCache, 0,
@@ -6773,7 +6705,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 
                                 if (ev.tapped) {
                                   bool handled = false;
-                                  // РџСЂРѕР±СѓРµРј РїСЂСЏРјС‹Рµ РєРѕРѕСЂРґРёРЅР°С‚С‹
+                                  // Пробуем прямые координаты
                                   handled =
                                       handleNavigationTap(ev.x, ev.y, state);
                                   if (!handled) {
@@ -7039,9 +6971,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   const bool ru = (g_settings.language == 0);
                                   tft.startWrite();
                                   drawFullscreenOverlay(
-                                      ru ? "РћРЁРР‘РљРђ" : "ERROR", error,
+                                      ru ? "ОШИБКА" : "ERROR", error,
                                       COLOR_DANGER,
-                                      ru ? "РџСЂРѕРІРµСЂСЊС‚Рµ РїРёС‚Р°РЅРёРµ, РґР°С‚С‡РёРєРё Рё Р»РѕРіРё"
+                                      ru ? "Проверьте питание, датчики и логи"
                                          : "Check power, sensors and logs",
                                       1);
                                   tft.endWrite();

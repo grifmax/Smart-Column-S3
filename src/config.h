@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Smart-Column S3 - Конфигурация системы
  */
 
@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.2.24"
+#define FIRMWARE_VERSION "2.2.25"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
