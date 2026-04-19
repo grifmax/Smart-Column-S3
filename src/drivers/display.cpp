@@ -1652,8 +1652,11 @@ static void utf8ToCp1251(const char *src, char *dst, size_t dstSize) {
           static_cast<uint16_t>(p[2] & 0x3Fu);
       p += 3;
     } else {
-      codepoint = '?';
-      p++;
+      // Some strings in the project already arrive as single-byte CP1251
+      // literals/escapes. Pass those bytes through unchanged instead of
+      // treating them as broken UTF-8 and replacing with '?'.
+      dst[di++] = static_cast<char>(*p++);
+      continue;
     }
     dst[di++] = static_cast<char>(unicodeToCp1251(codepoint));
   }
