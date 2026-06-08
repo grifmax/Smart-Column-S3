@@ -23,6 +23,193 @@ function boolLabel(value, goodText, badText, invert = false) {
     };
 }
 
+function setGuidance(title, detail, tone = 'muted') {
+    const root = document.getElementById('operator-guidance');
+    const titleEl = document.getElementById('operator-guidance-title');
+    const textEl = document.getElementById('operator-guidance-text');
+    if (!root || !titleEl || !textEl) return;
+    root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    root.classList.add(`is-${tone}`);
+    titleEl.textContent = title;
+    textEl.textContent = detail;
+}
+
+function getReasonCodeLabel(code) {
+    const normalized = String(code || 'RC_NONE');
+    const labels = {
+        RC_NONE: 'Нет',
+        RC_MODE_START_REQUEST: 'Запуск режима',
+        RC_MODE_STOP_REQUEST: 'Останов режима',
+        RC_PRECHECK_OK: 'Проверки пройдены',
+        RC_PRECHECK_FAIL_SENSOR: 'Проблема с датчиками',
+        RC_PRECHECK_FAIL_SAFETY_LATCH: 'Активен safety latch',
+        RC_HEATING_COMPLETE: 'Разгон завершён',
+        RC_STABILIZATION_TIMER_OK: 'Стабилизация по таймеру',
+        RC_STABILITY_WINDOW_REACHED: 'Окно стабильности достигнуто',
+        RC_HEADS_VOLUME_REACHED: 'Головы по объёму завершены',
+        RC_HEADS_SCORE_REACHED: 'Головы завершены по score',
+        RC_POST_HEADS_STABILIZATION_COMPLETE: 'Постстабилизация завершена',
+        RC_PURGE_COMPLETE: 'Продувка завершена',
+        RC_BODY_TARGET_VOLUME_REACHED: 'Тело по объёму завершено',
+        RC_BODY_END_DETECTED: 'Обнаружен конец тела',
+        RC_TAILS_TARGET_REACHED: 'Хвосты завершены',
+        RC_FINISH_COOLDOWN_COMPLETE: 'Финишное охлаждение завершено',
+        RC_DISTILLATION_HEADS_OPTIONAL_SKIPPED: 'Головы пропущены',
+        RC_DISTILLATION_END_TEMP_REACHED: 'Достигнута стоп-температура',
+        RC_DISTILLATION_TARGET_VOLUME_REACHED: 'Целевой объём достигнут',
+        RC_NBK_STEAM_READY: 'Пар готов',
+        RC_NBK_STABILIZATION_COMPLETE: 'НБК стабилизирована',
+        RC_NBK_FEED_ENABLED: 'Подача разрешена',
+        RC_NBK_FINISH_LIKELY: 'Вероятен финиш НБК',
+        RC_TEMP_STEP_REACHED: 'Целевая температура достигнута',
+        RC_TEMP_STEP_HOLD_COMPLETE: 'Выдержка завершена',
+        RC_TEMP_STEP_TIMEOUT: 'Таймаут температурного шага',
+        RC_FERM_TARGET_REACHED: 'Цель брожения достигнута',
+        RC_SAFETY_LIMIT_POWER: 'Ограничение мощности',
+        RC_SAFETY_LIMIT_TAKEOFF: 'Ограничение отбора',
+        RC_SAFETY_PHASE_BLOCKED: 'Переход фазы заблокирован',
+        RC_SAFETY_RECOVERY_ENTERED: 'Вход в recovery',
+        RC_SAFETY_RECOVERY_EXITED: 'Выход из recovery',
+        RC_SAFETY_TRIP_PRESSURE: 'Авария по давлению',
+        RC_SAFETY_TRIP_SENSOR: 'Авария по датчикам',
+        RC_SAFETY_TRIP_OVERHEAT: 'Авария по перегреву',
+        RC_SAFETY_TRIP_POWER: 'Авария по питанию',
+        RC_SAFETY_TRIP_GENERIC: 'Общая авария safety',
+        RC_SAFETY_ACKNOWLEDGED: 'Авария подтверждена',
+        RC_SAFETY_RESET_COMPLETED: 'Safety reset выполнен',
+        RC_OPERATOR_SERVICE_ACTION: 'Сервисное действие оператора',
+        RC_MANUAL_OPERATOR_SWITCH: 'Ручное переключение',
+        RC_MANUAL_OPERATOR_STOP: 'Ручной останов',
+        RC_PHASE_RECOVERY_APPLIED: 'Применено восстановление фазы',
+        RC_PHASE_TRANSITION_INFERRED: 'Переход фазы определён автоматически',
+        RC_UNSPECIFIED: 'Без уточнения'
+    };
+    return labels[normalized] || normalized.replace(/^RC_/, '');
+}
+
+function buildGuidance(state, indicators, activeLimits) {
+    const mode = resolveMode(state.mode, state.modeStr);
+    const lifecycle = String(state?.v2?.lifecycle || 'idle');
+    const operatorMessage = String(state?.v2?.operatorMessage || '').trim();
+    const lastReasonCode = String(state?.v2?.lastReasonCode || 'RC_NONE');
+    const stability = toFinite(indicators.stabilityIndex, 0);
+    const floodRisk = toFinite(indicators.floodRisk, 0);
+    const coolingMargin = toFinite(indicators.coolingMarginC, 0);
+    const bodyScore = toFinite(indicators.bodyEndScore, 0);
+    const headsScore = toFinite(indicators.headsCompletionScore, 0);
+    const isColumnMode = mode === MODE_RECT || mode === MODE_MANUAL;
+
+    if (!state?.v2?.available) {
+        return {
+            tone: 'muted',
+            title: 'Ожидание indicators v2',
+            detail: 'Ждём первый полный статус автоматики, чтобы показать осмысленную подсказку.'
+        };
+    }
+
+    if (state?.currentAlarm?.active || state?.v2?.safetyLatched || lifecycle === 'faulted') {
+        return {
+            tone: 'danger',
+            title: 'Safety удерживает процесс',
+            detail: operatorMessage || `Последняя причина: ${getReasonCodeLabel(lastReasonCode)}. Проверьте alarm, ограничения и состояние датчиков.`
+        };
+    }
+
+    if (!indicators.sensorFreshnessOk) {
+        return {
+            tone: 'danger',
+            title: 'Данные датчиков устарели',
+            detail: 'Автоматика снижает доверие к process indicators. Проверьте соединение датчиков и обновление телеметрии.'
+        };
+    }
+
+    if (indicators.recoveryActive) {
+        return {
+            tone: 'warn',
+            title: 'Идёт recovery',
+            detail: operatorMessage || 'Система уже ограничивала процесс и сейчас ждёт повторной стабилизации перед нормальной работой.'
+        };
+    }
+
+    if (isColumnMode && floodRisk >= 0.65) {
+        return {
+            tone: 'danger',
+            title: 'Высокий риск захлёба',
+            detail: 'Не повышайте мощность и не ускоряйте отбор. Проверьте охлаждение, давление и загрузку колонны.'
+        };
+    }
+
+    if (isColumnMode && coolingMargin <= 0) {
+        return {
+            tone: 'danger',
+            title: 'Охлаждение на пределе',
+            detail: 'Cooling margin исчерпан. Нужна вода или снижение нагрузки, иначе процесс станет нестабильным.'
+        };
+    }
+
+    if (Boolean(activeLimits.takeoffBlocked) || !indicators.takeoffAllowed) {
+        return {
+            tone: 'warn',
+            title: 'Отбор пока заблокирован',
+            detail: operatorMessage || 'Ждём безопасное окно по stability, cooling margin и состоянию датчиков.'
+        };
+    }
+
+    if (isColumnMode && coolingMargin < 5) {
+        return {
+            tone: 'warn',
+            title: 'Низкий запас охлаждения',
+            detail: `Сейчас запас ${coolingMargin.toFixed(1)}°C. Лучше не форсировать процесс, пока охлаждение не выровняется.`
+        };
+    }
+
+    if (isColumnMode && floodRisk >= 0.35) {
+        return {
+            tone: 'warn',
+            title: 'Риск захлёба растёт',
+            detail: 'Колонна уже нагружена. Следите за верхом колонны, давлением и скоростью отбора.'
+        };
+    }
+
+    if (mode === MODE_RECT && bodyScore >= 0.8) {
+        return {
+            tone: 'warn',
+            title: 'Вероятен конец тела',
+            detail: 'Body End Score высокий. Пора внимательно смотреть на качество продукта и готовить переход дальше по профилю.'
+        };
+    }
+
+    if (mode === MODE_RECT && headsScore >= 0.8) {
+        return {
+            tone: 'good',
+            title: 'Головы почти завершены',
+            detail: 'Heads Completion Score высокий. Можно готовиться к переходу на тело по правилам профиля.'
+        };
+    }
+
+    if (isColumnMode && stability < 0.45) {
+        return {
+            tone: 'warn',
+            title: 'Колонна стабилизируется',
+            detail: 'Пока нет уверенного стабильного окна. Лучше дождаться ровного поведения температуры верха и давления.'
+        };
+    }
+
+    if (isColumnMode && stability >= 0.75 && indicators.takeoffAllowed) {
+        return {
+            tone: 'good',
+            title: 'Процесс устойчив',
+            detail: 'Стабильность высокая, отбор разрешён, активных ограничений safety сейчас нет.'
+        };
+    }
+
+    return {
+        tone: 'muted',
+        title: 'Процесс под наблюдением',
+        detail: operatorMessage || `Последняя причина: ${getReasonCodeLabel(lastReasonCode)}. Критичных ограничений сейчас не видно.`
+    };
+}
+
 function renderProcessIndicatorsCard() {
     const s = runtimeMonitorState;
     const indicators = s?.v2?.indicators || {};
@@ -46,6 +233,11 @@ function renderProcessIndicatorsCard() {
         'indicator-lifecycle',
         lifecycle,
         lifecycle === 'running' ? 'good' : (lifecycle === 'faulted' ? 'danger' : 'muted')
+    );
+    setIndicatorValue(
+        'indicator-last-reason',
+        getReasonCodeLabel(lastReasonCode),
+        lastReasonCode === 'RC_NONE' ? 'muted' : 'warn'
     );
 
     const takeoffState = boolLabel(indicators.takeoffAllowed, 'Разрешён', 'Заблокирован');
@@ -99,6 +291,8 @@ function renderProcessIndicatorsCard() {
 
     const recovery = boolLabel(indicators.recoveryActive, 'Активен', 'Нет');
     setIndicatorValue('indicator-recovery', recovery.text, recovery.tone);
+    const guidance = buildGuidance(s, indicators, activeLimits);
+    setGuidance(guidance.title, guidance.detail, guidance.tone);
 }
 
 export function renderRuntimeBars(items) {

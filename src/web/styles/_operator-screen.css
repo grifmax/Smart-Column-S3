@@ -127,6 +127,101 @@
     font-weight: 800;
 }
 
+.operator-guidance {
+    border-radius: 12px;
+    border: 1px solid var(--landing-border);
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.04), rgba(255, 255, 255, 0.72));
+    padding: 12px 14px;
+    margin-bottom: 10px;
+}
+
+[data-theme="dark"] .operator-guidance {
+    background: linear-gradient(135deg, rgba(148, 163, 184, 0.08), rgba(15, 23, 42, 0.42));
+}
+
+.operator-guidance-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.operator-guidance-kicker {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--landing-muted);
+    font-weight: 800;
+}
+
+.operator-guidance-head strong {
+    font-family: 'Exo 2', 'Manrope', sans-serif;
+    font-size: 1.08rem;
+    color: var(--landing-ink);
+}
+
+.operator-guidance-text {
+    margin-top: 6px;
+    color: var(--landing-muted);
+    line-height: 1.45;
+    font-size: 0.92rem;
+}
+
+.operator-guidance.is-good {
+    border-color: rgba(34, 197, 94, 0.28);
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(255, 255, 255, 0.82));
+}
+
+.operator-guidance.is-good .operator-guidance-head strong {
+    color: #166534;
+}
+
+.operator-guidance.is-warn {
+    border-color: rgba(245, 158, 11, 0.3);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(255, 255, 255, 0.84));
+}
+
+.operator-guidance.is-warn .operator-guidance-head strong {
+    color: #b45309;
+}
+
+.operator-guidance.is-danger {
+    border-color: rgba(239, 68, 68, 0.28);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(255, 255, 255, 0.84));
+}
+
+.operator-guidance.is-danger .operator-guidance-head strong {
+    color: #b91c1c;
+}
+
+.operator-guidance.is-muted .operator-guidance-head strong {
+    color: var(--landing-ink);
+}
+
+[data-theme="dark"] .operator-guidance.is-good {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.16), rgba(15, 23, 42, 0.56));
+}
+
+[data-theme="dark"] .operator-guidance.is-good .operator-guidance-head strong {
+    color: #86efac;
+}
+
+[data-theme="dark"] .operator-guidance.is-warn {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(15, 23, 42, 0.56));
+}
+
+[data-theme="dark"] .operator-guidance.is-warn .operator-guidance-head strong {
+    color: #fcd34d;
+}
+
+[data-theme="dark"] .operator-guidance.is-danger {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(15, 23, 42, 0.56));
+}
+
+[data-theme="dark"] .operator-guidance.is-danger .operator-guidance-head strong {
+    color: #fca5a5;
+}
+
 .operator-card-head {
     display: flex;
     align-items: flex-start;
