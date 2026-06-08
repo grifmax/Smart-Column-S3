@@ -87,6 +87,29 @@ function getReasonCodeLabel(code) {
     return labels[normalized] || normalized.replace(/^RC_/, '');
 }
 
+function getLifecycleLabel(value) {
+    const normalized = String(value || 'idle').toLowerCase();
+    const labels = {
+        idle: 'Ожидание',
+        starting: 'Запуск',
+        running: 'Работа',
+        paused: 'Пауза',
+        stopping: 'Останов',
+        completed: 'Завершён',
+        faulted: 'Авария'
+    };
+    return labels[normalized] || value;
+}
+
+function getActiveLimitsLabel(indicators, activeLimits) {
+    const labels = [];
+    if (Boolean(indicators.powerLimited) || Boolean(activeLimits.powerCapped)) labels.push('мощность');
+    if (Boolean(activeLimits.takeoffBlocked)) labels.push('отбор');
+    if (Boolean(activeLimits.phaseAdvanceBlocked)) labels.push('фаза');
+    if (Boolean(activeLimits.pumpCapped)) labels.push('насос');
+    return labels.length ? labels.join(', ') : 'нет';
+}
+
 function buildGuidance(state, indicators, activeLimits) {
     const mode = resolveMode(state.mode, state.modeStr);
     const lifecycle = String(state?.v2?.lifecycle || 'idle');
@@ -231,7 +254,7 @@ function renderProcessIndicatorsCard() {
     );
     setIndicatorValue(
         'indicator-lifecycle',
-        lifecycle,
+        getLifecycleLabel(lifecycle),
         lifecycle === 'running' ? 'good' : (lifecycle === 'faulted' ? 'danger' : 'muted')
     );
     setIndicatorValue(
@@ -286,11 +309,17 @@ function renderProcessIndicatorsCard() {
         Boolean(indicators.powerLimited) ||
         Boolean(activeLimits.powerCapped) ||
         Boolean(activeLimits.takeoffBlocked) ||
-        Boolean(activeLimits.phaseAdvanceBlocked);
+        Boolean(activeLimits.phaseAdvanceBlocked) ||
+        Boolean(activeLimits.pumpCapped);
     setIndicatorValue('indicator-power-limit', hasLimit ? 'Есть' : 'Нет', hasLimit ? 'warn' : 'good');
 
     const recovery = boolLabel(indicators.recoveryActive, 'Активен', 'Нет');
     setIndicatorValue('indicator-recovery', recovery.text, recovery.tone);
+    setIndicatorValue(
+        'indicator-power-limit',
+        getActiveLimitsLabel(indicators, activeLimits),
+        hasLimit ? 'warn' : 'good'
+    );
     const guidance = buildGuidance(s, indicators, activeLimits);
     setGuidance(guidance.title, guidance.detail, guidance.tone);
 }
