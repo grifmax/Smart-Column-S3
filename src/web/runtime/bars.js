@@ -3,6 +3,104 @@ import { clampPercent, runtimeEscapeHtml, toFinite, formatDurationSafe } from '.
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { estimateRectTargets } from '../runtime/state.js';
 
+function setIndicatorValue(id, text, tone = 'muted') {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    el.classList.add(`is-${tone}`);
+}
+
+function formatIndicatorPercent(value) {
+    return `${clampPercent(toFinite(value, 0) * 100).toFixed(0)}%`;
+}
+
+function boolLabel(value, goodText, badText, invert = false) {
+    const ok = invert ? !value : !!value;
+    return {
+        text: ok ? goodText : badText,
+        tone: ok ? 'good' : 'danger'
+    };
+}
+
+function renderProcessIndicatorsCard() {
+    const s = runtimeMonitorState;
+    const indicators = s?.v2?.indicators || {};
+    const activeLimits = s?.v2?.activeLimits || {};
+
+    const lifecycle = String(s?.v2?.lifecycle || 'idle');
+    const lastReasonCode = String(s?.v2?.lastReasonCode || 'RC_NONE');
+    const coolingMargin = toFinite(indicators.coolingMarginC, 0);
+    const stability = toFinite(indicators.stabilityIndex, 0);
+    const floodRisk = toFinite(indicators.floodRisk, 0);
+    const processHealth = toFinite(indicators.processHealth, 0);
+    const headsScore = toFinite(indicators.headsCompletionScore, 0);
+    const bodyScore = toFinite(indicators.bodyEndScore, 0);
+
+    setIndicatorValue(
+        'indicator-last-reason',
+        lastReasonCode === 'RC_NONE' ? 'Нет' : lastReasonCode.replace(/^RC_/, ''),
+        lastReasonCode === 'RC_NONE' ? 'muted' : 'warn'
+    );
+    setIndicatorValue(
+        'indicator-lifecycle',
+        lifecycle,
+        lifecycle === 'running' ? 'good' : (lifecycle === 'faulted' ? 'danger' : 'muted')
+    );
+
+    const takeoffState = boolLabel(indicators.takeoffAllowed, 'Разрешён', 'Заблокирован');
+    setIndicatorValue('indicator-takeoff', takeoffState.text, takeoffState.tone);
+
+    let coolingTone = 'good';
+    if (coolingMargin <= 0) coolingTone = 'danger';
+    else if (coolingMargin < 5) coolingTone = 'warn';
+    setIndicatorValue('indicator-cooling-status', `${coolingMargin.toFixed(1)} °C`, coolingTone);
+
+    setIndicatorValue(
+        'indicator-stability',
+        formatIndicatorPercent(stability),
+        stability >= 0.75 ? 'good' : (stability >= 0.45 ? 'warn' : 'danger')
+    );
+    setIndicatorValue(
+        'indicator-flood-risk',
+        formatIndicatorPercent(floodRisk),
+        floodRisk < 0.35 ? 'good' : (floodRisk < 0.65 ? 'warn' : 'danger')
+    );
+    setIndicatorValue('indicator-cooling-margin', `${coolingMargin.toFixed(1)}°C`, coolingTone);
+    setIndicatorValue(
+        'indicator-process-health',
+        formatIndicatorPercent(processHealth),
+        processHealth >= 0.85 ? 'good' : (processHealth >= 0.65 ? 'warn' : 'danger')
+    );
+
+    const freshness = boolLabel(indicators.sensorFreshnessOk, 'OK', 'Просрочены');
+    setIndicatorValue('indicator-sensor-freshness', freshness.text, freshness.tone);
+
+    const pressureStable = boolLabel(indicators.pressureStable, 'Стабильно', 'Дрейф');
+    setIndicatorValue('indicator-pressure-stable', pressureStable.text, pressureStable.tone);
+
+    setIndicatorValue(
+        'indicator-heads-score',
+        formatIndicatorPercent(headsScore),
+        headsScore >= 0.8 ? 'good' : (headsScore >= 0.5 ? 'warn' : 'muted')
+    );
+    setIndicatorValue(
+        'indicator-body-score',
+        formatIndicatorPercent(bodyScore),
+        bodyScore >= 0.8 ? 'danger' : (bodyScore >= 0.55 ? 'warn' : 'good')
+    );
+
+    const hasLimit =
+        Boolean(indicators.powerLimited) ||
+        Boolean(activeLimits.powerCapped) ||
+        Boolean(activeLimits.takeoffBlocked) ||
+        Boolean(activeLimits.phaseAdvanceBlocked);
+    setIndicatorValue('indicator-power-limit', hasLimit ? 'Есть' : 'Нет', hasLimit ? 'warn' : 'good');
+
+    const recovery = boolLabel(indicators.recoveryActive, 'Активен', 'Нет');
+    setIndicatorValue('indicator-recovery', recovery.text, recovery.tone);
+}
+
 export function renderRuntimeBars(items) {
     const barsEl = document.getElementById('mode-runtime-bars');
     if (!barsEl) return;
@@ -213,6 +311,7 @@ export function renderModeRuntimeCard() {
 
     renderRuntimeBars(items);
     updateManualTiles();
+    renderProcessIndicatorsCard();
     if (manualEl) {
         manualEl.style.display = mode === MODE_MANUAL ? 'grid' : 'none';
     }

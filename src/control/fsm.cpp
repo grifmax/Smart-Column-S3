@@ -170,7 +170,6 @@ void update(SystemState& state, const Settings& settings) {
         }
     }
 
-    ControlV2::updateRuntime(state, settings);
 }
 
 void startMode(SystemState& state, const Settings& settings, Mode mode) {

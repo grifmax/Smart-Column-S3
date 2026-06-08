@@ -415,6 +415,22 @@
     color: var(--landing-ink);
 }
 
+.operator-indicator-value.is-good {
+    color: #16a34a;
+}
+
+.operator-indicator-value.is-warn {
+    color: #d97706;
+}
+
+.operator-indicator-value.is-danger {
+    color: #dc2626;
+}
+
+.operator-indicator-value.is-muted {
+    color: var(--landing-muted);
+}
+
 .operator-abv-value {
     display: inline-flex;
     align-items: center;

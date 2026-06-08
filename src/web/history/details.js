@@ -442,6 +442,37 @@ function appendNotesSection(container, notes) {
 
 }
 
+function appendIndicatorSummarySection(container, process) {
+
+    const indicators = process?.metrics?.indicators;
+
+    if (!indicators) {
+
+        return;
+
+    }
+
+    const samples = Number(indicators.samples || 0);
+
+    if (samples <= 0) {
+
+        return;
+
+    }
+
+    const share = (value) => `${((Number(value || 0) / samples) * 100).toFixed(0)}%`;
+
+    appendInfoItem(container, 'Здоровье процесса', `${(Number(indicators.processHealth?.avg || 0) * 100).toFixed(0)}%`);
+    appendInfoItem(container, 'Мин. здоровье', `${(Number(indicators.processHealth?.min || 0) * 100).toFixed(0)}%`);
+    appendInfoItem(container, 'Стабильность', `${(Number(indicators.stabilityIndexAvg || 0) * 100).toFixed(0)}%`);
+    appendInfoItem(container, 'Риск захлёба', `${(Number(indicators.floodRisk?.avg || 0) * 100).toFixed(0)}% / max ${(Number(indicators.floodRisk?.max || 0) * 100).toFixed(0)}%`);
+    appendInfoItem(container, 'Запас охлаждения', `${Number(indicators.coolingMarginC?.avg || 0).toFixed(1)}°C / min ${Number(indicators.coolingMarginC?.min || 0).toFixed(1)}°C`);
+    appendInfoItem(container, 'Отбор разрешён', share(indicators.takeoffAllowedSamples));
+    appendInfoItem(container, 'Свежесть датчиков', share(indicators.sensorFreshnessOkSamples));
+    appendInfoItem(container, 'Финальные score', `heads ${(Number(indicators.headsCompletionScoreFinal || 0) * 100).toFixed(0)}%, body ${(Number(indicators.bodyEndScoreFinal || 0) * 100).toFixed(0)}%`);
+
+}
+
 
 
 export function showHistoryDetailsModal(process) {
@@ -578,6 +609,7 @@ export function showHistoryDetailsModal(process) {
     appendInfoItem(resultsGrid, 'Тело', `${process.results.bodyCollected || 0} мл`);
     appendInfoItem(resultsGrid, 'Хвосты', `${process.results.tailsCollected || 0} мл`);
     appendInfoItem(resultsGrid, 'Всего собрано', `${process.results.totalCollected || 0} мл`);
+    appendIndicatorSummarySection(resultsGrid, process);
     appendSafetyTimelineSection(resultsGrid, process);
     appendEventSection(resultsGrid, 'Ошибки и аварии', process.results?.errors || [], 'error');
     appendEventSection(resultsGrid, 'Предупреждения', process.results?.warnings || [], 'warning');

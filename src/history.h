@@ -65,6 +65,19 @@ struct ProcessMetrics {
 
     uint16_t totalVolume;            // Общий объём отбора (мл)
     uint16_t avgSpeed;               // Средняя скорость насоса (мл/час)
+
+    float minProcessHealth = 0.0f;
+    float avgProcessHealth = 0.0f;
+    float avgStabilityIndex = 0.0f;
+    float minCoolingMarginC = 0.0f;
+    float avgCoolingMarginC = 0.0f;
+    float maxFloodRisk = 0.0f;
+    float avgFloodRisk = 0.0f;
+    float lastHeadsCompletionScore = 0.0f;
+    float lastBodyEndScore = 0.0f;
+    uint16_t takeoffAllowedSamples = 0;
+    uint16_t sensorFreshnessOkSamples = 0;
+    uint16_t indicatorSamples = 0;
 };
 
 // Фаза процесса
@@ -92,6 +105,14 @@ struct TimeseriesPoint {
     float voltage;                   // Напряжение (V)
     float current;                   // Ток (A)
     uint16_t pumpSpeed;              // Скорость насоса (мл/час)
+    float processHealth = 0.0f;
+    float stabilityIndex = 0.0f;
+    float floodRisk = 0.0f;
+    float coolingMarginC = 0.0f;
+    float headsCompletionScore = 0.0f;
+    float bodyEndScore = 0.0f;
+    bool takeoffAllowed = false;
+    bool sensorFreshnessOk = false;
 };
 
 // Предупреждение или ошибка

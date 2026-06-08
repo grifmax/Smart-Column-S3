@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.25">
+    <link rel="stylesheet" href="style.css?v=2.2.35">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.25" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.35" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -300,6 +300,60 @@
                                                 <span class="operator-edit-label">Мощность</span>
                                                 <strong id="rect-power-display">-- %</strong>
                                             </button>
+                                        </div>
+                                    </article>
+
+                                    <article class="operator-card operator-card-status operator-card-process">
+                                        <h3 class="operator-card-title">Состояние процесса</h3>
+                                        <div class="operator-status-grid">
+                                            <div class="operator-stat">
+                                                <span class="operator-stat-label">Последняя причина</span>
+                                                <strong id="indicator-last-reason" class="operator-stat-value operator-indicator-value">--</strong>
+                                            </div>
+                                            <div class="operator-stat">
+                                                <span class="operator-stat-label">Lifecycle</span>
+                                                <strong id="indicator-lifecycle" class="operator-stat-value operator-indicator-value">idle</strong>
+                                            </div>
+                                            <div class="operator-stat">
+                                                <span class="operator-stat-label">Отбор</span>
+                                                <strong id="indicator-takeoff" class="operator-stat-value operator-indicator-value">--</strong>
+                                            </div>
+                                            <div class="operator-stat">
+                                                <span class="operator-stat-label">Охлаждение</span>
+                                                <strong id="indicator-cooling-status" class="operator-stat-value operator-indicator-value">--</strong>
+                                            </div>
+                                        </div>
+                                        <div class="operator-level-grid">
+                                            <div class="operator-level-item">
+                                                <span class="operator-level-label">Стабильность</span>
+                                                <strong id="indicator-stability" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                            </div>
+                                            <div class="operator-level-item">
+                                                <span class="operator-level-label">Риск захлёба</span>
+                                                <strong id="indicator-flood-risk" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                            </div>
+                                            <div class="operator-level-item">
+                                                <span class="operator-level-label">Cooling Margin</span>
+                                                <strong id="indicator-cooling-margin" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                            </div>
+                                            <div class="operator-level-item">
+                                                <span class="operator-level-label">Process Health</span>
+                                                <strong id="indicator-process-health" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                            </div>
+                                        </div>
+                                        <div class="operator-list">
+                                            <div class="operator-list-row"><span>Свежесть датчиков</span><strong
+                                                    id="indicator-sensor-freshness" class="operator-indicator-value">--</strong></div>
+                                            <div class="operator-list-row"><span>Стабильность давления</span><strong
+                                                    id="indicator-pressure-stable" class="operator-indicator-value">--</strong></div>
+                                            <div class="operator-list-row"><span>Завершение голов</span><strong
+                                                    id="indicator-heads-score" class="operator-indicator-value">--</strong></div>
+                                            <div class="operator-list-row"><span>Вероятность конца тела</span><strong
+                                                    id="indicator-body-score" class="operator-indicator-value">--</strong></div>
+                                            <div class="operator-list-row"><span>Ограничения safety</span><strong
+                                                    id="indicator-power-limit" class="operator-indicator-value">--</strong></div>
+                                            <div class="operator-list-row"><span>Recovery</span><strong
+                                                    id="indicator-recovery" class="operator-indicator-value">--</strong></div>
                                         </div>
                                     </article>
 
@@ -2565,7 +2619,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.25"></script>
+    <script src="app.js?v=2.2.35"></script>
 </body>
 
 </html>

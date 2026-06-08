@@ -120,6 +120,26 @@ bool saveProcessHistory(const ProcessHistory& history) {
     pump["totalVolume"] = history.metrics.totalVolume;
     pump["avgSpeed"] = history.metrics.avgSpeed;
 
+    JsonObject indicators = metrics["indicators"].to<JsonObject>();
+    JsonObject processHealth = indicators["processHealth"].to<JsonObject>();
+    processHealth["min"] = history.metrics.minProcessHealth;
+    processHealth["avg"] = history.metrics.avgProcessHealth;
+    indicators["stabilityIndexAvg"] = history.metrics.avgStabilityIndex;
+
+    JsonObject coolingMargin = indicators["coolingMarginC"].to<JsonObject>();
+    coolingMargin["min"] = history.metrics.minCoolingMarginC;
+    coolingMargin["avg"] = history.metrics.avgCoolingMarginC;
+
+    JsonObject floodRisk = indicators["floodRisk"].to<JsonObject>();
+    floodRisk["max"] = history.metrics.maxFloodRisk;
+    floodRisk["avg"] = history.metrics.avgFloodRisk;
+
+    indicators["headsCompletionScoreFinal"] = history.metrics.lastHeadsCompletionScore;
+    indicators["bodyEndScoreFinal"] = history.metrics.lastBodyEndScore;
+    indicators["takeoffAllowedSamples"] = history.metrics.takeoffAllowedSamples;
+    indicators["sensorFreshnessOkSamples"] = history.metrics.sensorFreshnessOkSamples;
+    indicators["samples"] = history.metrics.indicatorSamples;
+
     // Фазы
     JsonArray phases = doc["phases"].to<JsonArray>();
     for (const auto& phase : history.phases) {
@@ -163,6 +183,14 @@ bool saveProcessHistory(const ProcessHistory& history) {
         p["voltage"] = point.voltage;
         p["current"] = point.current;
         p["pumpSpeed"] = point.pumpSpeed;
+        p["processHealth"] = point.processHealth;
+        p["stabilityIndex"] = point.stabilityIndex;
+        p["floodRisk"] = point.floodRisk;
+        p["coolingMarginC"] = point.coolingMarginC;
+        p["headsCompletionScore"] = point.headsCompletionScore;
+        p["bodyEndScore"] = point.bodyEndScore;
+        p["takeoffAllowed"] = point.takeoffAllowed;
+        p["sensorFreshnessOk"] = point.sensorFreshnessOk;
     }
 
     // Результаты
@@ -299,6 +327,22 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
 
     history.metrics.totalVolume = doc["metrics"]["pump"]["totalVolume"];
     history.metrics.avgSpeed = doc["metrics"]["pump"]["avgSpeed"];
+    history.metrics.minProcessHealth = doc["metrics"]["indicators"]["processHealth"]["min"] | 0.0f;
+    history.metrics.avgProcessHealth = doc["metrics"]["indicators"]["processHealth"]["avg"] | 0.0f;
+    history.metrics.avgStabilityIndex = doc["metrics"]["indicators"]["stabilityIndexAvg"] | 0.0f;
+    history.metrics.minCoolingMarginC = doc["metrics"]["indicators"]["coolingMarginC"]["min"] | 0.0f;
+    history.metrics.avgCoolingMarginC = doc["metrics"]["indicators"]["coolingMarginC"]["avg"] | 0.0f;
+    history.metrics.maxFloodRisk = doc["metrics"]["indicators"]["floodRisk"]["max"] | 0.0f;
+    history.metrics.avgFloodRisk = doc["metrics"]["indicators"]["floodRisk"]["avg"] | 0.0f;
+    history.metrics.lastHeadsCompletionScore =
+        doc["metrics"]["indicators"]["headsCompletionScoreFinal"] | 0.0f;
+    history.metrics.lastBodyEndScore =
+        doc["metrics"]["indicators"]["bodyEndScoreFinal"] | 0.0f;
+    history.metrics.takeoffAllowedSamples =
+        doc["metrics"]["indicators"]["takeoffAllowedSamples"] | 0;
+    history.metrics.sensorFreshnessOkSamples =
+        doc["metrics"]["indicators"]["sensorFreshnessOkSamples"] | 0;
+    history.metrics.indicatorSamples = doc["metrics"]["indicators"]["samples"] | 0;
 
     // Загрузить фазы
     history.phases.clear();
@@ -332,6 +376,14 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
         p.voltage = point["voltage"];
         p.current = point["current"];
         p.pumpSpeed = point["pumpSpeed"];
+        p.processHealth = point["processHealth"] | 0.0f;
+        p.stabilityIndex = point["stabilityIndex"] | 0.0f;
+        p.floodRisk = point["floodRisk"] | 0.0f;
+        p.coolingMarginC = point["coolingMarginC"] | 0.0f;
+        p.headsCompletionScore = point["headsCompletionScore"] | 0.0f;
+        p.bodyEndScore = point["bodyEndScore"] | 0.0f;
+        p.takeoffAllowed = point["takeoffAllowed"] | false;
+        p.sensorFreshnessOk = point["sensorFreshnessOk"] | false;
         history.timeseries.push_back(p);
     }
 
@@ -822,6 +874,26 @@ void appendProcessHistoryJson(JsonDocument& doc, const ProcessHistory& history) 
     pump["totalVolume"] = history.metrics.totalVolume;
     pump["avgSpeed"] = history.metrics.avgSpeed;
 
+    JsonObject indicators = metrics["indicators"].to<JsonObject>();
+    JsonObject processHealth = indicators["processHealth"].to<JsonObject>();
+    processHealth["min"] = history.metrics.minProcessHealth;
+    processHealth["avg"] = history.metrics.avgProcessHealth;
+    indicators["stabilityIndexAvg"] = history.metrics.avgStabilityIndex;
+
+    JsonObject coolingMargin = indicators["coolingMarginC"].to<JsonObject>();
+    coolingMargin["min"] = history.metrics.minCoolingMarginC;
+    coolingMargin["avg"] = history.metrics.avgCoolingMarginC;
+
+    JsonObject floodRisk = indicators["floodRisk"].to<JsonObject>();
+    floodRisk["max"] = history.metrics.maxFloodRisk;
+    floodRisk["avg"] = history.metrics.avgFloodRisk;
+
+    indicators["headsCompletionScoreFinal"] = history.metrics.lastHeadsCompletionScore;
+    indicators["bodyEndScoreFinal"] = history.metrics.lastBodyEndScore;
+    indicators["takeoffAllowedSamples"] = history.metrics.takeoffAllowedSamples;
+    indicators["sensorFreshnessOkSamples"] = history.metrics.sensorFreshnessOkSamples;
+    indicators["samples"] = history.metrics.indicatorSamples;
+
     JsonArray phases = doc["phases"].to<JsonArray>();
     for (const auto& phase : history.phases) {
         JsonObject p = phases.add<JsonObject>();
@@ -855,6 +927,14 @@ void appendProcessHistoryJson(JsonDocument& doc, const ProcessHistory& history) 
         p["voltage"] = point.voltage;
         p["current"] = point.current;
         p["pumpSpeed"] = point.pumpSpeed;
+        p["processHealth"] = point.processHealth;
+        p["stabilityIndex"] = point.stabilityIndex;
+        p["floodRisk"] = point.floodRisk;
+        p["coolingMarginC"] = point.coolingMarginC;
+        p["headsCompletionScore"] = point.headsCompletionScore;
+        p["bodyEndScore"] = point.bodyEndScore;
+        p["takeoffAllowed"] = point.takeoffAllowed;
+        p["sensorFreshnessOk"] = point.sensorFreshnessOk;
     }
 
     JsonObject results = doc["results"].to<JsonObject>();
@@ -875,7 +955,10 @@ void appendProcessHistoryJson(JsonDocument& doc, const ProcessHistory& history) 
 // ============================================================================
 
 String exportProcessToCSV(const ProcessHistory& history) {
-    String csv = "Time,Cube Temp,Column Top,Column Bottom,Deflegmator,Power,Voltage,Current,Pump Speed\n";
+    String csv =
+        "Time,Cube Temp,Column Top,Column Bottom,Deflegmator,Power,Voltage,Current,Pump "
+        "Speed,Process Health,Stability Index,Flood Risk,Cooling Margin C,Heads Completion "
+        "Score,Body End Score,Takeoff Allowed,Sensor Freshness Ok\n";
 
     for (const auto& point : history.timeseries) {
         csv += String(point.time) + ",";
@@ -886,7 +969,15 @@ String exportProcessToCSV(const ProcessHistory& history) {
         csv += String(point.power) + ",";
         csv += String(point.voltage, 1) + ",";
         csv += String(point.current, 2) + ",";
-        csv += String(point.pumpSpeed) + "\n";
+        csv += String(point.pumpSpeed) + ",";
+        csv += String(point.processHealth, 3) + ",";
+        csv += String(point.stabilityIndex, 3) + ",";
+        csv += String(point.floodRisk, 3) + ",";
+        csv += String(point.coolingMarginC, 2) + ",";
+        csv += String(point.headsCompletionScore, 3) + ",";
+        csv += String(point.bodyEndScore, 3) + ",";
+        csv += String(point.takeoffAllowed ? 1 : 0) + ",";
+        csv += String(point.sensorFreshnessOk ? 1 : 0) + "\n";
     }
 
     return csv;
@@ -1007,7 +1098,18 @@ void ProcessRecorder::calculateMetrics() {
     float colBottomMin = 999.0f, colBottomMax = -999.0f, colBottomSum = 0.0f;
     float deflegMin = 999.0f, deflegMax = -999.0f, deflegSum = 0.0f;
 
-    uint16_t powerSum = 0, powerPeak = 0;
+    float processHealthMin = 999.0f;
+    float processHealthSum = 0.0f;
+    float stabilitySum = 0.0f;
+    float coolingMarginMin = 999.0f;
+    float coolingMarginSum = 0.0f;
+    float floodRiskMax = -999.0f;
+    float floodRiskSum = 0.0f;
+    uint32_t takeoffAllowedSamples = 0;
+    uint32_t sensorFreshnessOkSamples = 0;
+    uint32_t powerSum = 0;
+    uint16_t powerPeak = 0;
+    uint32_t pumpSpeedSum = 0;
 
     for (const auto& point : currentHistory.timeseries) {
         // Куб
@@ -1033,6 +1135,20 @@ void ProcessRecorder::calculateMetrics() {
         // Мощность
         powerSum += point.power;
         if (point.power > powerPeak) powerPeak = point.power;
+        pumpSpeedSum += point.pumpSpeed;
+
+        if (point.processHealth < processHealthMin) processHealthMin = point.processHealth;
+        processHealthSum += point.processHealth;
+        stabilitySum += point.stabilityIndex;
+
+        if (point.coolingMarginC < coolingMarginMin) coolingMarginMin = point.coolingMarginC;
+        coolingMarginSum += point.coolingMarginC;
+
+        if (point.floodRisk > floodRiskMax) floodRiskMax = point.floodRisk;
+        floodRiskSum += point.floodRisk;
+
+        if (point.takeoffAllowed) takeoffAllowedSamples++;
+        if (point.sensorFreshnessOk) sensorFreshnessOkSamples++;
     }
 
     size_t count = currentHistory.timeseries.size();
@@ -1059,6 +1175,31 @@ void ProcessRecorder::calculateMetrics() {
 
     currentHistory.metrics.avgPower = powerSum / count;
     currentHistory.metrics.peakPower = powerPeak;
+    currentHistory.metrics.avgSpeed = pumpSpeedSum / count;
+    currentHistory.metrics.totalVolume = currentHistory.results.totalCollected;
+
+    if (currentHistory.metrics.totalVolume == 0) {
+        uint32_t phaseVolumeSum = 0;
+        for (const auto& phase : currentHistory.phases) {
+            phaseVolumeSum += phase.volume;
+        }
+        currentHistory.metrics.totalVolume = phaseVolumeSum;
+    }
+
+    currentHistory.metrics.minProcessHealth = processHealthMin;
+    currentHistory.metrics.avgProcessHealth = processHealthSum / count;
+    currentHistory.metrics.avgStabilityIndex = stabilitySum / count;
+    currentHistory.metrics.minCoolingMarginC = coolingMarginMin;
+    currentHistory.metrics.avgCoolingMarginC = coolingMarginSum / count;
+    currentHistory.metrics.maxFloodRisk = floodRiskMax;
+    currentHistory.metrics.avgFloodRisk = floodRiskSum / count;
+    currentHistory.metrics.lastHeadsCompletionScore =
+        currentHistory.timeseries.back().headsCompletionScore;
+    currentHistory.metrics.lastBodyEndScore =
+        currentHistory.timeseries.back().bodyEndScore;
+    currentHistory.metrics.takeoffAllowedSamples = takeoffAllowedSamples;
+    currentHistory.metrics.sensorFreshnessOkSamples = sensorFreshnessOkSamples;
+    currentHistory.metrics.indicatorSamples = count;
 
     // Энергия = средняя мощность × время (в часах)
     currentHistory.metrics.energyUsed = (currentHistory.metrics.avgPower / 1000.0f) *

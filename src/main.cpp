@@ -32,6 +32,7 @@
 #include "control/demo_simulator.h"
 #include "control/fsm.h"
 #include "control/safety.h"
+#include "control/v2/status_adapter.h"
 #include "control/watt_control.h"
 
 // Интерфейсы
@@ -417,6 +418,7 @@ void loop() {
     Stirrer::syncState(g_state); // обновить g_state.stirrer
   }
 
+  ControlV2::updateRuntime(g_state, g_settings);
   Buttons::update();
 
   if (g_settings.mqtt.enabled) {

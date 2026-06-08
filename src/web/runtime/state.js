@@ -110,12 +110,84 @@ function mergeV2State(s, data) {
     if (!v2) return;
 
     const safety = (v2?.safety && typeof v2.safety === 'object') ? v2.safety : null;
+    const activeLimits = (v2?.activeLimits && typeof v2.activeLimits === 'object') ? v2.activeLimits : null;
+    const commandTargets = (v2?.commandTargets && typeof v2.commandTargets === 'object') ? v2.commandTargets : null;
+    const indicators = (v2?.indicators && typeof v2.indicators === 'object') ? v2.indicators : null;
     s.v2 = {
         ...s.v2,
         available: v2.available !== undefined ? Boolean(v2.available) : s.v2.available,
+        lifecycle: v2.lifecycle !== undefined ? String(v2.lifecycle) : s.v2.lifecycle,
+        phaseId: v2.phaseId !== undefined ? toFinite(v2.phaseId, s.v2.phaseId) : s.v2.phaseId,
+        phaseToken: v2.phaseToken !== undefined ? String(v2.phaseToken) : s.v2.phaseToken,
+        timestampMs: v2.timestampMs !== undefined ? toFinite(v2.timestampMs, s.v2.timestampMs) : s.v2.timestampMs,
         safetyLatched: v2.safetyLatched !== undefined ? Boolean(v2.safetyLatched) : s.v2.safetyLatched,
         lastReasonCode: v2.lastReasonCode !== undefined ? String(v2.lastReasonCode) : s.v2.lastReasonCode,
         operatorMessage: v2.operatorMessage !== undefined ? String(v2.operatorMessage) : s.v2.operatorMessage,
+        activeLimits: activeLimits ? {
+            ...s.v2.activeLimits,
+            powerCapped: activeLimits.powerCapped !== undefined ? Boolean(activeLimits.powerCapped) : s.v2.activeLimits.powerCapped,
+            maxHeaterPowerPercent: activeLimits.maxHeaterPowerPercent !== undefined
+                ? toFinite(activeLimits.maxHeaterPowerPercent, s.v2.activeLimits.maxHeaterPowerPercent)
+                : s.v2.activeLimits.maxHeaterPowerPercent,
+            pumpCapped: activeLimits.pumpCapped !== undefined ? Boolean(activeLimits.pumpCapped) : s.v2.activeLimits.pumpCapped,
+            maxPumpSpeedMlH: activeLimits.maxPumpSpeedMlH !== undefined
+                ? toFinite(activeLimits.maxPumpSpeedMlH, s.v2.activeLimits.maxPumpSpeedMlH)
+                : s.v2.activeLimits.maxPumpSpeedMlH,
+            takeoffBlocked: activeLimits.takeoffBlocked !== undefined ? Boolean(activeLimits.takeoffBlocked) : s.v2.activeLimits.takeoffBlocked,
+            phaseAdvanceBlocked: activeLimits.phaseAdvanceBlocked !== undefined ? Boolean(activeLimits.phaseAdvanceBlocked) : s.v2.activeLimits.phaseAdvanceBlocked
+        } : s.v2.activeLimits,
+        commandTargets: commandTargets ? {
+            ...s.v2.commandTargets,
+            heaterPowerPercent: commandTargets.heaterPowerPercent !== undefined
+                ? toFinite(commandTargets.heaterPowerPercent, s.v2.commandTargets.heaterPowerPercent)
+                : s.v2.commandTargets.heaterPowerPercent,
+            pumpSpeedMlH: commandTargets.pumpSpeedMlH !== undefined
+                ? toFinite(commandTargets.pumpSpeedMlH, s.v2.commandTargets.pumpSpeedMlH)
+                : s.v2.commandTargets.pumpSpeedMlH,
+            waterValveOpen: commandTargets.waterValveOpen !== undefined ? Boolean(commandTargets.waterValveOpen) : s.v2.commandTargets.waterValveOpen,
+            headsValveOpen: commandTargets.headsValveOpen !== undefined ? Boolean(commandTargets.headsValveOpen) : s.v2.commandTargets.headsValveOpen,
+            stopRequested: commandTargets.stopRequested !== undefined ? Boolean(commandTargets.stopRequested) : s.v2.commandTargets.stopRequested
+        } : s.v2.commandTargets,
+        indicators: indicators ? {
+            ...s.v2.indicators,
+            processHealth: indicators.processHealth !== undefined ? toFinite(indicators.processHealth, s.v2.indicators.processHealth) : s.v2.indicators.processHealth,
+            sensorFreshnessOk: indicators.sensorFreshnessOk !== undefined ? Boolean(indicators.sensorFreshnessOk) : s.v2.indicators.sensorFreshnessOk,
+            pressureStable: indicators.pressureStable !== undefined ? Boolean(indicators.pressureStable) : s.v2.indicators.pressureStable,
+            boilingDetected: indicators.boilingDetected !== undefined ? Boolean(indicators.boilingDetected) : s.v2.indicators.boilingDetected,
+            columnStable: indicators.columnStable !== undefined ? Boolean(indicators.columnStable) : s.v2.indicators.columnStable,
+            targetReached: indicators.targetReached !== undefined ? Boolean(indicators.targetReached) : s.v2.indicators.targetReached,
+            powerLimited: indicators.powerLimited !== undefined ? Boolean(indicators.powerLimited) : s.v2.indicators.powerLimited,
+            recoveryActive: indicators.recoveryActive !== undefined ? Boolean(indicators.recoveryActive) : s.v2.indicators.recoveryActive,
+            takeoffAllowed: indicators.takeoffAllowed !== undefined ? Boolean(indicators.takeoffAllowed) : s.v2.indicators.takeoffAllowed,
+            distHeatingComplete: indicators.distHeatingComplete !== undefined ? Boolean(indicators.distHeatingComplete) : s.v2.indicators.distHeatingComplete,
+            distHeadsOptionalComplete: indicators.distHeadsOptionalComplete !== undefined ? Boolean(indicators.distHeadsOptionalComplete) : s.v2.indicators.distHeadsOptionalComplete,
+            distBodyNearEnd: indicators.distBodyNearEnd !== undefined ? Boolean(indicators.distBodyNearEnd) : s.v2.indicators.distBodyNearEnd,
+            steamReady: indicators.steamReady !== undefined ? Boolean(indicators.steamReady) : s.v2.indicators.steamReady,
+            nbkWorkingStable: indicators.nbkWorkingStable !== undefined ? Boolean(indicators.nbkWorkingStable) : s.v2.indicators.nbkWorkingStable,
+            nbkFeedAllowed: indicators.nbkFeedAllowed !== undefined ? Boolean(indicators.nbkFeedAllowed) : s.v2.indicators.nbkFeedAllowed,
+            finishLikely: indicators.finishLikely !== undefined ? Boolean(indicators.finishLikely) : s.v2.indicators.finishLikely,
+            tempInBand: indicators.tempInBand !== undefined ? Boolean(indicators.tempInBand) : s.v2.indicators.tempInBand,
+            stepReady: indicators.stepReady !== undefined ? Boolean(indicators.stepReady) : s.v2.indicators.stepReady,
+            stepHoldStable: indicators.stepHoldStable !== undefined ? Boolean(indicators.stepHoldStable) : s.v2.indicators.stepHoldStable,
+            heatingTooSlow: indicators.heatingTooSlow !== undefined ? Boolean(indicators.heatingTooSlow) : s.v2.indicators.heatingTooSlow,
+            overshootRisk: indicators.overshootRisk !== undefined ? Boolean(indicators.overshootRisk) : s.v2.indicators.overshootRisk,
+            fermTempInBand: indicators.fermTempInBand !== undefined ? Boolean(indicators.fermTempInBand) : s.v2.indicators.fermTempInBand,
+            longDeviation: indicators.longDeviation !== undefined ? Boolean(indicators.longDeviation) : s.v2.indicators.longDeviation,
+            heatingDemand: indicators.heatingDemand !== undefined ? Boolean(indicators.heatingDemand) : s.v2.indicators.heatingDemand,
+            coolingDemand: indicators.coolingDemand !== undefined ? Boolean(indicators.coolingDemand) : s.v2.indicators.coolingDemand,
+            heatingRateCPerMin: indicators.heatingRateCPerMin !== undefined ? toFinite(indicators.heatingRateCPerMin, s.v2.indicators.heatingRateCPerMin) : s.v2.indicators.heatingRateCPerMin,
+            topTempRateCPerMin: indicators.topTempRateCPerMin !== undefined ? toFinite(indicators.topTempRateCPerMin, s.v2.indicators.topTempRateCPerMin) : s.v2.indicators.topTempRateCPerMin,
+            pressureRateMmHgPerMin: indicators.pressureRateMmHgPerMin !== undefined ? toFinite(indicators.pressureRateMmHgPerMin, s.v2.indicators.pressureRateMmHgPerMin) : s.v2.indicators.pressureRateMmHgPerMin,
+            coolingMarginC: indicators.coolingMarginC !== undefined ? toFinite(indicators.coolingMarginC, s.v2.indicators.coolingMarginC) : s.v2.indicators.coolingMarginC,
+            distPressureMargin: indicators.distPressureMargin !== undefined ? toFinite(indicators.distPressureMargin, s.v2.indicators.distPressureMargin) : s.v2.indicators.distPressureMargin,
+            nbkPressureMargin: indicators.nbkPressureMargin !== undefined ? toFinite(indicators.nbkPressureMargin, s.v2.indicators.nbkPressureMargin) : s.v2.indicators.nbkPressureMargin,
+            nbkColumnLoad: indicators.nbkColumnLoad !== undefined ? toFinite(indicators.nbkColumnLoad, s.v2.indicators.nbkColumnLoad) : s.v2.indicators.nbkColumnLoad,
+            feedEnergyBalance: indicators.feedEnergyBalance !== undefined ? toFinite(indicators.feedEnergyBalance, s.v2.indicators.feedEnergyBalance) : s.v2.indicators.feedEnergyBalance,
+            stabilityIndex: indicators.stabilityIndex !== undefined ? toFinite(indicators.stabilityIndex, s.v2.indicators.stabilityIndex) : s.v2.indicators.stabilityIndex,
+            floodRisk: indicators.floodRisk !== undefined ? toFinite(indicators.floodRisk, s.v2.indicators.floodRisk) : s.v2.indicators.floodRisk,
+            headsCompletionScore: indicators.headsCompletionScore !== undefined ? toFinite(indicators.headsCompletionScore, s.v2.indicators.headsCompletionScore) : s.v2.indicators.headsCompletionScore,
+            bodyEndScore: indicators.bodyEndScore !== undefined ? toFinite(indicators.bodyEndScore, s.v2.indicators.bodyEndScore) : s.v2.indicators.bodyEndScore
+        } : s.v2.indicators,
         safety: safety ? {
             ...s.v2.safety,
             severity: safety.severity !== undefined ? String(safety.severity) : s.v2.safety.severity,

@@ -69,6 +69,133 @@ const char* getHistoryProcessMode(Mode mode) {
     return mode == Mode::MANUAL_RECT ? "manual" : "auto";
 }
 
+uint16_t clampHistoryU16(float value) {
+    if (value <= 0.0f) {
+        return 0;
+    }
+    if (value >= 65535.0f) {
+        return 65535;
+    }
+    return static_cast<uint16_t>(value);
+}
+
+float estimateAbsoluteAlcoholMl(const Settings& settings) {
+    float volumeL = settings.rectParams.feedVolumeL;
+    if (volumeL <= 0.1f) {
+        volumeL = settings.equipment.cubeVolumeL;
+    }
+    if (volumeL < 1.0f) {
+        volumeL = 1.0f;
+    }
+    if (volumeL > 250.0f) {
+        volumeL = 250.0f;
+    }
+
+    float abvPercent = settings.rectParams.feedAbvPercent;
+    if (abvPercent < 1.0f) {
+        abvPercent = 1.0f;
+    }
+    if (abvPercent > 96.0f) {
+        abvPercent = 96.0f;
+    }
+
+    return volumeL * 1000.0f * (abvPercent / 100.0f);
+}
+
+ProcessParameters buildHistoryParameters(const SystemState& state,
+                                         const Settings& settings) {
+    ProcessParameters params{};
+    params.targetPower = clampHistoryU16(
+        state.mode == Mode::NBK ? settings.nbk.powerW : settings.equipment.heaterPowerW);
+    params.stabilizationTime = settings.rectParams.stabilizationMin * 60U;
+    params.wattControlEnabled =
+        state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT;
+    params.smartDecrementEnabled = params.wattControlEnabled;
+
+    switch (state.mode) {
+        case Mode::RECTIFICATION:
+        case Mode::MANUAL_RECT: {
+            const float heaterPowerKw =
+                settings.equipment.heaterPowerW > 0
+                    ? (settings.equipment.heaterPowerW / 1000.0f)
+                    : 1.0f;
+            const float absoluteAlcoholMl = estimateAbsoluteAlcoholMl(settings);
+            params.headVolume = clampHistoryU16(
+                absoluteAlcoholMl * (settings.rectParams.headsPercent / 100.0f));
+            params.bodyVolume = clampHistoryU16(
+                absoluteAlcoholMl * (settings.rectParams.bodyPercent / 100.0f));
+            params.tailVolume = clampHistoryU16(
+                absoluteAlcoholMl * (settings.rectParams.tailsPercent / 100.0f));
+            params.pumpSpeedHead = clampHistoryU16(
+                settings.rectParams.headsSpeedMlHKw * heaterPowerKw);
+            params.pumpSpeedBody = clampHistoryU16(
+                settings.rectParams.bodySpeedMlHKw * heaterPowerKw);
+            break;
+        }
+        case Mode::DISTILLATION:
+            params.headVolume = clampHistoryU16(settings.distillationUi.headsVolumeMl);
+            params.bodyVolume = clampHistoryU16(settings.distillationUi.targetVolumeMl);
+            params.tailVolume = clampHistoryU16(settings.distillationUi.tailsVolumeMl);
+            params.pumpSpeedBody = clampHistoryU16(settings.distillationUi.speedMlH);
+            break;
+        case Mode::NBK:
+            params.bodyVolume = clampHistoryU16(settings.nbk.targetVolumeMl);
+            params.pumpSpeedBody = clampHistoryU16(settings.nbk.pumpSpeedMlH);
+            break;
+        default:
+            break;
+    }
+
+    return params;
+}
+
+ProcessResults buildHistoryResults(const SystemState& state, bool completed = false) {
+    ProcessResults results{};
+    results.headsCollected = clampHistoryU16(state.stats.headsVolume);
+    results.bodyCollected = clampHistoryU16(state.stats.bodyVolume);
+    results.tailsCollected = clampHistoryU16(state.stats.tailsVolume);
+    results.totalCollected = clampHistoryU16(state.stats.headsVolume + state.stats.bodyVolume +
+                                             state.stats.tailsVolume);
+    results.status = completed ? "completed" : "running";
+    return results;
+}
+
+TimeseriesPoint buildHistoryTimeseriesPoint(const SystemState& state,
+                                            const ProcessIndicatorsV2& indicators,
+                                            uint32_t nowMs) {
+    TimeseriesPoint point{};
+    point.time = nowMs / 1000UL;
+    point.cube = state.temps.cube;
+    point.columnTop = state.temps.columnTop;
+    point.columnBottom = state.temps.columnBottom;
+    point.deflegmator = state.temps.deflegmator;
+    point.power = clampHistoryU16(state.power.power);
+    point.voltage = state.power.voltage;
+    point.current = state.power.current;
+    point.pumpSpeed = clampHistoryU16(state.pump.speedMlPerHour);
+    point.processHealth = indicators.processHealth;
+    point.stabilityIndex = indicators.stabilityIndex;
+    point.floodRisk = indicators.floodRisk;
+    point.coolingMarginC = indicators.coolingMarginC;
+    point.headsCompletionScore = indicators.headsCompletionScore;
+    point.bodyEndScore = indicators.bodyEndScore;
+    point.takeoffAllowed = indicators.takeoffAllowed;
+    point.sensorFreshnessOk = indicators.sensorFreshnessOk;
+    return point;
+}
+
+void syncHistoryRecorder(const SystemState& state, const Settings& settings,
+                         const ProcessIndicatorsV2& indicators, uint32_t nowMs,
+                         bool completed = false) {
+    if (!processRecorder.isRecording()) {
+        return;
+    }
+
+    processRecorder.setParameters(buildHistoryParameters(state, settings));
+    processRecorder.setResults(buildHistoryResults(state, completed));
+    processRecorder.addTimeseriesPoint(buildHistoryTimeseriesPoint(state, indicators, nowMs));
+}
+
 float getRepresentativePhaseTemp(const SystemState& state) {
     if (state.temps.valid[TEMP_COLUMN_TOP]) {
         return state.temps.columnTop;
@@ -635,6 +762,8 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
                                  state, now);
         }
         if (state.mode == Mode::IDLE) {
+            syncHistoryRecorder(state, settings, g_lastIndicators, now,
+                                isSuccessfulCompletionReason(modeChangeReason));
             recordHistorySafetyDecision(safety);
             stopHistoryTracking(isSuccessfulCompletionReason(modeChangeReason),
                                 modeChangeReason,
@@ -644,6 +773,7 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
                                 state);
         } else {
             startHistoryTracking(state);
+            syncHistoryRecorder(state, settings, g_lastIndicators, now);
             recordHistorySafetyDecision(safety, true);
         }
         g_prevMode = state.mode;
@@ -670,6 +800,10 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         g_prevPhaseStartMs = now;
         g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
         g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
+    }
+
+    if (processRecorder.isRecording()) {
+        syncHistoryRecorder(state, settings, g_lastIndicators, now);
     }
 
     recordHistorySafetyRecoveryExit(g_prevSafetyDecision, safety);

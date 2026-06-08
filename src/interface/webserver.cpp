@@ -1159,6 +1159,8 @@ void init() {
     const auto displayStats = Display::getRuntimeStats();
     JsonObject display = doc["display"].to<JsonObject>();
     display["frames"] = displayStats.framesRendered;
+    display["fullRedraws"] = displayStats.fullRedraws;
+    display["partialRedraws"] = displayStats.partialRedraws;
     display["slowFrames"] = displayStats.slowFrames;
     display["recoveries"] = displayStats.watchdogRecoveries;
     display["hardRecoveries"] = displayStats.hardWatchdogRecoveries;
@@ -1169,6 +1171,17 @@ void init() {
     display["lastGapMs"] = displayStats.lastUpdateGapMs;
     display["maxGapMs"] = displayStats.maxUpdateGapMs;
     display["gapOverruns"] = displayStats.updateGapOverruns;
+    display["lastReason"] = displayStats.lastRedrawReason;
+    JsonObject redraw = display["reasons"].to<JsonObject>();
+    redraw["screenEnter"] = displayStats.redrawReasonScreenEnter;
+    redraw["tapAction"] = displayStats.redrawReasonTapAction;
+    redraw["liveDataChanged"] = displayStats.redrawReasonLiveDataChanged;
+    redraw["timerKeepalive"] = displayStats.redrawReasonTimerKeepalive;
+    redraw["sparklineRefresh"] = displayStats.redrawReasonSparklineRefresh;
+    redraw["themeChanged"] = displayStats.redrawReasonThemeChanged;
+    redraw["languageChanged"] = displayStats.redrawReasonLanguageChanged;
+    redraw["layoutChanged"] = displayStats.redrawReasonLayoutChanged;
+    redraw["recovery"] = displayStats.redrawReasonRecovery;
 
     // Cloud tunnel status (локально полезно для привязки)
     JsonObject cloud = doc["cloud"].to<JsonObject>();
@@ -4688,8 +4701,8 @@ void broadcastState(const SystemState &state) {
   JsonObject fastAlarm = fastDoc["alarm"].to<JsonObject>();
   fillAlarmJson(fastAlarm, state, g_settings);
   JsonObject fastV2 = fastDoc["v2"].to<JsonObject>();
-  fillSafetyActionV2Json(fastV2, ControlV2::getLatestModeStatus(),
-                         ControlV2::getLatestMetricsSnapshot());
+  fillV2StatusJson(fastV2, ControlV2::getLatestModeStatus(),
+                   ControlV2::getLatestMetricsSnapshot());
 
   fastDoc["t_cube"] = state.temps.cube;
   fastDoc["t_column_bottom"] = state.temps.columnBottom;
@@ -4753,6 +4766,9 @@ void broadcastState(const SystemState &state) {
       (phaseTargetSec > phaseElapsedSec) ? (phaseTargetSec - phaseElapsedSec) : 0;
   fastDoc["phase_percent"] = FSM::getPhaseProgressPercent(state, g_settings);
   fastDoc["display_last_ms"] = displayStats.lastFrameMs;
+  fastDoc["display_full"] = displayStats.fullRedraws;
+  fastDoc["display_partial"] = displayStats.partialRedraws;
+  fastDoc["display_last_reason"] = displayStats.lastRedrawReason;
   fastDoc["display_slow"] = displayStats.slowFrames;
   fastDoc["display_hard"] = displayStats.hardWatchdogRecoveries;
   fastDoc["display_gap_ms"] = displayStats.lastUpdateGapMs;
@@ -4876,6 +4892,8 @@ void broadcastState(const SystemState &state) {
 
   JsonObject display = doc["display"].to<JsonObject>();
   display["frames"] = displayStats.framesRendered;
+  display["fullRedraws"] = displayStats.fullRedraws;
+  display["partialRedraws"] = displayStats.partialRedraws;
   display["slowFrames"] = displayStats.slowFrames;
   display["recoveries"] = displayStats.watchdogRecoveries;
   display["hardRecoveries"] = displayStats.hardWatchdogRecoveries;
@@ -4886,6 +4904,17 @@ void broadcastState(const SystemState &state) {
   display["lastGapMs"] = displayStats.lastUpdateGapMs;
   display["maxGapMs"] = displayStats.maxUpdateGapMs;
   display["gapOverruns"] = displayStats.updateGapOverruns;
+  display["lastReason"] = displayStats.lastRedrawReason;
+  JsonObject redraw = display["reasons"].to<JsonObject>();
+  redraw["screenEnter"] = displayStats.redrawReasonScreenEnter;
+  redraw["tapAction"] = displayStats.redrawReasonTapAction;
+  redraw["liveDataChanged"] = displayStats.redrawReasonLiveDataChanged;
+  redraw["timerKeepalive"] = displayStats.redrawReasonTimerKeepalive;
+  redraw["sparklineRefresh"] = displayStats.redrawReasonSparklineRefresh;
+  redraw["themeChanged"] = displayStats.redrawReasonThemeChanged;
+  redraw["languageChanged"] = displayStats.redrawReasonLanguageChanged;
+  redraw["layoutChanged"] = displayStats.redrawReasonLayoutChanged;
+  redraw["recovery"] = displayStats.redrawReasonRecovery;
 
   JsonObject mashing = doc["mashing"].to<JsonObject>();
   mashing["active"] = state.mashing.active;
