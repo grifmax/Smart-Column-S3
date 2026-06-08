@@ -6,6 +6,7 @@
  */
 
 #include "display.h"
+#include "control/v2/status_adapter.h"
 #include "control/fsm.h"
 #include "drivers/heater.h"
 #include "drivers/hmi_widgets.h"
@@ -3500,6 +3501,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             }
 
                             const bool ru = (g_settings.language == 0);
+                            const ControlV2::ProcessIndicatorsV2 &indicators =
+                                ControlV2::getLatestIndicators();
                             RootHeaderState header =
                                 buildRootHeaderState(state);
                             const int16_t barY = ROOT_STATUS_Y;
@@ -3545,13 +3548,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                  tileH, msg(Msg::TSA_T));
                               drawValueTileShell(
                                   rightX, panelY + (tileH + rowGap) * 2, tileW,
-                                  tileH, msg(Msg::HEATER_POWER));
+                                  tileH, "STAB");
                               drawValueTileShell(
                                   rightX + tileW + colGap,
                                   panelY + (tileH + rowGap) * 2, tileW, tileH,
-                                  state.temps.valid[TEMP_WATER_OUT]
-                                      ? (ru ? "ОХЛ ВЫХ" : "WATER OUT")
-                                      : msg(Msg::PUMP));
+                                  "RISK");
 
                               drawCard(ROOT_FRAME_X, infoY, ROOT_FRAME_W, 40,
                                        colorCard());
@@ -3882,37 +3883,38 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   .tsa[sizeof(g_dashboardCache.tsa) - 1] = '\0';
                             }
                             snprintf(val, sizeof(val), "%.0f",
-                                     state.power.power);
+                                     indicators.stabilityIndex * 100.0f);
                             if (full ||
                                 strcmp(g_dashboardCache.power, val) != 0) {
+                              const uint16_t stabilityColor =
+                                  (indicators.stabilityIndex >= 0.75f)
+                                      ? COLOR_SUCCESS
+                                      : ((indicators.stabilityIndex >= 0.45f)
+                                             ? COLOR_WARNING
+                                             : COLOR_DANGER);
                               drawValueTileValue(
                                   rightX, panelY + (tileH + rowGap) * 2, tileW,
-                                  tileH, val, msg(Msg::UNIT_W), COLOR_WARNING);
+                                  tileH, val, "%", stabilityColor);
                               strncpy(g_dashboardCache.power, val,
                                       sizeof(g_dashboardCache.power));
                               g_dashboardCache
                                   .power[sizeof(g_dashboardCache.power) - 1] =
                                   '\0';
                             }
-                            if (state.temps.valid[TEMP_WATER_OUT]) {
-                              snprintf(val, sizeof(val), "%.1f",
-                                       state.temps.waterOut);
-                            } else {
-                              snprintf(val, sizeof(val), "%.0f",
-                                       state.pump.speedMlPerHour);
-                            }
+                            snprintf(val, sizeof(val), "%.0f",
+                                     indicators.floodRisk * 100.0f);
                             if (full ||
                                 strcmp(g_dashboardCache.pump, val) != 0) {
+                              const uint16_t floodColor =
+                                  (indicators.floodRisk < 0.35f)
+                                      ? COLOR_SUCCESS
+                                      : ((indicators.floodRisk < 0.65f)
+                                             ? COLOR_WARNING
+                                             : COLOR_DANGER);
                               drawValueTileValue(
                                   rightX + tileW + colGap,
                                   panelY + (tileH + rowGap) * 2, tileW, tileH,
-                                  val,
-                                  state.temps.valid[TEMP_WATER_OUT]
-                                      ? "°C"
-                                      : msg(Msg::UNIT_ML_H),
-                                  state.temps.valid[TEMP_WATER_OUT]
-                                      ? COLOR_INFO
-                                      : COLOR_SUCCESS);
+                                  val, "%", floodColor);
                               strncpy(g_dashboardCache.pump, val,
                                       sizeof(g_dashboardCache.pump));
                               g_dashboardCache
