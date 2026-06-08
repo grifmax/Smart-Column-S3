@@ -710,6 +710,111 @@ static bool isManualAccessAllowed(const SystemState &state) {
   return (state.mode == Mode::IDLE || state.mode == Mode::MANUAL_RECT);
 }
 
+
+static void setRectificationIndicatorHint(
+    char *infoLine, size_t infoLineSize, uint16_t &tone,
+    const ControlV2::ModeStatusV2 &modeStatus,
+    const ControlV2::ProcessIndicatorsV2 &indicators) {
+  const bool ru = (g_settings.language == 0);
+  tone = COLOR_INFO;
+
+  if (modeStatus.safetyLatched) {
+    tone = COLOR_DANGER;
+    snprintf(infoLine, infoLineSize, "%s",
+             (modeStatus.operatorMessage[0] != '\0')
+                 ? modeStatus.operatorMessage
+                 : (ru ? "Safety удерживает процесс"
+                       : "Safety latch holds the process"));
+    return;
+  }
+
+  if (!indicators.sensorFreshnessOk) {
+    tone = COLOR_DANGER;
+    snprintf(infoLine, infoLineSize, "%s",
+             ru ? "Датчики неактуальны: автоматика снижает доверие"
+                : "Sensor data stale: automation confidence reduced");
+    return;
+  }
+
+  if (indicators.recoveryActive) {
+    tone = COLOR_WARNING;
+    snprintf(infoLine, infoLineSize, "%s",
+             (modeStatus.operatorMessage[0] != '\0')
+                 ? modeStatus.operatorMessage
+                 : (ru ? "Идёт восстановление после ограничения"
+                       : "Recovery is active after limiting"));
+    return;
+  }
+
+  if (indicators.floodRisk >= 0.65f) {
+    tone = COLOR_DANGER;
+    snprintf(infoLine, infoLineSize, "%s",
+             ru ? "Высокий риск захлёба: не ускоряйте отбор"
+                : "High flood risk: do not increase takeoff");
+    return;
+  }
+
+  if (indicators.coolingMarginC <= 0.0f) {
+    tone = COLOR_DANGER;
+    snprintf(infoLine, infoLineSize, "%s",
+             ru ? "Охлаждение на пределе: проверьте воду"
+                : "Cooling limit reached: check water");
+    return;
+  }
+
+  if (modeStatus.activeLimits.takeoffBlocked || !indicators.takeoffAllowed) {
+    tone = COLOR_WARNING;
+    snprintf(infoLine, infoLineSize, "%s",
+             ru ? "Отбор пока запрещён: ждём стабильности"
+                : "Takeoff blocked: waiting for stability");
+    return;
+  }
+
+  if (indicators.coolingMarginC < 5.0f) {
+    tone = COLOR_WARNING;
+    snprintf(infoLine, infoLineSize, "%s",
+             ru ? "Запас охлаждения мал: не форсируйте процесс"
+                : "Cooling margin low: avoid forcing the run");
+    return;
+  }
+
+  if (indicators.bodyEndScore >= 0.80f) {
+    tone = COLOR_WARNING;
+    snprintf(infoLine, infoLineSize, "%s",
+             ru ? "Конец тела вероятен: следите за качеством"
+                : "Body end likely: watch product quality");
+    return;
+  }
+
+  if (indicators.headsCompletionScore >= 0.80f) {
+    tone = COLOR_SUCCESS;
+    snprintf(infoLine, infoLineSize, "%s",
+             ru ? "Головы почти завершены: готовьтесь к телу"
+                : "Heads nearly complete: prepare for body");
+    return;
+  }
+
+  if (indicators.stabilityIndex < 0.45f) {
+    tone = COLOR_WARNING;
+    snprintf(infoLine, infoLineSize, "%s",
+             ru ? "Колонна стабилизируется: ждём спокойный верх"
+                : "Column stabilizing: wait for calm top temp");
+    return;
+  }
+
+  if (indicators.stabilityIndex >= 0.75f && indicators.takeoffAllowed) {
+    tone = COLOR_SUCCESS;
+    snprintf(infoLine, infoLineSize, "%s",
+             ru ? "Процесс устойчив: отбор разрешён"
+                : "Process stable: takeoff allowed");
+    return;
+  }
+
+  snprintf(infoLine, infoLineSize, "%s",
+           ru ? "Ректификация под наблюдением indicators"
+              : "Rectification monitored by indicators");
+}
+
 static uint16_t dimmedButtonColor() {
   return (g_settings.theme == 1) ? tft.color565(92, 98, 104)
                                  : tft.color565(126, 132, 138);
@@ -3501,6 +3606,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             }
 
                             const bool ru = (g_settings.language == 0);
+                            const ControlV2::ModeStatusV2 &modeStatus =
+                                ControlV2::getLatestModeStatus();
                             const ControlV2::ProcessIndicatorsV2 &indicators =
                                 ControlV2::getLatestIndicators();
                             RootHeaderState header =
@@ -3548,11 +3655,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                  tileH, msg(Msg::TSA_T));
                               drawValueTileShell(
                                   rightX, panelY + (tileH + rowGap) * 2, tileW,
-                                  tileH, "STAB");
+                                  tileH, ru ? "СТАБ." : "STAB");
                               drawValueTileShell(
                                   rightX + tileW + colGap,
                                   panelY + (tileH + rowGap) * 2, tileW, tileH,
-                                  "RISK");
+                                  ru ? "РИСК" : "RISK");
 
                               drawCard(ROOT_FRAME_X, infoY, ROOT_FRAME_W, 40,
                                        colorCard());
@@ -3923,6 +4030,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             }
 
                             char upBuf[16];
+                            char footerHint[96];
+                            uint16_t footerTone = COLOR_INFO;
+                            setRectificationIndicatorHint(
+                                footerHint, sizeof(footerHint), footerTone,
+                                modeStatus, indicators);
                             formatUptimeCompact(state.uptime, upBuf,
                                                 sizeof(upBuf));
                             if (full ||
@@ -3931,12 +4043,13 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 tft.fillRect(14, infoY + 3, TFT_WIDTH - 28, 34,
                                              colorCard());
                               }
-                              tft.setTextColor(tft.color565(120, 130, 140));
+                              char footerDrawBuf[96];
+                              copyFittedText(footerHint, 350, footerDrawBuf,
+                                             sizeof(footerDrawBuf));
+                              tft.setTextColor(footerTone);
                               tft.setTextSize(1);
                               tft.setTextDatum(middle_left);
-                              drawDisplayString(ru ? "Окно режима активно"
-                                                : "Mode window active",
-                                             20, infoY + 20);
+                              drawDisplayString(footerDrawBuf, 20, infoY + 20);
                               tft.setTextColor(COLOR_PRIMARY);
                               tft.setTextDatum(middle_right);
                               drawDisplayString(upBuf, TFT_WIDTH - 18, infoY + 20);
