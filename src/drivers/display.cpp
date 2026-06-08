@@ -3926,11 +3926,18 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               drawCompactKeyValueRow(summaryX, rowY2, summaryW,
                                                      ru ? "ХВОСТЫ" : "TAILS",
                                                      rowBuf, COLOR_DANGER);
-                              snprintf(rowBuf, sizeof(rowBuf), "%.0f mm",
-                                       state.pressure.cube);
+                              snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
+                                       indicators.coolingMarginC);
                               drawCompactKeyValueRow(summaryX, rowY3, summaryW,
-                                                     ru ? "ДАВЛ." : "PRESS",
-                                                     rowBuf, COLOR_WARNING);
+                                                     ru ? "ОХЛ." : "COOL",
+                                                     rowBuf,
+                                                     indicators.coolingMarginC >=
+                                                             5.0f
+                                                         ? COLOR_SUCCESS
+                                                         : (indicators.coolingMarginC >
+                                                                0.0f
+                                                                ? COLOR_WARNING
+                                                                : COLOR_DANGER));
                               drawStateBadge(summaryX, panelY + panelH - 22,
                                              summaryW, 14, header.safetyState,
                                              header.safetyColor);
