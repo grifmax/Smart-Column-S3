@@ -50,7 +50,7 @@ function setPreflightItem(id, text, tone = 'muted') {
     item.classList.add(`is-${tone}`);
 }
 
-function setPreflightState(title, detail, tone = 'muted', checks = {}) {
+export function setPreflightState(title, detail, tone = 'muted', checks = {}) {
     const root = document.getElementById('runtime-preflight');
     const titleEl = document.getElementById('runtime-preflight-title');
     const textEl = document.getElementById('runtime-preflight-text');

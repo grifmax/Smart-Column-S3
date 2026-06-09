@@ -15,10 +15,14 @@ import {
 } from '../globals.js';
 import { addLog } from '../core/logs.js';
 import { loadStatus } from '../core/status.js';
-import { getStartAvailabilityState } from '../runtime/bars.js';
+import { getStartAvailabilityState, setPreflightState } from '../runtime/bars.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { estimateRectTargets } from '../runtime/state.js';
-import { startRectification, loadRectificationStartSettings } from './rectification.js';
+import {
+    startRectification,
+    loadRectificationStartSettings,
+    collectRectificationModalSettings
+} from './rectification.js';
 import { startManual } from './rectification.js';
 import { startDistillation, collectDistillationSettings } from './distillation.js';
 import { startMashing, startHold, readStepsFromUI } from './mashing-hold.js';
@@ -90,6 +94,8 @@ let rectSettingsLoaded = false;
 let nbkSettingsLoaded = false;
 let fermentationSettingsLoaded = false;
 let manualRectInitialized = false;
+let latestModePreflight = null;
+let preflightRefreshTimer = 0;
 
 function getModeDefinition(mode) {
     return CONTROL_MODES[mode] || CONTROL_MODES.rectification;
@@ -181,27 +187,63 @@ export function renderControlStartState() {
     const confirmButton = document.getElementById('mode-start-confirm-button');
     const availability = getStartAvailabilityState(runtimeMonitorState);
     const activeProcessBlock = currentMode !== MODE_IDLE;
+    const backendBlocked = Boolean(latestModePreflight) && !latestModePreflight.ready && !activeProcessBlock;
+    const backendWarn = Boolean(latestModePreflight) &&
+        latestModePreflight.ready &&
+        Number(latestModePreflight.warningCount || 0) > 0;
+    const effectiveState = backendBlocked
+        ? {
+            ...availability,
+            tone: 'danger',
+            title: latestModePreflight.title || availability.title,
+            detail: latestModePreflight.detail || availability.detail,
+            disabled: true
+        }
+        : (backendWarn
+            ? {
+                ...availability,
+                tone: 'warn',
+                title: latestModePreflight.title || availability.title,
+                detail: latestModePreflight.detail || availability.detail
+            }
+            : availability);
 
     if (startButton) {
-        startButton.disabled = availability.disabled;
-        startButton.classList.toggle('btn-disabled', availability.disabled);
-        startButton.title = availability.disabled ? availability.detail : '';
+        startButton.disabled = effectiveState.disabled;
+        startButton.classList.toggle('btn-disabled', effectiveState.disabled);
+        startButton.title = effectiveState.disabled ? effectiveState.detail : '';
     }
 
     if (statusEl) {
         statusEl.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
-        statusEl.classList.add(`is-${availability.tone}`);
+        statusEl.classList.add(`is-${effectiveState.tone}`);
         statusEl.textContent = activeProcessBlock
             ? 'Новый запуск недоступен, пока текущий процесс не остановлен и автоматика не вернётся в idle.'
-            : `${availability.title}. ${availability.detail}`;
+            : `${effectiveState.title}. ${effectiveState.detail}`;
     }
 
     if (confirmButton) {
-        confirmButton.disabled = availability.disabled;
+        confirmButton.disabled = effectiveState.disabled;
     }
 
     renderControlModeSummary();
     renderControlStartChecklist();
+}
+
+function clearModePreflightRefreshTimer() {
+    if (!preflightRefreshTimer) return;
+    window.clearTimeout(preflightRefreshTimer);
+    preflightRefreshTimer = 0;
+}
+
+function isModeStartModalOpen() {
+    return byId('mode-start-modal')?.classList.contains('active') || false;
+}
+
+function renderRuntimePreflightFallback() {
+    const fallback = getStartAvailabilityState(runtimeMonitorState).preflight;
+    if (!fallback) return;
+    setPreflightState(fallback.title, fallback.detail, fallback.tone, fallback.checks);
 }
 
 function openModeStartModal() {
@@ -213,7 +255,11 @@ function openModeStartModal() {
 export function closeModeStartModal() {
     const modal = byId('mode-start-modal');
     if (!modal) return;
+    clearModePreflightRefreshTimer();
     modal.classList.remove('active');
+    latestModePreflight = null;
+    renderRuntimePreflightFallback();
+    renderControlStartState();
 }
 
 function focusChecklistTarget(targetId) {
@@ -691,15 +737,149 @@ function buildChecklistItems() {
     return items;
 }
 
+function buildSelectedModePreflightPayload() {
+    switch (selectedControlMode) {
+        case 'rectification':
+            return {
+                mode: 'rectification',
+                params: collectRectificationModalSettings()
+            };
+        case 'manual':
+            return {
+                mode: 'manual_rect',
+                params: collectManualRectSettings()
+            };
+        case 'distillation':
+            return {
+                mode: 'distillation',
+                params: collectDistillationSettings()
+            };
+        case 'mashing':
+            return {
+                mode: 'mashing',
+                params: {
+                    profile: {
+                        name: getStringValue('mash-profile-name', 'Mashing').trim() || 'Mashing',
+                        steps: readStepsFromUI('mash-steps', 'mash')
+                    }
+                }
+            };
+        case 'hold':
+            return {
+                mode: 'hold',
+                params: {
+                    steps: readStepsFromUI('hold-steps', 'hold')
+                }
+            };
+        case 'nbk':
+            return {
+                mode: 'nbk',
+                params: collectNbkSettings()
+            };
+        case 'fermentation':
+            return {
+                mode: 'fermentation',
+                params: collectFermentationSettings()
+            };
+        default:
+            return null;
+    }
+}
+
+function mapPreflightItemTarget(id) {
+    switch (id) {
+        case 'rect-profile':
+            return 'rect-start-feed-volume';
+        case 'manual-profile':
+            return 'manual-feed-volume';
+        case 'dist-profile':
+            return 'dist-start-power-percent';
+        case 'mash-profile':
+            return 'mash-steps';
+        case 'hold-profile':
+            return 'hold-steps';
+        case 'nbk-profile':
+            return 'nbk-power-w';
+        case 'fermentation-profile':
+            return 'ferm-target-temp';
+        case 'sensors':
+            return 'indicator-sensor-freshness';
+        case 'cooling':
+            return 'indicator-cooling-margin';
+        case 'pressure':
+            return 'indicator-pressure-stable';
+        case 'stirrer':
+            return 'monitor-stirrer-card';
+        default:
+            return '';
+    }
+}
+
+function scheduleModePreflightRefresh() {
+    clearModePreflightRefreshTimer();
+    preflightRefreshTimer = window.setTimeout(() => {
+        preflightRefreshTimer = 0;
+        void refreshModePreflight({ silent: true });
+    }, 180);
+}
+
+async function refreshModePreflight(options = {}) {
+    const { silent = false } = options;
+    const payload = buildSelectedModePreflightPayload();
+    if (!payload) {
+        latestModePreflight = null;
+        renderControlStartState();
+        return null;
+    }
+
+    try {
+        const response = await fetch('/api/process/preflight', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const snapshot = await response.json();
+        if (!response.ok || !snapshot?.success) {
+            throw new Error(snapshot?.message || `HTTP ${response.status}`);
+        }
+
+        latestModePreflight = snapshot;
+        setPreflightState(snapshot.title, snapshot.detail, snapshot.tone, snapshot.checks || {});
+        renderControlStartState();
+        return snapshot;
+    } catch (error) {
+        latestModePreflight = null;
+        renderRuntimePreflightFallback();
+        renderControlStartState();
+        if (!silent) {
+            addLog(`Не удалось получить backend preflight: ${error?.message || error}`, 'warning');
+        }
+        return null;
+    }
+}
+
 export function renderControlStartChecklist() {
     const root = byId('mode-start-checklist');
     const summaryEl = byId('mode-start-checklist-summary');
     const itemsEl = byId('mode-start-checklist-items');
     if (!root || !summaryEl || !itemsEl) return;
 
-    const items = buildChecklistItems();
-    const dangerCount = items.filter((item) => item.tone === 'danger').length;
-    const warnCount = items.filter((item) => item.tone === 'warn').length;
+    const preflightItems = Array.isArray(latestModePreflight?.items)
+        ? latestModePreflight.items.map((item) => ({
+            tone: item.tone || 'muted',
+            title: item.title || item.id || 'Проверка',
+            detail: item.detail || '',
+            targetId: mapPreflightItemTarget(item.id || ''),
+            blocking: Boolean(item.blocking)
+        }))
+        : null;
+    const items = preflightItems || buildChecklistItems();
+    const dangerCount = preflightItems
+        ? Number(latestModePreflight?.blockingCount || 0)
+        : items.filter((item) => item.tone === 'danger').length;
+    const warnCount = preflightItems
+        ? Number(latestModePreflight?.warningCount || 0)
+        : items.filter((item) => item.tone === 'warn').length;
     const rootTone = dangerCount > 0 ? 'danger' : (warnCount > 0 ? 'warn' : 'good');
 
     root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
@@ -707,6 +887,12 @@ export function renderControlStartChecklist() {
     summaryEl.textContent = dangerCount > 0
         ? `${dangerCount} критичных пункта, ${warnCount} предупреждений`
         : (warnCount > 0 ? `${warnCount} пункт(ов) требуют внимания` : 'Все основные проверки выглядят нормально');
+
+    if (preflightItems) {
+        summaryEl.textContent = dangerCount > 0
+            ? `${dangerCount} критичных пункта, ${warnCount} предупреждений`
+            : (warnCount > 0 ? `${warnCount} пункт(ов) требуют внимания` : 'Backend preflight не видит критичных блокировок');
+    }
 
     itemsEl.innerHTML = '';
     items.forEach((item) => {
@@ -834,6 +1020,8 @@ function goToMonitorTab() {
 export async function selectControlMode(mode, options = {}) {
     const normalized = CONTROL_MODES[mode] ? mode : 'rectification';
     selectedControlMode = normalized;
+    latestModePreflight = null;
+    clearModePreflightRefreshTimer();
 
     renderControlModeSelector(normalized);
     renderControlModePanels(normalized);
@@ -913,6 +1101,16 @@ async function performSelectedModeStart() {
 }
 
 export async function confirmModeStart() {
+    const snapshot = await refreshModePreflight();
+    if (!snapshot) {
+        addLog('Не удалось подтвердить условия старта на контроллере. Повторите попытку.', 'warning');
+        return false;
+    }
+    if (!snapshot.ready) {
+        addLog(`Запуск заблокирован: ${snapshot.detail}`, 'warning');
+        return false;
+    }
+
     const started = await performSelectedModeStart();
     if (started) {
         closeModeStartModal();
@@ -934,8 +1132,11 @@ export async function startSelectedMode() {
         return false;
     }
 
+    latestModePreflight = null;
     renderControlStartState();
     openModeStartModal();
+    renderRuntimePreflightFallback();
+    await refreshModePreflight();
     return false;
 }
 
@@ -959,14 +1160,27 @@ export async function initControlModePanel() {
 
     const panel = document.getElementById('control-mode-panel');
     if (panel) {
-        panel.addEventListener('input', () => renderControlStartState());
-        panel.addEventListener('change', () => renderControlStartState());
+        const handlePanelEdit = () => {
+            latestModePreflight = null;
+            renderControlStartState();
+            if (isModeStartModalOpen()) {
+                scheduleModePreflightRefresh();
+            }
+        };
+        panel.addEventListener('input', handlePanelEdit);
+        panel.addEventListener('change', handlePanelEdit);
     }
 
     ['mash-steps', 'hold-steps'].forEach((id) => {
         const target = document.getElementById(id);
         if (!target) return;
-        const observer = new MutationObserver(() => renderControlStartState());
+        const observer = new MutationObserver(() => {
+            latestModePreflight = null;
+            renderControlStartState();
+            if (isModeStartModalOpen()) {
+                scheduleModePreflightRefresh();
+            }
+        });
         observer.observe(target, { childList: true, subtree: true });
     });
 

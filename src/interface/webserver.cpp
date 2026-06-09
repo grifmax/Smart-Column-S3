@@ -913,6 +913,532 @@ static void normalizeRectFractions(RectParams &params) {
   params.bodyPercent = clampFloatRange(params.bodyPercent - excess, 0.0f, 100.0f);
 }
 
+static bool parseRequestedMode(const char *modeStr, Mode &mode) {
+  if (!modeStr) {
+    return false;
+  }
+
+  if (strcmp(modeStr, "rectification") == 0) {
+    mode = Mode::RECTIFICATION;
+  } else if (strcmp(modeStr, "distillation") == 0) {
+    mode = Mode::DISTILLATION;
+  } else if (strcmp(modeStr, "manual") == 0 ||
+             strcmp(modeStr, "manual_rect") == 0) {
+    mode = Mode::MANUAL_RECT;
+  } else if (strcmp(modeStr, "mashing") == 0) {
+    mode = Mode::MASHING;
+  } else if (strcmp(modeStr, "hold") == 0) {
+    mode = Mode::HOLD;
+  } else if (strcmp(modeStr, "nbk") == 0) {
+    mode = Mode::NBK;
+  } else if (strcmp(modeStr, "fermentation") == 0) {
+    mode = Mode::FERMENTATION;
+  } else {
+    return false;
+  }
+
+  return true;
+}
+
+static bool isCoolingRelevantForMode(Mode mode) {
+  return mode == Mode::RECTIFICATION || mode == Mode::DISTILLATION ||
+         mode == Mode::MANUAL_RECT || mode == Mode::NBK;
+}
+
+static bool expectsAutoStirrerForMode(Mode mode, const Settings &settings) {
+  if (!settings.stirrer.enabled) {
+    return false;
+  }
+
+  switch (mode) {
+  case Mode::MASHING:
+    return settings.stirrer.autoMashing;
+  case Mode::NBK:
+    return settings.stirrer.autoNbk;
+  case Mode::FERMENTATION:
+    return settings.stirrer.autoFermentation;
+  default:
+    return false;
+  }
+}
+
+static void appendProcessPreflightItem(JsonArray items, const char *id,
+                                       const char *tone, const char *title,
+                                       const String &detail, bool blocking,
+                                       uint8_t &blockingCount,
+                                       uint8_t &warningCount) {
+  JsonObject item = items.add<JsonObject>();
+  item["id"] = id;
+  item["tone"] = tone;
+  item["title"] = title;
+  item["detail"] = detail;
+  item["blocking"] = blocking;
+
+  if (blocking) {
+    blockingCount++;
+  } else if (strcmp(tone, "warn") == 0) {
+    warningCount++;
+  }
+}
+
+static void setProcessPreflightCheck(JsonObject checks, const char *key,
+                                     const char *text, const char *tone) {
+  JsonObject check = checks[key].to<JsonObject>();
+  check["text"] = text;
+  check["tone"] = tone;
+}
+
+static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
+                                  const char *modeStr, JsonObject params) {
+  ControlV2::updateRuntime(g_state, g_settings);
+  syncStirrerState();
+
+  const auto &status = ControlV2::getLatestModeStatus();
+  const auto &metrics = ControlV2::getLatestMetricsSnapshot();
+  const bool lifecycleIdle = status.lifecycle == ControlV2::ModeLifecycleV2::IDLE;
+  const bool v2SnapshotReady = metrics.timestampMs > 0;
+  const bool tempSensorsPresent =
+      g_state.health.tempSensorsTotal > 0 && g_state.health.tempSensorsOk;
+  const bool sensorsFresh = tempSensorsPresent && status.indicators.sensorFreshnessOk;
+  const bool allowDemoSensorFailure =
+      g_settings.demoMode &&
+      g_state.currentAlarm.type == AlarmType::SENSOR_FAILURE;
+  const bool safetyLatched =
+      (Safety::isLatched(g_state) || status.safetyLatched) &&
+      !allowDemoSensorFailure;
+  const bool alarmActive =
+      g_state.currentAlarm.type != AlarmType::NONE && !allowDemoSensorFailure;
+  const bool loggingReady = Logger::getCurrentLogFile() != nullptr &&
+                            Logger::getCurrentLogFile()[0] != '\0';
+  const bool coolingRelevant = isCoolingRelevantForMode(mode);
+  const bool expectsAutoStirrer = expectsAutoStirrerForMode(mode, g_settings);
+  const float cubeVolumeLimitL = g_settings.equipment.cubeVolumeL;
+  const float minSubmergeL = g_settings.equipment.minHeaterSubmergeL;
+  const float absCubePressure =
+      g_state.pressure.cube < 0.0f ? -g_state.pressure.cube : g_state.pressure.cube;
+
+  uint8_t blockingCount = 0;
+  uint8_t warningCount = 0;
+  String firstBlockingDetail;
+  String firstWarningDetail;
+
+  JsonArray items = doc["items"].to<JsonArray>();
+  JsonObject checks = doc["checks"].to<JsonObject>();
+  setProcessPreflightCheck(checks, "v2", v2SnapshotReady ? "OK" : "Нет пакета",
+                           v2SnapshotReady ? "good" : "danger");
+  setProcessPreflightCheck(checks, "sensors",
+                           sensorsFresh ? "OK" : "Проверьте",
+                           sensorsFresh ? "good" : "danger");
+  setProcessPreflightCheck(checks, "safety",
+                           safetyLatched ? "Latch" : "Норма",
+                           safetyLatched ? "danger" : "good");
+  setProcessPreflightCheck(checks, "alarm", alarmActive ? "Активна" : "Нет",
+                           alarmActive ? "danger" : "good");
+
+  auto addItem = [&](const char *id, const char *tone, const char *title,
+                     const String &detail, bool blocking) {
+    appendProcessPreflightItem(items, id, tone, title, detail, blocking,
+                               blockingCount, warningCount);
+    if (blocking && firstBlockingDetail.isEmpty()) {
+      firstBlockingDetail = detail;
+    } else if (strcmp(tone, "warn") == 0 && firstWarningDetail.isEmpty()) {
+      firstWarningDetail = detail;
+    }
+  };
+
+  if (!lifecycleIdle || g_state.mode != Mode::IDLE) {
+    addItem("process-active", "danger", "Активный процесс",
+            "Автоматика ещё не вернулась в idle. Новый режим сначала нужно "
+            "запускать только после явной остановки текущего процесса.",
+            true);
+  } else {
+    addItem("process-active", "good", "Активный процесс",
+            "Система находится в idle и готова принять новый сценарий.",
+            false);
+  }
+
+  if (!v2SnapshotReady) {
+    addItem("v2", "danger", "Контур indicators v2",
+            "Backend ещё не собрал осмысленный v2 snapshot. Перед стартом "
+            "нужен хотя бы один живой пакет статуса.",
+            true);
+  } else {
+    addItem("v2", "good", "Контур indicators v2",
+            "Контур indicators v2 уже отдал рабочий snapshot для проверки старта.",
+            false);
+  }
+
+  if (!tempSensorsPresent) {
+    addItem("sensors", "danger", "Температурные датчики",
+            "Температурные датчики не готовы. Автоматический запуск без них "
+            "небезопасен.",
+            true);
+  } else if (!sensorsFresh) {
+    addItem("sensors", "danger", "Свежесть телеметрии",
+            "Телеметрия устарела. Перед стартом дождитесь свежих данных от датчиков.",
+            true);
+  } else {
+    addItem("sensors", "good", "Температурные датчики",
+            "Датчики на связи и телеметрия выглядит свежей.", false);
+  }
+
+  if (safetyLatched) {
+    addItem("safety", "danger", "Safety latch",
+            g_state.currentAlarm.message[0] != '\0'
+                ? String(g_state.currentAlarm.message)
+                : String("Есть активный safety latch. Сначала снимите блокировку и "
+                         "разберитесь с причиной trip."),
+            true);
+  } else {
+    addItem("safety", "good", "Safety latch",
+            "Safety latch сейчас не активен.", false);
+  }
+
+  if (alarmActive) {
+    addItem("alarm", "danger", "Активная авария",
+            g_state.currentAlarm.message[0] != '\0'
+                ? String(g_state.currentAlarm.message)
+                : String("В системе есть активная авария. Перед стартом её нужно "
+                         "подтвердить и сбросить."),
+            true);
+  } else {
+    addItem("alarm", "good", "Активная авария",
+            "Активных аварий сейчас нет.", false);
+  }
+
+  if (!loggingReady) {
+    addItem("logging", "warn", "Журналирование",
+            "Лог-файл сейчас не выглядит готовым. Старт возможен, но post-mortem "
+            "и run report могут оказаться неполными.",
+            false);
+  } else {
+    addItem("logging", "good", "Журналирование",
+            "Лог-файл активен, запуск будет записан в историю и системный журнал.",
+            false);
+  }
+
+  if (coolingRelevant) {
+    const bool coolingCritical =
+        g_state.temps.tsa >= g_settings.safety.tsaMaxC ||
+        g_state.temps.waterOut >= g_settings.safety.waterOutMaxC;
+    const bool coolingWarmStart =
+        g_state.temps.cube >= g_settings.equipment.waterAutoStartCubeTempC &&
+        !Valves::getWater();
+    const bool coolingMarginLow = status.indicators.coolingMarginC <= 0.0f;
+
+    if (coolingCritical) {
+      addItem("cooling", "danger", "Контур охлаждения",
+              "Охлаждение уже у опасной границы по TSA или температуре воды. "
+              "Запуск нужно отложить до нормализации контура.",
+              true);
+    } else if (coolingWarmStart || coolingMarginLow) {
+      addItem("cooling", "warn", "Контур охлаждения",
+              coolingWarmStart
+                  ? String("Куб уже тёплый, а вода не открыта. Перед стартом лучше "
+                           "подготовить охлаждение заранее.")
+                  : String("Cooling margin уже на нуле или ниже. Старт возможен, "
+                           "но колонне будет тяжело выйти в стабильный режим."),
+              false);
+    } else {
+      addItem("cooling", "good", "Контур охлаждения",
+              "Охлаждение перед стартом выглядит в рабочем диапазоне.", false);
+    }
+  }
+
+  if (absCubePressure >= g_settings.safety.pressureMaxMmHg) {
+    addItem("pressure", "danger", "Давление",
+            "Давление в кубе уже выше безопасного порога. Сначала устраните "
+            "причину, затем возвращайтесь к старту.",
+            true);
+  } else if (!status.indicators.pressureStable ||
+             absCubePressure >= g_settings.safety.pressureMaxMmHg * 0.7f) {
+    addItem("pressure", "warn", "Давление",
+            !status.indicators.pressureStable
+                ? String("Давление ещё не выглядит стабильным. Для спокойного старта "
+                         "лучше дождаться ровной линии.")
+                : String("Давление уже заметно выше обычного фона. Проверьте колонну, "
+                         "чтобы не стартовать в напряжённом режиме."),
+            false);
+  } else {
+    addItem("pressure", "good", "Давление",
+            "Давление перед стартом выглядит нормальным и стабильным.", false);
+  }
+
+  const bool takeoffValvesOpen = Valves::getHeads() || Valves::getUno();
+  if (takeoffValvesOpen) {
+    addItem("valves", "danger", "Клапаны отбора",
+            "Перед стартом уже открыт один из клапанов отбора. Сначала закройте "
+            "сервисные линии, чтобы процесс не стартовал в некорректной конфигурации.",
+            true);
+  } else {
+    addItem("valves", "good", "Клапаны отбора",
+            "Линии отбора перед стартом закрыты.", false);
+  }
+
+  if (g_state.pump.running) {
+    addItem("pump", "danger", "Насос",
+            "Насос уже работает в idle. Похоже на сервисный хвост или ручной запуск, "
+            "который нужно сначала остановить.",
+            true);
+  } else if (mode == Mode::NBK && status.activeLimits.pumpCapped) {
+    addItem("pump", "warn", "Насос",
+            "Для НБК уже активен pump cap. Старт возможен, но подача будет ограничена "
+            "автоматикой.",
+            false);
+  } else {
+    addItem("pump", "good", "Насос",
+            "Насос перед стартом в спокойном состоянии.", false);
+  }
+
+  if (expectsAutoStirrer) {
+    if (!g_settings.stirrer.enabled) {
+      addItem("stirrer", "danger", "Мешалка",
+              "Для выбранного режима ожидается auto-start мешалки, но она отключена "
+              "в настройках оборудования.",
+              true);
+    } else if (!g_state.stirrer.available) {
+      addItem("stirrer", "danger", "Мешалка",
+              "Для выбранного режима нужна мешалка, но DAC/драйвер мешалки сейчас "
+              "не виден системе.",
+              true);
+    } else {
+      addItem("stirrer", "good", "Мешалка",
+              "Авто-режим мешалки доступен и готов к запуску вместе со сценарием.",
+              false);
+    }
+  } else if (g_state.stirrer.running) {
+    addItem("stirrer", "warn", "Мешалка",
+            "Мешалка уже крутится вручную. Проверьте, точно ли это нужно для "
+            "выбранного режима.",
+            false);
+  }
+
+  if (mode == Mode::RECTIFICATION) {
+    RectParams rect = g_settings.rectParams;
+    if (!params.isNull()) {
+      if (!params["feedstock"].isNull()) {
+        rect.feedstock =
+            static_cast<uint8_t>(clampU16Range(params["feedstock"].as<uint32_t>(), 0, 7));
+      }
+      if (!params["feedVolumeL"].isNull()) {
+        rect.feedVolumeL =
+            clampFloatRange(params["feedVolumeL"].as<float>(), 1.0f, 250.0f);
+      }
+      if (!params["feedAbvPercent"].isNull()) {
+        rect.feedAbvPercent =
+            clampFloatRange(params["feedAbvPercent"].as<float>(), 1.0f, 96.0f);
+      }
+      if (!params["headsPercent"].isNull()) {
+        rect.headsPercent =
+            clampFloatRange(params["headsPercent"].as<float>(), 0.0f, 40.0f);
+      }
+      if (!params["bodyPercent"].isNull()) {
+        rect.bodyPercent =
+            clampFloatRange(params["bodyPercent"].as<float>(), 0.0f, 100.0f);
+      }
+      if (!params["tailsPercent"].isNull()) {
+        rect.tailsPercent =
+            clampFloatRange(params["tailsPercent"].as<float>(), 0.0f, 100.0f);
+      }
+      if (!params["headsSpeedMlHKw"].isNull()) {
+        rect.headsSpeedMlHKw =
+            clampFloatRange(params["headsSpeedMlHKw"].as<float>(), 10.0f, 2000.0f);
+      }
+      if (!params["bodySpeedMlHKw"].isNull()) {
+        rect.bodySpeedMlHKw =
+            clampFloatRange(params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
+      }
+      if (!params["stabilizationMin"].isNull()) {
+        rect.stabilizationMin =
+            clampU16Range(params["stabilizationMin"].as<uint32_t>(), 1, 180);
+      }
+      if (!params["purgeMin"].isNull()) {
+        rect.purgeMin = clampU16Range(params["purgeMin"].as<uint32_t>(), 1, 120);
+      }
+    }
+
+    const float fractionsSum =
+        rect.headsPercent + rect.bodyPercent + rect.tailsPercent;
+    if (rect.feedVolumeL > cubeVolumeLimitL) {
+      addItem("rect-profile", "danger", "Параметры запуска режима",
+              "Объём сырца превышает полезный объём куба. Исправьте загрузку перед стартом.",
+              true);
+    } else if (rect.feedVolumeL < minSubmergeL) {
+      addItem("rect-profile", "danger", "Параметры запуска режима",
+              "Объём сырца ниже минимального уровня для безопасного погружения ТЭНа.",
+              true);
+    } else if (fractionsSum > 100.0f || rect.bodySpeedMlHKw <= rect.headsSpeedMlHKw) {
+      addItem("rect-profile", "warn", "Параметры запуска режима",
+              fractionsSum > 100.0f
+                  ? String("Сумма фракций выше 100%. Проверьте профиль перед реальным запуском.")
+                  : String("Скорость тела не выше скорости голов. Для ректификации это обычно "
+                           "слишком консервативный профиль."),
+              false);
+    } else {
+      addItem("rect-profile", "good", "Параметры запуска режима",
+              "Объём, фракции и скорости ректификации выглядят согласованно.", false);
+    }
+  } else if (mode == Mode::MANUAL_RECT) {
+    const JsonObject feed = params["feed"].as<JsonObject>();
+    const JsonObject heads = params["heads"].as<JsonObject>();
+    const JsonObject body = params["body"].as<JsonObject>();
+    const JsonObject tails = params["tails"].as<JsonObject>();
+    const float volumeL = !feed.isNull() ? clampFloatRange(feed["volumeL"] | 20.0f, 1.0f, 250.0f)
+                                         : g_settings.rectParams.feedVolumeL;
+    const float headsVolume = !heads.isNull() ? clampFloatRange(heads["volume"] | 50.0f, 0.0f, 5000.0f) : 50.0f;
+    const float spikeThreshold = !body.isNull() ? clampFloatRange(body["spikeThreshold"] | 0.2f, 0.01f, 10.0f) : 0.2f;
+    const bool tailsEnabled = !tails.isNull() ? (tails["enabled"] | false) : false;
+
+    if (volumeL > cubeVolumeLimitL) {
+      addItem("manual-profile", "danger", "Параметры ручной ректификации",
+              "Объём сырца превышает полезный объём куба.", true);
+    } else if (volumeL < minSubmergeL) {
+      addItem("manual-profile", "danger", "Параметры ручной ректификации",
+              "Объём ниже минимального уровня безопасного погружения ТЭНа.", true);
+    } else if (headsVolume <= 0.0f || spikeThreshold <= 0.0f || !tailsEnabled) {
+      addItem("manual-profile", "warn", "Параметры ручной ректификации",
+              !tailsEnabled
+                  ? String("Хвостовая часть отключена. Это допустимо, но убедитесь, что такой сценарий осознан.")
+                  : String("Проверьте объём голов и критерий перехода в хвосты перед запуском."),
+              false);
+    } else {
+      addItem("manual-profile", "good", "Параметры ручной ректификации",
+              "Ручной профиль выглядит полным и согласованным.", false);
+    }
+  } else if (mode == Mode::DISTILLATION) {
+    const float endTemp =
+        !params["endTemp"].isNull() ? clampFloatRange(params["endTemp"].as<float>(), 70.0f, 110.0f)
+                                     : g_settings.distillationUi.endTempC;
+    const float powerPercent =
+        !params["powerPercent"].isNull()
+            ? clampFloatRange(params["powerPercent"].as<float>(), 0.0f, 100.0f)
+            : g_settings.distillationUi.powerPercent;
+
+    if (powerPercent <= 0.0f) {
+      addItem("dist-profile", "danger", "Параметры дистилляции",
+              "Нулевая мощность нагрева не имеет смысла для старта дистилляции.", true);
+    } else if (endTemp < 88.0f || endTemp > 100.0f) {
+      addItem("dist-profile", "warn", "Параметры дистилляции",
+              "Стоп-температура выглядит нетипично. Проверьте, точно ли это нужный сценарий.",
+              false);
+    } else {
+      addItem("dist-profile", "good", "Параметры дистилляции",
+              "Порог окончания и мощность дистилляции выглядят рабочими.", false);
+    }
+  } else if (mode == Mode::MASHING) {
+    JsonArray steps = params["profile"]["steps"].as<JsonArray>();
+    uint8_t validSteps = 0;
+    for (JsonObject step : steps) {
+      const float temperature = step["temperature"] | 0.0f;
+      const uint16_t duration = step["duration"] | 0;
+      if (temperature > 0.0f && duration > 0) {
+        validSteps++;
+      }
+    }
+
+    if (validSteps == 0) {
+      addItem("mash-profile", "danger", "Профиль затирки",
+              "Для старта затирки нужен хотя бы один корректный шаг с температурой и длительностью.",
+              true);
+    } else {
+      addItem("mash-profile", "good", "Профиль затирки",
+              String("Подготовлено шагов затирки: ") + validSteps + ".", false);
+    }
+  } else if (mode == Mode::HOLD) {
+    JsonArray steps = params["steps"].as<JsonArray>();
+    uint8_t validSteps = 0;
+    for (JsonObject step : steps) {
+      const uint16_t duration = step["duration"] | 0;
+      if (duration > 0) {
+        validSteps++;
+      }
+    }
+
+    if (validSteps == 0) {
+      addItem("hold-profile", "danger", "Профиль пастеризации",
+              "Для старта нужен хотя бы один шаг или пауза с длительностью.", true);
+    } else {
+      addItem("hold-profile", "good", "Профиль пастеризации",
+              String("Подготовлено шагов: ") + validSteps + ".", false);
+    }
+  } else if (mode == Mode::NBK) {
+    const float powerW = !params["powerW"].isNull()
+                             ? clampFloatRange(params["powerW"].as<float>(), 500.0f, 5500.0f)
+                             : g_settings.nbk.powerW;
+    const float pumpSpeedMlH =
+        !params["pumpSpeedMlH"].isNull()
+            ? clampFloatRange(params["pumpSpeedMlH"].as<float>(), 100.0f, 120000.0f)
+            : g_settings.nbk.pumpSpeedMlH;
+    const float thresholdC =
+        !params["columnBottomTempThresholdC"].isNull()
+            ? clampFloatRange(params["columnBottomTempThresholdC"].as<float>(), 50.0f, 110.0f)
+            : g_settings.nbk.columnBottomTempThresholdC;
+
+    if (powerW < 1000.0f || pumpSpeedMlH < 500.0f) {
+      addItem("nbk-profile", "warn", "Параметры НБК",
+              "Мощность или подача заданы очень низко. НБК может долго не войти в рабочий режим.",
+              false);
+    } else if (thresholdC < 85.0f || thresholdC > 100.0f) {
+      addItem("nbk-profile", "warn", "Параметры НБК",
+              "Порог температуры низа колонны выглядит нетипично. Проверьте уставку перед стартом.",
+              false);
+    } else {
+      addItem("nbk-profile", "good", "Параметры НБК",
+              "Мощность, подача и защитный порог НБК выглядят согласованно.", false);
+    }
+  } else if (mode == Mode::FERMENTATION) {
+    const float targetTempC =
+        !params["targetTempC"].isNull()
+            ? clampFloatRange(params["targetTempC"].as<float>(), 5.0f, 45.0f)
+            : g_settings.fermentation.targetTempC;
+    const float hysteresisC =
+        !params["hysteresisC"].isNull()
+            ? clampFloatRange(params["hysteresisC"].as<float>(), 0.1f, 10.0f)
+            : g_settings.fermentation.hysteresisC;
+
+    if (targetTempC < 18.0f || targetTempC > 32.0f) {
+      addItem("fermentation-profile", "warn", "Параметры ферментации",
+              "Целевая температура брожения выглядит нестандартно. Проверьте рецепт и культуру.",
+              false);
+    } else if (hysteresisC < 0.2f || hysteresisC > 2.0f) {
+      addItem("fermentation-profile", "warn", "Параметры ферментации",
+              "Гистерезис для брожения выглядит нетипично и может дать лишние качели по температуре.",
+              false);
+    } else {
+      addItem("fermentation-profile", "good", "Параметры ферментации",
+              "Цель и гистерезис ферментации выглядят рабочими.", false);
+    }
+  }
+
+  const bool ready = blockingCount == 0;
+  doc["success"] = true;
+  doc["mode"] = modeStr;
+  doc["ready"] = ready;
+  doc["blockingCount"] = blockingCount;
+  doc["warningCount"] = warningCount;
+
+  if (!ready) {
+    doc["tone"] = "danger";
+    doc["title"] = "Запуск заблокирован";
+    doc["detail"] = firstBlockingDetail.isEmpty()
+                        ? "Есть блокирующие условия, которые нужно снять до старта."
+                        : firstBlockingDetail;
+  } else if (warningCount > 0) {
+    doc["tone"] = "warn";
+    doc["title"] = "Старт возможен с оговорками";
+    doc["detail"] = firstWarningDetail.isEmpty()
+                        ? "Критичных блокировок нет, но часть условий требует внимания."
+                        : firstWarningDetail;
+  } else {
+    doc["tone"] = "good";
+    doc["title"] = "Можно запускать";
+    doc["detail"] =
+        "Основные проверки backend pre-flight пройдены, режим готов к запуску.";
+  }
+
+  return ready;
+}
+
 namespace WebServer {
 
 void init() {
@@ -1521,6 +2047,46 @@ void init() {
   });
 
   server.on(
+      "/api/process/preflight", HTTP_POST,
+      [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) {
+          return;
+        }
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const char *modeStr = doc["mode"];
+        if (!modeStr) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Mode required\"}");
+          return;
+        }
+
+        Mode mode = Mode::IDLE;
+        if (!parseRequestedMode(modeStr, mode)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Unknown mode\"}");
+          return;
+        }
+
+        JsonObject params = doc["params"].as<JsonObject>();
+        JsonDocument responseDoc;
+        buildProcessPreflight(responseDoc, mode, modeStr, params);
+
+        String response;
+        serializeJson(responseDoc, response);
+        request->send(200, "application/json", response);
+      });
+
+  server.on(
       "/api/process/start", HTTP_POST, [](AsyncWebServerRequest *request) {},
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
@@ -1552,7 +2118,15 @@ void init() {
 
         // Определяем режим
         Mode mode = Mode::IDLE;
-        if (strcmp(modeStr, "rectification") == 0) {
+        if (parseRequestedMode(modeStr, mode)) {
+          JsonDocument startCheckDoc;
+          if (!buildProcessPreflight(startCheckDoc, mode, modeStr, params)) {
+            String response;
+            serializeJson(startCheckDoc, response);
+            request->send(409, "application/json", response);
+            return;
+          }
+        } else if (strcmp(modeStr, "rectification") == 0) {
           mode = Mode::RECTIFICATION;
         } else if (strcmp(modeStr, "distillation") == 0) {
           mode = Mode::DISTILLATION;
@@ -1601,6 +2175,12 @@ void init() {
 
         if (!sensorsOk) {
           LOG_W("Starting process without temperature sensors!");
+        }
+
+        if (g_state.mode != Mode::IDLE) {
+          request->send(409, "application/json",
+                        "{\"success\":false,\"message\":\"Process already active\"}");
+          return;
         }
 
         // Если уже что-то запущено — сначала остановим
