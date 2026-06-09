@@ -287,144 +287,152 @@
                                     </article>
                                 </div>
                                 <div class="col-stack">
-                                    <article class="operator-card operator-card-runtime" id="mode-runtime-card">
-                                        <h3 class="operator-card-title" id="mode-runtime-title">Прогресс режима</h3>
-                                        <div id="mode-runtime-caption" class="operator-runtime-caption">Ожидание запуска
-                                            процесса</div>
-                                        <div id="mode-runtime-bars" class="operator-runtime-bars"></div>
-                                        <div id="mode-runtime-rect" class="operator-runtime-manual"
-                                            style="display: none;">
-                                        </div>
-                                        <div id="mode-runtime-manual" class="operator-runtime-manual"
-                                            style="display: none;">
-                                            <button class="operator-edit-tile" type="button"
-                                                data-edit-param="manual-power">
-                                                <span class="operator-edit-label">Мощность</span>
-                                                <strong id="manual-power-display">-- %</strong>
-                                            </button>
-                                            <button class="operator-edit-tile" type="button"
-                                                data-edit-param="manual-speed">
-                                                <span class="operator-edit-label">Скорость отбора</span>
-                                                <strong id="manual-speed-display">-- мл/ч</strong>
-                                            </button>
-                                            <button class="operator-edit-tile" type="button"
-                                                data-edit-param="water-autostart-cube-temp">
-                                                <span class="operator-edit-label">Подача воды (автостарт)</span>
-                                                <strong id="water-autostart-display">-- °C</strong>
-                                            </button>
-                                            <button class="operator-edit-tile" type="button"
-                                                data-edit-param="manual-heads">
-                                                <span class="operator-edit-label">Головы</span>
-                                                <strong id="manual-heads-display">-- мл</strong>
-                                            </button>
-                                            <button class="operator-edit-tile" type="button"
-                                                data-edit-param="manual-body">
-                                                <span class="operator-edit-label">Тело</span>
-                                                <strong id="manual-body-display">-- мл</strong>
-                                            </button>
-                                            <button class="operator-edit-tile" type="button"
-                                                data-edit-param="manual-tails">
-                                                <span class="operator-edit-label">Хвосты</span>
-                                                <strong id="manual-tails-display">-- мл</strong>
-                                            </button>
-                                            <button class="operator-edit-tile" type="button"
-                                                data-edit-param="rect-power">
-                                                <span class="operator-edit-label">Мощность</span>
-                                                <strong id="rect-power-display">-- %</strong>
-                                            </button>
-                                        </div>
-                                    </article>
-                                </div>
-                            </div>
-
-                            <div class="operator-panel-stack">
-                                <article class="operator-card operator-card-status operator-card-process">
-                                    <h3 class="operator-card-title">Состояние процесса</h3>
-                                    <div id="operator-guidance" class="operator-guidance is-muted">
-                                        <div class="operator-guidance-head">
-                                            <span class="operator-guidance-kicker">Operator Guidance</span>
-                                            <strong id="operator-guidance-title">Ожидание статуса</strong>
-                                        </div>
-                                        <p id="operator-guidance-text" class="operator-guidance-text">
-                                            Подсказка появится после первого обновления indicators v2.
-                                        </p>
-                                    </div>
-                                    <div class="operator-status-grid operator-status-grid-compact">
-                                        <div class="operator-stat">
-                                            <span class="operator-stat-label">Lifecycle</span>
-                                            <strong id="indicator-lifecycle" class="operator-stat-value operator-indicator-value">idle</strong>
-                                        </div>
-                                        <div class="operator-stat">
-                                            <span class="operator-stat-label">Отбор</span>
-                                            <strong id="indicator-takeoff" class="operator-stat-value operator-indicator-value">--</strong>
-                                        </div>
-                                        <div class="operator-stat">
-                                            <span class="operator-stat-label">Охлаждение</span>
-                                            <strong id="indicator-cooling-status" class="operator-stat-value operator-indicator-value">--</strong>
-                                        </div>
-                                        <div class="operator-stat">
-                                            <span class="operator-stat-label">Recovery</span>
-                                            <strong id="indicator-recovery" class="operator-stat-value operator-indicator-value">--</strong>
-                                        </div>
-                                    </div>
-                                    <div class="operator-level-grid">
-                                        <div class="operator-level-item">
-                                            <span class="operator-level-label">Стабильность</span>
-                                            <strong id="indicator-stability" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
-                                        </div>
-                                        <div class="operator-level-item">
-                                            <span class="operator-level-label">Риск захлёба</span>
-                                            <strong id="indicator-flood-risk" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
-                                        </div>
-                                        <div class="operator-level-item">
-                                            <span class="operator-level-label">Cooling Margin</span>
-                                            <strong id="indicator-cooling-margin" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
-                                        </div>
-                                        <div class="operator-level-item">
-                                            <span class="operator-level-label">Process Health</span>
-                                            <strong id="indicator-process-health" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
-                                        </div>
-                                    </div>
-                                </article>
-
-                                <details id="monitor-diagnostics-panel" class="operator-fold-panel">
-                                    <summary class="operator-fold-summary">
-                                        <div>
-                                            <strong>Диагностика процесса</strong>
-                                            <span>Причины, ограничения и инженерные индикаторы</span>
-                                        </div>
-                                        <span class="operator-fold-summary-action">Показать</span>
-                                    </summary>
-                                    <div class="operator-fold-body">
-                                        <article class="operator-card">
-                                            <div class="operator-list">
-                                                <div class="operator-list-row"><span>Последняя причина</span><strong
-                                                        id="indicator-last-reason" class="operator-indicator-value">--</strong></div>
-                                                <div class="operator-list-row"><span>Свежесть датчиков</span><strong
-                                                        id="indicator-sensor-freshness" class="operator-indicator-value">--</strong></div>
-                                                <div class="operator-list-row"><span>Стабильность давления</span><strong
-                                                        id="indicator-pressure-stable" class="operator-indicator-value">--</strong></div>
-                                                <div class="operator-list-row"><span>Завершение голов</span><strong
-                                                        id="indicator-heads-score" class="operator-indicator-value">--</strong></div>
-                                                <div class="operator-list-row"><span>Вероятность конца тела</span><strong
-                                                        id="indicator-body-score" class="operator-indicator-value">--</strong></div>
-                                                <div class="operator-list-row"><span>Ограничения safety</span><strong
-                                                        id="indicator-power-limit" class="operator-indicator-value">--</strong></div>
+                                    <details class="operator-card operator-card-runtime operator-card-collapsible" id="mode-runtime-card" open>
+                                        <summary class="operator-card-toggle">
+                                            <h3 class="operator-card-title" id="mode-runtime-title">Прогресс режима</h3>
+                                            <span class="operator-card-toggle-state">Свернуть</span>
+                                        </summary>
+                                        <div class="operator-card-body">
+                                            <div id="mode-runtime-caption" class="operator-runtime-caption">Ожидание запуска
+                                                процесса</div>
+                                            <div id="mode-runtime-bars" class="operator-runtime-bars"></div>
+                                            <div id="mode-runtime-rect" class="operator-runtime-manual"
+                                                style="display: none;">
                                             </div>
-                                        </article>
-                                    </div>
-                                </details>
-
-                                <details id="monitor-gauges-panel" class="operator-fold-panel" open>
-                                    <summary class="operator-fold-summary">
-                                        <div>
-                                            <strong>Показометры и график</strong>
-                                            <span>Температуры, питание, объёмы и вспомогательные узлы</span>
+                                            <div id="mode-runtime-manual" class="operator-runtime-manual"
+                                                style="display: none;">
+                                                <button class="operator-edit-tile" type="button"
+                                                    data-edit-param="manual-power">
+                                                    <span class="operator-edit-label">Мощность</span>
+                                                    <strong id="manual-power-display">-- %</strong>
+                                                </button>
+                                                <button class="operator-edit-tile" type="button"
+                                                    data-edit-param="manual-speed">
+                                                    <span class="operator-edit-label">Скорость отбора</span>
+                                                    <strong id="manual-speed-display">-- мл/ч</strong>
+                                                </button>
+                                                <button class="operator-edit-tile" type="button"
+                                                    data-edit-param="water-autostart-cube-temp">
+                                                    <span class="operator-edit-label">Подача воды (автостарт)</span>
+                                                    <strong id="water-autostart-display">-- °C</strong>
+                                                </button>
+                                                <button class="operator-edit-tile" type="button"
+                                                    data-edit-param="manual-heads">
+                                                    <span class="operator-edit-label">Головы</span>
+                                                    <strong id="manual-heads-display">-- мл</strong>
+                                                </button>
+                                                <button class="operator-edit-tile" type="button"
+                                                    data-edit-param="manual-body">
+                                                    <span class="operator-edit-label">Тело</span>
+                                                    <strong id="manual-body-display">-- мл</strong>
+                                                </button>
+                                                <button class="operator-edit-tile" type="button"
+                                                    data-edit-param="manual-tails">
+                                                    <span class="operator-edit-label">Хвосты</span>
+                                                    <strong id="manual-tails-display">-- мл</strong>
+                                                </button>
+                                                <button class="operator-edit-tile" type="button"
+                                                    data-edit-param="rect-power">
+                                                    <span class="operator-edit-label">Мощность</span>
+                                                    <strong id="rect-power-display">-- %</strong>
+                                                </button>
+                                            </div>
                                         </div>
-                                        <span class="operator-fold-summary-action">Свернуть</span>
-                                    </summary>
-                                    <div class="operator-fold-body">
-                                        <div class="operator-data-grid">
+                                    </details>
+
+                                    <div class="operator-panel-stack">
+                                        <details class="operator-card operator-card-status operator-card-process operator-card-collapsible" open>
+                                            <summary class="operator-card-toggle">
+                                                <h3 class="operator-card-title">Состояние процесса</h3>
+                                                <span class="operator-card-toggle-state">Свернуть</span>
+                                            </summary>
+                                            <div class="operator-card-body">
+                                                <div id="operator-guidance" class="operator-guidance is-muted">
+                                                    <div class="operator-guidance-head">
+                                                        <span class="operator-guidance-kicker">Operator Guidance</span>
+                                                        <strong id="operator-guidance-title">Ожидание статуса</strong>
+                                                    </div>
+                                                    <p id="operator-guidance-text" class="operator-guidance-text">
+                                                        Подсказка появится после первого обновления indicators v2.
+                                                    </p>
+                                                </div>
+                                                <div class="operator-status-grid operator-status-grid-compact">
+                                                    <div class="operator-stat">
+                                                        <span class="operator-stat-label">Lifecycle</span>
+                                                        <strong id="indicator-lifecycle" class="operator-stat-value operator-indicator-value">idle</strong>
+                                                    </div>
+                                                    <div class="operator-stat">
+                                                        <span class="operator-stat-label">Отбор</span>
+                                                        <strong id="indicator-takeoff" class="operator-stat-value operator-indicator-value">--</strong>
+                                                    </div>
+                                                    <div class="operator-stat">
+                                                        <span class="operator-stat-label">Охлаждение</span>
+                                                        <strong id="indicator-cooling-status" class="operator-stat-value operator-indicator-value">--</strong>
+                                                    </div>
+                                                    <div class="operator-stat">
+                                                        <span class="operator-stat-label">Recovery</span>
+                                                        <strong id="indicator-recovery" class="operator-stat-value operator-indicator-value">--</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="operator-level-grid">
+                                                    <div class="operator-level-item">
+                                                        <span class="operator-level-label">Стабильность</span>
+                                                        <strong id="indicator-stability" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                                    </div>
+                                                    <div class="operator-level-item">
+                                                        <span class="operator-level-label">Риск захлёба</span>
+                                                        <strong id="indicator-flood-risk" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                                    </div>
+                                                    <div class="operator-level-item">
+                                                        <span class="operator-level-label">Cooling Margin</span>
+                                                        <strong id="indicator-cooling-margin" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                                    </div>
+                                                    <div class="operator-level-item">
+                                                        <span class="operator-level-label">Process Health</span>
+                                                        <strong id="indicator-process-health" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </details>
+
+                                        <details id="monitor-diagnostics-panel" class="operator-fold-panel">
+                                            <summary class="operator-fold-summary">
+                                                <div>
+                                                    <strong>Диагностика процесса</strong>
+                                                    <span>Причины, ограничения и инженерные индикаторы</span>
+                                                </div>
+                                                <span class="operator-fold-summary-action">Показать</span>
+                                            </summary>
+                                            <div class="operator-fold-body">
+                                                <article class="operator-card">
+                                                    <div class="operator-list">
+                                                        <div class="operator-list-row"><span>Последняя причина</span><strong
+                                                                id="indicator-last-reason" class="operator-indicator-value">--</strong></div>
+                                                        <div class="operator-list-row"><span>Свежесть датчиков</span><strong
+                                                                id="indicator-sensor-freshness" class="operator-indicator-value">--</strong></div>
+                                                        <div class="operator-list-row"><span>Стабильность давления</span><strong
+                                                                id="indicator-pressure-stable" class="operator-indicator-value">--</strong></div>
+                                                        <div class="operator-list-row"><span>Завершение голов</span><strong
+                                                                id="indicator-heads-score" class="operator-indicator-value">--</strong></div>
+                                                        <div class="operator-list-row"><span>Вероятность конца тела</span><strong
+                                                                id="indicator-body-score" class="operator-indicator-value">--</strong></div>
+                                                        <div class="operator-list-row"><span>Ограничения safety</span><strong
+                                                                id="indicator-power-limit" class="operator-indicator-value">--</strong></div>
+                                                    </div>
+                                                </article>
+                                            </div>
+                                        </details>
+
+                                        <details id="monitor-gauges-panel" class="operator-fold-panel" open>
+                                            <summary class="operator-fold-summary">
+                                                <div>
+                                                    <strong>Показометры и график</strong>
+                                                    <span>Температуры, питание, объёмы и вспомогательные узлы</span>
+                                                </div>
+                                                <span class="operator-fold-summary-action">Свернуть</span>
+                                            </summary>
+                                            <div class="operator-fold-body">
+                                                <div class="operator-data-grid">
                                             <article class="operator-card">
                                                 <h3 class="operator-card-title">Температуры</h3>
                                                 <div class="operator-list">
@@ -530,7 +538,9 @@
                                             </article>
                                         </div>
                                     </div>
-                                </details>
+                                        </details>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Служебные значения для совместимости с текущим JS -->

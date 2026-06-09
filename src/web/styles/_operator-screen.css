@@ -118,6 +118,61 @@
 .operator-card-runtime {
 }
 
+.operator-card-collapsible {
+    padding: 0;
+    overflow: hidden;
+}
+
+.operator-card-toggle {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.operator-card-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.operator-card-toggle .operator-card-title {
+    margin-bottom: 0;
+}
+
+.operator-card-toggle-state {
+    min-width: 92px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.74);
+    text-align: center;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: transparent;
+}
+
+.operator-card-collapsible[open] .operator-card-toggle-state {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.26);
+}
+
+.operator-card-collapsible[open] .operator-card-toggle-state::before {
+    content: 'Свернуть';
+    color: var(--landing-ink);
+}
+
+.operator-card-collapsible:not([open]) .operator-card-toggle-state::before {
+    content: 'Показать';
+    color: var(--landing-ink);
+}
+
+.operator-card-body {
+    padding: 0 14px 14px;
+}
+
 .operator-card-title {
     font-size: 0.98em;
     text-transform: uppercase;
@@ -130,7 +185,7 @@
 .operator-panel-stack {
     display: grid;
     gap: 14px;
-    margin-top: 16px;
+    margin-top: 0;
 }
 
 .operator-mission-control {
@@ -365,6 +420,14 @@
 
 .operator-fold-body {
     padding: 0 0 14px;
+}
+
+.operator-fold-panel[open] .operator-fold-summary-action::before {
+    content: 'Свернуть';
+}
+
+.operator-fold-panel:not([open]) .operator-fold-summary-action::before {
+    content: 'Показать';
 }
 
 .operator-fold-body .operator-card {
@@ -1199,7 +1262,16 @@
         flex-direction: column;
     }
 
+    .operator-card-toggle {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
     .operator-fold-summary-action {
+        min-width: 0;
+    }
+
+    .operator-card-toggle-state {
         min-width: 0;
     }
 }
