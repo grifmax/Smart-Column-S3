@@ -1,7 +1,10 @@
 import { runtimeMonitorState, currentMode, resolveMode, maxHeaterPower, MODE_IDLE, MODE_RECT, PHASE_HEADS, PHASE_BODY, PHASE_POST_HEADS_STAB, PHASE_TAILS, MODE_DIST, MODE_MASH, MODE_HOLD, MODE_MANUAL, MODE_NBK, MODE_FERMENTATION } from '../globals.js';
+import { activateTabById } from '../core/tabs.js';
 import { clampPercent, runtimeEscapeHtml, toFinite, formatDurationSafe } from '../runtime/helpers.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { estimateRectTargets } from '../runtime/state.js';
+
+let missionBindingsReady = false;
 
 function setIndicatorValue(id, text, tone = 'muted') {
     const el = document.getElementById(id);
@@ -64,22 +67,88 @@ function setPreflightState(title, detail, tone = 'muted', checks = {}) {
     setPreflightItem('runtime-preflight-alarm', checks.alarm?.text || '--', checks.alarm?.tone || 'muted');
 }
 
-function setMissionControl(title, detail, tone = 'muted', goal = '--', risk = '--', action = '--') {
+function setMissionCardState(cardId, valueId, text, route = null) {
+    const card = document.getElementById(cardId);
+    const valueEl = document.getElementById(valueId);
+    if (!card || !valueEl) return;
+
+    valueEl.textContent = text;
+    card._missionRoute = route || null;
+    card.classList.toggle('is-actionable', Boolean(route));
+    card.tabIndex = route ? 0 : -1;
+    card.setAttribute('role', route ? 'button' : 'group');
+    card.setAttribute('aria-disabled', route ? 'false' : 'true');
+    card.title = route ? 'Открыть связанную секцию' : '';
+}
+
+function setMissionControl(title, detail, tone = 'muted', goal = '--', risk = '--', action = '--', routes = {}) {
     const root = document.getElementById('operator-mission-control');
     const titleEl = document.getElementById('operator-mission-title');
     const textEl = document.getElementById('operator-mission-text');
-    const goalEl = document.getElementById('operator-mission-goal');
-    const riskEl = document.getElementById('operator-mission-risk');
-    const actionEl = document.getElementById('operator-mission-action');
-    if (!root || !titleEl || !textEl || !goalEl || !riskEl || !actionEl) return;
+    if (!root || !titleEl || !textEl) return;
 
     root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
     root.classList.add(`is-${tone}`);
     titleEl.textContent = title;
     textEl.textContent = detail;
-    goalEl.textContent = goal;
-    riskEl.textContent = risk;
-    actionEl.textContent = action;
+    setMissionCardState('operator-mission-goal-card', 'operator-mission-goal', goal, routes.goal || null);
+    setMissionCardState('operator-mission-risk-card', 'operator-mission-risk', risk, routes.risk || null);
+    setMissionCardState('operator-mission-action-card', 'operator-mission-action', action, routes.action || null);
+}
+
+function focusMissionTarget(targetId, retries = 8) {
+    if (!targetId) return;
+    const target = document.getElementById(targetId);
+    const visible = Boolean(target) && target.getClientRects().length > 0;
+    if (!visible) {
+        if (retries <= 0) return;
+        window.setTimeout(() => focusMissionTarget(targetId, retries - 1), 90);
+        return;
+    }
+
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (typeof target.focus === 'function') {
+        target.focus({ preventScroll: true });
+    }
+
+    target.classList.remove('control-field-attention');
+    void target.offsetWidth;
+    target.classList.add('control-field-attention');
+    window.setTimeout(() => target.classList.remove('control-field-attention'), 1700);
+}
+
+function executeMissionRoute(route) {
+    if (!route) return;
+    if (route.tabId) {
+        activateTabById(route.tabId);
+    }
+
+    window.setTimeout(() => {
+        if (route.modeKey) {
+            document.querySelector(`[data-mode-select="${route.modeKey}"]`)?.click();
+        }
+        if (route.targetId) {
+            window.setTimeout(() => focusMissionTarget(route.targetId), route.modeKey ? 120 : 0);
+        }
+    }, 0);
+}
+
+function ensureMissionControlBindings() {
+    if (missionBindingsReady) return;
+    missionBindingsReady = true;
+
+    ['operator-mission-goal-card', 'operator-mission-risk-card', 'operator-mission-action-card'].forEach((cardId) => {
+        const card = document.getElementById(cardId);
+        if (!card) return;
+
+        const run = () => executeMissionRoute(card._missionRoute || null);
+        card.addEventListener('click', run);
+        card.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            run();
+        });
+    });
 }
 
 function getReasonCodeLabel(code) {
@@ -161,6 +230,224 @@ function getActiveLimitsLabel(indicators, activeLimits) {
 function formatMissionVolumeMl(value) {
     const normalized = Math.max(0, toFinite(value, 0));
     return `${normalized.toFixed(0)} мл`;
+}
+
+function getMissionModeKey(mode) {
+    switch (mode) {
+        case MODE_RECT:
+            return 'rectification';
+        case MODE_MANUAL:
+            return 'manual';
+        case MODE_DIST:
+            return 'distillation';
+        case MODE_MASH:
+            return 'mashing';
+        case MODE_HOLD:
+            return 'hold';
+        case MODE_NBK:
+            return 'nbk';
+        case MODE_FERMENTATION:
+            return 'fermentation';
+        default:
+            return '';
+    }
+}
+
+function getDefaultMissionControlRoute(mode) {
+    const modeKey = getMissionModeKey(mode);
+    switch (modeKey) {
+        case 'rectification':
+            return { tabId: 'control', modeKey, targetId: 'rect-start-feed-volume' };
+        case 'manual':
+            return { tabId: 'control', modeKey, targetId: 'manual-feed-volume' };
+        case 'distillation':
+            return { tabId: 'control', modeKey, targetId: 'dist-start-end-temp' };
+        case 'mashing':
+            return { tabId: 'control', modeKey, targetId: 'mash-steps' };
+        case 'hold':
+            return { tabId: 'control', modeKey, targetId: 'hold-steps' };
+        case 'nbk':
+            return { tabId: 'control', modeKey, targetId: 'nbk-power-w' };
+        case 'fermentation':
+            return { tabId: 'control', modeKey, targetId: 'ferm-target-temp' };
+        default:
+            return { tabId: 'control', targetId: 'mode-start-button' };
+    }
+}
+
+function buildMissionRoutes(state, indicators, activeLimits) {
+    const mode = resolveMode(state.mode, state.modeStr);
+    const lifecycle = String(state?.v2?.lifecycle || 'idle').toLowerCase();
+    const defaultRoute = getDefaultMissionControlRoute(mode);
+    const isColumnMode = mode === MODE_RECT || mode === MODE_MANUAL;
+    const coolingMargin = toFinite(indicators.coolingMarginC, 0);
+    const floodRisk = toFinite(indicators.floodRisk, 0);
+    const stability = toFinite(indicators.stabilityIndex, 0);
+    const bodyScore = toFinite(indicators.bodyEndScore, 0);
+    const headsScore = toFinite(indicators.headsCompletionScore, 0);
+    const hasLimits =
+        Boolean(indicators.powerLimited) ||
+        Boolean(activeLimits.powerCapped) ||
+        Boolean(activeLimits.takeoffBlocked) ||
+        Boolean(activeLimits.phaseAdvanceBlocked) ||
+        Boolean(activeLimits.pumpCapped);
+
+    if (!state?.v2?.available) {
+        return {
+            goal: { tabId: 'control', targetId: 'mode-start-button' },
+            risk: { tabId: 'monitor', targetId: 'runtime-preflight' },
+            action: { tabId: 'control', targetId: 'mode-start-button' }
+        };
+    }
+
+    if (state?.currentAlarm?.active || state?.v2?.safetyLatched || lifecycle === 'faulted') {
+        return {
+            goal: { tabId: 'monitor', targetId: 'runtime-preflight' },
+            risk: { tabId: 'monitor', targetId: 'indicator-last-reason' },
+            action: { tabId: 'safety' }
+        };
+    }
+
+    if (!indicators.sensorFreshnessOk) {
+        return {
+            goal: { tabId: 'monitor', targetId: 'indicator-sensor-freshness' },
+            risk: { tabId: 'monitor', targetId: 'indicator-sensor-freshness' },
+            action: { tabId: 'equipment' }
+        };
+    }
+
+    if (indicators.recoveryActive) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-recovery' },
+            action: { tabId: 'monitor', targetId: 'indicator-stability' }
+        };
+    }
+
+    if (isColumnMode && floodRisk >= 0.65) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-flood-risk' },
+            action: { tabId: 'monitor', targetId: 'indicator-cooling-margin' }
+        };
+    }
+
+    if (isColumnMode && coolingMargin <= 0) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-cooling-margin' },
+            action: { tabId: 'monitor', targetId: 'landing-water-out' }
+        };
+    }
+
+    if (mode === MODE_FERMENTATION && (!indicators.fermTempInBand || indicators.longDeviation)) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'operator-guidance' },
+            action: { tabId: 'control', modeKey: 'fermentation', targetId: 'ferm-target-temp' }
+        };
+    }
+
+    if ((mode === MODE_MASH || mode === MODE_HOLD) && (indicators.overshootRisk || indicators.heatingTooSlow)) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'operator-guidance' },
+            action: defaultRoute
+        };
+    }
+
+    if (mode === MODE_NBK && !indicators.steamReady) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'operator-guidance' },
+            action: { tabId: 'control', modeKey: 'nbk', targetId: 'nbk-power-w' }
+        };
+    }
+
+    if (mode === MODE_NBK && !indicators.nbkFeedAllowed) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'operator-guidance' },
+            action: { tabId: 'control', modeKey: 'nbk', targetId: 'nbk-pump-speed' }
+        };
+    }
+
+    if (Boolean(activeLimits.takeoffBlocked) || (isColumnMode && !indicators.takeoffAllowed)) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-takeoff' },
+            action: { tabId: 'monitor', targetId: 'indicator-stability' }
+        };
+    }
+
+    if (isColumnMode && coolingMargin < 5) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-cooling-margin' },
+            action: { tabId: 'monitor', targetId: 'landing-water-out' }
+        };
+    }
+
+    if (isColumnMode && floodRisk >= 0.35) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-flood-risk' },
+            action: { tabId: 'monitor', targetId: 'indicator-pressure-stable' }
+        };
+    }
+
+    if (mode === MODE_RECT && bodyScore >= 0.8) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-body-score' },
+            action: { tabId: 'control', modeKey: 'rectification', targetId: 'rect-start-body-percent' }
+        };
+    }
+
+    if (mode === MODE_RECT && headsScore >= 0.8) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-heads-score' },
+            action: { tabId: 'control', modeKey: 'rectification', targetId: 'rect-start-body-speed' }
+        };
+    }
+
+    if (isColumnMode && stability < 0.45) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-stability' },
+            action: mode === MODE_RECT
+                ? { tabId: 'control', modeKey: 'rectification', targetId: 'rect-start-stabilization' }
+                : defaultRoute
+        };
+    }
+
+    if (hasLimits) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'indicator-power-limit' },
+            action: { tabId: 'monitor', targetId: 'indicator-last-reason' }
+        };
+    }
+
+    if (String(state?.v2?.operatorMessage || '').trim()) {
+        return {
+            goal: defaultRoute,
+            risk: { tabId: 'monitor', targetId: 'operator-guidance' },
+            action: { tabId: 'monitor', targetId: 'operator-guidance' }
+        };
+    }
+
+    return {
+        goal: defaultRoute,
+        risk: {
+            tabId: 'monitor',
+            targetId: isColumnMode ? 'operator-guidance' : 'indicator-process-health'
+        },
+        action: mode === MODE_IDLE
+            ? { tabId: 'control', targetId: 'mode-start-button' }
+            : { tabId: 'monitor', targetId: 'operator-guidance' }
+    };
 }
 
 function buildMissionSnapshot(state, indicators, activeLimits) {
@@ -1153,9 +1440,12 @@ export function renderModeRuntimeCard() {
         });
     }
 
-    const mission = buildMissionSnapshot(s, s?.v2?.indicators || {}, s?.v2?.activeLimits || {});
+    const indicators = s?.v2?.indicators || {};
+    const activeLimits = s?.v2?.activeLimits || {};
+    const mission = buildMissionSnapshot(s, indicators, activeLimits);
+    const missionRoutes = buildMissionRoutes(s, indicators, activeLimits);
     const preflight = getRuntimePreflightState(s);
-    setMissionControl(mission.title, mission.detail, mission.tone, mission.goal, mission.risk, mission.action);
+    setMissionControl(mission.title, mission.detail, mission.tone, mission.goal, mission.risk, mission.action, missionRoutes);
     setPreflightState(preflight.title, preflight.detail, preflight.tone, preflight.checks);
     renderRuntimeBars(items);
     updateManualTiles();
@@ -1170,6 +1460,7 @@ export function renderModeRuntimeCard() {
 }
 
 export function initRuntimeMonitorUi() {
+    ensureMissionControlBindings();
     const tiles = document.querySelectorAll('[data-edit-param]');
     tiles.forEach((tile) => {
         const openFromTile = () => {
