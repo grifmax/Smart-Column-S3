@@ -113,6 +113,7 @@ function setMissionControl(title, detail, tone = 'muted', goal = '--', risk = '-
 function focusMissionTarget(targetId, retries = 8) {
     if (!targetId) return;
     const target = document.getElementById(targetId);
+    target?.closest('details')?.setAttribute('open', 'open');
     const visible = Boolean(target) && target.getClientRects().length > 0;
     if (!visible) {
         if (retries <= 0) return;
@@ -315,14 +316,14 @@ function buildMissionRoutes(state, indicators, activeLimits) {
     if (!state?.v2?.available) {
         return {
             goal: { tabId: 'control', targetId: 'mode-start-button' },
-            risk: { tabId: 'monitor', targetId: 'runtime-preflight' },
+            risk: { tabId: 'control', targetId: 'mode-start-status' },
             action: { tabId: 'control', targetId: 'mode-start-button' }
         };
     }
 
     if (state?.currentAlarm?.active || state?.v2?.safetyLatched || lifecycle === 'faulted') {
         return {
-            goal: { tabId: 'monitor', targetId: 'runtime-preflight' },
+            goal: { tabId: 'control', targetId: 'mode-start-status' },
             risk: { tabId: 'monitor', targetId: 'indicator-last-reason' },
             action: { tabId: 'safety' }
         };
@@ -1449,15 +1450,7 @@ export function renderModeRuntimeCard() {
         });
     } else {
         titleEl.textContent = 'Прогресс режима';
-        captionEl.textContent = 'Ожидание запуска процесса';
-        items.push({
-            label: 'Нет активного режима',
-            percent: 0,
-            primary: '0% выполнено',
-            metaLeft: '',
-            metaRight: '',
-            stateClass: 'is-pending'
-        });
+        captionEl.textContent = 'После запуска здесь появятся фаза, остаток и рабочие шаги процесса.';
     }
 
     const indicators = s?.v2?.indicators || {};

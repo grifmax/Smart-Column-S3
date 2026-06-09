@@ -22,6 +22,8 @@ import {
     initControlModePanel,
     selectControlMode,
     startSelectedMode,
+    confirmModeStart,
+    closeModeStartModal,
     renderControlStartChecklist,
     renderControlStartState,
     initManualRectSettings,
@@ -168,6 +170,8 @@ window.startRectification = startRectification;
 window.startManual = startManual;
 window.selectControlMode = selectControlMode;
 window.startSelectedMode = startSelectedMode;
+window.confirmModeStart = confirmModeStart;
+window.closeModeStartModal = closeModeStartModal;
 window.renderControlStartChecklist = renderControlStartChecklist;
 window.renderControlStartState = renderControlStartState;
 window.saveManualRectSettings = saveManualRectSettings;

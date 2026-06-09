@@ -121,6 +121,7 @@ function renderControlModeHeader(mode) {
     const title = document.getElementById('control-mode-title');
     const subtitle = document.getElementById('control-mode-subtitle');
     const startButton = document.getElementById('mode-start-button');
+    const confirmButton = document.getElementById('mode-start-confirm-button');
     const labels = {
         rectification: {
             title: 'Авто-ректификация',
@@ -169,11 +170,15 @@ function renderControlModeHeader(mode) {
         startButton.classList.remove('btn-success', 'btn-warning', 'btn-info');
         startButton.classList.add('btn-primary');
     }
+    if (confirmButton) {
+        confirmButton.textContent = ui.startLabel;
+    }
 }
 
 export function renderControlStartState() {
     const startButton = document.getElementById('mode-start-button');
     const statusEl = document.getElementById('mode-start-status');
+    const confirmButton = document.getElementById('mode-start-confirm-button');
     const availability = getStartAvailabilityState(runtimeMonitorState);
     const activeProcessBlock = currentMode !== MODE_IDLE;
 
@@ -191,23 +196,43 @@ export function renderControlStartState() {
             : `${availability.title}. ${availability.detail}`;
     }
 
+    if (confirmButton) {
+        confirmButton.disabled = availability.disabled;
+    }
+
     renderControlModeSummary();
     renderControlStartChecklist();
+}
+
+function openModeStartModal() {
+    const modal = byId('mode-start-modal');
+    if (!modal) return;
+    modal.classList.add('active');
+}
+
+export function closeModeStartModal() {
+    const modal = byId('mode-start-modal');
+    if (!modal) return;
+    modal.classList.remove('active');
 }
 
 function focusChecklistTarget(targetId) {
     const target = byId(targetId);
     if (!target) return;
 
-    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    if (typeof target.focus === 'function') {
-        target.focus({ preventScroll: true });
-    }
+    closeModeStartModal();
 
-    target.classList.remove('control-field-attention');
-    void target.offsetWidth;
-    target.classList.add('control-field-attention');
-    window.setTimeout(() => target.classList.remove('control-field-attention'), 1700);
+    window.setTimeout(() => {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (typeof target.focus === 'function') {
+            target.focus({ preventScroll: true });
+        }
+
+        target.classList.remove('control-field-attention');
+        void target.offsetWidth;
+        target.classList.add('control-field-attention');
+        window.setTimeout(() => target.classList.remove('control-field-attention'), 1700);
+    }, 30);
 }
 
 function addChecklistItem(items, tone, title, detail, targetId = '') {
@@ -833,7 +858,7 @@ export function getSelectedControlMode() {
     return selectedControlMode;
 }
 
-export async function startSelectedMode() {
+async function performSelectedModeStart() {
     if (currentMode !== MODE_IDLE) {
         addLog('Сначала остановите текущий процесс, затем запускайте новый режим.', 'warning');
         renderControlStartState();
@@ -887,6 +912,33 @@ export async function startSelectedMode() {
     return started;
 }
 
+export async function confirmModeStart() {
+    const started = await performSelectedModeStart();
+    if (started) {
+        closeModeStartModal();
+    }
+    return started;
+}
+
+export async function startSelectedMode() {
+    if (currentMode !== MODE_IDLE) {
+        addLog('Сначала остановите текущий процесс, затем запускайте новый режим.', 'warning');
+        renderControlStartState();
+        return false;
+    }
+
+    const availability = getStartAvailabilityState(runtimeMonitorState);
+    if (availability.disabled) {
+        addLog(`Запуск заблокирован: ${availability.detail}`, 'warning');
+        renderControlStartState();
+        return false;
+    }
+
+    renderControlStartState();
+    openModeStartModal();
+    return false;
+}
+
 export async function initControlModePanel() {
     if (!document.getElementById('control-mode-panel')) {
         return;
@@ -917,6 +969,13 @@ export async function initControlModePanel() {
         const observer = new MutationObserver(() => renderControlStartState());
         observer.observe(target, { childList: true, subtree: true });
     });
+
+    const startModal = byId('mode-start-modal');
+    if (startModal) {
+        startModal.addEventListener('click', (event) => {
+            if (event.target === startModal) closeModeStartModal();
+        });
+    }
 
     await selectControlMode(initialMode, { persist: false });
     renderControlStartState();

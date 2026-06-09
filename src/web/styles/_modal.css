@@ -74,6 +74,14 @@
     padding: 20px;
 }
 
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 0 20px 20px;
+    flex-wrap: wrap;
+}
+
 .modal-section {
     margin-bottom: 30px;
 }
