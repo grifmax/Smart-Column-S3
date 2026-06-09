@@ -539,6 +539,10 @@ export function updateButtonStates() {
         );
     }
 
+    if (typeof window.renderControlStartState === 'function') {
+        window.renderControlStartState();
+    }
+
 }
 
 

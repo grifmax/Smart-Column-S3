@@ -907,7 +907,7 @@
                                                 </div>
 
                                                 <div class="controls" style="flex-wrap: wrap;">
-                                                    <button class="btn btn-sm" type="button" onclick="addMashStep()">➕
+                                                    <button class="btn btn-sm" type="button" id="mash-add-step-button" onclick="addMashStep()">➕
                                                         Добавить шаг</button>
                                                 </div>
                                             </div>
@@ -924,7 +924,7 @@
                                                 </div>
 
                                                 <div class="controls" style="flex-wrap: wrap;">
-                                                    <button class="btn btn-sm" type="button" onclick="addHoldStep()">➕
+                                                    <button class="btn btn-sm" type="button" id="hold-add-step-button" onclick="addHoldStep()">➕
                                                         Добавить шаг</button>
                                                 </div>
                                             </div>
@@ -932,6 +932,13 @@
                                     </div>
 
                                     <div class="control-panel-footer">
+                                        <div id="mode-start-checklist" class="control-start-checklist is-muted">
+                                            <div class="control-start-checklist-head">
+                                                <strong id="mode-start-checklist-title">Перед стартом</strong>
+                                                <span id="mode-start-checklist-summary">Собираем проверки...</span>
+                                            </div>
+                                            <div id="mode-start-checklist-items" class="control-start-checklist-items"></div>
+                                        </div>
                                         <button id="mode-start-button" class="btn btn-primary control-start-btn"
                                             type="button" onclick="startSelectedMode()">▶️ Запустить режим</button>
                                         <div id="mode-start-status" class="control-start-status is-muted">

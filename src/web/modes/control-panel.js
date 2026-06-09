@@ -18,10 +18,12 @@ import { getStartAvailabilityState } from '../runtime/bars.js';
 import { startRectification, loadRectificationStartSettings } from './rectification.js';
 import { startManual } from './rectification.js';
 import { startDistillation, collectDistillationSettings } from './distillation.js';
-import { startMashing, startHold } from './mashing-hold.js';
+import { startMashing, startHold, readStepsFromUI } from './mashing-hold.js';
 import {
     loadNbkSettings,
     loadFermentationSettings,
+    collectNbkSettings,
+    collectFermentationSettings,
     startNbk,
     startFermentation
 } from './nbk-fermentation.js';
@@ -185,6 +187,362 @@ export function renderControlStartState() {
             ? 'Новый запуск недоступен, пока текущий процесс не остановлен и автоматика не вернётся в idle.'
             : `${availability.title}. ${availability.detail}`;
     }
+
+    renderControlStartChecklist();
+}
+
+function focusChecklistTarget(targetId) {
+    const target = byId(targetId);
+    if (!target) return;
+
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (typeof target.focus === 'function') {
+        target.focus({ preventScroll: true });
+    }
+
+    target.classList.remove('control-field-attention');
+    void target.offsetWidth;
+    target.classList.add('control-field-attention');
+    window.setTimeout(() => target.classList.remove('control-field-attention'), 1700);
+}
+
+function addChecklistItem(items, tone, title, detail, targetId = '') {
+    items.push({ tone, title, detail, targetId });
+}
+
+function buildRectificationChecklist(items) {
+    const settings = {
+        feedVolumeL: getNumberValue('rect-start-feed-volume', 20),
+        feedAbvPercent: getNumberValue('rect-start-feed-abv', 40),
+        headsPercent: getNumberValue('rect-start-heads-percent', 8),
+        bodyPercent: getNumberValue('rect-start-body-percent', 84),
+        tailsPercent: getNumberValue('rect-start-tails-percent', 8),
+        headsSpeedMlHKw: getNumberValue('rect-start-heads-speed', 300),
+        bodySpeedMlHKw: getNumberValue('rect-start-body-speed', 600)
+    };
+    const fractionsSum = settings.headsPercent + settings.bodyPercent + settings.tailsPercent;
+    const maxVolume = Math.max(1, Math.min(250, getCubeVolumeLimitL()));
+
+    addChecklistItem(
+        items,
+        settings.feedVolumeL > 0 && settings.feedVolumeL <= maxVolume ? 'good' : 'danger',
+        'Сырец и объём куба',
+        settings.feedVolumeL <= maxVolume
+            ? `Объём ${settings.feedVolumeL.toFixed(1)} л укладывается в лимит куба ${maxVolume.toFixed(1)} л.`
+            : `Объём ${settings.feedVolumeL.toFixed(1)} л превышает допустимый лимит куба ${maxVolume.toFixed(1)} л.`,
+        'rect-start-feed-volume'
+    );
+
+    addChecklistItem(
+        items,
+        fractionsSum > 100 ? 'danger' : (fractionsSum < 99 ? 'warn' : 'good'),
+        'Баланс фракций',
+        fractionsSum > 100
+            ? `Сумма фракций ${fractionsSum.toFixed(1)}%. Нужно не больше 100%.`
+            : (fractionsSum < 99
+                ? `Сумма фракций ${fractionsSum.toFixed(1)}%. Проверьте, не потеряли ли часть выхода.`
+                : `Сумма фракций ${fractionsSum.toFixed(1)}%. Баланс выглядит корректно.`),
+        'rect-start-heads-percent'
+    );
+
+    addChecklistItem(
+        items,
+        settings.bodySpeedMlHKw > settings.headsSpeedMlHKw ? 'good' : 'warn',
+        'Скорости отбора',
+        settings.bodySpeedMlHKw > settings.headsSpeedMlHKw
+            ? `Тело (${settings.bodySpeedMlHKw.toFixed(0)}) быстрее голов (${settings.headsSpeedMlHKw.toFixed(0)}), логика профиля сохранена.`
+            : 'Скорость тела не выше скорости голов. Обычно тело ведут заметно быстрее.',
+        'rect-start-body-speed'
+    );
+}
+
+function buildManualChecklist(items) {
+    const settings = collectManualRectSettings();
+    const maxVolume = Math.max(1, Math.min(250, getCubeVolumeLimitL()));
+    const headsMode = settings.heads.mode;
+    const tailsEnabled = settings.tails.enabled;
+
+    addChecklistItem(
+        items,
+        settings.feed.volumeL > 0 && settings.feed.volumeL <= maxVolume ? 'good' : 'danger',
+        'Сырец для ручной ректификации',
+        settings.feed.volumeL <= maxVolume
+            ? `Объём ${settings.feed.volumeL.toFixed(1)} л и крепость ${settings.feed.abvPercent.toFixed(1)}% выглядят рабочими.`
+            : `Объём ${settings.feed.volumeL.toFixed(1)} л превышает лимит куба ${maxVolume.toFixed(1)} л.`,
+        'manual-feed-volume'
+    );
+
+    addChecklistItem(
+        items,
+        headsMode === 'time'
+            ? (settings.heads.time >= 30 ? 'good' : 'warn')
+            : (headsMode === 'speed'
+                ? (settings.heads.speed >= 50 ? 'good' : 'warn')
+                : ((settings.heads.temp >= 75 && settings.heads.temp <= 85) ? 'good' : 'warn')),
+        'Режим отбора голов',
+        headsMode === 'time'
+            ? `Отбор по времени: ${settings.heads.time.toFixed(0)} мин на ${settings.heads.volume.toFixed(0)} мл.`
+            : (headsMode === 'speed'
+                ? `Отбор по скорости: ${settings.heads.speed.toFixed(0)} мл/ч на ${settings.heads.volume.toFixed(0)} мл.`
+                : `Отбор по температуре куба: ${settings.heads.temp.toFixed(1)} °C.`),
+        headsMode === 'time'
+            ? 'manual-heads-time'
+            : (headsMode === 'speed' ? 'manual-heads-speed' : 'manual-heads-temp')
+    );
+
+    addChecklistItem(
+        items,
+        settings.body.spikeThreshold > 0 && settings.body.speedDecrement > 0 ? 'good' : 'warn',
+        'Переход тела и хвостов',
+        `Порог скачка ${settings.body.spikeThreshold.toFixed(2)} °C, декремент ${settings.body.speedDecrement.toFixed(0)}%, режим перехода: ${settings.body.toTailsMode}.`,
+        'manual-body-spike-threshold'
+    );
+
+    addChecklistItem(
+        items,
+        !tailsEnabled
+            ? 'warn'
+            : (settings.tails.stopMode === 'temp'
+                ? ((settings.tails.stopTemp >= 85 && settings.tails.stopTemp <= 99) ? 'good' : 'warn')
+                : ((settings.tails.stopAbv >= 10 && settings.tails.stopAbv <= 70) ? 'good' : 'warn')),
+        'Хвосты',
+        !tailsEnabled
+            ? 'Отбор хвостов отключён. Это допустимо, но проверьте, что хвостовая часть вам не нужна.'
+            : (settings.tails.stopMode === 'temp'
+                ? `Остановка хвостов по температуре куба: ${settings.tails.stopTemp.toFixed(1)} °C.`
+                : `Остановка хвостов по крепости: ${settings.tails.stopAbv.toFixed(0)}%.`),
+        tailsEnabled
+            ? (settings.tails.stopMode === 'temp' ? 'manual-tails-stop-temp' : 'manual-tails-stop-abv')
+            : 'manual-tails-enabled'
+    );
+}
+
+function buildDistillationChecklist(items) {
+    const settings = collectDistillationSettings();
+    const actualPower = getNumberValue('dist-start-power-fact', 0);
+
+    addChecklistItem(
+        items,
+        settings.powerPercent > 0 ? 'good' : 'danger',
+        'Мощность нагрева',
+        settings.powerPercent > 0
+            ? `Установка ${settings.powerPercent.toFixed(0)}%, фактическая мощность сейчас около ${actualPower.toFixed(0)} Вт.`
+            : 'Старт с нулевой мощностью не имеет смысла. Поднимите уставку нагрева.',
+        'dist-start-power-percent'
+    );
+
+    addChecklistItem(
+        items,
+        settings.endTemp >= 88 && settings.endTemp <= 100 ? 'good' : 'warn',
+        'Температура окончания',
+        settings.endTemp >= 88 && settings.endTemp <= 100
+            ? `Стоп-температура ${settings.endTemp.toFixed(1)} °C находится в рабочем диапазоне.`
+            : `Стоп-температура ${settings.endTemp.toFixed(1)} °C выглядит нетипично. Проверьте целевой сценарий.`,
+        'dist-start-end-temp'
+    );
+}
+
+function buildNbkChecklist(items) {
+    const settings = collectNbkSettings();
+
+    addChecklistItem(
+        items,
+        settings.powerW >= 1000 ? 'good' : 'warn',
+        'Мощность НБК',
+        settings.powerW >= 1000
+            ? `Рабочая мощность ${settings.powerW.toFixed(0)} Вт задана.`
+            : `Мощность ${settings.powerW.toFixed(0)} Вт может быть слишком низкой для устойчивой НБК.`,
+        'nbk-power-w'
+    );
+
+    addChecklistItem(
+        items,
+        settings.pumpSpeedMlH >= 500 ? 'good' : 'warn',
+        'Подача браги',
+        settings.pumpSpeedMlH >= 500
+            ? `Подача ${settings.pumpSpeedMlH.toFixed(0)} мл/ч задана.`
+            : 'Подача браги выглядит слишком низкой. Проверьте производительность насоса.',
+        'nbk-pump-speed'
+    );
+
+    addChecklistItem(
+        items,
+        settings.columnBottomTempThresholdC >= 85 && settings.columnBottomTempThresholdC <= 100 ? 'good' : 'warn',
+        'Порог температуры низа колонны',
+        `Порог защиты ${settings.columnBottomTempThresholdC.toFixed(1)} °C.`,
+        'nbk-column-bottom-threshold'
+    );
+}
+
+function buildFermentationChecklist(items) {
+    const settings = collectFermentationSettings();
+
+    addChecklistItem(
+        items,
+        settings.targetTempC >= 18 && settings.targetTempC <= 32 ? 'good' : 'warn',
+        'Целевая температура',
+        `Задано ${settings.targetTempC.toFixed(1)} °C.`,
+        'ferm-target-temp'
+    );
+
+    addChecklistItem(
+        items,
+        settings.hysteresisC >= 0.2 && settings.hysteresisC <= 2 ? 'good' : 'warn',
+        'Гистерезис',
+        `Гистерезис ${settings.hysteresisC.toFixed(1)} °C.`,
+        'ferm-hysteresis'
+    );
+
+    addChecklistItem(
+        items,
+        settings.useHeater ? 'good' : 'warn',
+        'Контур поддержания',
+        settings.useHeater
+            ? 'ТЭН участвует в поддержании температуры.'
+            : 'Поддержание без ТЭНа включено. Убедитесь, что внешний контур действительно справится.',
+        'ferm-use-heater'
+    );
+}
+
+function buildMashingChecklist(items) {
+    const steps = readStepsFromUI('mash-steps', 'mash');
+    const name = getStringValue('mash-profile-name', '').trim();
+
+    addChecklistItem(
+        items,
+        name ? 'good' : 'warn',
+        'Имя профиля',
+        name ? `Профиль назван: ${name}.` : 'Профиль без имени тоже запустится, но его будет сложнее отличить в истории.',
+        'mash-profile-name'
+    );
+
+    addChecklistItem(
+        items,
+        steps.length > 0 ? 'good' : 'danger',
+        'Шаги затирки',
+        steps.length > 0
+            ? `Подготовлено ${steps.length} шаг(ов) затирки.`
+            : 'Нужен хотя бы один корректный шаг с температурой и длительностью.',
+        steps.length > 0 ? 'mash-steps' : 'mash-add-step-button'
+    );
+
+    if (steps.length > 0) {
+        const invalidOrder = steps.some((step, index) => index > 0 && step.temperature < steps[index - 1].temperature - 5);
+        addChecklistItem(
+            items,
+            invalidOrder ? 'warn' : 'good',
+            'Последовательность температур',
+            invalidOrder
+                ? 'Температуры шагов сильно скачут вниз. Проверьте, точно ли такой профиль задуман.'
+                : 'Последовательность температур выглядит логичной для пошагового профиля.',
+            'mash-steps'
+        );
+    }
+}
+
+function buildHoldChecklist(items) {
+    const steps = readStepsFromUI('hold-steps', 'hold');
+    const activeTempSteps = steps.filter((step) => Number(step.temperature) > 0);
+
+    addChecklistItem(
+        items,
+        steps.length > 0 ? 'good' : 'danger',
+        'Шаги пастеризации',
+        steps.length > 0
+            ? `Подготовлено ${steps.length} шаг(ов).`
+            : 'Нужен хотя бы один корректный шаг или пауза с длительностью.',
+        steps.length > 0 ? 'hold-steps' : 'hold-add-step-button'
+    );
+
+    addChecklistItem(
+        items,
+        activeTempSteps.length > 0 ? 'good' : 'warn',
+        'Температурные ступени',
+        activeTempSteps.length > 0
+            ? `Есть ${activeTempSteps.length} температурных шаг(ов) с активным нагревом.`
+            : 'Сейчас заданы только паузы без температуры. Это допустимо, но проверьте сценарий.',
+        'hold-steps'
+    );
+}
+
+function buildChecklistItems() {
+    const availability = getStartAvailabilityState(runtimeMonitorState);
+    const items = [];
+
+    addChecklistItem(items, availability.tone, availability.title, availability.detail);
+
+    switch (selectedControlMode) {
+        case 'rectification':
+            buildRectificationChecklist(items);
+            break;
+        case 'manual':
+            buildManualChecklist(items);
+            break;
+        case 'distillation':
+            buildDistillationChecklist(items);
+            break;
+        case 'nbk':
+            buildNbkChecklist(items);
+            break;
+        case 'fermentation':
+            buildFermentationChecklist(items);
+            break;
+        case 'mashing':
+            buildMashingChecklist(items);
+            break;
+        case 'hold':
+            buildHoldChecklist(items);
+            break;
+        default:
+            break;
+    }
+
+    return items;
+}
+
+export function renderControlStartChecklist() {
+    const root = byId('mode-start-checklist');
+    const summaryEl = byId('mode-start-checklist-summary');
+    const itemsEl = byId('mode-start-checklist-items');
+    if (!root || !summaryEl || !itemsEl) return;
+
+    const items = buildChecklistItems();
+    const dangerCount = items.filter((item) => item.tone === 'danger').length;
+    const warnCount = items.filter((item) => item.tone === 'warn').length;
+    const rootTone = dangerCount > 0 ? 'danger' : (warnCount > 0 ? 'warn' : 'good');
+
+    root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    root.classList.add(`is-${rootTone}`);
+    summaryEl.textContent = dangerCount > 0
+        ? `${dangerCount} критичных пункта, ${warnCount} предупреждений`
+        : (warnCount > 0 ? `${warnCount} пункт(ов) требуют внимания` : 'Все основные проверки выглядят нормально');
+
+    itemsEl.innerHTML = '';
+    items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = `control-start-checklist-item is-${item.tone}`;
+
+        const copy = document.createElement('div');
+        copy.className = 'control-start-checklist-copy';
+
+        const title = document.createElement('strong');
+        title.textContent = item.title;
+        const detail = document.createElement('span');
+        detail.textContent = item.detail;
+        copy.append(title, detail);
+        row.appendChild(copy);
+
+        if (item.targetId) {
+            const action = document.createElement('button');
+            action.type = 'button';
+            action.className = 'btn btn-secondary btn-sm';
+            action.textContent = item.tone === 'good' ? 'Открыть' : 'Исправить';
+            action.addEventListener('click', () => focusChecklistTarget(item.targetId));
+            row.appendChild(action);
+        }
+
+        itemsEl.appendChild(row);
+    });
 }
 
 function normalizeControlPanelMarkup() {
@@ -380,6 +738,19 @@ export async function initControlModePanel() {
     } catch {
         // ignore storage failures
     }
+
+    const panel = document.getElementById('control-mode-panel');
+    if (panel) {
+        panel.addEventListener('input', () => renderControlStartState());
+        panel.addEventListener('change', () => renderControlStartState());
+    }
+
+    ['mash-steps', 'hold-steps'].forEach((id) => {
+        const target = document.getElementById(id);
+        if (!target) return;
+        const observer = new MutationObserver(() => renderControlStartState());
+        observer.observe(target, { childList: true, subtree: true });
+    });
 
     await selectControlMode(initialMode, { persist: false });
     renderControlStartState();
