@@ -441,6 +441,36 @@
     padding: 0 14px;
 }
 
+/* Keep the right-side monitor stack strictly vertical on desktop. */
+.operator-panel-stack {
+    display: flex;
+    flex-direction: column;
+}
+
+.operator-panel-stack > * {
+    width: 100%;
+}
+
+.operator-card-collapsible[open] .operator-card-toggle-state::before {
+    content: 'Свернуть';
+    color: var(--landing-ink);
+}
+
+.operator-card-collapsible:not([open]) .operator-card-toggle-state::before {
+    content: 'Показать';
+    color: var(--landing-ink);
+}
+
+.operator-fold-panel[open] .operator-fold-summary-action::before {
+    content: 'Свернуть';
+    color: var(--landing-ink);
+}
+
+.operator-fold-panel:not([open]) .operator-fold-summary-action::before {
+    content: 'Показать';
+    color: var(--landing-ink);
+}
+
 [data-theme="dark"] .operator-preflight,
 [data-theme="dark"] .operator-guidance {
     background: linear-gradient(135deg, rgba(148, 163, 184, 0.08), rgba(15, 23, 42, 0.42));
