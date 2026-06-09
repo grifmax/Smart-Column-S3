@@ -208,6 +208,17 @@
     line-height: 1.4;
 }
 
+.operator-mission-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.operator-mission-actions .btn[hidden] {
+    display: none;
+}
+
 .operator-mission-control.is-good {
     border-color: rgba(34, 197, 94, 0.28);
     background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(255, 255, 255, 0.86));
@@ -1043,6 +1054,10 @@
 @media (max-width: 640px) {
     .operator-mission-grid {
         grid-template-columns: 1fr;
+    }
+
+    .operator-mission-actions .btn {
+        flex: 1 1 100%;
     }
 
     .operator-preflight-grid {

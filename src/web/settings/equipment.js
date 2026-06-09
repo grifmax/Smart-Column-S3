@@ -200,6 +200,28 @@ function getEnabledAutoModes(settings) {
     return modes;
 }
 
+function isStirrerRelevantForCurrentMode(settings) {
+    switch (currentMode) {
+        case 4:
+            return Boolean(settings.autoMashing);
+        case 6:
+            return Boolean(settings.autoNbk);
+        case 7:
+            return Boolean(settings.autoFermentation);
+        default:
+            return false;
+    }
+}
+
+function shouldShowMonitorStirrerCard(settings, stirrer) {
+    return Boolean(
+        stirrer.available ||
+        stirrer.running ||
+        stirrer.autoMode ||
+        isStirrerRelevantForCurrentMode(settings)
+    );
+}
+
 function getStirrerMonitorSpeed(settings, stirrer) {
     return stirrer.running
         ? clamp(stirrer.speedPercent, 0, 100, settings.defaultSpeedPercent)
@@ -305,6 +327,11 @@ export function syncStirrerUi(options = {}) {
     const safetyBlocked = !runtimeMonitorState.safetyOk || Boolean(runtimeMonitorState.currentAlarm?.latched);
     const modeBlocked = currentMode !== MODE_IDLE;
     const canControl = settings.enabled && stirrer.available && !safetyBlocked && !modeBlocked;
+    const monitorCard = document.getElementById('monitor-stirrer-card');
+
+    if (monitorCard) {
+        monitorCard.style.display = shouldShowMonitorStirrerCard(settings, stirrer) ? '' : 'none';
+    }
 
     if (syncSettingsForm) {
         setCheckboxValue('stirrer-enabled', settings.enabled);

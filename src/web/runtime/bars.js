@@ -81,6 +81,17 @@ function setMissionCardState(cardId, valueId, text, route = null) {
     card.title = route ? 'Открыть связанную секцию' : '';
 }
 
+function setMissionActionButtonState(buttonId, label, route = null) {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    button.textContent = label;
+    button._missionRoute = route || null;
+    button.disabled = !route;
+    button.hidden = !route;
+    button.title = route ? label : '';
+}
+
 function setMissionControl(title, detail, tone = 'muted', goal = '--', risk = '--', action = '--', routes = {}) {
     const root = document.getElementById('operator-mission-control');
     const titleEl = document.getElementById('operator-mission-title');
@@ -94,6 +105,9 @@ function setMissionControl(title, detail, tone = 'muted', goal = '--', risk = '-
     setMissionCardState('operator-mission-goal-card', 'operator-mission-goal', goal, routes.goal || null);
     setMissionCardState('operator-mission-risk-card', 'operator-mission-risk', risk, routes.risk || null);
     setMissionCardState('operator-mission-action-card', 'operator-mission-action', action, routes.action || null);
+    setMissionActionButtonState('operator-mission-goal-btn', 'К цели', routes.goal || null);
+    setMissionActionButtonState('operator-mission-risk-btn', 'Проверить риск', routes.risk || null);
+    setMissionActionButtonState('operator-mission-action-btn', 'К действию', routes.action || null);
 }
 
 function focusMissionTarget(targetId, retries = 8) {
@@ -148,6 +162,12 @@ function ensureMissionControlBindings() {
             event.preventDefault();
             run();
         });
+    });
+
+    ['operator-mission-goal-btn', 'operator-mission-risk-btn', 'operator-mission-action-btn'].forEach((buttonId) => {
+        const button = document.getElementById(buttonId);
+        if (!button) return;
+        button.addEventListener('click', () => executeMissionRoute(button._missionRoute || null));
     });
 }
 
