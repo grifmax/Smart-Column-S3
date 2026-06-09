@@ -1,4 +1,7 @@
 import {
+    currentMode,
+    MODE_IDLE,
+    runtimeMonitorState,
     MODE_RECT,
     MODE_MANUAL,
     MODE_DIST,
@@ -11,6 +14,7 @@ import {
 } from '../globals.js';
 import { addLog } from '../core/logs.js';
 import { loadStatus } from '../core/status.js';
+import { getStartAvailabilityState } from '../runtime/bars.js';
 import { startRectification, loadRectificationStartSettings } from './rectification.js';
 import { startManual } from './rectification.js';
 import { startDistillation, collectDistillationSettings } from './distillation.js';
@@ -162,6 +166,27 @@ function renderControlModeHeader(mode) {
     }
 }
 
+export function renderControlStartState() {
+    const startButton = document.getElementById('mode-start-button');
+    const statusEl = document.getElementById('mode-start-status');
+    const availability = getStartAvailabilityState(runtimeMonitorState);
+    const activeProcessBlock = currentMode !== MODE_IDLE;
+
+    if (startButton) {
+        startButton.disabled = availability.disabled;
+        startButton.classList.toggle('btn-disabled', availability.disabled);
+        startButton.title = availability.disabled ? availability.detail : '';
+    }
+
+    if (statusEl) {
+        statusEl.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+        statusEl.classList.add(`is-${availability.tone}`);
+        statusEl.textContent = activeProcessBlock
+            ? 'Новый запуск недоступен, пока текущий процесс не остановлен и автоматика не вернётся в idle.'
+            : `${availability.title}. ${availability.detail}`;
+    }
+}
+
 function normalizeControlPanelMarkup() {
     const titles = {
         rectification: 'Авто-ректификация',
@@ -276,6 +301,8 @@ export async function selectControlMode(mode, options = {}) {
     if (options.persist !== false) {
         persistModeSelection(normalized);
     }
+
+    renderControlStartState();
 }
 
 export function getSelectedControlMode() {
@@ -283,6 +310,19 @@ export function getSelectedControlMode() {
 }
 
 export async function startSelectedMode() {
+    if (currentMode !== MODE_IDLE) {
+        addLog('Сначала остановите текущий процесс, затем запускайте новый режим.', 'warning');
+        renderControlStartState();
+        return false;
+    }
+
+    const availability = getStartAvailabilityState(runtimeMonitorState);
+    if (availability.disabled) {
+        addLog(`Запуск заблокирован: ${availability.detail}`, 'warning');
+        renderControlStartState();
+        return false;
+    }
+
     let started;
 
     switch (selectedControlMode) {
@@ -318,6 +358,8 @@ export async function startSelectedMode() {
         setTimeout(loadStatus, 250);
     }
 
+    renderControlStartState();
+
     return started;
 }
 
@@ -340,6 +382,7 @@ export async function initControlModePanel() {
     }
 
     await selectControlMode(initialMode, { persist: false });
+    renderControlStartState();
 }
 
 function byId(id) {

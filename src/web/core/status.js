@@ -2,6 +2,7 @@ import {
     currentMode,
     currentPaused,
     maxHeaterPower,
+    runtimeMonitorState,
     MODE_IDLE,
     MODE_RECT,
     MODE_DIST,
@@ -19,7 +20,7 @@ import {
 } from '../globals.js';
 import { updateRuntimeStateFromStatus } from '../runtime/state.js';
 import { getEffectiveAbvForCalculations, renderAbvValue } from '../runtime/abv.js';
-import { renderModeRuntimeCard } from '../runtime/bars.js';
+import { renderModeRuntimeCard, getStartAvailabilityState } from '../runtime/bars.js';
 import { updateInteractiveScheme } from '../ui/scheme.js';
 import { updateLandingUi } from '../ui/landing.js';
 import { syncOperatorViewAuto } from '../ui/operator-view.js';
@@ -440,14 +441,19 @@ export function updateButtonStates() {
             : button.dataset.baseText;
     });
 
+    const startAvailability = getStartAvailabilityState(runtimeMonitorState);
     const startButton = document.getElementById('mode-start-button');
     if (startButton) {
-        const selectedMode = Number(startButton.dataset.mode);
-        const isCurrentMode = Number.isFinite(selectedMode) && currentMode === selectedMode;
-        const shouldDisable = !isIdle && !isCurrentMode;
+        startButton.disabled = startAvailability.disabled;
+        startButton.classList.toggle('btn-disabled', startAvailability.disabled);
+        startButton.title = startAvailability.disabled ? startAvailability.detail : '';
+    }
 
-        startButton.disabled = shouldDisable;
-        startButton.classList.toggle('btn-disabled', shouldDisable);
+    const startStatus = document.getElementById('mode-start-status');
+    if (startStatus) {
+        startStatus.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+        startStatus.classList.add(`is-${startAvailability.tone}`);
+        startStatus.textContent = `${startAvailability.title}. ${startAvailability.detail}`;
     }
 
     // Runtime controls: toggle button (pause/resume) + stop
@@ -510,10 +516,28 @@ export function updateButtonStates() {
     const schemeWrap = document.querySelector('#monitor .operator-scheme-wrap');
     const schemeControls = document.querySelector('#monitor .operator-scheme-controls');
     const modeCta = document.getElementById('monitor-idle-mode-cta');
+    const modeCtaTitle = document.getElementById('monitor-idle-cta-title');
+    const modeCtaText = document.getElementById('monitor-idle-cta-text');
+    const modeCtaButton = document.getElementById('monitor-idle-cta-button');
 
     if (schemeWrap) schemeWrap.style.display = isIdle ? 'none' : '';
     if (schemeControls) schemeControls.style.display = isIdle ? 'none' : '';
     if (modeCta) modeCta.style.display = isIdle ? 'flex' : 'none';
+    if (modeCta) {
+        modeCta.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+        modeCta.classList.add(`is-${startAvailability.tone}`);
+    }
+    if (modeCtaTitle) modeCtaTitle.textContent = startAvailability.title;
+    if (modeCtaText) modeCtaText.textContent = startAvailability.detail;
+    if (modeCtaButton) {
+        modeCtaButton.textContent = startAvailability.disabled ? '🛠 Проверить условия старта' : `🧭 ${startAvailability.buttonLabel}`;
+        modeCtaButton.classList.remove('btn-primary', 'btn-warning', 'btn-danger', 'btn-success');
+        modeCtaButton.classList.add(
+            startAvailability.tone === 'danger'
+                ? 'btn-danger'
+                : (startAvailability.tone === 'good' ? 'btn-success' : (startAvailability.tone === 'warn' ? 'btn-warning' : 'btn-primary'))
+        );
+    }
 
 }
 

@@ -247,7 +247,11 @@
 
                                         <div id="monitor-idle-mode-cta" class="operator-idle-mode-cta"
                                             style="display:none;">
-                                            <button class="btn btn-primary" type="button"
+                                            <strong id="monitor-idle-cta-title">Ожидание готовности к запуску</strong>
+                                            <p id="monitor-idle-cta-text">
+                                                Проверим статус автоматики и подскажем, можно ли уже переходить к выбору режима.
+                                            </p>
+                                            <button id="monitor-idle-cta-button" class="btn btn-primary" type="button"
                                                 onclick="document.querySelector('[data-tab=control]')?.click()">
                                                 🧭 Выбор режима
                                             </button>
@@ -930,6 +934,9 @@
                                     <div class="control-panel-footer">
                                         <button id="mode-start-button" class="btn btn-primary control-start-btn"
                                             type="button" onclick="startSelectedMode()">▶️ Запустить режим</button>
+                                        <div id="mode-start-status" class="control-start-status is-muted">
+                                            Готовность к запуску уточняется по данным автоматики.
+                                        </div>
                                     </div>
                                 </section>
                             </div>

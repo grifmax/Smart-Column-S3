@@ -1,4 +1,4 @@
-import { runtimeMonitorState, resolveMode, maxHeaterPower, MODE_RECT, PHASE_HEADS, PHASE_BODY, PHASE_POST_HEADS_STAB, PHASE_TAILS, MODE_DIST, MODE_MASH, MODE_HOLD, MODE_MANUAL } from '../globals.js';
+import { runtimeMonitorState, currentMode, resolveMode, maxHeaterPower, MODE_IDLE, MODE_RECT, PHASE_HEADS, PHASE_BODY, PHASE_POST_HEADS_STAB, PHASE_TAILS, MODE_DIST, MODE_MASH, MODE_HOLD, MODE_MANUAL } from '../globals.js';
 import { clampPercent, runtimeEscapeHtml, toFinite, formatDurationSafe } from '../runtime/helpers.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { estimateRectTargets } from '../runtime/state.js';
@@ -140,7 +140,7 @@ function getActiveLimitsLabel(indicators, activeLimits) {
     return labels.length ? labels.join(', ') : 'нет';
 }
 
-function buildPreflightState(state) {
+export function getRuntimePreflightState(state = runtimeMonitorState) {
     const indicators = state?.v2?.indicators || {};
     const activeLimits = state?.v2?.activeLimits || {};
     const lifecycle = String(state?.v2?.lifecycle || 'idle').toLowerCase();
@@ -225,6 +225,70 @@ function buildPreflightState(state) {
         title: 'Можно запускать',
         detail: 'Контур v2 на связи, датчики свежие, аварий и latch сейчас нет. Можно переходить к старту режима с веб-интерфейса.',
         checks
+    };
+}
+
+export function getStartAvailabilityState(state = runtimeMonitorState) {
+    const preflight = getRuntimePreflightState(state);
+    const lifecycle = String(state?.v2?.lifecycle || 'idle').toLowerCase();
+    const activeAlarm = Boolean(state?.currentAlarm?.active);
+    const safetyLatched = Boolean(state?.v2?.safetyLatched);
+    const sensorsFresh = Boolean(state?.v2?.indicators?.sensorFreshnessOk);
+    const isIdle = currentMode === MODE_IDLE;
+    const runtimeActive = !isIdle || lifecycle === 'starting' || lifecycle === 'running' || lifecycle === 'paused' || lifecycle === 'stopping';
+    const blockStart = runtimeActive || activeAlarm || safetyLatched || lifecycle === 'faulted' || (Boolean(state?.v2?.available) && !sensorsFresh);
+
+    if (runtimeActive) {
+        return {
+            tone: 'warn',
+            title: 'Сначала завершите текущий процесс',
+            detail: 'Пока автоматика не вернулась в idle, запуск нового режима с панели недоступен.',
+            disabled: true,
+            buttonLabel: 'Открыть управление',
+            preflight
+        };
+    }
+
+    if (blockStart) {
+        return {
+            tone: 'danger',
+            title: preflight.title,
+            detail: preflight.detail,
+            disabled: true,
+            buttonLabel: 'Проверить условия старта',
+            preflight
+        };
+    }
+
+    if (preflight.tone === 'warn') {
+        return {
+            tone: 'warn',
+            title: 'Можно запускать с оговорками',
+            detail: preflight.detail,
+            disabled: false,
+            buttonLabel: 'Выбрать режим и запустить',
+            preflight
+        };
+    }
+
+    if (preflight.tone === 'good') {
+        return {
+            tone: 'good',
+            title: 'Система готова к запуску',
+            detail: 'Выберите режим, проверьте параметры и запускайте процесс с панели управления.',
+            disabled: false,
+            buttonLabel: 'Выбрать режим и запустить',
+            preflight
+        };
+    }
+
+    return {
+        tone: 'muted',
+        title: 'Статус запуска уточняется',
+        detail: preflight.detail,
+        disabled: false,
+        buttonLabel: 'Открыть режимы',
+        preflight
     };
 }
 
@@ -735,7 +799,7 @@ export function renderModeRuntimeCard() {
         });
     }
 
-    const preflight = buildPreflightState(s);
+    const preflight = getRuntimePreflightState(s);
     setPreflightState(preflight.title, preflight.detail, preflight.tone, preflight.checks);
     renderRuntimeBars(items);
     updateManualTiles();
