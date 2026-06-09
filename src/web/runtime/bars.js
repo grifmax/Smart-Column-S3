@@ -1,4 +1,4 @@
-import { runtimeMonitorState, currentMode, resolveMode, maxHeaterPower, MODE_IDLE, MODE_RECT, PHASE_HEADS, PHASE_BODY, PHASE_POST_HEADS_STAB, PHASE_TAILS, MODE_DIST, MODE_MASH, MODE_HOLD, MODE_MANUAL } from '../globals.js';
+import { runtimeMonitorState, currentMode, resolveMode, maxHeaterPower, MODE_IDLE, MODE_RECT, PHASE_HEADS, PHASE_BODY, PHASE_POST_HEADS_STAB, PHASE_TAILS, MODE_DIST, MODE_MASH, MODE_HOLD, MODE_MANUAL, MODE_NBK, MODE_FERMENTATION } from '../globals.js';
 import { clampPercent, runtimeEscapeHtml, toFinite, formatDurationSafe } from '../runtime/helpers.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { estimateRectTargets } from '../runtime/state.js';
@@ -62,6 +62,24 @@ function setPreflightState(title, detail, tone = 'muted', checks = {}) {
     setPreflightItem('runtime-preflight-sensors', checks.sensors?.text || '--', checks.sensors?.tone || 'muted');
     setPreflightItem('runtime-preflight-safety', checks.safety?.text || '--', checks.safety?.tone || 'muted');
     setPreflightItem('runtime-preflight-alarm', checks.alarm?.text || '--', checks.alarm?.tone || 'muted');
+}
+
+function setMissionControl(title, detail, tone = 'muted', goal = '--', risk = '--', action = '--') {
+    const root = document.getElementById('operator-mission-control');
+    const titleEl = document.getElementById('operator-mission-title');
+    const textEl = document.getElementById('operator-mission-text');
+    const goalEl = document.getElementById('operator-mission-goal');
+    const riskEl = document.getElementById('operator-mission-risk');
+    const actionEl = document.getElementById('operator-mission-action');
+    if (!root || !titleEl || !textEl || !goalEl || !riskEl || !actionEl) return;
+
+    root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    root.classList.add(`is-${tone}`);
+    titleEl.textContent = title;
+    textEl.textContent = detail;
+    goalEl.textContent = goal;
+    riskEl.textContent = risk;
+    actionEl.textContent = action;
 }
 
 function getReasonCodeLabel(code) {
@@ -138,6 +156,342 @@ function getActiveLimitsLabel(indicators, activeLimits) {
     if (Boolean(activeLimits.phaseAdvanceBlocked)) labels.push('фаза');
     if (Boolean(activeLimits.pumpCapped)) labels.push('насос');
     return labels.length ? labels.join(', ') : 'нет';
+}
+
+function formatMissionVolumeMl(value) {
+    const normalized = Math.max(0, toFinite(value, 0));
+    return `${normalized.toFixed(0)} мл`;
+}
+
+function buildMissionSnapshot(state, indicators, activeLimits) {
+    const mode = resolveMode(state.mode, state.modeStr);
+    const lifecycle = String(state?.v2?.lifecycle || 'idle').toLowerCase();
+    const operatorMessage = String(state?.v2?.operatorMessage || '').trim();
+    const lastReasonCode = String(state?.v2?.lastReasonCode || 'RC_NONE');
+    const phase = toFinite(state.phase, 0);
+    const stability = toFinite(indicators.stabilityIndex, 0);
+    const floodRisk = toFinite(indicators.floodRisk, 0);
+    const coolingMargin = toFinite(indicators.coolingMarginC, 0);
+    const bodyScore = toFinite(indicators.bodyEndScore, 0);
+    const headsScore = toFinite(indicators.headsCompletionScore, 0);
+    const isColumnMode = mode === MODE_RECT || mode === MODE_MANUAL;
+    const hasLimits =
+        Boolean(indicators.powerLimited) ||
+        Boolean(activeLimits.powerCapped) ||
+        Boolean(activeLimits.takeoffBlocked) ||
+        Boolean(activeLimits.phaseAdvanceBlocked) ||
+        Boolean(activeLimits.pumpCapped);
+
+    if (!state?.v2?.available) {
+        return {
+            tone: 'muted',
+            title: 'Ждём телеметрию автоматики',
+            detail: 'После первого полного статуса indicators v2 здесь появится короткая диспетчерская сводка по текущему сценарию.',
+            goal: 'Подготовить режим и проверить стартовые параметры',
+            risk: 'Нет свежего статуса safety и датчиков',
+            action: 'Дождаться первого полного пакета или перейти во вкладку режимов'
+        };
+    }
+
+    if (state?.currentAlarm?.active || state?.v2?.safetyLatched || lifecycle === 'faulted') {
+        return {
+            tone: 'danger',
+            title: 'Процесс удержан safety',
+            detail: operatorMessage || `Автоматика остановила сценарий. Последняя причина: ${getReasonCodeLabel(lastReasonCode)}.`,
+            goal: 'Удержать установку в безопасном состоянии',
+            risk: getReasonCodeLabel(lastReasonCode),
+            action: 'Проверить alarm, воду, датчики и снять блокировку только после устранения причины'
+        };
+    }
+
+    if (!indicators.sensorFreshnessOk) {
+        return {
+            tone: 'danger',
+            title: 'Нет доверия к телеметрии',
+            detail: 'Данные датчиков устарели, поэтому автоматика и веб-панель не могут уверенно вести процесс.',
+            goal: 'Вернуть свежие показания всех ключевых датчиков',
+            risk: 'Старые данные по температуре, давлению или safety',
+            action: 'Проверить соединение датчиков и дождаться обновления телеметрии'
+        };
+    }
+
+    let title = 'Пульт ожидает следующий запуск';
+    let detail = 'Система в idle, можно подготовить следующий сценарий и проверить стартовые условия.';
+    let goal = 'Подготовить следующий запуск';
+
+    if (mode === MODE_RECT) {
+        const effectiveAbv = getEffectiveAbvForCalculations();
+        const est = estimateRectTargets(state.rectification, effectiveAbv.value);
+        const targetHeads = toFinite(state.rectification.headsTargetMl, 0) > 0 ? toFinite(state.rectification.headsTargetMl, 0) : est.heads;
+        const targetBody = toFinite(state.rectification.bodyTargetMl, 0) > 0 ? toFinite(state.rectification.bodyTargetMl, 0) : est.body;
+        const targetTails = toFinite(state.rectification.tailsTargetMl, 0) > 0 ? toFinite(state.rectification.tailsTargetMl, 0) : est.tails;
+        const headsRemaining = Math.max(0, targetHeads - toFinite(state.volumes.heads, 0));
+        const bodyRemaining = Math.max(0, targetBody - toFinite(state.volumes.body, 0));
+        const tailsRemaining = Math.max(0, targetTails - toFinite(state.volumes.tails, 0));
+
+        title = lifecycle === 'starting' ? 'Колонна выходит на рабочее окно' : 'Ректификация под контролем';
+        detail = `Фаза: ${state.phaseStr || phase || '-'}. Автоматика ведёт профиль отбора и следит за стабильностью колонны.`;
+        if (phase < PHASE_HEADS) goal = 'Вывести колонну в рабочее окно перед отбором голов';
+        else if (phase === PHASE_HEADS) goal = `Добрать головы, осталось около ${formatMissionVolumeMl(headsRemaining)}`;
+        else if (phase === PHASE_POST_HEADS_STAB) goal = 'Дождаться постстабилизации перед переходом на тело';
+        else if (phase === PHASE_BODY) goal = `Вести тело, осталось около ${formatMissionVolumeMl(bodyRemaining)}`;
+        else if (phase >= PHASE_TAILS) goal = `Добрать хвосты, осталось около ${formatMissionVolumeMl(tailsRemaining)}`;
+    } else if (mode === MODE_DIST) {
+        const target = Math.max(0, toFinite(state.distillation.targetVolumeMl, 0));
+        const total = Math.max(0, toFinite(state.pump.totalMl, 0));
+        const remaining = Math.max(0, target - total);
+        const speed = Math.max(0, toFinite(state.distillation.speedMlH, 0));
+        title = 'Перегон под контролем';
+        detail = target > 0
+            ? `Собрано ${formatMissionVolumeMl(total)} из ${formatMissionVolumeMl(target)} при скорости около ${speed.toFixed(0)} мл/ч.`
+            : `Фаза: ${state.phaseStr || phase || '-'}. Процесс идёт без жёстко заданного целевого объёма.`;
+        goal = target > 0
+            ? `Добрать перегон, осталось около ${formatMissionVolumeMl(remaining)}`
+            : 'Вести перегон до стоп-температуры или технологического сигнала завершения';
+    } else if (mode === MODE_MASH) {
+        const totalSteps = Math.max(0, Math.round(toFinite(state.mashing.stepCount, 0)));
+        const currentStep = Math.max(0, Math.round(toFinite(state.mashing.currentStep, 0)));
+        const stepIndex = totalSteps > 0 ? Math.min(currentStep + 1, totalSteps) : 0;
+        const stepName = String(state.mashing.stepName || '').trim();
+        title = 'Заторный профиль выполняется';
+        detail = totalSteps > 0
+            ? `Активен шаг ${stepIndex} из ${totalSteps}, до конца текущего шага около ${formatDurationSafe(state.mashing.remainingSec)}.`
+            : 'Профиль затирки ещё не загружен или ждёт запуска.';
+        goal = totalSteps > 0
+            ? `Шаг ${stepIndex} из ${totalSteps}${stepName ? `: ${stepName}` : ''}`
+            : 'Подготовить и запустить профиль затирки';
+    } else if (mode === MODE_HOLD) {
+        const targetTemp = toFinite(state.hold.targetTemp, 0);
+        const stepIndex = Math.max(0, Math.round(toFinite(state.hold.currentStep, 0))) + 1;
+        title = 'Пауза выдержки выполняется';
+        detail = `Осталось около ${formatDurationSafe(state.hold.remainingSec)}. ${targetTemp > 0 ? `Цель по температуре ${targetTemp.toFixed(1)}°C.` : 'Шаг идёт без активного нагрева.'}`;
+        goal = targetTemp > 0
+            ? `Удерживать около ${targetTemp.toFixed(1)}°C до завершения шага ${stepIndex}`
+            : `Довести до конца шаг выдержки ${stepIndex}`;
+    } else if (mode === MODE_MANUAL) {
+        const heads = Math.max(0, toFinite(state.volumes.heads, 0));
+        const body = Math.max(0, toFinite(state.volumes.body, 0));
+        const tails = Math.max(0, toFinite(state.volumes.tails, 0));
+        title = 'Ручной режим под контролем';
+        detail = `Собрано: головы ${formatMissionVolumeMl(heads)}, тело ${formatMissionVolumeMl(body)}, хвосты ${formatMissionVolumeMl(tails)}.`;
+        goal = 'Вести ручной отбор и корректировать мощность, воду и насос по месту';
+    } else if (mode === MODE_NBK) {
+        title = 'НБК под контролем';
+        detail = `Фаза: ${state.nbk?.phaseStr || state.phaseStr || 'idle'}. Подача ${toFinite(state.pump.speedMlH, 0).toFixed(0)} мл/ч, мощность ${toFinite(state.nbk?.powerW, 0).toFixed(0)} Вт.`;
+        if (!indicators.steamReady) goal = 'Разогреть НБК до готовности пара';
+        else if (!indicators.nbkFeedAllowed) goal = 'Дождаться разрешения подачи браги';
+        else goal = 'Вести стабильную подачу браги без провала по пару и давлению';
+    } else if (mode === MODE_FERMENTATION) {
+        const targetTemp = toFinite(state.fermentation?.targetTempC, 0);
+        const hysteresis = toFinite(state.fermentation?.hysteresisC, 0);
+        title = 'Брожение под контролем';
+        detail = targetTemp > 0
+            ? `Контур удерживает около ${targetTemp.toFixed(1)}°C с гистерезисом ${hysteresis.toFixed(1)}°C.`
+            : 'Контур брожения активен, но целевая температура не задана.';
+        goal = targetTemp > 0
+            ? `Удерживать температуру брожения около ${targetTemp.toFixed(1)}°C`
+            : 'Задать и удерживать рабочую температуру брожения';
+    }
+
+    if (lifecycle === 'paused') {
+        title = 'Процесс на паузе';
+        detail = operatorMessage || `${title}. Перед продолжением убедитесь, что условия процесса всё ещё валидны.`;
+    } else if (lifecycle === 'stopping') {
+        title = 'Процесс завершает цикл';
+        detail = operatorMessage || 'Автоматика сворачивает режим и ведёт установку к безопасной остановке.';
+    } else if (lifecycle === 'completed') {
+        title = 'Цикл завершён';
+        detail = operatorMessage || 'Основной сценарий отработан, можно провести оценку результата и подготовить следующий запуск.';
+    }
+
+    if (indicators.recoveryActive) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: 'Система в recovery и ждёт повторной стабилизации',
+            action: 'Не форсировать процесс, дождаться ровного окна по температуре, давлению и охлаждению'
+        };
+    }
+
+    if (isColumnMode && floodRisk >= 0.65) {
+        return {
+            tone: 'danger',
+            title,
+            detail,
+            goal,
+            risk: 'Высокий риск захлёба колонны',
+            action: 'Не повышать мощность, снизить нагрузку и проверить охлаждение с давлением'
+        };
+    }
+
+    if (isColumnMode && coolingMargin <= 0) {
+        return {
+            tone: 'danger',
+            title,
+            detail,
+            goal,
+            risk: 'Охлаждение на пределе, запас исчерпан',
+            action: 'Добавить воду или снизить нагрузку, пока не вернётся положительный cooling margin'
+        };
+    }
+
+    if (mode === MODE_FERMENTATION && (!indicators.fermTempInBand || indicators.longDeviation)) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: indicators.longDeviation ? 'Температура брожения долго вне диапазона' : 'Температура брожения ещё не вошла в диапазон',
+            action: 'Проверить контур нагрева или охлаждения и не оставлять процесс без контроля'
+        };
+    }
+
+    if ((mode === MODE_MASH || mode === MODE_HOLD) && indicators.overshootRisk) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: 'Есть риск перегрева на текущем шаге',
+            action: 'Следить за подходом к цели и не поднимать нагрев агрессивнее профиля'
+        };
+    }
+
+    if ((mode === MODE_MASH || mode === MODE_HOLD) && indicators.heatingTooSlow) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: 'Нагрев отстаёт от профиля',
+            action: 'Проверить реальную мощность, теплопотери и корректность задания шага'
+        };
+    }
+
+    if (mode === MODE_NBK && !indicators.steamReady) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: 'Пар ещё не готов для устойчивой подачи',
+            action: 'Дождаться выхода НБК в рабочее окно перед подачей браги'
+        };
+    }
+
+    if (mode === MODE_NBK && !indicators.nbkFeedAllowed) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: 'Подача браги пока заблокирована автоматикой',
+            action: 'Не открывать подачу вручную, дождаться разрешения по пару и устойчивости'
+        };
+    }
+
+    if (Boolean(activeLimits.takeoffBlocked) || (isColumnMode && !indicators.takeoffAllowed)) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: 'Отбор пока не разрешён автоматикой',
+            action: 'Дождаться устойчивого окна по stability, cooling margin и состоянию датчиков'
+        };
+    }
+
+    if (isColumnMode && coolingMargin < 5) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: `Запас охлаждения низкий: ${coolingMargin.toFixed(1)}°C`,
+            action: 'Не форсировать мощность и следить, чтобы охлаждение не просело ещё сильнее'
+        };
+    }
+
+    if (isColumnMode && floodRisk >= 0.35) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: 'Нагрузка колонны растёт, риск захлёба повышен',
+            action: 'Следить за верхом колонны, давлением и скоростью отбора без резких движений'
+        };
+    }
+
+    if (mode === MODE_RECT && bodyScore >= 0.8) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: 'Тело близко к завершению по body score',
+            action: 'Подготовить переход по профилю и внимательнее контролировать качество продукта'
+        };
+    }
+
+    if (mode === MODE_RECT && headsScore >= 0.8) {
+        return {
+            tone: 'good',
+            title,
+            detail,
+            goal,
+            risk: 'Критичных рисков не видно, головы почти завершены',
+            action: 'Подготовиться к переходу на тело по правилам текущего профиля'
+        };
+    }
+
+    if (isColumnMode && stability < 0.45) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: 'Колонна ещё не вошла в устойчивое окно',
+            action: 'Дать системе стабилизироваться и не ускорять отбор раньше времени'
+        };
+    }
+
+    if (hasLimits) {
+        return {
+            tone: 'warn',
+            title,
+            detail,
+            goal,
+            risk: `Активны ограничения: ${getActiveLimitsLabel(indicators, activeLimits)}`,
+            action: 'Понять причину ограничений до того, как усиливать нагрев, насос или отбор'
+        };
+    }
+
+    if (operatorMessage) {
+        return {
+            tone: mode === MODE_IDLE ? 'muted' : 'good',
+            title,
+            detail,
+            goal,
+            risk: 'Критичных рисков по indicators v2 сейчас не видно',
+            action: operatorMessage
+        };
+    }
+
+    return {
+        tone: mode === MODE_IDLE ? 'good' : 'muted',
+        title,
+        detail,
+        goal,
+        risk: isColumnMode
+            ? 'Критичных ограничений по колонне сейчас не видно'
+            : 'Критичных ограничений по процессу сейчас не видно',
+        action: mode === MODE_IDLE
+            ? 'Перейти в режимы, проверить параметры и запускать сценарий'
+            : 'Продолжать процесс и сверять ключевые показатели по этой панели'
+    };
 }
 
 export function getRuntimePreflightState(state = runtimeMonitorState) {
@@ -799,7 +1153,9 @@ export function renderModeRuntimeCard() {
         });
     }
 
+    const mission = buildMissionSnapshot(s, s?.v2?.indicators || {}, s?.v2?.activeLimits || {});
     const preflight = getRuntimePreflightState(s);
+    setMissionControl(mission.title, mission.detail, mission.tone, mission.goal, mission.risk, mission.action);
     setPreflightState(preflight.title, preflight.detail, preflight.tone, preflight.checks);
     renderRuntimeBars(items);
     updateManualTiles();
