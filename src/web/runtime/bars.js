@@ -34,6 +34,36 @@ function setGuidance(title, detail, tone = 'muted') {
     textEl.textContent = detail;
 }
 
+function setPreflightItem(id, text, tone = 'muted') {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    el.classList.add(`is-${tone}`);
+
+    const item = el.closest('.operator-preflight-item');
+    if (!item) return;
+    item.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    item.classList.add(`is-${tone}`);
+}
+
+function setPreflightState(title, detail, tone = 'muted', checks = {}) {
+    const root = document.getElementById('runtime-preflight');
+    const titleEl = document.getElementById('runtime-preflight-title');
+    const textEl = document.getElementById('runtime-preflight-text');
+    if (!root || !titleEl || !textEl) return;
+
+    root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    root.classList.add(`is-${tone}`);
+    titleEl.textContent = title;
+    textEl.textContent = detail;
+
+    setPreflightItem('runtime-preflight-v2', checks.v2?.text || '--', checks.v2?.tone || 'muted');
+    setPreflightItem('runtime-preflight-sensors', checks.sensors?.text || '--', checks.sensors?.tone || 'muted');
+    setPreflightItem('runtime-preflight-safety', checks.safety?.text || '--', checks.safety?.tone || 'muted');
+    setPreflightItem('runtime-preflight-alarm', checks.alarm?.text || '--', checks.alarm?.tone || 'muted');
+}
+
 function getReasonCodeLabel(code) {
     const normalized = String(code || 'RC_NONE');
     const labels = {
@@ -108,6 +138,94 @@ function getActiveLimitsLabel(indicators, activeLimits) {
     if (Boolean(activeLimits.phaseAdvanceBlocked)) labels.push('фаза');
     if (Boolean(activeLimits.pumpCapped)) labels.push('насос');
     return labels.length ? labels.join(', ') : 'нет';
+}
+
+function buildPreflightState(state) {
+    const indicators = state?.v2?.indicators || {};
+    const activeLimits = state?.v2?.activeLimits || {};
+    const lifecycle = String(state?.v2?.lifecycle || 'idle').toLowerCase();
+    const activeAlarm = Boolean(state?.currentAlarm?.active);
+    const safetyLatched = Boolean(state?.v2?.safetyLatched);
+    const v2Available = Boolean(state?.v2?.available);
+    const sensorsFresh = Boolean(indicators.sensorFreshnessOk);
+    const operatorMessage = String(state?.v2?.operatorMessage || '').trim();
+    const hasLimits =
+        Boolean(indicators.powerLimited) ||
+        Boolean(activeLimits.powerCapped) ||
+        Boolean(activeLimits.takeoffBlocked) ||
+        Boolean(activeLimits.phaseAdvanceBlocked) ||
+        Boolean(activeLimits.pumpCapped);
+
+    const checks = {
+        v2: {
+            text: v2Available ? 'OK' : 'Нет данных',
+            tone: v2Available ? 'good' : 'warn'
+        },
+        sensors: {
+            text: !v2Available ? 'Ждём' : (sensorsFresh ? 'OK' : 'Проверьте'),
+            tone: !v2Available ? 'muted' : (sensorsFresh ? 'good' : 'danger')
+        },
+        safety: {
+            text: !v2Available ? 'Ждём' : (safetyLatched ? 'Latch' : 'Норма'),
+            tone: !v2Available ? 'muted' : (safetyLatched ? 'danger' : 'good')
+        },
+        alarm: {
+            text: activeAlarm ? 'Активна' : 'Нет',
+            tone: activeAlarm ? 'danger' : 'good'
+        }
+    };
+
+    if (!v2Available) {
+        return {
+            tone: 'muted',
+            title: 'Ждём статус автоматики',
+            detail: 'Контур indicators v2 ещё не прислал полный пакет. Перед запуском дождитесь первого осмысленного статуса.',
+            checks
+        };
+    }
+
+    if (activeAlarm || safetyLatched || lifecycle === 'faulted') {
+        return {
+            tone: 'danger',
+            title: 'Запуск заблокирован',
+            detail: operatorMessage || 'Есть активная авария или safety latch. Сначала снимите блокировку и проверьте причину последнего trip.',
+            checks
+        };
+    }
+
+    if (!sensorsFresh) {
+        return {
+            tone: 'danger',
+            title: 'Нужна проверка датчиков',
+            detail: 'Телеметрия устарела. Без свежих датчиков автоматика не должна запускать процесс в рабочем режиме.',
+            checks
+        };
+    }
+
+    if (lifecycle === 'starting' || lifecycle === 'running' || lifecycle === 'paused' || lifecycle === 'stopping') {
+        return {
+            tone: 'warn',
+            title: 'Режим уже активен',
+            detail: operatorMessage || `Сейчас lifecycle: ${getLifecycleLabel(lifecycle)}. Это уже не стартовый экран, а контроль запущенного процесса.`,
+            checks
+        };
+    }
+
+    if (hasLimits) {
+        return {
+            tone: 'warn',
+            title: 'Старт возможен с оговорками',
+            detail: `Автоматика уже видит ограничения: ${getActiveLimitsLabel(indicators, activeLimits)}. Перед запуском лучше понять, почему они появились заранее.`,
+            checks
+        };
+    }
+
+    return {
+        tone: 'good',
+        title: 'Можно запускать',
+        detail: 'Контур v2 на связи, датчики свежие, аварий и latch сейчас нет. Можно переходить к старту режима с веб-интерфейса.',
+        checks
+    };
 }
 
 function buildGuidance(state, indicators, activeLimits) {
@@ -324,6 +442,91 @@ function renderProcessIndicatorsCard() {
     setGuidance(guidance.title, guidance.detail, guidance.tone);
 }
 
+function renderProcessIndicatorsPanel() {
+    const s = runtimeMonitorState;
+    const indicators = s?.v2?.indicators || {};
+    const activeLimits = s?.v2?.activeLimits || {};
+
+    const lifecycle = String(s?.v2?.lifecycle || 'idle');
+    const lastReasonCode = String(s?.v2?.lastReasonCode || 'RC_NONE');
+    const coolingMargin = toFinite(indicators.coolingMarginC, 0);
+    const stability = toFinite(indicators.stabilityIndex, 0);
+    const floodRisk = toFinite(indicators.floodRisk, 0);
+    const processHealth = toFinite(indicators.processHealth, 0);
+    const headsScore = toFinite(indicators.headsCompletionScore, 0);
+    const bodyScore = toFinite(indicators.bodyEndScore, 0);
+    const hasLimit =
+        Boolean(indicators.powerLimited) ||
+        Boolean(activeLimits.powerCapped) ||
+        Boolean(activeLimits.takeoffBlocked) ||
+        Boolean(activeLimits.phaseAdvanceBlocked) ||
+        Boolean(activeLimits.pumpCapped);
+
+    setIndicatorValue(
+        'indicator-lifecycle',
+        getLifecycleLabel(lifecycle),
+        lifecycle === 'running' ? 'good' : (lifecycle === 'faulted' ? 'danger' : 'muted')
+    );
+    setIndicatorValue(
+        'indicator-last-reason',
+        getReasonCodeLabel(lastReasonCode),
+        lastReasonCode === 'RC_NONE' ? 'muted' : 'warn'
+    );
+
+    const takeoffState = boolLabel(indicators.takeoffAllowed, 'Разрешён', 'Заблокирован');
+    setIndicatorValue('indicator-takeoff', takeoffState.text, takeoffState.tone);
+
+    let coolingTone = 'good';
+    if (coolingMargin <= 0) coolingTone = 'danger';
+    else if (coolingMargin < 5) coolingTone = 'warn';
+    setIndicatorValue('indicator-cooling-status', `${coolingMargin.toFixed(1)} °C`, coolingTone);
+
+    setIndicatorValue(
+        'indicator-stability',
+        formatIndicatorPercent(stability),
+        stability >= 0.75 ? 'good' : (stability >= 0.45 ? 'warn' : 'danger')
+    );
+    setIndicatorValue(
+        'indicator-flood-risk',
+        formatIndicatorPercent(floodRisk),
+        floodRisk < 0.35 ? 'good' : (floodRisk < 0.65 ? 'warn' : 'danger')
+    );
+    setIndicatorValue('indicator-cooling-margin', `${coolingMargin.toFixed(1)}°C`, coolingTone);
+    setIndicatorValue(
+        'indicator-process-health',
+        formatIndicatorPercent(processHealth),
+        processHealth >= 0.85 ? 'good' : (processHealth >= 0.65 ? 'warn' : 'danger')
+    );
+
+    const freshness = boolLabel(indicators.sensorFreshnessOk, 'OK', 'Просрочены');
+    setIndicatorValue('indicator-sensor-freshness', freshness.text, freshness.tone);
+
+    const pressureStable = boolLabel(indicators.pressureStable, 'Стабильно', 'Дрейф');
+    setIndicatorValue('indicator-pressure-stable', pressureStable.text, pressureStable.tone);
+
+    setIndicatorValue(
+        'indicator-heads-score',
+        formatIndicatorPercent(headsScore),
+        headsScore >= 0.8 ? 'good' : (headsScore >= 0.5 ? 'warn' : 'muted')
+    );
+    setIndicatorValue(
+        'indicator-body-score',
+        formatIndicatorPercent(bodyScore),
+        bodyScore >= 0.8 ? 'danger' : (bodyScore >= 0.55 ? 'warn' : 'good')
+    );
+
+    const recovery = boolLabel(indicators.recoveryActive, 'Активен', 'Нет');
+    setIndicatorValue('indicator-recovery', recovery.text, recovery.tone);
+    setIndicatorValue(
+        'indicator-power-limit',
+        getActiveLimitsLabel(indicators, activeLimits),
+        hasLimit ? 'warn' : 'good'
+    );
+
+    const guidance = buildGuidance(s, indicators, activeLimits);
+    setGuidance(guidance.title, guidance.detail, guidance.tone);
+}
+
 export function renderRuntimeBars(items) {
     const barsEl = document.getElementById('mode-runtime-bars');
     if (!barsEl) return;
@@ -532,9 +735,11 @@ export function renderModeRuntimeCard() {
         });
     }
 
+    const preflight = buildPreflightState(s);
+    setPreflightState(preflight.title, preflight.detail, preflight.tone, preflight.checks);
     renderRuntimeBars(items);
     updateManualTiles();
-    renderProcessIndicatorsCard();
+    renderProcessIndicatorsPanel();
     if (manualEl) {
         manualEl.style.display = mode === MODE_MANUAL ? 'grid' : 'none';
     }

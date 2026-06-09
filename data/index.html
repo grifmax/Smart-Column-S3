@@ -259,6 +259,37 @@
                                         <h3 class="operator-card-title" id="mode-runtime-title">Прогресс режима</h3>
                                         <div id="mode-runtime-caption" class="operator-runtime-caption">Ожидание запуска
                                             процесса</div>
+                                        <div id="runtime-preflight" class="operator-preflight is-muted">
+                                            <div class="operator-preflight-head">
+                                                <span class="operator-preflight-kicker">Готовность к запуску</span>
+                                                <strong id="runtime-preflight-title">Ожидание статуса</strong>
+                                            </div>
+                                            <div id="runtime-preflight-text" class="operator-preflight-text">
+                                                Проверим автоматику, датчики и safety перед стартом процесса.
+                                            </div>
+                                            <div class="operator-preflight-grid">
+                                                <div class="operator-preflight-item">
+                                                    <span>Контур v2</span>
+                                                    <strong id="runtime-preflight-v2"
+                                                        class="operator-indicator-value">--</strong>
+                                                </div>
+                                                <div class="operator-preflight-item">
+                                                    <span>Датчики</span>
+                                                    <strong id="runtime-preflight-sensors"
+                                                        class="operator-indicator-value">--</strong>
+                                                </div>
+                                                <div class="operator-preflight-item">
+                                                    <span>Safety latch</span>
+                                                    <strong id="runtime-preflight-safety"
+                                                        class="operator-indicator-value">--</strong>
+                                                </div>
+                                                <div class="operator-preflight-item">
+                                                    <span>Авария</span>
+                                                    <strong id="runtime-preflight-alarm"
+                                                        class="operator-indicator-value">--</strong>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <div id="mode-runtime-bars" class="operator-runtime-bars"></div>
                                         <div id="mode-runtime-rect" class="operator-runtime-manual"
                                             style="display: none;">
