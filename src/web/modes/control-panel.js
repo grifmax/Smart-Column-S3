@@ -1,6 +1,7 @@
 import {
     currentMode,
     MODE_IDLE,
+    maxHeaterPower,
     runtimeMonitorState,
     MODE_RECT,
     MODE_MANUAL,
@@ -15,6 +16,8 @@ import {
 import { addLog } from '../core/logs.js';
 import { loadStatus } from '../core/status.js';
 import { getStartAvailabilityState } from '../runtime/bars.js';
+import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
+import { estimateRectTargets } from '../runtime/state.js';
 import { startRectification, loadRectificationStartSettings } from './rectification.js';
 import { startManual } from './rectification.js';
 import { startDistillation, collectDistillationSettings } from './distillation.js';
@@ -188,6 +191,7 @@ export function renderControlStartState() {
             : `${availability.title}. ${availability.detail}`;
     }
 
+    renderControlModeSummary();
     renderControlStartChecklist();
 }
 
@@ -208,6 +212,168 @@ function focusChecklistTarget(targetId) {
 
 function addChecklistItem(items, tone, title, detail, targetId = '') {
     items.push({ tone, title, detail, targetId });
+}
+
+function formatMinutesTotal(totalMinutes) {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = Math.round(totalMinutes % 60);
+    if (hours <= 0) return `${minutes} мин`;
+    if (minutes === 0) return `${hours} ч`;
+    return `${hours} ч ${minutes} мин`;
+}
+
+function buildControlModeSummary() {
+    const availability = getStartAvailabilityState(runtimeMonitorState);
+    const summary = {
+        tone: availability.tone,
+        kicker: 'Прогноз запуска',
+        title: 'Что запустится',
+        text: 'Проверьте настройки режима, затем переходите к старту.',
+        metrics: []
+    };
+
+    if (selectedControlMode === 'rectification') {
+        const effectiveAbv = getEffectiveAbvForCalculations();
+        const settings = {
+            ...runtimeMonitorState.rectification,
+            feedVolumeL: getNumberValue('rect-start-feed-volume', 20),
+            feedAbvPercent: getNumberValue('rect-start-feed-abv', 40),
+            headsPercent: getNumberValue('rect-start-heads-percent', 8),
+            bodyPercent: getNumberValue('rect-start-body-percent', 84),
+            tailsPercent: getNumberValue('rect-start-tails-percent', 8),
+            headsSpeedMlHKw: getNumberValue('rect-start-heads-speed', 300),
+            bodySpeedMlHKw: getNumberValue('rect-start-body-speed', 600),
+            stabilizationMin: getNumberValue('rect-start-stabilization', 30),
+            purgeMin: getNumberValue('rect-start-purge', 5)
+        };
+        const targets = estimateRectTargets(settings, effectiveAbv.value);
+        const heaterPowerW = Math.max(0, Number(runtimeMonitorState.equipment.heaterPowerW || maxHeaterPower) || 0);
+        const heaterKw = Math.max(0.1, heaterPowerW / 1000);
+        const headsSpeed = settings.headsSpeedMlHKw * heaterKw;
+        const bodySpeed = settings.bodySpeedMlHKw * heaterKw;
+        summary.title = 'Авто-ректификация';
+        summary.text = `Будет рассчитан отбор фракций по ${effectiveAbv.source === 'sensor' ? 'данным ареометра' : 'плановой крепости'}, затем выполнены стабилизация и продувка перед телом.`;
+        summary.metrics = [
+            { label: 'Сырец', value: `${settings.feedVolumeL.toFixed(1)} л • ${settings.feedAbvPercent.toFixed(1)}%` },
+            { label: 'Фракции', value: `${targets.heads.toFixed(0)} / ${targets.body.toFixed(0)} / ${targets.tails.toFixed(0)} мл` },
+            { label: 'Скорости', value: `головы ${headsSpeed.toFixed(0)} • тело ${bodySpeed.toFixed(0)} мл/ч` },
+            { label: 'Подготовка', value: `${formatMinutesTotal(settings.stabilizationMin + settings.purgeMin)}` }
+        ];
+        return summary;
+    }
+
+    if (selectedControlMode === 'manual') {
+        const settings = collectManualRectSettings();
+        const headsModeLabel = settings.heads.mode === 'time'
+            ? `${settings.heads.time.toFixed(0)} мин`
+            : (settings.heads.mode === 'speed'
+                ? `${settings.heads.speed.toFixed(0)} мл/ч`
+                : `${settings.heads.temp.toFixed(1)} °C`);
+        summary.title = 'Ручная ректификация';
+        summary.text = 'Запустится ручной режим с живым управлением нагревом и насосом, а логика фракций останется опорой для оператора.';
+        summary.metrics = [
+            { label: 'Сырец', value: `${settings.feed.volumeL.toFixed(1)} л • ${settings.feed.abvPercent.toFixed(1)}%` },
+            { label: 'Головы', value: `${settings.heads.volume.toFixed(0)} мл • ${headsModeLabel}` },
+            { label: 'Тело', value: `скачок ${settings.body.spikeThreshold.toFixed(2)} °C • шаг ${settings.body.speedDecrement.toFixed(0)}%` },
+            { label: 'Хвосты', value: settings.tails.enabled ? 'отбор включён' : 'отбор отключён' }
+        ];
+        return summary;
+    }
+
+    if (selectedControlMode === 'distillation') {
+        const settings = collectDistillationSettings();
+        const factPower = getNumberValue('dist-start-power-fact', 0);
+        summary.title = 'Дистилляция';
+        summary.text = 'Процесс пойдёт на заданной мощности и завершится по температуре окончания, без сложной фазовой логики колонны.';
+        summary.metrics = [
+            { label: 'Стоп-условие', value: `${settings.endTemp.toFixed(1)} °C` },
+            { label: 'Уставка', value: `${settings.powerPercent.toFixed(0)}% мощности` },
+            { label: 'Факт сейчас', value: `${factPower.toFixed(0)} Вт` }
+        ];
+        return summary;
+    }
+
+    if (selectedControlMode === 'nbk') {
+        const settings = collectNbkSettings();
+        summary.title = 'НБК';
+        summary.text = 'Система прогреет НБК, дождётся рабочей температуры низа колонны и затем откроет подачу браги на заданной скорости.';
+        summary.metrics = [
+            { label: 'Нагрев', value: `${settings.powerW.toFixed(0)} Вт` },
+            { label: 'Подача', value: `${settings.pumpSpeedMlH.toFixed(0)} мл/ч` },
+            { label: 'Защитный порог', value: `${settings.columnBottomTempThresholdC.toFixed(1)} °C` }
+        ];
+        return summary;
+    }
+
+    if (selectedControlMode === 'fermentation') {
+        const settings = collectFermentationSettings();
+        summary.title = 'Ферментация';
+        summary.text = 'Контур перейдёт в режим поддержания температуры и будет держать среду около цели с указанным гистерезисом.';
+        summary.metrics = [
+            { label: 'Цель', value: `${settings.targetTempC.toFixed(1)} °C` },
+            { label: 'Гистерезис', value: `${settings.hysteresisC.toFixed(1)} °C` },
+            { label: 'Нагрев', value: settings.useHeater ? 'ТЭН участвует' : 'ТЭН отключён' }
+        ];
+        return summary;
+    }
+
+    if (selectedControlMode === 'mashing') {
+        const steps = readStepsFromUI('mash-steps', 'mash');
+        const temps = steps.map((step) => Number(step.temperature)).filter(Number.isFinite);
+        const totalMinutes = steps.reduce((sum, step) => sum + Number(step.duration || 0), 0);
+        summary.title = 'Затирка';
+        summary.text = 'Профиль пройдёт по шагам затирки последовательно, удерживая температуру и таймер каждого этапа.';
+        summary.metrics = [
+            { label: 'Шаги', value: `${steps.length} этап(ов)` },
+            { label: 'Длительность', value: formatMinutesTotal(totalMinutes) },
+            { label: 'Диапазон', value: temps.length ? `${Math.min(...temps).toFixed(1)}–${Math.max(...temps).toFixed(1)} °C` : 'не задан' }
+        ];
+        return summary;
+    }
+
+    if (selectedControlMode === 'hold') {
+        const steps = readStepsFromUI('hold-steps', 'hold');
+        const totalMinutes = steps.reduce((sum, step) => sum + Number(step.duration || 0), 0);
+        const tempSteps = steps.filter((step) => Number(step.temperature) > 0);
+        summary.title = 'Пастеризация';
+        summary.text = 'Режим выполнит температурные ступени и паузы по списку, включая охлаждение там, где оно отмечено в шагах.';
+        summary.metrics = [
+            { label: 'Шаги', value: `${steps.length} этап(ов)` },
+            { label: 'Длительность', value: formatMinutesTotal(totalMinutes) },
+            { label: 'Темп. ступени', value: `${tempSteps.length} активных шаг(ов)` }
+        ];
+        return summary;
+    }
+
+    return summary;
+}
+
+export function renderControlModeSummary() {
+    const root = byId('control-mode-summary');
+    const titleEl = byId('control-mode-summary-title');
+    const kickerEl = byId('control-mode-summary-kicker');
+    const textEl = byId('control-mode-summary-text');
+    const metricsEl = byId('control-mode-summary-metrics');
+    if (!root || !titleEl || !kickerEl || !textEl || !metricsEl) return;
+
+    const summary = buildControlModeSummary();
+    root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    root.classList.add(`is-${summary.tone}`);
+    titleEl.textContent = summary.title;
+    kickerEl.textContent = summary.kicker;
+    textEl.textContent = summary.text;
+    metricsEl.innerHTML = '';
+
+    summary.metrics.forEach((metric) => {
+        const card = document.createElement('div');
+        card.className = 'control-mode-summary-metric';
+        const label = document.createElement('span');
+        label.textContent = metric.label;
+        const value = document.createElement('strong');
+        value.textContent = metric.value;
+        card.append(label, value);
+        metricsEl.appendChild(card);
+    });
 }
 
 function buildRectificationChecklist(items) {
