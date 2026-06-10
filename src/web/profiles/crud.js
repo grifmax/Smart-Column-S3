@@ -263,6 +263,80 @@ function formatPackingType(value) {
 
 }
 
+function hpaToMmHg(value) {
+
+    const numeric = Number(value || 0);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric * 0.75006156 : 0;
+
+}
+
+function getStatusAtmosphereMmHg(status) {
+
+    const direct = Number(status?.p_atm);
+    if (Number.isFinite(direct) && direct > 0) {
+        return hpaToMmHg(direct);
+    }
+
+    const nested = Number(status?.pressure?.atm ?? status?.pressure?.atmosphere);
+    if (Number.isFinite(nested) && nested > 0) {
+        return hpaToMmHg(nested);
+    }
+
+    return 0;
+
+}
+
+function buildProfileLoadWarning(profile, status) {
+
+    const validation = profile?.validation || {};
+    const baselineMmHg = Number(validation.atmosphereMmHg || 0);
+    const currentMmHg = getStatusAtmosphereMmHg(status);
+
+    if (baselineMmHg <= 0 || currentMmHg <= 0) {
+        return '';
+    }
+
+    const delta = currentMmHg - baselineMmHg;
+    const absDelta = Math.abs(delta);
+    if (absDelta < 5) {
+        return '';
+    }
+
+    const signedDelta = `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}`;
+    const severity = absDelta >= 12 ? 'Внимание' : 'Замечание';
+    const impact = absDelta >= 12
+        ? 'Температурные пороги и фактические cut points могут заметно сместиться.'
+        : 'Температурные пороги могут немного сдвинуться относительно baseline.';
+
+    return `${severity}: профиль "${profile?.metadata?.name || profile?.id || ''}" валидирован при ${baselineMmHg.toFixed(1)} мм рт.ст., сейчас ${currentMmHg.toFixed(1)} мм рт.ст. (Δ ${signedDelta}). ${impact}`;
+
+}
+
+async function fetchProfileLoadWarning(profileId) {
+
+    try {
+        const [profileResponse, statusResponse] = await Promise.all([
+            fetch(`/api/profiles/${profileId}`),
+            fetch('/api/status')
+        ]);
+
+        if (!profileResponse.ok || !statusResponse.ok) {
+            return '';
+        }
+
+        const [profile, status] = await Promise.all([
+            profileResponse.json(),
+            statusResponse.json()
+        ]);
+
+        return buildProfileLoadWarning(profile, status);
+    } catch (error) {
+        console.warn('Не удалось получить warning по validation context:', error);
+        return '';
+    }
+
+}
+
 
 
 // Показать модальное окно просмотра профиля
@@ -527,9 +601,14 @@ export function closeProfileViewModal() {
 
 // Быстрая загрузка профиля
 
-export function quickLoadProfile(id) {
+export async function quickLoadProfile(id) {
 
-    if (!confirm('Загрузить этот профиль в текущие настройки?')) return;
+    const warning = await fetchProfileLoadWarning(id);
+    const confirmText = warning
+        ? `Загрузить этот профиль в текущие настройки?\n\n${warning}`
+        : 'Загрузить этот профиль в текущие настройки?';
+
+    if (!confirm(confirmText)) return;
 
 
 
@@ -575,7 +654,7 @@ export function loadProfileToSettings() {
 
     closeProfileViewModal();
 
-    quickLoadProfile(currentProfileId);
+    void quickLoadProfile(currentProfileId);
 
 }
 
