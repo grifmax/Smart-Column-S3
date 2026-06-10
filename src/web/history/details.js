@@ -637,6 +637,163 @@ function appendIndicatorSummarySection(container, process) {
 
 }
 
+function buildRunAdvisorItems(process) {
+
+    const indicators = process?.metrics?.indicators;
+    const type = String(process?.process?.type || '').trim();
+    const completedSuccessfully = Boolean(process?.metadata?.completedSuccessfully);
+
+    if (!indicators) {
+        return [];
+    }
+
+    const items = [];
+    const avgStability = Number(indicators.stabilityIndexAvg || 0);
+    const minCoolingMargin = Number(indicators.coolingMarginC?.min || 0);
+    const maxFloodRisk = Number(indicators.floodRisk?.max || 0);
+    const samples = Math.max(1, Number(indicators.samples || 0));
+    const takeoffShare = Number(indicators.takeoffAllowedSamples || 0) / samples;
+    const freshnessShare = Number(indicators.sensorFreshnessOkSamples || 0) / samples;
+    const finalHeadsScore = Number(indicators.headsCompletionScoreFinal || 0);
+    const finalBodyScore = Number(indicators.bodyEndScoreFinal || 0);
+
+    if (freshnessShare < 0.95) {
+        items.push({
+            tone: 'danger',
+            title: 'Телеметрия была неполной',
+            detail: `Свежие данные были доступны только ${(freshnessShare * 100).toFixed(0)}% времени.`,
+            action: 'Перед сравнением профилей сначала стабилизируйте датчики и качество потока данных.'
+        });
+    }
+
+    if (minCoolingMargin <= 0) {
+        items.push({
+            tone: 'danger',
+            title: 'Охлаждение уходило в красную зону',
+            detail: `Минимальный cooling margin опускался до ${minCoolingMargin.toFixed(1)}°C.`,
+            action: 'Для следующего запуска проверьте воду, дефлегматор и не форсируйте мощность на этом профиле.'
+        });
+    } else if (minCoolingMargin < 4) {
+        items.push({
+            tone: 'warn',
+            title: 'Запас охлаждения был низким',
+            detail: `Минимальный cooling margin всего ${minCoolingMargin.toFixed(1)}°C.`,
+            action: 'Есть смысл немного разгрузить колонну или заранее усилить охлаждение.'
+        });
+    }
+
+    if (maxFloodRisk >= 0.8) {
+        items.push({
+            tone: 'danger',
+            title: 'Высокий риск захлёба',
+            detail: `Пиковый flood risk достигал ${(maxFloodRisk * 100).toFixed(0)}%.`,
+            action: 'Следующий прогон лучше начать мягче: меньше мощность, меньше отбор, внимательнее к давлению.'
+        });
+    } else if (maxFloodRisk >= 0.55) {
+        items.push({
+            tone: 'warn',
+            title: 'Колонна работала на грани',
+            detail: `Максимальный flood risk доходил до ${(maxFloodRisk * 100).toFixed(0)}%.`,
+            action: 'Профиль рабочий, но запас устойчивости небольшой. Хорошая точка для аккуратной оптимизации.'
+        });
+    }
+
+    if ((type === 'rectification' || type === 'distillation' || type === 'nbk') && avgStability < 0.55) {
+        items.push({
+            tone: 'warn',
+            title: 'Средняя стабильность ниже желаемой',
+            detail: `Средний stability index около ${(avgStability * 100).toFixed(0)}%.`,
+            action: 'Стоит проверить разгон, стабилизацию и первые минуты отбора: там, вероятно, теряется повторяемость.'
+        });
+    }
+
+    if ((type === 'rectification' || type === 'distillation' || type === 'nbk') && takeoffShare < 0.65) {
+        items.push({
+            tone: 'warn',
+            title: 'Окно разрешённого отбора было узким',
+            detail: `Автоматика считала отбор допустимым только ${(takeoffShare * 100).toFixed(0)}% времени.`,
+            action: 'Для следующего запуска полезно снять нагрузку с колонны или увеличить выдержку перед телом.'
+        });
+    }
+
+    if (type === 'rectification' && finalHeadsScore < 0.75) {
+        items.push({
+            tone: 'warn',
+            title: 'Головы закончились неубедительно',
+            detail: `Финальный heads score всего ${(finalHeadsScore * 100).toFixed(0)}%.`,
+            action: 'Проверьте, не стоит ли увеличить стабилизацию или объём/длительность голов.'
+        });
+    }
+
+    if (type === 'rectification' && finalBodyScore > 0.9) {
+        items.push({
+            tone: 'warn',
+            title: 'Конец тела пришёл жёстко',
+            detail: `Финальный body end score ${(finalBodyScore * 100).toFixed(0)}%.`,
+            action: 'Есть смысл заранее смягчать конец тела, чтобы переход не был таким резким.'
+        });
+    }
+
+    if (items.length === 0) {
+        items.push({
+            tone: completedSuccessfully ? 'good' : 'muted',
+            title: completedSuccessfully ? 'Прогон выглядит повторяемым' : 'Грубых инженерных провалов не видно',
+            detail: completedSuccessfully
+                ? 'По сохранённым indicators явных провалов по устойчивости, охлаждению и safety не видно.'
+                : 'Даже без идеального финала indicators не показывают явную системную проблему этого прогона.',
+            action: 'Этот запуск можно использовать как опорный для сравнения следующих версий профиля.'
+        });
+    }
+
+    return items.slice(0, 4);
+
+}
+
+function appendRunAdvisorSection(container, process) {
+
+    const items = buildRunAdvisorItems(process);
+
+    if (!items.length) {
+        return;
+    }
+
+    const section = document.createElement('div');
+    section.className = 'modal-info-item modal-info-item-wide';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'modal-info-label';
+    titleEl.textContent = 'Run Advisor';
+
+    const listEl = document.createElement('div');
+    listEl.className = 'modal-advisor-list';
+
+    items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = `modal-advisor-item is-${item.tone}`;
+
+        const headEl = document.createElement('strong');
+        headEl.textContent = item.title;
+
+        const detailEl = document.createElement('p');
+        detailEl.className = 'modal-advisor-text';
+        detailEl.textContent = item.detail;
+
+        const actionEl = document.createElement('p');
+        actionEl.className = 'modal-advisor-action';
+        actionEl.textContent = item.action;
+
+        row.appendChild(headEl);
+        row.appendChild(detailEl);
+        row.appendChild(actionEl);
+        listEl.appendChild(row);
+    });
+
+    section.appendChild(titleEl);
+    section.appendChild(listEl);
+    container.appendChild(section);
+
+}
+
 
 
 export function showHistoryDetailsModal(process) {
@@ -774,6 +931,7 @@ export function showHistoryDetailsModal(process) {
     appendInfoItem(resultsGrid, 'Хвосты', `${process.results.tailsCollected || 0} мл`);
     appendInfoItem(resultsGrid, 'Всего собрано', `${process.results.totalCollected || 0} мл`);
     appendCompletionInsightSection(resultsGrid, process);
+    appendRunAdvisorSection(resultsGrid, process);
     appendIndicatorSummarySection(resultsGrid, process);
     appendSafetyTimelineSection(resultsGrid, process);
     appendEventSection(resultsGrid, 'Ошибки и аварии', process.results?.errors || [], 'error');

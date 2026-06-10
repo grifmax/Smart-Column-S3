@@ -313,6 +313,57 @@
     border-color: var(--border-color);
 }
 
+.modal-advisor-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.modal-advisor-item {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-card);
+    padding: 12px 14px;
+}
+
+.modal-advisor-item strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: 0.98rem;
+    line-height: 1.25;
+}
+
+.modal-advisor-text,
+.modal-advisor-action {
+    margin: 8px 0 0;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+
+.modal-advisor-action {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.modal-advisor-item.is-good {
+    border-color: rgba(25, 135, 84, 0.28);
+    background: rgba(25, 135, 84, 0.08);
+}
+
+.modal-advisor-item.is-warn {
+    border-color: rgba(255, 193, 7, 0.32);
+    background: rgba(255, 193, 7, 0.10);
+}
+
+.modal-advisor-item.is-danger {
+    border-color: rgba(220, 53, 69, 0.28);
+    background: rgba(220, 53, 69, 0.09);
+}
+
+.modal-advisor-item.is-muted {
+    border-color: var(--border-color);
+}
+
 .modal-note-text {
     margin-top: 10px;
     color: var(--text-primary);
