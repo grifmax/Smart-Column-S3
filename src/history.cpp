@@ -621,7 +621,11 @@ std::vector<ProcessListItem> getProcessList() {
                     SafetyListSummary safetySummary;
                     item.id = doc["id"].as<String>();
                     item.type = doc["process"]["type"].as<String>();
+                    item.mode = doc["process"]["mode"].as<String>();
+                    item.profile = doc["process"]["profile"].as<String>();
                     item.startTime = doc["metadata"]["startTime"];
+                    item.completedSuccessfully =
+                        doc["metadata"]["completedSuccessfully"] | false;
                     item.duration = doc["metadata"]["duration"];
                     item.status = doc["results"]["status"].as<String>();
                     item.totalVolume = doc["results"]["totalCollected"];

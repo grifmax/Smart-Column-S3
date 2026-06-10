@@ -153,9 +153,12 @@ struct ProcessHistory {
 struct ProcessListItem {
     String id;
     String type;
+    String mode;
+    String profile;
     uint32_t startTime;
     uint32_t duration;
     String status;
+    bool completedSuccessfully = false;
     uint16_t totalVolume;
     String completionState;
     String completionReasonCode;

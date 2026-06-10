@@ -1945,9 +1945,12 @@ void init() {
       JsonObject item = processArray.add<JsonObject>();
       item["id"] = process.id;
       item["type"] = process.type;
+      item["mode"] = process.mode;
+      item["profile"] = process.profile;
       item["startTime"] = process.startTime;
       item["duration"] = process.duration;
       item["status"] = process.status;
+      item["completedSuccessfully"] = process.completedSuccessfully;
       item["totalVolume"] = process.totalVolume;
       item["completionState"] = process.completionState;
       item["completionReasonCode"] = process.completionReasonCode;
