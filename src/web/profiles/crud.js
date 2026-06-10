@@ -227,6 +227,20 @@ export function viewProfile(id) {
 
 }
 
+function formatProfileMinutes(seconds) {
+
+    const value = Number(seconds || 0);
+    return value > 0 ? `${Math.round(value / 60)} мин` : '—';
+
+}
+
+function formatProfileNumber(value, digits = 1, suffix = '') {
+
+    const numeric = Number(value || 0);
+    return numeric > 0 ? `${numeric.toFixed(digits)}${suffix}` : '—';
+
+}
+
 
 
 // Показать модальное окно просмотра профиля
@@ -252,6 +266,12 @@ export function showProfileViewModal(profile) {
     };
 
 
+
+    const learning = profile.learning || {};
+    const lastSuccessfulRun = learning.lastSuccessfulRun || null;
+    const advisorItems = Array.isArray(learning.lastAdvisorSnapshot?.items)
+        ? learning.lastAdvisorSnapshot.items.slice(0, 3)
+        : [];
 
     let html = `
 
@@ -333,13 +353,72 @@ export function showProfileViewModal(profile) {
 
                 <div><strong>Использований:</strong> ${profile.statistics.useCount}</div>
 
-                <div><strong>Средняя длительность:</strong> ${Math.round(profile.statistics.avgDuration / 60)} мин</div>
+                <div><strong>Средняя длительность:</strong> ${formatProfileMinutes(profile.statistics.avgDuration)}</div>
 
                 <div><strong>Средний выход:</strong> ${profile.statistics.avgYield} мл</div>
 
                 <div><strong>Успешность:</strong> ${profile.statistics.successRate.toFixed(1)}%</div>
 
+                <div><strong>Успешных прогонов:</strong> ${learning.successfulRuns || 0}</div>
+
+                <div><strong>Неуспешных прогонов:</strong> ${learning.failedRuns || 0}</div>
+
             </div>
+
+        </div>
+
+        <div class="modal-section">
+
+            <div class="modal-section-title">🧠 Learning Loop</div>
+
+            <div class="modal-info-grid">
+
+                <div><strong>Средняя энергия:</strong> ${formatProfileNumber(learning.avgEnergyUsed, 2, ' кВт·ч')}</div>
+
+                <div><strong>Энергия на литр:</strong> ${formatProfileNumber(learning.avgEnergyPerLiter, 2, ' кВт·ч/л')}</div>
+
+                <div><strong>Process health:</strong> ${formatProfileNumber((learning.avgProcessHealth || 0) * 100, 0, '%')}</div>
+
+                <div><strong>Stability index:</strong> ${formatProfileNumber((learning.avgStabilityIndex || 0) * 100, 0, '%')}</div>
+
+                <div><strong>Типовой финал куба:</strong> ${formatProfileNumber(learning.typicalCubeFinalTemp, 1, '°C')}</div>
+
+                <div><strong>Типовой верх колонны:</strong> ${formatProfileNumber(learning.typicalColumnTopFinalTemp, 2, '°C')}</div>
+
+            </div>
+
+        </div>
+
+        <div class="modal-section">
+
+            <div class="modal-section-title">🎯 Последний успешный baseline</div>
+
+            <div class="modal-info-grid">
+
+                <div><strong>ID прогона:</strong> ${lastSuccessfulRun?.id || '—'}</div>
+
+                <div><strong>Длительность:</strong> ${formatProfileMinutes(lastSuccessfulRun?.duration)}</div>
+
+                <div><strong>Выход:</strong> ${lastSuccessfulRun?.totalCollected ? `${lastSuccessfulRun.totalCollected} мл` : '—'}</div>
+
+                <div><strong>Энергия:</strong> ${formatProfileNumber(lastSuccessfulRun?.energyUsed, 2, ' кВт·ч')}</div>
+
+            </div>
+
+            ${advisorItems.length ? `
+                <div style="margin-top: 14px;">
+                    <strong>Последние рекомендации Run Advisor:</strong>
+                    <div style="display: grid; gap: 10px; margin-top: 10px;">
+                        ${advisorItems.map((item) => `
+                            <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary);">
+                                <div style="font-weight: 600; margin-bottom: 6px;">${item.title}</div>
+                                <div style="color: var(--text-secondary); margin-bottom: 6px;">${item.detail}</div>
+                                <div>${item.action}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : '<div style="margin-top: 14px; color: var(--text-secondary);">Для последнего успешного прогона snapshot рекомендаций пока не сохранён.</div>'}
 
         </div>
 

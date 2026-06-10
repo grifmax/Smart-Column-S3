@@ -28,6 +28,7 @@ struct ProcessMetadata {
 struct ProcessInfo {
     String type;                     // rectification, distillation, mashing, hold
     String mode;                     // auto, manual
+    String profileId;                // ID профиля (если есть)
     String profile;                  // Имя профиля (если есть)
 };
 
@@ -175,6 +176,7 @@ struct ProcessListItem {
     String id;
     String type;
     String mode;
+    String profileId;
     String profile;
     uint32_t startTime;
     uint32_t duration;

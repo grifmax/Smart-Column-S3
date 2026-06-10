@@ -1946,6 +1946,7 @@ void init() {
       item["id"] = process.id;
       item["type"] = process.type;
       item["mode"] = process.mode;
+      item["profileId"] = process.profileId;
       item["profile"] = process.profile;
       item["startTime"] = process.startTime;
       item["duration"] = process.duration;
@@ -5164,6 +5165,8 @@ void init() {
       p["category"] = prof.category;
       p["useCount"] = prof.useCount;
       p["lastUsed"] = prof.lastUsed;
+      p["successRate"] = prof.successRate;
+      p["successfulRuns"] = prof.successfulRuns;
       p["isBuiltin"] = prof.isBuiltin;
     }
     
@@ -5242,6 +5245,61 @@ void init() {
       statistics["avgDuration"] = profile.statistics.avgDuration;
       statistics["avgYield"] = profile.statistics.avgYield;
       statistics["successRate"] = profile.statistics.successRate;
+
+      JsonObject learning = doc["learning"].to<JsonObject>();
+      learning["successfulRuns"] = profile.learning.successfulRuns;
+      learning["failedRuns"] = profile.learning.failedRuns;
+      learning["avgEnergyUsed"] = profile.learning.avgEnergyUsed;
+      learning["avgEnergyPerLiter"] = profile.learning.avgEnergyPerLiter;
+      learning["avgProcessHealth"] = profile.learning.avgProcessHealth;
+      learning["avgStabilityIndex"] = profile.learning.avgStabilityIndex;
+      learning["typicalCubeFinalTemp"] = profile.learning.typicalCubeFinalTemp;
+      learning["typicalColumnTopFinalTemp"] =
+          profile.learning.typicalColumnTopFinalTemp;
+      learning["lastProcessId"] = profile.learning.lastProcessId;
+      learning["lastSuccessfulProcessId"] = profile.learning.lastSuccessfulProcessId;
+
+      if (!profile.learning.lastSuccessfulProcessId.isEmpty()) {
+        ProcessHistory lastSuccessfulHistory;
+        if (loadProcessHistory(profile.learning.lastSuccessfulProcessId,
+                               lastSuccessfulHistory)) {
+          JsonObject baseline = learning["lastSuccessfulRun"].to<JsonObject>();
+          baseline["id"] = lastSuccessfulHistory.id;
+          baseline["startTime"] = lastSuccessfulHistory.metadata.startTime;
+          baseline["duration"] = lastSuccessfulHistory.metadata.duration;
+          baseline["totalCollected"] = lastSuccessfulHistory.results.totalCollected;
+          baseline["energyUsed"] = lastSuccessfulHistory.metrics.energyUsed;
+          baseline["avgProcessHealth"] = lastSuccessfulHistory.metrics.avgProcessHealth;
+          baseline["avgStabilityIndex"] = lastSuccessfulHistory.metrics.avgStabilityIndex;
+          baseline["cubeFinal"] = lastSuccessfulHistory.metrics.cube.final;
+          baseline["columnTopFinal"] = lastSuccessfulHistory.metrics.columnTop.final;
+
+          if (!lastSuccessfulHistory.advisorSnapshot.schemaVersion.isEmpty() ||
+              !lastSuccessfulHistory.advisorSnapshot.items.empty()) {
+            JsonObject advisor = learning["lastAdvisorSnapshot"].to<JsonObject>();
+            advisor["schemaVersion"] =
+                lastSuccessfulHistory.advisorSnapshot.schemaVersion;
+            advisor["createdAt"] = lastSuccessfulHistory.advisorSnapshot.createdAt;
+            advisor["baselineProcessId"] =
+                lastSuccessfulHistory.advisorSnapshot.baselineProcessId;
+            advisor["baselineProfile"] =
+                lastSuccessfulHistory.advisorSnapshot.baselineProfile;
+            JsonArray advisorItems = advisor["items"].to<JsonArray>();
+            for (const auto& item : lastSuccessfulHistory.advisorSnapshot.items) {
+              JsonObject advisorItem = advisorItems.add<JsonObject>();
+              advisorItem["kind"] = item.kind;
+              advisorItem["code"] = item.code;
+              advisorItem["tone"] = item.tone;
+              advisorItem["title"] = item.title;
+              advisorItem["detail"] = item.detail;
+              advisorItem["action"] = item.action;
+              advisorItem["parameterKey"] = item.parameterKey;
+              advisorItem["previousValue"] = item.previousValue;
+              advisorItem["suggestedValue"] = item.suggestedValue;
+            }
+          }
+        }
+      }
       
       String response;
       serializeJson(doc, response);

@@ -134,6 +134,10 @@ export function renderProfileItem(profile) {
 
         : 'Не использовался';
 
+    const successText = Number(profile.successfulRuns || 0) > 0
+        ? ` • Успешность: ${Number(profile.successRate || 0).toFixed(0)}%`
+        : '';
+
 
 
     return `
@@ -152,7 +156,7 @@ export function renderProfileItem(profile) {
 
                     <div style="color: var(--text-secondary); font-size: 0.9em;">
 
-                        ${catName} • Использований: ${profile.useCount} • Последнее: ${lastUsed}
+                        ${catName} • Использований: ${profile.useCount}${successText} • Последнее: ${lastUsed}
 
                     </div>
 

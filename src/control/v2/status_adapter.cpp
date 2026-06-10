@@ -6,6 +6,7 @@
 #include "../../drivers/pump.h"
 #include "../../drivers/valves.h"
 #include "../../history.h"
+#include "../../profiles.h"
 #include "../../storage/logger.h"
 #include "../fsm.h"
 #include "../fsm_utils.h"
@@ -398,6 +399,33 @@ void startHistoryTracking(const SystemState& state) {
     if (!processRecorder.isRecording()) {
         processRecorder.startRecording(getHistoryProcessType(state.mode),
                                        getHistoryProcessMode(state.mode));
+        ProcessHistory& history = processRecorder.getHistory();
+        const String activeProfileId = getActiveProfileId();
+        if (!activeProfileId.isEmpty()) {
+            Profile profile;
+            if (loadProfile(activeProfileId, profile)) {
+                const bool rectProfile =
+                    profile.metadata.category == "rectification" ||
+                    profile.parameters.mode == "rectification";
+                const bool distProfile =
+                    profile.metadata.category == "distillation" ||
+                    profile.parameters.mode == "distillation";
+                const bool mashProfile =
+                    profile.metadata.category == "mashing" ||
+                    profile.parameters.mode == "mashing";
+
+                const bool matchesMode =
+                    ((state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT) &&
+                     rectProfile) ||
+                    (state.mode == Mode::DISTILLATION && distProfile) ||
+                    (state.mode == Mode::MASHING && mashProfile);
+
+                if (matchesMode) {
+                    history.process.profileId = profile.id;
+                    history.process.profile = profile.metadata.name;
+                }
+            }
+        }
     }
     g_prevPhaseStartMs = millis();
     g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;

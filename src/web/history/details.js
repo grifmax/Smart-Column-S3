@@ -107,7 +107,25 @@ function normalizeProfileKey(value) {
 
 function getProcessProfile(process) {
 
-    return String(process?.process?.profile || '').trim();
+    return String(process?.process?.profile || process?.profile || '').trim();
+
+}
+
+function getProcessProfileId(process) {
+
+    return String(process?.process?.profileId || process?.profileId || '').trim();
+
+}
+
+function getProcessProfileKey(process) {
+
+    const profileId = getProcessProfileId(process);
+    if (profileId) {
+        return `id:${profileId}`;
+    }
+
+    const profileName = normalizeProfileKey(getProcessProfile(process));
+    return profileName ? `name:${profileName}` : '';
 
 }
 
@@ -115,7 +133,7 @@ function findPreviousSuccessfulProcessSummary(process) {
 
     const currentId = String(process?.id || '').trim();
     const currentType = String(process?.process?.type || '').trim();
-    const currentProfileKey = normalizeProfileKey(getProcessProfile(process));
+    const currentProfileKey = getProcessProfileKey(process);
     const currentStartTime = Number(process?.metadata?.startTime || 0);
 
     if (!currentType || !currentProfileKey || currentStartTime <= 0) {
@@ -127,7 +145,7 @@ function findPreviousSuccessfulProcessSummary(process) {
     return [...historyData]
         .filter((item) => String(item?.id || '').trim() !== currentId)
         .filter((item) => String(item?.type || '').trim() === currentType)
-        .filter((item) => normalizeProfileKey(item?.profile) === currentProfileKey)
+        .filter((item) => getProcessProfileKey(item) === currentProfileKey)
         .filter((item) => Number(item?.startTime || 0) < currentStartTime)
         .filter((item) => Boolean(item?.completedSuccessfully) || String(item?.status || '').trim() === 'completed')
         .sort((left, right) => Number(right?.startTime || 0) - Number(left?.startTime || 0))[0] || null;

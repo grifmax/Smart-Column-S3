@@ -3,10 +3,72 @@
  */
 
 #include "profiles.h"
+#include "history.h"
 #include <FS.h>
 #include <algorithm>
 #include "storage/nvs_manager.h"
 #include "types.h"
+
+namespace {
+
+String g_activeProfileId;
+String g_activeProfileName;
+
+float computeEnergyPerLiter(const ProcessHistory& history) {
+    const float energyUsed = history.metrics.energyUsed;
+    const float totalCollectedMl = static_cast<float>(history.results.totalCollected);
+    if (energyUsed <= 0.0f || totalCollectedMl <= 0.0f) {
+        return 0.0f;
+    }
+    return energyUsed / (totalCollectedMl / 1000.0f);
+}
+
+float updateRollingAverage(float currentAverage, float sample, uint16_t sampleCount) {
+    if (sampleCount <= 1) {
+        return sample;
+    }
+    return ((currentAverage * static_cast<float>(sampleCount - 1)) + sample) /
+           static_cast<float>(sampleCount);
+}
+
+uint32_t updateRollingAverageU32(uint32_t currentAverage,
+                                 uint32_t sample,
+                                 uint16_t sampleCount) {
+    if (sampleCount <= 1) {
+        return sample;
+    }
+    const uint64_t total =
+        (static_cast<uint64_t>(currentAverage) * static_cast<uint64_t>(sampleCount - 1)) +
+        static_cast<uint64_t>(sample);
+    return static_cast<uint32_t>(total / sampleCount);
+}
+
+uint16_t updateRollingAverageU16(uint16_t currentAverage,
+                                 uint16_t sample,
+                                 uint16_t sampleCount) {
+    if (sampleCount <= 1) {
+        return sample;
+    }
+    const uint32_t total =
+        (static_cast<uint32_t>(currentAverage) * static_cast<uint32_t>(sampleCount - 1)) +
+        static_cast<uint32_t>(sample);
+    return static_cast<uint16_t>(total / sampleCount);
+}
+
+void appendLearningJson(JsonObject learning, const ProfileLearningSnapshot& snapshot) {
+    learning["successfulRuns"] = snapshot.successfulRuns;
+    learning["failedRuns"] = snapshot.failedRuns;
+    learning["avgEnergyUsed"] = snapshot.avgEnergyUsed;
+    learning["avgEnergyPerLiter"] = snapshot.avgEnergyPerLiter;
+    learning["avgProcessHealth"] = snapshot.avgProcessHealth;
+    learning["avgStabilityIndex"] = snapshot.avgStabilityIndex;
+    learning["typicalCubeFinalTemp"] = snapshot.typicalCubeFinalTemp;
+    learning["typicalColumnTopFinalTemp"] = snapshot.typicalColumnTopFinalTemp;
+    learning["lastProcessId"] = snapshot.lastProcessId;
+    learning["lastSuccessfulProcessId"] = snapshot.lastSuccessfulProcessId;
+}
+
+} // namespace
 
 // ============================================================================
 // Инициализация системы профилей
@@ -135,6 +197,7 @@ bool saveProfile(const Profile& profile) {
     statistics["avgDuration"] = profile.statistics.avgDuration;
     statistics["avgYield"] = profile.statistics.avgYield;
     statistics["successRate"] = profile.statistics.successRate;
+    appendLearningJson(doc["learning"].to<JsonObject>(), profile.learning);
 
     // Сериализовать в файл
     if (serializeJson(doc, file) == 0) {
@@ -180,6 +243,7 @@ bool loadProfile(const String& id, Profile& profile) {
     }
 
     // Загрузить данные из JSON
+    profile.learning = ProfileLearningSnapshot();
     profile.id = doc["id"].as<String>();
 
     // Метаданные
@@ -246,6 +310,19 @@ bool loadProfile(const String& id, Profile& profile) {
     profile.statistics.avgDuration = doc["statistics"]["avgDuration"];
     profile.statistics.avgYield = doc["statistics"]["avgYield"];
     profile.statistics.successRate = doc["statistics"]["successRate"];
+    profile.learning.successfulRuns = doc["learning"]["successfulRuns"] | 0;
+    profile.learning.failedRuns = doc["learning"]["failedRuns"] | 0;
+    profile.learning.avgEnergyUsed = doc["learning"]["avgEnergyUsed"] | 0.0f;
+    profile.learning.avgEnergyPerLiter = doc["learning"]["avgEnergyPerLiter"] | 0.0f;
+    profile.learning.avgProcessHealth = doc["learning"]["avgProcessHealth"] | 0.0f;
+    profile.learning.avgStabilityIndex = doc["learning"]["avgStabilityIndex"] | 0.0f;
+    profile.learning.typicalCubeFinalTemp =
+        doc["learning"]["typicalCubeFinalTemp"] | 0.0f;
+    profile.learning.typicalColumnTopFinalTemp =
+        doc["learning"]["typicalColumnTopFinalTemp"] | 0.0f;
+    profile.learning.lastProcessId = doc["learning"]["lastProcessId"].as<String>();
+    profile.learning.lastSuccessfulProcessId =
+        doc["learning"]["lastSuccessfulProcessId"].as<String>();
 
     Serial.printf("Профиль загружен: %s\n", profile.metadata.name.c_str());
     return true;
@@ -281,6 +358,8 @@ std::vector<ProfileListItem> getProfileList() {
                     item.category = doc["metadata"]["category"].as<String>();
                     item.useCount = doc["statistics"]["useCount"];
                     item.lastUsed = doc["statistics"]["lastUsed"];
+                    item.successRate = doc["statistics"]["successRate"] | 0.0f;
+                    item.successfulRuns = doc["learning"]["successfulRuns"] | 0;
                     item.isBuiltin = doc["metadata"]["isBuiltin"];
 
                     list.push_back(item);
@@ -699,6 +778,7 @@ bool applyProfile(const String& id) {
 
     // Сохранение в NVS
     NVSManager::saveSettings(g_settings);
+    setActiveProfile(profile.id, profile.metadata.name);
 
     Serial.println("Профиль успешно применён и сохранён в глобальные настройки.");
     return true;
@@ -753,6 +833,82 @@ void updateProfileStatistics(const String& id, bool success, uint32_t duration, 
 // ============================================================================
 // Создание профиля из текущих настроек
 // ============================================================================
+
+void updateProfileLearning(const ProcessHistory& history) {
+    const String profileId = history.process.profileId;
+    if (profileId.isEmpty()) {
+        return;
+    }
+
+    Profile profile;
+    if (!loadProfile(profileId, profile)) {
+        return;
+    }
+
+    const bool success = history.metadata.completedSuccessfully;
+    profile.statistics.useCount++;
+    profile.statistics.lastUsed = history.metadata.endTime > 0
+                                      ? history.metadata.endTime
+                                      : history.metadata.startTime;
+    profile.statistics.successRate =
+        ((success ? 1.0f : 0.0f) +
+         (profile.statistics.successRate / 100.0f) *
+             static_cast<float>(profile.statistics.useCount - 1)) /
+        static_cast<float>(profile.statistics.useCount) * 100.0f;
+
+    profile.learning.lastProcessId = history.id;
+    if (success) {
+        profile.learning.successfulRuns++;
+        profile.statistics.avgDuration = updateRollingAverageU32(
+            profile.statistics.avgDuration, history.metadata.duration,
+            profile.learning.successfulRuns);
+        profile.statistics.avgYield = updateRollingAverageU16(
+            profile.statistics.avgYield, history.results.totalCollected,
+            profile.learning.successfulRuns);
+        profile.learning.avgEnergyUsed = updateRollingAverage(
+            profile.learning.avgEnergyUsed, history.metrics.energyUsed,
+            profile.learning.successfulRuns);
+        profile.learning.avgEnergyPerLiter = updateRollingAverage(
+            profile.learning.avgEnergyPerLiter, computeEnergyPerLiter(history),
+            profile.learning.successfulRuns);
+        profile.learning.avgProcessHealth = updateRollingAverage(
+            profile.learning.avgProcessHealth, history.metrics.avgProcessHealth,
+            profile.learning.successfulRuns);
+        profile.learning.avgStabilityIndex = updateRollingAverage(
+            profile.learning.avgStabilityIndex, history.metrics.avgStabilityIndex,
+            profile.learning.successfulRuns);
+        profile.learning.typicalCubeFinalTemp = updateRollingAverage(
+            profile.learning.typicalCubeFinalTemp, history.metrics.cube.final,
+            profile.learning.successfulRuns);
+        profile.learning.typicalColumnTopFinalTemp = updateRollingAverage(
+            profile.learning.typicalColumnTopFinalTemp, history.metrics.columnTop.final,
+            profile.learning.successfulRuns);
+        profile.learning.lastSuccessfulProcessId = history.id;
+    } else {
+        profile.learning.failedRuns++;
+    }
+
+    profile.metadata.updated = profile.statistics.lastUsed;
+    saveProfile(profile);
+}
+
+void setActiveProfile(const String& id, const String& name) {
+    g_activeProfileId = id;
+    g_activeProfileName = name;
+}
+
+void clearActiveProfile() {
+    g_activeProfileId = "";
+    g_activeProfileName = "";
+}
+
+String getActiveProfileId() {
+    return g_activeProfileId;
+}
+
+String getActiveProfileName() {
+    return g_activeProfileName;
+}
 
 String createProfileFromSettings(const String& name, const String& description, const String& category) {
     Profile profile;
@@ -899,6 +1055,7 @@ String exportProfileToJSON(const String& id) {
     statistics["avgDuration"] = profile.statistics.avgDuration;
     statistics["avgYield"] = profile.statistics.avgYield;
     statistics["successRate"] = profile.statistics.successRate;
+    appendLearningJson(doc["learning"].to<JsonObject>(), profile.learning);
 
     String json;
     serializeJson(doc, json);
@@ -987,6 +1144,7 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
             statistics["avgDuration"] = profile.statistics.avgDuration;
             statistics["avgYield"] = profile.statistics.avgYield;
             statistics["successRate"] = profile.statistics.successRate;
+            appendLearningJson(obj["learning"].to<JsonObject>(), profile.learning);
 
             exported++;
         }

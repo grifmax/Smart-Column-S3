@@ -1,10 +1,3 @@
-/**
- * Smart-Column S3 - Profiles Manager
- *
- * Система сохранения и управления профилями процессов
- * Версия: 1.3.3
- */
-
 #ifndef PROFILES_H
 #define PROFILES_H
 
@@ -13,78 +6,68 @@
 #include "fs_compat.h"
 #include <vector>
 
-// Константы для профилей
-#define MAX_PROFILES 100              // Максимум профилей
-#define MAX_BUILTIN_PROFILES 10       // Максимум встроенных рецептов
-#define PROFILES_DIR "/profiles"      // Директория для хранения профилей
-#define MAX_PROFILE_NAME_LEN 50       // Максимальная длина имени
-#define MAX_PROFILE_DESC_LEN 200      // Максимальная длина описания
+struct ProcessHistory;
 
-// ============================================================================
-// Структуры данных для профилей
-// ============================================================================
+#define MAX_PROFILES 100
+#define MAX_BUILTIN_PROFILES 10
+#define PROFILES_DIR "/profiles"
+#define MAX_PROFILE_NAME_LEN 50
+#define MAX_PROFILE_DESC_LEN 200
 
-// Метаданные профиля
 struct ProfileMetadata {
-    String name;                      // Название профиля
-    String description;               // Описание
-    String category;                  // rectification, distillation, mashing
-    std::vector<String> tags;         // Теги для поиска
-    uint32_t created;                 // Unix timestamp создания
-    uint32_t updated;                 // Unix timestamp обновления
-    String author;                    // Автор профиля
-    bool isBuiltin;                   // Встроенный рецепт (нельзя удалить)
+    String name;
+    String description;
+    String category;
+    std::vector<String> tags;
+    uint32_t created;
+    uint32_t updated;
+    String author;
+    bool isBuiltin;
 };
 
-// Параметры нагревателя
 struct HeaterParams {
-    uint16_t maxPower;                // Максимальная мощность (Вт)
-    bool autoMode;                    // Автоматический режим
-    float pidKp;                      // ПИД коэффициент Kp
-    float pidKi;                      // ПИД коэффициент Ki
-    float pidKd;                      // ПИД коэффициент Kd
+    uint16_t maxPower;
+    bool autoMode;
+    float pidKp;
+    float pidKi;
+    float pidKd;
 };
 
-// Параметры ректификации
 struct RectificationParams {
-    uint16_t stabilizationMin;        // Время стабилизации (минуты)
-    uint16_t headsVolume;             // Объем голов (мл)
-    uint16_t bodyVolume;              // Объем тела (мл)
-    uint16_t tailsVolume;             // Объем хвостов (мл)
-    uint16_t headsSpeed;              // Скорость отбора голов (мл/ч/кВт)
-    uint16_t bodySpeed;               // Скорость отбора тела (мл/ч/кВт)
-    uint16_t tailsSpeed;              // Скорость отбора хвостов (мл/ч/кВт)
-    uint16_t purgeMin;                // Время продувки (минуты)
+    uint16_t stabilizationMin;
+    uint16_t headsVolume;
+    uint16_t bodyVolume;
+    uint16_t tailsVolume;
+    uint16_t headsSpeed;
+    uint16_t bodySpeed;
+    uint16_t tailsSpeed;
+    uint16_t purgeMin;
 };
 
-// Параметры дистилляции
 struct DistillationParams {
-    uint16_t headsVolume;             // Объем голов (мл, может быть 0)
-    uint16_t targetVolume;            // Целевой объем (мл)
-    uint16_t speed;                   // Скорость отбора (мл/ч)
-    float endTemp;                    // Температура завершения (°C)
+    uint16_t headsVolume;
+    uint16_t targetVolume;
+    uint16_t speed;
+    float endTemp;
 };
 
-// Температурные пороги
 struct TemperatureParams {
-    float maxCube;                    // Максимальная температура куба (°C)
-    float maxColumn;                  // Максимальная температура колонны (°C)
-    float headsEnd;                   // Температура окончания голов (°C)
-    float bodyStart;                  // Температура начала тела (°C)
-    float bodyEnd;                    // Температура окончания тела (°C)
+    float maxCube;
+    float maxColumn;
+    float headsEnd;
+    float bodyStart;
+    float bodyEnd;
 };
 
-// Параметры безопасности
 struct SafetyParams {
-    uint16_t maxRuntime;              // Максимальное время работы (минуты)
-    float waterFlowMin;               // Минимальный поток воды (л/мин)
-    uint16_t pressureMax;             // Максимальное давление (mmHg)
+    uint16_t maxRuntime;
+    float waterFlowMin;
+    uint16_t pressureMax;
 };
 
-// Все параметры процесса
 struct ProfileParameters {
-    String mode;                      // rectification, distillation, mashing
-    String model;                     // classic, alternative
+    String mode;
+    String model;
     HeaterParams heater;
     RectificationParams rectification;
     DistillationParams distillation;
@@ -92,152 +75,67 @@ struct ProfileParameters {
     SafetyParams safety;
 };
 
-// Статистика использования профиля
 struct ProfileStatistics {
-    uint16_t useCount;                // Количество использований
-    uint32_t lastUsed;                // Unix timestamp последнего использования
-    uint32_t avgDuration;             // Средняя длительность процесса (сек)
-    uint16_t avgYield;                // Средний выход продукта (мл)
-    float successRate;                // Процент успешных завершений
+    uint16_t useCount;
+    uint32_t lastUsed;
+    uint32_t avgDuration;
+    uint16_t avgYield;
+    float successRate;
 };
 
-// Полная структура профиля
+struct ProfileLearningSnapshot {
+    uint16_t successfulRuns = 0;
+    uint16_t failedRuns = 0;
+    float avgEnergyUsed = 0.0f;
+    float avgEnergyPerLiter = 0.0f;
+    float avgProcessHealth = 0.0f;
+    float avgStabilityIndex = 0.0f;
+    float typicalCubeFinalTemp = 0.0f;
+    float typicalColumnTopFinalTemp = 0.0f;
+    String lastProcessId;
+    String lastSuccessfulProcessId;
+};
+
 struct Profile {
-    String id;                        // Уникальный ID (timestamp)
+    String id;
     ProfileMetadata metadata;
     ProfileParameters parameters;
     ProfileStatistics statistics;
+    ProfileLearningSnapshot learning;
 };
 
-// Краткая информация о профиле для списка
 struct ProfileListItem {
     String id;
     String name;
     String category;
     uint16_t useCount;
     uint32_t lastUsed;
+    float successRate = 0.0f;
+    uint16_t successfulRuns = 0;
     bool isBuiltin;
 };
 
-// ============================================================================
-// Функции для работы с профилями
-// ============================================================================
-
-/**
- * Инициализация системы профилей
- * @return true если успешно
- */
 bool initProfiles();
-
-/**
- * Сохранение профиля
- * @param profile Профиль для сохранения
- * @return true если успешно
- */
 bool saveProfile(const Profile& profile);
-
-/**
- * Загрузка профиля по ID
- * @param id ID профиля
- * @param profile Структура для загрузки данных
- * @return true если успешно
- */
 bool loadProfile(const String& id, Profile& profile);
-
-/**
- * Получение списка всех профилей
- * @return Вектор с кратким описанием профилей
- */
 std::vector<ProfileListItem> getProfileList();
-
-/**
- * Удаление профиля
- * @param id ID профиля
- * @return true если успешно (встроенные нельзя удалить)
- */
 bool deleteProfile(const String& id);
-
-/**
- * Очистка всех профилей (кроме встроенных)
- * @return true если успешно
- */
 bool clearProfiles();
-
-/**
- * Загрузка встроенных рецептов
- * @return true если успешно
- */
 bool loadBuiltinProfiles();
-
-/**
- * Ротация профилей (удаление старых при превышении лимита)
- */
 void rotateProfiles();
-
-/**
- * Получение количества профилей
- * @return Количество профилей
- */
 uint16_t getProfileCount();
-
-/**
- * Валидация профиля
- * @param profile Профиль для проверки
- * @return true если валидный
- */
 bool validateProfile(const Profile& profile);
-
-/**
- * Применение профиля к текущим настройкам
- * @param id ID профиля
- * @return true если успешно
- */
 bool applyProfile(const String& id);
-
-/**
- * Обновление статистики использования профиля
- * @param id ID профиля
- * @param success Успешное ли завершение
- * @param duration Длительность процесса (сек)
- * @param yield Выход продукта (мл)
- */
 void updateProfileStatistics(const String& id, bool success, uint32_t duration, uint16_t yield);
-
-/**
- * Создание профиля из текущих настроек
- * @param name Название профиля
- * @param description Описание
- * @param category Категория
- * @return ID созданного профиля или пустая строка при ошибке
- */
+void updateProfileLearning(const ProcessHistory& history);
+void setActiveProfile(const String& id, const String& name);
+void clearActiveProfile();
+String getActiveProfileId();
+String getActiveProfileName();
 String createProfileFromSettings(const String& name, const String& description, const String& category);
-
-/**
- * Экспорт профиля в JSON строку
- * @param id ID профиля
- * @return JSON строка профиля или пустая строка при ошибке
- */
 String exportProfileToJSON(const String& id);
-
-/**
- * Экспорт всех профилей в JSON массив
- * @param includeBuiltin Включить встроенные рецепты
- * @return JSON строка с массивом профилей
- */
 String exportAllProfilesToJSON(bool includeBuiltin = false);
-
-/**
- * Импорт профиля из JSON строки
- * @param jsonStr JSON строка профиля
- * @return ID импортированного профиля или пустая строка при ошибке
- */
 String importProfileFromJSON(const String& jsonStr);
-
-/**
- * Импорт нескольких профилей из JSON массива
- * @param jsonStr JSON строка с массивом профилей
- * @return Количество успешно импортированных профилей
- */
 uint16_t importProfilesFromJSON(const String& jsonStr);
 
 #endif // PROFILES_H

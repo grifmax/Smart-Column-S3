@@ -1,5 +1,6 @@
 #include "history.h"
 #include "config.h"
+#include "profiles.h"
 #include <FS.h>
 #include <algorithm>
 
@@ -69,6 +70,7 @@ bool saveProcessHistory(const ProcessHistory& history) {
     JsonObject process = doc["process"].to<JsonObject>();
     process["type"] = history.process.type;
     process["mode"] = history.process.mode;
+    process["profileId"] = history.process.profileId;
     process["profile"] = history.process.profile;
 
     // Параметры
@@ -318,6 +320,7 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
 
     history.process.type = doc["process"]["type"].as<String>();
     history.process.mode = doc["process"]["mode"].as<String>();
+    history.process.profileId = doc["process"]["profileId"].as<String>();
     history.process.profile = doc["process"]["profile"].as<String>();
 
     history.parameters.targetPower = doc["parameters"]["targetPower"];
@@ -697,6 +700,7 @@ std::vector<ProcessListItem> getProcessList() {
                     item.id = doc["id"].as<String>();
                     item.type = doc["process"]["type"].as<String>();
                     item.mode = doc["process"]["mode"].as<String>();
+                    item.profileId = doc["process"]["profileId"].as<String>();
                     item.profile = doc["process"]["profile"].as<String>();
                     item.startTime = doc["metadata"]["startTime"];
                     item.completedSuccessfully =
@@ -938,6 +942,7 @@ void appendProcessHistoryJson(JsonDocument& doc, const ProcessHistory& history) 
     JsonObject process = doc["process"].to<JsonObject>();
     process["type"] = history.process.type;
     process["mode"] = history.process.mode;
+    process["profileId"] = history.process.profileId;
     process["profile"] = history.process.profile;
 
     JsonObject parameters = doc["parameters"].to<JsonObject>();
@@ -1146,6 +1151,7 @@ void ProcessRecorder::stopRecording(bool success) {
 
     // Сохранить в SPIFFS
     saveProcessHistory(currentHistory);
+    updateProfileLearning(currentHistory);
 
     recording = false;
     Serial.println("Запись процесса завершена");
