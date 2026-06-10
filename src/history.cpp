@@ -229,6 +229,36 @@ bool saveProcessHistory(const ProcessHistory& history) {
         }
     }
 
+    if (!history.advisorSnapshot.schemaVersion.isEmpty() ||
+        !history.advisorSnapshot.baselineProcessId.isEmpty() ||
+        !history.advisorSnapshot.items.empty()) {
+        JsonObject advisor = doc["advisorSnapshot"].to<JsonObject>();
+        advisor["schemaVersion"] = history.advisorSnapshot.schemaVersion;
+        advisor["createdAt"] = history.advisorSnapshot.createdAt;
+        advisor["baselineProcessId"] = history.advisorSnapshot.baselineProcessId;
+        advisor["baselineProfile"] = history.advisorSnapshot.baselineProfile;
+
+        JsonArray advisorItems = advisor["items"].to<JsonArray>();
+        for (const auto& item : history.advisorSnapshot.items) {
+            JsonObject advisorItem = advisorItems.add<JsonObject>();
+            advisorItem["kind"] = item.kind;
+            advisorItem["code"] = item.code;
+            advisorItem["tone"] = item.tone;
+            advisorItem["title"] = item.title;
+            advisorItem["detail"] = item.detail;
+            advisorItem["action"] = item.action;
+            if (!item.parameterKey.isEmpty()) {
+                advisorItem["parameterKey"] = item.parameterKey;
+            }
+            if (item.previousValue != 0.0f) {
+                advisorItem["previousValue"] = item.previousValue;
+            }
+            if (item.suggestedValue != 0.0f) {
+                advisorItem["suggestedValue"] = item.suggestedValue;
+            }
+        }
+    }
+
     // Заметки
     doc["notes"] = history.notes;
 
@@ -418,10 +448,55 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
         history.results.warnings.push_back(w);
     }
 
+    history.advisorSnapshot = ProcessAdvisorSnapshot();
+    JsonObject advisor = doc["advisorSnapshot"];
+    if (!advisor.isNull()) {
+        history.advisorSnapshot.schemaVersion =
+            advisor["schemaVersion"].as<String>();
+        history.advisorSnapshot.createdAt = advisor["createdAt"] | 0;
+        history.advisorSnapshot.baselineProcessId =
+            advisor["baselineProcessId"].as<String>();
+        history.advisorSnapshot.baselineProfile =
+            advisor["baselineProfile"].as<String>();
+
+        history.advisorSnapshot.items.clear();
+        JsonArray advisorItems = advisor["items"];
+        for (JsonObject advisorItem : advisorItems) {
+            ProcessAdvisorItem item;
+            item.kind = advisorItem["kind"].as<String>();
+            item.code = advisorItem["code"].as<String>();
+            item.tone = advisorItem["tone"].as<String>();
+            item.title = advisorItem["title"].as<String>();
+            item.detail = advisorItem["detail"].as<String>();
+            item.action = advisorItem["action"].as<String>();
+            item.parameterKey = advisorItem["parameterKey"].as<String>();
+            item.previousValue = advisorItem["previousValue"] | 0.0f;
+            item.suggestedValue = advisorItem["suggestedValue"] | 0.0f;
+            history.advisorSnapshot.items.push_back(item);
+        }
+    }
+
     history.notes = doc["notes"].as<String>();
 
     Serial.printf("Процесс загружен: %s\n", id.c_str());
     return true;
+}
+
+bool updateProcessAdvisorSnapshot(const String& id,
+                                  const ProcessAdvisorSnapshot& snapshot) {
+    ProcessHistory history;
+    if (!loadProcessHistory(id, history)) {
+        return false;
+    }
+
+    history.advisorSnapshot = snapshot;
+
+    const String filename = String(HISTORY_DIR) + "/process_" + id + ".json";
+    if (LittleFS.exists(filename)) {
+        LittleFS.remove(filename);
+    }
+
+    return saveProcessHistory(history);
 }
 
 // ============================================================================
@@ -815,6 +890,40 @@ void appendWarningJson(JsonArray array, const std::vector<ProcessWarning>& warni
     }
 }
 
+void appendAdvisorSnapshotJson(JsonDocument& doc,
+                               const ProcessAdvisorSnapshot& snapshot) {
+    if (snapshot.schemaVersion.isEmpty() && snapshot.baselineProcessId.isEmpty() &&
+        snapshot.items.empty()) {
+        return;
+    }
+
+    JsonObject advisor = doc["advisorSnapshot"].to<JsonObject>();
+    advisor["schemaVersion"] = snapshot.schemaVersion;
+    advisor["createdAt"] = snapshot.createdAt;
+    advisor["baselineProcessId"] = snapshot.baselineProcessId;
+    advisor["baselineProfile"] = snapshot.baselineProfile;
+
+    JsonArray advisorItems = advisor["items"].to<JsonArray>();
+    for (const auto& item : snapshot.items) {
+        JsonObject advisorItem = advisorItems.add<JsonObject>();
+        advisorItem["kind"] = item.kind;
+        advisorItem["code"] = item.code;
+        advisorItem["tone"] = item.tone;
+        advisorItem["title"] = item.title;
+        advisorItem["detail"] = item.detail;
+        advisorItem["action"] = item.action;
+        if (!item.parameterKey.isEmpty()) {
+            advisorItem["parameterKey"] = item.parameterKey;
+        }
+        if (item.previousValue != 0.0f) {
+            advisorItem["previousValue"] = item.previousValue;
+        }
+        if (item.suggestedValue != 0.0f) {
+            advisorItem["suggestedValue"] = item.suggestedValue;
+        }
+    }
+}
+
 void appendProcessHistoryJson(JsonDocument& doc, const ProcessHistory& history) {
     doc["id"] = history.id;
     doc["version"] = history.version;
@@ -950,6 +1059,7 @@ void appendProcessHistoryJson(JsonDocument& doc, const ProcessHistory& history) 
     appendWarningJson(results["errors"].to<JsonArray>(), history.results.errors);
     appendWarningJson(results["warnings"].to<JsonArray>(), history.results.warnings);
 
+    appendAdvisorSnapshotJson(doc, history.advisorSnapshot);
     doc["notes"] = history.notes;
 }
 } // namespace

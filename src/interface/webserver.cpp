@@ -1986,6 +1986,65 @@ void init() {
                             exportProcessToJSON(history));
             });
 
+  server.on(
+      "^\\/api\\/history\\/([0-9]+)\\/advisor$", HTTP_POST,
+      [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) {
+          return;
+        }
+
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const String id = request->pathArg(0);
+        ProcessAdvisorSnapshot snapshot;
+        snapshot.schemaVersion = doc["schemaVersion"].as<String>();
+        snapshot.createdAt = doc["createdAt"] | 0;
+        snapshot.baselineProcessId = doc["baselineProcessId"].as<String>();
+        snapshot.baselineProfile = doc["baselineProfile"].as<String>();
+
+        JsonArray items = doc["items"];
+        size_t itemCount = 0;
+        for (JsonObject itemObj : items) {
+          if (itemCount >= 16) {
+            break;
+          }
+
+          ProcessAdvisorItem item;
+          item.kind = itemObj["kind"].as<String>();
+          item.code = itemObj["code"].as<String>();
+          item.tone = itemObj["tone"].as<String>();
+          item.title = itemObj["title"].as<String>();
+          item.detail = itemObj["detail"].as<String>();
+          item.action = itemObj["action"].as<String>();
+          item.parameterKey = itemObj["parameterKey"].as<String>();
+          item.previousValue = itemObj["previousValue"] | 0.0f;
+          item.suggestedValue = itemObj["suggestedValue"] | 0.0f;
+
+          if (item.title.isEmpty()) {
+            continue;
+          }
+
+          snapshot.items.push_back(item);
+          itemCount++;
+        }
+
+        if (!updateProcessAdvisorSnapshot(id, snapshot)) {
+          request->send(
+              500, "application/json",
+              "{\"success\":false,\"error\":\"Failed to update advisor snapshot\"}");
+          return;
+        }
+
+        request->send(200, "application/json", "{\"success\":true}");
+      });
+
   server.on("^\\/api\\/history\\/([0-9]+)\\/export$", HTTP_GET,
             [](AsyncWebServerRequest *request) {
               const String id = request->pathArg(0);

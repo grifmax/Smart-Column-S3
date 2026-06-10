@@ -69,6 +69,36 @@ export let tempChart = null;
 
 export let powerChart = null;
 
+const ADVISOR_SNAPSHOT_SCHEMA_VERSION = 'run-advisor-v3';
+
+const ADVISOR_PARAMETER_DEFINITIONS = {
+    targetPower: {
+        label: 'мощность',
+        step: 50,
+        format: (value) => `${Math.round(Number(value || 0))} Вт`
+    },
+    stabilizationTime: {
+        label: 'стабилизация',
+        step: 60,
+        format: (value) => formatMinutes(value)
+    },
+    pumpSpeedHead: {
+        label: 'скорость голов',
+        step: 5,
+        format: (value) => `${Math.round(Number(value || 0))} мл/ч`
+    },
+    pumpSpeedBody: {
+        label: 'скорость тела',
+        step: 5,
+        format: (value) => `${Math.round(Number(value || 0))} мл/ч`
+    },
+    headVolume: {
+        label: 'объём голов',
+        step: 10,
+        format: (value) => `${Math.round(Number(value || 0))} мл`
+    }
+};
+
 function normalizeProfileKey(value) {
 
     return String(value || '').trim().toLowerCase();
@@ -781,6 +811,292 @@ function formatMinutes(seconds) {
 
 }
 
+function getAdvisorParameterDefinition(key) {
+
+    return ADVISOR_PARAMETER_DEFINITIONS[String(key || '').trim()] || null;
+
+}
+
+function formatAdvisorParameterValue(key, value) {
+
+    const definition = getAdvisorParameterDefinition(key);
+
+    if (!definition) {
+        return `${Number(value || 0)}`;
+    }
+
+    return definition.format(Number(value || 0));
+
+}
+
+function slugifyAdvisorCode(value) {
+
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9а-яё]+/gi, '_')
+        .replace(/^_+|_+$/g, '') || 'advisor_item';
+
+}
+
+function normalizeAdvisorItem(item) {
+
+    return {
+        tone: String(item?.tone || 'muted').trim() || 'muted',
+        kind: String(item?.kind || 'observation').trim() || 'observation',
+        code: String(item?.code || slugifyAdvisorCode(item?.title)).trim() || 'advisor_item',
+        title: String(item?.title || '').trim(),
+        detail: String(item?.detail || '').trim(),
+        action: String(item?.action || '').trim(),
+        parameterKey: String(item?.parameterKey || '').trim(),
+        previousValue: Number(item?.previousValue || 0),
+        suggestedValue: Number(item?.suggestedValue || 0)
+    };
+
+}
+
+function buildAdvisorSnapshot(process, previousSuccessfulProcess, previousSummary, items = null) {
+
+    const normalizedItems = (Array.isArray(items) ? items : buildRunAdvisorItems(process, previousSuccessfulProcess, previousSummary))
+        .map((item) => normalizeAdvisorItem(item))
+        .filter((item) => item.title);
+
+    if (!normalizedItems.length) {
+        return null;
+    }
+
+    return {
+        schemaVersion: ADVISOR_SNAPSHOT_SCHEMA_VERSION,
+        createdAt: Number(process?.metadata?.endTime || process?.metadata?.startTime || 0),
+        baselineProcessId: String(previousSuccessfulProcess?.id || previousSummary?.id || '').trim(),
+        baselineProfile: getProcessProfile(process),
+        items: normalizedItems
+    };
+
+}
+
+function normalizeAdvisorSnapshotForCompare(snapshot) {
+
+    if (!snapshot || typeof snapshot !== 'object') {
+        return null;
+    }
+
+    const items = Array.isArray(snapshot.items)
+        ? snapshot.items.map((item) => normalizeAdvisorItem(item)).filter((item) => item.title)
+        : [];
+
+    return {
+        schemaVersion: String(snapshot.schemaVersion || '').trim(),
+        createdAt: Number(snapshot.createdAt || 0),
+        baselineProcessId: String(snapshot.baselineProcessId || '').trim(),
+        baselineProfile: String(snapshot.baselineProfile || '').trim(),
+        items
+    };
+
+}
+
+function areAdvisorSnapshotsEqual(left, right) {
+
+    const normalizedLeft = normalizeAdvisorSnapshotForCompare(left);
+    const normalizedRight = normalizeAdvisorSnapshotForCompare(right);
+
+    return JSON.stringify(normalizedLeft) === JSON.stringify(normalizedRight);
+
+}
+
+async function persistAdvisorSnapshotIfNeeded(process, previousSuccessfulProcess, previousSummary, items = null) {
+
+    const processId = String(process?.id || '').trim();
+
+    if (!processId) {
+        return;
+    }
+
+    const snapshot = buildAdvisorSnapshot(process, previousSuccessfulProcess, previousSummary, items);
+
+    if (!snapshot) {
+        return;
+    }
+
+    if (areAdvisorSnapshotsEqual(snapshot, process?.advisorSnapshot)) {
+        return;
+    }
+
+    const response = await fetch(`/api/history/${processId}/advisor`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(snapshot)
+    });
+
+    if (!response.ok) {
+        throw new Error(`Не удалось сохранить advisor snapshot (${response.status})`);
+    }
+
+    process.advisorSnapshot = snapshot;
+
+}
+
+function evaluateAdvisorRecommendationApplication(currentValue, baselineValue, suggestedValue, parameterKey) {
+
+    const definition = getAdvisorParameterDefinition(parameterKey);
+    const numericCurrent = Number(currentValue || 0);
+    const numericBaseline = Number(baselineValue || 0);
+    const numericSuggested = Number(suggestedValue || 0);
+
+    if (!definition || numericCurrent <= 0 || numericBaseline <= 0 || numericSuggested <= 0) {
+        return null;
+    }
+
+    const direction = numericSuggested > numericBaseline ? 'increase' : (numericSuggested < numericBaseline ? 'decrease' : 'keep');
+    if (direction === 'keep') {
+        return null;
+    }
+
+    const step = Math.max(1, Number(definition.step || 1));
+    const fullTolerance = Math.max(step, Math.abs(numericSuggested - numericBaseline) * 0.35);
+    const partialTolerance = Math.max(step / 2, Math.abs(numericSuggested - numericBaseline) * 0.15);
+
+    const applied = direction === 'increase'
+        ? numericCurrent >= (numericSuggested - fullTolerance)
+        : numericCurrent <= (numericSuggested + fullTolerance);
+
+    const partial = !applied && (direction === 'increase'
+        ? numericCurrent > (numericBaseline + partialTolerance)
+        : numericCurrent < (numericBaseline - partialTolerance));
+
+    return {
+        direction,
+        applied,
+        partial,
+        step,
+        currentValue: numericCurrent,
+        baselineValue: numericBaseline,
+        suggestedValue: numericSuggested
+    };
+
+}
+
+function buildPreviousAdvisorFollowUpItems(process, previousSuccessfulProcess) {
+
+    const snapshot = previousSuccessfulProcess?.advisorSnapshot;
+    const profileName = getProcessProfile(process);
+    const delta = evaluateRunDelta(process, previousSuccessfulProcess);
+    const previousDate = new Date(Number(previousSuccessfulProcess?.metadata?.startTime || 0) * 1000);
+
+    if (!snapshot || !Array.isArray(snapshot.items) || !delta) {
+        return [];
+    }
+
+    const adjustmentItems = snapshot.items
+        .map((item) => normalizeAdvisorItem(item))
+        .filter((item) => item.kind === 'adjustment' && item.parameterKey && item.suggestedValue > 0);
+
+    if (!adjustmentItems.length) {
+        return [];
+    }
+
+    let appliedCount = 0;
+    let partialCount = 0;
+    let untouchedCount = 0;
+
+    const followUpItems = adjustmentItems.map((item) => {
+        const definition = getAdvisorParameterDefinition(item.parameterKey);
+        const baselineValue = getNumericParam(previousSuccessfulProcess, item.parameterKey) || Number(item.previousValue || 0);
+        const currentValue = getNumericParam(process, item.parameterKey);
+        const application = evaluateAdvisorRecommendationApplication(
+            currentValue,
+            baselineValue,
+            item.suggestedValue,
+            item.parameterKey
+        );
+
+        if (!definition || !application) {
+            return null;
+        }
+
+        if (application.applied) {
+            appliedCount += 1;
+        } else if (application.partial) {
+            partialCount += 1;
+        } else {
+            untouchedCount += 1;
+        }
+
+        let tone = 'muted';
+        let title = `Проверка совета: ${definition.label}`;
+        let action = '';
+
+        if (application.applied && delta.weightedScore >= 0.9) {
+            tone = 'good';
+            title = `Совет по "${definition.label}" сработал`;
+            action = 'Эту правку можно считать рабочей, но всё равно лучше подтвердить её повторным запуском без новых изменений поверх.';
+        } else if (application.applied && delta.weightedScore <= -0.9) {
+            tone = 'warn';
+            title = `Совет по "${definition.label}" применили, но эффект слабый`;
+            action = 'Не закрепляйте это как новый baseline автоматически: либо откатите правку, либо меняйте уже другой параметр отдельно.';
+        } else if (application.applied) {
+            tone = 'muted';
+            title = `Совет по "${definition.label}" применили частично успешно`;
+            action = 'Пока эффект смешанный. Полезно повторить запуск с теми же уставками и не наслаивать новые изменения.';
+        } else if (application.partial) {
+            tone = 'muted';
+            title = `Совет по "${definition.label}" перенесли не полностью`;
+            action = 'Сейчас сложно честно судить о результате: уставка двинулась в нужную сторону, но не дошла до рекомендованного уровня.';
+        } else {
+            tone = 'muted';
+            title = `Совет по "${definition.label}" не применяли`;
+            action = 'Если хотите проверить старую гипотезу, перенесите именно эту правку в следующий запуск отдельно от остальных изменений.';
+        }
+
+        return {
+            tone,
+            kind: 'follow_up',
+            code: `follow_up_${item.code}`,
+            title,
+            detail: `После успешного прогона от ${previousDate.toLocaleString('ru-RU')} Run Advisor советовал ${formatAdvisorParameterValue(item.parameterKey, baselineValue)} -> ${formatAdvisorParameterValue(item.parameterKey, item.suggestedValue)}. Текущий запуск: ${formatAdvisorParameterValue(item.parameterKey, currentValue)}.`,
+            action
+        };
+    }).filter(Boolean);
+
+    if (!followUpItems.length) {
+        return [];
+    }
+
+    let summaryTone = 'muted';
+    let summaryTitle = `Память рекомендаций для профиля ${profileName || 'без профиля'}`;
+    let summaryAction = 'Это мостик между запусками: он показывает, какие советы реально были перенесены в следующий прогон.';
+
+    if (appliedCount > 0 && delta.weightedScore >= 0.9) {
+        summaryTone = 'good';
+        summaryTitle = 'Прошлые рекомендации, вероятно, помогли';
+        summaryAction = 'У вас уже появляется инженерная цепочка "совет -> изменение -> улучшение". Это хороший кандидат на новый рабочий baseline.';
+    } else if (appliedCount > 0 && delta.weightedScore <= -0.9) {
+        summaryTone = 'warn';
+        summaryTitle = 'Прошлые рекомендации применили, но улучшения нет';
+        summaryAction = 'Лучше не усиливать эти правки дальше. Следующий запуск делайте либо с откатом, либо с изоляцией одного изменения.';
+    } else if (partialCount > 0 && appliedCount === 0) {
+        summaryTone = 'muted';
+        summaryTitle = 'Прошлые рекомендации перенесены только частично';
+        summaryAction = 'Промежуточные правки труднее оценивать. Для честного сравнения полезно доводить одну гипотезу до конца.';
+    } else if (untouchedCount > 0 && appliedCount === 0 && partialCount === 0) {
+        summaryTone = 'muted';
+        summaryTitle = 'Прошлые рекомендации пока не использовались';
+        summaryAction = 'Snapshot сохранён именно для этого: чтобы на следующем прогоне можно было осознанно проверить старую рекомендацию, а не потерять её в истории.';
+    }
+
+    return [{
+        tone: summaryTone,
+        kind: 'follow_up',
+        code: 'follow_up_summary',
+        title: summaryTitle,
+        detail: `Из прошлого успешного прогона найдено ${adjustmentItems.length} инженерных рекомендаций: применено ${appliedCount}, частично перенесено ${partialCount}, не тронуто ${untouchedCount}. Относительно предыдущего успешного запуска итоговый score сейчас ${formatSignedNumber(delta.weightedScore, 2)}.`,
+        action: summaryAction
+    }, ...followUpItems.slice(0, 3)];
+
+}
+
 function buildParameterChangeList(process, previousProcess) {
 
     const definitions = [
@@ -807,15 +1123,7 @@ function buildParameterChangeList(process, previousProcess) {
 
 }
 
-function buildImprovementVerdictItem(process, previousProcess, previousSummary) {
-
-    const profileName = getProcessProfile(process);
-
-    if (!profileName || !previousProcess || !previousSummary) {
-
-        return null;
-
-    }
+function evaluateRunDelta(process, previousProcess) {
 
     const currentIndicators = getIndicatorShares(process);
     const previousIndicators = getIndicatorShares(previousProcess);
@@ -823,7 +1131,6 @@ function buildImprovementVerdictItem(process, previousProcess, previousSummary) 
     const previousEnergyPerLiter = getEnergyPerLiter(previousProcess);
     const currentDuration = Number(process?.metadata?.duration || 0);
     const previousDuration = Number(previousProcess?.metadata?.duration || 0);
-    const parameterChanges = buildParameterChangeList(process, previousProcess);
 
     if (!currentIndicators || !previousIndicators) {
 
@@ -848,31 +1155,72 @@ function buildImprovementVerdictItem(process, previousProcess, previousSummary) 
         (energyDelta * 1.5) +
         (durationDelta * 1.0);
 
+    return {
+        currentIndicators,
+        previousIndicators,
+        currentEnergyPerLiter,
+        previousEnergyPerLiter,
+        currentDuration,
+        previousDuration,
+        stabilityDelta,
+        takeoffDelta,
+        floodDelta,
+        coolingDelta,
+        energyDelta,
+        durationDelta,
+        weightedScore
+    };
+
+}
+
+function buildImprovementVerdictItem(process, previousProcess, previousSummary) {
+
+    const profileName = getProcessProfile(process);
+
+    if (!profileName || !previousProcess || !previousSummary) {
+
+        return null;
+
+    }
+
+    const parameterChanges = buildParameterChangeList(process, previousProcess);
+    const delta = evaluateRunDelta(process, previousProcess);
+
+    if (!delta) {
+
+        return null;
+
+    }
+
     const hasMeaningfulProfileChanges = parameterChanges.length > 0;
     const changeSummary = hasMeaningfulProfileChanges
         ? `Последние изменения профиля: ${parameterChanges.slice(0, 3).join('; ')}.`
         : 'Между эталоном и текущим прогоном явных изменений ключевых уставок профиля не найдено.';
 
-    if (weightedScore >= 0.9) {
+    if (delta.weightedScore >= 0.9) {
         return {
             tone: 'good',
+            kind: 'verdict',
+            code: hasMeaningfulProfileChanges ? 'profile_changes_helped' : 'current_run_better_than_baseline',
             title: hasMeaningfulProfileChanges
                 ? 'Вердикт: последние правки профиля, вероятно, помогли'
                 : 'Вердикт: текущий прогон сильнее эталона',
-            detail: `${changeSummary} Стабильность ${(currentIndicators.avgStability * 100).toFixed(0)}% против ${(previousIndicators.avgStability * 100).toFixed(0)}%, окно отбора ${(currentIndicators.takeoffShare * 100).toFixed(0)}% против ${(previousIndicators.takeoffShare * 100).toFixed(0)}%, flood risk ${(currentIndicators.maxFloodRisk * 100).toFixed(0)}% против ${(previousIndicators.maxFloodRisk * 100).toFixed(0)}%.`,
+            detail: `${changeSummary} Стабильность ${(delta.currentIndicators.avgStability * 100).toFixed(0)}% против ${(delta.previousIndicators.avgStability * 100).toFixed(0)}%, окно отбора ${(delta.currentIndicators.takeoffShare * 100).toFixed(0)}% против ${(delta.previousIndicators.takeoffShare * 100).toFixed(0)}%, flood risk ${(delta.currentIndicators.maxFloodRisk * 100).toFixed(0)}% против ${(delta.previousIndicators.maxFloodRisk * 100).toFixed(0)}%.`,
             action: hasMeaningfulProfileChanges
                 ? 'Эти правки можно считать удачным направлением. Закрепите их как новый рабочий baseline и проверяйте повторяемость на следующем запуске.'
                 : 'Текущий запуск можно рассматривать как более сильный baseline для этого профиля.'
         };
     }
 
-    if (weightedScore <= -0.9) {
+    if (delta.weightedScore <= -0.9) {
         return {
             tone: 'warn',
+            kind: 'verdict',
+            code: hasMeaningfulProfileChanges ? 'profile_changes_failed' : 'current_run_worse_than_baseline',
             title: hasMeaningfulProfileChanges
                 ? 'Вердикт: последние правки профиля не помогли'
                 : 'Вердикт: текущий прогон хуже эталона',
-            detail: `${changeSummary} Рабочее окно просело: стабильность ${(currentIndicators.avgStability * 100).toFixed(0)}% против ${(previousIndicators.avgStability * 100).toFixed(0)}%, запас охлаждения ${currentIndicators.minCoolingMargin.toFixed(1)}°C против ${previousIndicators.minCoolingMargin.toFixed(1)}°C, flood risk ${(currentIndicators.maxFloodRisk * 100).toFixed(0)}% против ${(previousIndicators.maxFloodRisk * 100).toFixed(0)}%.`,
+            detail: `${changeSummary} Рабочее окно просело: стабильность ${(delta.currentIndicators.avgStability * 100).toFixed(0)}% против ${(delta.previousIndicators.avgStability * 100).toFixed(0)}%, запас охлаждения ${delta.currentIndicators.minCoolingMargin.toFixed(1)}°C против ${delta.previousIndicators.minCoolingMargin.toFixed(1)}°C, flood risk ${(delta.currentIndicators.maxFloodRisk * 100).toFixed(0)}% против ${(delta.previousIndicators.maxFloodRisk * 100).toFixed(0)}%.`,
             action: hasMeaningfulProfileChanges
                 ? 'Откатите последнюю правку или меняйте только один параметр за следующий запуск, чтобы понять реальную причину ухудшения.'
                 : 'Без смены уставок профиль деградировал относительно эталона: проверьте сырьё, охлаждение, давление и состояние оборудования.'
@@ -881,6 +1229,8 @@ function buildImprovementVerdictItem(process, previousProcess, previousSummary) 
 
     return {
         tone: 'muted',
+        kind: 'verdict',
+        code: hasMeaningfulProfileChanges ? 'profile_changes_mixed' : 'current_run_neutral_vs_baseline',
         title: hasMeaningfulProfileChanges
             ? 'Вердикт: правки дали смешанный результат'
             : 'Вердикт: существенного сдвига относительно эталона нет',
@@ -929,6 +1279,8 @@ function buildProfileComparisonItems(process, previousProcess, previousSummary) 
 
     items.push({
         tone: 'muted',
+        kind: 'comparison',
+        code: 'baseline_profile_reference',
         title: `Эталон профиля: ${profileName}`,
         detail: `Сравнение с успешным прогоном от ${previousDate.toLocaleString('ru-RU')} для того же профиля.`,
         action: 'Ниже показаны главные отклонения текущего запуска от последнего успешного эталона.'
@@ -939,6 +1291,8 @@ function buildProfileComparisonItems(process, previousProcess, previousSummary) 
         if (Math.abs(heatingDelta) >= 0.12) {
             items.push({
                 tone: heatingDelta > 0 ? 'warn' : 'good',
+                kind: 'comparison',
+                code: heatingDelta > 0 ? 'heating_slower_than_baseline' : 'heating_faster_than_baseline',
                 title: heatingDelta > 0 ? 'Разгон стал заметно дольше' : 'Разгон стал быстрее эталона',
                 detail: `Фаза нагрева ${Math.round(currentHeating / 60)} мин против ${Math.round(previousHeating / 60)} мин (${formatSignedPercent(heatingDelta)}).`,
                 action: heatingDelta > 0
@@ -953,6 +1307,8 @@ function buildProfileComparisonItems(process, previousProcess, previousSummary) 
         if (Math.abs(stabilizationDelta) >= 0.15) {
             items.push({
                 tone: stabilizationDelta > 0 ? 'warn' : 'good',
+                kind: 'comparison',
+                code: stabilizationDelta > 0 ? 'stabilization_slower_than_baseline' : 'stabilization_faster_than_baseline',
                 title: stabilizationDelta > 0 ? 'Стабилизация затянулась' : 'Стабилизация проходит быстрее',
                 detail: `Рабочая выдержка ${Math.round(currentStabilization / 60)} мин против ${Math.round(previousStabilization / 60)} мин (${formatSignedPercent(stabilizationDelta)}).`,
                 action: stabilizationDelta > 0
@@ -971,6 +1327,8 @@ function buildProfileComparisonItems(process, previousProcess, previousSummary) 
         if (stabilityDelta <= -0.08 || takeoffDelta <= -0.10 || floodDelta >= 0.12 || coolingDelta <= -1.0) {
             items.push({
                 tone: 'warn',
+                kind: 'comparison',
+                code: 'working_window_worse_than_baseline',
                 title: 'Рабочее окно хуже эталона',
                 detail: `Стабильность ${(currentIndicators.avgStability * 100).toFixed(0)}% vs ${(previousIndicators.avgStability * 100).toFixed(0)}%, отбор разрешён ${(currentIndicators.takeoffShare * 100).toFixed(0)}% vs ${(previousIndicators.takeoffShare * 100).toFixed(0)}%, flood risk ${(currentIndicators.maxFloodRisk * 100).toFixed(0)}% vs ${(previousIndicators.maxFloodRisk * 100).toFixed(0)}%.`,
                 action: 'Для следующего запуска начните мягче: проверьте охлаждение, давление и первые минуты отбора.'
@@ -978,6 +1336,8 @@ function buildProfileComparisonItems(process, previousProcess, previousSummary) 
         } else if (stabilityDelta >= 0.08 || takeoffDelta >= 0.10 || (floodDelta <= -0.12 && coolingDelta >= 1.0)) {
             items.push({
                 tone: 'good',
+                kind: 'comparison',
+                code: 'working_window_better_than_baseline',
                 title: 'Рабочее окно стало устойчивее',
                 detail: `Стабильность ${(currentIndicators.avgStability * 100).toFixed(0)}% vs ${(previousIndicators.avgStability * 100).toFixed(0)}%, запас охлаждения ${currentIndicators.minCoolingMargin.toFixed(1)}°C vs ${previousIndicators.minCoolingMargin.toFixed(1)}°C.`,
                 action: 'Этот прогон выглядит сильнее эталона. Его уже можно рассматривать как новый опорный запуск профиля.'
@@ -992,6 +1352,8 @@ function buildProfileComparisonItems(process, previousProcess, previousSummary) 
         if (Math.abs(energyDelta) >= 0.10 || Math.abs(durationDelta) >= 0.12) {
             items.push({
                 tone: energyDelta > 0 || durationDelta > 0 ? 'warn' : 'good',
+                kind: 'comparison',
+                code: energyDelta > 0 || durationDelta > 0 ? 'economy_worse_than_baseline' : 'economy_better_than_baseline',
                 title: energyDelta > 0 || durationDelta > 0 ? 'Экономика прогона хуже эталона' : 'Экономика прогона лучше эталона',
                 detail: `Энергия на литр ${currentEnergyPerLiter.toFixed(2)} против ${previousEnergyPerLiter.toFixed(2)} кВт·ч/л (${formatSignedPercent(energyDelta)}), общая длительность ${formatSignedNumber((currentDuration - previousDuration) / 3600, 1, ' ч')}.`,
                 action: energyDelta > 0 || durationDelta > 0
@@ -1048,6 +1410,11 @@ function buildProfileAdjustmentItems(process, previousProcess) {
         if (suggestedPower < basePower) {
             items.push({
                 tone: 'warn',
+                kind: 'adjustment',
+                code: 'reduce_target_power',
+                parameterKey: 'targetPower',
+                previousValue: basePower,
+                suggestedValue: suggestedPower,
                 title: 'Профиль: слегка снизить мощность разгона',
                 detail: `Текущая нагрузка ${basePower} Вт выглядит жёсткой для этого профиля. Безопасная пробная коррекция: ${basePower} -> ${suggestedPower} Вт.`,
                 action: 'Сначала уменьшите мощность на 4-6% и посмотрите, улучшатся ли flood risk, cooling margin и окно разрешённого отбора.'
@@ -1058,6 +1425,11 @@ function buildProfileAdjustmentItems(process, previousProcess) {
         if (suggestedPower > basePower) {
             items.push({
                 tone: 'good',
+                kind: 'adjustment',
+                code: 'increase_target_power_carefully',
+                parameterKey: 'targetPower',
+                previousValue: basePower,
+                suggestedValue: suggestedPower,
                 title: 'Профиль: можно аккуратно ускорить разгон',
                 detail: `Разгон заметно дольше эталона, но по cooling margin и flood risk запас хороший. Пробный шаг: ${basePower} -> ${suggestedPower} Вт.`,
                 action: 'Поднимайте мощность маленьким шагом 3-5% и контролируйте первые минуты после выхода на рабочий режим.'
@@ -1070,6 +1442,11 @@ function buildProfileAdjustmentItems(process, previousProcess) {
         if (suggestedStabilization > baseStabilization) {
             items.push({
                 tone: 'warn',
+                kind: 'adjustment',
+                code: 'increase_stabilization_time',
+                parameterKey: 'stabilizationTime',
+                previousValue: baseStabilization,
+                suggestedValue: suggestedStabilization,
                 title: 'Профиль: увеличить стабилизацию',
                 detail: `Текущая уставка стабилизации ${Math.round(baseStabilization / 60)} мин. Безопасный шаг: поднять до ${Math.round(suggestedStabilization / 60)} мин.`,
                 action: 'Это консервативная правка: она помогает головам и старту тела без риска пережать профиль слишком сильно.'
@@ -1082,6 +1459,11 @@ function buildProfileAdjustmentItems(process, previousProcess) {
         if (suggestedHeadSpeed < baseHeadSpeed) {
             items.push({
                 tone: 'warn',
+                kind: 'adjustment',
+                code: 'reduce_head_takeoff_speed',
+                parameterKey: 'pumpSpeedHead',
+                previousValue: baseHeadSpeed,
+                suggestedValue: suggestedHeadSpeed,
                 title: 'Профиль: замедлить отбор голов',
                 detail: `Скорость голов ${baseHeadSpeed} мл/ч выглядит слишком агрессивной. Пробный шаг: ${baseHeadSpeed} -> ${suggestedHeadSpeed} мл/ч.`,
                 action: 'Замедление голов обычно безопаснее, чем попытка компенсировать проблему только объёмом.'
@@ -1094,6 +1476,11 @@ function buildProfileAdjustmentItems(process, previousProcess) {
         if (suggestedHeadVolume > baseHeadVolume) {
             items.push({
                 tone: 'warn',
+                kind: 'adjustment',
+                code: 'increase_head_volume',
+                parameterKey: 'headVolume',
+                previousValue: baseHeadVolume,
+                suggestedValue: suggestedHeadVolume,
                 title: 'Профиль: немного увеличить объём голов',
                 detail: `Текущая уставка ${baseHeadVolume} мл. Консервативная поправка: ${baseHeadVolume} -> ${suggestedHeadVolume} мл.`,
                 action: 'Увеличивайте объём небольшим шагом и лучше вместе с дополнительной стабилизацией, а не отдельно.'
@@ -1106,6 +1493,11 @@ function buildProfileAdjustmentItems(process, previousProcess) {
         if (suggestedBodySpeed < baseBodySpeed) {
             items.push({
                 tone: 'warn',
+                kind: 'adjustment',
+                code: 'reduce_body_takeoff_speed',
+                parameterKey: 'pumpSpeedBody',
+                previousValue: baseBodySpeed,
+                suggestedValue: suggestedBodySpeed,
                 title: 'Профиль: смягчить скорость отбора тела',
                 detail: `Скорость тела ${baseBodySpeed} мл/ч можно чуть разгрузить. Пробный шаг: ${baseBodySpeed} -> ${suggestedBodySpeed} мл/ч.`,
                 action: 'Начните с небольшого снижения 5-7%: это самый безопасный способ расширить рабочее окно без полной перенастройки режима.'
@@ -1116,6 +1508,11 @@ function buildProfileAdjustmentItems(process, previousProcess) {
         if (suggestedBodySpeed > baseBodySpeed) {
             items.push({
                 tone: 'good',
+                kind: 'adjustment',
+                code: 'increase_body_takeoff_speed_carefully',
+                parameterKey: 'pumpSpeedBody',
+                previousValue: baseBodySpeed,
+                suggestedValue: suggestedBodySpeed,
                 title: 'Профиль: можно аккуратно ускорить тело',
                 detail: `Тело идёт устойчивее эталона. Осторожный шаг: ${baseBodySpeed} -> ${suggestedBodySpeed} мл/ч.`,
                 action: 'Если будете ускорять, меняйте только один параметр за запуск и контролируйте flood risk вместе с cooling margin.'
@@ -1246,21 +1643,20 @@ function buildRunAdvisorItems(process, previousSuccessfulProcess = null, previou
     const seenTitles = new Set();
 
     items.forEach((item) => {
-        const key = String(item?.title || '').trim();
+        const normalizedItem = normalizeAdvisorItem(item);
+        const key = normalizedItem.title;
         if (!key || seenTitles.has(key)) {
             return;
         }
         seenTitles.add(key);
-        uniqueItems.push(item);
+        uniqueItems.push(normalizedItem);
     });
 
     return uniqueItems.slice(0, 6);
 
 }
 
-function appendRunAdvisorSection(container, process, previousSuccessfulProcess = null, previousSummary = null) {
-
-    const items = buildRunAdvisorItems(process, previousSuccessfulProcess, previousSummary);
+function appendAdvisorSection(container, title, items) {
 
     if (!items.length) {
         return;
@@ -1271,7 +1667,7 @@ function appendRunAdvisorSection(container, process, previousSuccessfulProcess =
 
     const titleEl = document.createElement('div');
     titleEl.className = 'modal-info-label';
-    titleEl.textContent = 'Run Advisor';
+    titleEl.textContent = title;
 
     const listEl = document.createElement('div');
     listEl.className = 'modal-advisor-list';
@@ -1300,6 +1696,24 @@ function appendRunAdvisorSection(container, process, previousSuccessfulProcess =
     section.appendChild(titleEl);
     section.appendChild(listEl);
     container.appendChild(section);
+
+}
+
+function appendAdvisorFollowUpSection(container, process, previousSuccessfulProcess = null) {
+
+    const items = buildPreviousAdvisorFollowUpItems(process, previousSuccessfulProcess);
+
+    appendAdvisorSection(container, 'Память рекомендаций', items);
+
+}
+
+function appendRunAdvisorSection(container, process, previousSuccessfulProcess = null, previousSummary = null) {
+
+    const items = buildRunAdvisorItems(process, previousSuccessfulProcess, previousSummary);
+
+    appendAdvisorSection(container, 'Run Advisor', items);
+
+    return items;
 
 }
 
@@ -1451,7 +1865,8 @@ export function showHistoryDetailsModal(process, options = {}) {
     appendInfoItem(resultsGrid, 'Хвосты', `${process.results.tailsCollected || 0} мл`);
     appendInfoItem(resultsGrid, 'Всего собрано', `${process.results.totalCollected || 0} мл`);
     appendCompletionInsightSection(resultsGrid, process);
-    appendRunAdvisorSection(resultsGrid, process, previousSuccessfulProcess, previousSummary);
+    appendAdvisorFollowUpSection(resultsGrid, process, previousSuccessfulProcess);
+    const advisorItems = appendRunAdvisorSection(resultsGrid, process, previousSuccessfulProcess, previousSummary);
     appendIndicatorSummarySection(resultsGrid, process);
     appendSafetyTimelineSection(resultsGrid, process);
     appendEventSection(resultsGrid, 'Ошибки и аварии', process.results?.errors || [], 'error');
@@ -1489,6 +1904,10 @@ export function showHistoryDetailsModal(process, options = {}) {
     document.getElementById('history-modal').classList.add('active');
 
     document.body.style.overflow = 'hidden';
+
+    persistAdvisorSnapshotIfNeeded(process, previousSuccessfulProcess, previousSummary, advisorItems).catch((error) => {
+        console.warn('Не удалось сохранить advisor snapshot:', error);
+    });
 
 }
 

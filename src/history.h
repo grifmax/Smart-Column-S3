@@ -135,6 +135,26 @@ struct ProcessResults {
     std::vector<ProcessWarning> warnings;
 };
 
+struct ProcessAdvisorItem {
+    String kind;
+    String code;
+    String tone;
+    String title;
+    String detail;
+    String action;
+    String parameterKey;
+    float previousValue = 0.0f;
+    float suggestedValue = 0.0f;
+};
+
+struct ProcessAdvisorSnapshot {
+    String schemaVersion;
+    uint32_t createdAt = 0;
+    String baselineProcessId;
+    String baselineProfile;
+    std::vector<ProcessAdvisorItem> items;
+};
+
 // Полная структура истории процесса
 struct ProcessHistory {
     String id;                       // Уникальный ID (Unix timestamp)
@@ -146,6 +166,7 @@ struct ProcessHistory {
     std::vector<ProcessPhase> phases;
     std::vector<TimeseriesPoint> timeseries;
     ProcessResults results;
+    ProcessAdvisorSnapshot advisorSnapshot;
     String notes;                    // Заметки пользователя
 };
 
@@ -187,6 +208,10 @@ bool saveProcessHistory(const ProcessHistory& history);
 
 // Загрузка процесса из истории по ID
 bool loadProcessHistory(const String& id, ProcessHistory& history);
+
+// Обновить advisor snapshot для сохраненного процесса
+bool updateProcessAdvisorSnapshot(const String& id,
+                                  const ProcessAdvisorSnapshot& snapshot);
 
 // Получение списка всех процессов
 std::vector<ProcessListItem> getProcessList();
