@@ -37,6 +37,20 @@ function setGuidance(title, detail, tone = 'muted') {
     textEl.textContent = detail;
 }
 
+function setReasonInsight(title, detail, action, tone = 'muted') {
+    const root = document.getElementById('operator-reason-insight');
+    const titleEl = document.getElementById('operator-reason-title');
+    const detailEl = document.getElementById('operator-reason-detail');
+    const actionEl = document.getElementById('operator-reason-action');
+    if (!root || !titleEl || !detailEl || !actionEl) return;
+
+    root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    root.classList.add(`is-${tone}`);
+    titleEl.textContent = title;
+    detailEl.textContent = detail;
+    actionEl.textContent = action;
+}
+
 function setPreflightItem(id, text, tone = 'muted') {
     const el = document.getElementById(id);
     if (!el) return;
@@ -223,6 +237,220 @@ function getReasonCodeLabel(code) {
         RC_UNSPECIFIED: 'Без уточнения'
     };
     return labels[normalized] || normalized.replace(/^RC_/, '');
+}
+
+function getReasonCodeInsight(code, operatorMessage = '') {
+    const normalized = String(code || 'RC_NONE');
+    const label = getReasonCodeLabel(normalized);
+    const message = String(operatorMessage || '').trim();
+
+    if (message) {
+        return {
+            tone: normalized.startsWith('RC_SAFETY_') ? 'danger' : 'warn',
+            title: label,
+            detail: message,
+            action: 'Сверьте это сообщение с alarm, датчиками и текущими ограничениями автоматики.'
+        };
+    }
+
+    switch (normalized) {
+        case 'RC_NONE':
+            return {
+                tone: 'muted',
+                title: 'Ожидание причины',
+                detail: 'Автоматика ещё не публиковала осмысленную последнюю причину или переход фазы.',
+                action: 'Ничего исправлять не нужно. После первого события здесь появится расшифровка.'
+            };
+        case 'RC_MODE_START_REQUEST':
+            return {
+                tone: 'good',
+                title: label,
+                detail: 'Режим принят в работу и автоматика начала штатный сценарий запуска.',
+                action: 'Следите за lifecycle, стабильностью и тем, что контур выходит в рабочее окно без ограничений.'
+            };
+        case 'RC_MODE_STOP_REQUEST':
+        case 'RC_MANUAL_OPERATOR_STOP':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Текущий сценарий был остановлен оператором или переведён к завершению вручную.',
+                action: 'Проверьте, что нагрев, насос и отбор действительно свернулись в безопасное состояние.'
+            };
+        case 'RC_PRECHECK_OK':
+            return {
+                tone: 'good',
+                title: label,
+                detail: 'Предпусковые условия были валидны: датчики, safety и базовая телеметрия выглядели рабочими.',
+                action: 'Можно использовать это как ориентир для следующего старта аналогичного режима.'
+            };
+        case 'RC_PRECHECK_FAIL_SENSOR':
+        case 'RC_SAFETY_TRIP_SENSOR':
+            return {
+                tone: 'danger',
+                title: label,
+                detail: 'Автоматика потеряла доверие к температурным данным или свежести телеметрии.',
+                action: 'Проверьте датчики, шину 1-Wire/I2C, обновление статуса и не продолжайте процесс вслепую.'
+            };
+        case 'RC_PRECHECK_FAIL_SAFETY_LATCH':
+            return {
+                tone: 'danger',
+                title: label,
+                detail: 'Перед запуском уже был активен safety latch, поэтому старт заблокирован на стороне контроллера.',
+                action: 'Сначала разберите причину trip, затем подтвердите или сбросьте аварийное состояние.'
+            };
+        case 'RC_SAFETY_LIMIT_POWER':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Safety supervisor уже принудительно ограничивает нагрев из-за риска по процессу.',
+                action: 'Проверьте охлаждение, давление, TSA и не наращивайте мощность, пока ограничение не исчезнет.'
+            };
+        case 'RC_SAFETY_LIMIT_TAKEOFF':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Автоматика временно запрещает или душит отбор, потому что колонна не выглядит достаточно стабильной.',
+                action: 'Дождитесь рабочего окна по stability, pressure и cooling margin, не открывайте отбор вручную.'
+            };
+        case 'RC_SAFETY_PHASE_BLOCKED':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Переход к следующей фазе был задержан защитной логикой, потому что условия ещё неубедительны.',
+                action: 'Смотрите diagnostics и guidance: сначала нужно снять ограничение, а не форсировать фазу.'
+            };
+        case 'RC_SAFETY_RECOVERY_ENTERED':
+        case 'RC_PHASE_RECOVERY_APPLIED':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Система вошла в recovery или восстановила фазу после нестабильного участка процесса.',
+                action: 'Дайте колонне заново стабилизироваться и не делайте резких изменений нагрева, воды и отбора.'
+            };
+        case 'RC_SAFETY_RECOVERY_EXITED':
+            return {
+                tone: 'good',
+                title: label,
+                detail: 'Recovery завершён, автоматика считает, что система вернулась в рабочее состояние.',
+                action: 'Проверьте, что показатели действительно ровные, и только потом возвращайтесь к обычной нагрузке.'
+            };
+        case 'RC_SAFETY_TRIP_PRESSURE':
+            return {
+                tone: 'danger',
+                title: label,
+                detail: 'Процесс был аварийно ограничен или остановлен из-за опасного давления.',
+                action: 'Проверьте засоры, захлёб, клапаны, холодильник и не перезапускайте процесс до нормализации.'
+            };
+        case 'RC_SAFETY_TRIP_OVERHEAT':
+            return {
+                tone: 'danger',
+                title: label,
+                detail: 'Автоматика увидела перегрев по критическим температурным каналам.',
+                action: 'Проверьте воду, TSA, дефлегматор и фактическую тепловую нагрузку перед продолжением.'
+            };
+        case 'RC_SAFETY_TRIP_POWER':
+            return {
+                tone: 'danger',
+                title: label,
+                detail: 'Защита сработала из-за питания, мощности или связанного с ними аномального поведения нагрузки.',
+                action: 'Проверьте SSR, сеть, PZEM и реальную подачу мощности на нагрев.'
+            };
+        case 'RC_SAFETY_TRIP_GENERIC':
+            return {
+                tone: 'danger',
+                title: label,
+                detail: 'Сработала общая safety-авария без более узкой классификации.',
+                action: 'Сверьте журнал, alarm и последние transition-события, прежде чем возвращать процесс в работу.'
+            };
+        case 'RC_HEADS_VOLUME_REACHED':
+        case 'RC_HEADS_SCORE_REACHED':
+            return {
+                tone: 'good',
+                title: label,
+                detail: 'Этап голов считается завершённым: либо по объёму, либо по индикаторам качества перехода.',
+                action: 'Проверьте, что колонна готова к следующей фазе, и контролируйте качество входа в тело.'
+            };
+        case 'RC_BODY_END_DETECTED':
+        case 'RC_BODY_TARGET_VOLUME_REACHED':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Автоматика считает, что основной отбор тела закончен по цели или признакам завершения.',
+                action: 'Сверьте продукт, верха колонны и body score, чтобы подтвердить корректность перехода.'
+            };
+        case 'RC_TAILS_TARGET_REACHED':
+        case 'RC_FINISH_COOLDOWN_COMPLETE':
+            return {
+                tone: 'good',
+                title: label,
+                detail: 'Сценарий дошёл до хвостовой или финишной части и штатно завершает цикл.',
+                action: 'Оцените результат прогона и подготовьте историю/отчёт для следующего запуска.'
+            };
+        case 'RC_DISTILLATION_END_TEMP_REACHED':
+        case 'RC_DISTILLATION_TARGET_VOLUME_REACHED':
+            return {
+                tone: 'good',
+                title: label,
+                detail: 'Дистилляция дошла до заданного технологического финиша по температуре или объёму.',
+                action: 'Сверьте фактический выход и энергозатраты с целями профиля.'
+            };
+        case 'RC_NBK_STEAM_READY':
+        case 'RC_NBK_STABILIZATION_COMPLETE':
+        case 'RC_NBK_FEED_ENABLED':
+            return {
+                tone: 'good',
+                title: label,
+                detail: 'НБК проходит ключевые точки готовности и автоматика разрешает следующий рабочий этап.',
+                action: 'Контролируйте пар, подачу браги и давление без резких изменений нагрузки.'
+            };
+        case 'RC_NBK_FINISH_LIKELY':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Автоматика видит признаки приближения к финалу НБК и снижает уверенность в обычном режиме работы.',
+                action: 'Подготовьтесь к завершению и внимательнее следите за низом колонны, давлением и подачей.'
+            };
+        case 'RC_TEMP_STEP_REACHED':
+        case 'RC_TEMP_STEP_HOLD_COMPLETE':
+        case 'RC_TEMP_STEP_TIMEOUT':
+            return {
+                tone: normalized === 'RC_TEMP_STEP_TIMEOUT' ? 'warn' : 'good',
+                title: label,
+                detail: normalized === 'RC_TEMP_STEP_TIMEOUT'
+                    ? 'Температурный шаг завершён по таймауту, а не по идеальному выполнению профиля.'
+                    : 'Температурный шаг профиля отработан и автоматика готова двигаться дальше.',
+                action: 'Проверьте, насколько фактический нагрев совпал с профилем, особенно если это был таймаут.'
+            };
+        case 'RC_FERM_TARGET_REACHED':
+            return {
+                tone: 'good',
+                title: label,
+                detail: 'Контур брожения вышел в заданный температурный диапазон и удерживает цель.',
+                action: 'Продолжайте наблюдать за длительными отклонениями и стабильностью температуры среды.'
+            };
+        case 'RC_OPERATOR_SERVICE_ACTION':
+        case 'RC_MANUAL_OPERATOR_SWITCH':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Состояние процесса менялось из-за сервисного или ручного действия оператора, а не по чистой автоматике.',
+                action: 'Учитывайте это при разборе истории: сравнивать такой участок с эталонным автопрогоном нужно осторожно.'
+            };
+        case 'RC_PHASE_TRANSITION_INFERRED':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Переход фазы пришлось восстановить аналитически по текущему состоянию процесса.',
+                action: 'Проверьте историю переходов: желательно понять, почему явный transition был пропущен.'
+            };
+        default:
+            return {
+                tone: 'muted',
+                title: label,
+                detail: 'Причина зафиксирована, но для неё ещё нет отдельной операторской расшифровки.',
+                action: 'Ориентируйтесь на lifecycle, guidance, diagnostics и системный журнал для детального разбора.'
+            };
+    }
 }
 
 function getLifecycleLabel(value) {
@@ -1175,6 +1403,7 @@ function renderProcessIndicatorsPanel() {
 
     const lifecycle = String(s?.v2?.lifecycle || 'idle');
     const lastReasonCode = String(s?.v2?.lastReasonCode || 'RC_NONE');
+    const operatorMessage = String(s?.v2?.operatorMessage || '').trim();
     const coolingMargin = toFinite(indicators.coolingMarginC, 0);
     const stability = toFinite(indicators.stabilityIndex, 0);
     const floodRisk = toFinite(indicators.floodRisk, 0);
@@ -1251,6 +1480,8 @@ function renderProcessIndicatorsPanel() {
 
     const guidance = buildGuidance(s, indicators, activeLimits);
     setGuidance(guidance.title, guidance.detail, guidance.tone);
+    const reasonInsight = getReasonCodeInsight(lastReasonCode, operatorMessage);
+    setReasonInsight(reasonInsight.title, reasonInsight.detail, reasonInsight.action, reasonInsight.tone);
 }
 
 export function renderRuntimeBars(items) {

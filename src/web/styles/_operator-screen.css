@@ -1123,6 +1123,73 @@
     white-space: nowrap;
 }
 
+.operator-reason-insight {
+    margin-top: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.68);
+    padding: 12px 14px;
+}
+
+[data-theme="dark"] .operator-reason-insight {
+    background: rgba(30, 41, 59, 0.58);
+}
+
+.operator-reason-insight-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.operator-reason-insight-kicker {
+    color: var(--landing-muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.operator-reason-insight-head strong {
+    color: var(--landing-ink);
+    font-size: 1rem;
+    line-height: 1.2;
+}
+
+.operator-reason-insight-text,
+.operator-reason-insight-action {
+    margin: 0;
+    color: var(--landing-muted);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.operator-reason-insight-action {
+    margin-top: 8px;
+    color: var(--landing-ink);
+    font-weight: 600;
+}
+
+.operator-reason-insight.is-good {
+    border-color: rgba(34, 197, 94, 0.24);
+    background: rgba(34, 197, 94, 0.08);
+}
+
+.operator-reason-insight.is-warn {
+    border-color: rgba(245, 158, 11, 0.24);
+    background: rgba(245, 158, 11, 0.09);
+}
+
+.operator-reason-insight.is-danger {
+    border-color: rgba(239, 68, 68, 0.22);
+    background: rgba(239, 68, 68, 0.09);
+}
+
+.operator-reason-insight.is-muted {
+    border-color: var(--landing-border);
+}
+
 .operator-start-modal {
     max-width: 760px;
 }
