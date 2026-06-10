@@ -5453,6 +5453,30 @@ void init() {
           }
         }
       }
+
+      JsonObject validation = doc["validation"].to<JsonObject>();
+      validation["validatedAt"] = profile.validation.validatedAt;
+      validation["sourceProcessId"] = profile.validation.sourceProcessId;
+      validation["atmosphereHpa"] = profile.validation.atmosphereHpa;
+      validation["atmosphereMmHg"] = profile.validation.atmosphereMmHg;
+      validation["columnHeightMm"] = profile.validation.columnHeightMm;
+      validation["packingType"] = profile.validation.packingType;
+      validation["packingCoeff"] = profile.validation.packingCoeff;
+      validation["heaterPowerW"] = profile.validation.heaterPowerW;
+      validation["targetPowerW"] = profile.validation.targetPowerW;
+      validation["feedVolumeL"] = profile.validation.feedVolumeL;
+      validation["feedAbvPercent"] = profile.validation.feedAbvPercent;
+      validation["cubeChargePercent"] = profile.validation.cubeChargePercent;
+      validation["headsActualMl"] = profile.validation.headsActualMl;
+      validation["bodyActualMl"] = profile.validation.bodyActualMl;
+      validation["tailsActualMl"] = profile.validation.tailsActualMl;
+      validation["headsCutColumnTopC"] = profile.validation.headsCutColumnTopC;
+      validation["bodyCutColumnTopC"] = profile.validation.bodyCutColumnTopC;
+      validation["tailsCutColumnTopC"] = profile.validation.tailsCutColumnTopC;
+      validation["cubeFinalC"] = profile.validation.cubeFinalC;
+      validation["columnTopFinalC"] = profile.validation.columnTopFinalC;
+      validation["avgStabilityIndex"] = profile.validation.avgStabilityIndex;
+      validation["avgProcessHealth"] = profile.validation.avgProcessHealth;
       
       String response;
       serializeJson(doc, response);

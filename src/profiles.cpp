@@ -55,6 +55,73 @@ uint16_t updateRollingAverageU16(uint16_t currentAverage,
     return static_cast<uint16_t>(total / sampleCount);
 }
 
+const ProcessPhase* findPhase(const ProcessHistory& history, const char* name) {
+    for (const auto& phase : history.phases) {
+        if (phase.name == name) {
+            return &phase;
+        }
+    }
+    return nullptr;
+}
+
+String packingTypeToString(PackingType type) {
+    switch (type) {
+        case PackingType::SPN_3_5:
+            return "spn_3_5";
+        case PackingType::SPN_4_0:
+            return "spn_4_0";
+        case PackingType::RASCHIG:
+            return "raschig";
+        case PackingType::CUSTOM:
+            return "custom";
+        default:
+            return "unknown";
+    }
+}
+
+float hpaToMmHg(float valueHpa) {
+    if (valueHpa <= 0.0f) {
+        return 0.0f;
+    }
+    return valueHpa * 0.75006156f;
+}
+
+ProfileValidationSnapshot buildValidationSnapshot(const ProcessHistory& history) {
+    ProfileValidationSnapshot snapshot;
+    snapshot.validatedAt = history.metadata.endTime > 0
+                               ? history.metadata.endTime
+                               : history.metadata.startTime;
+    snapshot.sourceProcessId = history.id;
+    snapshot.atmosphereHpa = g_state.pressure.atmosphere;
+    snapshot.atmosphereMmHg = hpaToMmHg(snapshot.atmosphereHpa);
+    snapshot.columnHeightMm = g_settings.equipment.columnHeightMm;
+    snapshot.packingType = packingTypeToString(g_settings.equipment.packingType);
+    snapshot.packingCoeff = g_settings.equipment.packingCoeff;
+    snapshot.heaterPowerW = g_settings.equipment.heaterPowerW;
+    snapshot.targetPowerW = history.parameters.targetPower;
+    snapshot.feedVolumeL = g_settings.rectParams.feedVolumeL;
+    snapshot.feedAbvPercent = g_settings.rectParams.feedAbvPercent;
+    if (g_settings.equipment.cubeVolumeL > 0.0f) {
+        snapshot.cubeChargePercent =
+            (snapshot.feedVolumeL / g_settings.equipment.cubeVolumeL) * 100.0f;
+    }
+    snapshot.headsActualMl = history.results.headsCollected;
+    snapshot.bodyActualMl = history.results.bodyCollected;
+    snapshot.tailsActualMl = history.results.tailsCollected;
+
+    const ProcessPhase* headsPhase = findPhase(history, "heads");
+    const ProcessPhase* bodyPhase = findPhase(history, "body");
+    const ProcessPhase* tailsPhase = findPhase(history, "tails");
+    snapshot.headsCutColumnTopC = headsPhase ? headsPhase->endTemp : 0.0f;
+    snapshot.bodyCutColumnTopC = bodyPhase ? bodyPhase->endTemp : 0.0f;
+    snapshot.tailsCutColumnTopC = tailsPhase ? tailsPhase->endTemp : 0.0f;
+    snapshot.cubeFinalC = history.metrics.cube.final;
+    snapshot.columnTopFinalC = history.metrics.columnTop.final;
+    snapshot.avgStabilityIndex = history.metrics.avgStabilityIndex;
+    snapshot.avgProcessHealth = history.metrics.avgProcessHealth;
+    return snapshot;
+}
+
 void appendLearningJson(JsonObject learning, const ProfileLearningSnapshot& snapshot) {
     learning["successfulRuns"] = snapshot.successfulRuns;
     learning["failedRuns"] = snapshot.failedRuns;
@@ -66,6 +133,32 @@ void appendLearningJson(JsonObject learning, const ProfileLearningSnapshot& snap
     learning["typicalColumnTopFinalTemp"] = snapshot.typicalColumnTopFinalTemp;
     learning["lastProcessId"] = snapshot.lastProcessId;
     learning["lastSuccessfulProcessId"] = snapshot.lastSuccessfulProcessId;
+}
+
+void appendValidationJson(JsonObject validation,
+                          const ProfileValidationSnapshot& snapshot) {
+    validation["validatedAt"] = snapshot.validatedAt;
+    validation["sourceProcessId"] = snapshot.sourceProcessId;
+    validation["atmosphereHpa"] = snapshot.atmosphereHpa;
+    validation["atmosphereMmHg"] = snapshot.atmosphereMmHg;
+    validation["columnHeightMm"] = snapshot.columnHeightMm;
+    validation["packingType"] = snapshot.packingType;
+    validation["packingCoeff"] = snapshot.packingCoeff;
+    validation["heaterPowerW"] = snapshot.heaterPowerW;
+    validation["targetPowerW"] = snapshot.targetPowerW;
+    validation["feedVolumeL"] = snapshot.feedVolumeL;
+    validation["feedAbvPercent"] = snapshot.feedAbvPercent;
+    validation["cubeChargePercent"] = snapshot.cubeChargePercent;
+    validation["headsActualMl"] = snapshot.headsActualMl;
+    validation["bodyActualMl"] = snapshot.bodyActualMl;
+    validation["tailsActualMl"] = snapshot.tailsActualMl;
+    validation["headsCutColumnTopC"] = snapshot.headsCutColumnTopC;
+    validation["bodyCutColumnTopC"] = snapshot.bodyCutColumnTopC;
+    validation["tailsCutColumnTopC"] = snapshot.tailsCutColumnTopC;
+    validation["cubeFinalC"] = snapshot.cubeFinalC;
+    validation["columnTopFinalC"] = snapshot.columnTopFinalC;
+    validation["avgStabilityIndex"] = snapshot.avgStabilityIndex;
+    validation["avgProcessHealth"] = snapshot.avgProcessHealth;
 }
 
 } // namespace
@@ -198,6 +291,7 @@ bool saveProfile(const Profile& profile) {
     statistics["avgYield"] = profile.statistics.avgYield;
     statistics["successRate"] = profile.statistics.successRate;
     appendLearningJson(doc["learning"].to<JsonObject>(), profile.learning);
+    appendValidationJson(doc["validation"].to<JsonObject>(), profile.validation);
 
     // Сериализовать в файл
     if (serializeJson(doc, file) == 0) {
@@ -244,6 +338,7 @@ bool loadProfile(const String& id, Profile& profile) {
 
     // Загрузить данные из JSON
     profile.learning = ProfileLearningSnapshot();
+    profile.validation = ProfileValidationSnapshot();
     profile.id = doc["id"].as<String>();
 
     // Метаданные
@@ -323,6 +418,49 @@ bool loadProfile(const String& id, Profile& profile) {
     profile.learning.lastProcessId = doc["learning"]["lastProcessId"].as<String>();
     profile.learning.lastSuccessfulProcessId =
         doc["learning"]["lastSuccessfulProcessId"].as<String>();
+    profile.validation.validatedAt = doc["validation"]["validatedAt"] | 0;
+    profile.validation.sourceProcessId =
+        doc["validation"]["sourceProcessId"].as<String>();
+    profile.validation.atmosphereHpa =
+        doc["validation"]["atmosphereHpa"] | 0.0f;
+    profile.validation.atmosphereMmHg =
+        doc["validation"]["atmosphereMmHg"] | 0.0f;
+    profile.validation.columnHeightMm =
+        doc["validation"]["columnHeightMm"] | 0;
+    profile.validation.packingType =
+        doc["validation"]["packingType"].as<String>();
+    profile.validation.packingCoeff =
+        doc["validation"]["packingCoeff"] | 0.0f;
+    profile.validation.heaterPowerW =
+        doc["validation"]["heaterPowerW"] | 0;
+    profile.validation.targetPowerW =
+        doc["validation"]["targetPowerW"] | 0;
+    profile.validation.feedVolumeL =
+        doc["validation"]["feedVolumeL"] | 0.0f;
+    profile.validation.feedAbvPercent =
+        doc["validation"]["feedAbvPercent"] | 0.0f;
+    profile.validation.cubeChargePercent =
+        doc["validation"]["cubeChargePercent"] | 0.0f;
+    profile.validation.headsActualMl =
+        doc["validation"]["headsActualMl"] | 0;
+    profile.validation.bodyActualMl =
+        doc["validation"]["bodyActualMl"] | 0;
+    profile.validation.tailsActualMl =
+        doc["validation"]["tailsActualMl"] | 0;
+    profile.validation.headsCutColumnTopC =
+        doc["validation"]["headsCutColumnTopC"] | 0.0f;
+    profile.validation.bodyCutColumnTopC =
+        doc["validation"]["bodyCutColumnTopC"] | 0.0f;
+    profile.validation.tailsCutColumnTopC =
+        doc["validation"]["tailsCutColumnTopC"] | 0.0f;
+    profile.validation.cubeFinalC =
+        doc["validation"]["cubeFinalC"] | 0.0f;
+    profile.validation.columnTopFinalC =
+        doc["validation"]["columnTopFinalC"] | 0.0f;
+    profile.validation.avgStabilityIndex =
+        doc["validation"]["avgStabilityIndex"] | 0.0f;
+    profile.validation.avgProcessHealth =
+        doc["validation"]["avgProcessHealth"] | 0.0f;
 
     Serial.printf("Профиль загружен: %s\n", profile.metadata.name.c_str());
     return true;
@@ -884,6 +1022,7 @@ void updateProfileLearning(const ProcessHistory& history) {
             profile.learning.typicalColumnTopFinalTemp, history.metrics.columnTop.final,
             profile.learning.successfulRuns);
         profile.learning.lastSuccessfulProcessId = history.id;
+        profile.validation = buildValidationSnapshot(history);
     } else {
         profile.learning.failedRuns++;
     }
@@ -1056,6 +1195,7 @@ String exportProfileToJSON(const String& id) {
     statistics["avgYield"] = profile.statistics.avgYield;
     statistics["successRate"] = profile.statistics.successRate;
     appendLearningJson(doc["learning"].to<JsonObject>(), profile.learning);
+    appendValidationJson(doc["validation"].to<JsonObject>(), profile.validation);
 
     String json;
     serializeJson(doc, json);
@@ -1145,6 +1285,7 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
             statistics["avgYield"] = profile.statistics.avgYield;
             statistics["successRate"] = profile.statistics.successRate;
             appendLearningJson(obj["learning"].to<JsonObject>(), profile.learning);
+            appendValidationJson(obj["validation"].to<JsonObject>(), profile.validation);
 
             exported++;
         }
@@ -1228,6 +1369,8 @@ String importProfileFromJSON(const String& jsonStr) {
     profile.statistics.avgDuration = 0;
     profile.statistics.avgYield = 0;
     profile.statistics.successRate = 0;
+    profile.learning = ProfileLearningSnapshot();
+    profile.validation = ProfileValidationSnapshot();
 
     if (saveProfile(profile)) {
         Serial.printf("Профиль импортирован: %s (новый ID: %s)\n",

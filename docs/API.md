@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.49`  
+**Версия прошивки:** `2.2.50`  
 **Актуальность документа:** 2026-06-10
 
 ---
@@ -152,7 +152,7 @@
 
 #### `GET /api/profiles/{id}`
 
-Полные данные профиля, включая learning summary и последние advisor snapshot-ы.
+Полные данные профиля, включая learning summary, validation context последнего успешного baseline и последние advisor snapshot-ы.
 
 #### `POST /api/profiles`
 

@@ -96,12 +96,38 @@ struct ProfileLearningSnapshot {
     String lastSuccessfulProcessId;
 };
 
+struct ProfileValidationSnapshot {
+    uint32_t validatedAt = 0;
+    String sourceProcessId;
+    float atmosphereHpa = 0.0f;
+    float atmosphereMmHg = 0.0f;
+    uint16_t columnHeightMm = 0;
+    String packingType;
+    float packingCoeff = 0.0f;
+    uint16_t heaterPowerW = 0;
+    uint16_t targetPowerW = 0;
+    float feedVolumeL = 0.0f;
+    float feedAbvPercent = 0.0f;
+    float cubeChargePercent = 0.0f;
+    uint16_t headsActualMl = 0;
+    uint16_t bodyActualMl = 0;
+    uint16_t tailsActualMl = 0;
+    float headsCutColumnTopC = 0.0f;
+    float bodyCutColumnTopC = 0.0f;
+    float tailsCutColumnTopC = 0.0f;
+    float cubeFinalC = 0.0f;
+    float columnTopFinalC = 0.0f;
+    float avgStabilityIndex = 0.0f;
+    float avgProcessHealth = 0.0f;
+};
+
 struct Profile {
     String id;
     ProfileMetadata metadata;
     ProfileParameters parameters;
     ProfileStatistics statistics;
     ProfileLearningSnapshot learning;
+    ProfileValidationSnapshot validation;
 };
 
 struct ProfileListItem {

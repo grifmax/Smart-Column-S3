@@ -1,7 +1,7 @@
 # Схема хранения профилей процессов
 
-**Версия:** 1.4.0
-**Дата:** 2025-12-08
+**Версия:** 1.5.0
+**Дата:** 2026-06-10
 
 ## Обзор
 
@@ -87,6 +87,30 @@
     "avgDuration": 25200,
     "avgYield": 2850,
     "successRate": 93.3
+  },
+  "validation": {
+    "validatedAt": 1702234567,
+    "sourceProcessId": "1702234500",
+    "atmosphereHpa": 1005.1,
+    "atmosphereMmHg": 754.0,
+    "columnHeightMm": 1500,
+    "packingType": "spn_3_5",
+    "packingCoeff": 3.5,
+    "heaterPowerW": 3000,
+    "targetPowerW": 2450,
+    "feedVolumeL": 37.0,
+    "feedAbvPercent": 40.0,
+    "cubeChargePercent": 100.0,
+    "headsActualMl": 320,
+    "bodyActualMl": 2950,
+    "tailsActualMl": 410,
+    "headsCutColumnTopC": 78.62,
+    "bodyCutColumnTopC": 79.12,
+    "tailsCutColumnTopC": 82.34,
+    "cubeFinalC": 97.1,
+    "columnTopFinalC": 82.34,
+    "avgStabilityIndex": 0.91,
+    "avgProcessHealth": 0.94
   }
 }
 ```
@@ -155,6 +179,29 @@
 | `avgDuration` | number | Средняя длительность процесса (сек) |
 | `avgYield` | number | Средний выход продукта (мл) |
 | `successRate` | number | Процент успешных завершений |
+
+### Validation
+
+Инженерный context последнего успешного baseline-прогона, к которому привязан профиль.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `validatedAt` | number | Когда был подтверждён baseline |
+| `sourceProcessId` | string | ID успешного прогона-источника |
+| `atmosphereHpa` | number | Атмосферное давление при валидации |
+| `atmosphereMmHg` | number | То же давление в мм рт.ст. |
+| `columnHeightMm` | number | Высота колонны |
+| `packingType` | string | Тип насадки: `spn_3_5`, `spn_4_0`, `raschig`, `custom` |
+| `packingCoeff` | number | Коэффициент насадки |
+| `heaterPowerW` | number | Мощность установленного нагрева |
+| `targetPowerW` | number | Рабочая мощность успешного запуска |
+| `feedVolumeL` | number | Объём сырья |
+| `feedAbvPercent` | number | Крепость сырья |
+| `cubeChargePercent` | number | Процент заполнения куба |
+| `headsActualMl` / `bodyActualMl` / `tailsActualMl` | number | Фактические объёмы фракций |
+| `headsCutColumnTopC` / `bodyCutColumnTopC` / `tailsCutColumnTopC` | number | Фактические cut points по температуре верха |
+| `cubeFinalC` / `columnTopFinalC` | number | Финальные температуры успешного baseline |
+| `avgStabilityIndex` / `avgProcessHealth` | number | Итоговое качество baseline-прогона |
 
 ## Категории профилей
 

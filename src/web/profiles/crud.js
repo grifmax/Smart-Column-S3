@@ -241,6 +241,28 @@ function formatProfileNumber(value, digits = 1, suffix = '') {
 
 }
 
+function formatProfileDateTime(timestamp) {
+
+    const numeric = Number(timestamp || 0);
+    if (!numeric) return '—';
+
+    return new Date(numeric * 1000).toLocaleString('ru-RU');
+
+}
+
+function formatPackingType(value) {
+
+    const labels = {
+        spn_3_5: 'СПН 3.5',
+        spn_4_0: 'СПН 4.0',
+        raschig: 'Кольца Рашига',
+        custom: 'Своя насадка'
+    };
+
+    return labels[String(value || '').trim()] || '—';
+
+}
+
 
 
 // Показать модальное окно просмотра профиля
@@ -268,6 +290,7 @@ export function showProfileViewModal(profile) {
 
 
     const learning = profile.learning || {};
+    const validation = profile.validation || {};
     const lastSuccessfulRun = learning.lastSuccessfulRun || null;
     const advisorItems = Array.isArray(learning.lastAdvisorSnapshot?.items)
         ? learning.lastAdvisorSnapshot.items.slice(0, 3)
@@ -384,6 +407,62 @@ export function showProfileViewModal(profile) {
                 <div><strong>Типовой финал куба:</strong> ${formatProfileNumber(learning.typicalCubeFinalTemp, 1, '°C')}</div>
 
                 <div><strong>Типовой верх колонны:</strong> ${formatProfileNumber(learning.typicalColumnTopFinalTemp, 2, '°C')}</div>
+
+            </div>
+
+        </div>
+
+        <div class="modal-section">
+
+            <div class="modal-section-title">🧪 Условия последней валидации</div>
+
+            <div class="modal-info-grid">
+
+                <div><strong>Дата валидации:</strong> ${formatProfileDateTime(validation.validatedAt)}</div>
+
+                <div><strong>ID baseline:</strong> ${validation.sourceProcessId || '—'}</div>
+
+                <div><strong>Атм. давление:</strong> ${formatProfileNumber(validation.atmosphereMmHg, 1, ' мм рт.ст.')}</div>
+
+                <div><strong>Высота колонны:</strong> ${formatProfileNumber(validation.columnHeightMm, 0, ' мм')}</div>
+
+                <div><strong>Насадка:</strong> ${formatPackingType(validation.packingType)}</div>
+
+                <div><strong>Коэфф. насадки:</strong> ${formatProfileNumber(validation.packingCoeff, 1)}</div>
+
+                <div><strong>Мощность ТЭНа:</strong> ${formatProfileNumber(validation.heaterPowerW, 0, ' Вт')}</div>
+
+                <div><strong>Рабочая мощность:</strong> ${formatProfileNumber(validation.targetPowerW, 0, ' Вт')}</div>
+
+                <div><strong>Объём сырья:</strong> ${formatProfileNumber(validation.feedVolumeL, 1, ' л')}</div>
+
+                <div><strong>Крепость сырья:</strong> ${formatProfileNumber(validation.feedAbvPercent, 1, '%')}</div>
+
+                <div><strong>Заполнение куба:</strong> ${formatProfileNumber(validation.cubeChargePercent, 0, '%')}</div>
+
+                <div><strong>Стабильность:</strong> ${formatProfileNumber((validation.avgStabilityIndex || 0) * 100, 0, '%')}</div>
+
+            </div>
+
+            <div class="modal-info-grid" style="margin-top: 12px;">
+
+                <div><strong>Факт голов:</strong> ${formatProfileNumber(validation.headsActualMl, 0, ' мл')}</div>
+
+                <div><strong>Факт тела:</strong> ${formatProfileNumber(validation.bodyActualMl, 0, ' мл')}</div>
+
+                <div><strong>Факт хвостов:</strong> ${formatProfileNumber(validation.tailsActualMl, 0, ' мл')}</div>
+
+                <div><strong>Срез голов:</strong> ${formatProfileNumber(validation.headsCutColumnTopC, 2, '°C')}</div>
+
+                <div><strong>Срез тела:</strong> ${formatProfileNumber(validation.bodyCutColumnTopC, 2, '°C')}</div>
+
+                <div><strong>Срез хвостов:</strong> ${formatProfileNumber(validation.tailsCutColumnTopC, 2, '°C')}</div>
+
+                <div><strong>Финал куба:</strong> ${formatProfileNumber(validation.cubeFinalC, 1, '°C')}</div>
+
+                <div><strong>Финал верха:</strong> ${formatProfileNumber(validation.columnTopFinalC, 2, '°C')}</div>
+
+                <div><strong>Process health:</strong> ${formatProfileNumber((validation.avgProcessHealth || 0) * 100, 0, '%')}</div>
 
             </div>
 
