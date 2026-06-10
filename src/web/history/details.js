@@ -130,6 +130,170 @@ function getReasonLabel(reasonCode) {
 
 }
 
+function getHistoryReasonInsight(reasonCode, operatorMessage = '', completedSuccessfully = false) {
+
+    const raw = String(reasonCode || '').trim();
+    const message = String(operatorMessage || '').trim();
+    const label = getReasonLabel(raw) || 'Итог процесса';
+
+    if (message) {
+        return {
+            tone: raw.startsWith('RC_SAFETY_') ? 'danger' : (completedSuccessfully ? 'good' : 'warn'),
+            title: label,
+            detail: message,
+            action: raw.startsWith('RC_SAFETY_')
+                ? 'Перед следующим запуском нужно устранить причину safety-события, а не только повторить старт.'
+                : 'Используйте этот комментарий как главный контекст при сравнении прогона с успешными запусками.'
+        };
+    }
+
+    switch (raw) {
+        case 'RC_NONE':
+        case '':
+            return {
+                tone: completedSuccessfully ? 'good' : 'muted',
+                title: completedSuccessfully ? 'Цикл завершён' : 'Причина не зафиксирована',
+                detail: completedSuccessfully
+                    ? 'Процесс завершился без явной финальной причины в истории переходов.'
+                    : 'Для этого прогона не удалось восстановить явную финальную причину завершения.',
+                action: completedSuccessfully
+                    ? 'Ориентируйтесь на фазы, графики и итоговые показатели качества.'
+                    : 'Сверьте хронологию безопасности, предупреждения и последние фазы процесса.'
+            };
+        case 'RC_MODE_STOP_REQUEST':
+        case 'RC_MANUAL_OPERATOR_STOP':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Цикл был остановлен оператором, поэтому финал нельзя считать полностью автоматическим эталоном.',
+                action: 'При сравнении с другими прогонами учитывайте, что завершение было ручным.'
+            };
+        case 'RC_SAFETY_TRIP_PRESSURE':
+        case 'RC_SAFETY_TRIP_SENSOR':
+        case 'RC_SAFETY_TRIP_OVERHEAT':
+        case 'RC_SAFETY_TRIP_POWER':
+        case 'RC_SAFETY_TRIP_GENERIC':
+            return {
+                tone: 'danger',
+                title: label,
+                detail: 'Процесс завершился аварийным safety-событием, поэтому результат нужно трактовать как защитную остановку.',
+                action: 'Перед повторением сценария проверьте первопричину trip по датчикам, давлению, охлаждению и питанию.'
+            };
+        case 'RC_SAFETY_LIMIT_POWER':
+        case 'RC_SAFETY_LIMIT_TAKEOFF':
+        case 'RC_SAFETY_PHASE_BLOCKED':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'Автоматика завершала или ограничивала цикл через защитные лимиты, а не в полностью свободном рабочем окне.',
+                action: 'Для следующего прогона проверьте охлаждение, стабильность колонны и корректность профиля.'
+            };
+        case 'RC_SAFETY_RECOVERY_ENTERED':
+        case 'RC_PHASE_RECOVERY_APPLIED':
+            return {
+                tone: 'warn',
+                title: label,
+                detail: 'История показывает вход в recovery или восстановление фазы, значит процесс пережил нестабильный участок.',
+                action: 'Смотрите графики и хронологию safety, чтобы понять, где автоматика потеряла устойчивость.'
+            };
+        case 'RC_HEADS_VOLUME_REACHED':
+        case 'RC_HEADS_SCORE_REACHED':
+        case 'RC_BODY_TARGET_VOLUME_REACHED':
+        case 'RC_BODY_END_DETECTED':
+        case 'RC_TAILS_TARGET_REACHED':
+        case 'RC_FINISH_COOLDOWN_COMPLETE':
+        case 'RC_DISTILLATION_END_TEMP_REACHED':
+        case 'RC_DISTILLATION_TARGET_VOLUME_REACHED':
+        case 'RC_TEMP_STEP_HOLD_COMPLETE':
+        case 'RC_FERM_TARGET_REACHED':
+            return {
+                tone: completedSuccessfully ? 'good' : 'warn',
+                title: label,
+                detail: 'Процесс дошёл до ожидаемой технологической точки завершения или перехода по правилам автоматики.',
+                action: 'Используйте этот прогон как материал для сравнения профиля, выхода и энергозатрат.'
+            };
+        default:
+            return {
+                tone: completedSuccessfully ? 'good' : 'muted',
+                title: label,
+                detail: 'В истории есть финальная причина, но для неё ещё нет отдельной расширенной расшифровки.',
+                action: 'Ориентируйтесь на последние фазы, графики, предупреждения и safety timeline.'
+            };
+    }
+
+}
+
+function getProcessCompletionInsight(process) {
+
+    const phases = Array.isArray(process?.phases) ? process.phases : [];
+    const warnings = Array.isArray(process?.results?.warnings) ? process.results.warnings : [];
+    const errors = Array.isArray(process?.results?.errors) ? process.results.errors : [];
+    const completedSuccessfully = Boolean(process?.metadata?.completedSuccessfully);
+
+    const lastPhase = phases.length > 0 ? phases[phases.length - 1] : null;
+    const lastPhaseReason = String(lastPhase?.reasonCode || '').trim();
+    const lastPhaseMessage = String(lastPhase?.operatorMessage || '').trim();
+
+    if (lastPhaseReason || lastPhaseMessage) {
+        return getHistoryReasonInsight(lastPhaseReason, lastPhaseMessage, completedSuccessfully);
+    }
+
+    const lastEventWithReason = [...errors, ...warnings]
+        .filter((eventItem) => String(eventItem?.reasonCode || '').trim() || String(eventItem?.operatorMessage || '').trim())
+        .sort((left, right) => Number(left?.time || 0) - Number(right?.time || 0))
+        .pop();
+
+    if (lastEventWithReason) {
+        return getHistoryReasonInsight(
+            String(lastEventWithReason.reasonCode || ''),
+            String(lastEventWithReason.operatorMessage || ''),
+            completedSuccessfully
+        );
+    }
+
+    return getHistoryReasonInsight('', '', completedSuccessfully);
+
+}
+
+function appendCompletionInsightSection(container, process) {
+
+    const insight = getProcessCompletionInsight(process);
+    const section = document.createElement('div');
+    section.className = 'modal-info-item modal-info-item-wide';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'modal-info-label';
+    titleEl.textContent = 'Итог сценария';
+
+    const cardEl = document.createElement('div');
+    cardEl.className = `modal-history-insight is-${insight.tone}`;
+
+    const headEl = document.createElement('div');
+    headEl.className = 'modal-history-insight-head';
+
+    const insightTitleEl = document.createElement('strong');
+    insightTitleEl.textContent = insight.title;
+
+    headEl.appendChild(insightTitleEl);
+
+    const detailEl = document.createElement('p');
+    detailEl.className = 'modal-history-insight-text';
+    detailEl.textContent = insight.detail;
+
+    const actionEl = document.createElement('p');
+    actionEl.className = 'modal-history-insight-action';
+    actionEl.textContent = insight.action;
+
+    cardEl.appendChild(headEl);
+    cardEl.appendChild(detailEl);
+    cardEl.appendChild(actionEl);
+
+    section.appendChild(titleEl);
+    section.appendChild(cardEl);
+    container.appendChild(section);
+
+}
+
 function isSafetyEvent(eventItem) {
 
     const reasonCode = String(eventItem?.reasonCode || '').trim();
@@ -609,6 +773,7 @@ export function showHistoryDetailsModal(process) {
     appendInfoItem(resultsGrid, 'Тело', `${process.results.bodyCollected || 0} мл`);
     appendInfoItem(resultsGrid, 'Хвосты', `${process.results.tailsCollected || 0} мл`);
     appendInfoItem(resultsGrid, 'Всего собрано', `${process.results.totalCollected || 0} мл`);
+    appendCompletionInsightSection(resultsGrid, process);
     appendIndicatorSummarySection(resultsGrid, process);
     appendSafetyTimelineSection(resultsGrid, process);
     appendEventSection(resultsGrid, 'Ошибки и аварии', process.results?.errors || [], 'error');
