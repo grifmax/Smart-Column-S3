@@ -759,6 +759,22 @@ function formatSignedNumber(delta, digits = 1, suffix = '') {
 
 }
 
+function roundToStep(value, step) {
+
+    const numeric = Number(value || 0);
+    const safeStep = Math.max(1, Number(step || 1));
+
+    return Math.round(numeric / safeStep) * safeStep;
+
+}
+
+function getNumericParam(process, key) {
+
+    const value = Number(process?.parameters?.[key] || 0);
+    return value > 0 ? value : 0;
+
+}
+
 function buildProfileComparisonItems(process, previousProcess, previousSummary) {
 
     const profileName = getProcessProfile(process);
@@ -872,16 +888,139 @@ function buildProfileComparisonItems(process, previousProcess, previousSummary) 
 
 }
 
+function buildProfileAdjustmentItems(process, previousProcess) {
+
+    const type = String(process?.process?.type || '').trim();
+    const indicators = getIndicatorShares(process);
+    const previousIndicators = previousProcess ? getIndicatorShares(previousProcess) : null;
+    const items = [];
+
+    if (!previousProcess || !indicators) {
+
+        return items;
+
+    }
+
+    const currentHeating = Number(getPhase(process, 'heating')?.duration || 0);
+    const previousHeating = Number(getPhase(previousProcess, 'heating')?.duration || 0);
+    const currentStabilization = Number(getPhase(process, ['stabilization', 'post_heads_stabilization'])?.duration || 0);
+    const previousStabilization = Number(getPhase(previousProcess, ['stabilization', 'post_heads_stabilization'])?.duration || 0);
+
+    const currentTargetPower = getNumericParam(process, 'targetPower');
+    const previousTargetPower = getNumericParam(previousProcess, 'targetPower');
+    const currentStabilizationParam = getNumericParam(process, 'stabilizationTime');
+    const previousStabilizationParam = getNumericParam(previousProcess, 'stabilizationTime');
+    const currentPumpSpeedHead = getNumericParam(process, 'pumpSpeedHead');
+    const previousPumpSpeedHead = getNumericParam(previousProcess, 'pumpSpeedHead');
+    const currentPumpSpeedBody = getNumericParam(process, 'pumpSpeedBody');
+    const previousPumpSpeedBody = getNumericParam(previousProcess, 'pumpSpeedBody');
+    const currentHeadVolume = getNumericParam(process, 'headVolume');
+    const previousHeadVolume = getNumericParam(previousProcess, 'headVolume');
+
+    const finalHeadsScore = Number(process?.metrics?.indicators?.headsCompletionScoreFinal || 0);
+    const finalBodyScore = Number(process?.metrics?.indicators?.bodyEndScoreFinal || 0);
+
+    const basePower = currentTargetPower || previousTargetPower;
+    const baseStabilization = currentStabilizationParam || previousStabilizationParam;
+    const baseHeadSpeed = currentPumpSpeedHead || previousPumpSpeedHead;
+    const baseBodySpeed = currentPumpSpeedBody || previousPumpSpeedBody;
+    const baseHeadVolume = currentHeadVolume || previousHeadVolume;
+
+    if (basePower > 0 && (indicators.maxFloodRisk >= 0.8 || indicators.minCoolingMargin <= 2 || indicators.takeoffShare < 0.6)) {
+        const suggestedPower = Math.max(300, roundToStep(basePower * 0.94, 50));
+        if (suggestedPower < basePower) {
+            items.push({
+                tone: 'warn',
+                title: 'Профиль: слегка снизить мощность разгона',
+                detail: `Текущая нагрузка ${basePower} Вт выглядит жёсткой для этого профиля. Безопасная пробная коррекция: ${basePower} -> ${suggestedPower} Вт.`,
+                action: 'Сначала уменьшите мощность на 4-6% и посмотрите, улучшатся ли flood risk, cooling margin и окно разрешённого отбора.'
+            });
+        }
+    } else if (basePower > 0 && previousHeating > 0 && currentHeating > previousHeating * 1.18 && indicators.maxFloodRisk < 0.45 && indicators.minCoolingMargin > 5) {
+        const suggestedPower = roundToStep(basePower * 1.04, 50);
+        if (suggestedPower > basePower) {
+            items.push({
+                tone: 'good',
+                title: 'Профиль: можно аккуратно ускорить разгон',
+                detail: `Разгон заметно дольше эталона, но по cooling margin и flood risk запас хороший. Пробный шаг: ${basePower} -> ${suggestedPower} Вт.`,
+                action: 'Поднимайте мощность маленьким шагом 3-5% и контролируйте первые минуты после выхода на рабочий режим.'
+            });
+        }
+    }
+
+    if (baseStabilization > 0 && (finalHeadsScore < 0.75 || (previousIndicators && indicators.takeoffShare < previousIndicators.takeoffShare - 0.08) || (previousStabilization > 0 && currentStabilization > previousStabilization * 1.15))) {
+        const suggestedStabilization = Math.max(300, roundToStep(baseStabilization * 1.15, 60));
+        if (suggestedStabilization > baseStabilization) {
+            items.push({
+                tone: 'warn',
+                title: 'Профиль: увеличить стабилизацию',
+                detail: `Текущая уставка стабилизации ${Math.round(baseStabilization / 60)} мин. Безопасный шаг: поднять до ${Math.round(suggestedStabilization / 60)} мин.`,
+                action: 'Это консервативная правка: она помогает головам и старту тела без риска пережать профиль слишком сильно.'
+            });
+        }
+    }
+
+    if (type === 'rectification' && baseHeadSpeed > 0 && (finalHeadsScore < 0.72 || (previousIndicators && indicators.avgStability < previousIndicators.avgStability - 0.08))) {
+        const suggestedHeadSpeed = Math.max(50, roundToStep(baseHeadSpeed * 0.92, 5));
+        if (suggestedHeadSpeed < baseHeadSpeed) {
+            items.push({
+                tone: 'warn',
+                title: 'Профиль: замедлить отбор голов',
+                detail: `Скорость голов ${baseHeadSpeed} мл/ч выглядит слишком агрессивной. Пробный шаг: ${baseHeadSpeed} -> ${suggestedHeadSpeed} мл/ч.`,
+                action: 'Замедление голов обычно безопаснее, чем попытка компенсировать проблему только объёмом.'
+            });
+        }
+    }
+
+    if (type === 'rectification' && baseHeadVolume > 0 && finalHeadsScore < 0.68) {
+        const suggestedHeadVolume = Math.max(baseHeadVolume + 10, roundToStep(baseHeadVolume * 1.08, 10));
+        if (suggestedHeadVolume > baseHeadVolume) {
+            items.push({
+                tone: 'warn',
+                title: 'Профиль: немного увеличить объём голов',
+                detail: `Текущая уставка ${baseHeadVolume} мл. Консервативная поправка: ${baseHeadVolume} -> ${suggestedHeadVolume} мл.`,
+                action: 'Увеличивайте объём небольшим шагом и лучше вместе с дополнительной стабилизацией, а не отдельно.'
+            });
+        }
+    }
+
+    if (baseBodySpeed > 0 && (finalBodyScore > 0.9 || indicators.maxFloodRisk >= 0.7 || indicators.takeoffShare < 0.65)) {
+        const suggestedBodySpeed = Math.max(50, roundToStep(baseBodySpeed * 0.93, 5));
+        if (suggestedBodySpeed < baseBodySpeed) {
+            items.push({
+                tone: 'warn',
+                title: 'Профиль: смягчить скорость отбора тела',
+                detail: `Скорость тела ${baseBodySpeed} мл/ч можно чуть разгрузить. Пробный шаг: ${baseBodySpeed} -> ${suggestedBodySpeed} мл/ч.`,
+                action: 'Начните с небольшого снижения 5-7%: это самый безопасный способ расширить рабочее окно без полной перенастройки режима.'
+            });
+        }
+    } else if (baseBodySpeed > 0 && previousIndicators && indicators.avgStability > previousIndicators.avgStability + 0.08 && indicators.minCoolingMargin > previousIndicators.minCoolingMargin + 1.0 && indicators.maxFloodRisk < 0.45) {
+        const suggestedBodySpeed = roundToStep(baseBodySpeed * 1.04, 5);
+        if (suggestedBodySpeed > baseBodySpeed) {
+            items.push({
+                tone: 'good',
+                title: 'Профиль: можно аккуратно ускорить тело',
+                detail: `Тело идёт устойчивее эталона. Осторожный шаг: ${baseBodySpeed} -> ${suggestedBodySpeed} мл/ч.`,
+                action: 'Если будете ускорять, меняйте только один параметр за запуск и контролируйте flood risk вместе с cooling margin.'
+            });
+        }
+    }
+
+    return items.slice(0, 3);
+
+}
+
 function buildRunAdvisorItems(process, previousSuccessfulProcess = null, previousSummary = null) {
 
     const indicators = process?.metrics?.indicators;
     const type = String(process?.process?.type || '').trim();
     const completedSuccessfully = Boolean(process?.metadata?.completedSuccessfully);
     const comparisonItems = buildProfileComparisonItems(process, previousSuccessfulProcess, previousSummary);
-    const items = [...comparisonItems];
+    const adjustmentItems = buildProfileAdjustmentItems(process, previousSuccessfulProcess);
+    const items = [...comparisonItems, ...adjustmentItems];
 
     if (!indicators) {
-        return items.slice(0, 4);
+        return items.slice(0, 6);
     }
 
     const avgStability = Number(indicators.stabilityIndexAvg || 0);
@@ -981,7 +1120,19 @@ function buildRunAdvisorItems(process, previousSuccessfulProcess = null, previou
         });
     }
 
-    return items.slice(0, 4);
+    const uniqueItems = [];
+    const seenTitles = new Set();
+
+    items.forEach((item) => {
+        const key = String(item?.title || '').trim();
+        if (!key || seenTitles.has(key)) {
+            return;
+        }
+        seenTitles.add(key);
+        uniqueItems.push(item);
+    });
+
+    return uniqueItems.slice(0, 6);
 
 }
 
