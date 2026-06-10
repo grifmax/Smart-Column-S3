@@ -9,6 +9,16 @@
 
 ---
 
+## [2.2.46] - 2026-06-10
+
+### Изменено
+
+- `Operator Guidance` доведён до законченного runtime-слоя: backend теперь сам публикует осмысленные подсказки по состоянию процесса в `v2.guidance`, а не оставляет web один на один с набором сырых indicators и safety-флагов. (codex)
+- В `/api/status`, WebSocket и cloud tunnel добавлен единый guidance payload с `tone`, `title`, `detail` и `action`, чтобы одинаковые инженерные объяснения могли использовать web, TFT и внешние клиенты без дублирования логики. (codex)
+- Web UI переключён на published guidance из автоматики с fallback на локальную эвристику, а пункт `Operator Guidance в runtime` в `TODO2.0.md` закрыт как реализованный. (codex)
+
+---
+
 ## [2.2.45] - 2026-06-10
 
 ### Изменено

@@ -165,6 +165,12 @@ static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& statu
   v2["operatorMessage"] = status.operatorMessage;
   v2["timestampMs"] = metrics.timestampMs;
 
+  JsonObject guidance = v2["guidance"].to<JsonObject>();
+  guidance["tone"] = status.guidance.tone;
+  guidance["title"] = status.guidance.title;
+  guidance["detail"] = status.guidance.detail;
+  guidance["action"] = status.guidance.action;
+
   JsonObject limits = v2["activeLimits"].to<JsonObject>();
   limits["powerCapped"] = status.activeLimits.powerCapped;
   limits["maxHeaterPowerPercent"] = status.activeLimits.maxHeaterPowerPercent;

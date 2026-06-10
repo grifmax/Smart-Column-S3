@@ -52,6 +52,13 @@ struct CommandTargetsV2 {
     bool stopRequested = false;
 };
 
+struct RuntimeGuidanceV2 {
+    char tone[16] = "muted";
+    char title[64] = "";
+    char detail[192] = "";
+    char action[128] = "";
+};
+
 struct SafetyDecisionV2 {
     SafetySeverityV2 severity = SafetySeverityV2::NONE;
     SafetyEventTypeV2 primaryEvent = SafetyEventTypeV2::NONE;
@@ -87,6 +94,7 @@ struct ModeStatusV2 {
     ProcessIndicatorsV2 indicators;
     ReasonCodeV2 lastReasonCode = ReasonCodeV2::NONE;
     char operatorMessage[96] = "";
+    RuntimeGuidanceV2 guidance;
 };
 
 struct ModeContextV2 {

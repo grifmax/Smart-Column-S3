@@ -1,5 +1,6 @@
 #include "status_adapter.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "../../drivers/heater.h"
@@ -50,6 +51,239 @@ struct PendingSafetyOperatorActionV2 {
 
 PendingSafetyOperatorActionV2 g_pendingSafetyAction;
 const char* getPhaseToken(Mode mode, uint16_t phaseId);
+
+void copyGuidanceText(char* dst, size_t size, const char* src) {
+    if (dst == nullptr || size == 0) {
+        return;
+    }
+    if (src == nullptr) {
+        dst[0] = '\0';
+        return;
+    }
+    strncpy(dst, src, size - 1);
+    dst[size - 1] = '\0';
+}
+
+const char* reasonLabel(ReasonCodeV2 reasonCode) {
+    switch (reasonCode) {
+        case ReasonCodeV2::NONE: return "нет активной причины";
+        case ReasonCodeV2::RC_MODE_START_REQUEST: return "запуск режима";
+        case ReasonCodeV2::RC_MODE_STOP_REQUEST: return "останов режима";
+        case ReasonCodeV2::RC_PRECHECK_OK: return "предпусковые проверки пройдены";
+        case ReasonCodeV2::RC_PRECHECK_FAIL_SENSOR: return "проблема с датчиками";
+        case ReasonCodeV2::RC_PRECHECK_FAIL_SAFETY_LATCH: return "активен safety latch";
+        case ReasonCodeV2::RC_HEATING_COMPLETE: return "разгон завершён";
+        case ReasonCodeV2::RC_STABILITY_WINDOW_REACHED: return "окно стабильности достигнуто";
+        case ReasonCodeV2::RC_HEADS_VOLUME_REACHED: return "головы завершены по объёму";
+        case ReasonCodeV2::RC_HEADS_SCORE_REACHED: return "головы завершены по score";
+        case ReasonCodeV2::RC_BODY_END_DETECTED: return "обнаружен конец тела";
+        case ReasonCodeV2::RC_BODY_TARGET_VOLUME_REACHED: return "тело завершено по объёму";
+        case ReasonCodeV2::RC_TAILS_TARGET_REACHED: return "хвосты завершены";
+        case ReasonCodeV2::RC_FINISH_COOLDOWN_COMPLETE: return "финишное охлаждение завершено";
+        case ReasonCodeV2::RC_DISTILLATION_END_TEMP_REACHED: return "достигнута стоп-температура";
+        case ReasonCodeV2::RC_DISTILLATION_TARGET_VOLUME_REACHED: return "достигнут целевой объём";
+        case ReasonCodeV2::RC_NBK_STEAM_READY: return "пар готов";
+        case ReasonCodeV2::RC_NBK_FEED_ENABLED: return "подача разрешена";
+        case ReasonCodeV2::RC_NBK_FINISH_LIKELY: return "вероятен финал НБК";
+        case ReasonCodeV2::RC_TEMP_STEP_REACHED: return "температурный шаг достигнут";
+        case ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE: return "выдержка завершена";
+        case ReasonCodeV2::RC_TEMP_STEP_TIMEOUT: return "таймаут температурного шага";
+        case ReasonCodeV2::RC_FERM_TARGET_REACHED: return "цель ферментации достигнута";
+        case ReasonCodeV2::RC_SAFETY_LIMIT_POWER: return "ограничение мощности";
+        case ReasonCodeV2::RC_SAFETY_LIMIT_TAKEOFF: return "ограничение отбора";
+        case ReasonCodeV2::RC_SAFETY_PHASE_BLOCKED: return "переход фазы заблокирован";
+        case ReasonCodeV2::RC_SAFETY_RECOVERY_ENTERED: return "вход в recovery";
+        case ReasonCodeV2::RC_SAFETY_RECOVERY_EXITED: return "выход из recovery";
+        case ReasonCodeV2::RC_SAFETY_TRIP_PRESSURE: return "авария по давлению";
+        case ReasonCodeV2::RC_SAFETY_TRIP_SENSOR: return "авария по датчикам";
+        case ReasonCodeV2::RC_SAFETY_TRIP_OVERHEAT: return "авария по перегреву";
+        case ReasonCodeV2::RC_SAFETY_TRIP_POWER: return "авария по питанию";
+        case ReasonCodeV2::RC_SAFETY_TRIP_GENERIC: return "общая safety-авария";
+        case ReasonCodeV2::RC_SAFETY_ACKNOWLEDGED: return "авария подтверждена";
+        case ReasonCodeV2::RC_SAFETY_RESET_COMPLETED: return "safety reset выполнен";
+        case ReasonCodeV2::RC_OPERATOR_SERVICE_ACTION: return "сервисное действие оператора";
+        case ReasonCodeV2::RC_MANUAL_OPERATOR_SWITCH: return "ручное переключение";
+        case ReasonCodeV2::RC_MANUAL_OPERATOR_STOP: return "ручной останов";
+        case ReasonCodeV2::RC_PHASE_RECOVERY_APPLIED: return "восстановление фазы применено";
+        case ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED: return "переход фазы восстановлен";
+        case ReasonCodeV2::RC_UNSPECIFIED:
+        default:
+            return "без уточнения";
+    }
+}
+
+void setGuidance(ControlV2::RuntimeGuidanceV2& guidance, const char* tone,
+                 const char* title, const char* detail, const char* action) {
+    copyGuidanceText(guidance.tone, sizeof(guidance.tone), tone);
+    copyGuidanceText(guidance.title, sizeof(guidance.title), title);
+    copyGuidanceText(guidance.detail, sizeof(guidance.detail), detail);
+    copyGuidanceText(guidance.action, sizeof(guidance.action), action);
+}
+
+void fillRuntimeGuidance(const SystemState& state,
+                         const ProcessIndicatorsV2& indicators,
+                         const ActiveLimitsV2& limits,
+                         const MetricsSnapshotV2& metrics,
+                         ModeStatusV2& status) {
+    const bool isColumnMode =
+        state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT;
+    const bool hasLimits =
+        indicators.powerLimited || limits.powerCapped || limits.takeoffBlocked ||
+        limits.phaseAdvanceBlocked || limits.pumpCapped;
+    const bool activeAlarm =
+        !state.safetyOk && state.currentAlarm.type != AlarmType::NONE;
+
+    const char* operatorMessage =
+        status.operatorMessage[0] != '\0' ? status.operatorMessage : nullptr;
+
+    if (activeAlarm || status.safetyLatched ||
+        status.lifecycle == ModeLifecycleV2::FAULTED) {
+        const char* detail = operatorMessage != nullptr ? operatorMessage
+                                                        : (metrics.safety.message[0] != '\0'
+                                                               ? metrics.safety.message
+                                                               : "Автоматика удержала процесс по safety и требует разбора причины.");
+        setGuidance(status.guidance, "danger", "Процесс удержан safety", detail,
+                    "Проверьте alarm, воду, датчики и снимайте блокировку только после устранения причины.");
+        return;
+    }
+
+    if (!indicators.sensorFreshnessOk) {
+        setGuidance(status.guidance, "danger", "Нет свежих данных датчиков",
+                    "Телеметрия устарела или потеряла достоверность, поэтому автоматика не должна работать вслепую.",
+                    "Проверьте датчики, шины 1-Wire/I2C и дождитесь восстановления свежего статуса.");
+        return;
+    }
+
+    if (indicators.recoveryActive) {
+        setGuidance(status.guidance, "warn", "Идёт recovery-участок",
+                    "Система переживает нестабильный эпизод и пытается вернуть процесс в рабочее окно.",
+                    "Не форсируйте нагрев, воду и отбор, пока stability и cooling margin не выровняются.");
+        return;
+    }
+
+    if (isColumnMode && indicators.floodRisk >= 0.65f) {
+        setGuidance(status.guidance, "danger", "Риск захлёба высокий",
+                    "Нагрузка на колонну уже выглядит опасной: растут flood risk и чувствительность к давлению.",
+                    "Снизьте нагрузку, не открывайте отбор агрессивнее и проверьте охлаждение.");
+        return;
+    }
+
+    if (isColumnMode && indicators.coolingMarginC <= 0.0f) {
+        setGuidance(status.guidance, "danger", "Охлаждение на пределе",
+                    "Запас охлаждения исчерпан, колонна теряет безопасный температурный резерв.",
+                    "Добавьте воду или снижайте нагрев, пока cooling margin снова не станет положительным.");
+        return;
+    }
+
+    if ((limits.takeoffBlocked || (isColumnMode && !indicators.takeoffAllowed)) &&
+        state.mode != Mode::IDLE) {
+        setGuidance(status.guidance, "warn", "Отбор пока не разрешён",
+                    "Автоматика не видит достаточной устойчивости процесса для нормального отбора.",
+                    "Дождитесь рабочего окна по stability, pressure и cooling margin, не открывайте отбор вручную.");
+        return;
+    }
+
+    if (isColumnMode && indicators.stabilityIndex < 0.45f &&
+        state.mode != Mode::IDLE) {
+        setGuidance(status.guidance, "warn", "Колонна ещё стабилизируется",
+                    "По stability index видно, что процесс ещё не вошёл в ровное рабочее состояние.",
+                    "Дайте колонне стабилизироваться и не ускоряйте отбор раньше времени.");
+        return;
+    }
+
+    if (state.mode == Mode::RECTIFICATION &&
+        indicators.headsCompletionScore >= 0.8f) {
+        setGuidance(status.guidance, "good", "Головы почти завершены",
+                    "Переход к телу уже близко: score по головам выглядит уверенно.",
+                    "Готовьтесь к штатному переходу по профилю и контролируйте качество входа в тело.");
+        return;
+    }
+
+    if (state.mode == Mode::RECTIFICATION &&
+        indicators.bodyEndScore >= 0.8f) {
+        setGuidance(status.guidance, "warn", "Конец тела вероятен",
+                    "Body end score показывает приближение к завершению основного отбора.",
+                    "Подготовьте переход по профилю и внимательнее следите за качеством продукта.");
+        return;
+    }
+
+    if (state.mode == Mode::NBK && !indicators.steamReady) {
+        setGuidance(status.guidance, "warn", "Пар ещё не готов",
+                    "НБК пока не вышла в устойчивое паровое окно для нормальной подачи.",
+                    "Дождитесь готовности по пару и не форсируйте подачу браги раньше времени.");
+        return;
+    }
+
+    if (state.mode == Mode::NBK && !indicators.nbkFeedAllowed &&
+        status.lifecycle != ModeLifecycleV2::IDLE) {
+        setGuidance(status.guidance, "warn", "Подача браги заблокирована",
+                    "Автоматика временно не разрешает подачу, потому что контур ещё не готов к стабильной работе.",
+                    "Не открывайте подачу вручную, дождитесь разрешения по пару, давлению и устойчивости.");
+        return;
+    }
+
+    if (state.mode == Mode::FERMENTATION &&
+        (!indicators.fermTempInBand || indicators.longDeviation)) {
+        setGuidance(status.guidance, "warn", "Ферментация вне комфортного окна",
+                    indicators.longDeviation
+                        ? "Температура долго уходит из заданного диапазона и процесс теряет повторяемость."
+                        : "Контур ферментации ещё не удерживает целевую температуру в нужной зоне.",
+                    "Проверьте нагрев или охлаждение и не оставляйте процесс без контроля.");
+        return;
+    }
+
+    if ((state.mode == Mode::MASHING || state.mode == Mode::HOLD) &&
+        indicators.overshootRisk) {
+        setGuidance(status.guidance, "warn", "Есть риск перегрева шага",
+                    "Температурный контур подходит к цели слишком агрессивно и может дать перерегулирование.",
+                    "Следите за подходом к цели и не повышайте нагрев сверх профиля.");
+        return;
+    }
+
+    if ((state.mode == Mode::MASHING || state.mode == Mode::HOLD) &&
+        indicators.heatingTooSlow) {
+        setGuidance(status.guidance, "warn", "Нагрев отстаёт от профиля",
+                    "Фактический разгон шага идёт заметно медленнее ожидаемого.",
+                    "Проверьте реальную мощность, теплопотери и корректность уставки шага.");
+        return;
+    }
+
+    if (hasLimits) {
+        setGuidance(status.guidance, "warn", "Есть активные ограничения",
+                    "Safety supervisor уже ограничивает один или несколько контуров процесса.",
+                    "Сначала разберите причину ограничений, а потом усиливайте нагрев, насос или отбор.");
+        return;
+    }
+
+    if (operatorMessage != nullptr && operatorMessage[0] != '\0') {
+        setGuidance(status.guidance,
+                    state.mode == Mode::IDLE ? "muted" : "good",
+                    state.mode == Mode::IDLE ? "Ожидание следующего запуска"
+                                             : "Процесс идёт штатно",
+                    operatorMessage,
+                    state.mode == Mode::IDLE
+                        ? "Проверьте режим, профиль и стартовые параметры перед новым запуском."
+                        : "Продолжайте следить за ключевыми индикаторами без резких ручных правок.");
+        return;
+    }
+
+    if (state.mode == Mode::IDLE) {
+        char detail[192];
+        snprintf(detail, sizeof(detail),
+                 "Система ждёт запуск. Последняя причина: %s.",
+                 reasonLabel(status.lastReasonCode));
+        setGuidance(status.guidance, "good", "Установка готова к контролю",
+                    detail,
+                    "Выберите режим, проверьте профиль и запускайте процесс из web-интерфейса.");
+        return;
+    }
+
+    setGuidance(status.guidance, "good", "Процесс идёт штатно",
+                isColumnMode
+                    ? "Критичных провалов по stability, cooling margin и safety сейчас не видно."
+                    : "Процесс выглядит ровным и не показывает критичных ограничений по indicators v2.",
+                "Продолжайте контролировать ключевые показатели по этой панели.");
+}
 
 const char* getHistoryProcessType(Mode mode) {
     switch (mode) {
@@ -692,6 +926,8 @@ void fillStatus(const SystemState& state, const ProcessIndicatorsV2& indicators,
             status.operatorMessage[sizeof(status.operatorMessage) - 1] = '\0';
         }
     }
+
+    fillRuntimeGuidance(state, indicators, status.activeLimits, metrics, status);
 }
 
 } // namespace

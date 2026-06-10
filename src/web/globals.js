@@ -145,6 +145,12 @@ export let runtimeMonitorState = {
         safetyLatched: false,
         lastReasonCode: 'RC_NONE',
         operatorMessage: '',
+        guidance: {
+            tone: 'muted',
+            title: '',
+            detail: '',
+            action: ''
+        },
         activeLimits: {
             powerCapped: false,
             maxHeaterPowerPercent: 100,

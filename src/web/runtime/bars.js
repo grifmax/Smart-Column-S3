@@ -37,6 +37,25 @@ function setGuidance(title, detail, tone = 'muted') {
     textEl.textContent = detail;
 }
 
+function getPublishedGuidance(state) {
+    const guidance = state?.v2?.guidance;
+    if (!guidance || typeof guidance !== 'object') {
+        return null;
+    }
+
+    const title = String(guidance.title || '').trim();
+    const detail = String(guidance.detail || '').trim();
+    if (!title && !detail) {
+        return null;
+    }
+
+    return {
+        tone: String(guidance.tone || 'muted').trim() || 'muted',
+        title: title || 'Operator Guidance',
+        detail: detail || 'Подсказка пока не опубликована.'
+    };
+}
+
 function setReasonInsight(title, detail, action, tone = 'muted') {
     const root = document.getElementById('operator-reason-insight');
     const titleEl = document.getElementById('operator-reason-title');
@@ -1392,7 +1411,7 @@ function renderProcessIndicatorsCard() {
         getActiveLimitsLabel(indicators, activeLimits),
         hasLimit ? 'warn' : 'good'
     );
-    const guidance = buildGuidance(s, indicators, activeLimits);
+    const guidance = getPublishedGuidance(s) || buildGuidance(s, indicators, activeLimits);
     setGuidance(guidance.title, guidance.detail, guidance.tone);
 }
 
@@ -1478,7 +1497,7 @@ function renderProcessIndicatorsPanel() {
         hasLimit ? 'warn' : 'good'
     );
 
-    const guidance = buildGuidance(s, indicators, activeLimits);
+    const guidance = getPublishedGuidance(s) || buildGuidance(s, indicators, activeLimits);
     setGuidance(guidance.title, guidance.detail, guidance.tone);
     const reasonInsight = getReasonCodeInsight(lastReasonCode, operatorMessage);
     setReasonInsight(reasonInsight.title, reasonInsight.detail, reasonInsight.action, reasonInsight.tone);
