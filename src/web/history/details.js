@@ -775,6 +775,123 @@ function getNumericParam(process, key) {
 
 }
 
+function formatMinutes(seconds) {
+
+    return `${Math.round(Number(seconds || 0) / 60)} мин`;
+
+}
+
+function buildParameterChangeList(process, previousProcess) {
+
+    const definitions = [
+        { key: 'targetPower', label: 'мощность', suffix: ' Вт' },
+        { key: 'stabilizationTime', label: 'стабилизация', suffix: ' сек', formatter: (value) => formatMinutes(value) },
+        { key: 'pumpSpeedHead', label: 'головы', suffix: ' мл/ч' },
+        { key: 'pumpSpeedBody', label: 'тело', suffix: ' мл/ч' },
+        { key: 'headVolume', label: 'объём голов', suffix: ' мл' }
+    ];
+
+    return definitions
+        .map((definition) => {
+            const currentValue = getNumericParam(process, definition.key);
+            const previousValue = getNumericParam(previousProcess, definition.key);
+
+            if (currentValue <= 0 || previousValue <= 0 || currentValue === previousValue) {
+                return null;
+            }
+
+            const formatValue = definition.formatter || ((value) => `${value}${definition.suffix}`);
+            return `${definition.label}: ${formatValue(previousValue)} -> ${formatValue(currentValue)}`;
+        })
+        .filter(Boolean);
+
+}
+
+function buildImprovementVerdictItem(process, previousProcess, previousSummary) {
+
+    const profileName = getProcessProfile(process);
+
+    if (!profileName || !previousProcess || !previousSummary) {
+
+        return null;
+
+    }
+
+    const currentIndicators = getIndicatorShares(process);
+    const previousIndicators = getIndicatorShares(previousProcess);
+    const currentEnergyPerLiter = getEnergyPerLiter(process);
+    const previousEnergyPerLiter = getEnergyPerLiter(previousProcess);
+    const currentDuration = Number(process?.metadata?.duration || 0);
+    const previousDuration = Number(previousProcess?.metadata?.duration || 0);
+    const parameterChanges = buildParameterChangeList(process, previousProcess);
+
+    if (!currentIndicators || !previousIndicators) {
+
+        return null;
+
+    }
+
+    const stabilityDelta = currentIndicators.avgStability - previousIndicators.avgStability;
+    const takeoffDelta = currentIndicators.takeoffShare - previousIndicators.takeoffShare;
+    const floodDelta = previousIndicators.maxFloodRisk - currentIndicators.maxFloodRisk;
+    const coolingDelta = currentIndicators.minCoolingMargin - previousIndicators.minCoolingMargin;
+    const energyDelta = (currentEnergyPerLiter !== null && previousEnergyPerLiter !== null && previousEnergyPerLiter > 0)
+        ? (previousEnergyPerLiter - currentEnergyPerLiter) / previousEnergyPerLiter
+        : 0;
+    const durationDelta = previousDuration > 0 ? (previousDuration - currentDuration) / previousDuration : 0;
+
+    const weightedScore =
+        (stabilityDelta * 4.0) +
+        (takeoffDelta * 3.0) +
+        (floodDelta * 2.5) +
+        (coolingDelta * 0.35) +
+        (energyDelta * 1.5) +
+        (durationDelta * 1.0);
+
+    const hasMeaningfulProfileChanges = parameterChanges.length > 0;
+    const changeSummary = hasMeaningfulProfileChanges
+        ? `Последние изменения профиля: ${parameterChanges.slice(0, 3).join('; ')}.`
+        : 'Между эталоном и текущим прогоном явных изменений ключевых уставок профиля не найдено.';
+
+    if (weightedScore >= 0.9) {
+        return {
+            tone: 'good',
+            title: hasMeaningfulProfileChanges
+                ? 'Вердикт: последние правки профиля, вероятно, помогли'
+                : 'Вердикт: текущий прогон сильнее эталона',
+            detail: `${changeSummary} Стабильность ${(currentIndicators.avgStability * 100).toFixed(0)}% против ${(previousIndicators.avgStability * 100).toFixed(0)}%, окно отбора ${(currentIndicators.takeoffShare * 100).toFixed(0)}% против ${(previousIndicators.takeoffShare * 100).toFixed(0)}%, flood risk ${(currentIndicators.maxFloodRisk * 100).toFixed(0)}% против ${(previousIndicators.maxFloodRisk * 100).toFixed(0)}%.`,
+            action: hasMeaningfulProfileChanges
+                ? 'Эти правки можно считать удачным направлением. Закрепите их как новый рабочий baseline и проверяйте повторяемость на следующем запуске.'
+                : 'Текущий запуск можно рассматривать как более сильный baseline для этого профиля.'
+        };
+    }
+
+    if (weightedScore <= -0.9) {
+        return {
+            tone: 'warn',
+            title: hasMeaningfulProfileChanges
+                ? 'Вердикт: последние правки профиля не помогли'
+                : 'Вердикт: текущий прогон хуже эталона',
+            detail: `${changeSummary} Рабочее окно просело: стабильность ${(currentIndicators.avgStability * 100).toFixed(0)}% против ${(previousIndicators.avgStability * 100).toFixed(0)}%, запас охлаждения ${currentIndicators.minCoolingMargin.toFixed(1)}°C против ${previousIndicators.minCoolingMargin.toFixed(1)}°C, flood risk ${(currentIndicators.maxFloodRisk * 100).toFixed(0)}% против ${(previousIndicators.maxFloodRisk * 100).toFixed(0)}%.`,
+            action: hasMeaningfulProfileChanges
+                ? 'Откатите последнюю правку или меняйте только один параметр за следующий запуск, чтобы понять реальную причину ухудшения.'
+                : 'Без смены уставок профиль деградировал относительно эталона: проверьте сырьё, охлаждение, давление и состояние оборудования.'
+        };
+    }
+
+    return {
+        tone: 'muted',
+        title: hasMeaningfulProfileChanges
+            ? 'Вердикт: правки дали смешанный результат'
+            : 'Вердикт: существенного сдвига относительно эталона нет',
+        detail: `${changeSummary} Часть метрик улучшилась, часть осталась на месте или просела, поэтому уверенного инженерного вывода пока нет.`,
+        action: hasMeaningfulProfileChanges
+            ? 'Не добавляйте новые правки поверх этих. Лучше повторить запуск с теми же настройками и проверить, воспроизводится ли эффект.'
+            : 'Этот запуск полезен как промежуточная точка, но не как уверенно новый baseline.'
+    };
+
+}
+
 function buildProfileComparisonItems(process, previousProcess, previousSummary) {
 
     const profileName = getProcessProfile(process);
@@ -1015,9 +1132,14 @@ function buildRunAdvisorItems(process, previousSuccessfulProcess = null, previou
     const indicators = process?.metrics?.indicators;
     const type = String(process?.process?.type || '').trim();
     const completedSuccessfully = Boolean(process?.metadata?.completedSuccessfully);
+    const verdictItem = buildImprovementVerdictItem(process, previousSuccessfulProcess, previousSummary);
     const comparisonItems = buildProfileComparisonItems(process, previousSuccessfulProcess, previousSummary);
     const adjustmentItems = buildProfileAdjustmentItems(process, previousSuccessfulProcess);
-    const items = [...comparisonItems, ...adjustmentItems];
+    const items = [
+        ...(verdictItem ? [verdictItem] : []),
+        ...comparisonItems,
+        ...adjustmentItems
+    ];
 
     if (!indicators) {
         return items.slice(0, 6);
