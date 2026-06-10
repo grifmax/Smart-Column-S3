@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.2.51"
+#define FIRMWARE_VERSION "2.2.52"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -264,6 +264,9 @@
 #define RECT_HEADS_SPEED_ML_H_KW 50    // мл/час на кВт
 #define RECT_PURGE_TIME_MIN 10         // Продувка между фракциями
 #define RECT_FEED_ABV_DEFAULT 40.0f    // Крепость спирта-сырца по умолчанию, %
+#define RECT_BARO_CORRECTION_ENABLED_DEFAULT 1
+#define PROFILE_BARO_CORRECTION_STRENGTH 0.5f
+#define PROFILE_BARO_CORRECTION_MAX_SHIFT_C 0.35f
 
 // Пороги аварий (могут быть изменены в настройках)
 #define DEFAULT_SAFETY_PRESSURE_MAX_MMHG 50.0f
@@ -360,6 +363,7 @@
 #define NVS_KEY_RECT_FEED_VOL "rect_fvol"
 #define NVS_KEY_RECT_FEED_ABV "rect_fabv"
 #define NVS_KEY_RECT_FEEDSTOCK "rect_feed"
+#define NVS_KEY_RECT_BARO_ENABLED "rect_baro"
 #define NVS_KEY_DIST_SPEED "dist_spd"
 #define NVS_KEY_DIST_HEADS_VOL "dist_hvol"
 #define NVS_KEY_DIST_TARGET_VOL "dist_tvol"

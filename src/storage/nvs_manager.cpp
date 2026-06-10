@@ -166,6 +166,8 @@ bool loadSettings(Settings& settings) {
     settings.rectParams.bodySpeedMlHKw = prefs.getFloat(NVS_KEY_RECT_BODY_SPEED, RECT_HEADS_SPEED_ML_H_KW * 2);
     settings.rectParams.stabilizationMin = prefs.getUShort(NVS_KEY_RECT_STAB_MIN, RECT_STABILIZATION_TIME_MIN);
     settings.rectParams.purgeMin = prefs.getUShort(NVS_KEY_RECT_PURGE_MIN, RECT_PURGE_TIME_MIN);
+    settings.rectParams.baroCorrectionEnabled =
+        prefs.getBool(NVS_KEY_RECT_BARO_ENABLED, RECT_BARO_CORRECTION_ENABLED_DEFAULT != 0);
 
     // Дистилляция
     settings.distillationUi.speedMlH = prefs.getFloat(NVS_KEY_DIST_SPEED, 500.0f);
@@ -287,6 +289,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_RECT_BODY_SPEED, settings.rectParams.bodySpeedMlHKw);
     prefs.putUShort(NVS_KEY_RECT_STAB_MIN, settings.rectParams.stabilizationMin);
     prefs.putUShort(NVS_KEY_RECT_PURGE_MIN, settings.rectParams.purgeMin);
+    prefs.putBool(NVS_KEY_RECT_BARO_ENABLED, settings.rectParams.baroCorrectionEnabled);
 
     // Дистилляция
     prefs.putFloat(NVS_KEY_DIST_SPEED, settings.distillationUi.speedMlH);

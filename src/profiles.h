@@ -121,6 +121,20 @@ struct ProfileValidationSnapshot {
     float avgProcessHealth = 0.0f;
 };
 
+struct ProfileBaroCorrectionSummary {
+    bool enabled = false;
+    bool applicable = false;
+    bool applied = false;
+    float baselinePressureMmHg = 0.0f;
+    float currentPressureMmHg = 0.0f;
+    float pressureDeltaMmHg = 0.0f;
+    float boilingShiftC = 0.0f;
+    float appliedShiftC = 0.0f;
+    float strength = 0.0f;
+    float maxShiftC = 0.0f;
+    String note;
+};
+
 struct Profile {
     String id;
     ProfileMetadata metadata;
@@ -154,6 +168,10 @@ bool validateProfile(const Profile& profile);
 bool applyProfile(const String& id);
 void updateProfileStatistics(const String& id, bool success, uint32_t duration, uint16_t yield);
 void updateProfileLearning(const ProcessHistory& history);
+ProfileBaroCorrectionSummary evaluateProfileBaroCorrection(const Profile& profile);
+TemperatureParams getEffectiveProfileTemperatures(
+    const Profile& profile,
+    ProfileBaroCorrectionSummary* summary = nullptr);
 void setActiveProfile(const String& id, const String& name);
 void clearActiveProfile();
 String getActiveProfileId();

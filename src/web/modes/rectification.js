@@ -87,7 +87,8 @@ export function collectRectificationModalSettings() {
         headsSpeedMlHKw: clampRectInput(document.getElementById('rect-start-heads-speed')?.value, 10, 2000, 300),
         bodySpeedMlHKw: clampRectInput(document.getElementById('rect-start-body-speed')?.value, 50, 3000, 600),
         stabilizationMin: Math.round(clampRectInput(document.getElementById('rect-start-stabilization')?.value, 1, 180, 30)),
-        purgeMin: Math.round(clampRectInput(document.getElementById('rect-start-purge')?.value, 1, 120, 5))
+        purgeMin: Math.round(clampRectInput(document.getElementById('rect-start-purge')?.value, 1, 120, 5)),
+        baroCorrectionEnabled: Boolean(document.getElementById('rect-start-baro-correction-enabled')?.checked)
     };
 
     return normalizeRectificationFractions(params);
@@ -114,6 +115,10 @@ function applyRectificationSettingsToInputs(params) {
     setValue('rect-start-body-speed', params.bodySpeedMlHKw ?? 600);
     setValue('rect-start-stabilization', params.stabilizationMin ?? 30);
     setValue('rect-start-purge', params.purgeMin ?? 5);
+    const baroCorrectionCheckbox = document.getElementById('rect-start-baro-correction-enabled');
+    if (baroCorrectionCheckbox) {
+        baroCorrectionCheckbox.checked = params.baroCorrectionEnabled !== false;
+    }
     updateRectificationFractionsSum();
 }
 

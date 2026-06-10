@@ -263,73 +263,49 @@ function formatPackingType(value) {
 
 }
 
-function hpaToMmHg(value) {
+function formatTemperatureThreshold(baseValue, effectiveValue) {
 
-    const numeric = Number(value || 0);
-    return Number.isFinite(numeric) && numeric > 0 ? numeric * 0.75006156 : 0;
+    const base = Number(baseValue || 0);
+    const effective = Number(effectiveValue || 0);
+    if (!(base > 0)) {
+        return '—';
+    }
+    if (!(effective > 0) || Math.abs(effective - base) < 0.01) {
+        return `${base.toFixed(2)}°C`;
+    }
+    return `${base.toFixed(2)}°C → ${effective.toFixed(2)}°C`;
 
 }
 
-function getStatusAtmosphereMmHg(status) {
+function buildProfileLoadWarning(profile) {
 
-    const direct = Number(status?.p_atm);
-    if (Number.isFinite(direct) && direct > 0) {
-        return hpaToMmHg(direct);
-    }
+    const correction = profile?.baroCorrection || {};
+    const effective = profile?.effectiveTemperatures || {};
 
-    const nested = Number(status?.pressure?.atm ?? status?.pressure?.atmosphere);
-    if (Number.isFinite(nested) && nested > 0) {
-        return hpaToMmHg(nested);
-    }
-
-    return 0;
-
-}
-
-function buildProfileLoadWarning(profile, status) {
-
-    const validation = profile?.validation || {};
-    const baselineMmHg = Number(validation.atmosphereMmHg || 0);
-    const currentMmHg = getStatusAtmosphereMmHg(status);
-
-    if (baselineMmHg <= 0 || currentMmHg <= 0) {
+    if (!correction.enabled || !correction.applicable || !correction.applied) {
         return '';
     }
 
-    const delta = currentMmHg - baselineMmHg;
+    const delta = Number(correction.pressureDeltaMmHg || 0);
+    const shift = Number(correction.appliedShiftC || 0);
     const absDelta = Math.abs(delta);
-    if (absDelta < 5) {
-        return '';
-    }
-
     const signedDelta = `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}`;
+    const signedShift = `${shift >= 0 ? '+' : ''}${shift.toFixed(2)}`;
     const severity = absDelta >= 12 ? 'Внимание' : 'Замечание';
-    const impact = absDelta >= 12
-        ? 'Температурные пороги и фактические cut points могут заметно сместиться.'
-        : 'Температурные пороги могут немного сдвинуться относительно baseline.';
 
-    return `${severity}: профиль "${profile?.metadata?.name || profile?.id || ''}" валидирован при ${baselineMmHg.toFixed(1)} мм рт.ст., сейчас ${currentMmHg.toFixed(1)} мм рт.ст. (Δ ${signedDelta}). ${impact}`;
+    return `${severity}: профиль "${profile?.metadata?.name || profile?.id || ''}" валидирован при ${Number(correction.baselinePressureMmHg || 0).toFixed(1)} мм рт.ст., сейчас ${Number(correction.currentPressureMmHg || 0).toFixed(1)} мм рт.ст. (Δ ${signedDelta}). Мягкая барокоррекция сдвинет пороги на ${signedShift}°C: головы ${formatTemperatureThreshold(profile?.parameters?.temperatures?.headsEnd, effective.headsEnd)}, тело ${formatTemperatureThreshold(profile?.parameters?.temperatures?.bodyStart, effective.bodyStart)}, конец тела ${formatTemperatureThreshold(profile?.parameters?.temperatures?.bodyEnd, effective.bodyEnd)}.`;
 
 }
 
 async function fetchProfileLoadWarning(profileId) {
 
     try {
-        const [profileResponse, statusResponse] = await Promise.all([
-            fetch(`/api/profiles/${profileId}`),
-            fetch('/api/status')
-        ]);
-
-        if (!profileResponse.ok || !statusResponse.ok) {
+        const profileResponse = await fetch(`/api/profiles/${profileId}`);
+        if (!profileResponse.ok) {
             return '';
         }
 
-        const [profile, status] = await Promise.all([
-            profileResponse.json(),
-            statusResponse.json()
-        ]);
-
-        return buildProfileLoadWarning(profile, status);
+        return buildProfileLoadWarning(await profileResponse.json());
     } catch (error) {
         console.warn('Не удалось получить warning по validation context:', error);
         return '';
@@ -365,6 +341,8 @@ export function showProfileViewModal(profile) {
 
     const learning = profile.learning || {};
     const validation = profile.validation || {};
+    const baroCorrection = profile.baroCorrection || {};
+    const effectiveTemperatures = profile.effectiveTemperatures || profile.parameters.temperatures || {};
     const lastSuccessfulRun = learning.lastSuccessfulRun || null;
     const advisorItems = Array.isArray(learning.lastAdvisorSnapshot?.items)
         ? learning.lastAdvisorSnapshot.items.slice(0, 3)
@@ -426,16 +404,26 @@ export function showProfileViewModal(profile) {
 
             <div class="modal-info-grid">
 
-                <div><strong>Макс. куб:</strong> ${profile.parameters.temperatures.maxCube}°C</div>
+                <div><strong>Макс. куб:</strong> ${formatTemperatureThreshold(profile.parameters.temperatures.maxCube, effectiveTemperatures.maxCube)}</div>
 
-                <div><strong>Макс. колонна:</strong> ${profile.parameters.temperatures.maxColumn}°C</div>
+                <div><strong>Макс. колонна:</strong> ${formatTemperatureThreshold(profile.parameters.temperatures.maxColumn, effectiveTemperatures.maxColumn)}</div>
 
-                <div><strong>Окончание голов:</strong> ${profile.parameters.temperatures.headsEnd}°C</div>
+                <div><strong>Окончание голов:</strong> ${formatTemperatureThreshold(profile.parameters.temperatures.headsEnd, effectiveTemperatures.headsEnd)}</div>
 
-                <div><strong>Начало тела:</strong> ${profile.parameters.temperatures.bodyStart}°C</div>
+                <div><strong>Начало тела:</strong> ${formatTemperatureThreshold(profile.parameters.temperatures.bodyStart, effectiveTemperatures.bodyStart)}</div>
 
-                <div><strong>Окончание тела:</strong> ${profile.parameters.temperatures.bodyEnd}°C</div>
+                <div><strong>Окончание тела:</strong> ${formatTemperatureThreshold(profile.parameters.temperatures.bodyEnd, effectiveTemperatures.bodyEnd)}</div>
 
+            </div>
+
+            <div style="margin-top: 12px; color: var(--text-secondary);">
+                ${baroCorrection.enabled
+                    ? (baroCorrection.applicable
+                        ? (baroCorrection.applied
+                            ? `Барокоррекция активна: baseline ${formatProfileNumber(baroCorrection.baselinePressureMmHg, 1, ' мм рт.ст.')} • сейчас ${formatProfileNumber(baroCorrection.currentPressureMmHg, 1, ' мм рт.ст.')} • мягкий сдвиг ${baroCorrection.appliedShiftC >= 0 ? '+' : ''}${Number(baroCorrection.appliedShiftC || 0).toFixed(2)}°C.`
+                            : (baroCorrection.note || 'Барокоррекция включена, но текущий сдвиг слишком мал для применения.'))
+                        : (baroCorrection.note || 'Барокоррекция включена, но ещё нет достаточных данных для baseline.'))
+                    : 'Барокоррекция выключена в настройках ректификации.'}
             </div>
 
         </div>

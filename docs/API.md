@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.51`  
+**Версия прошивки:** `2.2.52`  
 **Актуальность документа:** 2026-06-10
 
 ---
@@ -152,7 +152,7 @@
 
 #### `GET /api/profiles/{id}`
 
-Полные данные профиля, включая learning summary, validation context последнего успешного baseline и последние advisor snapshot-ы.
+Полные данные профиля, включая learning summary, validation context последнего успешного baseline, вычисленные `effectiveTemperatures` и блок `baroCorrection` с текущим мягким смещением порогов.
 
 #### `POST /api/profiles`
 
@@ -191,6 +191,10 @@
 - `GET/POST /api/settings/demo`
 
 Точный набор полей лучше смотреть по текущему payload, который возвращает контроллер.
+
+Для `GET/POST /api/settings/rect` дополнительно используется флаг:
+
+- `baroCorrectionEnabled` — включает или отключает мягкую барокоррекцию температурных порогов профиля.
 
 ---
 

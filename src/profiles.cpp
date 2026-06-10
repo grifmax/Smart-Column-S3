@@ -6,6 +6,7 @@
 #include "history.h"
 #include <FS.h>
 #include <algorithm>
+#include <cmath>
 #include "storage/nvs_manager.h"
 #include "types.h"
 
@@ -86,6 +87,14 @@ float hpaToMmHg(float valueHpa) {
     return valueHpa * 0.75006156f;
 }
 
+float getCurrentAtmosphereMmHg() {
+    const float atmosphereHpa = g_state.pressure.atmosphere;
+    if (atmosphereHpa < 850.0f || atmosphereHpa > 1100.0f) {
+        return 0.0f;
+    }
+    return hpaToMmHg(atmosphereHpa);
+}
+
 ProfileValidationSnapshot buildValidationSnapshot(const ProcessHistory& history) {
     ProfileValidationSnapshot snapshot;
     snapshot.validatedAt = history.metadata.endTime > 0
@@ -162,6 +171,73 @@ void appendValidationJson(JsonObject validation,
 }
 
 } // namespace
+
+ProfileBaroCorrectionSummary evaluateProfileBaroCorrection(const Profile& profile) {
+    ProfileBaroCorrectionSummary summary;
+    summary.enabled = g_settings.rectParams.baroCorrectionEnabled;
+    summary.strength = PROFILE_BARO_CORRECTION_STRENGTH;
+    summary.maxShiftC = PROFILE_BARO_CORRECTION_MAX_SHIFT_C;
+    summary.baselinePressureMmHg = profile.validation.atmosphereMmHg;
+    summary.currentPressureMmHg = getCurrentAtmosphereMmHg();
+
+    if (!summary.enabled) {
+        summary.note = "Барокоррекция отключена в настройках.";
+        return summary;
+    }
+
+    if (summary.baselinePressureMmHg <= 0.0f) {
+        summary.note = "Для профиля ещё нет валидного baseline по атмосферному давлению.";
+        return summary;
+    }
+
+    if (summary.currentPressureMmHg <= 0.0f) {
+        summary.note = "Нет актуального атмосферного давления от BMP280.";
+        return summary;
+    }
+
+    summary.applicable = true;
+    summary.pressureDeltaMmHg =
+        summary.currentPressureMmHg - summary.baselinePressureMmHg;
+    summary.boilingShiftC = summary.pressureDeltaMmHg * 0.037f;
+
+    const float softShift = summary.boilingShiftC * summary.strength;
+    if (softShift < -summary.maxShiftC) {
+        summary.appliedShiftC = -summary.maxShiftC;
+    } else if (softShift > summary.maxShiftC) {
+        summary.appliedShiftC = summary.maxShiftC;
+    } else {
+        summary.appliedShiftC = softShift;
+    }
+    summary.applied = std::fabs(summary.appliedShiftC) >= 0.02f;
+
+    if (!summary.applied) {
+        summary.note = "Отклонение давления есть, но для мягкой коррекции оно слишком мало.";
+        return summary;
+    }
+
+    summary.note = "Температурные пороги профиля мягко сдвинуты относительно baseline.";
+    return summary;
+}
+
+TemperatureParams getEffectiveProfileTemperatures(
+    const Profile& profile,
+    ProfileBaroCorrectionSummary* summary) {
+    ProfileBaroCorrectionSummary localSummary = evaluateProfileBaroCorrection(profile);
+    if (summary) {
+        *summary = localSummary;
+    }
+
+    TemperatureParams effective = profile.parameters.temperatures;
+    if (!localSummary.applied) {
+        return effective;
+    }
+
+    effective.maxColumn += localSummary.appliedShiftC;
+    effective.headsEnd += localSummary.appliedShiftC;
+    effective.bodyStart += localSummary.appliedShiftC;
+    effective.bodyEnd += localSummary.appliedShiftC;
+    return effective;
+}
 
 // ============================================================================
 // Инициализация системы профилей

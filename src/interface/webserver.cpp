@@ -3360,6 +3360,7 @@ void init() {
     doc["bodySpeedMlHKw"] = params.bodySpeedMlHKw;
     doc["stabilizationMin"] = params.stabilizationMin;
     doc["purgeMin"] = params.purgeMin;
+    doc["baroCorrectionEnabled"] = params.baroCorrectionEnabled;
 
     String json;
     serializeJson(doc, json);
@@ -3442,6 +3443,9 @@ void init() {
           updated.purgeMin =
               clampU16Range(params["purgeMin"].as<uint32_t>(), 1, 120);
         }
+        if (!params["baroCorrectionEnabled"].isNull()) {
+          updated.baroCorrectionEnabled = params["baroCorrectionEnabled"].as<bool>();
+        }
 
         if (fractionsUpdated) {
           normalizeRectFractions(updated);
@@ -3466,6 +3470,7 @@ void init() {
         out["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
         out["stabilizationMin"] = g_settings.rectParams.stabilizationMin;
         out["purgeMin"] = g_settings.rectParams.purgeMin;
+        out["baroCorrectionEnabled"] = g_settings.rectParams.baroCorrectionEnabled;
 
         String json;
         serializeJson(out, json);
@@ -5386,6 +5391,31 @@ void init() {
       temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
       temperatures["bodyStart"] = profile.parameters.temperatures.bodyStart;
       temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
+
+      ProfileBaroCorrectionSummary baroSummary;
+      TemperatureParams effectiveTemps =
+          getEffectiveProfileTemperatures(profile, &baroSummary);
+
+      JsonObject effectiveTemperatures =
+          doc["effectiveTemperatures"].to<JsonObject>();
+      effectiveTemperatures["maxCube"] = effectiveTemps.maxCube;
+      effectiveTemperatures["maxColumn"] = effectiveTemps.maxColumn;
+      effectiveTemperatures["headsEnd"] = effectiveTemps.headsEnd;
+      effectiveTemperatures["bodyStart"] = effectiveTemps.bodyStart;
+      effectiveTemperatures["bodyEnd"] = effectiveTemps.bodyEnd;
+
+      JsonObject baroCorrection = doc["baroCorrection"].to<JsonObject>();
+      baroCorrection["enabled"] = baroSummary.enabled;
+      baroCorrection["applicable"] = baroSummary.applicable;
+      baroCorrection["applied"] = baroSummary.applied;
+      baroCorrection["baselinePressureMmHg"] = baroSummary.baselinePressureMmHg;
+      baroCorrection["currentPressureMmHg"] = baroSummary.currentPressureMmHg;
+      baroCorrection["pressureDeltaMmHg"] = baroSummary.pressureDeltaMmHg;
+      baroCorrection["boilingShiftC"] = baroSummary.boilingShiftC;
+      baroCorrection["appliedShiftC"] = baroSummary.appliedShiftC;
+      baroCorrection["strength"] = baroSummary.strength;
+      baroCorrection["maxShiftC"] = baroSummary.maxShiftC;
+      baroCorrection["note"] = baroSummary.note;
       
       JsonObject safety = parameters["safety"].to<JsonObject>();
       safety["maxRuntime"] = profile.parameters.safety.maxRuntime;

@@ -409,6 +409,7 @@ struct RectParams {
   float bodySpeedMlHKw = 600.0f;
   uint16_t stabilizationMin = 30;
   uint16_t purgeMin = 5;
+  bool baroCorrectionEnabled = true;
 };
 
 struct DistillationUiSettings {
