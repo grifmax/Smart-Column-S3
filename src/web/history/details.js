@@ -747,6 +747,174 @@ function appendIndicatorSummarySection(container, process) {
 
 }
 
+function formatDurationCompact(seconds) {
+
+    const totalSeconds = Math.max(0, Math.round(Number(seconds || 0)));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.round((totalSeconds % 3600) / 60);
+
+    if (hours <= 0) {
+        return `${minutes} мин`;
+    }
+
+    if (minutes <= 0) {
+        return `${hours} ч`;
+    }
+
+    return `${hours} ч ${minutes} мин`;
+
+}
+
+function formatPercent0(value) {
+
+    return `${(Number(value || 0) * 100).toFixed(0)}%`;
+
+}
+
+function buildRunReportItems(process, previousSuccessfulProcess = null, previousSummary = null) {
+
+    const items = [];
+    const completedSuccessfully = Boolean(process?.metadata?.completedSuccessfully);
+    const totalCollected = Number(process?.results?.totalCollected || 0);
+    const headsCollected = Number(process?.results?.headsCollected || 0);
+    const bodyCollected = Number(process?.results?.bodyCollected || 0);
+    const tailsCollected = Number(process?.results?.tailsCollected || 0);
+    const energyUsed = Number(process?.metrics?.power?.energyUsed || 0);
+    const avgPower = Number(process?.metrics?.power?.avgPower || 0);
+    const energyPerLiter = getEnergyPerLiter(process);
+    const indicators = process?.metrics?.indicators || null;
+    const indicatorShares = getIndicatorShares(process);
+    const safetyEvents = buildSafetyTimeline(process);
+    const warnings = Array.isArray(process?.results?.warnings) ? process.results.warnings.length : 0;
+    const errors = Array.isArray(process?.results?.errors) ? process.results.errors.length : 0;
+
+    const heating = Number(getPhase(process, 'heating')?.duration || 0);
+    const stabilization = Number(getPhase(process, ['stabilization', 'post_heads_stabilization'])?.duration || 0);
+    const headsPhase = Number(getPhase(process, 'heads')?.duration || 0);
+    const bodyPhase = Number(getPhase(process, 'body')?.duration || 0);
+    const tailsPhase = Number(getPhase(process, 'tails')?.duration || 0);
+
+    const phaseParts = [
+        heating > 0 ? `разгон ${formatDurationCompact(heating)}` : '',
+        stabilization > 0 ? `стабилизация ${formatDurationCompact(stabilization)}` : '',
+        headsPhase > 0 ? `головы ${formatDurationCompact(headsPhase)}` : '',
+        bodyPhase > 0 ? `тело ${formatDurationCompact(bodyPhase)}` : '',
+        tailsPhase > 0 ? `хвосты ${formatDurationCompact(tailsPhase)}` : ''
+    ].filter(Boolean);
+
+    if (phaseParts.length) {
+        items.push({
+            tone: completedSuccessfully ? 'good' : 'warn',
+            title: 'Фазы и темп прогона',
+            detail: `Хронология прогона: ${phaseParts.join(', ')}.`,
+            action: previousSuccessfulProcess
+                ? 'Сравните длительность разгона, стабилизации и тела с прошлым успешным baseline: там чаще всего видны реальные отклонения профиля.'
+                : 'Этот разбор уже полезен как первый baseline по времени фаз для следующих запусков.'
+        });
+    }
+
+    if (totalCollected > 0) {
+        const headsShare = headsCollected / totalCollected;
+        const bodyShare = bodyCollected / totalCollected;
+        const tailsShare = tailsCollected / totalCollected;
+        items.push({
+            tone: bodyShare >= 0.7 ? 'good' : 'muted',
+            title: 'Выход и фракции',
+            detail: `Собрано ${Math.round(totalCollected)} мл: головы ${Math.round(headsCollected)} мл (${formatPercent0(headsShare)}), тело ${Math.round(bodyCollected)} мл (${formatPercent0(bodyShare)}), хвосты ${Math.round(tailsCollected)} мл (${formatPercent0(tailsShare)}).`,
+            action: bodyShare >= 0.7
+                ? 'Выход тела выглядит уверенно. Дальше имеет смысл смотреть не на объём сам по себе, а на устойчивость и энергию на литр.'
+                : 'Если тело получилось коротким, проверьте конец рабочего окна, момент перехода в хвосты и запас охлаждения.'
+        });
+    }
+
+    if (energyUsed > 0 || avgPower > 0 || energyPerLiter !== null) {
+        const previousEnergyPerLiter = previousSuccessfulProcess ? getEnergyPerLiter(previousSuccessfulProcess) : null;
+        const energyDelta = (energyPerLiter !== null && previousEnergyPerLiter !== null && previousEnergyPerLiter > 0)
+            ? (energyPerLiter - previousEnergyPerLiter) / previousEnergyPerLiter
+            : null;
+
+        items.push({
+            tone: energyDelta !== null ? (energyDelta > 0.1 ? 'warn' : 'good') : 'muted',
+            title: 'Энергия и эффективность',
+            detail: `Потреблено ${energyUsed.toFixed(2)} кВт·ч при средней мощности ${Math.round(avgPower)} Вт.${energyPerLiter !== null ? ` Удельная энергия ${energyPerLiter.toFixed(2)} кВт·ч/л.` : ''}`,
+            action: energyDelta !== null
+                ? (energyDelta > 0.1
+                    ? `Относительно прошлого успешного прогона энергоёмкость выросла на ${formatSignedPercent(energyDelta)}. Ищите потери во времени фаз и узком рабочем окне.`
+                    : `Относительно прошлого успешного прогона энергоёмкость не ухудшилась критично (${formatSignedPercent(energyDelta)}).`)
+                : 'Если хотите улучшать профиль системно, это одна из ключевых метрик для сравнения между прогонами.'
+        });
+    }
+
+    if (indicators && indicatorShares) {
+        const processHealthAvg = Number(indicators.processHealth?.avg || 0);
+        const processHealthMin = Number(indicators.processHealth?.min || 0);
+        const stabilityAvg = Number(indicators.stabilityIndexAvg || 0);
+        const floodMax = Number(indicators.floodRisk?.max || 0);
+        const coolingMin = Number(indicators.coolingMarginC?.min || 0);
+        const takeoffShare = Number(indicatorShares.takeoffShare || 0);
+        const tone = coolingMin <= 0 || floodMax >= 0.8 ? 'danger'
+            : (stabilityAvg < 0.55 || takeoffShare < 0.65 || coolingMin < 4 ? 'warn' : 'good');
+
+        items.push({
+            tone,
+            title: 'Устойчивость процесса',
+            detail: `Process health ${formatPercent0(processHealthAvg)}, минимум ${formatPercent0(processHealthMin)}, stability ${formatPercent0(stabilityAvg)}, flood risk max ${formatPercent0(floodMax)}, cooling margin min ${coolingMin.toFixed(1)}°C, окно отбора ${formatPercent0(takeoffShare)}.`,
+            action: tone === 'good'
+                ? 'Рабочее окно выглядело достаточно спокойным. Такой прогон можно использовать как инженерный baseline.'
+                : 'Именно здесь находится главный материал для настройки профиля: охлаждение, flood risk и ширина окна отбора.'
+        });
+    }
+
+    items.push({
+        tone: errors > 0 ? 'danger' : (safetyEvents.length > 0 || warnings > 0 ? 'warn' : 'good'),
+        title: 'Safety и ограничения',
+        detail: `Safety-событий: ${safetyEvents.length}. Предупреждений: ${warnings}. Ошибок: ${errors}.`,
+        action: safetyEvents.length > 0
+            ? 'Перед следующим запуском сначала разберите safety timeline и только потом меняйте сам профиль.'
+            : 'Если safety не вмешивался, оценка профиля и повторяемости будет намного чище.'
+    });
+
+    if (previousSuccessfulProcess && previousSummary) {
+        const delta = evaluateRunDelta(process, previousSuccessfulProcess);
+        const previousDate = new Date(Number(previousSuccessfulProcess?.metadata?.startTime || previousSummary?.startTime || 0) * 1000);
+
+        if (delta) {
+            const deviationTone = delta.weightedScore >= 0.9 ? 'good'
+                : (delta.weightedScore <= -0.9 ? 'warn' : 'muted');
+            items.push({
+                tone: deviationTone,
+                title: 'Отклонение от эталона профиля',
+                detail: `Сравнение с успешным прогоном от ${previousDate.toLocaleString('ru-RU')}: stability ${formatSignedPercent(delta.stabilityDelta)}, окно отбора ${formatSignedPercent(delta.takeoffDelta)}, cooling margin ${formatSignedNumber(delta.coolingDelta, 1, '°C')}, энергоёмкость ${delta.previousEnergyPerLiter !== null && delta.currentEnergyPerLiter !== null && delta.previousEnergyPerLiter > 0 ? formatSignedPercent((delta.currentEnergyPerLiter - delta.previousEnergyPerLiter) / delta.previousEnergyPerLiter) : 'н/д'}.`,
+                action: deviationTone === 'good'
+                    ? 'Текущий прогон можно рассматривать как более сильный baseline для профиля.'
+                    : (deviationTone === 'warn'
+                        ? 'Профиль или условия прогона просели относительно baseline. Меняйте только один параметр за следующий запуск.'
+                        : 'Сдвиг относительно baseline есть, но пока без уверенного инженерного вердикта.')
+            });
+        }
+    } else {
+        items.push({
+            tone: 'muted',
+            title: 'Эталон профиля ещё не сформирован',
+            detail: 'Для этого прогона нет предыдущего успешного baseline того же профиля, поэтому отчёт пока оценивает только текущий запуск.',
+            action: 'Первый успешный прогон этого профиля станет опорной точкой для следующего честного сравнения.'
+        });
+    }
+
+    const recommendationSeed = buildRunAdvisorItems(process, previousSuccessfulProcess, previousSummary)[0];
+    if (recommendationSeed) {
+        items.push({
+            tone: recommendationSeed.tone,
+            title: 'Что делать перед следующим запуском',
+            detail: recommendationSeed.detail,
+            action: recommendationSeed.action
+        });
+    }
+
+    return items.slice(0, 7);
+
+}
+
 function getPhase(process, phaseNames) {
 
     const names = Array.isArray(phaseNames) ? phaseNames : [phaseNames];
@@ -1725,11 +1893,21 @@ function appendAdvisorFollowUpSection(container, process, previousSuccessfulProc
 
 }
 
+function appendRunReportSection(container, process, previousSuccessfulProcess = null, previousSummary = null) {
+
+    const items = buildRunReportItems(process, previousSuccessfulProcess, previousSummary);
+
+    appendAdvisorSection(container, 'Run Advisor v1: отчёт по прогону', items);
+
+    return items;
+
+}
+
 function appendRunAdvisorSection(container, process, previousSuccessfulProcess = null, previousSummary = null) {
 
     const items = buildRunAdvisorItems(process, previousSuccessfulProcess, previousSummary);
 
-    appendAdvisorSection(container, 'Run Advisor', items);
+    appendAdvisorSection(container, 'Run Advisor: рекомендации', items);
 
     return items;
 
@@ -1883,6 +2061,7 @@ export function showHistoryDetailsModal(process, options = {}) {
     appendInfoItem(resultsGrid, 'Хвосты', `${process.results.tailsCollected || 0} мл`);
     appendInfoItem(resultsGrid, 'Всего собрано', `${process.results.totalCollected || 0} мл`);
     appendCompletionInsightSection(resultsGrid, process);
+    appendRunReportSection(resultsGrid, process, previousSuccessfulProcess, previousSummary);
     appendAdvisorFollowUpSection(resultsGrid, process, previousSuccessfulProcess);
     const advisorItems = appendRunAdvisorSection(resultsGrid, process, previousSuccessfulProcess, previousSummary);
     appendIndicatorSummarySection(resultsGrid, process);

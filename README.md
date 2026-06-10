@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.48-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.49-brightgreen.svg)](CHANGELOG.md)
 
 ## Что это
 
@@ -15,11 +15,14 @@ Smart-Column S3 - это прошивка и Web UI для автоматики 
 
 Система рассчитана на работу с планшета, телефона или ноутбука через Web UI. TFT-дисплей остаётся локальной панелью контроля и ручного управления.
 
+Если нужен не только быстрый старт, а нормальное человеческое описание проекта, архитектуры и рабочего сценария, смотрите [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md).
+
 ## Ключевые возможности
 
 - 8 режимов работы: авто-ректификация, ручная ректификация, дистилляция, затирание, Hold, НБК, ферментация и IDLE
 - Web UI с живой SVG-схемой, показометрами, диагностикой, историей и профилями
 - История процессов v2: фазы, таймлайн safety, reason codes, экспорт CSV/JSON
+- Run Advisor v1: post-run отчёт по фазам, энергии, устойчивости, safety и сравнению с baseline профиля
 - Process Indicators v2: инженерные признаки процесса и объяснения состояний оператору
 - Watt-Control и Smart Decrement для управления нагревом и отбором
 - Электронный ареометр на MPX5010DP + ADS1115
@@ -27,6 +30,26 @@ Smart-Column S3 - это прошивка и Web UI для автоматики 
 - MQTT и Home Assistant Discovery
 - OTA-обновление, HTTP Basic Auth, Rate Limiting
 - Cloud Tunnel и сервис удалённого доступа
+
+## Какой в этом смысл
+
+Smart-Column S3 задуман не как "ещё одна автоматика", а как платформа повторяемого процесса:
+
+- автоматика не только включает исполнительные механизмы, но и объясняет оператору текущее состояние
+- каждый прогон сохраняется в историю с фазами, safety-событиями и indicators
+- профили становятся baseline для следующих запусков, а не просто набором цифр
+- Web UI — главный рабочий интерфейс, TFT — локальный инженерный пульт рядом с установкой
+
+## Как устроен проект
+
+- `src/control/` — режимы, FSM, indicators v2, safety
+- `src/drivers/` — железо: датчики, насос, клапаны, нагрев, мешалка, дисплей
+- `src/interface/` — webserver, MQTT, OTA, cloud tunnel, security
+- `src/storage/` — NVS, logger, история, профили
+- `src/web/` — исходники frontend
+- `data/` — собранные web-ассеты для LittleFS
+
+Более подробная карта проекта и рабочий сценарий описаны в [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md).
 
 ## Аппаратная база
 
@@ -70,6 +93,16 @@ C:\.platformio\penv\Scripts\pio.exe run -e esp32s3
 
 После первой загрузки устройство поднимает точку доступа `Smart-Column-S3`. Дальнейшая настройка Wi-Fi, MQTT, профилей и режимов выполняется через Web UI.
 
+## Первый рабочий сценарий
+
+1. Собрать и залить прошивку с файловой системой.
+2. Настроить Wi‑Fi, оборудование и safety-пороги.
+3. Проверить датчики и исполнительные механизмы через сервисные страницы.
+4. Загрузить профиль или вручную задать параметры режима.
+5. Перед запуском пройти `Pre-flight` мастер.
+6. Во время прогона следить за guidance, diagnostics и показометрами.
+7. После завершения открыть историю и посмотреть `Run Advisor`.
+
 ## Структура проекта
 
 ```text
@@ -98,6 +131,7 @@ Smart-Column-S3/
 - [CHANGELOG.md](CHANGELOG.md) - журнал версий и изменений
 - [TODO2.0.md](TODO2.0.md) - актуальный список задач и roadmap
 - [SPEC.md](SPEC.md) - оборудование, pinout и базовые схемы
+- [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md) - нормальное описание проекта, архитектуры и сценария работы
 - [docs/API.md](docs/API.md) - REST API и WebSocket
 - [docs/HISTORY_SCHEMA.md](docs/HISTORY_SCHEMA.md) - структура истории процессов
 - [docs/HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md) - интеграция с Home Assistant

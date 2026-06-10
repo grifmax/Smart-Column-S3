@@ -1,658 +1,280 @@
-﻿# Smart-Column S3 � API ������������
+# Smart-Column S3 — API
 
-**������ ��������:** `2.2.25`
-**��������� ����������:** 2026-04-19
-
----
-
-## ������� ����������
-
-- **������� URL:** `http://<device-ip>`
-- **REST �������:** `/api/*`
-- **WebSocket:** `ws://<device-ip>/ws`
-- **������ ������:** `application/json`
-- **��������������:** HTTP Basic Auth (���� �������� � ����������)
+**Версия прошивки:** `2.2.49`  
+**Актуальность документа:** 2026-06-10
 
 ---
 
-## ������ ���������
+## Общая схема
 
-### `mode` (`/api/process/start`, `/api/status`, WebSocket)
+- Base URL: `http://<device-ip>`
+- REST API: `/api/*`
+- WebSocket: `ws://<device-ip>/ws`
+- Формат обмена: `application/json`
+- Защита: HTTP Basic Auth, если включена в настройках безопасности
 
-| �������� | ����� |
-|----------|-------|
-| `idle` | ������� |
-| `rectification` | ����-������������ |
-| `distillation` | ����������� |
-| `manual` | ������ ������������ (����� `manual_rect`) |
-| `mashing` | ��������� ������ |
-| `hold` | ������������ / ������������� ������� |
-| `nbk` | ��� (����������� ������� �������) |
-| `fermentation` | ����������� |
+## Ключевые endpoint-ы
 
-### `phaseStr` � ���� ����-������������
+### Состояние системы
 
-`idle` > `heating` > `stabilization` > `heads` > `post_heads` > `body` > `tails` > `purge` > `finish` > `completed`
+#### `GET /api/status`
 
-### `phaseStr` � ���� ���
+Возвращает полное текущее состояние:
 
-`idle` > `heating` > `stabilization` > `working` > `finish` > `completed`
+- режим и фазу
+- температуры
+- давление
+- мощность
+- насос
+- мешалку
+- safety / alarm
+- `v2.guidance`
+- `v2.indicators`
 
-### `phaseStr` � ���� ���������
+Это главный endpoint для web UI и fallback для внешних клиентов.
 
-`idle` > `acid_rest` > `protein_rest` > `beta_amylase` > `alpha_amylase` > `mash_out` > `finish`
+#### `GET /api/health`
 
-### `phaseStr` � ���� �����������
+Сводное здоровье подсистем:
 
-`idle` > `running` > `completed`
+- датчики
+- BMP280 / ADS1115 / PZEM
+- Wi‑Fi
+- heap / uptime / CPU temp
+
+#### `GET /api/version`
+
+Версия прошивки и сведения о сборке.
+
+#### `GET /api/reboot/status`
+
+Информация о последней перезагрузке контроллера.
+
+#### `POST /api/reboot`
+
+Перезагрузка контроллера.
 
 ---
 
-## ��������� � �����������
+## Управление процессами
 
-### `GET /api/status`
+#### `POST /api/process/preflight`
 
-������ ��������� �������. ����������� �� REST � WebSocket.
+Проверка готовности перед запуском режима.
 
-**�������� ����:**
+Используется модалкой `Pre-flight мастер запуска`.
+
+Пример:
 
 ```json
 {
   "mode": "rectification",
-  "modeStr": "������������",
-  "phase": 3,
-  "phaseStr": "heads",
-  "paused": false,
-  "safetyOk": true,
-  "uptime": 3600,
-  "temps": {
-    "cube": 78.5,
-    "columnBottom": 77.2,
-    "columnTop": 76.1,
-    "reflux": 74.0,
-    "tsa": 25.0,
-    "waterIn": 18.0,
-    "waterOut": 32.0
-  },
-  "pressure": {
-    "cube": 12.3,
-    "atmosphere": 760.0,
-    "ok": true
-  },
-  "power": {
-    "voltage": 225.0,
-    "current": 8.5,
-    "power": 1900.0,
-    "energy": 1.25,
-    "frequency": 50.0,
-    "powerFactor": 0.99
-  },
-  "pump": {
-    "running": true,
-    "speedMlPerHour": 900.0,
-    "totalVolumeMl": 280.0
-  },
-  "stirrer": {
-    "running": false,
-    "speed": 0,
-    "available": true,
-    "autoMode": false
-  },
-  "hydrometer": {
-    "abv": 73.5,
-    "density": 0.851,
-    "valid": true,
-    "ok": true
-  },
-  "alarm": {
-    "active": false,
-    "latched": false,
-    "type": "none",
-    "level": "none",
-    "message": "",
-    "resetAvailable": true
-  },
-  "v2": {
-    "available": true,
-    "lifecycle": "running",
-    "phaseToken": "heads",
-    "paused": false,
-    "lastReasonCode": "RC_HEADS_VOLUME_REACHED",
-    "operatorMessage": "Heads fraction collected"
-  },
-  "mashing": {
-    "active": false,
-    "phase": 0,
-    "phaseStr": "idle",
-    "stepCount": 0,
-    "currentStep": 0,
-    "targetTemp": 0.0,
-    "stepDurationSec": 0,
-    "tempInRange": false,
-    "stepName": "",
-    "elapsedSec": 0,
-    "remainingSec": 0
-  },
-  "hold": {
-    "active": false,
-    "stepCount": 0,
-    "currentStep": 0,
-    "targetTemp": 0.0,
-    "tempInRange": false,
-    "stepDurationSec": 0,
-    "elapsedSec": 0,
-    "remainingSec": 0
-  }
-}
-```
-
----
-
-### `GET /api/health`
-
-������� ��������� �������� � ���������.
-
-```json
-{
-  "overall": 95,
-  "tempSensorsOk": 7,
-  "tempSensorsTotal": 7,
-  "bmp280": true,
-  "ads1115": true,
-  "pzem": true,
-  "wifiRSSI": -55,
-  "cpuTemp": 42.0
-}
-```
-
----
-
-### `GET /api/version`
-
-������ �������� + ����������.
-
-```json
-{
-  "firmware": "2.2.25",
-  "board": "esp32-s3-devkitc-1-n16r8",
-  "buildDate": "Apr 15 2026",
-  "deviceId": "abc123"
-}
-```
-
----
-
-### `POST /api/reboot`
-
-������������ �����������.
-
----
-
-### `GET /api/reboot/status`
-
-������� ������������: �������, ��� (WDT / Brownout / panic / SW reset).
-
----
-
-## ���������� ���������
-
-### `POST /api/process/start`
-
-������ ������.
-
-**����������� ������:**
-```json
-{ "mode": "rectification" }
-```
-
-**��������� ��� ������ �������:**
-
-```json
-// �����������
-{
-  "mode": "distillation",
   "params": {
-    "speed": 1500,
-    "headsVolume": 100,
-    "targetVolume": 3000,
-    "endTemp": 98.0
-  }
-}
-
-// ���������
-{
-  "mode": "mashing",
-  "params": {
-    "profile": {
-      "name": "������������",
-      "steps": [
-        {"temperature": 52, "duration": 15, "name": "�������� �����"},
-        {"temperature": 63, "duration": 60, "name": "����-�������"},
-        {"temperature": 72, "duration": 30, "name": "�����-�������"},
-        {"temperature": 78, "duration": 5,  "name": "���-���"}
-      ]
-    }
-  }
-}
-
-// ������������ / Hold
-{
-  "mode": "hold",
-  "params": {
-    "steps": [
-      {"temperature": 63, "duration": 30},
-      {"temperature": 72, "duration": 15}
-    ]
-  }
-}
-
-// ���
-{
-  "mode": "nbk",
-  "params": {
-    "targetVolumeMl": 5000,
-    "powerPercent": 80
-  }
-}
-
-// �����������
-{
-  "mode": "fermentation",
-  "params": {
-    "durationHours": 72,
-    "targetTemp": 20.0
+    "feedVolumeL": 25,
+    "feedAbvPercent": 40,
+    "headsPercent": 8,
+    "bodyPercent": 84,
+    "tailsPercent": 8
   }
 }
 ```
 
----
+Ответ содержит:
 
-### `POST /api/process/stop`
+- `ready`
+- `blockingCount`
+- `warningCount`
+- `checks`
+- `items`
+- `advisor`
 
-���������� ������� �������.
+#### `POST /api/process/start`
 
-### `POST /api/process/pause`
+Запуск процесса.
 
-��������� �� �����.
+#### `POST /api/process/stop`
 
-### `POST /api/process/resume`
+Остановка процесса.
 
-����������� ����� �����.
+#### `POST /api/process/pause`
 
----
+Пауза текущего режима, если режим её поддерживает.
 
-## ����-������������
+#### `POST /api/process/resume`
 
-### `GET /api/settings/rect`
-
-�������� ��������� ����-������������.
-
-### `POST /api/settings/rect`
-
-��������� ���������. �������������� ����:
-
-| ���� | ��� | �������� | �������� |
-|------|-----|----------|----------|
-| `feedstock` | int | 0..7 | ��� ����� |
-| `feedVolumeL` | float | 1..250 | ����� ����� (�) |
-| `feedAbvPercent` | float | 1..96 | �������� ����� (%) |
-| `headsPercent` | float | 0..40 | ���� ����� (%) |
-| `bodyPercent` | float | 0..100 | ���� ���� (%) |
-| `tailsPercent` | float | 0..100 | ���� ������� (%) |
-| `headsSpeedMlHKw` | float | 10..2000 | �������� ����� (��/�/���) |
-| `bodySpeedMlHKw` | float | 50..3000 | �������� ���� (��/�/���) |
-| `stabilizationMin` | int | 1..180 | ����� ������������ (���) |
-| `purgeMin` | int | 1..120 | ����� �������� (���) |
-| `applyFeedstockDefaults` | bool | � | ��������� ������� �� ����� |
-
-### ����� � ��������� �������
-
-| feedstock | ����� | ������ % | ���� % | ������ % |
-|-----------|----|---:|---:|---:|
-| 0 | ����� | 6 | 84 | 10 |
-| 1 | ����/����� | 8 | 80 | 12 |
-| 2 | ����� | 7 | 81 | 12 |
-| 3 | ������ | 5 | 75 | 20 |
-| 4 | ������� | 8 | 74 | 18 |
-| 5 | ��������/���� | 6 | 78 | 16 |
-| 6 | ̸� | 7 | 79 | 14 |
-| 7 | ������ | � | � | � |
+Возобновление после паузы.
 
 ---
 
-## ������ ���������� (runtime)
+## История процессов
 
-### `POST /api/manual/heater`
+#### `GET /api/history`
 
-```json
-{ "power": 55 }
-```
+Список сохранённых прогонов.
 
-### `POST /api/rect/heater`
+Используется таблицей истории и подбором baseline для `Run Advisor`.
 
-Override �������� ���� � ����-������������.  
-`power = -1` � ����� override, ������� ���������� Watt-Control.
+#### `GET /api/history/{id}`
 
-### `POST /api/manual/pump`
+Полные детали конкретного прогона:
 
-```json
-{ "speed": 900 }
-```
+- метаданные
+- параметры старта
+- метрики
+- фазы
+- события safety
+- warnings / errors
+- `advisorSnapshot`
 
-`speed <= 0` � ����. `speed > 0` � ��/�.
+#### `POST /api/history/{id}/advisor`
 
-### `POST /api/manual/valves`
+Сохранение snapshot рекомендаций `Run Advisor` для конкретного прогона.
 
-```json
-{ "water": true, "heads": false, "uno": true }
-```
+#### `GET /api/history/{id}/export?format=csv`
 
-### `POST /api/manual/volumes`
+Экспорт одного прогона.
 
-������ ������������� ������� �������.
+#### `DELETE /api/history/{id}`
 
-```json
-{
-  "heads": 120,
-  "body": 2500,
-  "tails": 150,
-  "syncTotal": true
-}
-```
+Удаление одного прогона.
+
+#### `DELETE /api/history`
+
+Полная очистка истории.
 
 ---
 
-## ������� ���� (0-10�, MCP4725)
+## Профили
 
-### `POST /api/stirrer/start`
+#### `GET /api/profiles`
 
-��������� �������.
+Список профилей.
 
-```json
-{ "speed": 70 }
-```
+#### `GET /api/profiles/{id}`
 
-`speed` � 0..100%. ���� �� ������ ��� 0, ������������ `defaultSpeedPercent` �� ��������.
+Полные данные профиля, включая learning summary и последние advisor snapshot-ы.
 
-������ ���������� �������� ��������� ������ � `IDLE`. ���� ����� ������� ������� ��� ��������� �� �����, backend ����� `409`.
+#### `POST /api/profiles`
 
-### `POST /api/stirrer/stop`
+Создание нового профиля.
 
-���������� �������.
+#### `POST /api/profiles/{id}/load`
 
-### `POST /api/stirrer/set`
+Загрузка профиля в текущие настройки.
 
-���������� �������� � ��� ���������� ������� ��� ���������� `start`.
+#### `DELETE /api/profiles/{id}`
 
-```json
-{ "speed": 50 }
-```
+Удаление профиля.
 
-`speed` � 1..100%. ��� ������ ��������� ����������� `POST /api/stirrer/stop`.
+#### `GET /api/profiles/export`
 
-### ���� � WebSocket / `/api/status`
+Экспорт всех профилей.
 
-```json
-"stirrer": {
-  "running": true,
-  "speed": 70,
-  "available": true,
-  "autoMode": false
-}
-```
+#### `POST /api/profiles/import`
 
-| ���� | �������� |
-|------|----------|
-| `running` | ������� �������� |
-| `speed` | ������� �������� 0�100% |
-| `available` | MCP4725 ��������� (I2C OK) |
-| `autoMode` | �������� ������������� �� FSM |
+Импорт профилей.
 
 ---
 
-## ��������� �������
+## Настройки
 
-### `GET /api/settings/stirrer`
+Проект использует несколько групп настроек. Основные:
 
-```json
-{
-  "enabled": true,
-  "defaultSpeedPercent": 60,
-  "autoMashing": true,
-  "autoFermentation": false,
-  "autoNbk": false
-}
-```
+- `GET/POST /api/settings/equipment`
+- `GET/POST /api/settings/safety`
+- `GET/POST /api/settings/security`
+- `GET/POST /api/settings/rect`
+- `GET/POST /api/settings/nbk`
+- `GET/POST /api/settings/fermentation`
+- `GET/POST /api/settings/stirrer`
+- `GET/POST /api/settings/mqtt`
+- `GET/POST /api/settings/demo`
 
-### `POST /api/settings/stirrer`
-
-��������� ��������� ������� � NVS.
+Точный набор полей лучше смотреть по текущему payload, который возвращает контроллер.
 
 ---
 
-## ���������� � ������������
+## Исполнительные механизмы и сервис
 
-- `GET /api/calibration`
-- `POST /api/calibration/pump`
-- `POST /api/calibration/temp`
-- `POST /api/calibration/hydrometer`
-- `GET /api/calibration/scan`
+### Мешалка
+
+- `POST /api/stirrer/start`
+- `POST /api/stirrer/stop`
+- `POST /api/stirrer/set`
+
+### Насос
+
 - `POST /api/pump/calibrate/start`
 - `POST /api/pump/calibrate/stop`
 - `POST /api/pump/calibrate/cancel`
-- `POST /api/pump/calibrate/finish`
-- `POST /api/pump/start`
 - `POST /api/pump/stop`
 - `GET /api/pump/status`
-- `GET /api/pump/diag` � ����������� ����������� FreeRTOS pump-task
-- `GET /api/energy`
+- `GET /api/pump/diag`
+
+### Калибровка
+
+- `GET /api/calibration`
+- `POST /api/calibration`
+- `GET /api/calibration/scan`
+
+### Safety
+
+- `POST /api/safety/ack`
+- `POST /api/safety/reset`
+
+### Логи
+
+- `GET /api/logs/events`
+- `POST /api/logs/events/clear`
 
 ---
 
-## ������������ ������������
+## WebSocket `/ws`
 
-### `GET /api/testing/status`
+WebSocket нужен для живого UI и потоковых обновлений без постоянного опроса REST.
 
-������ ������ ������������: ����������, �������� �����, �����, �������, ���, �������, �����, �������, �������.
+Через него фронтенд получает:
 
-### `POST /api/testing/stop-all`
+- текущее состояние
+- indicators / guidance
+- статусы оборудования
+- быстрые обновления для схемы и показометров
 
-������������� ���������� ��� �������� ����� ������������.
-
-### `POST /api/testing/pump`
-
-```json
-{ "action": "start", "speed": 800 }
-```
-
-### `POST /api/testing/stirrer`
-
-```json
-{ "action": "start", "speedPercent": 60 }
-```
-
-```json
-{ "action": "set", "speedPercent": 45 }
-```
-
-```json
-{ "action": "stop" }
-```
-
-### `POST /api/testing/heater`
-
-```json
-{ "action": "start", "power": 10 }
-```
-
-### `POST /api/testing/valves`
-
-```json
-{ "valve": "water", "action": "open" }
-// ���
-{ "valve": "heads", "action": "pulse", "durationMs": 2000 }
-```
-
-### `POST /api/testing/servo`
-
-```json
-{ "fraction": "body" }
-```
+Если вы пишете внешний клиент, начинайте с REST `/api/status`, а WebSocket подключайте как слой live-обновления.
 
 ---
 
-## ������������
+## Что важно для интеграций
 
-### `POST /api/safety/ack`
+### 1. Не полагаться только на один флаг
 
-����������� (acknowledge) �������� ������.
+Для инженерных сценариев полезно смотреть комбинацию:
 
-**�����:**
-```json
-{
-  "success": true,
-  "v2": {
-    "safetyLatched": true,
-    "severity": "latched_trip",
-    "resetAvailable": false,
-    "resetBlockedReason": "����������� �� ��� �������"
-  }
-}
-```
+- `mode`
+- `phaseStr`
+- `alarm`
+- `v2.guidance`
+- `v2.indicators`
 
-### `POST /api/safety/reset`
+### 2. `Pre-flight` и `Run Advisor` — разные уровни
 
-�������� ������ (���� ������� ���������).
+- `Pre-flight` отвечает на вопрос: “можно ли стартовать сейчас?”
+- `Run Advisor` отвечает на вопрос: “что показал уже завершённый прогон и что улучшать дальше?”
 
----
+### 3. История — это основа аналитики
 
-## ������� ���������
+Если интеграции хотят строить сравнение запусков, нужно опираться на:
 
-### `GET /api/history`
-
-������ ���� ���������. ������ ������� ��������:
-- `id`, `mode`, `startTime`, `endTime`, `duration`
-- `completionState` � `completed`, `stopped`, `safety_stop`
-- `completionReasonCode` � RC-��� ����������
-- `safetySummary` � ������� safety-������
-- `safetyState` � `ok`, `trip`, `ack`, `recovery`
-
-### `GET /api/history/{id}`
-
-������ ������ ��������: timeseries, ����, ��������������, ������, reason codes.
-
-### `DELETE /api/history/{id}`
-
-������� ������ ��������.
-
-### `GET /api/history/{id}/export`
-
-������� � JSON.
+- `/api/history`
+- `/api/history/{id}`
+- `profileId`
+- `advisorSnapshot`
 
 ---
 
-## WiFi � ������
+## Смежные документы
 
-- `GET /api/wifi/scan`
-- `GET /api/wifi/status`
-- `POST /api/wifi/connect`
-- `GET /api/wifi/profiles`
-- `POST /api/wifi/profiles`
-- `DELETE /api/wifi/profiles/{index}`
-- `POST /api/cloud/claim`
-- `POST /api/cloud/config`
-
----
-
-## �������
-
-- `GET /api/profiles`
-- `GET /api/profiles/{id}`
-- `POST /api/profiles/{id}/load`
-- `DELETE /api/profiles/{id}`
-
----
-
-## ����
-
-- `GET /api/logs/events` � ��������� ������� � JSON/CSV
-- `GET /api/logs/list` � ������ ���-������
-- `GET /api/logs/{filename}` � ������� ���-����
-
----
-
-## WebSocket API
-
-�����������: `ws://<device-ip>/ws`
-
-### Fast packet (������ 2 ���)
-
-�������� ����:
-- `mode`, `modeStr`, `phase`, `phaseStr`, `paused`, `uptime`
-- `temps.*` � ��� �����������
-- `pressure.*` � �������� ���� � �����������
-- `power.*` � ����������, ���, ��������, �������
-- `pump.*` � ��������� ������
-- `stirrer.*` � ��������� ������� < **NEW**
-- `alarm.*` � ������� ������
-- `phase_elapsed_sec`, `phase_target_sec`, `phase_percent`
-
-### Full packet (������ 10 ���)
-
-�������������:
-- `progress` � ��������� �������� ����
-- `rectification` � ��������� ������������
-- `distillation` � ��������� �����������
-- `mashing` � ������ ���������
-- `hold` � ������ ������������
-- `health` � ��������� ���������
-- `memory` � heap/flash ����������
-- `v2` � lifecycle, reason codes, process indicators
-
----
-
-## HTTP ���� ������
-
-| ��� | ������� |
-|-----|---------|
-| 400 | ������������ JSON / ��������� |
-| 401 | ��������� ����������� |
-| 404 | Endpoint �� ������ |
-| 429 | �������� ����� �������� |
-| 500 | ���������� ������ / ������ ���������� |
-| 503 | ������� ����������� ���������� |
-
----
-
-## Quick cURL Examples
-
-```bash
-# ������ �������
-curl -u admin:admin http://192.168.4.1/api/status
-
-# ������ ������������
-curl -u admin:admin -X POST http://192.168.4.1/api/process/start \
-  -H "Content-Type: application/json" \
-  -d '{"mode":"rectification"}'
-
-# ����� ������� �� 70%
-curl -u admin:admin -X POST http://192.168.4.1/api/stirrer/start \
-  -H "Content-Type: application/json" \
-  -d '{"speed":70}'
-
-# ���� �������
-curl -u admin:admin -X POST http://192.168.4.1/api/stirrer/stop
-
-# ��������� ������������ �� ��������� �����
-curl -u admin:admin -X POST http://192.168.4.1/api/settings/rect \
-  -H "Content-Type: application/json" \
-  -d '{"feedstock":0,"feedVolumeL":25,"feedAbvPercent":35,"applyFeedstockDefaults":true}'
-
-# ��������� (��������� �������)
-curl -u admin:admin -X POST http://192.168.4.1/api/process/start \
-  -H "Content-Type: application/json" \
-  -d '{"mode":"mashing","params":{"profile":{"name":"����","steps":[{"temperature":63,"duration":60,"name":"����"}]}}}'
-
-# ������� ���������
-curl -u admin:admin http://192.168.4.1/api/history
-```
+- [PROJECT_GUIDE.md](PROJECT_GUIDE.md)
+- [HISTORY_SCHEMA.md](HISTORY_SCHEMA.md)
+- [HOME_ASSISTANT.md](HOME_ASSISTANT.md)
+- [../SPEC.md](../SPEC.md)
