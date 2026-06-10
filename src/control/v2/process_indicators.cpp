@@ -15,6 +15,10 @@ float clampRange(float value, float minValue, float maxValue) {
     return value;
 }
 
+float positiveRatio(float value, float scale) {
+    return (scale > 0.0001f) ? clampRange(value / scale, 0.0f, 1.0f) : 0.0f;
+}
+
 float estimateAbsoluteAlcoholMl(const Settings& settings) {
     float volumeL = settings.rectParams.feedVolumeL;
     if (volumeL <= 0.1f) {
@@ -88,6 +92,11 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
     const float pressureTrendRatio = clamp01(safeDivide(absf(out.pressureRateMmHgPerMin),
                                                         settings.safety.pressureRiseRateMmHgMin, 0.0f));
     const float coolingPenalty = clamp01(safeDivide(-out.coolingMarginC, 10.0f, 0.0f));
+    const float coolingReserve = clamp01(safeDivide(out.coolingMarginC, 8.0f, 0.0f));
+    const float floodReserve = clamp01(1.0f - out.floodRisk);
+    const float pressureConfidence =
+        out.pressureStable ? 1.0f : clamp01(1.0f - pressureTrendRatio);
+    const float freshnessConfidence = out.sensorFreshnessOk ? 1.0f : 0.0f;
 
     out.floodRisk = clamp01(pressureRatio * 0.55f + pressureTrendRatio * 0.30f + coolingPenalty * 0.15f);
     out.pressureStable = absf(out.pressureRateMmHgPerMin) <=
@@ -105,6 +114,13 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
                        SafetyPolicyV2::isManualRectFloodPowerLimitActive(state, settings);
     out.recoveryActive = false;
     out.takeoffAllowed = out.sensorFreshnessOk && out.coolingMarginC > 0.0f && out.floodRisk < 0.8f;
+    out.powerLimitConfidence =
+        clamp01(pressureRatio * 0.30f + pressureTrendRatio * 0.25f +
+                coolingPenalty * 0.20f + out.floodRisk * 0.25f);
+    if (out.powerLimited) {
+        out.powerLimitConfidence =
+            clampRange(out.powerLimitConfidence, 0.75f, 1.0f);
+    }
 
     if (state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT) {
         const float aaMl = estimateAbsoluteAlcoholMl(settings);
@@ -118,12 +134,70 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
         out.bodyEndScore =
             clamp01(safeDivide(state.stats.bodyVolume, bodyTargetMl > 1.0f ? bodyTargetMl : 1.0f, 0.0f) * 0.6f +
                     clamp01(safeDivide(state.temps.cube - 96.0f, 4.0f, 0.0f)) * 0.4f);
+
+        const float phaseTakeoffFactor =
+            (state.rectPhase == RectPhase::HEADS || state.rectPhase == RectPhase::BODY ||
+             state.rectPhase == RectPhase::TAILS)
+                ? 1.0f
+                : (state.rectPhase == RectPhase::STABILIZATION ||
+                   state.rectPhase == RectPhase::POST_HEADS_STABILIZATION)
+                      ? 0.65f
+                      : 0.35f;
+        const float topRiseConfidence = positiveRatio(out.topTempRateCPerMin, 0.25f);
+        const float cubeBodyToTails =
+            clamp01(safeDivide(state.temps.cube - 97.5f, 2.5f, 0.0f));
+
+        out.takeoffConfidence =
+            clamp01((out.stabilityIndex * 0.32f + floodReserve * 0.24f +
+                     coolingReserve * 0.16f + pressureConfidence * 0.14f +
+                     (out.takeoffAllowed ? 1.0f : 0.0f) * 0.14f) *
+                    freshnessConfidence * phaseTakeoffFactor);
+        out.headsEndConfidence =
+            clamp01(out.headsCompletionScore * 0.60f + out.stabilityIndex * 0.15f +
+                    floodReserve * 0.10f + pressureConfidence * 0.10f +
+                    (out.takeoffAllowed ? 1.0f : 0.0f) * 0.05f);
+        out.bodyEndConfidence =
+            clamp01(out.bodyEndScore * 0.65f +
+                    clamp01(safeDivide(state.temps.cube - 96.0f, 4.0f, 0.0f)) * 0.20f +
+                    topRiseConfidence * 0.10f + (1.0f - coolingReserve) * 0.05f);
+        out.tailsTransitionConfidence =
+            clamp01(out.bodyEndScore * 0.50f + cubeBodyToTails * 0.25f +
+                    topRiseConfidence * 0.15f + pressureConfidence * 0.10f);
+
+        if (state.rectPhase == RectPhase::TAILS || state.rectPhase == RectPhase::PURGE ||
+            state.rectPhase == RectPhase::FINISH || state.rectPhase == RectPhase::COMPLETED) {
+            out.tailsTransitionConfidence =
+                clampRange(out.tailsTransitionConfidence, 0.85f, 1.0f);
+        }
     }
 
     if (state.mode == Mode::DISTILLATION) {
         out.distHeatingComplete = state.temps.valid[TEMP_CUBE] && state.temps.cube >= 78.0f;
         out.distHeadsOptionalComplete = state.stats.headsVolume > 0.0f;
         out.distBodyNearEnd = state.temps.valid[TEMP_CUBE] && state.temps.cube >= 94.0f;
+
+        out.takeoffConfidence =
+            clamp01((out.distHeatingComplete ? 0.40f : 0.0f) +
+                    freshnessConfidence * 0.15f + pressureConfidence * 0.15f +
+                    coolingReserve * 0.15f + floodReserve * 0.15f);
+        if (settings.distillationUi.headsVolumeMl > 0.0f) {
+            out.headsEndConfidence =
+                clamp01(safeDivide(state.stats.headsVolume, settings.distillationUi.headsVolumeMl, 0.0f) * 0.70f +
+                        pressureConfidence * 0.15f + coolingReserve * 0.15f);
+        }
+
+        const float distTempProgress =
+            clamp01(safeDivide(state.temps.cube - 92.0f, 8.0f, 0.0f));
+        const float endTempApproach =
+            clamp01(safeDivide(state.temps.cube - (settings.distillationUi.endTempC - 2.0f), 3.0f, 0.0f));
+        const float topRiseConfidence = positiveRatio(out.topTempRateCPerMin, 0.20f);
+        out.bodyEndConfidence =
+            clamp01((out.distBodyNearEnd ? 0.40f : 0.0f) + distTempProgress * 0.30f +
+                    pressureConfidence * 0.15f + coolingReserve * 0.05f +
+                    topRiseConfidence * 0.10f);
+        out.tailsTransitionConfidence =
+            clamp01((out.distBodyNearEnd ? 0.30f : 0.0f) + endTempApproach * 0.45f +
+                    pressureConfidence * 0.15f + topRiseConfidence * 0.10f);
     }
 
     if (state.mode == Mode::NBK) {
@@ -139,6 +213,18 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
         out.finishLikely = state.mode == Mode::NBK && state.nbkPhase == NbkPhase::WORKING &&
                            state.temps.valid[TEMP_COLUMN_BOTTOM] &&
                            state.temps.columnBottom < settings.nbk.columnBottomTempThresholdC;
+
+        out.takeoffConfidence = clamp01((out.steamReady ? 0.35f : 0.0f) +
+                                        (out.nbkWorkingStable ? 0.25f : 0.0f) +
+                                        freshnessConfidence * 0.15f +
+                                        pressureConfidence * 0.10f +
+                                        floodReserve * 0.15f);
+        out.tailsTransitionConfidence =
+            clamp01((out.finishLikely ? 0.60f : 0.0f) +
+                    clamp01(safeDivide(settings.nbk.columnBottomTempThresholdC - state.temps.columnBottom,
+                                       3.0f, 0.0f)) *
+                        0.25f +
+                    pressureConfidence * 0.15f);
     }
 
     const float targetTemp = getCurrentModeTargetTemp(state, settings);

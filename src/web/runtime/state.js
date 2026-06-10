@@ -194,7 +194,12 @@ function mergeV2State(s, data) {
             stabilityIndex: indicators.stabilityIndex !== undefined ? toFinite(indicators.stabilityIndex, s.v2.indicators.stabilityIndex) : s.v2.indicators.stabilityIndex,
             floodRisk: indicators.floodRisk !== undefined ? toFinite(indicators.floodRisk, s.v2.indicators.floodRisk) : s.v2.indicators.floodRisk,
             headsCompletionScore: indicators.headsCompletionScore !== undefined ? toFinite(indicators.headsCompletionScore, s.v2.indicators.headsCompletionScore) : s.v2.indicators.headsCompletionScore,
-            bodyEndScore: indicators.bodyEndScore !== undefined ? toFinite(indicators.bodyEndScore, s.v2.indicators.bodyEndScore) : s.v2.indicators.bodyEndScore
+            bodyEndScore: indicators.bodyEndScore !== undefined ? toFinite(indicators.bodyEndScore, s.v2.indicators.bodyEndScore) : s.v2.indicators.bodyEndScore,
+            takeoffConfidence: indicators.takeoffConfidence !== undefined ? toFinite(indicators.takeoffConfidence, s.v2.indicators.takeoffConfidence) : s.v2.indicators.takeoffConfidence,
+            headsEndConfidence: indicators.headsEndConfidence !== undefined ? toFinite(indicators.headsEndConfidence, s.v2.indicators.headsEndConfidence) : s.v2.indicators.headsEndConfidence,
+            bodyEndConfidence: indicators.bodyEndConfidence !== undefined ? toFinite(indicators.bodyEndConfidence, s.v2.indicators.bodyEndConfidence) : s.v2.indicators.bodyEndConfidence,
+            tailsTransitionConfidence: indicators.tailsTransitionConfidence !== undefined ? toFinite(indicators.tailsTransitionConfidence, s.v2.indicators.tailsTransitionConfidence) : s.v2.indicators.tailsTransitionConfidence,
+            powerLimitConfidence: indicators.powerLimitConfidence !== undefined ? toFinite(indicators.powerLimitConfidence, s.v2.indicators.powerLimitConfidence) : s.v2.indicators.powerLimitConfidence
         } : s.v2.indicators,
         safety: safety ? {
             ...s.v2.safety,

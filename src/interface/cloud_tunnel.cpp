@@ -224,6 +224,11 @@ static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& statu
   indicators["floodRisk"] = status.indicators.floodRisk;
   indicators["headsCompletionScore"] = status.indicators.headsCompletionScore;
   indicators["bodyEndScore"] = status.indicators.bodyEndScore;
+  indicators["takeoffConfidence"] = status.indicators.takeoffConfidence;
+  indicators["headsEndConfidence"] = status.indicators.headsEndConfidence;
+  indicators["bodyEndConfidence"] = status.indicators.bodyEndConfidence;
+  indicators["tailsTransitionConfidence"] = status.indicators.tailsTransitionConfidence;
+  indicators["powerLimitConfidence"] = status.indicators.powerLimitConfidence;
 
   JsonObject safety = v2["safety"].to<JsonObject>();
   safety["severity"] = ControlV2::safetySeverityToString(metrics.safety.severity);

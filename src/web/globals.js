@@ -203,7 +203,12 @@ export let runtimeMonitorState = {
             stabilityIndex: 0,
             floodRisk: 0,
             headsCompletionScore: 0,
-            bodyEndScore: 0
+            bodyEndScore: 0,
+            takeoffConfidence: -1,
+            headsEndConfidence: -1,
+            bodyEndConfidence: -1,
+            tailsTransitionConfidence: -1,
+            powerLimitConfidence: 0
         },
         safety: {
             severity: 'none',

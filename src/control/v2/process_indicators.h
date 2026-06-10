@@ -59,6 +59,11 @@ struct ProcessIndicatorsV2 {
     float floodRisk = 0.0f;
     float headsCompletionScore = 0.0f;
     float bodyEndScore = 0.0f;
+    float takeoffConfidence = -1.0f;
+    float headsEndConfidence = -1.0f;
+    float bodyEndConfidence = -1.0f;
+    float tailsTransitionConfidence = -1.0f;
+    float powerLimitConfidence = 0.0f;
 };
 
 class ProcessIndicatorsEngineV2 {

@@ -18,6 +18,29 @@ function formatIndicatorPercent(value) {
     return `${clampPercent(toFinite(value, 0) * 100).toFixed(0)}%`;
 }
 
+function formatConfidencePercent(value) {
+    const normalized = toFinite(value, -1);
+    if (normalized < 0) {
+        return '—';
+    }
+    return `${clampPercent(normalized * 100).toFixed(0)}%`;
+}
+
+function getConfidenceTone(value, invert = false) {
+    const normalized = toFinite(value, -1);
+    if (normalized < 0) {
+        return 'muted';
+    }
+    if (invert) {
+        if (normalized >= 0.75) return 'danger';
+        if (normalized >= 0.45) return 'warn';
+        return 'good';
+    }
+    if (normalized >= 0.75) return 'good';
+    if (normalized >= 0.45) return 'warn';
+    return 'danger';
+}
+
 function boolLabel(value, goodText, badText, invert = false) {
     const ok = invert ? !value : !!value;
     return {
@@ -1419,6 +1442,7 @@ function renderProcessIndicatorsPanel() {
     const s = runtimeMonitorState;
     const indicators = s?.v2?.indicators || {};
     const activeLimits = s?.v2?.activeLimits || {};
+    const mode = resolveMode(s.mode, s.modeStr);
 
     const lifecycle = String(s?.v2?.lifecycle || 'idle');
     const lastReasonCode = String(s?.v2?.lastReasonCode || 'RC_NONE');
@@ -1429,6 +1453,11 @@ function renderProcessIndicatorsPanel() {
     const processHealth = toFinite(indicators.processHealth, 0);
     const headsScore = toFinite(indicators.headsCompletionScore, 0);
     const bodyScore = toFinite(indicators.bodyEndScore, 0);
+    const takeoffConfidence = toFinite(indicators.takeoffConfidence, -1);
+    const headsEndConfidence = toFinite(indicators.headsEndConfidence, -1);
+    const bodyEndConfidence = toFinite(indicators.bodyEndConfidence, -1);
+    const tailsTransitionConfidence = toFinite(indicators.tailsTransitionConfidence, -1);
+    const powerLimitConfidence = toFinite(indicators.powerLimitConfidence, 0);
     const hasLimit =
         Boolean(indicators.powerLimited) ||
         Boolean(activeLimits.powerCapped) ||
@@ -1495,6 +1524,41 @@ function renderProcessIndicatorsPanel() {
         'indicator-power-limit',
         getActiveLimitsLabel(indicators, activeLimits),
         hasLimit ? 'warn' : 'good'
+    );
+
+    const showTakeoffConfidence =
+        mode === MODE_RECT || mode === MODE_MANUAL || mode === MODE_DIST || mode === MODE_NBK;
+    const showHeadsConfidence =
+        mode === MODE_RECT || mode === MODE_MANUAL || mode === MODE_DIST;
+    const showBodyConfidence =
+        mode === MODE_RECT || mode === MODE_MANUAL || mode === MODE_DIST;
+    const showTailsConfidence =
+        mode === MODE_RECT || mode === MODE_MANUAL || mode === MODE_DIST || mode === MODE_NBK;
+
+    setIndicatorValue(
+        'indicator-confidence-takeoff',
+        showTakeoffConfidence ? formatConfidencePercent(takeoffConfidence) : '—',
+        showTakeoffConfidence ? getConfidenceTone(takeoffConfidence) : 'muted'
+    );
+    setIndicatorValue(
+        'indicator-confidence-heads-end',
+        showHeadsConfidence ? formatConfidencePercent(headsEndConfidence) : '—',
+        showHeadsConfidence ? getConfidenceTone(headsEndConfidence) : 'muted'
+    );
+    setIndicatorValue(
+        'indicator-confidence-body-end',
+        showBodyConfidence ? formatConfidencePercent(bodyEndConfidence) : '—',
+        showBodyConfidence ? getConfidenceTone(bodyEndConfidence) : 'muted'
+    );
+    setIndicatorValue(
+        'indicator-confidence-tails',
+        showTailsConfidence ? formatConfidencePercent(tailsTransitionConfidence) : '—',
+        showTailsConfidence ? getConfidenceTone(tailsTransitionConfidence) : 'muted'
+    );
+    setIndicatorValue(
+        'indicator-confidence-power-limit',
+        formatConfidencePercent(powerLimitConfidence),
+        getConfidenceTone(powerLimitConfidence, true)
     );
 
     const guidance = getPublishedGuidance(s) || buildGuidance(s, indicators, activeLimits);
