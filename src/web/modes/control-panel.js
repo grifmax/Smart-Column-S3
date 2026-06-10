@@ -227,6 +227,7 @@ export function renderControlStartState() {
     }
 
     renderControlModeSummary();
+    renderModeStartAdvisor();
     renderControlStartChecklist();
 }
 
@@ -244,6 +245,106 @@ function renderRuntimePreflightFallback() {
     const fallback = getStartAvailabilityState(runtimeMonitorState).preflight;
     if (!fallback) return;
     setPreflightState(fallback.title, fallback.detail, fallback.tone, fallback.checks);
+}
+
+function formatAdvisorPercent(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? `${Math.round(numeric)}%` : '—';
+}
+
+function appendAdvisorMetaItem(container, tone, title, detail, action = '') {
+    const item = document.createElement('div');
+    item.className = `modal-advisor-item is-${tone || 'muted'}`;
+
+    const titleEl = document.createElement('strong');
+    titleEl.textContent = title;
+    item.appendChild(titleEl);
+
+    const detailEl = document.createElement('div');
+    detailEl.className = 'modal-advisor-text';
+    detailEl.textContent = detail;
+    item.appendChild(detailEl);
+
+    if (action) {
+        const actionEl = document.createElement('div');
+        actionEl.className = 'modal-advisor-action';
+        actionEl.textContent = action;
+        item.appendChild(actionEl);
+    }
+
+    container.appendChild(item);
+}
+
+function buildAdvisorFallback() {
+    const availability = getStartAvailabilityState(runtimeMonitorState);
+    const preflight = availability.preflight || {};
+    return {
+        tone: preflight.tone || availability.tone || 'muted',
+        title: preflight.title || availability.title || 'Проверка перед запуском',
+        detail: preflight.detail || availability.detail || 'Собираем сигналы готовности.',
+        action: 'Откройте чек-лист и проверьте ключевые уставки перед подтверждением запуска.',
+        confidence: {}
+    };
+}
+
+function renderModeStartAdvisor(snapshot = latestModePreflight) {
+    const root = byId('mode-start-advisor');
+    const titleEl = byId('mode-start-advisor-title');
+    const summaryEl = byId('mode-start-advisor-summary');
+    const detailEl = byId('mode-start-advisor-detail');
+    const actionEl = byId('mode-start-advisor-action');
+    const metaEl = byId('mode-start-advisor-meta');
+    if (!root || !titleEl || !summaryEl || !detailEl || !actionEl || !metaEl) return;
+
+    const advisor = snapshot?.advisor || buildAdvisorFallback();
+    const tone = advisor.tone || snapshot?.tone || 'muted';
+    const confidence = advisor.confidence || {};
+    const startupText = formatAdvisorPercent(confidence.startup);
+    const decisionText = formatAdvisorPercent(confidence.decision);
+
+    root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    root.classList.add(`is-${tone}`);
+    titleEl.textContent = advisor.title || 'Совет перед запуском';
+    summaryEl.textContent = snapshot?.advisor
+        ? `Уверенность старта ${startupText}, инженерная оценка ${decisionText}`
+        : 'Покажем краткую рекомендацию после backend preflight';
+    detailEl.textContent = advisor.detail || 'Собираем рекомендации перед запуском.';
+    actionEl.textContent = advisor.action || '';
+    metaEl.innerHTML = '';
+
+    appendAdvisorMetaItem(
+        metaEl,
+        tone,
+        'Уверенность запуска',
+        `Старт: ${startupText}. Process health: ${formatAdvisorPercent(confidence.processHealth)}, stability: ${formatAdvisorPercent(confidence.stability)}.`
+    );
+
+    const profile = advisor.profile || {};
+    if (profile.relevant) {
+        const profileTone = profile.loaded ? (profile.matchesMode ? 'good' : 'warn') : 'warn';
+        const profileName = profile.name || 'Профиль не привязан';
+        const profileDetail = profile.loaded
+            ? (profile.matchesMode
+                ? `Активный профиль: ${profileName}. Категория согласована с выбранным режимом.`
+                : `Активный профиль: ${profileName}. Категория не совпадает с выбранным режимом.`)
+            : 'Запуск пойдёт без активного профиля, baseline для Run Advisor будет слабее.';
+        appendAdvisorMetaItem(metaEl, profileTone, 'Связка с профилем', profileDetail);
+    }
+
+    const phaseSignals = [
+        ['Отбор', confidence.takeoff],
+        ['Конец голов', confidence.headsEnd],
+        ['Конец тела', confidence.bodyEnd],
+        ['Переход в хвосты', confidence.tails],
+        ['Power limit', confidence.powerLimit]
+    ].filter(([, value]) => Number.isFinite(Number(value)));
+
+    if (phaseSignals.length) {
+        const signalDetail = phaseSignals
+            .map(([label, value]) => `${label}: ${formatAdvisorPercent(value)}`)
+            .join(' • ');
+        appendAdvisorMetaItem(metaEl, 'muted', 'Сигналы автоматики', signalDetail);
+    }
 }
 
 function openModeStartModal() {
@@ -802,6 +903,14 @@ function mapPreflightItemTarget(id) {
             return 'nbk-power-w';
         case 'fermentation-profile':
             return 'ferm-target-temp';
+        case 'profile':
+            if (selectedControlMode === 'rectification') return 'rect-start-feed-volume';
+            if (selectedControlMode === 'manual') return 'manual-feed-volume';
+            if (selectedControlMode === 'distillation') return 'dist-start-power-percent';
+            if (selectedControlMode === 'mashing') return 'mash-steps';
+            return '';
+        case 'water':
+            return 'indicator-cooling-margin';
         case 'sensors':
             return 'indicator-sensor-freshness';
         case 'cooling':

@@ -121,6 +121,8 @@ export function setPreflightState(title, detail, tone = 'muted', checks = {}) {
     setPreflightItem('runtime-preflight-sensors', checks.sensors?.text || '--', checks.sensors?.tone || 'muted');
     setPreflightItem('runtime-preflight-safety', checks.safety?.text || '--', checks.safety?.tone || 'muted');
     setPreflightItem('runtime-preflight-alarm', checks.alarm?.text || '--', checks.alarm?.tone || 'muted');
+    setPreflightItem('runtime-preflight-profile', checks.profile?.text || '--', checks.profile?.tone || 'muted');
+    setPreflightItem('runtime-preflight-water', checks.water?.text || '--', checks.water?.tone || 'muted');
 }
 
 function setMissionCardState(cardId, valueId, text, route = null) {

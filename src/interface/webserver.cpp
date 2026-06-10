@@ -1022,11 +1022,36 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
   const bool loggingReady = Logger::getCurrentLogFile() != nullptr &&
                             Logger::getCurrentLogFile()[0] != '\0';
   const bool coolingRelevant = isCoolingRelevantForMode(mode);
+  const bool recipeProfileRelevant =
+      mode == Mode::RECTIFICATION || mode == Mode::MANUAL_RECT ||
+      mode == Mode::DISTILLATION || mode == Mode::MASHING;
   const bool expectsAutoStirrer = expectsAutoStirrerForMode(mode, g_settings);
+  const bool waterTelemetryReady =
+      g_state.temps.valid[TEMP_WATER_IN] && g_state.temps.valid[TEMP_WATER_OUT];
   const float cubeVolumeLimitL = g_settings.equipment.cubeVolumeL;
   const float minSubmergeL = g_settings.equipment.minHeaterSubmergeL;
   const float absCubePressure =
       g_state.pressure.cube < 0.0f ? -g_state.pressure.cube : g_state.pressure.cube;
+  const String activeProfileId = getActiveProfileId();
+  Profile activeProfile;
+  const bool activeProfileLoaded =
+      !activeProfileId.isEmpty() && loadProfile(activeProfileId, activeProfile);
+  const bool rectProfile =
+      activeProfileLoaded &&
+      (activeProfile.metadata.category == "rectification" ||
+       activeProfile.parameters.mode == "rectification");
+  const bool distProfile =
+      activeProfileLoaded &&
+      (activeProfile.metadata.category == "distillation" ||
+       activeProfile.parameters.mode == "distillation");
+  const bool mashProfile =
+      activeProfileLoaded &&
+      (activeProfile.metadata.category == "mashing" ||
+       activeProfile.parameters.mode == "mashing");
+  const bool profileCategoryMatches =
+      ((mode == Mode::RECTIFICATION || mode == Mode::MANUAL_RECT) && rectProfile) ||
+      (mode == Mode::DISTILLATION && distProfile) ||
+      (mode == Mode::MASHING && mashProfile);
 
   uint8_t blockingCount = 0;
   uint8_t warningCount = 0;
@@ -1045,6 +1070,24 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
                            safetyLatched ? "danger" : "good");
   setProcessPreflightCheck(checks, "alarm", alarmActive ? "Активна" : "Нет",
                            alarmActive ? "danger" : "good");
+
+  setProcessPreflightCheck(
+      checks, "profile",
+      recipeProfileRelevant
+          ? (profileCategoryMatches ? "OK"
+                                    : (activeProfileLoaded ? "Mismatch"
+                                                           : "РќРµ СѓРєР°Р·Р°РЅ"))
+          : "РћРїС†.",
+      recipeProfileRelevant ? (profileCategoryMatches ? "good" : "warn")
+                            : "muted");
+  setProcessPreflightCheck(checks, "water",
+                           coolingRelevant
+                               ? (waterTelemetryReady ? "OK"
+                                                      : "РџСЂРѕРІРµСЂСЊС‚Рµ")
+                               : "РќРµ РЅСѓР¶РЅРѕ",
+                           coolingRelevant
+                               ? (waterTelemetryReady ? "good" : "warn")
+                               : "muted");
 
   auto addItem = [&](const char *id, const char *tone, const char *title,
                      const String &detail, bool blocking) {
@@ -1128,6 +1171,27 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
             false);
   }
 
+  if (recipeProfileRelevant) {
+    if (!activeProfileLoaded) {
+      addItem("profile", "warn", "РђРєС‚РёРІРЅС‹Р№ РїСЂРѕС„РёР»СЊ",
+              "Р РµР¶РёРј Р·Р°РїСѓСЃС‚РёС‚СЃСЏ Р±РµР· РїСЂРёРІСЏР·Р°РЅРЅРѕРіРѕ РїСЂРѕС„РёР»СЏ. РЎСЂР°РІРЅРёРІР°С‚СЊ РїСЂРѕРіРѕРЅС‹ "
+              "Рё СѓС‡РёС‚СЊСЃСЏ РЅР° СѓСЃРїРµС€РЅС‹С… СЂРµС†РµРїС‚Р°С… Р±СѓРґРµС‚ СЃР»РѕР¶РЅРµРµ.",
+              false);
+    } else if (!profileCategoryMatches) {
+      addItem(
+          "profile", "warn", "РђРєС‚РёРІРЅС‹Р№ РїСЂРѕС„РёР»СЊ",
+          String("РЎРµР№С‡Р°СЃ Р°РєС‚РёРІРµРЅ РїСЂРѕС„РёР»СЊ '") +
+              activeProfile.metadata.name +
+              "', РЅРѕ РµРіРѕ РєР°С‚РµРіРѕСЂРёСЏ РЅРµ СЃРѕРІРїР°РґР°РµС‚ СЃ РІС‹Р±СЂР°РЅРЅС‹Рј СЂРµР¶РёРјРѕРј.",
+          false);
+    } else {
+      addItem("profile", "good", "РђРєС‚РёРІРЅС‹Р№ РїСЂРѕС„РёР»СЊ",
+              String("Р”Р»СЏ Р·Р°РїСѓСЃРєР° РїСЂРёРІСЏР·Р°РЅ РїСЂРѕС„РёР»СЊ '") +
+                  activeProfile.metadata.name + "'.",
+              false);
+    }
+  }
+
   if (coolingRelevant) {
     const bool coolingCritical =
         g_state.temps.tsa >= g_settings.safety.tsaMaxC ||
@@ -1136,6 +1200,22 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
         g_state.temps.cube >= g_settings.equipment.waterAutoStartCubeTempC &&
         !Valves::getWater();
     const bool coolingMarginLow = status.indicators.coolingMarginC <= 0.0f;
+
+    if (!waterTelemetryReady) {
+      addItem("water", "warn", "Р’РѕРґР° Рё С‚РµР»РµРјРµС‚СЂРёСЏ",
+              "Р”Р»СЏ РѕС…Р»Р°Р¶РґР°РµРјРѕРіРѕ СЂРµР¶РёРјР° РЅРµ РІРёРґРЅР° РїРѕР»РЅР°СЏ С‚РµР»РµРјРµС‚СЂРёСЏ РїРѕ РІРѕРґРµ. "
+              "Р—Р°РїСѓСЃРє РІРѕР·РјРѕР¶РµРЅ, РЅРѕ РѕРїРµСЂР°С‚РѕСЂСЃРєРёР№ РєРѕРЅС‚СЂРѕР»СЊ РЅСѓР¶РЅРѕ СѓСЃРёР»РёС‚СЊ.",
+              false);
+    } else if (coolingWarmStart) {
+      addItem("water", "warn", "Р’РѕРґР° Рё С‚РµР»РµРјРµС‚СЂРёСЏ",
+              "РљСѓР± СѓР¶Рµ РїСЂРРѕРіСЂРµС‚, Р° РІРѕРґР° РµС‰С‘ РЅРµ РѕС‚РєСЂС‹С‚Р°. Р›СѓС‡С€Рµ РїРѕРґРіРѕС‚РѕРІРёС‚СЊ РѕС…Р»Р°Р¶РґРµРЅРёРµ "
+              "РґРѕ С„РёРЅР°Р»СЊРЅРѕРіРѕ СЃС‚Р°СЂС‚Р°.",
+              false);
+    } else {
+      addItem("water", "good", "Р’РѕРґР° Рё С‚РµР»РµРјРµС‚СЂРёСЏ",
+              "Р”Р°С‚С‡РёРєРё РІРѕРґС‹ РЅР° СЃРІСЏР·Рё, РєРѕРЅС‚СѓСЂ РіРѕС‚РѕРІ Рє Р·Р°РїСѓСЃРєСѓ.",
+              false);
+    }
 
     if (coolingCritical) {
       addItem("cooling", "danger", "Контур охлаждения",
@@ -1427,6 +1507,17 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
   doc["ready"] = ready;
   doc["blockingCount"] = blockingCount;
   doc["warningCount"] = warningCount;
+  const float processHealthPct =
+      clampFloatRange(status.indicators.processHealth * 100.0f, 0.0f, 100.0f);
+  const float stabilityPct =
+      clampFloatRange(status.indicators.stabilityIndex * 100.0f, 0.0f, 100.0f);
+  const float decisionConfidencePct =
+      clampFloatRange((processHealthPct * 0.55f) + (stabilityPct * 0.45f),
+                      0.0f, 100.0f);
+  const float startupConfidencePct =
+      clampFloatRange(decisionConfidencePct - (blockingCount * 34.0f) -
+                          (warningCount * 9.0f),
+                      ready ? 18.0f : 0.0f, 100.0f);
 
   if (!ready) {
     doc["tone"] = "danger";
@@ -1446,6 +1537,57 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
     doc["detail"] =
         "Основные проверки backend pre-flight пройдены, режим готов к запуску.";
   }
+
+  JsonObject advisor = doc["advisor"].to<JsonObject>();
+  advisor["tone"] = ready ? (warningCount > 0 ? "warn" : status.guidance.tone)
+                          : "danger";
+  advisor["title"] =
+      ready ? ((status.guidance.title[0] != '\0') ? status.guidance.title
+                                                  : doc["title"].as<const char*>())
+            : doc["title"].as<const char*>();
+  advisor["detail"] = ready
+                          ? ((status.guidance.detail[0] != '\0')
+                                 ? status.guidance.detail
+                                 : doc["detail"].as<const char*>())
+                          : doc["detail"].as<const char*>();
+  advisor["action"] = ready
+                          ? ((status.guidance.action[0] != '\0')
+                                 ? status.guidance.action
+                                 : "РџРµСЂРµРґ СЃС‚Р°СЂС‚РѕРј РµС‰С‘ СЂР°Р· РїСЂРѕРІРµСЂСЊС‚Рµ РєР»СЋС‡РµРІС‹Рµ СѓСЃС‚Р°РІРєРё Рё РіРѕС‚РѕРІРЅРѕСЃС‚СЊ РѕС…Р»Р°Р¶РґРµРЅРёСЏ.")
+                          : "РЎРЅРёРјРёС‚Рµ РєСЂРёС‚РёС‡РЅС‹Рµ Р±Р»РѕРєРёСЂРѕРІРєРё РІ С‡РµРє-Р»РёСЃС‚Рµ, РїРѕСЃР»Рµ С‡РµРіРѕ РїРѕРІС‚РѕСЂРёС‚Рµ СЃС‚Р°СЂС‚.";
+
+  JsonObject advisorProfile = advisor["profile"].to<JsonObject>();
+  advisorProfile["relevant"] = recipeProfileRelevant;
+  advisorProfile["loaded"] = activeProfileLoaded;
+  advisorProfile["matchesMode"] = profileCategoryMatches;
+  advisorProfile["id"] = activeProfileLoaded ? activeProfile.id : activeProfileId;
+  advisorProfile["name"] = activeProfileLoaded ? activeProfile.metadata.name : "";
+  advisorProfile["category"] =
+      activeProfileLoaded ? activeProfile.metadata.category : "";
+
+  JsonObject confidence = advisor["confidence"].to<JsonObject>();
+  confidence["startup"] = startupConfidencePct;
+  confidence["decision"] = decisionConfidencePct;
+  confidence["processHealth"] = processHealthPct;
+  confidence["stability"] = stabilityPct;
+  if (status.indicators.takeoffConfidence >= 0.0f) {
+    confidence["takeoff"] =
+        clampFloatRange(status.indicators.takeoffConfidence * 100.0f, 0.0f, 100.0f);
+  }
+  if (status.indicators.headsEndConfidence >= 0.0f) {
+    confidence["headsEnd"] = clampFloatRange(
+        status.indicators.headsEndConfidence * 100.0f, 0.0f, 100.0f);
+  }
+  if (status.indicators.bodyEndConfidence >= 0.0f) {
+    confidence["bodyEnd"] = clampFloatRange(
+        status.indicators.bodyEndConfidence * 100.0f, 0.0f, 100.0f);
+  }
+  if (status.indicators.tailsTransitionConfidence >= 0.0f) {
+    confidence["tails"] = clampFloatRange(
+        status.indicators.tailsTransitionConfidence * 100.0f, 0.0f, 100.0f);
+  }
+  confidence["powerLimit"] = clampFloatRange(
+      status.indicators.powerLimitConfidence * 100.0f, 0.0f, 100.0f);
 
   return ready;
 }

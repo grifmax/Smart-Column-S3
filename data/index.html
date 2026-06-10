@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.47">
+    <link rel="stylesheet" href="style.css?v=2.2.48">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.47" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.48" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1044,7 +1044,27 @@
                                             <span>Авария</span>
                                             <strong id="runtime-preflight-alarm" class="operator-indicator-value">--</strong>
                                         </div>
+                                        <div class="operator-preflight-item">
+                                            <span>Профиль</span>
+                                            <strong id="runtime-preflight-profile" class="operator-indicator-value">--</strong>
+                                        </div>
+                                        <div class="operator-preflight-item">
+                                            <span>Вода</span>
+                                            <strong id="runtime-preflight-water" class="operator-indicator-value">--</strong>
+                                        </div>
                                     </div>
+                                </div>
+
+                                <div id="mode-start-advisor" class="control-start-checklist is-muted">
+                                    <div class="control-start-checklist-head">
+                                        <strong id="mode-start-advisor-title">Совет перед запуском</strong>
+                                        <span id="mode-start-advisor-summary">Собираем рекомендации...</span>
+                                    </div>
+                                    <div id="mode-start-advisor-detail" class="operator-preflight-text">
+                                        Анализируем готовность процесса и рабочие сигналы автоматики.
+                                    </div>
+                                    <div id="mode-start-advisor-action" class="modal-advisor-action"></div>
+                                    <div id="mode-start-advisor-meta" class="modal-advisor-list"></div>
                                 </div>
 
                                 <div id="mode-start-checklist" class="control-start-checklist is-muted">
@@ -2785,7 +2805,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.47"></script>
+    <script src="app.js?v=2.2.48"></script>
 </body>
 
 </html>
