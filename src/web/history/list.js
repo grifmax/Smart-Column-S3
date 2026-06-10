@@ -288,18 +288,26 @@ function getCompletionBadgeTitle(process) {
 function buildOutcomeSummary(process) {
 
     const phaseName = formatPhaseName(process.lastPhaseName);
-    const operatorMessage = String(process.lastOperatorMessage || '').trim();
-    const reason = formatReasonCode(process.lastReasonCode);
+    const operatorMessage = String(process.completionOperatorMessage || process.lastOperatorMessage || '').trim();
+    const reason = formatReasonCode(process.completionReasonCode || process.lastReasonCode);
+    const completionState = formatCompletionState(process.completionState);
 
-    if (!phaseName && !operatorMessage && !reason) {
+    if (!phaseName && !operatorMessage && !reason && !completionState) {
 
         return '';
 
     }
 
     const detail = operatorMessage || reason;
+    const head = completionState || phaseName || 'Итог';
 
-    return detail ? `${phaseName || 'Итог'}: ${detail}` : phaseName;
+    if (detail) {
+        return phaseName && completionState
+            ? `${head} • ${phaseName}: ${detail}`
+            : `${head}: ${detail}`;
+    }
+
+    return phaseName && completionState ? `${completionState} • ${phaseName}` : (phaseName || completionState);
 
 }
 
