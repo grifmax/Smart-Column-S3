@@ -196,6 +196,15 @@ struct ProcessListItem {
     bool safetyLimited = false;
     String safetyState;
     String safetySummary;
+    bool indicatorsAvailable = false;
+    uint16_t indicatorSamples = 0;
+    float avgProcessHealth = 0.0f;
+    float minProcessHealth = 0.0f;
+    float avgStabilityIndex = 0.0f;
+    float minCoolingMarginC = 0.0f;
+    float maxFloodRisk = 0.0f;
+    float takeoffShare = 0.0f;
+    float freshnessShare = 0.0f;
 };
 
 // ============================================================================

@@ -41,6 +41,21 @@ function getConfidenceTone(value, invert = false) {
     return 'danger';
 }
 
+function getIndicatorPercentTone(value, warnThreshold, goodThreshold, invert = false) {
+    const normalized = toFinite(value, -1);
+    if (normalized < 0) {
+        return 'muted';
+    }
+    if (invert) {
+        if (normalized >= goodThreshold) return 'danger';
+        if (normalized >= warnThreshold) return 'warn';
+        return 'good';
+    }
+    if (normalized >= goodThreshold) return 'good';
+    if (normalized >= warnThreshold) return 'warn';
+    return 'danger';
+}
+
 function boolLabel(value, goodText, badText, invert = false) {
     const ok = invert ? !value : !!value;
     return {
@@ -1384,6 +1399,8 @@ function renderProcessIndicatorsCard() {
     const processHealth = toFinite(indicators.processHealth, 0);
     const headsScore = toFinite(indicators.headsCompletionScore, 0);
     const bodyScore = toFinite(indicators.bodyEndScore, 0);
+    const telemetryCoverage = toFinite(indicators.telemetryCoverage, -1);
+    const decisionTrust = toFinite(indicators.decisionTrust, -1);
 
     setIndicatorValue(
         'indicator-last-reason',
@@ -1428,6 +1445,10 @@ function renderProcessIndicatorsCard() {
 
     const freshness = boolLabel(indicators.sensorFreshnessOk, 'OK', 'Просрочены');
     setIndicatorValue('indicator-sensor-freshness', freshness.text, freshness.tone);
+    setIndicatorValue('indicator-telemetry-coverage', formatConfidencePercent(telemetryCoverage), getIndicatorPercentTone(telemetryCoverage, 0.7, 0.9));
+    setIndicatorValue('indicator-decision-trust', formatConfidencePercent(decisionTrust), getIndicatorPercentTone(decisionTrust, 0.55, 0.8));
+    setIndicatorValue('indicator-degraded-mode', indicators.degradedModeActive ? 'Активен' : 'Нет', indicators.degradedModeActive ? 'warn' : 'good');
+    setIndicatorValue('indicator-adaptive-control', indicators.adaptiveControlAllowed ? 'Разрешён' : 'Ограничен', indicators.adaptiveControlAllowed ? 'good' : 'warn');
 
     const pressureStable = boolLabel(indicators.pressureStable, 'Стабильно', 'Дрейф');
     setIndicatorValue('indicator-pressure-stable', pressureStable.text, pressureStable.tone);
@@ -1477,6 +1498,8 @@ function renderProcessIndicatorsPanel() {
     const processHealth = toFinite(indicators.processHealth, 0);
     const headsScore = toFinite(indicators.headsCompletionScore, 0);
     const bodyScore = toFinite(indicators.bodyEndScore, 0);
+    const telemetryCoverage = toFinite(indicators.telemetryCoverage, -1);
+    const decisionTrust = toFinite(indicators.decisionTrust, -1);
     const takeoffConfidence = toFinite(indicators.takeoffConfidence, -1);
     const headsEndConfidence = toFinite(indicators.headsEndConfidence, -1);
     const bodyEndConfidence = toFinite(indicators.bodyEndConfidence, -1);
@@ -1527,6 +1550,10 @@ function renderProcessIndicatorsPanel() {
 
     const freshness = boolLabel(indicators.sensorFreshnessOk, 'OK', 'Просрочены');
     setIndicatorValue('indicator-sensor-freshness', freshness.text, freshness.tone);
+    setIndicatorValue('indicator-telemetry-coverage', formatConfidencePercent(telemetryCoverage), getIndicatorPercentTone(telemetryCoverage, 0.7, 0.9));
+    setIndicatorValue('indicator-decision-trust', formatConfidencePercent(decisionTrust), getIndicatorPercentTone(decisionTrust, 0.55, 0.8));
+    setIndicatorValue('indicator-degraded-mode', indicators.degradedModeActive ? 'Активен' : 'Нет', indicators.degradedModeActive ? 'warn' : 'good');
+    setIndicatorValue('indicator-adaptive-control', indicators.adaptiveControlAllowed ? 'Разрешён' : 'Ограничен', indicators.adaptiveControlAllowed ? 'good' : 'warn');
 
     const pressureStable = boolLabel(indicators.pressureStable, 'Стабильно', 'Дрейф');
     setIndicatorValue('indicator-pressure-stable', pressureStable.text, pressureStable.tone);

@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.59`  
+**Версия прошивки:** `2.2.61`  
 **Актуальность документа:** 2026-06-11
 
 ---
@@ -149,6 +149,16 @@
 Список сохранённых прогонов.
 
 Используется таблицей истории и подбором baseline для `Run Advisor`.
+
+`GET /api/history` also publishes a compact `indicatorsSummary` block for each run:
+
+- `available`, `samples`
+- `avgProcessHealth`, `minProcessHealth`
+- `avgStabilityIndex`
+- `minCoolingMarginC`
+- `maxFloodRisk`
+- `takeoffShare`
+- `freshnessShare`
 
 #### `GET /api/history/{id}`
 

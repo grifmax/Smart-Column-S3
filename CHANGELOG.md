@@ -7,6 +7,16 @@
 
 ---
 
+## [2.2.61] - 2026-06-11
+
+### Added
+- (codex) `GET /api/history` now exports compact `indicatorsSummary` aggregates for each run, so history cards and future compare views can evaluate process quality without loading the full JSON first.
+
+### Changed
+- (codex) Operator diagnostics now show `telemetryCoverage`, `decisionTrust`, `degradedMode` and `adaptiveControlAllowed`, turning v2 indicators into a visible runtime layer instead of hidden API-only numbers.
+- (codex) History cards and process details now surface indicators as readable quality summaries: stability, cooling margin, flood risk, telemetry freshness and an engineering verdict for each run.
+- (codex) Version metadata in `src/config.h`, `README.md`, `TODO2.0.md` and `docs/API.md` is synchronized to `2.2.61`.
+
 ## [2.2.60] - 2026-06-11
 
 ### Added

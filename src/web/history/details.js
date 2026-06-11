@@ -735,15 +735,63 @@ function appendIndicatorSummarySection(container, process) {
     }
 
     const share = (value) => `${((Number(value || 0) / samples) * 100).toFixed(0)}%`;
+    const processHealthAvg = Number(indicators.processHealth?.avg || 0);
+    const processHealthMin = Number(indicators.processHealth?.min || 0);
+    const stabilityAvg = Number(indicators.stabilityIndexAvg || 0);
+    const coolingMin = Number(indicators.coolingMarginC?.min || 0);
+    const floodMax = Number(indicators.floodRisk?.max || 0);
+    const takeoffShare = Number(indicators.takeoffAllowedSamples || 0) / samples;
+    const freshnessShare = Number(indicators.sensorFreshnessOkSamples || 0) / samples;
 
-    appendInfoItem(container, 'Здоровье процесса', `${(Number(indicators.processHealth?.avg || 0) * 100).toFixed(0)}%`);
-    appendInfoItem(container, 'Мин. здоровье', `${(Number(indicators.processHealth?.min || 0) * 100).toFixed(0)}%`);
-    appendInfoItem(container, 'Стабильность', `${(Number(indicators.stabilityIndexAvg || 0) * 100).toFixed(0)}%`);
-    appendInfoItem(container, 'Риск захлёба', `${(Number(indicators.floodRisk?.avg || 0) * 100).toFixed(0)}% / max ${(Number(indicators.floodRisk?.max || 0) * 100).toFixed(0)}%`);
-    appendInfoItem(container, 'Запас охлаждения', `${Number(indicators.coolingMarginC?.avg || 0).toFixed(1)}°C / min ${Number(indicators.coolingMarginC?.min || 0).toFixed(1)}°C`);
+    appendInfoItem(container, 'Здоровье процесса', `${(processHealthAvg * 100).toFixed(0)}%`);
+    appendInfoItem(container, 'Мин. здоровье', `${(processHealthMin * 100).toFixed(0)}%`);
+    appendInfoItem(container, 'Стабильность', `${(stabilityAvg * 100).toFixed(0)}%`);
+    appendInfoItem(container, 'Риск захлёба', `${(Number(indicators.floodRisk?.avg || 0) * 100).toFixed(0)}% / max ${(floodMax * 100).toFixed(0)}%`);
+    appendInfoItem(container, 'Запас охлаждения', `${Number(indicators.coolingMarginC?.avg || 0).toFixed(1)}°C / min ${coolingMin.toFixed(1)}°C`);
     appendInfoItem(container, 'Отбор разрешён', share(indicators.takeoffAllowedSamples));
     appendInfoItem(container, 'Свежесть датчиков', share(indicators.sensorFreshnessOkSamples));
     appendInfoItem(container, 'Финальные score', `heads ${(Number(indicators.headsCompletionScoreFinal || 0) * 100).toFixed(0)}%, body ${(Number(indicators.bodyEndScoreFinal || 0) * 100).toFixed(0)}%`);
+
+    const verdictSection = document.createElement('div');
+    verdictSection.className = 'modal-info-item modal-info-item-wide';
+
+    const verdictLabel = document.createElement('div');
+    verdictLabel.className = 'modal-info-label';
+    verdictLabel.textContent = 'Indicators verdict';
+
+    const verdictCard = document.createElement('div');
+    const verdictTone = freshnessShare < 0.95 || coolingMin <= 0 || floodMax >= 0.8
+        ? 'danger'
+        : ((stabilityAvg < 0.55 || takeoffShare < 0.65 || coolingMin < 4 || floodMax >= 0.55) ? 'warn' : 'good');
+    verdictCard.className = `modal-history-insight is-${verdictTone}`;
+
+    const verdictHead = document.createElement('div');
+    verdictHead.className = 'modal-history-insight-head';
+
+    const verdictTitle = document.createElement('strong');
+    verdictTitle.textContent = verdictTone === 'good'
+        ? 'Indicators выглядели рабочими'
+        : (verdictTone === 'warn' ? 'Indicators показывают узкое рабочее окно' : 'Indicators подтверждают проблемный прогон');
+
+    const verdictText = document.createElement('p');
+    verdictText.className = 'modal-history-insight-text';
+    verdictText.textContent = `Process health ${formatPercent0(processHealthAvg)}, минимум ${formatPercent0(processHealthMin)}, stability ${formatPercent0(stabilityAvg)}, flood max ${formatPercent0(floodMax)}, cooling margin min ${coolingMin.toFixed(1)}°C, takeoff window ${formatPercent0(takeoffShare)}, telemetry freshness ${formatPercent0(freshnessShare)}.`;
+
+    const verdictAction = document.createElement('p');
+    verdictAction.className = 'modal-history-insight-action';
+    verdictAction.textContent = verdictTone === 'good'
+        ? 'Этот запуск подходит как reference для baseline и последующих сравнений профиля.'
+        : (verdictTone === 'warn'
+            ? 'Сценарий рабочий, но запас устойчивости небольшой. Это хороший кандидат для мягкой оптимизации профиля.'
+            : 'Перед повторением сценария сначала устраните телеметрию/охлаждение/захлёб, а уже потом сравнивайте профили.');
+
+    verdictHead.appendChild(verdictTitle);
+    verdictCard.appendChild(verdictHead);
+    verdictCard.appendChild(verdictText);
+    verdictCard.appendChild(verdictAction);
+    verdictSection.appendChild(verdictLabel);
+    verdictSection.appendChild(verdictCard);
+    container.appendChild(verdictSection);
 
 }
 

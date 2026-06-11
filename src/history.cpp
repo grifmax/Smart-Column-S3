@@ -673,6 +673,36 @@ void applyCompletionSummary(const JsonArrayConst& errors,
     item.completionOperatorMessage = item.lastOperatorMessage;
 }
 
+void applyIndicatorSummary(const JsonObjectConst& indicatorsDoc,
+                           ProcessListItem& item) {
+    if (indicatorsDoc.isNull()) {
+        return;
+    }
+
+    const uint16_t samples = indicatorsDoc["samples"] | 0;
+    item.indicatorSamples = samples;
+    item.indicatorsAvailable = samples > 0;
+    item.avgProcessHealth =
+        indicatorsDoc["processHealth"]["avg"] | 0.0f;
+    item.minProcessHealth =
+        indicatorsDoc["processHealth"]["min"] | 0.0f;
+    item.avgStabilityIndex =
+        indicatorsDoc["stabilityIndexAvg"] | 0.0f;
+    item.minCoolingMarginC =
+        indicatorsDoc["coolingMarginC"]["min"] | 0.0f;
+    item.maxFloodRisk =
+        indicatorsDoc["floodRisk"]["max"] | 0.0f;
+
+    if (samples > 0) {
+        item.takeoffShare =
+            static_cast<float>(indicatorsDoc["takeoffAllowedSamples"] | 0) /
+            static_cast<float>(samples);
+        item.freshnessShare =
+            static_cast<float>(indicatorsDoc["sensorFreshnessOkSamples"] | 0) /
+            static_cast<float>(samples);
+    }
+}
+
 } // namespace
 
 std::vector<ProcessListItem> getProcessList() {
@@ -721,6 +751,9 @@ std::vector<ProcessListItem> getProcessList() {
                         doc["results"]["errors"].as<JsonArrayConst>(),
                         doc["results"]["warnings"].as<JsonArrayConst>(),
                         safetySummary, item);
+                    applyIndicatorSummary(
+                        doc["metrics"]["indicators"].as<JsonObjectConst>(),
+                        item);
 
                     list.push_back(item);
                 }

@@ -2542,6 +2542,16 @@ void init() {
       item["safetyLimited"] = process.safetyLimited;
       item["safetyState"] = process.safetyState;
       item["safetySummary"] = process.safetySummary;
+      JsonObject indicatorsSummary = item["indicatorsSummary"].to<JsonObject>();
+      indicatorsSummary["available"] = process.indicatorsAvailable;
+      indicatorsSummary["samples"] = process.indicatorSamples;
+      indicatorsSummary["avgProcessHealth"] = process.avgProcessHealth;
+      indicatorsSummary["minProcessHealth"] = process.minProcessHealth;
+      indicatorsSummary["avgStabilityIndex"] = process.avgStabilityIndex;
+      indicatorsSummary["minCoolingMarginC"] = process.minCoolingMarginC;
+      indicatorsSummary["maxFloodRisk"] = process.maxFloodRisk;
+      indicatorsSummary["takeoffShare"] = process.takeoffShare;
+      indicatorsSummary["freshnessShare"] = process.freshnessShare;
     }
 
     String response;

@@ -311,6 +311,70 @@ function buildOutcomeSummary(process) {
 
 }
 
+function formatIndicatorPercent(value) {
+
+    return `${(Math.max(0, Math.min(1, Number(value || 0))) * 100).toFixed(0)}%`;
+
+}
+
+function getIndicatorTone(value, warnThreshold, dangerThreshold, invert = false) {
+
+    const normalized = Math.max(0, Math.min(1, Number(value || 0)));
+
+    if (invert) {
+        if (normalized >= dangerThreshold) return 'danger';
+        if (normalized >= warnThreshold) return 'warn';
+        return 'good';
+    }
+
+    if (normalized >= dangerThreshold) return 'good';
+    if (normalized >= warnThreshold) return 'warn';
+    return 'danger';
+
+}
+
+function getCoolingTone(value) {
+
+    const normalized = Number(value || 0);
+
+    if (normalized <= 0) return 'danger';
+    if (normalized < 4) return 'warn';
+    return 'good';
+
+}
+
+function buildIndicatorSummary(process) {
+
+    const summary = process?.indicatorsSummary;
+
+    if (!summary || !summary.available || Number(summary.samples || 0) <= 0) {
+
+        return '';
+
+    }
+
+    const stability = Number(summary.avgStabilityIndex || 0);
+    const cooling = Number(summary.minCoolingMarginC || 0);
+    const flood = Number(summary.maxFloodRisk || 0);
+    const freshness = Number(summary.freshnessShare || 0);
+    const takeoff = Number(summary.takeoffShare || 0);
+
+    const chips = [
+        `<span class="history-indicator-chip is-${getIndicatorTone(stability, 0.45, 0.75)}">Stability ${escapeHtml(formatIndicatorPercent(stability))}</span>`,
+        `<span class="history-indicator-chip is-${getCoolingTone(cooling)}">Cooling min ${escapeHtml(cooling.toFixed(1))}°C</span>`,
+        `<span class="history-indicator-chip is-${getIndicatorTone(flood, 0.35, 0.65, true)}">Flood max ${escapeHtml(formatIndicatorPercent(flood))}</span>`,
+        `<span class="history-indicator-chip is-${getIndicatorTone(takeoff, 0.65, 0.85)}">Takeoff ${escapeHtml(formatIndicatorPercent(takeoff))}</span>`,
+        `<span class="history-indicator-chip is-${getIndicatorTone(freshness, 0.85, 0.97)}">Telemetry ${escapeHtml(formatIndicatorPercent(freshness))}</span>`
+    ];
+
+    return `
+        <div class="history-indicators">
+            ${chips.join('')}
+        </div>
+    `;
+
+}
+
 
 
 export function renderHistoryItem(process) {
@@ -380,6 +444,7 @@ export function renderHistoryItem(process) {
     const outcomeLine = outcomeSummary
         ? `<div class="history-outcome" title="${escapeHtml(outcomeSummary)}">${escapeHtml(outcomeSummary)}</div>`
         : '';
+    const indicatorsLine = buildIndicatorSummary(process);
 
 
 
@@ -410,6 +475,8 @@ export function renderHistoryItem(process) {
                     ${safetyBadge}
 
                     ${outcomeLine}
+
+                    ${indicatorsLine}
 
                 </div>
 
