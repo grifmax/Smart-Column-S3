@@ -178,6 +178,8 @@ static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& statu
   limits["maxPumpSpeedMlH"] = status.activeLimits.maxPumpSpeedMlH;
   limits["takeoffBlocked"] = status.activeLimits.takeoffBlocked;
   limits["phaseAdvanceBlocked"] = status.activeLimits.phaseAdvanceBlocked;
+  limits["antiOscillationActive"] = status.activeLimits.antiOscillationActive;
+  limits["antiOscillationHoldSec"] = status.activeLimits.antiOscillationHoldSec;
 
   JsonObject targets = v2["commandTargets"].to<JsonObject>();
   targets["heaterPowerPercent"] = status.commandTargets.heaterPowerPercent;

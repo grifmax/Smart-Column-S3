@@ -16,6 +16,7 @@ public:
                                              const ActiveLimitsV2& limits);
     static void applyDecisionToIndicators(const SafetyDecisionV2& decision,
                                           ProcessIndicatorsV2& indicators);
+    static const ActiveLimitsV2& getLiveLimits();
 };
 
 } // namespace ControlV2

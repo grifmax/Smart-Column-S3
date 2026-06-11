@@ -7,6 +7,15 @@
 
 ---
 
+## [2.2.57] - 2026-06-11
+
+### Added
+- (codex) `SafetySupervisorV2` now has an `Anti-oscillation guard`: when `ProcessIndicatorsV2` become jittery and limits or phases start flipping too often, the runtime exposes a sticky hold window that freezes phase advance and keeps conservative power/pump limits.
+
+### Changed
+- (codex) Rectification and NBK now consult live v2 limits during phase advance, heater power, and NBK feed handling, so the new guard affects real runtime behavior instead of staying a UI-only diagnostic.
+- (codex) `/api/status`, cloud tunnel and Web UI state now publish `v2.activeLimits.antiOscillationActive` and `v2.activeLimits.antiOscillationHoldSec`, and `TODO2.0.md` closes the `Anti-oscillation guard` item.
+
 ## [2.2.56] - 2026-06-11
 
 ### Added

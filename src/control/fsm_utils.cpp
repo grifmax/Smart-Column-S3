@@ -1,6 +1,7 @@
 #include "fsm_utils.h"
 #include <Arduino.h>
 #include "watt_control.h"
+#include "v2/safety_supervisor.h"
 
 namespace FSM {
 
@@ -40,10 +41,17 @@ float estimateChargeAbvPercent(const SystemState& state) {
 }
 
 uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent) {
+    uint8_t requestedPower = fallbackPercent;
     if (state.pressure.ok) {
-        return WattControl::update(state, settings);
+        requestedPower = WattControl::update(state, settings);
     }
-    return fallbackPercent;
+
+    const ControlV2::ActiveLimitsV2& limits = ControlV2::SafetySupervisorV2::getLiveLimits();
+    if (limits.powerCapped && limits.maxHeaterPowerPercent < requestedPower) {
+        return limits.maxHeaterPowerPercent;
+    }
+
+    return requestedPower;
 }
 
 uint32_t getPhaseStartTime() { return phaseStartTime; }

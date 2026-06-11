@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.56`  
+**Версия прошивки:** `2.2.57`  
 **Актуальность документа:** 2026-06-11
 
 ---
@@ -30,6 +30,7 @@
 - safety / alarm
 - `v2.guidance`
 - `v2.indicators`
+- `v2.activeLimits.antiOscillationActive` / `v2.activeLimits.antiOscillationHoldSec`
 - `activeProfile` — активный профиль процесса, его validation context и preview адаптации рецепта под текущее атмосферное давление
 
 Это главный endpoint для web UI и fallback для внешних клиентов.

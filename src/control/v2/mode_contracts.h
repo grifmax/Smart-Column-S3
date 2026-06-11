@@ -42,6 +42,8 @@ struct ActiveLimitsV2 {
     float maxPumpSpeedMlH = 0.0f;
     bool takeoffBlocked = false;
     bool phaseAdvanceBlocked = false;
+    bool antiOscillationActive = false;
+    uint16_t antiOscillationHoldSec = 0;
 };
 
 struct CommandTargetsV2 {

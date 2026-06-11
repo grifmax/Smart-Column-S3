@@ -167,7 +167,9 @@ export let runtimeMonitorState = {
             pumpCapped: false,
             maxPumpSpeedMlH: 0,
             takeoffBlocked: false,
-            phaseAdvanceBlocked: false
+            phaseAdvanceBlocked: false,
+            antiOscillationActive: false,
+            antiOscillationHoldSec: 0
         },
         commandTargets: {
             heaterPowerPercent: 0,

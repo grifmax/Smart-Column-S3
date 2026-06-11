@@ -513,6 +513,7 @@ function getLifecycleLabel(value) {
 
 function getActiveLimitsLabel(indicators, activeLimits) {
     const labels = [];
+    if (Boolean(activeLimits.antiOscillationActive)) labels.push('антидребезг');
     if (Boolean(indicators.powerLimited) || Boolean(activeLimits.powerCapped)) labels.push('мощность');
     if (Boolean(activeLimits.takeoffBlocked)) labels.push('отбор');
     if (Boolean(activeLimits.phaseAdvanceBlocked)) labels.push('фаза');

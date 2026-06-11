@@ -37,6 +37,7 @@ enum class ReasonCodeV2 : uint16_t {
     RC_SAFETY_LIMIT_POWER,
     RC_SAFETY_LIMIT_TAKEOFF,
     RC_SAFETY_PHASE_BLOCKED,
+    RC_SAFETY_ANTI_OSCILLATION_GUARD,
     RC_SAFETY_RECOVERY_ENTERED,
     RC_SAFETY_RECOVERY_EXITED,
     RC_SAFETY_TRIP_PRESSURE,
@@ -78,7 +79,8 @@ enum class SafetyEventTypeV2 : uint8_t {
     EMERGENCY_STOP,
     POWER_LIMIT_APPLIED,
     TAKEOFF_LIMIT_APPLIED,
-    PHASE_ADVANCE_BLOCKED
+    PHASE_ADVANCE_BLOCKED,
+    ANTI_OSCILLATION_GUARD
 };
 
 inline const char* reasonCodeToString(ReasonCodeV2 code) {
@@ -114,6 +116,7 @@ inline const char* reasonCodeToString(ReasonCodeV2 code) {
         case ReasonCodeV2::RC_SAFETY_LIMIT_POWER: return "RC_SAFETY_LIMIT_POWER";
         case ReasonCodeV2::RC_SAFETY_LIMIT_TAKEOFF: return "RC_SAFETY_LIMIT_TAKEOFF";
         case ReasonCodeV2::RC_SAFETY_PHASE_BLOCKED: return "RC_SAFETY_PHASE_BLOCKED";
+        case ReasonCodeV2::RC_SAFETY_ANTI_OSCILLATION_GUARD: return "RC_SAFETY_ANTI_OSCILLATION_GUARD";
         case ReasonCodeV2::RC_SAFETY_RECOVERY_ENTERED: return "RC_SAFETY_RECOVERY_ENTERED";
         case ReasonCodeV2::RC_SAFETY_RECOVERY_EXITED: return "RC_SAFETY_RECOVERY_EXITED";
         case ReasonCodeV2::RC_SAFETY_TRIP_PRESSURE: return "RC_SAFETY_TRIP_PRESSURE";
@@ -162,6 +165,7 @@ inline const char* safetyEventTypeToString(SafetyEventTypeV2 type) {
         case SafetyEventTypeV2::POWER_LIMIT_APPLIED: return "power_limit_applied";
         case SafetyEventTypeV2::TAKEOFF_LIMIT_APPLIED: return "takeoff_limit_applied";
         case SafetyEventTypeV2::PHASE_ADVANCE_BLOCKED: return "phase_advance_blocked";
+        case SafetyEventTypeV2::ANTI_OSCILLATION_GUARD: return "anti_oscillation_guard";
         default: return "unknown";
     }
 }

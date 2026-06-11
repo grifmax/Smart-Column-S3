@@ -92,6 +92,7 @@ const char* reasonLabel(ReasonCodeV2 reasonCode) {
         case ReasonCodeV2::RC_SAFETY_LIMIT_POWER: return "ограничение мощности";
         case ReasonCodeV2::RC_SAFETY_LIMIT_TAKEOFF: return "ограничение отбора";
         case ReasonCodeV2::RC_SAFETY_PHASE_BLOCKED: return "переход фазы заблокирован";
+        case ReasonCodeV2::RC_SAFETY_ANTI_OSCILLATION_GUARD: return "anti-oscillation guard active";
         case ReasonCodeV2::RC_SAFETY_RECOVERY_ENTERED: return "вход в recovery";
         case ReasonCodeV2::RC_SAFETY_RECOVERY_EXITED: return "выход из recovery";
         case ReasonCodeV2::RC_SAFETY_TRIP_PRESSURE: return "авария по давлению";
@@ -158,6 +159,17 @@ void fillRuntimeGuidance(const SystemState& state,
         setGuidance(status.guidance, "warn", "Идёт recovery-участок",
                     "Система переживает нестабильный эпизод и пытается вернуть процесс в рабочее окно.",
                     "Не форсируйте нагрев, воду и отбор, пока stability и cooling margin не выровняются.");
+        return;
+    }
+
+    if (limits.antiOscillationActive) {
+        char detail[192];
+        snprintf(detail, sizeof(detail),
+                 "Safety supervisor temporarily freezes phase and actuator changes for about %us while indicators settle.",
+                 static_cast<unsigned>(limits.antiOscillationHoldSec));
+        setGuidance(status.guidance, "warn", "Anti-oscillation guard active",
+                    detail,
+                    "Do not force phase switches or pump restarts until stability and sensor freshness recover.");
         return;
     }
 
@@ -517,7 +529,8 @@ bool sameHistorySafetyState(const SafetyDecisionV2& left,
            left.reasonCode == right.reasonCode &&
            left.limits.powerCapped == right.limits.powerCapped &&
            left.limits.takeoffBlocked == right.limits.takeoffBlocked &&
-           left.limits.phaseAdvanceBlocked == right.limits.phaseAdvanceBlocked;
+           left.limits.phaseAdvanceBlocked == right.limits.phaseAdvanceBlocked &&
+           left.limits.antiOscillationActive == right.limits.antiOscillationActive;
 }
 
 const char* getHistorySeverity(const SafetyDecisionV2& decision) {

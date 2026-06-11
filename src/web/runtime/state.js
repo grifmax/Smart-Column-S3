@@ -171,7 +171,13 @@ function mergeV2State(s, data) {
                 ? toFinite(activeLimits.maxPumpSpeedMlH, s.v2.activeLimits.maxPumpSpeedMlH)
                 : s.v2.activeLimits.maxPumpSpeedMlH,
             takeoffBlocked: activeLimits.takeoffBlocked !== undefined ? Boolean(activeLimits.takeoffBlocked) : s.v2.activeLimits.takeoffBlocked,
-            phaseAdvanceBlocked: activeLimits.phaseAdvanceBlocked !== undefined ? Boolean(activeLimits.phaseAdvanceBlocked) : s.v2.activeLimits.phaseAdvanceBlocked
+            phaseAdvanceBlocked: activeLimits.phaseAdvanceBlocked !== undefined ? Boolean(activeLimits.phaseAdvanceBlocked) : s.v2.activeLimits.phaseAdvanceBlocked,
+            antiOscillationActive: activeLimits.antiOscillationActive !== undefined
+                ? Boolean(activeLimits.antiOscillationActive)
+                : s.v2.activeLimits.antiOscillationActive,
+            antiOscillationHoldSec: activeLimits.antiOscillationHoldSec !== undefined
+                ? toFinite(activeLimits.antiOscillationHoldSec, s.v2.activeLimits.antiOscillationHoldSec)
+                : s.v2.activeLimits.antiOscillationHoldSec
         } : s.v2.activeLimits,
         commandTargets: commandTargets ? {
             ...s.v2.commandTargets,

@@ -5,6 +5,7 @@
 #include "../../drivers/sensors.h"
 #include "../watt_control.h"
 #include "../v2/reason_codes.h"
+#include "../v2/safety_supervisor.h"
 #include "../v2/status_adapter.h"
 #include "../../interface/mqtt.h"
 #include "../../storage/logger.h"
@@ -61,6 +62,8 @@ void update(SystemState& state, const Settings& settings) {
     uint32_t now = millis();
     uint32_t startTime = getPhaseStartTime();
     uint32_t elapsed = now - startTime;
+    const ControlV2::ActiveLimitsV2& liveLimits =
+        ControlV2::SafetySupervisorV2::getLiveLimits();
 
     switch (state.rectPhase) {
         case RectPhase::HEATING:
@@ -87,7 +90,8 @@ void update(SystemState& state, const Settings& settings) {
             Pump::stop();
             Valves::setWater(true);
             Heater::setPower(getProcessHeaterPower(state, settings, 70));
-            if (elapsed > settings.rectParams.stabilizationMin * 60 * 1000UL) {
+            if (!liveLimits.phaseAdvanceBlocked &&
+                elapsed > settings.rectParams.stabilizationMin * 60 * 1000UL) {
                 LOG_I("FSM: STABILIZATION -> HEADS");
                 ControlV2::notePhaseTransition(Mode::RECTIFICATION,
                                                static_cast<uint16_t>(RectPhase::STABILIZATION),
@@ -128,7 +132,7 @@ void update(SystemState& state, const Settings& settings) {
             Valves::setHeads(false);
             Valves::setWater(true);
             Heater::setPower(getProcessHeaterPower(state, settings, 65));
-            if (elapsed > 5 * 60 * 1000UL) {
+            if (!liveLimits.phaseAdvanceBlocked && elapsed > 5 * 60 * 1000UL) {
                 LOG_I("FSM: POST_HEADS_STABILIZATION -> PURGE");
                 ControlV2::notePhaseTransition(Mode::RECTIFICATION,
                                                static_cast<uint16_t>(RectPhase::POST_HEADS_STABILIZATION),
@@ -144,7 +148,8 @@ void update(SystemState& state, const Settings& settings) {
             Valves::closeAll();
             Valves::setWater(true);
             Heater::setPower(getProcessHeaterPower(state, settings, 65));
-            if (elapsed > settings.rectParams.purgeMin * 60 * 1000UL) {
+            if (!liveLimits.phaseAdvanceBlocked &&
+                elapsed > settings.rectParams.purgeMin * 60 * 1000UL) {
                 LOG_I("FSM: PURGE -> BODY");
                 ControlV2::notePhaseTransition(Mode::RECTIFICATION,
                                                static_cast<uint16_t>(RectPhase::PURGE),

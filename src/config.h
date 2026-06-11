@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.2.56"
+#define FIRMWARE_VERSION "2.2.57"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -205,6 +205,12 @@
 #define INTERVAL_WEB_BROADCAST 2000 // Отправка данных по WebSocket
 #define INTERVAL_WEB_BROADCAST_FULL 10000 // Полный пакет данных
 #define INTERVAL_LOG_WRITE 60000    // Запись в лог (1 мин)
+
+// Anti-oscillation guard for v2 indicators/safety
+#define V2_ANTI_OSC_GUARD_WINDOW_MS 15000UL
+#define V2_ANTI_OSC_GUARD_HOLD_MS 30000UL
+#define V2_ANTI_OSC_LIMIT_FLIP_THRESHOLD 3
+#define V2_ANTI_OSC_PHASE_FLIP_THRESHOLD 2
 
 // WiFi настройки
 #define WIFI_CONNECT_TIMEOUT_MS 10000  // Таймаут подключения к WiFi

@@ -29,6 +29,8 @@ String TransitionLoggerV2::formatPhaseTransition(const PhaseTransitionEventV2& e
     line += (event.activeLimits.powerCapped ? "1" : "0");
     line += " takeoff_blocked=";
     line += (event.activeLimits.takeoffBlocked ? "1" : "0");
+    line += " anti_oscillation=";
+    line += (event.activeLimits.antiOscillationActive ? "1" : "0");
     if (event.operatorMessage[0] != '\0') {
         line += " message=\"";
         line += event.operatorMessage;

@@ -1,6 +1,7 @@
 #include "../fsm_utils.h"
 #include "../v2/reason_codes.h"
 #include "../v2/safety_policy.h"
+#include "../v2/safety_supervisor.h"
 #include "../v2/status_adapter.h"
 #include "../../drivers/heater.h"
 #include "../../drivers/pump.h"
@@ -16,6 +17,8 @@ void update(SystemState& state, const Settings& settings) {
     uint32_t now = millis();
     uint32_t startTime = getPhaseStartTime();
     uint32_t elapsed = now - startTime;
+    const ControlV2::ActiveLimitsV2& liveLimits =
+        ControlV2::SafetySupervisorV2::getLiveLimits();
 
     switch (state.nbkPhase) {
         case NbkPhase::HEATING:
@@ -37,7 +40,7 @@ void update(SystemState& state, const Settings& settings) {
             
         case NbkPhase::STABILIZATION:
             Heater::setPower(settings.equipment.heaterPowerW > 0 ? (getProcessHeaterPower(state, settings, 70)) : 70); 
-            if (elapsed > 5 * 60 * 1000UL) {
+            if (!liveLimits.phaseAdvanceBlocked && elapsed > 5 * 60 * 1000UL) {
                 LOG_I("NBK: STABILIZATION -> WORKING");
                 ControlV2::notePhaseTransition(Mode::NBK,
                                                static_cast<uint16_t>(NbkPhase::STABILIZATION),
@@ -55,8 +58,18 @@ void update(SystemState& state, const Settings& settings) {
             if (elapsed < 60000UL) {
                 targetSpeed *= (elapsed / 60000.0f);
             }
+            if (liveLimits.pumpCapped) {
+                if (liveLimits.maxPumpSpeedMlH > 0.0f &&
+                    targetSpeed > liveLimits.maxPumpSpeedMlH) {
+                    targetSpeed = liveLimits.maxPumpSpeedMlH;
+                } else if (liveLimits.maxPumpSpeedMlH <= 0.0f) {
+                    targetSpeed = 0.0f;
+                }
+            }
 
-            if (state.temps.valid[TEMP_COLUMN_BOTTOM]) {
+            if (liveLimits.pumpCapped || liveLimits.antiOscillationActive) {
+                Pump::stop();
+            } else if (state.temps.valid[TEMP_COLUMN_BOTTOM]) {
                 if (state.temps.columnBottom < settings.nbk.columnBottomTempThresholdC) {
                     Pump::stop();
                     LOG_W("NBK: Temp %.1f < %.1f. Pump stopped.", state.temps.columnBottom, settings.nbk.columnBottomTempThresholdC);
@@ -79,7 +92,12 @@ void update(SystemState& state, const Settings& settings) {
                     lastPressWarn = now;
                 }
             }
-            Heater::setPower(powerPolicy.appliedPowerPercent);
+            uint8_t appliedPower = powerPolicy.appliedPowerPercent;
+            if (liveLimits.powerCapped &&
+                liveLimits.maxHeaterPowerPercent < appliedPower) {
+                appliedPower = liveLimits.maxHeaterPowerPercent;
+            }
+            Heater::setPower(appliedPower);
             break;
         }
             
