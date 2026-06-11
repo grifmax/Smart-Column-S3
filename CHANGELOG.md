@@ -7,6 +7,15 @@
 
 ---
 
+## [2.2.63] - 2026-06-11
+
+### Added
+- (codex) History details now include `План следующего запуска`: a compact step-by-step action block that turns `Run Advisor` verdicts into the next practical operator sequence instead of leaving recommendations scattered across the report.
+
+### Changed
+- (codex) The plan block prioritizes telemetry/safety cleanup, soft-start warnings, one-change-only profile experiments, reserve hypotheses, and explicit baseline confirmation after the next run.
+- (codex) Version metadata in `src/config.h`, `README.md`, `TODO2.0.md` and `docs/API.md` is synchronized to `2.2.63`.
+
 ## [2.2.62] - 2026-06-11
 
 ### Added

@@ -1909,6 +1909,95 @@ function buildRunAdvisorItems(process, previousSuccessfulProcess = null, previou
 
 }
 
+function buildNextRunPlanItems(process, previousSuccessfulProcess = null, previousSummary = null) {
+
+    const planItems = [];
+    const indicators = getIndicatorShares(process);
+    const adjustmentItems = buildProfileAdjustmentItems(process, previousSuccessfulProcess)
+        .map((item) => normalizeAdvisorItem(item))
+        .filter((item) => item.title);
+    const verdictItem = buildImprovementVerdictItem(process, previousSuccessfulProcess, previousSummary);
+    const errors = Array.isArray(process?.results?.errors) ? process.results.errors.length : 0;
+    const safetyEvents = buildSafetyTimeline(process).length;
+    const profileName = getProcessProfile(process);
+
+    if (indicators && (indicators.freshnessShare < 0.95 || errors > 0 || safetyEvents > 0)) {
+        planItems.push({
+            tone: errors > 0 ? 'danger' : 'warn',
+            title: 'Сначала стабилизировать измерения и safety',
+            detail: `Перед новой настройкой профиля нужно убрать шум входных данных: telemetry freshness ${formatPercent0(indicators.freshnessShare)}, safety-событий ${safetyEvents}, ошибок ${errors}.`,
+            action: 'Пока датчики или safety шумят, сравнение с baseline будет нечестным и любые правки рецепта легко окажутся ложными.'
+        });
+    }
+
+    if (indicators && (indicators.minCoolingMargin <= 0 || indicators.maxFloodRisk >= 0.8)) {
+        planItems.push({
+            tone: 'danger',
+            title: 'Следующий запуск начать мягче',
+            detail: `Текущий прогон заходил в красную зону: cooling margin min ${indicators.minCoolingMargin.toFixed(1)}°C, flood risk max ${formatPercent0(indicators.maxFloodRisk)}.`,
+            action: 'Сначала разгрузите колонну и только потом проверяйте тонкие профильные гипотезы.'
+        });
+    }
+
+    if (adjustmentItems.length > 0) {
+        const primaryAdjustment = adjustmentItems[0];
+        planItems.push({
+            tone: primaryAdjustment.tone,
+            title: 'Проверить одну профильную правку',
+            detail: `Перенесите в следующий запуск только одну гипотезу: ${formatAdvisorParameterValue(primaryAdjustment.parameterKey, primaryAdjustment.previousValue)} -> ${formatAdvisorParameterValue(primaryAdjustment.parameterKey, primaryAdjustment.suggestedValue)}.`,
+            action: `${primaryAdjustment.action} Не добавляйте поверх неё другие изменения, иначе baseline-сравнение потеряет смысл.`
+        });
+
+        if (adjustmentItems.length > 1) {
+            const reserveAdjustment = adjustmentItems[1];
+            planItems.push({
+                tone: 'muted',
+                title: 'Вторую правку пока держать в резерве',
+                detail: `Следующая кандидатная гипотеза уже есть: ${formatAdvisorParameterValue(reserveAdjustment.parameterKey, reserveAdjustment.previousValue)} -> ${formatAdvisorParameterValue(reserveAdjustment.parameterKey, reserveAdjustment.suggestedValue)}.`,
+                action: 'Её имеет смысл проверять только после отдельного прогона с первой правкой, а не одновременно.'
+            });
+        }
+    } else if (previousSuccessfulProcess && verdictItem?.tone === 'good') {
+        planItems.push({
+            tone: 'good',
+            title: 'Повторить запуск без новых правок',
+            detail: 'Текущий прогон выглядит сильнее baseline, но это ещё нужно подтвердить повторяемостью без новых изменений.',
+            action: 'Если следующий запуск повторит результат, его уже можно закреплять как новый рабочий baseline профиля.'
+        });
+    } else if (!previousSuccessfulProcess && profileName) {
+        planItems.push({
+            tone: 'muted',
+            title: 'Сначала получить первый эталон профиля',
+            detail: `Для профиля "${profileName}" пока нет предыдущего успешного baseline, поэтому сейчас важнее чисто завершить повторяемый запуск, чем тонко оптимизировать уставки.`,
+            action: 'Первый уверенно успешный прогон станет опорной точкой для уже настоящей инженерной оптимизации.'
+        });
+    } else {
+        planItems.push({
+            tone: 'muted',
+            title: 'Повторить сценарий без лишних изменений',
+            detail: 'По этому прогону нет одной доминирующей правки, которую стоило бы немедленно переносить в профиль.',
+            action: 'Лучший следующий шаг сейчас — повторить запуск в тех же условиях и посмотреть, воспроизводится ли картина.'
+        });
+    }
+
+    planItems.push({
+        tone: 'muted',
+        title: 'Фиксировать результат после следующего прогона',
+        detail: 'После следующего запуска сразу откройте history details и сравните его с текущим baseline, а не по памяти.',
+        action: 'Задача Run Advisor не заменить оператора, а оставить вам чистую инженерную цепочку: гипотеза -> один запуск -> сравнение -> решение.'
+    });
+
+    return planItems
+        .slice(0, 4)
+        .map((item, index) => normalizeAdvisorItem({
+            ...item,
+            kind: 'plan',
+            code: `next_run_plan_${index + 1}`,
+            title: `Шаг ${index + 1}. ${item.title}`
+        }));
+
+}
+
 function appendAdvisorSection(container, title, items) {
 
     if (!items.length) {
@@ -1975,6 +2064,16 @@ function appendRunAdvisorSection(container, process, previousSuccessfulProcess =
     const items = buildRunAdvisorItems(process, previousSuccessfulProcess, previousSummary);
 
     appendAdvisorSection(container, 'Run Advisor: рекомендации', items);
+
+    return items;
+
+}
+
+function appendNextRunPlanSection(container, process, previousSuccessfulProcess = null, previousSummary = null) {
+
+    const items = buildNextRunPlanItems(process, previousSuccessfulProcess, previousSummary);
+
+    appendAdvisorSection(container, 'План следующего запуска', items);
 
     return items;
 
@@ -2129,6 +2228,7 @@ export function showHistoryDetailsModal(process, options = {}) {
     appendInfoItem(resultsGrid, 'Всего собрано', `${process.results.totalCollected || 0} мл`);
     appendCompletionInsightSection(resultsGrid, process);
     appendRunReportSection(resultsGrid, process, previousSuccessfulProcess, previousSummary);
+    appendNextRunPlanSection(resultsGrid, process, previousSuccessfulProcess, previousSummary);
     appendAdvisorFollowUpSection(resultsGrid, process, previousSuccessfulProcess);
     const advisorItems = appendRunAdvisorSection(resultsGrid, process, previousSuccessfulProcess, previousSummary);
     appendIndicatorSummarySection(resultsGrid, process);
