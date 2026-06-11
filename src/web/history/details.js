@@ -105,7 +105,7 @@ function normalizeProfileKey(value) {
 
 }
 
-function getProcessProfile(process) {
+export function getProcessProfile(process) {
 
     return String(process?.process?.profile || process?.profile || '').trim();
 
@@ -129,7 +129,7 @@ function getProcessProfileKey(process) {
 
 }
 
-function findPreviousSuccessfulProcessSummary(process) {
+export function findPreviousSuccessfulProcessSummary(process) {
 
     const currentId = String(process?.id || '').trim();
     const currentType = String(process?.process?.type || '').trim();
@@ -973,7 +973,7 @@ function getPhase(process, phaseNames) {
 
 }
 
-function getEnergyPerLiter(process) {
+export function getEnergyPerLiter(process) {
 
     const energyUsed = Number(process?.metrics?.power?.energyUsed || 0);
     const totalCollectedMl = Number(process?.results?.totalCollected || 0);
@@ -988,7 +988,7 @@ function getEnergyPerLiter(process) {
 
 }
 
-function getIndicatorShares(process) {
+export function getIndicatorShares(process) {
 
     const indicators = process?.metrics?.indicators;
     const samples = Number(indicators?.samples || 0);
@@ -1357,7 +1357,7 @@ function buildParameterChangeList(process, previousProcess) {
 
 }
 
-function evaluateRunDelta(process, previousProcess) {
+export function evaluateRunDelta(process, previousProcess) {
 
     const currentIndicators = getIndicatorShares(process);
     const previousIndicators = getIndicatorShares(previousProcess);
@@ -1598,6 +1598,25 @@ function buildProfileComparisonItems(process, previousProcess, previousSummary) 
     }
 
     return items.slice(0, 4);
+
+}
+
+export function buildBaselineComparisonSummary(process, previousProcess, previousSummary = null) {
+
+    const comparisonItems = buildProfileComparisonItems(process, previousProcess, previousSummary);
+    const verdictItem = buildImprovementVerdictItem(process, previousProcess, previousSummary);
+
+    if (!verdictItem) {
+        return comparisonItems.slice(0, 5);
+    }
+
+    const [referenceItem, ...restItems] = comparisonItems;
+
+    return [
+        referenceItem || null,
+        verdictItem,
+        ...restItems
+    ].filter(Boolean).slice(0, 5);
 
 }
 
@@ -2125,6 +2144,7 @@ export function showHistoryDetailsModal(process, options = {}) {
     const exportCsvBtn = document.getElementById('modal-export-csv');
 
     const exportJsonBtn = document.getElementById('modal-export-json');
+    const compareBaselineBtn = document.getElementById('modal-compare-baseline');
 
 
 
@@ -2140,6 +2160,19 @@ export function showHistoryDetailsModal(process, options = {}) {
 
         exportJsonBtn.onclick = () => exportHistoryJSON(process.id);
 
+    }
+
+    if (compareBaselineBtn) {
+        const hasBaseline = Boolean(previousSuccessfulProcess?.id || previousSummary?.id);
+
+        compareBaselineBtn.style.display = hasBaseline ? '' : 'none';
+        compareBaselineBtn.disabled = !hasBaseline;
+        compareBaselineBtn.onclick = hasBaseline
+            ? () => window.compareProcessWithBaseline?.(process, {
+                previousSummary,
+                previousSuccessfulProcess
+            })
+            : null;
     }
 
 

@@ -364,6 +364,135 @@
     border-color: var(--border-color);
 }
 
+.compare-process-badge {
+    flex: 1 1 220px;
+    display: grid;
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--compare-accent) 38%, var(--border-color));
+    border-left: 5px solid var(--compare-accent);
+    background: var(--bg-secondary);
+}
+
+.compare-process-badge strong {
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.2;
+}
+
+.compare-process-badge span {
+    color: var(--text-secondary);
+    line-height: 1.35;
+}
+
+.compare-process-badge-role {
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--compare-accent);
+}
+
+.compare-process-badge.is-baseline {
+    background: rgba(220, 53, 69, 0.08);
+}
+
+.compare-process-badge.is-current {
+    background: rgba(13, 110, 253, 0.08);
+}
+
+.compare-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.compare-overview-card {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    padding: 14px;
+}
+
+.compare-overview-card.is-baseline {
+    border-color: rgba(220, 53, 69, 0.28);
+}
+
+.compare-overview-card.is-current {
+    border-color: rgba(13, 110, 253, 0.28);
+}
+
+.compare-overview-card strong {
+    display: block;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.compare-overview-card p {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.compare-overview-label {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.compare-overview-metrics {
+    overflow-x: auto;
+    margin-bottom: 14px;
+}
+
+.compare-overview-table,
+.compare-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.compare-overview-table th,
+.compare-overview-table td,
+.compare-table th,
+.compare-table td {
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    vertical-align: top;
+}
+
+.compare-overview-table thead th,
+.compare-table thead th {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    text-align: left;
+}
+
+.compare-overview-table tbody td,
+.compare-table tbody td {
+    color: var(--text-secondary);
+}
+
+.compare-overview-table tbody td:first-child,
+.compare-table tbody td:first-child {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.compare-table thead span {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+
+.compare-overview-insights {
+    display: grid;
+    gap: 10px;
+}
+
 .modal-note-text {
     margin-top: 10px;
     color: var(--text-primary);

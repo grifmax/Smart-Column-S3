@@ -7,6 +7,15 @@
 
 ---
 
+## [2.2.62] - 2026-06-11
+
+### Added
+- (codex) History details now expose a direct `Сравнить с baseline` action, so the operator can jump from one finished run straight into `current vs previous successful profile baseline` without hand-picking two entries in the list.
+
+### Changed
+- (codex) Compare modal now has a dedicated baseline view: reference/current badges, delta table for duration, energy, stability, takeoff window, flood risk and cooling margin, plus the main `Run Advisor` verdicts for that pair.
+- (codex) Version metadata in `src/config.h`, `README.md`, `TODO2.0.md` and `docs/API.md` is synchronized to `2.2.62`.
+
 ## [2.2.61] - 2026-06-11
 
 ### Added
