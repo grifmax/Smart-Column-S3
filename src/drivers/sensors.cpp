@@ -113,27 +113,31 @@ static bool validateReading(float newValue, float lastValue, float maxDelta, boo
 /**
  * Интерполяция крепости по таблице калибровки
  */
-static float interpolateABV(float pressure, const HydrometerCalibration& cal) {
+static float interpolateABV(float densitySignal, const HydrometerCalibration& cal) {
     if (cal.pointCount < 2) {
         return 0.0f;
     }
 
     // Найти два ближайших калибровочных значения
     for (uint8_t i = 0; i < cal.pointCount - 1; i++) {
-        if (pressure >= cal.pressurePoints[i] && pressure <= cal.pressurePoints[i + 1]) {
+        if (densitySignal >= cal.pressurePoints[i] && densitySignal <= cal.pressurePoints[i + 1]) {
             // Линейная интерполяция
             float p0 = cal.pressurePoints[i];
             float p1 = cal.pressurePoints[i + 1];
             float a0 = cal.abvPoints[i];
             float a1 = cal.abvPoints[i + 1];
 
-            float t = (pressure - p0) / (p1 - p0);
+            if (fabsf(p1 - p0) < 0.0001f) {
+                return a1;
+            }
+
+            float t = (densitySignal - p0) / (p1 - p0);
             return a0 + t * (a1 - a0);
         }
     }
 
     // Экстраполяция (за пределами калибровки)
-    if (pressure < cal.pressurePoints[0]) {
+    if (densitySignal < cal.pressurePoints[0]) {
         return cal.abvPoints[0];
     }
     return cal.abvPoints[cal.pointCount - 1];
@@ -437,12 +441,13 @@ void readPressure(Pressure& pressure) {
     pressure.lastUpdate = millis();
 }
 
-void readHydrometer(Hydrometer& hydro, float temperature) {
+void readHydrometer(Hydrometer& hydro, float temperature, const HydrometerCalibration& cal) {
     // Читаем дифференциальное давление (столб жидкости в попугае)
     // Используем тот же канал, что и давление куба
     // В реальной системе нужен отдельный канал ADS1115
 
     if (!ads_ok) {
+        hydro.ok = false;
         hydro.valid = false;
         return;
     }
@@ -450,22 +455,38 @@ void readHydrometer(Hydrometer& hydro, float temperature) {
     int16_t adc = ads1115.readADC_SingleEnded(ADS_CHANNEL_PRESSURE);
     float voltage = ads1115.computeVolts(adc);
     float kPa = (voltage - MPX5010_OFFSET) / MPX5010_SENSITIVITY;
+    if (kPa < 0.0f) {
+        kPa = 0.0f;
+    }
 
     // Плотность (упрощённо, без учёта высоты столба)
     // ρ = ΔP / (g × h), где g=9.81, h=высота_попугая (м)
     // Для примера: h = 0.1м
     const float height_m = 0.1f;
-    hydro.pressure = (kPa * 1000) / (9.81f * height_m); // г/см³
+    const float rawDensity = (kPa * 1000.0f) / (9.81f * height_m);
+    const float correctedDensity = rawDensity + cal.densityOffset;
 
-    // ABV (здесь нужна калибровочная таблица)
-    // Пока используем упрощённую формулу
-    hydro.abv = (1.0f - hydro.pressure) * 100.0f;
+    hydro.pressure = kPa;
+    hydro.density = correctedDensity;
+
+    if (cal.pointCount >= 2) {
+        hydro.abv = interpolateABV(correctedDensity, cal);
+    } else {
+        hydro.abv = (1.0f - correctedDensity) * 100.0f;
+    }
+
+    if (hydro.abv < 0.0f) {
+        hydro.abv = 0.0f;
+    } else if (hydro.abv > 100.0f) {
+        hydro.abv = 100.0f;
+    }
 
     // Температурная коррекция (упрощённо)
     hydro.temperature = temperature;
 
     // Валидация
-    hydro.valid = (hydro.pressure > 0.7f && hydro.pressure < 1.1f);
+    hydro.ok = true;
+    hydro.valid = (correctedDensity > 0.7f && correctedDensity < 1.1f);
     hydro.lastUpdate = millis();
 }
 

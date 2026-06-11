@@ -93,6 +93,61 @@ void saveWiFiProfilesToNvs(const WiFiSettings& source) {
     prefs.putString(NVS_KEY_WIFI_PROFILES, json);
 }
 
+void clearHydrometerCalibration(HydrometerCalibration& cal) {
+    cal.densityOffset = 0.0f;
+    cal.pointCount = 0;
+    memset(cal.abvPoints, 0, sizeof(cal.abvPoints));
+    memset(cal.pressurePoints, 0, sizeof(cal.pressurePoints));
+}
+
+void loadHydrometerCalibrationFromNvs(HydrometerCalibration& cal) {
+    clearHydrometerCalibration(cal);
+
+    String json = prefs.getString(NVS_KEY_HYDRO_POINTS, "");
+    if (json.isEmpty()) {
+        return;
+    }
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, json);
+    if (error) {
+        LOG_W("NVS: Hydrometer calibration JSON parse failed: %s", error.c_str());
+        return;
+    }
+
+    cal.densityOffset = doc["densityOffset"] | 0.0f;
+
+    JsonArray abvArray = doc["abvPoints"].is<JsonArray>() ? doc["abvPoints"].as<JsonArray>() : JsonArray();
+    JsonArray pressureArray = doc["pressurePoints"].is<JsonArray>() ? doc["pressurePoints"].as<JsonArray>() : JsonArray();
+    if (abvArray.isNull() || pressureArray.isNull()) {
+        return;
+    }
+
+    const size_t pointCount = min(abvArray.size(), pressureArray.size());
+    cal.pointCount = static_cast<uint8_t>(min(pointCount, static_cast<size_t>(10)));
+    for (uint8_t i = 0; i < cal.pointCount; ++i) {
+        cal.abvPoints[i] = abvArray[i] | 0.0f;
+        cal.pressurePoints[i] = pressureArray[i] | 0.0f;
+    }
+}
+
+void saveHydrometerCalibrationToNvs(const HydrometerCalibration& cal) {
+    JsonDocument doc;
+    doc["densityOffset"] = cal.densityOffset;
+    doc["pointCount"] = cal.pointCount;
+
+    JsonArray abvArray = doc["abvPoints"].to<JsonArray>();
+    JsonArray pressureArray = doc["pressurePoints"].to<JsonArray>();
+    for (uint8_t i = 0; i < cal.pointCount && i < 10; ++i) {
+        abvArray.add(cal.abvPoints[i]);
+        pressureArray.add(cal.pressurePoints[i]);
+    }
+
+    String json;
+    serializeJson(doc, json);
+    prefs.putString(NVS_KEY_HYDRO_POINTS, json);
+}
+
 } // namespace
 
 namespace NVSManager {
@@ -154,6 +209,7 @@ bool loadSettings(Settings& settings) {
 
     // Калибровка насоса
     settings.pumpCal.mlPerRevolution = prefs.getFloat(NVS_KEY_PUMP_ML_REV, DEFAULT_PUMP_ML_PER_REV);
+    loadHydrometerCalibrationFromNvs(settings.hydroCal);
 
     // Ректификация
     settings.rectParams.feedstock = prefs.getUChar(NVS_KEY_RECT_FEEDSTOCK, 0);
@@ -277,6 +333,7 @@ bool saveSettings(const Settings& settings) {
 
     // Калибровка насоса
     prefs.putFloat(NVS_KEY_PUMP_ML_REV, settings.pumpCal.mlPerRevolution);
+    saveHydrometerCalibrationToNvs(settings.hydroCal);
 
     // Ректификация
     prefs.putUChar(NVS_KEY_RECT_FEEDSTOCK, settings.rectParams.feedstock);

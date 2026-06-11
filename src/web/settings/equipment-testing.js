@@ -88,7 +88,7 @@ const TESTING_CARD_DEFS = [
         icon: '🧫',
         title: 'Ареометр',
         shortTitle: 'Ареометр',
-        description: 'Текущие данные и понятная заглушка под будущий активный тест.',
+        description: 'Живые данные ареометра и быстрый переход к его калибровочной таблице.',
     },
     {
         id: 'power',
@@ -232,6 +232,15 @@ const CALIBRATION_CARD_DEFS = [
         title: 'Калибровка термометров',
         shortTitle: 'Термометры',
         description: 'Сканирование датчиков, ручная коррекция и быстрый сервисный доступ к каждому термометру.',
+    },
+    {
+        id: 'hydrometer-calibration',
+        selector: '#hydrometerCurrent',
+        group: 'sensors',
+        icon: '🧪',
+        title: 'Калибровка ареометра',
+        shortTitle: 'Ареометр',
+        description: 'Таблица ABV по сигналу попугая, текущее показание и сервисная подстройка без JSON-ручек.',
     },
 ];
 
@@ -524,7 +533,7 @@ const TESTING_TEMPLATE = `
                 <div class="equipment-test-card-head">
                     <div>
                         <h2>Ареометр</h2>
-                        <p class="equipment-subtitle">Показываем текущие поля и оставляем место под будущий сценарий активной проверки.</p>
+                        <p class="equipment-subtitle">Живые показания ареометра и быстрый переход к таблице его калибровки.</p>
                     </div>
                     <span class="equipment-status-badge muted" id="equipment-test-hydrometer-badge">—</span>
                 </div>
@@ -533,7 +542,10 @@ const TESTING_TEMPLATE = `
                     <div class="equipment-test-metric"><span>Плотность</span><strong id="equipment-test-hydrometer-density">--</strong></div>
                     <div class="equipment-test-metric"><span>ABV</span><strong id="equipment-test-hydrometer-abv">--</strong></div>
                 </div>
-                <div class="equipment-test-alert subtle">Активный сценарий проверки ареометра пока не внедрён. Здесь остаётся осмысленная инженерная заглушка, а не псевдо-функция.</div>
+                <div class="equipment-test-alert subtle">Если показания плавают или не сходятся с реальным продуктом, открой таблицу калибровки и задай 2-5 опорных точек.</div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-secondary" type="button" id="equipment-test-hydrometer-open-calibration">К калибровке</button>
+                </div>
             </div>
 
             <div class="card equipment-card equipment-test-card">
@@ -1141,7 +1153,8 @@ function ensureEquipmentShell() {
     const paramsCard = qs('.equipment-card-params', cards);
     const pumpCalibrationCard = qs('.equipment-card-pump', cards);
     const tempCalibrationCard = qs('.equipment-card-temp', cards);
-    if (!cards || !paramsCard || !pumpCalibrationCard || !tempCalibrationCard) return;
+    const hydrometerCalibrationCard = qs('.equipment-card-hydrometer', cards);
+    if (!cards || !paramsCard || !pumpCalibrationCard || !tempCalibrationCard || !hydrometerCalibrationCard) return;
 
     const shell = document.createElement('div');
     shell.className = 'equipment-shell';
@@ -1160,6 +1173,7 @@ function ensureEquipmentShell() {
     const calibrationCards = qs('[data-equipment-section-pane="calibration"] .cards', shell);
     calibrationCards?.appendChild(pumpCalibrationCard);
     calibrationCards?.appendChild(tempCalibrationCard);
+    calibrationCards?.appendChild(hydrometerCalibrationCard);
 
     const testingPane = qs('[data-equipment-section-pane="testing"]', shell);
     if (testingPane) {
@@ -1586,7 +1600,7 @@ function renderPressureStatus(data) {
 function renderHydrometerStatus(hydrometer) {
     updateBadge(
         byId('equipment-test-hydrometer-badge'),
-        hydrometer?.valid ? 'Есть данные' : 'Заглушка',
+        hydrometer?.valid ? 'Есть данные' : 'Нет сигнала',
         hydrometer?.valid ? 'success' : 'muted'
     );
     setText('equipment-test-hydrometer-pressure', formatNumber(hydrometer?.pressure, 1, ''));
@@ -2196,6 +2210,10 @@ function bindTestingActions() {
     byId('equipment-test-pump-open-calibration')?.addEventListener('click', () => {
         setEquipmentSection('calibration');
         setEquipmentPaneCard('calibration', 'pump-calibration');
+    });
+    byId('equipment-test-hydrometer-open-calibration')?.addEventListener('click', () => {
+        setEquipmentSection('calibration');
+        setEquipmentPaneCard('calibration', 'hydrometer-calibration');
     });
 
     byId('equipment-test-pressure-start')?.addEventListener('click', () => {

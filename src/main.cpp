@@ -371,7 +371,8 @@ void loop() {
     if (now - g_lastPressureRead >= INTERVAL_PRESSURE_READ) {
       g_lastPressureRead = now;
       Sensors::readPressure(g_state.pressure);
-      Sensors::readHydrometer(g_state.hydrometer, g_state.temps.columnTop);
+      Sensors::readHydrometer(g_state.hydrometer, g_state.temps.columnTop,
+                              g_settings.hydroCal);
     }
     if (now - g_lastPowerRead >= INTERVAL_POWER_READ) {
       g_lastPowerRead = now;

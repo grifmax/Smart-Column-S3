@@ -7,6 +7,17 @@
 
 ---
 
+## [2.2.65] - 2026-06-11
+
+### Added
+- (codex) Equipment calibration workbench now has a real hydrometer calibration card in Web UI: current live reading, density offset, 2-5 calibration points and direct save/reset flow without manual JSON requests.
+
+### Changed
+- (codex) Hydrometer service/testing card is no longer a passive placeholder and now links directly into calibration workflow from the service workbench.
+- (codex) Firmware now actually applies the saved hydrometer calibration table and density offset to live ABV calculation instead of keeping calibration data disconnected from sensor math.
+- (codex) Hydrometer calibration is now persisted in NVS and returned through `/api/calibration`, so values survive reboot and are visible to the web client.
+- (codex) Version metadata in `src/config.h`, `README.md`, `TODO2.0.md` and `docs/API.md` is synchronized to `2.2.65`.
+
 ## [2.2.64] - 2026-06-11
 
 ### Added

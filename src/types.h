@@ -108,8 +108,8 @@ struct HydrometerData {
   bool valid = false;       // Данные валидны
   bool ok = false;          // Сенсор работает
   uint32_t lastUpdate = 0;  // Время последнего обновления
-  uint8_t abvPoints[10] = {0};
-  uint8_t pressurePoints[10] = {0};
+  float abvPoints[10] = {0.0f};
+  float pressurePoints[10] = {0.0f};
 };
 
 // Данные мощности
@@ -393,8 +393,8 @@ struct FractionatorSettings {
 struct HydrometerCalibration {
   float densityOffset = 0.0f;
   uint8_t pointCount = 0; // Количество точек калибровки
-  uint8_t abvPoints[10] = {0};
-  uint8_t pressurePoints[10] = {0};
+  float abvPoints[10] = {0.0f};
+  float pressurePoints[10] = {0.0f};
 };
 
 struct RectParams {

@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.64">
+    <link rel="stylesheet" href="style.css?v=2.2.65">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.64" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.65" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1799,6 +1799,91 @@
                                 </ul>
                                 <div id="tempResult" class="info-text" style="margin-top: 10px;"></div>
                             </div>
+
+                            <div class="card equipment-card equipment-card-hydrometer">
+                                <h2>🧪 Калибровка ареометра</h2>
+                                <p class="equipment-subtitle">Задайте таблицу соответствия между сигналом попугая
+                                    и реальным ABV. После сохранения прошивка будет использовать эту таблицу в
+                                    текущих показаниях и режимах, где нужен ареометр.</p>
+                                <div class="form-group">
+                                    <label>Текущее состояние</label>
+                                    <div class="info-display equipment-info-box" id="hydrometerCurrent">Загрузка...</div>
+                                </div>
+                                <div class="equipment-test-metrics" style="margin-bottom: 12px;">
+                                    <div class="equipment-test-metric"><span>Сигнал</span><strong id="hydrometer-current-pressure">--</strong></div>
+                                    <div class="equipment-test-metric"><span>Плотность</span><strong id="hydrometer-current-density">--</strong></div>
+                                    <div class="equipment-test-metric"><span>ABV</span><strong id="hydrometer-current-abv">--</strong></div>
+                                    <div class="equipment-test-metric"><span>Статус</span><strong id="hydrometer-current-status" class="equipment-status-badge muted">—</strong></div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="hydrometer-density-offset">Смещение плотности</label>
+                                    <input type="number" id="hydrometer-density-offset" step="0.0001" min="-0.2500" max="0.2500"
+                                        value="0.0000" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                    <small class="equipment-hint">Маленькая поправка перед интерполяцией таблицы. Если не нужна, оставьте `0`.</small>
+                                </div>
+                                <div class="equipment-hydrometer-points" id="hydrometer-points">
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="hydrometer-abv-0">Точка 1: ABV, %</label>
+                                            <input type="number" id="hydrometer-abv-0" step="0.1" min="0" max="100" data-stepper-mode="pair" data-stepper-step="0.1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="hydrometer-pressure-0">Сигнал / плотность</label>
+                                            <input type="number" id="hydrometer-pressure-0" step="0.0001" min="0.5000" max="1.2000" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillHydrometerPointFromCurrent(0)">Текущее значение</button>
+                                    </div>
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="hydrometer-abv-1">Точка 2: ABV, %</label>
+                                            <input type="number" id="hydrometer-abv-1" step="0.1" min="0" max="100" data-stepper-mode="pair" data-stepper-step="0.1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="hydrometer-pressure-1">Сигнал / плотность</label>
+                                            <input type="number" id="hydrometer-pressure-1" step="0.0001" min="0.5000" max="1.2000" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillHydrometerPointFromCurrent(1)">Текущее значение</button>
+                                    </div>
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="hydrometer-abv-2">Точка 3: ABV, %</label>
+                                            <input type="number" id="hydrometer-abv-2" step="0.1" min="0" max="100" data-stepper-mode="pair" data-stepper-step="0.1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="hydrometer-pressure-2">Сигнал / плотность</label>
+                                            <input type="number" id="hydrometer-pressure-2" step="0.0001" min="0.5000" max="1.2000" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillHydrometerPointFromCurrent(2)">Текущее значение</button>
+                                    </div>
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="hydrometer-abv-3">Точка 4: ABV, %</label>
+                                            <input type="number" id="hydrometer-abv-3" step="0.1" min="0" max="100" data-stepper-mode="pair" data-stepper-step="0.1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="hydrometer-pressure-3">Сигнал / плотность</label>
+                                            <input type="number" id="hydrometer-pressure-3" step="0.0001" min="0.5000" max="1.2000" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillHydrometerPointFromCurrent(3)">Текущее значение</button>
+                                    </div>
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="hydrometer-abv-4">Точка 5: ABV, %</label>
+                                            <input type="number" id="hydrometer-abv-4" step="0.1" min="0" max="100" data-stepper-mode="pair" data-stepper-step="0.1">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="hydrometer-pressure-4">Сигнал / плотность</label>
+                                            <input type="number" id="hydrometer-pressure-4" step="0.0001" min="0.5000" max="1.2000" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillHydrometerPointFromCurrent(4)">Текущее значение</button>
+                                    </div>
+                                </div>
+                                <div class="controls equipment-actions">
+                                    <button class="btn btn-primary" type="button" onclick="saveHydrometerCalibration()">💾 Сохранить таблицу</button>
+                                    <button class="btn" type="button" onclick="clearHydrometerCalibration()">🧹 Очистить таблицу</button>
+                                </div>
+                                <div id="hydrometerResult" class="info-text" style="margin-top: 10px;"></div>
+                            </div>
                         </div>
                     </div>
                     <div id="safety" class="tab-content">
@@ -2925,7 +3010,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.64"></script>
+    <script src="app.js?v=2.2.65"></script>
 </body>
 
 </html>

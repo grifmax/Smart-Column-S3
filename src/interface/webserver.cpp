@@ -4312,6 +4312,7 @@ void init() {
 
     // Ареометр (гидрометр)
     JsonObject hydro = doc["hydrometer"].to<JsonObject>();
+    hydro["densityOffset"] = g_settings.hydroCal.densityOffset;
     hydro["pointCount"] = g_settings.hydroCal.pointCount;
     JsonArray abvPoints = hydro["abvPoints"].to<JsonArray>();
     JsonArray pressurePoints = hydro["pressurePoints"].to<JsonArray>();
@@ -4321,6 +4322,7 @@ void init() {
     }
     // Текущие показания
     hydro["currentPressure"] = g_state.hydrometer.pressure;
+    hydro["currentDensity"] = g_state.hydrometer.density;
     hydro["currentABV"] = g_state.hydrometer.abv;
     hydro["valid"] = g_state.hydrometer.valid;
 
@@ -4507,29 +4509,78 @@ void init() {
           return;
         }
 
-        // Проверка наличия массивов калибровочных точек
-        if (!!doc["abvPoints"].isNull() ||
-            !!doc["pressurePoints"].isNull()) {
+        if (!doc["densityOffset"].isNull()) {
+          g_settings.hydroCal.densityOffset = clampFloatRange(
+              doc["densityOffset"].as<float>(), -0.250f, 0.250f);
+        }
+
+        const bool hasAbvPoints = !doc["abvPoints"].isNull();
+        const bool hasPressurePoints = !doc["pressurePoints"].isNull();
+        if (hasAbvPoints != hasPressurePoints) {
           request->send(400, "application/json",
-                        "{\"error\":\"Missing abvPoints or pressurePoints\"}");
+                        "{\"error\":\"abvPoints and pressurePoints must be provided together\"}");
           return;
         }
 
-        JsonArray abvArray = doc["abvPoints"].as<JsonArray>();
-        JsonArray pressureArray = doc["pressurePoints"].as<JsonArray>();
+        if (hasAbvPoints && hasPressurePoints) {
+          JsonArray abvArray = doc["abvPoints"].as<JsonArray>();
+          JsonArray pressureArray = doc["pressurePoints"].as<JsonArray>();
 
-        if (abvArray.size() != pressureArray.size() || abvArray.size() > 5) {
-          request->send(
-              400, "application/json",
-              "{\"error\":\"Invalid point count (max 5, must match)\"}");
-          return;
-        }
+          if (abvArray.size() != pressureArray.size() || abvArray.size() > 10) {
+            request->send(
+                400, "application/json",
+                "{\"error\":\"Invalid point count (max 10, must match)\"}");
+            return;
+          }
+          if (abvArray.size() == 1) {
+            request->send(400, "application/json",
+                          "{\"error\":\"At least 2 points are required for active calibration\"}");
+            return;
+          }
 
-        // Сохранение калибровочных точек
-        g_settings.hydroCal.pointCount = abvArray.size();
-        for (uint8_t i = 0; i < g_settings.hydroCal.pointCount; i++) {
-          g_settings.hydroCal.abvPoints[i] = abvArray[i].as<float>();
-          g_settings.hydroCal.pressurePoints[i] = pressureArray[i].as<float>();
+          g_settings.hydroCal.pointCount = 0;
+          memset(g_settings.hydroCal.abvPoints, 0, sizeof(g_settings.hydroCal.abvPoints));
+          memset(g_settings.hydroCal.pressurePoints, 0, sizeof(g_settings.hydroCal.pressurePoints));
+
+          struct HydroPoint {
+            float pressure;
+            float abv;
+          };
+          HydroPoint points[10];
+          for (size_t i = 0; i < abvArray.size(); ++i) {
+            const float abv = clampFloatRange(abvArray[i].as<float>(), 0.0f, 100.0f);
+            const float pressure = clampFloatRange(pressureArray[i].as<float>(), 0.500f, 1.200f);
+            points[i] = {pressure, abv};
+          }
+
+          for (size_t i = 0; i < abvArray.size(); ++i) {
+            for (size_t j = i + 1; j < abvArray.size(); ++j) {
+              if (points[j].pressure < points[i].pressure) {
+                HydroPoint tmp = points[i];
+                points[i] = points[j];
+                points[j] = tmp;
+              }
+            }
+          }
+
+          bool hasDuplicatePressure = false;
+          for (size_t i = 1; i < abvArray.size(); ++i) {
+            if (fabsf(points[i].pressure - points[i - 1].pressure) < 0.0001f) {
+              hasDuplicatePressure = true;
+              break;
+            }
+          }
+          if (hasDuplicatePressure) {
+            request->send(400, "application/json",
+                          "{\"error\":\"Pressure points must be unique\"}");
+            return;
+          }
+
+          g_settings.hydroCal.pointCount = static_cast<uint8_t>(abvArray.size());
+          for (uint8_t i = 0; i < g_settings.hydroCal.pointCount; i++) {
+            g_settings.hydroCal.abvPoints[i] = points[i].abv;
+            g_settings.hydroCal.pressurePoints[i] = points[i].pressure;
+          }
         }
 
         // Сохранить в NVS
@@ -4537,7 +4588,14 @@ void init() {
 
         JsonDocument resp;
         resp["status"] = "ok";
+        resp["densityOffset"] = g_settings.hydroCal.densityOffset;
         resp["pointCount"] = g_settings.hydroCal.pointCount;
+        JsonArray abvPoints = resp["abvPoints"].to<JsonArray>();
+        JsonArray pressurePoints = resp["pressurePoints"].to<JsonArray>();
+        for (uint8_t i = 0; i < g_settings.hydroCal.pointCount; ++i) {
+          abvPoints.add(g_settings.hydroCal.abvPoints[i]);
+          pressurePoints.add(g_settings.hydroCal.pressurePoints[i]);
+        }
 
         String json;
         serializeJson(resp, json);

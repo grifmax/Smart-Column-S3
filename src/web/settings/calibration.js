@@ -2,6 +2,7 @@ import { addLog } from '../core/logs.js';
 import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const API_BASE = '/api/calibration';
+const HYDROMETER_POINT_SLOTS = 5;
 
 let calibrationState = {
     running: false,
@@ -16,6 +17,12 @@ function byId(id) {
     return document.getElementById(id);
 }
 
+function setValue(id, value) {
+    const el = byId(id);
+    if (!el) return;
+    el.value = value === undefined || value === null ? '' : String(value);
+}
+
 function setMessage(id, message, type = 'info') {
     const el = byId(id);
     if (!el) return;
@@ -26,6 +33,174 @@ function setMessage(id, message, type = 'info') {
             : 'var(--text-secondary)';
     el.style.color = color;
     el.textContent = message;
+}
+
+function formatHydrometerNumber(value, digits = 3, suffix = '') {
+    return Number.isFinite(Number(value)) ? `${Number(value).toFixed(digits)}${suffix}` : '—';
+}
+
+function populateHydrometerCalibration(hydrometer = {}) {
+    const currentPressure = Number(hydrometer.currentPressure);
+    const currentDensity = Number(hydrometer.currentDensity);
+    const currentABV = Number(hydrometer.currentABV);
+    const pointCount = Number(hydrometer.pointCount || 0);
+    const abvPoints = Array.isArray(hydrometer.abvPoints) ? hydrometer.abvPoints : [];
+    const pressurePoints = Array.isArray(hydrometer.pressurePoints) ? hydrometer.pressurePoints : [];
+    const densityOffset = Number(hydrometer.densityOffset);
+
+    const badge = byId('hydrometer-current-status');
+    if (badge) {
+        badge.textContent = hydrometer.valid ? 'Есть сигнал' : 'Нет сигнала';
+        badge.className = `equipment-status-badge ${hydrometer.valid ? 'success' : 'muted'}`;
+    }
+
+    const currentPressureEl = byId('hydrometer-current-pressure');
+    if (currentPressureEl) {
+        currentPressureEl.textContent = formatHydrometerNumber(currentPressure, 3, ' кПа');
+    }
+
+    const currentDensityEl = byId('hydrometer-current-density');
+    if (currentDensityEl) {
+        currentDensityEl.textContent = formatHydrometerNumber(currentDensity, 4, '');
+        currentDensityEl.dataset.value = Number.isFinite(currentDensity) ? currentDensity.toFixed(4) : '';
+    }
+
+    const currentAbvEl = byId('hydrometer-current-abv');
+    if (currentAbvEl) {
+        currentAbvEl.textContent = formatHydrometerNumber(currentABV, 1, ' %');
+    }
+
+    const summaryEl = byId('hydrometerCurrent');
+    if (summaryEl) {
+        summaryEl.textContent = pointCount >= 2
+            ? `Активна таблица: ${pointCount} точк. Смещение плотности ${formatHydrometerNumber(densityOffset, 4)}`
+            : 'Таблица калибровки пока не задана. Будет использоваться грубая формула.';
+    }
+
+    setValue('hydrometer-density-offset', Number.isFinite(densityOffset) ? densityOffset.toFixed(4) : '0.0000');
+
+    for (let i = 0; i < HYDROMETER_POINT_SLOTS; i += 1) {
+        const abv = Number(abvPoints[i]);
+        const pressure = Number(pressurePoints[i]);
+        setValue(`hydrometer-abv-${i}`, Number.isFinite(abv) ? abv.toFixed(1) : '');
+        setValue(`hydrometer-pressure-${i}`, Number.isFinite(pressure) ? pressure.toFixed(4) : '');
+    }
+
+    const rowsHost = byId('hydrometer-points');
+    if (rowsHost) {
+        initEquipmentNumberSteppers(rowsHost);
+    }
+}
+
+function collectHydrometerCalibrationPayload() {
+    const abvPoints = [];
+    const pressurePoints = [];
+
+    for (let i = 0; i < HYDROMETER_POINT_SLOTS; i += 1) {
+        const abvRaw = String(byId(`hydrometer-abv-${i}`)?.value || '').trim().replace(',', '.');
+        const pressureRaw = String(byId(`hydrometer-pressure-${i}`)?.value || '').trim().replace(',', '.');
+
+        if (!abvRaw && !pressureRaw) {
+            continue;
+        }
+        if (!abvRaw || !pressureRaw) {
+            throw new Error(`Точка ${i + 1}: заполните и ABV, и сигнал/плотность`);
+        }
+
+        const abv = Number(abvRaw);
+        const pressure = Number(pressureRaw);
+        if (!Number.isFinite(abv) || abv < 0 || abv > 100) {
+            throw new Error(`Точка ${i + 1}: ABV должен быть в диапазоне 0..100%`);
+        }
+        if (!Number.isFinite(pressure) || pressure < 0.5 || pressure > 1.2) {
+            throw new Error(`Точка ${i + 1}: сигнал/плотность должен быть в диапазоне 0.500..1.200`);
+        }
+
+        abvPoints.push(abv);
+        pressurePoints.push(pressure);
+    }
+
+    const densityOffset = Number(String(byId('hydrometer-density-offset')?.value || '0').trim().replace(',', '.'));
+    if (!Number.isFinite(densityOffset) || densityOffset < -0.25 || densityOffset > 0.25) {
+        throw new Error('Смещение плотности должно быть в диапазоне -0.250..0.250');
+    }
+
+    return {
+        densityOffset,
+        abvPoints,
+        pressurePoints
+    };
+}
+
+export function fillHydrometerPointFromCurrent(index) {
+    const densityValue = Number(byId('hydrometer-current-density')?.dataset?.value);
+    if (!Number.isFinite(densityValue)) {
+        setMessage('hydrometerResult', 'Нет текущего сигнала ареометра для подстановки', 'error');
+        return;
+    }
+    setValue(`hydrometer-pressure-${index}`, densityValue.toFixed(4));
+}
+
+export async function saveHydrometerCalibration() {
+    let payload;
+    try {
+        payload = collectHydrometerCalibrationPayload();
+    } catch (error) {
+        setMessage('hydrometerResult', error.message, 'error');
+        return;
+    }
+
+    if (payload.abvPoints.length === 1) {
+        setMessage('hydrometerResult', 'Для рабочей таблицы нужны минимум 2 точки', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/hydrometer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+
+        setMessage(
+            'hydrometerResult',
+            payload.abvPoints.length >= 2
+                ? `Таблица ареометра сохранена: ${Number(data.pointCount || payload.abvPoints.length)} точк.`
+                : 'Смещение ареометра сохранено, таблица очищена',
+            'success'
+        );
+        await loadCalibrationData();
+    } catch (error) {
+        setMessage('hydrometerResult', `Ошибка сохранения ареометра: ${error.message}`, 'error');
+    }
+}
+
+export async function clearHydrometerCalibration() {
+    try {
+        const densityOffset = Number(String(byId('hydrometer-density-offset')?.value || '0').trim().replace(',', '.'));
+        const response = await fetch(`${API_BASE}/hydrometer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                densityOffset: Number.isFinite(densityOffset) ? densityOffset : 0,
+                abvPoints: [],
+                pressurePoints: []
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+
+        setMessage('hydrometerResult', 'Таблица ареометра очищена', 'success');
+        await loadCalibrationData();
+    } catch (error) {
+        setMessage('hydrometerResult', `Ошибка очистки ареометра: ${error.message}`, 'error');
+    }
 }
 
 function resetCalibrationUi() {
@@ -87,6 +262,7 @@ export async function loadCalibrationData() {
 
         const data = await response.json();
         const pump = data?.pump || {};
+        const hydrometer = data?.hydrometer || {};
 
         const pumpCurrent = byId('pumpCurrent');
         if (pumpCurrent) {
@@ -156,9 +332,12 @@ export async function loadCalibrationData() {
                 });
             }
         }
+
+        populateHydrometerCalibration(hydrometer);
     } catch (error) {
         console.error('loadCalibrationData error:', error);
         setMessage('tempResult', 'Ошибка загрузки данных калибровки', 'error');
+        setMessage('hydrometerResult', 'Ошибка загрузки данных ареометра', 'error');
     }
 }
 

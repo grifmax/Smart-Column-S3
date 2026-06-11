@@ -71,6 +71,9 @@ import {
     scanCalibrationSensors,
     calibrateTempOffset,
     calibrateTempReference,
+    fillHydrometerPointFromCurrent,
+    saveHydrometerCalibration,
+    clearHydrometerCalibration,
     updateCalibrationTime,
     startCalibration,
     stopCalibration,
@@ -244,6 +247,9 @@ window.loadCalibrationData = loadCalibrationData;
 window.scanCalibrationSensors = scanCalibrationSensors;
 window.calibrateTempOffset = calibrateTempOffset;
 window.calibrateTempReference = calibrateTempReference;
+window.fillHydrometerPointFromCurrent = fillHydrometerPointFromCurrent;
+window.saveHydrometerCalibration = saveHydrometerCalibration;
+window.clearHydrometerCalibration = clearHydrometerCalibration;
 window.updateCalibrationTime = updateCalibrationTime;
 window.startCalibration = startCalibration;
 window.stopCalibration = stopCalibration;

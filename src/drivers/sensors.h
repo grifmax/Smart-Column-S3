@@ -35,7 +35,7 @@ namespace Sensors {
      * @param hydro Структура для записи результатов
      * @param temperature Температура для коррекции
      */
-    void readHydrometer(Hydrometer& hydro, float temperature);
+    void readHydrometer(Hydrometer& hydro, float temperature, const HydrometerCalibration& cal);
     
     /**
      * Чтение электрических параметров

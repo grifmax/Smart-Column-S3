@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.64`  
+**Версия прошивки:** `2.2.65`  
 **Актуальность документа:** 2026-06-11
 
 ---
@@ -286,6 +286,20 @@
 - `GET /api/calibration`
 - `POST /api/calibration`
 - `GET /api/calibration/scan`
+- `POST /api/calibration/temp`
+- `POST /api/calibration/pump`
+- `POST /api/calibration/hydrometer`
+
+`GET /api/calibration` now also includes a `hydrometer` block with:
+
+- `densityOffset`
+- `pointCount`
+- `abvPoints[]`
+- `pressurePoints[]`
+- `currentPressure`
+- `currentDensity`
+- `currentABV`
+- `valid`
 
 ### Safety
 
