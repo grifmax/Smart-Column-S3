@@ -650,14 +650,21 @@ static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& statu
 
   JsonObject indicators = v2["indicators"].to<JsonObject>();
   indicators["processHealth"] = status.indicators.processHealth;
+  indicators["telemetryCoverage"] = status.indicators.telemetryCoverage;
+  indicators["decisionTrust"] = status.indicators.decisionTrust;
   indicators["sensorFreshnessOk"] = status.indicators.sensorFreshnessOk;
   indicators["pressureStable"] = status.indicators.pressureStable;
+  indicators["pressureSensorAvailable"] = status.indicators.pressureSensorAvailable;
+  indicators["columnSensorsAvailable"] = status.indicators.columnSensorsAvailable;
+  indicators["coolingSensorAvailable"] = status.indicators.coolingSensorAvailable;
   indicators["boilingDetected"] = status.indicators.boilingDetected;
   indicators["columnStable"] = status.indicators.columnStable;
   indicators["targetReached"] = status.indicators.targetReached;
   indicators["powerLimited"] = status.indicators.powerLimited;
   indicators["recoveryActive"] = status.indicators.recoveryActive;
   indicators["takeoffAllowed"] = status.indicators.takeoffAllowed;
+  indicators["degradedModeActive"] = status.indicators.degradedModeActive;
+  indicators["adaptiveControlAllowed"] = status.indicators.adaptiveControlAllowed;
   indicators["distHeatingComplete"] = status.indicators.distHeatingComplete;
   indicators["distHeadsOptionalComplete"] = status.indicators.distHeadsOptionalComplete;
   indicators["distBodyNearEnd"] = status.indicators.distBodyNearEnd;

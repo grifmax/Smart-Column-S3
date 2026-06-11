@@ -173,6 +173,44 @@ void fillRuntimeGuidance(const SystemState& state,
         return;
     }
 
+    if (indicators.degradedModeActive && state.mode != Mode::IDLE) {
+        char missing[96] = "";
+        bool needComma = false;
+        const bool pressureRelevant =
+            state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT ||
+            state.mode == Mode::DISTILLATION || state.mode == Mode::NBK;
+        const bool columnRelevant =
+            state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT;
+        const bool coolingRelevant =
+            state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT ||
+            state.mode == Mode::DISTILLATION;
+
+        if (pressureRelevant && !indicators.pressureSensorAvailable) {
+            strncat(missing, "pressure", sizeof(missing) - strlen(missing) - 1);
+            needComma = true;
+        }
+        if (columnRelevant && !indicators.columnSensorsAvailable) {
+            if (needComma) strncat(missing, ", ", sizeof(missing) - strlen(missing) - 1);
+            strncat(missing, "column", sizeof(missing) - strlen(missing) - 1);
+            needComma = true;
+        }
+        if (coolingRelevant && !indicators.coolingSensorAvailable) {
+            if (needComma) strncat(missing, ", ", sizeof(missing) - strlen(missing) - 1);
+            strncat(missing, "cooling", sizeof(missing) - strlen(missing) - 1);
+        }
+
+        char detail[192];
+        snprintf(detail, sizeof(detail),
+                 "Adaptive trust reduced to %u%%. Full telemetry is unavailable%s%s, so confidence is softened and automation stays conservative.",
+                 static_cast<unsigned>(indicators.decisionTrust * 100.0f),
+                 missing[0] != '\0' ? ": " : "",
+                 missing[0] != '\0' ? missing : "");
+        setGuidance(status.guidance, "warn", "Graceful degradation active",
+                    detail,
+                    "Check the missing sensors before relying on adaptive takeoff, smart decrement or phase decisions.");
+        return;
+    }
+
     if (isColumnMode && indicators.floodRisk >= 0.65f) {
         setGuidance(status.guidance, "danger", "Риск захлёба высокий",
                     "Нагрузка на колонну уже выглядит опасной: растут flood risk и чувствительность к давлению.",

@@ -19,12 +19,17 @@ struct IndicatorRuntimeStateV2 {
 struct ProcessIndicatorsV2 {
     bool sensorFreshnessOk = false;
     bool pressureStable = false;
+    bool pressureSensorAvailable = false;
+    bool columnSensorsAvailable = false;
+    bool coolingSensorAvailable = false;
     bool boilingDetected = false;
     bool columnStable = false;
     bool targetReached = false;
     bool powerLimited = false;
     bool recoveryActive = false;
     bool takeoffAllowed = false;
+    bool degradedModeActive = false;
+    bool adaptiveControlAllowed = false;
 
     bool distHeatingComplete = false;
     bool distHeadsOptionalComplete = false;
@@ -47,6 +52,8 @@ struct ProcessIndicatorsV2 {
     bool coolingDemand = false;
 
     float processHealth = 0.0f;
+    float telemetryCoverage = 0.0f;
+    float decisionTrust = 0.0f;
     float heatingRateCPerMin = 0.0f;
     float topTempRateCPerMin = 0.0f;
     float pressureRateMmHgPerMin = 0.0f;

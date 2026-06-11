@@ -7,6 +7,13 @@
 
 ---
 
+## [2.2.58] - 2026-06-11
+
+### Changed
+- (codex) `ProcessIndicatorsV2` now enters graceful degradation when key telemetry is incomplete: it publishes `telemetryCoverage`, `decisionTrust`, sensor availability flags, `degradedModeActive`, and `adaptiveControlAllowed` instead of pretending full adaptive confidence.
+- (codex) Confidence scores and takeoff/feed permissions are now softened by available telemetry, and `SmartDecrement` falls back to baseline logic when adaptive control is no longer trustworthy.
+- (codex) Fixed two indicator calculation flaws while implementing degradation: `pressureStable` no longer reports `true` without a live pressure sensor, and `floodReserve` / pressure confidence are now computed after the actual flood/pressure state is known.
+
 ## [2.2.57] - 2026-06-11
 
 ### Added

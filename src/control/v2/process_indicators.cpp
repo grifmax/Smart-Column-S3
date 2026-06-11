@@ -43,6 +43,18 @@ float getCurrentModeTargetTemp(const SystemState& state, const Settings& setting
     }
 }
 
+bool hasTempSensor(const SystemState& state, uint8_t index) {
+    return index < TEMP_COUNT && state.temps.valid[index];
+}
+
+float applyTrustToConfidence(float value, float decisionTrust) {
+    if (value < 0.0f) {
+        return value;
+    }
+    const float trust = clampRange(decisionTrust, 0.0f, 1.0f);
+    return clampRange(value * trust, 0.0f, 1.0f);
+}
+
 } // namespace
 
 float ProcessIndicatorsEngineV2::clamp01(float value) {
@@ -61,9 +73,16 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
     const uint32_t ageMs =
         (state.temps.lastUpdate > 0 && now >= state.temps.lastUpdate) ? (now - state.temps.lastUpdate)
                                                                       : UINT32_MAX;
+    const bool cubeSensorAvailable = hasTempSensor(state, TEMP_CUBE);
+    const bool columnBottomAvailable = hasTempSensor(state, TEMP_COLUMN_BOTTOM);
+    const bool columnTopAvailable = hasTempSensor(state, TEMP_COLUMN_TOP);
+    const bool waterOutAvailable = hasTempSensor(state, TEMP_WATER_OUT);
 
     out.sensorFreshnessOk = state.temps.lastUpdate > 0 && ageMs <= SAFETY_SENSOR_TIMEOUT_MS;
     out.processHealth = clamp01(state.health.overallHealth / 100.0f);
+    out.pressureSensorAvailable = state.pressure.ok;
+    out.columnSensorsAvailable = columnBottomAvailable && columnTopAvailable;
+    out.coolingSensorAvailable = waterOutAvailable;
 
     if (runtime.initialized && runtime.lastUpdateMs > 0 && now > runtime.lastUpdateMs) {
         const float dtMin = static_cast<float>(now - runtime.lastUpdateMs) / 60000.0f;
@@ -85,22 +104,23 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
     out.nbkPressureMargin = out.distPressureMargin;
 
     out.boilingDetected =
-        (state.temps.valid[TEMP_CUBE] && state.temps.cube >= 78.0f) ||
-        (state.temps.valid[TEMP_COLUMN_BOTTOM] && state.temps.columnBottom >= 78.0f);
+        (cubeSensorAvailable && state.temps.cube >= 78.0f) ||
+        (columnBottomAvailable && state.temps.columnBottom >= 78.0f);
 
     const float pressureRatio = clamp01(safeDivide(state.pressure.cube, settings.safety.pressureMaxMmHg, 0.0f));
     const float pressureTrendRatio = clamp01(safeDivide(absf(out.pressureRateMmHgPerMin),
                                                         settings.safety.pressureRiseRateMmHgMin, 0.0f));
     const float coolingPenalty = clamp01(safeDivide(-out.coolingMarginC, 10.0f, 0.0f));
     const float coolingReserve = clamp01(safeDivide(out.coolingMarginC, 8.0f, 0.0f));
+    out.pressureStable =
+        out.pressureSensorAvailable &&
+        absf(out.pressureRateMmHgPerMin) <=
+            clampRange(settings.safety.pressureRiseRateMmHgMin * 0.35f, 0.3f, 20.0f);
+    out.floodRisk = clamp01(pressureRatio * 0.55f + pressureTrendRatio * 0.30f + coolingPenalty * 0.15f);
     const float floodReserve = clamp01(1.0f - out.floodRisk);
     const float pressureConfidence =
         out.pressureStable ? 1.0f : clamp01(1.0f - pressureTrendRatio);
     const float freshnessConfidence = out.sensorFreshnessOk ? 1.0f : 0.0f;
-
-    out.floodRisk = clamp01(pressureRatio * 0.55f + pressureTrendRatio * 0.30f + coolingPenalty * 0.15f);
-    out.pressureStable = absf(out.pressureRateMmHgPerMin) <=
-                         clampRange(settings.safety.pressureRiseRateMmHgMin * 0.35f, 0.3f, 20.0f);
 
     const float topDriftPenalty = clamp01(absf(out.topTempRateCPerMin) / 1.0f);
     const float pressureDriftPenalty = clamp01(absf(out.pressureRateMmHgPerMin) /
@@ -110,10 +130,105 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
         clamp01(1.0f - (topDriftPenalty * 0.45f + pressureDriftPenalty * 0.35f + coolingDriftPenalty * 0.20f));
     out.columnStable = out.stabilityIndex >= 0.7f && out.floodRisk < 0.65f;
 
+    switch (state.mode) {
+        case Mode::RECTIFICATION:
+        case Mode::MANUAL_RECT:
+            out.telemetryCoverage =
+                (cubeSensorAvailable ? 0.25f : 0.0f) +
+                (out.columnSensorsAvailable ? 0.30f : 0.0f) +
+                (out.pressureSensorAvailable ? 0.25f : 0.0f) +
+                (out.coolingSensorAvailable ? 0.20f : 0.0f);
+            break;
+        case Mode::DISTILLATION:
+            out.telemetryCoverage =
+                (cubeSensorAvailable ? 0.40f : 0.0f) +
+                (out.pressureSensorAvailable ? 0.35f : 0.0f) +
+                (out.coolingSensorAvailable ? 0.25f : 0.0f);
+            break;
+        case Mode::NBK:
+            out.telemetryCoverage =
+                (cubeSensorAvailable ? 0.35f : 0.0f) +
+                (columnBottomAvailable ? 0.35f : 0.0f) +
+                (out.pressureSensorAvailable ? 0.30f : 0.0f);
+            break;
+        case Mode::MASHING:
+        case Mode::HOLD:
+        case Mode::FERMENTATION:
+            out.telemetryCoverage = cubeSensorAvailable ? 1.0f : 0.0f;
+            break;
+        case Mode::IDLE:
+        default:
+            out.telemetryCoverage =
+                (cubeSensorAvailable ? 0.4f : 0.0f) +
+                (out.pressureSensorAvailable ? 0.3f : 0.0f) +
+                (out.coolingSensorAvailable ? 0.3f : 0.0f);
+            break;
+    }
+
+    out.decisionTrust = clamp01(out.telemetryCoverage * freshnessConfidence);
+    if ((state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT) &&
+        (!out.pressureSensorAvailable || !out.columnSensorsAvailable)) {
+        out.decisionTrust = clampRange(out.decisionTrust, 0.0f, 0.45f);
+    } else if ((state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT) &&
+               !out.coolingSensorAvailable) {
+        out.decisionTrust = clampRange(out.decisionTrust, 0.0f, 0.65f);
+    } else if (state.mode == Mode::DISTILLATION && !out.pressureSensorAvailable) {
+        out.decisionTrust = clampRange(out.decisionTrust, 0.0f, 0.55f);
+    } else if (state.mode == Mode::NBK &&
+               (!out.pressureSensorAvailable || !columnBottomAvailable)) {
+        out.decisionTrust = clampRange(out.decisionTrust, 0.0f, 0.45f);
+    }
+
+    switch (state.mode) {
+        case Mode::RECTIFICATION:
+        case Mode::MANUAL_RECT:
+            out.adaptiveControlAllowed =
+                out.sensorFreshnessOk && out.pressureSensorAvailable &&
+                out.columnSensorsAvailable && out.decisionTrust >= 0.70f;
+            break;
+        case Mode::DISTILLATION:
+            out.adaptiveControlAllowed =
+                out.sensorFreshnessOk && cubeSensorAvailable &&
+                out.pressureSensorAvailable && out.decisionTrust >= 0.60f;
+            break;
+        case Mode::NBK:
+            out.adaptiveControlAllowed =
+                out.sensorFreshnessOk && cubeSensorAvailable &&
+                columnBottomAvailable && out.pressureSensorAvailable &&
+                out.decisionTrust >= 0.70f;
+            break;
+        case Mode::MASHING:
+        case Mode::HOLD:
+        case Mode::FERMENTATION:
+            out.adaptiveControlAllowed =
+                out.sensorFreshnessOk && cubeSensorAvailable &&
+                out.decisionTrust >= 0.60f;
+            break;
+        case Mode::IDLE:
+        default:
+            out.adaptiveControlAllowed = out.sensorFreshnessOk && out.decisionTrust >= 0.60f;
+            break;
+    }
+
+    out.degradedModeActive =
+        out.sensorFreshnessOk &&
+        state.mode != Mode::IDLE &&
+        out.decisionTrust < 0.85f;
+    if (out.degradedModeActive) {
+        out.processHealth = clampRange(out.processHealth,
+                                       0.0f,
+                                       0.40f + out.decisionTrust * 0.60f);
+        out.stabilityIndex *= clampRange(out.decisionTrust, 0.35f, 1.0f);
+        out.columnStable = false;
+    }
+
     out.powerLimited = SafetyPolicyV2::isNbkPressurePowerLimitActive(state, settings) ||
                        SafetyPolicyV2::isManualRectFloodPowerLimitActive(state, settings);
     out.recoveryActive = false;
-    out.takeoffAllowed = out.sensorFreshnessOk && out.coolingMarginC > 0.0f && out.floodRisk < 0.8f;
+    out.takeoffAllowed =
+        out.adaptiveControlAllowed &&
+        out.coolingMarginC > 0.0f &&
+        out.floodRisk < 0.8f;
     out.powerLimitConfidence =
         clamp01(pressureRatio * 0.30f + pressureTrendRatio * 0.25f +
                 coolingPenalty * 0.20f + out.floodRisk * 0.25f);
@@ -169,6 +284,12 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
             out.tailsTransitionConfidence =
                 clampRange(out.tailsTransitionConfidence, 0.85f, 1.0f);
         }
+
+        out.takeoffConfidence = applyTrustToConfidence(out.takeoffConfidence, out.decisionTrust);
+        out.headsEndConfidence = applyTrustToConfidence(out.headsEndConfidence, out.decisionTrust);
+        out.bodyEndConfidence = applyTrustToConfidence(out.bodyEndConfidence, out.decisionTrust);
+        out.tailsTransitionConfidence =
+            applyTrustToConfidence(out.tailsTransitionConfidence, out.decisionTrust);
     }
 
     if (state.mode == Mode::DISTILLATION) {
@@ -198,6 +319,12 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
         out.tailsTransitionConfidence =
             clamp01((out.distBodyNearEnd ? 0.30f : 0.0f) + endTempApproach * 0.45f +
                     pressureConfidence * 0.15f + topRiseConfidence * 0.10f);
+
+        out.takeoffConfidence = applyTrustToConfidence(out.takeoffConfidence, out.decisionTrust);
+        out.headsEndConfidence = applyTrustToConfidence(out.headsEndConfidence, out.decisionTrust);
+        out.bodyEndConfidence = applyTrustToConfidence(out.bodyEndConfidence, out.decisionTrust);
+        out.tailsTransitionConfidence =
+            applyTrustToConfidence(out.tailsTransitionConfidence, out.decisionTrust);
     }
 
     if (state.mode == Mode::NBK) {
@@ -208,8 +335,11 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
                                static_cast<float>(settings.nbk.powerW > 0 ? settings.nbk.powerW : 1),
                                0.0f) -
                     out.nbkColumnLoad * 0.5f + 0.5f);
-        out.nbkWorkingStable = out.steamReady && out.pressureStable && out.floodRisk < 0.75f;
-        out.nbkFeedAllowed = out.nbkWorkingStable && out.nbkPressureMargin > 0.0f;
+        out.nbkWorkingStable =
+            out.steamReady && out.pressureStable &&
+            out.floodRisk < 0.75f && out.adaptiveControlAllowed;
+        out.nbkFeedAllowed =
+            out.nbkWorkingStable && out.nbkPressureMargin > 0.0f;
         out.finishLikely = state.mode == Mode::NBK && state.nbkPhase == NbkPhase::WORKING &&
                            state.temps.valid[TEMP_COLUMN_BOTTOM] &&
                            state.temps.columnBottom < settings.nbk.columnBottomTempThresholdC;
@@ -225,7 +355,16 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
                                        3.0f, 0.0f)) *
                         0.25f +
                     pressureConfidence * 0.15f);
+
+        out.takeoffConfidence = applyTrustToConfidence(out.takeoffConfidence, out.decisionTrust);
+        out.tailsTransitionConfidence =
+            applyTrustToConfidence(out.tailsTransitionConfidence, out.decisionTrust);
     }
+
+    out.powerLimitConfidence =
+        applyTrustToConfidence(out.powerLimitConfidence,
+                               out.powerLimited ? clampRange(out.decisionTrust + 0.20f, 0.0f, 1.0f)
+                                                : out.decisionTrust);
 
     const float targetTemp = getCurrentModeTargetTemp(state, settings);
     if (targetTemp > 0.0f && state.temps.valid[TEMP_CUBE]) {

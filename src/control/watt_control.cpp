@@ -217,6 +217,10 @@ float clampUnit(float value) {
 }
 
 bool hasAdaptiveContext(const ControlV2::ProcessIndicatorsV2& indicators) {
+    if (!indicators.adaptiveControlAllowed) {
+        return false;
+    }
+
     return indicators.takeoffConfidence >= 0.0f ||
            indicators.bodyEndConfidence >= 0.0f ||
            indicators.headsEndConfidence >= 0.0f ||
