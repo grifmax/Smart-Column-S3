@@ -7,6 +7,16 @@
 
 ---
 
+## [2.2.68] - 2026-06-12
+
+### Added
+- (codex) Profiles import modal now performs compatibility preview before saving: it analyzes imported validation context against the current heater power, column height, packing, cube volume, pressure limits and current atmosphere, so community/shared recipes are no longer imported completely blind.
+
+### Changed
+- (codex) Exported profile snapshots now include device context metadata (`heaterPowerW`, `columnHeightMm`, `cubeVolumeL`, `packingType`, `packingCoeff`, safety pressure and current atmosphere) to make profile exchange and later compatibility checks more informative.
+- (codex) `GET /api/settings/equipment` now publishes `packingType` and `packingCoeff`, and profile import accepts snapshot wrappers with `profile` in addition to plain profile JSON and arrays.
+- (codex) Version metadata in `src/config.h`, `README.md`, `TODO2.0.md` and `docs/API.md` is synchronized to `2.2.68`.
+
 ## [2.2.67] - 2026-06-11
 
 ### Added

@@ -319,6 +319,110 @@
     margin-top: 10px;
 }
 
+.profile-import-meta {
+    padding: 12px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-card);
+}
+
+.profile-import-meta-title {
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.profile-import-meta-copy {
+    color: var(--text-secondary);
+    line-height: 1.45;
+    font-size: 0.92em;
+}
+
+.profile-import-cards {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.profile-import-card {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-card);
+    padding: 12px 14px;
+}
+
+.profile-import-card.is-good {
+    border-color: rgba(25, 135, 84, 0.28);
+    background: rgba(25, 135, 84, 0.08);
+}
+
+.profile-import-card.is-warning {
+    border-color: rgba(255, 193, 7, 0.32);
+    background: rgba(255, 193, 7, 0.10);
+}
+
+.profile-import-card.is-danger {
+    border-color: rgba(220, 53, 69, 0.28);
+    background: rgba(220, 53, 69, 0.09);
+}
+
+.profile-import-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.profile-import-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.82em;
+    font-weight: 700;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.profile-import-badge.is-good {
+    background: rgba(25, 135, 84, 0.16);
+    color: var(--success);
+}
+
+.profile-import-badge.is-warning {
+    background: rgba(255, 193, 7, 0.16);
+    color: #9a6a00;
+}
+
+.profile-import-badge.is-danger {
+    background: rgba(220, 53, 69, 0.16);
+    color: var(--danger);
+}
+
+.profile-import-list {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 6px;
+    color: var(--text-primary);
+}
+
+.profile-import-note-block {
+    display: grid;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.profile-import-note-block p {
+    margin: 0;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    font-size: 0.92em;
+}
+
 .modal-advisor-item {
     border: 1px solid var(--border-color);
     border-radius: 10px;

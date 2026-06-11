@@ -1484,11 +1484,6 @@ uint16_t importProfilesFromJSON(const String& jsonStr) {
         return 0;
     }
 
-    if (false) {
-        Serial.println("Ошибка: JSON не является массивом");
-        return 0;
-    }
-
     JsonArray array;
     JsonDocument normalizedDoc;
     if (doc.is<JsonArray>()) {
@@ -1496,12 +1491,17 @@ uint16_t importProfilesFromJSON(const String& jsonStr) {
     } else if (doc.is<JsonObject>() && doc["profiles"].is<JsonArray>()) {
         normalizedDoc.set(doc["profiles"]);
         array = normalizedDoc.as<JsonArray>();
+    } else if (doc.is<JsonObject>() && doc["profile"].is<JsonObject>()) {
+        JsonArray single = normalizedDoc.to<JsonArray>();
+        single.add(doc["profile"].as<JsonObject>());
+        array = normalizedDoc.as<JsonArray>();
     } else if (doc.is<JsonObject>() && doc["metadata"].is<JsonObject>() &&
                doc["parameters"].is<JsonObject>()) {
         JsonArray single = normalizedDoc.to<JsonArray>();
         single.add(doc.as<JsonObject>());
         array = normalizedDoc.as<JsonArray>();
     } else {
+        Serial.println("Ошибка: JSON импорта не является профилем, массивом или snapshot-объектом");
         return 0;
     }
     uint16_t imported = 0;

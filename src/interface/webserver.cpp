@@ -3284,11 +3284,30 @@ void init() {
   // GET /api/settings/equipment - получить настройки оборудования
   server.on("/api/settings/equipment", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
+    const char* packingType = "unknown";
+    switch (g_settings.equipment.packingType) {
+      case PackingType::SPN_3_5:
+        packingType = "spn_3_5";
+        break;
+      case PackingType::SPN_4_0:
+        packingType = "spn_4_0";
+        break;
+      case PackingType::RASCHIG:
+        packingType = "raschig";
+        break;
+      case PackingType::CUSTOM:
+        packingType = "custom";
+        break;
+      default:
+        break;
+    }
     doc["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     doc["columnHeightMm"] = g_settings.equipment.columnHeightMm;
     doc["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
     doc["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
     doc["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+    doc["packingType"] = packingType;
+    doc["packingCoeff"] = g_settings.equipment.packingCoeff;
 
     String json;
     serializeJson(doc, json);
