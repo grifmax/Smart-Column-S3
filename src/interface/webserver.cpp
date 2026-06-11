@@ -1733,6 +1733,10 @@ void init() {
     syncStirrerState();
 
     JsonDocument doc;
+    const String activeProfileId = getActiveProfileId();
+    Profile activeProfile;
+    const bool activeProfileLoaded =
+        !activeProfileId.isEmpty() && loadProfile(activeProfileId, activeProfile);
 
     // Режим и состояние процесса
     doc["mode"] = static_cast<int>(g_state.mode);
@@ -1758,6 +1762,69 @@ void init() {
     doc["deviceId"] = CloudTunnel::getDeviceId();
     JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, g_state, g_settings);
+    JsonObject activeProfileJson = doc["activeProfile"].to<JsonObject>();
+    activeProfileJson["id"] =
+        activeProfileLoaded ? activeProfile.id : activeProfileId;
+    activeProfileJson["loaded"] = activeProfileLoaded;
+    activeProfileJson["name"] =
+        activeProfileLoaded ? activeProfile.metadata.name : "";
+    activeProfileJson["category"] =
+        activeProfileLoaded ? activeProfile.metadata.category : "";
+
+    if (activeProfileLoaded) {
+      JsonObject validation = activeProfileJson["validation"].to<JsonObject>();
+      validation["validatedAt"] = activeProfile.validation.validatedAt;
+      validation["sourceProcessId"] = activeProfile.validation.sourceProcessId;
+      validation["atmosphereMmHg"] = activeProfile.validation.atmosphereMmHg;
+      validation["columnHeightMm"] = activeProfile.validation.columnHeightMm;
+      validation["packingType"] = activeProfile.validation.packingType;
+      validation["packingCoeff"] = activeProfile.validation.packingCoeff;
+      validation["heaterPowerW"] = activeProfile.validation.heaterPowerW;
+      validation["targetPowerW"] = activeProfile.validation.targetPowerW;
+      validation["feedVolumeL"] = activeProfile.validation.feedVolumeL;
+      validation["feedAbvPercent"] = activeProfile.validation.feedAbvPercent;
+
+      JsonObject baseTemperatures =
+          activeProfileJson["baseTemperatures"].to<JsonObject>();
+      baseTemperatures["maxCube"] = activeProfile.parameters.temperatures.maxCube;
+      baseTemperatures["maxColumn"] =
+          activeProfile.parameters.temperatures.maxColumn;
+      baseTemperatures["headsEnd"] =
+          activeProfile.parameters.temperatures.headsEnd;
+      baseTemperatures["bodyStart"] =
+          activeProfile.parameters.temperatures.bodyStart;
+      baseTemperatures["bodyEnd"] =
+          activeProfile.parameters.temperatures.bodyEnd;
+
+      ProfileBaroCorrectionSummary baroPreview =
+          evaluateProfileBaroCorrection(activeProfile, 1);
+      TemperatureParams previewTemps =
+          getEffectiveProfileTemperatures(activeProfile, nullptr, 1);
+
+      JsonObject baroPreviewJson =
+          activeProfileJson["baroPreview"].to<JsonObject>();
+      baroPreviewJson["enabled"] = true;
+      baroPreviewJson["applicable"] = baroPreview.applicable;
+      baroPreviewJson["applied"] = baroPreview.applied;
+      baroPreviewJson["baselinePressureMmHg"] =
+          baroPreview.baselinePressureMmHg;
+      baroPreviewJson["currentPressureMmHg"] =
+          baroPreview.currentPressureMmHg;
+      baroPreviewJson["pressureDeltaMmHg"] = baroPreview.pressureDeltaMmHg;
+      baroPreviewJson["boilingShiftC"] = baroPreview.boilingShiftC;
+      baroPreviewJson["appliedShiftC"] = baroPreview.appliedShiftC;
+      baroPreviewJson["strength"] = baroPreview.strength;
+      baroPreviewJson["maxShiftC"] = baroPreview.maxShiftC;
+      baroPreviewJson["note"] = baroPreview.note;
+
+      JsonObject previewEffectiveTemps =
+          activeProfileJson["effectiveTemperaturesPreview"].to<JsonObject>();
+      previewEffectiveTemps["maxCube"] = previewTemps.maxCube;
+      previewEffectiveTemps["maxColumn"] = previewTemps.maxColumn;
+      previewEffectiveTemps["headsEnd"] = previewTemps.headsEnd;
+      previewEffectiveTemps["bodyStart"] = previewTemps.bodyStart;
+      previewEffectiveTemps["bodyEnd"] = previewTemps.bodyEnd;
+    }
 
     // Температуры
     JsonObject temps = doc["temps"].to<JsonObject>();

@@ -87,6 +87,7 @@ export async function loadStatus() {
         // Обновить UI с новым форматом данных (не должен ломать обновление кнопок)
         try {
             updateUIFromStatus(data);
+            document.dispatchEvent(new CustomEvent('runtime-status-updated'));
         } catch (e) {
             console.error('updateUIFromStatus error:', e);
         }

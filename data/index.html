@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.52">
+    <link rel="stylesheet" href="style.css?v=2.2.54">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.52" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.54" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -709,6 +709,14 @@
                                                             <span class="control-inline-hint">Мягко сдвигать температурные пороги профиля по текущему атмосферному давлению. Можно отключить.</span>
                                                         </div>
                                                     </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="control-subsection" id="rect-adaptive-recipe-section">
+                                                <div class="control-subsection-title">Адаптация рецепта к текущим условиям</div>
+                                                <div id="rect-active-profile-summary" class="control-profile-summary is-muted">
+                                                    <div class="control-profile-summary-title">Активный профиль не загружен</div>
+                                                    <div class="control-profile-summary-text">Загрузите профиль ректификации, чтобы увидеть baseline давления, ожидаемый сдвиг порогов и поведение рецепта для текущего запуска.</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -2812,7 +2820,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.52"></script>
+    <script src="app.js?v=2.2.54"></script>
 </body>
 
 </html>

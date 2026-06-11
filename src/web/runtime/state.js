@@ -105,6 +105,35 @@ function mergeAlarmState(s, data) {
     };
 }
 
+function mergeActiveProfileState(s, data) {
+    const activeProfile = (data?.activeProfile && typeof data.activeProfile === 'object')
+        ? data.activeProfile
+        : null;
+    if (!activeProfile) return;
+
+    s.activeProfile = {
+        ...s.activeProfile,
+        id: activeProfile.id !== undefined ? String(activeProfile.id) : s.activeProfile.id,
+        loaded: activeProfile.loaded !== undefined ? Boolean(activeProfile.loaded) : s.activeProfile.loaded,
+        name: activeProfile.name !== undefined ? String(activeProfile.name) : s.activeProfile.name,
+        category: activeProfile.category !== undefined ? String(activeProfile.category) : s.activeProfile.category,
+        validation: (activeProfile.validation && typeof activeProfile.validation === 'object')
+            ? { ...activeProfile.validation }
+            : s.activeProfile.validation,
+        baseTemperatures: (activeProfile.baseTemperatures && typeof activeProfile.baseTemperatures === 'object')
+            ? { ...activeProfile.baseTemperatures }
+            : s.activeProfile.baseTemperatures,
+        baroPreview: (activeProfile.baroPreview && typeof activeProfile.baroPreview === 'object')
+            ? { ...activeProfile.baroPreview }
+            : s.activeProfile.baroPreview,
+        effectiveTemperaturesPreview:
+            (activeProfile.effectiveTemperaturesPreview &&
+                typeof activeProfile.effectiveTemperaturesPreview === 'object')
+                ? { ...activeProfile.effectiveTemperaturesPreview }
+                : s.activeProfile.effectiveTemperaturesPreview
+    };
+}
+
 function mergeV2State(s, data) {
     const v2 = (data?.v2 && typeof data.v2 === 'object') ? data.v2 : null;
     if (!v2) return;
@@ -229,6 +258,7 @@ export function updateRuntimeStateFromStatus(data) {
     if (data.phaseStr !== undefined) s.phaseStr = String(data.phaseStr);
     if (data.safetyOk !== undefined) s.safetyOk = Boolean(data.safetyOk);
     mergeAlarmState(s, data);
+    mergeActiveProfileState(s, data);
     mergeV2State(s, data);
 
     if (data.power && typeof data.power === 'object') {
@@ -302,6 +332,7 @@ export function updateRuntimeStateFromWs(data) {
     if (data.phaseStr !== undefined) s.phaseStr = String(data.phaseStr);
     if (data.safetyOk !== undefined) s.safetyOk = Boolean(data.safetyOk);
     mergeAlarmState(s, data);
+    mergeActiveProfileState(s, data);
     mergeV2State(s, data);
 
     if (data.power !== undefined) s.power.power = toFinite(data.power, s.power.power);

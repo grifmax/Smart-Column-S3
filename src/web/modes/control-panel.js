@@ -226,6 +226,7 @@ export function renderControlStartState() {
         confirmButton.disabled = effectiveState.disabled;
     }
 
+    renderRectificationAdaptiveRecipeSummary();
     renderControlModeSummary();
     renderModeStartAdvisor();
     renderControlStartChecklist();
@@ -279,6 +280,111 @@ function appendAdvisorMetaItem(container, tone, title, detail, action = '') {
     }
 
     container.appendChild(item);
+}
+
+function escapeControlHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function formatRecipeTemp(baseValue, effectiveValue) {
+    const base = Number(baseValue || 0);
+    const effective = Number(effectiveValue || 0);
+    if (!(base > 0)) return '—';
+    if (!(effective > 0) || Math.abs(effective - base) < 0.01) {
+        return `${base.toFixed(2)}°C`;
+    }
+    return `${base.toFixed(2)}°C → ${effective.toFixed(2)}°C`;
+}
+
+function formatRecipePressure(value) {
+    const numeric = Number(value || 0);
+    return numeric > 0 ? `${numeric.toFixed(1)} мм рт.ст.` : '—';
+}
+
+function formatRecipeDateTime(value) {
+    const numeric = Number(value || 0);
+    return numeric > 0 ? new Date(numeric * 1000).toLocaleString('ru-RU') : '—';
+}
+
+function renderRectificationAdaptiveRecipeSummary() {
+    const section = byId('rect-adaptive-recipe-section');
+    const root = byId('rect-active-profile-summary');
+    if (!section || !root) return;
+
+    const isRectification = selectedControlMode === 'rectification';
+    section.style.display = isRectification ? '' : 'none';
+    if (!isRectification) return;
+
+    const profile = runtimeMonitorState.activeProfile || {};
+    const validation = profile.validation || {};
+    const baseTemps = profile.baseTemperatures || {};
+    const baroPreview = profile.baroPreview || {};
+    const previewTemps = profile.effectiveTemperaturesPreview || {};
+    const correctionEnabledForRun = getCheckboxValue('rect-start-baro-correction-enabled');
+
+    let tone = 'muted';
+    let title = 'Активный профиль не загружен';
+    let detail = 'Загрузите профиль ректификации, чтобы увидеть baseline давления, ожидаемый сдвиг порогов и поведение рецепта для текущего запуска.';
+
+    if (profile.loaded) {
+        const profileName = profile.name || profile.id || 'без названия';
+        const profileCategory = String(profile.category || '').trim();
+
+        if (profileCategory && profileCategory !== 'rectification') {
+            tone = 'danger';
+            title = `Профиль "${profileName}" не подходит для авто-ректификации`;
+            detail = `Сейчас активен профиль категории "${profileCategory}". Для адаптивной ректификации загрузите профиль именно категории "rectification".`;
+        } else if (!correctionEnabledForRun) {
+            tone = 'muted';
+            title = `Профиль "${profileName}" загружен, барокоррекция отключена`;
+            detail =
+                `Рецепт валидирован при ${formatRecipePressure(validation.atmosphereMmHg || baroPreview.baselinePressureMmHg)}.` +
+                ` Для этого запуска пороги останутся базовыми: головы ${formatRecipeTemp(baseTemps.headsEnd, baseTemps.headsEnd)},` +
+                ` тело ${formatRecipeTemp(baseTemps.bodyStart, baseTemps.bodyStart)} - ${formatRecipeTemp(baseTemps.bodyEnd, baseTemps.bodyEnd)}.`;
+        } else if (!baroPreview.applicable) {
+            tone = 'warn';
+            title = `Профиль "${profileName}" загружен`;
+            detail = baroPreview.note || 'Для автоматической поправки рецепта пока не хватает baseline профиля или текущего давления BMP280.';
+        } else if (baroPreview.applied) {
+            tone = 'warn';
+            title = `Профиль "${profileName}" адаптируется под текущее давление`;
+            detail =
+                `Рецепт валидирован при ${formatRecipePressure(baroPreview.baselinePressureMmHg)}, сейчас ${formatRecipePressure(baroPreview.currentPressureMmHg)}.` +
+                ` Сдвиг составит ${formatSignedAdvisorNumber(baroPreview.appliedShiftC, 2, '°C')}: головы ${formatRecipeTemp(baseTemps.headsEnd, previewTemps.headsEnd)},` +
+                ` тело ${formatRecipeTemp(baseTemps.bodyStart, previewTemps.bodyStart)}, конец тела ${formatRecipeTemp(baseTemps.bodyEnd, previewTemps.bodyEnd)}.`;
+        } else {
+            tone = 'good';
+            title = `Профиль "${profileName}" близок к своему baseline`;
+            detail =
+                `Baseline ${formatRecipePressure(baroPreview.baselinePressureMmHg)}, сейчас ${formatRecipePressure(baroPreview.currentPressureMmHg)}.` +
+                ` Условия близки, поэтому заметный сдвиг порогов не требуется.`;
+        }
+    }
+
+    root.className = `control-profile-summary is-${tone}`;
+    root.innerHTML = `
+        <div class="control-profile-summary-title">${escapeControlHtml(title)}</div>
+        <div class="control-profile-summary-text">${escapeControlHtml(detail)}</div>
+        <div class="control-profile-summary-meta">
+            <div>
+                <span>Baseline профиля</span>
+                <strong>${escapeControlHtml(formatRecipePressure(validation.atmosphereMmHg || baroPreview.baselinePressureMmHg))}</strong>
+            </div>
+            <div>
+                <span>Текущее давление</span>
+                <strong>${escapeControlHtml(formatRecipePressure(baroPreview.currentPressureMmHg))}</strong>
+            </div>
+            <div>
+                <span>Валидация</span>
+                <strong>${escapeControlHtml(formatRecipeDateTime(validation.validatedAt))}</strong>
+            </div>
+        </div>
+    `;
 }
 
 function buildAdvisorFallback() {
@@ -1336,6 +1442,10 @@ export async function initControlModePanel() {
             if (event.target === startModal) closeModeStartModal();
         });
     }
+
+    document.addEventListener('runtime-status-updated', () => {
+        renderControlStartState();
+    });
 
     await selectControlMode(initialMode, { persist: false });
     renderControlStartState();

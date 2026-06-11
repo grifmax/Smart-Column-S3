@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.53`  
+**Версия прошивки:** `2.2.54`  
 **Актуальность документа:** 2026-06-11
 
 ---
@@ -30,8 +30,17 @@
 - safety / alarm
 - `v2.guidance`
 - `v2.indicators`
+- `activeProfile` — активный профиль процесса, его validation context и preview адаптации рецепта под текущее атмосферное давление
 
 Это главный endpoint для web UI и fallback для внешних клиентов.
+
+Поле `activeProfile` в `/api/status` содержит:
+
+- `id`, `loaded`, `name`, `category`
+- `validation.validatedAt`, `validation.sourceProcessId`, `validation.atmosphereMmHg`
+- `baseTemperatures.*`
+- `baroPreview.*`
+- `effectiveTemperaturesPreview.*`
 
 #### `GET /api/health`
 

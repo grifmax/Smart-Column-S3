@@ -282,4 +282,5 @@ export function updateUI(data) {
     updateButtonStates();
     updateKpiStrip(data);
     updateSafetyModal(data);
+    document.dispatchEvent(new CustomEvent('runtime-status-updated'));
 }

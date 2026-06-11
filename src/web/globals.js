@@ -136,6 +136,16 @@ export let runtimeMonitorState = {
         resetAvailable: true,
         resetBlockedReason: ''
     },
+    activeProfile: {
+        id: '',
+        loaded: false,
+        name: '',
+        category: '',
+        validation: {},
+        baseTemperatures: {},
+        baroPreview: {},
+        effectiveTemperaturesPreview: {}
+    },
     v2: {
         available: false,
         lifecycle: 'idle',

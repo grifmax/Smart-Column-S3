@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.53-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.54-brightgreen.svg)](CHANGELOG.md)
 
 ## Что это
 
@@ -26,6 +26,7 @@ Smart-Column S3 - это прошивка и Web UI для автоматики 
 - Профили с validation context: давление, конфигурация колонны, насадка, мощность и фактические cut points последнего успешного baseline
 - Мягкая отключаемая барокоррекция температурных порогов профиля по текущему атмосферному давлению
 - `Pre-flight` мастер теперь заранее показывает, будет ли применена барокоррекция к порогам активного профиля именно в этом запуске
+- В блоке ректификации Web UI показывается живая адаптация рецепта: baseline профиля, текущее давление и итоговое поведение порогов для этого запуска
 - Process Indicators v2: инженерные признаки процесса и объяснения состояний оператору
 - Watt-Control и Smart Decrement для управления нагревом и отбором
 - Электронный ареометр на MPX5010DP + ADS1115

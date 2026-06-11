@@ -1,5 +1,6 @@
 ﻿import { currentProfileId, setCurrentProfileId } from './state.js';
 import { loadProfilesList } from './list.js';
+import { loadStatus } from '../core/status.js';
 
 // Показать модальное окно создания профиля
 
@@ -613,6 +614,7 @@ export async function quickLoadProfile(id) {
             if (data.success) {
 
                 alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
+                void loadStatus();
 
             } else {
 
