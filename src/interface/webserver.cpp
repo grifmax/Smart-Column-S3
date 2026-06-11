@@ -6010,6 +6010,118 @@ void init() {
   });
 
   // POST /api/profiles/{id}/load - Загрузить профиль в текущие настройки
+  server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_PUT,
+            [](AsyncWebServerRequest *request) {}, NULL,
+            [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+               size_t index, size_t total) {
+              if (index + len != total) return;
+
+              String id = request->pathArg(0);
+              Profile profile;
+              if (!loadProfile(id, profile)) {
+                request->send(404, "application/json",
+                              "{\"success\":false,\"error\":\"Profile not found\"}");
+                return;
+              }
+              if (profile.metadata.isBuiltin) {
+                request->send(403, "application/json",
+                              "{\"success\":false,\"error\":\"Builtin profile is read-only\"}");
+                return;
+              }
+
+              JsonDocument doc;
+              if (deserializeJson(doc, data, len)) {
+                request->send(400, "application/json",
+                              "{\"success\":false,\"error\":\"Invalid JSON\"}");
+                return;
+              }
+
+              JsonObject metadata = doc["metadata"].is<JsonObject>()
+                                        ? doc["metadata"].as<JsonObject>()
+                                        : JsonObject();
+              JsonObject parameters = doc["parameters"].is<JsonObject>()
+                                          ? doc["parameters"].as<JsonObject>()
+                                          : JsonObject();
+
+              if (!metadata.isNull()) {
+                if (!metadata["name"].isNull()) profile.metadata.name = metadata["name"].as<String>();
+                if (!metadata["description"].isNull()) profile.metadata.description = metadata["description"].as<String>();
+                if (!metadata["category"].isNull()) profile.metadata.category = metadata["category"].as<String>();
+                if (metadata["tags"].is<JsonArray>()) {
+                  profile.metadata.tags.clear();
+                  for (JsonVariant tag : metadata["tags"].as<JsonArray>()) {
+                    const String value = tag.as<String>();
+                    if (!value.isEmpty()) profile.metadata.tags.push_back(value);
+                  }
+                }
+              }
+
+              if (!parameters.isNull()) {
+                profile.parameters.mode = !parameters["mode"].isNull()
+                                              ? parameters["mode"].as<String>()
+                                              : profile.metadata.category;
+                if (!parameters["model"].isNull()) profile.parameters.model = parameters["model"].as<String>();
+
+                JsonObject heater = parameters["heater"].is<JsonObject>() ? parameters["heater"].as<JsonObject>() : JsonObject();
+                if (!heater.isNull()) {
+                  if (!heater["maxPower"].isNull()) profile.parameters.heater.maxPower = clampU16Range(heater["maxPower"].as<uint32_t>(), 300, 10000);
+                  if (!heater["autoMode"].isNull()) profile.parameters.heater.autoMode = heater["autoMode"].as<bool>();
+                  if (!heater["pidKp"].isNull()) profile.parameters.heater.pidKp = clampFloatRange(heater["pidKp"].as<float>(), 0.0f, 100.0f);
+                  if (!heater["pidKi"].isNull()) profile.parameters.heater.pidKi = clampFloatRange(heater["pidKi"].as<float>(), 0.0f, 100.0f);
+                  if (!heater["pidKd"].isNull()) profile.parameters.heater.pidKd = clampFloatRange(heater["pidKd"].as<float>(), 0.0f, 100.0f);
+                }
+
+                JsonObject rectification = parameters["rectification"].is<JsonObject>() ? parameters["rectification"].as<JsonObject>() : JsonObject();
+                if (!rectification.isNull()) {
+                  if (!rectification["stabilizationMin"].isNull()) profile.parameters.rectification.stabilizationMin = clampU16Range(rectification["stabilizationMin"].as<uint32_t>(), 1, 180);
+                  if (!rectification["headsVolume"].isNull()) profile.parameters.rectification.headsVolume = clampU16Range(rectification["headsVolume"].as<uint32_t>(), 1, 10000);
+                  if (!rectification["bodyVolume"].isNull()) profile.parameters.rectification.bodyVolume = clampU16Range(rectification["bodyVolume"].as<uint32_t>(), 1, 50000);
+                  if (!rectification["tailsVolume"].isNull()) profile.parameters.rectification.tailsVolume = clampU16Range(rectification["tailsVolume"].as<uint32_t>(), 0, 20000);
+                  if (!rectification["headsSpeed"].isNull()) profile.parameters.rectification.headsSpeed = clampU16Range(rectification["headsSpeed"].as<uint32_t>(), 10, 2000);
+                  if (!rectification["bodySpeed"].isNull()) profile.parameters.rectification.bodySpeed = clampU16Range(rectification["bodySpeed"].as<uint32_t>(), 50, 3000);
+                  if (!rectification["tailsSpeed"].isNull()) profile.parameters.rectification.tailsSpeed = clampU16Range(rectification["tailsSpeed"].as<uint32_t>(), 0, 3000);
+                  if (!rectification["purgeMin"].isNull()) profile.parameters.rectification.purgeMin = clampU16Range(rectification["purgeMin"].as<uint32_t>(), 1, 120);
+                }
+
+                JsonObject distillation = parameters["distillation"].is<JsonObject>() ? parameters["distillation"].as<JsonObject>() : JsonObject();
+                if (!distillation.isNull()) {
+                  if (!distillation["headsVolume"].isNull()) profile.parameters.distillation.headsVolume = clampU16Range(distillation["headsVolume"].as<uint32_t>(), 0, 10000);
+                  if (!distillation["targetVolume"].isNull()) profile.parameters.distillation.targetVolume = clampU16Range(distillation["targetVolume"].as<uint32_t>(), 1, 50000);
+                  if (!distillation["speed"].isNull()) profile.parameters.distillation.speed = clampU16Range(distillation["speed"].as<uint32_t>(), 50, 65000);
+                  if (!distillation["endTemp"].isNull()) profile.parameters.distillation.endTemp = clampFloatRange(distillation["endTemp"].as<float>(), 50.0f, 110.0f);
+                }
+
+                JsonObject temperatures = parameters["temperatures"].is<JsonObject>() ? parameters["temperatures"].as<JsonObject>() : JsonObject();
+                if (!temperatures.isNull()) {
+                  if (!temperatures["maxCube"].isNull()) profile.parameters.temperatures.maxCube = clampFloatRange(temperatures["maxCube"].as<float>(), 50.0f, 120.0f);
+                  if (!temperatures["maxColumn"].isNull()) profile.parameters.temperatures.maxColumn = clampFloatRange(temperatures["maxColumn"].as<float>(), 50.0f, 110.0f);
+                  if (!temperatures["headsEnd"].isNull()) profile.parameters.temperatures.headsEnd = clampFloatRange(temperatures["headsEnd"].as<float>(), 50.0f, 110.0f);
+                  if (!temperatures["bodyStart"].isNull()) profile.parameters.temperatures.bodyStart = clampFloatRange(temperatures["bodyStart"].as<float>(), 50.0f, 110.0f);
+                  if (!temperatures["bodyEnd"].isNull()) profile.parameters.temperatures.bodyEnd = clampFloatRange(temperatures["bodyEnd"].as<float>(), 50.0f, 120.0f);
+                }
+
+                JsonObject safety = parameters["safety"].is<JsonObject>() ? parameters["safety"].as<JsonObject>() : JsonObject();
+                if (!safety.isNull()) {
+                  if (!safety["maxRuntime"].isNull()) profile.parameters.safety.maxRuntime = clampU16Range(safety["maxRuntime"].as<uint32_t>(), 10, 5000);
+                  if (!safety["waterFlowMin"].isNull()) profile.parameters.safety.waterFlowMin = clampFloatRange(safety["waterFlowMin"].as<float>(), 0.0f, 20.0f);
+                  if (!safety["pressureMax"].isNull()) profile.parameters.safety.pressureMax = clampU16Range(safety["pressureMax"].as<uint32_t>(), 5, 200);
+                }
+              }
+
+              profile.metadata.updated = millis() / 1000;
+              if (profile.parameters.mode.isEmpty()) profile.parameters.mode = profile.metadata.category;
+              if (profile.parameters.model.isEmpty()) profile.parameters.model = "classic";
+
+              if (!saveProfile(profile)) {
+                request->send(400, "application/json",
+                              "{\"success\":false,\"error\":\"Failed to validate or save profile\"}");
+                return;
+              }
+
+              request->send(200, "application/json",
+                            "{\"success\":true,\"id\":\"" + profile.id + "\"}");
+            });
+
   server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/load$", HTTP_POST, [](AsyncWebServerRequest *request) {
     String id = request->pathArg(0);
     

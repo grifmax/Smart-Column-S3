@@ -7,6 +7,17 @@
 
 ---
 
+## [2.2.64] - 2026-06-11
+
+### Added
+- (codex) Profiles Web UI now has a real edit flow for user profiles: from the list or profile details the operator can open the profile in a modal editor and change metadata plus core process parameters instead of treating profiles as export-only snapshots.
+
+### Changed
+- (codex) New profile creation now starts from current system settings fetched from the existing settings/status API instead of hardcoded placeholder defaults, so saved profiles better match the actual working setup.
+- (codex) Backend now supports `PUT /api/profiles/{id}` for updating non-builtin profiles while preserving their statistics, learning snapshot and validation context.
+- (codex) `TODO2.0.md` marks the deeper `Run Advisor` hypothesis lifecycle as a deferred plan while web profile CRUD remains the current practical focus.
+- (codex) Version metadata in `src/config.h`, `README.md`, `TODO2.0.md` and `docs/API.md` is synchronized to `2.2.64`.
+
 ## [2.2.63] - 2026-06-11
 
 ### Added

@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.63-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.64-brightgreen.svg)](CHANGELOG.md)
 
 ## Что это
 
@@ -21,6 +21,7 @@ Smart-Column S3 - это прошивка и Web UI для автоматики 
 
 - 8 режимов работы: авто-ректификация, ручная ректификация, дистилляция, затирание, Hold, НБК, ферментация и IDLE
 - Web UI с живой SVG-схемой, показометрами, диагностикой, историей и профилями
+- Web UI профилей теперь умеет не только смотреть/экспортировать, но и редактировать пользовательские профили по основным уставкам прямо в браузере
 - История процессов v2: фазы, таймлайн safety, reason codes, экспорт CSV/JSON
 - Run Advisor v1: post-run отчёт по фазам, энергии, устойчивости, safety, baseline-сравнению и короткому плану следующего запуска
 - Профили с validation context: давление, конфигурация колонны, насадка, мощность и фактические cut points последнего успешного baseline

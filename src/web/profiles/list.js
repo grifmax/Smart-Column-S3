@@ -168,6 +168,8 @@ export function renderProfileItem(profile) {
 
                     <button class="btn-icon btn-success" onclick="quickLoadProfile('${profile.id}')" title="Загрузить">📥</button>
 
+                    ${!profile.isBuiltin ? `<button class="btn-icon" onclick="showEditProfileModal('${profile.id}')" title="Редактировать">✏️</button>` : ''}
+
                     <button class="btn-icon" onclick="exportProfile('${profile.id}')" title="Экспорт">📤</button>
 
                     ${!profile.isBuiltin ? `<button class="btn-icon btn-danger" onclick="deleteProfile('${profile.id}')" title="Удалить">🗑️</button>` : ''}
