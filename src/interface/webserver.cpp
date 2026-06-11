@@ -1052,6 +1052,9 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
       ((mode == Mode::RECTIFICATION || mode == Mode::MANUAL_RECT) && rectProfile) ||
       (mode == Mode::DISTILLATION && distProfile) ||
       (mode == Mode::MASHING && mashProfile);
+  bool hasBaroPreview = false;
+  ProfileBaroCorrectionSummary baroPreview;
+  TemperatureParams baroEffectiveTemps;
 
   uint8_t blockingCount = 0;
   uint8_t warningCount = 0;
@@ -1346,6 +1349,9 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
       if (!params["purgeMin"].isNull()) {
         rect.purgeMin = clampU16Range(params["purgeMin"].as<uint32_t>(), 1, 120);
       }
+      if (!params["baroCorrectionEnabled"].isNull()) {
+        rect.baroCorrectionEnabled = params["baroCorrectionEnabled"].as<bool>();
+      }
     }
 
     const float fractionsSum =
@@ -1368,6 +1374,45 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
     } else {
       addItem("rect-profile", "good", "Параметры запуска режима",
               "Объём, фракции и скорости ректификации выглядят согласованно.", false);
+    }
+
+    if (activeProfileLoaded && rectProfile) {
+      baroEffectiveTemps = getEffectiveProfileTemperatures(
+          activeProfile, &baroPreview, rect.baroCorrectionEnabled ? 1 : 0);
+      hasBaroPreview = true;
+
+      if (!baroPreview.enabled) {
+        addItem("baro", "muted", "Барокоррекция профиля",
+                "Барокоррекция отключена для этого запуска. Пороги останутся как в сохранённом профиле.",
+                false);
+      } else if (!baroPreview.applicable) {
+        addItem("baro", "warn", "Барокоррекция профиля",
+                baroPreview.note.isEmpty()
+                    ? String("Для мягкой барокоррекции пока не хватает baseline по давлению или текущих данных BMP280.")
+                    : baroPreview.note,
+                false);
+      } else if (baroPreview.applied) {
+        const String signedShift =
+            String(baroPreview.appliedShiftC >= 0.0f ? "+" : "") +
+            String(baroPreview.appliedShiftC, 2);
+        addItem(
+            "baro", "warn", "Барокоррекция профиля",
+            String("Профиль валидирован при ") +
+                String(baroPreview.baselinePressureMmHg, 1) +
+                " мм рт.ст., сейчас " +
+                String(baroPreview.currentPressureMmHg, 1) +
+                " мм рт.ст. Перед стартом пороги будут мягко сдвинуты на " +
+                signedShift + "°C: головы " +
+                String(activeProfile.parameters.temperatures.headsEnd, 2) + " → " +
+                String(baroEffectiveTemps.headsEnd, 2) + "°C, тело " +
+                String(activeProfile.parameters.temperatures.bodyStart, 2) + " → " +
+                String(baroEffectiveTemps.bodyStart, 2) + "°C.",
+            false);
+      } else {
+        addItem("baro", "good", "Барокоррекция профиля",
+                "Барокоррекция включена, но текущее отклонение давления слишком мало и заметный сдвиг порогов не требуется.",
+                false);
+      }
     }
   } else if (mode == Mode::MANUAL_RECT) {
     const JsonObject feed = params["feed"].as<JsonObject>();
@@ -1564,6 +1609,22 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
   advisorProfile["name"] = activeProfileLoaded ? activeProfile.metadata.name : "";
   advisorProfile["category"] =
       activeProfileLoaded ? activeProfile.metadata.category : "";
+
+  if (hasBaroPreview) {
+    JsonObject advisorBaro = advisor["baroCorrection"].to<JsonObject>();
+    advisorBaro["enabled"] = baroPreview.enabled;
+    advisorBaro["applicable"] = baroPreview.applicable;
+    advisorBaro["applied"] = baroPreview.applied;
+    advisorBaro["baselinePressureMmHg"] = baroPreview.baselinePressureMmHg;
+    advisorBaro["currentPressureMmHg"] = baroPreview.currentPressureMmHg;
+    advisorBaro["pressureDeltaMmHg"] = baroPreview.pressureDeltaMmHg;
+    advisorBaro["appliedShiftC"] = baroPreview.appliedShiftC;
+    advisorBaro["note"] = baroPreview.note;
+    JsonObject effectiveTemps = advisorBaro["effectiveTemperatures"].to<JsonObject>();
+    effectiveTemps["headsEnd"] = baroEffectiveTemps.headsEnd;
+    effectiveTemps["bodyStart"] = baroEffectiveTemps.bodyStart;
+    effectiveTemps["bodyEnd"] = baroEffectiveTemps.bodyEnd;
+  }
 
   JsonObject confidence = advisor["confidence"].to<JsonObject>();
   confidence["startup"] = startupConfidencePct;

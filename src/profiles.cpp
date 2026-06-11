@@ -172,9 +172,13 @@ void appendValidationJson(JsonObject validation,
 
 } // namespace
 
-ProfileBaroCorrectionSummary evaluateProfileBaroCorrection(const Profile& profile) {
+ProfileBaroCorrectionSummary evaluateProfileBaroCorrection(
+    const Profile& profile,
+    int enabledOverride) {
     ProfileBaroCorrectionSummary summary;
-    summary.enabled = g_settings.rectParams.baroCorrectionEnabled;
+    summary.enabled = enabledOverride >= 0
+                          ? (enabledOverride != 0)
+                          : g_settings.rectParams.baroCorrectionEnabled;
     summary.strength = PROFILE_BARO_CORRECTION_STRENGTH;
     summary.maxShiftC = PROFILE_BARO_CORRECTION_MAX_SHIFT_C;
     summary.baselinePressureMmHg = profile.validation.atmosphereMmHg;
@@ -221,8 +225,10 @@ ProfileBaroCorrectionSummary evaluateProfileBaroCorrection(const Profile& profil
 
 TemperatureParams getEffectiveProfileTemperatures(
     const Profile& profile,
-    ProfileBaroCorrectionSummary* summary) {
-    ProfileBaroCorrectionSummary localSummary = evaluateProfileBaroCorrection(profile);
+    ProfileBaroCorrectionSummary* summary,
+    int enabledOverride) {
+    ProfileBaroCorrectionSummary localSummary =
+        evaluateProfileBaroCorrection(profile, enabledOverride);
     if (summary) {
         *summary = localSummary;
     }

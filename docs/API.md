@@ -1,7 +1,7 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.52`  
-**Актуальность документа:** 2026-06-10
+**Версия прошивки:** `2.2.53`  
+**Актуальность документа:** 2026-06-11
 
 ---
 
@@ -74,7 +74,8 @@
     "feedAbvPercent": 40,
     "headsPercent": 8,
     "bodyPercent": 84,
-    "tailsPercent": 8
+    "tailsPercent": 8,
+    "baroCorrectionEnabled": true
   }
 }
 ```
@@ -87,6 +88,15 @@
 - `checks`
 - `items`
 - `advisor`
+
+Для ректификации `advisor.baroCorrection` может дополнительно содержать:
+
+- `enabled` — включена ли мягкая барокоррекция для текущего запуска
+- `applicable` — хватает ли baseline профиля и текущего давления для расчёта
+- `applied` — будет ли реально применён сдвиг порогов
+- `baselinePressureMmHg`, `currentPressureMmHg`, `pressureDeltaMmHg`
+- `appliedShiftC`
+- `effectiveTemperatures.headsEnd`, `effectiveTemperatures.bodyStart`, `effectiveTemperatures.bodyEnd`
 
 #### `POST /api/process/start`
 

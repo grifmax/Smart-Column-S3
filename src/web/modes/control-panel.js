@@ -252,6 +252,12 @@ function formatAdvisorPercent(value) {
     return Number.isFinite(numeric) ? `${Math.round(numeric)}%` : '—';
 }
 
+function formatSignedAdvisorNumber(value, digits = 1, suffix = '') {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(digits)}${suffix}`;
+}
+
 function appendAdvisorMetaItem(container, tone, title, detail, action = '') {
     const item = document.createElement('div');
     item.className = `modal-advisor-item is-${tone || 'muted'}`;
@@ -329,6 +335,33 @@ function renderModeStartAdvisor(snapshot = latestModePreflight) {
                 : `Активный профиль: ${profileName}. Категория не совпадает с выбранным режимом.`)
             : 'Запуск пойдёт без активного профиля, baseline для Run Advisor будет слабее.';
         appendAdvisorMetaItem(metaEl, profileTone, 'Связка с профилем', profileDetail);
+    }
+
+    const baro = advisor.baroCorrection || {};
+    if (baro.enabled) {
+        let toneBaro = 'muted';
+        let detailBaro = baro.note || 'Барокоррекция профиля включена.';
+        const effectiveTemps = baro.effectiveTemperatures || {};
+
+        if (baro.applicable && baro.applied) {
+            toneBaro = 'warn';
+            detailBaro =
+                `Baseline ${Number(baro.baselinePressureMmHg || 0).toFixed(1)} мм рт.ст., сейчас ${Number(baro.currentPressureMmHg || 0).toFixed(1)} мм рт.ст., мягкий сдвиг ${formatSignedAdvisorNumber(baro.appliedShiftC, 2, '°C')}. ` +
+                `Пороги на этот запуск: головы до ${Number(effectiveTemps.headsEnd || 0).toFixed(2)}°C, тело ${Number(effectiveTemps.bodyStart || 0).toFixed(2)}-${Number(effectiveTemps.bodyEnd || 0).toFixed(2)}°C.`;
+        } else if (baro.applicable) {
+            toneBaro = 'good';
+            detailBaro = baro.note || 'Отклонение давления небольшое, заметный сдвиг порогов не требуется.';
+        } else {
+            toneBaro = 'warn';
+            detailBaro = baro.note || 'Для preview барокоррекции не хватает baseline профиля или текущего давления BMP280.';
+        }
+
+        appendAdvisorMetaItem(
+            metaEl,
+            toneBaro,
+            'Барокоррекция профиля',
+            detailBaro
+        );
     }
 
     const phaseSignals = [
@@ -909,6 +942,10 @@ function mapPreflightItemTarget(id) {
             if (selectedControlMode === 'distillation') return 'dist-start-power-percent';
             if (selectedControlMode === 'mashing') return 'mash-steps';
             return '';
+        case 'baro':
+            return selectedControlMode === 'rectification'
+                ? 'rect-start-baro-correction-enabled'
+                : '';
         case 'water':
             return 'indicator-cooling-margin';
         case 'sensors':

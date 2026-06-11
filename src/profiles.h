@@ -168,10 +168,13 @@ bool validateProfile(const Profile& profile);
 bool applyProfile(const String& id);
 void updateProfileStatistics(const String& id, bool success, uint32_t duration, uint16_t yield);
 void updateProfileLearning(const ProcessHistory& history);
-ProfileBaroCorrectionSummary evaluateProfileBaroCorrection(const Profile& profile);
+ProfileBaroCorrectionSummary evaluateProfileBaroCorrection(
+    const Profile& profile,
+    int enabledOverride = -1);
 TemperatureParams getEffectiveProfileTemperatures(
     const Profile& profile,
-    ProfileBaroCorrectionSummary* summary = nullptr);
+    ProfileBaroCorrectionSummary* summary = nullptr,
+    int enabledOverride = -1);
 void setActiveProfile(const String& id, const String& name);
 void clearActiveProfile();
 String getActiveProfileId();
