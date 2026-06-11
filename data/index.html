@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.65">
+    <link rel="stylesheet" href="style.css?v=2.2.66">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.65" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.66" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1884,6 +1884,28 @@
                                 </div>
                                 <div id="hydrometerResult" class="info-text" style="margin-top: 10px;"></div>
                             </div>
+
+                            <div class="card equipment-card equipment-card-calibration-backup">
+                                <h2>🗂️ Резерв калибровок</h2>
+                                <p class="equipment-subtitle">Сохраните текущие калибровки насоса, термометров и
+                                    ареометра в один snapshot. Это удобно перед заменой контроллера, экспериментами
+                                    с настройками или откатом к проверенному состоянию.</p>
+                                <div class="controls equipment-actions">
+                                    <button class="btn btn-primary" type="button" onclick="exportCalibrationSnapshot()">📤 Экспортировать snapshot</button>
+                                    <button class="btn btn-secondary" type="button" onclick="openCalibrationImportDialog()">📥 Выбрать файл</button>
+                                    <button class="btn" type="button" id="calibration-import-apply-btn" onclick="applyCalibrationSnapshot()" disabled>♻️ Применить snapshot</button>
+                                </div>
+                                <input type="file" id="calibration-import-file" accept=".json,application/json" style="display: none;" onchange="onCalibrationSnapshotFileChange(event)">
+                                <div class="equipment-test-alert subtle" style="margin-top: 12px;">
+                                    При импорте восстанавливаются: `pump`, offsets термодатчиков и таблица ареометра.
+                                    Аппаратные адреса DS18B20 не перепрошиваются: они заново определяются на самом железе.
+                                </div>
+                                <div class="form-group" style="margin-top: 12px;">
+                                    <label>Предпросмотр выбранного snapshot</label>
+                                    <div class="info-display equipment-info-box" id="calibration-import-preview">Файл не выбран</div>
+                                </div>
+                                <div id="calibrationImportResult" class="info-text" style="margin-top: 10px;"></div>
+                            </div>
                         </div>
                     </div>
                     <div id="safety" class="tab-content">
@@ -3010,7 +3032,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.65"></script>
+    <script src="app.js?v=2.2.66"></script>
 </body>
 
 </html>

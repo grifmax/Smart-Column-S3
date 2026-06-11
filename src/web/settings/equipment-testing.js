@@ -242,6 +242,15 @@ const CALIBRATION_CARD_DEFS = [
         shortTitle: 'Ареометр',
         description: 'Таблица ABV по сигналу попугая, текущее показание и сервисная подстройка без JSON-ручек.',
     },
+    {
+        id: 'calibration-backup',
+        selector: '#calibration-import-preview',
+        group: 'sensors',
+        icon: '🗂️',
+        title: 'Резерв и восстановление',
+        shortTitle: 'Snapshot',
+        description: 'Экспорт и импорт полного calibration snapshot для переноса или быстрого отката.',
+    },
 ];
 
 const state = {

@@ -74,6 +74,10 @@ import {
     fillHydrometerPointFromCurrent,
     saveHydrometerCalibration,
     clearHydrometerCalibration,
+    exportCalibrationSnapshot,
+    openCalibrationImportDialog,
+    onCalibrationSnapshotFileChange,
+    applyCalibrationSnapshot,
     updateCalibrationTime,
     startCalibration,
     stopCalibration,
@@ -250,6 +254,10 @@ window.calibrateTempReference = calibrateTempReference;
 window.fillHydrometerPointFromCurrent = fillHydrometerPointFromCurrent;
 window.saveHydrometerCalibration = saveHydrometerCalibration;
 window.clearHydrometerCalibration = clearHydrometerCalibration;
+window.exportCalibrationSnapshot = exportCalibrationSnapshot;
+window.openCalibrationImportDialog = openCalibrationImportDialog;
+window.onCalibrationSnapshotFileChange = onCalibrationSnapshotFileChange;
+window.applyCalibrationSnapshot = applyCalibrationSnapshot;
 window.updateCalibrationTime = updateCalibrationTime;
 window.startCalibration = startCalibration;
 window.stopCalibration = stopCalibration;

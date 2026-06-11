@@ -7,6 +7,15 @@
 
 ---
 
+## [2.2.66] - 2026-06-11
+
+### Added
+- (codex) Calibration workbench now supports full snapshot export/import from Web UI, so the operator can back up and restore pump, temperature and hydrometer calibration from one JSON file without manual API calls.
+
+### Changed
+- (codex) A dedicated `Резерв калибровок` card was added to the calibration workbench with preview and safe apply flow for imported snapshots.
+- (codex) Version metadata in `src/config.h`, `README.md`, `TODO2.0.md` and `docs/API.md` is synchronized to `2.2.66`.
+
 ## [2.2.65] - 2026-06-11
 
 ### Added

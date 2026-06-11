@@ -13,6 +13,8 @@ let calibrationState = {
     interval: null
 };
 
+let calibrationImportSnapshot = null;
+
 function byId(id) {
     return document.getElementById(id);
 }
@@ -33,6 +35,29 @@ function setMessage(id, message, type = 'info') {
             : 'var(--text-secondary)';
     el.style.color = color;
     el.textContent = message;
+}
+
+function downloadJsonFile(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function updateCalibrationImportUi(summaryText = 'Файл не выбран', canApply = false) {
+    const preview = byId('calibration-import-preview');
+    if (preview) {
+        preview.textContent = summaryText;
+    }
+    const applyBtn = byId('calibration-import-apply-btn');
+    if (applyBtn) {
+        applyBtn.disabled = !canApply;
+    }
 }
 
 function formatHydrometerNumber(value, digits = 3, suffix = '') {
@@ -130,6 +155,189 @@ function collectHydrometerCalibrationPayload() {
         abvPoints,
         pressurePoints
     };
+}
+
+function normalizeCalibrationSnapshot(payload) {
+    const source = payload?.calibration && typeof payload.calibration === 'object'
+        ? payload.calibration
+        : payload;
+    if (!source || typeof source !== 'object') {
+        throw new Error('Неверный формат snapshot');
+    }
+
+    const pump = source.pump && typeof source.pump === 'object' ? source.pump : {};
+    const temperatures = Array.isArray(source.temperatures) ? source.temperatures : [];
+    const hydrometer = source.hydrometer && typeof source.hydrometer === 'object' ? source.hydrometer : {};
+
+    const normalizedPump = {
+        mlPerRev: Number(pump.mlPerRev),
+        stepsPerRev: Number(pump.stepsPerRev),
+        microsteps: Number(pump.microsteps)
+    };
+
+    const normalizedTemps = temperatures
+        .map((item) => ({
+            index: Number(item?.index),
+            offset: Number(item?.offset),
+            address: String(item?.address || '')
+        }))
+        .filter((item) => Number.isInteger(item.index) && Number.isFinite(item.offset));
+
+    const hydrometerPoints = Array.isArray(hydrometer.abvPoints) ? hydrometer.abvPoints : [];
+    const hydrometerSignals = Array.isArray(hydrometer.pressurePoints) ? hydrometer.pressurePoints : [];
+    const normalizedHydrometer = {
+        densityOffset: Number(hydrometer.densityOffset),
+        abvPoints: hydrometerPoints.map((item) => Number(item)).filter((item) => Number.isFinite(item)),
+        pressurePoints: hydrometerSignals.map((item) => Number(item)).filter((item) => Number.isFinite(item))
+    };
+
+    if (normalizedHydrometer.abvPoints.length !== normalizedHydrometer.pressurePoints.length) {
+        throw new Error('В snapshot ареометра не совпадает количество ABV и signal points');
+    }
+    if (normalizedHydrometer.abvPoints.length === 1) {
+        throw new Error('Snapshot ареометра содержит только 1 точку. Нужны 0 или минимум 2');
+    }
+
+    return {
+        meta: payload?.meta && typeof payload.meta === 'object' ? payload.meta : {},
+        pump: normalizedPump,
+        temperatures: normalizedTemps,
+        hydrometer: normalizedHydrometer
+    };
+}
+
+function describeCalibrationSnapshot(snapshot) {
+    const pumpText = Number.isFinite(snapshot.pump.mlPerRev) && snapshot.pump.mlPerRev > 0
+        ? `${snapshot.pump.mlPerRev.toFixed(3)} мл/об`
+        : 'нет pump-cal';
+    const tempText = `${snapshot.temperatures.length} offsets`;
+    const hydroPointCount = snapshot.hydrometer.abvPoints.length;
+    const hydroText = hydroPointCount >= 2
+        ? `${hydroPointCount} точк. ареометра`
+        : 'без таблицы ареометра';
+    const versionText = snapshot.meta?.firmwareVersion ? ` | FW ${snapshot.meta.firmwareVersion}` : '';
+    return `Насос: ${pumpText} | Термодатчики: ${tempText} | Ареометр: ${hydroText}${versionText}`;
+}
+
+export async function exportCalibrationSnapshot() {
+    try {
+        const [calibrationResponse, versionResponse] = await Promise.all([
+            fetch(API_BASE),
+            fetch('/api/version').catch(() => null)
+        ]);
+        if (!calibrationResponse.ok) {
+            throw new Error(`HTTP ${calibrationResponse.status}`);
+        }
+
+        const calibration = await calibrationResponse.json();
+        const version = versionResponse && versionResponse.ok ? await versionResponse.json() : {};
+        const payload = {
+            schema: 'smart-column-calibration-snapshot-v1',
+            exportedAt: new Date().toISOString(),
+            meta: {
+                firmwareVersion: version?.firmware?.version || '',
+                board: version?.firmware?.name || 'Smart-Column-S3'
+            },
+            calibration
+        };
+
+        const dayStamp = new Date().toISOString().slice(0, 10);
+        downloadJsonFile(payload, `calibration_snapshot_${dayStamp}.json`);
+        setMessage('calibrationImportResult', 'Snapshot калибровок экспортирован', 'success');
+    } catch (error) {
+        console.error('exportCalibrationSnapshot error:', error);
+        setMessage('calibrationImportResult', `Ошибка экспорта snapshot: ${error.message}`, 'error');
+    }
+}
+
+export function openCalibrationImportDialog() {
+    byId('calibration-import-file')?.click();
+}
+
+export function onCalibrationSnapshotFileChange(event) {
+    const file = event?.target?.files?.[0];
+    calibrationImportSnapshot = null;
+    updateCalibrationImportUi('Файл не выбран', false);
+
+    if (!file) {
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => {
+        try {
+            const raw = JSON.parse(String(loadEvent?.target?.result || '{}'));
+            calibrationImportSnapshot = normalizeCalibrationSnapshot(raw);
+            updateCalibrationImportUi(describeCalibrationSnapshot(calibrationImportSnapshot), true);
+            setMessage('calibrationImportResult', 'Snapshot прочитан. Можно применять.', 'success');
+        } catch (error) {
+            calibrationImportSnapshot = null;
+            updateCalibrationImportUi(`Ошибка файла: ${error.message}`, false);
+            setMessage('calibrationImportResult', `Ошибка чтения snapshot: ${error.message}`, 'error');
+        }
+    };
+    reader.readAsText(file);
+}
+
+export async function applyCalibrationSnapshot() {
+    if (!calibrationImportSnapshot) {
+        setMessage('calibrationImportResult', 'Сначала выберите корректный snapshot', 'error');
+        return;
+    }
+
+    try {
+        const pumpPayload = {};
+        if (Number.isFinite(calibrationImportSnapshot.pump.mlPerRev) && calibrationImportSnapshot.pump.mlPerRev > 0) {
+            pumpPayload.mlPerRev = calibrationImportSnapshot.pump.mlPerRev;
+        }
+        if (Number.isFinite(calibrationImportSnapshot.pump.stepsPerRev) && calibrationImportSnapshot.pump.stepsPerRev > 0) {
+            pumpPayload.stepsPerRev = Math.round(calibrationImportSnapshot.pump.stepsPerRev);
+        }
+        if (Object.keys(pumpPayload).length > 0) {
+            const pumpResponse = await fetch(`${API_BASE}/pump`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pumpPayload)
+            });
+            if (!pumpResponse.ok) {
+                const pumpError = await pumpResponse.json().catch(() => ({}));
+                throw new Error(pumpError?.error || `Pump import HTTP ${pumpResponse.status}`);
+            }
+        }
+
+        for (const sensor of calibrationImportSnapshot.temperatures) {
+            const tempResponse = await fetch(`${API_BASE}/temp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ index: sensor.index, offset: sensor.offset })
+            });
+            if (!tempResponse.ok) {
+                const tempError = await tempResponse.json().catch(() => ({}));
+                throw new Error(tempError?.error || `Temp[${sensor.index}] import HTTP ${tempResponse.status}`);
+            }
+        }
+
+        const hydrometerResponse = await fetch(`${API_BASE}/hydrometer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(calibrationImportSnapshot.hydrometer)
+        });
+        if (!hydrometerResponse.ok) {
+            const hydroError = await hydrometerResponse.json().catch(() => ({}));
+            throw new Error(hydroError?.error || `Hydrometer import HTTP ${hydrometerResponse.status}`);
+        }
+
+        await loadCalibrationData();
+        setMessage(
+            'calibrationImportResult',
+            `Snapshot применён: pump, ${calibrationImportSnapshot.temperatures.length} temp offsets, ${calibrationImportSnapshot.hydrometer.abvPoints.length} hydrometer points`,
+            'success'
+        );
+        addLog('Snapshot калибровок применён из Web UI', 'success');
+    } catch (error) {
+        console.error('applyCalibrationSnapshot error:', error);
+        setMessage('calibrationImportResult', `Ошибка применения snapshot: ${error.message}`, 'error');
+    }
 }
 
 export function fillHydrometerPointFromCurrent(index) {
@@ -560,6 +768,7 @@ export async function cancelCalibration() {
 export function initCalibrationTab() {
     if (!byId('equipment')) return;
     initEquipmentNumberSteppers();
+    updateCalibrationImportUi('Файл не выбран', false);
     updateCalibrationTime();
     loadCalibrationData();
 }
