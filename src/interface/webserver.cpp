@@ -631,6 +631,12 @@ static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& statu
   guidance["detail"] = status.guidance.detail;
   guidance["action"] = status.guidance.action;
 
+  JsonObject reasonInsight = v2["reasonInsight"].to<JsonObject>();
+  reasonInsight["tone"] = status.reasonInsight.tone;
+  reasonInsight["title"] = status.reasonInsight.title;
+  reasonInsight["detail"] = status.reasonInsight.detail;
+  reasonInsight["action"] = status.reasonInsight.action;
+
   JsonObject limits = v2["activeLimits"].to<JsonObject>();
   limits["powerCapped"] = status.activeLimits.powerCapped;
   limits["maxHeaterPowerPercent"] = status.activeLimits.maxHeaterPowerPercent;

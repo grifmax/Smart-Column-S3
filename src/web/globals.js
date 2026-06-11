@@ -161,6 +161,12 @@ export let runtimeMonitorState = {
             detail: '',
             action: ''
         },
+        reasonInsight: {
+            tone: 'muted',
+            title: '',
+            detail: '',
+            action: ''
+        },
         activeLimits: {
             powerCapped: false,
             maxHeaterPowerPercent: 100,

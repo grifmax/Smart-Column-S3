@@ -7,6 +7,15 @@
 
 ---
 
+## [2.2.59] - 2026-06-11
+
+### Added
+- (codex) Backend `v2.reasonInsight` now explains the current `lastReasonCode` in human-readable form with `tone`, `title`, `detail` and `action`, so the operator sees not just `RC_*`, but also impact and the next sensible step.
+
+### Changed
+- (codex) Runtime status now builds reason explanations from a single backend dictionary in `reason_codes.h`, and Web UI uses that published insight first while keeping the old JS mapping only as fallback for older snapshots.
+- (codex) `TODO2.0.md` closes the item `Reason code -> человекочитаемое объяснение`, and `/api/status` / cloud tunnel export the new `v2.reasonInsight` block.
+
 ## [2.2.58] - 2026-06-11
 
 ### Changed

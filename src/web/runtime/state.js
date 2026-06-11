@@ -143,6 +143,7 @@ function mergeV2State(s, data) {
     const commandTargets = (v2?.commandTargets && typeof v2.commandTargets === 'object') ? v2.commandTargets : null;
     const indicators = (v2?.indicators && typeof v2.indicators === 'object') ? v2.indicators : null;
     const guidance = (v2?.guidance && typeof v2.guidance === 'object') ? v2.guidance : null;
+    const reasonInsight = (v2?.reasonInsight && typeof v2.reasonInsight === 'object') ? v2.reasonInsight : null;
     s.v2 = {
         ...s.v2,
         available: v2.available !== undefined ? Boolean(v2.available) : s.v2.available,
@@ -160,6 +161,13 @@ function mergeV2State(s, data) {
             detail: guidance.detail !== undefined ? String(guidance.detail) : s.v2.guidance.detail,
             action: guidance.action !== undefined ? String(guidance.action) : s.v2.guidance.action
         } : s.v2.guidance,
+        reasonInsight: reasonInsight ? {
+            ...s.v2.reasonInsight,
+            tone: reasonInsight.tone !== undefined ? String(reasonInsight.tone) : s.v2.reasonInsight.tone,
+            title: reasonInsight.title !== undefined ? String(reasonInsight.title) : s.v2.reasonInsight.title,
+            detail: reasonInsight.detail !== undefined ? String(reasonInsight.detail) : s.v2.reasonInsight.detail,
+            action: reasonInsight.action !== undefined ? String(reasonInsight.action) : s.v2.reasonInsight.action
+        } : s.v2.reasonInsight,
         activeLimits: activeLimits ? {
             ...s.v2.activeLimits,
             powerCapped: activeLimits.powerCapped !== undefined ? Boolean(activeLimits.powerCapped) : s.v2.activeLimits.powerCapped,

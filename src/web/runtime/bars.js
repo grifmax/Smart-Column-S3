@@ -79,6 +79,27 @@ function getPublishedGuidance(state) {
     };
 }
 
+function getPublishedReasonInsight(state) {
+    const insight = state?.v2?.reasonInsight;
+    if (!insight || typeof insight !== 'object') {
+        return null;
+    }
+
+    const title = String(insight.title || '').trim();
+    const detail = String(insight.detail || '').trim();
+    const action = String(insight.action || '').trim();
+    if (!title && !detail && !action) {
+        return null;
+    }
+
+    return {
+        tone: String(insight.tone || 'muted').trim() || 'muted',
+        title: title || 'Причина процесса',
+        detail: detail || 'Расшифровка причины пока не опубликована.',
+        action: action || 'Ориентируйтесь на diagnostics, lifecycle и системный журнал.'
+    };
+}
+
 function setReasonInsight(title, detail, action, tone = 'muted') {
     const root = document.getElementById('operator-reason-insight');
     const titleEl = document.getElementById('operator-reason-title');
@@ -1566,7 +1587,7 @@ function renderProcessIndicatorsPanel() {
 
     const guidance = getPublishedGuidance(s) || buildGuidance(s, indicators, activeLimits);
     setGuidance(guidance.title, guidance.detail, guidance.tone);
-    const reasonInsight = getReasonCodeInsight(lastReasonCode, operatorMessage);
+    const reasonInsight = getPublishedReasonInsight(s) || getReasonCodeInsight(lastReasonCode, operatorMessage);
     setReasonInsight(reasonInsight.title, reasonInsight.detail, reasonInsight.action, reasonInsight.tone);
 }
 

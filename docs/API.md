@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.58`  
+**Версия прошивки:** `2.2.59`  
 **Актуальность документа:** 2026-06-11
 
 ---
@@ -29,6 +29,7 @@
 - мешалку
 - safety / alarm
 - `v2.guidance`
+- `v2.reasonInsight`
 - `v2.indicators`
 - `v2.activeLimits.antiOscillationActive` / `v2.activeLimits.antiOscillationHoldSec`
 - `v2.indicators.telemetryCoverage`, `decisionTrust`, `degradedModeActive`, `adaptiveControlAllowed`

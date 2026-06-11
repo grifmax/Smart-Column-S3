@@ -121,6 +121,13 @@ void setGuidance(ControlV2::RuntimeGuidanceV2& guidance, const char* tone,
     copyGuidanceText(guidance.action, sizeof(guidance.action), action);
 }
 
+void setReasonInsight(ControlV2::ReasonInsightV2& insight, const ReasonInsightTextV2& text) {
+    copyGuidanceText(insight.tone, sizeof(insight.tone), text.tone);
+    copyGuidanceText(insight.title, sizeof(insight.title), text.title);
+    copyGuidanceText(insight.detail, sizeof(insight.detail), text.detail);
+    copyGuidanceText(insight.action, sizeof(insight.action), text.action);
+}
+
 void fillRuntimeGuidance(const SystemState& state,
                          const ProcessIndicatorsV2& indicators,
                          const ActiveLimitsV2& limits,
@@ -977,6 +984,12 @@ void fillStatus(const SystemState& state, const ProcessIndicatorsV2& indicators,
             status.operatorMessage[sizeof(status.operatorMessage) - 1] = '\0';
         }
     }
+
+    setReasonInsight(
+        status.reasonInsight,
+        getReasonInsightText(status.lastReasonCode,
+                             status.operatorMessage[0] != '\0' ? status.operatorMessage : nullptr,
+                             isSuccessfulCompletionReason(status.lastReasonCode)));
 
     fillRuntimeGuidance(state, indicators, status.activeLimits, metrics, status);
 }
