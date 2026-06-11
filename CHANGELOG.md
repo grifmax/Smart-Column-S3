@@ -7,6 +7,15 @@
 
 ---
 
+## [2.2.56] - 2026-06-11
+
+### Added
+- (codex) `Pre-flight` for rectification now returns `advisor.dryRun`: a start-time forecast with expected durations, fraction volumes, takeoff speeds, energy estimate, baseline process reference, and primary risk note.
+
+### Changed
+- (codex) The start modal now shows a backend-driven dry-run card instead of only local rough estimates, and blends profile learning data into duration/energy forecasts when a successful baseline exists.
+- (codex) `TODO2.0.md` updated to close the dry-run simulation item after shipping the pre-start forecast flow.
+
 ## [2.2.55] - 2026-06-11
 
 ### Added

@@ -253,6 +253,17 @@ function formatAdvisorPercent(value) {
     return Number.isFinite(numeric) ? `${Math.round(numeric)}%` : '—';
 }
 
+function formatAdvisorDurationMinutes(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return '—';
+    const totalMinutes = Math.round(numeric);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours <= 0) return `${minutes} мин`;
+    if (minutes === 0) return `${hours} ч`;
+    return `${hours} ч ${minutes} мин`;
+}
+
 function formatSignedAdvisorNumber(value, digits = 1, suffix = '') {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return '—';
@@ -468,6 +479,59 @@ function renderModeStartAdvisor(snapshot = latestModePreflight) {
             'Барокоррекция профиля',
             detailBaro
         );
+    }
+
+    const dryRun = advisor.dryRun || {};
+    if (dryRun.supported) {
+        const charge = dryRun.charge || {};
+        const volumes = dryRun.volumes || {};
+        const speeds = dryRun.speeds || {};
+        const totalDuration = formatAdvisorDurationMinutes(dryRun.totalMin);
+        const heatingDuration = formatAdvisorDurationMinutes(dryRun.heatingMin);
+        const prepDuration = formatAdvisorDurationMinutes(dryRun.preparationMin);
+        const takeoffDuration = formatAdvisorDurationMinutes(dryRun.takeoffMin);
+        const baselineDuration = formatAdvisorDurationMinutes(dryRun.baselineDurationMin);
+        const energyText = Number.isFinite(Number(dryRun.energyKwh))
+            ? `${Number(dryRun.energyKwh).toFixed(1)} кВт·ч`
+            : '—';
+        const baselineEnergyText = Number.isFinite(Number(dryRun.baselineEnergyKwh))
+            ? `${Number(dryRun.baselineEnergyKwh).toFixed(1)} кВт·ч`
+            : '—';
+        const dryRunDetail =
+            `${dryRun.summary || `Ожидаемо ${totalDuration}.`} ` +
+            `Сырец ${Number(charge.feedVolumeL || 0).toFixed(1)} л при ${Number(charge.feedAbvPercent || 0).toFixed(1)}%, ` +
+            `головы/тело/хвосты ${Number(volumes.headsMl || 0).toFixed(0)} / ${Number(volumes.bodyMl || 0).toFixed(0)} / ${Number(volumes.tailsMl || 0).toFixed(0)} мл. ` +
+            `Подготовка ${prepDuration}, прогрев ${heatingDuration}, отбор ${takeoffDuration}. ` +
+            `Энергия ${energyText}.`;
+        const dryRunAction = dryRun.usesLearning
+            ? `Прогноз подмешивает baseline профиля: длительность ${baselineDuration}, энергия ${baselineEnergyText}.`
+            : 'Пока это модель по текущим уставкам без сильной опоры на успешный baseline профиля.';
+
+        appendAdvisorMetaItem(
+            metaEl,
+            dryRun.usesLearning ? 'good' : 'muted',
+            'Dry-run запуска',
+            dryRunDetail,
+            dryRunAction
+        );
+
+        if (Number.isFinite(Number(speeds.headsMlH)) || Number.isFinite(Number(speeds.bodyMlH))) {
+            appendAdvisorMetaItem(
+                metaEl,
+                'muted',
+                'Темп отбора в прогнозе',
+                `Головы около ${Number(speeds.headsMlH || 0).toFixed(0)} мл/ч, тело ${Number(speeds.bodyMlH || 0).toFixed(0)} мл/ч, хвосты ${Number(speeds.tailsMlH || 0).toFixed(0)} мл/ч.`
+            );
+        }
+
+        if (dryRun.riskTitle || dryRun.riskDetail) {
+            appendAdvisorMetaItem(
+                metaEl,
+                dryRun.riskTone || 'muted',
+                dryRun.riskTitle || 'Риск dry-run',
+                dryRun.riskDetail || 'Сигналов риска для dry-run не обнаружено.'
+            );
+        }
     }
 
     const phaseSignals = [

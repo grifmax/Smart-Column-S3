@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.55`  
+**Версия прошивки:** `2.2.56`  
 **Актуальность документа:** 2026-06-11
 
 ---
@@ -106,6 +106,20 @@
 - `baselinePressureMmHg`, `currentPressureMmHg`, `pressureDeltaMmHg`
 - `appliedShiftC`
 - `effectiveTemperatures.headsEnd`, `effectiveTemperatures.bodyStart`, `effectiveTemperatures.bodyEnd`
+
+Для ректификации `advisor.dryRun` дополнительно содержит прогноз запуска:
+
+- `supported` — backend смог собрать прогноз для текущего сценария
+- `usesLearning` — прогноз опирается не только на модель уставок, но и на learning snapshot профиля
+- `profileAligned` — активный профиль подходит выбранному режиму и может выступать baseline
+- `summary` — короткая текстовая сводка по длительности и энергии
+- `totalMin`, `heatingMin`, `preparationMin`, `takeoffMin`
+- `energyKwh`
+- `charge.feedVolumeL`, `charge.feedAbvPercent`, `charge.absoluteAlcoholMl`
+- `volumes.headsMl`, `volumes.bodyMl`, `volumes.tailsMl`
+- `speeds.headsMlH`, `speeds.bodyMlH`, `speeds.tailsMlH`
+- `baselineDurationMin`, `baselineEnergyKwh`, `baselineProcessId`
+- `riskTone`, `riskTitle`, `riskDetail`
 
 #### `POST /api/process/start`
 

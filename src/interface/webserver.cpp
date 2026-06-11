@@ -999,6 +999,242 @@ static void setProcessPreflightCheck(JsonObject checks, const char *key,
   check["tone"] = tone;
 }
 
+struct ProcessDryRunForecast {
+  bool supported = false;
+  bool usesLearning = false;
+  bool profileAligned = false;
+  float feedVolumeL = 0.0f;
+  float feedAbvPercent = 0.0f;
+  float absoluteAlcoholMl = 0.0f;
+  float headsMl = 0.0f;
+  float bodyMl = 0.0f;
+  float tailsMl = 0.0f;
+  float headsSpeedMlH = 0.0f;
+  float bodySpeedMlH = 0.0f;
+  float tailsSpeedMlH = 0.0f;
+  float heatingMin = 0.0f;
+  float preparationMin = 0.0f;
+  float takeoffMin = 0.0f;
+  float totalMin = 0.0f;
+  float energyKwh = 0.0f;
+  float baselineDurationMin = 0.0f;
+  float baselineEnergyKwh = 0.0f;
+  float baselineAbsoluteAlcoholMl = 0.0f;
+  String durationSource;
+  String energySource;
+  String summary;
+  String riskTone = "muted";
+  String riskTitle;
+  String riskDetail;
+  String baselineProcessId;
+};
+
+static float safeRatio(float numerator, float denominator, float fallback = 1.0f) {
+  if (denominator <= 0.0f) {
+    return fallback;
+  }
+  return numerator / denominator;
+}
+
+static float clampForecastRatio(float value, float minValue, float maxValue) {
+  if (value < minValue) return minValue;
+  if (value > maxValue) return maxValue;
+  return value;
+}
+
+static String formatForecastDuration(float totalMinutes) {
+  if (!(totalMinutes > 0.0f)) {
+    return "—";
+  }
+
+  const uint32_t rounded = static_cast<uint32_t>(totalMinutes + 0.5f);
+  const uint32_t hours = rounded / 60;
+  const uint32_t minutes = rounded % 60;
+  if (hours == 0) {
+    return String(minutes) + " мин";
+  }
+  if (minutes == 0) {
+    return String(hours) + " ч";
+  }
+  return String(hours) + " ч " + String(minutes) + " мин";
+}
+
+static ProcessDryRunForecast buildRectificationDryRunForecast(
+    const RectParams& rect,
+    const ControlV2::ModeStatusV2& status,
+    const Profile* activeProfile,
+    const ProfileBaroCorrectionSummary* baroPreview,
+    bool profileCategoryMatches,
+    float cubeVolumeLimitL) {
+  ProcessDryRunForecast forecast;
+  forecast.supported = true;
+  forecast.profileAligned = profileCategoryMatches && activeProfile != nullptr;
+  forecast.feedVolumeL = clampFloatRange(rect.feedVolumeL, 1.0f, 250.0f);
+
+  float feedAbvPercent = rect.feedAbvPercent;
+  if ((feedAbvPercent <= 0.0f || feedAbvPercent >= 100.0f) && g_state.hydrometer.valid) {
+    feedAbvPercent = g_state.hydrometer.abv;
+  }
+  forecast.feedAbvPercent = clampFloatRange(feedAbvPercent, 1.0f, 96.0f);
+  forecast.absoluteAlcoholMl =
+      forecast.feedVolumeL * 1000.0f * (forecast.feedAbvPercent / 100.0f);
+
+  forecast.headsMl =
+      forecast.absoluteAlcoholMl * (clampFloatRange(rect.headsPercent, 0.0f, 40.0f) / 100.0f);
+  forecast.bodyMl =
+      forecast.absoluteAlcoholMl * (clampFloatRange(rect.bodyPercent, 0.0f, 100.0f) / 100.0f);
+  forecast.tailsMl =
+      forecast.absoluteAlcoholMl * (clampFloatRange(rect.tailsPercent, 0.0f, 100.0f) / 100.0f);
+
+  const float heaterPowerKw =
+      fmaxf(0.1f, static_cast<float>(g_settings.equipment.heaterPowerW) / 1000.0f);
+  forecast.headsSpeedMlH =
+      clampFloatRange(rect.headsSpeedMlHKw, 10.0f, 2000.0f) * heaterPowerKw;
+  forecast.bodySpeedMlH =
+      clampFloatRange(rect.bodySpeedMlHKw, 50.0f, 3000.0f) * heaterPowerKw;
+  forecast.tailsSpeedMlH = fmaxf(50.0f, forecast.bodySpeedMlH * 0.60f);
+
+  const float headsMin =
+      forecast.headsSpeedMlH > 0.0f ? (forecast.headsMl / forecast.headsSpeedMlH) * 60.0f : 0.0f;
+  const float bodyMin =
+      forecast.bodySpeedMlH > 0.0f ? (forecast.bodyMl / forecast.bodySpeedMlH) * 60.0f : 0.0f;
+  const float tailsMin =
+      forecast.tailsSpeedMlH > 0.0f ? (forecast.tailsMl / forecast.tailsSpeedMlH) * 60.0f : 0.0f;
+  forecast.takeoffMin = headsMin + bodyMin + tailsMin;
+  forecast.preparationMin = static_cast<float>(rect.stabilizationMin + rect.purgeMin);
+  forecast.heatingMin =
+      14.0f + safeRatio(forecast.feedVolumeL * 14.0f, heaterPowerKw, 42.0f);
+
+  const float modelDurationMin =
+      forecast.heatingMin + forecast.preparationMin + forecast.takeoffMin;
+  float blendedDurationMin = modelDurationMin;
+  float blendedEnergyKwh = heaterPowerKw * (modelDurationMin / 60.0f) * 0.72f;
+  forecast.durationSource = "model";
+  forecast.energySource = "model";
+
+  if (activeProfile != nullptr) {
+    forecast.baselineProcessId = activeProfile->learning.lastSuccessfulProcessId;
+    const float baselineFeedVolumeL = activeProfile->validation.feedVolumeL;
+    const float baselineFeedAbvPercent = activeProfile->validation.feedAbvPercent;
+    if (baselineFeedVolumeL > 0.0f && baselineFeedAbvPercent > 0.0f) {
+      forecast.baselineAbsoluteAlcoholMl =
+          baselineFeedVolumeL * 1000.0f * (baselineFeedAbvPercent / 100.0f);
+    }
+
+    const float baselineBodySpeedMlHKw =
+        activeProfile->parameters.rectification.bodySpeed > 0
+            ? static_cast<float>(activeProfile->parameters.rectification.bodySpeed)
+            : clampFloatRange(rect.bodySpeedMlHKw, 50.0f, 3000.0f);
+    const float currentBodySpeedMlHKw =
+        clampFloatRange(rect.bodySpeedMlHKw, 50.0f, 3000.0f);
+    const float baselineDurationMin =
+        activeProfile->statistics.avgDuration > 0
+            ? static_cast<float>(activeProfile->statistics.avgDuration) / 60.0f
+            : 0.0f;
+
+    if (activeProfile->learning.successfulRuns > 0 && baselineDurationMin > 0.0f) {
+      const float aaRatio =
+          clampForecastRatio(
+              safeRatio(forecast.absoluteAlcoholMl, forecast.baselineAbsoluteAlcoholMl, 1.0f),
+              0.55f, 1.90f);
+      const float chargeRatio =
+          clampForecastRatio(safeRatio(forecast.feedVolumeL, baselineFeedVolumeL, 1.0f),
+                             0.55f, 1.90f);
+      const float speedRatio =
+          clampForecastRatio(
+              safeRatio(baselineBodySpeedMlHKw, currentBodySpeedMlHKw, 1.0f),
+              0.70f, 1.35f);
+      const float baselineScale =
+          clampForecastRatio(aaRatio * 0.45f + chargeRatio * 0.35f + speedRatio * 0.20f,
+                             0.60f, 1.85f);
+
+      forecast.baselineDurationMin = baselineDurationMin * baselineScale;
+      blendedDurationMin =
+          (forecast.baselineDurationMin * 0.60f) + (modelDurationMin * 0.40f);
+      forecast.durationSource = "learning+model";
+      forecast.usesLearning = true;
+    }
+
+    if (activeProfile->learning.avgEnergyUsed > 0.0f) {
+      const float aaRatio =
+          clampForecastRatio(
+              safeRatio(forecast.absoluteAlcoholMl, forecast.baselineAbsoluteAlcoholMl, 1.0f),
+              0.55f, 1.90f);
+      const float chargeRatio =
+          clampForecastRatio(safeRatio(forecast.feedVolumeL, baselineFeedVolumeL, 1.0f),
+                             0.55f, 1.90f);
+      forecast.baselineEnergyKwh =
+          activeProfile->learning.avgEnergyUsed *
+          clampForecastRatio((aaRatio * 0.65f) + (chargeRatio * 0.35f), 0.60f, 1.90f);
+      blendedEnergyKwh =
+          (forecast.baselineEnergyKwh * 0.65f) + (blendedEnergyKwh * 0.35f);
+      forecast.energySource =
+          forecast.usesLearning ? "learning+model" : "learning";
+      forecast.usesLearning = true;
+    } else if (activeProfile->learning.avgEnergyPerLiter > 0.0f) {
+      const float collectedLiters =
+          (forecast.headsMl + forecast.bodyMl + forecast.tailsMl) / 1000.0f;
+      if (collectedLiters > 0.0f) {
+        forecast.baselineEnergyKwh =
+            activeProfile->learning.avgEnergyPerLiter * collectedLiters;
+        blendedEnergyKwh =
+            (forecast.baselineEnergyKwh * 0.55f) + (blendedEnergyKwh * 0.45f);
+        forecast.energySource =
+            forecast.usesLearning ? "learning+model" : "learning";
+        forecast.usesLearning = true;
+      }
+    }
+  }
+
+  forecast.totalMin = blendedDurationMin;
+  forecast.energyKwh = blendedEnergyKwh;
+  forecast.summary =
+      String("Ожидаемо ") + formatForecastDuration(forecast.totalMin) +
+      ", отбор около " + String(forecast.bodyMl, 0) + " мл тела и суммарно " +
+      String(forecast.energyKwh, 1) + " кВт·ч.";
+
+  forecast.riskTone = "good";
+  forecast.riskTitle = "Основной риск dry-run";
+  forecast.riskDetail =
+      "Параметры запуска выглядят согласованными, явных инженерных рисков сверх штатных ограничений не видно.";
+
+  const float fillPct =
+      cubeVolumeLimitL > 0.0f ? (forecast.feedVolumeL / cubeVolumeLimitL) * 100.0f : 0.0f;
+  if (forecast.feedVolumeL > cubeVolumeLimitL || rect.feedVolumeL < g_settings.equipment.minHeaterSubmergeL) {
+    forecast.riskTone = "danger";
+    forecast.riskDetail =
+        "Объём загрузки выходит за безопасный диапазон куба, поэтому прогноз полезен только как черновик, а не как разрешение к старту.";
+  } else if (status.indicators.floodRisk >= 0.65f) {
+    forecast.riskTone = "danger";
+    forecast.riskDetail =
+        "Уже до старта виден повышенный риск захлёба. Лучше сначала стабилизировать колонну и охлаждение, иначе dry-run может оказаться слишком оптимистичным.";
+  } else if (status.indicators.coolingMarginC <= 0.0f) {
+    forecast.riskTone = "warn";
+    forecast.riskDetail =
+        "Cooling margin уже на нуле или ниже. Прогноз по длительности ещё полезен, но выход в стабильное тело может затянуться.";
+  } else if (fillPct >= 85.0f) {
+    forecast.riskTone = "warn";
+    forecast.riskDetail =
+        "Куб загружен почти под рабочий предел. Прогрев и стабилизация могут занять дольше среднего baseline.";
+  } else if (rect.bodySpeedMlHKw <= rect.headsSpeedMlHKw) {
+    forecast.riskTone = "warn";
+    forecast.riskDetail =
+        "Скорость тела не выше скорости голов. Такой сценарий безопасен, но обычно даёт слишком консервативный и длинный прогон.";
+  } else if (!forecast.profileAligned) {
+    forecast.riskTone = "warn";
+    forecast.riskDetail =
+        "Прогноз построен без корректного baseline профиля, поэтому длительность и энергия опираются в основном на модель текущих уставок.";
+  } else if (baroPreview != nullptr && baroPreview->applicable &&
+             !baroPreview->enabled &&
+             fabsf(baroPreview->pressureDeltaMmHg) >= 8.0f) {
+    forecast.riskTone = "warn";
+    forecast.riskDetail =
+        "Давление заметно ушло от baseline профиля, а барокоррекция на этот запуск отключена. Реальные cut points могут сместиться сильнее прогноза.";
+  }
+
+  return forecast;
+}
+
 static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
                                   const char *modeStr, JsonObject params) {
   ControlV2::updateRuntime(g_state, g_settings);
@@ -1053,8 +1289,10 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
       (mode == Mode::DISTILLATION && distProfile) ||
       (mode == Mode::MASHING && mashProfile);
   bool hasBaroPreview = false;
+  bool hasDryRunForecast = false;
   ProfileBaroCorrectionSummary baroPreview;
   TemperatureParams baroEffectiveTemps;
+  ProcessDryRunForecast dryRunForecast;
 
   uint8_t blockingCount = 0;
   uint8_t warningCount = 0;
@@ -1414,6 +1652,11 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
                 false);
       }
     }
+    dryRunForecast = buildRectificationDryRunForecast(
+        rect, status, rectProfile ? &activeProfile : nullptr,
+        hasBaroPreview ? &baroPreview : nullptr, profileCategoryMatches,
+        cubeVolumeLimitL);
+    hasDryRunForecast = dryRunForecast.supported;
   } else if (mode == Mode::MANUAL_RECT) {
     const JsonObject feed = params["feed"].as<JsonObject>();
     const JsonObject heads = params["heads"].as<JsonObject>();
@@ -1624,6 +1867,42 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
     effectiveTemps["headsEnd"] = baroEffectiveTemps.headsEnd;
     effectiveTemps["bodyStart"] = baroEffectiveTemps.bodyStart;
     effectiveTemps["bodyEnd"] = baroEffectiveTemps.bodyEnd;
+  }
+
+  if (hasDryRunForecast) {
+    JsonObject advisorDryRun = advisor["dryRun"].to<JsonObject>();
+    advisorDryRun["supported"] = dryRunForecast.supported;
+    advisorDryRun["usesLearning"] = dryRunForecast.usesLearning;
+    advisorDryRun["profileAligned"] = dryRunForecast.profileAligned;
+    advisorDryRun["durationSource"] = dryRunForecast.durationSource;
+    advisorDryRun["energySource"] = dryRunForecast.energySource;
+    advisorDryRun["summary"] = dryRunForecast.summary;
+    advisorDryRun["riskTone"] = dryRunForecast.riskTone;
+    advisorDryRun["riskTitle"] = dryRunForecast.riskTitle;
+    advisorDryRun["riskDetail"] = dryRunForecast.riskDetail;
+    advisorDryRun["baselineProcessId"] = dryRunForecast.baselineProcessId;
+    advisorDryRun["totalMin"] = dryRunForecast.totalMin;
+    advisorDryRun["heatingMin"] = dryRunForecast.heatingMin;
+    advisorDryRun["preparationMin"] = dryRunForecast.preparationMin;
+    advisorDryRun["takeoffMin"] = dryRunForecast.takeoffMin;
+    advisorDryRun["energyKwh"] = dryRunForecast.energyKwh;
+    advisorDryRun["baselineDurationMin"] = dryRunForecast.baselineDurationMin;
+    advisorDryRun["baselineEnergyKwh"] = dryRunForecast.baselineEnergyKwh;
+
+    JsonObject forecastCharge = advisorDryRun["charge"].to<JsonObject>();
+    forecastCharge["feedVolumeL"] = dryRunForecast.feedVolumeL;
+    forecastCharge["feedAbvPercent"] = dryRunForecast.feedAbvPercent;
+    forecastCharge["absoluteAlcoholMl"] = dryRunForecast.absoluteAlcoholMl;
+
+    JsonObject forecastVolumes = advisorDryRun["volumes"].to<JsonObject>();
+    forecastVolumes["headsMl"] = dryRunForecast.headsMl;
+    forecastVolumes["bodyMl"] = dryRunForecast.bodyMl;
+    forecastVolumes["tailsMl"] = dryRunForecast.tailsMl;
+
+    JsonObject forecastSpeeds = advisorDryRun["speeds"].to<JsonObject>();
+    forecastSpeeds["headsMlH"] = dryRunForecast.headsSpeedMlH;
+    forecastSpeeds["bodyMlH"] = dryRunForecast.bodySpeedMlH;
+    forecastSpeeds["tailsMlH"] = dryRunForecast.tailsSpeedMlH;
   }
 
   JsonObject confidence = advisor["confidence"].to<JsonObject>();
