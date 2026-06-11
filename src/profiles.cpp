@@ -575,9 +575,21 @@ std::vector<ProfileListItem> getProfileList() {
                     ProfileListItem item;
                     item.id = doc["id"].as<String>();
                     item.name = doc["metadata"]["name"].as<String>();
+                    item.description = doc["metadata"]["description"].as<String>();
                     item.category = doc["metadata"]["category"].as<String>();
+                    item.tags.clear();
+                    if (doc["metadata"]["tags"].is<JsonArray>()) {
+                        for (JsonVariant tag : doc["metadata"]["tags"].as<JsonArray>()) {
+                            const String value = tag.as<String>();
+                            if (!value.isEmpty()) {
+                                item.tags.push_back(value);
+                            }
+                        }
+                    }
+                    item.author = doc["metadata"]["author"].as<String>();
                     item.useCount = doc["statistics"]["useCount"];
                     item.lastUsed = doc["statistics"]["lastUsed"];
+                    item.updated = doc["metadata"]["updated"] | 0;
                     item.successRate = doc["statistics"]["successRate"] | 0.0f;
                     item.successfulRuns = doc["learning"]["successfulRuns"] | 0;
                     item.isBuiltin = doc["metadata"]["isBuiltin"];
@@ -1472,12 +1484,26 @@ uint16_t importProfilesFromJSON(const String& jsonStr) {
         return 0;
     }
 
-    if (!doc.is<JsonArray>()) {
+    if (false) {
         Serial.println("Ошибка: JSON не является массивом");
         return 0;
     }
 
-    JsonArray array = doc.as<JsonArray>();
+    JsonArray array;
+    JsonDocument normalizedDoc;
+    if (doc.is<JsonArray>()) {
+        array = doc.as<JsonArray>();
+    } else if (doc.is<JsonObject>() && doc["profiles"].is<JsonArray>()) {
+        normalizedDoc.set(doc["profiles"]);
+        array = normalizedDoc.as<JsonArray>();
+    } else if (doc.is<JsonObject>() && doc["metadata"].is<JsonObject>() &&
+               doc["parameters"].is<JsonObject>()) {
+        JsonArray single = normalizedDoc.to<JsonArray>();
+        single.add(doc.as<JsonObject>());
+        array = normalizedDoc.as<JsonArray>();
+    } else {
+        return 0;
+    }
     uint16_t imported = 0;
 
     for (JsonObject obj : array) {

@@ -7,6 +7,17 @@
 
 ---
 
+## [2.2.67] - 2026-06-11
+
+### Added
+- (codex) Profiles Web UI now supports fast `Сделать копию` flow for built-in and user recipes, so the operator can take any baseline profile, duplicate it, tweak it and save it as a new working variant without manual JSON export/import.
+
+### Changed
+- (codex) Profiles list now supports real text search by name, description, tags, category, author and ID, plus richer cards with profile description and tags for faster navigation in larger recipe sets.
+- (codex) Single-profile export is wired through `/api/profiles/{id}/export`, bulk profile import accepts wrapped snapshot payloads as well as plain arrays, and the Web UI import modal now shows a clearer preview before applying profiles.
+- (codex) A direct `Очистить пользовательские` action was restored in the profiles section, backed by `DELETE /api/profiles` so cleanup no longer depends on missing API wiring.
+- (codex) Version metadata in `src/config.h`, `README.md`, `TODO2.0.md` and `docs/API.md` is synchronized to `2.2.67`.
+
 ## [2.2.66] - 2026-06-11
 
 ### Added

@@ -147,9 +147,13 @@ struct Profile {
 struct ProfileListItem {
     String id;
     String name;
+    String description;
     String category;
+    std::vector<String> tags;
+    String author;
     uint16_t useCount;
     uint32_t lastUsed;
+    uint32_t updated = 0;
     float successRate = 0.0f;
     uint16_t successfulRuns = 0;
     bool isBuiltin;

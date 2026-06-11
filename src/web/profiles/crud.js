@@ -327,6 +327,41 @@ export async function showCreateProfileModal() {
 
 }
 
+function buildDuplicateProfileName(name) {
+
+    const source = String(name || '').trim();
+    if (!source) {
+        return 'Новый профиль';
+    }
+
+    return /\(копия\)$/i.test(source) ? source : `${source} (копия)`;
+
+}
+
+export async function showDuplicateProfileModal(id) {
+
+    try {
+        const response = await fetch(`/api/profiles/${id}`);
+        if (!response.ok) {
+            throw new Error('Не удалось загрузить профиль для копирования');
+        }
+
+        const profile = await response.json();
+        const duplicated = normalizeProfileDraft(profile);
+        duplicated.metadata.name = buildDuplicateProfileName(profile?.metadata?.name || profile?.name);
+
+        setCurrentProfileId(null);
+        currentProfileIsBuiltin = false;
+        document.getElementById('profile-modal-title').textContent = 'Новый профиль на основе выбранного';
+        populateProfileForm(duplicated);
+        document.getElementById('profile-modal').style.display = 'flex';
+    } catch (error) {
+        console.error('Ошибка создания копии профиля:', error);
+        alert('❌ Ошибка подготовки копии профиля');
+    }
+
+}
+
 
 
 // Закрыть модальное окно создания
@@ -438,6 +473,18 @@ export function editCurrentProfile() {
 
     closeProfileViewModal();
     void showEditProfileModal(currentProfileId);
+
+}
+
+export function duplicateCurrentProfile() {
+
+    if (!currentProfileId) {
+        return;
+    }
+
+    const profileId = currentProfileId;
+    closeProfileViewModal();
+    void showDuplicateProfileModal(profileId);
 
 }
 
@@ -787,6 +834,10 @@ export function showProfileViewModal(profile) {
     const editBtn = document.getElementById('profile-view-edit-btn');
     if (editBtn) {
         editBtn.style.display = profile?.metadata?.isBuiltin ? 'none' : '';
+    }
+    const duplicateBtn = document.getElementById('profile-view-duplicate-btn');
+    if (duplicateBtn) {
+        duplicateBtn.style.display = '';
     }
 
     document.getElementById('profile-view-modal').style.display = 'flex';

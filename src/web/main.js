@@ -37,7 +37,7 @@ import {
     updateManualTailsStopMode,
     updateManualTailsPwmMode
 } from './modes/control-panel.js';
-import { showCreateProfileModal, showEditProfileModal, editCurrentProfile, toggleProfileCategoryFields, closeProfileModal, saveProfile, viewProfile, closeProfileViewModal, quickLoadProfile, loadProfileToSettings, deleteProfile, clearUserProfiles } from './profiles/crud.js';
+import { showCreateProfileModal, showEditProfileModal, showDuplicateProfileModal, editCurrentProfile, duplicateCurrentProfile, toggleProfileCategoryFields, closeProfileModal, saveProfile, viewProfile, closeProfileViewModal, quickLoadProfile, loadProfileToSettings, deleteProfile, clearUserProfiles } from './profiles/crud.js';
 import { exportProfile, exportAllProfiles, showImportModal, closeImportModal, doImportProfiles } from './profiles/import-export.js';
 import { loadProfilesList } from './profiles/list.js';
 import { renderAbvValue } from './runtime/abv.js';
@@ -200,7 +200,9 @@ window.updateRectificationFractionsSum = updateRectificationFractionsSum;
 window.applyRectificationFeedstockDefaults = applyRectificationFeedstockDefaults;
 window.showCreateProfileModal = showCreateProfileModal;
 window.showEditProfileModal = showEditProfileModal;
+window.showDuplicateProfileModal = showDuplicateProfileModal;
 window.editCurrentProfile = editCurrentProfile;
+window.duplicateCurrentProfile = duplicateCurrentProfile;
 window.onProfileCategoryChange = toggleProfileCategoryFields;
 window.closeProfileModal = closeProfileModal;
 window.saveProfile = saveProfile;

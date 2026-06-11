@@ -5871,9 +5871,16 @@ void init() {
       JsonObject p = profileArray.add<JsonObject>();
       p["id"] = prof.id;
       p["name"] = prof.name;
+      p["description"] = prof.description;
       p["category"] = prof.category;
+      JsonArray tags = p["tags"].to<JsonArray>();
+      for (const auto& tag : prof.tags) {
+        tags.add(tag);
+      }
+      p["author"] = prof.author;
       p["useCount"] = prof.useCount;
       p["lastUsed"] = prof.lastUsed;
+      p["updated"] = prof.updated;
       p["successRate"] = prof.successRate;
       p["successfulRuns"] = prof.successfulRuns;
       p["isBuiltin"] = prof.isBuiltin;
@@ -6192,6 +6199,18 @@ void init() {
     }
   });
 
+  server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/export$", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              String id = request->pathArg(0);
+              String json = exportProfileToJSON(id);
+              if (json.isEmpty()) {
+                request->send(404, "application/json",
+                              "{\"success\":false,\"error\":\"Profile not found\"}");
+                return;
+              }
+              request->send(200, "application/json", json);
+            });
+
   // DELETE /api/profiles/{id} - Удалить профиль
   server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_DELETE, [](AsyncWebServerRequest *request) {
     String id = request->pathArg(0);
@@ -6201,6 +6220,12 @@ void init() {
     } else {
       request->send(404, "application/json", "{\"error\":\"Profile not found or builtin\"}");
     }
+  });
+
+  server.on("/api/profiles", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+    bool cleared = clearProfiles();
+    request->send(cleared ? 200 : 500, "application/json",
+                  String("{\"success\":") + (cleared ? "true" : "false") + "}");
   });
 
   // POST /api/profiles - Создать новый профиль
@@ -6235,7 +6260,9 @@ void init() {
         for (size_t i = 0; i < len; i++) jsonStr += (char)data[i];
         
         uint16_t count = importProfilesFromJSON(jsonStr);
-        request->send(200, "application/json", "{\"success\":true,\"count\":" + String(count) + "}");
+        request->send(200, "application/json",
+                      "{\"success\":true,\"count\":" + String(count) +
+                          ",\"imported\":" + String(count) + "}");
       }
     }
   );
