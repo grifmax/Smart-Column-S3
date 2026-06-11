@@ -7,7 +7,14 @@
 
 ---
 
----
+## [2.2.55] - 2026-06-11
+
+### Added
+- (codex) `SmartDecrement` upgraded to adaptive v2: during body takeoff it now uses `ProcessIndicatorsV2` context (`stabilityIndex`, `floodRisk`, `coolingMarginC`, `bodyEndConfidence`) instead of only static `T_base` deltas.
+
+### Changed
+- (codex) Rewrote [src/control/watt_control.cpp](src/control/watt_control.cpp) in clean UTF-8 while preserving `WattControl` behavior and removing the mojibake block that made further maintenance unsafe.
+- (codex) Synced `TODO2.0.md` with the actual codebase state: closed implemented items for adaptive decrement, body/heads scores, indicators publication, history aggregates, and the process-state UI.
 
 ## [2.2.54] - 2026-06-11
 
