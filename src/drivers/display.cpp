@@ -16,6 +16,7 @@
 #include "storage/nvs_manager.h"
 #include <LovyanGFX.hpp>
 #include <SPI.h>
+#include <WiFi.h>
 #include <XPT2046_Touchscreen.h>
 #include <esp_task_wdt.h>
 
@@ -2116,6 +2117,42 @@ static void drawValueRow(int16_t y, const char *label, const char *value,
   drawDisplayString(valueBuf, boxX + boxW / 2, boxY + (boxH / 2) + 1);
   tft.setTextDatum(top_left);
   tft.setTextColor(colorFg());
+}
+
+static bool hasUsableIpAddress(const IPAddress &ip) {
+  return ip[0] != 0 || ip[1] != 0 || ip[2] != 0 || ip[3] != 0;
+}
+
+static void formatIpAddress(const IPAddress &ip, char *buf, size_t size) {
+  if (buf == nullptr || size == 0) {
+    return;
+  }
+  snprintf(buf, size, "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+}
+
+static void getServiceIpSummary(char *buf, size_t size) {
+  if (buf == nullptr || size == 0) {
+    return;
+  }
+
+  const IPAddress stationIp = WiFi.localIP();
+  if (hasUsableIpAddress(stationIp)) {
+    char ipBuf[24];
+    formatIpAddress(stationIp, ipBuf, sizeof(ipBuf));
+    snprintf(buf, size, "STA %s", ipBuf);
+    return;
+  }
+
+  const IPAddress apIp = WiFi.softAPIP();
+  if (hasUsableIpAddress(apIp)) {
+    char ipBuf[24];
+    formatIpAddress(apIp, ipBuf, sizeof(ipBuf));
+    snprintf(buf, size, "AP %s", ipBuf);
+    return;
+  }
+
+  snprintf(buf, size, "%s",
+           g_settings.language == 0 ? "нет сети" : "offline");
 }
 
 static void drawButton(int16_t x, int16_t y, int16_t w, int16_t h,
@@ -6126,9 +6163,10 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 const int16_t tileH = 64;
                                 const int16_t x1 = 10;
                                 const int16_t x2 = 245;
-                                const int16_t y1 = 48;
-                                const int16_t y2 = 118;
-                                const int16_t diagY = 198;
+                                const int16_t ipRowY = 63;
+                                const int16_t y1 = 92;
+                                const int16_t y2 = 162;
+                                const int16_t diagY = 242;
 
                                 if (full) {
                                   tft.fillScreen(colorBg());
@@ -6148,6 +6186,14 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 char buf[48];
                                 char uptimeBuf[16];
                                 char frameBuf[24];
+                                char ipBuf[32];
+
+                                getServiceIpSummary(ipBuf, sizeof(ipBuf));
+                                drawValueRow(
+                                    ipRowY,
+                                    g_settings.language == 0 ? "IP Wi-Fi"
+                                                             : "Wi-Fi IP",
+                                    ipBuf, false);
 
                                 snprintf(buf, sizeof(buf), "%s", FW_VERSION);
                                 drawValueTileValue(x1, y1, tileW, tileH, buf,
