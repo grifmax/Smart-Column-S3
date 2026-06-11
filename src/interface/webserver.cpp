@@ -8,6 +8,7 @@
 #include "../config.h"
 #include "../fs_compat.h"
 #include "../history.h"
+#include "../history_demo.h"
 #include "../types.h"
 #include <AsyncTCP.h>
 #include <WiFi.h>
@@ -2683,6 +2684,66 @@ void init() {
     request->send(500, "application/json",
                   "{\"error\":\"Failed to clear history\"}");
   });
+
+  server.on(
+      "/api/history/demo", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index + len != total) {
+          return;
+        }
+
+        bool replaceExisting = false;
+        if (len > 0) {
+          JsonDocument doc;
+          DeserializationError error = deserializeJson(doc, data, len);
+          if (error) {
+            request->send(400, "application/json",
+                          "{\"success\":false,\"error\":\"Invalid JSON\"}");
+            return;
+          }
+          replaceExisting = doc["replace"] | false;
+        }
+
+        DemoHistorySeedResult result;
+        if (!seedPublicDemoDataset(result, replaceExisting)) {
+          request->send(500, "application/json",
+                        "{\"success\":false,\"error\":\"Failed to seed demo dataset\"}");
+          return;
+        }
+
+        JsonDocument responseDoc;
+        responseDoc["success"] = true;
+        responseDoc["imported"] = result.imported;
+        responseDoc["skipped"] = result.skipped;
+        responseDoc["removed"] = result.removed;
+        responseDoc["demoCount"] = countPublicDemoDatasetEntries();
+
+        String response;
+        serializeJson(responseDoc, response);
+        request->send(200, "application/json", response);
+      });
+
+  server.on("/api/history/demo", HTTP_DELETE,
+            [](AsyncWebServerRequest *request) {
+              DemoHistorySeedResult result;
+              if (!clearPublicDemoDataset(result)) {
+                request->send(
+                    500, "application/json",
+                    "{\"success\":false,\"error\":\"Failed to clear demo dataset\"}");
+                return;
+              }
+
+              JsonDocument responseDoc;
+              responseDoc["success"] = true;
+              responseDoc["removed"] = result.removed;
+              responseDoc["demoCount"] = countPublicDemoDatasetEntries();
+
+              String response;
+              serializeJson(responseDoc, response);
+              request->send(200, "application/json", response);
+            });
 
   server.on(
       "/api/process/preflight", HTTP_POST,

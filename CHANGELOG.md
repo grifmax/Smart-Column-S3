@@ -7,6 +7,16 @@
 
 ---
 
+## [2.2.60] - 2026-06-11
+
+### Added
+- (codex) Built-in `public demo dataset`: the controller can now seed history with successful and safety-stop demo runs so Web UI, charts, compare, and `Run Advisor` can be developed without hardware.
+- (codex) New API endpoints `POST /api/history/demo` and `DELETE /api/history/demo` load or remove only the demo dataset without touching real user runs.
+- (codex) The history tab now has direct Web UI actions to load or remove the demo dataset from the browser.
+
+### Changed
+- (codex) `TODO2.0.md` closes the item `Public demo dataset`, and the project version is bumped to `2.2.60`.
+
 ## [2.2.59] - 2026-06-11
 
 ### Added

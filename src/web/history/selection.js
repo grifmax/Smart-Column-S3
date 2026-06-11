@@ -126,6 +126,110 @@ export async function clearHistory() {
 
 
 
+export async function loadPublicDemoDataset() {
+
+    const replaceExisting = confirm('Перезагрузить demo dataset заново?\n\nOK — сначала удалить старые demo-запуски и загрузить их заново.\nОтмена — просто добавить недостающие demo-запуски.');
+
+    try {
+
+        const response = await fetch('/api/history/demo', {
+
+            method: 'POST',
+
+            headers: {
+
+                'Content-Type': 'application/json'
+
+            },
+
+            body: JSON.stringify({ replace: replaceExisting })
+
+        });
+
+
+
+        if (!response.ok) {
+
+            throw new Error('Failed to load public demo dataset');
+
+        }
+
+
+
+        const data = await response.json();
+
+        addLog(`🧪 Demo dataset: +${data.imported || 0}, пропущено ${data.skipped || 0}, всего demo ${data.demoCount || 0}`, 'info');
+
+        await loadHistoryList();
+
+    } catch (error) {
+
+        console.error('Error loading public demo dataset:', error);
+
+        addLog('❌ Ошибка загрузки demo dataset', 'error');
+
+        alert('Ошибка загрузки demo dataset');
+
+    }
+
+}
+
+
+
+export async function clearPublicDemoDataset() {
+
+    if (!confirm('Удалить только demo dataset из истории?\n\nРеальные процессы останутся нетронутыми.')) {
+
+        return;
+
+    }
+
+
+
+    try {
+
+        const response = await fetch('/api/history/demo', {
+
+            method: 'DELETE',
+
+            headers: {
+
+                'Content-Type': 'application/json'
+
+            }
+
+        });
+
+
+
+        if (!response.ok) {
+
+            throw new Error('Failed to clear public demo dataset');
+
+        }
+
+
+
+        const data = await response.json();
+
+        addLog(`🧹 Demo dataset удалён: ${data.removed || 0} запусков`, 'info');
+
+        await loadHistoryList();
+
+    } catch (error) {
+
+        console.error('Error clearing public demo dataset:', error);
+
+        addLog('❌ Ошибка удаления demo dataset', 'error');
+
+        alert('Ошибка удаления demo dataset');
+
+    }
+
+}
+
+
+
 export async function deleteHistoryItem(id) {
 
     if (!confirm('Удалить этот процесс из истории?')) {
