@@ -59,6 +59,40 @@ function setTextValue(id, value) {
     }
 }
 
+function formatPzemMetric(value, digits = 1, suffix = '') {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '--';
+    return `${numeric.toFixed(digits)}${suffix}`;
+}
+
+function syncPzemEquipmentUi(pzem = {}) {
+    const available = Boolean(pzem.available);
+    const uartNum = Number.isFinite(Number(pzem.uartNum)) ? Number(pzem.uartNum) : 1;
+    const baudRate = Number.isFinite(Number(pzem.baudRate)) ? Number(pzem.baudRate) : 9600;
+    const rxPin = Number.isFinite(Number(pzem.rxPin)) ? Number(pzem.rxPin) : 20;
+    const txPin = Number.isFinite(Number(pzem.txPin)) ? Number(pzem.txPin) : 19;
+    const liveMetrics = [];
+
+    if (available) {
+        const voltage = formatPzemMetric(pzem.voltage, 1, ' В');
+        const power = formatPzemMetric(pzem.power, 0, ' Вт');
+        if (voltage !== '--') liveMetrics.push(voltage);
+        if (power !== '--') liveMetrics.push(power);
+    }
+
+    setTextValue(
+        'pzem-settings-state',
+        available
+            ? `Подключен • UART${uartNum} • ${baudRate} бод`
+            : `Не обнаружен • ожидание на UART${uartNum}`
+    );
+    setTextValue(
+        'pzem-settings-hint',
+        `GPIO${rxPin} RX ← PZEM TX, GPIO${txPin} TX → PZEM RX` +
+        (liveMetrics.length ? ` • ${liveMetrics.join(' • ')}` : '')
+    );
+}
+
 function setBadgeState(id, text, tone) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -415,8 +449,12 @@ export async function loadEquipmentSettings() {
             columnHeightMm: clamp(data.columnHeightMm, 500, 3000, 1500),
             cubeVolumeL: clamp(data.cubeVolumeL, 5, 250, DEFAULT_CUBE_VOLUME_L),
             minHeaterSubmergeL: clamp(data.minHeaterSubmergeL, 0.5, 100, 7.5),
-            waterAutoStartCubeTempC: clamp(data.waterAutoStartCubeTempC, 20, 60, 45)
+            waterAutoStartCubeTempC: clamp(data.waterAutoStartCubeTempC, 20, 60, 45),
+            pzem: data.pzem && typeof data.pzem === 'object'
+                ? { ...data.pzem }
+                : (runtimeMonitorState.equipment?.pzem || {})
         };
+        syncPzemEquipmentUi(runtimeMonitorState.equipment.pzem);
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
     } finally {

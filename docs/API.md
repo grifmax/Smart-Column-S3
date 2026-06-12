@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.72`  
+**Версия прошивки:** `2.2.73`  
 **Актуальность документа:** 2026-06-12
 
 ---
@@ -277,6 +277,14 @@
 
 - `packingType`
 - `packingCoeff`
+- `pzem.*`
+
+Для `GET /api/settings/equipment` блок `pzem` дополнительно содержит:
+
+- `available` — обнаружен ли `PZEM-004T`
+- `uartNum`, `baudRate`
+- `rxPin`, `txPin`
+- `voltage`, `current`, `power`, `energy`, `frequency`, `powerFactor`
 
 Для `GET/POST /api/settings/rect` дополнительно используется флаг:
 

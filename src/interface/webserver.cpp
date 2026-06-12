@@ -3359,6 +3359,19 @@ void init() {
     doc["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
     doc["packingType"] = packingType;
     doc["packingCoeff"] = g_settings.equipment.packingCoeff;
+    JsonObject pzem = doc["pzem"].to<JsonObject>();
+    pzem["available"] = g_state.health.pzemOk;
+    pzem["uartNum"] = PZEM_UART_NUM;
+    pzem["baudRate"] = PZEM_BAUD_RATE;
+    pzem["rxPin"] = PIN_PZEM_RX;
+    pzem["txPin"] = PIN_PZEM_TX;
+    pzem["voltage"] = g_state.power.voltage;
+    pzem["current"] = g_state.power.current;
+    pzem["power"] = g_state.power.power;
+    pzem["energy"] = g_state.power.energy;
+    pzem["frequency"] = g_state.power.frequency;
+    pzem["powerFactor"] = g_state.power.powerFactor;
+    pzem["lastUpdate"] = g_state.power.lastUpdate;
 
     String json;
     serializeJson(doc, json);
