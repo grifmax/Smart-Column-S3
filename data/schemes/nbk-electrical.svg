@@ -382,7 +382,7 @@
   <text x="70" y="606" class="label">I2C: GPIO21 SDA / GPIO9 SCL</text>
   <text x="70" y="628" class="small">BMP280 #1 (0x76): атмосферное давление</text>
   <text x="70" y="646" class="small">BMP280 #2 (0x77): резерв / доп. канал</text>
-  <text x="70" y="664" class="small">ADS1115 (0x48): A0 ← MPX5010DP</text>
+  <text x="70" y="664" class="small">ADS1115 (0x48): A1 ← датчик давления куба, A0 ← ареометр</text>
   <text x="70" y="682" class="small">OLED 0x3C: резервный дисплей</text>
 
   <rect x="52" y="716" width="120" height="84" rx="16" ry="16" class="box info"/>

@@ -419,7 +419,7 @@ void readPressure(Pressure& pressure) {
         pressure.atmosphere = 1013.25f; // Стандартное
     }
 
-    // Давление в кубе (MPX5010DP через ADS1115)
+    // Давление в кубе (датчик на ADS1115 A1)
     if (ads_ok) {
         int16_t adc = ads1115.readADC_SingleEnded(ADS_CHANNEL_PRESSURE);
         float voltage = ads1115.computeVolts(adc);
@@ -444,9 +444,8 @@ void readPressure(Pressure& pressure) {
 }
 
 void readHydrometer(Hydrometer& hydro, float temperature, const HydrometerCalibration& cal) {
-    // Читаем дифференциальное давление (столб жидкости в попугае)
-    // Используем тот же канал, что и давление куба
-    // В реальной системе нужен отдельный канал ADS1115
+    // Читаем дифференциальное давление ареометра через отдельный канал ADS1115 A0
+    // Давление куба и ареометр разведены: A1 = pressure, A0 = hydrometer
 
     if (!ads_ok) {
         hydro.ok = false;
@@ -454,7 +453,7 @@ void readHydrometer(Hydrometer& hydro, float temperature, const HydrometerCalibr
         return;
     }
 
-    int16_t adc = ads1115.readADC_SingleEnded(ADS_CHANNEL_PRESSURE);
+    int16_t adc = ads1115.readADC_SingleEnded(ADS_CHANNEL_HYDROMETER);
     float voltage = ads1115.computeVolts(adc);
     float kPa = (voltage - MPX5010_OFFSET) / MPX5010_SENSITIVITY;
     if (kPa < 0.0f) {

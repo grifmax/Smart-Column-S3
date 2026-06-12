@@ -85,7 +85,7 @@
   <text x="58" y="646" class="blk-title">U4</text>
   <text x="58" y="664" class="blk-sub">ADS1115</text>
   <text x="58" y="680" class="tiny">I2C 0x48</text>
-  <text x="58" y="696" class="tiny">A0 от MPX5010DP</text>
+  <text x="58" y="696" class="tiny">A1 от датчика давления, A0 резерв под ареометр</text>
 
   <rect x="202" y="620" width="118" height="88" class="block"/>
   <text x="216" y="646" class="blk-title">B1 / B2</text>
@@ -214,9 +214,9 @@
 
   <rect x="1284" y="360" width="240" height="136" class="block"/>
   <text x="1298" y="386" class="blk-title">S1</text>
-  <text x="1298" y="404" class="blk-sub">MPX5010DP</text>
+  <text x="1298" y="404" class="blk-sub">Pressure Sensor</text>
   <text x="1298" y="422" class="tiny">давление куба</text>
-  <text x="1298" y="440" class="tiny">выход - ADS1115 A0</text>
+  <text x="1298" y="440" class="tiny">выход - ADS1115 A1</text>
   <text x="1298" y="458" class="tiny">питание по вашему модулю датчика</text>
   <text x="1298" y="476" class="tiny">общая GND с ESP32/ADC</text>
 

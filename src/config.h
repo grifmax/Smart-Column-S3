@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.2.73"
+#define FIRMWARE_VERSION "2.2.74"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -94,10 +94,10 @@
 // ADS1115 КАНАЛЫ
 // =============================================================================
 
-#define ADS_CHANNEL_PRESSURE 0 // MPX5010DP (давление куба)
-#define ADS_CHANNEL_RESERVE_1 1
-#define ADS_CHANNEL_RESERVE_2 2
-#define ADS_CHANNEL_RESERVE_3 3
+#define ADS_CHANNEL_HYDROMETER 0 // Резерв под электронный ареометр
+#define ADS_CHANNEL_PRESSURE 1   // A1: датчик давления куба
+#define ADS_CHANNEL_RESERVE_1 2 // Свободный канал
+#define ADS_CHANNEL_RESERVE_2 3 // Свободный канал
 
 // =============================================================================
 // ТЕРМОМЕТРЫ DS18B20 (7 датчиков)
