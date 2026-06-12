@@ -143,6 +143,32 @@ static float interpolateABV(float densitySignal, const HydrometerCalibration& ca
     return cal.abvPoints[cal.pointCount - 1];
 }
 
+static float interpolatePressureMmHg(float voltage, const PressureSensorCalibration& cal) {
+    if (cal.pointCount < 2) {
+        return NAN;
+    }
+
+    for (uint8_t i = 0; i < cal.pointCount - 1; i++) {
+        if (voltage >= cal.voltagePoints[i] && voltage <= cal.voltagePoints[i + 1]) {
+            const float v0 = cal.voltagePoints[i];
+            const float v1 = cal.voltagePoints[i + 1];
+            const float p0 = cal.pressurePoints[i];
+            const float p1 = cal.pressurePoints[i + 1];
+            if (fabsf(v1 - v0) < 0.0001f) {
+                return p1;
+            }
+
+            const float t = (voltage - v0) / (v1 - v0);
+            return p0 + t * (p1 - p0);
+        }
+    }
+
+    if (voltage < cal.voltagePoints[0]) {
+        return cal.pressurePoints[0];
+    }
+    return cal.pressurePoints[cal.pointCount - 1];
+}
+
 static void clearDs18b20Inventory() {
     memset(ds18b20Addresses, 0, sizeof(ds18b20Addresses));
     memset(ds18b20Found, 0, sizeof(ds18b20Found));
@@ -423,13 +449,19 @@ void readPressure(Pressure& pressure) {
     if (ads_ok) {
         int16_t adc = ads1115.readADC_SingleEnded(ADS_CHANNEL_PRESSURE);
         float voltage = ads1115.computeVolts(adc);
+        pressure.sensorAdc = adc;
+        pressure.sensorVoltage = voltage;
 
         // MPX5010DP: 0.2V @ 0kPa, 4.7V @ 10kPa
         // P = (V - offset) / sensitivity
-        float kPa = (voltage - MPX5010_OFFSET) / MPX5010_SENSITIVITY;
+        float cubeMmHg = interpolatePressureMmHg(voltage, g_settings.pressureCal);
+        if (!isfinite(cubeMmHg)) {
+            float kPa = (voltage - MPX5010_OFFSET) / MPX5010_SENSITIVITY;
+            cubeMmHg = kPa * 7.50062f;
+        }
 
         // Преобразовать в мм рт.ст. (1 кПа = 7.50062 мм рт.ст.)
-        pressure.cube = kPa * 7.50062f;
+        pressure.cube = cubeMmHg;
 
         // Ограничить диапазон
         if (pressure.cube < 0) pressure.cube = 0;
@@ -437,6 +469,8 @@ void readPressure(Pressure& pressure) {
         pressure.ok = true;
     } else {
         pressure.cube = 0;
+        pressure.sensorVoltage = 0.0f;
+        pressure.sensorAdc = 0;
         pressure.ok = false;
     }
 

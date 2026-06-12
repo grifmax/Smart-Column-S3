@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.74">
+    <link rel="stylesheet" href="style.css?v=2.2.75">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.74" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.75" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1806,6 +1806,83 @@
                                 <div id="tempResult" class="info-text" style="margin-top: 10px;"></div>
                             </div>
 
+                            <div class="card equipment-card equipment-card-pressure">
+                                <h2>Pressure Sensor Calibration</h2>
+                                <p class="equipment-subtitle">Calibrate the cube pressure sensor on ADS1115 A1 against a trusted manometer. If the table is empty, firmware falls back to the legacy formula.</p>
+                                <div class="form-group">
+                                    <label>Current state</label>
+                                    <div class="info-display equipment-info-box" id="pressureCurrent">Loading...</div>
+                                </div>
+                                <div class="equipment-test-metrics" style="margin-bottom: 12px;">
+                                    <div class="equipment-test-metric"><span>Voltage</span><strong id="pressure-current-voltage">--</strong></div>
+                                    <div class="equipment-test-metric"><span>ADC</span><strong id="pressure-current-adc">--</strong></div>
+                                    <div class="equipment-test-metric"><span>Cube pressure</span><strong id="pressure-current-value">--</strong></div>
+                                    <div class="equipment-test-metric"><span>Status</span><strong id="pressure-current-status" class="equipment-status-badge muted">—</strong></div>
+                                </div>
+                                <div class="equipment-hydrometer-points" id="pressure-points">
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="pressure-voltage-0">Point 1: voltage, V</label>
+                                            <input type="number" id="pressure-voltage-0" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="pressure-mmhg-0">Pressure, mmHg</label>
+                                            <input type="number" id="pressure-mmhg-0" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(0)">Current value</button>
+                                    </div>
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="pressure-voltage-1">Point 2: voltage, V</label>
+                                            <input type="number" id="pressure-voltage-1" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="pressure-mmhg-1">Pressure, mmHg</label>
+                                            <input type="number" id="pressure-mmhg-1" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(1)">Current value</button>
+                                    </div>
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="pressure-voltage-2">Point 3: voltage, V</label>
+                                            <input type="number" id="pressure-voltage-2" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="pressure-mmhg-2">Pressure, mmHg</label>
+                                            <input type="number" id="pressure-mmhg-2" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(2)">Current value</button>
+                                    </div>
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="pressure-voltage-3">Point 4: voltage, V</label>
+                                            <input type="number" id="pressure-voltage-3" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="pressure-mmhg-3">Pressure, mmHg</label>
+                                            <input type="number" id="pressure-mmhg-3" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(3)">Current value</button>
+                                    </div>
+                                    <div class="equipment-hydrometer-point">
+                                        <div class="form-group">
+                                            <label for="pressure-voltage-4">Point 5: voltage, V</label>
+                                            <input type="number" id="pressure-voltage-4" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="pressure-mmhg-4">Pressure, mmHg</label>
+                                            <input type="number" id="pressure-mmhg-4" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
+                                        </div>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(4)">Current value</button>
+                                    </div>
+                                </div>
+                                <div class="controls equipment-actions">
+                                    <button class="btn btn-primary" type="button" onclick="savePressureCalibration()">💾 Save table</button>
+                                    <button class="btn" type="button" onclick="clearPressureCalibration()">🧹 Clear table</button>
+                                </div>
+                                <div id="pressureResult" class="info-text" style="margin-top: 10px;"></div>
+                            </div>
+
                             <div class="card equipment-card equipment-card-hydrometer">
                                 <h2>🧪 Калибровка ареометра</h2>
                                 <p class="equipment-subtitle">Задайте таблицу соответствия между сигналом попугая
@@ -3040,7 +3117,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.74"></script>
+    <script src="app.js?v=2.2.75"></script>
 </body>
 
 </html>

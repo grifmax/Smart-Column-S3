@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.2.74"
+#define FIRMWARE_VERSION "2.2.75"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -356,6 +356,7 @@
 #define NVS_KEY_PUMP_ML_REV "pump_mlrev"
 #define NVS_KEY_PRESSURE_FLOOD "p_flood"
 #define NVS_KEY_HYDRO_POINTS "hydro_pts"
+#define NVS_KEY_PRESSURE_POINTS "press_pts"
 #define NVS_KEY_FRACTION_ANGLES "frac_ang"
 #define NVS_KEY_FRACTION_ENABLED "frac_en"
 #define NVS_KEY_FRACTION_MASTER "frac_master"

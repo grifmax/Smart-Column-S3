@@ -148,6 +148,57 @@ void saveHydrometerCalibrationToNvs(const HydrometerCalibration& cal) {
     prefs.putString(NVS_KEY_HYDRO_POINTS, json);
 }
 
+void clearPressureCalibration(PressureSensorCalibration& cal) {
+    cal.pointCount = 0;
+    memset(cal.voltagePoints, 0, sizeof(cal.voltagePoints));
+    memset(cal.pressurePoints, 0, sizeof(cal.pressurePoints));
+}
+
+void loadPressureCalibrationFromNvs(PressureSensorCalibration& cal) {
+    clearPressureCalibration(cal);
+
+    String json = prefs.getString(NVS_KEY_PRESSURE_POINTS, "");
+    if (json.isEmpty()) {
+        return;
+    }
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, json);
+    if (error) {
+        LOG_W("NVS: Pressure calibration JSON parse failed: %s", error.c_str());
+        return;
+    }
+
+    JsonArray voltageArray = doc["voltagePoints"].is<JsonArray>() ? doc["voltagePoints"].as<JsonArray>() : JsonArray();
+    JsonArray pressureArray = doc["pressurePoints"].is<JsonArray>() ? doc["pressurePoints"].as<JsonArray>() : JsonArray();
+    if (voltageArray.isNull() || pressureArray.isNull()) {
+        return;
+    }
+
+    const size_t pointCount = min(voltageArray.size(), pressureArray.size());
+    cal.pointCount = static_cast<uint8_t>(min(pointCount, static_cast<size_t>(5)));
+    for (uint8_t i = 0; i < cal.pointCount; ++i) {
+        cal.voltagePoints[i] = voltageArray[i] | 0.0f;
+        cal.pressurePoints[i] = pressureArray[i] | 0.0f;
+    }
+}
+
+void savePressureCalibrationToNvs(const PressureSensorCalibration& cal) {
+    JsonDocument doc;
+    doc["pointCount"] = cal.pointCount;
+
+    JsonArray voltageArray = doc["voltagePoints"].to<JsonArray>();
+    JsonArray pressureArray = doc["pressurePoints"].to<JsonArray>();
+    for (uint8_t i = 0; i < cal.pointCount && i < 5; ++i) {
+        voltageArray.add(cal.voltagePoints[i]);
+        pressureArray.add(cal.pressurePoints[i]);
+    }
+
+    String json;
+    serializeJson(doc, json);
+    prefs.putString(NVS_KEY_PRESSURE_POINTS, json);
+}
+
 } // namespace
 
 namespace NVSManager {
@@ -209,6 +260,7 @@ bool loadSettings(Settings& settings) {
 
     // Калибровка насоса
     settings.pumpCal.mlPerRevolution = prefs.getFloat(NVS_KEY_PUMP_ML_REV, DEFAULT_PUMP_ML_PER_REV);
+    loadPressureCalibrationFromNvs(settings.pressureCal);
     loadHydrometerCalibrationFromNvs(settings.hydroCal);
 
     // Ректификация
@@ -333,6 +385,7 @@ bool saveSettings(const Settings& settings) {
 
     // Калибровка насоса
     prefs.putFloat(NVS_KEY_PUMP_ML_REV, settings.pumpCal.mlPerRevolution);
+    savePressureCalibrationToNvs(settings.pressureCal);
     saveHydrometerCalibrationToNvs(settings.hydroCal);
 
     // Ректификация

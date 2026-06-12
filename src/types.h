@@ -90,6 +90,8 @@ struct TemperatureData {
 
 // Данные давления
 struct PressureData {
+  float sensorVoltage = 0.0f;
+  int16_t sensorAdc = 0;
   float pressure = 101.325f;   // кПа
   float atmosphere = 1013.25f; // гПа атмосферное
   float cube = 0.0f;           // мм рт.ст. в кубе
@@ -397,6 +399,12 @@ struct HydrometerCalibration {
   float pressurePoints[10] = {0.0f};
 };
 
+struct PressureSensorCalibration {
+  uint8_t pointCount = 0;
+  float voltagePoints[5] = {0.0f};
+  float pressurePoints[5] = {0.0f};
+};
+
 struct RectParams {
   // Сырьё/затор для спирта-сырца (для дефолтов по фракциям)
   uint8_t feedstock = 0; // 0=sugar,1=grain/flour,2=malt,3=fruit,4=molasses,5=grape,6=honey,7=other
@@ -474,6 +482,7 @@ struct Settings {
   PumpCalibration pumpCal;
   TouchCalibration touchCal;
   TempCalibration tempCal;
+  PressureSensorCalibration pressureCal;
   HydrometerCalibration hydroCal; // Калибровка гидрометра
   MqttSettings mqtt;
   CloudSettings cloud;

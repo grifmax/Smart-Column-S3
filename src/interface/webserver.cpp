@@ -4393,6 +4393,20 @@ void init() {
       t["valid"] = g_state.temps.valid[i];
     }
 
+    JsonObject pressureSensor = doc["pressureSensor"].to<JsonObject>();
+    pressureSensor["pointCount"] = g_settings.pressureCal.pointCount;
+    JsonArray pressureVoltages = pressureSensor["voltagePoints"].to<JsonArray>();
+    JsonArray pressureMmHgPoints = pressureSensor["pressurePoints"].to<JsonArray>();
+    for (uint8_t i = 0; i < g_settings.pressureCal.pointCount; i++) {
+      pressureVoltages.add(g_settings.pressureCal.voltagePoints[i]);
+      pressureMmHgPoints.add(g_settings.pressureCal.pressurePoints[i]);
+    }
+    pressureSensor["currentVoltage"] = g_state.pressure.sensorVoltage;
+    pressureSensor["currentAdc"] = g_state.pressure.sensorAdc;
+    pressureSensor["currentPressure"] = g_state.pressure.cube;
+    pressureSensor["valid"] = g_state.pressure.ok;
+    pressureSensor["calibrated"] = g_settings.pressureCal.pointCount >= 2;
+
     // Ареометр (гидрометр)
     JsonObject hydro = doc["hydrometer"].to<JsonObject>();
     hydro["densityOffset"] = g_settings.hydroCal.densityOffset;
@@ -4578,6 +4592,109 @@ void init() {
       });
 
   // POST /api/calibration/hydrometer - калибровка ареометра
+  server.on(
+      "/api/calibration/pressure", HTTP_POST,
+      [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, data, len);
+
+        if (error) {
+          request->send(400, "application/json",
+                        "{\"error\":\"Invalid JSON\"}");
+          return;
+        }
+
+        const bool hasVoltagePoints = !doc["voltagePoints"].isNull();
+        const bool hasPressurePoints = !doc["pressurePoints"].isNull();
+        if (hasVoltagePoints != hasPressurePoints) {
+          request->send(400, "application/json",
+                        "{\"error\":\"voltagePoints and pressurePoints must be provided together\"}");
+          return;
+        }
+
+        if (!hasVoltagePoints || !hasPressurePoints) {
+          request->send(400, "application/json",
+                        "{\"error\":\"Missing parameters\"}");
+          return;
+        }
+
+        JsonArray voltageArray = doc["voltagePoints"].as<JsonArray>();
+        JsonArray pressureArray = doc["pressurePoints"].as<JsonArray>();
+        if (voltageArray.size() != pressureArray.size() || voltageArray.size() > 5) {
+          request->send(400, "application/json",
+                        "{\"error\":\"Invalid point count (max 5, must match)\"}");
+          return;
+        }
+        if (voltageArray.size() == 1) {
+          request->send(400, "application/json",
+                        "{\"error\":\"At least 2 points are required for active calibration\"}");
+          return;
+        }
+
+        g_settings.pressureCal.pointCount = 0;
+        memset(g_settings.pressureCal.voltagePoints, 0, sizeof(g_settings.pressureCal.voltagePoints));
+        memset(g_settings.pressureCal.pressurePoints, 0, sizeof(g_settings.pressureCal.pressurePoints));
+
+        struct PressurePoint {
+          float voltage;
+          float pressure;
+        };
+        PressurePoint points[5];
+        for (size_t i = 0; i < voltageArray.size(); ++i) {
+          const float voltage = clampFloatRange(voltageArray[i].as<float>(), 0.0f, 4.096f);
+          const float pressure = clampFloatRange(pressureArray[i].as<float>(), 0.0f, 75.0f);
+          points[i] = {voltage, pressure};
+        }
+
+        for (size_t i = 0; i < voltageArray.size(); ++i) {
+          for (size_t j = i + 1; j < voltageArray.size(); ++j) {
+            if (points[j].voltage < points[i].voltage) {
+              PressurePoint tmp = points[i];
+              points[i] = points[j];
+              points[j] = tmp;
+            }
+          }
+        }
+
+        bool hasDuplicateVoltage = false;
+        for (size_t i = 1; i < voltageArray.size(); ++i) {
+          if (fabsf(points[i].voltage - points[i - 1].voltage) < 0.0001f) {
+            hasDuplicateVoltage = true;
+            break;
+          }
+        }
+        if (hasDuplicateVoltage) {
+          request->send(400, "application/json",
+                        "{\"error\":\"Voltage points must be unique\"}");
+          return;
+        }
+
+        g_settings.pressureCal.pointCount = static_cast<uint8_t>(voltageArray.size());
+        for (uint8_t i = 0; i < g_settings.pressureCal.pointCount; ++i) {
+          g_settings.pressureCal.voltagePoints[i] = points[i].voltage;
+          g_settings.pressureCal.pressurePoints[i] = points[i].pressure;
+        }
+
+        NVSManager::saveSettings(g_settings);
+
+        JsonDocument resp;
+        resp["status"] = "ok";
+        resp["pointCount"] = g_settings.pressureCal.pointCount;
+        resp["calibrated"] = g_settings.pressureCal.pointCount >= 2;
+        JsonArray respVoltages = resp["voltagePoints"].to<JsonArray>();
+        JsonArray respPressures = resp["pressurePoints"].to<JsonArray>();
+        for (uint8_t i = 0; i < g_settings.pressureCal.pointCount; ++i) {
+          respVoltages.add(g_settings.pressureCal.voltagePoints[i]);
+          respPressures.add(g_settings.pressureCal.pressurePoints[i]);
+        }
+
+        String json;
+        serializeJson(resp, json);
+        request->send(200, "application/json", json);
+      });
+
   server.on(
       "/api/calibration/hydrometer", HTTP_POST,
       [](AsyncWebServerRequest *request) {}, NULL,

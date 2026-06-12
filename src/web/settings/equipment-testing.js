@@ -234,6 +234,15 @@ const CALIBRATION_CARD_DEFS = [
         description: 'Сканирование датчиков, ручная коррекция и быстрый сервисный доступ к каждому термометру.',
     },
     {
+        id: 'pressure-calibration',
+        selector: '#pressureCurrent',
+        group: 'sensors',
+        icon: 'рџ§Є',
+        title: 'Pressure sensor calibration',
+        shortTitle: 'Pressure',
+        description: 'ADS1115 A1 pressure table against a real manometer, with live voltage, ADC and saved interpolation points.',
+    },
+    {
         id: 'hydrometer-calibration',
         selector: '#hydrometerCurrent',
         group: 'sensors',
@@ -1162,8 +1171,9 @@ function ensureEquipmentShell() {
     const paramsCard = qs('.equipment-card-params', cards);
     const pumpCalibrationCard = qs('.equipment-card-pump', cards);
     const tempCalibrationCard = qs('.equipment-card-temp', cards);
+    const pressureCalibrationCard = qs('.equipment-card-pressure', cards);
     const hydrometerCalibrationCard = qs('.equipment-card-hydrometer', cards);
-    if (!cards || !paramsCard || !pumpCalibrationCard || !tempCalibrationCard || !hydrometerCalibrationCard) return;
+    if (!cards || !paramsCard || !pumpCalibrationCard || !tempCalibrationCard || !pressureCalibrationCard || !hydrometerCalibrationCard) return;
 
     const shell = document.createElement('div');
     shell.className = 'equipment-shell';
@@ -1182,6 +1192,7 @@ function ensureEquipmentShell() {
     const calibrationCards = qs('[data-equipment-section-pane="calibration"] .cards', shell);
     calibrationCards?.appendChild(pumpCalibrationCard);
     calibrationCards?.appendChild(tempCalibrationCard);
+    calibrationCards?.appendChild(pressureCalibrationCard);
     calibrationCards?.appendChild(hydrometerCalibrationCard);
 
     const testingPane = qs('[data-equipment-section-pane="testing"]', shell);

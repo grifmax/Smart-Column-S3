@@ -3,6 +3,7 @@ import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const API_BASE = '/api/calibration';
 const HYDROMETER_POINT_SLOTS = 5;
+const PRESSURE_POINT_SLOTS = 5;
 
 let calibrationState = {
     running: false,
@@ -62,6 +63,176 @@ function updateCalibrationImportUi(summaryText = 'Файл не выбран', c
 
 function formatHydrometerNumber(value, digits = 3, suffix = '') {
     return Number.isFinite(Number(value)) ? `${Number(value).toFixed(digits)}${suffix}` : '—';
+}
+
+function formatPressureNumber(value, digits = 3, suffix = '') {
+    return Number.isFinite(Number(value)) ? `${Number(value).toFixed(digits)}${suffix}` : 'вЂ”';
+}
+
+function populatePressureCalibration(pressureSensor = {}) {
+    const currentVoltage = Number(pressureSensor.currentVoltage);
+    const currentAdc = Number(pressureSensor.currentAdc);
+    const currentPressure = Number(pressureSensor.currentPressure);
+    const pointCount = Number(pressureSensor.pointCount || 0);
+    const voltagePoints = Array.isArray(pressureSensor.voltagePoints) ? pressureSensor.voltagePoints : [];
+    const pressurePoints = Array.isArray(pressureSensor.pressurePoints) ? pressureSensor.pressurePoints : [];
+
+    const badge = byId('pressure-current-status');
+    if (badge) {
+        badge.textContent = pressureSensor.valid ? 'Р•СЃС‚СЊ СЃРёРіРЅР°Р»' : 'РќРµС‚ СЃРёРіРЅР°Р»Р°';
+        badge.className = `equipment-status-badge ${pressureSensor.valid ? 'success' : 'muted'}`;
+    }
+
+    const currentVoltageEl = byId('pressure-current-voltage');
+    if (currentVoltageEl) {
+        currentVoltageEl.textContent = formatPressureNumber(currentVoltage, 3, ' Р’');
+        currentVoltageEl.dataset.value = Number.isFinite(currentVoltage) ? currentVoltage.toFixed(4) : '';
+    }
+
+    const currentAdcEl = byId('pressure-current-adc');
+    if (currentAdcEl) {
+        currentAdcEl.textContent = Number.isFinite(currentAdc) ? String(Math.round(currentAdc)) : 'вЂ”';
+    }
+
+    const currentPressureEl = byId('pressure-current-value');
+    if (currentPressureEl) {
+        currentPressureEl.textContent = formatPressureNumber(currentPressure, 1, ' РјРј СЂС‚.СЃС‚.');
+    }
+
+    const summaryEl = byId('pressureCurrent');
+    if (summaryEl) {
+        summaryEl.textContent = pointCount >= 2
+            ? `РђРєС‚РёРІРЅР° С‚Р°Р±Р»РёС†Р°: ${pointCount} С‚РѕС‡Рє. РџРѕРєР°Р·Р°РЅРёРµ РєСѓР±Р° С‡РёС‚Р°РµС‚СЃСЏ РїРѕ РєР°Р»РёР±СЂРѕРІРєРµ.`
+            : 'РўР°Р±Р»РёС†Р° РєР°Р»РёР±СЂРѕРІРєРё РїРѕРєР° РЅРµ Р·Р°РґР°РЅР°. Р”Р»СЏ РґР°РІР»РµРЅРёСЏ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ fallback-С„РѕСЂРјСѓР»Р°.';
+    }
+
+    for (let i = 0; i < PRESSURE_POINT_SLOTS; i += 1) {
+        const voltage = Number(voltagePoints[i]);
+        const pressure = Number(pressurePoints[i]);
+        setValue(`pressure-voltage-${i}`, Number.isFinite(voltage) ? voltage.toFixed(4) : '');
+        setValue(`pressure-mmhg-${i}`, Number.isFinite(pressure) ? pressure.toFixed(1) : '');
+    }
+
+    const rowsHost = byId('pressure-points');
+    if (rowsHost) {
+        initEquipmentNumberSteppers(rowsHost);
+    }
+}
+
+function collectPressureCalibrationPayload() {
+    const voltagePoints = [];
+    const pressurePoints = [];
+
+    for (let i = 0; i < PRESSURE_POINT_SLOTS; i += 1) {
+        const voltageRaw = String(byId(`pressure-voltage-${i}`)?.value || '').trim().replace(',', '.');
+        const pressureRaw = String(byId(`pressure-mmhg-${i}`)?.value || '').trim().replace(',', '.');
+
+        if (!voltageRaw && !pressureRaw) {
+            continue;
+        }
+        if (!voltageRaw || !pressureRaw) {
+            throw new Error(`РўРѕС‡РєР° ${i + 1}: Р·Р°РїРѕР»РЅРёС‚Рµ Рё РЅР°РїСЂСЏР¶РµРЅРёРµ, Рё РґР°РІР»РµРЅРёРµ`);
+        }
+
+        const voltage = Number(voltageRaw);
+        const pressure = Number(pressureRaw);
+        if (!Number.isFinite(voltage) || voltage < 0 || voltage > 4.096) {
+            throw new Error(`РўРѕС‡РєР° ${i + 1}: РЅР°РїСЂСЏР¶РµРЅРёРµ РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РІ РґРёР°РїР°Р·РѕРЅРµ 0.0000..4.0960 Р’`);
+        }
+        if (!Number.isFinite(pressure) || pressure < 0 || pressure > 75) {
+            throw new Error(`РўРѕС‡РєР° ${i + 1}: РґР°РІР»РµРЅРёРµ РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РІ РґРёР°РїР°Р·РѕРЅРµ 0..75 РјРј СЂС‚.СЃС‚.`);
+        }
+
+        voltagePoints.push(voltage);
+        pressurePoints.push(pressure);
+    }
+
+    return { voltagePoints, pressurePoints };
+}
+
+function formatPressureNumberV2(value, digits = 3, suffix = '') {
+    return Number.isFinite(Number(value)) ? `${Number(value).toFixed(digits)}${suffix}` : '--';
+}
+
+function populatePressureCalibrationV2(pressureSensor = {}) {
+    const currentVoltage = Number(pressureSensor.currentVoltage);
+    const currentAdc = Number(pressureSensor.currentAdc);
+    const currentPressure = Number(pressureSensor.currentPressure);
+    const pointCount = Number(pressureSensor.pointCount || 0);
+    const voltagePoints = Array.isArray(pressureSensor.voltagePoints) ? pressureSensor.voltagePoints : [];
+    const pressurePoints = Array.isArray(pressureSensor.pressurePoints) ? pressureSensor.pressurePoints : [];
+
+    const badge = byId('pressure-current-status');
+    if (badge) {
+        badge.textContent = pressureSensor.valid ? 'Signal OK' : 'No signal';
+        badge.className = `equipment-status-badge ${pressureSensor.valid ? 'success' : 'muted'}`;
+    }
+
+    const currentVoltageEl = byId('pressure-current-voltage');
+    if (currentVoltageEl) {
+        currentVoltageEl.textContent = formatPressureNumberV2(currentVoltage, 3, ' V');
+        currentVoltageEl.dataset.value = Number.isFinite(currentVoltage) ? currentVoltage.toFixed(4) : '';
+    }
+
+    const currentAdcEl = byId('pressure-current-adc');
+    if (currentAdcEl) {
+        currentAdcEl.textContent = Number.isFinite(currentAdc) ? String(Math.round(currentAdc)) : '--';
+    }
+
+    const currentPressureEl = byId('pressure-current-value');
+    if (currentPressureEl) {
+        currentPressureEl.textContent = formatPressureNumberV2(currentPressure, 1, ' mmHg');
+    }
+
+    const summaryEl = byId('pressureCurrent');
+    if (summaryEl) {
+        summaryEl.textContent = pointCount >= 2
+            ? `Active table: ${pointCount} points. Cube pressure is now read from the saved calibration table.`
+            : 'No calibration table yet. Firmware uses the legacy fallback formula.';
+    }
+
+    for (let i = 0; i < PRESSURE_POINT_SLOTS; i += 1) {
+        const voltage = Number(voltagePoints[i]);
+        const pressure = Number(pressurePoints[i]);
+        setValue(`pressure-voltage-${i}`, Number.isFinite(voltage) ? voltage.toFixed(4) : '');
+        setValue(`pressure-mmhg-${i}`, Number.isFinite(pressure) ? pressure.toFixed(1) : '');
+    }
+
+    const rowsHost = byId('pressure-points');
+    if (rowsHost) {
+        initEquipmentNumberSteppers(rowsHost);
+    }
+}
+
+function collectPressureCalibrationPayloadV2() {
+    const voltagePoints = [];
+    const pressurePoints = [];
+
+    for (let i = 0; i < PRESSURE_POINT_SLOTS; i += 1) {
+        const voltageRaw = String(byId(`pressure-voltage-${i}`)?.value || '').trim().replace(',', '.');
+        const pressureRaw = String(byId(`pressure-mmhg-${i}`)?.value || '').trim().replace(',', '.');
+
+        if (!voltageRaw && !pressureRaw) {
+            continue;
+        }
+        if (!voltageRaw || !pressureRaw) {
+            throw new Error(`Point ${i + 1}: fill both voltage and pressure`);
+        }
+
+        const voltage = Number(voltageRaw);
+        const pressure = Number(pressureRaw);
+        if (!Number.isFinite(voltage) || voltage < 0 || voltage > 4.096) {
+            throw new Error(`Point ${i + 1}: voltage must be in range 0.0000..4.0960 V`);
+        }
+        if (!Number.isFinite(pressure) || pressure < 0 || pressure > 75) {
+            throw new Error(`Point ${i + 1}: pressure must be in range 0..75 mmHg`);
+        }
+
+        voltagePoints.push(voltage);
+        pressurePoints.push(pressure);
+    }
+
+    return { voltagePoints, pressurePoints };
 }
 
 function populateHydrometerCalibration(hydrometer = {}) {
@@ -167,6 +338,7 @@ function normalizeCalibrationSnapshot(payload) {
 
     const pump = source.pump && typeof source.pump === 'object' ? source.pump : {};
     const temperatures = Array.isArray(source.temperatures) ? source.temperatures : [];
+    const pressureSensor = source.pressureSensor && typeof source.pressureSensor === 'object' ? source.pressureSensor : {};
     const hydrometer = source.hydrometer && typeof source.hydrometer === 'object' ? source.hydrometer : {};
 
     const normalizedPump = {
@@ -182,6 +354,20 @@ function normalizeCalibrationSnapshot(payload) {
             address: String(item?.address || '')
         }))
         .filter((item) => Number.isInteger(item.index) && Number.isFinite(item.offset));
+
+    const pressureVoltages = Array.isArray(pressureSensor.voltagePoints) ? pressureSensor.voltagePoints : [];
+    const pressureSensorPoints = Array.isArray(pressureSensor.pressurePoints) ? pressureSensor.pressurePoints : [];
+    const normalizedPressureSensor = {
+        voltagePoints: pressureVoltages.map((item) => Number(item)).filter((item) => Number.isFinite(item)),
+        pressurePoints: pressureSensorPoints.map((item) => Number(item)).filter((item) => Number.isFinite(item))
+    };
+
+    if (normalizedPressureSensor.voltagePoints.length !== normalizedPressureSensor.pressurePoints.length) {
+        throw new Error('Р’ snapshot РґР°РІР»РµРЅРёСЏ РЅРµ СЃРѕРІРїР°РґР°РµС‚ РєРѕР»РёС‡РµСЃС‚РІРѕ voltage Рё pressure points');
+    }
+    if (normalizedPressureSensor.voltagePoints.length === 1) {
+        throw new Error('Snapshot РґР°РІР»РµРЅРёСЏ СЃРѕРґРµСЂР¶РёС‚ С‚РѕР»СЊРєРѕ 1 С‚РѕС‡РєСѓ. РќСѓР¶РЅС‹ 0 РёР»Рё РјРёРЅРёРјСѓРј 2');
+    }
 
     const hydrometerPoints = Array.isArray(hydrometer.abvPoints) ? hydrometer.abvPoints : [];
     const hydrometerSignals = Array.isArray(hydrometer.pressurePoints) ? hydrometer.pressurePoints : [];
@@ -202,6 +388,7 @@ function normalizeCalibrationSnapshot(payload) {
         meta: payload?.meta && typeof payload.meta === 'object' ? payload.meta : {},
         pump: normalizedPump,
         temperatures: normalizedTemps,
+        pressureSensor: normalizedPressureSensor,
         hydrometer: normalizedHydrometer
     };
 }
@@ -211,12 +398,34 @@ function describeCalibrationSnapshot(snapshot) {
         ? `${snapshot.pump.mlPerRev.toFixed(3)} мл/об`
         : 'нет pump-cal';
     const tempText = `${snapshot.temperatures.length} offsets`;
+    const pressurePointCount = snapshot.pressureSensor.voltagePoints.length;
+    const pressureText = pressurePointCount >= 2
+        ? `${pressurePointCount} С‚РѕС‡Рє. РґР°РІР»РµРЅРёСЏ`
+        : 'Р±РµР· С‚Р°Р±Р»РёС†С‹ РґР°РІР»РµРЅРёСЏ';
     const hydroPointCount = snapshot.hydrometer.abvPoints.length;
     const hydroText = hydroPointCount >= 2
         ? `${hydroPointCount} точк. ареометра`
         : 'без таблицы ареометра';
     const versionText = snapshot.meta?.firmwareVersion ? ` | FW ${snapshot.meta.firmwareVersion}` : '';
+    return `РќР°СЃРѕСЃ: ${pumpText} | РўРµСЂРјРѕРґР°С‚С‡РёРєРё: ${tempText} | Р”Р°РІР»РµРЅРёРµ: ${pressureText} | РђСЂРµРѕРјРµС‚СЂ: ${hydroText}${versionText}`;
     return `Насос: ${pumpText} | Термодатчики: ${tempText} | Ареометр: ${hydroText}${versionText}`;
+}
+
+function describeCalibrationSnapshotV2(snapshot) {
+    const pumpText = Number.isFinite(snapshot.pump.mlPerRev) && snapshot.pump.mlPerRev > 0
+        ? `${snapshot.pump.mlPerRev.toFixed(3)} ml/rev`
+        : 'no pump-cal';
+    const tempText = `${snapshot.temperatures.length} offsets`;
+    const pressurePointCount = snapshot.pressureSensor.voltagePoints.length;
+    const pressureText = pressurePointCount >= 2
+        ? `${pressurePointCount} pressure pts`
+        : 'no pressure table';
+    const hydroPointCount = snapshot.hydrometer.abvPoints.length;
+    const hydroText = hydroPointCount >= 2
+        ? `${hydroPointCount} hydrometer pts`
+        : 'no hydrometer table';
+    const versionText = snapshot.meta?.firmwareVersion ? ` | FW ${snapshot.meta.firmwareVersion}` : '';
+    return `Pump: ${pumpText} | Temp: ${tempText} | Pressure: ${pressureText} | Hydrometer: ${hydroText}${versionText}`;
 }
 
 export async function exportCalibrationSnapshot() {
@@ -268,7 +477,7 @@ export function onCalibrationSnapshotFileChange(event) {
         try {
             const raw = JSON.parse(String(loadEvent?.target?.result || '{}'));
             calibrationImportSnapshot = normalizeCalibrationSnapshot(raw);
-            updateCalibrationImportUi(describeCalibrationSnapshot(calibrationImportSnapshot), true);
+            updateCalibrationImportUi(describeCalibrationSnapshotV2(calibrationImportSnapshot), true);
             setMessage('calibrationImportResult', 'Snapshot прочитан. Можно применять.', 'success');
         } catch (error) {
             calibrationImportSnapshot = null;
@@ -317,6 +526,16 @@ export async function applyCalibrationSnapshot() {
             }
         }
 
+        const pressureResponse = await fetch(`${API_BASE}/pressure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(calibrationImportSnapshot.pressureSensor)
+        });
+        if (!pressureResponse.ok) {
+            const pressureError = await pressureResponse.json().catch(() => ({}));
+            throw new Error(pressureError?.error || `Pressure import HTTP ${pressureResponse.status}`);
+        }
+
         const hydrometerResponse = await fetch(`${API_BASE}/hydrometer`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -337,6 +556,144 @@ export async function applyCalibrationSnapshot() {
     } catch (error) {
         console.error('applyCalibrationSnapshot error:', error);
         setMessage('calibrationImportResult', `Ошибка применения snapshot: ${error.message}`, 'error');
+    }
+}
+
+export function fillPressurePointFromCurrent(index) {
+    const voltageValue = Number(byId('pressure-current-voltage')?.dataset?.value);
+    if (!Number.isFinite(voltageValue)) {
+        setMessage('pressureResult', 'РќРµС‚ С‚РµРєСѓС‰РµРіРѕ СЃРёРіРЅР°Р»Р° РґР°РІР»РµРЅРёСЏ РґР»СЏ РїРѕРґСЃС‚Р°РЅРѕРІРєРё', 'error');
+        return;
+    }
+    setValue(`pressure-voltage-${index}`, voltageValue.toFixed(4));
+}
+
+export async function savePressureCalibration() {
+    let payload;
+    try {
+        payload = collectPressureCalibrationPayloadV2();
+    } catch (error) {
+        setMessage('pressureResult', error.message, 'error');
+        return;
+    }
+
+    if (payload.voltagePoints.length === 1) {
+        setMessage('pressureResult', 'Р”Р»СЏ СЂР°Р±РѕС‡РµР№ С‚Р°Р±Р»РёС†С‹ РЅСѓР¶РЅС‹ РјРёРЅРёРјСѓРј 2 С‚РѕС‡РєРё', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/pressure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+
+        setMessage(
+            'pressureResult',
+            payload.voltagePoints.length >= 2
+                ? `РўР°Р±Р»РёС†Р° РґР°РІР»РµРЅРёСЏ СЃРѕС…СЂР°РЅРµРЅР°: ${Number(data.pointCount || payload.voltagePoints.length)} С‚РѕС‡Рє.`
+                : 'РўР°Р±Р»РёС†Р° РґР°РІР»РµРЅРёСЏ РѕС‡РёС‰РµРЅР°',
+            'success'
+        );
+        await loadCalibrationData();
+    } catch (error) {
+        setMessage('pressureResult', `РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РґР°РІР»РµРЅРёСЏ: ${error.message}`, 'error');
+    }
+}
+
+export async function clearPressureCalibration() {
+    try {
+        const response = await fetch(`${API_BASE}/pressure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                voltagePoints: [],
+                pressurePoints: []
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+
+        setMessage('pressureResult', 'РўР°Р±Р»РёС†Р° РґР°РІР»РµРЅРёСЏ РѕС‡РёС‰РµРЅР°', 'success');
+        await loadCalibrationData();
+    } catch (error) {
+        setMessage('pressureResult', `РћС€РёР±РєР° РѕС‡РёСЃС‚РєРё РґР°РІР»РµРЅРёСЏ: ${error.message}`, 'error');
+    }
+}
+
+export function fillPressurePointFromCurrentV2(index) {
+    const voltageValue = Number(byId('pressure-current-voltage')?.dataset?.value);
+    if (!Number.isFinite(voltageValue)) {
+        setMessage('pressureResult', 'No live pressure signal to copy', 'error');
+        return;
+    }
+    setValue(`pressure-voltage-${index}`, voltageValue.toFixed(4));
+}
+
+export async function savePressureCalibrationV2() {
+    let payload;
+    try {
+        payload = collectPressureCalibrationPayloadV2();
+    } catch (error) {
+        setMessage('pressureResult', error.message, 'error');
+        return;
+    }
+
+    if (payload.voltagePoints.length === 1) {
+        setMessage('pressureResult', 'At least 2 points are required for an active table', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/pressure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+
+        setMessage(
+            'pressureResult',
+            payload.voltagePoints.length >= 2
+                ? `Pressure table saved: ${Number(data.pointCount || payload.voltagePoints.length)} points`
+                : 'Pressure table cleared',
+            'success'
+        );
+        await loadCalibrationData();
+    } catch (error) {
+        setMessage('pressureResult', `Pressure save error: ${error.message}`, 'error');
+    }
+}
+
+export async function clearPressureCalibrationV2() {
+    try {
+        const response = await fetch(`${API_BASE}/pressure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                voltagePoints: [],
+                pressurePoints: []
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+
+        setMessage('pressureResult', 'Pressure table cleared', 'success');
+        await loadCalibrationData();
+    } catch (error) {
+        setMessage('pressureResult', `Pressure clear error: ${error.message}`, 'error');
     }
 }
 
@@ -470,6 +827,7 @@ export async function loadCalibrationData() {
 
         const data = await response.json();
         const pump = data?.pump || {};
+        const pressureSensor = data?.pressureSensor || {};
         const hydrometer = data?.hydrometer || {};
 
         const pumpCurrent = byId('pumpCurrent');
@@ -541,9 +899,11 @@ export async function loadCalibrationData() {
             }
         }
 
+        populatePressureCalibrationV2(pressureSensor);
         populateHydrometerCalibration(hydrometer);
     } catch (error) {
         console.error('loadCalibrationData error:', error);
+        setMessage('pressureResult', 'Pressure calibration load error', 'error');
         setMessage('tempResult', 'Ошибка загрузки данных калибровки', 'error');
         setMessage('hydrometerResult', 'Ошибка загрузки данных ареометра', 'error');
     }

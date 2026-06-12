@@ -7,6 +7,15 @@
 
 ---
 
+## [2.2.75] - 2026-06-12
+
+### Added
+- В calibration API и Web UI добавлена калибровка датчика давления куба на `ADS1115 A1`: таблица `voltage -> mmHg`, live-показания `ADC/Voltage`, сохранение в NVS и использование этой таблицы в реальном расчёте `pressure.cube`. (codex)
+
+### Changed
+- Calibration snapshot теперь переносит не только насос, offsets термодатчиков и ареометр, но и pressure-sensor table для куба. (codex)
+- Версия прошивки поднята до `2.2.75`, version-stamps в `README.md`, `TODO2.0.md` и `docs/API.md` синхронизированы. (codex)
+
 ## [2.2.74] - 2026-06-12
 
 ### Changed
