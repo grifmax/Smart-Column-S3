@@ -49,6 +49,80 @@ void forceSafeOutputs() {
     Valves::closeAll();
 }
 
+RequiredSensorsMask buildRequiredSensorsMask(Mode mode) {
+    RequiredSensorsMask required;
+    switch (mode) {
+        case Mode::RECTIFICATION:
+        case Mode::MANUAL_RECT:
+            required.cubeTemp = true;
+            required.columnBottomTemp = true;
+            required.tsaTemp = true;
+            required.waterOutTemp = true;
+            required.pressure = true;
+            break;
+        case Mode::DISTILLATION:
+            required.cubeTemp = true;
+            required.tsaTemp = true;
+            required.waterOutTemp = true;
+            required.pressure = true;
+            break;
+        case Mode::NBK:
+            required.cubeTemp = true;
+            required.columnBottomTemp = true;
+            required.tsaTemp = true;
+            required.waterOutTemp = true;
+            required.pressure = true;
+            break;
+        case Mode::MASHING:
+        case Mode::HOLD:
+        case Mode::FERMENTATION:
+            required.cubeTemp = true;
+            break;
+        case Mode::IDLE:
+        default:
+            break;
+    }
+    return required;
+}
+
+bool areRequiredSensorsAvailable(const SystemState& state,
+                                 const RequiredSensorsMask& required) {
+    if (required.cubeTemp && !state.temps.valid[TEMP_CUBE]) return false;
+    if (required.columnBottomTemp && !state.temps.valid[TEMP_COLUMN_BOTTOM]) return false;
+    if (required.tsaTemp && !state.temps.valid[TEMP_TSA]) return false;
+    if (required.waterOutTemp && !state.temps.valid[TEMP_WATER_OUT]) return false;
+    if (required.pressure && !state.pressure.ok) return false;
+    return true;
+}
+
+void appendMissingRequiredSensors(const SystemState& state,
+                                  const RequiredSensorsMask& required,
+                                  char* buffer,
+                                  size_t bufferSize) {
+    if (!buffer || bufferSize == 0) {
+        return;
+    }
+
+    buffer[0] = '\0';
+    bool needComma = false;
+    const auto appendToken = [&](const char* token) {
+        if (!token || token[0] == '\0') {
+            return;
+        }
+        if (needComma) {
+            strlcat(buffer, ", ", bufferSize);
+        }
+        strlcat(buffer, token, bufferSize);
+        needComma = true;
+    };
+
+    if (required.cubeTemp && !state.temps.valid[TEMP_CUBE]) appendToken("CUBE");
+    if (required.columnBottomTemp && !state.temps.valid[TEMP_COLUMN_BOTTOM]) appendToken("BASE");
+    if (required.tsaTemp && !state.temps.valid[TEMP_TSA]) appendToken("TSA");
+    if (required.waterOutTemp && !state.temps.valid[TEMP_WATER_OUT]) appendToken("WATER");
+    if (required.pressure && !state.pressure.ok) appendToken("PRESS");
+}
+
 void clearCurrentAlarm(SystemState& state) {
     state.currentAlarm = CurrentAlarm{};
 }
@@ -122,6 +196,10 @@ bool canResetAlarm(const SystemState& state, const Settings& settings, uint32_t 
 
 } // namespace
 
+RequiredSensorsMask getRequiredSensorsForMode(Mode mode) {
+    return buildRequiredSensorsMask(mode);
+}
+
 const char* getAlarmTypeToken(AlarmType type) {
     switch (type) {
         case AlarmType::VAPOR_BREAKTHROUGH: return "vapor_breakthrough";
@@ -186,6 +264,7 @@ void check(SystemState& state, const Settings& settings) {
     const float pressureMaxMmHg = clampSafety(settings.safety.pressureMaxMmHg, 5.0f, 200.0f);
     const float waterOutRiseRateCMin = clampSafety(settings.safety.waterOutRiseRateCMin, 0.5f, 60.0f);
     const float pressureRiseRateMmHgMin = clampSafety(settings.safety.pressureRiseRateMmHgMin, 1.0f, 200.0f);
+    const RequiredSensorsMask required = buildRequiredSensorsMask(state.mode);
     state.pressure.critThreshold = pressureMaxMmHg;
 
     static bool sensorAlarmLogged = false;
@@ -215,7 +294,7 @@ void check(SystemState& state, const Settings& settings) {
     }
 
     // Если ошибки нет - сбрасываем флаг логирования
-    if (state.temps.valid[TEMP_CUBE] && state.temps.valid[TEMP_COLUMN_BOTTOM]) {
+    if (areRequiredSensorsAvailable(state, buildRequiredSensorsMask(state.mode))) {
         sensorAlarmLogged = false;
     }
 
@@ -272,50 +351,58 @@ void check(SystemState& state, const Settings& settings) {
     prevRiseTsMs = now;
     riseBaselineReady = true;
 
-    if (state.temps.valid[TEMP_TSA] && state.temps.tsa > tsaMaxC) {
+    if (required.tsaTemp && state.temps.valid[TEMP_TSA] && state.temps.tsa > tsaMaxC) {
         emergencyStop = true;
         alarmType = AlarmType::VAPOR_BREAKTHROUGH;
         alarmLevel = AlarmLevel::CRITICAL;
         snprintf(alarmMessage, sizeof(alarmMessage), "Vapor breakthrough detected at TSA: %.1fC", state.temps.tsa);
     }
 
-    if (!emergencyStop && state.temps.valid[TEMP_WATER_OUT] && state.temps.waterOut > waterOutMaxC) {
+    if (!emergencyStop && required.waterOutTemp &&
+        state.temps.valid[TEMP_WATER_OUT] && state.temps.waterOut > waterOutMaxC) {
         emergencyStop = true;
         alarmType = AlarmType::WATER_OVERHEAT;
         alarmLevel = AlarmLevel::CRITICAL;
         snprintf(alarmMessage, sizeof(alarmMessage), "Cooling water overheat: %.1fC", state.temps.waterOut);
     }
 
-    if (!emergencyStop && state.pressure.ok && state.pressure.cube > pressureMaxMmHg) {
+    if (!emergencyStop && required.pressure &&
+        state.pressure.ok && state.pressure.cube > pressureMaxMmHg) {
         emergencyStop = true;
         alarmType = AlarmType::COLUMN_FLOOD;
         alarmLevel = AlarmLevel::CRITICAL;
         snprintf(alarmMessage, sizeof(alarmMessage), "Pressure exceeded safe limit: %.1f mmHg", state.pressure.cube);
     }
 
-    if (!emergencyStop && !settings.demoMode && waterOutRateValid && state.temps.waterOut > 30.0f && waterOutRiseRate > waterOutRiseRateCMin) {
+    if (!emergencyStop && !settings.demoMode && required.waterOutTemp &&
+        waterOutRateValid && state.temps.waterOut > 30.0f &&
+        waterOutRiseRate > waterOutRiseRateCMin) {
         emergencyStop = true;
         alarmType = AlarmType::WATER_RISE_RATE;
         alarmLevel = AlarmLevel::CRITICAL;
         snprintf(alarmMessage, sizeof(alarmMessage), "Water temp rises too fast: %.1f C/min", waterOutRiseRate);
     }
 
-    if (!emergencyStop && !settings.demoMode && pressureRateValid && state.pressure.cube > 5.0f && pressureRiseRate > pressureRiseRateMmHgMin) {
+    if (!emergencyStop && !settings.demoMode && required.pressure &&
+        pressureRateValid && state.pressure.cube > 5.0f &&
+        pressureRiseRate > pressureRiseRateMmHgMin) {
         emergencyStop = true;
         alarmType = AlarmType::PRESSURE_RISE_RATE;
         alarmLevel = AlarmLevel::CRITICAL;
         snprintf(alarmMessage, sizeof(alarmMessage), "Pressure rises too fast: %.1f mmHg/min", pressureRiseRate);
     }
 
-    // 6. Проверка датчиков температуры (Critical vs Safety)
+    // 6. Проверка обязательных датчиков по режиму
     if (!settings.demoMode) {
-        if (!state.temps.valid[TEMP_CUBE] || !state.temps.valid[TEMP_COLUMN_BOTTOM]) {
+        char missingSensors[64] = "";
+        appendMissingRequiredSensors(state, required, missingSensors, sizeof(missingSensors));
+
+        if (!areRequiredSensorsAvailable(state, required)) {
             alarmType = AlarmType::SENSOR_FAILURE;
             alarmLevel = AlarmLevel::CRITICAL;
-            snprintf(alarmMessage, sizeof(alarmMessage), "CRITICAL sensor failure: %s %s",
-                     !state.temps.valid[TEMP_CUBE] ? "CUBE" : "",
-                     !state.temps.valid[TEMP_COLUMN_BOTTOM] ? "BASE" : "");
-            
+            snprintf(alarmMessage, sizeof(alarmMessage), "CRITICAL sensor failure: %s",
+                     missingSensors[0] != '\0' ? missingSensors : "REQUIRED");
+             
             if (state.mode == Mode::IDLE) {
                 if (!sensorAlarmLogged) {
                     Logger::logf(2, "Safety: %s (Suppressed in IDLE)", alarmMessage);
@@ -324,20 +411,6 @@ void check(SystemState& state, const Settings& settings) {
                 // В IDLE не переходим в состояние emergencyStop, чтобы не блокировать UI
             } else {
                 emergencyStop = true;
-            }
-        }
-        else if (state.mode != Mode::IDLE) {
-            if (!state.temps.valid[TEMP_TSA] || !state.temps.valid[TEMP_WATER_OUT] || !state.pressure.ok) {
-                alarmType = AlarmType::SENSOR_FAILURE;
-                alarmLevel = AlarmLevel::ERROR;
-                snprintf(alarmMessage, sizeof(alarmMessage), "Safety sensor failure: %s %s %s",
-                         !state.temps.valid[TEMP_TSA] ? "TSA" : "",
-                         !state.temps.valid[TEMP_WATER_OUT] ? "WATER" : "",
-                         !state.pressure.ok ? "PRESS" : "");
-                
-                if (!isLatched(state)) {
-                    latchAlarm(state, alarmType, alarmLevel, alarmMessage, now);
-                }
             }
         }
     }

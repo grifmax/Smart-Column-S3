@@ -972,6 +972,35 @@ static bool isCoolingRelevantForMode(Mode mode) {
          mode == Mode::MANUAL_RECT || mode == Mode::NBK;
 }
 
+static bool requiresAdaptiveColumnTopForMode(Mode mode) {
+  return mode == Mode::RECTIFICATION || mode == Mode::MANUAL_RECT;
+}
+
+static String buildMissingRequiredSensorsList(Mode mode, const SystemState &state) {
+  const Safety::RequiredSensorsMask required = Safety::getRequiredSensorsForMode(mode);
+  String missing;
+
+  auto appendMissing = [&](bool condition, const char *label) {
+    if (!condition) {
+      return;
+    }
+    if (!missing.isEmpty()) {
+      missing += ", ";
+    }
+    missing += label;
+  };
+
+  appendMissing(required.cubeTemp && !state.temps.valid[TEMP_CUBE], "куб");
+  appendMissing(required.columnBottomTemp && !state.temps.valid[TEMP_COLUMN_BOTTOM],
+                "низ колонны");
+  appendMissing(required.tsaTemp && !state.temps.valid[TEMP_TSA], "TSA");
+  appendMissing(required.waterOutTemp && !state.temps.valid[TEMP_WATER_OUT],
+                "выход воды");
+  appendMissing(required.pressure && !state.pressure.ok, "давление куба");
+
+  return missing;
+}
+
 static bool expectsAutoStirrerForMode(Mode mode, const Settings &settings) {
   if (!settings.stirrer.enabled) {
     return false;
@@ -1260,9 +1289,13 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
   const auto &metrics = ControlV2::getLatestMetricsSnapshot();
   const bool lifecycleIdle = status.lifecycle == ControlV2::ModeLifecycleV2::IDLE;
   const bool v2SnapshotReady = metrics.timestampMs > 0;
+  const Safety::RequiredSensorsMask requiredSensors =
+      Safety::getRequiredSensorsForMode(mode);
   const bool tempSensorsPresent =
       g_state.health.tempSensorsTotal > 0 && g_state.health.tempSensorsOk;
   const bool sensorsFresh = tempSensorsPresent && status.indicators.sensorFreshnessOk;
+  const String missingRequiredSensors = buildMissingRequiredSensorsList(mode, g_state);
+  const bool requiredSensorsReady = missingRequiredSensors.isEmpty();
   const bool allowDemoSensorFailure =
       g_settings.demoMode &&
       g_state.currentAlarm.type == AlarmType::SENSOR_FAILURE;
@@ -1280,6 +1313,9 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
   const bool expectsAutoStirrer = expectsAutoStirrerForMode(mode, g_settings);
   const bool waterTelemetryReady =
       g_state.temps.valid[TEMP_WATER_IN] && g_state.temps.valid[TEMP_WATER_OUT];
+  const bool adaptiveColumnTopRecommended = requiresAdaptiveColumnTopForMode(mode);
+  const bool adaptiveColumnTopReady =
+      !adaptiveColumnTopRecommended || g_state.temps.valid[TEMP_COLUMN_TOP];
   const float cubeVolumeLimitL = g_settings.equipment.cubeVolumeL;
   const float minSubmergeL = g_settings.equipment.minHeaterSubmergeL;
   const float absCubePressure =
@@ -1320,8 +1356,13 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
   setProcessPreflightCheck(checks, "v2", v2SnapshotReady ? "OK" : "Нет пакета",
                            v2SnapshotReady ? "good" : "danger");
   setProcessPreflightCheck(checks, "sensors",
-                           sensorsFresh ? "OK" : "Проверьте",
-                           sensorsFresh ? "good" : "danger");
+                           (requiredSensorsReady && sensorsFresh && adaptiveColumnTopReady)
+                               ? "OK"
+                               : "Проверьте",
+                           (!requiredSensorsReady || !sensorsFresh)
+                               ? "danger"
+                               : ((requiredSensorsReady && adaptiveColumnTopReady) ? "good"
+                                                                                   : "warn"));
   setProcessPreflightCheck(checks, "safety",
                            safetyLatched ? "Latch" : "Норма",
                            safetyLatched ? "danger" : "good");
@@ -1379,18 +1420,24 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
             false);
   }
 
-  if (!tempSensorsPresent) {
-    addItem("sensors", "danger", "Температурные датчики",
-            "Температурные датчики не готовы. Автоматический запуск без них "
-            "небезопасен.",
+  if (!requiredSensorsReady) {
+    addItem("sensors", "danger", "Обязательные датчики",
+            String("Для выбранного режима не хватает обязательных датчиков: ") +
+                missingRequiredSensors + ".",
             true);
   } else if (!sensorsFresh) {
     addItem("sensors", "danger", "Свежесть телеметрии",
             "Телеметрия устарела. Перед стартом дождитесь свежих данных от датчиков.",
             true);
+  } else if (!adaptiveColumnTopReady) {
+    addItem("sensors", "warn", "Телеметрия процесса",
+            "Верх колонны сейчас не читается. Жёсткого блока старта нет, но "
+            "adaptive-логика ректификации будет работать консервативно.",
+            false);
   } else {
-    addItem("sensors", "good", "Температурные датчики",
-            "Датчики на связи и телеметрия выглядит свежей.", false);
+    addItem("sensors", "good", "Обязательные датчики",
+            "Для выбранного режима обязательные датчики на связи, телеметрия выглядит свежей.",
+            false);
   }
 
   if (safetyLatched) {
@@ -1493,7 +1540,11 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
     }
   }
 
-  if (absCubePressure >= g_settings.safety.pressureMaxMmHg) {
+  if (!requiredSensors.pressure) {
+    addItem("pressure", "muted", "Давление",
+            "Для выбранного режима датчик давления не является обязательным условием старта.",
+            false);
+  } else if (absCubePressure >= g_settings.safety.pressureMaxMmHg) {
     addItem("pressure", "danger", "Давление",
             "Давление в кубе уже выше безопасного порога. Сначала устраните "
             "причину, затем возвращайтесь к старту.",
