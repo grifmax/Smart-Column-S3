@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.75`  
+**Версия прошивки:** `2.2.76`  
 **Актуальность документа:** 2026-06-12
 
 ---
@@ -333,6 +333,7 @@
 It also includes a `pressureSensor` block with:
 
 - `pointCount`
+- `zeroOffsetMmHg`
 - `voltagePoints[]`
 - `pressurePoints[]`
 - `currentVoltage`
@@ -340,6 +341,12 @@ It also includes a `pressureSensor` block with:
 - `currentPressure`
 - `valid`
 - `calibrated`
+
+`POST /api/calibration/pressure` accepts:
+
+- `voltagePoints[]` + `pressurePoints[]` together to replace the pressure table
+- `zeroOffsetMmHg` alone to update only the zero trim
+- or both in the same request
 
 ### Safety
 

@@ -461,7 +461,7 @@ void readPressure(Pressure& pressure) {
         }
 
         // Преобразовать в мм рт.ст. (1 кПа = 7.50062 мм рт.ст.)
-        pressure.cube = cubeMmHg;
+        pressure.cube = cubeMmHg - g_settings.pressureCal.zeroOffsetMmHg;
 
         // Ограничить диапазон
         if (pressure.cube < 0) pressure.cube = 0;

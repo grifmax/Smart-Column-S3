@@ -401,6 +401,7 @@ struct HydrometerCalibration {
 
 struct PressureSensorCalibration {
   uint8_t pointCount = 0;
+  float zeroOffsetMmHg = 0.0f;
   float voltagePoints[5] = {0.0f};
   float pressurePoints[5] = {0.0f};
 };

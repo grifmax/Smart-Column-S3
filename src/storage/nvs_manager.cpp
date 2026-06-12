@@ -150,6 +150,7 @@ void saveHydrometerCalibrationToNvs(const HydrometerCalibration& cal) {
 
 void clearPressureCalibration(PressureSensorCalibration& cal) {
     cal.pointCount = 0;
+    cal.zeroOffsetMmHg = 0.0f;
     memset(cal.voltagePoints, 0, sizeof(cal.voltagePoints));
     memset(cal.pressurePoints, 0, sizeof(cal.pressurePoints));
 }
@@ -169,6 +170,8 @@ void loadPressureCalibrationFromNvs(PressureSensorCalibration& cal) {
         return;
     }
 
+    cal.zeroOffsetMmHg = doc["zeroOffsetMmHg"] | 0.0f;
+
     JsonArray voltageArray = doc["voltagePoints"].is<JsonArray>() ? doc["voltagePoints"].as<JsonArray>() : JsonArray();
     JsonArray pressureArray = doc["pressurePoints"].is<JsonArray>() ? doc["pressurePoints"].as<JsonArray>() : JsonArray();
     if (voltageArray.isNull() || pressureArray.isNull()) {
@@ -186,6 +189,7 @@ void loadPressureCalibrationFromNvs(PressureSensorCalibration& cal) {
 void savePressureCalibrationToNvs(const PressureSensorCalibration& cal) {
     JsonDocument doc;
     doc["pointCount"] = cal.pointCount;
+    doc["zeroOffsetMmHg"] = cal.zeroOffsetMmHg;
 
     JsonArray voltageArray = doc["voltagePoints"].to<JsonArray>();
     JsonArray pressureArray = doc["pressurePoints"].to<JsonArray>();

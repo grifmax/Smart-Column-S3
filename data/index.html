@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.75">
+    <link rel="stylesheet" href="style.css?v=2.2.76">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.75" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.76" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1817,7 +1817,18 @@
                                     <div class="equipment-test-metric"><span>Voltage</span><strong id="pressure-current-voltage">--</strong></div>
                                     <div class="equipment-test-metric"><span>ADC</span><strong id="pressure-current-adc">--</strong></div>
                                     <div class="equipment-test-metric"><span>Cube pressure</span><strong id="pressure-current-value">--</strong></div>
+                                    <div class="equipment-test-metric"><span>Zero trim</span><strong id="pressure-zero-offset">0.0 mmHg</strong></div>
                                     <div class="equipment-test-metric"><span>Status</span><strong id="pressure-current-status" class="equipment-status-badge muted">—</strong></div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="pressure-reference-mmhg">Trusted manometer, mmHg</label>
+                                    <input type="number" id="pressure-reference-mmhg" step="0.1" min="0" max="75" placeholder="Enter live gauge reading" data-stepper-mode="pair" data-stepper-step="0.5">
+                                    <small class="equipment-hint">Enter the real manometer reading, then press <strong>Add current point</strong>. The next free row will be filled automatically.</small>
+                                </div>
+                                <div class="controls equipment-actions" style="margin-bottom: 12px;">
+                                    <button class="btn btn-secondary" type="button" onclick="addPressurePointFromCurrent()">+ Add current point</button>
+                                    <button class="btn btn-secondary" type="button" onclick="applyPressureZeroTrim()">Set zero from current</button>
+                                    <button class="btn" type="button" onclick="clearPressureZeroTrim()">Reset zero trim</button>
                                 </div>
                                 <div class="equipment-hydrometer-points" id="pressure-points">
                                     <div class="equipment-hydrometer-point">
@@ -3117,7 +3128,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.75"></script>
+    <script src="app.js?v=2.2.76"></script>
 </body>
 
 </html>

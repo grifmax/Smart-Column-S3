@@ -117,6 +117,11 @@ function populatePressureCalibration(pressureSensor = {}) {
     if (rowsHost) {
         initEquipmentNumberSteppers(rowsHost);
     }
+
+    const pressureCard = byId('pressure-reference-mmhg')?.closest('.equipment-card');
+    if (pressureCard) {
+        initEquipmentNumberSteppers(pressureCard);
+    }
 }
 
 function collectPressureCalibrationPayload() {
@@ -159,6 +164,7 @@ function populatePressureCalibrationV2(pressureSensor = {}) {
     const currentAdc = Number(pressureSensor.currentAdc);
     const currentPressure = Number(pressureSensor.currentPressure);
     const pointCount = Number(pressureSensor.pointCount || 0);
+    const zeroOffsetMmHg = Number(pressureSensor.zeroOffsetMmHg || 0);
     const voltagePoints = Array.isArray(pressureSensor.voltagePoints) ? pressureSensor.voltagePoints : [];
     const pressurePoints = Array.isArray(pressureSensor.pressurePoints) ? pressureSensor.pressurePoints : [];
 
@@ -182,13 +188,24 @@ function populatePressureCalibrationV2(pressureSensor = {}) {
     const currentPressureEl = byId('pressure-current-value');
     if (currentPressureEl) {
         currentPressureEl.textContent = formatPressureNumberV2(currentPressure, 1, ' mmHg');
+        currentPressureEl.dataset.value = Number.isFinite(currentPressure) ? currentPressure.toFixed(3) : '';
     }
 
     const summaryEl = byId('pressureCurrent');
     if (summaryEl) {
-        summaryEl.textContent = pointCount >= 2
-            ? `Active table: ${pointCount} points. Cube pressure is now read from the saved calibration table.`
-            : 'No calibration table yet. Firmware uses the legacy fallback formula.';
+        const tableText = pointCount >= 2
+            ? `Active table: ${pointCount} points`
+            : 'No calibration table yet';
+        const sourceText = pointCount >= 2
+            ? 'cube pressure is read from the saved interpolation table'
+            : 'firmware uses the legacy fallback formula';
+        summaryEl.textContent = `${tableText}. ${sourceText}. Zero trim: ${formatPressureNumberV2(zeroOffsetMmHg, 1, ' mmHg')}.`;
+    }
+
+    const zeroOffsetEl = byId('pressure-zero-offset');
+    if (zeroOffsetEl) {
+        zeroOffsetEl.textContent = formatPressureNumberV2(zeroOffsetMmHg, 1, ' mmHg');
+        zeroOffsetEl.dataset.value = Number.isFinite(zeroOffsetMmHg) ? zeroOffsetMmHg.toFixed(3) : '0.000';
     }
 
     for (let i = 0; i < PRESSURE_POINT_SLOTS; i += 1) {
@@ -201,6 +218,11 @@ function populatePressureCalibrationV2(pressureSensor = {}) {
     const rowsHost = byId('pressure-points');
     if (rowsHost) {
         initEquipmentNumberSteppers(rowsHost);
+    }
+
+    const pressureCard = byId('pressure-reference-mmhg')?.closest('.equipment-card');
+    if (pressureCard) {
+        initEquipmentNumberSteppers(pressureCard);
     }
 }
 
@@ -233,6 +255,26 @@ function collectPressureCalibrationPayloadV2() {
     }
 
     return { voltagePoints, pressurePoints };
+}
+
+function findNextPressurePointSlot() {
+    for (let i = 0; i < PRESSURE_POINT_SLOTS; i += 1) {
+        const voltageRaw = String(byId(`pressure-voltage-${i}`)?.value || '').trim();
+        const pressureRaw = String(byId(`pressure-mmhg-${i}`)?.value || '').trim();
+        if (!voltageRaw && !pressureRaw) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function getPressureReferenceValueV2() {
+    const raw = String(byId('pressure-reference-mmhg')?.value || '').trim().replace(',', '.');
+    const value = Number(raw);
+    if (!raw || !Number.isFinite(value) || value < 0 || value > 75) {
+        throw new Error('Reference manometer value must be in range 0..75 mmHg');
+    }
+    return value;
 }
 
 function populateHydrometerCalibration(hydrometer = {}) {
@@ -358,6 +400,7 @@ function normalizeCalibrationSnapshot(payload) {
     const pressureVoltages = Array.isArray(pressureSensor.voltagePoints) ? pressureSensor.voltagePoints : [];
     const pressureSensorPoints = Array.isArray(pressureSensor.pressurePoints) ? pressureSensor.pressurePoints : [];
     const normalizedPressureSensor = {
+        zeroOffsetMmHg: Number(pressureSensor.zeroOffsetMmHg),
         voltagePoints: pressureVoltages.map((item) => Number(item)).filter((item) => Number.isFinite(item)),
         pressurePoints: pressureSensorPoints.map((item) => Number(item)).filter((item) => Number.isFinite(item))
     };
@@ -367,6 +410,10 @@ function normalizeCalibrationSnapshot(payload) {
     }
     if (normalizedPressureSensor.voltagePoints.length === 1) {
         throw new Error('Snapshot РґР°РІР»РµРЅРёСЏ СЃРѕРґРµСЂР¶РёС‚ С‚РѕР»СЊРєРѕ 1 С‚РѕС‡РєСѓ. РќСѓР¶РЅС‹ 0 РёР»Рё РјРёРЅРёРјСѓРј 2');
+    }
+
+    if (!Number.isFinite(normalizedPressureSensor.zeroOffsetMmHg)) {
+        normalizedPressureSensor.zeroOffsetMmHg = 0;
     }
 
     const hydrometerPoints = Array.isArray(hydrometer.abvPoints) ? hydrometer.abvPoints : [];
@@ -637,6 +684,59 @@ export function fillPressurePointFromCurrentV2(index) {
     setValue(`pressure-voltage-${index}`, voltageValue.toFixed(4));
 }
 
+export function addPressurePointFromCurrentV2() {
+    const voltageValue = Number(byId('pressure-current-voltage')?.dataset?.value);
+    if (!Number.isFinite(voltageValue)) {
+        setMessage('pressureResult', 'No live pressure signal to capture', 'error');
+        return;
+    }
+
+    let referencePressure;
+    try {
+        referencePressure = getPressureReferenceValueV2();
+    } catch (error) {
+        setMessage('pressureResult', error.message, 'error');
+        return;
+    }
+
+    const slot = findNextPressurePointSlot();
+    if (slot < 0) {
+        setMessage('pressureResult', 'All 5 points are already filled. Clear or overwrite a row first.', 'error');
+        return;
+    }
+
+    setValue(`pressure-voltage-${slot}`, voltageValue.toFixed(4));
+    setValue(`pressure-mmhg-${slot}`, referencePressure.toFixed(1));
+    setMessage('pressureResult', `Captured point ${slot + 1}: ${voltageValue.toFixed(4)} V -> ${referencePressure.toFixed(1)} mmHg`, 'success');
+}
+
+export async function applyPressureZeroTrimV2() {
+    const currentPressure = Number(byId('pressure-current-value')?.dataset?.value);
+    if (!Number.isFinite(currentPressure)) {
+        setMessage('pressureResult', 'No live pressure reading for zero trim', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/pressure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                zeroOffsetMmHg: currentPressure
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+
+        setMessage('pressureResult', `Zero trim applied: ${Number(data.zeroOffsetMmHg || currentPressure).toFixed(1)} mmHg`, 'success');
+        await loadCalibrationData();
+    } catch (error) {
+        setMessage('pressureResult', `Zero trim save error: ${error.message}`, 'error');
+    }
+}
+
 export async function savePressureCalibrationV2() {
     let payload;
     try {
@@ -694,6 +794,27 @@ export async function clearPressureCalibrationV2() {
         await loadCalibrationData();
     } catch (error) {
         setMessage('pressureResult', `Pressure clear error: ${error.message}`, 'error');
+    }
+}
+
+export async function clearPressureZeroTrimV2() {
+    try {
+        const response = await fetch(`${API_BASE}/pressure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                zeroOffsetMmHg: 0
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+
+        setMessage('pressureResult', 'Zero trim cleared', 'success');
+        await loadCalibrationData();
+    } catch (error) {
+        setMessage('pressureResult', `Zero trim clear error: ${error.message}`, 'error');
     }
 }
 

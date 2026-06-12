@@ -4401,6 +4401,7 @@ void init() {
       pressureVoltages.add(g_settings.pressureCal.voltagePoints[i]);
       pressureMmHgPoints.add(g_settings.pressureCal.pressurePoints[i]);
     }
+    pressureSensor["zeroOffsetMmHg"] = g_settings.pressureCal.zeroOffsetMmHg;
     pressureSensor["currentVoltage"] = g_state.pressure.sensorVoltage;
     pressureSensor["currentAdc"] = g_state.pressure.sensorAdc;
     pressureSensor["currentPressure"] = g_state.pressure.cube;
@@ -4614,67 +4615,84 @@ void init() {
           return;
         }
 
-        if (!hasVoltagePoints || !hasPressurePoints) {
+        const bool hasZeroOffset = !doc["zeroOffsetMmHg"].isNull();
+
+        if (!hasVoltagePoints && !hasZeroOffset) {
           request->send(400, "application/json",
                         "{\"error\":\"Missing parameters\"}");
           return;
         }
 
-        JsonArray voltageArray = doc["voltagePoints"].as<JsonArray>();
-        JsonArray pressureArray = doc["pressurePoints"].as<JsonArray>();
-        if (voltageArray.size() != pressureArray.size() || voltageArray.size() > 5) {
-          request->send(400, "application/json",
-                        "{\"error\":\"Invalid point count (max 5, must match)\"}");
-          return;
-        }
-        if (voltageArray.size() == 1) {
-          request->send(400, "application/json",
-                        "{\"error\":\"At least 2 points are required for active calibration\"}");
-          return;
-        }
+        if (hasVoltagePoints && hasPressurePoints) {
+          JsonArray voltageArray = doc["voltagePoints"].as<JsonArray>();
+          JsonArray pressureArray = doc["pressurePoints"].as<JsonArray>();
+          if (voltageArray.size() != pressureArray.size() ||
+              voltageArray.size() > 5) {
+            request->send(
+                400, "application/json",
+                "{\"error\":\"Invalid point count (max 5, must match)\"}");
+            return;
+          }
+          if (voltageArray.size() == 1) {
+            request->send(
+                400, "application/json",
+                "{\"error\":\"At least 2 points are required for active calibration\"}");
+            return;
+          }
 
-        g_settings.pressureCal.pointCount = 0;
-        memset(g_settings.pressureCal.voltagePoints, 0, sizeof(g_settings.pressureCal.voltagePoints));
-        memset(g_settings.pressureCal.pressurePoints, 0, sizeof(g_settings.pressureCal.pressurePoints));
+          g_settings.pressureCal.pointCount = 0;
+          memset(g_settings.pressureCal.voltagePoints, 0,
+                 sizeof(g_settings.pressureCal.voltagePoints));
+          memset(g_settings.pressureCal.pressurePoints, 0,
+                 sizeof(g_settings.pressureCal.pressurePoints));
 
-        struct PressurePoint {
-          float voltage;
-          float pressure;
-        };
-        PressurePoint points[5];
-        for (size_t i = 0; i < voltageArray.size(); ++i) {
-          const float voltage = clampFloatRange(voltageArray[i].as<float>(), 0.0f, 4.096f);
-          const float pressure = clampFloatRange(pressureArray[i].as<float>(), 0.0f, 75.0f);
-          points[i] = {voltage, pressure};
-        }
+          struct PressurePoint {
+            float voltage;
+            float pressure;
+          };
+          PressurePoint points[5];
+          for (size_t i = 0; i < voltageArray.size(); ++i) {
+            const float voltage =
+                clampFloatRange(voltageArray[i].as<float>(), 0.0f, 4.096f);
+            const float pressure =
+                clampFloatRange(pressureArray[i].as<float>(), 0.0f, 75.0f);
+            points[i] = {voltage, pressure};
+          }
 
-        for (size_t i = 0; i < voltageArray.size(); ++i) {
-          for (size_t j = i + 1; j < voltageArray.size(); ++j) {
-            if (points[j].voltage < points[i].voltage) {
-              PressurePoint tmp = points[i];
-              points[i] = points[j];
-              points[j] = tmp;
+          for (size_t i = 0; i < voltageArray.size(); ++i) {
+            for (size_t j = i + 1; j < voltageArray.size(); ++j) {
+              if (points[j].voltage < points[i].voltage) {
+                PressurePoint tmp = points[i];
+                points[i] = points[j];
+                points[j] = tmp;
+              }
             }
           }
-        }
 
-        bool hasDuplicateVoltage = false;
-        for (size_t i = 1; i < voltageArray.size(); ++i) {
-          if (fabsf(points[i].voltage - points[i - 1].voltage) < 0.0001f) {
-            hasDuplicateVoltage = true;
-            break;
+          bool hasDuplicateVoltage = false;
+          for (size_t i = 1; i < voltageArray.size(); ++i) {
+            if (fabsf(points[i].voltage - points[i - 1].voltage) < 0.0001f) {
+              hasDuplicateVoltage = true;
+              break;
+            }
+          }
+          if (hasDuplicateVoltage) {
+            request->send(400, "application/json",
+                          "{\"error\":\"Voltage points must be unique\"}");
+            return;
+          }
+
+          g_settings.pressureCal.pointCount =
+              static_cast<uint8_t>(voltageArray.size());
+          for (uint8_t i = 0; i < g_settings.pressureCal.pointCount; ++i) {
+            g_settings.pressureCal.voltagePoints[i] = points[i].voltage;
+            g_settings.pressureCal.pressurePoints[i] = points[i].pressure;
           }
         }
-        if (hasDuplicateVoltage) {
-          request->send(400, "application/json",
-                        "{\"error\":\"Voltage points must be unique\"}");
-          return;
-        }
 
-        g_settings.pressureCal.pointCount = static_cast<uint8_t>(voltageArray.size());
-        for (uint8_t i = 0; i < g_settings.pressureCal.pointCount; ++i) {
-          g_settings.pressureCal.voltagePoints[i] = points[i].voltage;
-          g_settings.pressureCal.pressurePoints[i] = points[i].pressure;
+        if (hasZeroOffset) {
+          g_settings.pressureCal.zeroOffsetMmHg =
+              clampFloatRange(doc["zeroOffsetMmHg"].as<float>(), -75.0f, 75.0f);
         }
 
         NVSManager::saveSettings(g_settings);
@@ -4683,6 +4701,7 @@ void init() {
         resp["status"] = "ok";
         resp["pointCount"] = g_settings.pressureCal.pointCount;
         resp["calibrated"] = g_settings.pressureCal.pointCount >= 2;
+        resp["zeroOffsetMmHg"] = g_settings.pressureCal.zeroOffsetMmHg;
         JsonArray respVoltages = resp["voltagePoints"].to<JsonArray>();
         JsonArray respPressures = resp["pressurePoints"].to<JsonArray>();
         for (uint8_t i = 0; i < g_settings.pressureCal.pointCount; ++i) {
