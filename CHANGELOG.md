@@ -7,6 +7,14 @@
 
 ---
 
+## [2.2.70] - 2026-06-12
+
+### Fixed
+- (codex) Исправлены битые UTF-8 строки в backend preflight для модалки `Финальный контроль старта`: пункты `Активный профиль` и `Вода и телеметрия` снова приходят в web-интерфейс нормальным русским текстом вместо mojibake.
+
+### Changed
+- (codex) Version metadata in `src/config.h`, `README.md`, `TODO2.0.md` and `docs/API.md` is synchronized to `2.2.70`.
+
 ## [2.2.69] - 2026-06-12
 
 ### Added

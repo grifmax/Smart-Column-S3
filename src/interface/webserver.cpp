@@ -1333,15 +1333,15 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
       recipeProfileRelevant
           ? (profileCategoryMatches ? "OK"
                                     : (activeProfileLoaded ? "Mismatch"
-                                                           : "РќРµ СѓРєР°Р·Р°РЅ"))
-          : "РћРїС†.",
+                                                           : "Не указан"))
+          : "Опц.",
       recipeProfileRelevant ? (profileCategoryMatches ? "good" : "warn")
                             : "muted");
   setProcessPreflightCheck(checks, "water",
                            coolingRelevant
                                ? (waterTelemetryReady ? "OK"
-                                                      : "РџСЂРѕРІРµСЂСЊС‚Рµ")
-                               : "РќРµ РЅСѓР¶РЅРѕ",
+                                                      : "Проверьте")
+                               : "Не нужно",
                            coolingRelevant
                                ? (waterTelemetryReady ? "good" : "warn")
                                : "muted");
@@ -1430,20 +1430,20 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
 
   if (recipeProfileRelevant) {
     if (!activeProfileLoaded) {
-      addItem("profile", "warn", "РђРєС‚РёРІРЅС‹Р№ РїСЂРѕС„РёР»СЊ",
-              "Р РµР¶РёРј Р·Р°РїСѓСЃС‚РёС‚СЃСЏ Р±РµР· РїСЂРёРІСЏР·Р°РЅРЅРѕРіРѕ РїСЂРѕС„РёР»СЏ. РЎСЂР°РІРЅРёРІР°С‚СЊ РїСЂРѕРіРѕРЅС‹ "
-              "Рё СѓС‡РёС‚СЊСЃСЏ РЅР° СѓСЃРїРµС€РЅС‹С… СЂРµС†РµРїС‚Р°С… Р±СѓРґРµС‚ СЃР»РѕР¶РЅРµРµ.",
+      addItem("profile", "warn", "Активный профиль",
+              "Режим запустится без привязанного профиля. Сравнивать прогоны "
+              "и учиться на успешных рецептах будет сложнее.",
               false);
     } else if (!profileCategoryMatches) {
       addItem(
-          "profile", "warn", "РђРєС‚РёРІРЅС‹Р№ РїСЂРѕС„РёР»СЊ",
-          String("РЎРµР№С‡Р°СЃ Р°РєС‚РёРІРµРЅ РїСЂРѕС„РёР»СЊ '") +
+          "profile", "warn", "Активный профиль",
+          String("Сейчас активен профиль '") +
               activeProfile.metadata.name +
-              "', РЅРѕ РµРіРѕ РєР°С‚РµРіРѕСЂРёСЏ РЅРµ СЃРѕРІРїР°РґР°РµС‚ СЃ РІС‹Р±СЂР°РЅРЅС‹Рј СЂРµР¶РёРјРѕРј.",
+              "', но его категория не совпадает с выбранным режимом.",
           false);
     } else {
-      addItem("profile", "good", "РђРєС‚РёРІРЅС‹Р№ РїСЂРѕС„РёР»СЊ",
-              String("Р”Р»СЏ Р·Р°РїСѓСЃРєР° РїСЂРёРІСЏР·Р°РЅ РїСЂРѕС„РёР»СЊ '") +
+      addItem("profile", "good", "Активный профиль",
+              String("Для запуска привязан профиль '") +
                   activeProfile.metadata.name + "'.",
               false);
     }
@@ -1459,18 +1459,18 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
     const bool coolingMarginLow = status.indicators.coolingMarginC <= 0.0f;
 
     if (!waterTelemetryReady) {
-      addItem("water", "warn", "Р’РѕРґР° Рё С‚РµР»РµРјРµС‚СЂРёСЏ",
-              "Р”Р»СЏ РѕС…Р»Р°Р¶РґР°РµРјРѕРіРѕ СЂРµР¶РёРјР° РЅРµ РІРёРґРЅР° РїРѕР»РЅР°СЏ С‚РµР»РµРјРµС‚СЂРёСЏ РїРѕ РІРѕРґРµ. "
-              "Р—Р°РїСѓСЃРє РІРѕР·РјРѕР¶РµРЅ, РЅРѕ РѕРїРµСЂР°С‚РѕСЂСЃРєРёР№ РєРѕРЅС‚СЂРѕР»СЊ РЅСѓР¶РЅРѕ СѓСЃРёР»РёС‚СЊ.",
+      addItem("water", "warn", "Вода и телеметрия",
+              "Для охлаждаемого режима не видна полная телеметрия по воде. "
+              "Запуск возможен, но операторский контроль нужно усилить.",
               false);
     } else if (coolingWarmStart) {
-      addItem("water", "warn", "Р’РѕРґР° Рё С‚РµР»РµРјРµС‚СЂРёСЏ",
-              "РљСѓР± СѓР¶Рµ РїСЂРРѕРіСЂРµС‚, Р° РІРѕРґР° РµС‰С‘ РЅРµ РѕС‚РєСЂС‹С‚Р°. Р›СѓС‡С€Рµ РїРѕРґРіРѕС‚РѕРІРёС‚СЊ РѕС…Р»Р°Р¶РґРµРЅРёРµ "
-              "РґРѕ С„РёРЅР°Р»СЊРЅРѕРіРѕ СЃС‚Р°СЂС‚Р°.",
+      addItem("water", "warn", "Вода и телеметрия",
+              "Куб уже прогрет, а вода ещё не открыта. Лучше подготовить охлаждение "
+              "до финального старта.",
               false);
     } else {
-      addItem("water", "good", "Р’РѕРґР° Рё С‚РµР»РµРјРµС‚СЂРёСЏ",
-              "Р”Р°С‚С‡РёРєРё РІРѕРґС‹ РЅР° СЃРІСЏР·Рё, РєРѕРЅС‚СѓСЂ РіРѕС‚РѕРІ Рє Р·Р°РїСѓСЃРєСѓ.",
+      addItem("water", "good", "Вода и телеметрия",
+              "Датчики воды на связи, контур готов к запуску.",
               false);
     }
 
