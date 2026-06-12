@@ -434,8 +434,10 @@ void readPressure(Pressure& pressure) {
         // Ограничить диапазон
         if (pressure.cube < 0) pressure.cube = 0;
         if (pressure.cube > 75) pressure.cube = 75; // 10 кПа = ~75 мм рт.ст.
+        pressure.ok = true;
     } else {
         pressure.cube = 0;
+        pressure.ok = false;
     }
 
     pressure.lastUpdate = millis();
