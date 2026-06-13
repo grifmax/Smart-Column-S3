@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.78">
+    <link rel="stylesheet" href="style.css?v=2.2.79">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.78" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.79" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1837,13 +1837,14 @@
                                 <div class="form-group">
                                     <label for="pressure-reference-mmhg">Trusted manometer, mmHg</label>
                                     <input type="number" id="pressure-reference-mmhg" step="0.1" min="0" max="75" placeholder="Enter live gauge reading" data-stepper-mode="pair" data-stepper-step="0.5">
-                                    <small class="equipment-hint">Enter the real manometer reading, then press <strong>Add current point</strong>. The next free row will be filled automatically.</small>
+                                    <small class="equipment-hint">If this field is filled, <strong>Add current point</strong> copies both the live voltage and the entered manometer value. If it is empty, only the live signal is inserted into the next free row and you can type the real pressure afterwards.</small>
                                 </div>
                                 <div class="controls equipment-actions" style="margin-bottom: 12px;">
                                     <button class="btn btn-secondary" type="button" onclick="addPressurePointFromCurrent()">+ Add current point</button>
                                     <button class="btn btn-secondary" type="button" onclick="applyPressureZeroTrim()">Set zero from current</button>
                                     <button class="btn" type="button" onclick="clearPressureZeroTrim()">Reset zero trim</button>
                                 </div>
+                                <div class="info-text" style="margin-bottom: 12px;">Live values on this card refresh automatically while the page is open.</div>
                                 <div class="equipment-hydrometer-points" id="pressure-points">
                                     <div class="equipment-hydrometer-point">
                                         <div class="form-group">
@@ -3142,7 +3143,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.78"></script>
+    <script src="app.js?v=2.2.79"></script>
 </body>
 
 </html>

@@ -4,6 +4,7 @@ import { initEquipmentNumberSteppers } from './number-stepper.js';
 const API_BASE = '/api/calibration';
 const HYDROMETER_POINT_SLOTS = 5;
 const PRESSURE_POINT_SLOTS = 5;
+const PRESSURE_LIVE_POLL_MS = 1500;
 
 let calibrationState = {
     running: false,
@@ -15,6 +16,7 @@ let calibrationState = {
 };
 
 let calibrationImportSnapshot = null;
+let pressureCalibrationLiveInterval = null;
 
 function byId(id) {
     return document.getElementById(id);
@@ -159,7 +161,8 @@ function formatPressureNumberV2(value, digits = 3, suffix = '') {
     return Number.isFinite(Number(value)) ? `${Number(value).toFixed(digits)}${suffix}` : '--';
 }
 
-function populatePressureCalibrationV2(pressureSensor = {}) {
+function populatePressureCalibrationV2(pressureSensor = {}, options = {}) {
+    const { syncTable = true } = options;
     const ads1115Available = pressureSensor.ads1115Available !== false;
     const sourceLabel = String(pressureSensor.source || 'ADS1115 A1');
     const currentVoltage = Number(pressureSensor.currentVoltage);
@@ -223,11 +226,13 @@ function populatePressureCalibrationV2(pressureSensor = {}) {
         zeroOffsetEl.dataset.value = Number.isFinite(zeroOffsetMmHg) ? zeroOffsetMmHg.toFixed(3) : '0.000';
     }
 
-    for (let i = 0; i < PRESSURE_POINT_SLOTS; i += 1) {
-        const voltage = Number(voltagePoints[i]);
-        const pressure = Number(pressurePoints[i]);
-        setValue(`pressure-voltage-${i}`, Number.isFinite(voltage) ? voltage.toFixed(4) : '');
-        setValue(`pressure-mmhg-${i}`, Number.isFinite(pressure) ? pressure.toFixed(1) : '');
+    if (syncTable) {
+        for (let i = 0; i < PRESSURE_POINT_SLOTS; i += 1) {
+            const voltage = Number(voltagePoints[i]);
+            const pressure = Number(pressurePoints[i]);
+            setValue(`pressure-voltage-${i}`, Number.isFinite(voltage) ? voltage.toFixed(4) : '');
+            setValue(`pressure-mmhg-${i}`, Number.isFinite(pressure) ? pressure.toFixed(1) : '');
+        }
     }
 
     const rowsHost = byId('pressure-points');
@@ -697,20 +702,13 @@ export function fillPressurePointFromCurrentV2(index) {
         return;
     }
     setValue(`pressure-voltage-${index}`, voltageValue.toFixed(4));
+    byId(`pressure-mmhg-${index}`)?.focus();
 }
 
 export function addPressurePointFromCurrentV2() {
     const voltageValue = Number(byId('pressure-current-voltage')?.dataset?.value);
     if (!Number.isFinite(voltageValue)) {
         setMessage('pressureResult', 'No live pressure signal to capture', 'error');
-        return;
-    }
-
-    let referencePressure;
-    try {
-        referencePressure = getPressureReferenceValueV2();
-    } catch (error) {
-        setMessage('pressureResult', error.message, 'error');
         return;
     }
 
@@ -721,8 +719,45 @@ export function addPressurePointFromCurrentV2() {
     }
 
     setValue(`pressure-voltage-${slot}`, voltageValue.toFixed(4));
-    setValue(`pressure-mmhg-${slot}`, referencePressure.toFixed(1));
-    setMessage('pressureResult', `Captured point ${slot + 1}: ${voltageValue.toFixed(4)} V -> ${referencePressure.toFixed(1)} mmHg`, 'success');
+    const pressureInput = byId(`pressure-mmhg-${slot}`);
+
+    try {
+        const referencePressure = getPressureReferenceValueV2();
+        setValue(`pressure-mmhg-${slot}`, referencePressure.toFixed(1));
+        setMessage('pressureResult', `Captured point ${slot + 1}: ${voltageValue.toFixed(4)} V -> ${referencePressure.toFixed(1)} mmHg`, 'success');
+    } catch {
+        if (pressureInput && !String(pressureInput.value || '').trim()) {
+            pressureInput.focus();
+            pressureInput.select?.();
+        }
+        setMessage(
+            'pressureResult',
+            `Captured signal in point ${slot + 1}: ${voltageValue.toFixed(4)} V. Enter the real manometer pressure and then save the table.`,
+            'success'
+        );
+    }
+}
+
+async function refreshPressureCalibrationLiveData() {
+    if (document.visibilityState === 'hidden') return;
+    if (!byId('equipment') || !byId('pressureCurrent')) return;
+
+    try {
+        const response = await fetch(API_BASE);
+        if (!response.ok) return;
+        const data = await response.json().catch(() => null);
+        if (!data || typeof data !== 'object') return;
+        populatePressureCalibrationV2(data.pressureSensor || {}, { syncTable: false });
+    } catch {
+        // Silent polling for live pressure diagnostics.
+    }
+}
+
+function ensurePressureCalibrationLivePolling() {
+    if (pressureCalibrationLiveInterval) return;
+    pressureCalibrationLiveInterval = window.setInterval(() => {
+        void refreshPressureCalibrationLiveData();
+    }, PRESSURE_LIVE_POLL_MS);
 }
 
 export async function applyPressureZeroTrimV2() {
@@ -1267,5 +1302,6 @@ export function initCalibrationTab() {
     updateCalibrationImportUi('Файл не выбран', false);
     updateCalibrationTime();
     loadCalibrationData();
+    ensurePressureCalibrationLivePolling();
 }
 
