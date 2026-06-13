@@ -550,6 +550,9 @@ export async function loadEquipmentSettings() {
         setInputValue('column-height', clamp(data.columnHeightMm, 500, 3000, 1500));
         setInputValue('cube-volume-l', clamp(data.cubeVolumeL, 5, 250, DEFAULT_CUBE_VOLUME_L).toFixed(1));
         setInputValue('water-autostart-cube-temp', clamp(data.waterAutoStartCubeTempC, 20, 60, 45).toFixed(1));
+        setCheckboxValue('booster-heater-enabled', Boolean(data.boosterHeaterEnabled));
+        setInputValue('booster-heater-power-w', clamp(data.boosterHeaterPowerW, 1000, 10000, 3000));
+        setInputValue('booster-heater-stop-cube-temp', clamp(data.boosterHeaterStopCubeTempC, 20, 100, 78).toFixed(1));
 
         runtimeMonitorState.equipment = {
             ...runtimeMonitorState.equipment,
@@ -558,6 +561,9 @@ export async function loadEquipmentSettings() {
             cubeVolumeL: clamp(data.cubeVolumeL, 5, 250, DEFAULT_CUBE_VOLUME_L),
             minHeaterSubmergeL: clamp(data.minHeaterSubmergeL, 0.5, 100, 7.5),
             waterAutoStartCubeTempC: clamp(data.waterAutoStartCubeTempC, 20, 60, 45),
+            boosterHeaterEnabled: Boolean(data.boosterHeaterEnabled),
+            boosterHeaterPowerW: clamp(data.boosterHeaterPowerW, 1000, 10000, 3000),
+            boosterHeaterStopCubeTempC: clamp(data.boosterHeaterStopCubeTempC, 20, 100, 78),
             coolingPwmEnabled: Boolean(data.coolingPwmEnabled),
             coolingPwmMinDuty: clamp(data.coolingPwmMinDuty, 0, 255, 0),
             coolingPwmMaxDuty: clamp(data.coolingPwmMaxDuty, 0, 255, 255),
@@ -588,6 +594,9 @@ export async function saveEquipment() {
     const columnHeight = clamp(getInputValue('column-height', 1500), 500, 3000, 1500);
     const cubeVolume = clamp(getInputValue('cube-volume-l', DEFAULT_CUBE_VOLUME_L), 5, 250, DEFAULT_CUBE_VOLUME_L);
     const waterAutoStartCubeTempC = clamp(getInputValue('water-autostart-cube-temp', 45), 20, 60, 45);
+    const boosterHeaterEnabled = getCheckboxValue('booster-heater-enabled', false);
+    const boosterHeaterPowerW = clamp(getInputValue('booster-heater-power-w', 3000), 1000, 10000, 3000);
+    const boosterHeaterStopCubeTempC = clamp(getInputValue('booster-heater-stop-cube-temp', 78), 20, 100, 78);
     const coolingPwmEnabled = getCheckboxValue('cooling-pwm-enabled', false);
     const coolingPwmMinDuty = clamp(getInputValue('cooling-pwm-min-duty', 0), 0, 255, 0);
     const coolingPwmMaxDuty = clamp(getInputValue('cooling-pwm-max-duty', 255), coolingPwmMinDuty, 255, 255);
@@ -632,6 +641,9 @@ export async function saveEquipment() {
                 columnHeightMm: Math.round(columnHeight),
                 cubeVolumeL: cubeVolume,
                 waterAutoStartCubeTempC,
+                boosterHeaterEnabled,
+                boosterHeaterPowerW: Math.round(boosterHeaterPowerW),
+                boosterHeaterStopCubeTempC,
                 coolingPwmEnabled,
                 coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
                 coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
@@ -651,6 +663,9 @@ export async function saveEquipment() {
             columnHeightMm: Math.round(columnHeight),
             cubeVolumeL: cubeVolume,
             waterAutoStartCubeTempC,
+            boosterHeaterEnabled,
+            boosterHeaterPowerW: Math.round(boosterHeaterPowerW),
+            boosterHeaterStopCubeTempC,
             coolingPwmEnabled,
             coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
             coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),

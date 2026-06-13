@@ -34,6 +34,11 @@ function mergeEquipmentState(s, data) {
         'water_auto_start_cube_temp_c',
         'water_auto_start_cube_temp'
     ]);
+    assign('boosterHeaterPowerW', ['boosterHeaterPowerW', 'booster_heater_power_w']);
+    assign('boosterHeaterStopCubeTempC', [
+        'boosterHeaterStopCubeTempC',
+        'booster_heater_stop_cube_temp_c'
+    ]);
     assign('coolingPwmMinDuty', ['coolingPwmMinDuty', 'cooling_pwm_min_duty']);
     assign('coolingPwmMaxDuty', ['coolingPwmMaxDuty', 'cooling_pwm_max_duty']);
     assign('coolingPwmStartupDuty', ['coolingPwmStartupDuty', 'cooling_pwm_startup_duty']);
@@ -46,6 +51,17 @@ function mergeEquipmentState(s, data) {
         }
         if (source.cooling_pwm_enabled !== undefined) {
             s.equipment.coolingPwmEnabled = Boolean(source.cooling_pwm_enabled);
+            break;
+        }
+    }
+
+    for (const source of sources) {
+        if (source.boosterHeaterEnabled !== undefined) {
+            s.equipment.boosterHeaterEnabled = Boolean(source.boosterHeaterEnabled);
+            break;
+        }
+        if (source.booster_heater_enabled !== undefined) {
+            s.equipment.boosterHeaterEnabled = Boolean(source.booster_heater_enabled);
             break;
         }
     }

@@ -2246,6 +2246,10 @@ void init() {
     equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
     equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
     equipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+    equipment["boosterHeaterEnabled"] = g_settings.equipment.boosterHeaterEnabled;
+    equipment["boosterHeaterPowerW"] = g_settings.equipment.boosterHeaterPowerW;
+    equipment["boosterHeaterStopCubeTempC"] =
+        g_settings.equipment.boosterHeaterStopCubeTempC;
     equipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
     equipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
     equipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
@@ -2260,6 +2264,10 @@ void init() {
     safetySettings["pressureRiseRateMmHgMin"] = g_settings.safety.pressureRiseRateMmHgMin;
     doc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
     doc["water_auto_start_cube_temp_c"] = g_settings.equipment.waterAutoStartCubeTempC;
+    doc["booster_heater_enabled"] = g_settings.equipment.boosterHeaterEnabled;
+    doc["booster_heater_power_w"] = g_settings.equipment.boosterHeaterPowerW;
+    doc["booster_heater_stop_cube_temp_c"] =
+        g_settings.equipment.boosterHeaterStopCubeTempC;
     doc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
     doc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
     doc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
@@ -3378,6 +3386,10 @@ void init() {
     doc["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
     doc["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
     doc["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+    doc["boosterHeaterEnabled"] = g_settings.equipment.boosterHeaterEnabled;
+    doc["boosterHeaterPowerW"] = g_settings.equipment.boosterHeaterPowerW;
+    doc["boosterHeaterStopCubeTempC"] =
+        g_settings.equipment.boosterHeaterStopCubeTempC;
     doc["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
     doc["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
     doc["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
@@ -3488,6 +3500,18 @@ void init() {
           g_settings.equipment.waterAutoStartCubeTempC = clampFloatRange(
               doc["waterAutoStartCubeTempC"].as<float>(), 20.0f, 60.0f
           );
+        }
+        if (!doc["boosterHeaterEnabled"].isNull()) {
+          g_settings.equipment.boosterHeaterEnabled =
+              doc["boosterHeaterEnabled"].as<bool>();
+        }
+        if (!doc["boosterHeaterPowerW"].isNull()) {
+          g_settings.equipment.boosterHeaterPowerW = clampU16Range(
+              doc["boosterHeaterPowerW"].as<uint32_t>(), 1000, 10000);
+        }
+        if (!doc["boosterHeaterStopCubeTempC"].isNull()) {
+          g_settings.equipment.boosterHeaterStopCubeTempC = clampFloatRange(
+              doc["boosterHeaterStopCubeTempC"].as<float>(), 20.0f, 100.0f);
         }
         if (!doc["coolingPwmEnabled"].isNull()) {
           g_settings.equipment.coolingPwmEnabled =
@@ -6672,6 +6696,10 @@ void broadcastState(const SystemState &state) {
   fastEquipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   fastEquipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
   fastEquipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+  fastEquipment["boosterHeaterEnabled"] = g_settings.equipment.boosterHeaterEnabled;
+  fastEquipment["boosterHeaterPowerW"] = g_settings.equipment.boosterHeaterPowerW;
+  fastEquipment["boosterHeaterStopCubeTempC"] =
+      g_settings.equipment.boosterHeaterStopCubeTempC;
   fastEquipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
   fastEquipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
   fastEquipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
@@ -6685,6 +6713,10 @@ void broadcastState(const SystemState &state) {
   fastSafetySettings["pressureRiseRateMmHgMin"] = g_settings.safety.pressureRiseRateMmHgMin;
   fastDoc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
   fastDoc["water_auto_start_cube_temp_c"] = g_settings.equipment.waterAutoStartCubeTempC;
+  fastDoc["booster_heater_enabled"] = g_settings.equipment.boosterHeaterEnabled;
+  fastDoc["booster_heater_power_w"] = g_settings.equipment.boosterHeaterPowerW;
+  fastDoc["booster_heater_stop_cube_temp_c"] =
+      g_settings.equipment.boosterHeaterStopCubeTempC;
   fastDoc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
   fastDoc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
   fastDoc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
@@ -6793,6 +6825,10 @@ void broadcastState(const SystemState &state) {
   equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
   equipment["waterAutoStartCubeTempC"] =
       g_settings.equipment.waterAutoStartCubeTempC;
+  equipment["boosterHeaterEnabled"] = g_settings.equipment.boosterHeaterEnabled;
+  equipment["boosterHeaterPowerW"] = g_settings.equipment.boosterHeaterPowerW;
+  equipment["boosterHeaterStopCubeTempC"] =
+      g_settings.equipment.boosterHeaterStopCubeTempC;
   equipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
   equipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
   equipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
@@ -6809,6 +6845,10 @@ void broadcastState(const SystemState &state) {
   doc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
   doc["water_auto_start_cube_temp_c"] =
       g_settings.equipment.waterAutoStartCubeTempC;
+  doc["booster_heater_enabled"] = g_settings.equipment.boosterHeaterEnabled;
+  doc["booster_heater_power_w"] = g_settings.equipment.boosterHeaterPowerW;
+  doc["booster_heater_stop_cube_temp_c"] =
+      g_settings.equipment.boosterHeaterStopCubeTempC;
   doc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
   doc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
   doc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;

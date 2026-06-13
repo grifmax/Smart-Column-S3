@@ -247,6 +247,12 @@ bool loadSettings(Settings& settings) {
     settings.equipment.packingCoeff = prefs.getFloat(NVS_KEY_PACKING_COEFF, DEFAULT_PACKING_COEFF);
     settings.equipment.minHeaterSubmergeL = prefs.getFloat(NVS_KEY_MIN_HEATER_SUBMERGE, DEFAULT_MIN_HEATER_SUBMERGE_L);
     settings.equipment.waterAutoStartCubeTempC = prefs.getFloat(NVS_KEY_WATER_AUTOSTART_CUBE_TEMP, DEFAULT_WATER_AUTOSTART_CUBE_TEMP_C);
+    settings.equipment.boosterHeaterEnabled =
+        prefs.getBool(NVS_KEY_BOOSTER_HEATER_ENABLED, DEFAULT_BOOSTER_HEATER_ENABLED != 0);
+    settings.equipment.boosterHeaterPowerW =
+        prefs.getUShort(NVS_KEY_BOOSTER_HEATER_POWER, DEFAULT_BOOSTER_HEATER_POWER_W);
+    settings.equipment.boosterHeaterStopCubeTempC =
+        prefs.getFloat(NVS_KEY_BOOSTER_STOP_TEMP, DEFAULT_BOOSTER_HEATER_STOP_CUBE_TEMP_C);
     settings.equipment.coolingPwmEnabled =
         prefs.getBool(NVS_KEY_COOLING_PWM_ENABLED, DEFAULT_COOLING_PWM_ENABLED != 0);
     settings.equipment.coolingPwmMinDuty =
@@ -393,6 +399,9 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_PACKING_COEFF, settings.equipment.packingCoeff);
     prefs.putFloat(NVS_KEY_MIN_HEATER_SUBMERGE, settings.equipment.minHeaterSubmergeL);
     prefs.putFloat(NVS_KEY_WATER_AUTOSTART_CUBE_TEMP, settings.equipment.waterAutoStartCubeTempC);
+    prefs.putBool(NVS_KEY_BOOSTER_HEATER_ENABLED, settings.equipment.boosterHeaterEnabled);
+    prefs.putUShort(NVS_KEY_BOOSTER_HEATER_POWER, settings.equipment.boosterHeaterPowerW);
+    prefs.putFloat(NVS_KEY_BOOSTER_STOP_TEMP, settings.equipment.boosterHeaterStopCubeTempC);
     prefs.putBool(NVS_KEY_COOLING_PWM_ENABLED, settings.equipment.coolingPwmEnabled);
     prefs.putUChar(NVS_KEY_COOLING_PWM_MIN_DUTY, settings.equipment.coolingPwmMinDuty);
     prefs.putUChar(NVS_KEY_COOLING_PWM_MAX_DUTY, settings.equipment.coolingPwmMaxDuty);

@@ -383,6 +383,9 @@ struct EquipmentSettings {
   float cubeVolumeL = 37.0f;
   float minHeaterSubmergeL = 7.5f;
   float waterAutoStartCubeTempC = 45.0f;
+  bool boosterHeaterEnabled = false;
+  uint16_t boosterHeaterPowerW = 3000;
+  float boosterHeaterStopCubeTempC = 78.0f;
   bool coolingPwmEnabled = false;
   uint8_t coolingPwmMinDuty = 0;
   uint8_t coolingPwmMaxDuty = 255;

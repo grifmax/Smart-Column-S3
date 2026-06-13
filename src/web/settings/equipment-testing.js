@@ -247,7 +247,7 @@ const CALIBRATION_CARD_DEFS = [
         id: 'pressure-calibration',
         selector: '#pressureCurrent',
         group: 'sensors',
-        icon: 'рџ§Є',
+        icon: '🎛️',
         title: 'Калибровка манометра',
         shortTitle: 'Манометр',
         description: 'Таблица давления для ADS1115 A1 по эталонному манометру: живое напряжение, ADC и сохранённые точки интерполяции.',
@@ -1002,6 +1002,9 @@ function ensureParameterWorkbenchCards() {
     });
     appendUniqueGroups(qs('.equipment-grid', cubeCard), formGroups, [
         'heater-power-w',
+        'booster-heater-enabled',
+        'booster-heater-power-w',
+        'booster-heater-stop-cube-temp',
         'column-height',
         'cube-volume-l',
         'cube-extender-add-l',
