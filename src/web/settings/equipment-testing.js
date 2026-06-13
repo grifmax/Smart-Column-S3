@@ -353,15 +353,15 @@ const TESTING_TEMPLATE = `
                     <div class="equipment-inline-stat"><span>Таймауты</span><strong id="equipment-test-pump-locks">--</strong></div>
                     <div class="equipment-actuator-row">
                         <div>
-                            <strong>PWM cooling</strong>
-                            <div class="info-text">Manual duty control for the proportional cooling output</div>
-                            <div class="equipment-actuator-meta" id="equipment-test-start-stop-hint">Set the working window in equipment settings, then verify duty here.</div>
+                            <strong>PWM охлаждения</strong>
+                            <div class="info-text">Ручная подача duty на пропорциональный канал охлаждения</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-start-stop-hint">Настройте рабочее окно в параметрах оборудования, затем проверьте duty здесь.</div>
                         </div>
                         <span class="equipment-status-badge muted" id="equipment-test-start-stop-badge">—</span>
                         <div class="equipment-inline-row">
                             <input type="number" id="equipment-test-start-stop-duty" value="96" min="0" max="255" step="1" data-stepper-mode="pair" data-stepper-step="1">
-                            <button class="btn btn-secondary" type="button" id="equipment-test-start-stop-apply">Apply</button>
-                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-start-stop-startup">Startup</button>
+                            <button class="btn btn-secondary" type="button" id="equipment-test-start-stop-apply">Применить</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-start-stop-startup">Стартовое</button>
                             <button class="btn btn-danger" type="button" id="equipment-test-start-stop-stop">0</button>
                         </div>
                     </div>
@@ -1913,7 +1913,7 @@ function renderStartStopPwmStatus(valves, coolingSettings, testingAllowed, demoM
 
     updateBadge(
         badge,
-        !enabled ? 'Disabled' : active ? `${currentDuty}/255` : 'Idle',
+        !enabled ? 'Отключен' : active ? `${currentDuty}/255` : 'Остановлен',
         !enabled ? 'muted' : active ? (demoMode ? 'warning' : 'success') : 'muted'
     );
 
@@ -1923,9 +1923,9 @@ function renderStartStopPwmStatus(valves, coolingSettings, testingAllowed, demoM
 
     if (hint) {
         hint.textContent = !enabled
-            ? 'PWM cooling channel is disabled in equipment settings.'
-            : `Duty window ${minDuty}-${maxDuty}/255, startup ${startupDuty}/255.` +
-                (active ? ` Current ${demoMode ? 'simulation' : 'output'} ${currentDuty}/255.` : ' Channel is at zero.');
+            ? 'PWM-канал охлаждения отключен в параметрах оборудования.'
+            : `Рабочее окно ${minDuty}-${maxDuty}/255, стартовая подача ${startupDuty}/255.` +
+                (active ? ` Сейчас ${demoMode ? 'симуляция' : 'подача'} ${currentDuty}/255.` : ' Канал на нуле.');
     }
 
     const canControl = testingAllowed && enabled;
@@ -2181,7 +2181,7 @@ async function handleStartStopDutySet(duty) {
         body: JSON.stringify({ target: 'startStop', duty: nextDuty })
     });
     renderTestingStatus(status);
-    addLog(`PWM cooling duty set to ${nextDuty}/255`, nextDuty > 0 ? 'info' : 'warning');
+    addLog(`PWM-канал охлаждения установлен на ${nextDuty}/255`, nextDuty > 0 ? 'info' : 'warning');
 }
 
 async function handleStopAll() {
@@ -2356,14 +2356,14 @@ function bindTestingActions() {
     });
     byId('equipment-test-start-stop-apply')?.addEventListener('click', () => {
         const duty = clamp(byId('equipment-test-start-stop-duty')?.value, 0, 255, 0);
-        void handleStartStopDutySet(duty).catch((error) => addLog(`✗ PWM cooling: ${error.message}`, 'error'));
+        void handleStartStopDutySet(duty).catch((error) => addLog(`✗ PWM охлаждения: ${error.message}`, 'error'));
     });
     byId('equipment-test-start-stop-startup')?.addEventListener('click', () => {
         const duty = clamp(state.lastStatus?.coolingSettings?.startupDuty, 0, 255, 0);
-        void handleStartStopDutySet(duty).catch((error) => addLog(`✗ PWM cooling: ${error.message}`, 'error'));
+        void handleStartStopDutySet(duty).catch((error) => addLog(`✗ PWM охлаждения: ${error.message}`, 'error'));
     });
     byId('equipment-test-start-stop-stop')?.addEventListener('click', () => {
-        void handleStartStopDutySet(0).catch((error) => addLog(`✗ PWM cooling: ${error.message}`, 'error'));
+        void handleStartStopDutySet(0).catch((error) => addLog(`✗ PWM охлаждения: ${error.message}`, 'error'));
     });
     byId('equipment-test-valves-close-all')?.addEventListener('click', () => {
         void handleValveToggle('all', false).catch((error) => addLog(`✗ Клапаны: ${error.message}`, 'error'));
