@@ -1617,6 +1617,85 @@ function renderPressureStatus(data) {
     }
 }
 
+function renderPressureStatusLegacy(data) {
+    const badge = byId('equipment-test-pressure-badge');
+    const summary = byId('equipment-test-pressure-summary');
+    if (!data) {
+        updateBadge(badge, 'Нет данных', 'danger');
+        setText('equipment-test-pressure-value', '-- мм рт.ст.');
+        setText('equipment-test-pressure-hint', 'Нет актуальных значений давления');
+        if (summary) summary.innerHTML = '';
+        return;
+    }
+
+    const ads1115Available = data.ads1115Available !== false;
+    const sourceLabel = String(data.source || 'ADS1115 A1');
+    updateBadge(
+        badge,
+        !ads1115Available ? 'ADS1115 off' : data.ok ? 'Онлайн' : 'Нет сигнала',
+        !ads1115Available ? 'danger' : data.ok ? 'success' : 'danger'
+    );
+    setText('equipment-test-pressure-value', formatNumber(data.cubeMmHg, 1, ' мм рт.ст.'));
+
+    if (!state.pressureTest.active) {
+        setText(
+            'equipment-test-pressure-hint',
+            ads1115Available
+                ? 'Для теста нажмите кнопку ниже и слегка подуйте в датчик.'
+                : 'ESP32-S3 сейчас не видит ADS1115 на I2C. Проверьте питание, SDA, SCL и адрес 0x48.'
+        );
+        if (summary) {
+            summary.innerHTML = `
+                <div class="equipment-inline-stat"><span>ADC</span><strong>${ads1115Available ? sourceLabel : `${sourceLabel} off`}</strong></div>
+                <div class="equipment-inline-stat"><span>Voltage</span><strong>${formatNumber(data.sensorVoltage, 3, ' V')}</strong></div>
+                <div class="equipment-inline-stat"><span>ADC raw</span><strong>${Number.isFinite(Number(data.sensorAdc)) ? String(Math.round(Number(data.sensorAdc))) : '--'}</strong></div>
+                <div class="equipment-inline-stat"><span>Атмосфера</span><strong>${formatNumber(data.atmosphere, 1, ' гПа')}</strong></div>
+                <div class="equipment-inline-stat"><span>Сигнал</span><strong>${formatBool(data.ok, 'Есть', 'Нет')}</strong></div>
+            `;
+        }
+        return;
+    }
+
+    if (state.pressureTest.baseline === null && Number.isFinite(Number(data.cubeMmHg))) {
+        state.pressureTest.baseline = Number(data.cubeMmHg);
+        state.pressureTest.min = Number(data.cubeMmHg);
+        state.pressureTest.max = Number(data.cubeMmHg);
+    }
+
+    const current = Number(data.cubeMmHg);
+    if (Number.isFinite(current)) {
+        state.pressureTest.min = state.pressureTest.min === null ? current : Math.min(state.pressureTest.min, current);
+        state.pressureTest.max = state.pressureTest.max === null ? current : Math.max(state.pressureTest.max, current);
+        if (state.pressureTest.baseline !== null &&
+            Math.abs(current - state.pressureTest.baseline) >= PRESSURE_SUCCESS_DELTA) {
+            state.pressureTest.success = true;
+        }
+    }
+
+    const delta = state.pressureTest.baseline === null || !Number.isFinite(current)
+        ? null
+        : current - state.pressureTest.baseline;
+
+    if (!ads1115Available) {
+        setText('equipment-test-pressure-hint', 'Тест продувки бессмысленен, пока ADS1115 не появился на I2C.');
+    } else if (state.pressureTest.success) {
+        setText('equipment-test-pressure-hint', 'Изменение давления обнаружено, датчик реагирует.');
+    } else {
+        setText('equipment-test-pressure-hint', 'Изменение пока не зафиксировано, повторите продувку чуть сильнее.');
+    }
+
+    if (summary) {
+        summary.innerHTML = `
+            <div class="equipment-inline-stat"><span>ADC</span><strong>${ads1115Available ? sourceLabel : `${sourceLabel} off`}</strong></div>
+            <div class="equipment-inline-stat"><span>Voltage</span><strong>${formatNumber(data.sensorVoltage, 3, ' V')}</strong></div>
+            <div class="equipment-inline-stat"><span>ADC raw</span><strong>${Number.isFinite(Number(data.sensorAdc)) ? String(Math.round(Number(data.sensorAdc))) : '--'}</strong></div>
+            <div class="equipment-inline-stat"><span>База</span><strong>${formatNumber(state.pressureTest.baseline, 1, ' мм')}</strong></div>
+            <div class="equipment-inline-stat"><span>Δ</span><strong>${delta === null ? '--' : formatNumber(delta, 1, ' мм')}</strong></div>
+            <div class="equipment-inline-stat"><span>Диапазон</span><strong>${formatNumber(state.pressureTest.min, 1, '')} .. ${formatNumber(state.pressureTest.max, 1, ' мм')}</strong></div>
+        `;
+    }
+}
+
 function renderHydrometerStatus(hydrometer) {
     updateBadge(
         byId('equipment-test-hydrometer-badge'),

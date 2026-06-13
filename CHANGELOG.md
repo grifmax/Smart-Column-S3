@@ -7,6 +7,13 @@
 
 ---
 
+## [2.2.77] - 2026-06-13
+
+### Changed
+- В pressure calibration и сервисном тесте давления добавлен явный статус `ADS1115`: Web UI теперь прямо показывает, видит ли ESP32-S3 модуль на I2C, по какому входу читается куб (`ADS1115 A1`), а также live `Voltage` и `ADC raw` вместо неочевидного молчания при обрыве шины. (codex)
+- `GET /api/calibration` и сервисный testing-status теперь отдают `ads1115Available`, `source`, `sensorVoltage` и `sensorAdc` для pressure-блока, чтобы UI не гадал по косвенным признакам. (codex)
+- Версия прошивки поднята до `2.2.77`, version-stamps в `README.md`, `TODO2.0.md` и `docs/API.md` синхронизированы. (codex)
+
 ## [2.2.76] - 2026-06-13
 
 ### Added

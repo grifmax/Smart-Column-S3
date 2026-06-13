@@ -529,6 +529,10 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   pressure["cubeMmHg"] = g_state.pressure.cube;
   pressure["atmosphere"] = g_state.pressure.atmosphere;
   pressure["ok"] = g_state.pressure.ok;
+  pressure["ads1115Available"] = g_state.health.ads1115Ok;
+  pressure["sensorVoltage"] = g_state.pressure.sensorVoltage;
+  pressure["sensorAdc"] = g_state.pressure.sensorAdc;
+  pressure["source"] = "ADS1115 A1";
   pressure["lastUpdate"] = g_state.pressure.lastUpdate;
 
   JsonObject hydrometer = doc["hydrometer"].to<JsonObject>();
@@ -4402,6 +4406,8 @@ void init() {
       pressureMmHgPoints.add(g_settings.pressureCal.pressurePoints[i]);
     }
     pressureSensor["zeroOffsetMmHg"] = g_settings.pressureCal.zeroOffsetMmHg;
+    pressureSensor["ads1115Available"] = g_state.health.ads1115Ok;
+    pressureSensor["source"] = "ADS1115 A1 @ 0x48";
     pressureSensor["currentVoltage"] = g_state.pressure.sensorVoltage;
     pressureSensor["currentAdc"] = g_state.pressure.sensorAdc;
     pressureSensor["currentPressure"] = g_state.pressure.cube;

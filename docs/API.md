@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.76`  
+**Версия прошивки:** `2.2.77`  
 **Актуальность документа:** 2026-06-12
 
 ---
@@ -334,6 +334,8 @@ It also includes a `pressureSensor` block with:
 
 - `pointCount`
 - `zeroOffsetMmHg`
+- `ads1115Available`
+- `source`
 - `voltagePoints[]`
 - `pressurePoints[]`
 - `currentVoltage`
@@ -347,6 +349,13 @@ It also includes a `pressureSensor` block with:
 - `voltagePoints[]` + `pressurePoints[]` together to replace the pressure table
 - `zeroOffsetMmHg` alone to update only the zero trim
 - or both in the same request
+
+Testing/service pressure status also includes:
+
+- `ads1115Available`
+- `source`
+- `sensorVoltage`
+- `sensorAdc`
 
 ### Safety
 

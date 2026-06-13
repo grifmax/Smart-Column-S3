@@ -160,6 +160,8 @@ function formatPressureNumberV2(value, digits = 3, suffix = '') {
 }
 
 function populatePressureCalibrationV2(pressureSensor = {}) {
+    const ads1115Available = pressureSensor.ads1115Available !== false;
+    const sourceLabel = String(pressureSensor.source || 'ADS1115 A1');
     const currentVoltage = Number(pressureSensor.currentVoltage);
     const currentAdc = Number(pressureSensor.currentAdc);
     const currentPressure = Number(pressureSensor.currentPressure);
@@ -170,8 +172,18 @@ function populatePressureCalibrationV2(pressureSensor = {}) {
 
     const badge = byId('pressure-current-status');
     if (badge) {
-        badge.textContent = pressureSensor.valid ? 'Signal OK' : 'No signal';
-        badge.className = `equipment-status-badge ${pressureSensor.valid ? 'success' : 'muted'}`;
+        if (!ads1115Available) {
+            badge.textContent = 'ADS1115 missing';
+            badge.className = 'equipment-status-badge danger';
+        } else {
+            badge.textContent = pressureSensor.valid ? 'Signal OK' : 'No signal';
+            badge.className = `equipment-status-badge ${pressureSensor.valid ? 'success' : 'muted'}`;
+        }
+    }
+
+    const sourceEl = byId('pressure-current-source');
+    if (sourceEl) {
+        sourceEl.textContent = ads1115Available ? sourceLabel : `${sourceLabel} offline`;
     }
 
     const currentVoltageEl = byId('pressure-current-voltage');
@@ -199,7 +211,10 @@ function populatePressureCalibrationV2(pressureSensor = {}) {
         const sourceText = pointCount >= 2
             ? 'cube pressure is read from the saved interpolation table'
             : 'firmware uses the legacy fallback formula';
-        summaryEl.textContent = `${tableText}. ${sourceText}. Zero trim: ${formatPressureNumberV2(zeroOffsetMmHg, 1, ' mmHg')}.`;
+        const busText = ads1115Available
+            ? `${sourceLabel} is visible on the I2C bus`
+            : `${sourceLabel} is not visible on the I2C bus`;
+        summaryEl.textContent = `${busText}. ${tableText}. ${sourceText}. Zero trim: ${formatPressureNumberV2(zeroOffsetMmHg, 1, ' mmHg')}.`;
     }
 
     const zeroOffsetEl = byId('pressure-zero-offset');
