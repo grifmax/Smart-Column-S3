@@ -13,6 +13,7 @@ struct IndicatorRuntimeStateV2 {
     uint32_t lastUpdateMs = 0;
     float lastCubeTempC = 0.0f;
     float lastColumnTopTempC = 0.0f;
+    float lastWaterOutTempC = 0.0f;
     float lastPressureMmHg = 0.0f;
 };
 

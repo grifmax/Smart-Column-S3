@@ -19,6 +19,10 @@ float positiveRatio(float value, float scale) {
     return (scale > 0.0001f) ? clampRange(value / scale, 0.0f, 1.0f) : 0.0f;
 }
 
+float minValue(float a, float b) {
+    return (a < b) ? a : b;
+}
+
 float estimateAbsoluteAlcoholMl(const Settings& settings) {
     float volumeL = settings.rectParams.feedVolumeL;
     if (volumeL <= 0.1f) {
@@ -76,7 +80,10 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
     const bool cubeSensorAvailable = hasTempSensor(state, TEMP_CUBE);
     const bool columnBottomAvailable = hasTempSensor(state, TEMP_COLUMN_BOTTOM);
     const bool columnTopAvailable = hasTempSensor(state, TEMP_COLUMN_TOP);
+    const bool refluxAvailable = hasTempSensor(state, TEMP_REFLUX);
+    const bool tsaAvailable = hasTempSensor(state, TEMP_TSA);
     const bool waterOutAvailable = hasTempSensor(state, TEMP_WATER_OUT);
+    float waterOutRateCPerMin = 0.0f;
 
     out.sensorFreshnessOk = state.temps.lastUpdate > 0 && ageMs <= SAFETY_SENSOR_TIMEOUT_MS;
     out.processHealth = clamp01(state.health.overallHealth / 100.0f);
@@ -90,6 +97,9 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
             out.heatingRateCPerMin = (state.temps.cube - runtime.lastCubeTempC) / dtMin;
             out.topTempRateCPerMin = (state.temps.columnTop - runtime.lastColumnTopTempC) / dtMin;
             out.pressureRateMmHgPerMin = (state.pressure.cube - runtime.lastPressureMmHg) / dtMin;
+            if (waterOutAvailable) {
+                waterOutRateCPerMin = (state.temps.waterOut - runtime.lastWaterOutTempC) / dtMin;
+            }
         }
     }
 
@@ -97,9 +107,46 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
     runtime.lastUpdateMs = now;
     runtime.lastCubeTempC = state.temps.cube;
     runtime.lastColumnTopTempC = state.temps.columnTop;
+    runtime.lastWaterOutTempC = state.temps.waterOut;
     runtime.lastPressureMmHg = state.pressure.cube;
 
-    out.coolingMarginC = settings.safety.waterOutMaxC - state.temps.waterOut;
+    const float waterOutMarginC = settings.safety.waterOutMaxC - state.temps.waterOut;
+    const float tsaMarginC = settings.safety.tsaMaxC - state.temps.tsa;
+    const float refluxMarginC = 65.0f - state.temps.reflux;
+    const float ratePenaltyC =
+        waterOutAvailable
+            ? positiveRatio(waterOutRateCPerMin,
+                            clampRange(settings.safety.waterOutRiseRateCMin, 0.5f, 60.0f)) * 6.0f
+            : 0.0f;
+    const float tsaPenaltyC =
+        tsaAvailable
+            ? positiveRatio(state.temps.tsa - (settings.safety.tsaMaxC - 12.0f), 12.0f) * 10.0f
+            : 0.0f;
+    const float refluxPenaltyC =
+        refluxAvailable
+            ? positiveRatio(state.temps.reflux - 50.0f, 15.0f) * 4.0f
+            : 0.0f;
+    const float pressureCoolingPenaltyC =
+        out.pressureSensorAvailable
+            ? positiveRatio(state.pressure.cube,
+                            clampRange(settings.safety.pressureMaxMmHg, 1.0f, 200.0f)) * 3.0f
+            : 0.0f;
+
+    float coolingReferenceMarginC = waterOutMarginC;
+    if (!waterOutAvailable && tsaAvailable) {
+        coolingReferenceMarginC = tsaMarginC * 0.8f;
+    } else if (!waterOutAvailable && refluxAvailable) {
+        coolingReferenceMarginC = refluxMarginC * 0.6f;
+    }
+    if (waterOutAvailable && tsaAvailable) {
+        coolingReferenceMarginC = minValue(coolingReferenceMarginC, tsaMarginC * 0.8f);
+    }
+    if (waterOutAvailable && refluxAvailable) {
+        coolingReferenceMarginC = minValue(coolingReferenceMarginC, refluxMarginC * 0.6f);
+    }
+
+    out.coolingMarginC =
+        coolingReferenceMarginC - ratePenaltyC - tsaPenaltyC - refluxPenaltyC - pressureCoolingPenaltyC;
     out.distPressureMargin = settings.safety.pressureMaxMmHg - state.pressure.cube;
     out.nbkPressureMargin = out.distPressureMargin;
 
