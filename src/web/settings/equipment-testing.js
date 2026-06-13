@@ -105,6 +105,7 @@ const PARAMETERS_GROUPS = [
     { id: 'core', label: 'Базовые узлы' },
     { id: 'process', label: 'Куб и процесс' },
     { id: 'automation', label: 'Автоматика' },
+    { id: 'diagnostics', label: 'Шина и модули' },
 ];
 
 const PARAMETERS_CARD_DEFS = [
@@ -143,6 +144,15 @@ const PARAMETERS_CARD_DEFS = [
         title: 'Мешалка куба',
         shortTitle: 'Мешалка',
         description: 'Ручное включение, скорость по умолчанию и автозапуск для режимов, где перемешивание нужно постоянно.',
+    },
+    {
+        id: 'hardware-status',
+        selector: '#hardware-modules-list',
+        group: 'diagnostics',
+        icon: 'HW',
+        title: 'Шина и модули',
+        shortTitle: 'Модули',
+        description: 'Статусы I2C/UART модулей, адреса и роль каждого датчика или платы в железе.',
     },
 ];
 
@@ -1016,8 +1026,23 @@ function ensureParameterWorkbenchCards() {
         'stirrer-auto-fermentation',
     ]);
 
+    const hardwareCard = buildEquipmentCard({
+        className: 'equipment-pane-card equipment-pane-card-parameters',
+        title: 'Шина и модули',
+        subtitle: 'Показывает, что именно ESP32-S3 видит на I2C и UART: датчики, DAC мешалки и монитор питания.',
+        actionsHtml: `
+            <div class="controls equipment-actions">
+                <button class="btn btn-secondary" type="button" onclick="loadEquipmentSettings()">Обновить статусы</button>
+            </div>
+        `,
+    });
+    appendUniqueGroups(qs('.equipment-grid', hardwareCard), formGroups, [
+        'hardware-modules-list',
+        'pzem-settings-state',
+    ]);
+
     cardsHost.innerHTML = '';
-    cardsHost.append(pumpCard, cubeCard, coolingCard, stirrerCard);
+    cardsHost.append(pumpCard, cubeCard, coolingCard, stirrerCard, hardwareCard);
 }
 
 function readSavedWorkbenchCard(storageKey, defs, fallbackId) {

@@ -233,6 +233,7 @@ window.toggleDemoMode = toggleDemoMode;
 window.rebootController = rebootController;
 window.saveEquipment = saveEquipment;
 window.saveStirrerSettings = saveStirrerSettings;
+window.loadEquipmentSettings = loadEquipmentSettings;
 window.loadSafetySettings = loadSafetySettings;
 window.saveSafetySettings = saveSafetySettings;
 window.addCubeExtenderVolume = addCubeExtenderVolume;

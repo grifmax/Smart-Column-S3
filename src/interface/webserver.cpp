@@ -3377,6 +3377,51 @@ void init() {
     pzem["powerFactor"] = g_state.power.powerFactor;
     pzem["lastUpdate"] = g_state.power.lastUpdate;
 
+    JsonObject modules = doc["modules"].to<JsonObject>();
+
+    JsonObject bmp280Primary = modules["bmp280Primary"].to<JsonObject>();
+    bmp280Primary["label"] = "BMP280 #1";
+    bmp280Primary["available"] = Sensors::isBmp280PrimaryAvailable();
+    bmp280Primary["expected"] = true;
+    bmp280Primary["bus"] = "I2C";
+    bmp280Primary["address"] = "0x76";
+    bmp280Primary["role"] = "Атмосфера, основной";
+
+    JsonObject bmp280Secondary = modules["bmp280Secondary"].to<JsonObject>();
+    bmp280Secondary["label"] = "BMP280 #2";
+    bmp280Secondary["available"] = Sensors::isBmp280SecondaryAvailable();
+    bmp280Secondary["expected"] = false;
+    bmp280Secondary["bus"] = "I2C";
+    bmp280Secondary["address"] = "0x77";
+    bmp280Secondary["role"] = "Атмосфера, резерв";
+
+    JsonObject ads1115 = modules["ads1115"].to<JsonObject>();
+    ads1115["label"] = "ADS1115";
+    ads1115["available"] = Sensors::isAds1115Available();
+    ads1115["expected"] = true;
+    ads1115["bus"] = "I2C";
+    ads1115["address"] = "0x48";
+    ads1115["role"] = "A1 давление куба, A0 ареометр";
+
+    JsonObject mcp4725 = modules["mcp4725"].to<JsonObject>();
+    mcp4725["label"] = "MCP4725";
+    mcp4725["available"] = Stirrer::isAvailable();
+    mcp4725["expected"] = false;
+    mcp4725["bus"] = "I2C";
+    mcp4725["address"] = "0x60";
+    mcp4725["role"] = "DAC мешалки 0-10В";
+
+    JsonObject pzemModule = modules["pzem004t"].to<JsonObject>();
+    pzemModule["label"] = "PZEM-004T";
+    pzemModule["available"] = Sensors::isPzemAvailable();
+    pzemModule["expected"] = true;
+    pzemModule["bus"] = "UART";
+    pzemModule["address"] = "UART1";
+    pzemModule["role"] = "Монитор сети и нагрева";
+    pzemModule["baudRate"] = PZEM_BAUD_RATE;
+    pzemModule["rxPin"] = PIN_PZEM_RX;
+    pzemModule["txPin"] = PIN_PZEM_TX;
+
     String json;
     serializeJson(doc, json);
     request->send(200, "application/json", json);

@@ -69,6 +69,48 @@
     font-size: 0.95em;
 }
 
+.equipment-module-list {
+    display: grid;
+    gap: 10px;
+}
+
+.equipment-module-card {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
+}
+
+.equipment-module-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.equipment-module-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+}
+
+.equipment-module-card-meta span {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+}
+
+.equipment-module-card-role {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+}
+
 .equipment-checkbox-field {
     display: flex;
     align-items: center;

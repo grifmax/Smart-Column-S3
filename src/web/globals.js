@@ -262,7 +262,8 @@ export let runtimeMonitorState = {
         heaterPowerW: maxHeaterPower,
         cubeVolumeL: DEFAULT_CUBE_VOLUME_L,
         minHeaterSubmergeL: 7.5,
-        waterAutoStartCubeTempC: 45
+        waterAutoStartCubeTempC: 45,
+        modules: {}
     },
     stirrerSettings: {
         enabled: false,

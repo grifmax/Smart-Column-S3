@@ -68,6 +68,10 @@ namespace Sensors {
      * @return true если датчик отвечает
      */
     bool isTempSensorValid(uint8_t index);
+    bool isBmp280PrimaryAvailable();
+    bool isBmp280SecondaryAvailable();
+    bool isAds1115Available();
+    bool isPzemAvailable();
 
     /**
      * Обновление информации о здоровье датчиков

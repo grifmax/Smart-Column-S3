@@ -65,6 +65,15 @@ function formatPzemMetric(value, digits = 1, suffix = '') {
     return `${numeric.toFixed(digits)}${suffix}`;
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
 function syncPzemEquipmentUi(pzem = {}) {
     const available = Boolean(pzem.available);
     const uartNum = Number.isFinite(Number(pzem.uartNum)) ? Number(pzem.uartNum) : 1;
@@ -91,6 +100,83 @@ function syncPzemEquipmentUi(pzem = {}) {
         `GPIO${rxPin} RX ← PZEM TX, GPIO${txPin} TX → PZEM RX` +
         (liveMetrics.length ? ` • ${liveMetrics.join(' • ')}` : '')
     );
+}
+
+function normalizeHardwareModules(modules = {}) {
+    return {
+        bmp280Primary: modules.bmp280Primary && typeof modules.bmp280Primary === 'object' ? modules.bmp280Primary : {},
+        bmp280Secondary: modules.bmp280Secondary && typeof modules.bmp280Secondary === 'object' ? modules.bmp280Secondary : {},
+        ads1115: modules.ads1115 && typeof modules.ads1115 === 'object' ? modules.ads1115 : {},
+        mcp4725: modules.mcp4725 && typeof modules.mcp4725 === 'object' ? modules.mcp4725 : {},
+        pzem004t: modules.pzem004t && typeof modules.pzem004t === 'object' ? modules.pzem004t : {}
+    };
+}
+
+function getHardwareModuleMeta(module = {}) {
+    const available = Boolean(module.available);
+    const expected = module.expected !== false;
+
+    if (available) {
+        return { text: 'Онлайн', tone: 'success' };
+    }
+    if (expected) {
+        return { text: 'Нет ответа', tone: 'danger' };
+    }
+    return { text: 'Опция', tone: 'muted' };
+}
+
+function buildHardwareModuleCard(module = {}) {
+    const meta = getHardwareModuleMeta(module);
+    const pins = Number.isFinite(Number(module.rxPin)) && Number.isFinite(Number(module.txPin))
+        ? `GPIO${Number(module.rxPin)} / GPIO${Number(module.txPin)}`
+        : '';
+    const baudRate = Number.isFinite(Number(module.baudRate)) ? `${Number(module.baudRate)} бод` : '';
+    const extras = [pins, baudRate]
+        .filter(Boolean)
+        .map((item) => `<span>${escapeHtml(item)}</span>`)
+        .join('');
+
+    return `
+        <div class="equipment-module-card">
+            <div class="equipment-module-card-head">
+                <strong>${escapeHtml(module.label || 'Модуль')}</strong>
+                <span class="equipment-status-badge ${meta.tone}">${meta.text}</span>
+            </div>
+            <div class="equipment-module-card-meta">
+                <span>${escapeHtml(module.bus || '—')}</span>
+                <span>${escapeHtml(module.address || '—')}</span>
+                ${extras}
+            </div>
+            <div class="equipment-module-card-role">${escapeHtml(module.role || '—')}</div>
+        </div>
+    `;
+}
+
+function syncHardwareModulesUi(modules = {}) {
+    const listEl = document.getElementById('hardware-modules-list');
+    const hintEl = document.getElementById('hardware-modules-hint');
+    if (!listEl) return;
+
+    const normalized = normalizeHardwareModules(modules);
+    const orderedModules = [
+        normalized.bmp280Primary,
+        normalized.bmp280Secondary,
+        normalized.ads1115,
+        normalized.mcp4725,
+        normalized.pzem004t
+    ];
+
+    listEl.innerHTML = orderedModules.map((module) => buildHardwareModuleCard(module)).join('');
+
+    const onlineCount = orderedModules.filter((module) => Boolean(module.available)).length;
+    const expectedCount = orderedModules.filter((module) => module.expected !== false).length;
+    const missingExpected = orderedModules.filter((module) => module.expected !== false && !module.available).length;
+
+    if (hintEl) {
+        hintEl.textContent = missingExpected > 0
+            ? `Онлайн ${onlineCount}/${orderedModules.length}. Обязательных модулей без ответа: ${missingExpected}/${expectedCount}.`
+            : `Онлайн ${onlineCount}/${orderedModules.length}. Все обязательные модули отвечают.`;
+    }
 }
 
 function setBadgeState(id, text, tone) {
@@ -452,9 +538,11 @@ export async function loadEquipmentSettings() {
             waterAutoStartCubeTempC: clamp(data.waterAutoStartCubeTempC, 20, 60, 45),
             pzem: data.pzem && typeof data.pzem === 'object'
                 ? { ...data.pzem }
-                : (runtimeMonitorState.equipment?.pzem || {})
+                : (runtimeMonitorState.equipment?.pzem || {}),
+            modules: normalizeHardwareModules(data.modules)
         };
         syncPzemEquipmentUi(runtimeMonitorState.equipment.pzem);
+        syncHardwareModulesUi(runtimeMonitorState.equipment.modules);
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
     } finally {

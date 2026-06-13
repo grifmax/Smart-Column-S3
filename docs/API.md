@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.77`  
+**Версия прошивки:** `2.2.78`  
 **Актуальность документа:** 2026-06-12
 
 ---
@@ -278,6 +278,7 @@
 - `packingType`
 - `packingCoeff`
 - `pzem.*`
+- `modules.*`
 
 Для `GET /api/settings/equipment` блок `pzem` дополнительно содержит:
 
@@ -285,6 +286,23 @@
 - `uartNum`, `baudRate`
 - `rxPin`, `txPin`
 - `voltage`, `current`, `power`, `energy`, `frequency`, `powerFactor`
+
+Для `GET /api/settings/equipment` блок `modules` дополнительно содержит ожидаемые аппаратные узлы:
+
+- `bmp280Primary` — `BMP280 #1`, `I2C 0x76`, основной атмосферный датчик
+- `bmp280Secondary` — `BMP280 #2`, `I2C 0x77`, резервный атмосферный датчик
+- `ads1115` — `ADS1115`, `I2C 0x48`, `A1` давление куба / `A0` ареометр
+- `mcp4725` — `MCP4725`, `I2C 0x60`, DAC мешалки `0-10V`
+- `pzem004t` — `PZEM-004T`, `UART1`, монитор питания и нагрева
+
+Каждый элемент `modules.*` содержит минимум:
+
+- `label`
+- `available`
+- `expected`
+- `bus`
+- `address`
+- `role`
 
 Для `GET/POST /api/settings/rect` дополнительно используется флаг:
 

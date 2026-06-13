@@ -689,6 +689,22 @@ bool isTempSensorValid(uint8_t index) {
     return (temp != DEVICE_DISCONNECTED_C && temp > -50 && temp < 150);
 }
 
+bool isBmp280PrimaryAvailable() {
+    return bmp1_ok;
+}
+
+bool isBmp280SecondaryAvailable() {
+    return bmp2_ok;
+}
+
+bool isAds1115Available() {
+    return ads_ok;
+}
+
+bool isPzemAvailable() {
+    return pzem_ok;
+}
+
 void updateHealth(SystemHealth& health) {
     // Подсчёт работающих датчиков температуры
     health.tempSensorsTotal = 0;
