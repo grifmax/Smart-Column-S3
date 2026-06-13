@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.2.84"
+#define FIRMWARE_VERSION "2.2.85"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -151,7 +151,7 @@
 
 // Текущий выбранный режим управления ТЭНом (по умолчанию SSR для обратной совместимости)
 // Для использования симистора установите HEATER_MODE_TRIAC
-#define HEATER_CONTROL_MODE HEATER_MODE_SSR
+#define HEATER_CONTROL_MODE HEATER_MODE_TRIAC
 
 #define PWM_FREQ_HEATER 1    // Гц (медленный для SSR)
 #define PWM_FREQ_VALVE 1000  // Гц

@@ -96,7 +96,7 @@ uint8_t update(const SystemState& state, const Settings& settings) {
     }
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
-    const float currentVolt = state.voltage > 0 ? state.voltage : 230.0f;
+    const float currentVolt = state.power.voltage > 0 ? state.power.voltage : 230.0f;
     const uint16_t delayUs = calculateTriacDelay(recommended, currentVolt);
     Heater::setTriacDelay(delayUs);
 #endif

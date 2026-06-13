@@ -44,6 +44,7 @@ static bool alertSent = false;
 static uint32_t lastFloodTime = 0;
 
 void update(SystemState& state, const Settings& settings) {
+    Heater::setBoosterEnabled(false);
     if (state.temps.valid[TEMP_CUBE] && state.temps.cube >= getWaterAutoStartTempC(settings)) {
         if (!Valves::getWater()) Valves::setWater(true);
     }

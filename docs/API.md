@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.84`  
+**Версия прошивки:** `2.2.85`  
 **Актуальность документа:** 2026-06-12
 
 ---
@@ -35,6 +35,7 @@
 - `v2.activeLimits.antiOscillationActive` / `v2.activeLimits.antiOscillationHoldSec`
 - `v2.indicators.telemetryCoverage`, `decisionTrust`, `degradedModeActive`, `adaptiveControlAllowed`
 - `activeProfile` — активный профиль процесса, его validation context и preview адаптации рецепта под текущее атмосферное давление
+- `power.backend`, `power.boosterEnabled`, `power.zeroCrossSeen`, `power.zeroCrossCount`, `power.triacDelayUs` — live-диагностика схемы нагрева `TRIAC main + SSR booster`
 
 Это главный endpoint для web UI и fallback для внешних клиентов.
 

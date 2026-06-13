@@ -22,6 +22,7 @@ void update(SystemState& state, const Settings& settings) {
 
     switch (state.nbkPhase) {
         case NbkPhase::HEATING:
+            applyBoosterHeater(state, settings, true);
             Heater::setPower(100);
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
                 Valves::setWater(true);
@@ -39,6 +40,7 @@ void update(SystemState& state, const Settings& settings) {
             break;
             
         case NbkPhase::STABILIZATION:
+            applyBoosterHeater(state, settings, false);
             Heater::setPower(settings.equipment.heaterPowerW > 0 ? (getProcessHeaterPower(state, settings, 70)) : 70); 
             if (!liveLimits.phaseAdvanceBlocked && elapsed > 5 * 60 * 1000UL) {
                 LOG_I("NBK: STABILIZATION -> WORKING");
@@ -53,6 +55,7 @@ void update(SystemState& state, const Settings& settings) {
             break;
             
         case NbkPhase::WORKING: {
+            applyBoosterHeater(state, settings, false);
             // Плавный разгон насоса (Ramp-up) в течение 60 секунд
             float targetSpeed = settings.nbk.pumpSpeedMlH;
             if (elapsed < 60000UL) {
@@ -102,6 +105,7 @@ void update(SystemState& state, const Settings& settings) {
         }
             
         case NbkPhase::FINISH:
+            applyBoosterHeater(state, settings, false);
             Pump::stop();
             Heater::setPower(0);
             if (elapsed > 5 * 60 * 1000UL) {

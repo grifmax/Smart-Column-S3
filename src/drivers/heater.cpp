@@ -7,16 +7,22 @@
 
 #include "heater.h"
 
+#if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+#include "driver/gpio.h"
+#include "esp32-hal-timer.h"
+#endif
+
 // =============================================================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
 // =============================================================================
 
-static uint8_t currentPower = 0;    // Текущая мощность 0-100%
+static volatile uint8_t currentPower = 0;    // Текущая мощность 0-100%
 static uint8_t targetPower = 0;     // Целевая мощность (для ramp)
 static uint8_t rampStartPower = 0;  // BUG-2 fix: начальная мощность для линейной интерполяции
 static uint32_t rampStartTime = 0;
 static uint32_t rampDuration = 0;
 static bool ramping = false;
+static bool boosterEnabled = false;
 
 static bool isDemoHardwareSuppressed() {
     return g_settings.demoMode;
@@ -24,9 +30,26 @@ static bool isDemoHardwareSuppressed() {
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
 // Переменные для симистора
-static gptimer_handle_t triac_timer = NULL;
+static hw_timer_t* triac_timer = nullptr;
 static volatile uint16_t triac_delay_us = TRIAC_MAX_ALPHA_US; // Задержка отпирания по умолчанию (почти полный off)
+static volatile uint32_t zero_cross_count = 0;
 #endif
+
+namespace {
+
+void writeBooster(bool enabled) {
+    digitalWrite(PIN_SSR_HEATER, enabled ? HIGH : LOW);
+}
+
+#if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+inline void IRAM_ATTR fireTriacPulse() {
+    gpio_set_level((gpio_num_t)PIN_TRIAC, 1);
+    esp_rom_delay_us(TRIAC_PULSE_WIDTH_US);
+    gpio_set_level((gpio_num_t)PIN_TRIAC, 0);
+}
+#endif
+
+} // namespace
 
 // =============================================================================
 // ОБРАБОТЧИКИ ПРЕРЫВАНИЙ (ISR) ДЛЯ TRIAC
@@ -34,29 +57,22 @@ static volatile uint16_t triac_delay_us = TRIAC_MAX_ALPHA_US; // Задержк�
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
 
-// Callback когда таймер досчитал до нужной задержки (triac_delay_us)
-static bool IRAM_ATTR triac_timer_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data) {
-    // 1. Подаем открывающий импульс на симистор
-    gpio_set_level((gpio_num_t)PIN_TRIAC, 1);
-    
-    // 2. Ждем несколько микросекунд (блокирующе в ISR, но очень коротко)
-    esp_rom_delay_us(TRIAC_PULSE_WIDTH_US);
-    
-    // 3. Закрываем оптосимистор (сам симистор закроется при следующем переходе через нуль)
-    gpio_set_level((gpio_num_t)PIN_TRIAC, 0);
-
-    // 4. Останавливаем таймер до следующего zero-cross
-    gptimer_stop(timer);
-
-    return false; // Не будим high priority task
+// One-shot таймер открывает симистор в нужной точке полупериода
+static void IRAM_ATTR triac_timer_alarm_isr() {
+    if (triac_timer != nullptr) {
+        timerAlarmDisable(triac_timer);
+    }
+    fireTriacPulse();
 }
 
 // Обработчик прерывания детектора Zero-Cross
-static void IRAM_ATTR zero_cross_isr_handler(void* arg) {
+static void IRAM_ATTR zero_cross_isr_handler() {
+    zero_cross_count++;
+
     // Выключаем симистор на всякий случай
     gpio_set_level((gpio_num_t)PIN_TRIAC, 0);
 
-    if (triac_timer == NULL) return;
+    if (triac_timer == nullptr) return;
 
     if (currentPower == 0 || triac_delay_us >= TRIAC_MAX_ALPHA_US) {
         // Мощность 0, ничего не делаем, симистор останется закрытым
@@ -65,21 +81,15 @@ static void IRAM_ATTR zero_cross_isr_handler(void* arg) {
 
     if (currentPower == 100 && triac_delay_us <= TRIAC_MIN_ALPHA_US) {
         // Мощность 100%, открываем симистор сразу
-        gpio_set_level((gpio_num_t)PIN_TRIAC, 1);
+        fireTriacPulse();
         return;
     }
 
-    // Перезапускаем таймер с новой задержкой
-    gptimer_stop(triac_timer);
-    
-    gptimer_alarm_config_t alarm_config = {};
-    alarm_config.alarm_count = triac_delay_us;  // задержка в мкс
-    alarm_config.reload_count = 0;
-    alarm_config.flags.auto_reload_on_alarm = false;
-    
-    gptimer_set_alarm_action(triac_timer, &alarm_config);
-    gptimer_set_raw_count(triac_timer, 0);
-    gptimer_start(triac_timer);
+    // Заряжаем one-shot таймер от начала текущего полупериода
+    timerAlarmDisable(triac_timer);
+    timerWrite(triac_timer, 0);
+    timerAlarmWrite(triac_timer, triac_delay_us, false);
+    timerAlarmEnable(triac_timer);
 }
 
 #endif
@@ -92,6 +102,10 @@ namespace Heater {
 
 void init() {
     LOG_I("Heater: Initializing...");
+
+    pinMode(PIN_SSR_HEATER, OUTPUT);
+    writeBooster(false);
+    boosterEnabled = false;
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     LOG_I("Heater: Mode = TRIAC (Phase Control)");
@@ -106,30 +120,19 @@ void init() {
     gpio_config(&out_conf);
     gpio_set_level((gpio_num_t)PIN_TRIAC, 0);
 
-    // 2. Инициализация gptimer (1 МГц -> 1 тик = 1 мкс)
-    gptimer_config_t timer_config = {};
-    timer_config.clk_src = GPTIMER_CLK_SRC_DEFAULT;
-    timer_config.direction = GPTIMER_COUNT_UP;
-    timer_config.resolution_hz = 1000000; 
-    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &triac_timer));
-
-    gptimer_event_callbacks_t cbs = {
-        .on_alarm = triac_timer_alarm_cb,
-    };
-    ESP_ERROR_CHECK(gptimer_register_event_callbacks(triac_timer, &cbs, NULL));
-    ESP_ERROR_CHECK(gptimer_enable(triac_timer));
+    // 2. Инициализация hardware timer (80 MHz / 80 = 1 МГц, 1 тик = 1 мкс)
+    triac_timer = timerBegin(0, 80, true);
+    if (triac_timer == nullptr) {
+        LOG_E("Heater: TRIAC timer init failed");
+    } else {
+        timerAttachInterrupt(triac_timer, &triac_timer_alarm_isr, true);
+        timerAlarmWrite(triac_timer, TRIAC_MAX_ALPHA_US, false);
+        timerAlarmDisable(triac_timer);
+    }
 
     // 3. Настройка PIN_ZERO_CROSS и прерывания
-    gpio_config_t in_conf = {};
-    in_conf.intr_type = GPIO_INTR_ANYEDGE; // Детектируем и фронт, и спад (каждый переход через 0)
-    in_conf.mode = GPIO_MODE_INPUT;
-    in_conf.pin_bit_mask = (1ULL << PIN_ZERO_CROSS);
-    in_conf.pull_up_en = GPIO_PULLUP_ENABLE; 
-    gpio_config(&in_conf);
-
-    // Подключаем глобальный обработчик прерываний GPIO, если он еще не включен
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add((gpio_num_t)PIN_ZERO_CROSS, zero_cross_isr_handler, NULL);
+    pinMode(PIN_ZERO_CROSS, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(PIN_ZERO_CROSS), zero_cross_isr_handler, CHANGE);
 
 #else
     LOG_I("Heater: Mode = SSR (Slow PWM)");
@@ -142,6 +145,8 @@ void init() {
 #endif
 
     currentPower = 0;
+    targetPower = 0;
+    ramping = false;
     LOG_I("Heater: Init complete");
 }
 
@@ -188,20 +193,51 @@ uint8_t getPower() {
     return currentPower;
 }
 
+void setBoosterEnabled(bool enabled) {
+    boosterEnabled = enabled;
+    if (isDemoHardwareSuppressed()) {
+        return;
+    }
+    writeBooster(enabled);
+}
+
+bool isBoosterEnabled() {
+    return boosterEnabled;
+}
+
+Diagnostics getDiagnostics() {
+    Diagnostics diag;
+    diag.mainPowerPercent = currentPower;
+    diag.boosterEnabled = boosterEnabled;
+    diag.active = currentPower > 0 || boosterEnabled;
+#if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+    diag.zeroCrossCount = zero_cross_count;
+    diag.zeroCrossSeen = zero_cross_count > 0;
+    diag.triacDelayUs = triac_delay_us;
+#endif
+    return diag;
+}
+
 void emergencyStop() {
     LOG_I("Heater: EMERGENCY STOP!");
     if (isDemoHardwareSuppressed()) {
         currentPower = 0;
         targetPower = 0;
         ramping = false;
+        boosterEnabled = false;
         return;
     }
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     triac_delay_us = TRIAC_MAX_ALPHA_US;
+    if (triac_timer != nullptr) {
+        timerAlarmDisable(triac_timer);
+    }
     gpio_set_level((gpio_num_t)PIN_TRIAC, 0);
 #else
     ledcWrite(LEDC_CHANNEL_HEATER, 0);
 #endif
+    writeBooster(false);
+    boosterEnabled = false;
     currentPower = 0;
     targetPower = 0;
     ramping = false;

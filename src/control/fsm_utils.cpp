@@ -1,5 +1,6 @@
 #include "fsm_utils.h"
 #include <Arduino.h>
+#include "../drivers/heater.h"
 #include "watt_control.h"
 #include "v2/safety_supervisor.h"
 
@@ -52,6 +53,23 @@ uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings
     }
 
     return requestedPower;
+}
+
+bool shouldRunBoosterHeater(const SystemState& state, const Settings& settings, bool heatingPhase) {
+    if (!heatingPhase || !settings.equipment.boosterHeaterEnabled) {
+        return false;
+    }
+
+    if (state.temps.valid[TEMP_CUBE] &&
+        state.temps.cube >= settings.equipment.boosterHeaterStopCubeTempC) {
+        return false;
+    }
+
+    return true;
+}
+
+void applyBoosterHeater(const SystemState& state, const Settings& settings, bool heatingPhase) {
+    Heater::setBoosterEnabled(shouldRunBoosterHeater(state, settings, heatingPhase));
 }
 
 uint32_t getPhaseStartTime() { return phaseStartTime; }

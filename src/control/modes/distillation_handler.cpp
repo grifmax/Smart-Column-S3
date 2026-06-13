@@ -77,6 +77,7 @@ void update(SystemState& state, const Settings& settings) {
 
     switch (state.rectPhase) {
         case RectPhase::HEATING:
+            applyBoosterHeater(state, settings, true);
             Heater::setPower(g_params.powerPercent);
             if (state.temps.valid[TEMP_CUBE] && state.temps.cube >= 78.0f) {
                 setPhaseStartTime(now);
@@ -103,6 +104,7 @@ void update(SystemState& state, const Settings& settings) {
             break;
 
         case RectPhase::HEADS: {
+            applyBoosterHeater(state, settings, false);
             Heater::setPower(g_params.powerPercent);
             Pump::start(g_params.speedMlH);
             Valves::setHeads(true);
@@ -124,6 +126,7 @@ void update(SystemState& state, const Settings& settings) {
         }
 
         case RectPhase::BODY: {
+            applyBoosterHeater(state, settings, false);
             Heater::setPower(g_params.powerPercent);
             Valves::setHeads(false);
             Pump::start(g_params.speedMlH);
@@ -148,6 +151,7 @@ void update(SystemState& state, const Settings& settings) {
         }
 
         case RectPhase::FINISH:
+            applyBoosterHeater(state, settings, false);
             Heater::setPower(0);
             Pump::stop();
             Valves::setHeads(false);

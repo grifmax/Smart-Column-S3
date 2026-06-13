@@ -12,6 +12,8 @@ namespace FSM {
     float pressureAdjustedCubeTemp(float baseTempC, const SystemState& state);
     float estimateChargeAbvPercent(const SystemState& state);
     uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent);
+    bool shouldRunBoosterHeater(const SystemState& state, const Settings& settings, bool heatingPhase);
+    void applyBoosterHeater(const SystemState& state, const Settings& settings, bool heatingPhase);
     
     // Глобальные переменные состояния фаз (остаются в fsm.cpp, но доступны через геттеры/сеттеры)
     uint32_t getPhaseStartTime();

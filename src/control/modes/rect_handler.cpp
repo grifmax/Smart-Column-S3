@@ -67,6 +67,7 @@ void update(SystemState& state, const Settings& settings) {
 
     switch (state.rectPhase) {
         case RectPhase::HEATING:
+            applyBoosterHeater(state, settings, true);
             Heater::setPower(100);
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
                 Valves::setWater(true);
@@ -86,6 +87,7 @@ void update(SystemState& state, const Settings& settings) {
             break;
 
         case RectPhase::STABILIZATION:
+            applyBoosterHeater(state, settings, false);
             Valves::setHeads(false);
             Pump::stop();
             Valves::setWater(true);
@@ -105,6 +107,7 @@ void update(SystemState& state, const Settings& settings) {
             break;
 
         case RectPhase::HEADS: {
+            applyBoosterHeater(state, settings, false);
             Heater::setPower(getProcessHeaterPower(state, settings, 60));
             float headsSpeed = settings.rectParams.headsSpeedMlHKw * (settings.equipment.heaterPowerW / 1000.0f);
             Pump::start(headsSpeed);
@@ -128,6 +131,7 @@ void update(SystemState& state, const Settings& settings) {
         }
 
         case RectPhase::POST_HEADS_STABILIZATION:
+            applyBoosterHeater(state, settings, false);
             Pump::stop();
             Valves::setHeads(false);
             Valves::setWater(true);
@@ -144,6 +148,7 @@ void update(SystemState& state, const Settings& settings) {
             break;
 
         case RectPhase::PURGE:
+            applyBoosterHeater(state, settings, false);
             Pump::stop();
             Valves::closeAll();
             Valves::setWater(true);
@@ -165,6 +170,7 @@ void update(SystemState& state, const Settings& settings) {
             break;
 
         case RectPhase::BODY:
+            applyBoosterHeater(state, settings, false);
             Valves::setHeads(false);
             Valves::setWater(true);
             Heater::setPower(getProcessHeaterPower(state, settings, 60));
@@ -200,6 +206,7 @@ void update(SystemState& state, const Settings& settings) {
             break;
 
         case RectPhase::TAILS:
+            applyBoosterHeater(state, settings, false);
             Heater::setPower(getProcessHeaterPower(state, settings, 50));
             {
                 float tailsSpeed = (settings.rectParams.bodySpeedMlHKw * (settings.equipment.heaterPowerW / 1000.0f)) * 0.6f;
@@ -226,6 +233,7 @@ void update(SystemState& state, const Settings& settings) {
             break;
 
         case RectPhase::FINISH:
+            applyBoosterHeater(state, settings, false);
             Heater::setPower(0);
             Pump::stop();
             Valves::setWater(true);

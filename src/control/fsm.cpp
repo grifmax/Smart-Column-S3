@@ -124,6 +124,7 @@ void noteModeExitTransition(const SystemState& state,
 
 void finalizeModeStop(SystemState& state) {
     Heater::setPower(0);
+    Heater::setBoosterEnabled(false);
     Pump::stop();
     Stirrer::stop(); // остановить мешалку при выходе из любого режима
     Valves::closeAll();
@@ -177,6 +178,7 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
     
     // Сброс предыдущего состояния
     Heater::setPower(0);
+    Heater::setBoosterEnabled(false);
     Pump::stop();
     Valves::closeAll();
     
@@ -290,6 +292,7 @@ void pause(SystemState& state) {
     pauseStartTime = millis();
 
     Heater::setPower(0);
+    Heater::setBoosterEnabled(false);
     Pump::stop();
     // Охлаждение оставляем если куб горячий
     if (state.temps.cube < 45.0f) Valves::setWater(false);

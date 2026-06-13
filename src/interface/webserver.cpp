@@ -403,7 +403,8 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   const bool processActive = g_state.mode != Mode::IDLE;
   const bool latched = Safety::isLatched(g_state);
   const bool alarmActive = (g_state.currentAlarm.type != AlarmType::NONE);
-  const bool heaterActive = Heater::getPower() > 0;
+  const Heater::Diagnostics heaterDiag = Heater::getDiagnostics();
+  const bool heaterActive = heaterDiag.active;
   const bool servoAvailable =
       g_settings.fractionator.enabled && Valves::isFractionatorEnabled();
   const Pump::Diagnostics pumpDiag = Pump::getDiagnostics();
@@ -453,8 +454,13 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
 
   JsonObject heater = doc["heater"].to<JsonObject>();
   heater["active"] = heaterActive;
-  heater["powerPercent"] = Heater::getPower();
-  heater["powerSetPercent"] = Heater::getPower();
+  heater["powerPercent"] = heaterDiag.mainPowerPercent;
+  heater["powerSetPercent"] = heaterDiag.mainPowerPercent;
+  heater["backend"] = heaterDiag.triacMode ? "triac" : "ssr";
+  heater["boosterEnabled"] = heaterDiag.boosterEnabled;
+  heater["zeroCrossSeen"] = heaterDiag.zeroCrossSeen;
+  heater["zeroCrossCount"] = heaterDiag.zeroCrossCount;
+  heater["triacDelayUs"] = heaterDiag.triacDelayUs;
   heater["minSubmergeLiters"] = g_settings.equipment.minHeaterSubmergeL;
 
   JsonObject valves = doc["valves"].to<JsonObject>();
@@ -2203,10 +2209,16 @@ void init() {
 
     // Мощность (PZEM-004T)
     JsonObject power = doc["power"].to<JsonObject>();
+    const Heater::Diagnostics heaterDiag = Heater::getDiagnostics();
     power["voltage"] = g_state.power.voltage;
     power["current"] = g_state.power.current;
     power["power"] = g_state.power.power;
-    power["setPercent"] = Heater::getPower();
+    power["setPercent"] = heaterDiag.mainPowerPercent;
+    power["backend"] = heaterDiag.triacMode ? "triac" : "ssr";
+    power["boosterEnabled"] = heaterDiag.boosterEnabled;
+    power["zeroCrossSeen"] = heaterDiag.zeroCrossSeen;
+    power["zeroCrossCount"] = heaterDiag.zeroCrossCount;
+    power["triacDelayUs"] = heaterDiag.triacDelayUs;
     power["energy"] = g_state.power.energy;
     power["frequency"] = g_state.power.frequency;
     power["pf"] = g_state.power.powerFactor;
