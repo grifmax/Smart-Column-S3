@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.82`  
+**Версия прошивки:** `2.2.83`  
 **Актуальность документа:** 2026-06-12
 
 ---
@@ -278,6 +278,11 @@
 
 - `packingType`
 - `packingCoeff`
+- `coolingPwmEnabled`
+- `coolingPwmMinDuty`
+- `coolingPwmMaxDuty`
+- `coolingPwmStartupDuty`
+- `coolingPwmCurrentDuty` (`GET`, live state)
 - `pzem.*`
 - `modules.*`
 
@@ -327,6 +332,31 @@
 - `POST /api/pump/stop`
 - `GET /api/pump/status`
 - `GET /api/pump/diag`
+
+### Клапаны и сервисный тест
+
+- `POST /api/manual/valves`
+- `GET /api/testing/status`
+- `POST /api/testing/valves`
+
+Для `POST /api/manual/valves` дополнительно поддерживается:
+
+- `startStopDuty` — прямое задание `0..255` для PWM-канала охлаждения
+
+Для `POST /api/testing/valves` доступны:
+
+- `target: "water" | "heads" | "uno"` + `open`
+- `target: "water" | "heads" | "uno"` + `action: "pulse"` + `durationMs`
+- `target: "startStop"` + `duty` — сервисная установка PWM-канала охлаждения
+
+`GET /api/testing/status` дополнительно возвращает:
+
+- `valves.startStopDuty`
+- `coolingSettings.enabled`
+- `coolingSettings.minDuty`
+- `coolingSettings.maxDuty`
+- `coolingSettings.startupDuty`
+- `activeTests.startStopDuty`
 
 ### Калибровка
 

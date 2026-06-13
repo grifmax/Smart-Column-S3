@@ -186,6 +186,28 @@ function setBadgeState(id, text, tone) {
     el.className = `equipment-status-badge ${tone}`;
 }
 
+function syncCoolingActuatorUi() {
+    const equipment = runtimeMonitorState.equipment || {};
+    const enabled = Boolean(equipment.coolingPwmEnabled);
+    const minDuty = clamp(equipment.coolingPwmMinDuty, 0, 255, 0);
+    const maxDuty = clamp(equipment.coolingPwmMaxDuty, minDuty, 255, 255);
+    const startupDuty = clamp(equipment.coolingPwmStartupDuty, minDuty, maxDuty, minDuty);
+    const currentDuty = clamp(equipment.coolingPwmCurrentDuty, 0, 255, 0);
+
+    setCheckboxValue('cooling-pwm-enabled', enabled);
+    setInputValue('cooling-pwm-min-duty', minDuty);
+    setInputValue('cooling-pwm-max-duty', maxDuty);
+    setInputValue('cooling-pwm-startup-duty', startupDuty);
+    setTextValue(
+        'cooling-actuator-state',
+        `${enabled ? 'Автоконтур включён' : 'Автоконтур выключен'} • окно ${minDuty}-${maxDuty}/255 • сейчас ${currentDuty}/255`
+    );
+    setTextValue(
+        'cooling-actuator-hint',
+        `Стартовая подача ${startupDuty}/255. Сервисный PWM-канал доступен в карточке клапанов.`
+    );
+}
+
 function getInputValue(id, fallback = 0) {
     return parseLocalizedNumber(document.getElementById(id)?.value, fallback);
 }
@@ -536,6 +558,11 @@ export async function loadEquipmentSettings() {
             cubeVolumeL: clamp(data.cubeVolumeL, 5, 250, DEFAULT_CUBE_VOLUME_L),
             minHeaterSubmergeL: clamp(data.minHeaterSubmergeL, 0.5, 100, 7.5),
             waterAutoStartCubeTempC: clamp(data.waterAutoStartCubeTempC, 20, 60, 45),
+            coolingPwmEnabled: Boolean(data.coolingPwmEnabled),
+            coolingPwmMinDuty: clamp(data.coolingPwmMinDuty, 0, 255, 0),
+            coolingPwmMaxDuty: clamp(data.coolingPwmMaxDuty, 0, 255, 255),
+            coolingPwmStartupDuty: clamp(data.coolingPwmStartupDuty, 0, 255, 96),
+            coolingPwmCurrentDuty: clamp(data.coolingPwmCurrentDuty, 0, 255, 0),
             pzem: data.pzem && typeof data.pzem === 'object'
                 ? { ...data.pzem }
                 : (runtimeMonitorState.equipment?.pzem || {}),
@@ -543,6 +570,7 @@ export async function loadEquipmentSettings() {
         };
         syncPzemEquipmentUi(runtimeMonitorState.equipment.pzem);
         syncHardwareModulesUi(runtimeMonitorState.equipment.modules);
+        syncCoolingActuatorUi();
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
     } finally {
@@ -550,6 +578,8 @@ export async function loadEquipmentSettings() {
         initEquipmentNumberSteppers();
         loadCubeExtenderPreset();
         updateCubeVolumeHint({ normalizeInput: true });
+        syncCoolingActuatorUi();
+        syncCoolingActuatorUi();
     }
 }
 
@@ -558,6 +588,15 @@ export async function saveEquipment() {
     const columnHeight = clamp(getInputValue('column-height', 1500), 500, 3000, 1500);
     const cubeVolume = clamp(getInputValue('cube-volume-l', DEFAULT_CUBE_VOLUME_L), 5, 250, DEFAULT_CUBE_VOLUME_L);
     const waterAutoStartCubeTempC = clamp(getInputValue('water-autostart-cube-temp', 45), 20, 60, 45);
+    const coolingPwmEnabled = getCheckboxValue('cooling-pwm-enabled', false);
+    const coolingPwmMinDuty = clamp(getInputValue('cooling-pwm-min-duty', 0), 0, 255, 0);
+    const coolingPwmMaxDuty = clamp(getInputValue('cooling-pwm-max-duty', 255), coolingPwmMinDuty, 255, 255);
+    const coolingPwmStartupDuty = clamp(
+        getInputValue('cooling-pwm-startup-duty', 96),
+        coolingPwmMinDuty,
+        coolingPwmMaxDuty,
+        coolingPwmMinDuty
+    );
 
     const mlPerRev = toFiniteNumber(document.getElementById('pump-ml-per-rev')?.value, NaN);
     const stepsPerRev = toFiniteNumber(document.getElementById('pump-steps-per-rev')?.value, NaN);
@@ -592,7 +631,11 @@ export async function saveEquipment() {
                 heaterPowerW: Math.round(heaterPower),
                 columnHeightMm: Math.round(columnHeight),
                 cubeVolumeL: cubeVolume,
-                waterAutoStartCubeTempC
+                waterAutoStartCubeTempC,
+                coolingPwmEnabled,
+                coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
+                coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
+                coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty)
             })
         });
 
@@ -607,7 +650,11 @@ export async function saveEquipment() {
             heaterPowerW: Math.round(heaterPower),
             columnHeightMm: Math.round(columnHeight),
             cubeVolumeL: cubeVolume,
-            waterAutoStartCubeTempC
+            waterAutoStartCubeTempC,
+            coolingPwmEnabled,
+            coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
+            coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
+            coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty)
         };
 
         updateCubeVolumeHint({ normalizeInput: true });

@@ -273,6 +273,11 @@ export let runtimeMonitorState = {
         cubeVolumeL: DEFAULT_CUBE_VOLUME_L,
         minHeaterSubmergeL: 7.5,
         waterAutoStartCubeTempC: 45,
+        coolingPwmEnabled: false,
+        coolingPwmMinDuty: 0,
+        coolingPwmMaxDuty: 255,
+        coolingPwmStartupDuty: 96,
+        coolingPwmCurrentDuty: 0,
         modules: {}
     },
     stirrerSettings: {

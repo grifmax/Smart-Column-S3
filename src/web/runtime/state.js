@@ -34,6 +34,21 @@ function mergeEquipmentState(s, data) {
         'water_auto_start_cube_temp_c',
         'water_auto_start_cube_temp'
     ]);
+    assign('coolingPwmMinDuty', ['coolingPwmMinDuty', 'cooling_pwm_min_duty']);
+    assign('coolingPwmMaxDuty', ['coolingPwmMaxDuty', 'cooling_pwm_max_duty']);
+    assign('coolingPwmStartupDuty', ['coolingPwmStartupDuty', 'cooling_pwm_startup_duty']);
+    assign('coolingPwmCurrentDuty', ['coolingPwmCurrentDuty', 'cooling_pwm_current_duty']);
+
+    for (const source of sources) {
+        if (source.coolingPwmEnabled !== undefined) {
+            s.equipment.coolingPwmEnabled = Boolean(source.coolingPwmEnabled);
+            break;
+        }
+        if (source.cooling_pwm_enabled !== undefined) {
+            s.equipment.coolingPwmEnabled = Boolean(source.cooling_pwm_enabled);
+            break;
+        }
+    }
 }
 
 function mergeStirrerState(s, data) {

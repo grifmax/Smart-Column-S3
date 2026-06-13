@@ -351,6 +351,20 @@ const TESTING_TEMPLATE = `
                     <div class="equipment-inline-stat"><span>Задача</span><strong id="equipment-test-pump-task">--</strong></div>
                     <div class="equipment-inline-stat"><span>Циклы</span><strong id="equipment-test-pump-loops">--</strong></div>
                     <div class="equipment-inline-stat"><span>Таймауты</span><strong id="equipment-test-pump-locks">--</strong></div>
+                    <div class="equipment-actuator-row">
+                        <div>
+                            <strong>PWM cooling</strong>
+                            <div class="info-text">Manual duty control for the proportional cooling output</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-start-stop-hint">Set the working window in equipment settings, then verify duty here.</div>
+                        </div>
+                        <span class="equipment-status-badge muted" id="equipment-test-start-stop-badge">—</span>
+                        <div class="equipment-inline-row">
+                            <input type="number" id="equipment-test-start-stop-duty" value="96" min="0" max="255" step="1" data-stepper-mode="pair" data-stepper-step="1">
+                            <button class="btn btn-secondary" type="button" id="equipment-test-start-stop-apply">Apply</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-start-stop-startup">Startup</button>
+                            <button class="btn btn-danger" type="button" id="equipment-test-start-stop-stop">0</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="controls equipment-actions">
                     <button class="btn btn-success" type="button" id="equipment-test-pump-toggle">Запустить насос</button>
@@ -1005,6 +1019,10 @@ function ensureParameterWorkbenchCards() {
     });
     appendUniqueGroups(qs('.equipment-grid', coolingCard), formGroups, [
         'water-autostart-cube-temp',
+        'cooling-pwm-enabled',
+        'cooling-pwm-min-duty',
+        'cooling-pwm-max-duty',
+        'cooling-pwm-startup-duty',
     ]);
 
     const stirrerCard = buildEquipmentCard({
@@ -1878,6 +1896,45 @@ function renderValveButtonState(id, open, label, testingAllowed, pulse, demoMode
     }
 }
 
+function renderStartStopPwmStatus(valves, coolingSettings, testingAllowed, demoMode) {
+    const badge = byId('equipment-test-start-stop-badge');
+    const input = byId('equipment-test-start-stop-duty');
+    const applyButton = byId('equipment-test-start-stop-apply');
+    const startupButton = byId('equipment-test-start-stop-startup');
+    const stopButton = byId('equipment-test-start-stop-stop');
+    const hint = byId('equipment-test-start-stop-hint');
+
+    const enabled = Boolean(coolingSettings?.enabled);
+    const minDuty = clamp(coolingSettings?.minDuty, 0, 255, 0);
+    const maxDuty = clamp(coolingSettings?.maxDuty, minDuty, 255, 255);
+    const startupDuty = clamp(coolingSettings?.startupDuty, minDuty, maxDuty, minDuty);
+    const currentDuty = clamp(valves?.startStopDuty, 0, 255, 0);
+    const active = currentDuty > 0;
+
+    updateBadge(
+        badge,
+        !enabled ? 'Disabled' : active ? `${currentDuty}/255` : 'Idle',
+        !enabled ? 'muted' : active ? (demoMode ? 'warning' : 'success') : 'muted'
+    );
+
+    if (input && !input.matches(':focus')) {
+        input.value = String(active ? currentDuty : startupDuty);
+    }
+
+    if (hint) {
+        hint.textContent = !enabled
+            ? 'PWM cooling channel is disabled in equipment settings.'
+            : `Duty window ${minDuty}-${maxDuty}/255, startup ${startupDuty}/255.` +
+                (active ? ` Current ${demoMode ? 'simulation' : 'output'} ${currentDuty}/255.` : ' Channel is at zero.');
+    }
+
+    const canControl = testingAllowed && enabled;
+    if (input) input.disabled = !canControl;
+    if (applyButton) applyButton.disabled = !canControl;
+    if (startupButton) startupButton.disabled = !canControl;
+    if (stopButton) stopButton.disabled = !active;
+}
+
 function renderServoStatus(servo, testingAllowed) {
     updateBadge(
         byId('equipment-test-servo-badge'),
@@ -1987,6 +2044,7 @@ function renderTestingStatus(status) {
     renderValveButtonState('equipment-test-water-toggle', !!status.valves?.water, 'воду', status.testingAllowed, status.valves?.waterPulse, status.demoMode);
     renderValveButtonState('equipment-test-heads-toggle', !!status.valves?.heads, 'головы', status.testingAllowed, status.valves?.headsPulse, status.demoMode);
     renderValveButtonState('equipment-test-uno-toggle', !!status.valves?.uno, 'УНО', status.testingAllowed, status.valves?.unoPulse, status.demoMode);
+    renderStartStopPwmStatus(status.valves, status.coolingSettings, status.testingAllowed, status.demoMode);
     renderServoStatus(status.servo, status.testingAllowed);
     renderHeaterStatus(status.heater, status.testingAllowed, status.demoMode);
     renderTemperatureList(status.temperatures);
@@ -2003,7 +2061,7 @@ function renderTestingStatus(status) {
 
     const closeValvesButton = byId('equipment-test-valves-close-all');
     if (closeValvesButton) {
-        const hasOpenValve = !!status.valves?.water || !!status.valves?.heads || !!status.valves?.uno;
+        const hasOpenValve = !!status.valves?.water || !!status.valves?.heads || !!status.valves?.uno || Number(status.valves?.startStopDuty || 0) > 0;
         closeValvesButton.disabled = !status.testingAllowed && !hasOpenValve;
     }
 }
@@ -2113,6 +2171,17 @@ async function handleValvePulse(target) {
     });
     renderTestingStatus(status);
     addLog(`Импульс клапана ${target}: ${durationMs} мс`, 'info');
+}
+
+async function handleStartStopDutySet(duty) {
+    const nextDuty = clamp(duty, 0, 255, 0);
+    const status = await requestJson('/api/testing/valves', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: 'startStop', duty: nextDuty })
+    });
+    renderTestingStatus(status);
+    addLog(`PWM cooling duty set to ${nextDuty}/255`, nextDuty > 0 ? 'info' : 'warning');
 }
 
 async function handleStopAll() {
@@ -2284,6 +2353,17 @@ function bindTestingActions() {
     });
     byId('equipment-test-uno-pulse')?.addEventListener('click', () => {
         void handleValvePulse('uno').catch((error) => addLog(`✗ Импульс УНО: ${error.message}`, 'error'));
+    });
+    byId('equipment-test-start-stop-apply')?.addEventListener('click', () => {
+        const duty = clamp(byId('equipment-test-start-stop-duty')?.value, 0, 255, 0);
+        void handleStartStopDutySet(duty).catch((error) => addLog(`✗ PWM cooling: ${error.message}`, 'error'));
+    });
+    byId('equipment-test-start-stop-startup')?.addEventListener('click', () => {
+        const duty = clamp(state.lastStatus?.coolingSettings?.startupDuty, 0, 255, 0);
+        void handleStartStopDutySet(duty).catch((error) => addLog(`✗ PWM cooling: ${error.message}`, 'error'));
+    });
+    byId('equipment-test-start-stop-stop')?.addEventListener('click', () => {
+        void handleStartStopDutySet(0).catch((error) => addLog(`✗ PWM cooling: ${error.message}`, 'error'));
     });
     byId('equipment-test-valves-close-all')?.addEventListener('click', () => {
         void handleValveToggle('all', false).catch((error) => addLog(`✗ Клапаны: ${error.message}`, 'error'));

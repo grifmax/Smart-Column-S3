@@ -429,6 +429,7 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   activeTests["waterValve"] = Valves::getWater();
   activeTests["headsValve"] = Valves::getHeads();
   activeTests["unoValve"] = Valves::getUno();
+  activeTests["startStopDuty"] = Valves::getStartStop() > 0;
   activeTests["servoMoving"] = Valves::isServoMoving();
 
   JsonObject pump = doc["pump"].to<JsonObject>();
@@ -461,6 +462,11 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   valves["heads"] = Valves::getHeads();
   valves["uno"] = Valves::getUno();
   valves["startStopDuty"] = Valves::getStartStop();
+  JsonObject coolingSettings = doc["coolingSettings"].to<JsonObject>();
+  coolingSettings["enabled"] = g_settings.equipment.coolingPwmEnabled;
+  coolingSettings["minDuty"] = g_settings.equipment.coolingPwmMinDuty;
+  coolingSettings["maxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
+  coolingSettings["startupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
   JsonObject waterPulse = valves["waterPulse"].to<JsonObject>();
   waterPulse["active"] = Valves::isPulseActive(Valves::ValveId::WATER);
   waterPulse["remainingMs"] =
@@ -2218,6 +2224,7 @@ void init() {
     valves["water"] = Valves::getWater();
     valves["heads"] = Valves::getHeads();
     valves["uno"] = Valves::getUno();
+    valves["startStopDuty"] = Valves::getStartStop();
     valves["tails"] = false; // Отдельного канала хвостов в драйвере нет
 
     // Ареометр
@@ -2239,6 +2246,11 @@ void init() {
     equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
     equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
     equipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+    equipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
+    equipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
+    equipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
+    equipment["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+    equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
 
     JsonObject safetySettings = doc["safetySettings"].to<JsonObject>();
     safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
@@ -2248,6 +2260,11 @@ void init() {
     safetySettings["pressureRiseRateMmHgMin"] = g_settings.safety.pressureRiseRateMmHgMin;
     doc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
     doc["water_auto_start_cube_temp_c"] = g_settings.equipment.waterAutoStartCubeTempC;
+    doc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
+    doc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
+    doc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
+    doc["cooling_pwm_startup_duty"] = g_settings.equipment.coolingPwmStartupDuty;
+    doc["cooling_pwm_current_duty"] = Valves::getStartStop();
     doc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
     doc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
     doc["safety_water_out_max_c"] = g_settings.safety.waterOutMaxC;
@@ -3361,6 +3378,11 @@ void init() {
     doc["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
     doc["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
     doc["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+    doc["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
+    doc["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
+    doc["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
+    doc["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+    doc["coolingPwmCurrentDuty"] = Valves::getStartStop();
     doc["packingType"] = packingType;
     doc["packingCoeff"] = g_settings.equipment.packingCoeff;
     JsonObject pzem = doc["pzem"].to<JsonObject>();
@@ -3466,6 +3488,34 @@ void init() {
           g_settings.equipment.waterAutoStartCubeTempC = clampFloatRange(
               doc["waterAutoStartCubeTempC"].as<float>(), 20.0f, 60.0f
           );
+        }
+        if (!doc["coolingPwmEnabled"].isNull()) {
+          g_settings.equipment.coolingPwmEnabled =
+              doc["coolingPwmEnabled"].as<bool>();
+        }
+        if (!doc["coolingPwmMinDuty"].isNull()) {
+          g_settings.equipment.coolingPwmMinDuty = clampU8Range(
+              doc["coolingPwmMinDuty"].as<uint32_t>(), 0, 255);
+        }
+        if (!doc["coolingPwmMaxDuty"].isNull()) {
+          g_settings.equipment.coolingPwmMaxDuty = clampU8Range(
+              doc["coolingPwmMaxDuty"].as<uint32_t>(), 0, 255);
+        }
+        if (g_settings.equipment.coolingPwmMinDuty >
+            g_settings.equipment.coolingPwmMaxDuty) {
+          g_settings.equipment.coolingPwmMinDuty =
+              g_settings.equipment.coolingPwmMaxDuty;
+        }
+        if (!doc["coolingPwmStartupDuty"].isNull()) {
+          g_settings.equipment.coolingPwmStartupDuty = clampU8Range(
+              doc["coolingPwmStartupDuty"].as<uint32_t>(),
+              g_settings.equipment.coolingPwmMinDuty,
+              g_settings.equipment.coolingPwmMaxDuty);
+        } else {
+          g_settings.equipment.coolingPwmStartupDuty = clampU8Range(
+              g_settings.equipment.coolingPwmStartupDuty,
+              g_settings.equipment.coolingPwmMinDuty,
+              g_settings.equipment.coolingPwmMaxDuty);
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
@@ -4209,6 +4259,11 @@ void init() {
         }
         if (!doc["uno"].isNull()) {
           Valves::setUno(doc["uno"].as<bool>());
+        }
+        if (!doc["startStopDuty"].isNull()) {
+          const uint8_t duty =
+              clampU8Range(doc["startStopDuty"].as<uint32_t>(), 0, 255);
+          Valves::setStartStop(duty);
         }
 
         request->send(200, "application/json", "{\"success\":true}");
@@ -5428,6 +5483,7 @@ void init() {
         const String action = doc["action"] | "";
         const bool open = doc["open"] | false;
         uint32_t durationMs = doc["durationMs"] | 0;
+        const uint8_t duty = clampU8Range(doc["duty"] | 0, 0, 255);
 
           if (target == "all") {
             Valves::closeAll();
@@ -5480,6 +5536,18 @@ void init() {
                                             open ? "УНО открыто вручную."
                                                  : "УНО закрыто вручную.");
              }
+        } else if (target == "startStop") {
+          Valves::setStartStop(duty);
+          char detail[160];
+          snprintf(
+              detail, sizeof(detail),
+              "PWM-канал охлаждения установлен на %u/255 (%u%%).",
+              (unsigned)duty,
+              (unsigned)((static_cast<uint32_t>(duty) * 100U) / 255U));
+          recordEquipmentTestingAction(
+              duty > 0 ? "info" : "warning",
+              "PWM охлаждения",
+              detail);
         } else {
           request->send(
               400, "application/json",
@@ -6604,6 +6672,11 @@ void broadcastState(const SystemState &state) {
   fastEquipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   fastEquipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
   fastEquipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+  fastEquipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
+  fastEquipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
+  fastEquipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
+  fastEquipment["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+  fastEquipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
   JsonObject fastSafetySettings = fastDoc["safetySettings"].to<JsonObject>();
   fastSafetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
   fastSafetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
@@ -6612,6 +6685,11 @@ void broadcastState(const SystemState &state) {
   fastSafetySettings["pressureRiseRateMmHgMin"] = g_settings.safety.pressureRiseRateMmHgMin;
   fastDoc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
   fastDoc["water_auto_start_cube_temp_c"] = g_settings.equipment.waterAutoStartCubeTempC;
+  fastDoc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
+  fastDoc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
+  fastDoc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
+  fastDoc["cooling_pwm_startup_duty"] = g_settings.equipment.coolingPwmStartupDuty;
+  fastDoc["cooling_pwm_current_duty"] = Valves::getStartStop();
   fastDoc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
   fastDoc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
   fastDoc["safety_water_out_max_c"] = g_settings.safety.waterOutMaxC;
@@ -6621,6 +6699,7 @@ void broadcastState(const SystemState &state) {
   fastValves["water"] = Valves::getWater();
   fastValves["heads"] = Valves::getHeads();
   fastValves["uno"] = Valves::getUno();
+  fastValves["startStopDuty"] = Valves::getStartStop();
   fastValves["tails"] = false;
 
   fastDoc["abv"] = state.hydrometer.abv;
@@ -6694,6 +6773,7 @@ void broadcastState(const SystemState &state) {
   valves["water"] = Valves::getWater();
   valves["heads"] = Valves::getHeads();
   valves["uno"] = Valves::getUno();
+  valves["startStopDuty"] = Valves::getStartStop();
   valves["tails"] = false;
 
   doc["abv"] = state.hydrometer.abv;
@@ -6711,15 +6791,30 @@ void broadcastState(const SystemState &state) {
   equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
   equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
-  equipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+  equipment["waterAutoStartCubeTempC"] =
+      g_settings.equipment.waterAutoStartCubeTempC;
+  equipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
+  equipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
+  equipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
+  equipment["coolingPwmStartupDuty"] =
+      g_settings.equipment.coolingPwmStartupDuty;
+  equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
   JsonObject safetySettings = doc["safetySettings"].to<JsonObject>();
   safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
   safetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
   safetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
   safetySettings["waterOutRiseRateCMin"] = g_settings.safety.waterOutRiseRateCMin;
-  safetySettings["pressureRiseRateMmHgMin"] = g_settings.safety.pressureRiseRateMmHgMin;
+  safetySettings["pressureRiseRateMmHgMin"] =
+      g_settings.safety.pressureRiseRateMmHgMin;
   doc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
-  doc["water_auto_start_cube_temp_c"] = g_settings.equipment.waterAutoStartCubeTempC;
+  doc["water_auto_start_cube_temp_c"] =
+      g_settings.equipment.waterAutoStartCubeTempC;
+  doc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
+  doc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
+  doc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
+  doc["cooling_pwm_startup_duty"] =
+      g_settings.equipment.coolingPwmStartupDuty;
+  doc["cooling_pwm_current_duty"] = Valves::getStartStop();
   doc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
   doc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
   doc["safety_water_out_max_c"] = g_settings.safety.waterOutMaxC;

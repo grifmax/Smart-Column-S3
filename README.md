@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.82-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.83-brightgreen.svg)](CHANGELOG.md)
 
 ## Что это
 
@@ -24,6 +24,7 @@ Smart-Column S3 - это прошивка и Web UI для автоматики 
 - Web UI профилей теперь умеет не только смотреть/экспортировать, но и редактировать пользовательские профили, делать копии встроенных рецептов, искать по базе и импортировать/экспортировать profile snapshots с предварительной проверкой совместимости прямо из браузера
 - Web UI калибровок теперь включает рабочую таблицу ареометра: текущий сигнал, точки ABV и сохранение в контроллер без ручных JSON-правок
 - Web UI калибровок теперь умеет и backup/restore полного calibration snapshot: насос, offsets термодатчиков, pressure sensor и ареометр
+- Для охлаждения появился первый шаг к пропорциональному контуру: опциональный PWM-канал с настройкой окна `min/max duty`, стартовой подачей и сервисным ручным тестом прямо из Web UI
 - История процессов v2: фазы, таймлайн safety, reason codes, экспорт CSV/JSON
 - Run Advisor v1: post-run отчёт по фазам, энергии, устойчивости, safety, baseline-сравнению и короткому плану следующего запуска
 - Профили с validation context: давление, конфигурация колонны, насадка, мощность и фактические cut points последнего успешного baseline

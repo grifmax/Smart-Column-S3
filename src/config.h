@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.2.82"
+#define FIRMWARE_VERSION "2.2.83"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -224,6 +224,10 @@
 #define DEFAULT_CUBE_VOLUME_L 37.0f   // Объем куба (л)
 #define DEFAULT_MIN_HEATER_SUBMERGE_L 7.5f // Мин. уровень жидкости над ТЭН (л)
 #define DEFAULT_WATER_AUTOSTART_CUBE_TEMP_C 45.0f // Автостарт воды по температуре куба (°C)
+#define DEFAULT_COOLING_PWM_ENABLED 0
+#define DEFAULT_COOLING_PWM_MIN_DUTY 0
+#define DEFAULT_COOLING_PWM_MAX_DUTY 255
+#define DEFAULT_COOLING_PWM_STARTUP_DUTY 96
 
 // Параметры насоса по умолчанию
 #define DEFAULT_PUMP_ML_PER_REV 0.5f // мл на оборот
@@ -352,6 +356,10 @@
 #define NVS_KEY_CUBE_VOLUME "cube_vol"
 #define NVS_KEY_MIN_HEATER_SUBMERGE "heat_sub_l"
 #define NVS_KEY_WATER_AUTOSTART_CUBE_TEMP "water_auto_t"
+#define NVS_KEY_COOLING_PWM_ENABLED "cool_pwm_en"
+#define NVS_KEY_COOLING_PWM_MIN_DUTY "cool_pwm_min"
+#define NVS_KEY_COOLING_PWM_MAX_DUTY "cool_pwm_max"
+#define NVS_KEY_COOLING_PWM_STARTUP "cool_pwm_sta"
 #define NVS_KEY_TEMP_OFFSETS "temp_offs"
 #define NVS_KEY_PUMP_ML_REV "pump_mlrev"
 #define NVS_KEY_PRESSURE_FLOOD "p_flood"
