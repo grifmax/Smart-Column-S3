@@ -526,10 +526,20 @@ const TESTING_TEMPLATE = `
                     <div class="equipment-test-metric"><span>Сетпоинт</span><strong id="equipment-test-heater-setpoint">--</strong></div>
                     <div class="equipment-test-metric"><span>Мин. погружение</span><strong id="equipment-test-heater-submerge">--</strong></div>
                 </div>
+                <div class="equipment-test-chip-row">
+                    <span class="equipment-status-badge muted" id="equipment-test-heater-backend">—</span>
+                    <span class="equipment-status-badge muted" id="equipment-test-heater-booster">—</span>
+                    <span class="equipment-status-badge muted" id="equipment-test-heater-zc">—</span>
+                </div>
+                <div class="equipment-test-metrics">
+                    <div class="equipment-test-metric"><span>Фазовая задержка</span><strong id="equipment-test-heater-delay">--</strong></div>
+                    <div class="equipment-test-metric"><span>Zero-cross</span><strong id="equipment-test-heater-zc-count">--</strong></div>
+                </div>
                 <div class="form-group">
                     <label for="equipment-test-heater-power-input">Мощность теста, %</label>
                     <input type="number" id="equipment-test-heater-power-input" value="40" min="1" max="100" step="1" data-stepper-mode="pair" data-stepper-step="1">
                 </div>
+                <div class="equipment-test-alert subtle" id="equipment-test-heater-diag">Диагностика контура нагрева появится после загрузки статуса.</div>
                 <div class="equipment-test-alert danger">Перед стартом ТЭН должен быть полностью погружен в жидкость. Без подтверждения запуск не выполняется.</div>
                 <div class="controls equipment-actions">
                     <button class="btn btn-danger" type="button" id="equipment-test-heater-start">Запустить ТЭН</button>
@@ -1994,6 +2004,59 @@ function renderHeaterStatus(heater, testingAllowed, demoMode) {
     setText('equipment-test-heater-power', formatNumber(heater?.powerPercent, 0, ' %'));
     setText('equipment-test-heater-setpoint', formatNumber(heater?.powerSetPercent, 0, ' %'));
     setText('equipment-test-heater-submerge', formatNumber(heater?.minSubmergeLiters, 1, ' л'));
+    setText('equipment-test-heater-delay', heater?.backend === 'triac'
+        ? formatNumber(heater?.triacDelayUs, 0, ' мкс')
+        : '—');
+    setText('equipment-test-heater-zc-count', heater?.backend === 'triac'
+        ? formatNumber(heater?.zeroCrossCount, 0)
+        : '—');
+
+    const backendTriac = heater?.backend === 'triac';
+    const zeroCrossSeen = Boolean(heater?.zeroCrossSeen);
+    updateBadge(
+        byId('equipment-test-heater-backend'),
+        backendTriac ? 'Основной: TRIAC' : 'Основной: SSR',
+        backendTriac ? 'neutral' : 'warning'
+    );
+    updateBadge(
+        byId('equipment-test-heater-booster'),
+        heater?.boosterEnabled ? 'Booster SSR: вкл' : 'Booster SSR: выкл',
+        heater?.boosterEnabled ? (demoMode ? 'warning' : 'danger') : 'muted'
+    );
+    updateBadge(
+        byId('equipment-test-heater-zc'),
+        backendTriac
+            ? (zeroCrossSeen ? 'Zero-cross: есть' : 'Zero-cross: нет')
+            : 'Zero-cross: не нужен',
+        backendTriac
+            ? (zeroCrossSeen ? 'success' : 'danger')
+            : 'muted'
+    );
+
+    const diagEl = byId('equipment-test-heater-diag');
+    if (diagEl) {
+        let tone = 'subtle';
+        let text = 'Ожидаем данные по контуру нагрева.';
+
+        if (backendTriac) {
+            if (zeroCrossSeen) {
+                text = `ESP32 видит zero-cross. Симистор работает по фазовой задержке ${formatNumber(heater?.triacDelayUs, 0, ' мкс')}, зафиксировано ${formatNumber(heater?.zeroCrossCount, 0)} переходов.`;
+            } else {
+                tone = 'danger';
+                text = 'ESP32 не видит zero-cross. Основной симисторный канал сейчас не подтверждает синхронизацию с сетью.';
+            }
+        } else if (heater?.backend) {
+            text = 'Основной нагрев сейчас работает не через симисторный backend. Для фазового управления нужен активный TRIAC backend.';
+        }
+
+        if (demoMode) {
+            tone = 'subtle';
+            text = 'Демо-режим: статусы нагрева и zero-cross показываются как симуляция, без проверки реальной сети.';
+        }
+
+        diagEl.textContent = text;
+        diagEl.className = `equipment-test-alert${tone === 'subtle' ? ' subtle' : tone === 'danger' ? ' danger' : ''}`;
+    }
 
     const startButton = byId('equipment-test-heater-start');
     const stopButton = byId('equipment-test-heater-stop');
