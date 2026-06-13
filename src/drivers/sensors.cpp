@@ -85,6 +85,26 @@ static const uint8_t DISCOVERY_INIT_ATTEMPTS = 4;
 static const uint16_t DISCOVERY_INIT_DELAY_MS = 250;
 static uint8_t consecutiveTempReadFailures = 0;
 
+static void syncDs18b20AddressesToRuntime() {
+    memset(g_settings.tempCal.addresses, 0, sizeof(g_settings.tempCal.addresses));
+    for (uint8_t i = 0; i < ds18b20Count && i < TEMP_COUNT; ++i) {
+        memcpy(g_settings.tempCal.addresses[i], ds18b20Addresses[i], sizeof(DeviceAddress));
+    }
+}
+
+static void invalidateTemperatureState(Temperatures& temps) {
+    for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+        temps.valid[i] = false;
+    }
+    temps.cube = 0.0f;
+    temps.columnBottom = 0.0f;
+    temps.columnTop = 0.0f;
+    temps.reflux = 0.0f;
+    temps.tsa = 0.0f;
+    temps.waterIn = 0.0f;
+    temps.waterOut = 0.0f;
+}
+
 // =============================================================================
 // ISR ДАТЧИКА ПОТОКА
 // =============================================================================
@@ -173,6 +193,7 @@ static void clearDs18b20Inventory() {
     memset(ds18b20Addresses, 0, sizeof(ds18b20Addresses));
     memset(ds18b20Found, 0, sizeof(ds18b20Found));
     ds18b20Count = 0;
+    syncDs18b20AddressesToRuntime();
 }
 
 static void logDs18b20Inventory(uint8_t count) {
@@ -188,13 +209,16 @@ static void logDs18b20Inventory(uint8_t count) {
 }
 
 static uint8_t discoverDs18b20(bool logInventory) {
-    DeviceAddress addr;
     uint8_t count = 0;
 
     clearDs18b20Inventory();
-    oneWire.reset_search();
+    const uint8_t deviceCount = min<uint8_t>(ds18b20.getDeviceCount(), TEMP_COUNT);
 
-    while (oneWire.search(addr) && count < TEMP_COUNT) {
+    for (uint8_t i = 0; i < deviceCount && count < TEMP_COUNT; ++i) {
+        DeviceAddress addr = {0};
+        if (!ds18b20.getAddress(addr, i)) {
+            continue;
+        }
         if (OneWire::crc8(addr, 7) != addr[7]) {
             continue;
         }
@@ -205,8 +229,8 @@ static uint8_t discoverDs18b20(bool logInventory) {
         count++;
     }
 
-    oneWire.reset_search();
     ds18b20Count = count;
+    syncDs18b20AddressesToRuntime();
     lastDs18b20DiscoveryMs = millis();
 
     if (count == 0) {
@@ -368,6 +392,7 @@ void readTemperatures(Temperatures& temps) {
     ensureDs18b20Available(now);
 
     if (ds18b20Count == 0) {
+        invalidateTemperatureState(temps);
         return;
     }
 
@@ -665,15 +690,21 @@ void applyCalibration(const TempCalibration& cal) {
 
 uint8_t scanDS18B20(uint8_t addresses[][8]) {
     uint8_t count = 0;
-    DeviceAddress addr;
 
-    oneWire.reset_search();
-    while (oneWire.search(addr) && count < TEMP_COUNT) {
-        // Проверить CRC
-        if (OneWire::crc8(addr, 7) == addr[7]) {
-            memcpy(addresses[count], addr, 8);
-            count++;
+    for (uint8_t attempt = 0; attempt < DISCOVERY_INIT_ATTEMPTS; ++attempt) {
+        count = discoverDs18b20(false);
+        if (count > 0) {
+            break;
         }
+        delay(DISCOVERY_INIT_DELAY_MS);
+    }
+
+    for (uint8_t i = 0; i < count && i < TEMP_COUNT; ++i) {
+        memcpy(addresses[i], ds18b20Addresses[i], sizeof(DeviceAddress));
+    }
+
+    if (count > 0) {
+        startTemperatureConversion(millis());
     }
 
     return count;
