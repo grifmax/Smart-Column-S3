@@ -176,22 +176,22 @@ function populatePressureCalibrationV2(pressureSensor = {}, options = {}) {
     const badge = byId('pressure-current-status');
     if (badge) {
         if (!ads1115Available) {
-            badge.textContent = 'ADS1115 missing';
+            badge.textContent = 'ADS1115 не найден';
             badge.className = 'equipment-status-badge danger';
         } else {
-            badge.textContent = pressureSensor.valid ? 'Signal OK' : 'No signal';
+            badge.textContent = pressureSensor.valid ? 'Сигнал OK' : 'Нет сигнала';
             badge.className = `equipment-status-badge ${pressureSensor.valid ? 'success' : 'muted'}`;
         }
     }
 
     const sourceEl = byId('pressure-current-source');
     if (sourceEl) {
-        sourceEl.textContent = ads1115Available ? sourceLabel : `${sourceLabel} offline`;
+        sourceEl.textContent = ads1115Available ? sourceLabel : `${sourceLabel} офлайн`;
     }
 
     const currentVoltageEl = byId('pressure-current-voltage');
     if (currentVoltageEl) {
-        currentVoltageEl.textContent = formatPressureNumberV2(currentVoltage, 3, ' V');
+        currentVoltageEl.textContent = formatPressureNumberV2(currentVoltage, 3, ' В');
         currentVoltageEl.dataset.value = Number.isFinite(currentVoltage) ? currentVoltage.toFixed(4) : '';
     }
 
@@ -202,27 +202,27 @@ function populatePressureCalibrationV2(pressureSensor = {}, options = {}) {
 
     const currentPressureEl = byId('pressure-current-value');
     if (currentPressureEl) {
-        currentPressureEl.textContent = formatPressureNumberV2(currentPressure, 1, ' mmHg');
+        currentPressureEl.textContent = formatPressureNumberV2(currentPressure, 1, ' мм рт.ст.');
         currentPressureEl.dataset.value = Number.isFinite(currentPressure) ? currentPressure.toFixed(3) : '';
     }
 
     const summaryEl = byId('pressureCurrent');
     if (summaryEl) {
         const tableText = pointCount >= 2
-            ? `Active table: ${pointCount} points`
-            : 'No calibration table yet';
+            ? `Активная таблица: ${pointCount} точек`
+            : 'Таблица калибровки пока не задана';
         const sourceText = pointCount >= 2
-            ? 'cube pressure is read from the saved interpolation table'
-            : 'firmware uses the legacy fallback formula';
+            ? 'давление в кубе берётся из сохранённой таблицы интерполяции'
+            : 'прошивка использует резервную формулу';
         const busText = ads1115Available
-            ? `${sourceLabel} is visible on the I2C bus`
-            : `${sourceLabel} is not visible on the I2C bus`;
-        summaryEl.textContent = `${busText}. ${tableText}. ${sourceText}. Zero trim: ${formatPressureNumberV2(zeroOffsetMmHg, 1, ' mmHg')}.`;
+            ? `${sourceLabel} виден на шине I2C`
+            : `${sourceLabel} не виден на шине I2C`;
+        summaryEl.textContent = `${busText}. ${tableText}. ${sourceText}. Нулевой сдвиг: ${formatPressureNumberV2(zeroOffsetMmHg, 1, ' мм рт.ст.')}.`;
     }
 
     const zeroOffsetEl = byId('pressure-zero-offset');
     if (zeroOffsetEl) {
-        zeroOffsetEl.textContent = formatPressureNumberV2(zeroOffsetMmHg, 1, ' mmHg');
+        zeroOffsetEl.textContent = formatPressureNumberV2(zeroOffsetMmHg, 1, ' мм рт.ст.');
         zeroOffsetEl.dataset.value = Number.isFinite(zeroOffsetMmHg) ? zeroOffsetMmHg.toFixed(3) : '0.000';
     }
 
@@ -258,16 +258,16 @@ function collectPressureCalibrationPayloadV2() {
             continue;
         }
         if (!voltageRaw || !pressureRaw) {
-            throw new Error(`Point ${i + 1}: fill both voltage and pressure`);
+            throw new Error(`Точка ${i + 1}: заполните и напряжение, и давление`);
         }
 
         const voltage = Number(voltageRaw);
         const pressure = Number(pressureRaw);
         if (!Number.isFinite(voltage) || voltage < 0 || voltage > 4.096) {
-            throw new Error(`Point ${i + 1}: voltage must be in range 0.0000..4.0960 V`);
+            throw new Error(`Точка ${i + 1}: напряжение должно быть в диапазоне 0.0000..4.0960 В`);
         }
         if (!Number.isFinite(pressure) || pressure < 0 || pressure > 75) {
-            throw new Error(`Point ${i + 1}: pressure must be in range 0..75 mmHg`);
+            throw new Error(`Точка ${i + 1}: давление должно быть в диапазоне 0..75 мм рт.ст.`);
         }
 
         voltagePoints.push(voltage);
@@ -292,7 +292,7 @@ function getPressureReferenceValueV2() {
     const raw = String(byId('pressure-reference-mmhg')?.value || '').trim().replace(',', '.');
     const value = Number(raw);
     if (!raw || !Number.isFinite(value) || value < 0 || value > 75) {
-        throw new Error('Reference manometer value must be in range 0..75 mmHg');
+        throw new Error('Значение эталонного манометра должно быть в диапазоне 0..75 мм рт.ст.');
     }
     return value;
 }
@@ -698,7 +698,7 @@ export async function clearPressureCalibration() {
 export function fillPressurePointFromCurrentV2(index) {
     const voltageValue = Number(byId('pressure-current-voltage')?.dataset?.value);
     if (!Number.isFinite(voltageValue)) {
-        setMessage('pressureResult', 'No live pressure signal to copy', 'error');
+        setMessage('pressureResult', 'Нет живого сигнала давления для копирования', 'error');
         return;
     }
     setValue(`pressure-voltage-${index}`, voltageValue.toFixed(4));
@@ -708,13 +708,13 @@ export function fillPressurePointFromCurrentV2(index) {
 export function addPressurePointFromCurrentV2() {
     const voltageValue = Number(byId('pressure-current-voltage')?.dataset?.value);
     if (!Number.isFinite(voltageValue)) {
-        setMessage('pressureResult', 'No live pressure signal to capture', 'error');
+        setMessage('pressureResult', 'Нет живого сигнала давления для захвата', 'error');
         return;
     }
 
     const slot = findNextPressurePointSlot();
     if (slot < 0) {
-        setMessage('pressureResult', 'All 5 points are already filled. Clear or overwrite a row first.', 'error');
+        setMessage('pressureResult', 'Все 5 точек уже заполнены. Сначала очистите строку или перезапишите существующую.', 'error');
         return;
     }
 
@@ -724,7 +724,7 @@ export function addPressurePointFromCurrentV2() {
     try {
         const referencePressure = getPressureReferenceValueV2();
         setValue(`pressure-mmhg-${slot}`, referencePressure.toFixed(1));
-        setMessage('pressureResult', `Captured point ${slot + 1}: ${voltageValue.toFixed(4)} V -> ${referencePressure.toFixed(1)} mmHg`, 'success');
+        setMessage('pressureResult', `Захвачена точка ${slot + 1}: ${voltageValue.toFixed(4)} В -> ${referencePressure.toFixed(1)} мм рт.ст.`, 'success');
     } catch {
         if (pressureInput && !String(pressureInput.value || '').trim()) {
             pressureInput.focus();
@@ -732,7 +732,7 @@ export function addPressurePointFromCurrentV2() {
         }
         setMessage(
             'pressureResult',
-            `Captured signal in point ${slot + 1}: ${voltageValue.toFixed(4)} V. Enter the real manometer pressure and then save the table.`,
+            `Сигнал записан в точку ${slot + 1}: ${voltageValue.toFixed(4)} В. Введите реальное давление по манометру и затем сохраните таблицу.`,
             'success'
         );
     }
@@ -763,7 +763,7 @@ function ensurePressureCalibrationLivePolling() {
 export async function applyPressureZeroTrimV2() {
     const currentPressure = Number(byId('pressure-current-value')?.dataset?.value);
     if (!Number.isFinite(currentPressure)) {
-        setMessage('pressureResult', 'No live pressure reading for zero trim', 'error');
+        setMessage('pressureResult', 'Нет текущего показания давления для установки нуля', 'error');
         return;
     }
 
@@ -780,10 +780,10 @@ export async function applyPressureZeroTrimV2() {
             throw new Error(data?.error || `HTTP ${response.status}`);
         }
 
-        setMessage('pressureResult', `Zero trim applied: ${Number(data.zeroOffsetMmHg || currentPressure).toFixed(1)} mmHg`, 'success');
+        setMessage('pressureResult', `Нулевой сдвиг применён: ${Number(data.zeroOffsetMmHg || currentPressure).toFixed(1)} мм рт.ст.`, 'success');
         await loadCalibrationData();
     } catch (error) {
-        setMessage('pressureResult', `Zero trim save error: ${error.message}`, 'error');
+        setMessage('pressureResult', `Ошибка сохранения нулевого сдвига: ${error.message}`, 'error');
     }
 }
 
@@ -797,7 +797,7 @@ export async function savePressureCalibrationV2() {
     }
 
     if (payload.voltagePoints.length === 1) {
-        setMessage('pressureResult', 'At least 2 points are required for an active table', 'error');
+        setMessage('pressureResult', 'Для рабочей таблицы нужно минимум 2 точки', 'error');
         return;
     }
 
@@ -815,13 +815,13 @@ export async function savePressureCalibrationV2() {
         setMessage(
             'pressureResult',
             payload.voltagePoints.length >= 2
-                ? `Pressure table saved: ${Number(data.pointCount || payload.voltagePoints.length)} points`
-                : 'Pressure table cleared',
+                ? `Таблица давления сохранена: ${Number(data.pointCount || payload.voltagePoints.length)} точек`
+                : 'Таблица давления очищена',
             'success'
         );
         await loadCalibrationData();
     } catch (error) {
-        setMessage('pressureResult', `Pressure save error: ${error.message}`, 'error');
+        setMessage('pressureResult', `Ошибка сохранения таблицы давления: ${error.message}`, 'error');
     }
 }
 
@@ -840,10 +840,10 @@ export async function clearPressureCalibrationV2() {
             throw new Error(data?.error || `HTTP ${response.status}`);
         }
 
-        setMessage('pressureResult', 'Pressure table cleared', 'success');
+        setMessage('pressureResult', 'Таблица давления очищена', 'success');
         await loadCalibrationData();
     } catch (error) {
-        setMessage('pressureResult', `Pressure clear error: ${error.message}`, 'error');
+        setMessage('pressureResult', `Ошибка очистки таблицы давления: ${error.message}`, 'error');
     }
 }
 
@@ -861,10 +861,10 @@ export async function clearPressureZeroTrimV2() {
             throw new Error(data?.error || `HTTP ${response.status}`);
         }
 
-        setMessage('pressureResult', 'Zero trim cleared', 'success');
+        setMessage('pressureResult', 'Нулевой сдвиг очищен', 'success');
         await loadCalibrationData();
     } catch (error) {
-        setMessage('pressureResult', `Zero trim clear error: ${error.message}`, 'error');
+        setMessage('pressureResult', `Ошибка сброса нулевого сдвига: ${error.message}`, 'error');
     }
 }
 

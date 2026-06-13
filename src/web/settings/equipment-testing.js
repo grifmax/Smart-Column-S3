@@ -248,9 +248,9 @@ const CALIBRATION_CARD_DEFS = [
         selector: '#pressureCurrent',
         group: 'sensors',
         icon: 'рџ§Є',
-        title: 'Pressure sensor calibration',
-        shortTitle: 'Pressure',
-        description: 'ADS1115 A1 pressure table against a real manometer, with live voltage, ADC and saved interpolation points.',
+        title: 'Калибровка манометра',
+        shortTitle: 'Манометр',
+        description: 'Таблица давления для ADS1115 A1 по эталонному манометру: живое напряжение, ADC и сохранённые точки интерполяции.',
     },
     {
         id: 'hydrometer-calibration',

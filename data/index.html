@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.80">
+    <link rel="stylesheet" href="style.css?v=2.2.81">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.80" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.81" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1834,91 +1834,91 @@
                             </div>
 
                             <div class="card equipment-card equipment-card-pressure">
-                                <h2>Pressure Sensor Calibration</h2>
-                                <p class="equipment-subtitle">Calibrate the cube pressure sensor on ADS1115 A1 against a trusted manometer. If the table is empty, firmware falls back to the legacy formula.</p>
+                                <h2>🧭 Калибровка манометра</h2>
+                                <p class="equipment-subtitle">Откалибруйте датчик давления куба на `ADS1115 A1` по эталонному манометру. Если таблица пуста, прошивка использует резервную формулу.</p>
                                 <div class="form-group">
-                                    <label>Current state</label>
-                                    <div class="info-display equipment-info-box" id="pressureCurrent">Loading...</div>
+                                    <label>Текущее состояние</label>
+                                    <div class="info-display equipment-info-box" id="pressureCurrent">Загрузка...</div>
                                 </div>
                                 <div class="equipment-test-metrics" style="margin-bottom: 12px;">
-                                    <div class="equipment-test-metric"><span>Input</span><strong id="pressure-current-source">ADS1115 A1</strong></div>
-                                    <div class="equipment-test-metric"><span>Voltage</span><strong id="pressure-current-voltage">--</strong></div>
+                                    <div class="equipment-test-metric"><span>Источник</span><strong id="pressure-current-source">ADS1115 A1</strong></div>
+                                    <div class="equipment-test-metric"><span>Напряжение</span><strong id="pressure-current-voltage">--</strong></div>
                                     <div class="equipment-test-metric"><span>ADC</span><strong id="pressure-current-adc">--</strong></div>
-                                    <div class="equipment-test-metric"><span>Cube pressure</span><strong id="pressure-current-value">--</strong></div>
-                                    <div class="equipment-test-metric"><span>Zero trim</span><strong id="pressure-zero-offset">0.0 mmHg</strong></div>
-                                    <div class="equipment-test-metric"><span>Status</span><strong id="pressure-current-status" class="equipment-status-badge muted">—</strong></div>
+                                    <div class="equipment-test-metric"><span>Давление в кубе</span><strong id="pressure-current-value">--</strong></div>
+                                    <div class="equipment-test-metric"><span>Нулевой сдвиг</span><strong id="pressure-zero-offset">0.0 мм рт.ст.</strong></div>
+                                    <div class="equipment-test-metric"><span>Статус</span><strong id="pressure-current-status" class="equipment-status-badge muted">—</strong></div>
                                 </div>
                                 <div class="form-group">
-                                    <label for="pressure-reference-mmhg">Trusted manometer, mmHg</label>
-                                    <input type="number" id="pressure-reference-mmhg" step="0.1" min="0" max="75" placeholder="Enter live gauge reading" data-stepper-mode="pair" data-stepper-step="0.5">
-                                    <small class="equipment-hint">If this field is filled, <strong>Add current point</strong> copies both the live voltage and the entered manometer value. If it is empty, only the live signal is inserted into the next free row and you can type the real pressure afterwards.</small>
+                                    <label for="pressure-reference-mmhg">Эталонный манометр, мм рт.ст.</label>
+                                    <input type="number" id="pressure-reference-mmhg" step="0.1" min="0" max="75" placeholder="Введите текущее показание манометра" data-stepper-mode="pair" data-stepper-step="0.5">
+                                    <small class="equipment-hint">Если поле заполнено, кнопка <strong>Добавить текущую точку</strong> скопирует и текущее напряжение, и введённое давление. Если поле пустое, в следующую свободную строку попадёт только живой сигнал, а фактическое давление можно будет дописать позже.</small>
                                 </div>
                                 <div class="controls equipment-actions" style="margin-bottom: 12px;">
-                                    <button class="btn btn-secondary" type="button" onclick="addPressurePointFromCurrent()">+ Add current point</button>
-                                    <button class="btn btn-secondary" type="button" onclick="applyPressureZeroTrim()">Set zero from current</button>
-                                    <button class="btn" type="button" onclick="clearPressureZeroTrim()">Reset zero trim</button>
+                                    <button class="btn btn-secondary" type="button" onclick="addPressurePointFromCurrent()">+ Добавить текущую точку</button>
+                                    <button class="btn btn-secondary" type="button" onclick="applyPressureZeroTrim()">Взять ноль из текущего</button>
+                                    <button class="btn" type="button" onclick="clearPressureZeroTrim()">Сбросить нулевой сдвиг</button>
                                 </div>
-                                <div class="info-text" style="margin-bottom: 12px;">Live values on this card refresh automatically while the page is open.</div>
+                                <div class="info-text" style="margin-bottom: 12px;">Показания на этой карточке обновляются автоматически, пока страница открыта.</div>
                                 <div class="equipment-hydrometer-points" id="pressure-points">
                                     <div class="equipment-hydrometer-point">
                                         <div class="form-group">
-                                            <label for="pressure-voltage-0">Point 1: voltage, V</label>
+                                            <label for="pressure-voltage-0">Точка 1: напряжение, В</label>
                                             <input type="number" id="pressure-voltage-0" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
                                         </div>
                                         <div class="form-group">
-                                            <label for="pressure-mmhg-0">Pressure, mmHg</label>
+                                            <label for="pressure-mmhg-0">Давление, мм рт.ст.</label>
                                             <input type="number" id="pressure-mmhg-0" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
                                         </div>
-                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(0)">Current value</button>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(0)">Текущее значение</button>
                                     </div>
                                     <div class="equipment-hydrometer-point">
                                         <div class="form-group">
-                                            <label for="pressure-voltage-1">Point 2: voltage, V</label>
+                                            <label for="pressure-voltage-1">Точка 2: напряжение, В</label>
                                             <input type="number" id="pressure-voltage-1" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
                                         </div>
                                         <div class="form-group">
-                                            <label for="pressure-mmhg-1">Pressure, mmHg</label>
+                                            <label for="pressure-mmhg-1">Давление, мм рт.ст.</label>
                                             <input type="number" id="pressure-mmhg-1" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
                                         </div>
-                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(1)">Current value</button>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(1)">Текущее значение</button>
                                     </div>
                                     <div class="equipment-hydrometer-point">
                                         <div class="form-group">
-                                            <label for="pressure-voltage-2">Point 3: voltage, V</label>
+                                            <label for="pressure-voltage-2">Точка 3: напряжение, В</label>
                                             <input type="number" id="pressure-voltage-2" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
                                         </div>
                                         <div class="form-group">
-                                            <label for="pressure-mmhg-2">Pressure, mmHg</label>
+                                            <label for="pressure-mmhg-2">Давление, мм рт.ст.</label>
                                             <input type="number" id="pressure-mmhg-2" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
                                         </div>
-                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(2)">Current value</button>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(2)">Текущее значение</button>
                                     </div>
                                     <div class="equipment-hydrometer-point">
                                         <div class="form-group">
-                                            <label for="pressure-voltage-3">Point 4: voltage, V</label>
+                                            <label for="pressure-voltage-3">Точка 4: напряжение, В</label>
                                             <input type="number" id="pressure-voltage-3" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
                                         </div>
                                         <div class="form-group">
-                                            <label for="pressure-mmhg-3">Pressure, mmHg</label>
+                                            <label for="pressure-mmhg-3">Давление, мм рт.ст.</label>
                                             <input type="number" id="pressure-mmhg-3" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
                                         </div>
-                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(3)">Current value</button>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(3)">Текущее значение</button>
                                     </div>
                                     <div class="equipment-hydrometer-point">
                                         <div class="form-group">
-                                            <label for="pressure-voltage-4">Point 5: voltage, V</label>
+                                            <label for="pressure-voltage-4">Точка 5: напряжение, В</label>
                                             <input type="number" id="pressure-voltage-4" step="0.0001" min="0" max="4.0960" data-stepper-mode="pair" data-stepper-step="0.0005">
                                         </div>
                                         <div class="form-group">
-                                            <label for="pressure-mmhg-4">Pressure, mmHg</label>
+                                            <label for="pressure-mmhg-4">Давление, мм рт.ст.</label>
                                             <input type="number" id="pressure-mmhg-4" step="0.1" min="0" max="75" data-stepper-mode="pair" data-stepper-step="0.5">
                                         </div>
-                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(4)">Current value</button>
+                                        <button class="btn btn-secondary" type="button" onclick="fillPressurePointFromCurrent(4)">Текущее значение</button>
                                     </div>
                                 </div>
                                 <div class="controls equipment-actions">
-                                    <button class="btn btn-primary" type="button" onclick="savePressureCalibration()">💾 Save table</button>
-                                    <button class="btn" type="button" onclick="clearPressureCalibration()">🧹 Clear table</button>
+                                    <button class="btn btn-primary" type="button" onclick="savePressureCalibration()">💾 Сохранить таблицу</button>
+                                    <button class="btn" type="button" onclick="clearPressureCalibration()">🧹 Очистить таблицу</button>
                                 </div>
                                 <div id="pressureResult" class="info-text" style="margin-top: 10px;"></div>
                             </div>
@@ -3157,7 +3157,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.80"></script>
+    <script src="app.js?v=2.2.81"></script>
 </body>
 
 </html>
