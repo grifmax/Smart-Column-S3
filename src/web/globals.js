@@ -245,6 +245,16 @@ export let runtimeMonitorState = {
             resetBlockedReason: ''
         }
     },
+    pressure: {
+        cube: 0,
+        atm: 0,
+        ok: false,
+        ads1115Available: false,
+        sensorVoltage: 0,
+        sensorAdc: 0,
+        source: 'ADS1115 A1',
+        lastUpdate: 0
+    },
     power: { power: 0 },
     hydrometer: { abv: 0, valid: false },
     pump: { speedMlH: 0, totalMl: 0 },

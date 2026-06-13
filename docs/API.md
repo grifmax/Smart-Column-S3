@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.79`  
+**Версия прошивки:** `2.2.80`  
 **Актуальность документа:** 2026-06-12
 
 ---
@@ -31,6 +31,7 @@
 - `v2.guidance`
 - `v2.reasonInsight`
 - `v2.indicators`
+- `pressure.cube` / `pressure.atm` и `v2.indicators.pressureRateMmHgPerMin`, `v2.indicators.distPressureMargin` — live-данные для операторского мониторинга давления
 - `v2.activeLimits.antiOscillationActive` / `v2.activeLimits.antiOscillationHoldSec`
 - `v2.indicators.telemetryCoverage`, `decisionTrust`, `degradedModeActive`, `adaptiveControlAllowed`
 - `activeProfile` — активный профиль процесса, его validation context и preview адаптации рецепта под текущее атмосферное давление

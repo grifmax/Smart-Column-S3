@@ -109,9 +109,14 @@ export function updateUI(data) {
 
     }
 
-    if (data.p_flood !== undefined) {
+    const pressureMargin =
+        data?.v2?.indicators?.distPressureMargin !== undefined
+            ? Number(data.v2.indicators.distPressureMargin)
+            : (data.p_flood !== undefined ? Number(data.p_flood) : NaN);
 
-        document.getElementById('pressure-flood').textContent = data.p_flood.toFixed(1) + ' мм';
+    if (Number.isFinite(pressureMargin)) {
+
+        document.getElementById('pressure-flood').textContent = pressureMargin.toFixed(1) + ' мм';
 
     }
 

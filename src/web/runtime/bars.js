@@ -64,6 +64,72 @@ function boolLabel(value, goodText, badText, invert = false) {
     };
 }
 
+function formatSignedValue(value, digits = 1, unit = '') {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return '—';
+    }
+    const sign = numeric > 0 ? '+' : '';
+    return `${sign}${numeric.toFixed(digits)}${unit}`;
+}
+
+function renderPressureIndicators(state, indicators) {
+    const pressure = state?.pressure || {};
+    const pressureCube = Number(pressure.cube);
+    const pressureRate = Number(indicators.pressureRateMmHgPerMin);
+    const pressureMargin = Number(indicators.distPressureMargin);
+    const signalAvailable = Boolean(indicators.pressureSensorAvailable || pressure.ok);
+    const hardwareAvailable = signalAvailable || Boolean(pressure.ads1115Available);
+
+    const missingText = hardwareAvailable ? 'Нет сигнала' : 'Нет датчика';
+    let pressureTone = 'muted';
+    if (signalAvailable) {
+        if (Number.isFinite(pressureMargin) && pressureMargin <= 0) pressureTone = 'danger';
+        else if (Number.isFinite(pressureMargin) && pressureMargin < 10) pressureTone = 'warn';
+        else pressureTone = 'good';
+    }
+
+    let pressureRateTone = 'muted';
+    if (signalAvailable && Number.isFinite(pressureRate)) {
+        const rateAbs = Math.abs(pressureRate);
+        if (rateAbs >= 3) pressureRateTone = 'danger';
+        else if (rateAbs >= 1) pressureRateTone = 'warn';
+        else pressureRateTone = 'good';
+    }
+
+    setIndicatorValue(
+        'indicator-pressure-cube',
+        signalAvailable && Number.isFinite(pressureCube) ? `${pressureCube.toFixed(1)} мм` : missingText,
+        pressureTone
+    );
+    setIndicatorValue(
+        'indicator-pressure-margin',
+        signalAvailable && Number.isFinite(pressureMargin) ? `${pressureMargin.toFixed(1)} мм` : '—',
+        pressureTone
+    );
+    setIndicatorValue(
+        'indicator-pressure-diagnostics',
+        signalAvailable && Number.isFinite(pressureCube) ? `${pressureCube.toFixed(1)} мм рт.ст.` : missingText,
+        pressureTone
+    );
+    setIndicatorValue(
+        'indicator-pressure-rate',
+        signalAvailable && Number.isFinite(pressureRate) ? formatSignedValue(pressureRate, 1, ' мм/мин') : '—',
+        pressureRateTone
+    );
+    setIndicatorValue(
+        'indicator-pressure-margin-diagnostics',
+        signalAvailable && Number.isFinite(pressureMargin) ? `${pressureMargin.toFixed(1)} мм` : '—',
+        pressureTone
+    );
+
+    const pressureFloodEl = document.getElementById('pressure-flood');
+    if (pressureFloodEl) {
+        pressureFloodEl.textContent =
+            signalAvailable && Number.isFinite(pressureMargin) ? `${pressureMargin.toFixed(1)} мм` : '-- мм';
+    }
+}
+
 function setGuidance(title, detail, tone = 'muted') {
     const root = document.getElementById('operator-guidance');
     const titleEl = document.getElementById('operator-guidance-title');
@@ -1452,6 +1518,7 @@ function renderProcessIndicatorsCard() {
 
     const pressureStable = boolLabel(indicators.pressureStable, 'Стабильно', 'Дрейф');
     setIndicatorValue('indicator-pressure-stable', pressureStable.text, pressureStable.tone);
+    renderPressureIndicators(s, indicators);
 
     setIndicatorValue(
         'indicator-heads-score',
@@ -1557,6 +1624,7 @@ function renderProcessIndicatorsPanel() {
 
     const pressureStable = boolLabel(indicators.pressureStable, 'Стабильно', 'Дрейф');
     setIndicatorValue('indicator-pressure-stable', pressureStable.text, pressureStable.tone);
+    renderPressureIndicators(s, indicators);
 
     setIndicatorValue(
         'indicator-heads-score',

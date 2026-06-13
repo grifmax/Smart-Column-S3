@@ -50,6 +50,48 @@ function mergeStirrerState(s, data) {
     if (stirrer.lastUpdate !== undefined) s.stirrer.lastUpdate = toFinite(stirrer.lastUpdate, s.stirrer.lastUpdate);
 }
 
+function mergePressureState(s, data) {
+    const pressure = (data?.pressure && typeof data.pressure === 'object') ? data.pressure : null;
+
+    const cube = pressure
+        ? readFiniteCandidate(pressure, ['cube', 'cubeMmHg', 'currentPressure'])
+        : readFiniteCandidate(data, ['p_cube']);
+    if (cube !== undefined) s.pressure.cube = cube;
+
+    const atm = pressure
+        ? readFiniteCandidate(pressure, ['atm', 'atmosphere', 'atmosphereHpa'])
+        : readFiniteCandidate(data, ['p_atm']);
+    if (atm !== undefined) s.pressure.atm = atm;
+
+    if (pressure?.ok !== undefined) s.pressure.ok = Boolean(pressure.ok);
+    else if (data?.v2?.indicators?.pressureSensorAvailable !== undefined) {
+        s.pressure.ok = Boolean(data.v2.indicators.pressureSensorAvailable);
+    }
+
+    if (pressure?.ads1115Available !== undefined) {
+        s.pressure.ads1115Available = Boolean(pressure.ads1115Available);
+    } else if (pressure?.ok !== undefined) {
+        s.pressure.ads1115Available = Boolean(pressure.ok);
+    }
+
+    const sensorVoltage = pressure
+        ? readFiniteCandidate(pressure, ['sensorVoltage', 'currentVoltage'])
+        : undefined;
+    if (sensorVoltage !== undefined) s.pressure.sensorVoltage = sensorVoltage;
+
+    const sensorAdc = pressure
+        ? readFiniteCandidate(pressure, ['sensorAdc', 'currentAdc'])
+        : undefined;
+    if (sensorAdc !== undefined) s.pressure.sensorAdc = sensorAdc;
+
+    if (pressure?.source !== undefined) s.pressure.source = String(pressure.source);
+
+    const lastUpdate = pressure
+        ? readFiniteCandidate(pressure, ['lastUpdate'])
+        : undefined;
+    if (lastUpdate !== undefined) s.pressure.lastUpdate = lastUpdate;
+}
+
 function mergeSafetySettingsState(s, data) {
     const sources = [];
     if (data?.safetySettings && typeof data.safetySettings === 'object') sources.push(data.safetySettings);
@@ -281,6 +323,7 @@ export function updateRuntimeStateFromStatus(data) {
     mergeAlarmState(s, data);
     mergeActiveProfileState(s, data);
     mergeV2State(s, data);
+    mergePressureState(s, data);
 
     if (data.power && typeof data.power === 'object') {
         if (data.power.power !== undefined) s.power.power = toFinite(data.power.power, s.power.power);
@@ -355,6 +398,7 @@ export function updateRuntimeStateFromWs(data) {
     mergeAlarmState(s, data);
     mergeActiveProfileState(s, data);
     mergeV2State(s, data);
+    mergePressureState(s, data);
 
     if (data.power !== undefined) s.power.power = toFinite(data.power, s.power.power);
     if (data.abv !== undefined) s.hydrometer.abv = toFinite(data.abv, s.hydrometer.abv);
