@@ -529,6 +529,7 @@ const TESTING_TEMPLATE = `
                 <div class="equipment-test-metrics">
                     <div class="equipment-test-metric"><span>Фазовая задержка</span><strong id="equipment-test-heater-delay">--</strong></div>
                     <div class="equipment-test-metric"><span>Zero-cross</span><strong id="equipment-test-heater-zc-count">--</strong></div>
+                    <div class="equipment-test-metric"><span>Gate pulses</span><strong id="equipment-test-heater-fire-count">--</strong></div>
                     <div class="equipment-test-metric"><span>PZEM мощность</span><strong id="equipment-test-heater-real-power">--</strong></div>
                     <div class="equipment-test-metric"><span>Напряжение</span><strong id="equipment-test-heater-voltage">--</strong></div>
                     <div class="equipment-test-metric"><span>Ток</span><strong id="equipment-test-heater-current">--</strong></div>
@@ -2003,6 +2004,9 @@ function renderHeaterStatus(heater, power, testingAllowed, demoMode) {
     setText('equipment-test-heater-zc-count', heater?.backend === 'triac'
         ? formatNumber(heater?.zeroCrossCount, 0)
         : '—');
+    setText('equipment-test-heater-fire-count', heater?.backend === 'triac'
+        ? formatNumber(heater?.triacFireCount, 0)
+        : '—');
     setText(
         'equipment-test-heater-real-power',
         power?.available ? formatNumber(power?.power, 0, ' Вт') : 'PZEM offline'
@@ -2058,7 +2062,7 @@ function renderHeaterStatus(heater, power, testingAllowed, demoMode) {
 
         if (backendTriac) {
             if (zeroCrossSeen) {
-                text = `ESP32 видит zero-cross. Симистор работает по фазовой задержке ${formatNumber(heater?.triacDelayUs, 0, ' мкс')}, зафиксировано ${formatNumber(heater?.zeroCrossCount, 0)} переходов.`;
+                text = `ESP32 видит zero-cross. Симистор работает по фазовой задержке ${formatNumber(heater?.triacDelayUs, 0, ' мкс')}, зафиксировано ${formatNumber(heater?.zeroCrossCount, 0)} переходов и ${formatNumber(heater?.triacFireCount, 0)} gate pulses.`;
             } else {
                 tone = 'danger';
                 text = 'ESP32 не видит zero-cross. Основной симисторный канал сейчас не подтверждает синхронизацию с сетью.';

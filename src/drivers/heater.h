@@ -19,6 +19,7 @@ namespace Heater {
         bool boosterEnabled = false;
         bool zeroCrossSeen = false;
         uint32_t zeroCrossCount = 0;
+        uint32_t triacFireCount = 0;
         uint16_t triacDelayUs = TRIAC_MAX_ALPHA_US;
     };
 

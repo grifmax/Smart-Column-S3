@@ -465,6 +465,7 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   heater["boosterEnabled"] = heaterDiag.boosterEnabled;
   heater["zeroCrossSeen"] = heaterDiag.zeroCrossSeen;
   heater["zeroCrossCount"] = heaterDiag.zeroCrossCount;
+  heater["triacFireCount"] = heaterDiag.triacFireCount;
   heater["triacDelayUs"] = heaterDiag.triacDelayUs;
   heater["minSubmergeLiters"] = g_settings.equipment.minHeaterSubmergeL;
 
@@ -2277,6 +2278,7 @@ void init() {
     power["boosterEnabled"] = heaterDiag.boosterEnabled;
     power["zeroCrossSeen"] = heaterDiag.zeroCrossSeen;
     power["zeroCrossCount"] = heaterDiag.zeroCrossCount;
+    power["triacFireCount"] = heaterDiag.triacFireCount;
     power["triacDelayUs"] = heaterDiag.triacDelayUs;
     power["energy"] = g_state.power.energy;
     power["frequency"] = g_state.power.frequency;

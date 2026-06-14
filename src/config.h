@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.2.91"
+#define FIRMWARE_VERSION "2.2.92"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -159,9 +159,10 @@
 
 // Настройки Phase Control (симистор)
 #define TRIAC_MAX_POWER_W 3000   // Максимальная мощность ТЭНа (Вт) для расчетов
-#define TRIAC_PULSE_WIDTH_US 20  // Длительность отпирающего импульса симистора (мкс)
+#define TRIAC_PULSE_WIDTH_US 150 // Длительность отпирающего импульса симистора (мкс)
 #define TRIAC_MIN_ALPHA_US 100   // Минимальная задержка от нуля (мкс)
 #define TRIAC_MAX_ALPHA_US 9500  // Максимальная задержка от нуля (мкс - почти выключено)
+#define TRIAC_ZERO_CROSS_LOCKOUT_US 3000 // Подавление второго фронта zero-cross в том же полупериоде
 
 // Каналы LEDC
 #define LEDC_CHANNEL_HEATER 0

@@ -33,6 +33,8 @@ static bool isDemoHardwareSuppressed() {
 static hw_timer_t* triac_timer = nullptr;
 static volatile uint16_t triac_delay_us = TRIAC_MAX_ALPHA_US; // Задержка отпирания по умолчанию (почти полный off)
 static volatile uint32_t zero_cross_count = 0;
+static volatile uint32_t triac_fire_count = 0;
+static volatile uint32_t last_zero_cross_us = 0;
 #endif
 
 namespace {
@@ -43,6 +45,7 @@ void writeBooster(bool enabled) {
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
 inline void IRAM_ATTR fireTriacPulse() {
+    triac_fire_count++;
     gpio_set_level((gpio_num_t)PIN_TRIAC, 1);
     esp_rom_delay_us(TRIAC_PULSE_WIDTH_US);
     gpio_set_level((gpio_num_t)PIN_TRIAC, 0);
@@ -67,6 +70,12 @@ static void IRAM_ATTR triac_timer_alarm_isr() {
 
 // Обработчик прерывания детектора Zero-Cross
 static void IRAM_ATTR zero_cross_isr_handler() {
+    const uint32_t nowUs = micros();
+    if (last_zero_cross_us != 0 &&
+        (nowUs - last_zero_cross_us) < TRIAC_ZERO_CROSS_LOCKOUT_US) {
+        return;
+    }
+    last_zero_cross_us = nowUs;
     zero_cross_count++;
 
     // Выключаем симистор на всякий случай
@@ -133,6 +142,11 @@ void init() {
     // 3. Настройка PIN_ZERO_CROSS и прерывания
     pinMode(PIN_ZERO_CROSS, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(PIN_ZERO_CROSS), zero_cross_isr_handler, CHANGE);
+    zero_cross_count = 0;
+    triac_fire_count = 0;
+    last_zero_cross_us = 0;
+    LOG_I("Heater: TRIAC pulse=%u us, zero-cross lockout=%u us",
+          TRIAC_PULSE_WIDTH_US, TRIAC_ZERO_CROSS_LOCKOUT_US);
 
 #else
     LOG_I("Heater: Mode = SSR (Slow PWM)");
@@ -213,6 +227,7 @@ Diagnostics getDiagnostics() {
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     diag.zeroCrossCount = zero_cross_count;
     diag.zeroCrossSeen = zero_cross_count > 0;
+    diag.triacFireCount = triac_fire_count;
     diag.triacDelayUs = triac_delay_us;
 #endif
     return diag;
@@ -233,6 +248,7 @@ void emergencyStop() {
         timerAlarmDisable(triac_timer);
     }
     gpio_set_level((gpio_num_t)PIN_TRIAC, 0);
+    last_zero_cross_us = 0;
 #else
     ledcWrite(LEDC_CHANNEL_HEATER, 0);
 #endif
