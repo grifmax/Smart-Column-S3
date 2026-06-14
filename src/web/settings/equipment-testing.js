@@ -324,6 +324,24 @@ const TESTING_TEMPLATE = `
                     <div class="equipment-test-journal-empty">Чек-лист появится после загрузки статуса.</div>
                 </div>
             </div>
+            <div class="equipment-selfcheck-card">
+                <div class="equipment-selfcheck-head">
+                    <div>
+                        <h3>Автосамопроверка железа</h3>
+                        <p class="equipment-hint">Короткий снимок по health и обязательным модулям: что контроллер реально видит прямо сейчас.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-selfcheck-badge">Проверяем…</span>
+                </div>
+                <div class="equipment-inline-stats equipment-selfcheck-summary" id="equipment-selfcheck-summary"></div>
+                <div class="equipment-test-alert subtle" id="equipment-selfcheck-hint">Ожидаем данные по модулям и health…</div>
+                <div class="equipment-selfcheck-actions">
+                    <button class="btn btn-sm btn-secondary" type="button" id="equipment-selfcheck-open-modules">Шина и модули</button>
+                    <button class="btn btn-sm btn-secondary" type="button" id="equipment-selfcheck-open-temps">Термометры</button>
+                </div>
+                <div class="equipment-selfcheck-modules" id="equipment-selfcheck-modules">
+                    <div class="equipment-test-journal-empty">Снимок модулей появится после загрузки статуса.</div>
+                </div>
+            </div>
             <div class="equipment-test-journal">
                 <div class="equipment-test-journal-head">
                     <h3>Последние действия оператора</h3>
@@ -1876,6 +1894,105 @@ function renderCommissioningWizard(status) {
     `).join('');
 }
 
+function normalizeTestingHardwareModules(modules = {}) {
+    return [
+        modules.bmp280Primary && typeof modules.bmp280Primary === 'object' ? modules.bmp280Primary : {},
+        modules.bmp280Secondary && typeof modules.bmp280Secondary === 'object' ? modules.bmp280Secondary : {},
+        modules.ads1115 && typeof modules.ads1115 === 'object' ? modules.ads1115 : {},
+        modules.mcp4725 && typeof modules.mcp4725 === 'object' ? modules.mcp4725 : {},
+        modules.pzem004t && typeof modules.pzem004t === 'object' ? modules.pzem004t : {}
+    ];
+}
+
+function getTestingHardwareModuleMeta(module = {}) {
+    const available = Boolean(module.available);
+    const expected = module.expected !== false;
+
+    if (available) {
+        return { text: 'Онлайн', tone: 'success' };
+    }
+    if (expected) {
+        return { text: 'Нет ответа', tone: 'danger' };
+    }
+    return { text: 'Опция', tone: 'muted' };
+}
+
+function buildTestingHardwareModuleCard(module = {}) {
+    const meta = getTestingHardwareModuleMeta(module);
+    const pins = Number.isFinite(Number(module.rxPin)) && Number.isFinite(Number(module.txPin))
+        ? `GPIO${Number(module.rxPin)} / GPIO${Number(module.txPin)}`
+        : '';
+    const baudRate = Number.isFinite(Number(module.baudRate)) ? `${Number(module.baudRate)} бод` : '';
+    const extras = [pins, baudRate]
+        .filter(Boolean)
+        .map((item) => `<span>${item}</span>`)
+        .join('');
+
+    return `
+        <div class="equipment-module-card">
+            <div class="equipment-module-card-head">
+                <strong>${module.label || 'Модуль'}</strong>
+                <span class="equipment-status-badge ${meta.tone}">${meta.text}</span>
+            </div>
+            <div class="equipment-module-card-meta">
+                <span>${module.bus || '—'}</span>
+                <span>${module.address || '—'}</span>
+                ${extras}
+            </div>
+            <div class="equipment-module-card-role">${module.role || '—'}</div>
+        </div>
+    `;
+}
+
+function renderHardwareSelfCheck(status) {
+    const badgeEl = byId('equipment-selfcheck-badge');
+    const summaryEl = byId('equipment-selfcheck-summary');
+    const hintEl = byId('equipment-selfcheck-hint');
+    const modulesEl = byId('equipment-selfcheck-modules');
+    if (!badgeEl || !summaryEl || !hintEl || !modulesEl) {
+        return;
+    }
+
+    const modules = normalizeTestingHardwareModules(status?.modules || {});
+    const health = status?.health || {};
+    const onlineCount = modules.filter((module) => Boolean(module.available)).length;
+    const expectedModules = modules.filter((module) => module.expected !== false);
+    const expectedOnline = expectedModules.filter((module) => Boolean(module.available)).length;
+    const missingExpected = expectedModules.filter((module) => !module.available).length;
+    const tempSensorsOk = Math.max(0, Number(health.tempSensorsOk || 0));
+    const tempSensorsTotal = Math.max(0, Number(health.tempSensorsTotal || 0));
+    const overall = Math.max(0, Math.min(100, Number(health.overall || 0)));
+    const pzemSpikes = Math.max(0, Number(health.pzemSpikes || 0));
+    const tempErrors = Math.max(0, Number(health.tempErrors || 0));
+    const rebootReason = health.rebootReasonStr || '—';
+
+    let tone = 'success';
+    let label = 'Готово';
+    let hint = `Обязательные модули в онлайне: ${expectedOnline}/${expectedModules.length}.`;
+
+    if (missingExpected > 0 || tempSensorsOk <= 0) {
+        tone = 'danger';
+        label = 'Есть блокеры';
+        hint = missingExpected > 0
+            ? `Нет ответа от обязательных модулей: ${missingExpected}/${expectedModules.length}. Сначала добейте шину и питание.`
+            : 'Температурная линия сейчас не подтверждена. Без термодатчиков нормальная пусконаладка бессмысленна.';
+    } else if (overall < 70 || pzemSpikes > 0 || tempErrors > 0) {
+        tone = 'warning';
+        label = 'Нужна проверка';
+        hint = `Железо в целом отвечает, но есть инженерные маркеры для разбора: health ${overall}%, spikes ${pzemSpikes}, temp errors ${tempErrors}.`;
+    }
+
+    updateBadge(badgeEl, label, tone);
+    summaryEl.innerHTML = `
+        <div class="equipment-inline-stat"><span>Health</span><strong>${overall}%</strong></div>
+        <div class="equipment-inline-stat"><span>Термодатчики</span><strong>${tempSensorsOk}/${tempSensorsTotal}</strong></div>
+        <div class="equipment-inline-stat"><span>Модули online</span><strong>${onlineCount}/${modules.length}</strong></div>
+        <div class="equipment-inline-stat"><span>Reboot</span><strong>${rebootReason}</strong></div>
+    `;
+    hintEl.textContent = hint;
+    modulesEl.innerHTML = modules.map((module) => buildTestingHardwareModuleCard(module)).join('');
+}
+
 function renderTemperatureList(temperatures = []) {
     const host = byId('equipment-testing-temps-list');
     if (!host) return;
@@ -2428,6 +2545,7 @@ function renderTestingStatus(status) {
     state.lastStatus = status;
     renderServiceSummary(status);
     renderCommissioningWizard(status);
+    renderHardwareSelfCheck(status);
     renderPumpStatus(status.pump, status.testingAllowed, status.demoMode);
     renderStirrerStatus(status.stirrer, status.testingAllowed, status.demoMode);
     renderValveButtonState('equipment-test-water-toggle', !!status.valves?.water, 'воду', status.testingAllowed, status.valves?.waterPulse, status.demoMode);
@@ -2813,6 +2931,14 @@ function bindTestingActions() {
     byId('equipment-test-hydrometer-open-calibration')?.addEventListener('click', () => {
         setEquipmentSection('calibration');
         setEquipmentPaneCard('calibration', 'hydrometer-calibration');
+    });
+    byId('equipment-selfcheck-open-modules')?.addEventListener('click', () => {
+        setEquipmentSection('parameters');
+        setEquipmentPaneCard('parameters', 'hardware-status');
+    });
+    byId('equipment-selfcheck-open-temps')?.addEventListener('click', () => {
+        setEquipmentSection('testing');
+        setTestingCard('temps');
     });
 
     byId('equipment-test-pressure-start')?.addEventListener('click', () => {

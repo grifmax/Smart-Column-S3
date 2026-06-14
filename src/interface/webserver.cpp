@@ -397,6 +397,69 @@ static bool isEquipmentTestingBlocked(char *reason, size_t reasonSize) {
   return false;
 }
 
+static void fillEquipmentModulesJson(JsonObject modules) {
+  JsonObject bmp280Primary = modules["bmp280Primary"].to<JsonObject>();
+  bmp280Primary["label"] = "BMP280 #1";
+  bmp280Primary["available"] = Sensors::isBmp280PrimaryAvailable();
+  bmp280Primary["expected"] = true;
+  bmp280Primary["bus"] = "I2C";
+  bmp280Primary["address"] = "0x76";
+  bmp280Primary["role"] = "Атмосфера, основной";
+
+  JsonObject bmp280Secondary = modules["bmp280Secondary"].to<JsonObject>();
+  bmp280Secondary["label"] = "BMP280 #2";
+  bmp280Secondary["available"] = Sensors::isBmp280SecondaryAvailable();
+  bmp280Secondary["expected"] = false;
+  bmp280Secondary["bus"] = "I2C";
+  bmp280Secondary["address"] = "0x77";
+  bmp280Secondary["role"] = "Атмосфера, резерв";
+
+  JsonObject ads1115 = modules["ads1115"].to<JsonObject>();
+  ads1115["label"] = "ADS1115";
+  ads1115["available"] = Sensors::isAds1115Available();
+  ads1115["expected"] = true;
+  ads1115["bus"] = "I2C";
+  ads1115["address"] = "0x48";
+  ads1115["role"] = "A1 давление куба, A0 ареометр";
+
+  JsonObject mcp4725 = modules["mcp4725"].to<JsonObject>();
+  mcp4725["label"] = "MCP4725";
+  mcp4725["available"] = Stirrer::isAvailable();
+  mcp4725["expected"] = false;
+  mcp4725["bus"] = "I2C";
+  mcp4725["address"] = "0x60";
+  mcp4725["role"] = "DAC мешалки 0-10В";
+
+  JsonObject pzemModule = modules["pzem004t"].to<JsonObject>();
+  pzemModule["label"] = "PZEM-004T";
+  pzemModule["available"] = Sensors::isPzemAvailable();
+  pzemModule["expected"] = true;
+  pzemModule["bus"] = "UART";
+  pzemModule["address"] = "UART1";
+  pzemModule["role"] = "Монитор сети и нагрева";
+  pzemModule["baudRate"] = PZEM_BAUD_RATE;
+  pzemModule["rxPin"] = PIN_PZEM_RX;
+  pzemModule["txPin"] = PIN_PZEM_TX;
+}
+
+static void fillEquipmentTestingHealthJson(JsonObject health) {
+  health["overall"] = g_state.health.overallHealth;
+  health["tempSensorsOk"] = g_state.health.tempSensorsOk;
+  health["tempSensorsTotal"] = g_state.health.tempSensorsTotal;
+  health["bmp280"] = g_state.health.bmp280Ok;
+  health["ads1115"] = g_state.health.ads1115Ok;
+  health["pzem"] = g_state.health.pzemOk;
+  health["wifiConnected"] = g_state.health.wifiConnected;
+  health["wifiRSSI"] = g_state.health.wifiRSSI;
+  health["freeHeap"] = g_state.health.freeHeap;
+  health["cpuTemp"] = g_state.health.cpuTemp;
+  health["pzemSpikes"] = g_state.health.pzemSpikeCount;
+  health["tempErrors"] = g_state.health.tempReadErrors;
+  health["lastUpdate"] = g_state.health.lastUpdate;
+  health["rebootReason"] = g_rebootTracker.lastReason;
+  health["rebootReasonStr"] = g_rebootTracker.lastReasonStr;
+}
+
 static void fillEquipmentTestingStatus(JsonDocument &doc) {
   char reason[160] = "";
   const bool blocked = isEquipmentTestingBlocked(reason, sizeof(reason));
@@ -570,6 +633,12 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   power["energy"] = g_state.power.energy;
   power["frequency"] = g_state.power.frequency;
   power["powerFactor"] = g_state.power.powerFactor;
+
+  JsonObject modules = doc["modules"].to<JsonObject>();
+  fillEquipmentModulesJson(modules);
+
+  JsonObject health = doc["health"].to<JsonObject>();
+  fillEquipmentTestingHealthJson(health);
 
   JsonArray recentActions = doc["recentActions"].to<JsonArray>();
   for (uint8_t i = 0; i < g_equipmentTestingActionCount; ++i) {

@@ -758,6 +758,45 @@
     gap: 8px;
 }
 
+.equipment-selfcheck-card {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--teal) 24%, var(--border-color));
+    border-radius: 12px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--teal) 6%, var(--bg-card)), var(--bg-card));
+}
+
+.equipment-selfcheck-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.equipment-selfcheck-head h3 {
+    margin: 0 0 4px;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.equipment-selfcheck-summary .equipment-inline-stat {
+    min-width: 132px;
+    flex: 0 1 178px;
+}
+
+.equipment-selfcheck-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.equipment-selfcheck-modules {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .equipment-test-journal-accordion {
     margin-top: 12px;
     border: 1px solid var(--border-color);
@@ -1360,6 +1399,7 @@
     .equipment-test-status-head,
     .equipment-test-card-head,
     .equipment-commissioning-head,
+    .equipment-selfcheck-head,
     .equipment-commissioning-step-top,
     .equipment-servo-manual-row,
     .equipment-quick-actions,
@@ -1375,6 +1415,7 @@
     .equipment-test-status-head,
     .equipment-test-card-head,
     .equipment-commissioning-head,
+    .equipment-selfcheck-head,
     .equipment-commissioning-step-top {
         flex-direction: column;
         align-items: stretch;
@@ -1419,6 +1460,13 @@
     }
 
     .equipment-commissioning-step-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .equipment-selfcheck-actions,
+    .equipment-selfcheck-modules {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px;

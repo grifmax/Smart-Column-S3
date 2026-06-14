@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.94`  
+**Версия прошивки:** `2.2.95`  
 **Актуальность документа:** 2026-06-14
 
 ---
@@ -369,6 +369,22 @@
 - `coolingSettings.maxDuty`
 - `coolingSettings.startupDuty`
 - `activeTests.startStopDuty`
+- `modules.*` — тот же снимок обязательных и опциональных модулей, что и в `GET /api/settings/equipment`, чтобы сервисный экран мог без второго запроса показать `BMP280`, `ADS1115`, `MCP4725` и `PZEM-004T`
+- `health.overall`
+- `health.tempSensorsOk`
+- `health.tempSensorsTotal`
+- `health.bmp280`
+- `health.ads1115`
+- `health.pzem`
+- `health.wifiConnected`
+- `health.wifiRSSI`
+- `health.freeHeap`
+- `health.cpuTemp`
+- `health.pzemSpikes`
+- `health.tempErrors`
+- `health.rebootReason`
+- `health.rebootReasonStr`
+- `health.lastUpdate`
 
 ### Калибровка
 
