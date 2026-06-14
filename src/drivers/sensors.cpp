@@ -83,6 +83,8 @@ static const uint16_t CONVERSION_TIME_MS = 750; // 12-бит разрешени�
 static const uint32_t DISCOVERY_RETRY_MS = 2000;
 static const uint8_t DISCOVERY_INIT_ATTEMPTS = 4;
 static const uint16_t DISCOVERY_INIT_DELAY_MS = 250;
+static const uint8_t DISCOVERY_BUS_PASSES = 3;
+static const uint8_t DISCOVERY_PASS_DELAY_MS = 30;
 static uint8_t consecutiveTempReadFailures = 0;
 
 static void syncDs18b20AddressesToRuntime() {
@@ -208,25 +210,70 @@ static void logDs18b20Inventory(uint8_t count) {
     }
 }
 
-static uint8_t discoverDs18b20(bool logInventory) {
+static bool isSupportedDs18Family(uint8_t familyCode) {
+    return familyCode == 0x28 || familyCode == 0x10 || familyCode == 0x22;
+}
+
+static bool hasDs18b20Address(DeviceAddress addresses[], uint8_t count,
+                              const DeviceAddress candidate) {
+    for (uint8_t i = 0; i < count; ++i) {
+        if (memcmp(addresses[i], candidate, sizeof(DeviceAddress)) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static uint8_t scanDs18b20Bus(DeviceAddress addresses[]) {
     uint8_t count = 0;
+    DeviceAddress addr = {0};
 
-    clearDs18b20Inventory();
-    const uint8_t deviceCount = min<uint8_t>(ds18b20.getDeviceCount(), TEMP_COUNT);
-
-    for (uint8_t i = 0; i < deviceCount && count < TEMP_COUNT; ++i) {
-        DeviceAddress addr = {0};
-        if (!ds18b20.getAddress(addr, i)) {
+    oneWire.reset_search();
+    while (count < TEMP_COUNT && oneWire.search(addr)) {
+        if (!isSupportedDs18Family(addr[0])) {
             continue;
         }
         if (OneWire::crc8(addr, 7) != addr[7]) {
+            LOG_W("Sensors: DS18B20 bus scan skipped address with bad CRC");
+            continue;
+        }
+        if (hasDs18b20Address(addresses, count, addr)) {
             continue;
         }
 
-        memcpy(ds18b20Addresses[count], addr, sizeof(DeviceAddress));
-        ds18b20Found[count] = true;
-        ds18b20.setResolution(ds18b20Addresses[count], 12);
+        memcpy(addresses[count], addr, sizeof(DeviceAddress));
         count++;
+    }
+    oneWire.reset_search();
+    return count;
+}
+
+static uint8_t discoverDs18b20(bool logInventory) {
+    uint8_t count = 0;
+    DeviceAddress bestAddresses[TEMP_COUNT] = {};
+    DeviceAddress passAddresses[TEMP_COUNT] = {};
+
+    clearDs18b20Inventory();
+
+    for (uint8_t pass = 0; pass < DISCOVERY_BUS_PASSES; ++pass) {
+        memset(passAddresses, 0, sizeof(passAddresses));
+        const uint8_t passCount = scanDs18b20Bus(passAddresses);
+        if (passCount > count) {
+            memcpy(bestAddresses, passAddresses, sizeof(bestAddresses));
+            count = passCount;
+        }
+        if (count >= TEMP_COUNT) {
+            break;
+        }
+        if (pass + 1 < DISCOVERY_BUS_PASSES) {
+            delay(DISCOVERY_PASS_DELAY_MS);
+        }
+    }
+
+    for (uint8_t i = 0; i < count; ++i) {
+        memcpy(ds18b20Addresses[i], bestAddresses[i], sizeof(DeviceAddress));
+        ds18b20Found[i] = true;
+        ds18b20.setResolution(ds18b20Addresses[i], 12);
     }
 
     ds18b20Count = count;
