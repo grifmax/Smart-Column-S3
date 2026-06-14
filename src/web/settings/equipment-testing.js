@@ -295,6 +295,8 @@ const state = {
             heater: false
         }
     },
+    serviceContourMemory: {},
+    serviceContourHistory: [],
     selfCheckHistory: [],
     selfCheckLastSignature: '',
     selfCheckLastRecordedAt: 0,
@@ -336,6 +338,15 @@ const TESTING_TEMPLATE = `
                 </div>
                 <div class="equipment-service-contour-grid" id="equipment-service-contour-grid">
                     <div class="equipment-test-journal-empty">Контур появится после загрузки сервисного статуса.</div>
+                </div>
+                <div class="equipment-service-contour-history">
+                    <div class="equipment-test-journal-head">
+                        <h3>Недавние события контура</h3>
+                        <span class="equipment-hint">Локальная история появления, потери и восстановления сервисных узлов</span>
+                    </div>
+                    <div class="equipment-test-journal-list" id="equipment-service-contour-history">
+                        <div class="equipment-test-journal-empty">История появится после первого изменения состояния контура.</div>
+                    </div>
                 </div>
             </div>
             <div class="equipment-commissioning-card">
@@ -2043,6 +2054,88 @@ function buildServiceContour(status) {
     return { tone, label, hint, items };
 }
 
+function recordServiceContourEvent(previousItem, nextItem, timestampMs) {
+    const historyTone = nextItem.tone === 'muted' ? 'info' : nextItem.tone;
+    let title = `${nextItem.label}: обновление`;
+    let detail = `Было: ${previousItem.value}. Сейчас: ${nextItem.value}. ${nextItem.detail}`;
+
+    if (previousItem.tone === 'danger' && nextItem.tone === 'success') {
+        title = `${nextItem.label}: восстановлено`;
+    } else if (previousItem.tone === 'success' && nextItem.tone === 'danger') {
+        title = `${nextItem.label}: потеря`;
+    } else if (previousItem.tone !== nextItem.tone) {
+        title = `${nextItem.label}: смена статуса`;
+    } else if (previousItem.value !== nextItem.value) {
+        title = `${nextItem.label}: новое значение`;
+    }
+
+    state.serviceContourHistory.unshift({
+        timestampMs,
+        tone: historyTone,
+        title,
+        detail
+    });
+    state.serviceContourHistory = state.serviceContourHistory.slice(0, 12);
+}
+
+function hydrateServiceContour(contour) {
+    const now = Date.now();
+    const memory = state.serviceContourMemory && typeof state.serviceContourMemory === 'object'
+        ? state.serviceContourMemory
+        : {};
+    const nextMemory = {};
+    const items = contour.items.map((item) => {
+        const signature = [item.tone, item.value, item.detail].join('::');
+        const previousItem = memory[item.key];
+        const sinceMs = previousItem && previousItem.signature === signature
+            ? previousItem.sinceMs
+            : now;
+
+        if (previousItem && previousItem.signature !== signature) {
+            recordServiceContourEvent(previousItem, item, now);
+        }
+
+        nextMemory[item.key] = {
+            key: item.key,
+            label: item.label,
+            tone: item.tone,
+            value: item.value,
+            detail: item.detail,
+            signature,
+            sinceMs
+        };
+
+        return {
+            ...item,
+            sinceMs,
+            stabilityLabel: `Статус держится ${formatElapsedCompact(now - sinceMs)}`
+        };
+    });
+
+    state.serviceContourMemory = nextMemory;
+    return { ...contour, items };
+}
+
+function renderServiceContourHistory() {
+    const host = byId('equipment-service-contour-history');
+    if (!host) return;
+
+    if (!Array.isArray(state.serviceContourHistory) || !state.serviceContourHistory.length) {
+        host.innerHTML = '<div class="equipment-test-journal-empty">История появится после первого изменения состояния контура.</div>';
+        return;
+    }
+
+    host.innerHTML = state.serviceContourHistory.map((entry) => `
+        <div class="equipment-test-journal-item ${entry.tone || 'neutral'}">
+            <div class="equipment-test-journal-line">
+                <strong>${entry.title || 'Контур'}</strong>
+                <span>${formatWallClock(entry.timestampMs)}</span>
+            </div>
+            <div class="equipment-test-journal-detail">${entry.detail || ''}</div>
+        </div>
+    `).join('');
+}
+
 function renderServiceContour(status) {
     const badgeEl = byId('equipment-service-contour-badge');
     const hintEl = byId('equipment-service-contour-hint');
@@ -2052,7 +2145,7 @@ function renderServiceContour(status) {
         return;
     }
 
-    const contour = buildServiceContour(status);
+    const contour = hydrateServiceContour(buildServiceContour(status));
     const nextItem = contour.items.find((item) => item.tone === 'danger' && item.open) || null;
     updateBadge(badgeEl, contour.label, contour.tone);
     hintEl.textContent = contour.hint;
@@ -2086,6 +2179,7 @@ function renderServiceContour(status) {
                 <span class="equipment-status-badge ${item.tone}">${item.value}</span>
             </div>
             <div class="equipment-service-contour-detail">${item.detail}</div>
+            <div class="equipment-service-contour-age">${item.stabilityLabel || ''}</div>
             ${item.open ? `
                 <div class="equipment-service-contour-actions">
                     <button
@@ -2097,6 +2191,7 @@ function renderServiceContour(status) {
             ` : ''}
         </div>
     `).join('');
+    renderServiceContourHistory();
 }
 
 function buildSelfCheckSnapshot(status) {
@@ -2461,6 +2556,23 @@ function formatWallClock(timestampMs) {
         minute: '2-digit',
         second: '2-digit'
     });
+}
+
+function formatElapsedCompact(durationMs) {
+    const totalSeconds = Math.max(0, Math.round(Number(durationMs || 0) / 1000));
+    if (totalSeconds < 60) {
+        return `${totalSeconds} с`;
+    }
+
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (totalMinutes < 60) {
+        return seconds > 0 ? `${totalMinutes}м ${seconds}с` : `${totalMinutes}м`;
+    }
+
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return minutes > 0 ? `${hours}ч ${minutes}м` : `${hours}ч`;
 }
 
 function renderPumpStatus(pump, testingAllowed, demoMode) {

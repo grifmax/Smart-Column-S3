@@ -750,12 +750,18 @@
     line-height: 1.4;
 }
 
+.equipment-service-contour-age {
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+}
+
 .equipment-service-contour-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
 }
 
+.equipment-service-contour-history,
 .equipment-service-contour-next {
     display: grid;
     gap: 8px;
