@@ -57,6 +57,7 @@ EnergyHistory g_energyHistory; // История энергопотреблен�
 RebootTracker g_rebootTracker; // Отслеживание перезагрузок (Analysis Step 1)
 
 // Очередь для неблокирующего зуммера (Analysis Step 1)
+BootGpioSelfTest g_bootGpioSelfTest; // Safe bring-up опасных GPIO до старта драйверов
 struct BuzzerCmd {
   uint8_t count;
   uint16_t duration;
@@ -93,6 +94,10 @@ static bool isWatchdogResetReason(esp_reset_reason_t reason);
 static bool isCrashResetReason(esp_reset_reason_t reason);
 static bool isUserResetReason(esp_reset_reason_t reason);
 static const char* resetReasonToString(esp_reset_reason_t reason);
+static void runBootGpioSelfTest();
+static void registerBootOutputCheck(const char* label, int16_t pin, bool highLevel);
+static void registerBootInputCheck(const char* label, int16_t pin, bool pullup,
+                                   int8_t expectedLevel);
 
 // =============================================================================
 // BUZZER HELPER
@@ -135,6 +140,84 @@ static const char* resetReasonToString(esp_reset_reason_t reason) {
   }
 }
 
+static void registerBootOutputCheck(const char* label, int16_t pin,
+                                    bool highLevel) {
+  if (g_bootGpioSelfTest.checkedCount >= BOOT_GPIO_CHECK_MAX) return;
+  BootGpioCheckItem& item =
+      g_bootGpioSelfTest.items[g_bootGpioSelfTest.checkedCount++];
+  item.pin = pin;
+  item.mode = highLevel ? 1 : 0;
+  item.expectedLevel = highLevel ? HIGH : LOW;
+  strlcpy(item.label, label, sizeof(item.label));
+
+  if (pin < 0) {
+    item.actualLevel = -1;
+    item.ok = false;
+    return;
+  }
+
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, highLevel ? HIGH : LOW);
+  delayMicroseconds(30);
+  item.actualLevel = digitalRead(pin);
+  item.ok = item.actualLevel == item.expectedLevel;
+}
+
+static void registerBootInputCheck(const char* label, int16_t pin, bool pullup,
+                                   int8_t expectedLevel) {
+  if (g_bootGpioSelfTest.checkedCount >= BOOT_GPIO_CHECK_MAX) return;
+  BootGpioCheckItem& item =
+      g_bootGpioSelfTest.items[g_bootGpioSelfTest.checkedCount++];
+  item.pin = pin;
+  item.mode = pullup ? 3 : 2;
+  item.expectedLevel = expectedLevel;
+  strlcpy(item.label, label, sizeof(item.label));
+
+  if (pin < 0) {
+    item.actualLevel = -1;
+    item.ok = false;
+    return;
+  }
+
+  pinMode(pin, pullup ? INPUT_PULLUP : INPUT);
+  delayMicroseconds(30);
+  item.actualLevel = digitalRead(pin);
+  item.ok = expectedLevel < 0 ? true : item.actualLevel == expectedLevel;
+}
+
+static void runBootGpioSelfTest() {
+  memset(&g_bootGpioSelfTest, 0, sizeof(g_bootGpioSelfTest));
+  strlcpy(g_bootGpioSelfTest.boardRev, BOARD_REV_LABEL,
+          sizeof(g_bootGpioSelfTest.boardRev));
+
+  registerBootOutputCheck("Main heater SSR", PIN_SSR_HEATER, false);
+  registerBootOutputCheck("TRIAC gate", PIN_TRIAC, false);
+  registerBootOutputCheck("Pump step", PIN_PUMP_STEP, false);
+  registerBootOutputCheck("Pump dir", PIN_PUMP_DIR, false);
+  registerBootOutputCheck("Pump enable", PIN_PUMP_EN, true);
+  registerBootOutputCheck("Valve water", PIN_VALVE_WATER, false);
+  registerBootOutputCheck("Valve heads", PIN_VALVE_HEADS, false);
+  registerBootOutputCheck("Valve UNO", PIN_VALVE_UNO, false);
+  registerBootOutputCheck("Valve PWM", PIN_VALVE_STARTSTOP, false);
+  registerBootOutputCheck("Buzzer", PIN_BUZZER, false);
+  registerBootInputCheck("Zero-cross", PIN_ZERO_CROSS, true, -1);
+  registerBootInputCheck("1-Wire", PIN_ONEWIRE, true, HIGH);
+
+  g_bootGpioSelfTest.completed = true;
+  g_bootGpioSelfTest.timestampMs = millis();
+  g_bootGpioSelfTest.overallOk = true;
+  for (uint8_t i = 0; i < g_bootGpioSelfTest.checkedCount; ++i) {
+    if (!g_bootGpioSelfTest.items[i].ok) {
+      g_bootGpioSelfTest.overallOk = false;
+      break;
+    }
+  }
+
+  LOG_I("Boot GPIO self-test: %s (%u checks, board %s)",
+        g_bootGpioSelfTest.overallOk ? "OK" : "WARN",
+        g_bootGpioSelfTest.checkedCount, g_bootGpioSelfTest.boardRev);
+}
+
 // =============================================================================
 // SETUP
 // =============================================================================
@@ -153,6 +236,7 @@ void setup() {
   g_state.mode = Mode::IDLE;
   g_state.rectPhase = RectPhase::IDLE;
   g_state.safetyOk = true;
+  runBootGpioSelfTest();
 
   // 2. Проверка причины перезагрузки
   esp_reset_reason_t resetReason = esp_reset_reason();

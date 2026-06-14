@@ -3570,6 +3570,42 @@ void init() {
     pzem["powerFactor"] = g_state.power.powerFactor;
     pzem["lastUpdate"] = g_state.power.lastUpdate;
 
+    JsonObject bootGpio = doc["bootGpio"].to<JsonObject>();
+    bootGpio["completed"] = g_bootGpioSelfTest.completed;
+    bootGpio["overallOk"] = g_bootGpioSelfTest.overallOk;
+    bootGpio["checkedCount"] = g_bootGpioSelfTest.checkedCount;
+    bootGpio["timestampMs"] = g_bootGpioSelfTest.timestampMs;
+    bootGpio["boardRev"] = g_bootGpioSelfTest.boardRev;
+
+    JsonArray bootItems = bootGpio["items"].to<JsonArray>();
+    for (uint8_t i = 0; i < g_bootGpioSelfTest.checkedCount &&
+                        i < BOOT_GPIO_CHECK_MAX; ++i) {
+      const BootGpioCheckItem& src = g_bootGpioSelfTest.items[i];
+      JsonObject item = bootItems.add<JsonObject>();
+      item["label"] = src.label;
+      item["pin"] = src.pin;
+      item["expectedLevel"] = src.expectedLevel;
+      item["actualLevel"] = src.actualLevel;
+      item["ok"] = src.ok;
+      switch (src.mode) {
+        case 0:
+          item["mode"] = "output_low";
+          break;
+        case 1:
+          item["mode"] = "output_high";
+          break;
+        case 2:
+          item["mode"] = "input";
+          break;
+        case 3:
+          item["mode"] = "input_pullup";
+          break;
+        default:
+          item["mode"] = "unknown";
+          break;
+      }
+    }
+
     JsonObject modules = doc["modules"].to<JsonObject>();
 
     JsonObject bmp280Primary = modules["bmp280Primary"].to<JsonObject>();

@@ -211,6 +211,28 @@ struct RebootTracker {
 
 extern RebootTracker g_rebootTracker;
 
+static constexpr uint8_t BOOT_GPIO_CHECK_MAX = 12;
+
+struct BootGpioCheckItem {
+  int16_t pin = -1;
+  uint8_t mode = 0;       // 0=OUTPUT_LOW, 1=OUTPUT_HIGH, 2=INPUT, 3=INPUT_PULLUP
+  int8_t expectedLevel = -1;
+  int8_t actualLevel = -1;
+  bool ok = false;
+  char label[24] = "";
+};
+
+struct BootGpioSelfTest {
+  bool completed = false;
+  bool overallOk = false;
+  uint8_t checkedCount = 0;
+  uint32_t timestampMs = 0;
+  char boardRev[16] = "";
+  BootGpioCheckItem items[BOOT_GPIO_CHECK_MAX];
+};
+
+extern BootGpioSelfTest g_bootGpioSelfTest;
+
 // Состояние насоса
 struct PumpState {
   bool running = false;

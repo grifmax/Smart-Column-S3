@@ -178,6 +178,78 @@ function syncRebootDiagnosticsUi(reboot = null, error = null) {
     }
 }
 
+function syncBootGpioUi(bootGpio = null) {
+    const summaryEl = document.getElementById('boot-gpio-summary');
+    const listEl = document.getElementById('boot-gpio-list');
+    const hintEl = document.getElementById('boot-gpio-hint');
+    if (!summaryEl || !listEl || !hintEl) return;
+
+    if (!bootGpio || !bootGpio.completed) {
+        summaryEl.innerHTML = '<div class="equipment-inline-stat"><span>Статус</span><strong>Нет данных</strong></div>';
+        listEl.innerHTML = `
+            <div class="equipment-module-card">
+                <div class="equipment-module-card-head">
+                    <strong>Boot GPIO self-test недоступен</strong>
+                    <span class="equipment-status-badge muted">Нет данных</span>
+                </div>
+                <div class="equipment-module-card-role">Контроллер ещё не отдал отчёт о безопасной стартовой инициализации пинов.</div>
+            </div>
+        `;
+        hintEl.textContent = 'Если блок остаётся пустым, проверьте версию прошивки и payload /api/settings/equipment.';
+        return;
+    }
+
+    const items = Array.isArray(bootGpio.items) ? bootGpio.items : [];
+    const okCount = items.filter((item) => Boolean(item?.ok)).length;
+    const checkedCount = Math.max(0, Number(bootGpio.checkedCount || items.length || 0));
+    const boardRev = String(bootGpio.boardRev || 'UNKNOWN');
+    const overallOk = Boolean(bootGpio.overallOk);
+
+    summaryEl.innerHTML = `
+        <div class="equipment-inline-stat"><span>Плата</span><strong>${escapeHtml(boardRev)}</strong></div>
+        <div class="equipment-inline-stat"><span>Проверено</span><strong>${okCount}/${checkedCount}</strong></div>
+        <div class="equipment-inline-stat"><span>Итог</span><strong>${overallOk ? 'OK' : 'WARN'}</strong></div>
+    `;
+
+    listEl.innerHTML = items.map((item) => {
+        const label = escapeHtml(item?.label || 'GPIO');
+        const pin = Number.isFinite(Number(item?.pin)) ? `GPIO${Number(item.pin)}` : '—';
+        const modeMap = {
+            output_low: 'Выход LOW',
+            output_high: 'Выход HIGH',
+            input: 'Вход',
+            input_pullup: 'Вход PULLUP'
+        };
+        const mode = modeMap[String(item?.mode || '')] || String(item?.mode || 'unknown');
+        const expected = Number.isFinite(Number(item?.expectedLevel))
+            ? Number(item.expectedLevel) > 0 ? 'HIGH' : 'LOW'
+            : '—';
+        const actual = Number.isFinite(Number(item?.actualLevel))
+            ? Number(item.actualLevel) > 0 ? 'HIGH' : 'LOW'
+            : '—';
+        const ok = Boolean(item?.ok);
+        return `
+            <div class="equipment-module-card">
+                <div class="equipment-module-card-head">
+                    <strong>${label}</strong>
+                    <span class="equipment-status-badge ${ok ? 'success' : 'warning'}">${ok ? 'OK' : 'Проверить'}</span>
+                </div>
+                <div class="equipment-module-card-meta">
+                    <span>${escapeHtml(pin)}</span>
+                    <span>${escapeHtml(mode)}</span>
+                    <span>ждём ${escapeHtml(expected)}</span>
+                    <span>факт ${escapeHtml(actual)}</span>
+                </div>
+                <div class="equipment-module-card-role">${ok ? 'Линия на старте ушла в ожидаемое безопасное состояние.' : 'Фактический уровень не совпал с ожидаемым safe-state. Проверьте обвязку и подтяжки.'}</div>
+            </div>
+        `;
+    }).join('');
+
+    hintEl.textContent = overallOk
+        ? 'Опасные линии на старте выставились корректно: силовой контур не должен самопроизвольно включаться до инициализации драйверов.'
+        : 'Есть несовпадения safe-state на старте. Это не обязательно авария, но wiring и подтяжки лучше проверить до серьёзных прогонов.';
+}
+
 function normalizeHardwareModules(modules = {}) {
     return {
         bmp280Primary: modules.bmp280Primary && typeof modules.bmp280Primary === 'object' ? modules.bmp280Primary : {},
@@ -648,9 +720,13 @@ export async function loadEquipmentSettings() {
             pzem: data.pzem && typeof data.pzem === 'object'
                 ? { ...data.pzem }
                 : (runtimeMonitorState.equipment?.pzem || {}),
+            bootGpio: data.bootGpio && typeof data.bootGpio === 'object'
+                ? { ...data.bootGpio }
+                : (runtimeMonitorState.equipment?.bootGpio || {}),
             modules: normalizeHardwareModules(data.modules)
         };
         syncPzemEquipmentUi(runtimeMonitorState.equipment.pzem);
+        syncBootGpioUi(runtimeMonitorState.equipment.bootGpio);
         syncHardwareModulesUi(runtimeMonitorState.equipment.modules);
         syncCoolingActuatorUi();
     } catch (error) {

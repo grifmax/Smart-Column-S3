@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.3.4`  
+**Версия прошивки:** `2.3.5`  
 **Актуальность документа:** 2026-06-14
 
 ---
@@ -66,6 +66,12 @@
 Информация о последней перезагрузке контроллера.
 
 Возвращает `lastReason`, `lastReasonStr`, `lastReasonKind`, накопительные счётчики `totalReboots`, `wdtReboots`, `crashReboots`, `userReboots`, `otherReboots`, а также `uptimeSec`, `healthOverall` и `freeHeap`.
+
+#### `GET /api/settings/equipment`
+
+Помимо параметров оборудования и списка модулей теперь возвращает `bootGpio`:
+- `completed`, `overallOk`, `checkedCount`, `timestampMs`, `boardRev`
+- `items[]` с полями `label`, `pin`, `mode`, `expectedLevel`, `actualLevel`, `ok`
 
 #### `POST /api/reboot`
 

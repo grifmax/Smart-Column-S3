@@ -16,6 +16,14 @@
   #define BOARD_REV BOARD_REV_V2_0
 #endif
 
+#if BOARD_REV == BOARD_REV_V2_0
+  #define BOARD_REV_LABEL "V2.0"
+#elif BOARD_REV == BOARD_REV_V1_0
+  #define BOARD_REV_LABEL "V1.0"
+#else
+  #define BOARD_REV_LABEL "CUSTOM"
+#endif
+
 // =============================================================================
 // ПРОФИЛЬ: BOARD_REV_V2_0 (Текущая стандартная)
 // =============================================================================

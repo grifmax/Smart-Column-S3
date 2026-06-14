@@ -1139,6 +1139,7 @@ function ensureParameterWorkbenchCards() {
         `,
     });
     appendUniqueGroups(qs('.equipment-grid', hardwareCard), formGroups, [
+        'boot-gpio-list',
         'hardware-modules-list',
         'reboot-settings-state',
         'pzem-settings-state',

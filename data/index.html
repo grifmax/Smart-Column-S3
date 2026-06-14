@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.3.4">
+    <link rel="stylesheet" href="style.css?v=2.3.5">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.3.4" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.3.5" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1797,6 +1797,22 @@
                                         <small id="reboot-settings-hint" class="equipment-hint">Покажем последнюю причину, uptime и накопительные счётчики WDT/panic/user reset.</small>
                                     </div>
                                     <div class="form-group">
+                                        <label>Стартовая GPIO-самопроверка</label>
+                                        <div class="equipment-inline-stats" id="boot-gpio-summary">
+                                            <div class="equipment-inline-stat"><span>Статус</span><strong>Загрузка...</strong></div>
+                                        </div>
+                                        <div class="equipment-module-list" id="boot-gpio-list">
+                                            <div class="equipment-module-card">
+                                                <div class="equipment-module-card-head">
+                                                    <strong>Проверяем safe bring-up...</strong>
+                                                    <span class="equipment-status-badge muted">Ожидание</span>
+                                                </div>
+                                                <div class="equipment-module-card-role">После загрузки покажем, какие GPIO были уведены в безопасное состояние до старта драйверов.</div>
+                                            </div>
+                                        </div>
+                                        <small id="boot-gpio-hint" class="equipment-hint">Нужен для контроля, что нагрев, насос и клапаны не дёрнулись на старте контроллера.</small>
+                                    </div>
+                                    <div class="form-group">
                                         <label>Статусы датчиков и шилдов</label>
                                         <div class="equipment-module-list" id="hardware-modules-list">
                                             <div class="equipment-module-card">
@@ -3257,7 +3273,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.3.4"></script>
+    <script src="app.js?v=2.3.5"></script>
 </body>
 
 </html>
