@@ -3,7 +3,7 @@ import { loadProfilesList } from './list.js';
 import { loadStatus } from '../core/status.js';
 import { activateTabById } from '../core/tabs.js';
 import { selectControlMode } from '../modes/control-panel.js';
-import { addMashStep, createStepRow, readStepsFromUI } from '../modes/mashing-hold.js';
+import { addMashStep, createStepRow, readStepsFromUI, setMashProfileUI } from '../modes/mashing-hold.js';
 
 let currentProfileIsBuiltin = false;
 
@@ -191,17 +191,7 @@ function applyMashingProfileToControlPanel(profile) {
 
     const steps = normalizeMashSteps(profile?.parameters?.mashing?.steps);
     const name = String(profile?.metadata?.name || profile?.name || 'Затирка').trim() || 'Затирка';
-    const nameInput = document.getElementById('mash-profile-name');
-    if (nameInput) {
-        nameInput.value = name;
-    }
-
-    const container = document.getElementById('mash-steps');
-    if (container) {
-        container.innerHTML = '';
-    }
-
-    steps.forEach((step) => addMashStep(step));
+    setMashProfileUI(name, steps, profile?.id || '');
 
 }
 

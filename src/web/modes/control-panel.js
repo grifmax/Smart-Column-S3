@@ -29,7 +29,7 @@ import {
     collectDistillationSettings,
     loadDistillationStartSettings
 } from './distillation.js';
-import { startMashing, startHold, readStepsFromUI } from './mashing-hold.js';
+import { startMashing, startHold, readStepsFromUI, setMashProfileUI } from './mashing-hold.js';
 import {
     loadNbkSettings,
     loadFermentationSettings,
@@ -101,6 +101,51 @@ let fermentationSettingsLoaded = false;
 let manualRectInitialized = false;
 let latestModePreflight = null;
 let preflightRefreshTimer = 0;
+
+function normalizeActiveMashSteps() {
+    const steps = runtimeMonitorState?.activeProfile?.mashing?.steps;
+    if (!Array.isArray(steps)) {
+        return [];
+    }
+
+    return steps
+        .slice(0, 10)
+        .map((step, index) => {
+            const temperature = Number(step?.temperature);
+            const duration = Number(step?.duration);
+            const name = String(step?.name || '').trim() || `Шаг ${index + 1}`;
+            if (!Number.isFinite(temperature) || temperature <= 0 || !Number.isFinite(duration) || duration <= 0) {
+                return null;
+            }
+            return {
+                temperature: Math.round(temperature * 10) / 10,
+                duration: Math.round(duration),
+                name
+            };
+        })
+        .filter(Boolean);
+}
+
+function syncActiveMashingProfileToPanel() {
+    const activeProfile = runtimeMonitorState?.activeProfile || {};
+    if (!activeProfile.loaded || activeProfile.category !== 'mashing') {
+        return;
+    }
+
+    const steps = normalizeActiveMashSteps();
+    if (!steps.length) {
+        return;
+    }
+
+    const container = document.getElementById('mash-steps');
+    const appliedProfileId = container?.dataset?.profileId || '';
+    const activeProfileId = String(activeProfile.id || '');
+    if (appliedProfileId && activeProfileId && appliedProfileId === activeProfileId) {
+        return;
+    }
+
+    setMashProfileUI(activeProfile.name || 'Затирка', steps, activeProfileId);
+}
 
 function getModeDefinition(mode) {
     return CONTROL_MODES[mode] || CONTROL_MODES.rectification;
@@ -1414,6 +1459,8 @@ export async function selectControlMode(mode, options = {}) {
         await ensureNbkSettingsLoaded();
     } else if (normalized === 'fermentation') {
         await ensureFermentationSettingsLoaded();
+    } else if (normalized === 'mashing') {
+        syncActiveMashingProfileToPanel();
     }
 
     if (options.persist !== false) {

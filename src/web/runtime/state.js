@@ -190,6 +190,14 @@ function mergeActiveProfileState(s, data) {
         loaded: activeProfile.loaded !== undefined ? Boolean(activeProfile.loaded) : s.activeProfile.loaded,
         name: activeProfile.name !== undefined ? String(activeProfile.name) : s.activeProfile.name,
         category: activeProfile.category !== undefined ? String(activeProfile.category) : s.activeProfile.category,
+        mashing: (activeProfile.mashing && typeof activeProfile.mashing === 'object')
+            ? {
+                ...s.activeProfile.mashing,
+                steps: Array.isArray(activeProfile.mashing.steps)
+                    ? activeProfile.mashing.steps.map((step) => ({ ...step }))
+                    : s.activeProfile.mashing.steps
+            }
+            : s.activeProfile.mashing,
         validation: (activeProfile.validation && typeof activeProfile.validation === 'object')
             ? { ...activeProfile.validation }
             : s.activeProfile.validation,

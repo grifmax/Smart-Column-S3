@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.3.1`  
+**Версия прошивки:** `2.3.2`  
 **Актуальность документа:** 2026-06-14
 
 ---
@@ -42,6 +42,7 @@
 Поле `activeProfile` в `/api/status` содержит:
 
 - `id`, `loaded`, `name`, `category`
+- `mashing.steps[]` — для активного профиля `mashing` backend возвращает шаги рецепта, чтобы Web UI мог восстановить панель `Затирка` после reload
 - `validation.validatedAt`, `validation.sourceProcessId`, `validation.atmosphereMmHg`
 - `baseTemperatures.*`
 - `baroPreview.*`
@@ -249,7 +250,7 @@
 Загрузка профиля в текущие настройки.
 
 - для `rectification` и `distillation` профиль применяет рабочие уставки в контроллер
-- для `mashing` профиль также помечается активным, а Web UI может сразу подставить его шаги в панель запуска режима `Затирка`
+- для `mashing` профиль также помечается активным, а Web UI может сразу подставить его шаги в панель запуска режима `Затирка` и затем восстановить их после обновления страницы через `GET /api/status`
 
 #### `DELETE /api/profiles/{id}`
 

@@ -158,6 +158,22 @@ export function addMashStep(step = {}) {
     }));
 }
 
+export function setMashProfileUI(name = 'Mashing', steps = [], profileId = '') {
+    const nameInput = document.getElementById('mash-profile-name');
+    if (nameInput) {
+        nameInput.value = String(name || 'Mashing').trim() || 'Mashing';
+    }
+
+    const container = document.getElementById('mash-steps');
+    if (!container) return;
+
+    container.innerHTML = '';
+    container.dataset.profileId = profileId ? String(profileId) : '';
+
+    const normalizedSteps = Array.isArray(steps) ? steps : [];
+    normalizedSteps.forEach((step) => addMashStep(step));
+}
+
 export function addHoldStep(step = {}) {
     const el = document.getElementById('hold-steps');
     if (!el) return;

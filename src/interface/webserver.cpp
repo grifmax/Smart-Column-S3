@@ -2315,6 +2315,18 @@ void init() {
       previewEffectiveTemps["headsEnd"] = previewTemps.headsEnd;
       previewEffectiveTemps["bodyStart"] = previewTemps.bodyStart;
       previewEffectiveTemps["bodyEnd"] = previewTemps.bodyEnd;
+
+      if (activeProfile.metadata.category == "mashing" ||
+          activeProfile.parameters.mode == "mashing") {
+        JsonObject activeMashing = activeProfileJson["mashing"].to<JsonObject>();
+        JsonArray activeMashingSteps = activeMashing["steps"].to<JsonArray>();
+        for (const auto& stepData : activeProfile.parameters.mashing.steps) {
+          JsonObject step = activeMashingSteps.add<JsonObject>();
+          step["temperature"] = stepData.temperature;
+          step["duration"] = stepData.duration;
+          step["name"] = stepData.name;
+        }
+      }
     }
 
     // Температуры

@@ -141,6 +141,9 @@ export let runtimeMonitorState = {
         loaded: false,
         name: '',
         category: '',
+        mashing: {
+            steps: []
+        },
         validation: {},
         baseTemperatures: {},
         baroPreview: {},
