@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.3.3"
+#define FIRMWARE_VERSION "2.3.4"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -429,6 +429,10 @@
 #define NVS_KEY_TOUCH_VALID "tch_valid"
 #define NVS_KEY_DISPLAY_REFRESH "disp_refr"
 #define NVS_KEY_LAST_REBOOT_REASON "boot_reason"
+#define NVS_KEY_REBOOT_TOTAL "boot_total"
+#define NVS_KEY_REBOOT_WDT "boot_wdt"
+#define NVS_KEY_REBOOT_CRASH "boot_crash"
+#define NVS_KEY_REBOOT_USER "boot_user"
 
 // =============================================================================
 // МАКРОСЫ ЛОГИРОВАНИЯ

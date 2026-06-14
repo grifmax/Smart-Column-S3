@@ -360,6 +360,10 @@ bool loadSettings(Settings& settings) {
     settings.theme = prefs.getUChar(NVS_KEY_THEME, 0);
     settings.soundEnabled = prefs.getBool(NVS_KEY_SOUND, true);
     settings.lastRebootReason = prefs.getUChar(NVS_KEY_LAST_REBOOT_REASON, 0);
+    settings.rebootCountTotal = prefs.getUInt(NVS_KEY_REBOOT_TOTAL, 0);
+    settings.rebootCountWdt = prefs.getUInt(NVS_KEY_REBOOT_WDT, 0);
+    settings.rebootCountCrash = prefs.getUInt(NVS_KEY_REBOOT_CRASH, 0);
+    settings.rebootCountUser = prefs.getUInt(NVS_KEY_REBOOT_USER, 0);
 
     prefs.end();
     LOG_I("NVS: Settings loaded");
@@ -486,6 +490,10 @@ bool saveSettings(const Settings& settings) {
     prefs.putUChar(NVS_KEY_THEME, settings.theme);
     prefs.putBool(NVS_KEY_SOUND, settings.soundEnabled);
     prefs.putUChar(NVS_KEY_LAST_REBOOT_REASON, settings.lastRebootReason);
+    prefs.putUInt(NVS_KEY_REBOOT_TOTAL, settings.rebootCountTotal);
+    prefs.putUInt(NVS_KEY_REBOOT_WDT, settings.rebootCountWdt);
+    prefs.putUInt(NVS_KEY_REBOOT_CRASH, settings.rebootCountCrash);
+    prefs.putUInt(NVS_KEY_REBOOT_USER, settings.rebootCountUser);
 
     prefs.end();
     LOG_I("NVS: Settings saved");

@@ -4594,10 +4594,31 @@ void init() {
   // GET /api/reboot/status - получить информацию о последней перезагрузке
   server.on("/api/reboot/status", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
+    const uint32_t totalReboots = g_rebootTracker.totalReboots;
+    const uint32_t wdtReboots = g_rebootTracker.wdtReboots;
+    const uint32_t crashReboots = g_rebootTracker.crashReboots;
+    const uint32_t userReboots = g_rebootTracker.userReboots;
+    const uint32_t otherReboots =
+        totalReboots > (wdtReboots + crashReboots + userReboots)
+            ? totalReboots - (wdtReboots + crashReboots + userReboots)
+            : 0;
+    const uint8_t lastReason = g_rebootTracker.lastReason;
+    const bool lastWasWdt = lastReason == ESP_RST_WDT || lastReason == ESP_RST_TASK_WDT ||
+                            lastReason == ESP_RST_INT_WDT;
+    const bool lastWasCrash = lastReason == ESP_RST_PANIC;
+    const bool lastWasUser = lastReason == ESP_RST_SW || lastReason == ESP_RST_EXT;
+
     doc["lastReason"] = g_rebootTracker.lastReason;
     doc["lastReasonStr"] = g_rebootTracker.lastReasonStr;
-    doc["totalReboots"] = g_rebootTracker.totalReboots;
-    doc["wdtReboots"] = g_rebootTracker.wdtReboots;
+    doc["totalReboots"] = totalReboots;
+    doc["wdtReboots"] = wdtReboots;
+    doc["crashReboots"] = crashReboots;
+    doc["userReboots"] = userReboots;
+    doc["otherReboots"] = otherReboots;
+    doc["uptimeSec"] = millis() / 1000UL;
+    doc["healthOverall"] = g_state.health.overallHealth;
+    doc["freeHeap"] = ESP.getFreeHeap();
+    doc["lastReasonKind"] = lastWasWdt ? "wdt" : lastWasCrash ? "crash" : lastWasUser ? "user" : "other";
     
     String json;
     serializeJson(doc, json);

@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.3.3`  
+**Версия прошивки:** `2.3.4`  
 **Актуальность документа:** 2026-06-14
 
 ---
@@ -64,6 +64,8 @@
 #### `GET /api/reboot/status`
 
 Информация о последней перезагрузке контроллера.
+
+Возвращает `lastReason`, `lastReasonStr`, `lastReasonKind`, накопительные счётчики `totalReboots`, `wdtReboots`, `crashReboots`, `userReboots`, `otherReboots`, а также `uptimeSec`, `healthOverall` и `freeHeap`.
 
 #### `POST /api/reboot`
 

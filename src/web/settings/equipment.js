@@ -65,6 +65,14 @@ function formatPzemMetric(value, digits = 1, suffix = '') {
     return `${numeric.toFixed(digits)}${suffix}`;
 }
 
+function formatDurationHms(totalSeconds) {
+    const safeSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -100,6 +108,74 @@ function syncPzemEquipmentUi(pzem = {}) {
         `GPIO${rxPin} RX ← PZEM TX, GPIO${txPin} TX → PZEM RX` +
         (liveMetrics.length ? ` • ${liveMetrics.join(' • ')}` : '')
     );
+}
+
+function syncRebootDiagnosticsUi(reboot = null, error = null) {
+    const summaryEl = document.getElementById('reboot-settings-summary');
+    const stateEl = document.getElementById('reboot-settings-state');
+    const hintEl = document.getElementById('reboot-settings-hint');
+    if (!summaryEl && !stateEl && !hintEl) return;
+
+    if (!reboot || error) {
+        if (summaryEl) {
+            summaryEl.innerHTML = '<div class="equipment-inline-stat"><span>Статус</span><strong>Нет данных</strong></div>';
+        }
+        if (stateEl) {
+            stateEl.textContent = 'Диагностика перезагрузок недоступна';
+        }
+        if (hintEl) {
+            hintEl.textContent = error?.message
+                ? `Не удалось получить /api/reboot/status: ${error.message}`
+                : 'Контроллер ещё не отдал данные о перезагрузках.';
+        }
+        return;
+    }
+
+    const total = Math.max(0, Number(reboot.totalReboots || 0));
+    const wdt = Math.max(0, Number(reboot.wdtReboots || 0));
+    const crash = Math.max(0, Number(reboot.crashReboots || 0));
+    const user = Math.max(0, Number(reboot.userReboots || 0));
+    const other = Math.max(0, Number((reboot.otherReboots ?? (total - wdt - crash - user)) || 0));
+    const uptimeSec = Math.max(0, Number(reboot.uptimeSec || 0));
+    const healthOverall = Number.isFinite(Number(reboot.healthOverall))
+        ? Math.max(0, Math.min(100, Math.round(Number(reboot.healthOverall))))
+        : null;
+    const freeHeap = Number.isFinite(Number(reboot.freeHeap))
+        ? Math.max(0, Math.round(Number(reboot.freeHeap) / 1024))
+        : null;
+    const lastReason = String(reboot.lastReasonStr || 'Unknown');
+    const lastReasonKind = String(reboot.lastReasonKind || 'other');
+
+    if (summaryEl) {
+        summaryEl.innerHTML = `
+            <div class="equipment-inline-stat"><span>Последний reason</span><strong>${escapeHtml(lastReason)}</strong></div>
+            <div class="equipment-inline-stat"><span>Всего</span><strong>${total}</strong></div>
+            <div class="equipment-inline-stat"><span>WDT</span><strong>${wdt}</strong></div>
+            <div class="equipment-inline-stat"><span>Panic</span><strong>${crash}</strong></div>
+            <div class="equipment-inline-stat"><span>User</span><strong>${user}</strong></div>
+        `;
+    }
+
+    const extraParts = [];
+    if (healthOverall !== null) extraParts.push(`health ${healthOverall}%`);
+    if (freeHeap !== null) extraParts.push(`heap ${freeHeap} KB`);
+    if (stateEl) {
+        stateEl.textContent = `Последняя загрузка: ${lastReason} • uptime ${formatDurationHms(uptimeSec)}${extraParts.length ? ` • ${extraParts.join(' • ')}` : ''}`;
+    }
+
+    let hint = `Накоплено перезагрузок: всего ${total}, WDT ${wdt}, panic ${crash}, user ${user}, прочие ${other}.`;
+    if (lastReasonKind === 'wdt') {
+        hint = `Последний рестарт был watchdog-типа. Проверьте зависания задач, длинные блокировки и тайминги периферии. ${hint}`;
+    } else if (lastReasonKind === 'crash') {
+        hint = `Последний рестарт был panic/exception. Смотрите системный лог и последние действия перед падением. ${hint}`;
+    } else if (lastReasonKind === 'user') {
+        hint = `Последний рестарт выглядит управляемым: software/external reset. ${hint}`;
+    } else if (total <= 1) {
+        hint = 'Это первый зафиксированный запуск после очистки или прошивки. База причин перезагрузки только набирается.';
+    }
+    if (hintEl) {
+        hintEl.textContent = hint;
+    }
 }
 
 function normalizeHardwareModules(modules = {}) {
@@ -579,6 +655,14 @@ export async function loadEquipmentSettings() {
         syncCoolingActuatorUi();
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
+    }
+
+    try {
+        const rebootData = await requestJson('/api/reboot/status');
+        runtimeMonitorState.reboot = rebootData;
+        syncRebootDiagnosticsUi(rebootData);
+    } catch (error) {
+        syncRebootDiagnosticsUi(null, error);
     } finally {
         await loadStirrerSettings();
         initEquipmentNumberSteppers();

@@ -89,6 +89,10 @@ void resetWiFiAndRestart();
 static void showBootStage(const char* message);
 static void handleLoggerLifecycle(uint32_t now);
 void buzzerTask(void* pvParameters);
+static bool isWatchdogResetReason(esp_reset_reason_t reason);
+static bool isCrashResetReason(esp_reset_reason_t reason);
+static bool isUserResetReason(esp_reset_reason_t reason);
+static const char* resetReasonToString(esp_reset_reason_t reason);
 
 // =============================================================================
 // BUZZER HELPER
@@ -101,6 +105,35 @@ void beep(uint8_t count, uint16_t duration) {
   xQueueSend(g_buzzerQueue, &cmd, 0);
 }
 } // namespace Buzzer
+
+static bool isWatchdogResetReason(esp_reset_reason_t reason) {
+  return reason == ESP_RST_WDT || reason == ESP_RST_TASK_WDT ||
+         reason == ESP_RST_INT_WDT;
+}
+
+static bool isCrashResetReason(esp_reset_reason_t reason) {
+  return reason == ESP_RST_PANIC;
+}
+
+static bool isUserResetReason(esp_reset_reason_t reason) {
+  return reason == ESP_RST_SW || reason == ESP_RST_EXT;
+}
+
+static const char* resetReasonToString(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON: return "Power On";
+    case ESP_RST_EXT: return "External Pin";
+    case ESP_RST_SW: return "Software Reset";
+    case ESP_RST_PANIC: return "Exception/Panic";
+    case ESP_RST_INT_WDT: return "Interrupt WDT";
+    case ESP_RST_TASK_WDT: return "Task WDT";
+    case ESP_RST_WDT: return "Other WDT";
+    case ESP_RST_DEEPSLEEP: return "Deep Sleep";
+    case ESP_RST_BROWNOUT: return "Brownout";
+    case ESP_RST_SDIO: return "SDIO Reset";
+    default: return "Other";
+  }
+}
 
 // =============================================================================
 // SETUP
@@ -124,33 +157,13 @@ void setup() {
   // 2. Проверка причины перезагрузки
   esp_reset_reason_t resetReason = esp_reset_reason();
   g_state.health.lastRebootReason = (uint8_t)resetReason;
-  g_rebootTracker.totalReboots = 1;
   g_rebootTracker.lastReason = (uint8_t)resetReason;
-  
-  const char* resetStr = "Unknown";
-  switch (resetReason) {
-    case ESP_RST_POWERON: resetStr = "Power On"; break;
-    case ESP_RST_EXT:     resetStr = "External Pin"; break;
-    case ESP_RST_SW:      resetStr = "Software Reset"; break;
-    case ESP_RST_PANIC:   resetStr = "Exception/Panic"; break;
-    case ESP_RST_INT_WDT: resetStr = "Interrupt WDT"; break;
-    case ESP_RST_TASK_WDT:resetStr = "Task WDT"; break;
-    case ESP_RST_WDT:     resetStr = "Other WDT"; break;
-    case ESP_RST_DEEPSLEEP: resetStr = "Deep Sleep"; break;
-    case ESP_RST_BROWNOUT: resetStr = "Brownout"; break;
-    case ESP_RST_SDIO:    resetStr = "SDIO Reset"; break;
-    default:              resetStr = "Other"; break;
-  }
-  strncpy(g_rebootTracker.lastReasonStr, resetStr, sizeof(g_rebootTracker.lastReasonStr)-1);
-  
-  if (resetReason == ESP_RST_WDT || resetReason == ESP_RST_TASK_WDT || 
-      resetReason == ESP_RST_INT_WDT) {
-    g_rebootTracker.wdtReboots = 1;
+  strncpy(g_rebootTracker.lastReasonStr, resetReasonToString(resetReason),
+          sizeof(g_rebootTracker.lastReasonStr) - 1);
+  g_rebootTracker.lastReasonStr[sizeof(g_rebootTracker.lastReasonStr) - 1] = '\0';
+
+  if (isWatchdogResetReason(resetReason)) {
     Serial.println("WARNING: Previous reset was due to Watchdog!");
-  } else if (resetReason == ESP_RST_PANIC) {
-    g_rebootTracker.crashReboots = 1;
-  } else if (resetReason == ESP_RST_SW || resetReason == ESP_RST_EXT) {
-    g_rebootTracker.userReboots = 1;
   }
 
   // 3. WatchDog Timer
@@ -174,10 +187,32 @@ void setup() {
   loadSettings();
 
   // Сохранить причину перезагрузки, если изменилась
-  if (g_settings.lastRebootReason != g_state.health.lastRebootReason) {
+  g_rebootTracker.totalReboots = g_settings.rebootCountTotal + 1;
+  g_rebootTracker.wdtReboots =
+      g_settings.rebootCountWdt + (isWatchdogResetReason(resetReason) ? 1U : 0U);
+  g_rebootTracker.crashReboots =
+      g_settings.rebootCountCrash + (isCrashResetReason(resetReason) ? 1U : 0U);
+  g_rebootTracker.userReboots =
+      g_settings.rebootCountUser + (isUserResetReason(resetReason) ? 1U : 0U);
+
+  const bool rebootStatsChanged =
+      g_settings.lastRebootReason != g_state.health.lastRebootReason ||
+      g_settings.rebootCountTotal != g_rebootTracker.totalReboots ||
+      g_settings.rebootCountWdt != g_rebootTracker.wdtReboots ||
+      g_settings.rebootCountCrash != g_rebootTracker.crashReboots ||
+      g_settings.rebootCountUser != g_rebootTracker.userReboots;
+
+  if (rebootStatsChanged) {
     g_settings.lastRebootReason = g_state.health.lastRebootReason;
+    g_settings.rebootCountTotal = g_rebootTracker.totalReboots;
+    g_settings.rebootCountWdt = g_rebootTracker.wdtReboots;
+    g_settings.rebootCountCrash = g_rebootTracker.crashReboots;
+    g_settings.rebootCountUser = g_rebootTracker.userReboots;
     NVSManager::saveSettings(g_settings);
-    LOG_I("Reset reason updated in NVS: %d", g_settings.lastRebootReason);
+    LOG_I("Reboot stats updated in NVS: reason=%d total=%u wdt=%u crash=%u user=%u",
+          g_settings.lastRebootReason, g_settings.rebootCountTotal,
+          g_settings.rebootCountWdt, g_settings.rebootCountCrash,
+          g_settings.rebootCountUser);
   }
 
   // 8. Инициализация железа

@@ -509,6 +509,10 @@ struct Settings {
   uint8_t theme = 0;    // 0=Light, 1=Dark
   bool soundEnabled = true;
   uint8_t lastRebootReason = 0; // Store last CRITICAL reboot reason
+  uint32_t rebootCountTotal = 0;
+  uint32_t rebootCountWdt = 0;
+  uint32_t rebootCountCrash = 0;
+  uint32_t rebootCountUser = 0;
   bool demoMode = false; // Демо-режим (симуляция данных)
 };
 
