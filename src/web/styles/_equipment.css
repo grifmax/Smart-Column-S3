@@ -580,6 +580,12 @@
     display: none !important;
 }
 
+.equipment-test-card[hidden],
+.equipment-test-status-card[hidden],
+.equipment-pane-workbench-stack > .cards > .equipment-card[hidden] {
+    display: none !important;
+}
+
 .equipment-test-card,
 .equipment-test-status-card {
     display: grid;
@@ -748,6 +754,48 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+}
+
+.equipment-service-contour-next {
+    display: grid;
+    gap: 8px;
+}
+
+.equipment-service-contour-next-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-card);
+}
+
+.equipment-service-contour-next-card.tone-success {
+    border-color: rgba(34, 197, 94, 0.22);
+    background: rgba(34, 197, 94, 0.05);
+}
+
+.equipment-service-contour-next-card.tone-danger {
+    border-color: rgba(239, 68, 68, 0.24);
+    background: rgba(239, 68, 68, 0.06);
+}
+
+.equipment-service-contour-next-copy {
+    display: grid;
+    gap: 4px;
+}
+
+.equipment-service-contour-next-copy strong {
+    color: var(--text-primary);
+    font-size: 0.94rem;
+}
+
+.equipment-service-contour-next-copy span {
+    color: var(--text-secondary);
+    font-size: 0.86rem;
+    line-height: 1.4;
 }
 
 .equipment-commissioning-card {
@@ -1554,6 +1602,11 @@
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px;
+    }
+
+    .equipment-service-contour-next-card {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .equipment-test-summary-stats .equipment-inline-stat {

@@ -331,6 +331,9 @@ const TESTING_TEMPLATE = `
                     <span class="equipment-status-badge muted" id="equipment-service-contour-badge">Проверяем…</span>
                 </div>
                 <div class="equipment-test-alert subtle" id="equipment-service-contour-hint">Ожидаем данные по сервисному контуру…</div>
+                <div class="equipment-service-contour-next" id="equipment-service-contour-next">
+                    <div class="equipment-test-journal-empty">После загрузки появится рекомендуемый следующий шаг.</div>
+                </div>
                 <div class="equipment-service-contour-grid" id="equipment-service-contour-grid">
                     <div class="equipment-test-journal-empty">Контур появится после загрузки сервисного статуса.</div>
                 </div>
@@ -2043,15 +2046,39 @@ function buildServiceContour(status) {
 function renderServiceContour(status) {
     const badgeEl = byId('equipment-service-contour-badge');
     const hintEl = byId('equipment-service-contour-hint');
+    const nextEl = byId('equipment-service-contour-next');
     const gridEl = byId('equipment-service-contour-grid');
-    if (!badgeEl || !hintEl || !gridEl) {
+    if (!badgeEl || !hintEl || !nextEl || !gridEl) {
         return;
     }
 
     const contour = buildServiceContour(status);
+    const nextItem = contour.items.find((item) => item.tone === 'danger' && item.open) || null;
     updateBadge(badgeEl, contour.label, contour.tone);
     hintEl.textContent = contour.hint;
     hintEl.className = `equipment-test-alert${contour.tone === 'danger' ? ' danger' : contour.tone === 'warning' ? '' : ' subtle'}`;
+    nextEl.innerHTML = nextItem
+        ? `
+            <div class="equipment-service-contour-next-card tone-${nextItem.tone}">
+                <div class="equipment-service-contour-next-copy">
+                    <strong>Следующий шаг: ${nextItem.label}</strong>
+                    <span>${nextItem.detail}</span>
+                </div>
+                <button
+                    type="button"
+                    class="btn btn-sm btn-secondary"
+                    data-service-contour-open="${nextItem.open.section}:${nextItem.open.cardId}"
+                >Открыть ${nextItem.open.label}</button>
+            </div>
+        `
+        : `
+            <div class="equipment-service-contour-next-card tone-success">
+                <div class="equipment-service-contour-next-copy">
+                    <strong>Сервисный контур собран</strong>
+                    <span>Ключевые узлы подтверждены. Можно переходить к ручным тестам или пусконаладке.</span>
+                </div>
+            </div>
+        `;
     gridEl.innerHTML = contour.items.map((item) => `
         <div class="equipment-service-contour-item tone-${item.tone}">
             <div class="equipment-service-contour-line">
