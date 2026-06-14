@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.3.7">
+    <link rel="stylesheet" href="style.css?v=2.3.8">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.3.7" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.3.8" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1826,17 +1826,43 @@
                                         <small id="hardware-modules-hint" class="equipment-hint">Покажем адреса, роли и текущую доступность датчиков и плат.</small>
                                     </div>
                                     <div class="form-group">
-                                        <label>Safety-?????? ? ???????</label>
+                                        <label>Safety-каналы и резервы</label>
                                         <div class="equipment-module-list" id="safety-channels-list">
                                             <div class="equipment-module-card">
                                                 <div class="equipment-module-card-head">
-                                                    <strong>???????? safety-???????...</strong>
-                                                    <span class="equipment-status-badge muted">????????</span>
+                                                    <strong>Загрузка safety-каналов...</strong>
+                                                    <span class="equipment-status-badge muted">Ожидание</span>
                                                 </div>
-                                                <div class="equipment-module-card-role">??????? A2/A3 ??? ??????? ? ????????, ? ????? ?????? GPIO1/GPIO3 ??? ??????? ??????.</div>
+                                                <div class="equipment-module-card-role">Покажем A2/A3 для уровня и протечки, а также резерв GPIO1/GPIO3 под газовые датчики.</div>
                                             </div>
                                         </div>
-                                        <small id="safety-channels-hint" class="equipment-hint">????? ??? ????? ? ???????????? ? ??????? ?????????? safety-?????????.</small>
+                                        <small id="safety-channels-hint" class="equipment-hint">Здесь видны live-состояние и конфигурация мягких safety-каналов.</small>
+                                    </div>
+                                    <div class="form-group control-checkbox-field equipment-checkbox-field">
+                                        <label for="body-level-enabled">Контроль уровня в теле на ADS1115 A2</label>
+                                        <input type="checkbox" id="body-level-enabled">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="body-level-threshold-v">Порог A2, В</label>
+                                        <input type="number" id="body-level-threshold-v" min="0" max="4.096" step="0.001" value="1.500" data-stepper-mode="pair" data-stepper-step="0.010">
+                                        <small class="equipment-hint">Мягкий порог для датчика уровня тела. Канал можно держать выключенным, пока датчик не установлен.</small>
+                                    </div>
+                                    <div class="form-group control-checkbox-field equipment-checkbox-field">
+                                        <label for="body-level-trigger-above">A2 срабатывает при напряжении выше порога</label>
+                                        <input type="checkbox" id="body-level-trigger-above" checked>
+                                    </div>
+                                    <div class="form-group control-checkbox-field equipment-checkbox-field">
+                                        <label for="leak-sensor-enabled">Контроль протечки на ADS1115 A3</label>
+                                        <input type="checkbox" id="leak-sensor-enabled">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="leak-threshold-v">Порог A3, В</label>
+                                        <input type="number" id="leak-threshold-v" min="0" max="4.096" step="0.001" value="1.500" data-stepper-mode="pair" data-stepper-step="0.010">
+                                        <small class="equipment-hint">Можно использовать под протечку, поплавок или другой дискретный soft-safety датчик через АЦП.</small>
+                                    </div>
+                                    <div class="form-group control-checkbox-field equipment-checkbox-field">
+                                        <label for="leak-trigger-above">A3 срабатывает при напряжении выше порога</label>
+                                        <input type="checkbox" id="leak-trigger-above" checked>
                                     </div>
                                     <div class="form-group control-checkbox-field equipment-checkbox-field">
                                         <label for="stirrer-enabled">Включить мешалку</label>
@@ -3286,7 +3312,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.3.7"></script>
+    <script src="app.js?v=2.3.8"></script>
 </body>
 
 </html>

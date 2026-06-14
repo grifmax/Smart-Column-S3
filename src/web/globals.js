@@ -284,6 +284,12 @@ export let runtimeMonitorState = {
         coolingPwmMaxDuty: 255,
         coolingPwmStartupDuty: 96,
         coolingPwmCurrentDuty: 0,
+        bodyLevelSensorEnabled: false,
+        bodyLevelThresholdV: 1.5,
+        bodyLevelTriggerAbove: true,
+        leakSensorEnabled: false,
+        leakThresholdV: 1.5,
+        leakTriggerAbove: true,
         modules: {},
         safetyChannels: {}
     },

@@ -444,22 +444,39 @@ static void fillEquipmentModulesJson(JsonObject modules) {
 
 static void fillSafetyChannelsJson(JsonObject channels) {
   const bool adsOnline = Sensors::isAds1115Available();
+  const float maxAdsVoltage = 4.096f;
 
   int16_t bodyLevelAdc = 0;
   float bodyLevelVoltage = 0.0f;
   const bool bodyLevelReadable = Sensors::readAds1115Channel(
       ADS_CHANNEL_LEVEL_BODY, bodyLevelAdc, bodyLevelVoltage);
+  const bool bodyLevelTriggered = g_settings.equipment.bodyLevelSensorEnabled &&
+      bodyLevelReadable &&
+      (g_settings.equipment.bodyLevelTriggerAbove
+           ? (bodyLevelVoltage >= g_settings.equipment.bodyLevelThresholdV)
+           : (bodyLevelVoltage <= g_settings.equipment.bodyLevelThresholdV));
 
   int16_t leakAdc = 0;
   float leakVoltage = 0.0f;
   const bool leakReadable =
       Sensors::readAds1115Channel(ADS_CHANNEL_LEAK, leakAdc, leakVoltage);
+  const bool leakTriggered = g_settings.equipment.leakSensorEnabled &&
+      leakReadable &&
+      (g_settings.equipment.leakTriggerAbove
+           ? (leakVoltage >= g_settings.equipment.leakThresholdV)
+           : (leakVoltage <= g_settings.equipment.leakThresholdV));
 
   JsonObject bodyLevel = channels["bodyLevel"].to<JsonObject>();
   bodyLevel["label"] = "??????? ????? ????";
-  bodyLevel["status"] = bodyLevelReadable ? "ready" : (adsOnline ? "ready" : "offline");
+  bodyLevel["status"] = !adsOnline
+      ? "offline"
+      : (!bodyLevelReadable
+             ? "no_signal"
+             : (g_settings.equipment.bodyLevelSensorEnabled
+                    ? (bodyLevelTriggered ? "triggered" : "armed")
+                    : "ready"));
   bodyLevel["available"] = adsOnline;
-  bodyLevel["expected"] = false;
+  bodyLevel["expected"] = g_settings.equipment.bodyLevelSensorEnabled;
   bodyLevel["planned"] = true;
   bodyLevel["liveReadable"] = bodyLevelReadable;
   bodyLevel["bus"] = "ADS1115";
@@ -467,14 +484,27 @@ static void fillSafetyChannelsJson(JsonObject channels) {
   bodyLevel["role"] = "?????? ??? ?????? ?????? ???????? ????? ????";
   bodyLevel["source"] = "ADS1115 A2";
   bodyLevel["channel"] = ADS_CHANNEL_LEVEL_BODY;
+  bodyLevel["enabled"] = g_settings.equipment.bodyLevelSensorEnabled;
+  bodyLevel["thresholdV"] = g_settings.equipment.bodyLevelThresholdV;
+  bodyLevel["triggerAbove"] = g_settings.equipment.bodyLevelTriggerAbove;
+  bodyLevel["triggerMode"] =
+      g_settings.equipment.bodyLevelTriggerAbove ? "above" : "below";
+  bodyLevel["triggered"] = bodyLevelTriggered;
+  bodyLevel["maxVoltage"] = maxAdsVoltage;
   bodyLevel["adc"] = bodyLevelReadable ? bodyLevelAdc : 0;
   bodyLevel["voltage"] = bodyLevelReadable ? bodyLevelVoltage : 0.0f;
 
   JsonObject leak = channels["leak"].to<JsonObject>();
   leak["label"] = "???????? / ??????";
-  leak["status"] = leakReadable ? "ready" : (adsOnline ? "ready" : "offline");
+  leak["status"] = !adsOnline
+      ? "offline"
+      : (!leakReadable
+             ? "no_signal"
+             : (g_settings.equipment.leakSensorEnabled
+                    ? (leakTriggered ? "triggered" : "armed")
+                    : "ready"));
   leak["available"] = adsOnline;
-  leak["expected"] = false;
+  leak["expected"] = g_settings.equipment.leakSensorEnabled;
   leak["planned"] = true;
   leak["liveReadable"] = leakReadable;
   leak["bus"] = "ADS1115";
@@ -482,6 +512,13 @@ static void fillSafetyChannelsJson(JsonObject channels) {
   leak["role"] = "?????? ??? ?????? ???????? ??? ???????? ? ???????";
   leak["source"] = "ADS1115 A3";
   leak["channel"] = ADS_CHANNEL_LEAK;
+  leak["enabled"] = g_settings.equipment.leakSensorEnabled;
+  leak["thresholdV"] = g_settings.equipment.leakThresholdV;
+  leak["triggerAbove"] = g_settings.equipment.leakTriggerAbove;
+  leak["triggerMode"] =
+      g_settings.equipment.leakTriggerAbove ? "above" : "below";
+  leak["triggered"] = leakTriggered;
+  leak["maxVoltage"] = maxAdsVoltage;
   leak["adc"] = leakReadable ? leakAdc : 0;
   leak["voltage"] = leakReadable ? leakVoltage : 0.0f;
 
@@ -498,6 +535,8 @@ static void fillSafetyChannelsJson(JsonObject channels) {
       "?????? ??? ??????? ??????; ???? ?????? ?????????? ????????";
   vaporPrimary["source"] = "GPIO1";
   vaporPrimary["pin"] = PIN_VAPOR_SENSOR_ADC_1;
+  vaporPrimary["enabled"] = false;
+  vaporPrimary["triggered"] = false;
 
   JsonObject vaporSecondary = channels["vaporSecondary"].to<JsonObject>();
   vaporSecondary["label"] = "??? / ???? #2";
@@ -512,6 +551,8 @@ static void fillSafetyChannelsJson(JsonObject channels) {
       "?????? ????????? ADC-???? ??? ?????? ????? ??? ????";
   vaporSecondary["source"] = "GPIO3";
   vaporSecondary["pin"] = PIN_VAPOR_SENSOR_ADC_2;
+  vaporSecondary["enabled"] = false;
+  vaporSecondary["triggered"] = false;
 }
 
 static void fillEquipmentTestingHealthJson(JsonObject health) {
@@ -3629,6 +3670,12 @@ void init() {
     doc["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
     doc["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
     doc["coolingPwmCurrentDuty"] = Valves::getStartStop();
+    doc["bodyLevelSensorEnabled"] = g_settings.equipment.bodyLevelSensorEnabled;
+    doc["bodyLevelThresholdV"] = g_settings.equipment.bodyLevelThresholdV;
+    doc["bodyLevelTriggerAbove"] = g_settings.equipment.bodyLevelTriggerAbove;
+    doc["leakSensorEnabled"] = g_settings.equipment.leakSensorEnabled;
+    doc["leakThresholdV"] = g_settings.equipment.leakThresholdV;
+    doc["leakTriggerAbove"] = g_settings.equipment.leakTriggerAbove;
     doc["packingType"] = packingType;
     doc["packingCoeff"] = g_settings.equipment.packingCoeff;
     JsonObject boardProfile = doc["boardProfile"].to<JsonObject>();
@@ -3781,6 +3828,30 @@ void init() {
               g_settings.equipment.coolingPwmStartupDuty,
               g_settings.equipment.coolingPwmMinDuty,
               g_settings.equipment.coolingPwmMaxDuty);
+        }
+        if (!doc["bodyLevelSensorEnabled"].isNull()) {
+          g_settings.equipment.bodyLevelSensorEnabled =
+              doc["bodyLevelSensorEnabled"].as<bool>();
+        }
+        if (!doc["bodyLevelThresholdV"].isNull()) {
+          g_settings.equipment.bodyLevelThresholdV = clampFloatRange(
+              doc["bodyLevelThresholdV"].as<float>(), 0.0f, 4.096f);
+        }
+        if (!doc["bodyLevelTriggerAbove"].isNull()) {
+          g_settings.equipment.bodyLevelTriggerAbove =
+              doc["bodyLevelTriggerAbove"].as<bool>();
+        }
+        if (!doc["leakSensorEnabled"].isNull()) {
+          g_settings.equipment.leakSensorEnabled =
+              doc["leakSensorEnabled"].as<bool>();
+        }
+        if (!doc["leakThresholdV"].isNull()) {
+          g_settings.equipment.leakThresholdV = clampFloatRange(
+              doc["leakThresholdV"].as<float>(), 0.0f, 4.096f);
+        }
+        if (!doc["leakTriggerAbove"].isNull()) {
+          g_settings.equipment.leakTriggerAbove =
+              doc["leakTriggerAbove"].as<bool>();
         }
 
         if (!NVSManager::saveSettings(g_settings)) {

@@ -412,6 +412,12 @@ struct EquipmentSettings {
   uint8_t coolingPwmMinDuty = 0;
   uint8_t coolingPwmMaxDuty = 255;
   uint8_t coolingPwmStartupDuty = 96;
+  bool bodyLevelSensorEnabled = false;
+  float bodyLevelThresholdV = 1.5f;
+  bool bodyLevelTriggerAbove = true;
+  bool leakSensorEnabled = false;
+  float leakThresholdV = 1.5f;
+  bool leakTriggerAbove = true;
 };
 
 struct FractionatorSettings {

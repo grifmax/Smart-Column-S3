@@ -270,6 +270,30 @@ bool loadSettings(Settings& settings) {
     if (settings.equipment.coolingPwmStartupDuty > settings.equipment.coolingPwmMaxDuty) {
         settings.equipment.coolingPwmStartupDuty = settings.equipment.coolingPwmMaxDuty;
     }
+    settings.equipment.bodyLevelSensorEnabled =
+        prefs.getBool(NVS_KEY_BODY_LEVEL_ENABLED, DEFAULT_BODY_LEVEL_SENSOR_ENABLED != 0);
+    settings.equipment.bodyLevelThresholdV =
+        prefs.getFloat(NVS_KEY_BODY_LEVEL_THRESHOLD, DEFAULT_BODY_LEVEL_THRESHOLD_V);
+    settings.equipment.bodyLevelTriggerAbove =
+        prefs.getBool(NVS_KEY_BODY_LEVEL_POLARITY, DEFAULT_BODY_LEVEL_TRIGGER_ABOVE != 0);
+    settings.equipment.leakSensorEnabled =
+        prefs.getBool(NVS_KEY_LEAK_ENABLED, DEFAULT_LEAK_SENSOR_ENABLED != 0);
+    settings.equipment.leakThresholdV =
+        prefs.getFloat(NVS_KEY_LEAK_THRESHOLD, DEFAULT_LEAK_THRESHOLD_V);
+    settings.equipment.leakTriggerAbove =
+        prefs.getBool(NVS_KEY_LEAK_POLARITY, DEFAULT_LEAK_TRIGGER_ABOVE != 0);
+    if (settings.equipment.bodyLevelThresholdV < 0.0f) {
+        settings.equipment.bodyLevelThresholdV = 0.0f;
+    }
+    if (settings.equipment.bodyLevelThresholdV > 4.096f) {
+        settings.equipment.bodyLevelThresholdV = 4.096f;
+    }
+    if (settings.equipment.leakThresholdV < 0.0f) {
+        settings.equipment.leakThresholdV = 0.0f;
+    }
+    if (settings.equipment.leakThresholdV > 4.096f) {
+        settings.equipment.leakThresholdV = 4.096f;
+    }
     settings.fractionator.enabled = prefs.getBool(NVS_KEY_FRACTION_MASTER, settings.fractionator.enabled);
     if (prefs.getBytesLength(NVS_KEY_FRACTION_ANGLES) == sizeof(settings.fractionator.angles)) {
         prefs.getBytes(NVS_KEY_FRACTION_ANGLES, settings.fractionator.angles, sizeof(settings.fractionator.angles));
@@ -410,6 +434,12 @@ bool saveSettings(const Settings& settings) {
     prefs.putUChar(NVS_KEY_COOLING_PWM_MIN_DUTY, settings.equipment.coolingPwmMinDuty);
     prefs.putUChar(NVS_KEY_COOLING_PWM_MAX_DUTY, settings.equipment.coolingPwmMaxDuty);
     prefs.putUChar(NVS_KEY_COOLING_PWM_STARTUP, settings.equipment.coolingPwmStartupDuty);
+    prefs.putBool(NVS_KEY_BODY_LEVEL_ENABLED, settings.equipment.bodyLevelSensorEnabled);
+    prefs.putFloat(NVS_KEY_BODY_LEVEL_THRESHOLD, settings.equipment.bodyLevelThresholdV);
+    prefs.putBool(NVS_KEY_BODY_LEVEL_POLARITY, settings.equipment.bodyLevelTriggerAbove);
+    prefs.putBool(NVS_KEY_LEAK_ENABLED, settings.equipment.leakSensorEnabled);
+    prefs.putFloat(NVS_KEY_LEAK_THRESHOLD, settings.equipment.leakThresholdV);
+    prefs.putBool(NVS_KEY_LEAK_POLARITY, settings.equipment.leakTriggerAbove);
     prefs.putBool(NVS_KEY_FRACTION_MASTER, settings.fractionator.enabled);
     prefs.putBytes(NVS_KEY_FRACTION_ANGLES, settings.fractionator.angles, sizeof(settings.fractionator.angles));
     prefs.putBytes(NVS_KEY_FRACTION_ENABLED, settings.fractionator.positionsEnabled, sizeof(settings.fractionator.positionsEnabled));

@@ -1714,9 +1714,16 @@ function buildCommissioningSteps(status) {
         ? Math.abs(Number(state.pressureTest.max) - Number(state.pressureTest.min))
         : null;
     const safetyChannels = normalizeTestingSafetyChannels(status?.safetyChannels || {});
-    const safetyReady = safetyChannels.filter((channel) => String(channel.status || '') === 'ready');
+    const safetyReady = safetyChannels.filter((channel) => {
+        const statusValue = String(channel.status || '');
+        return statusValue === 'ready' || statusValue === 'armed';
+    });
     const safetyReserved = safetyChannels.filter((channel) => String(channel.status || '') === 'reserved');
-    const safetyOffline = safetyChannels.filter((channel) => String(channel.status || '') === 'offline');
+    const safetyOffline = safetyChannels.filter((channel) => {
+        const statusValue = String(channel.status || '');
+        return statusValue === 'offline' || statusValue === 'no_signal';
+    });
+    const safetyTriggered = safetyChannels.filter((channel) => String(channel.status || '') === 'triggered');
 
     const steps = [];
 
@@ -1834,7 +1841,11 @@ function buildCommissioningSteps(status) {
             { type: 'open', label: '??????? ???????', section: 'parameters', cardId: 'hardware-status' }
         ]
     };
-    if (safetyOffline.length > 0) {
+    if (safetyTriggered.length > 0) {
+        auxSafetyStep.tone = 'danger';
+        auxSafetyStep.label = 'Сработка';
+        auxSafetyStep.description = 'Один из настроенных safety-каналов уже в состоянии сработки. Проверьте A2/A3, пороги и реальное состояние датчиков.';
+    } else if (safetyOffline.length > 0) {
         auxSafetyStep.tone = 'warning';
         auxSafetyStep.label = '????????? ADS';
         auxSafetyStep.description = '?????? A2/A3 ???????? ? ?????????? ????????, ?? ???? ?????????? ??? ADS1115 ?? ????. GPIO1/GPIO3 ???????? ???????? ??? ??????? ??????.';
@@ -1964,14 +1975,20 @@ function normalizeTestingHardwareModules(modules = {}) {
 
 function getTestingSafetyChannelMeta(channel = {}) {
     switch (String(channel.status || '')) {
+    case 'triggered':
+        return { text: 'Сработал', tone: 'danger' };
+    case 'armed':
+        return { text: 'Охрана', tone: 'success' };
     case 'ready':
-        return { text: '?????', tone: 'success' };
+        return { text: 'Чтение', tone: 'success' };
+    case 'no_signal':
+        return { text: 'Нет сигнала', tone: 'warning' };
     case 'offline':
-        return { text: '???????', tone: 'danger' };
+        return { text: 'Офлайн', tone: 'danger' };
     case 'reserved':
-        return { text: '??????', tone: 'muted' };
+        return { text: 'Резерв', tone: 'muted' };
     default:
-        return { text: '?????????', tone: 'warning' };
+        return { text: 'Проверка', tone: 'warning' };
     }
 }
 
@@ -1986,7 +2003,13 @@ function buildTestingSafetyChannelCard(channel = {}) {
     const pin = Number.isFinite(Number(channel.pin))
         ? `GPIO${Number(channel.pin)}`
         : '';
-    const extras = [voltage, adc, pin]
+    const threshold = Number.isFinite(Number(channel.thresholdV))
+        ? `Порог ${Number(channel.thresholdV).toFixed(3)} V`
+        : '';
+    const mode = channel.enabled
+        ? (channel.triggerAbove ? 'Сработка выше порога' : 'Сработка ниже порога')
+        : 'Мониторинг выключен';
+    const extras = [voltage, adc, pin, threshold]
         .filter(Boolean)
         .map((item) => `<span>${item}</span>`)
         .join('');
@@ -2003,6 +2026,7 @@ function buildTestingSafetyChannelCard(channel = {}) {
                 ${extras}
             </div>
             <div class="equipment-module-card-role">${channel.role || '?'}</div>
+            <div class="equipment-module-card-role">${mode}</div>
         </div>
     `;
 }
@@ -2064,9 +2088,17 @@ function buildServiceContour(status) {
     const zeroCrossOnline = Boolean(heater?.zeroCrossSeen);
     const pzemOnline = Boolean(power?.available);
     const safetyReadyCount = normalizeTestingSafetyChannels(safetyChannels)
-        .filter((channel) => String(channel.status || '') === 'ready').length;
+        .filter((channel) => {
+            const statusValue = String(channel.status || '');
+            return statusValue === 'ready' || statusValue === 'armed';
+        }).length;
     const safetyOfflineCount = normalizeTestingSafetyChannels(safetyChannels)
-        .filter((channel) => String(channel.status || '') === 'offline').length;
+        .filter((channel) => {
+            const statusValue = String(channel.status || '');
+            return statusValue === 'offline' || statusValue === 'no_signal';
+        }).length;
+    const safetyTriggeredCount = normalizeTestingSafetyChannels(safetyChannels)
+        .filter((channel) => String(channel.status || '') === 'triggered').length;
 
     const items = [
         {
@@ -2122,11 +2154,25 @@ function buildServiceContour(status) {
                 ? `${formatNumber(power?.voltage, 1, ' В')} / ${formatNumber(power?.current, 2, ' А')}`
                 : 'силовой монитор не подтверждён',
             open: { section: 'testing', cardId: 'heater', label: 'Нагрев' }
+        },
+        {
+            key: 'safety',
+            label: 'Safety-каналы',
+            tone: safetyTriggeredCount > 0 ? 'danger' : (safetyOfflineCount > 0 ? 'warning' : 'success'),
+            value: safetyTriggeredCount > 0
+                ? `alarm ${safetyTriggeredCount}`
+                : (safetyReadyCount > 0 ? `${safetyReadyCount} online` : 'резерв'),
+            detail: safetyTriggeredCount > 0
+                ? 'Один из soft-safety каналов уже перешёл порог сработки.'
+                : (safetyOfflineCount > 0
+                    ? 'Резервные safety-каналы заведены, но часть live-статусов недоступна.'
+                    : 'A2/A3 опубликованы в диагностике; GPIO1/GPIO3 оставлены под будущие датчики.'),
+            open: { section: 'parameters', cardId: 'hardware-status', label: 'Шина и модули' }
         }
     ];
 
     const blockers = items.filter((item) => item.tone === 'danger').length;
-    const warnings = items.filter((item) => item.tone === 'muted').length;
+    const warnings = items.filter((item) => item.tone === 'muted' || item.tone === 'warning').length;
 
     let tone = 'success';
     let label = 'Контур готов';

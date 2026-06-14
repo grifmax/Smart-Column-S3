@@ -314,14 +314,20 @@ function buildHardwareModuleCard(module = {}) {
 
 function getSafetyChannelMeta(channel = {}) {
     switch (String(channel.status || '')) {
+    case 'triggered':
+        return { text: 'Сработал', tone: 'danger' };
+    case 'armed':
+        return { text: 'Охрана', tone: 'success' };
     case 'ready':
-        return { text: '?????', tone: 'success' };
+        return { text: 'Чтение', tone: 'success' };
+    case 'no_signal':
+        return { text: 'Нет сигнала', tone: 'warning' };
     case 'offline':
-        return { text: '???????', tone: 'danger' };
+        return { text: 'Офлайн', tone: 'danger' };
     case 'reserved':
-        return { text: '??????', tone: 'muted' };
+        return { text: 'Резерв', tone: 'muted' };
     default:
-        return { text: '?????????', tone: 'warning' };
+        return { text: 'Проверка', tone: 'warning' };
     }
 }
 
@@ -336,7 +342,13 @@ function buildSafetyChannelCard(channel = {}) {
     const pin = Number.isFinite(Number(channel.pin))
         ? `GPIO${Number(channel.pin)}`
         : '';
-    const extras = [voltage, adc, pin]
+    const threshold = Number.isFinite(Number(channel.thresholdV))
+        ? `Порог ${Number(channel.thresholdV).toFixed(3)} V`
+        : '';
+    const mode = channel.enabled
+        ? (channel.triggerAbove ? 'Сработка выше порога' : 'Сработка ниже порога')
+        : 'Мониторинг выключен';
+    const extras = [voltage, adc, pin, threshold]
         .filter(Boolean)
         .map((item) => `<span>${escapeHtml(item)}</span>`)
         .join('');
@@ -353,8 +365,19 @@ function buildSafetyChannelCard(channel = {}) {
                 ${extras}
             </div>
             <div class="equipment-module-card-role">${escapeHtml(channel.role || '?')}</div>
+            <div class="equipment-module-card-role">${escapeHtml(mode)}</div>
         </div>
     `;
+}
+
+function syncSafetyChannelSettingsUi(equipment = {}) {
+    setCheckboxValue('body-level-enabled', Boolean(equipment.bodyLevelSensorEnabled));
+    setInputValue('body-level-threshold-v', clamp(equipment.bodyLevelThresholdV, 0, 4.096, 1.5).toFixed(3));
+    setCheckboxValue('body-level-trigger-above', equipment.bodyLevelTriggerAbove !== false);
+
+    setCheckboxValue('leak-sensor-enabled', Boolean(equipment.leakSensorEnabled));
+    setInputValue('leak-threshold-v', clamp(equipment.leakThresholdV, 0, 4.096, 1.5).toFixed(3));
+    setCheckboxValue('leak-trigger-above', equipment.leakTriggerAbove !== false);
 }
 
 function syncHardwareModulesUi(modules = {}) {
@@ -400,13 +423,20 @@ function syncSafetyChannelsUi(channels = {}) {
     listEl.innerHTML = orderedChannels.map((channel) => buildSafetyChannelCard(channel)).join('');
 
     const readyCount = orderedChannels.filter((channel) => String(channel.status || '') === 'ready').length;
+    const armedCount = orderedChannels.filter((channel) => String(channel.status || '') === 'armed').length;
+    const triggeredCount = orderedChannels.filter((channel) => String(channel.status || '') === 'triggered').length;
     const reservedCount = orderedChannels.filter((channel) => String(channel.status || '') === 'reserved').length;
-    const offlineCount = orderedChannels.filter((channel) => String(channel.status || '') === 'offline').length;
+    const offlineCount = orderedChannels.filter((channel) => {
+        const status = String(channel.status || '');
+        return status === 'offline' || status === 'no_signal';
+    }).length;
 
     if (hintEl) {
-        hintEl.textContent = offlineCount > 0
-            ? `??????? ?????????? safety-???????: ${readyCount}. ???????? ??? ??????? ???????: ${reservedCount}. ???? ??????-????: ${offlineCount}.`
-            : `??????? ?????????? safety-???????: ${readyCount}. ???????? ??? ??????? ???????: ${reservedCount}.`;
+        hintEl.textContent = triggeredCount > 0
+            ? `Сработавших каналов: ${triggeredCount}. В охране: ${armedCount}. Просто читаются: ${readyCount}. Резервов: ${reservedCount}.`
+            : (offlineCount > 0
+                ? `В охране: ${armedCount}. Просто читаются: ${readyCount}. Резервов: ${reservedCount}. Без live-сигнала: ${offlineCount}.`
+                : `В охране: ${armedCount}. Просто читаются: ${readyCount}. Резервов: ${reservedCount}.`);
     }
 }
 
@@ -800,6 +830,12 @@ export async function loadEquipmentSettings() {
             coolingPwmMaxDuty: clamp(data.coolingPwmMaxDuty, 0, 255, 255),
             coolingPwmStartupDuty: clamp(data.coolingPwmStartupDuty, 0, 255, 96),
             coolingPwmCurrentDuty: clamp(data.coolingPwmCurrentDuty, 0, 255, 0),
+            bodyLevelSensorEnabled: Boolean(data.bodyLevelSensorEnabled),
+            bodyLevelThresholdV: clamp(data.bodyLevelThresholdV, 0, 4.096, 1.5),
+            bodyLevelTriggerAbove: data.bodyLevelTriggerAbove !== false,
+            leakSensorEnabled: Boolean(data.leakSensorEnabled),
+            leakThresholdV: clamp(data.leakThresholdV, 0, 4.096, 1.5),
+            leakTriggerAbove: data.leakTriggerAbove !== false,
             pzem: data.pzem && typeof data.pzem === 'object'
                 ? { ...data.pzem }
                 : (runtimeMonitorState.equipment?.pzem || {}),
@@ -819,6 +855,7 @@ export async function loadEquipmentSettings() {
         );
         syncHardwareModulesUi(runtimeMonitorState.equipment.modules);
         syncSafetyChannelsUi(runtimeMonitorState.equipment.safetyChannels);
+        syncSafetyChannelSettingsUi(runtimeMonitorState.equipment);
         syncCoolingActuatorUi();
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
@@ -835,6 +872,8 @@ export async function loadEquipmentSettings() {
         initEquipmentNumberSteppers();
         loadCubeExtenderPreset();
         updateCubeVolumeHint({ normalizeInput: true });
+        syncSafetyChannelSettingsUi(runtimeMonitorState.equipment);
+        await loadEquipmentSettings();
         syncCoolingActuatorUi();
         syncCoolingActuatorUi();
     }
@@ -857,6 +896,12 @@ export async function saveEquipment() {
         coolingPwmMaxDuty,
         coolingPwmMinDuty
     );
+    const bodyLevelSensorEnabled = getCheckboxValue('body-level-enabled', false);
+    const bodyLevelThresholdV = clamp(getInputValue('body-level-threshold-v', 1.5), 0, 4.096, 1.5);
+    const bodyLevelTriggerAbove = getCheckboxValue('body-level-trigger-above', true);
+    const leakSensorEnabled = getCheckboxValue('leak-sensor-enabled', false);
+    const leakThresholdV = clamp(getInputValue('leak-threshold-v', 1.5), 0, 4.096, 1.5);
+    const leakTriggerAbove = getCheckboxValue('leak-trigger-above', true);
 
     const mlPerRev = toFiniteNumber(document.getElementById('pump-ml-per-rev')?.value, NaN);
     const stepsPerRev = toFiniteNumber(document.getElementById('pump-steps-per-rev')?.value, NaN);
@@ -898,7 +943,13 @@ export async function saveEquipment() {
                 coolingPwmEnabled,
                 coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
                 coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
-                coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty)
+                coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty),
+                bodyLevelSensorEnabled,
+                bodyLevelThresholdV,
+                bodyLevelTriggerAbove,
+                leakSensorEnabled,
+                leakThresholdV,
+                leakTriggerAbove
             })
         });
 
@@ -920,7 +971,13 @@ export async function saveEquipment() {
             coolingPwmEnabled,
             coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
             coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
-            coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty)
+            coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty),
+            bodyLevelSensorEnabled,
+            bodyLevelThresholdV,
+            bodyLevelTriggerAbove,
+            leakSensorEnabled,
+            leakThresholdV,
+            leakTriggerAbove
         };
 
         updateCubeVolumeHint({ normalizeInput: true });
