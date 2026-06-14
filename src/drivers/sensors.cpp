@@ -783,6 +783,19 @@ bool isPzemAvailable() {
     return pzem_ok;
 }
 
+bool readAds1115Channel(uint8_t channel, int16_t& adc, float& voltage) {
+    adc = 0;
+    voltage = 0.0f;
+
+    if (!ads_ok || channel > 3) {
+        return false;
+    }
+
+    adc = ads1115.readADC_SingleEnded(channel);
+    voltage = ads1115.computeVolts(adc);
+    return true;
+}
+
 void updateHealth(SystemHealth& health) {
     // Подсчёт работающих датчиков температуры
     health.tempSensorsTotal = 0;

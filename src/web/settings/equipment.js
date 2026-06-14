@@ -263,6 +263,15 @@ function normalizeHardwareModules(modules = {}) {
     };
 }
 
+function normalizeSafetyChannels(channels = {}) {
+    return {
+        bodyLevel: channels.bodyLevel && typeof channels.bodyLevel === 'object' ? channels.bodyLevel : {},
+        leak: channels.leak && typeof channels.leak === 'object' ? channels.leak : {},
+        vaporPrimary: channels.vaporPrimary && typeof channels.vaporPrimary === 'object' ? channels.vaporPrimary : {},
+        vaporSecondary: channels.vaporSecondary && typeof channels.vaporSecondary === 'object' ? channels.vaporSecondary : {}
+    };
+}
+
 function getHardwareModuleMeta(module = {}) {
     const available = Boolean(module.available);
     const expected = module.expected !== false;
@@ -303,6 +312,51 @@ function buildHardwareModuleCard(module = {}) {
     `;
 }
 
+function getSafetyChannelMeta(channel = {}) {
+    switch (String(channel.status || '')) {
+    case 'ready':
+        return { text: '?????', tone: 'success' };
+    case 'offline':
+        return { text: '???????', tone: 'danger' };
+    case 'reserved':
+        return { text: '??????', tone: 'muted' };
+    default:
+        return { text: '?????????', tone: 'warning' };
+    }
+}
+
+function buildSafetyChannelCard(channel = {}) {
+    const meta = getSafetyChannelMeta(channel);
+    const voltage = Number.isFinite(Number(channel.voltage))
+        ? `${Number(channel.voltage).toFixed(3)} V`
+        : '';
+    const adc = Number.isFinite(Number(channel.adc))
+        ? `ADC ${Math.round(Number(channel.adc))}`
+        : '';
+    const pin = Number.isFinite(Number(channel.pin))
+        ? `GPIO${Number(channel.pin)}`
+        : '';
+    const extras = [voltage, adc, pin]
+        .filter(Boolean)
+        .map((item) => `<span>${escapeHtml(item)}</span>`)
+        .join('');
+
+    return `
+        <div class="equipment-module-card">
+            <div class="equipment-module-card-head">
+                <strong>${escapeHtml(channel.label || '?????')}</strong>
+                <span class="equipment-status-badge ${meta.tone}">${meta.text}</span>
+            </div>
+            <div class="equipment-module-card-meta">
+                <span>${escapeHtml(channel.bus || '?')}</span>
+                <span>${escapeHtml(channel.address || '?')}</span>
+                ${extras}
+            </div>
+            <div class="equipment-module-card-role">${escapeHtml(channel.role || '?')}</div>
+        </div>
+    `;
+}
+
 function syncHardwareModulesUi(modules = {}) {
     const listEl = document.getElementById('hardware-modules-list');
     const hintEl = document.getElementById('hardware-modules-hint');
@@ -327,6 +381,32 @@ function syncHardwareModulesUi(modules = {}) {
         hintEl.textContent = missingExpected > 0
             ? `Онлайн ${onlineCount}/${orderedModules.length}. Обязательных модулей без ответа: ${missingExpected}/${expectedCount}.`
             : `Онлайн ${onlineCount}/${orderedModules.length}. Все обязательные модули отвечают.`;
+    }
+}
+
+function syncSafetyChannelsUi(channels = {}) {
+    const listEl = document.getElementById('safety-channels-list');
+    const hintEl = document.getElementById('safety-channels-hint');
+    if (!listEl) return;
+
+    const normalized = normalizeSafetyChannels(channels);
+    const orderedChannels = [
+        normalized.bodyLevel,
+        normalized.leak,
+        normalized.vaporPrimary,
+        normalized.vaporSecondary
+    ];
+
+    listEl.innerHTML = orderedChannels.map((channel) => buildSafetyChannelCard(channel)).join('');
+
+    const readyCount = orderedChannels.filter((channel) => String(channel.status || '') === 'ready').length;
+    const reservedCount = orderedChannels.filter((channel) => String(channel.status || '') === 'reserved').length;
+    const offlineCount = orderedChannels.filter((channel) => String(channel.status || '') === 'offline').length;
+
+    if (hintEl) {
+        hintEl.textContent = offlineCount > 0
+            ? `??????? ?????????? safety-???????: ${readyCount}. ???????? ??? ??????? ???????: ${reservedCount}. ???? ??????-????: ${offlineCount}.`
+            : `??????? ?????????? safety-???????: ${readyCount}. ???????? ??? ??????? ???????: ${reservedCount}.`;
     }
 }
 
@@ -729,7 +809,8 @@ export async function loadEquipmentSettings() {
             bootGpio: data.bootGpio && typeof data.bootGpio === 'object'
                 ? { ...data.bootGpio }
                 : (runtimeMonitorState.equipment?.bootGpio || {}),
-            modules: normalizeHardwareModules(data.modules)
+            modules: normalizeHardwareModules(data.modules),
+            safetyChannels: normalizeSafetyChannels(data.safetyChannels)
         };
         syncPzemEquipmentUi(runtimeMonitorState.equipment.pzem);
         syncBootGpioUi(
@@ -737,6 +818,7 @@ export async function loadEquipmentSettings() {
             runtimeMonitorState.equipment.boardProfile
         );
         syncHardwareModulesUi(runtimeMonitorState.equipment.modules);
+        syncSafetyChannelsUi(runtimeMonitorState.equipment.safetyChannels);
         syncCoolingActuatorUi();
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');

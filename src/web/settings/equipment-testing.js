@@ -1594,6 +1594,15 @@ function getCommissioningManualTargets() {
     ];
 }
 
+function normalizeTestingSafetyChannels(channels = {}) {
+    return [
+        channels.bodyLevel && typeof channels.bodyLevel === 'object' ? channels.bodyLevel : {},
+        channels.leak && typeof channels.leak === 'object' ? channels.leak : {},
+        channels.vaporPrimary && typeof channels.vaporPrimary === 'object' ? channels.vaporPrimary : {},
+        channels.vaporSecondary && typeof channels.vaporSecondary === 'object' ? channels.vaporSecondary : {}
+    ];
+}
+
 function getTestingCardMeta(cardId) {
     return TESTING_CARD_DEFS.find((card) => card.id === cardId) || null;
 }
@@ -1704,6 +1713,10 @@ function buildCommissioningSteps(status) {
     const pressureSpan = state.pressureTest.min !== null && state.pressureTest.max !== null
         ? Math.abs(Number(state.pressureTest.max) - Number(state.pressureTest.min))
         : null;
+    const safetyChannels = normalizeTestingSafetyChannels(status?.safetyChannels || {});
+    const safetyReady = safetyChannels.filter((channel) => String(channel.status || '') === 'ready');
+    const safetyReserved = safetyChannels.filter((channel) => String(channel.status || '') === 'reserved');
+    const safetyOffline = safetyChannels.filter((channel) => String(channel.status || '') === 'offline');
 
     const steps = [];
 
@@ -1809,6 +1822,32 @@ function buildCommissioningSteps(status) {
         heaterStep.description = 'Контур нагрева ещё не описал свой backend. Откройте сервисную карточку и проверьте диагностику.';
     }
     steps.push(heaterStep);
+
+    const auxSafetyStep = {
+        id: 'aux-safety',
+        title: '?????????????? safety-??????',
+        blocking: false,
+        tone: 'success',
+        label: '??????',
+        description: 'ADS1115 ??????? ??? ??????? ????? ? ???????? ?????, ? GPIO1/GPIO3 ???????? ??? ??????? ?????? ?? ???????.',
+        actions: [
+            { type: 'open', label: '??????? ???????', section: 'parameters', cardId: 'hardware-status' }
+        ]
+    };
+    if (safetyOffline.length > 0) {
+        auxSafetyStep.tone = 'warning';
+        auxSafetyStep.label = '????????? ADS';
+        auxSafetyStep.description = '?????? A2/A3 ???????? ? ?????????? ????????, ?? ???? ?????????? ??? ADS1115 ?? ????. GPIO1/GPIO3 ???????? ???????? ??? ??????? ??????.';
+    } else if (safetyReady.length < 2) {
+        auxSafetyStep.tone = 'warning';
+        auxSafetyStep.label = `${safetyReady.length}/2`;
+        auxSafetyStep.description = '??????? ???????????? ????????, ?? live-?????? ?? A2/A3 ???? ????????. ????? ??????????? ???????? ????? ?????? ?????????? ADC ? ??????????.';
+    } else if (safetyReserved.length > 0) {
+        auxSafetyStep.tone = 'warning';
+        auxSafetyStep.label = '???????';
+        auxSafetyStep.description = '??????? ????? ? ???????? ??? ????? ????? ?????? A2/A3, ? ??????? ?????? ???? ?????? ???????? ??? ?????? ?? GPIO1/GPIO3 ??? ??????? ??????????.';
+    }
+    steps.push(auxSafetyStep);
 
     const manualStep = {
         id: 'manual-actuators',
@@ -1923,6 +1962,51 @@ function normalizeTestingHardwareModules(modules = {}) {
     ];
 }
 
+function getTestingSafetyChannelMeta(channel = {}) {
+    switch (String(channel.status || '')) {
+    case 'ready':
+        return { text: '?????', tone: 'success' };
+    case 'offline':
+        return { text: '???????', tone: 'danger' };
+    case 'reserved':
+        return { text: '??????', tone: 'muted' };
+    default:
+        return { text: '?????????', tone: 'warning' };
+    }
+}
+
+function buildTestingSafetyChannelCard(channel = {}) {
+    const meta = getTestingSafetyChannelMeta(channel);
+    const voltage = Number.isFinite(Number(channel.voltage))
+        ? `${Number(channel.voltage).toFixed(3)} V`
+        : '';
+    const adc = Number.isFinite(Number(channel.adc))
+        ? `ADC ${Math.round(Number(channel.adc))}`
+        : '';
+    const pin = Number.isFinite(Number(channel.pin))
+        ? `GPIO${Number(channel.pin)}`
+        : '';
+    const extras = [voltage, adc, pin]
+        .filter(Boolean)
+        .map((item) => `<span>${item}</span>`)
+        .join('');
+
+    return `
+        <div class="equipment-module-card">
+            <div class="equipment-module-card-head">
+                <strong>${channel.label || '?????'}</strong>
+                <span class="equipment-status-badge ${meta.tone}">${meta.text}</span>
+            </div>
+            <div class="equipment-module-card-meta">
+                <span>${channel.bus || '?'}</span>
+                <span>${channel.address || '?'}</span>
+                ${extras}
+            </div>
+            <div class="equipment-module-card-role">${channel.role || '?'}</div>
+        </div>
+    `;
+}
+
 function getTestingHardwareModuleMeta(module = {}) {
     const available = Boolean(module.available);
     const expected = module.expected !== false;
@@ -1965,6 +2049,7 @@ function buildTestingHardwareModuleCard(module = {}) {
 
 function buildServiceContour(status) {
     const modules = status?.modules || {};
+    const safetyChannels = status?.safetyChannels || {};
     const heater = status?.heater || {};
     const power = status?.power || {};
     const pressure = status?.pressure || {};
@@ -1978,6 +2063,10 @@ function buildServiceContour(status) {
     const zeroCrossNeeded = heater?.backend === 'triac';
     const zeroCrossOnline = Boolean(heater?.zeroCrossSeen);
     const pzemOnline = Boolean(power?.available);
+    const safetyReadyCount = normalizeTestingSafetyChannels(safetyChannels)
+        .filter((channel) => String(channel.status || '') === 'ready').length;
+    const safetyOfflineCount = normalizeTestingSafetyChannels(safetyChannels)
+        .filter((channel) => String(channel.status || '') === 'offline').length;
 
     const items = [
         {
@@ -2198,6 +2287,7 @@ function renderServiceContour(status) {
 
 function buildSelfCheckSnapshot(status) {
     const modules = normalizeTestingHardwareModules(status?.modules || {});
+    const safetyChannels = normalizeTestingSafetyChannels(status?.safetyChannels || {});
     const health = status?.health || {};
     const tempSensorsOk = Math.max(0, Number(health.tempSensorsOk || 0));
     const tempSensorsTotal = Math.max(0, Number(health.tempSensorsTotal || 0));
@@ -2299,6 +2389,7 @@ function renderHardwareSelfCheck(status) {
     }
 
     const modules = normalizeTestingHardwareModules(status?.modules || {});
+    const safetyChannels = normalizeTestingSafetyChannels(status?.safetyChannels || {});
     const health = status?.health || {};
     const onlineCount = modules.filter((module) => Boolean(module.available)).length;
     const expectedModules = modules.filter((module) => module.expected !== false);
@@ -2335,7 +2426,10 @@ function renderHardwareSelfCheck(status) {
         <div class="equipment-inline-stat"><span>Reboot</span><strong>${rebootReason}</strong></div>
     `;
     hintEl.textContent = hint;
-    modulesEl.innerHTML = modules.map((module) => buildTestingHardwareModuleCard(module)).join('');
+    modulesEl.innerHTML = [
+        ...modules.map((module) => buildTestingHardwareModuleCard(module)),
+        ...safetyChannels.map((channel) => buildTestingSafetyChannelCard(channel))
+    ].join('');
     renderSelfCheckHistory();
 }
 

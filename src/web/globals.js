@@ -284,7 +284,8 @@ export let runtimeMonitorState = {
         coolingPwmMaxDuty: 255,
         coolingPwmStartupDuty: 96,
         coolingPwmCurrentDuty: 0,
-        modules: {}
+        modules: {},
+        safetyChannels: {}
     },
     stirrerSettings: {
         enabled: false,

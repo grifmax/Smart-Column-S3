@@ -420,7 +420,7 @@ static void fillEquipmentModulesJson(JsonObject modules) {
   ads1115["expected"] = true;
   ads1115["bus"] = "I2C";
   ads1115["address"] = "0x48";
-  ads1115["role"] = "A1 давление куба, A0 ареометр";
+  ads1115["role"] = "A0 ????????, A1 ???????? ????, A2 ??????? ????, A3 ????????";
 
   JsonObject mcp4725 = modules["mcp4725"].to<JsonObject>();
   mcp4725["label"] = "MCP4725";
@@ -440,6 +440,78 @@ static void fillEquipmentModulesJson(JsonObject modules) {
   pzemModule["baudRate"] = PZEM_BAUD_RATE;
   pzemModule["rxPin"] = PIN_PZEM_RX;
   pzemModule["txPin"] = PIN_PZEM_TX;
+}
+
+static void fillSafetyChannelsJson(JsonObject channels) {
+  const bool adsOnline = Sensors::isAds1115Available();
+
+  int16_t bodyLevelAdc = 0;
+  float bodyLevelVoltage = 0.0f;
+  const bool bodyLevelReadable = Sensors::readAds1115Channel(
+      ADS_CHANNEL_LEVEL_BODY, bodyLevelAdc, bodyLevelVoltage);
+
+  int16_t leakAdc = 0;
+  float leakVoltage = 0.0f;
+  const bool leakReadable =
+      Sensors::readAds1115Channel(ADS_CHANNEL_LEAK, leakAdc, leakVoltage);
+
+  JsonObject bodyLevel = channels["bodyLevel"].to<JsonObject>();
+  bodyLevel["label"] = "??????? ????? ????";
+  bodyLevel["status"] = bodyLevelReadable ? "ready" : (adsOnline ? "ready" : "offline");
+  bodyLevel["available"] = adsOnline;
+  bodyLevel["expected"] = false;
+  bodyLevel["planned"] = true;
+  bodyLevel["liveReadable"] = bodyLevelReadable;
+  bodyLevel["bus"] = "ADS1115";
+  bodyLevel["address"] = "0x48 / A2";
+  bodyLevel["role"] = "?????? ??? ?????? ?????? ???????? ????? ????";
+  bodyLevel["source"] = "ADS1115 A2";
+  bodyLevel["channel"] = ADS_CHANNEL_LEVEL_BODY;
+  bodyLevel["adc"] = bodyLevelReadable ? bodyLevelAdc : 0;
+  bodyLevel["voltage"] = bodyLevelReadable ? bodyLevelVoltage : 0.0f;
+
+  JsonObject leak = channels["leak"].to<JsonObject>();
+  leak["label"] = "???????? / ??????";
+  leak["status"] = leakReadable ? "ready" : (adsOnline ? "ready" : "offline");
+  leak["available"] = adsOnline;
+  leak["expected"] = false;
+  leak["planned"] = true;
+  leak["liveReadable"] = leakReadable;
+  leak["bus"] = "ADS1115";
+  leak["address"] = "0x48 / A3";
+  leak["role"] = "?????? ??? ?????? ???????? ??? ???????? ? ???????";
+  leak["source"] = "ADS1115 A3";
+  leak["channel"] = ADS_CHANNEL_LEAK;
+  leak["adc"] = leakReadable ? leakAdc : 0;
+  leak["voltage"] = leakReadable ? leakVoltage : 0.0f;
+
+  JsonObject vaporPrimary = channels["vaporPrimary"].to<JsonObject>();
+  vaporPrimary["label"] = "??? / ???? #1";
+  vaporPrimary["status"] = "reserved";
+  vaporPrimary["available"] = false;
+  vaporPrimary["expected"] = false;
+  vaporPrimary["planned"] = true;
+  vaporPrimary["liveReadable"] = false;
+  vaporPrimary["bus"] = "ESP32 ADC";
+  vaporPrimary["address"] = "GPIO1";
+  vaporPrimary["role"] =
+      "?????? ??? ??????? ??????; ???? ?????? ?????????? ????????";
+  vaporPrimary["source"] = "GPIO1";
+  vaporPrimary["pin"] = PIN_VAPOR_SENSOR_ADC_1;
+
+  JsonObject vaporSecondary = channels["vaporSecondary"].to<JsonObject>();
+  vaporSecondary["label"] = "??? / ???? #2";
+  vaporSecondary["status"] = "reserved";
+  vaporSecondary["available"] = false;
+  vaporSecondary["expected"] = false;
+  vaporSecondary["planned"] = true;
+  vaporSecondary["liveReadable"] = false;
+  vaporSecondary["bus"] = "ESP32 ADC";
+  vaporSecondary["address"] = "GPIO3";
+  vaporSecondary["role"] =
+      "?????? ????????? ADC-???? ??? ?????? ????? ??? ????";
+  vaporSecondary["source"] = "GPIO3";
+  vaporSecondary["pin"] = PIN_VAPOR_SENSOR_ADC_2;
 }
 
 static void fillEquipmentTestingHealthJson(JsonObject health) {
@@ -636,6 +708,9 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
 
   JsonObject modules = doc["modules"].to<JsonObject>();
   fillEquipmentModulesJson(modules);
+
+  JsonObject safetyChannels = doc["safetyChannels"].to<JsonObject>();
+  fillSafetyChannelsJson(safetyChannels);
 
   JsonObject health = doc["health"].to<JsonObject>();
   fillEquipmentTestingHealthJson(health);
@@ -3617,49 +3692,10 @@ void init() {
     }
 
     JsonObject modules = doc["modules"].to<JsonObject>();
+    fillEquipmentModulesJson(modules);
 
-    JsonObject bmp280Primary = modules["bmp280Primary"].to<JsonObject>();
-    bmp280Primary["label"] = "BMP280 #1";
-    bmp280Primary["available"] = Sensors::isBmp280PrimaryAvailable();
-    bmp280Primary["expected"] = true;
-    bmp280Primary["bus"] = "I2C";
-    bmp280Primary["address"] = "0x76";
-    bmp280Primary["role"] = "Атмосфера, основной";
-
-    JsonObject bmp280Secondary = modules["bmp280Secondary"].to<JsonObject>();
-    bmp280Secondary["label"] = "BMP280 #2";
-    bmp280Secondary["available"] = Sensors::isBmp280SecondaryAvailable();
-    bmp280Secondary["expected"] = false;
-    bmp280Secondary["bus"] = "I2C";
-    bmp280Secondary["address"] = "0x77";
-    bmp280Secondary["role"] = "Атмосфера, резерв";
-
-    JsonObject ads1115 = modules["ads1115"].to<JsonObject>();
-    ads1115["label"] = "ADS1115";
-    ads1115["available"] = Sensors::isAds1115Available();
-    ads1115["expected"] = true;
-    ads1115["bus"] = "I2C";
-    ads1115["address"] = "0x48";
-    ads1115["role"] = "A1 давление куба, A0 ареометр";
-
-    JsonObject mcp4725 = modules["mcp4725"].to<JsonObject>();
-    mcp4725["label"] = "MCP4725";
-    mcp4725["available"] = Stirrer::isAvailable();
-    mcp4725["expected"] = false;
-    mcp4725["bus"] = "I2C";
-    mcp4725["address"] = "0x60";
-    mcp4725["role"] = "DAC мешалки 0-10В";
-
-    JsonObject pzemModule = modules["pzem004t"].to<JsonObject>();
-    pzemModule["label"] = "PZEM-004T";
-    pzemModule["available"] = Sensors::isPzemAvailable();
-    pzemModule["expected"] = true;
-    pzemModule["bus"] = "UART";
-    pzemModule["address"] = "UART1";
-    pzemModule["role"] = "Монитор сети и нагрева";
-    pzemModule["baudRate"] = PZEM_BAUD_RATE;
-    pzemModule["rxPin"] = PIN_PZEM_RX;
-    pzemModule["txPin"] = PIN_PZEM_TX;
+    JsonObject safetyChannels = doc["safetyChannels"].to<JsonObject>();
+    fillSafetyChannelsJson(safetyChannels);
 
     String json;
     serializeJson(doc, json);

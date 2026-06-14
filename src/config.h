@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.3.6"
+#define FIRMWARE_VERSION "2.3.7"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -94,10 +94,14 @@
 // ADS1115 КАНАЛЫ
 // =============================================================================
 
-#define ADS_CHANNEL_HYDROMETER 0 // Резерв под электронный ареометр
+#define ADS_CHANNEL_HYDROMETER 0 // A0: электронный ареометр
 #define ADS_CHANNEL_PRESSURE 1   // A1: датчик давления куба
-#define ADS_CHANNEL_RESERVE_1 2 // Свободный канал
-#define ADS_CHANNEL_RESERVE_2 3 // Свободный канал
+#define ADS_CHANNEL_LEVEL_BODY 2 // A2: резерв под датчик уровня банки тела
+#define ADS_CHANNEL_LEAK 3       // A3: резерв под датчик протечки / поддона
+
+// Резерв под аналоговый датчик паров/газа на встроенном ADC ESP32-S3
+#define PIN_VAPOR_SENSOR_ADC_1 1
+#define PIN_VAPOR_SENSOR_ADC_2 3
 
 // =============================================================================
 // ТЕРМОМЕТРЫ DS18B20 (7 датчиков)

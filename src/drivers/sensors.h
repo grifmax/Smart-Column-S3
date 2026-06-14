@@ -72,6 +72,7 @@ namespace Sensors {
     bool isBmp280SecondaryAvailable();
     bool isAds1115Available();
     bool isPzemAvailable();
+    bool readAds1115Channel(uint8_t channel, int16_t& adc, float& voltage);
 
     /**
      * Обновление информации о здоровье датчиков
