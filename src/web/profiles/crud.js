@@ -19,7 +19,9 @@ const PROFILE_FORM_DEFAULTS = {
             autoMode: true,
             pidKp: 2.0,
             pidKi: 0.5,
-            pidKd: 1.0
+            pidKd: 1.0,
+            boosterEnabled: false,
+            boosterStopCubeTempC: 78.0
         },
         rectification: {
             stabilizationMin: 30,
@@ -128,6 +130,16 @@ function normalizeProfileDraft(profile = null) {
     draft.parameters.heater.pidKp = clampNumber(profile?.parameters?.heater?.pidKp, 0, 100, draft.parameters.heater.pidKp, 2);
     draft.parameters.heater.pidKi = clampNumber(profile?.parameters?.heater?.pidKi, 0, 100, draft.parameters.heater.pidKi, 2);
     draft.parameters.heater.pidKd = clampNumber(profile?.parameters?.heater?.pidKd, 0, 100, draft.parameters.heater.pidKd, 2);
+    draft.parameters.heater.boosterEnabled = Boolean(
+        profile?.parameters?.heater?.boosterEnabled ?? draft.parameters.heater.boosterEnabled
+    );
+    draft.parameters.heater.boosterStopCubeTempC = clampNumber(
+        profile?.parameters?.heater?.boosterStopCubeTempC,
+        20,
+        100,
+        draft.parameters.heater.boosterStopCubeTempC,
+        1
+    );
     draft.parameters.rectification.stabilizationMin = clampNumber(profile?.parameters?.rectification?.stabilizationMin, 1, 180, draft.parameters.rectification.stabilizationMin);
     draft.parameters.rectification.headsVolume = clampNumber(profile?.parameters?.rectification?.headsVolume, 1, 10000, draft.parameters.rectification.headsVolume);
     draft.parameters.rectification.bodyVolume = clampNumber(profile?.parameters?.rectification?.bodyVolume, 1, 50000, draft.parameters.rectification.bodyVolume);
@@ -186,6 +198,14 @@ async function buildProfileDraftFromSystem(category = 'rectification') {
         const tailsPercent = clampNumber(rect.tailsPercent, 0, 100, 8, 1);
 
         draft.parameters.heater.maxPower = clampNumber(equipment.heaterPowerW, 300, 10000, draft.parameters.heater.maxPower);
+        draft.parameters.heater.boosterEnabled = Boolean(equipment.boosterHeaterEnabled ?? draft.parameters.heater.boosterEnabled);
+        draft.parameters.heater.boosterStopCubeTempC = clampNumber(
+            equipment.boosterHeaterStopCubeTempC,
+            20,
+            100,
+            draft.parameters.heater.boosterStopCubeTempC,
+            1
+        );
         draft.parameters.rectification.stabilizationMin = clampNumber(rect.stabilizationMin, 1, 180, draft.parameters.rectification.stabilizationMin);
         draft.parameters.rectification.purgeMin = clampNumber(rect.purgeMin, 1, 120, draft.parameters.rectification.purgeMin);
         draft.parameters.rectification.headsSpeed = clampNumber(rect.headsSpeedMlHKw, 10, 2000, draft.parameters.rectification.headsSpeed);
@@ -226,6 +246,8 @@ function populateProfileForm(profile) {
     setInputValue('profile-heater-pid-kp', draft.parameters.heater.pidKp);
     setInputValue('profile-heater-pid-ki', draft.parameters.heater.pidKi);
     setInputValue('profile-heater-pid-kd', draft.parameters.heater.pidKd);
+    setCheckboxValue('profile-heater-booster-enabled', draft.parameters.heater.boosterEnabled);
+    setInputValue('profile-heater-booster-stop-cube-temp', draft.parameters.heater.boosterStopCubeTempC);
     setInputValue('profile-rect-stabilization', draft.parameters.rectification.stabilizationMin);
     setInputValue('profile-rect-purge', draft.parameters.rectification.purgeMin);
     setInputValue('profile-rect-heads-volume', draft.parameters.rectification.headsVolume);
@@ -270,7 +292,9 @@ function collectProfileFromForm() {
                 autoMode: getCheckboxValue('profile-heater-auto-mode', true),
                 pidKp: clampNumber(getInputValue('profile-heater-pid-kp', 2), 0, 100, 2, 2),
                 pidKi: clampNumber(getInputValue('profile-heater-pid-ki', 0.5), 0, 100, 0.5, 2),
-                pidKd: clampNumber(getInputValue('profile-heater-pid-kd', 1), 0, 100, 1, 2)
+                pidKd: clampNumber(getInputValue('profile-heater-pid-kd', 1), 0, 100, 1, 2),
+                boosterEnabled: getCheckboxValue('profile-heater-booster-enabled', false),
+                boosterStopCubeTempC: clampNumber(getInputValue('profile-heater-booster-stop-cube-temp', 78), 20, 100, 78, 1)
             },
             rectification: {
                 stabilizationMin: clampNumber(getInputValue('profile-rect-stabilization', 30), 1, 180, 30),
@@ -629,6 +653,26 @@ export function showProfileViewModal(profile) {
                 <div><strong>Теги:</strong> ${profile.metadata.tags.join(', ') || '—'}</div>
 
                 <div><strong>Встроенный:</strong> ${profile.metadata.isBuiltin ? 'Да' : 'Нет'}</div>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="modal-section">
+
+            <div class="modal-section-title">🔥 Нагрев</div>
+
+            <div class="modal-info-grid">
+
+                <div><strong>Макс. мощность:</strong> ${formatProfileNumber(profile.parameters.heater.maxPower, 0, ' Вт')}</div>
+
+                <div><strong>Авто-режим нагрева:</strong> ${profile.parameters.heater.autoMode ? 'Да' : 'Нет'}</div>
+
+                <div><strong>Booster SSR:</strong> ${profile.parameters.heater.boosterEnabled ? 'Включён' : 'Отключён'}</div>
+
+                <div><strong>Отключать booster при:</strong> ${formatProfileNumber(profile.parameters.heater.boosterStopCubeTempC, 1, '°C')}</div>
 
             </div>
 

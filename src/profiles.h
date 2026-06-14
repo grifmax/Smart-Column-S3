@@ -31,6 +31,8 @@ struct HeaterParams {
     float pidKp;
     float pidKi;
     float pidKd;
+    bool boosterEnabled = false;
+    float boosterStopCubeTempC = 78.0f;
 };
 
 struct RectificationParams {

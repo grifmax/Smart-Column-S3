@@ -332,6 +332,9 @@ bool saveProfile(const Profile& profile) {
     heater["pidKp"] = profile.parameters.heater.pidKp;
     heater["pidKi"] = profile.parameters.heater.pidKi;
     heater["pidKd"] = profile.parameters.heater.pidKd;
+    heater["boosterEnabled"] = profile.parameters.heater.boosterEnabled;
+    heater["boosterStopCubeTempC"] =
+        profile.parameters.heater.boosterStopCubeTempC;
 
     // Ректификация
     JsonObject rectification = parameters["rectification"].to<JsonObject>();
@@ -452,6 +455,12 @@ bool loadProfile(const String& id, Profile& profile) {
     profile.parameters.heater.pidKp = doc["parameters"]["heater"]["pidKp"];
     profile.parameters.heater.pidKi = doc["parameters"]["heater"]["pidKi"];
     profile.parameters.heater.pidKd = doc["parameters"]["heater"]["pidKd"];
+    profile.parameters.heater.boosterEnabled =
+        doc["parameters"]["heater"]["boosterEnabled"] |
+        g_settings.equipment.boosterHeaterEnabled;
+    profile.parameters.heater.boosterStopCubeTempC =
+        doc["parameters"]["heater"]["boosterStopCubeTempC"] |
+        g_settings.equipment.boosterHeaterStopCubeTempC;
 
     // Ректификация
     profile.parameters.rectification.stabilizationMin = doc["parameters"]["rectification"]["stabilizationMin"];
@@ -705,6 +714,8 @@ bool loadBuiltinProfiles() {
         profile.parameters.heater.pidKp = 2.0;
         profile.parameters.heater.pidKi = 0.5;
         profile.parameters.heater.pidKd = 1.0;
+        profile.parameters.heater.boosterEnabled = true;
+        profile.parameters.heater.boosterStopCubeTempC = 78.0f;
 
         profile.parameters.rectification.stabilizationMin = 20;
         profile.parameters.rectification.headsVolume = 50;
@@ -758,6 +769,8 @@ bool loadBuiltinProfiles() {
         profile.parameters.heater.pidKp = 2.0;
         profile.parameters.heater.pidKi = 0.5;
         profile.parameters.heater.pidKd = 1.0;
+        profile.parameters.heater.boosterEnabled = true;
+        profile.parameters.heater.boosterStopCubeTempC = 78.0f;
 
         profile.parameters.rectification.stabilizationMin = 30;
         profile.parameters.rectification.headsVolume = 100;
@@ -811,6 +824,8 @@ bool loadBuiltinProfiles() {
         profile.parameters.heater.pidKp = 2.0;
         profile.parameters.heater.pidKi = 0.5;
         profile.parameters.heater.pidKd = 1.0;
+        profile.parameters.heater.boosterEnabled = true;
+        profile.parameters.heater.boosterStopCubeTempC = 78.0f;
 
         profile.parameters.distillation.headsVolume = 30;
         profile.parameters.distillation.targetVolume = 3000;
@@ -960,6 +975,12 @@ bool validateProfile(const Profile& profile) {
         return false;
     }
 
+    if (profile.parameters.heater.boosterStopCubeTempC < 20.0f ||
+        profile.parameters.heater.boosterStopCubeTempC > 100.0f) {
+        Serial.println("Валидация: неверный порог отключения booster");
+        return false;
+    }
+
     // Все проверки пройдены
     return true;
 }
@@ -978,6 +999,10 @@ bool applyProfile(const String& id) {
 
     // Общие
     g_settings.equipment.heaterPowerW = profile.parameters.heater.maxPower;
+    g_settings.equipment.boosterHeaterEnabled =
+        profile.parameters.heater.boosterEnabled;
+    g_settings.equipment.boosterHeaterStopCubeTempC =
+        profile.parameters.heater.boosterStopCubeTempC;
 
     // Безопасность
     g_settings.safety.pressureMaxMmHg = profile.parameters.safety.pressureMax;
@@ -1166,6 +1191,10 @@ String createProfileFromSettings(const String& name, const String& description, 
     profile.parameters.heater.pidKp = 2.0;
     profile.parameters.heater.pidKi = 0.5;
     profile.parameters.heater.pidKd = 1.0;
+    profile.parameters.heater.boosterEnabled =
+        g_settings.equipment.boosterHeaterEnabled;
+    profile.parameters.heater.boosterStopCubeTempC =
+        g_settings.equipment.boosterHeaterStopCubeTempC;
 
     // Безопасность
     profile.parameters.safety.maxRuntime = 720;
@@ -1343,6 +1372,9 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
             heater["pidKp"] = profile.parameters.heater.pidKp;
             heater["pidKi"] = profile.parameters.heater.pidKi;
             heater["pidKd"] = profile.parameters.heater.pidKd;
+            heater["boosterEnabled"] = profile.parameters.heater.boosterEnabled;
+            heater["boosterStopCubeTempC"] =
+                profile.parameters.heater.boosterStopCubeTempC;
 
             JsonObject rectification = parameters["rectification"].to<JsonObject>();
             rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
@@ -1432,6 +1464,12 @@ String importProfileFromJSON(const String& jsonStr) {
     profile.parameters.heater.pidKp = doc["parameters"]["heater"]["pidKp"];
     profile.parameters.heater.pidKi = doc["parameters"]["heater"]["pidKi"];
     profile.parameters.heater.pidKd = doc["parameters"]["heater"]["pidKd"];
+    profile.parameters.heater.boosterEnabled =
+        doc["parameters"]["heater"]["boosterEnabled"] |
+        g_settings.equipment.boosterHeaterEnabled;
+    profile.parameters.heater.boosterStopCubeTempC =
+        doc["parameters"]["heater"]["boosterStopCubeTempC"] |
+        g_settings.equipment.boosterHeaterStopCubeTempC;
 
     profile.parameters.rectification.stabilizationMin = doc["parameters"]["rectification"]["stabilizationMin"];
     profile.parameters.rectification.headsVolume = doc["parameters"]["rectification"]["headsVolume"];

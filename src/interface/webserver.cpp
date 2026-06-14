@@ -6306,6 +6306,9 @@ void init() {
       heater["pidKp"] = profile.parameters.heater.pidKp;
       heater["pidKi"] = profile.parameters.heater.pidKi;
       heater["pidKd"] = profile.parameters.heater.pidKd;
+      heater["boosterEnabled"] = profile.parameters.heater.boosterEnabled;
+      heater["boosterStopCubeTempC"] =
+          profile.parameters.heater.boosterStopCubeTempC;
       
       JsonObject rectification = parameters["rectification"].to<JsonObject>();
       rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
@@ -6514,6 +6517,8 @@ void init() {
                   if (!heater["pidKp"].isNull()) profile.parameters.heater.pidKp = clampFloatRange(heater["pidKp"].as<float>(), 0.0f, 100.0f);
                   if (!heater["pidKi"].isNull()) profile.parameters.heater.pidKi = clampFloatRange(heater["pidKi"].as<float>(), 0.0f, 100.0f);
                   if (!heater["pidKd"].isNull()) profile.parameters.heater.pidKd = clampFloatRange(heater["pidKd"].as<float>(), 0.0f, 100.0f);
+                  if (!heater["boosterEnabled"].isNull()) profile.parameters.heater.boosterEnabled = heater["boosterEnabled"].as<bool>();
+                  if (!heater["boosterStopCubeTempC"].isNull()) profile.parameters.heater.boosterStopCubeTempC = clampFloatRange(heater["boosterStopCubeTempC"].as<float>(), 20.0f, 100.0f);
                 }
 
                 JsonObject rectification = parameters["rectification"].is<JsonObject>() ? parameters["rectification"].as<JsonObject>() : JsonObject();
