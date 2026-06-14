@@ -1,6 +1,9 @@
 ﻿import { currentProfileId, setCurrentProfileId } from './state.js';
 import { loadProfilesList } from './list.js';
 import { loadStatus } from '../core/status.js';
+import { activateTabById } from '../core/tabs.js';
+import { selectControlMode } from '../modes/control-panel.js';
+import { addMashStep, createStepRow, readStepsFromUI } from '../modes/mashing-hold.js';
 
 let currentProfileIsBuiltin = false;
 
@@ -38,6 +41,15 @@ const PROFILE_FORM_DEFAULTS = {
             targetVolume: 3000,
             speed: 1200,
             endTemp: 96.0
+        },
+        mashing: {
+            steps: [
+                { temperature: 38.0, duration: 20, name: 'Кислотная пауза' },
+                { temperature: 52.0, duration: 20, name: 'Белковая пауза' },
+                { temperature: 63.0, duration: 40, name: 'Мальтозная пауза' },
+                { temperature: 72.0, duration: 20, name: 'Осахаривание' },
+                { temperature: 78.0, duration: 10, name: 'Мэш-аут' }
+            ]
         },
         temperatures: {
             maxCube: 98.0,
@@ -109,6 +121,90 @@ function getCheckboxValue(id, fallback = false) {
 
 }
 
+function normalizeMashSteps(steps, fallback = PROFILE_FORM_DEFAULTS.parameters.mashing.steps) {
+
+    const source = Array.isArray(steps) && steps.length ? steps : fallback;
+    return source
+        .slice(0, 10)
+        .map((step, index) => {
+            const temperature = clampNumber(step?.temperature, 20, 100, 0, 1);
+            const duration = clampNumber(step?.duration, 1, 240, 0);
+            const name = String(step?.name || '').trim() || `Шаг ${index + 1}`;
+            if (!(temperature > 0) || !(duration > 0)) {
+                return null;
+            }
+            return { temperature, duration, name };
+        })
+        .filter(Boolean);
+
+}
+
+function clearMashStepsContainer(containerId) {
+
+    const container = document.getElementById(containerId);
+    if (container) {
+        container.innerHTML = '';
+    }
+
+}
+
+function populateMashStepsContainer(containerId, steps) {
+
+    const container = document.getElementById(containerId);
+    if (!container) {
+        return;
+    }
+
+    clearMashStepsContainer(containerId);
+    normalizeMashSteps(steps).forEach((step) => {
+        container.appendChild(createStepRow({
+            mode: 'mash',
+            temperature: step.temperature,
+            duration: step.duration,
+            name: step.name
+        }));
+    });
+
+}
+
+function ensureProfileMashStepsInitialized() {
+
+    const category = String(getInputValue('profile-category', 'rectification')).trim() || 'rectification';
+    if (category !== 'mashing') {
+        return;
+    }
+
+    const steps = readStepsFromUI('profile-mash-steps', 'mash');
+    if (steps.length > 0) {
+        return;
+    }
+
+    const currentPanelSteps = readStepsFromUI('mash-steps', 'mash');
+    populateMashStepsContainer(
+        'profile-mash-steps',
+        currentPanelSteps.length ? currentPanelSteps : PROFILE_FORM_DEFAULTS.parameters.mashing.steps
+    );
+
+}
+
+function applyMashingProfileToControlPanel(profile) {
+
+    const steps = normalizeMashSteps(profile?.parameters?.mashing?.steps);
+    const name = String(profile?.metadata?.name || profile?.name || 'Затирка').trim() || 'Затирка';
+    const nameInput = document.getElementById('mash-profile-name');
+    if (nameInput) {
+        nameInput.value = name;
+    }
+
+    const container = document.getElementById('mash-steps');
+    if (container) {
+        container.innerHTML = '';
+    }
+
+    steps.forEach((step) => addMashStep(step));
+
+}
+
 function normalizeProfileDraft(profile = null) {
 
     const draft = cloneProfileDraft(PROFILE_FORM_DEFAULTS);
@@ -152,6 +248,10 @@ function normalizeProfileDraft(profile = null) {
     draft.parameters.distillation.targetVolume = clampNumber(profile?.parameters?.distillation?.targetVolume, 1, 50000, draft.parameters.distillation.targetVolume);
     draft.parameters.distillation.speed = clampNumber(profile?.parameters?.distillation?.speed, 50, 120000, draft.parameters.distillation.speed);
     draft.parameters.distillation.endTemp = clampNumber(profile?.parameters?.distillation?.endTemp, 50, 110, draft.parameters.distillation.endTemp, 1);
+    draft.parameters.mashing.steps = normalizeMashSteps(
+        profile?.parameters?.mashing?.steps,
+        draft.metadata.category === 'mashing' ? PROFILE_FORM_DEFAULTS.parameters.mashing.steps : []
+    );
     draft.parameters.temperatures.maxCube = clampNumber(profile?.parameters?.temperatures?.maxCube, 50, 120, draft.parameters.temperatures.maxCube, 2);
     draft.parameters.temperatures.maxColumn = clampNumber(profile?.parameters?.temperatures?.maxColumn, 50, 110, draft.parameters.temperatures.maxColumn, 2);
     draft.parameters.temperatures.headsEnd = clampNumber(profile?.parameters?.temperatures?.headsEnd, 50, 110, draft.parameters.temperatures.headsEnd, 2);
@@ -170,6 +270,10 @@ async function buildProfileDraftFromSystem(category = 'rectification') {
     const draft = normalizeProfileDraft(null);
     draft.metadata.category = category;
     draft.parameters.mode = category;
+    if (category === 'mashing') {
+        const currentMashSteps = readStepsFromUI('mash-steps', 'mash');
+        draft.parameters.mashing.steps = normalizeMashSteps(currentMashSteps);
+    }
 
     try {
         const [equipmentResponse, safetyResponse, rectResponse, statusResponse] = await Promise.all([
@@ -260,6 +364,7 @@ function populateProfileForm(profile) {
     setInputValue('profile-dist-target-volume', draft.parameters.distillation.targetVolume);
     setInputValue('profile-dist-speed', draft.parameters.distillation.speed);
     setInputValue('profile-dist-end-temp', draft.parameters.distillation.endTemp);
+    populateMashStepsContainer('profile-mash-steps', draft.parameters.mashing.steps);
     setInputValue('profile-temp-max-cube', draft.parameters.temperatures.maxCube);
     setInputValue('profile-temp-max-column', draft.parameters.temperatures.maxColumn);
     setInputValue('profile-temp-heads-end', draft.parameters.temperatures.headsEnd);
@@ -312,6 +417,9 @@ function collectProfileFromForm() {
                 speed: clampNumber(getInputValue('profile-dist-speed', 1200), 50, 120000, 1200),
                 endTemp: clampNumber(getInputValue('profile-dist-end-temp', 96), 50, 110, 96, 1)
             },
+            mashing: {
+                steps: normalizeMashSteps(readStepsFromUI('profile-mash-steps', 'mash'), [])
+            },
             temperatures: {
                 maxCube: clampNumber(getInputValue('profile-temp-max-cube', 98), 50, 120, 98, 2),
                 maxColumn: clampNumber(getInputValue('profile-temp-max-column', 82), 50, 110, 82, 2),
@@ -336,6 +444,30 @@ export function toggleProfileCategoryFields(category = null) {
         const blockCategory = String(element.getAttribute('data-profile-category-block') || '').trim();
         element.style.display = blockCategory === selectedCategory ? '' : 'none';
     });
+    ensureProfileMashStepsInitialized();
+
+}
+
+export function addProfileMashStep(step = {}) {
+
+    const container = document.getElementById('profile-mash-steps');
+    if (!container) {
+        return;
+    }
+
+    container.appendChild(createStepRow({
+        mode: 'mash',
+        temperature: step.temperature,
+        duration: step.duration,
+        name: step.name
+    }));
+
+}
+
+export function copyCurrentMashingToProfileForm() {
+
+    populateMashStepsContainer('profile-mash-steps', readStepsFromUI('mash-steps', 'mash'));
+    ensureProfileMashStepsInitialized();
 
 }
 
@@ -407,6 +539,10 @@ export async function saveProfile() {
     const profile = collectProfileFromForm();
     if (!profile.metadata.name) {
         alert('Пожалуйста, введите название профиля');
+        return;
+    }
+    if (profile.metadata.category === 'mashing' && (!Array.isArray(profile.parameters?.mashing?.steps) || profile.parameters.mashing.steps.length === 0)) {
+        alert('Для профиля затирки добавьте хотя бы один шаг.');
         return;
     }
 
@@ -633,6 +769,53 @@ export function showProfileViewModal(profile) {
     const advisorItems = Array.isArray(learning.lastAdvisorSnapshot?.items)
         ? learning.lastAdvisorSnapshot.items.slice(0, 3)
         : [];
+    const mashingSteps = normalizeMashSteps(profile?.parameters?.mashing?.steps, []);
+    let processSection = '';
+
+    if (profile.metadata.category === 'rectification') {
+        processSection = `
+        <div class="modal-section">
+            <div class="modal-section-title">⚙️ Параметры ректификации</div>
+            <div class="modal-info-grid">
+                <div><strong>Стабилизация:</strong> ${profile.parameters.rectification.stabilizationMin} мин</div>
+                <div><strong>Продувка:</strong> ${profile.parameters.rectification.purgeMin} мин</div>
+                <div><strong>Объём голов:</strong> ${profile.parameters.rectification.headsVolume} мл</div>
+                <div><strong>Объём тела:</strong> ${profile.parameters.rectification.bodyVolume} мл</div>
+                <div><strong>Объём хвостов:</strong> ${profile.parameters.rectification.tailsVolume} мл</div>
+                <div><strong>Скорость голов:</strong> ${profile.parameters.rectification.headsSpeed} мл/ч/кВт</div>
+                <div><strong>Скорость тела:</strong> ${profile.parameters.rectification.bodySpeed} мл/ч/кВт</div>
+                <div><strong>Скорость хвостов:</strong> ${profile.parameters.rectification.tailsSpeed} мл/ч/кВт</div>
+            </div>
+        </div>`;
+    } else if (profile.metadata.category === 'distillation') {
+        processSection = `
+        <div class="modal-section">
+            <div class="modal-section-title">🥃 Параметры дистилляции</div>
+            <div class="modal-info-grid">
+                <div><strong>Головы:</strong> ${formatProfileNumber(profile.parameters.distillation.headsVolume, 0, ' мл')}</div>
+                <div><strong>Целевой объём:</strong> ${formatProfileNumber(profile.parameters.distillation.targetVolume, 0, ' мл')}</div>
+                <div><strong>Скорость:</strong> ${formatProfileNumber(profile.parameters.distillation.speed, 0, ' мл/ч')}</div>
+                <div><strong>Температура завершения:</strong> ${formatProfileNumber(profile.parameters.distillation.endTemp, 1, '°C')}</div>
+            </div>
+        </div>`;
+    } else if (profile.metadata.category === 'mashing') {
+        processSection = `
+        <div class="modal-section">
+            <div class="modal-section-title">🌾 Рецепт затирки</div>
+            ${mashingSteps.length ? `
+                <div style="display: grid; gap: 10px;">
+                    ${mashingSteps.map((step, index) => `
+                        <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary);">
+                            <div style="font-weight: 600; margin-bottom: 4px;">${step.name || `Шаг ${index + 1}`}</div>
+                            <div style="color: var(--text-secondary);">
+                                ${step.temperature.toFixed(1)}°C • ${step.duration} мин
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : '<div style="color: var(--text-secondary);">Шаги затирки пока не сохранены.</div>'}
+        </div>`;
+    }
 
     let html = `
 
@@ -680,27 +863,7 @@ export function showProfileViewModal(profile) {
 
 
 
-        <div class="modal-section">
-
-            <div class="modal-section-title">⚙️ Параметры ректификации</div>
-
-            <div class="modal-info-grid">
-
-                <div><strong>Стабилизация:</strong> ${profile.parameters.rectification.stabilizationMin} мин</div>
-
-                <div><strong>Объём голов:</strong> ${profile.parameters.rectification.headsVolume} мл</div>
-
-                <div><strong>Объём тела:</strong> ${profile.parameters.rectification.bodyVolume} мл</div>
-
-                <div><strong>Объём хвостов:</strong> ${profile.parameters.rectification.tailsVolume} мл</div>
-
-                <div><strong>Скорость голов:</strong> ${profile.parameters.rectification.headsSpeed} мл/ч/кВт</div>
-
-                <div><strong>Скорость тела:</strong> ${profile.parameters.rectification.bodySpeed} мл/ч/кВт</div>
-
-            </div>
-
-        </div>
+        ${processSection}
 
 
 
@@ -907,45 +1070,45 @@ export function closeProfileViewModal() {
 
 export async function quickLoadProfile(id) {
 
-    const warning = await fetchProfileLoadWarning(id);
-    const confirmText = warning
-        ? `Загрузить этот профиль в текущие настройки?\n\n${warning}`
-        : 'Загрузить этот профиль в текущие настройки?';
+    try {
+        const profileResponse = await fetch(`/api/profiles/${id}`);
+        if (!profileResponse.ok) {
+            throw new Error('Не удалось загрузить профиль');
+        }
 
-    if (!confirm(confirmText)) return;
+        const profile = await profileResponse.json();
+        const isMashingProfile = profile?.metadata?.category === 'mashing';
+        const warning = isMashingProfile ? '' : await fetchProfileLoadWarning(id);
+        const confirmText = isMashingProfile
+            ? 'Загрузить этот рецепт в панель затирки и сделать его активным профилем?'
+            : (warning
+                ? `Загрузить этот профиль в текущие настройки?\n\n${warning}`
+                : 'Загрузить этот профиль в текущие настройки?');
 
+        if (!confirm(confirmText)) return;
 
-
-    fetch(`/api/profiles/${id}/load`, {
-
-        method: 'POST'
-
-    })
-
-        .then(response => response.json())
-
-        .then(data => {
-
-            if (data.success) {
-
-                alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
-                void loadStatus();
-
-            } else {
-
-                alert('❌ Ошибка загрузки профиля: ' + (data.error || 'Неизвестная ошибка'));
-
-            }
-
-        })
-
-        .catch(error => {
-
-            console.error('Ошибка загрузки профиля:', error);
-
-            alert('❌ Ошибка загрузки профиля');
-
+        const loadResponse = await fetch(`/api/profiles/${id}/load`, {
+            method: 'POST'
         });
+        const data = await loadResponse.json();
+        if (!loadResponse.ok || !data.success) {
+            throw new Error(data.error || 'Неизвестная ошибка');
+        }
+
+        if (isMashingProfile) {
+            activateTabById('control');
+            await selectControlMode('mashing');
+            applyMashingProfileToControlPanel(profile);
+            alert('✅ Рецепт затирки загружен в панель управления.');
+        } else {
+            alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
+        }
+
+        void loadStatus();
+    } catch (error) {
+        console.error('Ошибка загрузки профиля:', error);
+        alert(`❌ Ошибка загрузки профиля: ${error.message || 'Неизвестная ошибка'}`);
+    }
 
 }
 

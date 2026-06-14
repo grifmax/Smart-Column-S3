@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.3.0`  
+**Версия прошивки:** `2.3.1`  
 **Актуальность документа:** 2026-06-14
 
 ---
@@ -227,6 +227,11 @@
 
 Полные данные профиля, включая learning summary, validation context последнего успешного baseline, вычисленные `effectiveTemperatures` и блок `baroCorrection` с текущим мягким смещением порогов.
 
+- для профилей категории `mashing` в `parameters.mashing.steps[]` возвращаются шаги рецепта:
+  - `temperature`
+  - `duration`
+  - `name`
+
 #### `POST /api/profiles`
 
 Создание нового профиля.
@@ -242,6 +247,9 @@
 #### `POST /api/profiles/{id}/load`
 
 Загрузка профиля в текущие настройки.
+
+- для `rectification` и `distillation` профиль применяет рабочие уставки в контроллер
+- для `mashing` профиль также помечается активным, а Web UI может сразу подставить его шаги в панель запуска режима `Затирка`
 
 #### `DELETE /api/profiles/{id}`
 

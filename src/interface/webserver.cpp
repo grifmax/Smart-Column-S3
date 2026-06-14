@@ -6454,6 +6454,15 @@ void init() {
       distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
       distillation["speed"] = profile.parameters.distillation.speed;
       distillation["endTemp"] = profile.parameters.distillation.endTemp;
+
+      JsonObject mashing = parameters["mashing"].to<JsonObject>();
+      JsonArray mashingSteps = mashing["steps"].to<JsonArray>();
+      for (const auto& stepData : profile.parameters.mashing.steps) {
+        JsonObject step = mashingSteps.add<JsonObject>();
+        step["temperature"] = stepData.temperature;
+        step["duration"] = stepData.duration;
+        step["name"] = stepData.name;
+      }
       
       JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
       temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
@@ -6668,6 +6677,32 @@ void init() {
                   if (!distillation["targetVolume"].isNull()) profile.parameters.distillation.targetVolume = clampU16Range(distillation["targetVolume"].as<uint32_t>(), 1, 50000);
                   if (!distillation["speed"].isNull()) profile.parameters.distillation.speed = clampU16Range(distillation["speed"].as<uint32_t>(), 50, 65000);
                   if (!distillation["endTemp"].isNull()) profile.parameters.distillation.endTemp = clampFloatRange(distillation["endTemp"].as<float>(), 50.0f, 110.0f);
+                }
+
+                JsonObject mashing = parameters["mashing"].is<JsonObject>() ? parameters["mashing"].as<JsonObject>() : JsonObject();
+                if (!mashing.isNull() && mashing["steps"].is<JsonArray>()) {
+                  profile.parameters.mashing.steps.clear();
+                  uint8_t stepIndex = 0;
+                  for (JsonObject step : mashing["steps"].as<JsonArray>()) {
+                    if (stepIndex >= 10) break;
+                    const float temperature = clampFloatRange(step["temperature"].as<float>(), 20.0f, 100.0f);
+                    const uint16_t duration = clampU16Range(step["duration"].as<uint32_t>(), 1, 240);
+                    String name = step["name"].as<String>();
+                    name.trim();
+                    if (name.length() > 31) {
+                      name = name.substring(0, 31);
+                    }
+                    if (name.isEmpty()) {
+                      name = "Шаг " + String(stepIndex + 1);
+                    }
+
+                    MashingStepParams stepData;
+                    stepData.temperature = temperature;
+                    stepData.duration = duration;
+                    stepData.name = name;
+                    profile.parameters.mashing.steps.push_back(stepData);
+                    stepIndex++;
+                  }
                 }
 
                 JsonObject temperatures = parameters["temperatures"].is<JsonObject>() ? parameters["temperatures"].as<JsonObject>() : JsonObject();

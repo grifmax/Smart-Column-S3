@@ -53,6 +53,16 @@ struct DistillationParams {
     float endTemp;
 };
 
+struct MashingStepParams {
+    float temperature = 0.0f;
+    uint16_t duration = 0;
+    String name;
+};
+
+struct MashingParams {
+    std::vector<MashingStepParams> steps;
+};
+
 struct TemperatureParams {
     float maxCube;
     float maxColumn;
@@ -73,6 +83,7 @@ struct ProfileParameters {
     HeaterParams heater;
     RectificationParams rectification;
     DistillationParams distillation;
+    MashingParams mashing;
     TemperatureParams temperatures;
     SafetyParams safety;
 };

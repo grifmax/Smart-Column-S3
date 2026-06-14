@@ -15,9 +15,15 @@ namespace {
 String g_activeProfileId;
 String g_activeProfileName;
 
+constexpr uint8_t PROFILE_MASHING_MAX_STEPS = 10;
+constexpr uint16_t PROFILE_MASHING_MAX_DURATION_MIN = 240;
+constexpr float PROFILE_MASHING_MIN_TEMP_C = 20.0f;
+constexpr float PROFILE_MASHING_MAX_TEMP_C = 100.0f;
+
 float computeEnergyPerLiter(const ProcessHistory& history) {
     const float energyUsed = history.metrics.energyUsed;
-    const float totalCollectedMl = static_cast<float>(history.results.totalCollected);
+    const float totalCollectedMl =
+        static_cast<float>(history.results.totalCollected);
     if (energyUsed <= 0.0f || totalCollectedMl <= 0.0f) {
         return 0.0f;
     }
@@ -85,6 +91,107 @@ float hpaToMmHg(float valueHpa) {
         return 0.0f;
     }
     return valueHpa * 0.75006156f;
+}
+
+String normalizeMashStepName(const String& value, size_t index) {
+    String name = value;
+    name.trim();
+    if (name.length() > 31) {
+        name = name.substring(0, 31);
+    }
+    if (name.isEmpty()) {
+        name = String("Шаг ") + String(static_cast<uint32_t>(index + 1));
+    }
+    return name;
+}
+
+float clampMashTemperature(float value) {
+    if (value < PROFILE_MASHING_MIN_TEMP_C) {
+        return PROFILE_MASHING_MIN_TEMP_C;
+    }
+    if (value > PROFILE_MASHING_MAX_TEMP_C) {
+        return PROFILE_MASHING_MAX_TEMP_C;
+    }
+    return value;
+}
+
+uint16_t clampMashDuration(uint16_t value) {
+    if (value == 0) {
+        return 0;
+    }
+    if (value > PROFILE_MASHING_MAX_DURATION_MIN) {
+        return PROFILE_MASHING_MAX_DURATION_MIN;
+    }
+    return value;
+}
+
+void appendMashingJson(JsonObject parameters, const MashingParams& mashing) {
+    JsonObject mashingJson = parameters["mashing"].to<JsonObject>();
+    JsonArray steps = mashingJson["steps"].to<JsonArray>();
+    for (size_t index = 0;
+         index < mashing.steps.size() && index < PROFILE_MASHING_MAX_STEPS;
+         index++) {
+        const auto& source = mashing.steps[index];
+        JsonObject step = steps.add<JsonObject>();
+        step["temperature"] = source.temperature;
+        step["duration"] = source.duration;
+        step["name"] = source.name;
+    }
+}
+
+void loadMashingParamsFromJson(JsonVariantConst stepsVariant,
+                               MashingParams& mashing) {
+    mashing.steps.clear();
+    if (!stepsVariant.is<JsonArrayConst>()) {
+        return;
+    }
+
+    size_t index = 0;
+    for (JsonObjectConst step : stepsVariant.as<JsonArrayConst>()) {
+        if (index >= PROFILE_MASHING_MAX_STEPS) {
+            break;
+        }
+
+        const float temperature =
+            clampMashTemperature(step["temperature"] | 0.0f);
+        const uint16_t duration =
+            clampMashDuration(step["duration"] | 0);
+        if (temperature <= 0.0f || duration == 0) {
+            index++;
+            continue;
+        }
+
+        MashingStepParams item;
+        item.temperature = temperature;
+        item.duration = duration;
+        item.name = normalizeMashStepName(step["name"].as<String>(), index);
+        mashing.steps.push_back(item);
+        index++;
+    }
+}
+
+void fillDefaultMashingSteps(MashingParams& mashing) {
+    mashing.steps.clear();
+
+    const struct {
+        float temperature;
+        uint16_t duration;
+        const char* name;
+    } defaults[] = {
+        {38.0f, 20, "Кислотная пауза"},
+        {52.0f, 20, "Белковая пауза"},
+        {63.0f, 40, "Мальтозная пауза"},
+        {72.0f, 20, "Осахаривание"},
+        {78.0f, 10, "Мэш-аут"},
+    };
+
+    for (size_t index = 0; index < (sizeof(defaults) / sizeof(defaults[0])); index++) {
+        MashingStepParams item;
+        item.temperature = defaults[index].temperature;
+        item.duration = defaults[index].duration;
+        item.name = defaults[index].name;
+        mashing.steps.push_back(item);
+    }
 }
 
 float getCurrentAtmosphereMmHg() {
@@ -353,6 +460,7 @@ bool saveProfile(const Profile& profile) {
     distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
     distillation["speed"] = profile.parameters.distillation.speed;
     distillation["endTemp"] = profile.parameters.distillation.endTemp;
+    appendMashingJson(parameters, profile.parameters.mashing);
 
     // Температуры
     JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
@@ -477,6 +585,8 @@ bool loadProfile(const String& id, Profile& profile) {
     profile.parameters.distillation.targetVolume = doc["parameters"]["distillation"]["targetVolume"];
     profile.parameters.distillation.speed = doc["parameters"]["distillation"]["speed"];
     profile.parameters.distillation.endTemp = doc["parameters"]["distillation"]["endTemp"];
+    loadMashingParamsFromJson(doc["parameters"]["mashing"]["steps"],
+                              profile.parameters.mashing);
 
     // Температуры
     profile.parameters.temperatures.maxCube = doc["parameters"]["temperatures"]["maxCube"];
@@ -966,6 +1076,25 @@ bool validateProfile(const Profile& profile) {
             Serial.println("Валидация: неверные объемы для ректификации");
             return false;
         }
+    } else if (profile.parameters.mode == "mashing" ||
+               profile.metadata.category == "mashing") {
+        if (profile.parameters.mashing.steps.empty()) {
+            Serial.println("Валидация: для затирки нужен хотя бы один шаг");
+            return false;
+        }
+        if (profile.parameters.mashing.steps.size() > PROFILE_MASHING_MAX_STEPS) {
+            Serial.println("Валидация: слишком много шагов затирки");
+            return false;
+        }
+        for (const auto& step : profile.parameters.mashing.steps) {
+            if (step.temperature < PROFILE_MASHING_MIN_TEMP_C ||
+                step.temperature > PROFILE_MASHING_MAX_TEMP_C ||
+                step.duration == 0 ||
+                step.duration > PROFILE_MASHING_MAX_DURATION_MIN) {
+                Serial.println("Валидация: некорректные шаги затирки");
+                return false;
+            }
+        }
     }
 
     // Проверить температуры
@@ -1225,6 +1354,8 @@ String createProfileFromSettings(const String& name, const String& description, 
         profile.parameters.distillation.targetVolume = (uint16_t)g_settings.distillationUi.targetVolumeMl;
         profile.parameters.distillation.speed = (uint16_t)g_settings.distillationUi.speedMlH;
         profile.parameters.distillation.endTemp = g_settings.distillationUi.endTempC;
+    } else if (category == "mashing") {
+        fillDefaultMashingSteps(profile.parameters.mashing);
     }
 
     // Статистика
@@ -1298,6 +1429,7 @@ String exportProfileToJSON(const String& id) {
     distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
     distillation["speed"] = profile.parameters.distillation.speed;
     distillation["endTemp"] = profile.parameters.distillation.endTemp;
+    appendMashingJson(parameters, profile.parameters.mashing);
 
     JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
     temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
@@ -1391,6 +1523,7 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
             distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
             distillation["speed"] = profile.parameters.distillation.speed;
             distillation["endTemp"] = profile.parameters.distillation.endTemp;
+            appendMashingJson(parameters, profile.parameters.mashing);
 
             JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
             temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
@@ -1484,6 +1617,8 @@ String importProfileFromJSON(const String& jsonStr) {
     profile.parameters.distillation.targetVolume = doc["parameters"]["distillation"]["targetVolume"];
     profile.parameters.distillation.speed = doc["parameters"]["distillation"]["speed"];
     profile.parameters.distillation.endTemp = doc["parameters"]["distillation"]["endTemp"];
+    loadMashingParamsFromJson(doc["parameters"]["mashing"]["steps"],
+                              profile.parameters.mashing);
 
     profile.parameters.temperatures.maxCube = doc["parameters"]["temperatures"]["maxCube"];
     profile.parameters.temperatures.maxColumn = doc["parameters"]["temperatures"]["maxColumn"];
