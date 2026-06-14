@@ -1,5 +1,9 @@
 import { MODE_NBK, MODE_FERMENTATION } from '../globals.js';
-import { confirmModeSwitch } from './common.js';
+import {
+    confirmModeSwitch,
+    readBoosterStartSettings,
+    loadBoosterStartSettings
+} from './common.js';
 import { loadStatus } from '../core/status.js';
 import { addLog } from '../core/logs.js';
 
@@ -13,6 +17,11 @@ const FERMENTATION_DEFAULTS = {
     targetTempC: 28,
     hysteresisC: 0.5,
     useHeater: true
+};
+
+const NBK_BOOSTER_FIELD_IDS = {
+    enabled: 'nbk-booster-enabled',
+    stopTemp: 'nbk-booster-stop-cube-temp'
 };
 
 function byId(id) {
@@ -48,7 +57,8 @@ export function collectNbkSettings() {
             50,
             110,
             NBK_DEFAULTS.columnBottomTempThresholdC
-        )
+        ),
+        ...readBoosterStartSettings(NBK_BOOSTER_FIELD_IDS)
     };
 }
 
@@ -61,6 +71,8 @@ export function collectFermentationSettings() {
 }
 
 export async function loadNbkSettings() {
+    let loaded = false;
+
     try {
         const response = await fetch('/api/settings/nbk');
         if (!response.ok) {
@@ -80,14 +92,21 @@ export async function loadNbkSettings() {
         setInputValue('nbk-power-w', settings.powerW);
         setInputValue('nbk-pump-speed', settings.pumpSpeedMlH);
         setInputValue('nbk-column-bottom-threshold', settings.columnBottomTempThresholdC);
-        return true;
+        loaded = true;
     } catch (error) {
         addLog(`Ошибка загрузки настроек НБК: ${error.message}`, 'warning');
         setInputValue('nbk-power-w', NBK_DEFAULTS.powerW);
         setInputValue('nbk-pump-speed', NBK_DEFAULTS.pumpSpeedMlH);
         setInputValue('nbk-column-bottom-threshold', NBK_DEFAULTS.columnBottomTempThresholdC);
-        return false;
     }
+
+    try {
+        await loadBoosterStartSettings(NBK_BOOSTER_FIELD_IDS);
+    } catch (error) {
+        addLog(`Ошибка загрузки booster-настроек НБК: ${error.message}`, 'warning');
+    }
+
+    return loaded;
 }
 
 export async function loadFermentationSettings() {
@@ -130,11 +149,11 @@ async function saveSettings(url, payload, successLabel) {
     addLog(successLabel, 'info');
 }
 
-async function startMode(mode, payload, modeId, modeName, settingsUrl, saveMessage, startMessage, successMessage) {
+async function startMode(mode, settingsPayload, startPayload, modeId, modeName, settingsUrl, saveMessage, startMessage, successMessage) {
     if (!confirmModeSwitch(modeId, modeName)) return false;
 
     try {
-        await saveSettings(settingsUrl, payload, saveMessage);
+        await saveSettings(settingsUrl, settingsPayload, saveMessage);
         addLog(startMessage, 'info');
 
         const response = await fetch('/api/process/start', {
@@ -142,7 +161,7 @@ async function startMode(mode, payload, modeId, modeName, settingsUrl, saveMessa
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 mode,
-                params: payload
+                params: startPayload
             })
         });
 
@@ -153,7 +172,7 @@ async function startMode(mode, payload, modeId, modeName, settingsUrl, saveMessa
 
         const data = await response.json();
         addLog(successMessage, 'success');
-        if (data.warning) addLog(`Warning: ${data.warning}`, 'warning');
+        if (data.warning) addLog(`Предупреждение: ${data.warning}`, 'warning');
         setTimeout(loadStatus, 500);
         return true;
     } catch (error) {
@@ -164,8 +183,13 @@ async function startMode(mode, payload, modeId, modeName, settingsUrl, saveMessa
 
 export async function startNbk() {
     const payload = collectNbkSettings();
+    const settingsPayload = { ...payload };
+    delete settingsPayload.boosterEnabled;
+    delete settingsPayload.boosterStopCubeTempC;
+
     return await startMode(
         'nbk',
+        settingsPayload,
         payload,
         MODE_NBK,
         'НБК',
@@ -180,6 +204,7 @@ export async function startFermentation() {
     const payload = collectFermentationSettings();
     return await startMode(
         'fermentation',
+        payload,
         payload,
         MODE_FERMENTATION,
         'Ферментация',

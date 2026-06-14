@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2.89">
+    <link rel="stylesheet" href="style.css?v=2.2.90">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.2.89" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.2.90" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -734,6 +734,21 @@
                                                 </div>
                                             </div>
 
+                                            <div class="control-subsection">
+                                                <div class="control-subsection-title">Разгонный ТЭН (SSR)</div>
+                                                <div class="control-form-grid">
+                                                    <div class="form-group control-checkbox-field">
+                                                        <label for="rect-start-booster-enabled">Использовать booster SSR</label>
+                                                        <input type="checkbox" id="rect-start-booster-enabled">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="rect-start-booster-stop-cube-temp">Отключить booster по кубу, °C</label>
+                                                        <input type="number" id="rect-start-booster-stop-cube-temp" min="20" max="100" step="0.1" value="78">
+                                                        <div class="control-inline-hint">Работает только на фазе разогрева, затем остаётся основной TRIAC.</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                             <div class="control-subsection" id="rect-adaptive-recipe-section">
                                                 <div class="control-subsection-title">Адаптация рецепта к текущим условиям</div>
                                                 <div id="rect-active-profile-summary" class="control-profile-summary is-muted">
@@ -928,6 +943,16 @@
                                                         <input type="text" id="dist-start-power-fact" value="0"
                                                             readonly>
                                                     </div>
+                                                    <div class="form-group control-checkbox-field">
+                                                        <label for="dist-start-booster-enabled">Использовать booster SSR</label>
+                                                        <input type="checkbox" id="dist-start-booster-enabled">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-booster-stop-cube-temp">Отключить booster по кубу, °C</label>
+                                                        <input type="number" id="dist-start-booster-stop-cube-temp" min="20" max="100"
+                                                            step="0.1" value="78">
+                                                        <div class="control-inline-hint">Удобно для быстрого разгона, если включён отдельный разгонный ТЭН.</div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -954,6 +979,16 @@
                                                         <input type="number" id="nbk-column-bottom-threshold" min="50" max="110"
                                                             step="0.1" value="95">
                                                         <div class="control-inline-hint">Если температура падает ниже порога, подача браги будет остановлена.</div>
+                                                    </div>
+                                                    <div class="form-group control-checkbox-field">
+                                                        <label for="nbk-booster-enabled">Использовать booster SSR</label>
+                                                        <input type="checkbox" id="nbk-booster-enabled">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="nbk-booster-stop-cube-temp">Отключить booster по кубу, °C</label>
+                                                        <input type="number" id="nbk-booster-stop-cube-temp" min="20" max="100"
+                                                            step="0.1" value="78">
+                                                        <div class="control-inline-hint">Booster помогает только прогреть систему до рабочей фазы НБК.</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -3202,7 +3237,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.2.89"></script>
+    <script src="app.js?v=2.2.90"></script>
 </body>
 
 </html>

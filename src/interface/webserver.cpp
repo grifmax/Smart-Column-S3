@@ -1302,6 +1302,33 @@ static ProcessDryRunForecast buildRectificationDryRunForecast(
   return forecast;
 }
 
+static void resolveBoosterStartOverride(JsonObject params, bool &enabled,
+                                        float &stopCubeTempC) {
+  enabled = g_settings.equipment.boosterHeaterEnabled;
+  stopCubeTempC = g_settings.equipment.boosterHeaterStopCubeTempC;
+
+  if (params.isNull()) {
+    return;
+  }
+
+  if (!params["boosterEnabled"].isNull()) {
+    enabled = params["boosterEnabled"].as<bool>();
+  }
+
+  if (!params["boosterStopCubeTempC"].isNull()) {
+    stopCubeTempC =
+        clampFloatRange(params["boosterStopCubeTempC"].as<float>(), 20.0f, 100.0f);
+  }
+}
+
+static void applyBoosterStartOverride(JsonObject params, Settings &settings) {
+  bool boosterEnabled = settings.equipment.boosterHeaterEnabled;
+  float boosterStopCubeTempC = settings.equipment.boosterHeaterStopCubeTempC;
+  resolveBoosterStartOverride(params, boosterEnabled, boosterStopCubeTempC);
+  settings.equipment.boosterHeaterEnabled = boosterEnabled;
+  settings.equipment.boosterHeaterStopCubeTempC = boosterStopCubeTempC;
+}
+
 static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
                                   const char *modeStr, JsonObject params) {
   ControlV2::updateRuntime(g_state, g_settings);
@@ -1875,6 +1902,32 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
     } else {
       addItem("fermentation-profile", "good", "Параметры ферментации",
               "Цель и гистерезис ферментации выглядят рабочими.", false);
+    }
+  }
+
+  if (mode == Mode::RECTIFICATION || mode == Mode::DISTILLATION ||
+      mode == Mode::NBK) {
+    bool boosterEnabled = false;
+    float boosterStopCubeTempC = 78.0f;
+    resolveBoosterStartOverride(params, boosterEnabled, boosterStopCubeTempC);
+
+    if (!boosterEnabled) {
+      addItem("booster", "muted", "Разгонный ТЭН",
+              "Booster SSR для этого запуска отключён. Разогрев пойдёт только через основной TRIAC.",
+              false);
+    } else if (g_state.temps.cube > 0.0f &&
+               g_state.temps.cube >= boosterStopCubeTempC) {
+      addItem("booster", "warn", "Разгонный ТЭН",
+              String("Booster SSR включён, но куб уже ") +
+                  String(g_state.temps.cube, 1) + " °C и выше порога " +
+                  String(boosterStopCubeTempC, 1) +
+                  " °C. На старте он может почти сразу не понадобиться.",
+              false);
+    } else {
+      addItem("booster", "good", "Разгонный ТЭН",
+              String("Booster SSR будет работать только на фазе разогрева и отключится при ") +
+                  String(boosterStopCubeTempC, 1) + " °C по кубу.",
+              false);
     }
   }
 
@@ -2996,6 +3049,11 @@ void init() {
         }
 
         // Запуск через FSM + разбор params (для некоторых режимов)
+        if (mode == Mode::RECTIFICATION || mode == Mode::DISTILLATION ||
+            mode == Mode::NBK) {
+          applyBoosterStartOverride(params, g_settings);
+        }
+
         if (mode == Mode::DISTILLATION) {
           // params: speed (ml/h), headsVolume (ml), targetVolume (ml), endTemp (°C)
           float speed = params["speed"] | 500.0f;

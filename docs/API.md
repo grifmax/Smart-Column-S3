@@ -1,7 +1,7 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.2.89`  
-**Актуальность документа:** 2026-06-12
+**Версия прошивки:** `2.2.90`  
+**Актуальность документа:** 2026-06-14
 
 ---
 
@@ -89,10 +89,19 @@
     "headsPercent": 8,
     "bodyPercent": 84,
     "tailsPercent": 8,
-    "baroCorrectionEnabled": true
+    "baroCorrectionEnabled": true,
+    "boosterEnabled": true,
+    "boosterStopCubeTempC": 78.0
   }
 }
 ```
+
+Для `rectification`, `distillation` и `nbk` в `params` можно дополнительно передавать:
+
+- `boosterEnabled` — участвует ли `SSR booster` в разогреве именно этого запуска
+- `boosterStopCubeTempC` — температура куба, при которой booster должен отключиться
+
+Эти поля участвуют и в `preflight`, и в фактическом `start`, но не требуют отдельного сохранения в постоянные настройки оборудования.
 
 Ответ содержит:
 
@@ -129,6 +138,8 @@
 #### `POST /api/process/start`
 
 Запуск процесса.
+
+Для `rectification`, `distillation` и `nbk` можно использовать те же `params.boosterEnabled` и `params.boosterStopCubeTempC`, что и в `preflight`: backend применит их как runtime-override для текущего запуска без записи в NVS.
 
 #### `POST /api/process/stop`
 

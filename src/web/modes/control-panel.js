@@ -24,7 +24,11 @@ import {
     collectRectificationModalSettings
 } from './rectification.js';
 import { startManual } from './rectification.js';
-import { startDistillation, collectDistillationSettings } from './distillation.js';
+import {
+    startDistillation,
+    collectDistillationSettings,
+    loadDistillationStartSettings
+} from './distillation.js';
 import { startMashing, startHold, readStepsFromUI } from './mashing-hold.js';
 import {
     loadNbkSettings,
@@ -91,6 +95,7 @@ const CONTROL_MODES = {
 
 let selectedControlMode = 'rectification';
 let rectSettingsLoaded = false;
+let distillationSettingsLoaded = false;
 let nbkSettingsLoaded = false;
 let fermentationSettingsLoaded = false;
 let manualRectInitialized = false;
@@ -320,6 +325,44 @@ function formatRecipePressure(value) {
 function formatRecipeDateTime(value) {
     const numeric = Number(value || 0);
     return numeric > 0 ? new Date(numeric * 1000).toLocaleString('ru-RU') : '—';
+}
+
+function addBoosterChecklistItem(items, config, targetId) {
+    const boosterEnabled = Boolean(config?.boosterEnabled);
+    const stopTemp = Number(config?.boosterStopCubeTempC);
+    const cubeTemp = Number(runtimeMonitorState?.temps?.cube || 0);
+
+    if (!boosterEnabled) {
+        addChecklistItem(
+            items,
+            'muted',
+            'Разгонный ТЭН',
+            'Booster SSR для этого запуска отключён. Разогрев пойдёт только через основной TRIAC.',
+            targetId
+        );
+        return;
+    }
+
+    if (Number.isFinite(stopTemp) && cubeTemp > 0 && cubeTemp >= stopTemp) {
+        addChecklistItem(
+            items,
+            'warn',
+            'Разгонный ТЭН',
+            `Booster SSR включён, но куб уже ${cubeTemp.toFixed(1)} °C и выше порога ${stopTemp.toFixed(1)} °C. На старте он почти сразу не понадобится.`,
+            targetId
+        );
+        return;
+    }
+
+    addChecklistItem(
+        items,
+        'good',
+        'Разгонный ТЭН',
+        Number.isFinite(stopTemp)
+            ? `Booster SSR будет работать только на фазе разогрева и отключится при ${stopTemp.toFixed(1)} °C по кубу.`
+            : 'Booster SSR будет участвовать только в фазе разогрева.',
+        targetId
+    );
 }
 
 function renderRectificationAdaptiveRecipeSummary() {
@@ -619,7 +662,9 @@ function buildControlModeSummary() {
             headsSpeedMlHKw: getNumberValue('rect-start-heads-speed', 300),
             bodySpeedMlHKw: getNumberValue('rect-start-body-speed', 600),
             stabilizationMin: getNumberValue('rect-start-stabilization', 30),
-            purgeMin: getNumberValue('rect-start-purge', 5)
+            purgeMin: getNumberValue('rect-start-purge', 5),
+            boosterEnabled: getCheckboxValue('rect-start-booster-enabled', Boolean(runtimeMonitorState?.equipment?.boosterHeaterEnabled)),
+            boosterStopCubeTempC: getNumberValue('rect-start-booster-stop-cube-temp', Number(runtimeMonitorState?.equipment?.boosterHeaterStopCubeTempC || 78))
         };
         const targets = estimateRectTargets(settings, effectiveAbv.value);
         const heaterPowerW = Math.max(0, Number(runtimeMonitorState.equipment.heaterPowerW || maxHeaterPower) || 0);
@@ -759,7 +804,9 @@ function buildRectificationChecklist(items) {
         bodyPercent: getNumberValue('rect-start-body-percent', 84),
         tailsPercent: getNumberValue('rect-start-tails-percent', 8),
         headsSpeedMlHKw: getNumberValue('rect-start-heads-speed', 300),
-        bodySpeedMlHKw: getNumberValue('rect-start-body-speed', 600)
+        bodySpeedMlHKw: getNumberValue('rect-start-body-speed', 600),
+        boosterEnabled: getCheckboxValue('rect-start-booster-enabled', Boolean(runtimeMonitorState?.equipment?.boosterHeaterEnabled)),
+        boosterStopCubeTempC: getNumberValue('rect-start-booster-stop-cube-temp', Number(runtimeMonitorState?.equipment?.boosterHeaterStopCubeTempC || 78))
     };
     const fractionsSum = settings.headsPercent + settings.bodyPercent + settings.tailsPercent;
     const maxVolume = Math.max(1, Math.min(250, getCubeVolumeLimitL()));
@@ -795,6 +842,8 @@ function buildRectificationChecklist(items) {
             : 'Скорость тела не выше скорости голов. Обычно тело ведут заметно быстрее.',
         'rect-start-body-speed'
     );
+
+    addBoosterChecklistItem(items, settings, 'rect-start-booster-enabled');
 }
 
 function buildManualChecklist(items) {
@@ -881,6 +930,8 @@ function buildDistillationChecklist(items) {
             : `Стоп-температура ${settings.endTemp.toFixed(1)} °C выглядит нетипично. Проверьте целевой сценарий.`,
         'dist-start-end-temp'
     );
+
+    addBoosterChecklistItem(items, settings, 'dist-start-booster-enabled');
 }
 
 function buildNbkChecklist(items) {
@@ -913,6 +964,8 @@ function buildNbkChecklist(items) {
         `Порог защиты ${settings.columnBottomTempThresholdC.toFixed(1)} °C.`,
         'nbk-column-bottom-threshold'
     );
+
+    addBoosterChecklistItem(items, settings, 'nbk-booster-enabled');
 }
 
 function buildFermentationChecklist(items) {
@@ -1116,6 +1169,11 @@ function mapPreflightItemTarget(id) {
             return selectedControlMode === 'rectification'
                 ? 'rect-start-baro-correction-enabled'
                 : '';
+        case 'booster':
+            if (selectedControlMode === 'rectification') return 'rect-start-booster-enabled';
+            if (selectedControlMode === 'distillation') return 'dist-start-booster-enabled';
+            if (selectedControlMode === 'nbk') return 'nbk-booster-enabled';
+            return '';
         case 'water':
             return 'indicator-cooling-margin';
         case 'sensors':
@@ -1314,6 +1372,11 @@ async function ensureRectificationSettingsLoaded() {
     const loaded = await loadRectificationStartSettings();
     rectSettingsLoaded = Boolean(loaded);
 }
+async function ensureDistillationSettingsLoaded() {
+    if (distillationSettingsLoaded) return;
+    const loaded = await loadDistillationStartSettings();
+    distillationSettingsLoaded = Boolean(loaded);
+}
 async function ensureNbkSettingsLoaded() {
     if (nbkSettingsLoaded) return;
     const loaded = await loadNbkSettings();
@@ -1345,6 +1408,8 @@ export async function selectControlMode(mode, options = {}) {
 
     if (normalized === 'rectification') {
         await ensureRectificationSettingsLoaded();
+    } else if (normalized === 'distillation') {
+        await ensureDistillationSettingsLoaded();
     } else if (normalized === 'nbk') {
         await ensureNbkSettingsLoaded();
     } else if (normalized === 'fermentation') {

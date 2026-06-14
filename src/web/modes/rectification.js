@@ -1,5 +1,9 @@
 import { MODE_RECT, MODE_MANUAL, clampFeedVolumeToCube, getCubeVolumeLimitL } from '../globals.js';
-import { confirmModeSwitch } from './common.js';
+import {
+    confirmModeSwitch,
+    readBoosterStartSettings,
+    loadBoosterStartSettings
+} from './common.js';
 import { loadStatus } from '../core/status.js';
 import { addLog } from '../core/logs.js';
 
@@ -12,6 +16,11 @@ export const RECT_FEEDSTOCK_DEFAULTS = {
     5: { heads: 6.0, body: 78.0, tails: 16.0 },
     6: { heads: 7.0, body: 79.0, tails: 14.0 },
     7: { heads: 8.0, body: 84.0, tails: 8.0 }
+};
+
+const RECT_BOOSTER_FIELD_IDS = {
+    enabled: 'rect-start-booster-enabled',
+    stopTemp: 'rect-start-booster-stop-cube-temp'
 };
 
 export function clampRectInput(value, min, max, fallback) {
@@ -88,7 +97,8 @@ export function collectRectificationModalSettings() {
         bodySpeedMlHKw: clampRectInput(document.getElementById('rect-start-body-speed')?.value, 50, 3000, 600),
         stabilizationMin: Math.round(clampRectInput(document.getElementById('rect-start-stabilization')?.value, 1, 180, 30)),
         purgeMin: Math.round(clampRectInput(document.getElementById('rect-start-purge')?.value, 1, 120, 5)),
-        baroCorrectionEnabled: Boolean(document.getElementById('rect-start-baro-correction-enabled')?.checked)
+        baroCorrectionEnabled: Boolean(document.getElementById('rect-start-baro-correction-enabled')?.checked),
+        ...readBoosterStartSettings(RECT_BOOSTER_FIELD_IDS)
     };
 
     return normalizeRectificationFractions(params);
@@ -131,17 +141,27 @@ export function syncRectificationFeedVolumeLimit() {
 }
 
 export async function loadRectificationStartSettings() {
+    let loaded = false;
+
     try {
         const response = await fetch('/api/settings/rect');
         if (response.ok) {
             applyRectificationSettingsToInputs(await response.json());
-            return true;
+            loaded = true;
+        } else {
+            addLog(`Rect settings load error: ${response.status}`, 'warning');
         }
-        addLog(`Rect settings load error: ${response.status}`, 'warning');
     } catch (e) {
         addLog(`Rect settings load network error: ${e.message}`, 'warning');
     }
-    return false;
+
+    try {
+        await loadBoosterStartSettings(RECT_BOOSTER_FIELD_IDS);
+    } catch (e) {
+        addLog(`Booster settings load error: ${e.message}`, 'warning');
+    }
+
+    return loaded;
 }
 
 export async function openRectificationStartModal() {
@@ -157,11 +177,14 @@ async function saveAndStartRectification(startButton) {
 
     try {
         const params = collectRectificationModalSettings();
+        const savePayload = { ...params };
+        delete savePayload.boosterEnabled;
+        delete savePayload.boosterStopCubeTempC;
 
         const saveResponse = await fetch('/api/settings/rect', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(params)
+            body: JSON.stringify(savePayload)
         });
 
         if (!saveResponse.ok) {
@@ -176,7 +199,10 @@ async function saveAndStartRectification(startButton) {
         const startResponse = await fetch('/api/process/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: 'rectification' })
+            body: JSON.stringify({
+                mode: 'rectification',
+                params
+            })
         });
 
         if (!startResponse.ok) {

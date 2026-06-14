@@ -1,7 +1,16 @@
 import { MODE_DIST } from '../globals.js';
-import { confirmModeSwitch } from './common.js';
+import {
+    confirmModeSwitch,
+    readBoosterStartSettings,
+    loadBoosterStartSettings
+} from './common.js';
 import { loadStatus } from '../core/status.js';
 import { addLog } from '../core/logs.js';
+
+const DIST_BOOSTER_FIELD_IDS = {
+    enabled: 'dist-start-booster-enabled',
+    stopTemp: 'dist-start-booster-stop-cube-temp'
+};
 
 function clampDistillationInput(value, min, max, fallback) {
     const parsed = Number(value);
@@ -13,12 +22,20 @@ function clampDistillationInput(value, min, max, fallback) {
 
 export function collectDistillationSettings() {
     return {
-
-
-
         endTemp: clampDistillationInput(document.getElementById('dist-start-end-temp')?.value, 70, 110, 96),
-        powerPercent: clampDistillationInput(document.getElementById('dist-start-power-percent')?.value, 0, 100, 60)
+        powerPercent: clampDistillationInput(document.getElementById('dist-start-power-percent')?.value, 0, 100, 60),
+        ...readBoosterStartSettings(DIST_BOOSTER_FIELD_IDS)
     };
+}
+
+export async function loadDistillationStartSettings() {
+    try {
+        await loadBoosterStartSettings(DIST_BOOSTER_FIELD_IDS);
+        return true;
+    } catch (error) {
+        addLog(`Ошибка загрузки booster-настроек дистилляции: ${error.message}`, 'warning');
+        return false;
+    }
 }
 
 export async function startDistillation(paramsOverride = null) {
@@ -44,11 +61,11 @@ export async function startDistillation(paramsOverride = null) {
             if (data.warning) addLog(`Предупреждение: ${data.warning}`, 'warning');
             setTimeout(loadStatus, 500);
             return true;
-        } else {
-            const error = await response.text();
-            addLog(`Ошибка запуска дистилляции (${response.status}): ${error}`, 'error');
-            return false;
         }
+
+        const error = await response.text();
+        addLog(`Ошибка запуска дистилляции (${response.status}): ${error}`, 'error');
+        return false;
     } catch (e) {
         addLog(`Сетевая ошибка дистилляции: ${e.message}`, 'error');
         console.error('Start distillation error:', e);
