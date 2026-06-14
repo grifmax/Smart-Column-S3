@@ -178,7 +178,7 @@ function syncRebootDiagnosticsUi(reboot = null, error = null) {
     }
 }
 
-function syncBootGpioUi(bootGpio = null) {
+function syncBootGpioUi(bootGpio = null, boardProfile = null) {
     const summaryEl = document.getElementById('boot-gpio-summary');
     const listEl = document.getElementById('boot-gpio-list');
     const hintEl = document.getElementById('boot-gpio-hint');
@@ -204,9 +204,11 @@ function syncBootGpioUi(bootGpio = null) {
     const checkedCount = Math.max(0, Number(bootGpio.checkedCount || items.length || 0));
     const boardRev = String(bootGpio.boardRev || 'UNKNOWN');
     const overallOk = Boolean(bootGpio.overallOk);
+    const boardName = String(boardProfile?.name || '');
 
     summaryEl.innerHTML = `
         <div class="equipment-inline-stat"><span>Плата</span><strong>${escapeHtml(boardRev)}</strong></div>
+        ${boardName ? `<div class="equipment-inline-stat"><span>Профиль</span><strong>${escapeHtml(boardName)}</strong></div>` : ''}
         <div class="equipment-inline-stat"><span>Проверено</span><strong>${okCount}/${checkedCount}</strong></div>
         <div class="equipment-inline-stat"><span>Итог</span><strong>${overallOk ? 'OK' : 'WARN'}</strong></div>
     `;
@@ -245,9 +247,10 @@ function syncBootGpioUi(bootGpio = null) {
         `;
     }).join('');
 
+    const profileHint = boardName ? ` Активный compile-time профиль: ${boardName}.` : '';
     hintEl.textContent = overallOk
-        ? 'Опасные линии на старте выставились корректно: силовой контур не должен самопроизвольно включаться до инициализации драйверов.'
-        : 'Есть несовпадения safe-state на старте. Это не обязательно авария, но wiring и подтяжки лучше проверить до серьёзных прогонов.';
+        ? `Опасные линии на старте выставились корректно: силовой контур не должен самопроизвольно включаться до инициализации драйверов.${profileHint}`
+        : `Есть несовпадения safe-state на старте. Это не обязательно авария, но wiring и подтяжки лучше проверить до серьёзных прогонов.${profileHint}`;
 }
 
 function normalizeHardwareModules(modules = {}) {
@@ -720,13 +723,19 @@ export async function loadEquipmentSettings() {
             pzem: data.pzem && typeof data.pzem === 'object'
                 ? { ...data.pzem }
                 : (runtimeMonitorState.equipment?.pzem || {}),
+            boardProfile: data.boardProfile && typeof data.boardProfile === 'object'
+                ? { ...data.boardProfile }
+                : (runtimeMonitorState.equipment?.boardProfile || {}),
             bootGpio: data.bootGpio && typeof data.bootGpio === 'object'
                 ? { ...data.bootGpio }
                 : (runtimeMonitorState.equipment?.bootGpio || {}),
             modules: normalizeHardwareModules(data.modules)
         };
         syncPzemEquipmentUi(runtimeMonitorState.equipment.pzem);
-        syncBootGpioUi(runtimeMonitorState.equipment.bootGpio);
+        syncBootGpioUi(
+            runtimeMonitorState.equipment.bootGpio,
+            runtimeMonitorState.equipment.boardProfile
+        );
         syncHardwareModulesUi(runtimeMonitorState.equipment.modules);
         syncCoolingActuatorUi();
     } catch (error) {

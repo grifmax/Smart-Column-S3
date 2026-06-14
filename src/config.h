@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.3.5"
+#define FIRMWARE_VERSION "2.3.6"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -69,7 +69,7 @@
 // TFT ILI9488 3.5" 480x320 + Touch XPT2046 (LovyanGFX)
 // =============================================================================
 
-#define TFT_ENABLED 1        // Включить TFT дисплей (0 = только OLED)
+#define TFT_ENABLED BOARD_HAS_TFT // Включить TFT дисплей (0 = только OLED)
 
 // Калибровка тача (определены после калибровки)
 #define TOUCH_CAL_X_MIN  472

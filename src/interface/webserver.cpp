@@ -3556,6 +3556,16 @@ void init() {
     doc["coolingPwmCurrentDuty"] = Valves::getStartStop();
     doc["packingType"] = packingType;
     doc["packingCoeff"] = g_settings.equipment.packingCoeff;
+    JsonObject boardProfile = doc["boardProfile"].to<JsonObject>();
+    boardProfile["rev"] = BOARD_REV_LABEL;
+    boardProfile["name"] = BOARD_PROFILE_NAME;
+    boardProfile["code"] = BOARD_REV;
+    boardProfile["hasTft"] = BOARD_HAS_TFT;
+    boardProfile["hasTouch"] = BOARD_HAS_TOUCH;
+    boardProfile["hasTriac"] = BOARD_HAS_TRIAC;
+    boardProfile["hasZeroCross"] = BOARD_HAS_ZERO_CROSS;
+    boardProfile["hasFractionatorServo"] = BOARD_HAS_FRACTIONATOR_SERVO;
+    boardProfile["hasStartStopPwm"] = BOARD_HAS_STARTSTOP_PWM;
     JsonObject pzem = doc["pzem"].to<JsonObject>();
     pzem["available"] = g_state.health.pzemOk;
     pzem["uartNum"] = PZEM_UART_NUM;

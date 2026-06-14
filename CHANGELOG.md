@@ -7,6 +7,13 @@
 
 ---
 
+## [2.3.6] - 2026-06-14
+
+### Changed
+- Доведен блок `Compile-time pin profiles`: pinout централизован в `src/pins_config.h`, профиль `BOARD_REV_V2_0` оформлен как основной compile-time с capability-флагами, а для `BOARD_REV_CUSTOM` добавлена жёсткая валидация обязательных пинов на этапе сборки. (codex)
+- В `platformio.ini` добавлен явный профиль `esp32s3_rev_v2` и шаблон `esp32s3_custom`, а `GET /api/settings/equipment` теперь публикует `boardProfile`, чтобы Web UI и диагностика видели, с какой ревизией платы собрана прошивка. (codex)
+- Версия прошивки поднята до `2.3.6`, version-stamps в `README.md`, `TODO2.0.md`, `SPEC.md` и `docs/API.md` синхронизированы. (codex)
+
 ## [2.3.5] - 2026-06-14
 
 ### Changed

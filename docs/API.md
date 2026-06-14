@@ -1,6 +1,6 @@
 # Smart-Column S3 — API
 
-**Версия прошивки:** `2.3.5`  
+**Версия прошивки:** `2.3.6`  
 **Актуальность документа:** 2026-06-14
 
 ---
@@ -72,6 +72,10 @@
 Помимо параметров оборудования и списка модулей теперь возвращает `bootGpio`:
 - `completed`, `overallOk`, `checkedCount`, `timestampMs`, `boardRev`
 - `items[]` с полями `label`, `pin`, `mode`, `expectedLevel`, `actualLevel`, `ok`
+
+Также возвращает `boardProfile`:
+- `rev`, `name`, `code`
+- capability-флаги `hasTft`, `hasTouch`, `hasTriac`, `hasZeroCross`, `hasFractionatorServo`, `hasStartStopPwm`
 
 #### `POST /api/reboot`
 
