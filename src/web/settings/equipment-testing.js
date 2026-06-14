@@ -1969,28 +1969,32 @@ function buildServiceContour(status) {
             label: 'Термошина',
             tone: tempSensorsOk > 0 ? 'success' : 'danger',
             value: tempSensorsTotal > 0 ? `${tempSensorsOk}/${tempSensorsTotal}` : 'нет линии',
-            detail: tempSensorsOk > 0 ? 'DS18B20 отвечают' : 'нет подтверждённых термодатчиков'
+            detail: tempSensorsOk > 0 ? 'DS18B20 отвечают' : 'нет подтверждённых термодатчиков',
+            open: { section: 'testing', cardId: 'temps', label: 'Термометры' }
         },
         {
             key: 'ads',
             label: 'ADS1115',
             tone: adsOnline ? 'success' : 'danger',
             value: adsOnline ? 'online' : 'offline',
-            detail: adsOnline ? 'сервисный АЦП виден на шине' : 'ESP32 не видит сервисный АЦП'
+            detail: adsOnline ? 'сервисный АЦП виден на шине' : 'ESP32 не видит сервисный АЦП',
+            open: { section: 'parameters', cardId: 'hardware-status', label: 'Шина и модули' }
         },
         {
             key: 'bmp',
             label: 'BMP280',
             tone: bmpOnline ? 'success' : 'danger',
             value: bmpOnline ? 'online' : 'offline',
-            detail: bmpOnline ? 'барометрический модуль отвечает' : 'нет ответа от барометрии'
+            detail: bmpOnline ? 'барометрический модуль отвечает' : 'нет ответа от барометрии',
+            open: { section: 'parameters', cardId: 'hardware-status', label: 'Шина и модули' }
         },
         {
             key: 'pressure',
             label: 'Манометр куба',
             tone: pressureOnline ? 'success' : 'danger',
             value: pressureOnline ? formatNumber(pressure?.cubeMmHg, 1, ' мм рт.ст.') : 'нет сигнала',
-            detail: pressureOnline ? 'кубовое давление считывается' : 'датчик давления не подтверждён'
+            detail: pressureOnline ? 'кубовое давление считывается' : 'датчик давления не подтверждён',
+            open: { section: 'testing', cardId: 'pressure', label: 'Давление' }
         },
         {
             key: 'zero-cross',
@@ -2001,7 +2005,8 @@ function buildServiceContour(status) {
                 ? 'контроль нуля нужен только для TRIAC backend'
                 : zeroCrossOnline
                     ? `${formatNumber(heater?.zeroCrossCount, 0)} переходов, ${formatNumber(heater?.triacFireCount, 0)} gate pulses`
-                    : 'нет синхронизации с сетью для фазового управления'
+                    : 'нет синхронизации с сетью для фазового управления',
+            open: { section: 'testing', cardId: 'heater', label: 'Нагрев' }
         },
         {
             key: 'pzem',
@@ -2010,7 +2015,8 @@ function buildServiceContour(status) {
             value: pzemOnline ? formatNumber(power?.power, 0, ' Вт') : 'offline',
             detail: pzemOnline
                 ? `${formatNumber(power?.voltage, 1, ' В')} / ${formatNumber(power?.current, 2, ' А')}`
-                : 'силовой монитор не подтверждён'
+                : 'силовой монитор не подтверждён',
+            open: { section: 'testing', cardId: 'heater', label: 'Нагрев' }
         }
     ];
 
@@ -2053,6 +2059,15 @@ function renderServiceContour(status) {
                 <span class="equipment-status-badge ${item.tone}">${item.value}</span>
             </div>
             <div class="equipment-service-contour-detail">${item.detail}</div>
+            ${item.open ? `
+                <div class="equipment-service-contour-actions">
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-secondary"
+                        data-service-contour-open="${item.open.section}:${item.open.cardId}"
+                    >Открыть ${item.open.label}</button>
+                </div>
+            ` : ''}
         </div>
     `).join('');
 }
@@ -3065,6 +3080,14 @@ function bindTestingActions() {
 
     byId('equipment-test-stop-all')?.addEventListener('click', () => {
         void handleStopAll().catch((error) => addLog(`✗ Остановка тестов: ${error.message}`, 'error'));
+    });
+
+    byId('equipment-service-contour-grid')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-service-contour-open]');
+        if (!button) return;
+        const [sectionId, cardId] = String(button.dataset.serviceContourOpen || '').split(':');
+        if (!sectionId) return;
+        openEquipmentWorkbench(sectionId, cardId || null);
     });
 
     byId('equipment-test-water-toggle')?.addEventListener('click', (event) => {
