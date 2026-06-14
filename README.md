@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.2.92-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.2.93-brightgreen.svg)](CHANGELOG.md)
 
 ## Что это
 
@@ -139,6 +139,7 @@ Smart-Column-S3/
 - [CHANGELOG.md](CHANGELOG.md) - журнал версий и изменений
 - [TODO2.0.md](TODO2.0.md) - актуальный список задач и roadmap
 - [SPEC.md](SPEC.md) - оборудование, pinout и базовые схемы
+- [docs/TRIAC_HEATER_WIRING.md](docs/TRIAC_HEATER_WIRING.md) - памятка по узлу нагрева `TRIAC + MOC3021/MOC3023 + zero-cross`
 - [docs/PROJECT_GUIDE.md](docs/PROJECT_GUIDE.md) - нормальное описание проекта, архитектуры и сценария работы
 - [docs/API.md](docs/API.md) - REST API и WebSocket
 - [docs/HISTORY_SCHEMA.md](docs/HISTORY_SCHEMA.md) - структура истории процессов

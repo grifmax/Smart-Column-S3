@@ -218,6 +218,13 @@ IDLE -> HEATING -> STABILIZATION -> HEADS -> PURGE -> BODY -> TAILS -> FINISH
 - SSR-управление ТЭНом
 - обратная связь по PZEM
 - расчёт и ограничение мощности
+- phase-control ветка использует `GPIO45 = zero-cross` и `GPIO46 = TRIAC gate`
+- для фазового управления штатно применять `MOC3021/MOC3023`, а не `MOC3063`
+- при подключении силового симистора `G` должен быть привязан к ветке `A2`, а не к `A1`
+
+Подробная инженерная памятка по этому узлу:
+
+- [docs/TRIAC_HEATER_WIRING.md](docs/TRIAC_HEATER_WIRING.md)
 
 ### 7.2 Насос
 

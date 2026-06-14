@@ -541,6 +541,7 @@ const TESTING_TEMPLATE = `
                     <input type="number" id="equipment-test-heater-power-input" value="40" min="1" max="100" step="1" data-stepper-mode="pair" data-stepper-step="1">
                 </div>
                 <div class="equipment-test-alert subtle" id="equipment-test-heater-diag">Диагностика контура нагрева появится после загрузки статуса.</div>
+                <div class="equipment-test-alert subtle">Памятка по монтажу: для phase-control используйте MOC3021/MOC3023; G силового симистора должен идти в ветку A2, а не A1.</div>
                 <div class="equipment-test-alert danger">Перед стартом ТЭН должен быть полностью погружен в жидкость. Без подтверждения запуск не выполняется.</div>
                 <div class="controls equipment-actions">
                     <button class="btn btn-danger" type="button" id="equipment-test-heater-start">Запустить нагрев</button>
