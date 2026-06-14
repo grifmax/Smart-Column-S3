@@ -456,6 +456,11 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   heater["active"] = heaterActive;
   heater["powerPercent"] = heaterDiag.mainPowerPercent;
   heater["powerSetPercent"] = heaterDiag.mainPowerPercent;
+  heater["mainPowerW"] = g_settings.equipment.heaterPowerW;
+  heater["boosterConfigured"] = g_settings.equipment.boosterHeaterEnabled;
+  heater["boosterPowerW"] = g_settings.equipment.boosterHeaterPowerW;
+  heater["boosterStopCubeTempC"] =
+      g_settings.equipment.boosterHeaterStopCubeTempC;
   heater["backend"] = heaterDiag.triacMode ? "triac" : "ssr";
   heater["boosterEnabled"] = heaterDiag.boosterEnabled;
   heater["zeroCrossSeen"] = heaterDiag.zeroCrossSeen;
@@ -557,6 +562,7 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   hydrometer["lastUpdate"] = g_state.hydrometer.lastUpdate;
 
   JsonObject power = doc["power"].to<JsonObject>();
+  power["available"] = g_state.health.pzemOk;
   power["voltage"] = g_state.power.voltage;
   power["current"] = g_state.power.current;
   power["power"] = g_state.power.power;

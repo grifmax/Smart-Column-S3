@@ -57,11 +57,11 @@ const TESTING_CARD_DEFS = [
     {
         id: 'heater',
         selector: '#equipment-test-heater-start',
-        group: 'actuators',
+        group: 'service',
         icon: '⚡',
-        title: 'ТЭН',
-        shortTitle: 'ТЭН',
-        description: 'Ручной силовой тест с обязательным подтверждением.',
+        title: 'Нагрев',
+        shortTitle: 'Нагрев',
+        description: 'Основной TRIAC, booster SSR, zero-cross, PZEM и ручной тест в одной силовой панели.',
     },
     {
         id: 'temps',
@@ -89,15 +89,6 @@ const TESTING_CARD_DEFS = [
         title: 'Ареометр',
         shortTitle: 'Ареометр',
         description: 'Живые данные ареометра и быстрый переход к его калибровочной таблице.',
-    },
-    {
-        id: 'power',
-        selector: '#equipment-test-power-voltage',
-        group: 'service',
-        icon: '🔌',
-        title: 'Питание и силовая диагностика',
-        shortTitle: 'Питание',
-        description: 'Напряжение, ток, мощность, частота и cos φ рядом с тестами оборудования.',
     },
 ];
 
@@ -516,8 +507,8 @@ const TESTING_TEMPLATE = `
             <div class="card equipment-card equipment-test-card equipment-test-card-danger">
                 <div class="equipment-test-card-head">
                     <div>
-                        <h2>ТЭН</h2>
-                        <p class="equipment-subtitle">Ручной силовой тест. Включение только после явного подтверждения.</p>
+                        <h2>Нагрев</h2>
+                        <p class="equipment-subtitle">Полная силовая панель: основной TRIAC, booster SSR, синхронизация zero-cross, PZEM и ручной тест нагрева.</p>
                     </div>
                     <span class="equipment-status-badge muted" id="equipment-test-heater-badge">—</span>
                 </div>
@@ -525,15 +516,24 @@ const TESTING_TEMPLATE = `
                     <div class="equipment-test-metric"><span>Текущая мощность</span><strong id="equipment-test-heater-power">--</strong></div>
                     <div class="equipment-test-metric"><span>Сетпоинт</span><strong id="equipment-test-heater-setpoint">--</strong></div>
                     <div class="equipment-test-metric"><span>Мин. погружение</span><strong id="equipment-test-heater-submerge">--</strong></div>
+                    <div class="equipment-test-metric"><span>Основной ТЭН</span><strong id="equipment-test-heater-main-power">--</strong></div>
+                    <div class="equipment-test-metric"><span>Booster SSR</span><strong id="equipment-test-heater-booster-power">--</strong></div>
+                    <div class="equipment-test-metric"><span>Стоп booster</span><strong id="equipment-test-heater-booster-stop">--</strong></div>
                 </div>
                 <div class="equipment-test-chip-row">
                     <span class="equipment-status-badge muted" id="equipment-test-heater-backend">—</span>
                     <span class="equipment-status-badge muted" id="equipment-test-heater-booster">—</span>
                     <span class="equipment-status-badge muted" id="equipment-test-heater-zc">—</span>
+                    <span class="equipment-status-badge muted" id="equipment-test-heater-pzem">—</span>
                 </div>
                 <div class="equipment-test-metrics">
                     <div class="equipment-test-metric"><span>Фазовая задержка</span><strong id="equipment-test-heater-delay">--</strong></div>
                     <div class="equipment-test-metric"><span>Zero-cross</span><strong id="equipment-test-heater-zc-count">--</strong></div>
+                    <div class="equipment-test-metric"><span>PZEM мощность</span><strong id="equipment-test-heater-real-power">--</strong></div>
+                    <div class="equipment-test-metric"><span>Напряжение</span><strong id="equipment-test-heater-voltage">--</strong></div>
+                    <div class="equipment-test-metric"><span>Ток</span><strong id="equipment-test-heater-current">--</strong></div>
+                    <div class="equipment-test-metric"><span>Частота</span><strong id="equipment-test-heater-frequency">--</strong></div>
+                    <div class="equipment-test-metric"><span>cos φ</span><strong id="equipment-test-heater-pf">--</strong></div>
                 </div>
                 <div class="form-group">
                     <label for="equipment-test-heater-power-input">Мощность теста, %</label>
@@ -542,8 +542,8 @@ const TESTING_TEMPLATE = `
                 <div class="equipment-test-alert subtle" id="equipment-test-heater-diag">Диагностика контура нагрева появится после загрузки статуса.</div>
                 <div class="equipment-test-alert danger">Перед стартом ТЭН должен быть полностью погружен в жидкость. Без подтверждения запуск не выполняется.</div>
                 <div class="controls equipment-actions">
-                    <button class="btn btn-danger" type="button" id="equipment-test-heater-start">Запустить ТЭН</button>
-                    <button class="btn btn-secondary" type="button" id="equipment-test-heater-stop">Остановить ТЭН</button>
+                    <button class="btn btn-danger" type="button" id="equipment-test-heater-start">Запустить нагрев</button>
+                    <button class="btn btn-secondary" type="button" id="equipment-test-heater-stop">Остановить нагрев</button>
                 </div>
             </div>
 
@@ -600,22 +600,6 @@ const TESTING_TEMPLATE = `
                 </div>
             </div>
 
-            <div class="card equipment-card equipment-test-card">
-                <div class="equipment-test-card-head">
-                    <div>
-                        <h2>Питание и силовая диагностика</h2>
-                        <p class="equipment-subtitle">Быстрая электрика рядом с тестами исполнительных устройств: напряжение, ток, мощность и cos φ.</p>
-                    </div>
-                </div>
-                <div class="equipment-test-power-grid">
-                    <div class="equipment-test-metric"><span>Напряжение</span><strong id="equipment-test-power-voltage">--</strong></div>
-                    <div class="equipment-test-metric"><span>Ток</span><strong id="equipment-test-power-current">--</strong></div>
-                    <div class="equipment-test-metric"><span>Мощность</span><strong id="equipment-test-power-real">--</strong></div>
-                    <div class="equipment-test-metric"><span>Энергия</span><strong id="equipment-test-power-energy">--</strong></div>
-                    <div class="equipment-test-metric"><span>Частота</span><strong id="equipment-test-power-frequency">--</strong></div>
-                    <div class="equipment-test-metric"><span>cos φ</span><strong id="equipment-test-power-pf">--</strong></div>
-                </div>
-            </div>
         </div>
     </div>
 `;
@@ -1995,7 +1979,7 @@ function renderServoStatus(servo, testingAllowed) {
     }
 }
 
-function renderHeaterStatus(heater, testingAllowed, demoMode) {
+function renderHeaterStatus(heater, power, testingAllowed, demoMode) {
     updateBadge(
         byId('equipment-test-heater-badge'),
         heater?.active ? (demoMode ? 'Симуляция' : 'Вкл') : 'Выкл',
@@ -2004,12 +1988,41 @@ function renderHeaterStatus(heater, testingAllowed, demoMode) {
     setText('equipment-test-heater-power', formatNumber(heater?.powerPercent, 0, ' %'));
     setText('equipment-test-heater-setpoint', formatNumber(heater?.powerSetPercent, 0, ' %'));
     setText('equipment-test-heater-submerge', formatNumber(heater?.minSubmergeLiters, 1, ' л'));
+    setText('equipment-test-heater-main-power', formatNumber(heater?.mainPowerW, 0, ' Вт'));
+    setText(
+        'equipment-test-heater-booster-power',
+        heater?.boosterConfigured ? formatNumber(heater?.boosterPowerW, 0, ' Вт') : 'Отключен'
+    );
+    setText(
+        'equipment-test-heater-booster-stop',
+        heater?.boosterConfigured ? formatNumber(heater?.boosterStopCubeTempC, 1, ' °C') : '—'
+    );
     setText('equipment-test-heater-delay', heater?.backend === 'triac'
         ? formatNumber(heater?.triacDelayUs, 0, ' мкс')
         : '—');
     setText('equipment-test-heater-zc-count', heater?.backend === 'triac'
         ? formatNumber(heater?.zeroCrossCount, 0)
         : '—');
+    setText(
+        'equipment-test-heater-real-power',
+        power?.available ? formatNumber(power?.power, 0, ' Вт') : 'PZEM offline'
+    );
+    setText(
+        'equipment-test-heater-voltage',
+        power?.available ? formatNumber(power?.voltage, 1, ' В') : '—'
+    );
+    setText(
+        'equipment-test-heater-current',
+        power?.available ? formatNumber(power?.current, 2, ' А') : '—'
+    );
+    setText(
+        'equipment-test-heater-frequency',
+        power?.available ? formatNumber(power?.frequency, 1, ' Гц') : '—'
+    );
+    setText(
+        'equipment-test-heater-pf',
+        power?.available ? formatNumber(power?.powerFactor, 2, '') : '—'
+    );
 
     const backendTriac = heater?.backend === 'triac';
     const zeroCrossSeen = Boolean(heater?.zeroCrossSeen);
@@ -2032,6 +2045,11 @@ function renderHeaterStatus(heater, testingAllowed, demoMode) {
             ? (zeroCrossSeen ? 'success' : 'danger')
             : 'muted'
     );
+    updateBadge(
+        byId('equipment-test-heater-pzem'),
+        power?.available ? 'PZEM: онлайн' : 'PZEM: offline',
+        power?.available ? 'success' : 'danger'
+    );
 
     const diagEl = byId('equipment-test-heater-diag');
     if (diagEl) {
@@ -2047,6 +2065,12 @@ function renderHeaterStatus(heater, testingAllowed, demoMode) {
             }
         } else if (heater?.backend) {
             text = 'Основной нагрев сейчас работает не через симисторный backend. Для фазового управления нужен активный TRIAC backend.';
+        }
+
+        if (power?.available) {
+            text += ` PZEM видит ${formatNumber(power?.power, 0, ' Вт')} при сети ${formatNumber(power?.voltage, 1, ' В')}.`;
+        } else {
+            text += ' PZEM сейчас не подтверждает силовые измерения.';
         }
 
         if (demoMode) {
@@ -2112,11 +2136,10 @@ function renderTestingStatus(status) {
     renderValveButtonState('equipment-test-uno-toggle', !!status.valves?.uno, 'УНО', status.testingAllowed, status.valves?.unoPulse, status.demoMode);
     renderStartStopPwmStatus(status.valves, status.coolingSettings, status.testingAllowed, status.demoMode);
     renderServoStatus(status.servo, status.testingAllowed);
-    renderHeaterStatus(status.heater, status.testingAllowed, status.demoMode);
+    renderHeaterStatus(status.heater, status.power, status.testingAllowed, status.demoMode);
     renderTemperatureList(status.temperatures);
     renderPressureStatus(status.pressure);
     renderHydrometerStatus(status.hydrometer);
-    renderPowerStatus(status.power);
     renderRecentActions(status.recentActions);
 
     const stopAllButton = byId('equipment-test-stop-all');
