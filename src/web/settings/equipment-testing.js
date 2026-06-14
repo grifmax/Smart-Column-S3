@@ -286,6 +286,9 @@ const state = {
             heater: false
         }
     },
+    selfCheckHistory: [],
+    selfCheckLastSignature: '',
+    selfCheckLastRecordedAt: 0,
     activeSettingsSection: 'connection'
 };
 
@@ -340,6 +343,15 @@ const TESTING_TEMPLATE = `
                 </div>
                 <div class="equipment-selfcheck-modules" id="equipment-selfcheck-modules">
                     <div class="equipment-test-journal-empty">Снимок модулей появится после загрузки статуса.</div>
+                </div>
+                <div class="equipment-selfcheck-history">
+                    <div class="equipment-test-journal-head">
+                        <h3>Недавние изменения precheck</h3>
+                        <span class="equipment-hint">Локальная история сервиса, пока страница открыта</span>
+                    </div>
+                    <div class="equipment-test-journal-list" id="equipment-selfcheck-history">
+                        <div class="equipment-test-journal-empty">История появится после первых изменений состояния.</div>
+                    </div>
                 </div>
             </div>
             <div class="equipment-test-journal">
@@ -1944,6 +1956,99 @@ function buildTestingHardwareModuleCard(module = {}) {
     `;
 }
 
+function buildSelfCheckSnapshot(status) {
+    const modules = normalizeTestingHardwareModules(status?.modules || {});
+    const health = status?.health || {};
+    const tempSensorsOk = Math.max(0, Number(health.tempSensorsOk || 0));
+    const tempSensorsTotal = Math.max(0, Number(health.tempSensorsTotal || 0));
+    const overall = Math.max(0, Math.min(100, Number(health.overall || 0)));
+    const expectedModules = modules.filter((module) => module.expected !== false);
+    const missingExpected = expectedModules.filter((module) => !module.available);
+    const pzemSpikes = Math.max(0, Number(health.pzemSpikes || 0));
+    const tempErrors = Math.max(0, Number(health.tempErrors || 0));
+    const rebootReason = health.rebootReasonStr || '—';
+
+    let tone = 'success';
+    let title = 'Железо отвечает штатно';
+    const details = [
+        `health ${overall}%`,
+        `термодатчики ${tempSensorsOk}/${tempSensorsTotal}`,
+        `reboot ${rebootReason}`
+    ];
+
+    if (missingExpected.length > 0) {
+        tone = 'danger';
+        title = 'Потеря обязательных модулей';
+        details.push(`нет ответа: ${missingExpected.map((module) => module.label || 'модуль').join(', ')}`);
+    } else if (tempSensorsOk <= 0) {
+        tone = 'danger';
+        title = 'Нет подтверждённых термодатчиков';
+    } else if (overall < 70 || pzemSpikes > 0 || tempErrors > 0) {
+        tone = 'warning';
+        title = 'Есть деградация precheck';
+        if (pzemSpikes > 0) details.push(`spikes ${pzemSpikes}`);
+        if (tempErrors > 0) details.push(`temp errors ${tempErrors}`);
+    }
+
+    return {
+        tone,
+        title,
+        detail: details.join(' • '),
+        signature: [
+            tone,
+            overall,
+            tempSensorsOk,
+            tempSensorsTotal,
+            rebootReason,
+            pzemSpikes,
+            tempErrors,
+            missingExpected.map((module) => module.label || 'module').join('|')
+        ].join('::')
+    };
+}
+
+function recordSelfCheckSnapshot(status) {
+    const snapshot = buildSelfCheckSnapshot(status);
+    const now = Date.now();
+    const shouldAppend = !state.selfCheckLastSignature
+        || snapshot.signature !== state.selfCheckLastSignature
+        || now - state.selfCheckLastRecordedAt >= 60000;
+
+    if (!shouldAppend) {
+        return;
+    }
+
+    state.selfCheckLastSignature = snapshot.signature;
+    state.selfCheckLastRecordedAt = now;
+    state.selfCheckHistory.unshift({
+        timestampMs: now,
+        tone: snapshot.tone,
+        title: snapshot.title,
+        detail: snapshot.detail
+    });
+    state.selfCheckHistory = state.selfCheckHistory.slice(0, 10);
+}
+
+function renderSelfCheckHistory() {
+    const host = byId('equipment-selfcheck-history');
+    if (!host) return;
+
+    if (!Array.isArray(state.selfCheckHistory) || !state.selfCheckHistory.length) {
+        host.innerHTML = '<div class="equipment-test-journal-empty">История появится после первых изменений состояния.</div>';
+        return;
+    }
+
+    host.innerHTML = state.selfCheckHistory.map((entry) => `
+        <div class="equipment-test-journal-item ${entry.tone || 'neutral'}">
+            <div class="equipment-test-journal-line">
+                <strong>${entry.title || 'Precheck'}</strong>
+                <span>${formatWallClock(entry.timestampMs)}</span>
+            </div>
+            <div class="equipment-test-journal-detail">${entry.detail || ''}</div>
+        </div>
+    `).join('');
+}
+
 function renderHardwareSelfCheck(status) {
     const badgeEl = byId('equipment-selfcheck-badge');
     const summaryEl = byId('equipment-selfcheck-summary');
@@ -1991,6 +2096,7 @@ function renderHardwareSelfCheck(status) {
     `;
     hintEl.textContent = hint;
     modulesEl.innerHTML = modules.map((module) => buildTestingHardwareModuleCard(module)).join('');
+    renderSelfCheckHistory();
 }
 
 function renderTemperatureList(temperatures = []) {
@@ -2200,6 +2306,18 @@ function formatActionAge(timestampMs, index) {
     return index === 0
         ? 'только что'
         : `T+${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function formatWallClock(timestampMs) {
+    const date = new Date(Number(timestampMs || 0));
+    if (Number.isNaN(date.getTime())) {
+        return '—';
+    }
+    return date.toLocaleTimeString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
 }
 
 function renderPumpStatus(pump, testingAllowed, demoMode) {
@@ -2543,6 +2661,7 @@ function renderServiceSummary(status) {
 
 function renderTestingStatus(status) {
     state.lastStatus = status;
+    recordSelfCheckSnapshot(status);
     renderServiceSummary(status);
     renderCommissioningWizard(status);
     renderHardwareSelfCheck(status);
