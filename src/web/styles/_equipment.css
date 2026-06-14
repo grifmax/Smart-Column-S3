@@ -674,6 +674,90 @@
     padding-top: 2px;
 }
 
+.equipment-commissioning-card {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border-color));
+    border-radius: 12px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--bg-card)), var(--bg-card));
+}
+
+.equipment-commissioning-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.equipment-commissioning-head h3 {
+    margin: 0 0 4px;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.equipment-commissioning-summary .equipment-inline-stat {
+    min-width: 128px;
+    flex: 0 1 168px;
+}
+
+.equipment-commissioning-steps {
+    display: grid;
+    gap: 8px;
+}
+
+.equipment-commissioning-step {
+    display: grid;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-card);
+}
+
+.equipment-commissioning-step.tone-success {
+    border-color: rgba(34, 197, 94, 0.22);
+    background: rgba(34, 197, 94, 0.05);
+}
+
+.equipment-commissioning-step.tone-warning {
+    border-color: rgba(245, 158, 11, 0.24);
+    background: rgba(245, 158, 11, 0.06);
+}
+
+.equipment-commissioning-step.tone-danger {
+    border-color: rgba(239, 68, 68, 0.24);
+    background: rgba(239, 68, 68, 0.06);
+}
+
+.equipment-commissioning-step-main {
+    display: grid;
+    gap: 6px;
+}
+
+.equipment-commissioning-step-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.equipment-commissioning-step-top strong {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.equipment-commissioning-step-text {
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+
+.equipment-commissioning-step-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .equipment-test-journal-accordion {
     margin-top: 12px;
     border: 1px solid var(--border-color);
@@ -1275,6 +1359,8 @@
 
     .equipment-test-status-head,
     .equipment-test-card-head,
+    .equipment-commissioning-head,
+    .equipment-commissioning-step-top,
     .equipment-servo-manual-row,
     .equipment-quick-actions,
     .equipment-inline-stats {
@@ -1287,7 +1373,9 @@
     }
 
     .equipment-test-status-head,
-    .equipment-test-card-head {
+    .equipment-test-card-head,
+    .equipment-commissioning-head,
+    .equipment-commissioning-step-top {
         flex-direction: column;
         align-items: stretch;
     }
@@ -1325,6 +1413,12 @@
     }
 
     .equipment-inline-stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .equipment-commissioning-step-actions {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px;

@@ -279,10 +279,18 @@ const state = {
         max: null,
         success: false
     },
+    commissioning: {
+        manual: {
+            pump: false,
+            valves: false,
+            heater: false
+        }
+    },
     activeSettingsSection: 'connection'
 };
 
 const paneWorkbenchControllers = new Map();
+let testingWorkbenchController = null;
 
 const TESTING_TEMPLATE = `
     <div class="equipment-testing-stack">
@@ -302,6 +310,20 @@ const TESTING_TEMPLATE = `
             </div>
             <div class="equipment-inline-stats equipment-test-summary-stats" id="equipment-test-active-summary"></div>
             <div class="equipment-test-alert" id="equipment-test-availability-hint">Загрузка сервисного статуса…</div>
+            <div class="equipment-commissioning-card">
+                <div class="equipment-commissioning-head">
+                    <div>
+                        <h3>Мастер пусконаладки</h3>
+                        <p class="equipment-hint">Короткий чек-лист по текущему железу: что уже подтверждено, а что ещё нужно руками добить.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-commissioning-overall-badge">Проверяем…</span>
+                </div>
+                <div class="equipment-inline-stats equipment-commissioning-summary" id="equipment-commissioning-summary"></div>
+                <div class="equipment-test-alert subtle" id="equipment-commissioning-next-step">Ожидаем сервисный статус…</div>
+                <div class="equipment-commissioning-steps" id="equipment-commissioning-steps">
+                    <div class="equipment-test-journal-empty">Чек-лист появится после загрузки статуса.</div>
+                </div>
+            </div>
             <div class="equipment-test-journal">
                 <div class="equipment-test-journal-head">
                     <h3>Последние действия оператора</h3>
@@ -1398,6 +1420,11 @@ function initEquipmentTestingWorkbench() {
         syncTestingLayout();
     }
 
+    testingWorkbenchController = {
+        setActiveCard: setActiveTestingCard,
+        firstCardId: TESTING_CARD_DEFS[0]?.id || null
+    };
+
     for (const card of resolvedCards) {
         card.toggle.addEventListener('click', () => {
             const isMobile = mediaQuery.matches;
@@ -1507,6 +1534,46 @@ function saveActiveTestingCard(cardId) {
     }
 }
 
+function resetCommissioningManualChecks() {
+    state.commissioning.manual = {
+        pump: false,
+        valves: false,
+        heater: false
+    };
+}
+
+function setCommissioningManualCheck(target, nextValue = true) {
+    if (!Object.prototype.hasOwnProperty.call(state.commissioning.manual, target)) {
+        return;
+    }
+    state.commissioning.manual[target] = Boolean(nextValue);
+}
+
+function getCommissioningManualTargets() {
+    return [
+        { id: 'pump', label: 'насос' },
+        { id: 'valves', label: 'клапаны' },
+        { id: 'heater', label: 'нагрев' }
+    ];
+}
+
+function getTestingCardMeta(cardId) {
+    return TESTING_CARD_DEFS.find((card) => card.id === cardId) || null;
+}
+
+function setTestingCard(cardId) {
+    testingWorkbenchController?.setActiveCard(cardId ?? testingWorkbenchController?.firstCardId ?? null);
+}
+
+function openEquipmentWorkbench(sectionId, cardId) {
+    setEquipmentSection(sectionId);
+    if (sectionId === 'testing') {
+        setTestingCard(cardId);
+        return;
+    }
+    setEquipmentPaneCard(sectionId, cardId);
+}
+
 export function setEquipmentSection(sectionId) {
     state.activeSection = sectionId;
     saveActiveSection(sectionId);
@@ -1581,6 +1648,232 @@ function getActiveTestsSummary(activeTests = {}) {
     if (activeTests.unoValve) active.push('УНО');
     if (activeTests.servoMoving) active.push('Сервопривод');
     return active.length ? active.join(', ') : 'Ничего не включено';
+}
+
+function countValidTemperatures(temperatures = []) {
+    if (!Array.isArray(temperatures)) return 0;
+    return temperatures.reduce((count, sensor) => count + (sensor?.valid ? 1 : 0), 0);
+}
+
+function buildCommissioningSteps(status) {
+    const temperatures = Array.isArray(status?.temperatures) ? status.temperatures : [];
+    const validTemps = countValidTemperatures(temperatures);
+    const pressure = status?.pressure || {};
+    const heater = status?.heater || {};
+    const power = status?.power || {};
+    const manualTargets = getCommissioningManualTargets();
+    const manualDone = manualTargets.filter((target) => state.commissioning.manual[target.id]);
+    const missingManual = manualTargets.filter((target) => !state.commissioning.manual[target.id]);
+    const pressureSpan = state.pressureTest.min !== null && state.pressureTest.max !== null
+        ? Math.abs(Number(state.pressureTest.max) - Number(state.pressureTest.min))
+        : null;
+
+    const steps = [];
+
+    const safeStep = {
+        id: 'safe-window',
+        title: 'Безопасное сервисное окно',
+        blocking: true,
+        tone: 'success',
+        label: 'ОК',
+        description: 'Контроллер в IDLE, защёлкнутых аварий нет, сервисные тесты разрешены.'
+    };
+    if (!status?.testingAllowed) {
+        safeStep.tone = 'danger';
+        safeStep.label = 'Стоп';
+        safeStep.description = status?.availabilityReason || 'Сервисное тестирование сейчас заблокировано.';
+    } else if (status?.demoMode) {
+        safeStep.tone = 'warning';
+        safeStep.label = 'Демо';
+        safeStep.description = 'Сервисный экран открыт в демо-режиме: UI живой, но реальное железо не проверяется.';
+    }
+    steps.push(safeStep);
+
+    const tempStep = {
+        id: 'temperatures',
+        title: 'Термометры и 1-Wire шина',
+        blocking: true,
+        tone: 'success',
+        label: 'ОК',
+        description: `Видим ${validTemps} рабочих датч. температуры. Можно сверять живые показания и продолжать пусконаладку.`,
+        actions: [
+            { type: 'open', label: 'Открыть термометры', section: 'testing', cardId: 'temps' },
+            { type: 'open', label: 'К калибровке', section: 'calibration', cardId: 'temp-calibration' }
+        ]
+    };
+    if (validTemps <= 0) {
+        tempStep.tone = 'danger';
+        tempStep.label = 'Нет';
+        tempStep.description = 'Рабочие DS18B20 не подтверждены. Сначала проверьте сканирование, адреса и общую 1-Wire линию.';
+    } else if (validTemps === 1) {
+        tempStep.tone = 'warning';
+        tempStep.label = 'Мало';
+        tempStep.description = 'Сейчас подтверждён только один термодатчик. Для нормальной пусконаладки лучше увидеть хотя бы куб и колонну.';
+    }
+    steps.push(tempStep);
+
+    const pressureStep = {
+        id: 'pressure',
+        title: 'Манометр куба',
+        blocking: Boolean(pressure?.ads1115Available),
+        tone: 'success',
+        label: 'ОК',
+        description: state.pressureTest.success
+            ? `Отклик продувкой подтверждён. Диапазон теста ${formatNumber(pressureSpan, 1, ' мм рт.ст.')}.`
+            : 'Сигнал давления есть, но продувка ещё не подтверждена.',
+        actions: [
+            { type: 'open', label: 'Открыть датчик', section: 'testing', cardId: 'pressure' },
+            { type: 'pressure-toggle', label: state.pressureTest.active ? 'Сбросить тест' : 'Начать продувку' }
+        ]
+    };
+    if (!pressure?.ads1115Available) {
+        pressureStep.tone = 'warning';
+        pressureStep.label = 'Нет ADS';
+        pressureStep.description = 'ADS1115 A1 сейчас не виден. Шаг оставлен как напоминание, но не считаем его блокером.';
+    } else if (!pressure?.ok) {
+        pressureStep.tone = 'danger';
+        pressureStep.label = 'Нет сигнала';
+        pressureStep.description = 'Канал давления не даёт валидного сигнала. Проверьте ADS1115, проводку и сам датчик куба.';
+    } else if (!state.pressureTest.success) {
+        pressureStep.tone = 'warning';
+        pressureStep.label = 'Ждёт продувку';
+        pressureStep.description = 'Сигнал есть, но отклик продувкой ещё не подтверждён. Нажмите кнопку и слегка подуйте в сухую линию.';
+    }
+    steps.push(pressureStep);
+
+    const heaterStep = {
+        id: 'heater',
+        title: 'Силовой контур нагрева',
+        blocking: heater?.backend === 'triac',
+        tone: 'success',
+        label: 'ОК',
+        description: 'TRIAC backend подтверждён, zero-cross виден, PZEM на линии — силовой канал читается штатно.',
+        actions: [
+            { type: 'open', label: 'Открыть нагрев', section: 'testing', cardId: 'heater' }
+        ]
+    };
+    if (heater?.backend === 'triac') {
+        if (!heater?.zeroCrossSeen) {
+            heaterStep.tone = 'danger';
+            heaterStep.label = 'Нет sync';
+            heaterStep.description = 'Основной TRIAC выбран, но zero-cross не виден. Без синхронизации фазовое управление пока не подтверждено.';
+        } else if (!power?.available) {
+            heaterStep.tone = 'warning';
+            heaterStep.label = 'Без PZEM';
+            heaterStep.description = 'Zero-cross уже виден, но PZEM сейчас офлайн. Нагрев работает, но силовой мониторинг пока неполный.';
+        }
+    } else if (heater?.backend === 'ssr') {
+        heaterStep.tone = 'warning';
+        heaterStep.label = 'SSR';
+        heaterStep.description = 'Основной канал сейчас не в TRIAC-режиме. Для фазового управления откройте карточку нагрева и проверьте backend.';
+    } else {
+        heaterStep.tone = 'warning';
+        heaterStep.label = 'Нет данных';
+        heaterStep.description = 'Контур нагрева ещё не описал свой backend. Откройте сервисную карточку и проверьте диагностику.';
+    }
+    steps.push(heaterStep);
+
+    const manualStep = {
+        id: 'manual-actuators',
+        title: 'Ручное подтверждение исполнительных узлов',
+        blocking: true,
+        tone: 'success',
+        label: 'ОК',
+        description: manualDone.length
+            ? `Подтверждены: ${manualDone.map((item) => item.label).join(', ')}.`
+            : 'После живой проверки отметьте вручную насос, клапаны и нагрев.',
+        actions: [
+            { type: 'open-missing-manual', label: 'Открыть следующий узел' },
+            { type: 'toggle-manual', target: 'pump', label: state.commissioning.manual.pump ? 'Насос OK' : 'Отметить насос' },
+            { type: 'toggle-manual', target: 'valves', label: state.commissioning.manual.valves ? 'Клапаны OK' : 'Отметить клапаны' },
+            { type: 'toggle-manual', target: 'heater', label: state.commissioning.manual.heater ? 'Нагрев OK' : 'Отметить нагрев' },
+            { type: 'reset-manual', label: 'Сброс' }
+        ]
+    };
+    if (missingManual.length) {
+        manualStep.tone = 'warning';
+        manualStep.label = `${manualDone.length}/${manualTargets.length}`;
+        manualStep.description = `После живой проверки отметьте вручную: ${missingManual.map((item) => item.label).join(', ')}.`;
+    }
+    steps.push(manualStep);
+
+    return steps;
+}
+
+function renderCommissioningWizard(status) {
+    const stepsHost = byId('equipment-commissioning-steps');
+    const summaryHost = byId('equipment-commissioning-summary');
+    const nextStepEl = byId('equipment-commissioning-next-step');
+    const overallBadge = byId('equipment-commissioning-overall-badge');
+    if (!stepsHost || !summaryHost || !nextStepEl || !overallBadge) {
+        return;
+    }
+
+    const steps = buildCommissioningSteps(status);
+    const completed = steps.filter((step) => step.tone === 'success').length;
+    const required = steps.filter((step) => step.blocking);
+    const requiredDone = required.filter((step) => step.tone === 'success').length;
+    const firstBlockingPending = required.find((step) => step.tone !== 'success') || null;
+    const firstPending = steps.find((step) => step.tone !== 'success') || null;
+    const nextStep = firstBlockingPending || firstPending;
+    const manualDone = getCommissioningManualTargets().filter((target) => state.commissioning.manual[target.id]).length;
+    const ready = required.length > 0 && required.every((step) => step.tone === 'success');
+
+    updateBadge(
+        overallBadge,
+        ready ? 'Готово' : (nextStep?.tone === 'danger' ? 'Есть блокеры' : 'Нужна проверка'),
+        ready ? 'success' : nextStep?.tone === 'danger' ? 'danger' : 'warning'
+    );
+
+    summaryHost.innerHTML = `
+        <div class="equipment-inline-stat"><span>Пройдено</span><strong>${completed}/${steps.length}</strong></div>
+        <div class="equipment-inline-stat"><span>Обязательные</span><strong>${requiredDone}/${required.length}</strong></div>
+        <div class="equipment-inline-stat"><span>Ручные узлы</span><strong>${manualDone}/3</strong></div>
+    `;
+
+    nextStepEl.className = `equipment-test-alert${ready ? '' : nextStep?.tone === 'danger' ? ' danger' : ' subtle'}`;
+    nextStepEl.textContent = ready
+        ? 'Базовая пусконаладка закрыта: можно двигаться дальше к профильным режимам и тонкой настройке.'
+        : `Следующий шаг: ${nextStep?.title || 'проверка оборудования'}. ${nextStep?.description || ''}`;
+
+    stepsHost.innerHTML = steps.map((step) => `
+        <div class="equipment-commissioning-step tone-${step.tone}">
+            <div class="equipment-commissioning-step-main">
+                <div class="equipment-commissioning-step-top">
+                    <strong>${step.title}</strong>
+                    <span class="equipment-status-badge ${step.tone}">${step.label}</span>
+                </div>
+                <div class="equipment-commissioning-step-text">${step.description}</div>
+            </div>
+            ${Array.isArray(step.actions) && step.actions.length ? `
+                <div class="equipment-commissioning-step-actions">
+                    ${step.actions.map((action) => {
+                        if (action.type === 'open') {
+                            return `<button type="button" class="btn btn-sm btn-secondary" data-commissioning-open="${action.section}:${action.cardId}">${action.label}</button>`;
+                        }
+                        if (action.type === 'pressure-toggle') {
+                            return `<button type="button" class="btn btn-sm btn-secondary" data-commissioning-pressure-toggle="1">${action.label}</button>`;
+                        }
+                        if (action.type === 'toggle-manual') {
+                            const active = state.commissioning.manual[action.target];
+                            return `<button type="button" class="btn btn-sm ${active ? 'btn-success' : 'btn-outline-secondary'}" data-commissioning-manual="${action.target}">${action.label}</button>`;
+                        }
+                        if (action.type === 'reset-manual') {
+                            const disabled = getCommissioningManualTargets().every((target) => !state.commissioning.manual[target.id]);
+                            return `<button type="button" class="btn btn-sm btn-outline-secondary" ${disabled ? 'disabled' : ''} data-commissioning-manual-reset="1">${action.label}</button>`;
+                        }
+                        if (action.type === 'open-missing-manual') {
+                            const nextTarget = getCommissioningManualTargets().find((target) => !state.commissioning.manual[target.id])?.id || 'pump';
+                            const openCardId = nextTarget === 'valves' ? 'valves' : nextTarget === 'heater' ? 'heater' : 'pump';
+                            const meta = getTestingCardMeta(openCardId);
+                            return `<button type="button" class="btn btn-sm btn-secondary" data-commissioning-open="testing:${openCardId}">${meta?.shortTitle ? `Открыть ${meta.shortTitle.toLowerCase()}` : action.label}</button>`;
+                        }
+                        return '';
+                    }).join('')}
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
 }
 
 function renderTemperatureList(temperatures = []) {
@@ -2134,6 +2427,7 @@ function renderServiceSummary(status) {
 function renderTestingStatus(status) {
     state.lastStatus = status;
     renderServiceSummary(status);
+    renderCommissioningWizard(status);
     renderPumpStatus(status.pump, status.testingAllowed, status.demoMode);
     renderStirrerStatus(status.stirrer, status.testingAllowed, status.demoMode);
     renderValveButtonState('equipment-test-water-toggle', !!status.valves?.water, 'воду', status.testingAllowed, status.valves?.waterPulse, status.demoMode);
@@ -2212,6 +2506,7 @@ async function handlePumpToggle() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
+    setCommissioningManualCheck('pump', true);
     renderTestingStatus(status);
     addLog(running ? 'Остановлен тест насоса' : `Запущен тест насоса: ${payload.speedMlH} мл/ч`, 'success');
 }
@@ -2252,6 +2547,9 @@ async function handleValveToggle(target, nextOpen) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, open: nextOpen })
     });
+    if (target === 'water' || target === 'heads' || target === 'uno' || target === 'all') {
+        setCommissioningManualCheck('valves', true);
+    }
     renderTestingStatus(status);
     addLog(`Клапан ${target} ${nextOpen ? 'открыт' : 'закрыт'} через тестовый экран`, 'info');
 }
@@ -2263,6 +2561,7 @@ async function handleValvePulse(target) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, action: 'pulse', durationMs })
     });
+    setCommissioningManualCheck('valves', true);
     renderTestingStatus(status);
     addLog(`Импульс клапана ${target}: ${durationMs} мс`, 'info');
 }
@@ -2334,6 +2633,7 @@ async function confirmHeaterStart() {
         })
     });
     closeHeaterConfirmModal();
+    setCommissioningManualCheck('heater', true);
     renderTestingStatus(status);
     addLog(`Тест ТЭНа запущен на ${state.heaterPendingPower}%`, 'warning');
 }
@@ -2344,6 +2644,7 @@ async function stopHeater() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'stop' })
     });
+    setCommissioningManualCheck('heater', true);
     renderTestingStatus(status);
     addLog('ТЭН остановлен из тестового экрана', 'warning');
 }
@@ -2519,6 +2820,43 @@ function bindTestingActions() {
             resetPressureTest();
         } else {
             startPressureTest();
+        }
+    });
+
+    byId('equipment-commissioning-steps')?.addEventListener('click', (event) => {
+        const openButton = event.target.closest('[data-commissioning-open]');
+        if (openButton) {
+            const [sectionId, cardId] = String(openButton.dataset.commissioningOpen || '').split(':');
+            if (sectionId && cardId) {
+                openEquipmentWorkbench(sectionId, cardId);
+            }
+            return;
+        }
+
+        const pressureButton = event.target.closest('[data-commissioning-pressure-toggle]');
+        if (pressureButton) {
+            if (state.pressureTest.active) {
+                resetPressureTest();
+            } else {
+                startPressureTest();
+            }
+            return;
+        }
+
+        const manualButton = event.target.closest('[data-commissioning-manual]');
+        if (manualButton) {
+            const target = String(manualButton.dataset.commissioningManual || '');
+            if (target) {
+                setCommissioningManualCheck(target, !state.commissioning.manual[target]);
+                renderCommissioningWizard(state.lastStatus || {});
+            }
+            return;
+        }
+
+        const resetButton = event.target.closest('[data-commissioning-manual-reset]');
+        if (resetButton) {
+            resetCommissioningManualChecks();
+            renderCommissioningWizard(state.lastStatus || {});
         }
     });
 }
