@@ -64,6 +64,15 @@ const TESTING_CARD_DEFS = [
         description: 'Основной TRIAC, booster SSR, zero-cross, PZEM и ручной тест в одной силовой панели.',
     },
     {
+        id: 'service-overview',
+        selector: '#equipment-test-stop-all',
+        group: 'service',
+        icon: '🛠️',
+        title: 'Сервисное тестирование оборудования',
+        shortTitle: 'Сервис',
+        description: 'Общий сервисный контур, стоп всех тестов, пусконаладка и автосамопроверка железа в одном инженерном окне.',
+    },
+    {
         id: 'temps',
         selector: '#equipment-test-temps-refresh',
         group: 'sensors',
@@ -313,6 +322,19 @@ const TESTING_TEMPLATE = `
             </div>
             <div class="equipment-inline-stats equipment-test-summary-stats" id="equipment-test-active-summary"></div>
             <div class="equipment-test-alert" id="equipment-test-availability-hint">Загрузка сервисного статуса…</div>
+            <div class="equipment-service-contour-card">
+                <div class="equipment-service-contour-head">
+                    <div>
+                        <h3>Сервисный контур</h3>
+                        <p class="equipment-hint">Быстрый снимок по ключевым узлам перед ручными тестами: термошина, АЦП, барометрия, кубовый манометр, zero-cross и силовой монитор.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-service-contour-badge">Проверяем…</span>
+                </div>
+                <div class="equipment-test-alert subtle" id="equipment-service-contour-hint">Ожидаем данные по сервисному контуру…</div>
+                <div class="equipment-service-contour-grid" id="equipment-service-contour-grid">
+                    <div class="equipment-test-journal-empty">Контур появится после загрузки сервисного статуса.</div>
+                </div>
+            </div>
             <div class="equipment-commissioning-card">
                 <div class="equipment-commissioning-head">
                     <div>
@@ -819,10 +841,7 @@ function buildTestingDesktopNav(cards) {
         }
     }
 
-    const sidebarExtras = createElement('div', 'equipment-testing-sidebar-extras');
-    nav.appendChild(sidebarExtras);
-
-    return { nav, buttonsById, sidebarExtras };
+    return { nav, buttonsById };
 }
 
 function buildWorkbenchDesktopNav(cards, groups, title, subtitle) {
@@ -1351,9 +1370,11 @@ function initEquipmentTestingWorkbench() {
     const grid = qs('.equipment-testing-grid', testingPane);
     if (!testingPane || !grid || grid.dataset.testingWorkbench === '1') return;
     const statusCard = qs('.equipment-test-status-card', testingPane);
-    const journal = qs('.equipment-test-journal', testingPane);
+    if (statusCard) {
+        statusCard.classList.add('equipment-test-card');
+    }
 
-    const cards = [...grid.querySelectorAll('.equipment-test-card')];
+    const cards = [statusCard, ...grid.querySelectorAll('.equipment-test-card')].filter(Boolean);
     const resolvedCards = resolveTestingCards(cards);
     if (!resolvedCards.length) return;
 
@@ -1362,26 +1383,16 @@ function initEquipmentTestingWorkbench() {
     const shell = createElement('div', 'equipment-testing-shell');
     const main = createElement('div', 'equipment-testing-main');
     const desktopWrapper = createElement('div', 'equipment-testing-card-stack');
-    const { nav, buttonsById, sidebarExtras } = buildTestingDesktopNav(resolvedCards);
+    const { nav, buttonsById } = buildTestingDesktopNav(resolvedCards);
 
     grid.parentNode.insertBefore(shell, statusCard || grid);
     shell.append(nav, main);
     main.appendChild(desktopWrapper);
-    desktopWrapper.appendChild(grid);
-
-    let accordion = null;
-    if (journal && statusCard) {
-        accordion = createElement('details', 'equipment-test-journal-accordion');
-        accordion.open = false;
-        accordion.innerHTML = `
-            <summary class="equipment-test-journal-summary">
-                <span>Последние действия оператора</span>
-                <small>Журнал сервисных команд</small>
-            </summary>
-        `;
-        accordion.appendChild(journal);
+    if (statusCard) {
+        desktopWrapper.append(statusCard, grid);
+    } else {
+        desktopWrapper.appendChild(grid);
     }
-
     const mediaQuery = window.matchMedia(TESTING_LAYOUT_MEDIA);
     state.activeTestingCard = readSavedTestingCard();
 
@@ -1397,26 +1408,6 @@ function initEquipmentTestingWorkbench() {
         const isMobile = mediaQuery.matches;
         testingPane.dataset.testingLayout = isMobile ? 'mobile' : 'desktop';
         nav.hidden = isMobile;
-
-        if (statusCard) {
-            if (isMobile) {
-                if (statusCard.parentNode !== main) {
-                    main.insertBefore(statusCard, desktopWrapper);
-                }
-            } else if (statusCard.parentNode !== sidebarExtras) {
-                sidebarExtras.prepend(statusCard);
-            }
-        }
-
-        if (accordion) {
-            if (isMobile) {
-                if (accordion.parentNode !== main) {
-                    main.appendChild(accordion);
-                }
-            } else if (accordion.parentNode !== sidebarExtras) {
-                sidebarExtras.appendChild(accordion);
-            }
-        }
 
         if (!isMobile && !state.activeTestingCard) {
             state.activeTestingCard = resolvedCards[0]?.meta.id || null;
@@ -1954,6 +1945,116 @@ function buildTestingHardwareModuleCard(module = {}) {
             <div class="equipment-module-card-role">${module.role || '—'}</div>
         </div>
     `;
+}
+
+function buildServiceContour(status) {
+    const modules = status?.modules || {};
+    const heater = status?.heater || {};
+    const power = status?.power || {};
+    const pressure = status?.pressure || {};
+    const health = status?.health || {};
+    const validTemps = countValidTemperatures(status?.temperatures);
+    const tempSensorsOk = Math.max(0, Number(health.tempSensorsOk || validTemps || 0));
+    const tempSensorsTotal = Math.max(0, Number(health.tempSensorsTotal || status?.temperatures?.length || 0));
+    const adsOnline = Boolean(modules?.ads1115?.available);
+    const bmpOnline = Boolean(modules?.bmp280Primary?.available || modules?.bmp280Secondary?.available);
+    const pressureOnline = Boolean(pressure?.ok);
+    const zeroCrossNeeded = heater?.backend === 'triac';
+    const zeroCrossOnline = Boolean(heater?.zeroCrossSeen);
+    const pzemOnline = Boolean(power?.available);
+
+    const items = [
+        {
+            key: 'temps',
+            label: 'Термошина',
+            tone: tempSensorsOk > 0 ? 'success' : 'danger',
+            value: tempSensorsTotal > 0 ? `${tempSensorsOk}/${tempSensorsTotal}` : 'нет линии',
+            detail: tempSensorsOk > 0 ? 'DS18B20 отвечают' : 'нет подтверждённых термодатчиков'
+        },
+        {
+            key: 'ads',
+            label: 'ADS1115',
+            tone: adsOnline ? 'success' : 'danger',
+            value: adsOnline ? 'online' : 'offline',
+            detail: adsOnline ? 'сервисный АЦП виден на шине' : 'ESP32 не видит сервисный АЦП'
+        },
+        {
+            key: 'bmp',
+            label: 'BMP280',
+            tone: bmpOnline ? 'success' : 'danger',
+            value: bmpOnline ? 'online' : 'offline',
+            detail: bmpOnline ? 'барометрический модуль отвечает' : 'нет ответа от барометрии'
+        },
+        {
+            key: 'pressure',
+            label: 'Манометр куба',
+            tone: pressureOnline ? 'success' : 'danger',
+            value: pressureOnline ? formatNumber(pressure?.cubeMmHg, 1, ' мм рт.ст.') : 'нет сигнала',
+            detail: pressureOnline ? 'кубовое давление считывается' : 'датчик давления не подтверждён'
+        },
+        {
+            key: 'zero-cross',
+            label: 'Zero-cross',
+            tone: !zeroCrossNeeded ? 'muted' : zeroCrossOnline ? 'success' : 'danger',
+            value: !zeroCrossNeeded ? (heater?.backend ? heater.backend : 'не активен') : zeroCrossOnline ? 'есть' : 'нет',
+            detail: !zeroCrossNeeded
+                ? 'контроль нуля нужен только для TRIAC backend'
+                : zeroCrossOnline
+                    ? `${formatNumber(heater?.zeroCrossCount, 0)} переходов, ${formatNumber(heater?.triacFireCount, 0)} gate pulses`
+                    : 'нет синхронизации с сетью для фазового управления'
+        },
+        {
+            key: 'pzem',
+            label: 'PZEM-004T',
+            tone: pzemOnline ? 'success' : 'danger',
+            value: pzemOnline ? formatNumber(power?.power, 0, ' Вт') : 'offline',
+            detail: pzemOnline
+                ? `${formatNumber(power?.voltage, 1, ' В')} / ${formatNumber(power?.current, 2, ' А')}`
+                : 'силовой монитор не подтверждён'
+        }
+    ];
+
+    const blockers = items.filter((item) => item.tone === 'danger').length;
+    const warnings = items.filter((item) => item.tone === 'muted').length;
+
+    let tone = 'success';
+    let label = 'Контур готов';
+    let hint = 'Ключевые сервисные узлы подтверждены, можно переходить к ручным тестам и пусконаладке.';
+
+    if (blockers > 0) {
+        tone = 'danger';
+        label = `Есть блокеры: ${blockers}`;
+        hint = 'Часть сервисного контура не подтверждена. Сначала добей шину, датчики и силовой монитор, потом запускай ручные проверки.';
+    } else if (warnings > 0) {
+        tone = 'warning';
+        label = 'Контур частичный';
+        hint = 'Базовый сервисный контур жив, но часть узлов сейчас не обязательна или не активна в текущем backend.';
+    }
+
+    return { tone, label, hint, items };
+}
+
+function renderServiceContour(status) {
+    const badgeEl = byId('equipment-service-contour-badge');
+    const hintEl = byId('equipment-service-contour-hint');
+    const gridEl = byId('equipment-service-contour-grid');
+    if (!badgeEl || !hintEl || !gridEl) {
+        return;
+    }
+
+    const contour = buildServiceContour(status);
+    updateBadge(badgeEl, contour.label, contour.tone);
+    hintEl.textContent = contour.hint;
+    hintEl.className = `equipment-test-alert${contour.tone === 'danger' ? ' danger' : contour.tone === 'warning' ? '' : ' subtle'}`;
+    gridEl.innerHTML = contour.items.map((item) => `
+        <div class="equipment-service-contour-item tone-${item.tone}">
+            <div class="equipment-service-contour-line">
+                <strong>${item.label}</strong>
+                <span class="equipment-status-badge ${item.tone}">${item.value}</span>
+            </div>
+            <div class="equipment-service-contour-detail">${item.detail}</div>
+        </div>
+    `).join('');
 }
 
 function buildSelfCheckSnapshot(status) {
@@ -2663,6 +2764,7 @@ function renderTestingStatus(status) {
     state.lastStatus = status;
     recordSelfCheckSnapshot(status);
     renderServiceSummary(status);
+    renderServiceContour(status);
     renderCommissioningWizard(status);
     renderHardwareSelfCheck(status);
     renderPumpStatus(status.pump, status.testingAllowed, status.demoMode);
