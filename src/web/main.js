@@ -69,6 +69,7 @@ import {
     initCalibrationTab,
     loadCalibrationData,
     scanCalibrationSensors,
+    assignTempSensorAddress,
     calibrateTempOffset,
     calibrateTempReference,
     fillPressurePointFromCurrentV2,
@@ -260,6 +261,7 @@ window.toggleWiFiStaticFields = toggleWiFiStaticFields;
 window.cancelWiFiSelection = cancelWiFiSelection;
 window.loadCalibrationData = loadCalibrationData;
 window.scanCalibrationSensors = scanCalibrationSensors;
+window.assignTempSensorAddress = assignTempSensorAddress;
 window.calibrateTempOffset = calibrateTempOffset;
 window.calibrateTempReference = calibrateTempReference;
 window.fillPressurePointFromCurrent = fillPressurePointFromCurrentV2;

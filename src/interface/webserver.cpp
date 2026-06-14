@@ -369,6 +369,47 @@ static const char *getTempSensorLabel(uint8_t index) {
   }
 }
 
+static bool isZeroTempAddress(const uint8_t address[8]) {
+  if (!address) return true;
+  for (uint8_t i = 0; i < 8; ++i) {
+    if (address[i] != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void formatTempAddress(const uint8_t address[8], char *buffer,
+                              size_t bufferSize) {
+  if (!buffer || bufferSize == 0) return;
+  if (!address || isZeroTempAddress(address)) {
+    snprintf(buffer, bufferSize, "");
+    return;
+  }
+  snprintf(buffer, bufferSize, "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+           address[0], address[1], address[2], address[3], address[4],
+           address[5], address[6], address[7]);
+}
+
+static bool parseTempAddressString(const char *value, uint8_t address[8]) {
+  if (!address) return false;
+  memset(address, 0, 8);
+  if (!value) return false;
+
+  unsigned int bytes[8] = {0};
+  const int parsed = sscanf(
+      value, "%2x:%2x:%2x:%2x:%2x:%2x:%2x:%2x", &bytes[0], &bytes[1], &bytes[2],
+      &bytes[3], &bytes[4], &bytes[5], &bytes[6], &bytes[7]);
+  if (parsed != 8) {
+    return false;
+  }
+
+  for (uint8_t i = 0; i < 8; ++i) {
+    address[i] = static_cast<uint8_t>(bytes[i] & 0xFF);
+  }
+  return true;
+}
+
 static void syncStirrerState();
 static void fillStirrerJson(JsonObject stirrer, const SystemState &state);
 
@@ -4809,21 +4850,24 @@ void init() {
     for (uint8_t i = 0; i < TEMP_COUNT; i++) {
       JsonObject t = temps.add<JsonObject>();
       t["index"] = i;
+      t["name"] = getTempSensorLabel(i);
       t["offset"] = g_settings.tempCal.offsets[i];
 
-      // Адрес датчика (hex string)
-      char addrStr[24];
-      snprintf(addrStr, sizeof(addrStr),
-               "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
-               g_settings.tempCal.addresses[i][0],
-               g_settings.tempCal.addresses[i][1],
-               g_settings.tempCal.addresses[i][2],
-               g_settings.tempCal.addresses[i][3],
-               g_settings.tempCal.addresses[i][4],
-               g_settings.tempCal.addresses[i][5],
-               g_settings.tempCal.addresses[i][6],
-               g_settings.tempCal.addresses[i][7]);
-      t["address"] = addrStr;
+      char assignedAddrStr[24];
+      formatTempAddress(g_settings.tempCal.addresses[i], assignedAddrStr,
+                        sizeof(assignedAddrStr));
+      uint8_t detectedAddress[8] = {0};
+      char detectedAddrStr[24];
+      if (Sensors::getDiscoveredTempAddress(i, detectedAddress)) {
+        formatTempAddress(detectedAddress, detectedAddrStr,
+                          sizeof(detectedAddrStr));
+      } else {
+        detectedAddrStr[0] = '\0';
+      }
+      t["address"] = detectedAddrStr[0] != '\0' ? detectedAddrStr : assignedAddrStr;
+      t["assignedAddress"] = assignedAddrStr;
+      t["detectedAddress"] = detectedAddrStr;
+      t["mappingMode"] = assignedAddrStr[0] != '\0' ? "manual" : "auto";
 
       // Текущие показания
       float currentTemp = 0;
@@ -4980,6 +5024,47 @@ void init() {
         if (sensorIndex >= TEMP_COUNT) {
           request->send(400, "application/json",
                         "{\"error\":\"Invalid sensor index\"}");
+          return;
+        }
+
+        if (!doc["address"].isNull()) {
+          const String addressValue = doc["address"].as<String>();
+          if (addressValue.length() == 0) {
+            memset(g_settings.tempCal.addresses[sensorIndex], 0,
+                   sizeof(g_settings.tempCal.addresses[sensorIndex]));
+          } else {
+            uint8_t parsedAddress[8] = {0};
+            if (!parseTempAddressString(addressValue.c_str(), parsedAddress)) {
+              request->send(400, "application/json",
+                            "{\"error\":\"Invalid sensor address\"}");
+              return;
+            }
+            for (uint8_t role = 0; role < TEMP_COUNT; ++role) {
+              if (role == sensorIndex) continue;
+              if (memcmp(g_settings.tempCal.addresses[role], parsedAddress, 8) ==
+                  0) {
+                memset(g_settings.tempCal.addresses[role], 0,
+                       sizeof(g_settings.tempCal.addresses[role]));
+              }
+            }
+            memcpy(g_settings.tempCal.addresses[sensorIndex], parsedAddress,
+                   sizeof(parsedAddress));
+          }
+
+          Sensors::applyCalibration(g_settings.tempCal);
+          Sensors::refreshTemperatureInventory();
+          NVSManager::saveSettings(g_settings);
+
+          JsonDocument resp;
+          resp["status"] = "ok";
+          resp["method"] = "address";
+          resp["index"] = sensorIndex;
+          resp["name"] = getTempSensorLabel(sensorIndex);
+          resp["address"] = addressValue;
+
+          String json;
+          serializeJson(resp, json);
+          request->send(200, "application/json", json);
           return;
         }
 
@@ -5306,7 +5391,21 @@ void init() {
 
                 s["index"] = i;
                 s["address"] = addrStr;
-                s["valid"] = Sensors::isTempSensorValid(i);
+
+                int8_t mappedRole = -1;
+                for (uint8_t role = 0; role < TEMP_COUNT; ++role) {
+                  if (memcmp(g_settings.tempCal.addresses[role], addresses[i], 8) == 0) {
+                    mappedRole = static_cast<int8_t>(role);
+                    break;
+                  }
+                }
+                s["mappedRole"] = mappedRole;
+                if (mappedRole >= 0) {
+                  s["mappedRoleName"] = getTempSensorLabel(static_cast<uint8_t>(mappedRole));
+                }
+                s["valid"] = mappedRole >= 0
+                                 ? Sensors::isTempSensorValid(static_cast<uint8_t>(mappedRole))
+                                 : false;
               }
 
               String json;

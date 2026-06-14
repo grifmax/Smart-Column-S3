@@ -455,6 +455,14 @@
 - `POST /api/calibration/pressure`
 - `POST /api/calibration/hydrometer`
 
+`GET /api/calibration` for `temperatures[]` now also includes:
+
+- `name`
+- `address`
+- `assignedAddress`
+- `detectedAddress`
+- `mappingMode` (`auto` or `manual`)
+
 `GET /api/calibration` now also includes a `hydrometer` block with:
 
 - `densityOffset`
@@ -492,6 +500,21 @@ Testing/service pressure status also includes:
 - `source`
 - `sensorVoltage`
 - `sensorAdc`
+
+`GET /api/calibration/scan` now returns `sensors[]` with:
+
+- `index`
+- `address`
+- `mappedRole`
+- `mappedRoleName`
+- `valid`
+
+`POST /api/calibration/temp` now accepts one of:
+
+- `{ "index": N, "offset": X }`
+- `{ "index": N, "reference": X }`
+- `{ "index": N, "address": "28:FF:..." }` to pin a role to a concrete `DS18B20`
+- `{ "index": N, "address": "" }` to clear manual binding and return the role to auto-mapping
 
 ### Safety
 

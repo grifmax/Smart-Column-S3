@@ -73,6 +73,8 @@ namespace Sensors {
     bool isAds1115Available();
     bool isPzemAvailable();
     bool readAds1115Channel(uint8_t channel, int16_t& adc, float& voltage);
+    void refreshTemperatureInventory();
+    bool getDiscoveredTempAddress(uint8_t index, uint8_t address[8]);
 
     /**
      * Обновление информации о здоровье датчиков

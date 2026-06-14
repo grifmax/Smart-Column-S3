@@ -40,6 +40,61 @@ function setMessage(id, message, type = 'info') {
     el.textContent = message;
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function resolveSnapshotTempAddress(item) {
+    if (!item || typeof item !== 'object') return '';
+    const assignedAddress = String(item?.assignedAddress || '').trim();
+    if (assignedAddress) return assignedAddress;
+    const isManual = String(item?.mappingMode || '').trim().toLowerCase() === 'manual';
+    return isManual ? String(item?.address || '').trim() : '';
+}
+
+function buildTempAddressOptions(roleIndex, selectedAddress, discoveredSensors) {
+    const options = [
+        '<option value="">Авто по порядку шины (без жесткой привязки)</option>'
+    ];
+    const discovered = Array.isArray(discoveredSensors) ? discoveredSensors : [];
+    const hasSelectedInScan = selectedAddress
+        ? discovered.some((sensor) => String(sensor?.address || '') === selectedAddress)
+        : false;
+
+    if (selectedAddress && !hasSelectedInScan) {
+        options.push(
+            `<option value="${escapeHtml(selectedAddress)}">` +
+            `${escapeHtml(selectedAddress)} (сохранен, но сейчас не найден)` +
+            '</option>'
+        );
+    }
+
+    discovered.forEach((sensor) => {
+        const address = String(sensor?.address || '').trim();
+        if (!address) return;
+        const mappedRole = Number(sensor?.mappedRole);
+        let suffix = '';
+        if (Number.isInteger(mappedRole) && mappedRole >= 0) {
+            if (mappedRole === roleIndex) {
+                suffix = ' (уже привязан к этой роли)';
+            } else {
+                const roleName = String(sensor?.mappedRoleName || `роль ${mappedRole}`);
+                suffix = ` (сейчас у ${roleName})`;
+            }
+        }
+        options.push(
+            `<option value="${escapeHtml(address)}">${escapeHtml(address)}${escapeHtml(suffix)}</option>`
+        );
+    });
+
+    return options.join('');
+}
+
 function downloadJsonFile(data, filename) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -323,7 +378,7 @@ function normalizeCalibrationSnapshot(payload) {
         .map((item) => ({
             index: Number(item?.index),
             offset: Number(item?.offset),
-            address: String(item?.address || '')
+            address: resolveSnapshotTempAddress(item)
         }))
         .filter((item) => Number.isInteger(item.index) && Number.isFinite(item.offset));
 
@@ -482,6 +537,18 @@ export async function applyCalibrationSnapshot() {
             if (!tempResponse.ok) {
                 const tempError = await tempResponse.json().catch(() => ({}));
                 throw new Error(tempError?.error || `Temp[${sensor.index}] import HTTP ${tempResponse.status}`);
+            }
+
+            if (typeof sensor.address === 'string') {
+                const addressResponse = await fetch(`${API_BASE}/temp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index: sensor.index, address: sensor.address.trim() })
+                });
+                if (!addressResponse.ok) {
+                    const addressError = await addressResponse.json().catch(() => ({}));
+                    throw new Error(addressError?.error || `Temp[${sensor.index}] address import HTTP ${addressResponse.status}`);
+                }
             }
         }
 
@@ -828,10 +895,15 @@ export async function loadCalibrationData() {
     if (!tab) return;
 
     try {
-        const response = await fetch(API_BASE);
+        const [response, scanResponse] = await Promise.all([
+            fetch(API_BASE),
+            fetch(`${API_BASE}/scan`).catch(() => null)
+        ]);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
+        const scanData = scanResponse && scanResponse.ok ? await scanResponse.json() : {};
+        const discoveredSensors = Array.isArray(scanData?.sensors) ? scanData.sensors : [];
         const pump = data?.pump || {};
         const pressureSensor = data?.pressureSensor || {};
         const hydrometer = data?.hydrometer || {};
@@ -863,16 +935,31 @@ export async function loadCalibrationData() {
         if (sensorList) {
             sensorList.innerHTML = '';
             const sensors = Array.isArray(data?.temperatures) ? data.temperatures : [];
-            const names = ['Куб', 'Царга низ', 'Царга верх', 'Дефлегматор', 'ТСА', 'Вода вход', 'Вода выход'];
 
             if (!sensors.length) {
                 sensorList.innerHTML = '<li class="info-text">Датчики не найдены</li>';
             } else {
-                sensors.forEach((temp, i) => {
-                    const name = names[temp.index] || `Датчик ${temp.index}`;
+                sensors.forEach((temp) => {
+                    const index = Number(temp?.index);
+                    const name = String(temp?.name || `Датчик ${index}`);
                     const current = Number(temp.current);
                     const offset = Number(temp.offset);
-                    const validBadge = temp.valid ? '✓ OK' : '✗ Ошибка';
+                    const validBadge = temp.valid ? '✓ OK' : '✗ Нет данных';
+                    const assignedAddress = String(temp?.assignedAddress || '');
+                    const detectedAddress = String(temp?.detectedAddress || '');
+                    const effectiveAddress = String(temp?.address || detectedAddress || assignedAddress || '');
+                    const mappingMode = String(temp?.mappingMode || 'auto') === 'manual' ? 'Ручная привязка' : 'Авто по порядку';
+                    const mappingState = assignedAddress
+                        ? (detectedAddress
+                            ? 'Привязка активна, датчик найден'
+                            : 'Привязка сохранена, но датчик сейчас не найден')
+                        : (detectedAddress
+                            ? 'Работает в авто-режиме по порядку шины'
+                            : 'Адрес не зафиксирован');
+                    const selectOptions = buildTempAddressOptions(index, assignedAddress, discoveredSensors);
+                    const discoveredCountText = discoveredSensors.length
+                        ? `На шине сейчас найдено: ${discoveredSensors.length}`
+                        : 'На шине сейчас датчики не найдены';
 
                     const li = document.createElement('li');
                     li.className = 'equipment-sensor-item';
@@ -881,26 +968,39 @@ export async function loadCalibrationData() {
                             <strong>${name}</strong>
                             <span class="info-text">${validBadge}</span>
                         </div>
-                        <div class="equipment-sensor-meta">Адрес: ${temp.address || '—'} | Текущее: ${Number.isFinite(current) ? current.toFixed(2) : '--'} °C | Смещение: ${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'} °C</div>
+                        <div class="equipment-sensor-meta">Текущий адрес: ${escapeHtml(effectiveAddress || '—')} | Текущее: ${Number.isFinite(current) ? current.toFixed(2) : '--'} °C | Смещение: ${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'} °C</div>
+                        <div class="equipment-sensor-meta">Режим: ${escapeHtml(mappingMode)} | Сохранённый адрес: ${escapeHtml(assignedAddress || '—')} | Обнаружен сейчас: ${escapeHtml(detectedAddress || '—')}</div>
+                        <div class="equipment-sensor-meta">${escapeHtml(mappingState)}. ${escapeHtml(discoveredCountText)}</div>
                         <div class="equipment-sensor-actions">
                             <div class="form-group equipment-sensor-action">
-                                <label for="offset_${i}">Смещение, °C</label>
+                                <label for="addr_${index}">Привязка адреса</label>
                                 <div class="equipment-sensor-action-row">
-                                    <input type="number" id="offset_${i}" value="${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'}" step="0.1" data-stepper-mode="pair" data-stepper-step="0.1">
-                                    <button class="btn btn-sm" onclick="calibrateTempOffset(${i})">Применить</button>
+                                    <select id="addr_${index}">${selectOptions}</select>
+                                    <button class="btn btn-sm" onclick="assignTempSensorAddress(${index})">Сохранить адрес</button>
                                 </div>
                             </div>
                             <div class="form-group equipment-sensor-action">
-                                <label for="ref_${i}">Эталон, °C</label>
+                                <label for="offset_${index}">Смещение, °C</label>
                                 <div class="equipment-sensor-action-row">
-                                    <input type="number" id="ref_${i}" step="0.1" placeholder="Эталон °C" data-stepper-mode="pair" data-stepper-step="0.1">
-                                    <button class="btn btn-sm btn-secondary" onclick="calibrateTempReference(${i})">По эталону</button>
+                                    <input type="number" id="offset_${index}" value="${Number.isFinite(offset) ? offset.toFixed(2) : '0.00'}" step="0.1" data-stepper-mode="pair" data-stepper-step="0.1">
+                                    <button class="btn btn-sm" onclick="calibrateTempOffset(${index})">Применить</button>
+                                </div>
+                            </div>
+                            <div class="form-group equipment-sensor-action">
+                                <label for="ref_${index}">Эталон, °C</label>
+                                <div class="equipment-sensor-action-row">
+                                    <input type="number" id="ref_${index}" step="0.1" placeholder="Эталон °C" data-stepper-mode="pair" data-stepper-step="0.1">
+                                    <button class="btn btn-sm btn-secondary" onclick="calibrateTempReference(${index})">По эталону</button>
                                 </div>
                             </div>
                         </div>
                     `;
                     sensorList.appendChild(li);
                     initEquipmentNumberSteppers(li);
+                    const addressSelect = byId(`addr_${index}`);
+                    if (addressSelect) {
+                        addressSelect.value = assignedAddress;
+                    }
                 });
             }
         }
@@ -920,10 +1020,35 @@ export async function scanCalibrationSensors() {
         const response = await fetch(`${API_BASE}/scan`);
         const data = await response.json();
         if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
-        setMessage('tempResult', `Найдено датчиков: ${Number(data.count) || 0}`, 'success');
+        const mappedCount = Array.isArray(data?.sensors)
+            ? data.sensors.filter((sensor) => Number.isInteger(Number(sensor?.mappedRole)) && Number(sensor?.mappedRole) >= 0).length
+            : 0;
+        setMessage('tempResult', `Найдено датчиков: ${Number(data.count) || 0}, привязано ролей: ${mappedCount}`, 'success');
         await loadCalibrationData();
     } catch (error) {
         setMessage('tempResult', `Ошибка сканирования: ${error.message}`, 'error');
+    }
+}
+
+export async function assignTempSensorAddress(index) {
+    const address = String(byId(`addr_${index}`)?.value || '').trim();
+
+    try {
+        const response = await fetch(`${API_BASE}/temp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ index, address })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+        const sensorName = data?.name || `датчик ${index}`;
+        const message = address
+            ? `${sensorName}: адрес ${address} сохранён`
+            : `${sensorName}: возврат в авто-режим сохранён`;
+        setMessage('tempResult', message, 'success');
+        await loadCalibrationData();
+    } catch (error) {
+        setMessage('tempResult', `Ошибка привязки адреса: ${error.message}`, 'error');
     }
 }
 

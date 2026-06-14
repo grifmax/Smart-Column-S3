@@ -294,6 +294,15 @@ bool loadSettings(Settings& settings) {
     if (settings.equipment.leakThresholdV > 4.096f) {
         settings.equipment.leakThresholdV = 4.096f;
     }
+
+    memset(&settings.tempCal, 0, sizeof(settings.tempCal));
+    const size_t tempCalBytes = prefs.getBytesLength(NVS_KEY_TEMP_OFFSETS);
+    if (tempCalBytes == sizeof(settings.tempCal)) {
+        prefs.getBytes(NVS_KEY_TEMP_OFFSETS, &settings.tempCal, sizeof(settings.tempCal));
+    } else if (tempCalBytes == sizeof(settings.tempCal.offsets)) {
+        prefs.getBytes(NVS_KEY_TEMP_OFFSETS, settings.tempCal.offsets, sizeof(settings.tempCal.offsets));
+    }
+
     settings.fractionator.enabled = prefs.getBool(NVS_KEY_FRACTION_MASTER, settings.fractionator.enabled);
     if (prefs.getBytesLength(NVS_KEY_FRACTION_ANGLES) == sizeof(settings.fractionator.angles)) {
         prefs.getBytes(NVS_KEY_FRACTION_ANGLES, settings.fractionator.angles, sizeof(settings.fractionator.angles));
@@ -440,6 +449,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putBool(NVS_KEY_LEAK_ENABLED, settings.equipment.leakSensorEnabled);
     prefs.putFloat(NVS_KEY_LEAK_THRESHOLD, settings.equipment.leakThresholdV);
     prefs.putBool(NVS_KEY_LEAK_POLARITY, settings.equipment.leakTriggerAbove);
+    prefs.putBytes(NVS_KEY_TEMP_OFFSETS, &settings.tempCal, sizeof(settings.tempCal));
     prefs.putBool(NVS_KEY_FRACTION_MASTER, settings.fractionator.enabled);
     prefs.putBytes(NVS_KEY_FRACTION_ANGLES, settings.fractionator.angles, sizeof(settings.fractionator.angles));
     prefs.putBytes(NVS_KEY_FRACTION_ENABLED, settings.fractionator.positionsEnabled, sizeof(settings.fractionator.positionsEnabled));

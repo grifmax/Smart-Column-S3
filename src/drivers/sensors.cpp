@@ -87,11 +87,36 @@ static const uint8_t DISCOVERY_BUS_PASSES = 3;
 static const uint8_t DISCOVERY_PASS_DELAY_MS = 30;
 static uint8_t consecutiveTempReadFailures = 0;
 
-static void syncDs18b20AddressesToRuntime() {
-    memset(g_settings.tempCal.addresses, 0, sizeof(g_settings.tempCal.addresses));
-    for (uint8_t i = 0; i < ds18b20Count && i < TEMP_COUNT; ++i) {
-        memcpy(g_settings.tempCal.addresses[i], ds18b20Addresses[i], sizeof(DeviceAddress));
+static bool isZeroDeviceAddress(const DeviceAddress address) {
+    for (uint8_t i = 0; i < sizeof(DeviceAddress); ++i) {
+        if (address[i] != 0) {
+            return false;
+        }
     }
+    return true;
+}
+
+static bool hasAssignedTempMap() {
+    for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+        if (!isZeroDeviceAddress(tempCal.addresses[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int8_t findDs18b20AddressIndex(DeviceAddress addresses[], uint8_t count,
+                                      const DeviceAddress candidate,
+                                      const bool used[]) {
+    for (uint8_t i = 0; i < count; ++i) {
+        if (used && used[i]) {
+            continue;
+        }
+        if (memcmp(addresses[i], candidate, sizeof(DeviceAddress)) == 0) {
+            return static_cast<int8_t>(i);
+        }
+    }
+    return -1;
 }
 
 static void invalidateTemperatureState(Temperatures& temps) {
@@ -195,7 +220,6 @@ static void clearDs18b20Inventory() {
     memset(ds18b20Addresses, 0, sizeof(ds18b20Addresses));
     memset(ds18b20Found, 0, sizeof(ds18b20Found));
     ds18b20Count = 0;
-    syncDs18b20AddressesToRuntime();
 }
 
 static void logDs18b20Inventory(uint8_t count) {
@@ -252,6 +276,7 @@ static uint8_t discoverDs18b20(bool logInventory) {
     uint8_t count = 0;
     DeviceAddress bestAddresses[TEMP_COUNT] = {};
     DeviceAddress passAddresses[TEMP_COUNT] = {};
+    bool busAddressUsed[TEMP_COUNT] = {false};
 
     clearDs18b20Inventory();
 
@@ -270,14 +295,32 @@ static uint8_t discoverDs18b20(bool logInventory) {
         }
     }
 
-    for (uint8_t i = 0; i < count; ++i) {
-        memcpy(ds18b20Addresses[i], bestAddresses[i], sizeof(DeviceAddress));
-        ds18b20Found[i] = true;
-        ds18b20.setResolution(ds18b20Addresses[i], 12);
+    if (hasAssignedTempMap()) {
+        for (uint8_t role = 0; role < TEMP_COUNT; ++role) {
+            if (isZeroDeviceAddress(tempCal.addresses[role])) {
+                continue;
+            }
+            const int8_t busIndex = findDs18b20AddressIndex(
+                bestAddresses, count, tempCal.addresses[role], busAddressUsed);
+            if (busIndex < 0) {
+                continue;
+            }
+
+            memcpy(ds18b20Addresses[role], bestAddresses[busIndex],
+                   sizeof(DeviceAddress));
+            ds18b20Found[role] = true;
+            busAddressUsed[busIndex] = true;
+            ds18b20.setResolution(ds18b20Addresses[role], 12);
+        }
+    } else {
+        for (uint8_t i = 0; i < count; ++i) {
+            memcpy(ds18b20Addresses[i], bestAddresses[i], sizeof(DeviceAddress));
+            ds18b20Found[i] = true;
+            ds18b20.setResolution(ds18b20Addresses[i], 12);
+        }
     }
 
     ds18b20Count = count;
-    syncDs18b20AddressesToRuntime();
     lastDs18b20DiscoveryMs = millis();
 
     if (count == 0) {
@@ -737,9 +780,15 @@ void applyCalibration(const TempCalibration& cal) {
 
 uint8_t scanDS18B20(uint8_t addresses[][8]) {
     uint8_t count = 0;
+    DeviceAddress rawAddresses[TEMP_COUNT] = {};
+
+    for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+        memset(addresses[i], 0, sizeof(DeviceAddress));
+    }
 
     for (uint8_t attempt = 0; attempt < DISCOVERY_INIT_ATTEMPTS; ++attempt) {
-        count = discoverDs18b20(false);
+        memset(rawAddresses, 0, sizeof(rawAddresses));
+        count = scanDs18b20Bus(rawAddresses);
         if (count > 0) {
             break;
         }
@@ -747,14 +796,30 @@ uint8_t scanDS18B20(uint8_t addresses[][8]) {
     }
 
     for (uint8_t i = 0; i < count && i < TEMP_COUNT; ++i) {
-        memcpy(addresses[i], ds18b20Addresses[i], sizeof(DeviceAddress));
+        memcpy(addresses[i], rawAddresses[i], sizeof(DeviceAddress));
     }
 
     if (count > 0) {
+        discoverDs18b20(false);
         startTemperatureConversion(millis());
     }
 
     return count;
+}
+
+void refreshTemperatureInventory() {
+    discoverDs18b20(true);
+    if (ds18b20Count > 0) {
+        startTemperatureConversion(millis());
+    }
+}
+
+bool getDiscoveredTempAddress(uint8_t index, uint8_t address[8]) {
+    if (!address || index >= TEMP_COUNT || !ds18b20Found[index]) {
+        return false;
+    }
+    memcpy(address, ds18b20Addresses[index], sizeof(DeviceAddress));
+    return true;
 }
 
 bool isTempSensorValid(uint8_t index) {
