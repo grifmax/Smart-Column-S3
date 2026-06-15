@@ -43,6 +43,8 @@ static bool ads_ok = false;
 static HardwareSerial pzemSerial(PZEM_UART_NUM);
 static PZEM004Tv30 pzem(pzemSerial, PIN_PZEM_RX, PIN_PZEM_TX);
 static bool pzem_ok = false;
+static uint32_t lastPzemProbeMs = 0;
+static uint8_t pzemConsecutiveReadFailures = 0;
 
 // Защита от переполнения energy (PZEM может сбросить счётчик)
 static float lastEnergyReading = 0.0f;
@@ -61,6 +63,8 @@ static bool pzemDataInitialized = false;
 #define PZEM_POWER_MAX_DELTA      1000.0f // ±1000W за раз
 
 // Счётчики для мониторинга здоровья
+static const uint32_t PZEM_RETRY_INTERVAL_MS = 5000UL;
+static const uint8_t PZEM_READ_FAIL_LIMIT = 3;
 static uint16_t pzemSpikeCounter = 0;
 static uint16_t tempReadErrorCounter = 0;
 
@@ -88,6 +92,42 @@ static const uint16_t DISCOVERY_INIT_DELAY_MS = 250;
 static const uint8_t DISCOVERY_BUS_PASSES = 3;
 static const uint8_t DISCOVERY_PASS_DELAY_MS = 30;
 static uint8_t consecutiveTempReadFailures = 0;
+
+static bool probePzem(bool verboseFailureLog = true) {
+    lastPzemProbeMs = millis();
+    pzemSerial.begin(PZEM_BAUD_RATE, SERIAL_8N1, PIN_PZEM_RX, PIN_PZEM_TX);
+    delay(100);
+
+    for (uint8_t attempt = 0; attempt < 3; attempt++) {
+        const float testVoltage = pzem.voltage();
+        const float testFreq = pzem.frequency();
+
+        if (!isnan(testVoltage) && !isnan(testFreq)) {
+            if (testVoltage > 0 && testFreq >= 45 && testFreq <= 65) {
+                pzem_ok = true;
+                pzemConsecutiveReadFailures = 0;
+                LOG_I("Sensors: PZEM-004T OK (V=%.1fV, F=%.1fHz)", testVoltage, testFreq);
+                return true;
+            }
+            if (testVoltage == 0) {
+                pzem_ok = true;
+                pzemConsecutiveReadFailures = 0;
+                LOG_WARN("Sensors: PZEM-004T OK but NO AC POWER detected");
+                return true;
+            }
+        }
+
+        if (attempt < 2) {
+            delay(200);
+        }
+    }
+
+    pzem_ok = false;
+    if (verboseFailureLog) {
+        LOG_E("Sensors: PZEM-004T communication FAILED after 3 attempts");
+    }
+    return false;
+}
 
 static bool lockDs18b20Bus(TickType_t timeoutTicks = pdMS_TO_TICKS(20)) {
     if (ds18b20Mutex == nullptr) {
@@ -468,34 +508,7 @@ void init() {
 
 #if PZEM_ENABLED
     // PZEM-004T v3.0
-    pzemSerial.begin(PZEM_BAUD_RATE, SERIAL_8N1, PIN_PZEM_RX, PIN_PZEM_TX);
-    delay(100);
-
-    pzem_ok = false;
-    for (uint8_t attempt = 0; attempt < 3; attempt++) {
-        float testVoltage = pzem.voltage();
-        float testFreq = pzem.frequency();
-
-        if (!isnan(testVoltage) && !isnan(testFreq)) {
-            if (testVoltage > 0 && testFreq >= 45 && testFreq <= 65) {
-                pzem_ok = true;
-                LOG_I("Sensors: PZEM-004T OK (V=%.1fV, F=%.1fHz)", testVoltage, testFreq);
-                break;
-            } else if (testVoltage == 0) {
-                pzem_ok = true;
-                LOG_WARN("Sensors: PZEM-004T OK but NO AC POWER detected");
-                break;
-            }
-        }
-
-        if (attempt < 2) {
-            delay(200);
-        }
-    }
-
-    if (!pzem_ok) {
-        LOG_E("Sensors: PZEM-004T communication FAILED after 3 attempts");
-    }
+    probePzem(true);
 #else
     pzem_ok = false;
     LOG_W("Sensors: PZEM disabled by build flag (PZEM_ENABLED=0)");
@@ -683,6 +696,10 @@ void readHydrometer(Hydrometer& hydro, float temperature, const HydrometerCalibr
 
 void readPower(Power& power) {
     if (!pzem_ok) {
+        const uint32_t now = millis();
+        if (now - lastPzemProbeMs >= PZEM_RETRY_INTERVAL_MS) {
+            probePzem(false);
+        }
         // PZEM не инициализирован
         power.voltage = 0;
         power.current = 0;
@@ -701,6 +718,27 @@ void readPower(Power& power) {
     float rawEnergy = pzem.energy();
     float rawFrequency = pzem.frequency();
     float rawPF = pzem.pf();
+
+    const bool noResponse = isnan(rawVoltage) && isnan(rawCurrent) &&
+                            isnan(rawPower) && isnan(rawEnergy) &&
+                            isnan(rawFrequency) && isnan(rawPF);
+    if (noResponse) {
+        if (++pzemConsecutiveReadFailures >= PZEM_READ_FAIL_LIMIT) {
+            pzem_ok = false;
+            pzemConsecutiveReadFailures = 0;
+            lastPzemProbeMs = 0;
+            LOG_WARN("Sensors: PZEM-004T lost during runtime, switching to auto-retry");
+        }
+        power.voltage = 0;
+        power.current = 0;
+        power.power = 0;
+        power.energy = 0;
+        power.frequency = 0;
+        power.powerFactor = 0;
+        power.lastUpdate = millis();
+        return;
+    }
+    pzemConsecutiveReadFailures = 0;
 
     // Проверка на NaN и базовые диапазоны
     if (isnan(rawVoltage) || rawVoltage < 0 || rawVoltage > 300) {
