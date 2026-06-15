@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.3.19">
+    <link rel="stylesheet" href="style.css?v=2.3.20">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.3.19" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.3.20" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -304,7 +304,7 @@
                                                 <button class="operator-edit-tile" type="button"
                                                     data-edit-param="manual-power">
                                                     <span class="operator-edit-label">Мощность</span>
-                                                    <strong id="manual-power-display">-- %</strong>
+                                                    <strong id="manual-power-display">-- Вт</strong>
                                                 </button>
                                                 <button class="operator-edit-tile" type="button"
                                                     data-edit-param="manual-speed">
@@ -334,7 +334,7 @@
                                                 <button class="operator-edit-tile" type="button"
                                                     data-edit-param="rect-power">
                                                     <span class="operator-edit-label">Мощность</span>
-                                                    <strong id="rect-power-display">-- %</strong>
+                                                    <strong id="rect-power-display">-- Вт</strong>
                                                 </button>
                                             </div>
                                         </div>
@@ -933,9 +933,9 @@
                                                     </div>
                                                     <div class="form-group">
                                                         <label for="dist-start-power-percent">Мощность нагрева
-                                                            (установка), %</label>
+                                                            (установка), Вт</label>
                                                         <input type="number" id="dist-start-power-percent" min="0"
-                                                            max="100" step="1" value="60">
+                                                            max="3000" step="50" value="1800">
                                                     </div>
                                                     <div class="form-group">
                                                         <label for="dist-start-power-fact">Мощность нагрева (факт),
@@ -3356,7 +3356,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.3.19"></script>
+    <script src="app.js?v=2.3.20"></script>
 </body>
 
 </html>

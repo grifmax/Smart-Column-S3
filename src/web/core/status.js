@@ -286,7 +286,11 @@ export function updateUIFromStatus(data) {
     if (data.distillation && data.distillation.powerPercent !== undefined) {
         const distPowerSet = document.getElementById('dist-start-power-percent');
         if (distPowerSet && document.activeElement !== distPowerSet) {
-            distPowerSet.value = String(Math.max(0, Math.min(100, Number(data.distillation.powerPercent) || 0)));
+            const distPowerPercent = Math.max(0, Math.min(100, Number(data.distillation.powerPercent) || 0));
+            const distPowerWatts = Math.round((distPowerPercent / 100) * Math.max(1, Number(maxHeaterPower) || 3000));
+            distPowerSet.value = String(distPowerWatts);
+            distPowerSet.max = String(Math.max(1, Number(maxHeaterPower) || 3000));
+            distPowerSet.step = '50';
         }
     }
 

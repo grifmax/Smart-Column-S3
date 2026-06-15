@@ -1721,9 +1721,7 @@ export function renderRuntimeBars(items) {
 
 export function updateManualTiles() {
     const s = runtimeMonitorState;
-    const heaterMax = Math.max(1, toFinite(s.equipment.heaterPowerW, maxHeaterPower));
     const measuredPower = Math.max(0, toFinite(s.power.power, 0));
-    const powerPercent = clampPercent((measuredPower / heaterMax) * 100);
 
     const rectPowerEl = document.getElementById('rect-power-display');
     const powerEl = document.getElementById('manual-power-display');
@@ -1733,8 +1731,8 @@ export function updateManualTiles() {
     const bodyEl = document.getElementById('manual-body-display');
     const tailsEl = document.getElementById('manual-tails-display');
 
-    if (rectPowerEl) rectPowerEl.textContent = `${powerPercent.toFixed(0)} %`;
-    if (powerEl) powerEl.textContent = `${powerPercent.toFixed(0)} %`;
+    if (rectPowerEl) rectPowerEl.textContent = `${measuredPower.toFixed(0)} Вт`;
+    if (powerEl) powerEl.textContent = `${measuredPower.toFixed(0)} Вт`;
     if (speedEl) speedEl.textContent = `${toFinite(s.pump.speedMlH, 0).toFixed(0)} мл/ч`;
     if (waterAutoStartEl) waterAutoStartEl.textContent = `${toFinite(s.equipment.waterAutoStartCubeTempC, 45).toFixed(1)} °C`;
     if (headsEl) headsEl.textContent = `${toFinite(s.volumes.heads, 0).toFixed(0)} мл`;

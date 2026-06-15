@@ -1,4 +1,5 @@
 import { addLog } from '../core/logs.js';
+import { maxHeaterPower } from '../globals.js';
 import { initEquipmentNumberSteppers } from './number-stepper.js';
 
 const STORAGE_KEY = 'equipment.activeSection';
@@ -280,7 +281,7 @@ const state = {
     pollingHandle: null,
     lastStatus: null,
     pendingStirrerSpeed: null,
-    heaterPendingPower: 0,
+    heaterPendingPowerW: 0,
     pressureTest: {
         active: false,
         baseline: null,
@@ -601,7 +602,7 @@ const TESTING_TEMPLATE = `
                     <span class="equipment-status-badge muted" id="equipment-test-heater-badge">—</span>
                 </div>
                 <div class="equipment-test-metrics">
-                    <div class="equipment-test-metric"><span>Текущая мощность</span><strong id="equipment-test-heater-power">--</strong></div>
+                    <div class="equipment-test-metric"><span>Текущая уставка</span><strong id="equipment-test-heater-power">--</strong></div>
                     <div class="equipment-test-metric"><span>Сетпоинт</span><strong id="equipment-test-heater-setpoint">--</strong></div>
                     <div class="equipment-test-metric"><span>Мин. погружение</span><strong id="equipment-test-heater-submerge">--</strong></div>
                     <div class="equipment-test-metric"><span>Основной ТЭН</span><strong id="equipment-test-heater-main-power">--</strong></div>
@@ -625,8 +626,8 @@ const TESTING_TEMPLATE = `
                     <div class="equipment-test-metric"><span>cos φ</span><strong id="equipment-test-heater-pf">--</strong></div>
                 </div>
                 <div class="form-group">
-                    <label for="equipment-test-heater-power-input">Мощность теста, %</label>
-                    <input type="number" id="equipment-test-heater-power-input" value="40" min="1" max="100" step="1" data-stepper-mode="pair" data-stepper-step="1">
+                    <label for="equipment-test-heater-power-input">Мощность теста, Вт</label>
+                    <input type="number" id="equipment-test-heater-power-input" value="1200" min="100" max="3000" step="50" data-stepper-mode="pair" data-stepper-step="50">
                 </div>
                 <div class="equipment-test-alert subtle" id="equipment-test-heater-diag">Диагностика контура нагрева появится после загрузки статуса.</div>
                 <div class="equipment-test-alert subtle">Памятка по монтажу: для phase-control используйте MOC3021/MOC3023; G силового симистора должен идти в ветку A2, а не A1.</div>
@@ -707,7 +708,7 @@ const HEATER_MODAL_TEMPLATE = `
                     <p class="equipment-subtitle" style="margin-bottom: 0;">Перед включением убедись, что ТЭН полностью погружен в воду или жидкость, а силовой канал подключен корректно.</p>
                 </div>
                 <div class="equipment-test-alert danger">
-                    Будет отправлена команда на <strong id="equipment-test-heater-confirm-power">0%</strong> мощности.
+                    Будет отправлена команда на <strong id="equipment-test-heater-confirm-power">0 Вт</strong> мощности.
                 </div>
             </div>
             <div class="modal-footer">
@@ -751,6 +752,28 @@ function clamp(value, min, max, fallback = min) {
     if (parsed < min) return min;
     if (parsed > max) return max;
     return parsed;
+}
+
+function getHeaterMaxPowerW(heater = null) {
+    return Math.max(
+        1,
+        Number(heater?.mainPowerW)
+        || Number(state.lastStatus?.equipment?.heaterPowerW)
+        || Number(maxHeaterPower)
+        || 3000
+    );
+}
+
+function heaterPercentToWatts(powerPercent, heater = null) {
+    const normalizedPercent = clamp(powerPercent, 0, 100, 0);
+    return Math.round((normalizedPercent / 100) * getHeaterMaxPowerW(heater));
+}
+
+function heaterWattsToPercent(powerW, heater = null) {
+    return Math.min(
+        100,
+        Math.max(0, Math.round((clamp(powerW, 0, getHeaterMaxPowerW(heater), 0) / getHeaterMaxPowerW(heater)) * 100))
+    );
 }
 
 function setText(id, value) {
@@ -2975,13 +2998,14 @@ function renderServoStatus(servo, testingAllowed) {
 }
 
 function renderHeaterStatus(heater, power, testingAllowed, demoMode) {
+    const heaterMaxW = getHeaterMaxPowerW(heater);
     updateBadge(
         byId('equipment-test-heater-badge'),
         heater?.active ? (demoMode ? 'Симуляция' : 'Вкл') : 'Выкл',
         heater?.active ? (demoMode ? 'warning' : 'danger') : 'muted'
     );
-    setText('equipment-test-heater-power', formatNumber(heater?.powerPercent, 0, ' %'));
-    setText('equipment-test-heater-setpoint', formatNumber(heater?.powerSetPercent, 0, ' %'));
+    setText('equipment-test-heater-power', formatNumber(heaterPercentToWatts(heater?.powerPercent, heater), 0, ' Вт'));
+    setText('equipment-test-heater-setpoint', formatNumber(heaterPercentToWatts(heater?.powerSetPercent, heater), 0, ' Вт'));
     setText('equipment-test-heater-submerge', formatNumber(heater?.minSubmergeLiters, 1, ' л'));
     setText('equipment-test-heater-main-power', formatNumber(heater?.mainPowerW, 0, ' Вт'));
     setText(
@@ -3021,6 +3045,15 @@ function renderHeaterStatus(heater, power, testingAllowed, demoMode) {
         'equipment-test-heater-pf',
         power?.available ? formatNumber(power?.powerFactor, 2, '') : '—'
     );
+    const heaterPowerInput = byId('equipment-test-heater-power-input');
+    if (heaterPowerInput && !heaterPowerInput.matches(':focus')) {
+        heaterPowerInput.min = '100';
+        heaterPowerInput.max = String(heaterMaxW);
+        heaterPowerInput.step = '50';
+        if (!heaterPowerInput.value || Number(heaterPowerInput.value) > heaterMaxW) {
+            heaterPowerInput.value = String(Math.max(100, Math.round((heaterMaxW * 0.4) / 50) * 50));
+        }
+    }
 
     const backendTriac = heater?.backend === 'triac';
     const zeroCrossSeen = Boolean(heater?.zeroCrossSeen);
@@ -3188,14 +3221,14 @@ function ensurePolling() {
     }, TESTING_POLL_MS);
 }
 
-function openHeaterConfirmModal(powerPercent) {
-    state.heaterPendingPower = powerPercent;
-    setText('equipment-test-heater-confirm-power', `${powerPercent}%`);
+function openHeaterConfirmModal(powerW) {
+    state.heaterPendingPowerW = powerW;
+    setText('equipment-test-heater-confirm-power', `${powerW} Вт`);
     byId('equipment-heater-confirm-modal')?.classList.add('active');
 }
 
 function closeHeaterConfirmModal() {
-    state.heaterPendingPower = 0;
+    state.heaterPendingPowerW = 0;
     byId('equipment-heater-confirm-modal')?.classList.remove('active');
 }
 
@@ -3331,14 +3364,14 @@ async function confirmHeaterStart() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             action: 'start',
-            powerPercent: state.heaterPendingPower,
+            powerPercent: heaterWattsToPercent(state.heaterPendingPowerW, state.lastStatus?.heater),
             confirmed: true
         })
     });
     closeHeaterConfirmModal();
     setCommissioningManualCheck('heater', true);
     renderTestingStatus(status);
-    addLog(`Тест ТЭНа запущен на ${state.heaterPendingPower}%`, 'warning');
+    addLog(`Тест ТЭНа запущен на ${state.heaterPendingPowerW} Вт`, 'warning');
 }
 
 async function stopHeater() {
@@ -3490,7 +3523,8 @@ function bindTestingActions() {
     });
 
     byId('equipment-test-heater-start')?.addEventListener('click', () => {
-        const power = clamp(byId('equipment-test-heater-power-input')?.value, 1, 100, 40);
+        const heaterMaxW = getHeaterMaxPowerW(state.lastStatus?.heater);
+        const power = clamp(byId('equipment-test-heater-power-input')?.value, 100, heaterMaxW, Math.round(heaterMaxW * 0.4));
         openHeaterConfirmModal(power);
     });
 

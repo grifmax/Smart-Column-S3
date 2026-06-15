@@ -1,4 +1,4 @@
-import { MODE_DIST } from '../globals.js';
+import { MODE_DIST, maxHeaterPower } from '../globals.js';
 import {
     confirmModeSwitch,
     readBoosterStartSettings,
@@ -21,9 +21,17 @@ function clampDistillationInput(value, min, max, fallback) {
 }
 
 export function collectDistillationSettings() {
+    const heaterMax = Math.max(1, Number(maxHeaterPower) || 3000);
+    const powerW = clampDistillationInput(
+        document.getElementById('dist-start-power-percent')?.value,
+        0,
+        heaterMax,
+        Math.round(heaterMax * 0.6)
+    );
     return {
         endTemp: clampDistillationInput(document.getElementById('dist-start-end-temp')?.value, 70, 110, 96),
-        powerPercent: clampDistillationInput(document.getElementById('dist-start-power-percent')?.value, 0, 100, 60),
+        powerW,
+        powerPercent: Math.min(100, Math.max(0, Math.round((powerW / heaterMax) * 100))),
         ...readBoosterStartSettings(DIST_BOOSTER_FIELD_IDS)
     };
 }

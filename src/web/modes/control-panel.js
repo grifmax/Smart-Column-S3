@@ -827,7 +827,7 @@ function buildControlModeSummary() {
         summary.text = 'Процесс пойдёт на заданной мощности и завершится по температуре окончания, без сложной фазовой логики колонны.';
         summary.metrics = [
             { label: 'Стоп-условие', value: `${settings.endTemp.toFixed(1)} °C` },
-            { label: 'Уставка', value: `${settings.powerPercent.toFixed(0)}% мощности` },
+            { label: 'Уставка', value: `${settings.powerW.toFixed(0)} Вт` },
             { label: 'Факт сейчас', value: `${factPower.toFixed(0)} Вт` }
         ];
         return summary;
@@ -1051,10 +1051,10 @@ function buildDistillationChecklist(items) {
 
     addChecklistItem(
         items,
-        settings.powerPercent > 0 ? 'good' : 'danger',
+        settings.powerW > 0 ? 'good' : 'danger',
         'Мощность нагрева',
-        settings.powerPercent > 0
-            ? `Установка ${settings.powerPercent.toFixed(0)}%, фактическая мощность сейчас около ${actualPower.toFixed(0)} Вт.`
+        settings.powerW > 0
+            ? `Установка ${settings.powerW.toFixed(0)} Вт, фактическая мощность сейчас около ${actualPower.toFixed(0)} Вт.`
             : 'Старт с нулевой мощностью не имеет смысла. Поднимите уставку нагрева.',
         'dist-start-power-percent'
     );

@@ -1,5 +1,6 @@
 ﻿import {
     runtimeMonitorState,
+    maxHeaterPower,
     resolveMode,
     MODE_IDLE,
     MODE_RECT,
@@ -107,13 +108,24 @@ function getPowerActualW(data) {
     return Number.isFinite(flat) ? flat : undefined;
 }
 
-function getPowerSetPercent(data) {
+function getHeaterMaxW() {
+    return Math.max(
+        1,
+        Number(runtimeMonitorState?.equipment?.heaterPowerW)
+        || Number(maxHeaterPower)
+        || 3000
+    );
+}
+
+function getPowerSetWatts(data) {
     const fromPowerObject = getNestedNumber(data?.power, 'setPercent');
-    if (fromPowerObject !== undefined) return fromPowerObject;
+    if (fromPowerObject !== undefined) return Math.round((fromPowerObject / 100) * getHeaterMaxW());
     const fromDistillation = getNestedNumber(data?.distillation, 'powerPercent');
-    if (fromDistillation !== undefined) return fromDistillation;
+    if (fromDistillation !== undefined) return Math.round((fromDistillation / 100) * getHeaterMaxW());
     const runtime = Number(runtimeMonitorState?.distillation?.powerPercent);
-    return Number.isFinite(runtime) ? runtime : undefined;
+    return Number.isFinite(runtime)
+        ? Math.round((runtime / 100) * getHeaterMaxW())
+        : undefined;
 }
 
 function getPositiveFiniteNumber(...candidates) {
@@ -1262,7 +1274,7 @@ export function updateInteractiveScheme(data) {
     }
 
     const powerActualW = getPowerActualW(data);
-    const powerSetPercent = getPowerSetPercent(data);
+    const powerSetWatts = getPowerSetWatts(data);
 
     // Анимация ТЭНа — полоска-бар, свечение пропорционально мощности
     if (powerActualW !== undefined) {
@@ -1322,10 +1334,10 @@ export function updateInteractiveScheme(data) {
             powerBar.setAttribute('width', pct * 160); // 160 - полная ширина бара в SVG
         }
 
-        // Прямоугольник мощности: установленная (%) и фактическая (Вт)
+        // Прямоугольник мощности: установленная и фактическая мощность
         const powerSetEl = svg.getElementById('txt-power-set');
-        if (powerSetEl && powerSetPercent !== undefined)
-            powerSetEl.textContent = powerSetPercent.toFixed(0) + '%';
+        if (powerSetEl && powerSetWatts !== undefined)
+            powerSetEl.textContent = `${powerSetWatts.toFixed(0)} Вт`;
         const powerActEl = svg.getElementById('txt-power-actual');
         if (powerActEl)
             powerActEl.textContent = `${powerActualW.toFixed(0)} Вт`;

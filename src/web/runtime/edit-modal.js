@@ -145,49 +145,54 @@ export function getRuntimeEditConfig(paramKey) {
     const heaterMax = Math.max(1, toFinite(s.equipment.heaterPowerW, maxHeaterPower));
     const measuredPower = Math.max(0, toFinite(s.power.power, 0));
     const currentPowerPercent = clampPercent((measuredPower / heaterMax) * 100);
+    const currentPowerWatts = Math.round((currentPowerPercent / 100) * heaterMax);
 
     const map = {
         'rect-power': {
             title: 'Мощность нагрева (ректификация)',
-            label: 'Мощность, %',
-            step: '1',
-            min: '0',
-            max: '100',
-            hint: 'Override мощности ТЭНа. Установите -1 для возврата к автоматическому управлению.',
-            value: currentPowerPercent.toFixed(0),
-            supportsUnitToggle: true,
-            heaterMaxW: heaterMax,
+            label: 'Мощность, Вт',
+            step: '50',
+            min: '-1',
+            max: String(heaterMax),
+            hint: 'Задайте мощность в ваттах. Установите -1 для возврата к автоматическому управлению.',
+            value: String(currentPowerWatts),
             allowInRect: true,
+            quickAdjustments: {
+                groups: [
+                    { unit: 'watts', label: 'Быстрые шаги, Вт', deltas: [-50, -250, 50, 250] }
+                ]
+            },
             submit: async (value) => {
+                const normalized = Number(value) < 0
+                    ? -1
+                    : Math.min(100, Math.max(0, Math.round((Number(value) / heaterMax) * 100)));
                 const resp = await fetch('/api/rect/heater', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ power: Number(value) })
+                    body: JSON.stringify({ power: normalized })
                 });
                 if (!resp.ok) throw new Error(await resp.text());
             }
         },
         'manual-power': {
             title: 'Мощность нагрева',
-            label: 'Мощность, %',
-            step: '1',
+            label: 'Мощность, Вт',
+            step: '50',
             min: '0',
-            max: '100',
+            max: String(heaterMax),
             hint: 'Применяется сразу в ручном режиме.',
-            value: currentPowerPercent.toFixed(0),
-            supportsUnitToggle: true,
-            heaterMaxW: heaterMax,
+            value: String(currentPowerWatts),
             quickAdjustments: {
                 groups: [
-                    { unit: 'watts', label: 'Быстрые шаги, Вт', deltas: [-10, -100, 10, 100] },
-                    { unit: 'percent', label: 'Быстрые шаги, %', deltas: [-1, -10, 1, 10] }
+                    { unit: 'watts', label: 'Быстрые шаги, Вт', deltas: [-50, -250, 50, 250] }
                 ]
             },
             submit: async (value) => {
+                const normalized = Math.min(100, Math.max(0, Math.round((Number(value) / heaterMax) * 100)));
                 const resp = await fetch('/api/manual/heater', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ power: Number(value) })
+                    body: JSON.stringify({ power: normalized })
                 });
                 if (!resp.ok) throw new Error(await resp.text());
             }
