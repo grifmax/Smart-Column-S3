@@ -57,7 +57,10 @@ namespace FSM {
     namespace Distillation {
         void update(SystemState& state, const Settings& settings);
         void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC);
+        void setPowerWatts(uint16_t powerWatts);
         void setPowerPercent(uint8_t powerPercent);
+        void getParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl,
+                       float& endTempC, uint16_t& powerWatts);
     }
     
     namespace Mashing {
@@ -94,6 +97,8 @@ namespace FSM {
     uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settings);
 
     void getRectTargetsMl(float& headsMl, float& bodyMl, float& tailsMl);
+    void getDistillationParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl,
+                               float& endTempC, uint16_t& powerWatts);
     void getDistillationParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl,
                                float& endTempC, uint8_t& powerPercent);
 }

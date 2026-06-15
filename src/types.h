@@ -472,6 +472,7 @@ struct DistillationUiSettings {
   float headsVolumeMl = 0.0f;
   float targetVolumeMl = 3000.0f;
   float endTempC = 96.0f;
+  float powerW = 3000.0f;
   float powerPercent = 100.0f;
   float tailsVolumeMl = 0.0f;
 };

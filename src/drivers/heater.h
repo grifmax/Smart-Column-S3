@@ -16,6 +16,11 @@ namespace Heater {
         bool triacMode = (HEATER_CONTROL_MODE == HEATER_MODE_TRIAC);
         bool active = false;
         uint8_t mainPowerPercent = 0;
+        uint8_t powerSetPercent = 0;
+        uint16_t targetPowerWatts = 0;
+        float actualPowerWatts = 0.0f;
+        float powerErrorWatts = 0.0f;
+        bool closedLoopActive = false;
         bool boosterEnabled = false;
         bool zeroCrossSeen = false;
         uint32_t zeroCrossCount = 0;
@@ -33,12 +38,24 @@ namespace Heater {
      * @param percent Мощность 0-100%
      */
     void setPower(uint8_t percent);
+
+    /**
+     * Установка мощности в ваттах.
+     * Для TRIAC-канала это целевая уставка, которую контроллер старается держать
+     * по реальной телеметрии PZEM.
+     */
+    void setPowerWatts(uint16_t watts);
     
     /**
      * Получение текущей мощности
      * @return Мощность 0-100%
      */
     uint8_t getPower();
+
+    /**
+     * Получение текущей целевой уставки в ваттах.
+     */
+    uint16_t getTargetPowerWatts();
 
     void setBoosterEnabled(bool enabled);
     bool isBoosterEnabled();

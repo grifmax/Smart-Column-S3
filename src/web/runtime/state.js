@@ -366,6 +366,10 @@ export function updateRuntimeStateFromStatus(data) {
 
     if (data.power && typeof data.power === 'object') {
         if (data.power.power !== undefined) s.power.power = toFinite(data.power.power, s.power.power);
+        if (data.power.setPercent !== undefined) s.power.setPercent = toFinite(data.power.setPercent, s.power.setPercent);
+        if (data.power.setW !== undefined) s.power.setW = toFinite(data.power.setW, s.power.setW);
+        if (data.power.errorW !== undefined) s.power.errorW = toFinite(data.power.errorW, s.power.errorW);
+        if (data.power.closedLoopActive !== undefined) s.power.closedLoopActive = Boolean(data.power.closedLoopActive);
     }
     if (data.hydrometer && typeof data.hydrometer === 'object') {
         if (data.hydrometer.abv !== undefined) s.hydrometer.abv = toFinite(data.hydrometer.abv, s.hydrometer.abv);
@@ -439,7 +443,15 @@ export function updateRuntimeStateFromWs(data) {
     mergeV2State(s, data);
     mergePressureState(s, data);
 
-    if (data.power !== undefined) s.power.power = toFinite(data.power, s.power.power);
+    if (data.power && typeof data.power === 'object') {
+        if (data.power.power !== undefined) s.power.power = toFinite(data.power.power, s.power.power);
+        if (data.power.setPercent !== undefined) s.power.setPercent = toFinite(data.power.setPercent, s.power.setPercent);
+        if (data.power.setW !== undefined) s.power.setW = toFinite(data.power.setW, s.power.setW);
+        if (data.power.errorW !== undefined) s.power.errorW = toFinite(data.power.errorW, s.power.errorW);
+        if (data.power.closedLoopActive !== undefined) s.power.closedLoopActive = Boolean(data.power.closedLoopActive);
+    } else if (data.power !== undefined) {
+        s.power.power = toFinite(data.power, s.power.power);
+    }
     if (data.abv !== undefined) s.hydrometer.abv = toFinite(data.abv, s.hydrometer.abv);
     if (data.abv_valid !== undefined) s.hydrometer.valid = Boolean(data.abv_valid);
     if (data.pump_speed !== undefined) s.pump.speedMlH = toFinite(data.pump_speed, s.pump.speedMlH);

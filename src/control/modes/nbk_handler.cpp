@@ -41,7 +41,7 @@ void update(SystemState& state, const Settings& settings) {
             
         case NbkPhase::STABILIZATION:
             applyBoosterHeater(state, settings, false);
-            Heater::setPower(settings.equipment.heaterPowerW > 0 ? (getProcessHeaterPower(state, settings, 70)) : 70); 
+            applyProcessHeaterPower(state, settings, 70);
             if (!liveLimits.phaseAdvanceBlocked && elapsed > 5 * 60 * 1000UL) {
                 LOG_I("NBK: STABILIZATION -> WORKING");
                 ControlV2::notePhaseTransition(Mode::NBK,

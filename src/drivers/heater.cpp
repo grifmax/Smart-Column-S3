@@ -12,11 +12,14 @@
 #include "esp32-hal-timer.h"
 #endif
 
+#include <math.h>
+
 // =============================================================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
 // =============================================================================
 
 static volatile uint8_t currentPower = 0;    // Текущая мощность 0-100%
+static uint16_t targetPowerWatts = 0;
 static uint8_t targetPower = 0;     // Целевая мощность (для ramp)
 static uint8_t rampStartPower = 0;  // BUG-2 fix: начальная мощность для линейной интерполяции
 static uint32_t rampStartTime = 0;
@@ -35,9 +38,20 @@ static volatile uint16_t triac_delay_us = TRIAC_MAX_ALPHA_US; // Задержк�
 static volatile uint32_t zero_cross_count = 0;
 static volatile uint32_t triac_fire_count = 0;
 static volatile uint32_t last_zero_cross_us = 0;
+static int32_t triac_feedback_trim_us = 0;
+static uint32_t last_feedback_update_ms = 0;
+static float last_feedback_error_w = 0.0f;
+static bool closed_loop_active = false;
 #endif
 
 namespace {
+
+constexpr float TRIAC_FEEDBACK_TOLERANCE_PCT = 0.05f;
+constexpr float TRIAC_FEEDBACK_TOLERANCE_W = 35.0f;
+constexpr float TRIAC_FEEDBACK_SAMPLE_MAX_AGE_MS = 2500.0f;
+constexpr float TRIAC_FEEDBACK_KP_US_PER_W = 0.9f;
+constexpr int32_t TRIAC_FEEDBACK_MAX_STEP_US = 220;
+constexpr int32_t TRIAC_FEEDBACK_TRIM_LIMIT_US = 2800;
 
 void writeBooster(bool enabled) {
     digitalWrite(PIN_SSR_HEATER, enabled ? HIGH : LOW);
@@ -49,6 +63,95 @@ inline void IRAM_ATTR fireTriacPulse() {
     gpio_set_level((gpio_num_t)PIN_TRIAC, 1);
     esp_rom_delay_us(TRIAC_PULSE_WIDTH_US);
     gpio_set_level((gpio_num_t)PIN_TRIAC, 0);
+}
+
+uint8_t wattsToPercent(uint16_t watts) {
+    const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+        ? g_settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+    if (heaterMaxW == 0) return 0;
+    const uint32_t scaled =
+        (static_cast<uint32_t>(watts) * 100U + heaterMaxW / 2U) / heaterMaxW;
+    return static_cast<uint8_t>(scaled > 100U ? 100U : scaled);
+}
+
+uint16_t percentToWatts(uint8_t percent) {
+    const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+        ? g_settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+    return static_cast<uint16_t>((static_cast<uint32_t>(heaterMaxW) * percent) / 100U);
+}
+
+uint16_t clampTargetWatts(uint16_t watts) {
+    const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+        ? g_settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+    return watts > heaterMaxW ? heaterMaxW : watts;
+}
+
+void syncPercentFromTargetWatts() {
+    currentPower = wattsToPercent(targetPowerWatts);
+}
+
+uint16_t calculateTriacDelayForWatts(uint16_t watts, float currentVoltage) {
+    if (watts == 0) return TRIAC_MAX_ALPHA_US;
+    const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+        ? g_settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+    if (watts >= heaterMaxW) return TRIAC_MIN_ALPHA_US;
+
+    const float resistance = (230.0f * 230.0f) / heaterMaxW;
+    const float voltage = currentVoltage > 10.0f ? currentVoltage : 230.0f;
+    const float maxPossiblePowerW = (voltage * voltage) / resistance;
+    if (watts >= maxPossiblePowerW) {
+        return TRIAC_MIN_ALPHA_US;
+    }
+
+    float powerRatio = static_cast<float>(watts) / maxPossiblePowerW;
+    if (powerRatio < 0.0f) powerRatio = 0.0f;
+    if (powerRatio > 1.0f) powerRatio = 1.0f;
+
+    const float delayUs = 10000.0f * acosf(2.0f * powerRatio - 1.0f) / PI;
+    if (delayUs > TRIAC_MAX_ALPHA_US) return TRIAC_MAX_ALPHA_US;
+    if (delayUs < TRIAC_MIN_ALPHA_US) return TRIAC_MIN_ALPHA_US;
+    return static_cast<uint16_t>(delayUs);
+}
+
+void applyTriacTarget() {
+    if (targetPowerWatts == 0) {
+        triac_delay_us = TRIAC_MAX_ALPHA_US;
+        triac_feedback_trim_us = 0;
+        closed_loop_active = false;
+        last_feedback_error_w = 0.0f;
+        return;
+    }
+
+    const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+        ? g_settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+    if (targetPowerWatts >= heaterMaxW) {
+        triac_delay_us = TRIAC_MIN_ALPHA_US;
+        triac_feedback_trim_us = 0;
+        closed_loop_active = false;
+        last_feedback_error_w = 0.0f;
+        return;
+    }
+
+    const float voltage = g_state.power.voltage > 10.0f ? g_state.power.voltage : 230.0f;
+    const uint16_t baseDelayUs = calculateTriacDelayForWatts(targetPowerWatts, voltage);
+    const int32_t correctedDelayUs = static_cast<int32_t>(baseDelayUs) + triac_feedback_trim_us;
+    triac_delay_us = static_cast<uint16_t>(
+        correctedDelayUs < TRIAC_MIN_ALPHA_US ? TRIAC_MIN_ALPHA_US :
+        correctedDelayUs > TRIAC_MAX_ALPHA_US ? TRIAC_MAX_ALPHA_US :
+        correctedDelayUs
+    );
+}
+
+void resetFeedbackState() {
+    triac_feedback_trim_us = 0;
+    last_feedback_update_ms = 0;
+    last_feedback_error_w = 0.0f;
+    closed_loop_active = false;
 }
 #endif
 
@@ -159,39 +262,53 @@ void init() {
 #endif
 
     currentPower = 0;
+    targetPowerWatts = 0;
     targetPower = 0;
     ramping = false;
+#if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+    resetFeedbackState();
+#endif
     LOG_I("Heater: Init complete");
 }
 
 void setPower(uint8_t percent) {
     // Ограничить диапазон
     if (percent > 100) percent = 100;
+    setPowerWatts(percentToWatts(percent));
+}
 
-    currentPower = percent;
+void setPowerWatts(uint16_t watts) {
+    targetPowerWatts = clampTargetWatts(watts);
+    syncPercentFromTargetWatts();
     ramping = false;
     if (isDemoHardwareSuppressed()) {
         return;
     }
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
-    // Для TRIAC: переводим проценты мощности (по умолчанию линейно) в угол
-    // В будущем эта функция может быть переопределена или игнорироваться модулем watt_control
-    // Линейная аппроксимация (только если не используется стабилизация напряжения):
-    if (percent == 0) {
-        triac_delay_us = TRIAC_MAX_ALPHA_US;
-    } else if (percent == 100) {
-        triac_delay_us = TRIAC_MIN_ALPHA_US;
-    } else {
-        // Обычная линейная интерполяция задержки от 10000 до 0
-        triac_delay_us = map(percent, 0, 100, TRIAC_MAX_ALPHA_US, TRIAC_MIN_ALPHA_US);
+    const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+        ? g_settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+    if (targetPowerWatts == 0 || targetPowerWatts >= heaterMaxW) {
+        resetFeedbackState();
     }
-    LOG_D("Heater: Power set to %d%% (delay=%d us)", percent, triac_delay_us);
+    applyTriacTarget();
+    LOG_D("Heater: Target set to %u W (%u%%, delay=%u us)",
+          static_cast<unsigned>(targetPowerWatts),
+          static_cast<unsigned>(currentPower),
+          static_cast<unsigned>(triac_delay_us));
 #else
-    // Преобразовать проценты в ШИМ (0-255)
-    uint8_t duty = map(percent, 0, 100, 0, 255);
+    const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+        ? g_settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+    const uint8_t duty = heaterMaxW > 0
+        ? static_cast<uint8_t>((static_cast<uint32_t>(targetPowerWatts) * 255U) / heaterMaxW)
+        : 0;
     ledcWrite(LEDC_CHANNEL_HEATER, duty);
-    LOG_D("Heater: Power set to %d%% (duty=%d)", percent, duty);
+    LOG_D("Heater: Target set to %u W (%u%%, duty=%u)",
+          static_cast<unsigned>(targetPowerWatts),
+          static_cast<unsigned>(currentPower),
+          static_cast<unsigned>(duty));
 #endif
 }
 
@@ -205,6 +322,10 @@ void setTriacDelay(uint16_t delayUs) {
 
 uint8_t getPower() {
     return currentPower;
+}
+
+uint16_t getTargetPowerWatts() {
+    return targetPowerWatts;
 }
 
 void setBoosterEnabled(bool enabled) {
@@ -222,9 +343,14 @@ bool isBoosterEnabled() {
 Diagnostics getDiagnostics() {
     Diagnostics diag;
     diag.mainPowerPercent = currentPower;
+    diag.powerSetPercent = currentPower;
+    diag.targetPowerWatts = targetPowerWatts;
+    diag.actualPowerWatts = g_state.power.power;
+    diag.powerErrorWatts = targetPowerWatts > 0 ? (static_cast<float>(targetPowerWatts) - g_state.power.power) : 0.0f;
     diag.boosterEnabled = boosterEnabled;
-    diag.active = currentPower > 0 || boosterEnabled;
+    diag.active = targetPowerWatts > 0 || boosterEnabled;
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+    diag.closedLoopActive = closed_loop_active;
     diag.zeroCrossCount = zero_cross_count;
     diag.zeroCrossSeen = zero_cross_count > 0;
     diag.triacFireCount = triac_fire_count;
@@ -237,6 +363,7 @@ void emergencyStop() {
     LOG_I("Heater: EMERGENCY STOP!");
     if (isDemoHardwareSuppressed()) {
         currentPower = 0;
+        targetPowerWatts = 0;
         targetPower = 0;
         ramping = false;
         boosterEnabled = false;
@@ -244,6 +371,7 @@ void emergencyStop() {
     }
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     triac_delay_us = TRIAC_MAX_ALPHA_US;
+    resetFeedbackState();
     if (triac_timer != nullptr) {
         timerAlarmDisable(triac_timer);
     }
@@ -255,6 +383,7 @@ void emergencyStop() {
     writeBooster(false);
     boosterEnabled = false;
     currentPower = 0;
+    targetPowerWatts = 0;
     targetPower = 0;
     ramping = false;
 }
@@ -279,11 +408,10 @@ void rampTo(uint8_t targetPercent, uint32_t rampTimeMs) {
 
 bool checkHealth(float actualPower) {
     // Если задана мощность > 10%, проверяем реальную
-    if (currentPower > 10) {
-        // Вычислить ожидаемую мощность (например, от ТЭНа 3 кВт)
-        float expectedPower = (currentPower / 100.0f) * DEFAULT_HEATER_POWER_W;
-
+    if (targetPowerWatts > 100) {
         // Допуск ±20%
+        float expectedPower = static_cast<float>(targetPowerWatts);
+
         float tolerance = expectedPower * 0.2f;
 
         if (actualPower < (expectedPower - tolerance)) {
@@ -297,32 +425,82 @@ bool checkHealth(float actualPower) {
 }
 
 void update() {
-    if (!ramping) return;
+    if (ramping) {
+        uint32_t elapsed = millis() - rampStartTime;
 
-    uint32_t elapsed = millis() - rampStartTime;
-
-    if (elapsed >= rampDuration) {
-        // Разгон завершён
-        setPower(targetPower);
-        ramping = false;
-    } else {
-        // Линейная интерполяция от rampStartPower до targetPower
-        // BUG-2 fix: используем rampStartPower вместо currentPower
-        float progress = (float)elapsed / (float)rampDuration;
-        uint8_t newPower = rampStartPower + (uint8_t)(progress * (float)(targetPower - rampStartPower));
-        // Напрямую обновляем, не вызывая setPower, чтобы не сбросить ramping=false
-        currentPower = newPower;
-        if (isDemoHardwareSuppressed()) {
-            return;
-        }
+        if (elapsed >= rampDuration) {
+            // Разгон завершён
+            setPower(targetPower);
+            ramping = false;
+        } else {
+            // Линейная интерполяция от rampStartPower до targetPower
+            // BUG-2 fix: используем rampStartPower вместо currentPower
+            float progress = (float)elapsed / (float)rampDuration;
+            uint8_t newPower = rampStartPower + (uint8_t)(progress * (float)(targetPower - rampStartPower));
+            // Напрямую обновляем, не вызывая setPower, чтобы не сбросить ramping=false
+            currentPower = newPower;
+            targetPowerWatts = percentToWatts(newPower);
+            if (isDemoHardwareSuppressed()) {
+                return;
+            }
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
-        triac_delay_us = map(newPower, 0, 100, TRIAC_MAX_ALPHA_US, TRIAC_MIN_ALPHA_US);
+            applyTriacTarget();
 #else
-        uint8_t duty = map(newPower, 0, 100, 0, 255);
-        ledcWrite(LEDC_CHANNEL_HEATER, duty);
+            uint8_t duty = map(newPower, 0, 100, 0, 255);
+            ledcWrite(LEDC_CHANNEL_HEATER, duty);
 #endif
+        }
     }
+
+#if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
+    if (targetPowerWatts == 0 || currentPower == 0 || currentPower >= 100) {
+        closed_loop_active = false;
+        return;
+    }
+
+    const bool pzemFresh = g_state.health.pzemOk &&
+        g_state.power.lastUpdate > 0 &&
+        (millis() - g_state.power.lastUpdate) <= TRIAC_FEEDBACK_SAMPLE_MAX_AGE_MS;
+
+    if (!pzemFresh) {
+        closed_loop_active = false;
+        applyTriacTarget();
+        return;
+    }
+
+    if (g_state.power.lastUpdate == last_feedback_update_ms) {
+        return;
+    }
+    last_feedback_update_ms = g_state.power.lastUpdate;
+
+    const float actualPower = g_state.power.power;
+    const float errorW = static_cast<float>(targetPowerWatts) - actualPower;
+    last_feedback_error_w = errorW;
+
+    const float toleranceW = fmaxf(TRIAC_FEEDBACK_TOLERANCE_W,
+                                   static_cast<float>(targetPowerWatts) * TRIAC_FEEDBACK_TOLERANCE_PCT);
+    if (fabsf(errorW) <= toleranceW) {
+        closed_loop_active = true;
+        applyTriacTarget();
+        return;
+    }
+
+    int32_t stepUs = static_cast<int32_t>(roundf(-errorW * TRIAC_FEEDBACK_KP_US_PER_W));
+    if (stepUs > TRIAC_FEEDBACK_MAX_STEP_US) stepUs = TRIAC_FEEDBACK_MAX_STEP_US;
+    if (stepUs < -TRIAC_FEEDBACK_MAX_STEP_US) stepUs = -TRIAC_FEEDBACK_MAX_STEP_US;
+
+    triac_feedback_trim_us += stepUs;
+    if (triac_feedback_trim_us > TRIAC_FEEDBACK_TRIM_LIMIT_US) {
+        triac_feedback_trim_us = TRIAC_FEEDBACK_TRIM_LIMIT_US;
+    }
+    if (triac_feedback_trim_us < -TRIAC_FEEDBACK_TRIM_LIMIT_US) {
+        triac_feedback_trim_us = -TRIAC_FEEDBACK_TRIM_LIMIT_US;
+    }
+
+    closed_loop_active = true;
+    applyTriacTarget();
+#endif
 }
 
 } // namespace Heater

@@ -25,6 +25,7 @@ static float workThreshold = 0.0f;      // Рабочий порог
 static float warnThreshold = 0.0f;      // Предупредительный порог
 static float critThreshold = 0.0f;      // Критический порог
 static int8_t overridePower = -1;       // Override мощности (-1 = выкл)
+static int16_t overridePowerWatts = -1; // Override мощности в ваттах (-1 = выкл)
 static uint32_t lastFloodTime = 0;      // Время последнего захлёба
 static uint32_t floodPauseUntil = 0;    // Пауза после захлёба
 static uint8_t floodCount = 0;          // Счётчик захлёбов
@@ -63,6 +64,19 @@ void setFloodPressure(float pressure) {
 
 uint8_t update(const SystemState& state, const Settings& settings) {
     const uint32_t now = millis();
+
+    if (overridePowerWatts >= 0) {
+        const uint16_t heaterMaxW = settings.equipment.heaterPowerW > 0
+            ? settings.equipment.heaterPowerW
+            : DEFAULT_HEATER_POWER_W;
+        if (heaterMaxW == 0) {
+            return 0;
+        }
+        const uint32_t scaled =
+            (static_cast<uint32_t>(overridePowerWatts) * 100U + heaterMaxW / 2U) /
+            heaterMaxW;
+        return static_cast<uint8_t>(scaled > 100U ? 100U : scaled);
+    }
 
     if (overridePower >= 0) {
         return overridePower;
@@ -142,17 +156,45 @@ uint16_t calculateTriacDelay(uint8_t targetPowerPercent, float currentVoltage) {
 
 void setOverride(int8_t percent) {
     if (percent >= 0 && percent <= 100) {
+        overridePowerWatts = -1;
         overridePower = percent;
         LOG_I("WattControl: Override set to %d%%", percent);
         return;
     }
 
     overridePower = -1;
+    overridePowerWatts = -1;
+    LOG_I("WattControl: Override disabled");
+}
+
+void setOverrideWatts(int16_t watts) {
+    if (watts >= 0) {
+        const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+            ? g_settings.equipment.heaterPowerW
+            : DEFAULT_HEATER_POWER_W;
+        overridePower = -1;
+        overridePowerWatts = watts > static_cast<int16_t>(heaterMaxW)
+            ? static_cast<int16_t>(heaterMaxW)
+            : watts;
+        LOG_I("WattControl: Override set to %d W", overridePowerWatts);
+        return;
+    }
+
+    overridePower = -1;
+    overridePowerWatts = -1;
     LOG_I("WattControl: Override disabled");
 }
 
 bool isOverrideActive() {
-    return overridePower >= 0;
+    return overridePower >= 0 || overridePowerWatts >= 0;
+}
+
+bool hasOverrideWatts() {
+    return overridePowerWatts >= 0;
+}
+
+int16_t getOverrideWatts() {
+    return overridePowerWatts;
 }
 
 void handleFlood() {

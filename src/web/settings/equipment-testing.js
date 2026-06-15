@@ -3004,8 +3004,8 @@ function renderHeaterStatus(heater, power, testingAllowed, demoMode) {
         heater?.active ? (demoMode ? 'Симуляция' : 'Вкл') : 'Выкл',
         heater?.active ? (demoMode ? 'warning' : 'danger') : 'muted'
     );
-    setText('equipment-test-heater-power', formatNumber(heaterPercentToWatts(heater?.powerPercent, heater), 0, ' Вт'));
-    setText('equipment-test-heater-setpoint', formatNumber(heaterPercentToWatts(heater?.powerSetPercent, heater), 0, ' Вт'));
+    setText('equipment-test-heater-power', formatNumber(heater?.actualPowerW ?? heaterPercentToWatts(heater?.powerPercent, heater), 0, ' Вт'));
+    setText('equipment-test-heater-setpoint', formatNumber(heater?.powerSetW ?? heaterPercentToWatts(heater?.powerSetPercent, heater), 0, ' Вт'));
     setText('equipment-test-heater-submerge', formatNumber(heater?.minSubmergeLiters, 1, ' л'));
     setText('equipment-test-heater-main-power', formatNumber(heater?.mainPowerW, 0, ' Вт'));
     setText(
@@ -3364,6 +3364,7 @@ async function confirmHeaterStart() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             action: 'start',
+            powerW: state.heaterPendingPowerW,
             powerPercent: heaterWattsToPercent(state.heaterPendingPowerW, state.lastStatus?.heater),
             confirmed: true
         })

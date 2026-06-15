@@ -519,8 +519,28 @@ uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settin
 }
 
 void getDistillationParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl,
-                           float& endTempC, uint8_t& powerPercent) {
-    // Реализация в distillation_handler.cpp
+                           float& endTempC, uint16_t& powerWatts) {
+    Distillation::getParams(speedMlH, headsVolumeMl, targetVolumeMl, endTempC,
+                            powerWatts);
+}
+
+void getDistillationParams(float& speedMlH, float& headsVolumeMl,
+                           float& targetVolumeMl, float& endTempC,
+                           uint8_t& powerPercent) {
+    uint16_t powerWatts = 0;
+    Distillation::getParams(speedMlH, headsVolumeMl, targetVolumeMl, endTempC,
+                            powerWatts);
+    const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+                                    ? g_settings.equipment.heaterPowerW
+                                    : DEFAULT_HEATER_POWER_W;
+    if (heaterMaxW == 0) {
+        powerPercent = 0;
+        return;
+    }
+    const uint32_t scaled =
+        (static_cast<uint32_t>(powerWatts) * 100U + heaterMaxW / 2U) /
+        heaterMaxW;
+    powerPercent = static_cast<uint8_t>(scaled > 100U ? 100U : scaled);
 }
 
 } // namespace FSM

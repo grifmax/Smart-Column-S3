@@ -55,6 +55,25 @@ uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings
     return requestedPower;
 }
 
+uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent) {
+    if (WattControl::hasOverrideWatts()) {
+        const int16_t overrideWatts = WattControl::getOverrideWatts();
+        const uint16_t targetWatts = overrideWatts > 0 ? static_cast<uint16_t>(overrideWatts) : 0;
+        Heater::setPowerWatts(targetWatts);
+        return targetWatts;
+    }
+
+    const uint8_t requestedPercent = getProcessHeaterPower(state, settings, fallbackPercent);
+    const uint16_t heaterMaxW = settings.equipment.heaterPowerW > 0
+        ? settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+    const uint16_t targetWatts = static_cast<uint16_t>(
+        (static_cast<uint32_t>(heaterMaxW) * requestedPercent) / 100U
+    );
+    Heater::setPowerWatts(targetWatts);
+    return targetWatts;
+}
+
 bool shouldRunBoosterHeater(const SystemState& state, const Settings& settings, bool heatingPhase) {
     if (!heatingPhase || !settings.equipment.boosterHeaterEnabled) {
         return false;

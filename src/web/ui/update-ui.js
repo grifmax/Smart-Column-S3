@@ -162,13 +162,15 @@ export function updateUI(data) {
 
     }
 
-    if (data.distillation && data.distillation.powerPercent !== undefined) {
+    if (data.distillation && (data.distillation.powerW !== undefined || data.distillation.powerPercent !== undefined)) {
         const distPowerSet = document.getElementById('dist-start-power-percent');
         if (distPowerSet && document.activeElement !== distPowerSet) {
-            const distPowerPercent = Math.max(0, Math.min(100, Number(data.distillation.powerPercent) || 0));
-            const distPowerWatts = Math.round((distPowerPercent / 100) * Math.max(1, Number(maxHeaterPower) || 3000));
+            const heaterMax = Math.max(1, Number(maxHeaterPower) || 3000);
+            const distPowerWatts = data.distillation.powerW !== undefined
+                ? Math.max(0, Math.min(heaterMax, Number(data.distillation.powerW) || 0))
+                : Math.round((Math.max(0, Math.min(100, Number(data.distillation.powerPercent) || 0)) / 100) * heaterMax);
             distPowerSet.value = String(distPowerWatts);
-            distPowerSet.max = String(Math.max(1, Number(maxHeaterPower) || 3000));
+            distPowerSet.max = String(heaterMax);
             distPowerSet.step = '50';
         }
     }

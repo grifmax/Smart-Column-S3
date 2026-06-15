@@ -677,7 +677,10 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   JsonObject heater = doc["heater"].to<JsonObject>();
   heater["active"] = heaterActive;
   heater["powerPercent"] = heaterDiag.mainPowerPercent;
-  heater["powerSetPercent"] = heaterDiag.mainPowerPercent;
+  heater["powerSetPercent"] = heaterDiag.powerSetPercent;
+  heater["powerSetW"] = heaterDiag.targetPowerWatts;
+  heater["actualPowerW"] = heaterDiag.actualPowerWatts;
+  heater["powerErrorW"] = heaterDiag.powerErrorWatts;
   heater["mainPowerW"] = g_settings.equipment.heaterPowerW;
   heater["boosterConfigured"] = g_settings.equipment.boosterHeaterEnabled;
   heater["boosterPowerW"] = g_settings.equipment.boosterHeaterPowerW;
@@ -685,6 +688,7 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
       g_settings.equipment.boosterHeaterStopCubeTempC;
   heater["backend"] = heaterDiag.triacMode ? "triac" : "ssr";
   heater["boosterEnabled"] = heaterDiag.boosterEnabled;
+  heater["closedLoopActive"] = heaterDiag.closedLoopActive;
   heater["zeroCrossSeen"] = heaterDiag.zeroCrossSeen;
   heater["zeroCrossCount"] = heaterDiag.zeroCrossCount;
   heater["triacFireCount"] = heaterDiag.triacFireCount;
@@ -2175,12 +2179,19 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
     const float endTemp =
         !params["endTemp"].isNull() ? clampFloatRange(params["endTemp"].as<float>(), 70.0f, 110.0f)
                                      : g_settings.distillationUi.endTempC;
-    const float powerPercent =
-        !params["powerPercent"].isNull()
-            ? clampFloatRange(params["powerPercent"].as<float>(), 0.0f, 100.0f)
-            : g_settings.distillationUi.powerPercent;
+    const float heaterMaxW =
+        g_settings.equipment.heaterPowerW > 0 ? g_settings.equipment.heaterPowerW
+                                              : DEFAULT_HEATER_POWER_W;
+    const float powerWatts =
+        !params["powerW"].isNull()
+            ? clampFloatRange(params["powerW"].as<float>(), 0.0f, heaterMaxW)
+            : (!params["powerPercent"].isNull()
+                   ? heaterMaxW *
+                         clampFloatRange(params["powerPercent"].as<float>(), 0.0f, 100.0f) /
+                         100.0f
+                   : g_settings.distillationUi.powerW);
 
-    if (powerPercent <= 0.0f) {
+    if (powerWatts <= 0.0f) {
       addItem("dist-profile", "danger", "Параметры дистилляции",
               "Нулевая мощность нагрева не имеет смысла для старта дистилляции.", true);
     } else if (endTemp < 88.0f || endTemp > 100.0f) {
@@ -2655,9 +2666,12 @@ void init() {
     power["voltage"] = g_state.power.voltage;
     power["current"] = g_state.power.current;
     power["power"] = g_state.power.power;
-    power["setPercent"] = heaterDiag.mainPowerPercent;
+    power["setPercent"] = heaterDiag.powerSetPercent;
+    power["setW"] = heaterDiag.targetPowerWatts;
+    power["errorW"] = heaterDiag.powerErrorWatts;
     power["backend"] = heaterDiag.triacMode ? "triac" : "ssr";
     power["boosterEnabled"] = heaterDiag.boosterEnabled;
+    power["closedLoopActive"] = heaterDiag.closedLoopActive;
     power["zeroCrossSeen"] = heaterDiag.zeroCrossSeen;
     power["zeroCrossCount"] = heaterDiag.zeroCrossCount;
     power["triacFireCount"] = heaterDiag.triacFireCount;
@@ -2757,14 +2771,20 @@ void init() {
     float distHeadsVolumeMl = 0.0f;
     float distTargetVolumeMl = 0.0f;
     float distEndTempC = 0.0f;
-    uint8_t distPowerPercent = 0;
+    uint16_t distPowerWatts = 0;
     FSM::getDistillationParams(distSpeedMlH, distHeadsVolumeMl, distTargetVolumeMl, distEndTempC,
-                               distPowerPercent);
+                               distPowerWatts);
     distillation["speedMlH"] = distSpeedMlH;
     distillation["headsVolumeMl"] = distHeadsVolumeMl;
     distillation["targetVolumeMl"] = distTargetVolumeMl;
     distillation["endTempC"] = distEndTempC;
-    distillation["powerPercent"] = distPowerPercent;
+    distillation["powerW"] = distPowerWatts;
+    if (g_settings.equipment.heaterPowerW > 0) {
+      distillation["powerPercent"] =
+          static_cast<uint8_t>((static_cast<uint32_t>(distPowerWatts) * 100U +
+                                g_settings.equipment.heaterPowerW / 2U) /
+                               g_settings.equipment.heaterPowerW);
+    }
 
     JsonObject nbk = doc["nbk"].to<JsonObject>();
     nbk["powerW"] = g_settings.nbk.powerW;
@@ -3454,10 +3474,21 @@ void init() {
           float headsVol = params["headsVolume"] | 0.0f;
           float targetVol = params["targetVolume"] | 0.0f;
           float endTemp = params["endTemp"] | 96.0f;
-          uint8_t powerPercent = params["powerPercent"] | 60;
-          if (powerPercent > 100) powerPercent = 100;
+          const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+                                          ? g_settings.equipment.heaterPowerW
+                                          : DEFAULT_HEATER_POWER_W;
+          uint16_t powerWatts = 0;
+          if (!params["powerW"].isNull()) {
+            powerWatts =
+                clampU16Range(params["powerW"].as<uint32_t>(), 0, heaterMaxW);
+          } else {
+            uint8_t powerPercent = params["powerPercent"] | 60;
+            if (powerPercent > 100) powerPercent = 100;
+            powerWatts = static_cast<uint16_t>(
+                (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
+          }
           FSM::Distillation::setParams(speed, headsVol, targetVol, endTemp);
-          FSM::Distillation::setPowerPercent(powerPercent);
+          FSM::Distillation::setPowerWatts(powerWatts);
           FSM::startMode(g_state, g_settings, mode);
         } else if (mode == Mode::MASHING) {
           // params.profile: { name, steps:[{temperature,duration,name?}, ...] }
@@ -4732,13 +4763,33 @@ void init() {
           return;
         }
 
-        int power = doc["power"] | 0;
-        if (power < 0) power = 0;
-        if (power > 100) power = 100;
-        Heater::setPower((uint8_t)power);
+        const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+                                        ? g_settings.equipment.heaterPowerW
+                                        : DEFAULT_HEATER_POWER_W;
+        uint16_t powerWatts = 0;
+        if (!doc["powerW"].isNull()) {
+          powerWatts =
+              clampU16Range(doc["powerW"].as<uint32_t>(), 0, heaterMaxW);
+        } else {
+          int powerPercent = doc["power"] | 0;
+          if (powerPercent < 0) powerPercent = 0;
+          if (powerPercent > 100) powerPercent = 100;
+          powerWatts = static_cast<uint16_t>(
+              (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
+        }
+        Heater::setPowerWatts(powerWatts);
 
-        char resp[96];
-        snprintf(resp, sizeof(resp), "{\"success\":true,\"power\":%d}", power);
+        const uint8_t powerPercent = heaterMaxW > 0
+                                         ? static_cast<uint8_t>(
+                                               (static_cast<uint32_t>(powerWatts) *
+                                                    100U +
+                                                heaterMaxW / 2U) /
+                                               heaterMaxW)
+                                         : 0;
+        char resp[160];
+        snprintf(resp, sizeof(resp),
+                 "{\"success\":true,\"powerW\":%u,\"powerPercent\":%u}",
+                 powerWatts, powerPercent);
         request->send(200, "application/json", resp);
       });
 
@@ -4757,13 +4808,29 @@ void init() {
           return;
         }
 
-        int power = doc["power"] | -2;
-        if (power < -1) power = -1;
-        if (power > 100) power = 100;
-        WattControl::setOverride((int8_t)power);
+        const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+                                        ? g_settings.equipment.heaterPowerW
+                                        : DEFAULT_HEATER_POWER_W;
+        int powerWatts = -2;
+        if (!doc["powerW"].isNull()) {
+          powerWatts = doc["powerW"].as<int>();
+        } else {
+          int powerPercent = doc["power"] | -2;
+          if (powerPercent >= 0) {
+            if (powerPercent > 100) powerPercent = 100;
+            powerWatts = static_cast<int>(
+                (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
+          } else {
+            powerWatts = -1;
+          }
+        }
+        if (powerWatts < -1) powerWatts = -1;
+        if (powerWatts > heaterMaxW) powerWatts = heaterMaxW;
+        WattControl::setOverrideWatts(static_cast<int16_t>(powerWatts));
 
-        char resp[96];
-        snprintf(resp, sizeof(resp), "{\"success\":true,\"power\":%d}", power);
+        char resp[128];
+        snprintf(resp, sizeof(resp), "{\"success\":true,\"powerW\":%d}",
+                 powerWatts);
         request->send(200, "application/json", resp);
       });
 
@@ -6077,10 +6144,22 @@ void init() {
             return;
           }
 
-            int power = doc["powerPercent"] | 0;
-            if (power < 1) power = 1;
-            if (power > 100) power = 100;
-            Heater::setPower((uint8_t)power);
+            const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
+                                            ? g_settings.equipment.heaterPowerW
+                                            : DEFAULT_HEATER_POWER_W;
+            uint16_t powerWatts = 0;
+            if (!doc["powerW"].isNull()) {
+              powerWatts = clampU16Range(doc["powerW"].as<uint32_t>(), 1,
+                                         heaterMaxW);
+            } else {
+              int powerPercent = doc["powerPercent"] | 0;
+              if (powerPercent < 1) powerPercent = 1;
+              if (powerPercent > 100) powerPercent = 100;
+              powerWatts = static_cast<uint16_t>(
+                  (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
+            }
+            Heater::setPowerWatts(powerWatts);
+            const unsigned power = powerWatts;
             char detail[128];
             snprintf(detail, sizeof(detail),
                      "ТЭН включен вручную на %d%% мощности после подтверждения.", power);
@@ -7544,14 +7623,20 @@ void broadcastState(const SystemState &state) {
   float distHeadsVolumeMl = 0.0f;
   float distTargetVolumeMl = 0.0f;
   float distEndTempC = 0.0f;
-  uint8_t distPowerPercent = 0;
+  uint16_t distPowerWatts = 0;
   FSM::getDistillationParams(distSpeedMlH, distHeadsVolumeMl, distTargetVolumeMl, distEndTempC,
-                             distPowerPercent);
+                             distPowerWatts);
   distillation["speedMlH"] = distSpeedMlH;
   distillation["headsVolumeMl"] = distHeadsVolumeMl;
   distillation["targetVolumeMl"] = distTargetVolumeMl;
   distillation["endTempC"] = distEndTempC;
-  distillation["powerPercent"] = distPowerPercent;
+  distillation["powerW"] = distPowerWatts;
+  if (g_settings.equipment.heaterPowerW > 0) {
+    distillation["powerPercent"] =
+        static_cast<uint8_t>((static_cast<uint32_t>(distPowerWatts) * 100U +
+                              g_settings.equipment.heaterPowerW / 2U) /
+                             g_settings.equipment.heaterPowerW);
+  }
 
   JsonObject display = doc["display"].to<JsonObject>();
   display["frames"] = displayStats.framesRendered;

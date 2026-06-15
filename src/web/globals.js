@@ -258,7 +258,13 @@ export let runtimeMonitorState = {
         source: 'ADS1115 A1',
         lastUpdate: 0
     },
-    power: { power: 0 },
+    power: {
+        power: 0,
+        setPercent: 0,
+        setW: 0,
+        errorW: 0,
+        closedLoopActive: false
+    },
     hydrometer: { abv: 0, valid: false },
     pump: { speedMlH: 0, totalMl: 0 },
     stirrer: {
@@ -319,6 +325,7 @@ export let runtimeMonitorState = {
         headsVolumeMl: 0,
         targetVolumeMl: 0,
         endTempC: 0,
+        powerW: 0,
         powerPercent: 0
     },
     nbk: {

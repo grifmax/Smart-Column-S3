@@ -108,11 +108,20 @@ export async function resumeProcess() {
 
 
 
-export function updateHeater(value) {
+export async function updateHeater(value) {
 
     document.getElementById('heater-value').textContent = value;
 
-    sendCommand('heater', 'power', parseInt(value));
+    try {
+        const response = await fetch('/api/manual/heater', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ powerW: parseInt(value, 10) || 0 })
+        });
+        if (!response.ok) throw new Error(await response.text());
+    } catch (e) {
+        addLog('✗ Ошибка установки мощности: ' + e.message, 'error');
+    }
 
 }
 

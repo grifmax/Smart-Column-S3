@@ -15,12 +15,18 @@ struct ParamsRuntime {
     float headsVolumeMl = 0.0f;
     float targetVolumeMl = 0.0f;
     float endTempC = 96.0f;
-    uint8_t powerPercent = 100;
+    uint16_t powerWatts = DEFAULT_HEATER_POWER_W;
 };
 
 static ParamsRuntime g_params;
 
 namespace {
+
+uint16_t getHeaterMaxWatts() {
+    return g_settings.equipment.heaterPowerW > 0
+        ? g_settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+}
 
 ControlV2::ReasonCodeV2 getBodyExitReason(bool endByTemp, bool endByVolume) {
     if (endByTemp) {
@@ -50,21 +56,30 @@ void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float 
     if (targetVolumeMl >= 0) g_params.targetVolumeMl = targetVolumeMl;
     if (endTempC > 0) g_params.endTempC = endTempC;
 
-    LOG_I("Distillation params: speed=%.0f ml/h, heads=%.0f ml, target=%.0f ml, endTemp=%.1fC, power=%u%%",
-          g_params.speedMlH, g_params.headsVolumeMl, g_params.targetVolumeMl, g_params.endTempC, g_params.powerPercent);
+    LOG_I("Distillation params: speed=%.0f ml/h, heads=%.0f ml, target=%.0f ml, endTemp=%.1fC, power=%uW",
+          g_params.speedMlH, g_params.headsVolumeMl, g_params.targetVolumeMl, g_params.endTempC, g_params.powerWatts);
+}
+
+void setPowerWatts(uint16_t powerWatts) {
+    const uint16_t heaterMaxW = getHeaterMaxWatts();
+    if (powerWatts > heaterMaxW) powerWatts = heaterMaxW;
+    g_params.powerWatts = powerWatts;
 }
 
 void setPowerPercent(uint8_t powerPercent) {
     if (powerPercent > 100) powerPercent = 100;
-    g_params.powerPercent = powerPercent;
+    const uint16_t heaterMaxW = getHeaterMaxWatts();
+    const uint16_t powerWatts = static_cast<uint16_t>(
+        (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
+    setPowerWatts(powerWatts);
 }
 
-void getParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl, float& endTempC, uint8_t& powerPercent) {
+void getParams(float& speedMlH, float& headsVolumeMl, float& targetVolumeMl, float& endTempC, uint16_t& powerWatts) {
     speedMlH = g_params.speedMlH;
     headsVolumeMl = g_params.headsVolumeMl;
     targetVolumeMl = g_params.targetVolumeMl;
     endTempC = g_params.endTempC;
-    powerPercent = g_params.powerPercent;
+    powerWatts = g_params.powerWatts;
 }
 
 void update(SystemState& state, const Settings& settings) {
@@ -78,7 +93,7 @@ void update(SystemState& state, const Settings& settings) {
     switch (state.rectPhase) {
         case RectPhase::HEATING:
             applyBoosterHeater(state, settings, true);
-            Heater::setPower(g_params.powerPercent);
+            Heater::setPowerWatts(g_params.powerWatts);
             if (state.temps.valid[TEMP_CUBE] && state.temps.cube >= 78.0f) {
                 setPhaseStartTime(now);
                 setPhaseStartVolumeMl(state.pump.totalVolumeMl);
@@ -105,7 +120,7 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::HEADS: {
             applyBoosterHeater(state, settings, false);
-            Heater::setPower(g_params.powerPercent);
+            Heater::setPowerWatts(g_params.powerWatts);
             Pump::start(g_params.speedMlH);
             Valves::setHeads(true);
             const float collected = state.pump.totalVolumeMl - getPhaseStartVolumeMl();
@@ -127,7 +142,7 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::BODY: {
             applyBoosterHeater(state, settings, false);
-            Heater::setPower(g_params.powerPercent);
+            Heater::setPowerWatts(g_params.powerWatts);
             Valves::setHeads(false);
             Pump::start(g_params.speedMlH);
             const float collectedBody = state.pump.totalVolumeMl - getPhaseStartVolumeMl();

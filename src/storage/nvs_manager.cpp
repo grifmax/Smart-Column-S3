@@ -404,6 +404,11 @@ bool loadSettings(Settings& settings) {
     settings.distillationUi.targetVolumeMl = prefs.getFloat(NVS_KEY_DIST_TARGET_VOL, 3000.0f);
     settings.distillationUi.endTempC = prefs.getFloat(NVS_KEY_DIST_END_TEMP, 96.0f);
     settings.distillationUi.powerPercent = prefs.getFloat(NVS_KEY_DIST_POWER_PCT, 100.0f);
+    settings.distillationUi.powerW = prefs.getFloat(
+        NVS_KEY_DIST_POWER_W,
+        (settings.equipment.heaterPowerW > 0 ? settings.equipment.heaterPowerW : DEFAULT_HEATER_POWER_W) *
+            (settings.distillationUi.powerPercent / 100.0f)
+    );
     settings.distillationUi.tailsVolumeMl = prefs.getFloat(NVS_KEY_DIST_TAILS_VOL, 0.0f);
 
     // Web security
@@ -547,6 +552,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_DIST_HEADS_VOL, settings.distillationUi.headsVolumeMl);
     prefs.putFloat(NVS_KEY_DIST_TARGET_VOL, settings.distillationUi.targetVolumeMl);
     prefs.putFloat(NVS_KEY_DIST_END_TEMP, settings.distillationUi.endTempC);
+    prefs.putFloat(NVS_KEY_DIST_POWER_W, settings.distillationUi.powerW);
     prefs.putFloat(NVS_KEY_DIST_POWER_PCT, settings.distillationUi.powerPercent);
     prefs.putFloat(NVS_KEY_DIST_TAILS_VOL, settings.distillationUi.tailsVolumeMl);
 

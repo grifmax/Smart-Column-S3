@@ -144,8 +144,10 @@ export function getRuntimeEditConfig(paramKey) {
     const s = runtimeMonitorState;
     const heaterMax = Math.max(1, toFinite(s.equipment.heaterPowerW, maxHeaterPower));
     const measuredPower = Math.max(0, toFinite(s.power.power, 0));
-    const currentPowerPercent = clampPercent((measuredPower / heaterMax) * 100);
-    const currentPowerWatts = Math.round((currentPowerPercent / 100) * heaterMax);
+    const currentPowerWatts = Math.max(
+        0,
+        Math.round(toFinite(s.power.setW, toFinite(s.distillation.powerW, measuredPower)))
+    );
 
     const map = {
         'rect-power': {
@@ -165,11 +167,11 @@ export function getRuntimeEditConfig(paramKey) {
             submit: async (value) => {
                 const normalized = Number(value) < 0
                     ? -1
-                    : Math.min(100, Math.max(0, Math.round((Number(value) / heaterMax) * 100)));
+                    : Math.min(heaterMax, Math.max(0, Math.round(Number(value))));
                 const resp = await fetch('/api/rect/heater', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ power: normalized })
+                    body: JSON.stringify({ powerW: normalized })
                 });
                 if (!resp.ok) throw new Error(await resp.text());
             }
@@ -188,11 +190,11 @@ export function getRuntimeEditConfig(paramKey) {
                 ]
             },
             submit: async (value) => {
-                const normalized = Math.min(100, Math.max(0, Math.round((Number(value) / heaterMax) * 100)));
+                const normalized = Math.min(heaterMax, Math.max(0, Math.round(Number(value))));
                 const resp = await fetch('/api/manual/heater', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ power: normalized })
+                    body: JSON.stringify({ powerW: normalized })
                 });
                 if (!resp.ok) throw new Error(await resp.text());
             }

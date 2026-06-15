@@ -91,7 +91,7 @@ void update(SystemState& state, const Settings& settings) {
             Valves::setHeads(false);
             Pump::stop();
             Valves::setWater(true);
-            Heater::setPower(getProcessHeaterPower(state, settings, 70));
+            applyProcessHeaterPower(state, settings, 70);
             if (!liveLimits.phaseAdvanceBlocked &&
                 elapsed > settings.rectParams.stabilizationMin * 60 * 1000UL) {
                 LOG_I("FSM: STABILIZATION -> HEADS");
@@ -108,7 +108,7 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::HEADS: {
             applyBoosterHeater(state, settings, false);
-            Heater::setPower(getProcessHeaterPower(state, settings, 60));
+            applyProcessHeaterPower(state, settings, 60);
             float headsSpeed = settings.rectParams.headsSpeedMlHKw * (settings.equipment.heaterPowerW / 1000.0f);
             Pump::start(headsSpeed);
             Valves::setHeads(true);
@@ -135,7 +135,7 @@ void update(SystemState& state, const Settings& settings) {
             Pump::stop();
             Valves::setHeads(false);
             Valves::setWater(true);
-            Heater::setPower(getProcessHeaterPower(state, settings, 65));
+            applyProcessHeaterPower(state, settings, 65);
             if (!liveLimits.phaseAdvanceBlocked && elapsed > 5 * 60 * 1000UL) {
                 LOG_I("FSM: POST_HEADS_STABILIZATION -> PURGE");
                 ControlV2::notePhaseTransition(Mode::RECTIFICATION,
@@ -152,7 +152,7 @@ void update(SystemState& state, const Settings& settings) {
             Pump::stop();
             Valves::closeAll();
             Valves::setWater(true);
-            Heater::setPower(getProcessHeaterPower(state, settings, 65));
+            applyProcessHeaterPower(state, settings, 65);
             if (!liveLimits.phaseAdvanceBlocked &&
                 elapsed > settings.rectParams.purgeMin * 60 * 1000UL) {
                 LOG_I("FSM: PURGE -> BODY");
@@ -173,7 +173,7 @@ void update(SystemState& state, const Settings& settings) {
             applyBoosterHeater(state, settings, false);
             Valves::setHeads(false);
             Valves::setWater(true);
-            Heater::setPower(getProcessHeaterPower(state, settings, 60));
+            applyProcessHeaterPower(state, settings, 60);
             if (!bodyInitialized && state.temps.valid[TEMP_COLUMN_TOP]) {
                 SmartDecrement::init(state.temps.columnTop);
                 bodyInitialized = true;
@@ -207,7 +207,7 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::TAILS:
             applyBoosterHeater(state, settings, false);
-            Heater::setPower(getProcessHeaterPower(state, settings, 50));
+            applyProcessHeaterPower(state, settings, 50);
             {
                 float tailsSpeed = (settings.rectParams.bodySpeedMlHKw * (settings.equipment.heaterPowerW / 1000.0f)) * 0.6f;
                 Pump::start(tailsSpeed);

@@ -118,13 +118,19 @@ function getHeaterMaxW() {
 }
 
 function getPowerSetWatts(data) {
+    const fromPowerWatts = getNestedNumber(data?.power, 'setW');
+    if (fromPowerWatts !== undefined) return Math.round(fromPowerWatts);
     const fromPowerObject = getNestedNumber(data?.power, 'setPercent');
     if (fromPowerObject !== undefined) return Math.round((fromPowerObject / 100) * getHeaterMaxW());
+    const fromDistillationWatts = getNestedNumber(data?.distillation, 'powerW');
+    if (fromDistillationWatts !== undefined) return Math.round(fromDistillationWatts);
     const fromDistillation = getNestedNumber(data?.distillation, 'powerPercent');
     if (fromDistillation !== undefined) return Math.round((fromDistillation / 100) * getHeaterMaxW());
-    const runtime = Number(runtimeMonitorState?.distillation?.powerPercent);
+    const runtimeSetW = Number(runtimeMonitorState?.power?.setW);
+    if (Number.isFinite(runtimeSetW)) return Math.round(runtimeSetW);
+    const runtime = Number(runtimeMonitorState?.distillation?.powerW);
     return Number.isFinite(runtime)
-        ? Math.round((runtime / 100) * getHeaterMaxW())
+        ? Math.round(runtime)
         : undefined;
 }
 

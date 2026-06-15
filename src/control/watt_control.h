@@ -62,12 +62,15 @@ namespace WattControl {
      * @param percent Мощность 0-100%, или -1 для отключения override
      */
     void setOverride(int8_t percent);
+    void setOverrideWatts(int16_t watts);
     
     /**
      * Проверка режима override
      * @return true если override активен
      */
     bool isOverrideActive();
+    bool hasOverrideWatts();
+    int16_t getOverrideWatts();
     
     /**
      * Обработка захлёба
