@@ -140,6 +140,18 @@ RequiredSensorsMask buildRequiredSensorsMask(Mode mode, const Settings& settings
     return required;
 }
 
+bool isPressureSensorBlockingForMode(Mode mode) {
+    return mode != Mode::RECTIFICATION && mode != Mode::MANUAL_RECT;
+}
+
+RequiredSensorsMask buildBlockingSensorFailureMask(Mode mode, const Settings& settings) {
+    RequiredSensorsMask required = buildRequiredSensorsMask(mode, settings);
+    if (!isPressureSensorBlockingForMode(mode)) {
+        required.pressure = false;
+    }
+    return required;
+}
+
 bool buildModeTopologySupport(Mode mode, const EquipmentSettings& equipment,
                               char* reason, size_t reasonSize) {
     bool supported = true;
@@ -395,6 +407,8 @@ void check(SystemState& state, const Settings& settings) {
     const float waterOutRiseRateCMin = clampSafety(settings.safety.waterOutRiseRateCMin, 0.5f, 60.0f);
     const float pressureRiseRateMmHgMin = clampSafety(settings.safety.pressureRiseRateMmHgMin, 1.0f, 200.0f);
     const RequiredSensorsMask required = buildRequiredSensorsMask(state.mode, settings);
+    const RequiredSensorsMask blockingSensorFailure =
+        buildBlockingSensorFailureMask(state.mode, settings);
     state.pressure.critThreshold = pressureMaxMmHg;
 
     static bool sensorAlarmLogged = false;
@@ -424,7 +438,7 @@ void check(SystemState& state, const Settings& settings) {
     }
 
     // Если ошибки нет - сбрасываем флаг логирования
-    if (areRequiredSensorsAvailable(state, buildRequiredSensorsMask(state.mode, settings))) {
+    if (areRequiredSensorsAvailable(state, blockingSensorFailure)) {
         sensorAlarmLogged = false;
     }
 
@@ -525,9 +539,9 @@ void check(SystemState& state, const Settings& settings) {
     // 6. Проверка обязательных датчиков по режиму
     if (!settings.demoMode) {
         char missingSensors[64] = "";
-        appendMissingRequiredSensors(state, required, missingSensors, sizeof(missingSensors));
+        appendMissingRequiredSensors(state, blockingSensorFailure, missingSensors, sizeof(missingSensors));
 
-        if (!areRequiredSensorsAvailable(state, required)) {
+        if (!areRequiredSensorsAvailable(state, blockingSensorFailure)) {
             alarmType = AlarmType::SENSOR_FAILURE;
             alarmLevel = AlarmLevel::CRITICAL;
             snprintf(alarmMessage, sizeof(alarmMessage), "CRITICAL sensor failure: %s",
