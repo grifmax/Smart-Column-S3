@@ -1,5 +1,6 @@
 ﻿import { currentProfileId, setCurrentProfileId } from './state.js';
 import { loadProfilesList } from './list.js';
+import { getProfileCompatibility, getProfileCompatibilityBadge } from './compat.js';
 import { loadStatus } from '../core/status.js';
 import { activateTabById } from '../core/tabs.js';
 import { selectControlMode } from '../modes/control-panel.js';
@@ -708,6 +709,15 @@ function buildProfileLoadWarning(profile) {
 
 }
 
+function buildProfileTopologyWarning(profile) {
+    const compatibility = getProfileCompatibilityBadge(profile);
+    if (compatibility.tone !== 'warn') {
+        return '';
+    }
+
+    return `Совместимость: ${compatibility.detail || 'Для этого профиля не хватает обязательных датчиков текущей комплектации.'}`;
+}
+
 async function fetchProfileLoadWarning(profileId) {
 
     try {
@@ -759,6 +769,8 @@ export function showProfileViewModal(profile) {
     const advisorItems = Array.isArray(learning.lastAdvisorSnapshot?.items)
         ? learning.lastAdvisorSnapshot.items.slice(0, 3)
         : [];
+    const compatibility = getProfileCompatibility(profile);
+    const compatibilityBadge = getProfileCompatibilityBadge(profile);
     const mashingSteps = normalizeMashSteps(profile?.parameters?.mashing?.steps, []);
     let processSection = '';
 
@@ -827,7 +839,18 @@ export function showProfileViewModal(profile) {
 
                 <div><strong>Встроенный:</strong> ${profile.metadata.isBuiltin ? 'Да' : 'Нет'}</div>
 
+                <div><strong>Совместимость:</strong> ${compatibilityBadge.label}</div>
+
             </div>
+
+            ${compatibility.known && !compatibility.supported ? `
+                <div style="margin-top: 12px; padding: 12px; border-radius: 10px; border: 1px solid rgba(216,119,6,0.35); background: rgba(245,158,11,0.12); color: var(--text-primary);">
+                    <strong>Профиль не подходит для текущей комплектации.</strong>
+                    <div style="margin-top: 6px; color: var(--text-secondary);">
+                        ${compatibility.reason || 'Для этого профиля не хватает обязательных датчиков.'}
+                    </div>
+                </div>
+            ` : ''}
 
         </div>
 
@@ -1068,9 +1091,17 @@ export async function quickLoadProfile(id) {
 
         const profile = await profileResponse.json();
         const isMashingProfile = profile?.metadata?.category === 'mashing';
-        const warning = isMashingProfile ? '' : await fetchProfileLoadWarning(id);
+        const compatibility = getProfileCompatibility(profile);
+        const warningParts = [];
+        const topologyWarning = buildProfileTopologyWarning(profile);
+        const baroWarning = isMashingProfile ? '' : buildProfileLoadWarning(profile);
+        if (topologyWarning) warningParts.push(topologyWarning);
+        if (baroWarning) warningParts.push(baroWarning);
+        const warning = warningParts.join('\n\n');
         const confirmText = isMashingProfile
-            ? 'Загрузить этот рецепт в панель затирки и сделать его активным профилем?'
+            ? (warning
+                ? `Загрузить этот рецепт в панель затирки и сделать его активным профилем?\n\n${warning}`
+                : 'Загрузить этот рецепт в панель затирки и сделать его активным профилем?')
             : (warning
                 ? `Загрузить этот профиль в текущие настройки?\n\n${warning}`
                 : 'Загрузить этот профиль в текущие настройки?');
@@ -1089,9 +1120,17 @@ export async function quickLoadProfile(id) {
             activateTabById('control');
             await selectControlMode('mashing');
             applyMashingProfileToControlPanel(profile);
-            alert('✅ Рецепт затирки загружен в панель управления.');
+            alert(
+                compatibility.known && !compatibility.supported
+                    ? `⚠️ Рецепт затирки загружен, но текущая комплектация ограничивает запуск.\n\n${compatibility.reason || 'Проверьте топологию термодатчиков.'}`
+                    : '✅ Рецепт затирки загружен в панель управления.'
+            );
         } else {
-            alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
+            alert(
+                compatibility.known && !compatibility.supported
+                    ? `⚠️ Профиль загружен, но его запуск на текущем железе будет заблокирован.\n\n${compatibility.reason || 'Проверьте топологию термодатчиков.'}`
+                    : '✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".'
+            );
         }
 
         void loadStatus();

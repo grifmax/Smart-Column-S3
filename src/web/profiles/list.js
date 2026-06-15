@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { currentProfileId, setCurrentProfileId } from './state.js';
+import { getProfileCompatibilityBadge } from './compat.js';
 
 export { currentProfileId, setCurrentProfileId };
 
@@ -103,6 +104,27 @@ export function renderProfileItem(profile) {
         : '';
     const description = String(profile.description || '').trim();
     const tags = Array.isArray(profile.tags) ? profile.tags.filter(Boolean) : [];
+    const compatibility = getProfileCompatibilityBadge(profile);
+    const compatibilityBadge = compatibility.detail
+        ? `
+            <div style="margin-top: 8px;">
+                <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.8em; border: 1px solid ${compatibility.tone === 'warn' ? 'rgba(216,119,6,0.35)' : 'var(--border-color)'}; background: ${compatibility.tone === 'warn' ? 'rgba(245,158,11,0.12)' : 'var(--bg-secondary)'}; color: var(--text-primary);">
+                    ${escapeHtml(compatibility.label)}
+                </span>
+                <div style="margin-top: 6px; color: var(--text-secondary); font-size: 0.85em; line-height: 1.45;">
+                    ${escapeHtml(compatibility.detail)}
+                </div>
+            </div>
+        `
+        : (compatibility.tone === 'good'
+            ? `
+                <div style="margin-top: 8px;">
+                    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.8em; border: 1px solid rgba(34,197,94,0.25); background: rgba(34,197,94,0.12); color: var(--text-primary);">
+                        ${escapeHtml(compatibility.label)}
+                    </span>
+                </div>
+            `
+            : '');
 
     return `
         <div class="profile-item" style="background: var(--bg-primary); padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--accent-color);">
@@ -119,6 +141,7 @@ export function renderProfileItem(profile) {
                             ${escapeHtml(description)}
                         </div>
                     ` : ''}
+                    ${compatibilityBadge}
                     ${tags.length ? `
                         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px;">
                             ${tags.slice(0, 4).map((tag) => `
