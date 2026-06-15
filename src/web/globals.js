@@ -23,15 +23,10 @@ export function setMiniChart(c) {
 }
 
 export let miniChartData = {
-
     timestamps: [],
-
     cube: [],
-
     columnTop: [],
-
     reflux: []
-
 };
 
 export const MINI_CHART_MAX_POINTS = 360; // 30 минут при обновлении каждые 5 секунд
@@ -259,6 +254,7 @@ export let runtimeMonitorState = {
         lastUpdate: 0
     },
     power: {
+        available: false,
         power: 0,
         setPercent: 0,
         setW: 0,
@@ -267,6 +263,7 @@ export let runtimeMonitorState = {
     },
     hydrometer: { abv: 0, valid: false },
     pump: { speedMlH: 0, totalMl: 0 },
+    temperatureChannels: {},
     stirrer: {
         running: false,
         speedPercent: 0,

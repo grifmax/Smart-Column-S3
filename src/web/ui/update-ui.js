@@ -14,10 +14,12 @@ import { updateKpiStrip } from './kpi-strip.js';
 import { updateSafetyModal } from '../runtime/safety-modal.js';
 import { updateProcessNotifications } from '../runtime/process-notifications.js';
 import { syncStirrerUi } from '../settings/equipment.js';
+import { syncMonitorGaugeVisibility } from './monitor-gauges.js';
 
 export function updateUI(data) {
     let phaseText = undefined;
     updateRuntimeStateFromWs(data);
+    syncMonitorGaugeVisibility();
     updateProcessNotifications();
 
     // Режим
@@ -93,6 +95,15 @@ export function updateUI(data) {
 
     }
 
+    if (data.tempValid && typeof data.tempValid === 'object') {
+        if (data.tempValid.columnBottom === false) document.getElementById('temp-column-bottom').textContent = '--°C';
+        if (data.tempValid.columnTop === false) document.getElementById('temp-column-top').textContent = '--°C';
+        if (data.tempValid.reflux === false) document.getElementById('temp-reflux').textContent = '--°C';
+        if (data.tempValid.tsa === false) document.getElementById('temp-tsa').textContent = '--°C';
+        if (data.tempValid.waterIn === false) document.getElementById('landing-water-in').textContent = '--.-°C';
+        if (data.tempValid.waterOut === false) document.getElementById('landing-water-out').textContent = '--.-°C';
+    }
+
 
 
     // Давление
@@ -160,6 +171,15 @@ export function updateUI(data) {
 
         document.getElementById('power-pf').textContent = data.pf.toFixed(2);
 
+    }
+
+    if (data.pzem_ok === false) {
+        document.getElementById('power-voltage').textContent = '-- V';
+        document.getElementById('power-current').textContent = '-- A';
+        document.getElementById('power-energy').textContent = '-- кВт·ч';
+        document.getElementById('power-frequency').textContent = '-- Гц';
+        document.getElementById('power-pf').textContent = '--';
+        document.getElementById('landing-voltage').textContent = '-- V';
     }
 
     if (data.distillation && (data.distillation.powerW !== undefined || data.distillation.powerPercent !== undefined)) {

@@ -441,6 +441,10 @@
     padding: 0 14px;
 }
 
+.operator-data-grid-single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 /* Keep the right-side monitor stack strictly vertical on desktop. */
 .operator-panel-stack {
     display: flex;
@@ -1121,6 +1125,31 @@
     line-height: 1.12;
     text-align: right;
     white-space: nowrap;
+}
+
+.operator-metrics-list {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.operator-metric-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 6px;
+    padding: 10px 12px;
+}
+
+.operator-metric-row span {
+    font-size: 0.76em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.operator-metric-row strong {
+    font-size: 1.26em;
+    line-height: 1.15;
+    text-align: left;
+    white-space: normal;
 }
 
 .operator-reason-insight {

@@ -519,7 +519,6 @@ void init() {
     attachInterrupt(digitalPinToInterrupt(PIN_FLOW_SENSOR), flowPulseISR, RISING);
 
     // Обнулить калибровку
-    memset(&tempCal, 0, sizeof(tempCal));
 
     LOG_I("Sensors: Init complete");
 }

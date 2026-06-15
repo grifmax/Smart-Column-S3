@@ -25,6 +25,7 @@
 #include "drivers/heater.h"
 #include "drivers/pump.h"
 #include "drivers/sensors.h"
+#include "live_chart_history.h"
 #include "drivers/stirrer.h"
 #include "drivers/valves.h"
 
@@ -269,6 +270,7 @@ void setup() {
   // 7. NVS и Настройки
   NVSManager::init();
   loadSettings();
+  LiveChartHistory::init();
 
   // Сохранить причину перезагрузки, если изменилась
   g_rebootTracker.totalReboots = g_settings.rebootCountTotal + 1;
@@ -568,6 +570,8 @@ void initHardware() {
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
   Wire.setClock(400000);
   Sensors::init();
+  Sensors::applyCalibration(g_settings.tempCal);
+  Sensors::refreshTemperatureInventory();
   Heater::init();
   Pump::init();
   Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);

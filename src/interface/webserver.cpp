@@ -9,6 +9,7 @@
 #include "../fs_compat.h"
 #include "../history.h"
 #include "../history_demo.h"
+#include "../live_chart_history.h"
 #include "../types.h"
 #include <AsyncTCP.h>
 #include <WiFi.h>
@@ -374,6 +375,27 @@ static const char *getTempSensorLabel(uint8_t index) {
   }
 }
 
+static const char *getTempSensorRoleKey(uint8_t index) {
+  switch (index) {
+  case TEMP_CUBE:
+    return "cube";
+  case TEMP_COLUMN_BOTTOM:
+    return "columnBottom";
+  case TEMP_COLUMN_TOP:
+    return "columnTop";
+  case TEMP_REFLUX:
+    return "reflux";
+  case TEMP_TSA:
+    return "tsa";
+  case TEMP_WATER_IN:
+    return "waterIn";
+  case TEMP_WATER_OUT:
+    return "waterOut";
+  default:
+    return "unknown";
+  }
+}
+
 static bool isZeroTempAddress(const uint8_t address[8]) {
   if (!address) return true;
   for (uint8_t i = 0; i < 8; ++i) {
@@ -413,6 +435,30 @@ static bool parseTempAddressString(const char *value, uint8_t address[8]) {
     address[i] = static_cast<uint8_t>(bytes[i] & 0xFF);
   }
   return true;
+}
+
+static void appendTempSensorMeta(JsonObject obj, uint8_t index) {
+  if (index >= TEMP_COUNT) {
+    return;
+  }
+
+  char assignedAddrStr[24];
+  formatTempAddress(g_settings.tempCal.addresses[index], assignedAddrStr,
+                    sizeof(assignedAddrStr));
+  uint8_t detectedAddress[8] = {0};
+  char detectedAddrStr[24];
+  if (Sensors::getDiscoveredTempAddress(index, detectedAddress)) {
+    formatTempAddress(detectedAddress, detectedAddrStr,
+                      sizeof(detectedAddrStr));
+  } else {
+    detectedAddrStr[0] = '\0';
+  }
+
+  obj["roleKey"] = getTempSensorRoleKey(index);
+  obj["assigned"] = assignedAddrStr[0] != '\0';
+  obj["detected"] = detectedAddrStr[0] != '\0';
+  obj["assignedAddress"] = assignedAddrStr;
+  obj["detectedAddress"] = detectedAddrStr;
 }
 
 static void syncStirrerState();
@@ -740,6 +786,7 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
     JsonObject temp = temps.add<JsonObject>();
     temp["index"] = i;
     temp["label"] = getTempSensorLabel(i);
+    appendTempSensorMeta(temp, i);
     temp["installed"] = Safety::isTempSensorInstalled(g_settings.equipment, i);
     temp["valid"] = g_state.temps.valid[i];
     switch (i) {
@@ -2666,6 +2713,7 @@ void init() {
     power["voltage"] = g_state.power.voltage;
     power["current"] = g_state.power.current;
     power["power"] = g_state.power.power;
+    power["available"] = g_state.health.pzemOk;
     power["setPercent"] = heaterDiag.powerSetPercent;
     power["setW"] = heaterDiag.targetPowerWatts;
     power["errorW"] = heaterDiag.powerErrorWatts;
@@ -2907,6 +2955,37 @@ void init() {
   });
 
   // GET /api/health - получить здоровье системы
+  server.on("/api/charts/live", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    doc["success"] = true;
+
+    JsonObject meta = doc["meta"].to<JsonObject>();
+    JsonObject temperatureMeta = meta["temperatures"].to<JsonObject>();
+    for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+      JsonObject channel =
+          temperatureMeta[getTempSensorRoleKey(i)].to<JsonObject>();
+      channel["label"] = getTempSensorLabel(i);
+      channel["installed"] = Safety::isTempSensorInstalled(g_settings.equipment, i);
+      appendTempSensorMeta(channel, i);
+    }
+
+    JsonObject powerMeta = meta["power"].to<JsonObject>();
+    powerMeta["available"] = g_state.health.pzemOk;
+
+    LiveChartHistory::fillJson(doc.as<JsonObject>());
+
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
+  server.on("/api/charts/live/reset", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              LiveChartHistory::clear();
+              request->send(200, "application/json",
+                            "{\"success\":true,\"message\":\"Live chart history cleared\"}");
+            });
+
   server.on("/api/health", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
 
@@ -7379,6 +7458,7 @@ void init() {
 }
 
 void broadcastState(const SystemState &state) {
+  LiveChartHistory::recordState(state, millis());
   ws.cleanupClients();
   if (ws.count() == 0)
     return;
@@ -7410,6 +7490,14 @@ void broadcastState(const SystemState &state) {
   fastDoc["t_tsa"] = state.temps.tsa;
   fastDoc["t_water_in"] = state.temps.waterIn;
   fastDoc["t_water_out"] = state.temps.waterOut;
+  JsonObject fastTempValid = fastDoc["tempValid"].to<JsonObject>();
+  fastTempValid["cube"] = state.temps.valid[TEMP_CUBE];
+  fastTempValid["columnBottom"] = state.temps.valid[TEMP_COLUMN_BOTTOM];
+  fastTempValid["columnTop"] = state.temps.valid[TEMP_COLUMN_TOP];
+  fastTempValid["reflux"] = state.temps.valid[TEMP_REFLUX];
+  fastTempValid["tsa"] = state.temps.valid[TEMP_TSA];
+  fastTempValid["waterIn"] = state.temps.valid[TEMP_WATER_IN];
+  fastTempValid["waterOut"] = state.temps.valid[TEMP_WATER_OUT];
 
   fastDoc["p_cube"] = state.pressure.cube;
   fastDoc["p_atm"] = state.pressure.atmosphere;
@@ -7420,6 +7508,7 @@ void broadcastState(const SystemState &state) {
   fastDoc["energy"] = state.power.energy;
   fastDoc["frequency"] = state.power.frequency;
   fastDoc["pf"] = state.power.powerFactor;
+  fastDoc["pzem_ok"] = state.health.pzemOk;
 
   fastDoc["pump_speed"] = state.pump.speedMlPerHour;
   fastDoc["pump_volume"] = state.pump.totalVolumeMl;
@@ -7523,6 +7612,14 @@ void broadcastState(const SystemState &state) {
   doc["t_tsa"] = state.temps.tsa;
   doc["t_water_in"] = state.temps.waterIn;
   doc["t_water_out"] = state.temps.waterOut;
+  JsonObject tempValid = doc["tempValid"].to<JsonObject>();
+  tempValid["cube"] = state.temps.valid[TEMP_CUBE];
+  tempValid["columnBottom"] = state.temps.valid[TEMP_COLUMN_BOTTOM];
+  tempValid["columnTop"] = state.temps.valid[TEMP_COLUMN_TOP];
+  tempValid["reflux"] = state.temps.valid[TEMP_REFLUX];
+  tempValid["tsa"] = state.temps.valid[TEMP_TSA];
+  tempValid["waterIn"] = state.temps.valid[TEMP_WATER_IN];
+  tempValid["waterOut"] = state.temps.valid[TEMP_WATER_OUT];
 
   doc["p_cube"] = state.pressure.cube;
   doc["p_atm"] = state.pressure.atmosphere;
@@ -7533,6 +7630,7 @@ void broadcastState(const SystemState &state) {
   doc["energy"] = state.power.energy;
   doc["frequency"] = state.power.frequency;
   doc["pf"] = state.power.powerFactor;
+  doc["pzem_ok"] = state.health.pzemOk;
 
   doc["pump_speed"] = state.pump.speedMlPerHour;
   doc["pump_volume"] = state.pump.totalVolumeMl;

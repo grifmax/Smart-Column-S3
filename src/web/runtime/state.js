@@ -11,6 +11,68 @@ function readFiniteCandidate(source, keys) {
     return undefined;
 }
 
+const TEMP_ROLE_KEYS = [
+    'cube',
+    'columnBottom',
+    'columnTop',
+    'reflux',
+    'tsa',
+    'waterIn',
+    'waterOut'
+];
+
+function ensureTemperatureChannels(target) {
+    if (!target.temperatureChannels || typeof target.temperatureChannels !== 'object') {
+        target.temperatureChannels = {};
+    }
+    TEMP_ROLE_KEYS.forEach((key) => {
+        const current = target.temperatureChannels[key];
+        if (!current || typeof current !== 'object') {
+            target.temperatureChannels[key] = {
+                installed: false,
+                assigned: false,
+                detected: false,
+                valid: false,
+                assignedAddress: '',
+                detectedAddress: ''
+            };
+        }
+    });
+    return target.temperatureChannels;
+}
+
+function mergeTemperatureChannelsFromStatus(target, temperatures) {
+    const channels = ensureTemperatureChannels(target);
+    if (!Array.isArray(temperatures)) return;
+
+    temperatures.forEach((item, index) => {
+        const key = String(item?.roleKey || TEMP_ROLE_KEYS[index] || '').trim();
+        if (!key) return;
+        const prev = channels[key] || {};
+        channels[key] = {
+            ...prev,
+            installed: Boolean(item?.installed),
+            assigned: Boolean(item?.assigned),
+            detected: Boolean(item?.detected),
+            valid: Boolean(item?.valid),
+            assignedAddress: String(item?.assignedAddress || ''),
+            detectedAddress: String(item?.detectedAddress || '')
+        };
+    });
+}
+
+function mergeTemperatureValidityFromWs(target, tempValid) {
+    if (!tempValid || typeof tempValid !== 'object') return;
+    const channels = ensureTemperatureChannels(target);
+    TEMP_ROLE_KEYS.forEach((key) => {
+        if (tempValid[key] === undefined) return;
+        channels[key] = {
+            ...channels[key],
+            valid: Boolean(tempValid[key])
+        };
+    });
+}
+
 function mergeEquipmentState(s, data) {
     const sources = [];
     if (data?.equipment && typeof data.equipment === 'object') sources.push(data.equipment);
@@ -365,6 +427,7 @@ export function updateRuntimeStateFromStatus(data) {
     mergePressureState(s, data);
 
     if (data.power && typeof data.power === 'object') {
+        if (data.power.available !== undefined) s.power.available = Boolean(data.power.available);
         if (data.power.power !== undefined) s.power.power = toFinite(data.power.power, s.power.power);
         if (data.power.setPercent !== undefined) s.power.setPercent = toFinite(data.power.setPercent, s.power.setPercent);
         if (data.power.setW !== undefined) s.power.setW = toFinite(data.power.setW, s.power.setW);
@@ -383,6 +446,7 @@ export function updateRuntimeStateFromStatus(data) {
         if (data.temps.cube !== undefined) s.temps.cube = toFinite(data.temps.cube, s.temps.cube);
         if (data.temps.columnBottom !== undefined) s.temps.columnBottom = toFinite(data.temps.columnBottom, s.temps.columnBottom);
     }
+    mergeTemperatureChannelsFromStatus(s, data.temperatures);
     if (data.valves && typeof data.valves === 'object') {
         s.valves = { ...s.valves, ...data.valves };
     }
@@ -444,6 +508,7 @@ export function updateRuntimeStateFromWs(data) {
     mergePressureState(s, data);
 
     if (data.power && typeof data.power === 'object') {
+        if (data.power.available !== undefined) s.power.available = Boolean(data.power.available);
         if (data.power.power !== undefined) s.power.power = toFinite(data.power.power, s.power.power);
         if (data.power.setPercent !== undefined) s.power.setPercent = toFinite(data.power.setPercent, s.power.setPercent);
         if (data.power.setW !== undefined) s.power.setW = toFinite(data.power.setW, s.power.setW);
@@ -452,12 +517,14 @@ export function updateRuntimeStateFromWs(data) {
     } else if (data.power !== undefined) {
         s.power.power = toFinite(data.power, s.power.power);
     }
+    if (data.pzem_ok !== undefined) s.power.available = Boolean(data.pzem_ok);
     if (data.abv !== undefined) s.hydrometer.abv = toFinite(data.abv, s.hydrometer.abv);
     if (data.abv_valid !== undefined) s.hydrometer.valid = Boolean(data.abv_valid);
     if (data.pump_speed !== undefined) s.pump.speedMlH = toFinite(data.pump_speed, s.pump.speedMlH);
     if (data.pump_volume !== undefined) s.pump.totalMl = toFinite(data.pump_volume, s.pump.totalMl);
     if (data.t_cube !== undefined) s.temps.cube = toFinite(data.t_cube, s.temps.cube);
     if (data.t_column_bottom !== undefined) s.temps.columnBottom = toFinite(data.t_column_bottom, s.temps.columnBottom);
+    mergeTemperatureValidityFromWs(s, data.tempValid);
     if (data.valves && typeof data.valves === 'object') {
         s.valves = { ...s.valves, ...data.valves };
     }

@@ -1,11 +1,76 @@
 ﻿import { miniChart, setMiniChart, miniChartData, MINI_CHART_MAX_POINTS } from '../globals.js';
 import { addLog } from '../core/logs.js';
+import { runtimeMonitorState } from '../globals.js';
 
 // ============================================================================
 
 // Mini Chart
 
 // ============================================================================
+
+function isTempChannelVisible(key) {
+    const channel = runtimeMonitorState.temperatureChannels?.[key];
+    return Boolean(channel?.assigned || channel?.detected);
+}
+
+function rebuildMiniChartSeries() {
+    if (!miniChart) return;
+    miniChart.updateSeries([
+        {
+            name: 'Куб',
+            data: miniChartData.timestamps.map((t, i) => ({ x: t, y: miniChartData.cube[i] }))
+        },
+        {
+            name: 'Царга верх',
+            data: miniChartData.timestamps.map((t, i) => ({ x: t, y: miniChartData.columnTop[i] }))
+        },
+        {
+            name: 'Дефлегматор',
+            data: miniChartData.timestamps.map((t, i) => ({ x: t, y: miniChartData.reflux[i] }))
+        }
+    ]);
+}
+
+async function loadMiniChartHistory() {
+    try {
+        const response = await fetch('/api/charts/live');
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
+
+        const deviceNowMs = Number(payload?.generatedAtMs || 0);
+        const minutePoints = Array.isArray(payload?.minute) ? payload.minute : [];
+        const tempMeta = payload?.meta?.temperatures && typeof payload.meta.temperatures === 'object'
+            ? payload.meta.temperatures
+            : {};
+        const isVisibleFromMeta = (key) => {
+            const channel = tempMeta?.[key];
+            return Boolean(channel?.assigned || channel?.detected || isTempChannelVisible(key));
+        };
+        const timestamps = [];
+        const cube = [];
+        const columnTop = [];
+        const reflux = [];
+
+        minutePoints.forEach((point) => {
+            const sampleMs = Number(point?.ms || 0);
+            const clientTs = deviceNowMs > 0
+                ? (Date.now() - Math.max(0, deviceNowMs - sampleMs))
+                : Date.now();
+            timestamps.push(clientTs);
+            cube.push(point.t_cube ?? null);
+            columnTop.push(isVisibleFromMeta('columnTop') ? (point.t_column_top ?? null) : null);
+            reflux.push(isVisibleFromMeta('reflux') ? (point.t_reflux ?? null) : null);
+        });
+
+        miniChartData.timestamps.splice(0, miniChartData.timestamps.length, ...timestamps.slice(-MINI_CHART_MAX_POINTS));
+        miniChartData.cube.splice(0, miniChartData.cube.length, ...cube.slice(-MINI_CHART_MAX_POINTS));
+        miniChartData.columnTop.splice(0, miniChartData.columnTop.length, ...columnTop.slice(-MINI_CHART_MAX_POINTS));
+        miniChartData.reflux.splice(0, miniChartData.reflux.length, ...reflux.slice(-MINI_CHART_MAX_POINTS));
+        rebuildMiniChartSeries();
+    } catch (error) {
+        addLog(`⚠ Не удалось загрузить историю мини-графика: ${error.message}`, 'warning');
+    }
+}
 
 
 
@@ -176,6 +241,7 @@ export function initMiniChart() {
 
     setMiniChart(new ApexCharts(miniChartContainer, options));
     miniChart.render();
+    void loadMiniChartHistory();
 
 }
 
@@ -197,11 +263,19 @@ export function updateMiniChart(data) {
 
         miniChartData.timestamps.push(now);
 
-        miniChartData.cube.push(data.t_cube);
+        miniChartData.cube.push(data.tempValid?.cube === false ? null : data.t_cube);
 
-        miniChartData.columnTop.push(data.t_column_top || null);
+        miniChartData.columnTop.push(
+            isTempChannelVisible('columnTop') && data.tempValid?.columnTop !== false
+                ? (data.t_column_top ?? null)
+                : null
+        );
 
-        miniChartData.reflux.push(data.t_reflux || null);
+        miniChartData.reflux.push(
+            isTempChannelVisible('reflux') && data.tempValid?.reflux !== false
+                ? (data.t_reflux ?? null)
+                : null
+        );
 
 
 
@@ -222,52 +296,7 @@ export function updateMiniChart(data) {
 
 
         // Обновить график
-
-        miniChart.updateSeries([
-
-            {
-
-                name: 'Куб',
-
-                data: miniChartData.timestamps.map((t, i) => ({
-
-                    x: t,
-
-                    y: miniChartData.cube[i]
-
-                }))
-
-            },
-
-            {
-
-                name: 'Царга верх',
-
-                data: miniChartData.timestamps.map((t, i) => ({
-
-                    x: t,
-
-                    y: miniChartData.columnTop[i]
-
-                }))
-
-            },
-
-            {
-
-                name: 'Дефлегматор',
-
-                data: miniChartData.timestamps.map((t, i) => ({
-
-                    x: t,
-
-                    y: miniChartData.reflux[i]
-
-                }))
-
-            }
-
-        ]);
+        rebuildMiniChartSeries();
 
     }
 

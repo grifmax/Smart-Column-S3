@@ -29,6 +29,7 @@ import { formatUptime } from './utils.js';
 import { addLog } from './logs.js';
 import { updateProcessNotifications } from '../runtime/process-notifications.js';
 import { syncStirrerUi } from '../settings/equipment.js';
+import { syncMonitorGaugeVisibility } from '../ui/monitor-gauges.js';
 
 // ============================================================================
 
@@ -112,6 +113,7 @@ export async function loadStatus() {
 export function updateUIFromStatus(data) {
     let phaseText = '-';
     updateRuntimeStateFromStatus(data);
+    syncMonitorGaugeVisibility();
     syncOperatorViewAuto();
     updateProcessNotifications();
 
@@ -204,6 +206,31 @@ export function updateUIFromStatus(data) {
 
     // Давление
 
+    if (runtimeMonitorState.temperatureChannels?.columnBottom?.valid === false) {
+        const el = document.getElementById('temp-column-bottom');
+        if (el) el.textContent = '--°C';
+    }
+    if (runtimeMonitorState.temperatureChannels?.columnTop?.valid === false) {
+        const el = document.getElementById('temp-column-top');
+        if (el) el.textContent = '--°C';
+    }
+    if (runtimeMonitorState.temperatureChannels?.reflux?.valid === false) {
+        const el = document.getElementById('temp-reflux');
+        if (el) el.textContent = '--°C';
+    }
+    if (runtimeMonitorState.temperatureChannels?.tsa?.valid === false) {
+        const el = document.getElementById('temp-tsa');
+        if (el) el.textContent = '--°C';
+    }
+    if (runtimeMonitorState.temperatureChannels?.waterIn?.valid === false) {
+        const el = document.getElementById('landing-water-in');
+        if (el) el.textContent = '--.-°C';
+    }
+    if (runtimeMonitorState.temperatureChannels?.waterOut?.valid === false) {
+        const el = document.getElementById('landing-water-out');
+        if (el) el.textContent = '--.-°C';
+    }
+
     if (data.pressure) {
 
         if (data.pressure.cube !== undefined) {
@@ -281,6 +308,21 @@ export function updateUIFromStatus(data) {
 
         }
 
+    }
+
+    if (data.power?.available === false) {
+        const voltageEl = document.getElementById('power-voltage');
+        const currentEl = document.getElementById('power-current');
+        const energyEl = document.getElementById('power-energy');
+        const frequencyEl = document.getElementById('power-frequency');
+        const pfEl = document.getElementById('power-pf');
+        const liveVoltageEl = document.getElementById('landing-voltage');
+        if (voltageEl) voltageEl.textContent = '-- V';
+        if (currentEl) currentEl.textContent = '-- A';
+        if (energyEl) energyEl.textContent = '-- кВт·ч';
+        if (frequencyEl) frequencyEl.textContent = '-- Гц';
+        if (pfEl) pfEl.textContent = '--';
+        if (liveVoltageEl) liveVoltageEl.textContent = '-- V';
     }
 
     if (data.distillation && (data.distillation.powerW !== undefined || data.distillation.powerPercent !== undefined)) {
