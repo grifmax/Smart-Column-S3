@@ -93,7 +93,7 @@ export async function loadSafetySettings() {
 
         updateRuntimeState(nextValues);
     } catch (error) {
-        addLog(`? Ошибка загрузки настроек безопасности: ${error.message}`, 'error');
+        addLog(`РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РЅР°СЃС‚СЂРѕРµРє Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё: ${error.message}`, 'error');
     }
 }
 
@@ -135,8 +135,8 @@ export async function saveSafetySettings() {
             ...payloadEquipment
         });
 
-        addLog('?? Настройки аварийной безопасности сохранены', 'success');
+        addLog('РќР°СЃС‚СЂРѕР№РєРё Р°РІР°СЂРёР№РЅРѕР№ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё СЃРѕС…СЂР°РЅРµРЅС‹', 'success');
     } catch (error) {
-        addLog(`? Ошибка сохранения безопасности: ${error.message}`, 'error');
+        addLog(`РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё: ${error.message}`, 'error');
     }
-}
+}

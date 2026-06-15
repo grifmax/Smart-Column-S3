@@ -466,7 +466,7 @@ static void fillEquipmentModulesJson(JsonObject modules) {
   ads1115["expected"] = true;
   ads1115["bus"] = "I2C";
   ads1115["address"] = "0x48";
-  ads1115["role"] = "A0 ????????, A1 ???????? ????, A2 ??????? ????, A3 ????????";
+  ads1115["role"] = "A0 ареометр, A1 давление куба, A2 уровень тела, A3 протечка";
 
   JsonObject mcp4725 = modules["mcp4725"].to<JsonObject>();
   mcp4725["label"] = "MCP4725";
@@ -513,7 +513,7 @@ static void fillSafetyChannelsJson(JsonObject channels) {
            : (leakVoltage <= g_settings.equipment.leakThresholdV));
 
   JsonObject bodyLevel = channels["bodyLevel"].to<JsonObject>();
-  bodyLevel["label"] = "??????? ????? ????";
+  bodyLevel["label"] = "Уровень банки тела";
   bodyLevel["status"] = !adsOnline
       ? "offline"
       : (!bodyLevelReadable
@@ -527,7 +527,7 @@ static void fillSafetyChannelsJson(JsonObject channels) {
   bodyLevel["liveReadable"] = bodyLevelReadable;
   bodyLevel["bus"] = "ADS1115";
   bodyLevel["address"] = "0x48 / A2";
-  bodyLevel["role"] = "?????? ??? ?????? ?????? ???????? ????? ????";
+  bodyLevel["role"] = "Канал для датчика уровня приёмной банки тела";
   bodyLevel["source"] = "ADS1115 A2";
   bodyLevel["channel"] = ADS_CHANNEL_LEVEL_BODY;
   bodyLevel["enabled"] = g_settings.equipment.bodyLevelSensorEnabled;
@@ -541,7 +541,7 @@ static void fillSafetyChannelsJson(JsonObject channels) {
   bodyLevel["voltage"] = bodyLevelReadable ? bodyLevelVoltage : 0.0f;
 
   JsonObject leak = channels["leak"].to<JsonObject>();
-  leak["label"] = "???????? / ??????";
+  leak["label"] = "Протечка / поддон";
   leak["status"] = !adsOnline
       ? "offline"
       : (!leakReadable
@@ -555,7 +555,7 @@ static void fillSafetyChannelsJson(JsonObject channels) {
   leak["liveReadable"] = leakReadable;
   leak["bus"] = "ADS1115";
   leak["address"] = "0x48 / A3";
-  leak["role"] = "?????? ??? ?????? ???????? ??? ???????? ? ???????";
+  leak["role"] = "Канал для датчика протечки под колонной или в поддоне";
   leak["source"] = "ADS1115 A3";
   leak["channel"] = ADS_CHANNEL_LEAK;
   leak["enabled"] = g_settings.equipment.leakSensorEnabled;
@@ -569,7 +569,7 @@ static void fillSafetyChannelsJson(JsonObject channels) {
   leak["voltage"] = leakReadable ? leakVoltage : 0.0f;
 
   JsonObject vaporPrimary = channels["vaporPrimary"].to<JsonObject>();
-  vaporPrimary["label"] = "??? / ???? #1";
+  vaporPrimary["label"] = "Газ / пар #1";
   vaporPrimary["status"] = "reserved";
   vaporPrimary["available"] = false;
   vaporPrimary["expected"] = false;
@@ -578,14 +578,14 @@ static void fillSafetyChannelsJson(JsonObject channels) {
   vaporPrimary["bus"] = "ESP32 ADC";
   vaporPrimary["address"] = "GPIO1";
   vaporPrimary["role"] =
-      "?????? ??? ??????? ??????; ???? ?????? ?????????? ????????";
+      "Резерв под датчик газа или паров; пока канал только подготовлен";
   vaporPrimary["source"] = "GPIO1";
   vaporPrimary["pin"] = PIN_VAPOR_SENSOR_ADC_1;
   vaporPrimary["enabled"] = false;
   vaporPrimary["triggered"] = false;
 
   JsonObject vaporSecondary = channels["vaporSecondary"].to<JsonObject>();
-  vaporSecondary["label"] = "??? / ???? #2";
+  vaporSecondary["label"] = "Газ / пар #2";
   vaporSecondary["status"] = "reserved";
   vaporSecondary["available"] = false;
   vaporSecondary["expected"] = false;
@@ -594,7 +594,7 @@ static void fillSafetyChannelsJson(JsonObject channels) {
   vaporSecondary["bus"] = "ESP32 ADC";
   vaporSecondary["address"] = "GPIO3";
   vaporSecondary["role"] =
-      "?????? ????????? ADC-???? ??? ?????? ????? ??? ????";
+      "Резервный ADC-канал для второго датчика газа или паров";
   vaporSecondary["source"] = "GPIO3";
   vaporSecondary["pin"] = PIN_VAPOR_SENSOR_ADC_2;
   vaporSecondary["enabled"] = false;
@@ -2275,8 +2275,8 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
   advisor["action"] = ready
                           ? ((status.guidance.action[0] != '\0')
                                  ? status.guidance.action
-                                 : "РџРµСЂРµРґ СЃС‚Р°СЂС‚РѕРј РµС‰С‘ СЂР°Р· РїСЂРѕРІРµСЂСЊС‚Рµ РєР»СЋС‡РµРІС‹Рµ СѓСЃС‚Р°РІРєРё Рё РіРѕС‚РѕРІРЅРѕСЃС‚СЊ РѕС…Р»Р°Р¶РґРµРЅРёСЏ.")
-                          : "РЎРЅРёРјРёС‚Рµ РєСЂРёС‚РёС‡РЅС‹Рµ Р±Р»РѕРєРёСЂРѕРІРєРё РІ С‡РµРє-Р»РёСЃС‚Рµ, РїРѕСЃР»Рµ С‡РµРіРѕ РїРѕРІС‚РѕСЂРёС‚Рµ СЃС‚Р°СЂС‚.";
+                                 : "Перед стартом ещё раз проверьте ключевые уставки и готовность охлаждения.")
+                          : "Снимите критичные блокировки в чек-листе, после чего повторите старт.";
 
   JsonObject advisorProfile = advisor["profile"].to<JsonObject>();
   advisorProfile["relevant"] = recipeProfileRelevant;
@@ -4157,7 +4157,7 @@ void init() {
         request->send(200, "application/json", "{\"success\":true}");
       });
 
-  // GET /api/settings/nbk - ???????? ????????? ???
+  // GET /api/settings/nbk - получить настройки НБК
   server.on("/api/settings/nbk", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
     doc["powerW"] = g_settings.nbk.powerW;
@@ -4169,7 +4169,7 @@ void init() {
     request->send(200, "application/json", json);
   });
 
-  // POST /api/settings/nbk - ????????? ????????? ???
+  // POST /api/settings/nbk - сохранить настройки НБК
   server.on(
       "/api/settings/nbk", HTTP_POST, [](AsyncWebServerRequest *request) {},
       NULL,
@@ -4205,7 +4205,7 @@ void init() {
         request->send(200, "application/json", "{\"success\":true}");
       });
 
-  // GET /api/settings/fermentation - ???????? ????????? ???????????
+  // GET /api/settings/fermentation - получить настройки брожения
   server.on("/api/settings/fermentation", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
     doc["targetTempC"] = g_settings.fermentation.targetTempC;
@@ -4217,7 +4217,7 @@ void init() {
     request->send(200, "application/json", json);
   });
 
-  // POST /api/settings/fermentation - ????????? ????????? ???????????
+  // POST /api/settings/fermentation - сохранить настройки брожения
   server.on(
       "/api/settings/fermentation", HTTP_POST, [](AsyncWebServerRequest *request) {},
       NULL,

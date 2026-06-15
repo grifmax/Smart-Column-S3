@@ -1,7 +1,7 @@
 {
-  "version": "2.3.12",
+  "version": "2.3.13",
   "buildDate": "Jun 15 2026",
-  "buildTime": "13:38:52",
-  "buildTimestamp": 1781519932,
+  "buildTime": "19:40:59",
+  "buildTimestamp": 1781541659,
   "builder": "esbuild"
 }

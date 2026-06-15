@@ -459,7 +459,7 @@ function buildSafetyChannelCard(channel = {}) {
     return `
         <div class="equipment-module-card">
             <div class="equipment-module-card-head">
-                <strong>${escapeHtml(channel.label || '?????')}</strong>
+                <strong>${escapeHtml(channel.label || 'Канал')}</strong>
                 <span class="equipment-status-badge ${meta.tone}">${meta.text}</span>
             </div>
             <div class="equipment-module-card-meta">
