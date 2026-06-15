@@ -23,7 +23,7 @@ void update(SystemState& state, const Settings& settings) {
     switch (state.nbkPhase) {
         case NbkPhase::HEATING:
             applyBoosterHeater(state, settings, true);
-            Heater::setPower(100);
+            applyFullHeatPower(settings);
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
                 Valves::setWater(true);
             }

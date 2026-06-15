@@ -22,12 +22,6 @@ static ParamsRuntime g_params;
 
 namespace {
 
-uint16_t getHeaterMaxWatts() {
-    return g_settings.equipment.heaterPowerW > 0
-        ? g_settings.equipment.heaterPowerW
-        : DEFAULT_HEATER_POWER_W;
-}
-
 ControlV2::ReasonCodeV2 getBodyExitReason(bool endByTemp, bool endByVolume) {
     if (endByTemp) {
         return ControlV2::ReasonCodeV2::RC_DISTILLATION_END_TEMP_REACHED;
@@ -61,14 +55,14 @@ void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float 
 }
 
 void setPowerWatts(uint16_t powerWatts) {
-    const uint16_t heaterMaxW = getHeaterMaxWatts();
+    const uint16_t heaterMaxW = getConfiguredHeaterPowerWatts(g_settings);
     if (powerWatts > heaterMaxW) powerWatts = heaterMaxW;
     g_params.powerWatts = powerWatts;
 }
 
 void setPowerPercent(uint8_t powerPercent) {
     if (powerPercent > 100) powerPercent = 100;
-    const uint16_t heaterMaxW = getHeaterMaxWatts();
+    const uint16_t heaterMaxW = getConfiguredHeaterPowerWatts(g_settings);
     const uint16_t powerWatts = static_cast<uint16_t>(
         (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
     setPowerWatts(powerWatts);
@@ -93,7 +87,7 @@ void update(SystemState& state, const Settings& settings) {
     switch (state.rectPhase) {
         case RectPhase::HEATING:
             applyBoosterHeater(state, settings, true);
-            Heater::setPowerWatts(g_params.powerWatts);
+            applyFullHeatPower(settings);
             if (state.temps.valid[TEMP_CUBE] && state.temps.cube >= 78.0f) {
                 setPhaseStartTime(now);
                 setPhaseStartVolumeMl(state.pump.totalVolumeMl);

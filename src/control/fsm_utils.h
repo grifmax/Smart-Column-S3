@@ -11,6 +11,8 @@ namespace FSM {
     float getAtmosphereHpa(const SystemState& state);
     float pressureAdjustedCubeTemp(float baseTempC, const SystemState& state);
     float estimateChargeAbvPercent(const SystemState& state);
+    uint16_t getConfiguredHeaterPowerWatts(const Settings& settings);
+    uint16_t applyFullHeatPower(const Settings& settings);
     uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent);
     uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent);
     bool shouldRunBoosterHeater(const SystemState& state, const Settings& settings, bool heatingPhase);

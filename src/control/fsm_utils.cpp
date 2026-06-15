@@ -41,6 +41,18 @@ float estimateChargeAbvPercent(const SystemState& state) {
     return 40.0f;
 }
 
+uint16_t getConfiguredHeaterPowerWatts(const Settings& settings) {
+    return settings.equipment.heaterPowerW > 0
+        ? settings.equipment.heaterPowerW
+        : DEFAULT_HEATER_POWER_W;
+}
+
+uint16_t applyFullHeatPower(const Settings& settings) {
+    const uint16_t targetWatts = getConfiguredHeaterPowerWatts(settings);
+    Heater::setPowerWatts(targetWatts);
+    return targetWatts;
+}
+
 uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent) {
     uint8_t requestedPower = fallbackPercent;
     if (state.pressure.ok) {
@@ -64,9 +76,7 @@ uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& setti
     }
 
     const uint8_t requestedPercent = getProcessHeaterPower(state, settings, fallbackPercent);
-    const uint16_t heaterMaxW = settings.equipment.heaterPowerW > 0
-        ? settings.equipment.heaterPowerW
-        : DEFAULT_HEATER_POWER_W;
+    const uint16_t heaterMaxW = getConfiguredHeaterPowerWatts(settings);
     const uint16_t targetWatts = static_cast<uint16_t>(
         (static_cast<uint32_t>(heaterMaxW) * requestedPercent) / 100U
     );

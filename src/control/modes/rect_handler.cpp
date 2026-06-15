@@ -68,7 +68,7 @@ void update(SystemState& state, const Settings& settings) {
     switch (state.rectPhase) {
         case RectPhase::HEATING:
             applyBoosterHeater(state, settings, true);
-            Heater::setPower(100);
+            applyFullHeatPower(settings);
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
                 Valves::setWater(true);
             }
