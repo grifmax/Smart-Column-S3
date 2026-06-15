@@ -10,6 +10,7 @@
  */
 
 #include "sensors.h"
+#include <freertos/semphr.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <Adafruit_BMP280.h>
@@ -26,6 +27,7 @@ const float SystemHealth::healthWeights[6] = {0.4f, 0.1f, 0.2f, 0.05f, 0.05f,
 // OneWire и DS18B20
 static OneWire oneWire(PIN_ONEWIRE);
 static DallasTemperature ds18b20(&oneWire);
+static SemaphoreHandle_t ds18b20Mutex = nullptr;
 
 // BMP280 (два датчика на разных адресах)
 static Adafruit_BMP280 bmp280_1;
@@ -86,6 +88,19 @@ static const uint16_t DISCOVERY_INIT_DELAY_MS = 250;
 static const uint8_t DISCOVERY_BUS_PASSES = 3;
 static const uint8_t DISCOVERY_PASS_DELAY_MS = 30;
 static uint8_t consecutiveTempReadFailures = 0;
+
+static bool lockDs18b20Bus(TickType_t timeoutTicks = pdMS_TO_TICKS(20)) {
+    if (ds18b20Mutex == nullptr) {
+        return false;
+    }
+    return xSemaphoreTake(ds18b20Mutex, timeoutTicks) == pdTRUE;
+}
+
+static void unlockDs18b20Bus() {
+    if (ds18b20Mutex != nullptr) {
+        xSemaphoreGive(ds18b20Mutex);
+    }
+}
 
 static bool isZeroDeviceAddress(const DeviceAddress address) {
     for (uint8_t i = 0; i < sizeof(DeviceAddress); ++i) {
@@ -272,6 +287,21 @@ static uint8_t scanDs18b20Bus(DeviceAddress addresses[]) {
     return count;
 }
 
+static void prepareDs18b20BusForScan() {
+    if (conversionInProgress) {
+        const uint32_t now = millis();
+        if (now - conversionStartTime < CONVERSION_TIME_MS) {
+            delay(CONVERSION_TIME_MS - (now - conversionStartTime));
+        }
+        conversionInProgress = false;
+        conversionStartTime = 0;
+    }
+
+    oneWire.reset_search();
+    oneWire.reset();
+    delay(2);
+}
+
 static uint8_t discoverDs18b20(bool logInventory) {
     uint8_t count = 0;
     DeviceAddress bestAddresses[TEMP_COUNT] = {};
@@ -369,6 +399,10 @@ namespace Sensors {
 
 void init() {
     LOG_I("Sensors: Initializing...");
+
+    if (ds18b20Mutex == nullptr) {
+        ds18b20Mutex = xSemaphoreCreateMutex();
+    }
 
     // Инициализация I2C
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
@@ -479,21 +513,27 @@ void init() {
 
 void readTemperatures(Temperatures& temps) {
     uint32_t now = millis();
+    if (!lockDs18b20Bus(pdMS_TO_TICKS(20))) {
+        return;
+    }
     ensureDs18b20Available(now);
 
     if (ds18b20Count == 0) {
         invalidateTemperatureState(temps);
+        unlockDs18b20Bus();
         return;
     }
 
     // Фаза 1: Запуск конвертации (неблокирующий)
     if (!conversionInProgress) {
         startTemperatureConversion(now);
+        unlockDs18b20Bus();
         return; // Выходим, не блокируя выполнение
     }
 
     // Фаза 2: Чтение результатов (только если прошло достаточно времени)
     if (now - conversionStartTime < CONVERSION_TIME_MS) {
+        unlockDs18b20Bus();
         return; // Конвертация ещё идёт, ждём
     }
 
@@ -548,6 +588,7 @@ void readTemperatures(Temperatures& temps) {
 
     // Сброс флага для следующего цикла
     conversionInProgress = false;
+    unlockDs18b20Bus();
 }
 
 void readPressure(Pressure& pressure) {
@@ -782,9 +823,15 @@ uint8_t scanDS18B20(uint8_t addresses[][8]) {
     uint8_t count = 0;
     DeviceAddress rawAddresses[TEMP_COUNT] = {};
 
+    if (!lockDs18b20Bus(portMAX_DELAY)) {
+        return 0;
+    }
+
     for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
         memset(addresses[i], 0, sizeof(DeviceAddress));
     }
+
+    prepareDs18b20BusForScan();
 
     for (uint8_t attempt = 0; attempt < DISCOVERY_INIT_ATTEMPTS; ++attempt) {
         memset(rawAddresses, 0, sizeof(rawAddresses));
@@ -804,14 +851,21 @@ uint8_t scanDS18B20(uint8_t addresses[][8]) {
         startTemperatureConversion(millis());
     }
 
+    unlockDs18b20Bus();
+
     return count;
 }
 
 void refreshTemperatureInventory() {
+    if (!lockDs18b20Bus(portMAX_DELAY)) {
+        return;
+    }
+    prepareDs18b20BusForScan();
     discoverDs18b20(true);
     if (ds18b20Count > 0) {
         startTemperatureConversion(millis());
     }
+    unlockDs18b20Bus();
 }
 
 bool getDiscoveredTempAddress(uint8_t index, uint8_t address[8]) {
@@ -827,8 +881,13 @@ bool isTempSensorValid(uint8_t index) {
 
     if (!ds18b20Found[index]) return false;
 
+    if (!lockDs18b20Bus(pdMS_TO_TICKS(20))) {
+        return false;
+    }
+
     // Попробовать прочитать
     float temp = ds18b20.getTempC(ds18b20Addresses[index]);
+    unlockDs18b20Bus();
     return (temp != DEVICE_DISCONNECTED_C && temp > -50 && temp < 150);
 }
 
