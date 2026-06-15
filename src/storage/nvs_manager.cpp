@@ -14,6 +14,51 @@ static Preferences prefs;
 
 namespace {
 
+bool isZeroTempAddress(const uint8_t address[8]) {
+    if (!address) {
+        return true;
+    }
+    for (uint8_t i = 0; i < 8; ++i) {
+        if (address[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool hasInstalledTempTopology(const TemperatureTopologySettings& topology) {
+    return topology.cube || topology.columnBottom || topology.columnTop ||
+           topology.reflux || topology.tsa || topology.waterIn ||
+           topology.waterOut;
+}
+
+void recoverTempTopologyFromCalibration(Settings& settings) {
+    if (hasInstalledTempTopology(settings.equipment.temperatureTopology)) {
+        return;
+    }
+
+    bool recovered = false;
+    settings.equipment.temperatureTopology.cube =
+        !isZeroTempAddress(settings.tempCal.addresses[TEMP_CUBE]);
+    settings.equipment.temperatureTopology.columnBottom =
+        !isZeroTempAddress(settings.tempCal.addresses[TEMP_COLUMN_BOTTOM]);
+    settings.equipment.temperatureTopology.columnTop =
+        !isZeroTempAddress(settings.tempCal.addresses[TEMP_COLUMN_TOP]);
+    settings.equipment.temperatureTopology.reflux =
+        !isZeroTempAddress(settings.tempCal.addresses[TEMP_REFLUX]);
+    settings.equipment.temperatureTopology.tsa =
+        !isZeroTempAddress(settings.tempCal.addresses[TEMP_TSA]);
+    settings.equipment.temperatureTopology.waterIn =
+        !isZeroTempAddress(settings.tempCal.addresses[TEMP_WATER_IN]);
+    settings.equipment.temperatureTopology.waterOut =
+        !isZeroTempAddress(settings.tempCal.addresses[TEMP_WATER_OUT]);
+
+    recovered = hasInstalledTempTopology(settings.equipment.temperatureTopology);
+    if (recovered) {
+        LOG_W("NVS: temperatureTopology recovered from mapped DS18B20 roles");
+    }
+}
+
 void clearWiFiProfiles(WiFiSettings& wifi) {
     wifi.profileCount = 0;
     for (uint8_t i = 0; i < WIFI_MAX_PROFILES; ++i) {
@@ -317,6 +362,7 @@ bool loadSettings(Settings& settings) {
     } else if (tempCalBytes == sizeof(settings.tempCal.offsets)) {
         prefs.getBytes(NVS_KEY_TEMP_OFFSETS, settings.tempCal.offsets, sizeof(settings.tempCal.offsets));
     }
+    recoverTempTopologyFromCalibration(settings);
 
     settings.fractionator.enabled = prefs.getBool(NVS_KEY_FRACTION_MASTER, settings.fractionator.enabled);
     if (prefs.getBytesLength(NVS_KEY_FRACTION_ANGLES) == sizeof(settings.fractionator.angles)) {
