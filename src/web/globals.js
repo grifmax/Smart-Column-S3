@@ -290,6 +290,8 @@ export let runtimeMonitorState = {
         leakSensorEnabled: false,
         leakThresholdV: 1.5,
         leakTriggerAbove: true,
+        temperatureTopology: {},
+        supportedModes: {},
         modules: {},
         safetyChannels: {}
     },

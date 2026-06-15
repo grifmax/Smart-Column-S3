@@ -963,6 +963,7 @@ export async function loadEquipmentSettings() {
         syncSafetyChannelSettingsUi(runtimeMonitorState.equipment);
         syncTemperatureTopologyUi(runtimeMonitorState.equipment);
         syncCoolingActuatorUi();
+        window.renderControlStartState?.();
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
     }
@@ -979,9 +980,8 @@ export async function loadEquipmentSettings() {
         loadCubeExtenderPreset();
         updateCubeVolumeHint({ normalizeInput: true });
         syncSafetyChannelSettingsUi(runtimeMonitorState.equipment);
-        await loadEquipmentSettings();
         syncCoolingActuatorUi();
-        syncCoolingActuatorUi();
+        window.renderControlStartState?.();
     }
 }
 
@@ -1096,6 +1096,7 @@ export async function saveEquipment() {
             supportedModes: normalizeSupportedModes(result.supportedModes)
         };
         syncTemperatureTopologyUi(runtimeMonitorState.equipment);
+        window.renderControlStartState?.();
 
         updateCubeVolumeHint({ normalizeInput: true });
         addLog('💾 Настройки оборудования сохранены', 'success');

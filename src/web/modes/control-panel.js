@@ -41,6 +41,15 @@ import {
 
 const CONTROL_MODE_STORAGE_KEY = 'control.selectedMode';
 const MANUAL_RECT_STORAGE_KEY = 'control.manualRectSettings';
+const MODE_SUPPORT_KEYS = {
+    rectification: 'rectification',
+    manual: 'manualRect',
+    distillation: 'distillation',
+    mashing: 'mashing',
+    hold: 'hold',
+    nbk: 'nbk',
+    fermentation: 'fermentation'
+};
 const CONTROL_MODES = {
     rectification: {
         title: 'Авто-ректификация',
@@ -151,6 +160,45 @@ function getModeDefinition(mode) {
     return CONTROL_MODES[mode] || CONTROL_MODES.rectification;
 }
 
+function getTopologyModeSupport(mode = selectedControlMode, state = runtimeMonitorState) {
+    const key = MODE_SUPPORT_KEYS[mode];
+    if (!key) {
+        return { known: false, supported: true, reason: '', key: '' };
+    }
+
+    const current = state?.equipment?.supportedModes?.[key];
+    if (!current || typeof current.supported !== 'boolean') {
+        return { known: false, supported: true, reason: '', key };
+    }
+
+    return {
+        known: true,
+        supported: Boolean(current.supported),
+        reason: String(current.reason || '').trim(),
+        key
+    };
+}
+
+function getUnsupportedModeDetail(mode = selectedControlMode, state = runtimeMonitorState) {
+    const support = getTopologyModeSupport(mode, state);
+    if (!support.known || support.supported) {
+        return '';
+    }
+
+    return support.reason || 'Для текущей комплектации не хватает обязательных термодатчиков.';
+}
+
+function ensureSelectedModeSupported() {
+    const detail = getUnsupportedModeDetail(selectedControlMode, runtimeMonitorState);
+    if (!detail) {
+        return true;
+    }
+
+    addLog(`Запуск режима заблокирован: ${detail}`, 'warning');
+    renderControlStartState();
+    return false;
+}
+
 function persistModeSelection(mode) {
     try {
         localStorage.setItem(CONTROL_MODE_STORAGE_KEY, mode);
@@ -162,7 +210,12 @@ function persistModeSelection(mode) {
 function renderControlModeSelector(mode) {
     document.querySelectorAll('[data-mode-select]').forEach((button) => {
         const isSelected = button.dataset.modeSelect === mode;
+        const unsupportedDetail = getUnsupportedModeDetail(button.dataset.modeSelect, runtimeMonitorState);
         button.classList.toggle('control-mode-selected', isSelected);
+        button.classList.toggle('control-mode-topology-blocked', Boolean(unsupportedDetail));
+        button.title = unsupportedDetail
+            ? `Недоступно для текущей комплектации: ${unsupportedDetail}`
+            : '';
     });
 }
 
@@ -217,46 +270,68 @@ function renderControlModeHeader(mode) {
     };
     const def = getModeDefinition(mode);
     const ui = labels[mode] || labels.rectification;
+    const unsupportedDetail = getUnsupportedModeDetail(mode, runtimeMonitorState);
 
     if (title) title.textContent = ui.title;
-    if (subtitle) subtitle.textContent = ui.subtitle;
+    if (subtitle) {
+        subtitle.textContent = unsupportedDetail
+            ? `${ui.subtitle} Сейчас запуск недоступен: ${unsupportedDetail}`
+            : ui.subtitle;
+    }
     if (startButton) {
         startButton.textContent = ui.startLabel;
         startButton.dataset.mode = String(def.modeValue);
         startButton.classList.remove('btn-success', 'btn-warning', 'btn-info');
         startButton.classList.add('btn-primary');
+        startButton.title = unsupportedDetail || '';
     }
     if (confirmButton) {
         confirmButton.textContent = ui.startLabel;
+        confirmButton.title = unsupportedDetail || '';
     }
 }
 
 export function renderControlStartState() {
+    renderControlModeSelector(selectedControlMode);
+    renderControlModeHeader(selectedControlMode);
+
     const startButton = document.getElementById('mode-start-button');
     const statusEl = document.getElementById('mode-start-status');
     const confirmButton = document.getElementById('mode-start-confirm-button');
     const availability = getStartAvailabilityState(runtimeMonitorState);
+    const unsupportedDetail = getUnsupportedModeDetail(selectedControlMode, runtimeMonitorState);
+    const topologyBlocked = Boolean(unsupportedDetail);
     const activeProcessBlock = currentMode !== MODE_IDLE;
     const backendBlocked = Boolean(latestModePreflight) && !latestModePreflight.ready && !activeProcessBlock;
     const backendWarn = Boolean(latestModePreflight) &&
         latestModePreflight.ready &&
         Number(latestModePreflight.warningCount || 0) > 0;
-    const effectiveState = backendBlocked
-        ? {
-            ...availability,
-            tone: 'danger',
-            title: latestModePreflight.title || availability.title,
-            detail: latestModePreflight.detail || availability.detail,
-            disabled: true
-        }
-        : (backendWarn
+    const effectiveState = activeProcessBlock
+        ? availability
+        : (topologyBlocked
             ? {
                 ...availability,
-                tone: 'warn',
-                title: latestModePreflight.title || availability.title,
-                detail: latestModePreflight.detail || availability.detail
+                tone: 'danger',
+                title: 'Режим не поддерживается этой комплектацией',
+                detail: unsupportedDetail,
+                disabled: true
             }
-            : availability);
+            : (backendBlocked
+                ? {
+                    ...availability,
+                    tone: 'danger',
+                    title: latestModePreflight.title || availability.title,
+                    detail: latestModePreflight.detail || availability.detail,
+                    disabled: true
+                }
+                : (backendWarn
+                    ? {
+                        ...availability,
+                        tone: 'warn',
+                        title: latestModePreflight.title || availability.title,
+                        detail: latestModePreflight.detail || availability.detail
+                    }
+                    : availability)));
 
     if (startButton) {
         startButton.disabled = effectiveState.disabled;
@@ -813,6 +888,24 @@ function buildControlModeSummary() {
     return summary;
 }
 
+function finalizeControlModeSummary(summary) {
+    const unsupportedDetail = getUnsupportedModeDetail(selectedControlMode, runtimeMonitorState);
+    if (!unsupportedDetail) {
+        return summary;
+    }
+
+    return {
+        ...summary,
+        tone: 'danger',
+        kicker: 'Комплектация ограничивает режим',
+        text: `Этот режим сейчас нельзя запустить: ${unsupportedDetail}`,
+        metrics: [
+            { label: 'Статус', value: 'Запуск заблокирован' },
+            ...summary.metrics
+        ].slice(0, 4)
+    };
+}
+
 export function renderControlModeSummary() {
     const root = byId('control-mode-summary');
     const titleEl = byId('control-mode-summary-title');
@@ -821,7 +914,7 @@ export function renderControlModeSummary() {
     const metricsEl = byId('control-mode-summary-metrics');
     if (!root || !titleEl || !kickerEl || !textEl || !metricsEl) return;
 
-    const summary = buildControlModeSummary();
+    const summary = finalizeControlModeSummary(buildControlModeSummary());
     root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
     root.classList.add(`is-${summary.tone}`);
     titleEl.textContent = summary.title;
@@ -1475,6 +1568,10 @@ export function getSelectedControlMode() {
 }
 
 async function performSelectedModeStart() {
+    if (!ensureSelectedModeSupported()) {
+        return false;
+    }
+
     if (currentMode !== MODE_IDLE) {
         addLog('Сначала остановите текущий процесс, затем запускайте новый режим.', 'warning');
         renderControlStartState();
@@ -1529,6 +1626,10 @@ async function performSelectedModeStart() {
 }
 
 export async function confirmModeStart() {
+    if (!ensureSelectedModeSupported()) {
+        return false;
+    }
+
     const snapshot = await refreshModePreflight();
     if (!snapshot) {
         addLog('Не удалось подтвердить условия старта на контроллере. Повторите попытку.', 'warning');
@@ -1547,6 +1648,10 @@ export async function confirmModeStart() {
 }
 
 export async function startSelectedMode() {
+    if (!ensureSelectedModeSupported()) {
+        return false;
+    }
+
     if (currentMode !== MODE_IDLE) {
         addLog('Сначала остановите текущий процесс, затем запускайте новый режим.', 'warning');
         renderControlStartState();

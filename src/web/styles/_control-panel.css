@@ -53,6 +53,16 @@
     box-shadow: 0 6px 14px var(--shadow);
 }
 
+.control-mode-btn.control-mode-topology-blocked:not(.control-mode-selected) {
+    border-color: rgba(216, 119, 6, 0.45);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08));
+}
+
+.control-mode-btn.control-mode-topology-blocked.control-mode-selected {
+    background: linear-gradient(135deg, #b45309, #b91c1c);
+    box-shadow: 0 8px 18px rgba(185, 28, 28, 0.22);
+}
+
 .control-runtime {
     margin-top: auto;
     padding-top: 12px;
