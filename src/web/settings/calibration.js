@@ -95,6 +95,41 @@ function buildTempAddressOptions(roleIndex, selectedAddress, discoveredSensors) 
     return options.join('');
 }
 
+function mergeDiscoveredTempSensors(scanSensors, temperatures) {
+    const merged = [];
+    const seen = new Set();
+    const appendSensor = (sensor) => {
+        const address = String(sensor?.address || '').trim();
+        if (!address || seen.has(address)) return;
+        seen.add(address);
+        merged.push(sensor);
+    };
+
+    (Array.isArray(scanSensors) ? scanSensors : []).forEach((sensor) => {
+        appendSensor({
+            ...sensor,
+            address: String(sensor?.address || '').trim()
+        });
+    });
+
+    (Array.isArray(temperatures) ? temperatures : []).forEach((temp) => {
+        const index = Number(temp?.index);
+        const name = String(temp?.name || `Датчик ${index}`);
+        [temp?.detectedAddress, temp?.address, temp?.assignedAddress].forEach((candidate) => {
+            const address = String(candidate || '').trim();
+            if (!address) return;
+            appendSensor({
+                address,
+                mappedRole: Number.isInteger(index) ? index : -1,
+                mappedRoleName: name,
+                valid: Boolean(temp?.valid)
+            });
+        });
+    });
+
+    return merged;
+}
+
 function downloadJsonFile(data, filename) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -902,8 +937,9 @@ export async function loadCalibrationData() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
+        const sensors = Array.isArray(data?.temperatures) ? data.temperatures : [];
         const scanData = scanResponse && scanResponse.ok ? await scanResponse.json() : {};
-        const discoveredSensors = Array.isArray(scanData?.sensors) ? scanData.sensors : [];
+        const discoveredSensors = mergeDiscoveredTempSensors(scanData?.sensors, sensors);
         const pump = data?.pump || {};
         const pressureSensor = data?.pressureSensor || {};
         const hydrometer = data?.hydrometer || {};
@@ -934,7 +970,6 @@ export async function loadCalibrationData() {
         const sensorList = byId('sensorList');
         if (sensorList) {
             sensorList.innerHTML = '';
-            const sensors = Array.isArray(data?.temperatures) ? data.temperatures : [];
 
             if (!sensors.length) {
                 sensorList.innerHTML = '<li class="info-text">Датчики не найдены</li>';

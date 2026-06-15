@@ -597,9 +597,7 @@ void initNetwork() {
 }
 
 void loadSettings() {
-  memset(&g_settings, 0, sizeof(g_settings));
-  g_settings.equipment.waterAutoStartCubeTempC = 45.0f;
-  g_settings.safety.pressureMaxMmHg = 50.0f;
+  g_settings = Settings{};
   NVSManager::loadSettings(g_settings);
 }
 

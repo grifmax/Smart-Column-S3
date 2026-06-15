@@ -286,6 +286,16 @@ bool loadSettings(Settings& settings) {
     if (tempTopologyBytes == sizeof(settings.equipment.temperatureTopology)) {
         prefs.getBytes(NVS_KEY_TEMP_TOPOLOGY, &settings.equipment.temperatureTopology,
                        sizeof(settings.equipment.temperatureTopology));
+    } else {
+        // Legacy migration: old installations had no explicit topology key.
+        // Keep core process roles enabled, but do not assume cooling-water probes.
+        settings.equipment.temperatureTopology.cube = true;
+        settings.equipment.temperatureTopology.columnBottom = true;
+        settings.equipment.temperatureTopology.columnTop = true;
+        settings.equipment.temperatureTopology.reflux = true;
+        settings.equipment.temperatureTopology.tsa = true;
+        settings.equipment.temperatureTopology.waterIn = false;
+        settings.equipment.temperatureTopology.waterOut = false;
     }
     if (settings.equipment.bodyLevelThresholdV < 0.0f) {
         settings.equipment.bodyLevelThresholdV = 0.0f;
