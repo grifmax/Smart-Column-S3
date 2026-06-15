@@ -49,40 +49,151 @@ void forceSafeOutputs() {
     Valves::closeAll();
 }
 
-RequiredSensorsMask buildRequiredSensorsMask(Mode mode) {
+const char* getTopologyRoleLabel(uint8_t index) {
+    switch (index) {
+        case TEMP_CUBE:
+            return "куб";
+        case TEMP_COLUMN_BOTTOM:
+            return "низ колонны";
+        case TEMP_COLUMN_TOP:
+            return "верх колонны";
+        case TEMP_REFLUX:
+            return "дефлегматор";
+        case TEMP_TSA:
+            return "TSA";
+        case TEMP_WATER_IN:
+            return "вход воды";
+        case TEMP_WATER_OUT:
+            return "выход воды";
+        default:
+            return "датчик";
+    }
+}
+
+bool isInstalledByIndex(const EquipmentSettings& equipment, uint8_t index) {
+    switch (index) {
+        case TEMP_CUBE:
+            return equipment.temperatureTopology.cube;
+        case TEMP_COLUMN_BOTTOM:
+            return equipment.temperatureTopology.columnBottom;
+        case TEMP_COLUMN_TOP:
+            return equipment.temperatureTopology.columnTop;
+        case TEMP_REFLUX:
+            return equipment.temperatureTopology.reflux;
+        case TEMP_TSA:
+            return equipment.temperatureTopology.tsa;
+        case TEMP_WATER_IN:
+            return equipment.temperatureTopology.waterIn;
+        case TEMP_WATER_OUT:
+            return equipment.temperatureTopology.waterOut;
+        default:
+            return false;
+    }
+}
+
+void appendTopologyRole(char* buffer, size_t bufferSize, bool& needComma,
+                        const char* label) {
+    if (!buffer || bufferSize == 0 || !label || label[0] == '\0') {
+        return;
+    }
+    if (needComma) {
+        strlcat(buffer, ", ", bufferSize);
+    }
+    strlcat(buffer, label, bufferSize);
+    needComma = true;
+}
+
+RequiredSensorsMask buildRequiredSensorsMask(Mode mode, const Settings& settings) {
     RequiredSensorsMask required;
+    const EquipmentSettings& equipment = settings.equipment;
     switch (mode) {
         case Mode::RECTIFICATION:
         case Mode::MANUAL_RECT:
-            required.cubeTemp = true;
-            required.columnBottomTemp = true;
-            required.tsaTemp = true;
-            required.waterOutTemp = true;
+            required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
+            required.columnBottomTemp = isInstalledByIndex(equipment, TEMP_COLUMN_BOTTOM);
+            required.tsaTemp = isInstalledByIndex(equipment, TEMP_TSA);
+            required.waterOutTemp = isInstalledByIndex(equipment, TEMP_WATER_OUT);
             required.pressure = true;
             break;
         case Mode::DISTILLATION:
-            required.cubeTemp = true;
-            required.tsaTemp = true;
-            required.waterOutTemp = true;
+            required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
+            required.tsaTemp = isInstalledByIndex(equipment, TEMP_TSA);
+            required.waterOutTemp = isInstalledByIndex(equipment, TEMP_WATER_OUT);
             required.pressure = true;
             break;
         case Mode::NBK:
-            required.cubeTemp = true;
-            required.columnBottomTemp = true;
-            required.tsaTemp = true;
-            required.waterOutTemp = true;
+            required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
+            required.columnBottomTemp = isInstalledByIndex(equipment, TEMP_COLUMN_BOTTOM);
+            required.tsaTemp = isInstalledByIndex(equipment, TEMP_TSA);
+            required.waterOutTemp = isInstalledByIndex(equipment, TEMP_WATER_OUT);
             required.pressure = true;
             break;
         case Mode::MASHING:
         case Mode::HOLD:
         case Mode::FERMENTATION:
-            required.cubeTemp = true;
+            required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
             break;
         case Mode::IDLE:
         default:
             break;
     }
     return required;
+}
+
+bool buildModeTopologySupport(Mode mode, const EquipmentSettings& equipment,
+                              char* reason, size_t reasonSize) {
+    bool supported = true;
+    bool needComma = false;
+    char missing[96] = "";
+
+    auto requireRole = [&](uint8_t index) {
+        if (!isInstalledByIndex(equipment, index)) {
+            appendTopologyRole(missing, sizeof(missing), needComma, getTopologyRoleLabel(index));
+            supported = false;
+        }
+    };
+
+    switch (mode) {
+        case Mode::RECTIFICATION:
+        case Mode::MANUAL_RECT:
+            requireRole(TEMP_CUBE);
+            if (!isInstalledByIndex(equipment, TEMP_COLUMN_BOTTOM) &&
+                !isInstalledByIndex(equipment, TEMP_COLUMN_TOP)) {
+                appendTopologyRole(missing, sizeof(missing), needComma, "колонна");
+                supported = false;
+            }
+            requireRole(TEMP_TSA);
+            break;
+        case Mode::DISTILLATION:
+            requireRole(TEMP_CUBE);
+            requireRole(TEMP_TSA);
+            break;
+        case Mode::NBK:
+            requireRole(TEMP_CUBE);
+            requireRole(TEMP_COLUMN_BOTTOM);
+            requireRole(TEMP_TSA);
+            break;
+        case Mode::MASHING:
+        case Mode::HOLD:
+        case Mode::FERMENTATION:
+            requireRole(TEMP_CUBE);
+            break;
+        case Mode::IDLE:
+        default:
+            break;
+    }
+
+    if (supported) {
+        writeReason(reason, reasonSize, "");
+        return true;
+    }
+
+    char buffer[160];
+    snprintf(buffer, sizeof(buffer),
+             "Топология датчиков не подходит для режима: не отмечены %s",
+             missing[0] != '\0' ? missing : "обязательные роли");
+    writeReason(reason, reasonSize, buffer);
+    return false;
 }
 
 bool areRequiredSensorsAvailable(const SystemState& state,
@@ -196,8 +307,27 @@ bool canResetAlarm(const SystemState& state, const Settings& settings, uint32_t 
 
 } // namespace
 
-RequiredSensorsMask getRequiredSensorsForMode(Mode mode) {
-    return buildRequiredSensorsMask(mode);
+bool isTempSensorInstalled(const EquipmentSettings& equipment, uint8_t index) {
+    return isInstalledByIndex(equipment, index);
+}
+
+uint8_t getInstalledTempSensorCount(const EquipmentSettings& equipment) {
+    uint8_t count = 0;
+    for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+        if (isInstalledByIndex(equipment, i)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool isModeTemperatureTopologySupported(Mode mode, const EquipmentSettings& equipment,
+                                        char* reason, size_t reasonSize) {
+    return buildModeTopologySupport(mode, equipment, reason, reasonSize);
+}
+
+RequiredSensorsMask getRequiredSensorsForMode(Mode mode, const Settings& settings) {
+    return buildRequiredSensorsMask(mode, settings);
 }
 
 const char* getAlarmTypeToken(AlarmType type) {
@@ -264,7 +394,7 @@ void check(SystemState& state, const Settings& settings) {
     const float pressureMaxMmHg = clampSafety(settings.safety.pressureMaxMmHg, 5.0f, 200.0f);
     const float waterOutRiseRateCMin = clampSafety(settings.safety.waterOutRiseRateCMin, 0.5f, 60.0f);
     const float pressureRiseRateMmHgMin = clampSafety(settings.safety.pressureRiseRateMmHgMin, 1.0f, 200.0f);
-    const RequiredSensorsMask required = buildRequiredSensorsMask(state.mode);
+    const RequiredSensorsMask required = buildRequiredSensorsMask(state.mode, settings);
     state.pressure.critThreshold = pressureMaxMmHg;
 
     static bool sensorAlarmLogged = false;
@@ -294,7 +424,7 @@ void check(SystemState& state, const Settings& settings) {
     }
 
     // Если ошибки нет - сбрасываем флаг логирования
-    if (areRequiredSensorsAvailable(state, buildRequiredSensorsMask(state.mode))) {
+    if (areRequiredSensorsAvailable(state, buildRequiredSensorsMask(state.mode, settings))) {
         sensorAlarmLogged = false;
     }
 

@@ -77,6 +77,12 @@
 - `rev`, `name`, `code`
 - capability-флаги `hasTft`, `hasTouch`, `hasTriac`, `hasZeroCross`, `hasFractionatorServo`, `hasStartStopPwm`
 
+Также возвращает topology-aware блоки для температурной комплектации:
+- `temperatureTopology.cube`, `columnBottom`, `columnTop`, `reflux`, `tsa`, `waterIn`, `waterOut`
+- `temperatureTopology.installedCount`
+- `supportedModes.rectification|manualRect|distillation|nbk|mashing|hold|fermentation`
+- для каждого `supportedModes.*`: `supported`, `reason`
+
 #### `POST /api/reboot`
 
 Перезагрузка контроллера.
@@ -429,6 +435,8 @@
 - `coolingSettings.startupDuty`
 - `activeTests.startStopDuty`
 - `modules.*` — тот же снимок обязательных и опциональных модулей, что и в `GET /api/settings/equipment`, чтобы сервисный экран мог без второго запроса показать `BMP280`, `ADS1115`, `MCP4725` и `PZEM-004T`
+- `temperatureTopology.*` — та же схема физических ролей термодатчиков, что и в `GET /api/settings/equipment`
+- `supportedModes.*` — доступность режимов для текущей температурной комплектации
 - `health.overall`
 - `health.tempSensorsOk`
 - `health.tempSensorsTotal`

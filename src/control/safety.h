@@ -30,7 +30,11 @@ bool reset(SystemState& state, const Settings& settings, char* reason = nullptr,
 bool isLatched(const SystemState& state);
 bool canResetNow(const SystemState& state, const Settings& settings, char* reason = nullptr,
                  size_t reasonSize = 0);
-RequiredSensorsMask getRequiredSensorsForMode(Mode mode);
+bool isTempSensorInstalled(const EquipmentSettings& equipment, uint8_t index);
+uint8_t getInstalledTempSensorCount(const EquipmentSettings& equipment);
+bool isModeTemperatureTopologySupported(Mode mode, const EquipmentSettings& equipment,
+                                        char* reason = nullptr, size_t reasonSize = 0);
+RequiredSensorsMask getRequiredSensorsForMode(Mode mode, const Settings& settings);
 
 const char* getAlarmTypeToken(AlarmType type);
 const char* getAlarmLevelToken(AlarmLevel level);

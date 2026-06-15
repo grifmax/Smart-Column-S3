@@ -1701,15 +1701,57 @@ function countValidTemperatures(temperatures = []) {
     return temperatures.reduce((count, sensor) => count + (sensor?.valid ? 1 : 0), 0);
 }
 
+function normalizeTestingTemperatureTopology(topology = {}) {
+    return {
+        cube: topology?.cube !== false,
+        columnBottom: topology?.columnBottom !== false,
+        columnTop: topology?.columnTop !== false,
+        reflux: topology?.reflux !== false,
+        tsa: topology?.tsa !== false,
+        waterIn: topology?.waterIn !== false,
+        waterOut: topology?.waterOut !== false,
+        installedCount: Number.isFinite(Number(topology?.installedCount))
+            ? Math.max(0, Number(topology.installedCount))
+            : 0
+    };
+}
+
+function getInstalledTestingTemperatures(temperatures = []) {
+    if (!Array.isArray(temperatures)) return [];
+    return temperatures.filter((sensor) => sensor?.installed !== false);
+}
+
 function buildCommissioningSteps(status) {
     const temperatures = Array.isArray(status?.temperatures) ? status.temperatures : [];
-    const validTemps = countValidTemperatures(temperatures);
+    const topology = normalizeTestingTemperatureTopology(status?.temperatureTopology || {});
+    const installedTemps = getInstalledTestingTemperatures(temperatures);
+    const validTemps = countValidTemperatures(installedTemps);
     const pressure = status?.pressure || {};
     const heater = status?.heater || {};
     const power = status?.power || {};
+    const supportedModes = status?.supportedModes || {};
     const manualTargets = getCommissioningManualTargets();
     const manualDone = manualTargets.filter((target) => state.commissioning.manual[target.id]);
     const missingManual = manualTargets.filter((target) => !state.commissioning.manual[target.id]);
+    const installedTempLabels = installedTemps
+        .map((sensor) => String(sensor?.label || '').trim())
+        .filter(Boolean);
+    const installedTempCount = installedTempLabels.length;
+    const commissioningModeLabels = {
+        rectification: 'Ректификация',
+        manualRect: 'Ручная ректификация',
+        distillation: 'Дистилляция',
+        nbk: 'НБК',
+        mashing: 'Затор',
+        hold: 'Пауза',
+        fermentation: 'Брожение'
+    };
+    const unsupportedModeLabels = Object.entries(supportedModes)
+        .filter(([, modeState]) => modeState && modeState.supported === false)
+        .map(([key, modeState]) => String(
+            modeState.label || modeState.title || modeState.name || commissioningModeLabels[key] || key
+        ).trim())
+        .filter(Boolean);
     const pressureSpan = state.pressureTest.min !== null && state.pressureTest.max !== null
         ? Math.abs(Number(state.pressureTest.max) - Number(state.pressureTest.min))
         : null;
@@ -1768,6 +1810,32 @@ function buildCommissioningSteps(status) {
         tempStep.description = 'Сейчас подтверждён только один термодатчик. Для нормальной пусконаладки лучше увидеть хотя бы куб и колонну.';
     }
     steps.push(tempStep);
+    tempStep.title = 'Термометры и 1-Wire шина';
+    tempStep.actions = [
+        { type: 'open', label: 'Открыть термометры', section: 'testing', cardId: 'temps' },
+        { type: 'open', label: 'К калибровке', section: 'calibration', cardId: 'temp-calibration' }
+    ];
+    if (installedTempCount <= 0) {
+        tempStep.tone = 'warning';
+        tempStep.label = 'Схема';
+        tempStep.description = 'В оборудовании не отмечен ни один установленный термодатчик. Из-за этого пусковая логика не сможет корректно оценивать готовность режимов.';
+    } else if (validTemps <= 0) {
+        tempStep.tone = 'danger';
+        tempStep.label = 'Нет';
+        tempStep.description = 'Ни один из отмеченных DS18B20 сейчас не подтвержден. Сначала проверьте сканирование, адреса и общую 1-Wire линию.';
+    } else if (validTemps < installedTempCount) {
+        tempStep.tone = 'warning';
+        tempStep.label = 'Частично';
+        tempStep.description = `Подтверждено ${validTemps} из ${installedTempCount} установленных датчиков. Проверьте неответившие DS18B20 и сохранённую топологию оборудования.`;
+    } else if (unsupportedModeLabels.length > 0) {
+        tempStep.tone = 'warning';
+        tempStep.label = 'Lite';
+        tempStep.description = `Подключённая комплектация подтверждена, но часть режимов будет недоступна: ${unsupportedModeLabels.join(', ')}.`;
+    } else {
+        tempStep.tone = 'success';
+        tempStep.label = 'OK';
+        tempStep.description = `Подтверждено ${validTemps} из ${installedTempCount} установленных термодатчиков (${installedTempLabels.join(', ')}).`;
+    }
 
     const pressureStep = {
         id: 'pressure',

@@ -12,6 +12,33 @@ const DEFAULT_STIRRER_SETTINGS = Object.freeze({
     autoFermentation: false,
     autoNbk: false
 });
+const DEFAULT_TEMPERATURE_TOPOLOGY = Object.freeze({
+    cube: true,
+    columnBottom: true,
+    columnTop: true,
+    reflux: true,
+    tsa: true,
+    waterIn: true,
+    waterOut: true
+});
+const TEMPERATURE_TOPOLOGY_FIELDS = Object.freeze([
+    { key: 'cube', id: 'temp-topology-cube', label: 'Куб' },
+    { key: 'columnBottom', id: 'temp-topology-column-bottom', label: 'Царга низ' },
+    { key: 'columnTop', id: 'temp-topology-column-top', label: 'Царга верх' },
+    { key: 'reflux', id: 'temp-topology-reflux', label: 'Дефлегматор' },
+    { key: 'tsa', id: 'temp-topology-tsa', label: 'ТСА' },
+    { key: 'waterIn', id: 'temp-topology-water-in', label: 'Вода вход' },
+    { key: 'waterOut', id: 'temp-topology-water-out', label: 'Вода выход' }
+]);
+const TEMPERATURE_MODE_LABELS = Object.freeze({
+    rectification: 'Авто-ректификация',
+    manualRect: 'Ручная ректификация',
+    distillation: 'Дистилляция',
+    nbk: 'НБК',
+    mashing: 'Затирка',
+    hold: 'Пастеризация',
+    fermentation: 'Ферментация'
+});
 
 function toFiniteNumber(value, fallback = 0) {
     const parsed = Number(String(value ?? '').trim().replace(',', '.'));
@@ -80,6 +107,82 @@ function escapeHtml(value) {
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+}
+
+function normalizeTemperatureTopology(topology = {}) {
+    return {
+        cube: topology?.cube !== false,
+        columnBottom: topology?.columnBottom !== false,
+        columnTop: topology?.columnTop !== false,
+        reflux: topology?.reflux !== false,
+        tsa: topology?.tsa !== false,
+        waterIn: topology?.waterIn !== false,
+        waterOut: topology?.waterOut !== false,
+        installedCount: Number.isFinite(Number(topology?.installedCount))
+            ? Math.max(0, Number(topology.installedCount))
+            : TEMPERATURE_TOPOLOGY_FIELDS.reduce((count, field) => count + ((topology?.[field.key] !== false) ? 1 : 0), 0)
+    };
+}
+
+function normalizeSupportedModes(supportedModes = {}) {
+    const normalized = {};
+    Object.keys(TEMPERATURE_MODE_LABELS).forEach((key) => {
+        const current = supportedModes?.[key];
+        normalized[key] = {
+            supported: Boolean(current?.supported),
+            reason: String(current?.reason || '')
+        };
+    });
+    return normalized;
+}
+
+function syncTemperatureTopologyUi(equipment = {}) {
+    const topology = normalizeTemperatureTopology(equipment.temperatureTopology);
+    const supportedModes = normalizeSupportedModes(equipment.supportedModes);
+
+    TEMPERATURE_TOPOLOGY_FIELDS.forEach((field) => {
+        setCheckboxValue(field.id, Boolean(topology[field.key]));
+    });
+
+    const summaryEl = document.getElementById('temp-topology-summary');
+    const supportEl = document.getElementById('temp-topology-mode-support');
+    const hintEl = document.getElementById('temp-topology-hint');
+
+    if (summaryEl) {
+        const selectedLabels = TEMPERATURE_TOPOLOGY_FIELDS
+            .filter((field) => topology[field.key])
+            .map((field) => field.label);
+        summaryEl.textContent = selectedLabels.length
+            ? `Установлено ролей: ${topology.installedCount}. ${selectedLabels.join(', ')}.`
+            : 'Пока не отмечен ни один установленный термодатчик.';
+    }
+
+    if (supportEl) {
+        const rows = Object.entries(TEMPERATURE_MODE_LABELS).map(([key, label]) => {
+            const modeState = supportedModes[key] || { supported: false, reason: '' };
+            const badgeClass = modeState.supported ? 'success' : 'warning';
+            const badgeText = modeState.supported ? 'Поддержан' : 'Нужна топология';
+            const reason = modeState.supported
+                ? 'Текущей конфигурации достаточно для базового запуска.'
+                : (modeState.reason || 'Для этого режима пока не хватает обязательных ролей.');
+            return `
+                <div class="equipment-module-card">
+                    <div class="equipment-module-card-head">
+                        <strong>${escapeHtml(label)}</strong>
+                        <span class="equipment-status-badge ${badgeClass}">${badgeText}</span>
+                    </div>
+                    <div class="equipment-module-card-role">${escapeHtml(reason)}</div>
+                </div>
+            `;
+        });
+        supportEl.innerHTML = rows.join('');
+    }
+
+    if (hintEl) {
+        hintEl.textContent = topology.installedCount >= 3
+            ? 'Отметьте только реально установленные роли. Preflight и commissioning будут считать неустановленные датчики опциональными.'
+            : 'Для lite-комплектаций это поле особенно важно: оно убирает ложные аварии по отсутствующим датчикам и сразу показывает, какие режимы уже поддержаны.';
+    }
 }
 
 function syncPzemEquipmentUi(pzem = {}) {
@@ -846,7 +949,9 @@ export async function loadEquipmentSettings() {
                 ? { ...data.bootGpio }
                 : (runtimeMonitorState.equipment?.bootGpio || {}),
             modules: normalizeHardwareModules(data.modules),
-            safetyChannels: normalizeSafetyChannels(data.safetyChannels)
+            safetyChannels: normalizeSafetyChannels(data.safetyChannels),
+            temperatureTopology: normalizeTemperatureTopology(data.temperatureTopology),
+            supportedModes: normalizeSupportedModes(data.supportedModes)
         };
         syncPzemEquipmentUi(runtimeMonitorState.equipment.pzem);
         syncBootGpioUi(
@@ -856,6 +961,7 @@ export async function loadEquipmentSettings() {
         syncHardwareModulesUi(runtimeMonitorState.equipment.modules);
         syncSafetyChannelsUi(runtimeMonitorState.equipment.safetyChannels);
         syncSafetyChannelSettingsUi(runtimeMonitorState.equipment);
+        syncTemperatureTopologyUi(runtimeMonitorState.equipment);
         syncCoolingActuatorUi();
     } catch (error) {
         addLog(`✗ Ошибка загрузки настроек оборудования: ${error.message}`, 'error');
@@ -902,6 +1008,10 @@ export async function saveEquipment() {
     const leakSensorEnabled = getCheckboxValue('leak-sensor-enabled', false);
     const leakThresholdV = clamp(getInputValue('leak-threshold-v', 1.5), 0, 4.096, 1.5);
     const leakTriggerAbove = getCheckboxValue('leak-trigger-above', true);
+    const temperatureTopology = TEMPERATURE_TOPOLOGY_FIELDS.reduce((acc, field) => {
+        acc[field.key] = getCheckboxValue(field.id, DEFAULT_TEMPERATURE_TOPOLOGY[field.key]);
+        return acc;
+    }, {});
 
     const mlPerRev = toFiniteNumber(document.getElementById('pump-ml-per-rev')?.value, NaN);
     const stepsPerRev = toFiniteNumber(document.getElementById('pump-steps-per-rev')?.value, NaN);
@@ -949,7 +1059,8 @@ export async function saveEquipment() {
                 bodyLevelTriggerAbove,
                 leakSensorEnabled,
                 leakThresholdV,
-                leakTriggerAbove
+                leakTriggerAbove,
+                temperatureTopology
             })
         });
 
@@ -958,6 +1069,7 @@ export async function saveEquipment() {
             addLog(`✗ Ошибка сохранения оборудования (${response.status}): ${errText}`, 'error');
             return;
         }
+        const result = await response.json().catch(() => ({}));
 
         runtimeMonitorState.equipment = {
             ...runtimeMonitorState.equipment,
@@ -977,8 +1089,13 @@ export async function saveEquipment() {
             bodyLevelTriggerAbove,
             leakSensorEnabled,
             leakThresholdV,
-            leakTriggerAbove
+            leakTriggerAbove,
+            temperatureTopology: normalizeTemperatureTopology(
+                result.temperatureTopology || temperatureTopology
+            ),
+            supportedModes: normalizeSupportedModes(result.supportedModes)
         };
+        syncTemperatureTopologyUi(runtimeMonitorState.equipment);
 
         updateCubeVolumeHint({ normalizeInput: true });
         addLog('💾 Настройки оборудования сохранены', 'success');

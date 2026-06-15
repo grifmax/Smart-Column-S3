@@ -83,6 +83,11 @@ static EquipmentTestingAction
 static uint8_t g_equipmentTestingActionCount = 0;
 static uint8_t g_equipmentTestingActionNext = 0;
 
+static void fillTemperatureTopologyJson(JsonObject topology,
+                                        const EquipmentSettings &equipment);
+static void fillTemperatureModeSupportJson(JsonObject modes,
+                                           const Settings &settings);
+
 static const char *equipmentTestingToneToHistorySeverity(const char *tone) {
   if (!tone) {
     return "info";
@@ -731,6 +736,7 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
     JsonObject temp = temps.add<JsonObject>();
     temp["index"] = i;
     temp["label"] = getTempSensorLabel(i);
+    temp["installed"] = Safety::isTempSensorInstalled(g_settings.equipment, i);
     temp["valid"] = g_state.temps.valid[i];
     switch (i) {
     case TEMP_CUBE:
@@ -759,6 +765,11 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
       break;
     }
   }
+
+  JsonObject temperatureTopology = doc["temperatureTopology"].to<JsonObject>();
+  fillTemperatureTopologyJson(temperatureTopology, g_settings.equipment);
+  JsonObject supportedModes = doc["supportedModes"].to<JsonObject>();
+  fillTemperatureModeSupportJson(supportedModes, g_settings);
 
   JsonObject pressure = doc["pressure"].to<JsonObject>();
   pressure["cubeMmHg"] = g_state.pressure.cube;
@@ -1225,8 +1236,10 @@ static bool requiresAdaptiveColumnTopForMode(Mode mode) {
   return mode == Mode::RECTIFICATION || mode == Mode::MANUAL_RECT;
 }
 
-static String buildMissingRequiredSensorsList(Mode mode, const SystemState &state) {
-  const Safety::RequiredSensorsMask required = Safety::getRequiredSensorsForMode(mode);
+static String buildMissingRequiredSensorsList(Mode mode, const Settings &settings,
+                                              const SystemState &state) {
+  const Safety::RequiredSensorsMask required =
+      Safety::getRequiredSensorsForMode(mode, settings);
   String missing;
 
   auto appendMissing = [&](bool condition, const char *label) {
@@ -1248,6 +1261,47 @@ static String buildMissingRequiredSensorsList(Mode mode, const SystemState &stat
   appendMissing(required.pressure && !state.pressure.ok, "давление куба");
 
   return missing;
+}
+
+static void fillTemperatureTopologyJson(JsonObject topology,
+                                        const EquipmentSettings &equipment) {
+  topology["cube"] = Safety::isTempSensorInstalled(equipment, TEMP_CUBE);
+  topology["columnBottom"] =
+      Safety::isTempSensorInstalled(equipment, TEMP_COLUMN_BOTTOM);
+  topology["columnTop"] =
+      Safety::isTempSensorInstalled(equipment, TEMP_COLUMN_TOP);
+  topology["reflux"] = Safety::isTempSensorInstalled(equipment, TEMP_REFLUX);
+  topology["tsa"] = Safety::isTempSensorInstalled(equipment, TEMP_TSA);
+  topology["waterIn"] = Safety::isTempSensorInstalled(equipment, TEMP_WATER_IN);
+  topology["waterOut"] =
+      Safety::isTempSensorInstalled(equipment, TEMP_WATER_OUT);
+  topology["installedCount"] = Safety::getInstalledTempSensorCount(equipment);
+}
+
+static void fillTemperatureModeSupportJson(JsonObject modes,
+                                           const Settings &settings) {
+  struct ModeItem {
+    const char *key;
+    Mode mode;
+  };
+  static const ModeItem kModes[] = {
+      {"rectification", Mode::RECTIFICATION},
+      {"manualRect", Mode::MANUAL_RECT},
+      {"distillation", Mode::DISTILLATION},
+      {"nbk", Mode::NBK},
+      {"mashing", Mode::MASHING},
+      {"hold", Mode::HOLD},
+      {"fermentation", Mode::FERMENTATION},
+  };
+
+  for (const ModeItem &item : kModes) {
+    char reason[160] = "";
+    JsonObject modeJson = modes[item.key].to<JsonObject>();
+    const bool supported = Safety::isModeTemperatureTopologySupported(
+        item.mode, settings.equipment, reason, sizeof(reason));
+    modeJson["supported"] = supported;
+    modeJson["reason"] = supported ? "" : reason;
+  }
 }
 
 static bool expectsAutoStirrerForMode(Mode mode, const Settings &settings) {
@@ -1566,11 +1620,15 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
   const bool lifecycleIdle = status.lifecycle == ControlV2::ModeLifecycleV2::IDLE;
   const bool v2SnapshotReady = metrics.timestampMs > 0;
   const Safety::RequiredSensorsMask requiredSensors =
-      Safety::getRequiredSensorsForMode(mode);
+      Safety::getRequiredSensorsForMode(mode, g_settings);
+  char topologyReason[160] = "";
+  const bool topologySupported = Safety::isModeTemperatureTopologySupported(
+      mode, g_settings.equipment, topologyReason, sizeof(topologyReason));
   const bool tempSensorsPresent =
       g_state.health.tempSensorsTotal > 0 && g_state.health.tempSensorsOk;
   const bool sensorsFresh = tempSensorsPresent && status.indicators.sensorFreshnessOk;
-  const String missingRequiredSensors = buildMissingRequiredSensorsList(mode, g_state);
+  const String missingRequiredSensors =
+      buildMissingRequiredSensorsList(mode, g_settings, g_state);
   const bool requiredSensorsReady = missingRequiredSensors.isEmpty();
   const bool allowDemoSensorFailure =
       g_settings.demoMode &&
@@ -1632,10 +1690,11 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
   setProcessPreflightCheck(checks, "v2", v2SnapshotReady ? "OK" : "Нет пакета",
                            v2SnapshotReady ? "good" : "danger");
   setProcessPreflightCheck(checks, "sensors",
-                           (requiredSensorsReady && sensorsFresh && adaptiveColumnTopReady)
+                           (topologySupported && requiredSensorsReady && sensorsFresh &&
+                            adaptiveColumnTopReady)
                                ? "OK"
                                : "Проверьте",
-                           (!requiredSensorsReady || !sensorsFresh)
+                           (!topologySupported || !requiredSensorsReady || !sensorsFresh)
                                ? "danger"
                                : ((requiredSensorsReady && adaptiveColumnTopReady) ? "good"
                                                                                    : "warn"));
@@ -1696,7 +1755,13 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
             false);
   }
 
-  if (!requiredSensorsReady) {
+  if (!topologySupported) {
+    addItem("sensors", "danger", "Топология термодатчиков",
+            topologyReason[0] != '\0'
+                ? String(topologyReason)
+                : String("Текущая конфигурация оборудования не поддерживает этот режим."),
+            true);
+  } else if (!requiredSensorsReady) {
     addItem("sensors", "danger", "Обязательные датчики",
             String("Для выбранного режима не хватает обязательных датчиков: ") +
                 missingRequiredSensors + ".",
@@ -3020,7 +3085,17 @@ void init() {
           return;
         }
 
-        request->send(200, "application/json", "{\"success\":true}");
+        JsonDocument resp;
+        resp["success"] = true;
+        JsonObject temperatureTopology =
+            resp["temperatureTopology"].to<JsonObject>();
+        fillTemperatureTopologyJson(temperatureTopology, g_settings.equipment);
+        JsonObject supportedModes = resp["supportedModes"].to<JsonObject>();
+        fillTemperatureModeSupportJson(supportedModes, g_settings);
+
+        String json;
+        serializeJson(resp, json);
+        request->send(200, "application/json", json);
       });
 
   server.on("^\\/api\\/history\\/([0-9]+)\\/export$", HTTP_GET,
@@ -3717,6 +3792,10 @@ void init() {
     doc["leakSensorEnabled"] = g_settings.equipment.leakSensorEnabled;
     doc["leakThresholdV"] = g_settings.equipment.leakThresholdV;
     doc["leakTriggerAbove"] = g_settings.equipment.leakTriggerAbove;
+    JsonObject temperatureTopology = doc["temperatureTopology"].to<JsonObject>();
+    fillTemperatureTopologyJson(temperatureTopology, g_settings.equipment);
+    JsonObject supportedModes = doc["supportedModes"].to<JsonObject>();
+    fillTemperatureModeSupportJson(supportedModes, g_settings);
     doc["packingType"] = packingType;
     doc["packingCoeff"] = g_settings.equipment.packingCoeff;
     JsonObject boardProfile = doc["boardProfile"].to<JsonObject>();
@@ -3893,6 +3972,37 @@ void init() {
         if (!doc["leakTriggerAbove"].isNull()) {
           g_settings.equipment.leakTriggerAbove =
               doc["leakTriggerAbove"].as<bool>();
+        }
+        if (doc["temperatureTopology"].is<JsonObject>()) {
+          JsonObject topology = doc["temperatureTopology"].as<JsonObject>();
+          if (!topology["cube"].isNull()) {
+            g_settings.equipment.temperatureTopology.cube =
+                topology["cube"].as<bool>();
+          }
+          if (!topology["columnBottom"].isNull()) {
+            g_settings.equipment.temperatureTopology.columnBottom =
+                topology["columnBottom"].as<bool>();
+          }
+          if (!topology["columnTop"].isNull()) {
+            g_settings.equipment.temperatureTopology.columnTop =
+                topology["columnTop"].as<bool>();
+          }
+          if (!topology["reflux"].isNull()) {
+            g_settings.equipment.temperatureTopology.reflux =
+                topology["reflux"].as<bool>();
+          }
+          if (!topology["tsa"].isNull()) {
+            g_settings.equipment.temperatureTopology.tsa =
+                topology["tsa"].as<bool>();
+          }
+          if (!topology["waterIn"].isNull()) {
+            g_settings.equipment.temperatureTopology.waterIn =
+                topology["waterIn"].as<bool>();
+          }
+          if (!topology["waterOut"].isNull()) {
+            g_settings.equipment.temperatureTopology.waterOut =
+                topology["waterOut"].as<bool>();
+          }
         }
 
         if (!NVSManager::saveSettings(g_settings)) {

@@ -397,6 +397,16 @@ struct CloudSettings {
   char tokenId[64] = "";    // tokenId для отладки/ротации
 };
 
+struct TemperatureTopologySettings {
+  bool cube = true;
+  bool columnBottom = true;
+  bool columnTop = true;
+  bool reflux = true;
+  bool tsa = true;
+  bool waterIn = true;
+  bool waterOut = true;
+};
+
 struct EquipmentSettings {
   uint16_t columnHeightMm = 1000;
   PackingType packingType = PackingType::SPN_3_5;
@@ -418,6 +428,7 @@ struct EquipmentSettings {
   bool leakSensorEnabled = false;
   float leakThresholdV = 1.5f;
   bool leakTriggerAbove = true;
+  TemperatureTopologySettings temperatureTopology;
 };
 
 struct FractionatorSettings {
