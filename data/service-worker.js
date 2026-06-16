@@ -1,13 +1,13 @@
-const CACHE_NAME = 'smart-column-v1.10.12';
+const CACHE_NAME = 'smart-column-v2.3.23';
 const ASSETS = [
   '/',
   '/index.html',
   '/logs.html',
   '/charts.html',
-  '/app.js?v=1.10.12',
-  '/style.css?v=1.10.12',
-  '/charts.js?v=1.10.12',
-  '/charts-style.css?v=1.10.12',
+  '/app.js?v=2.3.23',
+  '/style.css?v=2.3.23',
+  '/charts.js?v=2.3.23',
+  '/charts-style.css?v=2.3.23',
   '/schemes-animation.css',
   '/manifest.json',
   '/schemes/column-tesla.svg',

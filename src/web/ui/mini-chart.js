@@ -10,7 +10,19 @@ import { runtimeMonitorState } from '../globals.js';
 
 function isTempChannelVisible(key) {
     const channel = runtimeMonitorState.temperatureChannels?.[key];
-    return Boolean(channel?.assigned || channel?.detected);
+    return Boolean(
+        channel?.installed ||
+        channel?.assigned ||
+        channel?.detected ||
+        channel?.valid
+    );
+}
+
+function normalizeProcessTemperature(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    if (numeric < 10 || numeric > 150) return null;
+    return numeric;
 }
 
 function rebuildMiniChartSeries() {
@@ -44,7 +56,12 @@ async function loadMiniChartHistory() {
             : {};
         const isVisibleFromMeta = (key) => {
             const channel = tempMeta?.[key];
-            return Boolean(channel?.assigned || channel?.detected || isTempChannelVisible(key));
+            return Boolean(
+                channel?.installed ||
+                channel?.assigned ||
+                channel?.detected ||
+                isTempChannelVisible(key)
+            );
         };
         const timestamps = [];
         const cube = [];
@@ -57,9 +74,17 @@ async function loadMiniChartHistory() {
                 ? (Date.now() - Math.max(0, deviceNowMs - sampleMs))
                 : Date.now();
             timestamps.push(clientTs);
-            cube.push(point.t_cube ?? null);
-            columnTop.push(isVisibleFromMeta('columnTop') ? (point.t_column_top ?? null) : null);
-            reflux.push(isVisibleFromMeta('reflux') ? (point.t_reflux ?? null) : null);
+            cube.push(normalizeProcessTemperature(point.t_cube));
+            columnTop.push(
+                isVisibleFromMeta('columnTop')
+                    ? normalizeProcessTemperature(point.t_column_top)
+                    : null
+            );
+            reflux.push(
+                isVisibleFromMeta('reflux')
+                    ? normalizeProcessTemperature(point.t_reflux)
+                    : null
+            );
         });
 
         miniChartData.timestamps.splice(0, miniChartData.timestamps.length, ...timestamps.slice(-MINI_CHART_MAX_POINTS));
@@ -263,17 +288,19 @@ export function updateMiniChart(data) {
 
         miniChartData.timestamps.push(now);
 
-        miniChartData.cube.push(data.tempValid?.cube === false ? null : data.t_cube);
+        miniChartData.cube.push(
+            data.tempValid?.cube === false ? null : normalizeProcessTemperature(data.t_cube)
+        );
 
         miniChartData.columnTop.push(
             isTempChannelVisible('columnTop') && data.tempValid?.columnTop !== false
-                ? (data.t_column_top ?? null)
+                ? normalizeProcessTemperature(data.t_column_top)
                 : null
         );
 
         miniChartData.reflux.push(
             isTempChannelVisible('reflux') && data.tempValid?.reflux !== false
-                ? (data.t_reflux ?? null)
+                ? normalizeProcessTemperature(data.t_reflux)
                 : null
         );
 

@@ -16,7 +16,12 @@ function setHidden(id, hidden) {
 
 function isTemperatureChannelVisible(key) {
     const channel = runtimeMonitorState.temperatureChannels?.[key];
-    return Boolean(channel?.assigned || channel?.detected);
+    return Boolean(
+        channel?.installed ||
+        channel?.assigned ||
+        channel?.detected ||
+        channel?.valid
+    );
 }
 
 function hasVisibleRows() {
