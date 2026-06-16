@@ -1050,6 +1050,48 @@ export async function scanCalibrationSensors() {
     }
 }
 
+function renderRawOneWireScan(data) {
+    const out = byId('tempRawScanResult');
+    if (!out) return;
+
+    const count = Number(data?.count || 0);
+    const sensors = Array.isArray(data?.sensors) ? data.sensors : [];
+    if (!count || !sensors.length) {
+        out.textContent = 'Сырая 1-Wire линия: датчики не найдены.';
+        return;
+    }
+
+    const lines = sensors.map((sensor, index) => {
+        const address = String(sensor?.address || '—');
+        const family = Number(sensor?.family);
+        const crc = Number(sensor?.crc);
+        const familyText = Number.isFinite(family)
+            ? `family=0x${family.toString(16).toUpperCase().padStart(2, '0')}`
+            : 'family=--';
+        const crcText = Number.isFinite(crc)
+            ? `crc=0x${crc.toString(16).toUpperCase().padStart(2, '0')}`
+            : 'crc=--';
+        return `${index + 1}. ${address}  ${familyText}  ${crcText}`;
+    });
+
+    out.textContent = `Сырая 1-Wire линия: найдено ${count}\n${lines.join('\n')}`;
+}
+
+export async function scanCalibrationSensorsRaw() {
+    try {
+        const response = await fetch(`${API_BASE}/scan/raw`);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+
+        renderRawOneWireScan(data);
+        setMessage('tempResult', `Сырой скан 1-Wire: найдено ${Number(data.count) || 0}`, 'info');
+    } catch (error) {
+        const out = byId('tempRawScanResult');
+        if (out) out.textContent = `Ошибка сырого сканирования: ${error.message}`;
+        setMessage('tempResult', `Ошибка сырого сканирования: ${error.message}`, 'error');
+    }
+}
+
 export async function assignTempSensorAddress(index) {
     const address = String(byId(`addr_${index}`)?.value || '').trim();
 
@@ -1281,6 +1323,10 @@ export function initCalibrationTab() {
     initEquipmentNumberSteppers();
     updateCalibrationImportUi('Файл не выбран', false);
     updateCalibrationTime();
+    const rawScanOut = byId('tempRawScanResult');
+    if (rawScanOut) {
+        rawScanOut.textContent = 'Временный сервисный вывод. Нажмите "Сырой 1-Wire scan", чтобы увидеть физически найденные адреса на линии.';
+    }
     loadCalibrationData();
     ensurePressureCalibrationLivePolling();
 }

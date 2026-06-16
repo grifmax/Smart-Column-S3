@@ -5748,6 +5748,39 @@ void init() {
               request->send(200, "application/json", json);
             });
 
+  // GET /api/calibration/scan/raw - сырой скан 1-Wire без ролей и привязок
+  server.on("/api/calibration/scan/raw", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              uint8_t addresses[TEMP_COUNT][8];
+              const uint8_t count = Sensors::scanDS18B20(addresses);
+
+              JsonDocument doc;
+              doc["count"] = count;
+              doc["success"] = true;
+              doc["bus"] = "1-wire";
+
+              JsonArray sensors = doc["sensors"].to<JsonArray>();
+              for (uint8_t i = 0; i < count; ++i) {
+                JsonObject sensor = sensors.add<JsonObject>();
+
+                char addrStr[24];
+                snprintf(addrStr, sizeof(addrStr),
+                         "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+                         addresses[i][0], addresses[i][1], addresses[i][2],
+                         addresses[i][3], addresses[i][4], addresses[i][5],
+                         addresses[i][6], addresses[i][7]);
+
+                sensor["index"] = i;
+                sensor["address"] = addrStr;
+                sensor["family"] = addresses[i][0];
+                sensor["crc"] = addresses[i][7];
+              }
+
+              String json;
+              serializeJson(doc, json);
+              request->send(200, "application/json", json);
+            });
+
   // ==========================================================================
   // PUMP CONTROL (для калибровки)
   // ==========================================================================
