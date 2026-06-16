@@ -112,21 +112,6 @@ function mergeDiscoveredTempSensors(scanSensors, temperatures) {
         });
     });
 
-    (Array.isArray(temperatures) ? temperatures : []).forEach((temp) => {
-        const index = Number(temp?.index);
-        const name = String(temp?.name || `Датчик ${index}`);
-        [temp?.detectedAddress, temp?.address, temp?.assignedAddress].forEach((candidate) => {
-            const address = String(candidate || '').trim();
-            if (!address) return;
-            appendSensor({
-                address,
-                mappedRole: Number.isInteger(index) ? index : -1,
-                mappedRoleName: name,
-                valid: Boolean(temp?.valid)
-            });
-        });
-    });
-
     return merged;
 }
 

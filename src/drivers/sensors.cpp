@@ -883,8 +883,8 @@ uint8_t scanDS18B20(uint8_t addresses[][8]) {
         memcpy(addresses[i], rawAddresses[i], sizeof(DeviceAddress));
     }
 
-    if (count > 0) {
-        discoverDs18b20(false);
+    discoverDs18b20(false);
+    if (ds18b20Count > 0) {
         startTemperatureConversion(millis());
     }
 
