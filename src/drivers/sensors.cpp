@@ -89,8 +89,8 @@ static const uint16_t CONVERSION_TIME_MS = 750; // 12-бит разрешени�
 static const uint32_t DISCOVERY_RETRY_MS = 2000;
 static const uint8_t DISCOVERY_INIT_ATTEMPTS = 4;
 static const uint16_t DISCOVERY_INIT_DELAY_MS = 250;
-static const uint8_t DISCOVERY_BUS_PASSES = 3;
-static const uint8_t DISCOVERY_PASS_DELAY_MS = 30;
+static const uint8_t DISCOVERY_BUS_PASSES = 6;
+static const uint8_t DISCOVERY_PASS_DELAY_MS = 80;
 static uint8_t consecutiveTempReadFailures = 0;
 
 static bool probePzem(bool verboseFailureLog = true) {
@@ -307,6 +307,8 @@ static uint8_t scanDs18b20Bus(DeviceAddress addresses[]) {
     uint8_t count = 0;
     DeviceAddress addr = {0};
 
+    memset(addresses, 0, sizeof(DeviceAddress) * TEMP_COUNT);
+
     oneWire.reset_search();
     while (count < TEMP_COUNT && oneWire.search(addr)) {
         if (!isSupportedDs18Family(addr[0])) {
@@ -327,6 +329,39 @@ static uint8_t scanDs18b20Bus(DeviceAddress addresses[]) {
     return count;
 }
 
+static bool isValidDs18b20Reading(float value) {
+    return value != DEVICE_DISCONNECTED_C && value > -50.0f && value < 150.0f;
+}
+
+static uint8_t appendKnownRespondingDs18b20(DeviceAddress addresses[],
+                                           uint8_t count) {
+    if (!hasAssignedTempMap()) {
+        return count;
+    }
+
+    ds18b20.requestTemperatures();
+    delay(CONVERSION_TIME_MS);
+
+    for (uint8_t role = 0; role < TEMP_COUNT && count < TEMP_COUNT; ++role) {
+        if (isZeroDeviceAddress(tempCal.addresses[role])) {
+            continue;
+        }
+        if (hasDs18b20Address(addresses, count, tempCal.addresses[role])) {
+            continue;
+        }
+
+        const float value = ds18b20.getTempC(tempCal.addresses[role]);
+        if (!isValidDs18b20Reading(value)) {
+            continue;
+        }
+
+        memcpy(addresses[count], tempCal.addresses[role], sizeof(DeviceAddress));
+        count++;
+    }
+
+    return count;
+}
+
 static void prepareDs18b20BusForScan() {
     if (conversionInProgress) {
         const uint32_t now = millis();
@@ -338,8 +373,9 @@ static void prepareDs18b20BusForScan() {
     }
 
     oneWire.reset_search();
+    oneWire.depower();
     oneWire.reset();
-    delay(2);
+    delay(10);
 }
 
 static uint8_t discoverDs18b20(bool logInventory) {
@@ -347,8 +383,6 @@ static uint8_t discoverDs18b20(bool logInventory) {
     DeviceAddress bestAddresses[TEMP_COUNT] = {};
     DeviceAddress passAddresses[TEMP_COUNT] = {};
     bool busAddressUsed[TEMP_COUNT] = {false};
-
-    clearDs18b20Inventory();
 
     for (uint8_t pass = 0; pass < DISCOVERY_BUS_PASSES; ++pass) {
         memset(passAddresses, 0, sizeof(passAddresses));
@@ -364,6 +398,10 @@ static uint8_t discoverDs18b20(bool logInventory) {
             delay(DISCOVERY_PASS_DELAY_MS);
         }
     }
+
+    count = appendKnownRespondingDs18b20(bestAddresses, count);
+
+    clearDs18b20Inventory();
 
     if (hasAssignedTempMap()) {
         for (uint8_t role = 0; role < TEMP_COUNT; ++role) {
@@ -557,7 +595,7 @@ void readTemperatures(Temperatures& temps) {
             float raw = ds18b20.getTempC(ds18b20Addresses[i]);
 
             // Проверка валидности (-127 = ошибка)
-            if (raw == DEVICE_DISCONNECTED_C || raw < -50 || raw > 150) {
+            if (!isValidDs18b20Reading(raw)) {
                 temps.valid[i] = false;
                 values[i] = 0;
                 // Инкремент счетчика ошибок конкретного датчика
@@ -873,6 +911,7 @@ uint8_t scanDS18B20(uint8_t addresses[][8]) {
     for (uint8_t attempt = 0; attempt < DISCOVERY_INIT_ATTEMPTS; ++attempt) {
         memset(rawAddresses, 0, sizeof(rawAddresses));
         count = scanDs18b20Bus(rawAddresses);
+        count = appendKnownRespondingDs18b20(rawAddresses, count);
         if (count > 0) {
             break;
         }
@@ -925,7 +964,7 @@ bool isTempSensorValid(uint8_t index) {
     // Попробовать прочитать
     float temp = ds18b20.getTempC(ds18b20Addresses[index]);
     unlockDs18b20Bus();
-    return (temp != DEVICE_DISCONNECTED_C && temp > -50 && temp < 150);
+    return isValidDs18b20Reading(temp);
 }
 
 bool isBmp280PrimaryAvailable() {
