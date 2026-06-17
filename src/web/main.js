@@ -70,6 +70,7 @@ import {
     loadCalibrationData,
     scanCalibrationSensors,
     scanCalibrationSensorsRaw,
+    scanCalibrationSensorsRawSeries,
     assignTempSensorAddress,
     calibrateTempOffset,
     calibrateTempReference,
@@ -263,6 +264,7 @@ window.cancelWiFiSelection = cancelWiFiSelection;
 window.loadCalibrationData = loadCalibrationData;
 window.scanCalibrationSensors = scanCalibrationSensors;
 window.scanCalibrationSensorsRaw = scanCalibrationSensorsRaw;
+window.scanCalibrationSensorsRawSeries = scanCalibrationSensorsRawSeries;
 window.assignTempSensorAddress = assignTempSensorAddress;
 window.calibrateTempOffset = calibrateTempOffset;
 window.calibrateTempReference = calibrateTempReference;

@@ -1050,15 +1050,11 @@ export async function scanCalibrationSensors() {
     }
 }
 
-function renderRawOneWireScan(data) {
-    const out = byId('tempRawScanResult');
-    if (!out) return;
-
+function formatRawOneWireScan(data, title = 'Сырая 1-Wire линия') {
     const count = Number(data?.count || 0);
     const sensors = Array.isArray(data?.sensors) ? data.sensors : [];
     if (!count || !sensors.length) {
-        out.textContent = 'Сырая 1-Wire линия: датчики не найдены.';
-        return;
+        return `${title}: датчики не найдены.`;
     }
 
     const lines = sensors.map((sensor, index) => {
@@ -1074,7 +1070,17 @@ function renderRawOneWireScan(data) {
         return `${index + 1}. ${address}  ${familyText}  ${crcText}`;
     });
 
-    out.textContent = `Сырая 1-Wire линия: найдено ${count}\n${lines.join('\n')}`;
+    return `${title}: найдено ${count}\n${lines.join('\n')}`;
+}
+
+function renderRawOneWireScan(data) {
+    const out = byId('tempRawScanResult');
+    if (!out) return;
+    out.textContent = formatRawOneWireScan(data);
+}
+
+function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export async function scanCalibrationSensorsRaw() {
@@ -1089,6 +1095,38 @@ export async function scanCalibrationSensorsRaw() {
         const out = byId('tempRawScanResult');
         if (out) out.textContent = `Ошибка сырого сканирования: ${error.message}`;
         setMessage('tempResult', `Ошибка сырого сканирования: ${error.message}`, 'error');
+    }
+}
+
+export async function scanCalibrationSensorsRawSeries() {
+    const out = byId('tempRawScanResult');
+    if (out) {
+        out.textContent = 'Серийный сырой 1-Wire scan: выполняю 5 проходов...';
+    }
+
+    try {
+        const reports = [];
+        for (let attempt = 1; attempt <= 5; attempt += 1) {
+            const response = await fetch(`${API_BASE}/scan/raw`);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data?.error || `HTTP ${response.status}`);
+            }
+            reports.push(formatRawOneWireScan(data, `Попытка ${attempt}/5`));
+            if (attempt < 5) {
+                await delay(350);
+            }
+        }
+
+        if (out) {
+            out.textContent = reports.join('\n\n');
+        }
+        setMessage('tempResult', 'Серийный сырой 1-Wire scan завершён: 5 проходов.', 'info');
+    } catch (error) {
+        if (out) {
+            out.textContent = `Ошибка серийного сырого сканирования: ${error.message}`;
+        }
+        setMessage('tempResult', `Ошибка серийного сырого сканирования: ${error.message}`, 'error');
     }
 }
 
