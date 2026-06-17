@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.3.26"
+#define FIRMWARE_VERSION "2.3.27"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -85,10 +85,12 @@
 // I2C АДРЕСА
 // =============================================================================
 
-#define I2C_ADDR_BMP280_1 0x76 // Атмосферное давление
-#define I2C_ADDR_BMP280_2 0x77 // Резерв
-#define I2C_ADDR_ADS1115 0x48  // АЦП 16-бит
-#define I2C_ADDR_MCP4725 0x60  // DAC мешалки (A0=GND → 0x60, A0=VCC → 0x61)
+#define I2C_ADDR_BMP280_1 0x76       // Атмосферное давление
+#define I2C_ADDR_BMP280_2 0x77       // Резерв
+#define I2C_ADDR_ADS1115_PRIMARY 0x48   // Основной ADS1115: ареометр, давление, safety A2/A3
+#define I2C_ADDR_ADS1115_SECONDARY 0x49 // Резерв: уровни приёмных ёмкостей / будущие analog I/O
+#define I2C_ADDR_ADS1115 I2C_ADDR_ADS1115_PRIMARY // Алиас обратной совместимости
+#define I2C_ADDR_MCP4725 0x60       // DAC мешалки (A0=GND → 0x60, A0=VCC → 0x61)
 
 // =============================================================================
 // ADS1115 КАНАЛЫ
@@ -98,6 +100,14 @@
 #define ADS_CHANNEL_PRESSURE 1   // A1: датчик давления куба
 #define ADS_CHANNEL_LEVEL_BODY 2 // A2: резерв под датчик уровня банки тела
 #define ADS_CHANNEL_LEAK 3       // A3: резерв под датчик протечки / поддона
+
+// Второй ADS1115 (0x49) пока только резервируем по именам.
+// Базовый план: уровни приёмных ёмкостей. Точная раскладка по банкам может
+// быть скорректирована позже без ломки первой платы и основной шины датчиков.
+#define ADS2_CHANNEL_LEVEL_TANK_1 0 // A0: уровень ёмкости #1
+#define ADS2_CHANNEL_LEVEL_TANK_2 1 // A1: уровень ёмкости #2
+#define ADS2_CHANNEL_LEVEL_TANK_3 2 // A2: уровень ёмкости #3
+#define ADS2_CHANNEL_LEVEL_TANK_4 3 // A3: уровень ёмкости #4 / будущий резерв
 
 // Резерв под аналоговый датчик паров/газа на встроенном ADC ESP32-S3
 #define PIN_VAPOR_SENSOR_ADC_1 1

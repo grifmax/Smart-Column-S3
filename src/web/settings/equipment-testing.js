@@ -2059,6 +2059,7 @@ function normalizeTestingHardwareModules(modules = {}) {
         modules.bmp280Primary && typeof modules.bmp280Primary === 'object' ? modules.bmp280Primary : {},
         modules.bmp280Secondary && typeof modules.bmp280Secondary === 'object' ? modules.bmp280Secondary : {},
         modules.ads1115 && typeof modules.ads1115 === 'object' ? modules.ads1115 : {},
+        modules.ads1115Secondary && typeof modules.ads1115Secondary === 'object' ? modules.ads1115Secondary : {},
         modules.mcp4725 && typeof modules.mcp4725 === 'object' ? modules.mcp4725 : {},
         modules.pzem004t && typeof modules.pzem004t === 'object' ? modules.pzem004t : {}
     ];

@@ -514,6 +514,16 @@ static void fillEquipmentModulesJson(JsonObject modules) {
   ads1115["address"] = "0x48";
   ads1115["role"] = "A0 ареометр, A1 давление куба, A2 уровень тела, A3 протечка";
 
+  JsonObject ads1115Secondary = modules["ads1115Secondary"].to<JsonObject>();
+  ads1115Secondary["label"] = "ADS1115 #2";
+  ads1115Secondary["available"] = false;
+  ads1115Secondary["expected"] = false;
+  ads1115Secondary["planned"] = true;
+  ads1115Secondary["bus"] = "I2C";
+  ads1115Secondary["address"] = "0x49";
+  ads1115Secondary["role"] =
+      "Резерв под датчики уровня приёмных ёмкостей и будущие аналоговые каналы";
+
   JsonObject mcp4725 = modules["mcp4725"].to<JsonObject>();
   mcp4725["label"] = "MCP4725";
   mcp4725["available"] = Stirrer::isAvailable();

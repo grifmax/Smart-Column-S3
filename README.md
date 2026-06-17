@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![MQTT](https://img.shields.io/badge/MQTT-supported-green.svg)](docs/HOME_ASSISTANT.md)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-ready-blue.svg)](docs/HOME_ASSISTANT.md)
-[![Version](https://img.shields.io/badge/firmware-v2.3.26-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/firmware-v2.3.27-brightgreen.svg)](CHANGELOG.md)
 
 ## Что это
 
@@ -34,7 +34,8 @@ Smart-Column S3 - это прошивка и Web UI для автоматики 
 - В блоке ректификации Web UI показывается живая адаптация рецепта: baseline профиля, текущее давление и итоговое поведение порогов для этого запуска
 - Process Indicators v2: инженерные признаки процесса и объяснения состояний оператору
 - Watt-Control и Smart Decrement для управления нагревом и отбором
-- Электронный ареометр на отдельном канале ADS1115 (`A0`), давление куба — на `A1`
+- Основной `ADS1115` (`0x48`): электронный ареометр на `A0`, давление куба на `A1`, резервные safety-каналы на `A2/A3`
+- Второй `ADS1115` (`0x49`) заранее зарезервирован под датчики уровня приёмных ёмкостей и будущие аналоговые каналы
 - Мешалка куба 0-10В на MCP4725 DAC + MCP6001
 - MQTT и Home Assistant Discovery
 - OTA-обновление, HTTP Basic Auth, Rate Limiting
@@ -66,7 +67,7 @@ Smart-Column S3 задуман не как "ещё одна автоматика
 |------|------------|
 | Контроллер | ESP32-S3 DevKitC-1 N16R8 |
 | Температура | DS18B20 |
-| Давление и техдатчики | MPX5010DP, ADS1115, BMP280 |
+| Давление и техдатчики | MPX5010DP, ADS1115 x2, BMP280 |
 | Питание и мощность | SSR + PZEM-004T v3.0 |
 | Насос | TMC2209 + шаговый двигатель |
 | Клапаны | 12V NC + MOSFET |

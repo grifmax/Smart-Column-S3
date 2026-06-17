@@ -361,6 +361,7 @@ function normalizeHardwareModules(modules = {}) {
         bmp280Primary: modules.bmp280Primary && typeof modules.bmp280Primary === 'object' ? modules.bmp280Primary : {},
         bmp280Secondary: modules.bmp280Secondary && typeof modules.bmp280Secondary === 'object' ? modules.bmp280Secondary : {},
         ads1115: modules.ads1115 && typeof modules.ads1115 === 'object' ? modules.ads1115 : {},
+        ads1115Secondary: modules.ads1115Secondary && typeof modules.ads1115Secondary === 'object' ? modules.ads1115Secondary : {},
         mcp4725: modules.mcp4725 && typeof modules.mcp4725 === 'object' ? modules.mcp4725 : {},
         pzem004t: modules.pzem004t && typeof modules.pzem004t === 'object' ? modules.pzem004t : {}
     };
@@ -493,6 +494,7 @@ function syncHardwareModulesUi(modules = {}) {
         normalized.bmp280Primary,
         normalized.bmp280Secondary,
         normalized.ads1115,
+        normalized.ads1115Secondary,
         normalized.mcp4725,
         normalized.pzem004t
     ];
