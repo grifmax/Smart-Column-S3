@@ -114,13 +114,11 @@ function mergeDiscoveredTempSensors(scanSensors, temperatures) {
 
     (Array.isArray(temperatures) ? temperatures : []).forEach((temp, index) => {
         const detectedAddress = String(temp?.detectedAddress || '').trim();
-        const assignedAddress = String(temp?.assignedAddress || '').trim();
-        const fallbackAddress = detectedAddress || (temp?.valid ? assignedAddress : '');
-        if (!fallbackAddress) return;
+        if (!detectedAddress) return;
 
         appendSensor({
             index,
-            address: fallbackAddress,
+            address: detectedAddress,
             mappedRole: Number.isFinite(Number(temp?.index)) ? Number(temp.index) : index,
             mappedRoleName: String(temp?.name || `Датчик ${index}`),
             fromRuntime: true
@@ -1069,13 +1067,16 @@ function formatRawOneWireScan(data, title = 'Сырая 1-Wire линия') {
     const count = Number(data?.count || 0);
     const searchCount = Number(data?.searchCount || 0);
     const runtimeCount = Number(data?.runtimeCount || 0);
+    const probeCount = Number(data?.probeCount || 0);
     const sensors = Array.isArray(data?.sensors) ? data.sensors : [];
     const searchSensors = Array.isArray(data?.searchSensors) ? data.searchSensors : sensors;
     const runtimeSensors = Array.isArray(data?.runtimeSensors) ? data.runtimeSensors : [];
+    const probeSensors = Array.isArray(data?.probeSensors) ? data.probeSensors : [];
     const lines = [
         `${title}: итог ${count}`,
         `Search ROM: ${searchCount}`,
         `Runtime по ролям: ${runtimeCount}`,
+        `Прямой опрос сохранённых адресов: ${probeCount}`,
         ''
     ];
 
@@ -1110,6 +1111,24 @@ function formatRawOneWireScan(data, title = 'Сырая 1-Wire линия') {
         lines.push('Runtime адреса по ролям: не найдены');
     }
 
+    lines.push('');
+
+    if (probeSensors.length) {
+        lines.push('Прямой опрос сохранённых адресов:');
+        probeSensors.forEach((sensor, index) => {
+            const roleName = String(sensor?.roleName || `Роль ${index}`);
+            const address = String(sensor?.address || '—');
+            const ok = Boolean(sensor?.ok);
+            const temp = Number(sensor?.temperature);
+            const suffix = ok && Number.isFinite(temp)
+                ? `OK, ${temp.toFixed(2)} °C`
+                : 'нет ответа';
+            lines.push(`${index + 1}. ${roleName}: ${address} -> ${suffix}`);
+        });
+    } else {
+        lines.push('Прямой опрос сохранённых адресов: нет сохранённых адресов');
+    }
+
     return lines.join('\n');
 }
 
@@ -1132,7 +1151,7 @@ export async function scanCalibrationSensorsRaw() {
         renderRawOneWireScan(data);
         setMessage(
             'tempResult',
-            `Сырой 1-Wire: Search ROM ${Number(data.searchCount) || 0}, runtime ${Number(data.runtimeCount) || 0}, итог ${Number(data.count) || 0}`,
+            `Сырой 1-Wire: Search ROM ${Number(data.searchCount) || 0}, runtime ${Number(data.runtimeCount) || 0}, probe ${Number(data.probeCount) || 0}, итог ${Number(data.count) || 0}`,
             'info'
         );
     } catch (error) {

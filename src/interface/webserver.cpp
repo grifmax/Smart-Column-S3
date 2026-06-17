@@ -5854,7 +5854,41 @@ void init() {
                 runtimeCount++;
               }
 
+              JsonArray probeSensors = doc["probeSensors"].to<JsonArray>();
+              uint8_t probeCount = 0;
+              for (uint8_t role = 0; role < TEMP_COUNT; ++role) {
+                if (isZeroTempAddress(g_settings.tempCal.addresses[role])) {
+                  continue;
+                }
+
+                float probeTemp = -127.0f;
+                const bool probeOk = Sensors::probeTempAddress(
+                    g_settings.tempCal.addresses[role], &probeTemp);
+
+                JsonObject sensor = probeSensors.add<JsonObject>();
+                char addrStr[24];
+                snprintf(addrStr, sizeof(addrStr),
+                         "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+                         g_settings.tempCal.addresses[role][0],
+                         g_settings.tempCal.addresses[role][1],
+                         g_settings.tempCal.addresses[role][2],
+                         g_settings.tempCal.addresses[role][3],
+                         g_settings.tempCal.addresses[role][4],
+                         g_settings.tempCal.addresses[role][5],
+                         g_settings.tempCal.addresses[role][6],
+                         g_settings.tempCal.addresses[role][7]);
+                sensor["role"] = role;
+                sensor["roleName"] = getTempSensorLabel(role);
+                sensor["address"] = addrStr;
+                sensor["ok"] = probeOk;
+                if (probeOk) {
+                  sensor["temperature"] = probeTemp;
+                  probeCount++;
+                }
+              }
+
               doc["runtimeCount"] = runtimeCount;
+              doc["probeCount"] = probeCount;
               doc["count"] = count;
 
               JsonArray sensors = doc["sensors"].to<JsonArray>();

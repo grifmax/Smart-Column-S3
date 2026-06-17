@@ -948,6 +948,41 @@ bool getDiscoveredTempAddress(uint8_t index, uint8_t address[8]) {
     return true;
 }
 
+bool probeTempAddress(const uint8_t address[8], float* temperatureC) {
+    if (!address || isZeroDeviceAddress(address)) {
+        return false;
+    }
+
+    if (!lockDs18b20Bus(portMAX_DELAY)) {
+        return false;
+    }
+
+    const uint32_t now = millis();
+    if (conversionInProgress) {
+        if (now - conversionStartTime < CONVERSION_TIME_MS) {
+            delay(CONVERSION_TIME_MS - (now - conversionStartTime));
+        }
+        conversionInProgress = false;
+        conversionStartTime = 0;
+    }
+
+    oneWire.depower();
+    ds18b20.requestTemperaturesByAddress(address);
+    delay(CONVERSION_TIME_MS);
+
+    const float value = ds18b20.getTempC(address);
+    if (temperatureC) {
+        *temperatureC = value;
+    }
+
+    if (ds18b20Count > 0) {
+        startTemperatureConversion(millis());
+    }
+
+    unlockDs18b20Bus();
+    return isValidDs18b20Reading(value);
+}
+
 bool isTempSensorValid(uint8_t index) {
     if (index >= TEMP_COUNT) return false;
 
