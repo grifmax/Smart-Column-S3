@@ -1067,25 +1067,50 @@ export async function scanCalibrationSensors() {
 
 function formatRawOneWireScan(data, title = 'Сырая 1-Wire линия') {
     const count = Number(data?.count || 0);
+    const searchCount = Number(data?.searchCount || 0);
+    const runtimeCount = Number(data?.runtimeCount || 0);
     const sensors = Array.isArray(data?.sensors) ? data.sensors : [];
-    if (!count || !sensors.length) {
-        return `${title}: датчики не найдены.`;
+    const searchSensors = Array.isArray(data?.searchSensors) ? data.searchSensors : sensors;
+    const runtimeSensors = Array.isArray(data?.runtimeSensors) ? data.runtimeSensors : [];
+    const lines = [
+        `${title}: итог ${count}`,
+        `Search ROM: ${searchCount}`,
+        `Runtime по ролям: ${runtimeCount}`,
+        ''
+    ];
+
+    if (searchSensors.length) {
+        lines.push('Search ROM адреса:');
+        searchSensors.forEach((sensor, index) => {
+            const address = String(sensor?.address || '—');
+            const family = Number(sensor?.family);
+            const crc = Number(sensor?.crc);
+            const familyText = Number.isFinite(family)
+                ? `family=0x${family.toString(16).toUpperCase().padStart(2, '0')}`
+                : 'family=--';
+            const crcText = Number.isFinite(crc)
+                ? `crc=0x${crc.toString(16).toUpperCase().padStart(2, '0')}`
+                : 'crc=--';
+            lines.push(`${index + 1}. ${address}  ${familyText}  ${crcText}`);
+        });
+    } else {
+        lines.push('Search ROM адреса: не найдены');
     }
 
-    const lines = sensors.map((sensor, index) => {
-        const address = String(sensor?.address || '—');
-        const family = Number(sensor?.family);
-        const crc = Number(sensor?.crc);
-        const familyText = Number.isFinite(family)
-            ? `family=0x${family.toString(16).toUpperCase().padStart(2, '0')}`
-            : 'family=--';
-        const crcText = Number.isFinite(crc)
-            ? `crc=0x${crc.toString(16).toUpperCase().padStart(2, '0')}`
-            : 'crc=--';
-        return `${index + 1}. ${address}  ${familyText}  ${crcText}`;
-    });
+    lines.push('');
 
-    return `${title}: найдено ${count}\n${lines.join('\n')}`;
+    if (runtimeSensors.length) {
+        lines.push('Runtime адреса по ролям:');
+        runtimeSensors.forEach((sensor, index) => {
+            const roleName = String(sensor?.roleName || `Роль ${index}`);
+            const address = String(sensor?.address || '—');
+            lines.push(`${index + 1}. ${roleName}: ${address}`);
+        });
+    } else {
+        lines.push('Runtime адреса по ролям: не найдены');
+    }
+
+    return lines.join('\n');
 }
 
 function renderRawOneWireScan(data) {
@@ -1105,7 +1130,11 @@ export async function scanCalibrationSensorsRaw() {
         if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
 
         renderRawOneWireScan(data);
-        setMessage('tempResult', `Сырой скан 1-Wire: найдено ${Number(data.count) || 0}`, 'info');
+        setMessage(
+            'tempResult',
+            `Сырой 1-Wire: Search ROM ${Number(data.searchCount) || 0}, runtime ${Number(data.runtimeCount) || 0}, итог ${Number(data.count) || 0}`,
+            'info'
+        );
     } catch (error) {
         const out = byId('tempRawScanResult');
         if (out) out.textContent = `Ошибка сырого сканирования: ${error.message}`;
@@ -1136,7 +1165,7 @@ export async function scanCalibrationSensorsRawSeries() {
         if (out) {
             out.textContent = reports.join('\n\n');
         }
-        setMessage('tempResult', 'Серийный сырой 1-Wire scan завершён: 5 проходов.', 'info');
+        setMessage('tempResult', 'Серийный сырой 1-Wire scan завершён: 5 проходов с раздельным выводом Search ROM и runtime.', 'info');
     } catch (error) {
         if (out) {
             out.textContent = `Ошибка серийного сырого сканирования: ${error.message}`;

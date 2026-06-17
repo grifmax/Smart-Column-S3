@@ -911,20 +911,16 @@ uint8_t scanDS18B20(uint8_t addresses[][8]) {
     for (uint8_t attempt = 0; attempt < DISCOVERY_INIT_ATTEMPTS; ++attempt) {
         memset(rawAddresses, 0, sizeof(rawAddresses));
         count = scanDs18b20Bus(rawAddresses);
-        count = appendKnownRespondingDs18b20(rawAddresses, count);
         if (count > 0) {
             break;
         }
         delay(DISCOVERY_INIT_DELAY_MS);
     }
 
+    count = appendKnownRespondingDs18b20(rawAddresses, count);
+
     for (uint8_t i = 0; i < count && i < TEMP_COUNT; ++i) {
         memcpy(addresses[i], rawAddresses[i], sizeof(DeviceAddress));
-    }
-
-    discoverDs18b20(false);
-    if (ds18b20Count > 0) {
-        startTemperatureConversion(millis());
     }
 
     unlockDs18b20Bus();

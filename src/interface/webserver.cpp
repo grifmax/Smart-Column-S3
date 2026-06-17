@@ -5717,8 +5717,9 @@ void init() {
   // GET /api/calibration/scan - сканирование DS18B20
   server.on("/api/calibration/scan", HTTP_GET,
             [](AsyncWebServerRequest *request) {
-              uint8_t addresses[TEMP_COUNT][8];
+              uint8_t addresses[TEMP_COUNT][8] = {};
               uint8_t count = Sensors::scanDS18B20(addresses);
+              const uint8_t searchCount = count;
 
               for (uint8_t role = 0; role < TEMP_COUNT && count < TEMP_COUNT;
                    ++role) {
@@ -5742,8 +5743,18 @@ void init() {
                 count++;
               }
 
+              uint8_t runtimeCount = 0;
+              for (uint8_t role = 0; role < TEMP_COUNT; ++role) {
+                uint8_t detectedAddress[8] = {0};
+                if (Sensors::getDiscoveredTempAddress(role, detectedAddress)) {
+                  runtimeCount++;
+                }
+              }
+
               JsonDocument doc;
               doc["count"] = count;
+              doc["searchCount"] = searchCount;
+              doc["runtimeCount"] = runtimeCount;
 
               JsonArray sensors = doc["sensors"].to<JsonArray>();
               for (uint8_t i = 0; i < count; i++) {
@@ -5783,17 +5794,19 @@ void init() {
   // GET /api/calibration/scan/raw - сырой скан 1-Wire без ролей и привязок
   server.on("/api/calibration/scan/raw", HTTP_GET,
             [](AsyncWebServerRequest *request) {
-              uint8_t addresses[TEMP_COUNT][8];
-              const uint8_t count = Sensors::scanDS18B20(addresses);
+              uint8_t addresses[TEMP_COUNT][8] = {};
+              uint8_t count = Sensors::scanDS18B20(addresses);
+              const uint8_t searchCount = count;
 
               JsonDocument doc;
               doc["count"] = count;
+              doc["searchCount"] = searchCount;
               doc["success"] = true;
               doc["bus"] = "1-wire";
 
-              JsonArray sensors = doc["sensors"].to<JsonArray>();
-              for (uint8_t i = 0; i < count; ++i) {
-                JsonObject sensor = sensors.add<JsonObject>();
+              JsonArray searchSensors = doc["searchSensors"].to<JsonArray>();
+              for (uint8_t i = 0; i < searchCount; ++i) {
+                JsonObject sensor = searchSensors.add<JsonObject>();
 
                 char addrStr[24];
                 snprintf(addrStr, sizeof(addrStr),
@@ -5802,6 +5815,57 @@ void init() {
                          addresses[i][3], addresses[i][4], addresses[i][5],
                          addresses[i][6], addresses[i][7]);
 
+                sensor["index"] = i;
+                sensor["address"] = addrStr;
+                sensor["family"] = addresses[i][0];
+                sensor["crc"] = addresses[i][7];
+              }
+
+              JsonArray runtimeSensors = doc["runtimeSensors"].to<JsonArray>();
+              uint8_t runtimeCount = 0;
+              for (uint8_t role = 0; role < TEMP_COUNT; ++role) {
+                uint8_t detectedAddress[8] = {0};
+                if (!Sensors::getDiscoveredTempAddress(role, detectedAddress)) {
+                  continue;
+                }
+
+                bool alreadyListed = false;
+                for (uint8_t i = 0; i < count; ++i) {
+                  if (memcmp(addresses[i], detectedAddress, 8) == 0) {
+                    alreadyListed = true;
+                    break;
+                  }
+                }
+                if (!alreadyListed && count < TEMP_COUNT) {
+                  memcpy(addresses[count], detectedAddress, 8);
+                  count++;
+                }
+
+                JsonObject sensor = runtimeSensors.add<JsonObject>();
+                char addrStr[24];
+                snprintf(addrStr, sizeof(addrStr),
+                         "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+                         detectedAddress[0], detectedAddress[1], detectedAddress[2],
+                         detectedAddress[3], detectedAddress[4], detectedAddress[5],
+                         detectedAddress[6], detectedAddress[7]);
+                sensor["role"] = role;
+                sensor["roleName"] = getTempSensorLabel(role);
+                sensor["address"] = addrStr;
+                runtimeCount++;
+              }
+
+              doc["runtimeCount"] = runtimeCount;
+              doc["count"] = count;
+
+              JsonArray sensors = doc["sensors"].to<JsonArray>();
+              for (uint8_t i = 0; i < count; ++i) {
+                JsonObject sensor = sensors.add<JsonObject>();
+                char addrStr[24];
+                snprintf(addrStr, sizeof(addrStr),
+                         "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+                         addresses[i][0], addresses[i][1], addresses[i][2],
+                         addresses[i][3], addresses[i][4], addresses[i][5],
+                         addresses[i][6], addresses[i][7]);
                 sensor["index"] = i;
                 sensor["address"] = addrStr;
                 sensor["family"] = addresses[i][0];
