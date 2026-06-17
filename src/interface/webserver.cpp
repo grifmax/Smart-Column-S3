@@ -5797,10 +5797,15 @@ void init() {
               uint8_t addresses[TEMP_COUNT][8] = {};
               uint8_t count = Sensors::scanDS18B20(addresses);
               const uint8_t searchCount = count;
+              const uint8_t presenceAttempts = 5;
+              const uint8_t presenceDetections =
+                  Sensors::sampleDs18b20Presence(presenceAttempts);
 
               JsonDocument doc;
               doc["count"] = count;
               doc["searchCount"] = searchCount;
+              doc["presenceAttempts"] = presenceAttempts;
+              doc["presenceDetections"] = presenceDetections;
               doc["success"] = true;
               doc["bus"] = "1-wire";
 

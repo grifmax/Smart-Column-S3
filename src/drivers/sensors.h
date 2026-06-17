@@ -61,6 +61,8 @@ namespace Sensors {
      * @return Количество найденных датчиков
      */
     uint8_t scanDS18B20(uint8_t addresses[][8]);
+    bool probeTempAddress(const uint8_t address[8], float* temperatureC = nullptr);
+    uint8_t sampleDs18b20Presence(uint8_t attempts);
     
     /**
      * Проверка валидности датчика температуры

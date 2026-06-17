@@ -362,6 +362,17 @@ static uint8_t appendKnownRespondingDs18b20(DeviceAddress addresses[],
     return count;
 }
 
+static bool resetDs18b20BusWithRecovery() {
+    pinMode(PIN_ONEWIRE, OUTPUT);
+    digitalWrite(PIN_ONEWIRE, LOW);
+    delay(4);
+    pinMode(PIN_ONEWIRE, INPUT_PULLUP);
+    delay(4);
+
+    oneWire.depower();
+    return oneWire.reset();
+}
+
 static void prepareDs18b20BusForScan() {
     if (conversionInProgress) {
         const uint32_t now = millis();
@@ -373,8 +384,7 @@ static void prepareDs18b20BusForScan() {
     }
 
     oneWire.reset_search();
-    oneWire.depower();
-    oneWire.reset();
+    resetDs18b20BusWithRecovery();
     delay(10);
 }
 
@@ -981,6 +991,42 @@ bool probeTempAddress(const uint8_t address[8], float* temperatureC) {
 
     unlockDs18b20Bus();
     return isValidDs18b20Reading(value);
+}
+
+uint8_t sampleDs18b20Presence(uint8_t attempts) {
+    if (attempts == 0) {
+        return 0;
+    }
+
+    if (!lockDs18b20Bus(portMAX_DELAY)) {
+        return 0;
+    }
+
+    const uint32_t now = millis();
+    if (conversionInProgress) {
+        if (now - conversionStartTime < CONVERSION_TIME_MS) {
+            delay(CONVERSION_TIME_MS - (now - conversionStartTime));
+        }
+        conversionInProgress = false;
+        conversionStartTime = 0;
+    }
+
+    uint8_t detected = 0;
+    for (uint8_t i = 0; i < attempts; ++i) {
+        if (resetDs18b20BusWithRecovery()) {
+            detected++;
+        }
+        if (i + 1 < attempts) {
+            delay(8);
+        }
+    }
+
+    if (ds18b20Count > 0) {
+        startTemperatureConversion(millis());
+    }
+
+    unlockDs18b20Bus();
+    return detected;
 }
 
 bool isTempSensorValid(uint8_t index) {

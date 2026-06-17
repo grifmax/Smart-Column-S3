@@ -1068,6 +1068,8 @@ function formatRawOneWireScan(data, title = 'Сырая 1-Wire линия') {
     const searchCount = Number(data?.searchCount || 0);
     const runtimeCount = Number(data?.runtimeCount || 0);
     const probeCount = Number(data?.probeCount || 0);
+    const presenceAttempts = Number(data?.presenceAttempts || 0);
+    const presenceDetections = Number(data?.presenceDetections || 0);
     const sensors = Array.isArray(data?.sensors) ? data.sensors : [];
     const searchSensors = Array.isArray(data?.searchSensors) ? data.searchSensors : sensors;
     const runtimeSensors = Array.isArray(data?.runtimeSensors) ? data.runtimeSensors : [];
@@ -1077,6 +1079,7 @@ function formatRawOneWireScan(data, title = 'Сырая 1-Wire линия') {
         `Search ROM: ${searchCount}`,
         `Runtime по ролям: ${runtimeCount}`,
         `Прямой опрос сохранённых адресов: ${probeCount}`,
+        `Presence pulse: ${presenceDetections}/${presenceAttempts}`,
         ''
     ];
 
@@ -1151,7 +1154,7 @@ export async function scanCalibrationSensorsRaw() {
         renderRawOneWireScan(data);
         setMessage(
             'tempResult',
-            `Сырой 1-Wire: Search ROM ${Number(data.searchCount) || 0}, runtime ${Number(data.runtimeCount) || 0}, probe ${Number(data.probeCount) || 0}, итог ${Number(data.count) || 0}`,
+            `Сырой 1-Wire: presence ${Number(data.presenceDetections) || 0}/${Number(data.presenceAttempts) || 0}, Search ROM ${Number(data.searchCount) || 0}, runtime ${Number(data.runtimeCount) || 0}, probe ${Number(data.probeCount) || 0}, итог ${Number(data.count) || 0}`,
             'info'
         );
     } catch (error) {
