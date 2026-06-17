@@ -5720,6 +5720,28 @@ void init() {
               uint8_t addresses[TEMP_COUNT][8];
               uint8_t count = Sensors::scanDS18B20(addresses);
 
+              for (uint8_t role = 0; role < TEMP_COUNT && count < TEMP_COUNT;
+                   ++role) {
+                uint8_t detectedAddress[8] = {0};
+                if (!Sensors::getDiscoveredTempAddress(role, detectedAddress)) {
+                  continue;
+                }
+
+                bool alreadyListed = false;
+                for (uint8_t i = 0; i < count; ++i) {
+                  if (memcmp(addresses[i], detectedAddress, 8) == 0) {
+                    alreadyListed = true;
+                    break;
+                  }
+                }
+                if (alreadyListed) {
+                  continue;
+                }
+
+                memcpy(addresses[count], detectedAddress, 8);
+                count++;
+              }
+
               JsonDocument doc;
               doc["count"] = count;
 

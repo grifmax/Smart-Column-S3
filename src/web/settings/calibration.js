@@ -112,6 +112,21 @@ function mergeDiscoveredTempSensors(scanSensors, temperatures) {
         });
     });
 
+    (Array.isArray(temperatures) ? temperatures : []).forEach((temp, index) => {
+        const detectedAddress = String(temp?.detectedAddress || '').trim();
+        const assignedAddress = String(temp?.assignedAddress || '').trim();
+        const fallbackAddress = detectedAddress || (temp?.valid ? assignedAddress : '');
+        if (!fallbackAddress) return;
+
+        appendSensor({
+            index,
+            address: fallbackAddress,
+            mappedRole: Number.isFinite(Number(temp?.index)) ? Number(temp.index) : index,
+            mappedRoleName: String(temp?.name || `Датчик ${index}`),
+            fromRuntime: true
+        });
+    });
+
     return merged;
 }
 
