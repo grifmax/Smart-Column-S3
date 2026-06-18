@@ -2244,6 +2244,7 @@ export function showHistoryDetailsModal(process, options = {}) {
     const exportCsvBtn = document.getElementById('modal-export-csv');
 
     const exportJsonBtn = document.getElementById('modal-export-json');
+    const exportAnonymizedBtn = document.getElementById('modal-export-anonymized');
     const compareBaselineBtn = document.getElementById('modal-compare-baseline');
 
 
@@ -2259,6 +2260,12 @@ export function showHistoryDetailsModal(process, options = {}) {
     if (exportJsonBtn) {
 
         exportJsonBtn.onclick = () => exportHistoryJSON(process.id);
+
+    }
+
+    if (exportAnonymizedBtn) {
+
+        exportAnonymizedBtn.onclick = () => window.exportHistoryAnonymized?.(process.id, process);
 
     }
 
