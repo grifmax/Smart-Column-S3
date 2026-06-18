@@ -901,6 +901,17 @@
     gap: 8px;
 }
 
+.equipment-commissioning-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.equipment-commissioning-snapshot {
+    margin-bottom: 14px;
+}
+
 .equipment-selfcheck-card {
     display: grid;
     gap: 10px;

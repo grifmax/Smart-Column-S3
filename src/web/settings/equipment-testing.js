@@ -7,6 +7,8 @@ const SETTINGS_SECTION_STORAGE_KEY = 'settings.activeSection';
 const PARAMETERS_CARD_STORAGE_KEY = 'equipment.parameters.activeCard';
 const CALIBRATION_CARD_STORAGE_KEY = 'equipment.calibration.activeCard';
 const TESTING_CARD_STORAGE_KEY = 'equipment.testing.activeCard';
+const COMMISSIONING_MANUAL_STORAGE_KEY = 'equipment.commissioning.manual';
+const COMMISSIONING_REPORT_STORAGE_KEY = 'equipment.commissioning.report';
 const TESTING_STATUS_URL = '/api/testing/status';
 const TESTING_POLL_MS = 1500;
 const PRESSURE_SUCCESS_DELTA = 1.0;
@@ -290,7 +292,7 @@ const state = {
         success: false
     },
     commissioning: {
-        manual: {
+        manual: readCommissioningManualChecks() || {
             pump: false,
             valves: false,
             heater: false
@@ -360,6 +362,11 @@ const TESTING_TEMPLATE = `
                 </div>
                 <div class="equipment-inline-stats equipment-commissioning-summary" id="equipment-commissioning-summary"></div>
                 <div class="equipment-test-alert subtle" id="equipment-commissioning-next-step">Ожидаем сервисный статус…</div>
+                <div class="equipment-commissioning-actions">
+                    <button class="btn btn-sm btn-secondary" type="button" id="equipment-commissioning-save">Сохранить снимок</button>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" id="equipment-commissioning-reset">Сбросить чек-лист</button>
+                </div>
+                <div class="equipment-info-box equipment-commissioning-snapshot" id="equipment-commissioning-snapshot">Снимок пусконаладки ещё не сохранён.</div>
                 <div class="equipment-commissioning-steps" id="equipment-commissioning-steps">
                     <div class="equipment-test-journal-empty">Чек-лист появится после загрузки статуса.</div>
                 </div>
@@ -1594,12 +1601,62 @@ function saveActiveTestingCard(cardId) {
     }
 }
 
+function readCommissioningManualChecks() {
+    try {
+        const raw = localStorage.getItem(COMMISSIONING_MANUAL_STORAGE_KEY);
+        if (!raw) {
+            return null;
+        }
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+        return {
+            pump: Boolean(parsed.pump),
+            valves: Boolean(parsed.valves),
+            heater: Boolean(parsed.heater)
+        };
+    } catch {
+        return null;
+    }
+}
+
+function saveCommissioningManualChecks() {
+    try {
+        localStorage.setItem(COMMISSIONING_MANUAL_STORAGE_KEY, JSON.stringify(state.commissioning.manual));
+    } catch {
+        // ignore storage failures
+    }
+}
+
+function readCommissioningReport() {
+    try {
+        const raw = localStorage.getItem(COMMISSIONING_REPORT_STORAGE_KEY);
+        if (!raw) {
+            return null;
+        }
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function saveCommissioningReport(report) {
+    try {
+        localStorage.setItem(COMMISSIONING_REPORT_STORAGE_KEY, JSON.stringify(report));
+    } catch {
+        // ignore storage failures
+    }
+}
+
 function resetCommissioningManualChecks() {
     state.commissioning.manual = {
         pump: false,
         valves: false,
         heater: false
     };
+    saveCommissioningManualChecks();
 }
 
 function setCommissioningManualCheck(target, nextValue = true) {
@@ -1607,6 +1664,7 @@ function setCommissioningManualCheck(target, nextValue = true) {
         return;
     }
     state.commissioning.manual[target] = Boolean(nextValue);
+    saveCommissioningManualChecks();
 }
 
 function getCommissioningManualTargets() {
@@ -1978,6 +2036,79 @@ function buildCommissioningSteps(status) {
     return steps;
 }
 
+function formatCommissioningTimestamp(value) {
+    if (!value) {
+        return '—';
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('ru-RU');
+}
+
+function buildCommissioningReport(status, steps = buildCommissioningSteps(status)) {
+    const required = steps.filter((step) => step.blocking);
+    const completed = steps.filter((step) => step.tone === 'success').length;
+    const ready = required.length > 0 && required.every((step) => step.tone === 'success');
+    const unsupportedModes = Object.entries(status?.supportedModes || {})
+        .filter(([, modeState]) => modeState && modeState.supported === false)
+        .map(([key, modeState]) => String(modeState.label || modeState.title || modeState.name || key).trim())
+        .filter(Boolean);
+
+    return {
+        schema: 'smart-column-commissioning-report-v1',
+        createdAt: new Date().toISOString(),
+        ready,
+        completed,
+        total: steps.length,
+        requiredCompleted: required.filter((step) => step.tone === 'success').length,
+        requiredTotal: required.length,
+        manual: { ...state.commissioning.manual },
+        unsupportedModes,
+        steps: steps.map((step) => ({
+            id: step.id,
+            title: step.title,
+            tone: step.tone,
+            blocking: Boolean(step.blocking),
+            label: step.label,
+            description: step.description
+        }))
+    };
+}
+
+function renderCommissioningSnapshot(report = readCommissioningReport()) {
+    const host = byId('equipment-commissioning-snapshot');
+    if (!host) {
+        return;
+    }
+
+    if (!report) {
+        host.textContent = 'Снимок пусконаладки ещё не сохранён.';
+        return;
+    }
+
+    const unsupportedModes = Array.isArray(report.unsupportedModes) && report.unsupportedModes.length
+        ? ` | Ограничены режимы: ${report.unsupportedModes.join(', ')}`
+        : '';
+    host.textContent = `Последний снимок: ${formatCommissioningTimestamp(report.createdAt)} | ${report.ready ? 'готово к запуску' : 'ещё есть незакрытые шаги'} | обязательные ${report.requiredCompleted}/${report.requiredTotal}${unsupportedModes}`;
+}
+
+function saveCommissioningSnapshot(status) {
+    const steps = buildCommissioningSteps(status);
+    const report = buildCommissioningReport(status, steps);
+    saveCommissioningReport(report);
+    renderCommissioningSnapshot(report);
+
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `commissioning_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    addLog('Снимок пусконаладки сохранён из сервисного workbench', 'success');
+}
+
 function renderCommissioningWizard(status) {
     const stepsHost = byId('equipment-commissioning-steps');
     const summaryHost = byId('equipment-commissioning-summary');
@@ -1986,6 +2117,8 @@ function renderCommissioningWizard(status) {
     if (!stepsHost || !summaryHost || !nextStepEl || !overallBadge) {
         return;
     }
+
+    renderCommissioningSnapshot();
 
     const steps = buildCommissioningSteps(status);
     const completed = steps.filter((step) => step.tone === 'success').length;
@@ -3570,6 +3703,16 @@ function bindTestingActions() {
         setEquipmentSection('testing');
         setTestingCard('temps');
     });
+    byId('equipment-commissioning-save')?.addEventListener('click', () => {
+        if (state.lastStatus) {
+            saveCommissioningSnapshot(state.lastStatus);
+        }
+    });
+    byId('equipment-commissioning-reset')?.addEventListener('click', () => {
+        resetCommissioningManualChecks();
+        renderCommissioningWizard(state.lastStatus || {});
+        renderCommissioningSnapshot();
+    });
 
     byId('equipment-test-pressure-start')?.addEventListener('click', () => {
         if (state.pressureTest.active) {
@@ -3615,6 +3758,8 @@ function bindTestingActions() {
             renderCommissioningWizard(state.lastStatus || {});
         }
     });
+
+    renderCommissioningSnapshot();
 }
 
 export function initEquipmentTestingUi() {

@@ -5,6 +5,7 @@ const API_BASE = '/api/calibration';
 const HYDROMETER_POINT_SLOTS = 5;
 const PRESSURE_POINT_SLOTS = 5;
 const PRESSURE_LIVE_POLL_MS = 1500;
+const CALIBRATION_SNAPSHOT_META_KEY = 'equipment.calibration.snapshot.meta';
 
 let calibrationState = {
     running: false,
@@ -138,6 +139,63 @@ function downloadJsonFile(data, filename) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+}
+
+function readCalibrationSnapshotMeta() {
+    try {
+        const raw = localStorage.getItem(CALIBRATION_SNAPSHOT_META_KEY);
+        if (!raw) {
+            return null;
+        }
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function saveCalibrationSnapshotMeta(meta) {
+    try {
+        localStorage.setItem(CALIBRATION_SNAPSHOT_META_KEY, JSON.stringify(meta));
+    } catch {
+        // ignore storage failures
+    }
+}
+
+function formatSnapshotMetaTimestamp(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('ru-RU');
+}
+
+function buildCalibrationCurrentSummary(calibration = {}) {
+    const pump = calibration?.pump || {};
+    const temperatures = Array.isArray(calibration?.temperatures) ? calibration.temperatures : [];
+    const pressureSensor = calibration?.pressureSensor || {};
+    const hydrometer = calibration?.hydrometer || {};
+    const manualMappedCount = temperatures.filter((sensor) => String(sensor?.mappingMode || '').trim().toLowerCase() === 'manual').length;
+    const pressurePoints = Array.isArray(pressureSensor?.voltagePoints) ? pressureSensor.voltagePoints.length : Number(pressureSensor?.pointCount || 0);
+    const hydrometerPoints = Array.isArray(hydrometer?.abvPoints) ? hydrometer.abvPoints.length : Number(hydrometer?.pointCount || 0);
+
+    return [
+        Number.isFinite(Number(pump?.mlPerRev)) ? `Насос ${Number(pump.mlPerRev).toFixed(3)} мл/об` : 'Насос без калибровки',
+        `Термодатчики: ${temperatures.length} ролей, ручных bind ${manualMappedCount}`,
+        `Манометр: ${pressurePoints} точк., ноль ${Number(pressureSensor?.zeroOffsetMmHg || 0).toFixed(1)} мм`,
+        `Ареометр: ${hydrometerPoints} точк.`
+    ].join(' | ');
+}
+
+function renderCalibrationSnapshotMeta() {
+    const host = byId('calibration-last-snapshot-summary');
+    if (!host) {
+        return;
+    }
+    const meta = readCalibrationSnapshotMeta();
+    if (!meta) {
+        host.textContent = 'История snapshot появится после первого экспорта или применения.';
+        return;
+    }
+    host.textContent = `Последний snapshot: ${meta.action || 'операция'} | ${formatSnapshotMetaTimestamp(meta.at)} | ${meta.summary || 'без сводки'}`;
 }
 
 function updateCalibrationImportUi(summaryText = 'Файл не выбран', canApply = false) {
@@ -499,6 +557,12 @@ export async function exportCalibrationSnapshot() {
 
         const dayStamp = new Date().toISOString().slice(0, 10);
         downloadJsonFile(payload, `calibration_snapshot_${dayStamp}.json`);
+        saveCalibrationSnapshotMeta({
+            action: 'экспорт',
+            at: payload.exportedAt,
+            summary: buildCalibrationCurrentSummary(calibration)
+        });
+        renderCalibrationSnapshotMeta();
         setMessage('calibrationImportResult', 'Snapshot калибровок экспортирован', 'success');
     } catch (error) {
         console.error('exportCalibrationSnapshot error:', error);
@@ -525,6 +589,12 @@ export function onCalibrationSnapshotFileChange(event) {
             const raw = JSON.parse(String(loadEvent?.target?.result || '{}'));
             calibrationImportSnapshot = normalizeCalibrationSnapshot(raw);
             updateCalibrationImportUi(describeCalibrationSnapshot(calibrationImportSnapshot), true);
+            saveCalibrationSnapshotMeta({
+                action: 'предпросмотр',
+                at: new Date().toISOString(),
+                summary: describeCalibrationSnapshot(calibrationImportSnapshot)
+            });
+            renderCalibrationSnapshotMeta();
             setMessage('calibrationImportResult', 'Snapshot прочитан. Можно применять.', 'success');
         } catch (error) {
             calibrationImportSnapshot = null;
@@ -606,6 +676,12 @@ export async function applyCalibrationSnapshot() {
         }
 
         await loadCalibrationData();
+        saveCalibrationSnapshotMeta({
+            action: 'применение',
+            at: new Date().toISOString(),
+            summary: describeCalibrationSnapshot(calibrationImportSnapshot)
+        });
+        renderCalibrationSnapshotMeta();
         setMessage(
             'calibrationImportResult',
             `Snapshot применён: насос, ${calibrationImportSnapshot.temperatures.length} смещ. термодатчиков, ${calibrationImportSnapshot.pressureSensor.voltagePoints.length} точк. давления, ${calibrationImportSnapshot.hydrometer.abvPoints.length} точк. ареометра`,
@@ -941,6 +1017,13 @@ export async function loadCalibrationData() {
         const pump = data?.pump || {};
         const pressureSensor = data?.pressureSensor || {};
         const hydrometer = data?.hydrometer || {};
+        const currentSummaryEl = byId('calibration-current-summary');
+
+        if (currentSummaryEl) {
+            currentSummaryEl.textContent = buildCalibrationCurrentSummary(data);
+        }
+
+        renderCalibrationSnapshotMeta();
 
         const pumpCurrent = byId('pumpCurrent');
         if (pumpCurrent) {

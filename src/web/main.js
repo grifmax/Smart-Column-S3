@@ -37,7 +37,7 @@ import {
     updateManualTailsStopMode,
     updateManualTailsPwmMode
 } from './modes/control-panel.js';
-import { showCreateProfileModal, showEditProfileModal, showDuplicateProfileModal, editCurrentProfile, duplicateCurrentProfile, toggleProfileCategoryFields, addProfileMashStep, copyCurrentMashingToProfileForm, closeProfileModal, saveProfile, viewProfile, closeProfileViewModal, quickLoadProfile, loadProfileToSettings, deleteProfile, clearUserProfiles } from './profiles/crud.js';
+import { showCreateProfileModal, showEditProfileModal, showDuplicateProfileModal, editCurrentProfile, duplicateCurrentProfile, toggleProfileCategoryFields, addProfileMashStep, copyCurrentMashingToProfileForm, closeProfileModal, saveProfile, viewProfile, closeProfileViewModal, quickLoadProfile, loadProfileToSettings, deleteProfile, deleteCurrentProfileFromModal, clearUserProfiles } from './profiles/crud.js';
 import { exportProfile, exportAllProfiles, showImportModal, closeImportModal, doImportProfiles } from './profiles/import-export.js';
 import { loadProfilesList } from './profiles/list.js';
 import { renderAbvValue } from './runtime/abv.js';
@@ -222,6 +222,7 @@ window.closeProfileViewModal = closeProfileViewModal;
 window.quickLoadProfile = quickLoadProfile;
 window.loadProfileToSettings = loadProfileToSettings;
 window.deleteProfile = deleteProfile;
+window.deleteCurrentProfileFromModal = deleteCurrentProfileFromModal;
 window.clearUserProfiles = clearUserProfiles;
 window.exportProfile = exportProfile;
 window.exportAllProfiles = exportAllProfiles;

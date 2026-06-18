@@ -7,6 +7,7 @@ import { selectControlMode } from '../modes/control-panel.js';
 import { addMashStep, createStepRow, readStepsFromUI, setMashProfileUI } from '../modes/mashing-hold.js';
 
 let currentProfileIsBuiltin = false;
+let profileFormLiveBindingsReady = false;
 
 const PROFILE_FORM_DEFAULTS = {
     metadata: {
@@ -365,6 +366,148 @@ function populateProfileForm(profile) {
     setInputValue('profile-safety-water-flow-min', draft.parameters.safety.waterFlowMin);
     setInputValue('profile-safety-pressure-max', draft.parameters.safety.pressureMax);
     toggleProfileCategoryFields(draft.metadata.category);
+    renderProfileEditorSummary(draft);
+    syncProfileModalDeleteButton();
+
+}
+
+function ensureProfileFormLiveBindings() {
+
+    if (profileFormLiveBindingsReady) {
+        return;
+    }
+
+    const modal = document.getElementById('profile-modal');
+    if (!modal) {
+        return;
+    }
+
+    const refreshSummary = () => {
+        renderProfileEditorSummary(collectProfileFromForm());
+        syncProfileModalDeleteButton();
+    };
+
+    modal.addEventListener('input', (event) => {
+        if (event.target instanceof HTMLElement && event.target.closest('#profile-editor-summary')) {
+            return;
+        }
+        refreshSummary();
+    });
+
+    modal.addEventListener('change', refreshSummary);
+    profileFormLiveBindingsReady = true;
+
+}
+
+function buildProfileEditorMetrics(draft) {
+
+    const category = draft?.metadata?.category || 'rectification';
+    const metrics = [
+        { label: 'Категория', value: category === 'mashing' ? 'Затирка' : category === 'distillation' ? 'Дистилляция' : 'Ректификация' },
+        { label: 'Мощность', value: `${Number(draft?.parameters?.heater?.maxPower || 0).toFixed(0)} Вт` }
+    ];
+
+    if (category === 'rectification') {
+        metrics.push(
+            { label: 'Стабилизация', value: `${Number(draft?.parameters?.rectification?.stabilizationMin || 0).toFixed(0)} мин` },
+            { label: 'Тело', value: `${Number(draft?.parameters?.rectification?.bodyVolume || 0).toFixed(0)} мл` },
+            { label: 'Скорость тела', value: `${Number(draft?.parameters?.rectification?.bodySpeed || 0).toFixed(0)} мл/ч/кВт` },
+            { label: 'Давление max', value: `${Number(draft?.parameters?.safety?.pressureMax || 0).toFixed(0)} мм` }
+        );
+    } else if (category === 'distillation') {
+        metrics.push(
+            { label: 'Целевой объём', value: `${Number(draft?.parameters?.distillation?.targetVolume || 0).toFixed(0)} мл` },
+            { label: 'Скорость', value: `${Number(draft?.parameters?.distillation?.speed || 0).toFixed(0)} мл/ч` },
+            { label: 'Финиш', value: `${Number(draft?.parameters?.distillation?.endTemp || 0).toFixed(1)} °C` },
+            { label: 'Давление max', value: `${Number(draft?.parameters?.safety?.pressureMax || 0).toFixed(0)} мм` }
+        );
+    } else if (category === 'mashing') {
+        const steps = Array.isArray(draft?.parameters?.mashing?.steps) ? draft.parameters.mashing.steps : [];
+        const totalMinutes = steps.reduce((sum, step) => sum + Number(step?.duration || 0), 0);
+        metrics.push(
+            { label: 'Шагов', value: `${steps.length}` },
+            { label: 'Общая длительность', value: `${totalMinutes.toFixed(0)} мин` },
+            { label: 'Старт / финиш', value: steps.length ? `${Number(steps[0]?.temperature || 0).toFixed(1)} → ${Number(steps[steps.length - 1]?.temperature || 0).toFixed(1)} °C` : 'Нет шагов' },
+            { label: 'Макс. куб', value: `${Number(draft?.parameters?.temperatures?.maxCube || 0).toFixed(1)} °C` }
+        );
+    }
+
+    return metrics;
+
+}
+
+function renderProfileEditorSummary(profileDraft = null) {
+
+    const host = document.getElementById('profile-editor-summary');
+    if (!host) {
+        return;
+    }
+
+    const draft = profileDraft || collectProfileFromForm();
+    const compatibility = getProfileCompatibilityBadge(draft);
+    const metrics = buildProfileEditorMetrics(draft);
+    const notes = [];
+
+    if (!draft.metadata.name) {
+        notes.push('Добавьте понятное имя профиля, чтобы потом не путаться в истории и compare-view.');
+    }
+
+    if (draft.metadata.category === 'mashing' && (!Array.isArray(draft?.parameters?.mashing?.steps) || draft.parameters.mashing.steps.length === 0)) {
+        notes.push('Для профиля затирки нужен хотя бы один температурный шаг.');
+    }
+
+    if (compatibility.tone === 'warn' && compatibility.detail) {
+        notes.push(compatibility.detail);
+    }
+
+    notes.push(currentProfileId
+        ? 'После сохранения обновится текущая пользовательская версия профиля.'
+        : 'После сохранения появится новый пользовательский профиль без затрагивания встроенных рецептов.');
+
+    host.innerHTML = `
+        <div class="profile-import-meta">
+            <div class="profile-import-meta-title">${draft.metadata.name || 'Новый профиль'}</div>
+            <div class="profile-import-meta-copy">
+                ${draft.metadata.description || 'Профиль собирается из текущих полей редактора. Здесь видно, что именно получится перед сохранением.'}
+            </div>
+        </div>
+        <div class="profile-import-card ${compatibility.tone === 'warn' ? 'is-warning' : compatibility.tone === 'good' ? 'is-good' : ''}">
+            <div class="profile-import-card-head">
+                <strong>Совместимость с текущим железом</strong>
+                <span class="profile-import-badge ${compatibility.tone === 'warn' ? 'is-warning' : compatibility.tone === 'good' ? 'is-good' : ''}">${compatibility.label}</span>
+            </div>
+            ${compatibility.detail ? `<div class="profile-import-note-block"><p>${escapeHtml(compatibility.detail)}</p></div>` : ''}
+        </div>
+        <div class="profile-editor-summary-grid">
+            ${metrics.map((item) => `
+                <div class="profile-editor-summary-metric">
+                    <span>${escapeHtml(item.label)}</span>
+                    <strong>${escapeHtml(item.value)}</strong>
+                </div>
+            `).join('')}
+        </div>
+        <div class="profile-import-card ${notes.length > 2 ? 'is-warning' : ''}">
+            <div class="profile-import-card-head">
+                <strong>Что проверить перед сохранением</strong>
+                <span class="profile-import-badge ${notes.length > 2 ? 'is-warning' : 'is-good'}">${notes.length > 2 ? 'Проверить' : 'Готово'}</span>
+            </div>
+            <ul class="profile-import-list">
+                ${notes.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+            </ul>
+        </div>
+    `;
+
+}
+
+function syncProfileModalDeleteButton() {
+
+    const deleteBtn = document.getElementById('profile-modal-delete-btn');
+    if (!deleteBtn) {
+        return;
+    }
+
+    const showDelete = Boolean(currentProfileId) && !currentProfileIsBuiltin;
+    deleteBtn.style.display = showDelete ? '' : 'none';
 
 }
 
@@ -436,6 +579,7 @@ export function toggleProfileCategoryFields(category = null) {
         element.style.display = blockCategory === selectedCategory ? '' : 'none';
     });
     ensureProfileMashStepsInitialized();
+    renderProfileEditorSummary();
 
 }
 
@@ -466,6 +610,7 @@ export function copyCurrentMashingToProfileForm() {
 
 export async function showCreateProfileModal() {
 
+    ensureProfileFormLiveBindings();
     setCurrentProfileId(null);
     currentProfileIsBuiltin = false;
     document.getElementById('profile-modal-title').textContent = 'Создание профиля';
@@ -488,6 +633,7 @@ function buildDuplicateProfileName(name) {
 export async function showDuplicateProfileModal(id) {
 
     try {
+        ensureProfileFormLiveBindings();
         const response = await fetch(`/api/profiles/${id}`);
         if (!response.ok) {
             throw new Error('Не удалось загрузить профиль для копирования');
@@ -518,6 +664,7 @@ export function closeProfileModal() {
     document.getElementById('profile-modal').style.display = 'none';
     currentProfileIsBuiltin = false;
     setCurrentProfileId(null);
+    syncProfileModalDeleteButton();
 
 }
 
@@ -593,6 +740,7 @@ export function viewProfile(id) {
 export async function showEditProfileModal(id) {
 
     try {
+        ensureProfileFormLiveBindings();
         const response = await fetch(`/api/profiles/${id}`);
         if (!response.ok) {
             throw new Error('Не удалось загрузить профиль для редактирования');
@@ -613,6 +761,18 @@ export async function showEditProfileModal(id) {
         console.error('Ошибка открытия редактора профиля:', error);
         alert('❌ Ошибка загрузки профиля для редактирования');
     }
+
+}
+
+export function deleteCurrentProfileFromModal() {
+
+    if (!currentProfileId || currentProfileIsBuiltin) {
+        return;
+    }
+
+    const profileId = currentProfileId;
+    closeProfileModal();
+    deleteProfile(profileId);
 
 }
 
