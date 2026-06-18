@@ -11,10 +11,10 @@
 }
 
 .control-mode-selector {
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 14px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -40,9 +40,16 @@
 .control-mode-btn {
     text-align: left;
     width: 100%;
-    border: 1px solid var(--border-color);
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    background: var(--bg-primary) !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: none;
+    font-weight: 600;
+    transform: none;
+}
+
+.control-mode-btn:hover {
+    transform: none;
     box-shadow: none;
 }
 
@@ -561,6 +568,10 @@
 @media (max-width: 1100px) {
     .control-layout {
         grid-template-columns: 1fr;
+    }
+
+    .control-mode-selector {
+        gap: 12px;
     }
 
     .control-panel-body {

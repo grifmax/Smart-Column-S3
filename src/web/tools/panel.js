@@ -148,7 +148,7 @@ function buildMobileToggle(meta) {
 }
 
 function buildDesktopNav(tools) {
-    const nav = createElement('aside', 'tools-sidebar-nav');
+    const nav = createElement('aside', 'tools-sidebar-nav workbench-local-nav');
     nav.setAttribute('aria-label', 'Навигация по калькуляторам');
 
     const navHeader = createElement('div', 'tools-sidebar-header');
@@ -172,7 +172,7 @@ function buildDesktopNav(tools) {
         nav.appendChild(createElement('div', 'sidebar-section-title', group.label));
 
         for (const tool of groupTools) {
-            const button = createElement('button', 'sidebar-item tools-nav-item');
+            const button = createElement('button', 'equipment-local-nav-btn workbench-local-nav-btn tools-nav-item');
             button.type = 'button';
             button.dataset.toolId = tool.meta.id;
             button.append(
@@ -270,7 +270,7 @@ export function initToolsWorkbench() {
 
     cardsContainer.dataset.toolsWorkbench = '1';
 
-    const shell = createElement('div', 'tools-shell');
+    const shell = createElement('div', 'tools-shell workbench-shell');
     const main = createElement('div', 'tools-main');
     const { nav, buttonsById } = buildDesktopNav(tools);
 

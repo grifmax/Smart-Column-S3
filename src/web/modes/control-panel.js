@@ -211,6 +211,7 @@ function renderControlModeSelector(mode) {
     document.querySelectorAll('[data-mode-select]').forEach((button) => {
         const isSelected = button.dataset.modeSelect === mode;
         const unsupportedDetail = getUnsupportedModeDetail(button.dataset.modeSelect, runtimeMonitorState);
+        button.classList.toggle('active', isSelected);
         button.classList.toggle('control-mode-selected', isSelected);
         button.classList.toggle('control-mode-topology-blocked', Boolean(unsupportedDetail));
         button.title = unsupportedDetail

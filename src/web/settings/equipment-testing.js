@@ -1328,12 +1328,12 @@ function ensureEquipmentShell() {
     if (!cards || !paramsCard || !pumpCalibrationCard || !tempCalibrationCard || !pressureCalibrationCard || !hydrometerCalibrationCard) return;
 
     const shell = document.createElement('div');
-    shell.className = 'equipment-shell';
+    shell.className = 'equipment-shell workbench-shell';
     shell.innerHTML = `
-        <div class="equipment-local-nav" role="tablist" aria-label="Подразделы оборудования">
-            <button class="equipment-local-nav-btn active" type="button" data-equipment-section-btn="parameters">Параметры</button>
-            <button class="equipment-local-nav-btn" type="button" data-equipment-section-btn="calibration">Калибровка</button>
-            <button class="equipment-local-nav-btn" type="button" data-equipment-section-btn="testing">Тестирование</button>
+        <div class="equipment-local-nav workbench-local-nav" role="tablist" aria-label="Подразделы оборудования">
+            <button class="equipment-local-nav-btn workbench-local-nav-btn active" type="button" data-equipment-section-btn="parameters">Параметры</button>
+            <button class="equipment-local-nav-btn workbench-local-nav-btn" type="button" data-equipment-section-btn="calibration">Калибровка</button>
+            <button class="equipment-local-nav-btn workbench-local-nav-btn" type="button" data-equipment-section-btn="testing">Тестирование</button>
         </div>
         <div class="equipment-pane active" data-equipment-section-pane="parameters"><div class="cards"></div></div>
         <div class="equipment-pane" data-equipment-section-pane="calibration"><div class="cards"></div></div>
@@ -1367,10 +1367,10 @@ function ensureSettingsShell() {
     if (!cards.length) return;
 
     const shell = document.createElement('div');
-    shell.className = 'equipment-shell settings-shell';
+    shell.className = 'equipment-shell settings-shell workbench-shell';
 
     const nav = document.createElement('div');
-    nav.className = 'equipment-local-nav settings-local-nav';
+    nav.className = 'equipment-local-nav settings-local-nav workbench-local-nav';
     nav.setAttribute('role', 'tablist');
     nav.setAttribute('aria-label', 'Подразделы настроек');
 
@@ -1378,7 +1378,7 @@ function ensureSettingsShell() {
     paneHost.className = 'settings-pane-host';
 
     for (const section of SETTINGS_SECTION_DEFS) {
-        const button = createElement('button', 'equipment-local-nav-btn');
+        const button = createElement('button', 'equipment-local-nav-btn workbench-local-nav-btn');
         button.type = 'button';
         button.dataset.settingsSectionBtn = section.id;
         button.textContent = section.label;

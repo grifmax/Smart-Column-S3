@@ -1,20 +1,9 @@
 .tools-shell {
-    display: grid;
-    grid-template-columns: minmax(230px, 260px) minmax(0, 1fr);
-    gap: 20px;
-    align-items: start;
+    gap: 16px;
 }
 
 .tools-sidebar-nav {
-    position: sticky;
-    top: 12px;
-    background: var(--bg-sidebar);
-    backdrop-filter: blur(30px) saturate(1.5);
-    -webkit-backdrop-filter: blur(30px) saturate(1.5);
-    border: 0.5px solid var(--border-strong);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-card);
-    padding: 8px;
+    gap: 6px;
 }
 
 .tools-sidebar-header {
@@ -40,12 +29,12 @@
     padding-bottom: 6px;
 }
 
-.tools-sidebar-nav .sidebar-item {
+.tools-sidebar-nav .tools-nav-item {
     min-height: 38px;
 }
 
-.tools-sidebar-nav .sidebar-item.active {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+.tools-sidebar-nav .tools-nav-item.active {
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
 }
 
 .tools-main {
