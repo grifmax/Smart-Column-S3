@@ -11,6 +11,7 @@
 #include "drivers/heater.h"
 #include "drivers/hmi_widgets.h"
 #include "drivers/pump.h"
+#include "drivers/stirrer.h"
 #include "drivers/valves.h"
 #include "interface/localization.h"
 #include "storage/nvs_manager.h"
@@ -211,10 +212,21 @@ enum UiScreen : uint8_t {
   UI_DIST_PARAMS,
   UI_CALIBRATION,
   UI_MANUAL,
-  UI_MASHING,
-  UI_HOLD,
   UI_VALUE_EDIT,
   UI_ALL_TEMPS
+};
+
+enum class DisplayRedrawReason : uint8_t {
+  NONE = 0,
+  SCREEN_ENTER,
+  TAP_ACTION,
+  LIVE_DATA_CHANGED,
+  TIMER_KEEPALIVE,
+  SPARKLINE_REFRESH,
+  THEME_CHANGED,
+  LANGUAGE_CHANGED,
+  LAYOUT_CHANGED,
+  RECOVERY_REDRAW
 };
 
 struct UiState {
@@ -224,6 +236,7 @@ struct UiState {
   uint8_t stackDepth = 0;
   bool needsRedraw = true;
   UiScreen lastRenderedScreen = UI_DASHBOARD;
+  DisplayRedrawReason pendingRedrawReason = DisplayRedrawReason::SCREEN_ENTER;
 
   bool touchPressed = false;
   uint32_t lastTapMs = 0;
@@ -318,6 +331,68 @@ static void armScreenSwitchGuard() {
   ui.ignoreTapUntilMs = now + UI_SCREEN_SWITCH_GUARD_MS;
 }
 
+static const char *getDisplayRedrawReasonKey(DisplayRedrawReason reason) {
+  switch (reason) {
+  case DisplayRedrawReason::SCREEN_ENTER:
+    return "screen_enter";
+  case DisplayRedrawReason::TAP_ACTION:
+    return "tap_action";
+  case DisplayRedrawReason::LIVE_DATA_CHANGED:
+    return "live_data_changed";
+  case DisplayRedrawReason::TIMER_KEEPALIVE:
+    return "timer_keepalive";
+  case DisplayRedrawReason::SPARKLINE_REFRESH:
+    return "sparkline_refresh";
+  case DisplayRedrawReason::THEME_CHANGED:
+    return "theme_changed";
+  case DisplayRedrawReason::LANGUAGE_CHANGED:
+    return "language_changed";
+  case DisplayRedrawReason::LAYOUT_CHANGED:
+    return "layout_changed";
+  case DisplayRedrawReason::RECOVERY_REDRAW:
+    return "recovery_redraw";
+  case DisplayRedrawReason::NONE:
+  default:
+    return "unknown";
+  }
+}
+
+static uint8_t getDisplayRedrawReasonPriority(DisplayRedrawReason reason) {
+  switch (reason) {
+  case DisplayRedrawReason::RECOVERY_REDRAW:
+    return 90;
+  case DisplayRedrawReason::THEME_CHANGED:
+  case DisplayRedrawReason::LANGUAGE_CHANGED:
+    return 80;
+  case DisplayRedrawReason::SCREEN_ENTER:
+  case DisplayRedrawReason::LAYOUT_CHANGED:
+    return 70;
+  case DisplayRedrawReason::SPARKLINE_REFRESH:
+    return 50;
+  case DisplayRedrawReason::TAP_ACTION:
+    return 40;
+  case DisplayRedrawReason::LIVE_DATA_CHANGED:
+    return 30;
+  case DisplayRedrawReason::TIMER_KEEPALIVE:
+    return 20;
+  case DisplayRedrawReason::NONE:
+  default:
+    return 0;
+  }
+}
+
+static void requestRedraw(DisplayRedrawReason reason, bool forceFull = false) {
+  if (!ui.needsRedraw ||
+      getDisplayRedrawReasonPriority(reason) >=
+          getDisplayRedrawReasonPriority(ui.pendingRedrawReason)) {
+    ui.pendingRedrawReason = reason;
+  }
+  ui.needsRedraw = true;
+  if (forceFull) {
+    ui.lastRenderedScreen = static_cast<UiScreen>(255);
+  }
+}
+
 static void pushScreen(UiScreen screen) {
   if (ui.currentScreen == screen)
     return;
@@ -325,7 +400,7 @@ static void pushScreen(UiScreen screen) {
     ui.stack[ui.stackDepth++] = ui.currentScreen;
   }
   ui.currentScreen = screen;
-  ui.needsRedraw = true;
+  requestRedraw(DisplayRedrawReason::SCREEN_ENTER);
   armScreenSwitchGuard();
 }
 
@@ -337,7 +412,7 @@ static void popScreen() {
   if (ui.currentScreen == target)
     return;
   ui.currentScreen = target;
-  ui.needsRedraw = true;
+  requestRedraw(DisplayRedrawReason::SCREEN_ENTER);
   armScreenSwitchGuard();
 }
 
@@ -348,7 +423,7 @@ static void switchRoot(UiScreen screen) {
   ui.currentScreen = screen;
   ui.stackDepth = 0;
   if (changed) {
-    ui.needsRedraw = true;
+    requestRedraw(DisplayRedrawReason::SCREEN_ENTER);
     armScreenSwitchGuard();
   }
 }
@@ -577,6 +652,8 @@ static uint32_t g_modeRuntimeStartUptime = 0;
 
 struct DisplayRuntimeStatsInternal {
   uint32_t framesRendered = 0;
+  uint32_t fullRedraws = 0;
+  uint32_t partialRedraws = 0;
   uint32_t slowFrames = 0;
   uint32_t watchdogRecoveries = 0;
   uint32_t hardWatchdogRecoveries = 0;
@@ -587,6 +664,16 @@ struct DisplayRuntimeStatsInternal {
   uint16_t lastUpdateGapMs = 0;
   uint16_t maxUpdateGapMs = 0;
   uint32_t updateGapOverruns = 0;
+  uint32_t redrawReasonScreenEnter = 0;
+  uint32_t redrawReasonTapAction = 0;
+  uint32_t redrawReasonLiveDataChanged = 0;
+  uint32_t redrawReasonTimerKeepalive = 0;
+  uint32_t redrawReasonSparklineRefresh = 0;
+  uint32_t redrawReasonThemeChanged = 0;
+  uint32_t redrawReasonLanguageChanged = 0;
+  uint32_t redrawReasonLayoutChanged = 0;
+  uint32_t redrawReasonRecovery = 0;
+  DisplayRedrawReason lastRedrawReason = DisplayRedrawReason::NONE;
   uint32_t lastUpdateCallAtMs = 0;
   uint8_t consecutiveSlowFrames = 0;
   uint8_t consecutiveHardFrames = 0;
@@ -607,6 +694,45 @@ static uint32_t getForceRefreshIntervalMs() {
   case DisplayRefreshProfile::NORMAL:
   default:
     return 1000;
+  }
+}
+
+static uint32_t getLiveRedrawMinGapMs() {
+  extern Settings g_settings;
+  switch (g_settings.displaySettings.refreshProfile) {
+  case DisplayRefreshProfile::SAFE:
+    return 900;
+  case DisplayRefreshProfile::FAST:
+    return 180;
+  case DisplayRefreshProfile::NORMAL:
+  default:
+    return 300;
+  }
+}
+
+static uint32_t getProgressRefreshIntervalMs() {
+  extern Settings g_settings;
+  switch (g_settings.displaySettings.refreshProfile) {
+  case DisplayRefreshProfile::SAFE:
+    return 2200;
+  case DisplayRefreshProfile::FAST:
+    return 600;
+  case DisplayRefreshProfile::NORMAL:
+  default:
+    return 1200;
+  }
+}
+
+static uint32_t getSparklineRefreshIntervalMs() {
+  extern Settings g_settings;
+  switch (g_settings.displaySettings.refreshProfile) {
+  case DisplayRefreshProfile::SAFE:
+    return 8000;
+  case DisplayRefreshProfile::FAST:
+    return 3000;
+  case DisplayRefreshProfile::NORMAL:
+  default:
+    return 5000;
   }
 }
 
@@ -652,6 +778,15 @@ static const int16_t SETTINGS_TOGGLE_X2 =
     SETTINGS_TOGGLE_X1 + SETTINGS_TOGGLE_W + TFT_BUTTON_GAP;
 static const int16_t SETTINGS_TOGGLE_X3 =
     SETTINGS_TOGGLE_X2 + SETTINGS_TOGGLE_W + TFT_BUTTON_GAP;
+static const int16_t SETTINGS_PROFILE_X = TFT_BUTTON_MARGIN_X;
+static const int16_t SETTINGS_PROFILE_Y =
+    SETTINGS_TOGGLE_Y + SETTINGS_TOGGLE_H + TFT_BUTTON_GAP;
+static const int16_t SETTINGS_PROFILE_W = SETTINGS_CARD_W;
+static const int16_t SETTINGS_PROFILE_H = 32;
+static const int16_t SETTINGS_STIRRER_X = SETTINGS_CARD_X2;
+static const int16_t SETTINGS_STIRRER_Y = SETTINGS_PROFILE_Y;
+static const int16_t SETTINGS_STIRRER_W = SETTINGS_CARD_W;
+static const int16_t SETTINGS_STIRRER_H = SETTINGS_PROFILE_H;
 static const int16_t MANUAL_VALVE_Y = 146;
 static const int16_t MANUAL_VALVE_W = 154;
 static const int16_t MANUAL_VALVE_H = 76;
@@ -707,10 +842,73 @@ static bool isMonitorRootScreen(UiScreen screen) {
   return (screen == UI_DASHBOARD || screen == UI_MODE_MONITOR);
 }
 
+static bool isRootWorkspaceTap(int16_t ty) {
+  return ty > UI_HEADER_H && ty < (TFT_HEIGHT - UI_FOOTER_H);
+}
+
+static bool isRootMetricsTap(int16_t tx, int16_t ty) {
+  return hit(tx, ty, ROOT_RIGHT_X, ROOT_PANEL_Y, ROOT_RIGHT_W, ROOT_PANEL_H);
+}
+
+static bool isRootControlTap(int16_t tx, int16_t ty) {
+  return isRootWorkspaceTap(ty) && tx < ROOT_RIGHT_X;
+}
+
+static bool isServiceTempsTap(int16_t tx, int16_t ty) {
+  return hit(tx, ty, 10, 180, TFT_WIDTH - 20, 80);
+}
+
+static void requestFullScreenRedraw() {
+  requestRedraw(DisplayRedrawReason::SCREEN_ENTER, true);
+}
+
 static bool isManualAccessAllowed(const SystemState &state) {
   return (state.mode == Mode::IDLE || state.mode == Mode::MANUAL_RECT);
 }
 
+static bool isSettingsEditAllowed(const SystemState &state) {
+  return !isModeRunning(state);
+}
+
+static bool isModeMonitorEditAllowed(Mode mode) {
+  switch (mode) {
+  case Mode::DISTILLATION:
+  case Mode::MANUAL_RECT:
+  case Mode::MASHING:
+  case Mode::HOLD:
+    return true;
+  default:
+    return false;
+  }
+}
+
+static const char *getModeMonitorAccessHint(Mode mode) {
+  const bool ru = (g_settings.language == 0);
+  switch (mode) {
+  case Mode::DISTILLATION:
+    return ru ? "Дистил.: правка мощности и стоп-темп."
+              : "Distillation: power and stop-temp editable";
+  case Mode::MANUAL_RECT:
+    return ru ? "Ручн. рект.: правка слева, датчики справа"
+              : "Manual rect: edit left, sensors right";
+  case Mode::MASHING:
+    return ru ? "Затирка: слева темп., справа время"
+              : "Mashing: temp left, time right";
+  case Mode::HOLD:
+    return ru ? "Пастер.: слева темп., справа время"
+              : "Hold: temp left, time right";
+  case Mode::RECTIFICATION:
+    return ru ? "Ректиф.: только просмотр"
+              : "Rectification: view only";
+  case Mode::NBK:
+    return ru ? "НБК: только просмотр" : "NBK: view only";
+  case Mode::FERMENTATION:
+    return ru ? "Брожение: только просмотр"
+              : "Fermentation: view only";
+  default:
+    return ru ? "Монитор: только просмотр" : "Monitor: view only";
+  }
+}
 
 static void setRectificationIndicatorHint(
     char *infoLine, size_t infoLineSize, uint16_t &tone,
@@ -859,7 +1057,7 @@ static void startModeFromControl(Mode mode) {
 static void requestModeSwitch(Mode target) {
   ui.modeSwitchConfirm = true;
   ui.modeSwitchTarget = target;
-  ui.needsRedraw = true;
+  requestRedraw(DisplayRedrawReason::TAP_ACTION);
 }
 
 static void startOrRequestMode(const SystemState &state, Mode target) {
@@ -1136,6 +1334,10 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
   const int16_t y1 = y0 + hTile + g;
   const int16_t y2 = y1 + hTile + g;
 
+  if (!isModeMonitorEditAllowed(state.mode)) {
+    return false;
+  }
+
   if (state.mode == Mode::DISTILLATION) {
     const int16_t g2 = TFT_BUTTON_GAP;
     const int16_t w2 = (ROOT_FRAME_W - g2) / 2;
@@ -1256,37 +1458,31 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
     return false;
   }
 
-  // Auto-rectification: keep current screen mostly read-only for now.
   return false;
 }
 
 static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
   switch (ui.currentScreen) {
   case UI_DASHBOARD:
-    // Tap on temperature tiles goes to All Temps
-    if (ty >= 56 && ty <= 202) {
+    if (isRootMetricsTap(tx, ty)) {
       pushScreen(UI_ALL_TEMPS);
       return true;
     }
-    // Tap on dashboard elsewhere goes to Control
-    if (ty > UI_HEADER_H && ty < (TFT_HEIGHT - UI_FOOTER_H)) {
+    if (isRootWorkspaceTap(ty)) {
       switchRoot(UI_CONTROL);
       return true;
     }
     break;
   case UI_MODE_MONITOR:
-    if (ty > UI_HEADER_H && ty < (TFT_HEIGHT - UI_FOOTER_H)) {
+    if (isRootWorkspaceTap(ty)) {
       if (handleModeMonitorTap(tx, ty, state)) {
         return true;
       }
-      // Tap on the right metrics grid on monitor opens All Temps.
-      if (tx >= ROOT_RIGHT_X && ty >= ROOT_PANEL_Y &&
-          ty <= (ROOT_PANEL_Y + ROOT_PANEL_H)) {
+      if (isRootMetricsTap(tx, ty)) {
         pushScreen(UI_ALL_TEMPS);
         return true;
       }
-      // Fallback: tap on left status panel opens Control menu.
-      if (tx < (TFT_WIDTH / 2)) {
+      if (isRootControlTap(tx, ty)) {
         switchRoot(UI_CONTROL);
         return true;
       }
@@ -1424,6 +1620,7 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
                    SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H)) {
       g_settings.theme = (g_settings.theme == 0) ? 1 : 0;
       NVSManager::saveSettings(g_settings);
+      requestRedraw(DisplayRedrawReason::THEME_CHANGED, true);
       return true;
     } else if (hit(tx, ty, SETTINGS_TOGGLE_X2, SETTINGS_TOGGLE_Y,
                    SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H)) {
@@ -1434,11 +1631,41 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
                    SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H)) {
       g_settings.language = (g_settings.language == 0) ? 1 : 0;
       NVSManager::saveSettings(g_settings);
+      requestRedraw(DisplayRedrawReason::LANGUAGE_CHANGED, true);
+      return true;
+    } else if (hit(tx, ty, SETTINGS_PROFILE_X, SETTINGS_PROFILE_Y,
+                   SETTINGS_PROFILE_W, SETTINGS_PROFILE_H)) {
+      switch (g_settings.displaySettings.refreshProfile) {
+      case DisplayRefreshProfile::NORMAL:
+        g_settings.displaySettings.refreshProfile = DisplayRefreshProfile::SAFE;
+        break;
+      case DisplayRefreshProfile::SAFE:
+        g_settings.displaySettings.refreshProfile = DisplayRefreshProfile::FAST;
+        break;
+      case DisplayRefreshProfile::FAST:
+      default:
+        g_settings.displaySettings.refreshProfile =
+            DisplayRefreshProfile::NORMAL;
+        break;
+      }
+      NVSManager::saveSettings(g_settings);
+      return true;
+    } else if (hit(tx, ty, SETTINGS_STIRRER_X, SETTINGS_STIRRER_Y,
+                   SETTINGS_STIRRER_W, SETTINGS_STIRRER_H)) {
+      g_settings.stirrer.enabled = !g_settings.stirrer.enabled;
+      if (!g_settings.stirrer.enabled) {
+        g_state.stirrer.autoMode = false;
+        Stirrer::stop();
+      }
+      NVSManager::saveSettings(g_settings);
       return true;
     }
     break;
 
   case UI_EQUIPMENT:
+    if (!isSettingsEditAllowed(state)) {
+      return true;
+    }
     if (hit(tx, ty, 10, 48, 225, 78)) {
       openValueEdit(msg(Msg::HEATER_POWER), g_settings.equipment.heaterPowerW,
                     1000, 10000, 100, 500, saveHeaterPower, "W", 0);
@@ -1462,6 +1689,10 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
   case UI_RECT_PARAMS:
     if (hit(tx, ty, 10, 48, 460, 26)) {
       rectParamsPage = (rectParamsPage == 0) ? 1 : 0;
+      return true;
+    }
+
+    if (!isSettingsEditAllowed(state)) {
       return true;
     }
 
@@ -1543,6 +1774,9 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_DIST_PARAMS:
+    if (!isSettingsEditAllowed(state)) {
+      return true;
+    }
     if (hit(tx, ty, 10, 48, 225, 78)) {
       openValueEdit(msg(Msg::DIST_SPEED), distUi.speedMlH, 50, 5000, 50, 500,
                     saveDistSpeed, "ml/h", 0);
@@ -1563,6 +1797,9 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_CALIBRATION:
+    if (!isSettingsEditAllowed(state)) {
+      return true;
+    }
     if (hit(tx, ty, 10, 52, 225, 86)) {
       openValueEdit(msg(Msg::PUMP_CALIBRATION),
                     g_settings.pumpCal.mlPerRevolution, 0.001, 5.0, 0.001, 0.05,
@@ -1604,8 +1841,7 @@ static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
     break;
 
   case UI_SERVICE:
-    // Tap on diagnostic rows goes to All Temps
-    if (ty >= 180 && ty <= 260) {
+    if (isServiceTempsTap(tx, ty)) {
       pushScreen(UI_ALL_TEMPS);
       return true;
     }
@@ -1851,6 +2087,50 @@ static const char *getDisplayFermPhaseName(FermentationPhase phase) {
   }
 }
 
+static const char *
+getDisplayRefreshProfileCompactName(DisplayRefreshProfile profile) {
+  const bool ru = (g_settings.language == 0);
+  switch (profile) {
+  case DisplayRefreshProfile::SAFE:
+    return ru ? "5с" : "5s";
+  case DisplayRefreshProfile::FAST:
+    return ru ? "0.5с" : "0.5s";
+  case DisplayRefreshProfile::NORMAL:
+  default:
+    return ru ? "1с" : "1s";
+  }
+}
+
+static uint16_t getDisplayRefreshProfileColor(DisplayRefreshProfile profile) {
+  switch (profile) {
+  case DisplayRefreshProfile::SAFE:
+    return COLOR_WARNING;
+  case DisplayRefreshProfile::FAST:
+    return COLOR_SUCCESS;
+  case DisplayRefreshProfile::NORMAL:
+  default:
+    return COLOR_INFO;
+  }
+}
+
+static const char *getStirrerEnabledCompactName() {
+  const bool ru = (g_settings.language == 0);
+  if (!g_settings.stirrer.enabled) {
+    return ru ? "ВЫКЛ" : "OFF";
+  }
+  if (!g_state.stirrer.available) {
+    return ru ? "НЕТ" : "N/A";
+  }
+  return ru ? "ВКЛ" : "ON";
+}
+
+static uint16_t getStirrerEnabledColor() {
+  if (!g_settings.stirrer.enabled) {
+    return COLOR_DARK_GREY;
+  }
+  return g_state.stirrer.available ? COLOR_SUCCESS : COLOR_WARNING;
+}
+
 static const char *getDisplayPhaseName(const SystemState &state) {
   const bool ru = (g_settings.language == 0);
   static char holdBuf[20];
@@ -1891,6 +2171,7 @@ enum class TftTextId : uint8_t {
   CalDoneShort,
   CalRawShort,
   SettingsHint,
+  SettingsReadOnlyHint,
   RectTitle,
   RectPageFeedCuts,
   RectPageFlowTemp,
@@ -1933,8 +2214,11 @@ static const char *tftText(TftTextId id) {
   case TftTextId::CalRawShort:
     return ru ? "не кал." : "raw";
   case TftTextId::SettingsHint:
-    return ru ? "Тап карточки = раздел | кнопки = сразу"
-              : "Tap card = section | buttons = instant";
+    return ru ? "Карточки = раздел | низ = быстрые системные"
+              : "Cards = sections | bottom = quick system toggles";
+  case TftTextId::SettingsReadOnlyHint:
+    return ru ? "Во время процесса только просмотр"
+              : "View only while process runs";
   case TftTextId::RectTitle:
     return ru ? "РЕКТ. ПАРАМ." : "RECT PARAMS";
   case TftTextId::RectPageFeedCuts:
@@ -2303,6 +2587,14 @@ static void drawFooterHint(const char *text, uint16_t tone = COLOR_INFO) {
   copyFittedText(text, w - 20, hintBuf, sizeof(hintBuf));
   drawDisplayString(hintBuf, TFT_WIDTH / 2, y + (h / 2) + 1);
   tft.setTextDatum(top_left);
+}
+
+static void drawAccessControlledFooterHint(bool readOnly,
+                                           const char *editableText,
+                                           uint16_t editableTone) {
+  drawFooterHint(readOnly ? tftText(TftTextId::SettingsReadOnlyHint)
+                          : editableText,
+                 readOnly ? COLOR_WARNING : editableTone);
 }
 
 static int16_t drawWrappedTextBlock(int16_t x, int16_t y, int16_t w,
@@ -2739,9 +3031,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             }
                           }
 
-                          static void renderRootFooter(
-                              const char *infoLine, const char *auxLine,
-                              const char *uptime, bool full) {
+static void renderRootFooter(
+    const char *infoLine, const char *auxLine,
+    const char *uptime, bool full) {
                             if (full ||
                                 strcmp(g_dashboardCache.infoLine, infoLine) !=
                                     0 ||
@@ -2784,6 +3076,19 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   .uptime[sizeof(g_dashboardCache.uptime) - 1] =
                                   '\0';
                             }
+                          }
+
+                          static void resetModeMonitorRuntimeCache() {
+                            memset(g_modeTileCache, 0, sizeof(g_modeTileCache));
+                            g_dashboardCache.infoLine[0] = '\0';
+                            g_dashboardCache.ioLine[0] = '\0';
+                            g_dashboardCache.uptime[0] = '\0';
+                          }
+
+                          static void setModeMonitorAccessInfoLine(
+                              char *infoLine, size_t infoLineSize, Mode mode) {
+                            snprintf(infoLine, infoLineSize, "%s",
+                                     getModeMonitorAccessHint(mode));
                           }
 
                           static void renderDashboard(const SystemState &state,
@@ -2978,6 +3283,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             const bool layoutChanged =
                                 full ||
                                 (g_dashboardCache.layoutKey != layoutKey);
+                            if (layoutChanged && !full) {
+                              requestRedraw(DisplayRedrawReason::LAYOUT_CHANGED);
+                            }
                             const int16_t tileX[6] = {x1, x2, x1, x2, x1, x2};
                             const int16_t tileY[6] = {row1Y, row1Y, row2Y,
                                                       row2Y, row3Y, row3Y};
@@ -3649,15 +3957,6 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 ControlV2::getLatestIndicators();
                             RootHeaderState header =
                                 buildRootHeaderState(state);
-                            const int16_t barY = ROOT_STATUS_Y;
-                            const int16_t statusX = 20;
-                            const int16_t statusY = barY + 5;
-                            const int16_t statusW = 300;
-                            const int16_t statusH = 34;
-                            const int16_t badgeX = 332;
-                            const int16_t badgeW = 128;
-                            const int16_t badgeH = 14;
-
                             const int16_t panelY = ROOT_PANEL_Y;
                             const int16_t panelH = ROOT_PANEL_H;
                             const int16_t leftX = ROOT_LEFT_X;
@@ -3671,11 +3970,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             const int16_t infoY = ROOT_INFO_Y;
 
                             if (full) {
-                              tft.fillScreen(colorBg());
-                              drawHeader(msg(Msg::MONITOR), false);
-                              drawTabs(UI_MODE_MONITOR);
-                              drawCard(ROOT_FRAME_X, barY, ROOT_FRAME_W, 44,
-                                       colorCard());
+                              drawRootScaffold(UI_MODE_MONITOR);
                               drawCard(leftX, panelY, leftW, panelH,
                                        colorCard());
 
@@ -3705,110 +4000,7 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               g_dashboardCache.layoutKey = 0xEE;
                             }
 
-                            char statusBuf[64];
-                            snprintf(statusBuf, sizeof(statusBuf), "%s / %s",
-                                     getDisplayModeName(state.mode),
-                                     getDisplayPhaseName(state));
-
-                            const char *procState =
-                                state.paused ? (ru ? "ПАУЗА" : "PAUSE")
-                                             : (ru ? "РАБОТА" : "RUN");
-                            const uint16_t procColor =
-                                state.paused ? COLOR_WARNING : COLOR_SUCCESS;
-                            const char *safetyState =
-                                state.safetyOk ? (ru ? "БЕЗОП." : "SAFE")
-                                               : (ru ? "ТРЕВОГА" : "ALARM");
-                            const uint16_t safetyColor =
-                                state.safetyOk ? COLOR_SUCCESS : COLOR_DANGER;
-
-                            const uint32_t phaseElapsedSec =
-                                FSM::getPhaseElapsedSec();
-                            const uint32_t phaseTargetSec =
-                                FSM::getPhaseTargetSec(state, g_settings);
-                            const uint8_t phaseProgress =
-                                FSM::getPhaseProgressPercent(state, g_settings);
-                            char elapsedBuf[16];
-                            char targetBuf[16];
-                            char timerBuf[32];
-                            formatDurationCompact(phaseElapsedSec, elapsedBuf,
-                                                  sizeof(elapsedBuf));
-                            if (phaseTargetSec > 0) {
-                              formatDurationCompact(phaseTargetSec, targetBuf,
-                                                    sizeof(targetBuf));
-                              snprintf(timerBuf, sizeof(timerBuf), "%s %s/%s",
-                                       ru ? "Фаза" : "Phase", elapsedBuf,
-                                       targetBuf);
-                            } else {
-                              snprintf(timerBuf, sizeof(timerBuf), "%s %s",
-                                       ru ? "Фаза" : "Phase", elapsedBuf);
-                            }
-
-                            if (full ||
-                                strcmp(g_dashboardCache.status, statusBuf) !=
-                                    0 ||
-                                strcmp(g_dashboardCache.phaseTimer, timerBuf) !=
-                                    0 ||
-                                g_dashboardCache.phaseProgress !=
-                                    phaseProgress) {
-                              if (!full) {
-                                tft.fillRect(statusX, statusY, statusW, statusH,
-                                             colorCard());
-                              }
-                              tft.setTextColor(colorAccent());
-                              tft.setTextSize(1);
-                              tft.setFont(&fonts::efontJA_16);
-                              tft.setTextDatum(top_left);
-                              drawDisplayString(statusBuf, statusX + 2,
-                                             statusY + 1);
-                              tft.setTextColor(tft.color565(120, 130, 140));
-                              drawDisplayString(timerBuf, statusX + 2,
-                                             statusY + 14);
-
-                              const int16_t pbX = statusX + 2;
-                              const int16_t pbY = statusY + 27;
-                              const int16_t pbW = statusW - 6;
-                              const int16_t pbH = 6;
-                              drawProgressBar(pbX, pbY, pbW, pbH, phaseProgress,
-                                              colorAccent());
-
-                              strncpy(g_dashboardCache.status, statusBuf,
-                                      sizeof(g_dashboardCache.status));
-                              g_dashboardCache
-                                  .status[sizeof(g_dashboardCache.status) - 1] =
-                                  '\0';
-                              strncpy(g_dashboardCache.phaseTimer, timerBuf,
-                                      sizeof(g_dashboardCache.phaseTimer));
-                              g_dashboardCache.phaseTimer
-                                  [sizeof(g_dashboardCache.phaseTimer) - 1] =
-                                  '\0';
-                              g_dashboardCache.phaseProgress = phaseProgress;
-                            }
-
-                            if (full ||
-                                strcmp(g_dashboardCache.processState,
-                                       procState) != 0 ||
-                                strcmp(g_dashboardCache.safetyState,
-                                       safetyState) != 0) {
-                              if (!full) {
-                                tft.fillRect(badgeX - 4, barY + 4, badgeW + 8,
-                                             34, colorCard());
-                              }
-                              drawStateBadge(badgeX, barY + 6, badgeW, badgeH,
-                                             procState, procColor);
-                              drawStateBadge(badgeX, barY + 24, badgeW, badgeH,
-                                             safetyState, safetyColor);
-
-                              strncpy(g_dashboardCache.processState, procState,
-                                      sizeof(g_dashboardCache.processState));
-                              g_dashboardCache.processState
-                                  [sizeof(g_dashboardCache.processState) - 1] =
-                                  '\0';
-                              strncpy(g_dashboardCache.safetyState, safetyState,
-                                      sizeof(g_dashboardCache.safetyState));
-                              g_dashboardCache.safetyState
-                                  [sizeof(g_dashboardCache.safetyState) - 1] =
-                                  '\0';
-                            }
+                            renderRootStatusBar(header, full);
 
                             char summaryBuf[96];
                             if (ru) {
@@ -3971,7 +4163,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                      indicators.coolingMarginC >=
                                                              5.0f
                                                          ? COLOR_SUCCESS
-                                                         : (indicators.coolingMarginC >
+                                                         : (indicators
+                                                                    .coolingMarginC >
                                                                 0.0f
                                                                 ? COLOR_WARNING
                                                                 : COLOR_DANGER));
@@ -4037,15 +4230,14 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                      indicators.stabilityIndex * 100.0f);
                             if (full ||
                                 strcmp(g_dashboardCache.power, val) != 0) {
-                              const uint16_t stabilityColor =
-                                  (indicators.stabilityIndex >= 0.75f)
-                                      ? COLOR_SUCCESS
-                                      : ((indicators.stabilityIndex >= 0.45f)
-                                             ? COLOR_WARNING
-                                             : COLOR_DANGER);
                               drawValueTileValue(
                                   rightX, panelY + (tileH + rowGap) * 2, tileW,
-                                  tileH, val, "%", stabilityColor);
+                                  tileH, val, "%",
+                                  indicators.stabilityIndex >= 0.75f
+                                      ? COLOR_SUCCESS
+                                      : (indicators.stabilityIndex >= 0.45f
+                                             ? COLOR_WARNING
+                                             : COLOR_DANGER));
                               strncpy(g_dashboardCache.power, val,
                                       sizeof(g_dashboardCache.power));
                               g_dashboardCache
@@ -4056,16 +4248,15 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                      indicators.floodRisk * 100.0f);
                             if (full ||
                                 strcmp(g_dashboardCache.pump, val) != 0) {
-                              const uint16_t floodColor =
-                                  (indicators.floodRisk < 0.35f)
-                                      ? COLOR_SUCCESS
-                                      : ((indicators.floodRisk < 0.65f)
-                                             ? COLOR_WARNING
-                                             : COLOR_DANGER);
                               drawValueTileValue(
                                   rightX + tileW + colGap,
                                   panelY + (tileH + rowGap) * 2, tileW, tileH,
-                                  val, "%", floodColor);
+                                  val, "%",
+                                  indicators.floodRisk < 0.35f
+                                      ? COLOR_SUCCESS
+                                      : (indicators.floodRisk < 0.65f
+                                             ? COLOR_WARNING
+                                             : COLOR_DANGER));
                               strncpy(g_dashboardCache.pump, val,
                                       sizeof(g_dashboardCache.pump));
                               g_dashboardCache
@@ -4151,12 +4342,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             const bool layoutChanged =
                                 full ||
                                 (g_dashboardCache.layoutKey != layoutKey);
+                            if (layoutChanged && !full) {
+                              requestRedraw(DisplayRedrawReason::LAYOUT_CHANGED);
+                            }
                             if (layoutChanged) {
-                              memset(g_modeTileCache, 0,
-                                     sizeof(g_modeTileCache));
-                              g_dashboardCache.infoLine[0] = '\0';
-                              g_dashboardCache.ioLine[0] = '\0';
-                              g_dashboardCache.uptime[0] = '\0';
+                              resetModeMonitorRuntimeCache();
                             }
 
                             RootHeaderState header = buildRootHeaderState(
@@ -4281,9 +4471,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               leftW - 16, 14, header.procState,
                               header.procColor);
 
-               snprintf(infoLine, sizeof(infoLine),
-                        ru ? "Ручн. рект.: цели слева, телеметрия справа"
-                           : "Manual rect: targets left, live telemetry right");
+               setModeMonitorAccessInfoLine(infoLine, sizeof(infoLine),
+                                            state.mode);
                if (hasWaterOut) {
                  snprintf(auxLine, sizeof(auxLine),
                           "V %.0f | Atm %.0f | Water %.1f", state.power.voltage,
@@ -4543,15 +4732,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                             tft.setTextDatum(top_left);
                           }
 
-                          snprintf(
-                              infoLine, sizeof(infoLine),
-                              isMash
-                                  ? (ru ? "Затирка: шаги справа, цель слева"
-                                        : "Mashing: step list right, target "
-                                          "and timer left")
-                                  : (ru ? "Пастер.: шаги справа, контур слева"
-                                        : "Hold: step list right, control loop "
-                                          "and target left"));
+                          setModeMonitorAccessInfoLine(infoLine,
+                                                       sizeof(infoLine),
+                                                       state.mode);
                           if (isMash) {
                             snprintf(auxLine, sizeof(auxLine),
                                      "P %.0fW | Stir %s | Cube %.1f",
@@ -4617,35 +4800,6 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                drawPanelHeader(leftX, ROOT_PANEL_Y, leftW,
                                getDisplayPhaseName(state),
                                state.paused ? COLOR_WARNING : colorAccent());
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
-                                      ru ? "РЕЖИМ" : "MODE",
-                                      getDisplayModeName(state.mode),
-                                      colorAccent());
-               snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
-                        distUi.headsVolumeMl);
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
-                                      ru ? "ГОЛОВЫ" : "HEADS", rowBuf,
-                                      COLOR_WARNING);
-               snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
-                        distUi.targetVolumeMl);
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
-                                      ru ? "ЦЕЛЬ" : "TARGET", rowBuf,
-                                      COLOR_SUCCESS);
-               snprintf(rowBuf, sizeof(rowBuf), "%.0f mm", state.pressure.cube);
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
-                                      ru ? "ДАВЛ." : "PRESS", rowBuf,
-                                      COLOR_WARNING);
-               snprintf(rowBuf, sizeof(rowBuf), "%.0f V", state.power.voltage);
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
-                                      ru ? "СЕТЬ" : "MAINS", rowBuf,
-                                      COLOR_PRIMARY);
-               drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22,
-                              leftW - 16, 14, header.procState,
-                              header.procColor);
-               drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
-               drawPanelHeader(leftX, ROOT_PANEL_Y, leftW,
-                               getDisplayPhaseName(state),
-                               state.paused ? COLOR_WARNING : colorAccent());
                snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
                         state.pump.totalVolumeMl, distUi.targetVolumeMl);
                drawSummaryHeroBlock(leftX + 8, ROOT_PANEL_Y + 32, leftW - 16,
@@ -4667,10 +4821,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               leftW - 16, 14, header.procState,
                               header.procColor);
 
-               snprintf(
-                   infoLine, sizeof(infoLine),
-                   ru ? "Дистил.: куб, отбор, финиш"
-                      : "Distillation: cube, speed, volume and finish temp");
+               setModeMonitorAccessInfoLine(infoLine, sizeof(infoLine),
+                                            state.mode);
                snprintf(auxLine, sizeof(auxLine), "V %.0f | P %.0f | Pump %.0f",
                         state.power.voltage, state.pressure.cube,
                         state.pump.speedMlPerHour);
@@ -4737,36 +4889,6 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                drawPanelHeader(leftX, ROOT_PANEL_Y, leftW,
                                getDisplayPhaseName(state),
                                state.paused ? COLOR_WARNING : colorAccent());
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 36, leftW - 16,
-                                      ru ? "РЕЖИМ" : "MODE",
-                                      getDisplayModeName(state.mode),
-                                      colorAccent());
-               snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
-                        g_settings.nbk.columnBottomTempThresholdC);
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 58, leftW - 16,
-                                      ru ? "ПОРОГ" : "THRESH", rowBuf,
-                                      COLOR_WARNING);
-               snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
-                        g_settings.nbk.targetVolumeMl);
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 80, leftW - 16,
-                                      ru ? "ЦЕЛЬ" : "TARGET", rowBuf,
-                                      COLOR_SUCCESS);
-               snprintf(rowBuf, sizeof(rowBuf), "%.0f ml",
-                        state.pump.totalVolumeMl);
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 102, leftW - 16,
-                                      ru ? "ОТБОР" : "COLLECT", rowBuf,
-                                      COLOR_INFO);
-               snprintf(rowBuf, sizeof(rowBuf), "%.0f V", state.power.voltage);
-               drawCompactKeyValueRow(leftX + 8, ROOT_PANEL_Y + 124, leftW - 16,
-                                      ru ? "СЕТЬ" : "MAINS", rowBuf,
-                                      COLOR_PRIMARY);
-               drawStateBadge(leftX + 8, ROOT_PANEL_Y + ROOT_PANEL_H - 22,
-                              leftW - 16, 14, header.procState,
-                              header.procColor);
-               drawCard(leftX, ROOT_PANEL_Y, leftW, ROOT_PANEL_H, colorCard());
-               drawPanelHeader(leftX, ROOT_PANEL_Y, leftW,
-                               getDisplayPhaseName(state),
-                               state.paused ? COLOR_WARNING : colorAccent());
                snprintf(rowBuf, sizeof(rowBuf), "%.0f/%.0f ml",
                         state.pump.totalVolumeMl,
                         g_settings.nbk.targetVolumeMl);
@@ -4791,9 +4913,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               leftW - 16, 14, header.procState,
                               header.procColor);
 
-               snprintf(infoLine, sizeof(infoLine),
-                        ru ? "НБК: низ колонны, подача, давление"
-                           : "NBK: column bottom, feed, pressure and cooling");
+               setModeMonitorAccessInfoLine(infoLine, sizeof(infoLine),
+                                            state.mode);
                snprintf(auxLine, sizeof(auxLine), "Target %.0f | Pump %.0f",
                         g_settings.nbk.targetVolumeMl,
                         state.pump.speedMlPerHour);
@@ -4889,9 +5010,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               leftW - 16, 14, header.procState,
                               header.procColor);
 
-               snprintf(infoLine, sizeof(infoLine),
-                        ru ? "Брожение: цель, допуск, нагрев"
-                           : "Fermentation: temp, band, delta and heater");
+                setModeMonitorAccessInfoLine(infoLine, sizeof(infoLine),
+                                             state.mode);
                snprintf(auxLine, sizeof(auxLine), "%s | Plan %.0f h",
                         g_settings.fermentation.useHeater ? "Heater ON"
                                                           : "Heater OFF",
@@ -4936,12 +5056,12 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               const bool layoutChanged =
                                   full ||
                                   (g_dashboardCache.layoutKey != layoutKey);
+                              if (layoutChanged && !full) {
+                                requestRedraw(
+                                    DisplayRedrawReason::LAYOUT_CHANGED);
+                              }
                               if (layoutChanged) {
-                                memset(g_modeTileCache, 0,
-                                       sizeof(g_modeTileCache));
-                                g_dashboardCache.infoLine[0] = '\0';
-                                g_dashboardCache.ioLine[0] = '\0';
-                                g_dashboardCache.uptime[0] = '\0';
+                                resetModeMonitorRuntimeCache();
                               }
 
                               uint32_t phaseElapsedSec =
@@ -5036,9 +5156,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                updateTile(3, x2, y1, w2, hTile, v[3], "C", COLOR_INFO,
                           TileValueTone::Secondary);
 
-               snprintf(infoLine, sizeof(infoLine),
-                        ru ? "Дистил.: только ключевые параметры"
-                           : "Distillation: key parameters only");
+               setModeMonitorAccessInfoLine(infoLine, sizeof(infoLine),
+                                            state.mode);
                snprintf(auxLine, sizeof(auxLine), "V %.0f | P %.0f | Pump %.0f",
                         state.power.voltage, state.pressure.cube,
                         state.pump.speedMlPerHour);
@@ -5195,11 +5314,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                        color, tone, sparkline);
                           }
 
-                          snprintf(
-                              infoLine, sizeof(infoLine),
-                              ru ? "Ручн. рект.: правка слева, датчики справа"
-                                 : "Manual rect: edit speed/power/fractions on "
-                                   "left");
+                setModeMonitorAccessInfoLine(infoLine, sizeof(infoLine),
+                                             state.mode);
                           snprintf(auxLine, sizeof(auxLine),
                                    ru ? "Куб %.0f | Атм %.0f mm | V %.0f"
                                       : "Cube %.0f | Atm %.0f mm | V %.0f",
@@ -5336,11 +5452,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                           }
 
                           if (isMash) {
-                            snprintf(
-                                infoLine, sizeof(infoLine),
-                                ru ? "Затирка: слева температура, справа время"
-                                   : "Mashing: tap left half for temp, right "
-                                     "half for time");
+                            setModeMonitorAccessInfoLine(infoLine,
+                                                         sizeof(infoLine),
+                                                         state.mode);
                             snprintf(auxLine, sizeof(auxLine),
                                      "Step %u/%u | Target %.1f C",
                                      static_cast<unsigned>(
@@ -5348,11 +5462,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                      static_cast<unsigned>(steps),
                                      state.mashing.targetTemp);
                           } else {
-                            snprintf(
-                                infoLine, sizeof(infoLine),
-                                ru ? "Пастер.: слева температура, справа время"
-                                   : "Hold: tap left half for temp, right half "
-                                     "for time");
+                            setModeMonitorAccessInfoLine(infoLine,
+                                                         sizeof(infoLine),
+                                                         state.mode);
                             snprintf(auxLine, sizeof(auxLine),
                                      "Step %u/%u | Cube %.1f C",
                                      static_cast<unsigned>(
@@ -5423,9 +5535,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                      hasWaterOut ? COLOR_INFO : colorAccent(),
                                      TileValueTone::Secondary);
 
-               snprintf(infoLine, sizeof(infoLine),
-                        ru ? "НБК: низ колонны и подача"
-                           : "NBK: bottom temp and feed rate");
+               setModeMonitorAccessInfoLine(infoLine, sizeof(infoLine),
+                                            state.mode);
                snprintf(auxLine, sizeof(auxLine), "%s %.1fC | %s %.0f",
                         ru ? "Порог" : "Threshold",
                         g_settings.nbk.columnBottomTempThresholdC,
@@ -5476,9 +5587,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                updateTile(3, x2, y2, tileW, tileH, v[3], "", COLOR_PRIMARY,
                           TileValueTone::Duration);
 
-               snprintf(infoLine, sizeof(infoLine),
-                        ru ? "Брожение: держим температуру"
-                           : "Fermentation: keep temp in band");
+               setModeMonitorAccessInfoLine(infoLine, sizeof(infoLine),
+                                            state.mode);
                snprintf(auxLine, sizeof(auxLine), "%s | %s %.0f h",
                         g_settings.fermentation.useHeater
                             ? (ru ? "Подогрев включен" : "Heater enabled")
@@ -5629,10 +5739,12 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 }
                               }
 
-                              static void renderSettings() {
-                                tft.fillScreen(colorBg());
-                                drawHeader(msg(Msg::SETTINGS), false);
-                                drawTabs(UI_SETTINGS);
+                              static void renderSettings(bool full) {
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(msg(Msg::SETTINGS), false);
+                                  drawTabs(UI_SETTINGS);
+                                }
                                 const bool ru = (g_settings.language == 0);
 
                                 // --- КАРТОЧКА 1: Оборудование ---
@@ -5799,15 +5911,49 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                       SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H,
                                       langLabel, COLOR_INFO, TFT_WHITE);
                                 }
+                                {
+                                  char refreshLabel[24];
+                                  snprintf(
+                                      refreshLabel, sizeof(refreshLabel),
+                                      "%s:%s", ru ? "Экран" : "Display",
+                                      getDisplayRefreshProfileCompactName(
+                                          g_settings.displaySettings
+                                              .refreshProfile));
+                                  drawButton(
+                                      SETTINGS_PROFILE_X, SETTINGS_PROFILE_Y,
+                                      SETTINGS_PROFILE_W, SETTINGS_PROFILE_H,
+                                      refreshLabel,
+                                      getDisplayRefreshProfileColor(
+                                          g_settings.displaySettings
+                                              .refreshProfile),
+                                      TFT_WHITE);
+                                }
+                                {
+                                  char stirrerLabel[24];
+                                  snprintf(stirrerLabel, sizeof(stirrerLabel),
+                                           "%s:%s",
+                                           ru ? "Меш" : "Stir",
+                                           getStirrerEnabledCompactName());
+                                  drawButton(SETTINGS_STIRRER_X,
+                                             SETTINGS_STIRRER_Y,
+                                             SETTINGS_STIRRER_W,
+                                             SETTINGS_STIRRER_H, stirrerLabel,
+                                             getStirrerEnabledColor(),
+                                             TFT_WHITE);
+                                }
 
                                 drawFooterHint(tftText(TftTextId::SettingsHint),
                                                colorAccent());
                               }
 
-                              static void renderEquipment() {
-                                tft.fillScreen(colorBg());
-                                drawHeader(msg(Msg::EQUIPMENT), true);
-                                drawTabs(UI_SETTINGS);
+                              static void renderEquipment(bool full) {
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(msg(Msg::EQUIPMENT), true);
+                                  drawTabs(UI_SETTINGS);
+                                }
+                                const bool readOnly =
+                                    !isSettingsEditAllowed(g_state);
 
                                 const int16_t x1 = 10;
                                 const int16_t x2 = 245;
@@ -5840,15 +5986,22 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 drawValueTile(x2, y2, tileW, tileH,
                                               msg(Msg::PACKING_COEFF), buf, "",
                                               colorAccent());
-                                drawFooterHint(msg(Msg::TAP_TO_EDIT),
-                                               colorAccent());
+                                drawAccessControlledFooterHint(
+                                    readOnly, msg(Msg::TAP_TO_EDIT),
+                                    colorAccent());
                               }
 
-                              static void renderRectParams() {
-                                tft.fillScreen(colorBg());
+                              static void renderRectParams(bool full) {
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                }
                                 const bool ru = (g_settings.language == 0);
-                                drawHeader(tftText(TftTextId::RectTitle), true);
-                                drawTabs(UI_SETTINGS);
+                                const bool readOnly =
+                                    !isSettingsEditAllowed(g_state);
+                                if (full) {
+                                  drawHeader(tftText(TftTextId::RectTitle), true);
+                                  drawTabs(UI_SETTINGS);
+                                }
 
                                 const int16_t tileW = 225;
                                 const int16_t tileH = 46;
@@ -5911,7 +6064,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                 msg(Msg::TAILS_PERCENT),
                                                 tileBuf, "%", COLOR_WARNING);
 
-                                  drawFooterHint(
+                                  drawAccessControlledFooterHint(
+                                      readOnly,
                                       tftText(TftTextId::RectFeedHint),
                                       COLOR_INFO);
                                   return;
@@ -5971,20 +6125,25 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                               msg(Msg::TAILS_FINISH), tileBuf,
                                               "C", colorMuted());
 
-                                snprintf(tileBuf, sizeof(tileBuf),
-                                         ru ? "АТМ %.0f hPa | комп."
-                                            : "ATM %.0f hPa | comp",
-                                         atmHpaComp);
-                                drawFooterHint(tileBuf, COLOR_INFO);
-                              }
+                                 snprintf(tileBuf, sizeof(tileBuf),
+                                          ru ? "АТМ %.0f hPa | комп."
+                                             : "ATM %.0f hPa | comp",
+                                          atmHpaComp);
+                                 drawAccessControlledFooterHint(
+                                     readOnly, tileBuf, COLOR_INFO);
+                               }
 
-                              static void renderDistParams() {
-                                tft.fillScreen(colorBg());
-                                drawHeader(tftText(TftTextId::DistTitle), true);
-                                drawTabs(UI_SETTINGS);
+                               static void renderDistParams(bool full) {
+                                 if (full) {
+                                   tft.fillScreen(colorBg());
+                                   drawHeader(tftText(TftTextId::DistTitle), true);
+                                   drawTabs(UI_SETTINGS);
+                                 }
+                                 const bool readOnly =
+                                     !isSettingsEditAllowed(g_state);
 
-                                const int16_t x1 = 10;
-                                const int16_t x2 = 245;
+                                 const int16_t x1 = 10;
+                                 const int16_t x2 = 245;
                                 const int16_t y1 = 48;
                                 const int16_t y2 = 138;
                                 const int16_t tileW = 225;
@@ -6012,22 +6171,27 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 
                                 snprintf(tileBufDist, sizeof(tileBufDist),
                                          "%.1f", distUi.endTempC);
-                                drawValueTile(x2, y2, tileW, tileH,
-                                              msg(Msg::END_TEMP), tileBufDist,
-                                              "C", COLOR_WARNING);
-                                drawFooterHint(msg(Msg::TAP_TO_EDIT),
-                                               COLOR_WARNING);
-                                return;
-                              }
+                                 drawValueTile(x2, y2, tileW, tileH,
+                                               msg(Msg::END_TEMP), tileBufDist,
+                                               "C", COLOR_WARNING);
+                                 drawAccessControlledFooterHint(
+                                     readOnly, msg(Msg::TAP_TO_EDIT),
+                                     colorAccent());
+                                 return;
+                               }
 
-                              static void renderCalibration() {
-                                tft.fillScreen(colorBg());
-                                drawHeader(tftText(TftTextId::CalibrationTitle),
-                                           true);
-                                drawTabs(UI_SETTINGS);
+                               static void renderCalibration(bool full) {
+                                 if (full) {
+                                   tft.fillScreen(colorBg());
+                                   drawHeader(tftText(TftTextId::CalibrationTitle),
+                                              true);
+                                   drawTabs(UI_SETTINGS);
+                                 }
+                                 const bool readOnly =
+                                     !isSettingsEditAllowed(g_state);
 
-                                const int16_t tileY = 52;
-                                const int16_t tileW = 225;
+                                 const int16_t tileY = 52;
+                                 const int16_t tileW = 225;
                                 const int16_t tileH = 86;
                                 char buf[32];
                                 snprintf(buf, sizeof(buf), "%.3f",
@@ -6036,13 +6200,14 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                               msg(Msg::PUMP_CALIBRATION), buf,
                                               msg(Msg::UNIT_ML_R), COLOR_INFO);
 
-                                drawButton(245, tileY, tileW, tileH,
-                                           msg(Msg::TOUCH_CALIBRATION),
-                                           COLOR_WARNING, TFT_WHITE);
-                                drawFooterHint(
-                                    tftText(TftTextId::CalibrationHint),
-                                    COLOR_WARNING);
-                              }
+                                 drawButton(245, tileY, tileW, tileH,
+                                            msg(Msg::TOUCH_CALIBRATION),
+                                            COLOR_WARNING, TFT_WHITE);
+                                 drawAccessControlledFooterHint(
+                                     readOnly,
+                                     tftText(TftTextId::CalibrationHint),
+                                     COLOR_WARNING);
+                               }
 
                               static void renderManual(
                                   const SystemState &state) {
@@ -6249,11 +6414,11 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 
                               static void renderAllTemps(
                                   const SystemState &state, bool full) {
+                                const bool ru = (g_settings.language == 0);
                                 if (full) {
                                   tft.fillScreen(colorBg());
-                                  drawHeader(g_settings.language == 0
-                                                 ? "ТЕМПЕРАТУРЫ"
-                                                 : "TEMPERATURES",
+                                  drawHeader(ru ? "ТЕМПЕРАТУРЫ"
+                                                : "TEMPERATURES",
                                              true);
                                   drawTabs(ui.rootScreen);
                                 }
@@ -6283,6 +6448,13 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                     state.temps.tsa,
                                     state.temps.waterIn,
                                     state.temps.waterOut};
+
+                                uint8_t validCount = 0;
+                                for (uint8_t i = 0; i < TEMP_COUNT; i++) {
+                                  if (state.temps.valid[i]) {
+                                    validCount++;
+                                  }
+                                }
 
                                 for (uint8_t i = 0; i < TEMP_COUNT; i++) {
                                   const int16_t x =
@@ -6317,6 +6489,19 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                                  y + 29);
                                   tft.setTextDatum(top_left);
                                 }
+
+                                char footerBuf[96];
+                                snprintf(
+                                    footerBuf, sizeof(footerBuf),
+                                    ru ? "Живых датчиков %u/%u | Экран %s"
+                                       : "Live sensors %u/%u | Display %s",
+                                    validCount, static_cast<unsigned>(TEMP_COUNT),
+                                    getDisplayRefreshProfileCompactName(
+                                        g_settings.displaySettings
+                                            .refreshProfile));
+                                drawFooterHint(footerBuf,
+                                               validCount > 0 ? COLOR_INFO
+                                                              : COLOR_WARNING);
                               }
 
                               static void renderTouchCalibration() {
@@ -6551,9 +6736,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 g_displayStats.softRecoveriesInWindow = 0;
                                 g_displayStats.softRecoveryWindowStartedMs = 0;
 
-                                ui.lastRenderedScreen =
-                                    static_cast<UiScreen>(255);
-                                ui.needsRedraw = true;
+                                requestRedraw(DisplayRedrawReason::RECOVERY_REDRAW,
+                                              true);
                                 LOG_W("Display: hard watchdog recovery done");
                                 return true;
                               }
@@ -6648,9 +6832,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   ui.currentScreen = UI_DASHBOARD;
                                   ui.rootScreen = UI_DASHBOARD;
                                   ui.stackDepth = 0;
-                                  ui.lastRenderedScreen =
-                                      static_cast<UiScreen>(255);
-                                  ui.needsRedraw = true;
+                                  requestRedraw(
+                                      DisplayRedrawReason::SCREEN_ENTER, true);
                                   const bool forceCal =
                                       touch_ok ? detectCalibrationRequest()
                                                : false;
@@ -6670,7 +6853,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 #if TFT_ENABLED
                                 const uint32_t now = millis();
 
-                                if (now - lastSparklineUpdateMs > 5000) {
+                                if (now - lastSparklineUpdateMs >
+                                    getSparklineRefreshIntervalMs()) {
                                   if (state.temps.valid[TEMP_CUBE]) {
                                     cubeTempHistory.push(state.temps.cube);
                                   }
@@ -6687,7 +6871,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   g_dashboardCache.top[0] = '\0';
                                   memset(g_modeTileCache, 0,
                                          sizeof(g_modeTileCache));
-                                  ui.needsRedraw = true;
+                                  requestRedraw(
+                                      DisplayRedrawReason::SPARKLINE_REFRESH);
                                 }
 
                                 if (g_displayStats.lastUpdateCallAtMs > 0) {
@@ -6752,7 +6937,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                         ui.calSkip--;
                                         ui.calIsCollecting = false;
                                         ui.calSampleCount = 0;
-                                        ui.needsRedraw = true;
+                                        requestRedraw(
+                                            DisplayRedrawReason::TAP_ACTION);
                                       } else if (ui.calIsCollecting &&
                                                  ui.calSampleCount > 0) {
                                         if (ui.calStep < 4) {
@@ -6765,14 +6951,15 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                           ui.calStep++;
                                           ui.calIsCollecting = false;
                                           ui.calSampleCount = 0;
-                                          ui.needsRedraw = true;
+                                          requestRedraw(
+                                              DisplayRedrawReason::TAP_ACTION);
                                         }
                                         if (ui.calStep >= 4) {
                                           applyTouchCalibration();
                                           ui.calibrating = false;
-                                          ui.lastRenderedScreen =
-                                              static_cast<UiScreen>(255);
-                                          ui.needsRedraw = true;
+                                          requestRedraw(
+                                              DisplayRedrawReason::SCREEN_ENTER,
+                                              true);
                                           // Calibration is finished; render
                                           // normal UI on next update cycle.
                                           return;
@@ -6809,7 +6996,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                     g_displayStats.lastFrameAtMs > 0 &&
                                     (now - g_displayStats.lastFrameAtMs) >
                                         getForceRefreshIntervalMs()) {
-                                  ui.needsRedraw = true;
+                                  requestRedraw(
+                                      DisplayRedrawReason::TIMER_KEEPALIVE);
                                 }
 
                                 if (!ui.needsRedraw) {
@@ -6857,8 +7045,10 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                       }
                                     }
                                     if ((ui.currentScreen == UI_DASHBOARD ||
-                                         ui.currentScreen == UI_MODE_MONITOR) &&
-                                        (now - uiLive.lastUpdateMs) > 1200) {
+                                         ui.currentScreen == UI_MODE_MONITOR ||
+                                         ui.currentScreen == UI_ALL_TEMPS) &&
+                                        (now - uiLive.lastUpdateMs) >
+                                            getProgressRefreshIntervalMs()) {
                                       // Keep phase timer/progress and service
                                       // values moving even when temperatures
                                       // are stable.
@@ -6866,8 +7056,10 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                     }
                                   }
                                   if (changed &&
-                                      (now - uiLive.lastUpdateMs) > 300) {
-                                    ui.needsRedraw = true;
+                                      (now - uiLive.lastUpdateMs) >
+                                          getLiveRedrawMinGapMs()) {
+                                    requestRedraw(
+                                        DisplayRedrawReason::LIVE_DATA_CHANGED);
                                   }
                                 }
 
@@ -6882,7 +7074,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   }
 
                                   if (handled) {
-                                    ui.needsRedraw = true;
+                                    requestRedraw(
+                                        DisplayRedrawReason::TAP_ACTION);
                                   }
                                 }
 
@@ -6917,23 +7110,22 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                     renderControl(state, full);
                                     break;
                                   case UI_SETTINGS:
-                                    if (full)
-                                      renderSettings();
+                                    renderSettings(full);
                                     break;
                                   case UI_SERVICE:
                                     renderService(state, full);
                                     break;
                                   case UI_EQUIPMENT:
-                                    renderEquipment();
+                                    renderEquipment(full);
                                     break;
                                   case UI_RECT_PARAMS:
-                                    renderRectParams();
+                                    renderRectParams(full);
                                     break;
                                   case UI_DIST_PARAMS:
-                                    renderDistParams();
+                                    renderDistParams(full);
                                     break;
                                   case UI_CALIBRATION:
-                                    renderCalibration();
+                                    renderCalibration(full);
                                     break;
                                   case UI_VALUE_EDIT:
                                     renderValueEdit();
@@ -6952,9 +7144,50 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 
                                   const uint32_t frameTime =
                                       millis() - frameStartMs;
+                                  const DisplayRedrawReason redrawReason =
+                                      ui.pendingRedrawReason;
                                   bool scheduleRecoveryRedraw = false;
                                   bool requestHardRecovery = false;
                                   g_displayStats.framesRendered++;
+                                  if (full) {
+                                    g_displayStats.fullRedraws++;
+                                  } else {
+                                    g_displayStats.partialRedraws++;
+                                  }
+                                  g_displayStats.lastRedrawReason =
+                                      redrawReason;
+                                  switch (redrawReason) {
+                                  case DisplayRedrawReason::SCREEN_ENTER:
+                                    g_displayStats.redrawReasonScreenEnter++;
+                                    break;
+                                  case DisplayRedrawReason::TAP_ACTION:
+                                    g_displayStats.redrawReasonTapAction++;
+                                    break;
+                                  case DisplayRedrawReason::LIVE_DATA_CHANGED:
+                                    g_displayStats.redrawReasonLiveDataChanged++;
+                                    break;
+                                  case DisplayRedrawReason::TIMER_KEEPALIVE:
+                                    g_displayStats.redrawReasonTimerKeepalive++;
+                                    break;
+                                  case DisplayRedrawReason::SPARKLINE_REFRESH:
+                                    g_displayStats.redrawReasonSparklineRefresh++;
+                                    break;
+                                  case DisplayRedrawReason::THEME_CHANGED:
+                                    g_displayStats.redrawReasonThemeChanged++;
+                                    break;
+                                  case DisplayRedrawReason::LANGUAGE_CHANGED:
+                                    g_displayStats.redrawReasonLanguageChanged++;
+                                    break;
+                                  case DisplayRedrawReason::LAYOUT_CHANGED:
+                                    g_displayStats.redrawReasonLayoutChanged++;
+                                    break;
+                                  case DisplayRedrawReason::RECOVERY_REDRAW:
+                                    g_displayStats.redrawReasonRecovery++;
+                                    break;
+                                  case DisplayRedrawReason::NONE:
+                                  default:
+                                    break;
+                                  }
                                   g_displayStats.lastFrameMs =
                                       static_cast<uint16_t>(frameTime > 0xFFFF
                                                                 ? 0xFFFF
@@ -7036,6 +7269,10 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                   }
 
                                   ui.needsRedraw = scheduleRecoveryRedraw;
+                                  ui.pendingRedrawReason =
+                                      scheduleRecoveryRedraw
+                                          ? DisplayRedrawReason::RECOVERY_REDRAW
+                                          : DisplayRedrawReason::NONE;
                                   if (!scheduleRecoveryRedraw) {
                                     ui.lastRenderedScreen = ui.currentScreen;
                                   }
@@ -7095,7 +7332,8 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                 ui.touchDownMs = 0;
                                 ui.lastTapMs = 0;
                                 ui.ignoreTapUntilMs = millis() + 250;
-                                ui.needsRedraw = true;
+                                requestRedraw(DisplayRedrawReason::SCREEN_ENTER,
+                                              true);
 #endif
                               }
 
@@ -7112,6 +7350,9 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
 #if TFT_ENABLED
                                 stats.framesRendered =
                                     g_displayStats.framesRendered;
+                                stats.fullRedraws = g_displayStats.fullRedraws;
+                                stats.partialRedraws =
+                                    g_displayStats.partialRedraws;
                                 stats.slowFrames = g_displayStats.slowFrames;
                                 stats.watchdogRecoveries =
                                     g_displayStats.watchdogRecoveries;
@@ -7129,6 +7370,28 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                     g_displayStats.maxUpdateGapMs;
                                 stats.updateGapOverruns =
                                     g_displayStats.updateGapOverruns;
+                                stats.redrawReasonScreenEnter =
+                                    g_displayStats.redrawReasonScreenEnter;
+                                stats.redrawReasonTapAction =
+                                    g_displayStats.redrawReasonTapAction;
+                                stats.redrawReasonLiveDataChanged =
+                                    g_displayStats.redrawReasonLiveDataChanged;
+                                stats.redrawReasonTimerKeepalive =
+                                    g_displayStats.redrawReasonTimerKeepalive;
+                                stats.redrawReasonSparklineRefresh =
+                                    g_displayStats.redrawReasonSparklineRefresh;
+                                stats.redrawReasonThemeChanged =
+                                    g_displayStats.redrawReasonThemeChanged;
+                                stats.redrawReasonLanguageChanged =
+                                    g_displayStats.redrawReasonLanguageChanged;
+                                stats.redrawReasonLayoutChanged =
+                                    g_displayStats.redrawReasonLayoutChanged;
+                                stats.redrawReasonRecovery =
+                                    g_displayStats.redrawReasonRecovery;
+                                snprintf(stats.lastRedrawReason,
+                                         sizeof(stats.lastRedrawReason), "%s",
+                                         getDisplayRedrawReasonKey(
+                                             g_displayStats.lastRedrawReason));
 #endif
                                 return stats;
                               }

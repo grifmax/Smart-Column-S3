@@ -14,6 +14,8 @@
 namespace Display {
     struct RuntimeStats {
         uint32_t framesRendered = 0;
+        uint32_t fullRedraws = 0;
+        uint32_t partialRedraws = 0;
         uint32_t slowFrames = 0;
         uint32_t watchdogRecoveries = 0;
         uint32_t hardWatchdogRecoveries = 0;
@@ -24,6 +26,16 @@ namespace Display {
         uint16_t lastUpdateGapMs = 0;
         uint16_t maxUpdateGapMs = 0;
         uint32_t updateGapOverruns = 0;
+        uint32_t redrawReasonScreenEnter = 0;
+        uint32_t redrawReasonTapAction = 0;
+        uint32_t redrawReasonLiveDataChanged = 0;
+        uint32_t redrawReasonTimerKeepalive = 0;
+        uint32_t redrawReasonSparklineRefresh = 0;
+        uint32_t redrawReasonThemeChanged = 0;
+        uint32_t redrawReasonLanguageChanged = 0;
+        uint32_t redrawReasonLayoutChanged = 0;
+        uint32_t redrawReasonRecovery = 0;
+        char lastRedrawReason[24] = "";
     };
 
     /**

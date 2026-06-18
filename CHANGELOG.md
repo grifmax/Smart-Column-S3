@@ -7,6 +7,15 @@
 
 ---
 
+## [2.4.4] - 2026-06-18
+
+### Added
+- Для TFT-блока в `TODO2.0` зафиксирован поэтапный техплан добивки: сначала stabilizing redraw/runtime layer, затем завершение `ALL_TEMPS`, затем финальная очистка tap/access policy по экранам. (codex)
+
+### Changed
+- Незавершённый TFT-рефактор доведён до первого практического прохода: `refresh profile` (`normal/safe/fast`) теперь влияет не только на label в `SETTINGS`, но и на cadence `timer keepalive`, live-redraw и sparkline refresh в самом дисплейном цикле. (codex)
+- Экран `ALL_TEMPS` переведён из черновой заготовки в более законченный инженерный экран: добавлен live-footer с количеством валидных датчиков и активным display refresh profile. (codex)
+
 ## [2.4.3] - 2026-06-18
 
 ### Added
