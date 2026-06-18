@@ -217,6 +217,37 @@ enum UiScreen : uint8_t {
   UI_ALL_TEMPS
 };
 
+enum class UiRootTab : uint8_t {
+  MONITOR = 0,
+  CONTROL,
+  SETTINGS,
+  SERVICE,
+  NONE
+};
+
+struct UiScreenPolicy {
+  UiRootTab rootTab;
+  bool rootLike;
+  bool autoMonitorRoot;
+  bool supportsLiveRefresh;
+  bool needsProgressTicker;
+};
+
+static constexpr UiScreenPolicy kUiScreenPolicies[] = {
+    {UiRootTab::MONITOR, true, true, true, true},   // UI_DASHBOARD
+    {UiRootTab::CONTROL, true, false, true, false}, // UI_CONTROL
+    {UiRootTab::SETTINGS, true, false, false, false}, // UI_SETTINGS
+    {UiRootTab::SERVICE, true, false, true, false}, // UI_SERVICE
+    {UiRootTab::MONITOR, true, true, true, true},   // UI_MODE_MONITOR
+    {UiRootTab::SETTINGS, false, false, false, false}, // UI_EQUIPMENT
+    {UiRootTab::SETTINGS, false, false, false, false}, // UI_RECT_PARAMS
+    {UiRootTab::SETTINGS, false, false, false, false}, // UI_DIST_PARAMS
+    {UiRootTab::SETTINGS, false, false, false, false}, // UI_CALIBRATION
+    {UiRootTab::CONTROL, false, false, true, false}, // UI_MANUAL
+    {UiRootTab::NONE, false, false, false, false},  // UI_VALUE_EDIT
+    {UiRootTab::MONITOR, false, false, true, true}  // UI_ALL_TEMPS
+};
+
 enum class DisplayRedrawReason : uint8_t {
   NONE = 0,
   SCREEN_ENTER,
@@ -789,6 +820,32 @@ static uint8_t countExpectedTempSensors() {
   return count;
 }
 
+static bool isModeRunning(const SystemState &state);
+
+static const UiScreenPolicy &getUiScreenPolicy(UiScreen screen) {
+  const size_t screenIndex = static_cast<size_t>(screen);
+  if (screenIndex < (sizeof(kUiScreenPolicies) / sizeof(kUiScreenPolicies[0]))) {
+    return kUiScreenPolicies[screenIndex];
+  }
+  return kUiScreenPolicies[0];
+}
+
+static UiScreen getMonitorRootScreenForState(const SystemState &state) {
+  return isModeRunning(state) ? UI_MODE_MONITOR : UI_DASHBOARD;
+}
+
+static bool isRootNavigationScreen(UiScreen screen) {
+  return getUiScreenPolicy(screen).rootLike;
+}
+
+static bool screenSupportsLiveRefresh(UiScreen screen) {
+  return getUiScreenPolicy(screen).supportsLiveRefresh;
+}
+
+static bool screenNeedsProgressTicker(UiScreen screen) {
+  return getUiScreenPolicy(screen).needsProgressTicker;
+}
+
 static const uint16_t DISPLAY_SLOW_FRAME_MS = 120;
 static const uint16_t DISPLAY_HARD_FRAME_MS = 250;
 static const uint8_t DISPLAY_SOFT_WD_THRESHOLD = 3;
@@ -892,7 +949,7 @@ static bool isModeRunning(const SystemState &state) {
 }
 
 static bool isMonitorRootScreen(UiScreen screen) {
-  return (screen == UI_DASHBOARD || screen == UI_MODE_MONITOR);
+  return getUiScreenPolicy(screen).autoMonitorRoot;
 }
 
 static bool isRootWorkspaceTap(int16_t ty) {
@@ -1344,10 +1401,7 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
 
   // Кнопка НАЗАД (теперь в верхнем правом
   // углу на под-экранах)
-  bool isRoot =
-      (isMonitorRootScreen(ui.currentScreen) ||
-       ui.currentScreen == UI_CONTROL || ui.currentScreen == UI_SETTINGS ||
-       ui.currentScreen == UI_SERVICE);
+  const bool isRoot = isRootNavigationScreen(ui.currentScreen);
 
   if (!isRoot && hit(tx, ty, TFT_WIDTH - 110, 0, 110, 50)) {
     popScreen();
@@ -1359,7 +1413,7 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
     int tab = tx / (TFT_WIDTH / 4);
     if (tab >= 0 && tab < 4) {
       if (tab == 0) {
-        switchRoot(isModeRunning(state) ? UI_MODE_MONITOR : UI_DASHBOARD);
+        switchRoot(getMonitorRootScreenForState(state));
       } else if (tab == 1) {
         switchRoot(UI_CONTROL);
       } else if (tab == 2) {
@@ -1514,397 +1568,471 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
   return false;
 }
 
-static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
-  switch (ui.currentScreen) {
-  case UI_DASHBOARD:
-    if (isRootMetricsTap(tx, ty)) {
-      pushScreen(UI_ALL_TEMPS);
-      return true;
-    }
-    if (isRootWorkspaceTap(ty)) {
-      switchRoot(UI_CONTROL);
-      return true;
-    }
-    break;
-  case UI_MODE_MONITOR:
-    if (isRootWorkspaceTap(ty)) {
-      if (handleModeMonitorTap(tx, ty, state)) {
-        return true;
-      }
-      if (isRootMetricsTap(tx, ty)) {
-        pushScreen(UI_ALL_TEMPS);
-        return true;
-      }
-      if (isRootControlTap(tx, ty)) {
-        switchRoot(UI_CONTROL);
-        return true;
-      }
-      return true;
-    }
-    break;
+static bool handleDashboardScreenTap(int16_t tx, int16_t ty,
+                                     const SystemState &) {
+  if (isRootMetricsTap(tx, ty)) {
+    pushScreen(UI_ALL_TEMPS);
+    return true;
+  }
+  if (isRootWorkspaceTap(ty)) {
+    switchRoot(UI_CONTROL);
+    return true;
+  }
+  return false;
+}
 
-  case UI_CONTROL:
-    if (ui.modeSwitchConfirm) {
-      const int16_t mx = 30;
-      const int16_t my = 78;
-      const int16_t mw = TFT_WIDTH - 60;
-      const int16_t by = my + 102;
-      const int16_t overlayBtnW = (mw - 43) / 2;
-      const int16_t overlayBtnX1 = mx + 20;
-      const int16_t overlayBtnX2 = overlayBtnX1 + overlayBtnW + TFT_BUTTON_GAP;
-      if (hit(tx, ty, overlayBtnX1, by, overlayBtnW, 42)) {
-        ui.modeSwitchConfirm = false;
-        return true;
-      }
-      if (hit(tx, ty, overlayBtnX2, by, overlayBtnW, 42)) {
-        const Mode target = ui.modeSwitchTarget;
-        ui.modeSwitchConfirm = false;
-        FSM::stopMode(g_state);
-        startModeFromControl(target);
-        return true;
-      }
-      return true;
-    }
+static bool handleModeMonitorScreenTap(int16_t tx, int16_t ty,
+                                       const SystemState &state) {
+  if (!isRootWorkspaceTap(ty)) {
+    return false;
+  }
+  if (handleModeMonitorTap(tx, ty, state)) {
+    return true;
+  }
+  if (isRootMetricsTap(tx, ty)) {
+    pushScreen(UI_ALL_TEMPS);
+    return true;
+  }
+  if (isRootControlTap(tx, ty)) {
+    switchRoot(UI_CONTROL);
+    return true;
+  }
+  return true;
+}
 
-    {
-      const int16_t stopX = TFT_WIDTH - CTRL_ACTION_BW - 10;
-      const int16_t pauseX = stopX - CTRL_ACTION_BW - CTRL_ACTION_GAP;
-      if (hit(tx, ty, pauseX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH)) {
-        if (state.mode != Mode::IDLE) {
-          if (state.paused)
-            FSM::resume(g_state);
-          else
-            FSM::pause(g_state);
-        }
-        return true;
-      }
-      if (hit(tx, ty, stopX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH)) {
-        if (state.mode != Mode::IDLE) {
-          FSM::stopMode(g_state);
-        }
-        return true;
-      }
-    }
-
-    if (hit(tx, ty, CTRL_X1, CTRL_Y1, CTRL_BW, CTRL_BH)) {
-      startOrRequestMode(state, Mode::RECTIFICATION);
-      return true;
-    } else if (hit(tx, ty, CTRL_X2, CTRL_Y1, CTRL_BW, CTRL_BH)) {
-      startOrRequestMode(state, Mode::DISTILLATION);
-      return true;
-    } else if (hit(tx, ty, CTRL_X1, CTRL_Y2, CTRL_BW, CTRL_BH)) {
-      startOrRequestMode(state, Mode::MANUAL_RECT);
-      return true;
-    } else if (hit(tx, ty, CTRL_X2, CTRL_Y2, CTRL_BW, CTRL_BH)) {
-      startOrRequestMode(state, Mode::MASHING);
-      return true;
-    } else if (hit(tx, ty, CTRL_X1, CTRL_Y3, CTRL_BW, CTRL_BH)) {
-      startOrRequestMode(state, Mode::HOLD);
-      return true;
-    } else if (hit(tx, ty, CTRL_X2, CTRL_Y3, CTRL_BW, CTRL_BH)) {
-      startOrRequestMode(state, Mode::NBK);
-      return true;
-    } else if (hit(tx, ty, CTRL_X1, CTRL_Y4, CTRL_BW, CTRL_BH)) {
-      startOrRequestMode(state, Mode::FERMENTATION);
-      return true;
-    } else if (hit(tx, ty, CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH)) {
-      if (isManualAccessAllowed(state)) {
-        pushScreen(UI_MANUAL);
-      }
+static bool handleControlScreenTap(int16_t tx, int16_t ty,
+                                   const SystemState &state) {
+  if (ui.modeSwitchConfirm) {
+    const int16_t mx = 30;
+    const int16_t my = 78;
+    const int16_t mw = TFT_WIDTH - 60;
+    const int16_t by = my + 102;
+    const int16_t overlayBtnW = (mw - 43) / 2;
+    const int16_t overlayBtnX1 = mx + 20;
+    const int16_t overlayBtnX2 = overlayBtnX1 + overlayBtnW + TFT_BUTTON_GAP;
+    if (hit(tx, ty, overlayBtnX1, by, overlayBtnW, 42)) {
+      ui.modeSwitchConfirm = false;
       return true;
     }
-    break;
-
-  case UI_VALUE_EDIT:
-    if (hit(tx, ty, VALUE_EDIT_BTN_X1, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
-            VALUE_EDIT_BTN_H)) {
-      edit.value -= edit.fastStep;
-      if (edit.value < edit.min)
-        edit.value = edit.min;
-      return true;
-    } else if (hit(tx, ty, VALUE_EDIT_BTN_X2, VALUE_EDIT_BTN_Y,
-                   VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H)) {
-      edit.value -= edit.step;
-      if (edit.value < edit.min)
-        edit.value = edit.min;
-      return true;
-    } else if (hit(tx, ty, VALUE_EDIT_BTN_X3, VALUE_EDIT_BTN_Y,
-                   VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H)) {
-      edit.value += edit.step;
-      if (edit.value > edit.max)
-        edit.value = edit.max;
-      return true;
-    } else if (hit(tx, ty, VALUE_EDIT_BTN_X4, VALUE_EDIT_BTN_Y,
-                   VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H)) {
-      edit.value += edit.fastStep;
-      if (edit.value > edit.max)
-        edit.value = edit.max;
-      return true;
-    } else if (hit(tx, ty, 10, 202, TFT_WIDTH - 20, 44)) {
-      if (edit.onSave)
-        edit.onSave(edit.value);
-      if (edit.returnToModeMonitor && isModeRunning(g_state)) {
-        switchRoot(UI_MODE_MONITOR);
-      } else {
-        popScreen();
-      }
+    if (hit(tx, ty, overlayBtnX2, by, overlayBtnW, 42)) {
+      const Mode target = ui.modeSwitchTarget;
+      ui.modeSwitchConfirm = false;
+      FSM::stopMode(g_state);
+      startModeFromControl(target);
       return true;
     }
-    break;
-
-  case UI_SETTINGS:
-    if (hit(tx, ty, SETTINGS_CARD_X1, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
-            SETTINGS_CARD_H)) {
-      pushScreen(UI_EQUIPMENT);
-      return true;
-    } else if (hit(tx, ty, SETTINGS_CARD_X2, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
-                   SETTINGS_CARD_H)) {
-      pushScreen(UI_RECT_PARAMS);
-      return true;
-    } else if (hit(tx, ty, SETTINGS_CARD_X1, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
-                   SETTINGS_CARD_H)) {
-      pushScreen(UI_DIST_PARAMS);
-      return true;
-    } else if (hit(tx, ty, SETTINGS_CARD_X2, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
-                   SETTINGS_CARD_H)) {
-      pushScreen(UI_CALIBRATION);
-      return true;
-    } else if (hit(tx, ty, SETTINGS_TOGGLE_X1, SETTINGS_TOGGLE_Y,
-                   SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H)) {
-      g_settings.theme = (g_settings.theme == 0) ? 1 : 0;
-      NVSManager::saveSettings(g_settings);
-      requestRedraw(DisplayRedrawReason::THEME_CHANGED, true);
-      return true;
-    } else if (hit(tx, ty, SETTINGS_TOGGLE_X2, SETTINGS_TOGGLE_Y,
-                   SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H)) {
-      g_settings.soundEnabled = !g_settings.soundEnabled;
-      NVSManager::saveSettings(g_settings);
-      return true;
-    } else if (hit(tx, ty, SETTINGS_TOGGLE_X3, SETTINGS_TOGGLE_Y,
-                   SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H)) {
-      g_settings.language = (g_settings.language == 0) ? 1 : 0;
-      NVSManager::saveSettings(g_settings);
-      requestRedraw(DisplayRedrawReason::LANGUAGE_CHANGED, true);
-      return true;
-    } else if (hit(tx, ty, SETTINGS_PROFILE_X, SETTINGS_PROFILE_Y,
-                   SETTINGS_PROFILE_W, SETTINGS_PROFILE_H)) {
-      switch (g_settings.displaySettings.refreshProfile) {
-      case DisplayRefreshProfile::NORMAL:
-        g_settings.displaySettings.refreshProfile = DisplayRefreshProfile::SAFE;
-        break;
-      case DisplayRefreshProfile::SAFE:
-        g_settings.displaySettings.refreshProfile = DisplayRefreshProfile::FAST;
-        break;
-      case DisplayRefreshProfile::FAST:
-      default:
-        g_settings.displaySettings.refreshProfile =
-            DisplayRefreshProfile::NORMAL;
-        break;
-      }
-      NVSManager::saveSettings(g_settings);
-      return true;
-    } else if (hit(tx, ty, SETTINGS_STIRRER_X, SETTINGS_STIRRER_Y,
-                   SETTINGS_STIRRER_W, SETTINGS_STIRRER_H)) {
-      g_settings.stirrer.enabled = !g_settings.stirrer.enabled;
-      if (!g_settings.stirrer.enabled) {
-        g_state.stirrer.autoMode = false;
-        Stirrer::stop();
-      }
-      NVSManager::saveSettings(g_settings);
-      return true;
-    }
-    break;
-
-  case UI_EQUIPMENT:
-    if (!isSettingsEditAllowed(state)) {
-      return true;
-    }
-    if (hit(tx, ty, 10, 48, 225, 78)) {
-      openValueEdit(msg(Msg::HEATER_POWER), g_settings.equipment.heaterPowerW,
-                    1000, 10000, 100, 500, saveHeaterPower, "W", 0);
-      return true;
-    } else if (hit(tx, ty, 245, 48, 225, 78)) {
-      openValueEdit(msg(Msg::COLUMN_HEIGHT),
-                    g_settings.equipment.columnHeightMm, 500, 3000, 50, 200,
-                    saveColumnHeight, "mm", 0);
-      return true;
-    } else if (hit(tx, ty, 10, 138, 225, 78)) {
-      openValueEdit(msg(Msg::CUBE_VOLUME), g_settings.equipment.cubeVolumeL, 5,
-                    200, 1, 10, saveCubeVolume, "L", 1);
-      return true;
-    } else if (hit(tx, ty, 245, 138, 225, 78)) {
-      openValueEdit(msg(Msg::PACKING_COEFF), g_settings.equipment.packingCoeff,
-                    1, 15, 0.1, 1, savePackingCoeff, "", 2);
-      return true;
-    }
-    break;
-
-  case UI_RECT_PARAMS:
-    if (hit(tx, ty, 10, 48, 460, 26)) {
-      rectParamsPage = (rectParamsPage == 0) ? 1 : 0;
-      return true;
-    }
-
-    if (!isSettingsEditAllowed(state)) {
-      return true;
-    }
-
-    if (ty >= 82 && ty < 232) {
-      const int16_t rowH = 46;
-      const int16_t rowGap = 6;
-      const int16_t rowPitch = rowH + rowGap;
-      const int16_t row = (ty - 82) / rowPitch;
-      const int16_t col = (tx >= 245) ? 1 : 0;
-      if (row < 0 || row > 2) {
-        break;
-      }
-      const int16_t rowTop = 82 + row * rowPitch;
-      if (!hit(tx, ty, col == 0 ? 10 : 245, rowTop, 225, rowH)) {
-        break;
-      }
-      const bool ru = (g_settings.language == 0);
-
-      if (rectParamsPage == 0) {
-        switch ((row * 2) + col) {
-        case 0:
-          applyRectFeedstockDefaultsAndSave(
-              (g_settings.rectParams.feedstock + 1) % 8);
-          return true;
-        case 1:
-          openValueEdit(ru ? "Объем СС" : "Feed volume",
-                        g_settings.rectParams.feedVolumeL, 1.0f, 250.0f, 0.5f,
-                        5.0f, saveFeedVolume, "L", 1);
-          return true;
-        case 2:
-          openValueEdit(ru ? "Крепость СС" : "Feed ABV",
-                        g_settings.rectParams.feedAbvPercent, 1.0f, 96.0f, 0.5f,
-                        2.0f, saveFeedAbv, "%", 1);
-          return true;
-        case 3:
-          openValueEdit(msg(Msg::HEADS_PERCENT),
-                        g_settings.rectParams.headsPercent, 0, 25, 0.5f, 2.0f,
-                        saveHeadsPercent, "%", 1);
-          return true;
-        case 4:
-          openValueEdit(ru ? "Тело %" : "Body %",
-                        g_settings.rectParams.bodyPercent, 40, 98, 0.5f, 2.0f,
-                        saveBodyPercent, "%", 1);
-          return true;
-        case 5:
-          openValueEdit(ru ? "Хвосты %" : "Tails %",
-                        g_settings.rectParams.tailsPercent, 0, 40, 0.5f, 2.0f,
-                        saveTailsPercent, "%", 1);
-          return true;
-        default:
-          break;
-        }
-      } else {
-        switch ((row * 2) + col) {
-        case 0:
-          openValueEdit(msg(Msg::HEADS_SPEED),
-                        g_settings.rectParams.headsSpeedMlHKw, 10, 1000, 10,
-                        100, saveHeadsSpeed, "ml/h/k", 0);
-          return true;
-        case 1:
-          openValueEdit(msg(Msg::BODY_SPEED),
-                        g_settings.rectParams.bodySpeedMlHKw, 50, 3000, 50, 200,
-                        saveBodySpeed, "ml/h/k", 0);
-          return true;
-        case 2:
-          openValueEdit(msg(Msg::STABILIZATION),
-                        g_settings.rectParams.stabilizationMin, 1, 120, 1, 10,
-                        saveStabMin, "min", 0);
-          return true;
-        case 3:
-          openValueEdit(msg(Msg::PURGE_TIME), g_settings.rectParams.purgeMin, 1,
-                        60, 1, 5, savePurgeMin, "min", 0);
-          return true;
-        default:
-          break;
-        }
-      }
-    }
-    break;
-
-  case UI_DIST_PARAMS:
-    if (!isSettingsEditAllowed(state)) {
-      return true;
-    }
-    if (hit(tx, ty, 10, 48, 225, 78)) {
-      openValueEdit(msg(Msg::DIST_SPEED), distUi.speedMlH, 50, 5000, 50, 500,
-                    saveDistSpeed, "ml/h", 0);
-      return true;
-    } else if (hit(tx, ty, 245, 48, 225, 78)) {
-      openValueEdit(msg(Msg::HEADS_VOLUME), distUi.headsVolumeMl, 0, 5000, 10,
-                    100, saveDistHeads, "ml", 0);
-      return true;
-    } else if (hit(tx, ty, 10, 138, 225, 78)) {
-      openValueEdit(msg(Msg::TARGET_VOLUME), distUi.targetVolumeMl, 0, 50000,
-                    100, 1000, saveDistTarget, "ml", 0);
-      return true;
-    } else if (hit(tx, ty, 245, 138, 225, 78)) {
-      openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1, 1,
-                    saveDistEndTemp, "C", 1);
-      return true;
-    }
-    break;
-
-  case UI_CALIBRATION:
-    if (!isSettingsEditAllowed(state)) {
-      return true;
-    }
-    if (hit(tx, ty, 10, 52, 225, 86)) {
-      openValueEdit(msg(Msg::PUMP_CALIBRATION),
-                    g_settings.pumpCal.mlPerRevolution, 0.001, 5.0, 0.001, 0.05,
-                    savePumpCal, "ml/r", 3);
-      return true;
-    } else if (hit(tx, ty, 245, 52, 225, 86)) {
-      Display::startTouchCalibration();
-      return true;
-    }
-    break;
-  case UI_MANUAL:
-    if (!isManualAccessAllowed(state)) {
-      return true;
-    }
-    if (hit(tx, ty, 10, 48, 225, 86)) {
-      openValueEdit(msg(Msg::HEATER_POWER), Heater::getPower(), 0, 100, 1, 10,
-                    saveManualHeater, "%", 0);
-      return true;
-    } else if (hit(tx, ty, 245, 48, 225, 86)) {
-      openValueEdit(msg(Msg::PUMP), state.pump.speedMlPerHour, 0, 5000, 10, 100,
-                    saveManualPump, "ml/h", 0);
-      return true;
-    }
-    if (ty >= MANUAL_VALVE_Y && ty < (MANUAL_VALVE_Y + MANUAL_VALVE_H)) {
-      if (hit(tx, ty, MANUAL_VALVE_X1, MANUAL_VALVE_Y, MANUAL_VALVE_W,
-              MANUAL_VALVE_H)) {
-        Valves::setWater(!Valves::getWater());
-        return true;
-      } else if (hit(tx, ty, MANUAL_VALVE_X2, MANUAL_VALVE_Y, MANUAL_VALVE_W,
-                     MANUAL_VALVE_H)) {
-        Valves::setHeads(!Valves::getHeads());
-        return true;
-      } else if (hit(tx, ty, MANUAL_VALVE_X3, MANUAL_VALVE_Y, MANUAL_VALVE_W,
-                     MANUAL_VALVE_H)) {
-        Valves::setUno(!Valves::getUno());
-        return true;
-      }
-    }
-    break;
-
-  case UI_SERVICE:
-    if (isServiceTempsTap(tx, ty)) {
-      pushScreen(UI_ALL_TEMPS);
-      return true;
-    }
-    break;
-
-  default:
-    break;
+    return true;
   }
 
+  const int16_t stopX = TFT_WIDTH - CTRL_ACTION_BW - 10;
+  const int16_t pauseX = stopX - CTRL_ACTION_BW - CTRL_ACTION_GAP;
+  if (hit(tx, ty, pauseX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH)) {
+    if (state.mode != Mode::IDLE) {
+      if (state.paused)
+        FSM::resume(g_state);
+      else
+        FSM::pause(g_state);
+    }
+    return true;
+  }
+  if (hit(tx, ty, stopX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH)) {
+    if (state.mode != Mode::IDLE) {
+      FSM::stopMode(g_state);
+    }
+    return true;
+  }
+
+  if (hit(tx, ty, CTRL_X1, CTRL_Y1, CTRL_BW, CTRL_BH)) {
+    startOrRequestMode(state, Mode::RECTIFICATION);
+    return true;
+  }
+  if (hit(tx, ty, CTRL_X2, CTRL_Y1, CTRL_BW, CTRL_BH)) {
+    startOrRequestMode(state, Mode::DISTILLATION);
+    return true;
+  }
+  if (hit(tx, ty, CTRL_X1, CTRL_Y2, CTRL_BW, CTRL_BH)) {
+    startOrRequestMode(state, Mode::MANUAL_RECT);
+    return true;
+  }
+  if (hit(tx, ty, CTRL_X2, CTRL_Y2, CTRL_BW, CTRL_BH)) {
+    startOrRequestMode(state, Mode::MASHING);
+    return true;
+  }
+  if (hit(tx, ty, CTRL_X1, CTRL_Y3, CTRL_BW, CTRL_BH)) {
+    startOrRequestMode(state, Mode::HOLD);
+    return true;
+  }
+  if (hit(tx, ty, CTRL_X2, CTRL_Y3, CTRL_BW, CTRL_BH)) {
+    startOrRequestMode(state, Mode::NBK);
+    return true;
+  }
+  if (hit(tx, ty, CTRL_X1, CTRL_Y4, CTRL_BW, CTRL_BH)) {
+    startOrRequestMode(state, Mode::FERMENTATION);
+    return true;
+  }
+  if (hit(tx, ty, CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH)) {
+    if (isManualAccessAllowed(state)) {
+      pushScreen(UI_MANUAL);
+    }
+    return true;
+  }
   return false;
+}
+
+static bool handleValueEditScreenTap(int16_t tx, int16_t ty,
+                                     const SystemState &) {
+  if (hit(tx, ty, VALUE_EDIT_BTN_X1, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
+          VALUE_EDIT_BTN_H)) {
+    edit.value -= edit.fastStep;
+    if (edit.value < edit.min)
+      edit.value = edit.min;
+    return true;
+  }
+  if (hit(tx, ty, VALUE_EDIT_BTN_X2, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
+          VALUE_EDIT_BTN_H)) {
+    edit.value -= edit.step;
+    if (edit.value < edit.min)
+      edit.value = edit.min;
+    return true;
+  }
+  if (hit(tx, ty, VALUE_EDIT_BTN_X3, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
+          VALUE_EDIT_BTN_H)) {
+    edit.value += edit.step;
+    if (edit.value > edit.max)
+      edit.value = edit.max;
+    return true;
+  }
+  if (hit(tx, ty, VALUE_EDIT_BTN_X4, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
+          VALUE_EDIT_BTN_H)) {
+    edit.value += edit.fastStep;
+    if (edit.value > edit.max)
+      edit.value = edit.max;
+    return true;
+  }
+  if (hit(tx, ty, 10, 202, TFT_WIDTH - 20, 44)) {
+    if (edit.onSave)
+      edit.onSave(edit.value);
+    if (edit.returnToModeMonitor && isModeRunning(g_state)) {
+      switchRoot(UI_MODE_MONITOR);
+    } else {
+      popScreen();
+    }
+    return true;
+  }
+  return false;
+}
+
+static bool handleSettingsScreenTap(int16_t tx, int16_t ty,
+                                    const SystemState &) {
+  if (hit(tx, ty, SETTINGS_CARD_X1, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
+          SETTINGS_CARD_H)) {
+    pushScreen(UI_EQUIPMENT);
+    return true;
+  }
+  if (hit(tx, ty, SETTINGS_CARD_X2, SETTINGS_CARD_Y1, SETTINGS_CARD_W,
+          SETTINGS_CARD_H)) {
+    pushScreen(UI_RECT_PARAMS);
+    return true;
+  }
+  if (hit(tx, ty, SETTINGS_CARD_X1, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
+          SETTINGS_CARD_H)) {
+    pushScreen(UI_DIST_PARAMS);
+    return true;
+  }
+  if (hit(tx, ty, SETTINGS_CARD_X2, SETTINGS_CARD_Y2, SETTINGS_CARD_W,
+          SETTINGS_CARD_H)) {
+    pushScreen(UI_CALIBRATION);
+    return true;
+  }
+  if (hit(tx, ty, SETTINGS_TOGGLE_X1, SETTINGS_TOGGLE_Y, SETTINGS_TOGGLE_W,
+          SETTINGS_TOGGLE_H)) {
+    g_settings.theme = (g_settings.theme == 0) ? 1 : 0;
+    NVSManager::saveSettings(g_settings);
+    requestRedraw(DisplayRedrawReason::THEME_CHANGED, true);
+    return true;
+  }
+  if (hit(tx, ty, SETTINGS_TOGGLE_X2, SETTINGS_TOGGLE_Y, SETTINGS_TOGGLE_W,
+          SETTINGS_TOGGLE_H)) {
+    g_settings.soundEnabled = !g_settings.soundEnabled;
+    NVSManager::saveSettings(g_settings);
+    return true;
+  }
+  if (hit(tx, ty, SETTINGS_TOGGLE_X3, SETTINGS_TOGGLE_Y, SETTINGS_TOGGLE_W,
+          SETTINGS_TOGGLE_H)) {
+    g_settings.language = (g_settings.language == 0) ? 1 : 0;
+    NVSManager::saveSettings(g_settings);
+    requestRedraw(DisplayRedrawReason::LANGUAGE_CHANGED, true);
+    return true;
+  }
+  if (hit(tx, ty, SETTINGS_PROFILE_X, SETTINGS_PROFILE_Y, SETTINGS_PROFILE_W,
+          SETTINGS_PROFILE_H)) {
+    switch (g_settings.displaySettings.refreshProfile) {
+    case DisplayRefreshProfile::NORMAL:
+      g_settings.displaySettings.refreshProfile = DisplayRefreshProfile::SAFE;
+      break;
+    case DisplayRefreshProfile::SAFE:
+      g_settings.displaySettings.refreshProfile = DisplayRefreshProfile::FAST;
+      break;
+    case DisplayRefreshProfile::FAST:
+    default:
+      g_settings.displaySettings.refreshProfile = DisplayRefreshProfile::NORMAL;
+      break;
+    }
+    NVSManager::saveSettings(g_settings);
+    return true;
+  }
+  if (hit(tx, ty, SETTINGS_STIRRER_X, SETTINGS_STIRRER_Y, SETTINGS_STIRRER_W,
+          SETTINGS_STIRRER_H)) {
+    g_settings.stirrer.enabled = !g_settings.stirrer.enabled;
+    if (!g_settings.stirrer.enabled) {
+      g_state.stirrer.autoMode = false;
+      Stirrer::stop();
+    }
+    NVSManager::saveSettings(g_settings);
+    return true;
+  }
+  return false;
+}
+
+static bool handleEquipmentScreenTap(int16_t tx, int16_t ty,
+                                     const SystemState &state) {
+  if (!isSettingsEditAllowed(state)) {
+    return true;
+  }
+  if (hit(tx, ty, 10, 48, 225, 78)) {
+    openValueEdit(msg(Msg::HEATER_POWER), g_settings.equipment.heaterPowerW,
+                  1000, 10000, 100, 500, saveHeaterPower, "W", 0);
+    return true;
+  }
+  if (hit(tx, ty, 245, 48, 225, 78)) {
+    openValueEdit(msg(Msg::COLUMN_HEIGHT),
+                  g_settings.equipment.columnHeightMm, 500, 3000, 50, 200,
+                  saveColumnHeight, "mm", 0);
+    return true;
+  }
+  if (hit(tx, ty, 10, 138, 225, 78)) {
+    openValueEdit(msg(Msg::CUBE_VOLUME), g_settings.equipment.cubeVolumeL, 5,
+                  200, 1, 10, saveCubeVolume, "L", 1);
+    return true;
+  }
+  if (hit(tx, ty, 245, 138, 225, 78)) {
+    openValueEdit(msg(Msg::PACKING_COEFF), g_settings.equipment.packingCoeff, 1,
+                  15, 0.1, 1, savePackingCoeff, "", 2);
+    return true;
+  }
+  return false;
+}
+
+static bool handleRectParamsScreenTap(int16_t tx, int16_t ty,
+                                      const SystemState &state) {
+  if (hit(tx, ty, 10, 48, 460, 26)) {
+    rectParamsPage = (rectParamsPage == 0) ? 1 : 0;
+    return true;
+  }
+
+  if (!isSettingsEditAllowed(state)) {
+    return true;
+  }
+
+  if (ty < 82 || ty >= 232) {
+    return false;
+  }
+
+  const int16_t rowH = 46;
+  const int16_t rowGap = 6;
+  const int16_t rowPitch = rowH + rowGap;
+  const int16_t row = (ty - 82) / rowPitch;
+  const int16_t col = (tx >= 245) ? 1 : 0;
+  if (row < 0 || row > 2) {
+    return false;
+  }
+
+  const int16_t rowTop = 82 + row * rowPitch;
+  if (!hit(tx, ty, col == 0 ? 10 : 245, rowTop, 225, rowH)) {
+    return false;
+  }
+
+  const bool ru = (g_settings.language == 0);
+  const int itemIndex = (row * 2) + col;
+  if (rectParamsPage == 0) {
+    switch (itemIndex) {
+    case 0:
+      applyRectFeedstockDefaultsAndSave(
+          (g_settings.rectParams.feedstock + 1) % 8);
+      return true;
+    case 1:
+      openValueEdit(ru ? "Объем СС" : "Feed volume",
+                    g_settings.rectParams.feedVolumeL, 1.0f, 250.0f, 0.5f,
+                    5.0f, saveFeedVolume, "L", 1);
+      return true;
+    case 2:
+      openValueEdit(ru ? "Крепость СС" : "Feed ABV",
+                    g_settings.rectParams.feedAbvPercent, 1.0f, 96.0f, 0.5f,
+                    2.0f, saveFeedAbv, "%", 1);
+      return true;
+    case 3:
+      openValueEdit(msg(Msg::HEADS_PERCENT), g_settings.rectParams.headsPercent,
+                    0, 25, 0.5f, 2.0f, saveHeadsPercent, "%", 1);
+      return true;
+    case 4:
+      openValueEdit(ru ? "Тело %" : "Body %",
+                    g_settings.rectParams.bodyPercent, 40, 98, 0.5f, 2.0f,
+                    saveBodyPercent, "%", 1);
+      return true;
+    case 5:
+      openValueEdit(ru ? "Хвосты %" : "Tails %",
+                    g_settings.rectParams.tailsPercent, 0, 40, 0.5f, 2.0f,
+                    saveTailsPercent, "%", 1);
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  switch (itemIndex) {
+  case 0:
+    openValueEdit(msg(Msg::HEADS_SPEED), g_settings.rectParams.headsSpeedMlHKw,
+                  10, 1000, 10, 100, saveHeadsSpeed, "ml/h/k", 0);
+    return true;
+  case 1:
+    openValueEdit(msg(Msg::BODY_SPEED), g_settings.rectParams.bodySpeedMlHKw,
+                  50, 3000, 50, 200, saveBodySpeed, "ml/h/k", 0);
+    return true;
+  case 2:
+    openValueEdit(msg(Msg::STABILIZATION),
+                  g_settings.rectParams.stabilizationMin, 1, 120, 1, 10,
+                  saveStabMin, "min", 0);
+    return true;
+  case 3:
+    openValueEdit(msg(Msg::PURGE_TIME), g_settings.rectParams.purgeMin, 1, 60,
+                  1, 5, savePurgeMin, "min", 0);
+    return true;
+  default:
+    return false;
+  }
+}
+
+static bool handleDistParamsScreenTap(int16_t tx, int16_t ty,
+                                      const SystemState &state) {
+  if (!isSettingsEditAllowed(state)) {
+    return true;
+  }
+  if (hit(tx, ty, 10, 48, 225, 78)) {
+    openValueEdit(msg(Msg::DIST_SPEED), distUi.speedMlH, 50, 5000, 50, 500,
+                  saveDistSpeed, "ml/h", 0);
+    return true;
+  }
+  if (hit(tx, ty, 245, 48, 225, 78)) {
+    openValueEdit(msg(Msg::HEADS_VOLUME), distUi.headsVolumeMl, 0, 5000, 10,
+                  100, saveDistHeads, "ml", 0);
+    return true;
+  }
+  if (hit(tx, ty, 10, 138, 225, 78)) {
+    openValueEdit(msg(Msg::TARGET_VOLUME), distUi.targetVolumeMl, 0, 50000,
+                  100, 1000, saveDistTarget, "ml", 0);
+    return true;
+  }
+  if (hit(tx, ty, 245, 138, 225, 78)) {
+    openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1, 1,
+                  saveDistEndTemp, "C", 1);
+    return true;
+  }
+  return false;
+}
+
+static bool handleCalibrationScreenTap(int16_t tx, int16_t ty,
+                                       const SystemState &state) {
+  if (!isSettingsEditAllowed(state)) {
+    return true;
+  }
+  if (hit(tx, ty, 10, 52, 225, 86)) {
+    openValueEdit(msg(Msg::PUMP_CALIBRATION),
+                  g_settings.pumpCal.mlPerRevolution, 0.001, 5.0, 0.001, 0.05,
+                  savePumpCal, "ml/r", 3);
+    return true;
+  }
+  if (hit(tx, ty, 245, 52, 225, 86)) {
+    Display::startTouchCalibration();
+    return true;
+  }
+  return false;
+}
+
+static bool handleManualScreenTap(int16_t tx, int16_t ty,
+                                  const SystemState &state) {
+  if (!isManualAccessAllowed(state)) {
+    return true;
+  }
+  if (hit(tx, ty, 10, 48, 225, 86)) {
+    openValueEdit(msg(Msg::HEATER_POWER), Heater::getPower(), 0, 100, 1, 10,
+                  saveManualHeater, "%", 0);
+    return true;
+  }
+  if (hit(tx, ty, 245, 48, 225, 86)) {
+    openValueEdit(msg(Msg::PUMP), state.pump.speedMlPerHour, 0, 5000, 10, 100,
+                  saveManualPump, "ml/h", 0);
+    return true;
+  }
+  if (ty >= MANUAL_VALVE_Y && ty < (MANUAL_VALVE_Y + MANUAL_VALVE_H)) {
+    if (hit(tx, ty, MANUAL_VALVE_X1, MANUAL_VALVE_Y, MANUAL_VALVE_W,
+            MANUAL_VALVE_H)) {
+      Valves::setWater(!Valves::getWater());
+      return true;
+    }
+    if (hit(tx, ty, MANUAL_VALVE_X2, MANUAL_VALVE_Y, MANUAL_VALVE_W,
+            MANUAL_VALVE_H)) {
+      Valves::setHeads(!Valves::getHeads());
+      return true;
+    }
+    if (hit(tx, ty, MANUAL_VALVE_X3, MANUAL_VALVE_Y, MANUAL_VALVE_W,
+            MANUAL_VALVE_H)) {
+      Valves::setUno(!Valves::getUno());
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool handleServiceScreenTap(int16_t tx, int16_t ty,
+                                   const SystemState &) {
+  if (isServiceTempsTap(tx, ty)) {
+    pushScreen(UI_ALL_TEMPS);
+    return true;
+  }
+  return false;
+}
+
+static bool handleNoopScreenTap(int16_t, int16_t, const SystemState &) {
+  return false;
+}
+
+typedef bool (*UiTapHandler)(int16_t tx, int16_t ty, const SystemState &state);
+
+static constexpr UiTapHandler kUiTapDispatch[] = {
+    handleDashboardScreenTap,   // UI_DASHBOARD
+    handleControlScreenTap,     // UI_CONTROL
+    handleSettingsScreenTap,    // UI_SETTINGS
+    handleServiceScreenTap,     // UI_SERVICE
+    handleModeMonitorScreenTap, // UI_MODE_MONITOR
+    handleEquipmentScreenTap,   // UI_EQUIPMENT
+    handleRectParamsScreenTap,  // UI_RECT_PARAMS
+    handleDistParamsScreenTap,  // UI_DIST_PARAMS
+    handleCalibrationScreenTap, // UI_CALIBRATION
+    handleManualScreenTap,      // UI_MANUAL
+    handleValueEditScreenTap,   // UI_VALUE_EDIT
+    handleNoopScreenTap         // UI_ALL_TEMPS
+};
+
+static UiTapHandler getUiTapHandler(UiScreen screen) {
+  const size_t screenIndex = static_cast<size_t>(screen);
+  if (screenIndex < (sizeof(kUiTapDispatch) / sizeof(kUiTapDispatch[0]))) {
+    return kUiTapDispatch[screenIndex];
+  }
+  return handleNoopScreenTap;
+}
+
+static bool handleScreenTap(int16_t tx, int16_t ty, const SystemState &state) {
+  return getUiTapHandler(ui.currentScreen)(tx, ty, state);
 }
 
 static uint16_t colorBg() {
@@ -6835,6 +6963,72 @@ static void renderRootFooter(
                                 }
                               }
 
+                              typedef void (*UiRenderHandler)(
+                                  const SystemState &state, bool full);
+
+                              static void renderSettingsScreen(
+                                  const SystemState &, bool full) {
+                                renderSettings(full);
+                              }
+
+                              static void renderEquipmentScreen(
+                                  const SystemState &, bool full) {
+                                renderEquipment(full);
+                              }
+
+                              static void renderRectParamsScreen(
+                                  const SystemState &, bool full) {
+                                renderRectParams(full);
+                              }
+
+                              static void renderDistParamsScreen(
+                                  const SystemState &, bool full) {
+                                renderDistParams(full);
+                              }
+
+                              static void renderCalibrationScreen(
+                                  const SystemState &, bool full) {
+                                renderCalibration(full);
+                              }
+
+                              static void renderManualScreen(
+                                  const SystemState &state, bool) {
+                                renderManual(state);
+                              }
+
+                              static void renderValueEditScreen(
+                                  const SystemState &, bool) {
+                                renderValueEdit();
+                              }
+
+                              static constexpr UiRenderHandler
+                                  kUiRenderDispatch[] = {
+                                      renderDashboard,       // UI_DASHBOARD
+                                      renderControl,         // UI_CONTROL
+                                      renderSettingsScreen,  // UI_SETTINGS
+                                      renderService,         // UI_SERVICE
+                                      renderModeMonitor,     // UI_MODE_MONITOR
+                                      renderEquipmentScreen, // UI_EQUIPMENT
+                                      renderRectParamsScreen, // UI_RECT_PARAMS
+                                      renderDistParamsScreen, // UI_DIST_PARAMS
+                                      renderCalibrationScreen, // UI_CALIBRATION
+                                      renderManualScreen,      // UI_MANUAL
+                                      renderValueEditScreen,   // UI_VALUE_EDIT
+                                      renderAllTemps           // UI_ALL_TEMPS
+                                  };
+
+                              static UiRenderHandler
+                              getUiRenderHandler(UiScreen screen) {
+                                const size_t screenIndex =
+                                    static_cast<size_t>(screen);
+                                if (screenIndex <
+                                    (sizeof(kUiRenderDispatch) /
+                                     sizeof(kUiRenderDispatch[0]))) {
+                                  return kUiRenderDispatch[screenIndex];
+                                }
+                                return renderDashboard;
+                              }
+
                               static void applyTouchCalibration() {
                                 int16_t xLeft =
                                     (ui.calRawX[0] + ui.calRawX[3]) / 2;
@@ -7172,10 +7366,10 @@ static void renderRootFooter(
                                 // Auto-select monitor root window: idle
                                 // overview vs active mode window.
                                 if (ui.stackDepth == 0 &&
-                                    isMonitorRootScreen(ui.rootScreen)) {
+                                    getUiScreenPolicy(ui.rootScreen)
+                                        .autoMonitorRoot) {
                                   const UiScreen desiredMonitor =
-                                      isModeRunning(state) ? UI_MODE_MONITOR
-                                                           : UI_DASHBOARD;
+                                      getMonitorRootScreenForState(state);
                                   if (ui.rootScreen != desiredMonitor ||
                                       ui.currentScreen != desiredMonitor) {
                                     switchRoot(desiredMonitor);
@@ -7192,11 +7386,8 @@ static void renderRootFooter(
 
                                 if (!ui.needsRedraw) {
                                   bool changed = false;
-                                  if (ui.currentScreen == UI_DASHBOARD ||
-                                      ui.currentScreen == UI_MODE_MONITOR ||
-                                      ui.currentScreen == UI_CONTROL ||
-                                      ui.currentScreen == UI_SERVICE ||
-                                      ui.currentScreen == UI_MANUAL) {
+                                  if (screenSupportsLiveRefresh(
+                                          ui.currentScreen)) {
                                     if (uiLive.mode != state.mode ||
                                         uiLive.phase != state.rectPhase ||
                                         uiLive.paused != state.paused) {
@@ -7240,9 +7431,8 @@ static void renderRootFooter(
                                         changed = true;
                                       }
                                     }
-                                    if ((ui.currentScreen == UI_DASHBOARD ||
-                                         ui.currentScreen == UI_MODE_MONITOR ||
-                                         ui.currentScreen == UI_ALL_TEMPS) &&
+                                    if (screenNeedsProgressTicker(
+                                            ui.currentScreen) &&
                                         (now - uiLive.lastUpdateMs) >
                                             getProgressRefreshIntervalMs()) {
                                       // Keep phase timer/progress and service
@@ -7298,48 +7488,10 @@ static void renderRootFooter(
                                   uiLive.lastUpdateMs = now;
                                   const bool full = (ui.currentScreen !=
                                                      ui.lastRenderedScreen);
+                                  UiRenderHandler renderHandler =
+                                      getUiRenderHandler(ui.currentScreen);
                                   tft.startWrite();
-                                  switch (ui.currentScreen) {
-                                  case UI_DASHBOARD:
-                                    renderDashboard(state, full);
-                                    break;
-                                  case UI_MODE_MONITOR:
-                                    renderModeMonitor(state, full);
-                                    break;
-                                  case UI_CONTROL:
-                                    renderControl(state, full);
-                                    break;
-                                  case UI_SETTINGS:
-                                    renderSettings(full);
-                                    break;
-                                  case UI_SERVICE:
-                                    renderService(state, full);
-                                    break;
-                                  case UI_EQUIPMENT:
-                                    renderEquipment(full);
-                                    break;
-                                  case UI_RECT_PARAMS:
-                                    renderRectParams(full);
-                                    break;
-                                  case UI_DIST_PARAMS:
-                                    renderDistParams(full);
-                                    break;
-                                  case UI_CALIBRATION:
-                                    renderCalibration(full);
-                                    break;
-                                  case UI_VALUE_EDIT:
-                                    renderValueEdit();
-                                    break;
-                                  case UI_MANUAL:
-                                    renderManual(state);
-                                    break;
-                                  case UI_ALL_TEMPS:
-                                    renderAllTemps(state, full);
-                                    break;
-                                  default:
-                                    renderDashboard(state, full);
-                                    break;
-                                  }
+                                  renderHandler(state, full);
                                   tft.endWrite();
 
                                   const uint32_t frameTime =
