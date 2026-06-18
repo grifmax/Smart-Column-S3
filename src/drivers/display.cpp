@@ -11,6 +11,7 @@
 #include "drivers/heater.h"
 #include "drivers/hmi_widgets.h"
 #include "drivers/pump.h"
+#include "drivers/sensors.h"
 #include "drivers/stirrer.h"
 #include "drivers/valves.h"
 #include "interface/localization.h"
@@ -621,6 +622,8 @@ struct UiLiveCache {
   float pumpSpeed = 0.0f;
   float voltage = 0.0f;
   float pressure = 0.0f;
+  uint8_t tempValidMask = 0;
+  uint32_t tempsLastUpdate = 0;
   uint32_t uptime = 0;
   uint32_t lastUpdateMs = 0;
 };
@@ -647,8 +650,17 @@ struct DashboardRenderCache {
 
 static DashboardRenderCache g_dashboardCache;
 static char g_modeTileCache[12][20] = {{0}};
+static char g_allTempsValueCache[TEMP_COUNT][20] = {{0}};
+static char g_allTempsStatusCache[TEMP_COUNT][12] = {{0}};
+static char g_allTempsSummaryCache[96] = {0};
 static Mode g_modeRuntimeMode = Mode::IDLE;
 static uint32_t g_modeRuntimeStartUptime = 0;
+
+static void resetAllTempsCache() {
+  memset(g_allTempsValueCache, 0, sizeof(g_allTempsValueCache));
+  memset(g_allTempsStatusCache, 0, sizeof(g_allTempsStatusCache));
+  g_allTempsSummaryCache[0] = '\0';
+}
 
 struct DisplayRuntimeStatsInternal {
   uint32_t framesRendered = 0;
@@ -734,6 +746,47 @@ static uint32_t getSparklineRefreshIntervalMs() {
   default:
     return 5000;
   }
+}
+
+static uint8_t getUiTempValidMask(const SystemState &state) {
+  uint8_t mask = 0;
+  for (uint8_t i = 0; i < TEMP_COUNT && i < 8; ++i) {
+    if (state.temps.valid[i]) {
+      mask |= (1U << i);
+    }
+  }
+  return mask;
+}
+
+static bool isTempRoleEnabledByTopology(uint8_t index) {
+  switch (index) {
+  case TEMP_CUBE:
+    return g_settings.equipment.temperatureTopology.cube;
+  case TEMP_COLUMN_BOTTOM:
+    return g_settings.equipment.temperatureTopology.columnBottom;
+  case TEMP_COLUMN_TOP:
+    return g_settings.equipment.temperatureTopology.columnTop;
+  case TEMP_REFLUX:
+    return g_settings.equipment.temperatureTopology.reflux;
+  case TEMP_TSA:
+    return g_settings.equipment.temperatureTopology.tsa;
+  case TEMP_WATER_IN:
+    return g_settings.equipment.temperatureTopology.waterIn;
+  case TEMP_WATER_OUT:
+    return g_settings.equipment.temperatureTopology.waterOut;
+  default:
+    return false;
+  }
+}
+
+static uint8_t countExpectedTempSensors() {
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+    if (isTempRoleEnabledByTopology(i)) {
+      count++;
+    }
+  }
+  return count;
 }
 
 static const uint16_t DISPLAY_SLOW_FRAME_MS = 120;
@@ -6415,16 +6468,30 @@ static void renderRootFooter(
                               static void renderAllTemps(
                                   const SystemState &state, bool full) {
                                 const bool ru = (g_settings.language == 0);
+                                const uint8_t expectedCount =
+                                    countExpectedTempSensors();
+                                const char *busLabel =
+                                    Sensors::getTemperatureBusSourceLabel();
+                                const bool useDs2482 =
+                                    Sensors::isUsingDs2482ForTemps();
+                                const bool busReady =
+                                    useDs2482 ? Sensors::isDs2482Available()
+                                              : (state.health.tempSensorsOk > 0 ||
+                                                 state.health.tempSensorsTotal >
+                                                     0);
                                 if (full) {
                                   tft.fillScreen(colorBg());
                                   drawHeader(ru ? "ТЕМПЕРАТУРЫ"
                                                 : "TEMPERATURES",
                                              true);
                                   drawTabs(ui.rootScreen);
+                                  resetAllTempsCache();
                                 }
 
+                                const int16_t topY = 48;
+                                const int16_t topH = 24;
                                 const int16_t xStart = 10;
-                                const int16_t yStart = 48;
+                                const int16_t yStart = 78;
                                 const int16_t tileW = (TFT_WIDTH - 30) / 2;
                                 const int16_t tileH = 40;
                                 const int16_t gap = 6;
@@ -6456,52 +6523,175 @@ static void renderRootFooter(
                                   }
                                 }
 
+                                char busBuf[48];
+                                snprintf(busBuf, sizeof(busBuf), "%s | %s",
+                                         busLabel,
+                                         busReady ? (ru ? "OK" : "READY")
+                                                  : (ru ? "ЖДЁМ" : "WAIT"));
+                                char countBuf[24];
+                                snprintf(countBuf, sizeof(countBuf), "%u/%u",
+                                         validCount,
+                                         expectedCount > 0 ? expectedCount
+                                                           : TEMP_COUNT);
+
+                                if (full ||
+                                    strcmp(g_dashboardCache.infoLine, busBuf) !=
+                                        0 ||
+                                    strcmp(g_dashboardCache.ioLine, countBuf) !=
+                                        0) {
+                                  if (!full) {
+                                    tft.fillRect(10, topY, TFT_WIDTH - 20, topH,
+                                                 colorBg());
+                                  }
+                                  const int16_t cardW =
+                                      (TFT_WIDTH - 26) / 2;
+                                  const int16_t countX = 10 + cardW + 6;
+                                  drawCard(10, topY, cardW, topH, colorCard());
+                                  drawCard(countX, topY, cardW, topH,
+                                           colorCard());
+                                  tft.setFont(&fonts::efontJA_16);
+                                  tft.setTextSize(1);
+                                  tft.setTextColor(colorMuted());
+                                  tft.setTextDatum(top_left);
+                                  drawDisplayString(
+                                      ru ? "Термошина" : "Temp bus", 14,
+                                      topY + 2);
+                                  drawDisplayString(ru ? "Датчики" : "Sensors",
+                                                    countX + 4, topY + 2);
+                                  tft.setTextColor(busReady ? colorAccent()
+                                                            : COLOR_WARNING);
+                                  tft.setTextDatum(top_right);
+                                  drawDisplayString(busBuf, 10 + cardW - 5,
+                                                    topY + 2);
+                                  tft.setTextColor(
+                                      validCount >= expectedCount &&
+                                              expectedCount > 0
+                                          ? COLOR_SUCCESS
+                                          : (validCount > 0 ? COLOR_WARNING
+                                                            : colorMuted()));
+                                  drawDisplayString(countBuf,
+                                                    countX + cardW - 5,
+                                                    topY + 2);
+                                  tft.setTextDatum(top_left);
+                                  strncpy(g_dashboardCache.infoLine, busBuf,
+                                          sizeof(g_dashboardCache.infoLine) -
+                                              1);
+                                  g_dashboardCache.infoLine
+                                      [sizeof(g_dashboardCache.infoLine) - 1] =
+                                      '\0';
+                                  strncpy(g_dashboardCache.ioLine, countBuf,
+                                          sizeof(g_dashboardCache.ioLine) - 1);
+                                  g_dashboardCache.ioLine
+                                      [sizeof(g_dashboardCache.ioLine) - 1] =
+                                      '\0';
+                                }
+
                                 for (uint8_t i = 0; i < TEMP_COUNT; i++) {
                                   const int16_t x =
                                       xStart + (i % 2) * (tileW + gap);
                                   const int16_t y =
                                       yStart + (i / 2) * (tileH + gap);
+                                  const bool roleEnabled =
+                                      isTempRoleEnabledByTopology(i);
 
-                                  char valBuf[16];
+                                  char valBuf[20];
+                                  char statusBuf[12];
+                                  uint16_t valueColor = COLOR_PRIMARY;
                                   if (state.temps.valid[i]) {
                                     snprintf(valBuf, sizeof(valBuf), "%.2f",
                                              values[i]);
+                                    snprintf(statusBuf, sizeof(statusBuf), "%s",
+                                             ru ? "OK" : "OK");
+                                    valueColor = COLOR_PRIMARY;
+                                  } else if (roleEnabled) {
+                                    snprintf(valBuf, sizeof(valBuf), "%s",
+                                             ru ? "---" : "---");
+                                    snprintf(statusBuf, sizeof(statusBuf), "%s",
+                                             ru ? "НЕТ" : "MISS");
+                                    valueColor = COLOR_WARNING;
                                   } else {
-                                    strncpy(valBuf, "---", sizeof(valBuf));
+                                    snprintf(valBuf, sizeof(valBuf), "%s",
+                                             ru ? "ВЫКЛ" : "OFF");
+                                    snprintf(statusBuf, sizeof(statusBuf), "%s",
+                                             ru ? "LITE" : "LITE");
+                                    valueColor = colorMuted();
                                   }
 
-                                  // Only clear value area if not full redraw
-                                  if (!full) {
-                                    tft.fillRect(x + 8, y + 20, tileW - 16,
-                                                 tileH - 22, colorCard());
-                                  } else {
+                                  if (full) {
                                     drawValueTileShell(x, y, tileW, tileH,
                                                        labels[i]);
                                   }
-
-                                  tft.setTextColor(state.temps.valid[i]
-                                                       ? COLOR_PRIMARY
-                                                       : colorMuted());
-                                  tft.setTextSize(1);
-                                  tft.setFont(&fonts::efontJA_16);
-                                  tft.setTextDatum(middle_center);
-                                  drawDisplayString(valBuf, x + (tileW / 2),
-                                                 y + 29);
-                                  tft.setTextDatum(top_left);
+                                  if (full ||
+                                      strcmp(g_allTempsValueCache[i], valBuf) !=
+                                          0 ||
+                                      strcmp(g_allTempsStatusCache[i],
+                                             statusBuf) != 0) {
+                                    if (!full) {
+                                      tft.fillRect(x + 3, y + 16, tileW - 6,
+                                                   tileH - 18, colorCard());
+                                    }
+                                    tft.setTextColor(valueColor);
+                                    tft.setTextSize(1);
+                                    tft.setFont(&fonts::efontJA_16);
+                                    tft.setTextDatum(middle_center);
+                                    drawDisplayString(valBuf, x + (tileW / 2),
+                                                      y + 28);
+                                    tft.setTextDatum(top_right);
+                                    tft.setTextColor(roleEnabled
+                                                         ? (state.temps.valid[i]
+                                                                ? COLOR_SUCCESS
+                                                                : COLOR_WARNING)
+                                                         : colorMuted());
+                                    drawDisplayString(statusBuf, x + tileW - 5,
+                                                      y + 3);
+                                    tft.setTextDatum(top_left);
+                                    strncpy(g_allTempsValueCache[i], valBuf,
+                                            sizeof(g_allTempsValueCache[i]) - 1);
+                                    g_allTempsValueCache[i]
+                                                       [sizeof(
+                                                            g_allTempsValueCache
+                                                                [i]) -
+                                                        1] = '\0';
+                                    strncpy(g_allTempsStatusCache[i], statusBuf,
+                                            sizeof(g_allTempsStatusCache[i]) -
+                                                1);
+                                    g_allTempsStatusCache[i]
+                                                        [sizeof(
+                                                             g_allTempsStatusCache
+                                                                 [i]) -
+                                                         1] = '\0';
+                                  }
                                 }
 
                                 char footerBuf[96];
                                 snprintf(
                                     footerBuf, sizeof(footerBuf),
-                                    ru ? "Живых датчиков %u/%u | Экран %s"
-                                       : "Live sensors %u/%u | Display %s",
-                                    validCount, static_cast<unsigned>(TEMP_COUNT),
+                                    ru ? "Живых %u/%u | Профиль %s | Δ%lus"
+                                       : "Live %u/%u | Profile %s | Δ%lus",
+                                    validCount,
+                                    expectedCount > 0 ? expectedCount : TEMP_COUNT,
                                     getDisplayRefreshProfileCompactName(
                                         g_settings.displaySettings
-                                            .refreshProfile));
-                                drawFooterHint(footerBuf,
-                                               validCount > 0 ? COLOR_INFO
-                                                              : COLOR_WARNING);
+                                            .refreshProfile),
+                                    state.temps.lastUpdate > 0
+                                        ? static_cast<unsigned long>(
+                                              (millis() -
+                                               state.temps.lastUpdate) /
+                                              1000UL)
+                                        : 0UL);
+                                if (full ||
+                                    strcmp(g_allTempsSummaryCache, footerBuf) !=
+                                        0) {
+                                  drawFooterHint(
+                                      footerBuf,
+                                      validCount > 0 ? COLOR_INFO
+                                                     : COLOR_WARNING);
+                                  strncpy(g_allTempsSummaryCache, footerBuf,
+                                          sizeof(g_allTempsSummaryCache) - 1);
+                                  g_allTempsSummaryCache
+                                      [sizeof(g_allTempsSummaryCache) - 1] =
+                                      '\0';
+                                }
                               }
 
                               static void renderTouchCalibration() {
@@ -7013,6 +7203,12 @@ static void renderRootFooter(
                                       changed = true;
                                     }
                                     if (ui.currentScreen != UI_CONTROL) {
+                                      if (uiLive.tempValidMask !=
+                                              getUiTempValidMask(state) ||
+                                          uiLive.tempsLastUpdate !=
+                                              state.temps.lastUpdate) {
+                                        changed = true;
+                                      }
                                       if (fabsf(uiLive.tCube -
                                                 state.temps.cube) > 0.1f ||
                                           fabsf(uiLive.tTop -
@@ -7094,6 +7290,10 @@ static void renderRootFooter(
                                   uiLive.pumpSpeed = state.pump.speedMlPerHour;
                                   uiLive.voltage = state.power.voltage;
                                   uiLive.pressure = state.pressure.cube;
+                                  uiLive.tempValidMask =
+                                      getUiTempValidMask(state);
+                                  uiLive.tempsLastUpdate =
+                                      state.temps.lastUpdate;
                                   uiLive.uptime = state.uptime;
                                   uiLive.lastUpdateMs = now;
                                   const bool full = (ui.currentScreen !=
