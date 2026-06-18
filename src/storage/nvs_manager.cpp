@@ -306,6 +306,10 @@ bool loadSettings(Settings& settings) {
         prefs.getUChar(NVS_KEY_COOLING_PWM_MAX_DUTY, DEFAULT_COOLING_PWM_MAX_DUTY);
     settings.equipment.coolingPwmStartupDuty =
         prefs.getUChar(NVS_KEY_COOLING_PWM_STARTUP, DEFAULT_COOLING_PWM_STARTUP_DUTY);
+    settings.equipment.useDs2482ForTemps =
+        prefs.getBool(NVS_KEY_USE_DS2482_TEMPS, DEFAULT_USE_DS2482_FOR_TEMPS != 0);
+    settings.equipment.ds2482Address =
+        prefs.getUChar(NVS_KEY_DS2482_ADDRESS, DEFAULT_DS2482_ADDRESS);
     if (settings.equipment.coolingPwmMinDuty > settings.equipment.coolingPwmMaxDuty) {
         settings.equipment.coolingPwmMinDuty = settings.equipment.coolingPwmMaxDuty;
     }
@@ -509,6 +513,8 @@ bool saveSettings(const Settings& settings) {
     prefs.putUChar(NVS_KEY_COOLING_PWM_MIN_DUTY, settings.equipment.coolingPwmMinDuty);
     prefs.putUChar(NVS_KEY_COOLING_PWM_MAX_DUTY, settings.equipment.coolingPwmMaxDuty);
     prefs.putUChar(NVS_KEY_COOLING_PWM_STARTUP, settings.equipment.coolingPwmStartupDuty);
+    prefs.putBool(NVS_KEY_USE_DS2482_TEMPS, settings.equipment.useDs2482ForTemps);
+    prefs.putUChar(NVS_KEY_DS2482_ADDRESS, settings.equipment.ds2482Address);
     prefs.putBool(NVS_KEY_BODY_LEVEL_ENABLED, settings.equipment.bodyLevelSensorEnabled);
     prefs.putFloat(NVS_KEY_BODY_LEVEL_THRESHOLD, settings.equipment.bodyLevelThresholdV);
     prefs.putBool(NVS_KEY_BODY_LEVEL_POLARITY, settings.equipment.bodyLevelTriggerAbove);

@@ -73,10 +73,15 @@ namespace Sensors {
     bool isBmp280PrimaryAvailable();
     bool isBmp280SecondaryAvailable();
     bool isAds1115Available();
+    bool isDs2482Available();
     bool isPzemAvailable();
     bool readAds1115Channel(uint8_t channel, int16_t& adc, float& voltage);
     void refreshTemperatureInventory();
     bool getDiscoveredTempAddress(uint8_t index, uint8_t address[8]);
+    bool isUsingDs2482ForTemps();
+    uint8_t getDs2482Address();
+    const char* getTemperatureBusSourceKey();
+    const char* getTemperatureBusSourceLabel();
 
     /**
      * Обновление информации о здоровье датчиков

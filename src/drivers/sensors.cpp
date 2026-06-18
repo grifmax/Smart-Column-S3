@@ -10,6 +10,7 @@
  */
 
 #include "sensors.h"
+#include "ds2482_100.h"
 #include <freertos/semphr.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -27,7 +28,14 @@ const float SystemHealth::healthWeights[6] = {0.4f, 0.1f, 0.2f, 0.05f, 0.05f,
 // OneWire и DS18B20
 static OneWire oneWire(PIN_ONEWIRE);
 static DallasTemperature ds18b20(&oneWire);
+static Ds2482_100 ds2482;
 static SemaphoreHandle_t ds18b20Mutex = nullptr;
+static bool gpioTempBusReady = false;
+static bool ds2482_ok = false;
+static bool tempBusConfigured = false;
+static bool tempBusUseDs2482 = false;
+static uint8_t tempBusDs2482Address = I2C_ADDR_DS2482_DEFAULT;
+static uint32_t lastDs2482InitAttemptMs = 0;
 
 // BMP280 (два датчика на разных адресах)
 static Adafruit_BMP280 bmp280_1;
@@ -87,6 +95,7 @@ static bool conversionInProgress = false;
 static uint32_t conversionStartTime = 0;
 static const uint16_t CONVERSION_TIME_MS = 750; // 12-бит разрешение
 static const uint32_t DISCOVERY_RETRY_MS = 2000;
+static const uint32_t DS2482_RETRY_MS = 2000;
 static const uint8_t DISCOVERY_INIT_ATTEMPTS = 4;
 static const uint16_t DISCOVERY_INIT_DELAY_MS = 250;
 static const uint8_t DISCOVERY_BUS_PASSES = 6;
@@ -185,6 +194,103 @@ static void invalidateTemperatureState(Temperatures& temps) {
     temps.tsa = 0.0f;
     temps.waterIn = 0.0f;
     temps.waterOut = 0.0f;
+}
+
+static uint8_t sanitizeDs2482Address(uint8_t address) {
+    if (address < I2C_ADDR_DS2482_0 || address > I2C_ADDR_DS2482_3) {
+        return I2C_ADDR_DS2482_DEFAULT;
+    }
+    return address;
+}
+
+static bool shouldUseDs2482ForTemps() {
+    return g_settings.equipment.useDs2482ForTemps;
+}
+
+static uint8_t getRequestedDs2482Address() {
+    return sanitizeDs2482Address(g_settings.equipment.ds2482Address);
+}
+
+static const char* getTemperatureBusSourceKeyInternal() {
+    return tempBusUseDs2482 ? "ds2482" : "gpio";
+}
+
+static const char* getTemperatureBusSourceLabelInternal() {
+    return tempBusUseDs2482 ? "DS2482S-100" : "GPIO 1-Wire";
+}
+
+static bool isUsingDs2482Backend() {
+    return tempBusUseDs2482;
+}
+
+static void clearDs18b20Inventory();
+
+static void clearTemperatureTransportState() {
+    clearDs18b20Inventory();
+    conversionInProgress = false;
+    conversionStartTime = 0;
+    lastDs18b20DiscoveryMs = 0;
+    consecutiveTempReadFailures = 0;
+}
+
+static bool initGpioTemperatureBus(bool verboseLog) {
+    pinMode(PIN_ONEWIRE, INPUT_PULLUP);
+    delay(10);
+    ds18b20.begin();
+    ds18b20.setWaitForConversion(false);
+    ds18b20.setCheckForConversion(false);
+    gpioTempBusReady = true;
+    ds2482_ok = false;
+
+    if (verboseLog) {
+        LOG_I("Sensors: Temperature bus source = GPIO 1-Wire (pin %d)",
+              PIN_ONEWIRE);
+    }
+    return true;
+}
+
+static bool initDs2482TemperatureBus(bool verboseLog) {
+    lastDs2482InitAttemptMs = millis();
+    const uint8_t address = getRequestedDs2482Address();
+    ds2482_ok = ds2482.begin(Wire, address);
+    gpioTempBusReady = false;
+
+    if (verboseLog) {
+        if (ds2482_ok) {
+            LOG_I("Sensors: Temperature bus source = DS2482S-100 (I2C 0x%02X)",
+                  address);
+        } else {
+            LOG_W("Sensors: DS2482S-100 not found at I2C 0x%02X", address);
+        }
+    }
+    return ds2482_ok;
+}
+
+static bool ensureTemperatureBusConfigured(bool verboseLog = false) {
+    const bool requestedDs2482 = shouldUseDs2482ForTemps();
+    const uint8_t requestedAddress = getRequestedDs2482Address();
+    const bool backendChanged = !tempBusConfigured ||
+                                tempBusUseDs2482 != requestedDs2482 ||
+                                tempBusDs2482Address != requestedAddress;
+
+    if (backendChanged) {
+        clearTemperatureTransportState();
+        tempBusConfigured = true;
+        tempBusUseDs2482 = requestedDs2482;
+        tempBusDs2482Address = requestedAddress;
+
+        if (requestedDs2482) {
+            return initDs2482TemperatureBus(true);
+        }
+        return initGpioTemperatureBus(true);
+    }
+
+    if (tempBusUseDs2482 && !ds2482_ok &&
+        millis() - lastDs2482InitAttemptMs >= DS2482_RETRY_MS) {
+        return initDs2482TemperatureBus(verboseLog);
+    }
+
+    return tempBusUseDs2482 ? ds2482_ok : gpioTempBusReady;
 }
 
 // =============================================================================
@@ -303,11 +409,72 @@ static bool hasDs18b20Address(DeviceAddress addresses[], uint8_t count,
     return false;
 }
 
+static bool backendStartTemperatureConversionAll() {
+    if (!ensureTemperatureBusConfigured()) {
+        return false;
+    }
+    if (isUsingDs2482Backend()) {
+        return ds2482.startConversionAll();
+    }
+
+    ds18b20.requestTemperatures();
+    return true;
+}
+
+static bool backendStartTemperatureConversionByAddress(
+    const DeviceAddress address) {
+    if (!ensureTemperatureBusConfigured()) {
+        return false;
+    }
+    if (isUsingDs2482Backend()) {
+        return ds2482.startConversionByAddress(address);
+    }
+
+    ds18b20.requestTemperaturesByAddress(address);
+    return true;
+}
+
+static bool backendReadTemperature(const DeviceAddress address, float& value) {
+    if (!ensureTemperatureBusConfigured()) {
+        return false;
+    }
+
+    if (isUsingDs2482Backend()) {
+        return ds2482.readTemperatureC(address, value);
+    }
+
+    value = ds18b20.getTempC(address);
+    return true;
+}
+
 static uint8_t scanDs18b20Bus(DeviceAddress addresses[]) {
     uint8_t count = 0;
     DeviceAddress addr = {0};
 
     memset(addresses, 0, sizeof(DeviceAddress) * TEMP_COUNT);
+    if (!ensureTemperatureBusConfigured()) {
+        return 0;
+    }
+
+    if (isUsingDs2482Backend()) {
+        ds2482.resetSearch();
+        while (count < TEMP_COUNT && ds2482.search(addr)) {
+            if (!isSupportedDs18Family(addr[0])) {
+                continue;
+            }
+            if (OneWire::crc8(addr, 7) != addr[7]) {
+                LOG_W("Sensors: DS2482 search skipped address with bad CRC");
+                continue;
+            }
+            if (hasDs18b20Address(addresses, count, addr)) {
+                continue;
+            }
+
+            memcpy(addresses[count], addr, sizeof(DeviceAddress));
+            count++;
+        }
+        return count;
+    }
 
     oneWire.reset_search();
     while (count < TEMP_COUNT && oneWire.search(addr)) {
@@ -339,7 +506,9 @@ static uint8_t appendKnownRespondingDs18b20(DeviceAddress addresses[],
         return count;
     }
 
-    ds18b20.requestTemperatures();
+    if (!backendStartTemperatureConversionAll()) {
+        return count;
+    }
     delay(CONVERSION_TIME_MS);
 
     for (uint8_t role = 0; role < TEMP_COUNT && count < TEMP_COUNT; ++role) {
@@ -350,8 +519,9 @@ static uint8_t appendKnownRespondingDs18b20(DeviceAddress addresses[],
             continue;
         }
 
-        const float value = ds18b20.getTempC(tempCal.addresses[role]);
-        if (!isValidDs18b20Reading(value)) {
+        float value = DEVICE_DISCONNECTED_C;
+        if (!backendReadTemperature(tempCal.addresses[role], value) ||
+            !isValidDs18b20Reading(value)) {
             continue;
         }
 
@@ -363,6 +533,15 @@ static uint8_t appendKnownRespondingDs18b20(DeviceAddress addresses[],
 }
 
 static bool resetDs18b20BusWithRecovery() {
+    if (!ensureTemperatureBusConfigured()) {
+        return false;
+    }
+
+    if (isUsingDs2482Backend()) {
+        bool presence = false;
+        return ds2482.oneWireReset(&presence);
+    }
+
     pinMode(PIN_ONEWIRE, OUTPUT);
     digitalWrite(PIN_ONEWIRE, LOW);
     delay(4);
@@ -374,6 +553,8 @@ static bool resetDs18b20BusWithRecovery() {
 }
 
 static void prepareDs18b20BusForScan() {
+    ensureTemperatureBusConfigured();
+
     if (conversionInProgress) {
         const uint32_t now = millis();
         if (now - conversionStartTime < CONVERSION_TIME_MS) {
@@ -383,7 +564,11 @@ static void prepareDs18b20BusForScan() {
         conversionStartTime = 0;
     }
 
-    oneWire.reset_search();
+    if (!isUsingDs2482Backend()) {
+        oneWire.reset_search();
+    } else {
+        ds2482.resetSearch();
+    }
     resetDs18b20BusWithRecovery();
     delay(10);
 }
@@ -428,13 +613,17 @@ static uint8_t discoverDs18b20(bool logInventory) {
                    sizeof(DeviceAddress));
             ds18b20Found[role] = true;
             busAddressUsed[busIndex] = true;
-            ds18b20.setResolution(ds18b20Addresses[role], 12);
+            if (!isUsingDs2482Backend()) {
+                ds18b20.setResolution(ds18b20Addresses[role], 12);
+            }
         }
     } else {
         for (uint8_t i = 0; i < count; ++i) {
             memcpy(ds18b20Addresses[i], bestAddresses[i], sizeof(DeviceAddress));
             ds18b20Found[i] = true;
-            ds18b20.setResolution(ds18b20Addresses[i], 12);
+            if (!isUsingDs2482Backend()) {
+                ds18b20.setResolution(ds18b20Addresses[i], 12);
+            }
         }
     }
 
@@ -458,9 +647,13 @@ static void startTemperatureConversion(uint32_t now) {
         return;
     }
 
-    ds18b20.requestTemperatures();
-    conversionInProgress = true;
-    conversionStartTime = now;
+    if (backendStartTemperatureConversionAll()) {
+        conversionInProgress = true;
+        conversionStartTime = now;
+    } else {
+        conversionInProgress = false;
+        conversionStartTime = 0;
+    }
 }
 
 static void ensureDs18b20Available(uint32_t now) {
@@ -495,13 +688,7 @@ void init() {
     // Инициализация I2C
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 
-    // DS18B20
-    pinMode(PIN_ONEWIRE, INPUT_PULLUP);
-    delay(10);
-    ds18b20.begin();
-    // Не блокировать цикл во время конвертации температуры
-    ds18b20.setWaitForConversion(false);
-    ds18b20.setCheckForConversion(false);
+    ensureTemperatureBusConfigured(true);
 
     uint8_t deviceCount = 0;
     for (uint8_t attempt = 0; attempt < DISCOVERY_INIT_ATTEMPTS; attempt++) {
@@ -576,6 +763,7 @@ void readTemperatures(Temperatures& temps) {
     if (!lockDs18b20Bus(pdMS_TO_TICKS(20))) {
         return;
     }
+    ensureTemperatureBusConfigured();
     ensureDs18b20Available(now);
 
     if (ds18b20Count == 0) {
@@ -602,10 +790,11 @@ void readTemperatures(Temperatures& temps) {
     uint8_t validCount = 0;
     for (uint8_t i = 0; i < TEMP_COUNT; i++) {
         if (ds18b20Found[i]) {
-            float raw = ds18b20.getTempC(ds18b20Addresses[i]);
+            float raw = DEVICE_DISCONNECTED_C;
+            const bool readOk = backendReadTemperature(ds18b20Addresses[i], raw);
 
             // Проверка валидности (-127 = ошибка)
-            if (!isValidDs18b20Reading(raw)) {
+            if (!readOk || !isValidDs18b20Reading(raw)) {
                 temps.valid[i] = false;
                 values[i] = 0;
                 // Инкремент счетчика ошибок конкретного датчика
@@ -942,6 +1131,7 @@ void refreshTemperatureInventory() {
     if (!lockDs18b20Bus(portMAX_DELAY)) {
         return;
     }
+    ensureTemperatureBusConfigured(true);
     prepareDs18b20BusForScan();
     discoverDs18b20(true);
     if (ds18b20Count > 0) {
@@ -966,6 +1156,7 @@ bool probeTempAddress(const uint8_t address[8], float* temperatureC) {
     if (!lockDs18b20Bus(portMAX_DELAY)) {
         return false;
     }
+    ensureTemperatureBusConfigured();
 
     const uint32_t now = millis();
     if (conversionInProgress) {
@@ -976,11 +1167,12 @@ bool probeTempAddress(const uint8_t address[8], float* temperatureC) {
         conversionStartTime = 0;
     }
 
-    oneWire.depower();
-    ds18b20.requestTemperaturesByAddress(address);
-    delay(CONVERSION_TIME_MS);
-
-    const float value = ds18b20.getTempC(address);
+    float value = DEVICE_DISCONNECTED_C;
+    const bool conversionOk = backendStartTemperatureConversionByAddress(address);
+    if (conversionOk) {
+        delay(CONVERSION_TIME_MS);
+        backendReadTemperature(address, value);
+    }
     if (temperatureC) {
         *temperatureC = value;
     }
@@ -990,7 +1182,7 @@ bool probeTempAddress(const uint8_t address[8], float* temperatureC) {
     }
 
     unlockDs18b20Bus();
-    return isValidDs18b20Reading(value);
+    return conversionOk && isValidDs18b20Reading(value);
 }
 
 uint8_t sampleDs18b20Presence(uint8_t attempts) {
@@ -1001,6 +1193,7 @@ uint8_t sampleDs18b20Presence(uint8_t attempts) {
     if (!lockDs18b20Bus(portMAX_DELAY)) {
         return 0;
     }
+    ensureTemperatureBusConfigured();
 
     const uint32_t now = millis();
     if (conversionInProgress) {
@@ -1039,9 +1232,11 @@ bool isTempSensorValid(uint8_t index) {
     }
 
     // Попробовать прочитать
-    float temp = ds18b20.getTempC(ds18b20Addresses[index]);
+    ensureTemperatureBusConfigured();
+    float temp = DEVICE_DISCONNECTED_C;
+    const bool readOk = backendReadTemperature(ds18b20Addresses[index], temp);
     unlockDs18b20Bus();
-    return isValidDs18b20Reading(temp);
+    return readOk && isValidDs18b20Reading(temp);
 }
 
 bool isBmp280PrimaryAvailable() {
@@ -1056,8 +1251,33 @@ bool isAds1115Available() {
     return ads_ok;
 }
 
+bool isDs2482Available() {
+    ensureTemperatureBusConfigured();
+    return ds2482_ok;
+}
+
 bool isPzemAvailable() {
     return pzem_ok;
+}
+
+bool isUsingDs2482ForTemps() {
+    ensureTemperatureBusConfigured();
+    return tempBusUseDs2482;
+}
+
+uint8_t getDs2482Address() {
+    ensureTemperatureBusConfigured();
+    return tempBusDs2482Address;
+}
+
+const char* getTemperatureBusSourceKey() {
+    ensureTemperatureBusConfigured();
+    return getTemperatureBusSourceKeyInternal();
+}
+
+const char* getTemperatureBusSourceLabel() {
+    ensureTemperatureBusConfigured();
+    return getTemperatureBusSourceLabelInternal();
 }
 
 bool readAds1115Channel(uint8_t channel, int16_t& adc, float& voltage) {

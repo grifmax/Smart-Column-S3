@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.3.32">
+    <link rel="stylesheet" href="style.css?v=2.4.0">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.3.32" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.0" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1787,6 +1787,25 @@
                                         <label>Монитор питания PZEM-004T</label>
                                         <div class="info-display equipment-info-box" id="pzem-settings-state">Загрузка...</div>
                                         <small id="pzem-settings-hint" class="equipment-hint">Проверяем UART и ответ модуля...</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Источник термошины DS18B20</label>
+                                        <div class="info-display equipment-info-box" id="temp-bus-settings-state">Загрузка...</div>
+                                        <small id="temp-bus-settings-hint" class="equipment-hint">Можно оставить прямой GPIO 1-Wire или заранее подготовить работу через DS2482S-100.</small>
+                                    </div>
+                                    <div class="form-group control-checkbox-field equipment-checkbox-field">
+                                        <label for="temp-bus-use-ds2482">Использовать DS2482S-100 для термошины</label>
+                                        <input type="checkbox" id="temp-bus-use-ds2482">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="temp-bus-ds2482-address">I2C адрес DS2482S-100</label>
+                                        <select id="temp-bus-ds2482-address">
+                                            <option value="24">0x18 (AD1=0, AD0=0)</option>
+                                            <option value="25">0x19 (AD1=0, AD0=1)</option>
+                                            <option value="26">0x1A (AD1=1, AD0=0)</option>
+                                            <option value="27">0x1B (AD1=1, AD0=1)</option>
+                                        </select>
+                                        <small class="equipment-hint">Для спокойного старта с несколькими датчиками лучше использовать нормальное 3-проводное питание DS18B20, а не паразитное.</small>
                                     </div>
                                     <div class="form-group">
                                         <label>Диагностика перезагрузок</label>
@@ -3359,7 +3378,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.3.32"></script>
+    <script src="app.js?v=2.4.0"></script>
 </body>
 
 </html>

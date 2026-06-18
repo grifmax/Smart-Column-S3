@@ -105,6 +105,8 @@ function mergeEquipmentState(s, data) {
     assign('coolingPwmMaxDuty', ['coolingPwmMaxDuty', 'cooling_pwm_max_duty']);
     assign('coolingPwmStartupDuty', ['coolingPwmStartupDuty', 'cooling_pwm_startup_duty']);
     assign('coolingPwmCurrentDuty', ['coolingPwmCurrentDuty', 'cooling_pwm_current_duty']);
+    assign('ds2482Address', ['ds2482Address']);
+    assign('tempBusGpioPin', ['tempBusGpioPin']);
 
     for (const source of sources) {
         if (source.coolingPwmEnabled !== undefined) {
@@ -124,6 +126,27 @@ function mergeEquipmentState(s, data) {
         }
         if (source.booster_heater_enabled !== undefined) {
             s.equipment.boosterHeaterEnabled = Boolean(source.booster_heater_enabled);
+            break;
+        }
+    }
+
+    for (const source of sources) {
+        if (source.useDs2482ForTemps !== undefined) {
+            s.equipment.useDs2482ForTemps = Boolean(source.useDs2482ForTemps);
+            break;
+        }
+    }
+
+    for (const source of sources) {
+        if (source.temperatureBusSource !== undefined) {
+            s.equipment.temperatureBusSource = String(source.temperatureBusSource || '');
+            break;
+        }
+    }
+
+    for (const source of sources) {
+        if (source.temperatureBusSourceLabel !== undefined) {
+            s.equipment.temperatureBusSourceLabel = String(source.temperatureBusSourceLabel || '');
             break;
         }
     }

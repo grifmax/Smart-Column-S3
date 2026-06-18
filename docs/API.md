@@ -322,6 +322,11 @@
 - `coolingPwmMaxDuty`
 - `coolingPwmStartupDuty`
 - `coolingPwmCurrentDuty` (`GET`, live state)
+- `useDs2482ForTemps`
+- `ds2482Address`
+- `tempBusGpioPin` (`GET`, справочно)
+- `temperatureBusSource` (`GET`, live state)
+- `temperatureBusSourceLabel` (`GET`, live state)
 - `bodyLevelSensorEnabled`
 - `bodyLevelThresholdV`
 - `bodyLevelTriggerAbove`
@@ -344,6 +349,7 @@
 - `bmp280Secondary` — `BMP280 #2`, `I2C 0x77`, резервный атмосферный датчик
 - `ads1115` — `ADS1115`, `I2C 0x48`, `A1` давление куба / `A0` ареометр / `A2-A3` резервные safety-каналы
 - `ads1115Secondary` — `ADS1115`, `I2C 0x49`, пока отдан в резерв под датчики уровня приёмных ёмкостей
+- `ds2482` — `DS2482S-100`, `I2C 0x18..0x1B`, альтернативный мастер `1-Wire` для `DS18B20`
 - `mcp4725` — `MCP4725`, `I2C 0x60`, DAC мешалки `0-10V`
 - `pzem004t` — `PZEM-004T`, `UART1`, монитор питания и нагрева
 

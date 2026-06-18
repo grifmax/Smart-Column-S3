@@ -180,9 +180,39 @@ function syncTemperatureTopologyUi(equipment = {}) {
 
     if (hintEl) {
         hintEl.textContent = topology.installedCount >= 3
-            ? 'Отметьте только реально установленные роли. Preflight и commissioning будут считать неустановленные датчики опциональными.'
+            ? 'Отмечайте только реально установленные роли. Preflight и commissioning будут считать отсутствующие датчики опциональными.'
             : 'Для lite-комплектаций это поле особенно важно: оно убирает ложные аварии по отсутствующим датчикам и сразу показывает, какие режимы уже поддержаны.';
     }
+}
+
+function syncTemperatureBusUi(equipment = {}) {
+    const enabled = Boolean(equipment.useDs2482ForTemps);
+    const address = clamp(equipment.ds2482Address, 24, 27, 24);
+    const gpioPin = clamp(equipment.tempBusGpioPin, 0, 48, 18);
+    const sourceKey = String(equipment.temperatureBusSource || (enabled ? 'ds2482' : 'gpio'));
+    const sourceLabel = String(
+        equipment.temperatureBusSourceLabel ||
+        (sourceKey === 'ds2482' ? 'DS2482S-100' : 'GPIO 1-Wire')
+    );
+    const ds2482Module = equipment.modules?.ds2482 || {};
+    const ds2482Online = Boolean(ds2482Module.available);
+
+    setCheckboxValue('temp-bus-use-ds2482', enabled);
+    setInputValue('temp-bus-ds2482-address', String(address));
+    const addressEl = document.getElementById('temp-bus-ds2482-address');
+    if (addressEl) {
+        addressEl.disabled = !enabled;
+    }
+
+    const stateText = enabled
+        ? `${sourceLabel} • ${ds2482Online ? 'мост отвечает' : 'мост не найден'}`
+        : `${sourceLabel} • прямой пин GPIO${gpioPin}`;
+    setTextValue('temp-bus-settings-state', stateText);
+
+    const hintText = enabled
+        ? `Адрес ${ds2482Module.address || `0x${address.toString(16).toUpperCase()}`}. После установки моста система будет читать все DS18B20 через I2C-to-1-Wire backend.`
+        : `Сейчас используется прямой 1-Wire на GPIO${gpioPin}. Переключатель нужен для перехода на DS2482S-100 без новой прошивки.`;
+    setTextValue('temp-bus-settings-hint', hintText);
 }
 
 function syncPzemEquipmentUi(pzem = {}) {
@@ -362,6 +392,7 @@ function normalizeHardwareModules(modules = {}) {
         bmp280Secondary: modules.bmp280Secondary && typeof modules.bmp280Secondary === 'object' ? modules.bmp280Secondary : {},
         ads1115: modules.ads1115 && typeof modules.ads1115 === 'object' ? modules.ads1115 : {},
         ads1115Secondary: modules.ads1115Secondary && typeof modules.ads1115Secondary === 'object' ? modules.ads1115Secondary : {},
+        ds2482: modules.ds2482 && typeof modules.ds2482 === 'object' ? modules.ds2482 : {},
         mcp4725: modules.mcp4725 && typeof modules.mcp4725 === 'object' ? modules.mcp4725 : {},
         pzem004t: modules.pzem004t && typeof modules.pzem004t === 'object' ? modules.pzem004t : {}
     };
@@ -495,6 +526,7 @@ function syncHardwareModulesUi(modules = {}) {
         normalized.bmp280Secondary,
         normalized.ads1115,
         normalized.ads1115Secondary,
+        normalized.ds2482,
         normalized.mcp4725,
         normalized.pzem004t
     ];
@@ -919,6 +951,8 @@ export async function loadEquipmentSettings() {
         setCheckboxValue('booster-heater-enabled', Boolean(data.boosterHeaterEnabled));
         setInputValue('booster-heater-power-w', clamp(data.boosterHeaterPowerW, 1000, 10000, 3000));
         setInputValue('booster-heater-stop-cube-temp', clamp(data.boosterHeaterStopCubeTempC, 20, 100, 78).toFixed(1));
+        setCheckboxValue('temp-bus-use-ds2482', Boolean(data.useDs2482ForTemps));
+        setInputValue('temp-bus-ds2482-address', String(clamp(data.ds2482Address, 24, 27, 24)));
 
         runtimeMonitorState.equipment = {
             ...runtimeMonitorState.equipment,
@@ -935,6 +969,14 @@ export async function loadEquipmentSettings() {
             coolingPwmMaxDuty: clamp(data.coolingPwmMaxDuty, 0, 255, 255),
             coolingPwmStartupDuty: clamp(data.coolingPwmStartupDuty, 0, 255, 96),
             coolingPwmCurrentDuty: clamp(data.coolingPwmCurrentDuty, 0, 255, 0),
+            useDs2482ForTemps: Boolean(data.useDs2482ForTemps),
+            ds2482Address: clamp(data.ds2482Address, 24, 27, 24),
+            tempBusGpioPin: clamp(data.tempBusGpioPin, 0, 48, 18),
+            temperatureBusSource: String(data.temperatureBusSource || (data.useDs2482ForTemps ? 'ds2482' : 'gpio')),
+            temperatureBusSourceLabel: String(
+                data.temperatureBusSourceLabel ||
+                (data.useDs2482ForTemps ? 'DS2482S-100' : 'GPIO 1-Wire')
+            ),
             bodyLevelSensorEnabled: Boolean(data.bodyLevelSensorEnabled),
             bodyLevelThresholdV: clamp(data.bodyLevelThresholdV, 0, 4.096, 1.5),
             bodyLevelTriggerAbove: data.bodyLevelTriggerAbove !== false,
@@ -961,6 +1003,7 @@ export async function loadEquipmentSettings() {
             runtimeMonitorState.equipment.boardProfile
         );
         syncHardwareModulesUi(runtimeMonitorState.equipment.modules);
+        syncTemperatureBusUi(runtimeMonitorState.equipment);
         syncSafetyChannelsUi(runtimeMonitorState.equipment.safetyChannels);
         syncSafetyChannelSettingsUi(runtimeMonitorState.equipment);
         syncTemperatureTopologyUi(runtimeMonitorState.equipment);
@@ -1006,6 +1049,8 @@ export async function saveEquipment() {
         coolingPwmMaxDuty,
         coolingPwmMinDuty
     );
+    const useDs2482ForTemps = getCheckboxValue('temp-bus-use-ds2482', false);
+    const ds2482Address = clamp(getInputValue('temp-bus-ds2482-address', 24), 24, 27, 24);
     const bodyLevelSensorEnabled = getCheckboxValue('body-level-enabled', false);
     const bodyLevelThresholdV = clamp(getInputValue('body-level-threshold-v', 1.5), 0, 4.096, 1.5);
     const bodyLevelTriggerAbove = getCheckboxValue('body-level-trigger-above', true);
@@ -1058,6 +1103,8 @@ export async function saveEquipment() {
                 coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
                 coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
                 coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty),
+                useDs2482ForTemps,
+                ds2482Address: Math.round(ds2482Address),
                 bodyLevelSensorEnabled,
                 bodyLevelThresholdV,
                 bodyLevelTriggerAbove,
@@ -1088,6 +1135,10 @@ export async function saveEquipment() {
             coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
             coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
             coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty),
+            useDs2482ForTemps,
+            ds2482Address: Math.round(ds2482Address),
+            temperatureBusSource: useDs2482ForTemps ? 'ds2482' : 'gpio',
+            temperatureBusSourceLabel: useDs2482ForTemps ? 'DS2482S-100' : 'GPIO 1-Wire',
             bodyLevelSensorEnabled,
             bodyLevelThresholdV,
             bodyLevelTriggerAbove,
@@ -1100,6 +1151,7 @@ export async function saveEquipment() {
             supportedModes: normalizeSupportedModes(result.supportedModes)
         };
         syncTemperatureTopologyUi(runtimeMonitorState.equipment);
+        syncTemperatureBusUi(runtimeMonitorState.equipment);
         window.renderControlStartState?.();
         window.loadProfilesList?.();
 
@@ -1196,6 +1248,14 @@ function normalizeMonitorStirrerInput() {
 export function initEquipmentSettingsUi() {
     initEquipmentNumberSteppers();
 
+    const syncTempBusDraftUi = () => {
+        syncTemperatureBusUi({
+            ...runtimeMonitorState.equipment,
+            useDs2482ForTemps: getCheckboxValue('temp-bus-use-ds2482', false),
+            ds2482Address: clamp(getInputValue('temp-bus-ds2482-address', 24), 24, 27, 24)
+        });
+    };
+
     const cubeVolumeInput = document.getElementById('cube-volume-l');
     if (cubeVolumeInput) {
         cubeVolumeInput.addEventListener('input', () => updateCubeVolumeHint());
@@ -1224,6 +1284,9 @@ export function initEquipmentSettingsUi() {
         monitorStirrerSpeedInput.addEventListener('blur', normalizeMonitorStirrerInput);
     }
 
+    document.getElementById('temp-bus-use-ds2482')?.addEventListener('change', syncTempBusDraftUi);
+    document.getElementById('temp-bus-ds2482-address')?.addEventListener('change', syncTempBusDraftUi);
+
     document.querySelectorAll('[data-stirrer-speed-preset]').forEach((button) => {
         button.addEventListener('click', () => {
             const nextSpeed = clamp(button.dataset.stirrerSpeedPreset, 1, 100, DEFAULT_STIRRER_SETTINGS.defaultSpeedPercent);
@@ -1245,4 +1308,5 @@ export function initEquipmentSettingsUi() {
     updateCubeVolumeHint({ normalizeInput: true });
     updateStirrerSettingsState(DEFAULT_STIRRER_SETTINGS);
     syncStirrerUi({ syncSettingsForm: true, syncSpeedInput: true });
+    syncTempBusDraftUi();
 }

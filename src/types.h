@@ -422,6 +422,8 @@ struct EquipmentSettings {
   uint8_t coolingPwmMinDuty = 0;
   uint8_t coolingPwmMaxDuty = 255;
   uint8_t coolingPwmStartupDuty = 96;
+  bool useDs2482ForTemps = false;
+  uint8_t ds2482Address = 0x18;
   bool bodyLevelSensorEnabled = false;
   float bodyLevelThresholdV = 1.5f;
   bool bodyLevelTriggerAbove = true;

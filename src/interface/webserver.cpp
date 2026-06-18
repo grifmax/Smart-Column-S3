@@ -524,6 +524,19 @@ static void fillEquipmentModulesJson(JsonObject modules) {
   ads1115Secondary["role"] =
       "Резерв под датчики уровня приёмных ёмкостей и будущие аналоговые каналы";
 
+  JsonObject ds2482 = modules["ds2482"].to<JsonObject>();
+  ds2482["label"] = "DS2482S-100";
+  ds2482["available"] = Sensors::isDs2482Available();
+  ds2482["expected"] = g_settings.equipment.useDs2482ForTemps;
+  ds2482["bus"] = "I2C";
+  char ds2482Address[8];
+  snprintf(ds2482Address, sizeof(ds2482Address), "0x%02X",
+           Sensors::getDs2482Address());
+  ds2482["address"] = ds2482Address;
+  ds2482["role"] = g_settings.equipment.useDs2482ForTemps
+                       ? "Активный мастер 1-Wire для DS18B20"
+                       : "Резервный I2C-to-1-Wire мост под DS18B20";
+
   JsonObject mcp4725 = modules["mcp4725"].to<JsonObject>();
   mcp4725["label"] = "MCP4725";
   mcp4725["available"] = Stirrer::isAvailable();
@@ -2782,6 +2795,11 @@ void init() {
     equipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
     equipment["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
     equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
+    equipment["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
+    equipment["ds2482Address"] = g_settings.equipment.ds2482Address;
+    equipment["tempBusGpioPin"] = PIN_ONEWIRE;
+    equipment["temperatureBusSource"] = Sensors::getTemperatureBusSourceKey();
+    equipment["temperatureBusSourceLabel"] = Sensors::getTemperatureBusSourceLabel();
 
     JsonObject safetySettings = doc["safetySettings"].to<JsonObject>();
     safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
@@ -3985,6 +4003,11 @@ void init() {
     doc["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
     doc["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
     doc["coolingPwmCurrentDuty"] = Valves::getStartStop();
+    doc["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
+    doc["ds2482Address"] = g_settings.equipment.ds2482Address;
+    doc["tempBusGpioPin"] = PIN_ONEWIRE;
+    doc["temperatureBusSource"] = Sensors::getTemperatureBusSourceKey();
+    doc["temperatureBusSourceLabel"] = Sensors::getTemperatureBusSourceLabel();
     doc["bodyLevelSensorEnabled"] = g_settings.equipment.bodyLevelSensorEnabled;
     doc["bodyLevelThresholdV"] = g_settings.equipment.bodyLevelThresholdV;
     doc["bodyLevelTriggerAbove"] = g_settings.equipment.bodyLevelTriggerAbove;
@@ -4148,6 +4171,24 @@ void init() {
               g_settings.equipment.coolingPwmMinDuty,
               g_settings.equipment.coolingPwmMaxDuty);
         }
+        bool temperatureBusChanged = false;
+        if (!doc["useDs2482ForTemps"].isNull()) {
+          const bool nextUseDs2482 = doc["useDs2482ForTemps"].as<bool>();
+          temperatureBusChanged |=
+              g_settings.equipment.useDs2482ForTemps != nextUseDs2482;
+          g_settings.equipment.useDs2482ForTemps = nextUseDs2482;
+        }
+        if (!doc["ds2482Address"].isNull()) {
+          const uint8_t requestedAddress = doc["ds2482Address"].as<uint32_t>();
+          const uint8_t safeAddress =
+              requestedAddress < I2C_ADDR_DS2482_0 ||
+                      requestedAddress > I2C_ADDR_DS2482_3
+                  ? I2C_ADDR_DS2482_DEFAULT
+                  : requestedAddress;
+          temperatureBusChanged |=
+              g_settings.equipment.ds2482Address != safeAddress;
+          g_settings.equipment.ds2482Address = safeAddress;
+        }
         if (!doc["bodyLevelSensorEnabled"].isNull()) {
           g_settings.equipment.bodyLevelSensorEnabled =
               doc["bodyLevelSensorEnabled"].as<bool>();
@@ -4210,7 +4251,21 @@ void init() {
           return;
         }
 
-        request->send(200, "application/json", "{\"success\":true}");
+        if (temperatureBusChanged) {
+          Sensors::refreshTemperatureInventory();
+        }
+
+        JsonDocument resp;
+        resp["success"] = true;
+        resp["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
+        resp["ds2482Address"] = g_settings.equipment.ds2482Address;
+        JsonObject temperatureTopology = resp["temperatureTopology"].to<JsonObject>();
+        fillTemperatureTopologyJson(temperatureTopology, g_settings.equipment);
+        JsonObject supportedModes = resp["supportedModes"].to<JsonObject>();
+        fillTemperatureModeSupportJson(supportedModes, g_settings);
+        String json;
+        serializeJson(resp, json);
+        request->send(200, "application/json", json);
       });
 
   // GET /api/settings/safety - получить пороги аварий
@@ -5755,6 +5810,8 @@ void init() {
               doc["count"] = count;
               doc["searchCount"] = searchCount;
               doc["runtimeCount"] = runtimeCount;
+              doc["source"] = Sensors::getTemperatureBusSourceKey();
+              doc["sourceLabel"] = Sensors::getTemperatureBusSourceLabel();
 
               JsonArray sensors = doc["sensors"].to<JsonArray>();
               for (uint8_t i = 0; i < count; i++) {
@@ -5808,6 +5865,10 @@ void init() {
               doc["presenceDetections"] = presenceDetections;
               doc["success"] = true;
               doc["bus"] = "1-wire";
+              doc["source"] = Sensors::getTemperatureBusSourceKey();
+              doc["sourceLabel"] = Sensors::getTemperatureBusSourceLabel();
+              doc["ds2482Available"] = Sensors::isDs2482Available();
+              doc["ds2482Address"] = Sensors::getDs2482Address();
 
               JsonArray searchSensors = doc["searchSensors"].to<JsonArray>();
               for (uint8_t i = 0; i < searchCount; ++i) {
@@ -7702,6 +7763,11 @@ void broadcastState(const SystemState &state) {
   fastEquipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
   fastEquipment["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
   fastEquipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
+  fastEquipment["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
+  fastEquipment["ds2482Address"] = g_settings.equipment.ds2482Address;
+  fastEquipment["tempBusGpioPin"] = PIN_ONEWIRE;
+  fastEquipment["temperatureBusSource"] = Sensors::getTemperatureBusSourceKey();
+  fastEquipment["temperatureBusSourceLabel"] = Sensors::getTemperatureBusSourceLabel();
   JsonObject fastSafetySettings = fastDoc["safetySettings"].to<JsonObject>();
   fastSafetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
   fastSafetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
@@ -7841,6 +7907,11 @@ void broadcastState(const SystemState &state) {
   equipment["coolingPwmStartupDuty"] =
       g_settings.equipment.coolingPwmStartupDuty;
   equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
+  equipment["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
+  equipment["ds2482Address"] = g_settings.equipment.ds2482Address;
+  equipment["tempBusGpioPin"] = PIN_ONEWIRE;
+  equipment["temperatureBusSource"] = Sensors::getTemperatureBusSourceKey();
+  equipment["temperatureBusSourceLabel"] = Sensors::getTemperatureBusSourceLabel();
   JsonObject safetySettings = doc["safetySettings"].to<JsonObject>();
   safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
   safetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;

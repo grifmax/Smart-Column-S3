@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.3.32"
+#define FIRMWARE_VERSION "2.4.0"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -87,6 +87,11 @@
 
 #define I2C_ADDR_BMP280_1 0x76       // Атмосферное давление
 #define I2C_ADDR_BMP280_2 0x77       // Резерв
+#define I2C_ADDR_DS2482_0 0x18       // DS2482-100 / DS2482S-100, AD1=0 AD0=0
+#define I2C_ADDR_DS2482_1 0x19       // DS2482-100 / DS2482S-100, AD1=0 AD0=1
+#define I2C_ADDR_DS2482_2 0x1A       // DS2482-100 / DS2482S-100, AD1=1 AD0=0
+#define I2C_ADDR_DS2482_3 0x1B       // DS2482-100 / DS2482S-100, AD1=1 AD0=1
+#define I2C_ADDR_DS2482_DEFAULT I2C_ADDR_DS2482_0
 #define I2C_ADDR_ADS1115_PRIMARY 0x48   // Основной ADS1115: ареометр, давление, safety A2/A3
 #define I2C_ADDR_ADS1115_SECONDARY 0x49 // Резерв: уровни приёмных ёмкостей / будущие analog I/O
 #define I2C_ADDR_ADS1115 I2C_ADDR_ADS1115_PRIMARY // Алиас обратной совместимости
@@ -246,6 +251,8 @@
 #define DEFAULT_COOLING_PWM_MIN_DUTY 0
 #define DEFAULT_COOLING_PWM_MAX_DUTY 255
 #define DEFAULT_COOLING_PWM_STARTUP_DUTY 96
+#define DEFAULT_USE_DS2482_FOR_TEMPS 0
+#define DEFAULT_DS2482_ADDRESS I2C_ADDR_DS2482_DEFAULT
 #define DEFAULT_BODY_LEVEL_SENSOR_ENABLED 0
 #define DEFAULT_BODY_LEVEL_THRESHOLD_V 1.5f
 #define DEFAULT_BODY_LEVEL_TRIGGER_ABOVE 1
@@ -387,6 +394,8 @@
 #define NVS_KEY_COOLING_PWM_MIN_DUTY "cool_pwm_min"
 #define NVS_KEY_COOLING_PWM_MAX_DUTY "cool_pwm_max"
 #define NVS_KEY_COOLING_PWM_STARTUP "cool_pwm_sta"
+#define NVS_KEY_USE_DS2482_TEMPS "temp_ds2482"
+#define NVS_KEY_DS2482_ADDRESS "ds2482_addr"
 #define NVS_KEY_BODY_LEVEL_ENABLED "body_lvl_en"
 #define NVS_KEY_BODY_LEVEL_THRESHOLD "body_lvl_th"
 #define NVS_KEY_BODY_LEVEL_POLARITY "body_lvl_pol"

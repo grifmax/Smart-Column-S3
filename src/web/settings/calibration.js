@@ -1070,12 +1070,20 @@ function formatRawOneWireScan(data, title = 'Сырая 1-Wire линия') {
     const probeCount = Number(data?.probeCount || 0);
     const presenceAttempts = Number(data?.presenceAttempts || 0);
     const presenceDetections = Number(data?.presenceDetections || 0);
+    const sourceKey = String(data?.source || '').trim().toLowerCase();
+    const sourceLabel = String(data?.sourceLabel || data?.source || '1-Wire');
+    const ds2482Available = Boolean(data?.ds2482Available);
+    const ds2482Address = Number(data?.ds2482Address || 24);
     const sensors = Array.isArray(data?.sensors) ? data.sensors : [];
     const searchSensors = Array.isArray(data?.searchSensors) ? data.searchSensors : sensors;
     const runtimeSensors = Array.isArray(data?.runtimeSensors) ? data.runtimeSensors : [];
     const probeSensors = Array.isArray(data?.probeSensors) ? data.probeSensors : [];
     const lines = [
         `${title}: итог ${count}`,
+        `Источник: ${sourceLabel}` +
+            (sourceKey === 'ds2482'
+                ? ` (${ds2482Available ? 'bridge online' : `bridge offline @ 0x${ds2482Address.toString(16).toUpperCase()}`})`
+                : ''),
         `Search ROM: ${searchCount}`,
         `Runtime по ролям: ${runtimeCount}`,
         `Прямой опрос сохранённых адресов: ${probeCount}`,
