@@ -225,8 +225,17 @@ enum class UiRootTab : uint8_t {
   NONE
 };
 
+enum class UiEditPolicy : uint8_t {
+  VIEW_ONLY = 0,
+  ALWAYS,
+  IDLE_ONLY,
+  MANUAL_ONLY,
+  MODE_MONITOR_RUNTIME
+};
+
 struct UiScreenPolicy {
   UiRootTab rootTab;
+  UiEditPolicy editPolicy;
   bool rootLike;
   bool autoMonitorRoot;
   bool supportsLiveRefresh;
@@ -234,18 +243,30 @@ struct UiScreenPolicy {
 };
 
 static constexpr UiScreenPolicy kUiScreenPolicies[] = {
-    {UiRootTab::MONITOR, true, true, true, true},   // UI_DASHBOARD
-    {UiRootTab::CONTROL, true, false, true, false}, // UI_CONTROL
-    {UiRootTab::SETTINGS, true, false, false, false}, // UI_SETTINGS
-    {UiRootTab::SERVICE, true, false, true, false}, // UI_SERVICE
-    {UiRootTab::MONITOR, true, true, true, true},   // UI_MODE_MONITOR
-    {UiRootTab::SETTINGS, false, false, false, false}, // UI_EQUIPMENT
-    {UiRootTab::SETTINGS, false, false, false, false}, // UI_RECT_PARAMS
-    {UiRootTab::SETTINGS, false, false, false, false}, // UI_DIST_PARAMS
-    {UiRootTab::SETTINGS, false, false, false, false}, // UI_CALIBRATION
-    {UiRootTab::CONTROL, false, false, true, false}, // UI_MANUAL
-    {UiRootTab::NONE, false, false, false, false},  // UI_VALUE_EDIT
-    {UiRootTab::MONITOR, false, false, true, true}  // UI_ALL_TEMPS
+    {UiRootTab::MONITOR, UiEditPolicy::VIEW_ONLY, true, true, true,
+     true}, // UI_DASHBOARD
+    {UiRootTab::CONTROL, UiEditPolicy::ALWAYS, true, false, true,
+     false}, // UI_CONTROL
+    {UiRootTab::SETTINGS, UiEditPolicy::ALWAYS, true, false, false,
+     false}, // UI_SETTINGS
+    {UiRootTab::SERVICE, UiEditPolicy::VIEW_ONLY, true, false, true,
+     false}, // UI_SERVICE
+    {UiRootTab::MONITOR, UiEditPolicy::MODE_MONITOR_RUNTIME, true, true, true,
+     true}, // UI_MODE_MONITOR
+    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false, false,
+     false}, // UI_EQUIPMENT
+    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false, false,
+     false}, // UI_RECT_PARAMS
+    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false, false,
+     false}, // UI_DIST_PARAMS
+    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false, false,
+     false}, // UI_CALIBRATION
+    {UiRootTab::CONTROL, UiEditPolicy::MANUAL_ONLY, false, false, true,
+     false}, // UI_MANUAL
+    {UiRootTab::NONE, UiEditPolicy::ALWAYS, false, false, false,
+     false}, // UI_VALUE_EDIT
+    {UiRootTab::MONITOR, UiEditPolicy::VIEW_ONLY, false, false, true,
+     true} // UI_ALL_TEMPS
 };
 
 enum class DisplayRedrawReason : uint8_t {
@@ -972,12 +993,10 @@ static void requestFullScreenRedraw() {
   requestRedraw(DisplayRedrawReason::SCREEN_ENTER, true);
 }
 
-static bool isManualAccessAllowed(const SystemState &state) {
-  return (state.mode == Mode::IDLE || state.mode == Mode::MANUAL_RECT);
-}
+static bool isScreenEditable(UiScreen screen, const SystemState &state);
 
-static bool isSettingsEditAllowed(const SystemState &state) {
-  return !isModeRunning(state);
+static bool isManualAccessAllowed(const SystemState &state) {
+  return isScreenEditable(UI_MANUAL, state);
 }
 
 static bool isModeMonitorEditAllowed(Mode mode) {
@@ -990,6 +1009,34 @@ static bool isModeMonitorEditAllowed(Mode mode) {
   default:
     return false;
   }
+}
+
+static bool isScreenEditable(UiScreen screen, const SystemState &state) {
+  switch (getUiScreenPolicy(screen).editPolicy) {
+  case UiEditPolicy::ALWAYS:
+    return true;
+  case UiEditPolicy::IDLE_ONLY:
+    return !isModeRunning(state);
+  case UiEditPolicy::MANUAL_ONLY:
+    return (state.mode == Mode::IDLE || state.mode == Mode::MANUAL_RECT);
+  case UiEditPolicy::MODE_MONITOR_RUNTIME:
+    return isModeMonitorEditAllowed(state.mode);
+  case UiEditPolicy::VIEW_ONLY:
+  default:
+    return false;
+  }
+}
+
+static bool isScreenReadOnly(UiScreen screen, const SystemState &state) {
+  const UiEditPolicy policy = getUiScreenPolicy(screen).editPolicy;
+  if (policy == UiEditPolicy::VIEW_ONLY) {
+    return true;
+  }
+  return !isScreenEditable(screen, state);
+}
+
+static bool isSettingsEditAllowed(const SystemState &state) {
+  return isScreenEditable(UI_EQUIPMENT, state);
 }
 
 static const char *getModeMonitorAccessHint(Mode mode) {
@@ -1671,7 +1718,7 @@ static bool handleControlScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   if (hit(tx, ty, CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH)) {
-    if (isManualAccessAllowed(state)) {
+    if (isScreenEditable(UI_MANUAL, state)) {
       pushScreen(UI_MANUAL);
     }
     return true;
@@ -1796,7 +1843,7 @@ static bool handleSettingsScreenTap(int16_t tx, int16_t ty,
 
 static bool handleEquipmentScreenTap(int16_t tx, int16_t ty,
                                      const SystemState &state) {
-  if (!isSettingsEditAllowed(state)) {
+  if (!isScreenEditable(UI_EQUIPMENT, state)) {
     return true;
   }
   if (hit(tx, ty, 10, 48, 225, 78)) {
@@ -1830,7 +1877,7 @@ static bool handleRectParamsScreenTap(int16_t tx, int16_t ty,
     return true;
   }
 
-  if (!isSettingsEditAllowed(state)) {
+  if (!isScreenEditable(UI_RECT_PARAMS, state)) {
     return true;
   }
 
@@ -1914,7 +1961,7 @@ static bool handleRectParamsScreenTap(int16_t tx, int16_t ty,
 
 static bool handleDistParamsScreenTap(int16_t tx, int16_t ty,
                                       const SystemState &state) {
-  if (!isSettingsEditAllowed(state)) {
+  if (!isScreenEditable(UI_DIST_PARAMS, state)) {
     return true;
   }
   if (hit(tx, ty, 10, 48, 225, 78)) {
@@ -1942,7 +1989,7 @@ static bool handleDistParamsScreenTap(int16_t tx, int16_t ty,
 
 static bool handleCalibrationScreenTap(int16_t tx, int16_t ty,
                                        const SystemState &state) {
-  if (!isSettingsEditAllowed(state)) {
+  if (!isScreenEditable(UI_CALIBRATION, state)) {
     return true;
   }
   if (hit(tx, ty, 10, 52, 225, 86)) {
@@ -1960,7 +2007,7 @@ static bool handleCalibrationScreenTap(int16_t tx, int16_t ty,
 
 static bool handleManualScreenTap(int16_t tx, int16_t ty,
                                   const SystemState &state) {
-  if (!isManualAccessAllowed(state)) {
+  if (!isScreenEditable(UI_MANUAL, state)) {
     return true;
   }
   if (hit(tx, ty, 10, 48, 225, 86)) {
@@ -2776,6 +2823,14 @@ static void drawAccessControlledFooterHint(bool readOnly,
   drawFooterHint(readOnly ? tftText(TftTextId::SettingsReadOnlyHint)
                           : editableText,
                  readOnly ? COLOR_WARNING : editableTone);
+}
+
+static void drawScreenAccessFooterHint(UiScreen screen,
+                                       const SystemState &state,
+                                       const char *editableText,
+                                       uint16_t editableTone) {
+  drawAccessControlledFooterHint(isScreenReadOnly(screen, state), editableText,
+                                 editableTone);
 }
 
 static int16_t drawWrappedTextBlock(int16_t x, int16_t y, int16_t w,
@@ -6133,9 +6188,6 @@ static void renderRootFooter(
                                   drawHeader(msg(Msg::EQUIPMENT), true);
                                   drawTabs(UI_SETTINGS);
                                 }
-                                const bool readOnly =
-                                    !isSettingsEditAllowed(g_state);
-
                                 const int16_t x1 = 10;
                                 const int16_t x2 = 245;
                                 const int16_t y1 = 48;
@@ -6167,9 +6219,9 @@ static void renderRootFooter(
                                 drawValueTile(x2, y2, tileW, tileH,
                                               msg(Msg::PACKING_COEFF), buf, "",
                                               colorAccent());
-                                drawAccessControlledFooterHint(
-                                    readOnly, msg(Msg::TAP_TO_EDIT),
-                                    colorAccent());
+                                drawScreenAccessFooterHint(
+                                    UI_EQUIPMENT, g_state,
+                                    msg(Msg::TAP_TO_EDIT), colorAccent());
                               }
 
                               static void renderRectParams(bool full) {
@@ -6177,8 +6229,6 @@ static void renderRootFooter(
                                   tft.fillScreen(colorBg());
                                 }
                                 const bool ru = (g_settings.language == 0);
-                                const bool readOnly =
-                                    !isSettingsEditAllowed(g_state);
                                 if (full) {
                                   drawHeader(tftText(TftTextId::RectTitle), true);
                                   drawTabs(UI_SETTINGS);
@@ -6245,8 +6295,8 @@ static void renderRootFooter(
                                                 msg(Msg::TAILS_PERCENT),
                                                 tileBuf, "%", COLOR_WARNING);
 
-                                  drawAccessControlledFooterHint(
-                                      readOnly,
+                                  drawScreenAccessFooterHint(
+                                      UI_RECT_PARAMS, g_state,
                                       tftText(TftTextId::RectFeedHint),
                                       COLOR_INFO);
                                   return;
@@ -6310,8 +6360,9 @@ static void renderRootFooter(
                                           ru ? "АТМ %.0f hPa | комп."
                                              : "ATM %.0f hPa | comp",
                                           atmHpaComp);
-                                 drawAccessControlledFooterHint(
-                                     readOnly, tileBuf, COLOR_INFO);
+                                 drawScreenAccessFooterHint(
+                                     UI_RECT_PARAMS, g_state, tileBuf,
+                                     COLOR_INFO);
                                }
 
                                static void renderDistParams(bool full) {
@@ -6320,9 +6371,6 @@ static void renderRootFooter(
                                    drawHeader(tftText(TftTextId::DistTitle), true);
                                    drawTabs(UI_SETTINGS);
                                  }
-                                 const bool readOnly =
-                                     !isSettingsEditAllowed(g_state);
-
                                  const int16_t x1 = 10;
                                  const int16_t x2 = 245;
                                 const int16_t y1 = 48;
@@ -6355,9 +6403,9 @@ static void renderRootFooter(
                                  drawValueTile(x2, y2, tileW, tileH,
                                                msg(Msg::END_TEMP), tileBufDist,
                                                "C", COLOR_WARNING);
-                                 drawAccessControlledFooterHint(
-                                     readOnly, msg(Msg::TAP_TO_EDIT),
-                                     colorAccent());
+                                 drawScreenAccessFooterHint(
+                                     UI_DIST_PARAMS, g_state,
+                                     msg(Msg::TAP_TO_EDIT), colorAccent());
                                  return;
                                }
 
@@ -6368,9 +6416,6 @@ static void renderRootFooter(
                                               true);
                                    drawTabs(UI_SETTINGS);
                                  }
-                                 const bool readOnly =
-                                     !isSettingsEditAllowed(g_state);
-
                                  const int16_t tileY = 52;
                                  const int16_t tileW = 225;
                                 const int16_t tileH = 86;
@@ -6384,8 +6429,8 @@ static void renderRootFooter(
                                  drawButton(245, tileY, tileW, tileH,
                                             msg(Msg::TOUCH_CALIBRATION),
                                             COLOR_WARNING, TFT_WHITE);
-                                 drawAccessControlledFooterHint(
-                                     readOnly,
+                                 drawScreenAccessFooterHint(
+                                     UI_CALIBRATION, g_state,
                                      tftText(TftTextId::CalibrationHint),
                                      COLOR_WARNING);
                                }
@@ -6398,7 +6443,7 @@ static void renderRootFooter(
                                            true);
                                 drawTabs(UI_CONTROL);
 
-                                if (!isManualAccessAllowed(state)) {
+                                if (!isScreenEditable(UI_MANUAL, state)) {
                                   char message[160];
                                   char footer[160];
                                   snprintf(
