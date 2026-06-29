@@ -995,10 +995,6 @@ static void requestFullScreenRedraw() {
 
 static bool isScreenEditable(UiScreen screen, const SystemState &state);
 
-static bool isManualAccessAllowed(const SystemState &state) {
-  return isScreenEditable(UI_MANUAL, state);
-}
-
 static bool isModeMonitorEditAllowed(Mode mode) {
   switch (mode) {
   case Mode::DISTILLATION:
@@ -1033,10 +1029,6 @@ static bool isScreenReadOnly(UiScreen screen, const SystemState &state) {
     return true;
   }
   return !isScreenEditable(screen, state);
-}
-
-static bool isSettingsEditAllowed(const SystemState &state) {
-  return isScreenEditable(UI_EQUIPMENT, state);
 }
 
 static const char *getModeMonitorAccessHint(Mode mode) {
@@ -1760,7 +1752,7 @@ static bool handleValueEditScreenTap(int16_t tx, int16_t ty,
     if (edit.onSave)
       edit.onSave(edit.value);
     if (edit.returnToModeMonitor && isModeRunning(g_state)) {
-      switchRoot(UI_MODE_MONITOR);
+      switchRoot(getMonitorRootScreenForState(g_state));
     } else {
       popScreen();
     }
@@ -2400,6 +2392,8 @@ enum class TftTextId : uint8_t {
   CalRawShort,
   SettingsHint,
   SettingsReadOnlyHint,
+  ViewOnlyHint,
+  ManualOnlyHint,
   RectTitle,
   RectPageFeedCuts,
   RectPageFlowTemp,
@@ -2447,6 +2441,12 @@ static const char *tftText(TftTextId id) {
   case TftTextId::SettingsReadOnlyHint:
     return ru ? "Во время процесса только просмотр"
               : "View only while process runs";
+  case TftTextId::ViewOnlyHint:
+    return ru ? "Экран только для контроля"
+              : "This screen is view only";
+  case TftTextId::ManualOnlyHint:
+    return ru ? "Доступно только в IDLE и ручной ректификации"
+              : "Available only in idle and manual rectification";
   case TftTextId::RectTitle:
     return ru ? "РЕКТ. ПАРАМ." : "RECT PARAMS";
   case TftTextId::RectPageFeedCuts:
@@ -2817,20 +2817,45 @@ static void drawFooterHint(const char *text, uint16_t tone = COLOR_INFO) {
   tft.setTextDatum(top_left);
 }
 
-static void drawAccessControlledFooterHint(bool readOnly,
-                                           const char *editableText,
-                                           uint16_t editableTone) {
-  drawFooterHint(readOnly ? tftText(TftTextId::SettingsReadOnlyHint)
-                          : editableText,
-                 readOnly ? COLOR_WARNING : editableTone);
+static const char *getScreenReadOnlyHint(UiScreen screen,
+                                         const SystemState &state) {
+  switch (getUiScreenPolicy(screen).editPolicy) {
+  case UiEditPolicy::IDLE_ONLY:
+    return tftText(TftTextId::SettingsReadOnlyHint);
+  case UiEditPolicy::MANUAL_ONLY:
+    return tftText(TftTextId::ManualOnlyHint);
+  case UiEditPolicy::MODE_MONITOR_RUNTIME:
+    return getModeMonitorAccessHint(state.mode);
+  case UiEditPolicy::VIEW_ONLY:
+  case UiEditPolicy::ALWAYS:
+  default:
+    return tftText(TftTextId::ViewOnlyHint);
+  }
+}
+
+static uint16_t getScreenReadOnlyTone(UiScreen screen) {
+  switch (getUiScreenPolicy(screen).editPolicy) {
+  case UiEditPolicy::VIEW_ONLY:
+    return COLOR_INFO;
+  case UiEditPolicy::IDLE_ONLY:
+  case UiEditPolicy::MANUAL_ONLY:
+  case UiEditPolicy::MODE_MONITOR_RUNTIME:
+  case UiEditPolicy::ALWAYS:
+  default:
+    return COLOR_WARNING;
+  }
 }
 
 static void drawScreenAccessFooterHint(UiScreen screen,
                                        const SystemState &state,
                                        const char *editableText,
                                        uint16_t editableTone) {
-  drawAccessControlledFooterHint(isScreenReadOnly(screen, state), editableText,
-                                 editableTone);
+  if (isScreenReadOnly(screen, state)) {
+    drawFooterHint(getScreenReadOnlyHint(screen, state),
+                   getScreenReadOnlyTone(screen));
+    return;
+  }
+  drawFooterHint(editableText, editableTone);
 }
 
 static int16_t drawWrappedTextBlock(int16_t x, int16_t y, int16_t w,
@@ -5865,7 +5890,7 @@ static void renderRootFooter(
                                 const int16_t pauseX =
                                     stopX - CTRL_ACTION_BW - CTRL_ACTION_GAP;
                                 const bool manualAllowed =
-                                    isManualAccessAllowed(state);
+                                    isScreenEditable(UI_MANUAL, state);
                                 snprintf(
                                     modeBuf, sizeof(modeBuf),
                                     (state.mode == Mode::IDLE)

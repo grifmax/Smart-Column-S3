@@ -7,6 +7,13 @@
 
 ---
 
+## [2.4.11] - 2026-06-29
+
+### Changed
+- TFT `Phase 3` доведён ещё на один шаг: для screen-access policy появились разные operator hints по типу ограничения, поэтому `idle-only`, `manual-only`, `view-only` и `mode-monitor runtime` больше не показывают один и тот же общий текст. (codex)
+- Возврат из `VALUE_EDIT` в runtime-monitor теперь идёт через общий `monitor root` helper, а не через жёсткую привязку к `UI_MODE_MONITOR`, что убирает ещё одну специальную ветку из TFT-навигации. (codex)
+- Из `display.cpp` убраны лишние переходные обёртки после внедрения `UiEditPolicy`, чтобы access-layer TFT оставался единым, а не дублировался старыми helper-функциями. (codex)
+
 ## [2.4.10] - 2026-06-24
 
 ### Changed
@@ -22,6 +29,7 @@
 - В cloud-proxy режиме web UI больше не пытается открывать неподдерживаемый `/ws`: фронт сохраняет признак cloud-mode, остаётся на HTTP polling и не уходит в ложные циклы переподключения при работе через интернет. (codex) 
 - Для cloud tunnel добавлена поддержка системных страниц web UI: через интернет теперь доступны `version`, `reboot/status`, настройки `safety/security/mqtt/stirrer`, MQTT test, а также чтение общей калибровки и базовое сохранение параметров насоса. (codex) 
 - Cloud tunnel теперь покрывает и “тяжёлые” экраны web UI: добавлены `history` и `profiles` API, сохранение advisor snapshot, demo-history, загрузка профиля, а также корректная передача `Content-Type`/`Content-Disposition` для экспортов CSV/JSON через `cloud_proxy`. (codex) 
+- Для cloud deployment убран разъезд интерфейсов: добавлен `scripts/sync_cloud_proxy_web.py`, а `cloud_proxy/web` теперь можно синхронизировать из актуального `data/`, включая распаковку свежего `app.js` из `app.js.gz`, чтобы облачная оболочка была визуально и функционально идентична текущему проекту. (codex)
 
 ## [2.4.8] - 2026-06-23 
  
