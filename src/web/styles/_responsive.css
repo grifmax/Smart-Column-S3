@@ -53,7 +53,7 @@
     }
 
     .toolbar-group {
-        margin-left: auto;
+        display: none;
     }
 
     .toolbar-kpi-strip {

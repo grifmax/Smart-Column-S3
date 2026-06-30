@@ -16,7 +16,8 @@ import {
     getModeCssClass,
     setCurrentMode,
     setCurrentPaused,
-    setMaxHeaterPower
+    setMaxHeaterPower,
+    setIsConnected
 } from '../globals.js';
 import { updateRuntimeStateFromStatus } from '../runtime/state.js';
 import { getEffectiveAbvForCalculations, renderAbvValue } from '../runtime/abv.js';
@@ -33,6 +34,7 @@ import { syncMonitorGaugeVisibility } from '../ui/monitor-gauges.js';
 import { updateMiniChart } from '../ui/mini-chart.js';
 import { updateKpiStrip } from '../ui/kpi-strip.js';
 import { getStatusPower, getStatusPressure, getStatusPump } from './status-values.js';
+import { updateConnectionStatus } from './websocket.js';
 
 function normalizeStatusTemps(data = {}) {
     const temps = data.temps && typeof data.temps === 'object' ? data.temps : {};
@@ -81,6 +83,8 @@ export async function loadStatus() {
             addLog(msg, 'error');
 
             // Сбросить состояние, чтобы кнопки не выглядели как "процесс запущен"
+            setIsConnected(false);
+            updateConnectionStatus(false);
             setCurrentMode(MODE_IDLE);
             setCurrentPaused(false);
             updateButtonStates();
@@ -90,6 +94,8 @@ export async function loadStatus() {
 
 
         const data = await response.json();
+        setIsConnected(true);
+        updateConnectionStatus(true);
 
 
 
@@ -133,6 +139,8 @@ export async function loadStatus() {
 
         console.error('Ошибка загрузки статуса:', e);
 
+        setIsConnected(false);
+        updateConnectionStatus(false);
     } finally {
         statusRequestInFlight = false;
     }

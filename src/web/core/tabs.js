@@ -64,6 +64,11 @@ export function initTabs() {
             closeTopMenu();
         });
     });
+
+    const activeTab = document.querySelector('.tab.active[data-tab]');
+    if (activeTab) {
+        updateToolbarTitle(activeTab.getAttribute('data-tab'));
+    }
 }
 
 export function activateTabById(targetId) {
