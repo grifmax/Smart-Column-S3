@@ -1466,7 +1466,27 @@
     }
 
     .equipment-testing-sidebar {
+        display: grid;
+        position: static;
+        gap: 8px;
+        padding: 8px;
+        margin-bottom: 10px;
+    }
+
+    .equipment-testing-sidebar-header {
+        padding: 8px 8px 6px;
+    }
+
+    .equipment-testing-sidebar-subtitle {
         display: none;
+    }
+
+    .equipment-testing-sidebar .sidebar-section-title {
+        padding-top: 10px;
+    }
+
+    .equipment-testing-sidebar .sidebar-item {
+        min-height: 40px;
     }
 
     .equipment-testing-main .equipment-testing-grid {
@@ -1486,18 +1506,7 @@
     }
 
     .equipment-test-mobile-toggle {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        width: 100%;
-        padding: 12px;
-        border: 0;
-        background: none;
-        color: inherit;
-        font: inherit;
-        text-align: left;
-        cursor: pointer;
-        scroll-margin-top: 76px;
+        display: none;
     }
 
     .equipment-test-mobile-icon {

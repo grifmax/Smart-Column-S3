@@ -24,6 +24,19 @@
 
 /* Mobile/tablet: hide sidebar, show hamburger */
 @media (max-width: 900px) {
+    .toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 60;
+    }
+
+    .toolbar-top {
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 12px;
+    }
+
     .toolbar-title:empty {
         display: none;
     }
@@ -32,8 +45,30 @@
         display: none;
     }
 
+    .toolbar-status-items {
+        flex: 1 1 100%;
+        min-width: 0;
+        overflow-x: auto;
+        padding-bottom: 2px;
+    }
+
+    .toolbar-group {
+        margin-left: auto;
+    }
+
     .toolbar-kpi-strip {
-        display: none;
+        display: flex;
+        gap: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+    }
+
+    .toolbar-kpi {
+        min-width: 132px;
+        flex: 0 0 132px;
+        padding: 8px 12px;
     }
 
     .content-body {

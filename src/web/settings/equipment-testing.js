@@ -1245,19 +1245,25 @@ function initEquipmentPaneWorkbench({
     function syncLayout() {
         const isMobile = mediaQuery.matches;
         pane.dataset.equipmentWorkbenchLayout = isMobile ? 'mobile' : 'desktop';
-        nav.hidden = isMobile;
+        nav.hidden = false;
 
         if (!isMobile && !state[stateKey]) {
+            state[stateKey] = resolvedCards[0]?.meta.id || null;
+        }
+        if (isMobile && !state[stateKey]) {
             state[stateKey] = resolvedCards[0]?.meta.id || null;
         }
 
         for (const card of resolvedCards) {
             const isActive = card.meta.id === state[stateKey];
             card.card.classList.toggle('is-active', isActive);
-            card.toggle.classList.toggle('is-active', isActive);
-            card.toggle.setAttribute('aria-expanded', String(isActive));
-            card.body.hidden = isMobile ? !isActive : false;
-            card.card.hidden = isMobile ? false : !isActive;
+            if (card.toggle) {
+                card.toggle.classList.toggle('is-active', isActive);
+                card.toggle.setAttribute('aria-expanded', String(isActive));
+                card.toggle.hidden = isMobile;
+            }
+            card.body.hidden = false;
+            card.card.hidden = !isActive;
 
             const navButton = buttonsById.get(card.meta.id);
             if (navButton) {
@@ -1455,19 +1461,25 @@ function initEquipmentTestingWorkbench() {
     function syncTestingLayout() {
         const isMobile = mediaQuery.matches;
         testingPane.dataset.testingLayout = isMobile ? 'mobile' : 'desktop';
-        nav.hidden = isMobile;
+        nav.hidden = false;
 
         if (!isMobile && !state.activeTestingCard) {
+            state.activeTestingCard = resolvedCards[0]?.meta.id || null;
+        }
+        if (isMobile && !state.activeTestingCard) {
             state.activeTestingCard = resolvedCards[0]?.meta.id || null;
         }
 
         for (const card of resolvedCards) {
             const isActive = card.meta.id === state.activeTestingCard;
             card.card.classList.toggle('is-active', isActive);
-            card.toggle.classList.toggle('is-active', isActive);
-            card.toggle.setAttribute('aria-expanded', String(isActive));
-            card.body.hidden = isMobile ? !isActive : false;
-            card.card.hidden = isMobile ? false : !isActive;
+            if (card.toggle) {
+                card.toggle.classList.toggle('is-active', isActive);
+                card.toggle.setAttribute('aria-expanded', String(isActive));
+                card.toggle.hidden = isMobile;
+            }
+            card.body.hidden = false;
+            card.card.hidden = !isActive;
 
             const navButton = buttonsById.get(card.meta.id);
             if (navButton) {
