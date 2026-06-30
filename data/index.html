@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.5">
+    <link rel="stylesheet" href="style.css?v=2.4.12">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -268,7 +268,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.5" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.12" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -2020,14 +2020,11 @@
                                 <div class="controls equipment-actions">
                                     <button class="btn btn-secondary" onclick="scanCalibrationSensors()">🔍 Сканировать
                                         датчики</button>
-                                    <button class="btn btn-secondary" onclick="scanCalibrationSensorsRaw()">🧪 Сырой 1-Wire scan</button>
-                                    <button class="btn btn-secondary" onclick="scanCalibrationSensorsRawSeries()">🧪 Сырой x5</button>
                                     <button class="btn" onclick="loadCalibrationData()">🔄 Обновить</button>
                                 </div>
                                 <ul class="equipment-sensor-list" id="sensorList">
                                     <li class="info-text">Загрузка...</li>
                                 </ul>
-                                <pre id="tempRawScanResult" class="info-text" style="margin-top: 10px; white-space: pre-wrap;">Временный сервисный вывод сырой линии 1-Wire.</pre>
                                 <div id="tempResult" class="info-text" style="margin-top: 10px;"></div>
                             </div>
 
@@ -3394,7 +3391,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.5"></script>
+    <script src="app.js?v=2.4.12"></script>
 </body>
 
 </html>

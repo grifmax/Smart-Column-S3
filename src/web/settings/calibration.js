@@ -18,9 +18,20 @@ let calibrationState = {
 
 let calibrationImportSnapshot = null;
 let pressureCalibrationLiveInterval = null;
+let pressureCalibrationLiveRequestInFlight = false;
+let pressureCalibrationLiveListenersBound = false;
 
 function byId(id) {
     return document.getElementById(id);
+}
+
+function isPressureCalibrationVisible() {
+    const equipmentTabActive = byId('equipment')?.classList.contains('active');
+    const calibrationPaneActive = document.querySelector('[data-equipment-section-pane="calibration"]')?.classList.contains('active');
+    return document.visibilityState !== 'hidden'
+        && equipmentTabActive
+        && calibrationPaneActive
+        && Boolean(byId('pressureCurrent'));
 }
 
 function setValue(id, value) {
@@ -750,10 +761,10 @@ export function addPressurePointFromCurrentV2() {
 }
 
 async function refreshPressureCalibrationLiveData() {
-    if (document.visibilityState === 'hidden') return;
-    if (!byId('equipment') || !byId('pressureCurrent')) return;
+    if (!isPressureCalibrationVisible() || pressureCalibrationLiveRequestInFlight) return;
 
     try {
+        pressureCalibrationLiveRequestInFlight = true;
         const response = await fetch(API_BASE);
         if (!response.ok) return;
         const data = await response.json().catch(() => null);
@@ -761,14 +772,36 @@ async function refreshPressureCalibrationLiveData() {
         populatePressureCalibrationV2(data.pressureSensor || {}, { syncTable: false });
     } catch {
         // Silent polling for live pressure diagnostics.
+    } finally {
+        pressureCalibrationLiveRequestInFlight = false;
     }
 }
 
-function ensurePressureCalibrationLivePolling() {
-    if (pressureCalibrationLiveInterval) return;
-    pressureCalibrationLiveInterval = window.setInterval(() => {
+function stopPressureCalibrationLivePolling() {
+    if (!pressureCalibrationLiveInterval) return;
+    clearInterval(pressureCalibrationLiveInterval);
+    pressureCalibrationLiveInterval = null;
+}
+
+export function syncPressureCalibrationLivePolling(forceImmediate = false) {
+    if (!isPressureCalibrationVisible()) {
+        stopPressureCalibrationLivePolling();
+        return;
+    }
+
+    if (!pressureCalibrationLiveInterval) {
+        pressureCalibrationLiveInterval = window.setInterval(() => {
+            if (!isPressureCalibrationVisible()) {
+                stopPressureCalibrationLivePolling();
+                return;
+            }
+            void refreshPressureCalibrationLiveData();
+        }, PRESSURE_LIVE_POLL_MS);
+    }
+
+    if (forceImmediate) {
         void refreshPressureCalibrationLiveData();
-    }, PRESSURE_LIVE_POLL_MS);
+    }
 }
 
 export async function applyPressureZeroTrimV2() {
@@ -1523,6 +1556,12 @@ export function initCalibrationTab() {
         rawScanOut.textContent = 'Временный сервисный вывод. Нажмите "Сырой 1-Wire scan", чтобы увидеть физически найденные адреса на линии.';
     }
     loadCalibrationData();
-    ensurePressureCalibrationLivePolling();
+    if (!pressureCalibrationLiveListenersBound) {
+        document.addEventListener('app-tab-changed', () => syncPressureCalibrationLivePolling(true));
+        document.addEventListener('equipment-section-changed', () => syncPressureCalibrationLivePolling(true));
+        document.addEventListener('visibilitychange', () => syncPressureCalibrationLivePolling());
+        pressureCalibrationLiveListenersBound = true;
+    }
+    syncPressureCalibrationLivePolling();
 }
 

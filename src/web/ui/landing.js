@@ -67,8 +67,13 @@ export let statusPollTimer = null;
 
 export function startStatusPolling(immediate = false) {
     if (statusPollTimer) return;
-    if (immediate) loadStatus();
-    statusPollTimer = setInterval(loadStatus, STATUS_POLL_INTERVAL_MS);
+    if (immediate && document.visibilityState !== 'hidden') loadStatus();
+    statusPollTimer = setInterval(() => {
+        if (document.visibilityState === 'hidden') {
+            return;
+        }
+        loadStatus();
+    }, STATUS_POLL_INTERVAL_MS);
 }
 
 export function stopStatusPolling() {

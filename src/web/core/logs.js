@@ -10,6 +10,8 @@ const SYSTEM_LOG_POLL_INTERVAL_MS = 2000;
 let lastSystemSeq = 0;
 let systemLogPollTimer = null;
 let systemLogHealthy = null;
+let systemLogRequestInFlight = false;
+let systemLogListenersBound = false;
 
 function getLogContainer() {
     return document.getElementById('log-container');
@@ -145,7 +147,9 @@ function handleSystemLogSyncError(error) {
 
 async function loadSystemLogs() {
     const logContainer = getLogContainer();
-    if (!logContainer) return;
+    if (!logContainer || systemLogRequestInFlight) return;
+    try {
+        systemLogRequestInFlight = true;
 
     const query = lastSystemSeq > 0
         ? `?since=${encodeURIComponent(lastSystemSeq)}`
@@ -178,6 +182,49 @@ async function loadSystemLogs() {
     }
 
     systemLogHealthy = true;
+    } finally {
+        systemLogRequestInFlight = false;
+    }
+}
+
+function isLogsTabVisible() {
+    return document.visibilityState !== 'hidden'
+        && document.getElementById('logs')?.classList.contains('active');
+}
+
+function stopSystemLogPolling() {
+    if (!systemLogPollTimer) {
+        return;
+    }
+    clearInterval(systemLogPollTimer);
+    systemLogPollTimer = null;
+}
+
+function syncSystemLogPolling(forceImmediate = false) {
+    const logContainer = getLogContainer();
+    if (!logContainer) {
+        stopSystemLogPolling();
+        return;
+    }
+
+    if (!isLogsTabVisible()) {
+        stopSystemLogPolling();
+        return;
+    }
+
+    if (!systemLogPollTimer) {
+        systemLogPollTimer = window.setInterval(() => {
+            if (!isLogsTabVisible()) {
+                stopSystemLogPolling();
+                return;
+            }
+            loadSystemLogs().catch(handleSystemLogSyncError);
+        }, SYSTEM_LOG_POLL_INTERVAL_MS);
+    }
+
+    if (forceImmediate) {
+        loadSystemLogs().catch(handleSystemLogSyncError);
+    }
 }
 
 export function initLogsPage() {
@@ -188,19 +235,18 @@ export function initLogsPage() {
 
     flushBufferedUiLogs();
 
-    if (systemLogPollTimer) {
-        return;
-    }
-
     if (logContainer.dataset.systemLogsInit === '1') {
+        syncSystemLogPolling();
         return;
     }
 
     logContainer.dataset.systemLogsInit = '1';
-    loadSystemLogs().catch(handleSystemLogSyncError);
-    systemLogPollTimer = window.setInterval(() => {
-        loadSystemLogs().catch(handleSystemLogSyncError);
-    }, SYSTEM_LOG_POLL_INTERVAL_MS);
+    if (!systemLogListenersBound) {
+        document.addEventListener('app-tab-changed', () => syncSystemLogPolling(true));
+        document.addEventListener('visibilitychange', () => syncSystemLogPolling());
+        systemLogListenersBound = true;
+    }
+    syncSystemLogPolling();
 }
 
 export function addLog(message, type = 'info') {

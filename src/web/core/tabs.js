@@ -1,4 +1,4 @@
-import { closeTopMenu } from './top-menu.js';
+import { closeTopMenu, syncTopMenuActiveState } from './top-menu.js';
 
 // ============================================================================
 // Tabs - syncs sidebar + dropdown active states
@@ -51,7 +51,11 @@ export function initTabs() {
                 targetEl.classList.add('active');
             }
 
+            syncTopMenuActiveState(targetId);
             updateToolbarTitle(targetId);
+            document.dispatchEvent(new CustomEvent('app-tab-changed', {
+                detail: { tabId: targetId }
+            }));
 
             if (targetId === 'history' && typeof loadHistoryList === 'function') {
                 loadHistoryList();

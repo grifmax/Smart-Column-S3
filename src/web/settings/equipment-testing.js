@@ -281,6 +281,8 @@ const state = {
     activeCalibrationCard: 'pump-calibration',
     activeTestingCard: 'pump',
     pollingHandle: null,
+    pollingRequestInFlight: false,
+    pollingListenersBound: false,
     lastStatus: null,
     pendingStirrerSpeed: null,
     heaterPendingPowerW: 0,
@@ -1720,6 +1722,11 @@ export function setEquipmentSection(sectionId) {
     } else if (sectionId === 'testing') {
         void refreshEquipmentTestingStatus();
     }
+
+    document.dispatchEvent(new CustomEvent('equipment-section-changed', {
+        detail: { sectionId }
+    }));
+    syncEquipmentTestingPolling(sectionId === 'testing');
 }
 
 function readSavedSettingsSection() {
@@ -3336,7 +3343,11 @@ async function requestJson(url, options = {}) {
 }
 
 export async function refreshEquipmentTestingStatus(silent = false) {
+    if (state.pollingRequestInFlight) {
+        return;
+    }
     try {
+        state.pollingRequestInFlight = true;
         const status = await requestJson(TESTING_STATUS_URL);
         renderTestingStatus(status);
     } catch (error) {
@@ -3345,15 +3356,36 @@ export async function refreshEquipmentTestingStatus(silent = false) {
         }
         updateBadge(byId('equipment-test-allow-badge'), 'Ошибка', 'danger');
         setText('equipment-test-availability-hint', `Не удалось загрузить статус тестирования: ${error.message}`);
+    } finally {
+        state.pollingRequestInFlight = false;
     }
 }
 
-function ensurePolling() {
-    if (state.pollingHandle) return;
-    state.pollingHandle = window.setInterval(() => {
-        if (!isEquipmentTestingVisible()) return;
+function stopPolling() {
+    if (!state.pollingHandle) return;
+    clearInterval(state.pollingHandle);
+    state.pollingHandle = null;
+}
+
+function syncEquipmentTestingPolling(forceImmediate = false) {
+    if (!isEquipmentTestingVisible() || document.visibilityState === 'hidden') {
+        stopPolling();
+        return;
+    }
+
+    if (!state.pollingHandle) {
+        state.pollingHandle = window.setInterval(() => {
+            if (!isEquipmentTestingVisible() || document.visibilityState === 'hidden') {
+                stopPolling();
+                return;
+            }
+            void refreshEquipmentTestingStatus(true);
+        }, TESTING_POLL_MS);
+    }
+
+    if (forceImmediate) {
         void refreshEquipmentTestingStatus(true);
-    }, TESTING_POLL_MS);
+    }
 }
 
 function openHeaterConfirmModal(powerW) {
@@ -3774,7 +3806,12 @@ export function initEquipmentTestingUi() {
     initEquipmentNumberSteppers(root);
     bindSectionNav();
     bindTestingActions();
-    ensurePolling();
+    if (!state.pollingListenersBound) {
+        document.addEventListener('app-tab-changed', () => syncEquipmentTestingPolling(true));
+        document.addEventListener('visibilitychange', () => syncEquipmentTestingPolling());
+        document.addEventListener('equipment-section-changed', () => syncEquipmentTestingPolling(true));
+        state.pollingListenersBound = true;
+    }
     setEquipmentSection(readSavedSection());
     state.activeParameterCard = readSavedWorkbenchCard(
         PARAMETERS_CARD_STORAGE_KEY,
@@ -3787,6 +3824,7 @@ export function initEquipmentTestingUi() {
         CALIBRATION_CARD_DEFS[0]?.id || 'pump-calibration',
     );
     state.activeTestingCard = readSavedTestingCard();
+    syncEquipmentTestingPolling();
 }
 
 export function initSettingsWorkbenchUi() {

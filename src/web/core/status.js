@@ -30,6 +30,31 @@ import { addLog } from './logs.js';
 import { updateProcessNotifications } from '../runtime/process-notifications.js';
 import { syncStirrerUi } from '../settings/equipment.js';
 import { syncMonitorGaugeVisibility } from '../ui/monitor-gauges.js';
+import { updateMiniChart } from '../ui/mini-chart.js';
+import { updateKpiStrip } from '../ui/kpi-strip.js';
+import { getStatusPower, getStatusPressure, getStatusPump } from './status-values.js';
+
+function normalizeStatusTemps(data = {}) {
+    const temps = data.temps && typeof data.temps === 'object' ? data.temps : {};
+    const pick = (key, legacyKey) => {
+        const value = temps[key] ?? data[legacyKey];
+        if (value === undefined || value === null) return undefined;
+        const num = Number(value);
+        return Number.isFinite(num) ? num : undefined;
+    };
+
+    return {
+        cube: pick('cube', 't_cube'),
+        columnBottom: pick('columnBottom', 't_column_bottom'),
+        columnTop: pick('columnTop', 't_column_top'),
+        reflux: pick('reflux', 't_reflux'),
+        tsa: pick('tsa', 't_tsa'),
+        waterIn: pick('waterIn', 't_water_in'),
+        waterOut: pick('waterOut', 't_water_out')
+    };
+}
+
+let statusRequestInFlight = false;
 
 // ============================================================================
 
@@ -40,8 +65,12 @@ import { syncMonitorGaugeVisibility } from '../ui/monitor-gauges.js';
 
 
 export async function loadStatus() {
+    if (statusRequestInFlight) {
+        return;
+    }
 
     try {
+        statusRequestInFlight = true;
 
         const response = await fetch('/api/status');
 
@@ -104,8 +133,9 @@ export async function loadStatus() {
 
         console.error('Ошибка загрузки статуса:', e);
 
+    } finally {
+        statusRequestInFlight = false;
     }
-
 }
 
 
@@ -158,47 +188,45 @@ export function updateUIFromStatus(data) {
 
     // Температуры
 
-    if (data.temps) {
+    const temps = normalizeStatusTemps(data);
 
-        if (data.temps.cube !== undefined) {
+    if (temps.cube !== undefined) {
 
-            const el = document.getElementById('temp-cube');
+        const el = document.getElementById('temp-cube');
 
-            if (el) el.textContent = data.temps.cube.toFixed(1) + '°C';
+        if (el) el.textContent = temps.cube.toFixed(1) + '°C';
 
-        }
+    }
 
-        if (data.temps.columnBottom !== undefined) {
+    if (temps.columnBottom !== undefined) {
 
-            const el = document.getElementById('temp-column-bottom');
+        const el = document.getElementById('temp-column-bottom');
 
-            if (el) el.textContent = data.temps.columnBottom.toFixed(1) + '°C';
+        if (el) el.textContent = temps.columnBottom.toFixed(1) + '°C';
 
-        }
+    }
 
-        if (data.temps.columnTop !== undefined) {
+    if (temps.columnTop !== undefined) {
 
-            const el = document.getElementById('temp-column-top');
+        const el = document.getElementById('temp-column-top');
 
-            if (el) el.textContent = data.temps.columnTop.toFixed(1) + '°C';
+        if (el) el.textContent = temps.columnTop.toFixed(1) + '°C';
 
-        }
+    }
 
-        if (data.temps.reflux !== undefined) {
+    if (temps.reflux !== undefined) {
 
-            const el = document.getElementById('temp-reflux');
+        const el = document.getElementById('temp-reflux');
 
-            if (el) el.textContent = data.temps.reflux.toFixed(1) + '°C';
+        if (el) el.textContent = temps.reflux.toFixed(1) + '°C';
 
-        }
+    }
 
-        if (data.temps.tsa !== undefined) {
+    if (temps.tsa !== undefined) {
 
-            const el = document.getElementById('temp-tsa');
+        const el = document.getElementById('temp-tsa');
 
-            if (el) el.textContent = data.temps.tsa.toFixed(1) + '°C';
-
-        }
+        if (el) el.textContent = temps.tsa.toFixed(1) + '°C';
 
     }
 
@@ -426,15 +454,17 @@ export function updateUIFromStatus(data) {
         alarm: data.alarm,
         currentAlarm: data.currentAlarm,
         v2: data.v2,
-        tCube: data.temps?.cube,
-        power: data.power?.power,
-        pressureCube: data.pressure?.cube,
-        pumpSpeed: data.pump?.speedMlH,
+        tCube: temps.cube,
+        power: getStatusPower(data, 'power', 'power'),
+        pressureCube: getStatusPressure(data, 'cube', 'p_cube'),
+        pumpSpeed: getStatusPump(data, 'speedMlH', 'pump_speed'),
         abv: getEffectiveAbvForCalculations().value,
-        waterIn: data.temps?.waterIn,
-        waterOut: data.temps?.waterOut,
-        voltage: data.power?.voltage
+        waterIn: temps.waterIn,
+        waterOut: temps.waterOut,
+        voltage: getStatusPower(data, 'voltage', 'voltage')
     });
+    updateMiniChart(data);
+    updateKpiStrip(data);
     syncStirrerUi({ syncSpeedInput: true });
 
     // Обновить интерактивную схему (SVG) — также в polling-режиме

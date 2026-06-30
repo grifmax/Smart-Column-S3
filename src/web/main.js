@@ -69,8 +69,6 @@ import {
     initCalibrationTab,
     loadCalibrationData,
     scanCalibrationSensors,
-    scanCalibrationSensorsRaw,
-    scanCalibrationSensorsRawSeries,
     assignTempSensorAddress,
     calibrateTempOffset,
     calibrateTempReference,
@@ -125,7 +123,7 @@ import { loadDemoMode } from './settings/demo.js';
 import { initMiniChart } from './ui/mini-chart.js';
 import { loadMemoryStatsPreference } from './core/memory.js';
 import { initServiceWorker } from './pwa/service-worker-init.js';
-import { detectCloudProxyMode, setCloudOnlyUiVisible } from './core/cloud-detect.js';
+import { detectCloudProxyMode, setCloudOnlyUiVisible, setIsCloudProxyMode } from './core/cloud-detect.js';
 import { connectWebSocket } from './core/websocket.js';
 import { startStatusPolling } from './ui/landing.js';
 import { loadUserInfo } from './cloud/user.js';
@@ -265,8 +263,6 @@ window.toggleWiFiStaticFields = toggleWiFiStaticFields;
 window.cancelWiFiSelection = cancelWiFiSelection;
 window.loadCalibrationData = loadCalibrationData;
 window.scanCalibrationSensors = scanCalibrationSensors;
-window.scanCalibrationSensorsRaw = scanCalibrationSensorsRaw;
-window.scanCalibrationSensorsRawSeries = scanCalibrationSensorsRawSeries;
 window.assignTempSensorAddress = assignTempSensorAddress;
 window.calibrateTempOffset = calibrateTempOffset;
 window.calibrateTempReference = calibrateTempReference;
@@ -378,6 +374,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Определяем режим: локально на ESP32 или через cloud-proxy кабинет
     const cloudMode = await detectCloudProxyMode();
+    setIsCloudProxyMode(cloudMode);
     setCloudOnlyUiVisible(cloudMode);
 
     if (cloudMode) {
@@ -389,5 +386,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Запускаем fallback polling сразу, после подключения WS он будет остановлен
     startStatusPolling(true);
-    connectWebSocket();
+    if (!cloudMode) {
+        connectWebSocket();
+    }
 });
