@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.14">
+    <link rel="stylesheet" href="style.css?v=2.4.15">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.14" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.15" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -532,7 +532,7 @@
                                                 </div>
                                             </article>
 
-                                            <article class="operator-card operator-card-metrics">
+                                            <article id="dashboard-volumes-card" class="operator-card operator-card-metrics">
                                                 <div class="operator-section-card-head">
                                                     <div>
                                                         <h3 class="operator-card-title">Отбор и объёмы</h3>
@@ -540,24 +540,24 @@
                                                     </div>
                                                 </div>
                                                 <div class="operator-list operator-metrics-list">
-                                                    <div class="operator-list-row operator-metric-row"><span>Общий объём</span><strong
+                                                    <div id="pump-volume-row" class="operator-list-row operator-metric-row"><span>Общий объём</span><strong
                                                             id="pump-volume">--
                                                             мл</strong></div>
-                                                    <div class="operator-list-row operator-metric-row"><span>Головы</span><strong
+                                                    <div id="volume-heads-row" class="operator-list-row operator-metric-row"><span>Головы</span><strong
                                                             id="volume-heads">--
                                                             мл</strong>
                                                     </div>
-                                                    <div class="operator-list-row operator-metric-row"><span>Тело</span><strong id="volume-body">--
+                                                    <div id="volume-body-row" class="operator-list-row operator-metric-row"><span>Тело</span><strong id="volume-body">--
                                                             мл</strong>
                                                     </div>
-                                                    <div class="operator-list-row operator-metric-row"><span>Хвосты</span><strong
+                                                    <div id="volume-tails-row" class="operator-list-row operator-metric-row"><span>Хвосты</span><strong
                                                             id="volume-tails">--
                                                             мл</strong>
                                                     </div>
-                                                    <div class="operator-list-row operator-metric-row"><span>Атмосферное</span><strong
+                                                    <div id="pressure-atm-row" class="operator-list-row operator-metric-row"><span>Атмосферное</span><strong
                                                             id="pressure-atm">--
                                                             гПа</strong></div>
-                                                    <div class="operator-list-row operator-metric-row"><span>Запас до лимита</span><strong
+                                                    <div id="pressure-flood-row" class="operator-list-row operator-metric-row"><span>Запас до лимита</span><strong
                                                             id="pressure-flood">--
                                                             мм</strong></div>
                                                 </div>
@@ -594,7 +594,7 @@
                                                 <div class="info-text operator-stirrer-hint" id="monitor-stirrer-hint">Загрузка статуса мешалки…</div>
                                             </article>
 
-                                            <article class="operator-card operator-card-chart operator-card-metrics">
+                                            <article id="dashboard-mini-chart-card" class="operator-card operator-card-chart operator-card-metrics">
                                                 <div class="operator-section-card-head">
                                                     <div>
                                                         <h3 class="operator-card-title">Температуры (5 мин)</h3>
@@ -3414,7 +3414,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.14"></script>
+    <script src="app.js?v=2.4.15"></script>
 </body>
 
 </html>

@@ -1,11 +1,10 @@
-﻿import { miniChart, setMiniChart, miniChartData, MINI_CHART_MAX_POINTS } from '../globals.js';
+import { miniChart, setMiniChart, miniChartData, MINI_CHART_MAX_POINTS } from '../globals.js';
 import { addLog } from '../core/logs.js';
 import { runtimeMonitorState } from '../globals.js';
+import { getHistoryPointNumber, getStatusTemperature, isStatusTempInvalid } from '../core/status-values.js';
 
 // ============================================================================
-
 // Mini Chart
-
 // ============================================================================
 
 function isTempChannelVisible(key) {
@@ -25,22 +24,40 @@ function normalizeProcessTemperature(value) {
     return numeric;
 }
 
+function hasSeriesData(series) {
+    return Array.isArray(series) && series.some((value) => value !== null);
+}
+
 function rebuildMiniChartSeries() {
     if (!miniChart) return;
-    miniChart.updateSeries([
+
+    const chartSeries = [
         {
+            key: 'cube',
             name: 'Куб',
-            data: miniChartData.timestamps.map((t, i) => ({ x: t, y: miniChartData.cube[i] }))
+            source: miniChartData.cube
         },
         {
+            key: 'columnTop',
             name: 'Царга верх',
-            data: miniChartData.timestamps.map((t, i) => ({ x: t, y: miniChartData.columnTop[i] }))
+            source: miniChartData.columnTop
         },
         {
+            key: 'reflux',
             name: 'Дефлегматор',
-            data: miniChartData.timestamps.map((t, i) => ({ x: t, y: miniChartData.reflux[i] }))
+            source: miniChartData.reflux
         }
-    ]);
+    ]
+        .filter((series) => {
+            if (series.key === 'cube') return hasSeriesData(series.source);
+            return isTempChannelVisible(series.key) || hasSeriesData(series.source);
+        })
+        .map((series) => ({
+            name: series.name,
+            data: miniChartData.timestamps.map((t, i) => ({ x: t, y: series.source[i] }))
+        }));
+
+    miniChart.updateSeries(chartSeries.length ? chartSeries : [{ name: 'Куб', data: [] }], true);
 }
 
 async function loadMiniChartHistory() {
@@ -74,15 +91,15 @@ async function loadMiniChartHistory() {
                 ? (Date.now() - Math.max(0, deviceNowMs - sampleMs))
                 : Date.now();
             timestamps.push(clientTs);
-            cube.push(normalizeProcessTemperature(point.t_cube));
+            cube.push(normalizeProcessTemperature(getHistoryPointNumber(point, 'cube', 't_cube')));
             columnTop.push(
                 isVisibleFromMeta('columnTop')
-                    ? normalizeProcessTemperature(point.t_column_top)
+                    ? normalizeProcessTemperature(getHistoryPointNumber(point, 'columnTop', 't_column_top'))
                     : null
             );
             reflux.push(
                 isVisibleFromMeta('reflux')
-                    ? normalizeProcessTemperature(point.t_reflux)
+                    ? normalizeProcessTemperature(getHistoryPointNumber(point, 'reflux', 't_reflux'))
                     : null
             );
         });
@@ -93,28 +110,24 @@ async function loadMiniChartHistory() {
         miniChartData.reflux.splice(0, miniChartData.reflux.length, ...reflux.slice(-MINI_CHART_MAX_POINTS));
         rebuildMiniChartSeries();
     } catch (error) {
-        addLog(`⚠ Не удалось загрузить историю мини-графика: ${error.message}`, 'warning');
+        addLog(`Не удалось загрузить историю мини-графика: ${error.message}`, 'warning');
     }
 }
 
-
-
 export function initMiniChart() {
-
-    const miniChartContainer = document.querySelector("#mini-chart");
+    const miniChartContainer = document.querySelector('#mini-chart');
     if (!miniChartContainer) return;
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
 
     // Graceful fallback for offline/AP mode when CDN script is not available.
     if (typeof window.ApexCharts === 'undefined') {
         miniChartContainer.innerHTML = '<div class="info-display">Мини-график временно недоступен</div>';
-        addLog('⚠ Мини-график недоступен: библиотека графика не загружена', 'warning');
+        addLog('Мини-график недоступен: библиотека графика не загружена', 'warning');
         setMiniChart(null);
         return;
     }
 
     const options = {
-
         chart: {
             type: 'line',
             height: isMobile ? 280 : 220,
@@ -143,83 +156,44 @@ export function initMiniChart() {
             },
             background: 'transparent'
         },
-
         theme: {
-
             mode: document.body.getAttribute('data-theme') || 'light'
-
         },
-
         series: [
-
             {
-
                 name: 'Куб',
-
                 data: []
-
             },
-
             {
-
                 name: 'Царга верх',
-
                 data: []
-
             },
-
             {
-
                 name: 'Дефлегматор',
-
                 data: []
-
             }
-
         ],
-
         xaxis: {
-
             type: 'datetime',
-
             labels: {
-
                 datetimeFormatter: {
-
                     minute: 'HH:mm'
-
                 }
-
             }
-
         },
-
         yaxis: {
-
             title: {
-
                 text: '°C'
-
             },
-
             decimalsInFloat: 1
-
         },
-
         stroke: {
-
             curve: 'smooth',
-
             width: 2
-
         },
-
         colors: ['#dc3545', '#007bff', '#17a2b8'],
-
         legend: {
-
             show: true,
-
             position: isMobile ? 'bottom' : 'top',
             horizontalAlign: isMobile ? 'left' : 'center',
             fontSize: isMobile ? '11px' : '12px',
@@ -227,19 +201,12 @@ export function initMiniChart() {
                 horizontal: isMobile ? 10 : 12,
                 vertical: isMobile ? 6 : 4
             }
-
         },
-
         tooltip: {
-
             x: {
-
                 format: 'HH:mm:ss'
-
             }
-
         },
-
         responsive: [
             {
                 breakpoint: 768,
@@ -259,72 +226,46 @@ export function initMiniChart() {
                 }
             }
         ]
-
     };
-
-
 
     setMiniChart(new ApexCharts(miniChartContainer, options));
     miniChart.render();
     void loadMiniChartHistory();
-
 }
 
-
-
 export function updateMiniChart(data) {
-
     if (!miniChart) return;
 
-
-
     const now = new Date().getTime();
+    const cubeTemp = getStatusTemperature(data, 'cube', 't_cube');
+    const columnTopTemp = getStatusTemperature(data, 'columnTop', 't_column_top');
+    const refluxTemp = getStatusTemperature(data, 'reflux', 't_reflux');
 
-
-
-    // Добавить новые данные
-
-    if (data.t_cube !== undefined) {
-
-        miniChartData.timestamps.push(now);
-
-        miniChartData.cube.push(
-            data.tempValid?.cube === false ? null : normalizeProcessTemperature(data.t_cube)
-        );
-
-        miniChartData.columnTop.push(
-            isTempChannelVisible('columnTop') && data.tempValid?.columnTop !== false
-                ? normalizeProcessTemperature(data.t_column_top)
-                : null
-        );
-
-        miniChartData.reflux.push(
-            isTempChannelVisible('reflux') && data.tempValid?.reflux !== false
-                ? normalizeProcessTemperature(data.t_reflux)
-                : null
-        );
-
-
-
-        // Ограничить количество точек
-
-        if (miniChartData.timestamps.length > MINI_CHART_MAX_POINTS) {
-
-            miniChartData.timestamps.shift();
-
-            miniChartData.cube.shift();
-
-            miniChartData.columnTop.shift();
-
-            miniChartData.reflux.shift();
-
-        }
-
-
-
-        // Обновить график
-        rebuildMiniChartSeries();
-
+    if (cubeTemp === undefined && columnTopTemp === undefined && refluxTemp === undefined) {
+        return;
     }
 
+    miniChartData.timestamps.push(now);
+    miniChartData.cube.push(
+        isStatusTempInvalid(data, 'cube') ? null : normalizeProcessTemperature(cubeTemp)
+    );
+    miniChartData.columnTop.push(
+        isTempChannelVisible('columnTop') && !isStatusTempInvalid(data, 'columnTop')
+            ? normalizeProcessTemperature(columnTopTemp)
+            : null
+    );
+    miniChartData.reflux.push(
+        isTempChannelVisible('reflux') && !isStatusTempInvalid(data, 'reflux')
+            ? normalizeProcessTemperature(refluxTemp)
+            : null
+    );
+
+    if (miniChartData.timestamps.length > MINI_CHART_MAX_POINTS) {
+        miniChartData.timestamps.shift();
+        miniChartData.cube.shift();
+        miniChartData.columnTop.shift();
+        miniChartData.reflux.shift();
+    }
+
+    rebuildMiniChartSeries();
 }
