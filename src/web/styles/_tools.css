@@ -292,91 +292,39 @@
     }
 
     .tools-sidebar-nav {
+        display: grid;
+        position: static;
+        gap: 8px;
+        padding: 8px;
+        margin-bottom: 10px;
+    }
+
+    .tools-sidebar-header {
+        padding: 8px 8px 6px;
+    }
+
+    .tools-sidebar-subtitle {
         display: none;
+    }
+
+    .tools-sidebar-nav .sidebar-section-title {
+        padding-top: 10px;
     }
 
     .tools-shell .tools-cards {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
+        display: block;
     }
 
     .tools-card {
-        padding: 0;
-        overflow: hidden;
+        padding: 14px;
     }
 
     .tools-card-mobile-toggle {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        width: 100%;
-        padding: 12px;
-        border: 0;
-        background: none;
-        color: inherit;
-        font: inherit;
-        text-align: left;
-        cursor: pointer;
-        scroll-margin-top: 76px;
-    }
-
-    .tools-card-mobile-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 38px;
-        height: 38px;
-        border-radius: 10px;
-        background: var(--bg-inset);
-        font-size: 1.05rem;
-        flex-shrink: 0;
-    }
-
-    .tools-card-mobile-copy {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 0;
-        flex: 1 1 auto;
-    }
-
-    .tools-card-mobile-title {
-        color: var(--text-primary);
-        font-size: 0.95rem;
-        font-weight: 700;
-        line-height: 1.2;
-    }
-
-    .tools-card-mobile-description {
-        color: var(--text-secondary);
-        font-size: 0.79rem;
-        line-height: 1.35;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-        overflow: hidden;
-    }
-
-    .tools-card-mobile-chevron {
-        color: var(--text-tertiary);
-        font-size: 1rem;
-        transition: transform 0.18s ease;
-        flex-shrink: 0;
-    }
-
-    .tools-card-mobile-toggle.is-active .tools-card-mobile-chevron {
-        transform: rotate(180deg);
+        display: none;
     }
 
     .tools-card-body {
-        padding: 0 12px 12px;
-    }
-
-    .tools-card-body > .tools-card-group-badge,
-    .tools-card-body > .tools-card-title,
-    .tools-card-body > .tools-card-text {
-        display: none;
+        padding: 0;
     }
 
     .tools-inline-grid {

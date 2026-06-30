@@ -304,17 +304,23 @@ export function initToolsWorkbench() {
         if (!isMobile && !activeToolId) {
             activeToolId = lastSelectedToolId || tools[0].meta.id;
         }
+        if (isMobile && !activeToolId) {
+            activeToolId = lastSelectedToolId || tools[0].meta.id;
+        }
 
         toolsRoot.dataset.toolsLayout = isMobile ? 'mobile' : 'desktop';
-        nav.hidden = isMobile;
+        nav.hidden = false;
 
         for (const tool of tools) {
             const isActive = tool.meta.id === activeToolId;
             tool.card.classList.toggle('is-active', isActive);
-            tool.toggle.classList.toggle('is-active', isActive);
-            tool.toggle.setAttribute('aria-expanded', String(isActive));
-            tool.body.hidden = isMobile ? !isActive : false;
-            tool.card.hidden = isMobile ? false : !isActive;
+            if (tool.toggle) {
+                tool.toggle.classList.toggle('is-active', isActive);
+                tool.toggle.setAttribute('aria-expanded', String(isActive));
+                tool.toggle.hidden = isMobile;
+            }
+            tool.body.hidden = false;
+            tool.card.hidden = !isActive;
 
             const navButton = buttonsById.get(tool.meta.id);
             if (navButton) {
