@@ -7180,7 +7180,9 @@ void init() {
     request->send(200, "text/html", html);
   });
 
-  // POST /update - загрузка и установка прошивки
+  static bool webUpdateIsFilesystem = false;
+
+  // POST /update - загрузка и установка прошивки или LittleFS-образа
   server.on(
       "/update", HTTP_POST,
       // Обработчик завершения загрузки
@@ -7192,21 +7194,33 @@ void init() {
         request->send(response);
 
         if (shouldReboot) {
-          LOG_I("OTA: Update successful, rebooting...");
+          LOG_I("OTA: %s update successful, rebooting...",
+                webUpdateIsFilesystem ? "filesystem" : "firmware");
+          webUpdateIsFilesystem = false;
           delay(1000);
           ESP.restart();
         } else {
           LOG_E("OTA: Update failed!");
+          webUpdateIsFilesystem = false;
         }
       },
       // Обработчик загрузки данных
       [](AsyncWebServerRequest *request, String filename, size_t index,
          uint8_t *data, size_t len, bool final) {
         if (!index) {
-          LOG_I("OTA: Update start: %s", filename.c_str());
+          String lowerFilename = filename;
+          lowerFilename.toLowerCase();
+          webUpdateIsFilesystem =
+              lowerFilename.indexOf("littlefs") >= 0 ||
+              lowerFilename.indexOf("spiffs") >= 0 ||
+              lowerFilename.endsWith(".fs.bin");
+
+          LOG_I("OTA: Update start: %s (%s)", filename.c_str(),
+                webUpdateIsFilesystem ? "filesystem" : "firmware");
 
           // Начало обновления
-          if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+          int command = webUpdateIsFilesystem ? U_SPIFFS : U_FLASH;
+          if (!Update.begin(UPDATE_SIZE_UNKNOWN, command)) {
             Update.printError(Serial);
           }
         }
@@ -7218,7 +7232,9 @@ void init() {
 
         if (final) {
           if (Update.end(true)) {
-            LOG_I("OTA: Update success: %u bytes", index + len);
+            LOG_I("OTA: %s update success: %u bytes",
+                  webUpdateIsFilesystem ? "filesystem" : "firmware",
+                  index + len);
           } else {
             Update.printError(Serial);
           }

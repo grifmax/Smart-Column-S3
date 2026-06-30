@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.12">
+    <link rel="stylesheet" href="style.css?v=2.4.14">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -211,36 +211,8 @@
                     <!-- Вкладка: Главная -->
                     <div id="monitor" class="tab-content active">
                         <section class="operator-screen operator-screen-instrument">
-                            <div id="operator-mission-control" class="operator-mission-control is-muted">
-                                <div class="operator-mission-head">
-                                    <span class="operator-mission-kicker">Mission Control</span>
-                                    <strong id="operator-mission-title">Ожидание сценария</strong>
-                                </div>
-                                <p id="operator-mission-text" class="operator-mission-text">
-                                    После выбора режима здесь появится цель процесса, ближайший риск и одно рекомендуемое действие.
-                                </p>
-                                <div class="operator-mission-grid">
-                                    <div id="operator-mission-goal-card" class="operator-mission-item">
-                                        <span>Цель</span>
-                                        <strong id="operator-mission-goal">--</strong>
-                                    </div>
-                                    <div id="operator-mission-risk-card" class="operator-mission-item">
-                                        <span>Ближайший риск</span>
-                                        <strong id="operator-mission-risk">--</strong>
-                                    </div>
-                                    <div id="operator-mission-action-card" class="operator-mission-item">
-                                        <span>Рекомендуемое действие</span>
-                                        <strong id="operator-mission-action">--</strong>
-                                    </div>
-                                </div>
-                                <div class="operator-mission-actions">
-                                    <button id="operator-mission-goal-btn" class="btn btn-secondary btn-sm" type="button">К цели</button>
-                                    <button id="operator-mission-risk-btn" class="btn btn-secondary btn-sm" type="button">Проверить риск</button>
-                                    <button id="operator-mission-action-btn" class="btn btn-primary btn-sm" type="button">К действию</button>
-                                </div>
-                            </div>
-                            <div class="cols-layout">
-                                <div class="col-stack">
+                            <div class="cols-layout operator-monitor-layout">
+                                <div class="col-stack col-stack-scheme">
                                     <article class="operator-card operator-card-scheme">
                                         <h3 class="operator-card-title">Схема процесса</h3>
                                         <div class="operator-scheme-controls" role="group"
@@ -268,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.12" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.14" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -286,7 +258,35 @@
                                         </div>
                                     </article>
                                 </div>
-                                <div class="col-stack">
+                                <div class="col-stack col-stack-monitor-main">
+                                    <div id="operator-mission-control" class="operator-mission-control is-muted">
+                                        <div class="operator-mission-head">
+                                            <span class="operator-mission-kicker">Пульт оператора</span>
+                                            <strong id="operator-mission-title">Ожидание сценария</strong>
+                                        </div>
+                                        <p id="operator-mission-text" class="operator-mission-text">
+                                            После выбора режима здесь появится цель процесса, ближайший риск и одно рекомендуемое действие.
+                                        </p>
+                                        <div class="operator-mission-grid">
+                                            <div id="operator-mission-goal-card" class="operator-mission-item">
+                                                <span>Цель</span>
+                                                <strong id="operator-mission-goal">--</strong>
+                                            </div>
+                                            <div id="operator-mission-risk-card" class="operator-mission-item">
+                                                <span>Ближайший риск</span>
+                                                <strong id="operator-mission-risk">--</strong>
+                                            </div>
+                                            <div id="operator-mission-action-card" class="operator-mission-item">
+                                                <span>Что делать сейчас</span>
+                                                <strong id="operator-mission-action">--</strong>
+                                            </div>
+                                        </div>
+                                        <div class="operator-mission-actions">
+                                            <button id="operator-mission-goal-btn" class="btn btn-secondary btn-sm" type="button">К цели</button>
+                                            <button id="operator-mission-risk-btn" class="btn btn-secondary btn-sm" type="button">Проверить риск</button>
+                                            <button id="operator-mission-action-btn" class="btn btn-primary btn-sm" type="button">К действию</button>
+                                        </div>
+                                    </div>
                                     <details class="operator-card operator-card-runtime operator-card-collapsible" id="mode-runtime-card" open>
                                         <summary class="operator-card-toggle">
                                             <h3 class="operator-card-title" id="mode-runtime-title">Прогресс режима</h3>
@@ -349,7 +349,7 @@
                                             <div class="operator-card-body">
                                                 <div id="operator-guidance" class="operator-guidance is-muted">
                                                     <div class="operator-guidance-head">
-                                                        <span class="operator-guidance-kicker">Operator Guidance</span>
+                                                        <span class="operator-guidance-kicker">Подсказка оператора</span>
                                                         <strong id="operator-guidance-title">Ожидание статуса</strong>
                                                     </div>
                                                     <p id="operator-guidance-text" class="operator-guidance-text">
@@ -358,7 +358,7 @@
                                                 </div>
                                                 <div class="operator-status-grid operator-status-grid-compact">
                                                     <div class="operator-stat">
-                                                        <span class="operator-stat-label">Lifecycle</span>
+                                                        <span class="operator-stat-label">Контур</span>
                                                         <strong id="indicator-lifecycle" class="operator-stat-value operator-indicator-value">idle</strong>
                                                     </div>
                                                     <div class="operator-stat">
@@ -370,7 +370,7 @@
                                                         <strong id="indicator-cooling-status" class="operator-stat-value operator-indicator-value">--</strong>
                                                     </div>
                                                     <div class="operator-stat">
-                                                        <span class="operator-stat-label">Recovery</span>
+                                                        <span class="operator-stat-label">Восстановление</span>
                                                         <strong id="indicator-recovery" class="operator-stat-value operator-indicator-value">--</strong>
                                                     </div>
                                                     <div class="operator-stat">
@@ -392,11 +392,11 @@
                                                         <strong id="indicator-flood-risk" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
                                                     </div>
                                                     <div class="operator-level-item">
-                                                        <span class="operator-level-label">Cooling Margin</span>
+                                                        <span class="operator-level-label">Запас охлаждения</span>
                                                         <strong id="indicator-cooling-margin" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
                                                     </div>
                                                     <div class="operator-level-item">
-                                                        <span class="operator-level-label">Process Health</span>
+                                                        <span class="operator-level-label">Здоровье процесса</span>
                                                         <strong id="indicator-process-health" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
                                                     </div>
                                                 </div>
@@ -418,11 +418,11 @@
                                                                 id="indicator-last-reason" class="operator-indicator-value">--</strong></div>
                                                         <div class="operator-list-row"><span>Покрытие телеметрии</span><strong
                                                                 id="indicator-telemetry-coverage" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Decision trust</span><strong
+                                                        <div class="operator-list-row"><span>Уверенность автоматики</span><strong
                                                                 id="indicator-decision-trust" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Degraded mode</span><strong
+                                                        <div class="operator-list-row"><span>Упрощённый режим</span><strong
                                                                 id="indicator-degraded-mode" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Adaptive control</span><strong
+                                                        <div class="operator-list-row"><span>Адаптивное управление</span><strong
                                                                 id="indicator-adaptive-control" class="operator-indicator-value">--</strong></div>
                                                         <div class="operator-list-row"><span>Свежесть датчиков</span><strong
                                                                 id="indicator-sensor-freshness" class="operator-indicator-value">--</strong></div>
@@ -453,7 +453,7 @@
                                                     </div>
                                                     <div id="operator-reason-insight" class="operator-reason-insight is-muted">
                                                         <div class="operator-reason-insight-head">
-                                                            <span class="operator-reason-insight-kicker">Reason Insight</span>
+                                                            <span class="operator-reason-insight-kicker">Разбор причины</span>
                                                             <strong id="operator-reason-title">Ожидание причины</strong>
                                                         </div>
                                                         <p id="operator-reason-detail" class="operator-reason-insight-text">
@@ -477,8 +477,13 @@
                                             </summary>
                                             <div class="operator-fold-body">
                                                 <div class="operator-data-grid operator-data-grid-single">
-                                            <article id="dashboard-temperatures-card" class="operator-card">
-                                                <h3 class="operator-card-title">Температуры</h3>
+                                            <article id="dashboard-temperatures-card" class="operator-card operator-card-metrics">
+                                                <div class="operator-section-card-head">
+                                                    <div>
+                                                        <h3 class="operator-card-title">Температуры</h3>
+                                                        <p class="operator-card-subtitle">Ключевые точки колонны и контура охлаждения</p>
+                                                    </div>
+                                                </div>
                                                 <div class="operator-list operator-metrics-list">
                                                     <div id="temp-column-bottom-row" class="operator-list-row operator-metric-row"><span>Царга низ</span><strong
                                                             id="temp-column-bottom">--°C</strong></div>
@@ -498,8 +503,13 @@
                                                 </div>
                                             </article>
 
-                                            <article id="dashboard-power-card" class="operator-card">
-                                                <h3 class="operator-card-title">Электропитание (PZEM-004T)</h3>
+                                            <article id="dashboard-power-card" class="operator-card operator-card-metrics">
+                                                <div class="operator-section-card-head">
+                                                    <div>
+                                                        <h3 class="operator-card-title">Электропитание (PZEM-004T)</h3>
+                                                        <p class="operator-card-subtitle">Сеть, ток, энергия и фактическая силовая картина</p>
+                                                    </div>
+                                                </div>
                                                 <div class="operator-list operator-metrics-list">
                                                     <div class="operator-list-row operator-metric-row"><span>Напряжение</span><strong
                                                             id="power-voltage">--
@@ -522,8 +532,13 @@
                                                 </div>
                                             </article>
 
-                                            <article class="operator-card">
-                                                <h3 class="operator-card-title">Отбор и объёмы</h3>
+                                            <article class="operator-card operator-card-metrics">
+                                                <div class="operator-section-card-head">
+                                                    <div>
+                                                        <h3 class="operator-card-title">Отбор и объёмы</h3>
+                                                        <p class="operator-card-subtitle">Собранные фракции, атмосферное давление и запас по кубу</p>
+                                                    </div>
+                                                </div>
                                                 <div class="operator-list operator-metrics-list">
                                                     <div class="operator-list-row operator-metric-row"><span>Общий объём</span><strong
                                                             id="pump-volume">--
@@ -548,9 +563,12 @@
                                                 </div>
                                             </article>
 
-                                            <article id="monitor-stirrer-card" class="operator-card operator-card-stirrer">
+                                            <article id="monitor-stirrer-card" class="operator-card operator-card-stirrer operator-card-metrics">
                                                 <div class="operator-card-head">
-                                                    <h3 class="operator-card-title">Мешалка куба</h3>
+                                                    <div>
+                                                        <h3 class="operator-card-title">Мешалка куба</h3>
+                                                        <p class="operator-card-subtitle">Ручной запуск, пресеты скорости и контроль DAC</p>
+                                                    </div>
                                                     <span class="equipment-status-badge muted" id="monitor-stirrer-badge">Загрузка…</span>
                                                 </div>
                                                 <div class="equipment-inline-stats operator-stirrer-stats">
@@ -576,8 +594,13 @@
                                                 <div class="info-text operator-stirrer-hint" id="monitor-stirrer-hint">Загрузка статуса мешалки…</div>
                                             </article>
 
-                                            <article class="operator-card operator-card-chart">
-                                                <h3 class="operator-card-title">Температуры (5 мин)</h3>
+                                            <article class="operator-card operator-card-chart operator-card-metrics">
+                                                <div class="operator-section-card-head">
+                                                    <div>
+                                                        <h3 class="operator-card-title">Температуры (5 мин)</h3>
+                                                        <p class="operator-card-subtitle">Быстрый локальный срез без перехода в отдельные графики</p>
+                                                    </div>
+                                                </div>
                                                 <div id="mini-chart" style="width: 100%; height: 240px;"></div>
                                             </article>
                                         </div>
@@ -3391,7 +3414,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.12"></script>
+    <script src="app.js?v=2.4.14"></script>
 </body>
 
 </html>

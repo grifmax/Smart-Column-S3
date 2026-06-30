@@ -74,6 +74,11 @@
     align-items: start;
 }
 
+.operator-monitor-layout {
+    grid-template-columns: minmax(420px, 0.9fr) minmax(360px, 1fr);
+    gap: 20px;
+}
+
 .cols-layout > .col-stack:first-child {
     width: fit-content;
     max-width: 100%;
@@ -84,6 +89,11 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+}
+
+.col-stack-monitor-main,
+.col-stack-scheme {
+    min-width: 0;
 }
 
 .operator-grid {
@@ -112,10 +122,30 @@
 }
 
 .operator-card-scheme {
-    padding: 6px;
+    padding: 10px 10px 12px;
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.82));
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
 }
 
 .operator-card-runtime {
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.86), rgba(241, 245, 249, 0.82));
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="dark"] .operator-card-scheme {
+    background: linear-gradient(155deg, rgba(15, 23, 42, 0.82), rgba(19, 32, 52, 0.72));
+}
+
+[data-theme="dark"] .operator-card-runtime {
+    background: linear-gradient(155deg, rgba(15, 23, 42, 0.78), rgba(19, 32, 52, 0.7));
+}
+
+.operator-card-metrics {
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.8), rgba(248, 250, 252, 0.74));
+}
+
+[data-theme="dark"] .operator-card-metrics {
+    background: linear-gradient(155deg, rgba(15, 23, 42, 0.68), rgba(19, 32, 52, 0.58));
 }
 
 .operator-card-collapsible {
@@ -193,7 +223,8 @@
     border: 1px solid var(--landing-border);
     background: linear-gradient(135deg, rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.84));
     padding: 14px 16px;
-    margin-bottom: 16px;
+    margin-bottom: 0;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
 }
 
 .operator-mission-head {
@@ -731,6 +762,21 @@
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 10px;
+}
+
+.operator-section-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.operator-card-subtitle {
+    margin: 4px 0 0;
+    color: var(--landing-muted);
+    font-size: 0.88rem;
+    line-height: 1.35;
 }
 
 .operator-card-head .operator-card-title {
@@ -1350,6 +1396,16 @@
 
 [data-theme="dark"] .operator-idle-mode-cta.is-danger strong {
     color: #fca5a5;
+}
+
+@media (max-width: 1280px) {
+    .operator-monitor-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cols-layout > .col-stack:first-child {
+        width: 100%;
+    }
 }
 
 @media (max-width: 640px) {
