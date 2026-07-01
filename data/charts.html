@@ -10,8 +10,8 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.5">
-    <link rel="stylesheet" href="charts-style.css?v=2.4.5">
+    <link rel="stylesheet" href="style.css?v=2.4.20">
+    <link rel="stylesheet" href="charts-style.css?v=2.4.20">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
     <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
@@ -263,7 +263,45 @@
         </div>
     </div>
 
-    <script src="charts.js?v=2.4.5"></script>
+    <script src="charts.js?v=2.4.20"></script>
+    <script>
+        (function () {
+            const sidebar = document.getElementById('main-sidebar');
+            const nav = document.querySelector('#top-menu-dropdown .tabs-dropdown');
+            if (!sidebar || !nav) return;
+
+            const fragment = document.createDocumentFragment();
+            for (const node of sidebar.children) {
+                if (!(node instanceof HTMLElement)) continue;
+                if (node.classList.contains('sidebar-collapse-btn') ||
+                    node.classList.contains('sidebar-spacer') ||
+                    node.classList.contains('sidebar-footer')) {
+                    continue;
+                }
+
+                if (node.classList.contains('sidebar-section-title')) {
+                    const title = document.createElement('div');
+                    title.className = 'sidebar-section-title menu-dropdown-section-title';
+                    title.textContent = node.textContent?.trim() || '';
+                    fragment.appendChild(title);
+                    continue;
+                }
+
+                if (node.classList.contains('sidebar-item')) {
+                    const item = node.cloneNode(true);
+                    item.classList.add('menu-dropdown-item');
+                    item.classList.remove('tab');
+                    if (item instanceof HTMLButtonElement) {
+                        item.type = 'button';
+                    }
+                    fragment.appendChild(item);
+                }
+            }
+
+            nav.classList.add('menu-dropdown-nav');
+            nav.replaceChildren(fragment);
+        })();
+    </script>
     <script>
         (function () {
             const btn = document.getElementById('sidebar-collapse-btn');

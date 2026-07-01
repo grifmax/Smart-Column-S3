@@ -9,6 +9,17 @@ const TEMPERATURE_ROWS = [
     { key: 'waterOut', rowId: 'landing-water-out-row' }
 ];
 
+const GAUGE_SECTION_LABELS = {
+    temperatures: 'Температуры',
+    power: 'Питание',
+    volumes: 'Объёмы',
+    stirrer: 'Мешалка',
+    chart: 'График'
+};
+
+let gaugeFilterBindingsReady = false;
+let activeGaugeFilter = 'temperatures';
+
 function setHidden(id, hidden) {
     const el = document.getElementById(id);
     if (el) el.hidden = Boolean(hidden);
@@ -50,7 +61,61 @@ function isStirrerVisible() {
     );
 }
 
+function getGaugeSectionCards() {
+    return Array.from(document.querySelectorAll('[data-gauge-section]'));
+}
+
+function isSectionAvailable(section) {
+    return getGaugeSectionCards().some((card) => (
+        card.dataset.gaugeSection === section &&
+        !card.hidden
+    ));
+}
+
+function getFirstAvailableSection() {
+    return Object.keys(GAUGE_SECTION_LABELS).find((section) => isSectionAvailable(section)) || 'temperatures';
+}
+
+function updateGaugeSummaryBadge(section) {
+    const badge = document.getElementById('monitor-gauges-badge');
+    if (!badge) return;
+    badge.textContent = GAUGE_SECTION_LABELS[section] || 'Показометры';
+}
+
+function applyGaugeFilter(section = activeGaugeFilter) {
+    const nextSection = isSectionAvailable(section) ? section : getFirstAvailableSection();
+    activeGaugeFilter = nextSection;
+
+    getGaugeSectionCards().forEach((card) => {
+        const matches = card.dataset.gaugeSection === nextSection;
+        card.classList.toggle('is-gauge-filter-hidden', !matches);
+    });
+
+    document.querySelectorAll('[data-gauge-filter]').forEach((button) => {
+        const selected = button.dataset.gaugeFilter === nextSection;
+        button.classList.toggle('is-active', selected);
+        button.setAttribute('aria-selected', selected ? 'true' : 'false');
+        button.hidden = !isSectionAvailable(button.dataset.gaugeFilter || '');
+    });
+
+    updateGaugeSummaryBadge(nextSection);
+}
+
+function ensureGaugeFilterBindings() {
+    if (gaugeFilterBindingsReady) return;
+    gaugeFilterBindingsReady = true;
+
+    document.querySelectorAll('[data-gauge-filter]').forEach((button) => {
+        button.addEventListener('click', () => {
+            activeGaugeFilter = button.dataset.gaugeFilter || 'temperatures';
+            applyGaugeFilter(activeGaugeFilter);
+        });
+    });
+}
+
 export function syncMonitorGaugeVisibility() {
+    ensureGaugeFilterBindings();
+
     TEMPERATURE_ROWS.forEach((row) => {
         setHidden(row.rowId, !isTemperatureChannelVisible(row.key));
     });
@@ -71,4 +136,6 @@ export function syncMonitorGaugeVisibility() {
 
     setHidden('monitor-stirrer-card', !isStirrerVisible());
     setHidden('dashboard-mini-chart-card', !temperaturesVisible);
+
+    applyGaugeFilter(activeGaugeFilter);
 }

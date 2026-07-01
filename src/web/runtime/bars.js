@@ -195,6 +195,21 @@ function setReasonInsight(title, detail, action, tone = 'muted') {
     actionEl.textContent = action;
 }
 
+function setFoldSummaryBadge(id, text, tone = 'muted') {
+    const badge = document.getElementById(id);
+    if (!badge) return;
+    badge.textContent = text;
+    badge.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    badge.classList.add(`is-${tone}`);
+}
+
+function updateDiagnosticsPanelState(tone = 'muted', text = 'Скрыто') {
+    setFoldSummaryBadge('monitor-diagnostics-badge', text, tone);
+    if (tone !== 'danger') return;
+    const panel = document.getElementById('monitor-diagnostics-panel');
+    panel?.setAttribute('open', 'open');
+}
+
 function setPreflightItem(id, text, tone = 'muted') {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1684,6 +1699,17 @@ function renderProcessIndicatorsPanel() {
     setGuidance(guidance.title, guidance.detail, guidance.tone);
     const reasonInsight = getPublishedReasonInsight(s) || getReasonCodeInsight(lastReasonCode, operatorMessage);
     setReasonInsight(reasonInsight.title, reasonInsight.detail, reasonInsight.action, reasonInsight.tone);
+
+    let diagnosticsTone = 'good';
+    let diagnosticsText = 'Фон';
+    if (activeAlarm || lifecycle === 'faulted' || freshness.tone === 'danger') {
+        diagnosticsTone = 'danger';
+        diagnosticsText = 'Требует внимания';
+    } else if (hasLimit || processHealth < 0.85 || decisionTrust < 0.8) {
+        diagnosticsTone = 'warn';
+        diagnosticsText = 'Есть ограничения';
+    }
+    updateDiagnosticsPanelState(diagnosticsTone, diagnosticsText);
 }
 
 export function renderRuntimeBars(items) {

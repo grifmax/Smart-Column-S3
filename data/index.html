@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.19">
+    <link rel="stylesheet" href="style.css?v=2.4.20">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.19" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.20" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -261,7 +261,7 @@
                                 <div class="col-stack col-stack-monitor-main">
                                     <div id="operator-mission-control" class="operator-mission-control is-muted">
                                         <div class="operator-mission-head">
-                                            <span class="operator-mission-kicker">Пульт оператора</span>
+                                            <span class="operator-mission-kicker">Сейчас важно</span>
                                             <strong id="operator-mission-title">Ожидание сценария</strong>
                                         </div>
                                         <p id="operator-mission-text" class="operator-mission-text">
@@ -277,14 +277,18 @@
                                                 <strong id="operator-mission-risk">--</strong>
                                             </div>
                                             <div id="operator-mission-action-card" class="operator-mission-item">
-                                                <span>Что делать сейчас</span>
+                                                <span>Следующий шаг</span>
                                                 <strong id="operator-mission-action">--</strong>
                                             </div>
                                         </div>
-                                        <div class="operator-mission-actions">
-                                            <button id="operator-mission-goal-btn" class="btn btn-secondary btn-sm" type="button">К цели</button>
-                                            <button id="operator-mission-risk-btn" class="btn btn-secondary btn-sm" type="button">Проверить риск</button>
-                                            <button id="operator-mission-action-btn" class="btn btn-primary btn-sm" type="button">К действию</button>
+                                        <div id="operator-guidance" class="operator-guidance operator-guidance-inline is-muted">
+                                            <div class="operator-guidance-head">
+                                                <span class="operator-guidance-kicker">Контекст</span>
+                                                <strong id="operator-guidance-title">Ожидание статуса</strong>
+                                            </div>
+                                            <p id="operator-guidance-text" class="operator-guidance-text">
+                                                Подсказка появится после первого обновления indicators v2.
+                                            </p>
                                         </div>
                                     </div>
                                     <details class="operator-card operator-card-runtime operator-card-collapsible" id="mode-runtime-card" open>
@@ -347,15 +351,6 @@
                                                 <span class="operator-card-toggle-state"></span>
                                             </summary>
                                             <div class="operator-card-body">
-                                                <div id="operator-guidance" class="operator-guidance is-muted">
-                                                    <div class="operator-guidance-head">
-                                                        <span class="operator-guidance-kicker">Подсказка оператора</span>
-                                                        <strong id="operator-guidance-title">Ожидание статуса</strong>
-                                                    </div>
-                                                    <p id="operator-guidance-text" class="operator-guidance-text">
-                                                        Подсказка появится после первого обновления indicators v2.
-                                                    </p>
-                                                </div>
                                                 <div class="operator-status-grid operator-status-grid-compact">
                                                     <div class="operator-stat">
                                                         <span class="operator-stat-label">Контур</span>
@@ -370,36 +365,44 @@
                                                         <strong id="indicator-cooling-status" class="operator-stat-value operator-indicator-value">--</strong>
                                                     </div>
                                                     <div class="operator-stat">
-                                                        <span class="operator-stat-label">Восстановление</span>
-                                                        <strong id="indicator-recovery" class="operator-stat-value operator-indicator-value">--</strong>
-                                                    </div>
-                                                    <div class="operator-stat">
-                                                        <span class="operator-stat-label">Давление куба</span>
-                                                        <strong id="indicator-pressure-cube" class="operator-stat-value operator-indicator-value">--</strong>
-                                                    </div>
-                                                    <div class="operator-stat">
                                                         <span class="operator-stat-label">Запас по давлению</span>
                                                         <strong id="indicator-pressure-margin" class="operator-stat-value operator-indicator-value">--</strong>
                                                     </div>
                                                 </div>
-                                                <div class="operator-level-grid">
-                                                    <div class="operator-level-item">
-                                                        <span class="operator-level-label">Стабильность</span>
-                                                        <strong id="indicator-stability" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                                <details id="operator-process-secondary" class="operator-inline-fold">
+                                                    <summary class="operator-inline-fold-summary">
+                                                        <strong>Инженерные показатели</strong>
+                                                        <span class="operator-inline-fold-action"></span>
+                                                    </summary>
+                                                    <div class="operator-inline-fold-body">
+                                                        <div class="operator-level-grid operator-level-grid-secondary">
+                                                            <div class="operator-level-item">
+                                                                <span class="operator-level-label">Стабильность</span>
+                                                                <strong id="indicator-stability" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                                            </div>
+                                                            <div class="operator-level-item">
+                                                                <span class="operator-level-label">Риск захлёба</span>
+                                                                <strong id="indicator-flood-risk" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                                            </div>
+                                                            <div class="operator-level-item">
+                                                                <span class="operator-level-label">Запас охлаждения</span>
+                                                                <strong id="indicator-cooling-margin" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                                            </div>
+                                                            <div class="operator-level-item">
+                                                                <span class="operator-level-label">Здоровье процесса</span>
+                                                                <strong id="indicator-process-health" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
+                                                            </div>
+                                                            <div class="operator-level-item">
+                                                                <span class="operator-level-label">Давление куба</span>
+                                                                <strong id="indicator-pressure-cube" class="operator-level-value operator-indicator-value">--</strong>
+                                                            </div>
+                                                            <div class="operator-level-item">
+                                                                <span class="operator-level-label">Восстановление</span>
+                                                                <strong id="indicator-recovery" class="operator-level-value operator-indicator-value">--</strong>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div class="operator-level-item">
-                                                        <span class="operator-level-label">Риск захлёба</span>
-                                                        <strong id="indicator-flood-risk" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
-                                                    </div>
-                                                    <div class="operator-level-item">
-                                                        <span class="operator-level-label">Запас охлаждения</span>
-                                                        <strong id="indicator-cooling-margin" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
-                                                    </div>
-                                                    <div class="operator-level-item">
-                                                        <span class="operator-level-label">Здоровье процесса</span>
-                                                        <strong id="indicator-process-health" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
-                                                    </div>
-                                                </div>
+                                                </details>
                                             </div>
                                         </details>
 
@@ -407,9 +410,12 @@
                                             <summary class="operator-fold-summary">
                                                 <div>
                                                     <strong>Диагностика процесса</strong>
-                                                    <span>Причины, ограничения и инженерные индикаторы</span>
+                                                    <span>Причины, ограничения и глубокая инженерная раскладка</span>
                                                 </div>
-                                                <span class="operator-fold-summary-action"></span>
+                                                <div class="operator-fold-summary-meta">
+                                                    <span id="monitor-diagnostics-badge" class="operator-fold-summary-badge">Скрыто</span>
+                                                    <span class="operator-fold-summary-action"></span>
+                                                </div>
                                             </summary>
                                             <div class="operator-fold-body">
                                                 <article class="operator-card">
@@ -471,13 +477,23 @@
                                             <summary class="operator-fold-summary">
                                                 <div>
                                                     <strong>Показометры и график</strong>
-                                                    <span>Температуры, питание, объёмы и вспомогательные узлы</span>
+                                                    <span>Температуры, питание, объёмы и вспомогательные узлы по секциям</span>
                                                 </div>
-                                                <span class="operator-fold-summary-action"></span>
+                                                <div class="operator-fold-summary-meta">
+                                                    <span id="monitor-gauges-badge" class="operator-fold-summary-badge">Температуры</span>
+                                                    <span class="operator-fold-summary-action"></span>
+                                                </div>
                                             </summary>
                                             <div class="operator-fold-body">
+                                                <div id="monitor-gauges-filters" class="operator-gauges-filters" role="tablist" aria-label="Секции показометров">
+                                                    <button type="button" class="operator-gauges-filter is-active" data-gauge-filter="temperatures" role="tab" aria-selected="true">Температуры</button>
+                                                    <button type="button" class="operator-gauges-filter" data-gauge-filter="power" role="tab" aria-selected="false">Питание</button>
+                                                    <button type="button" class="operator-gauges-filter" data-gauge-filter="volumes" role="tab" aria-selected="false">Объёмы</button>
+                                                    <button type="button" class="operator-gauges-filter" data-gauge-filter="stirrer" role="tab" aria-selected="false">Мешалка</button>
+                                                    <button type="button" class="operator-gauges-filter" data-gauge-filter="chart" role="tab" aria-selected="false">График</button>
+                                                </div>
                                                 <div class="operator-data-grid operator-data-grid-single">
-                                            <article id="dashboard-temperatures-card" class="operator-card operator-card-metrics">
+                                            <article id="dashboard-temperatures-card" class="operator-card operator-card-metrics" data-gauge-section="temperatures">
                                                 <div class="operator-section-card-head">
                                                     <div>
                                                         <h3 class="operator-card-title">Температуры</h3>
@@ -503,7 +519,7 @@
                                                 </div>
                                             </article>
 
-                                            <article id="dashboard-power-card" class="operator-card operator-card-metrics">
+                                            <article id="dashboard-power-card" class="operator-card operator-card-metrics" data-gauge-section="power">
                                                 <div class="operator-section-card-head">
                                                     <div>
                                                         <h3 class="operator-card-title">Электропитание (PZEM-004T)</h3>
@@ -532,7 +548,7 @@
                                                 </div>
                                             </article>
 
-                                            <article id="dashboard-volumes-card" class="operator-card operator-card-metrics">
+                                            <article id="dashboard-volumes-card" class="operator-card operator-card-metrics" data-gauge-section="volumes">
                                                 <div class="operator-section-card-head">
                                                     <div>
                                                         <h3 class="operator-card-title">Отбор и объёмы</h3>
@@ -563,7 +579,7 @@
                                                 </div>
                                             </article>
 
-                                            <article id="monitor-stirrer-card" class="operator-card operator-card-stirrer operator-card-metrics">
+                                            <article id="monitor-stirrer-card" class="operator-card operator-card-stirrer operator-card-metrics" data-gauge-section="stirrer">
                                                 <div class="operator-card-head">
                                                     <div>
                                                         <h3 class="operator-card-title">Мешалка куба</h3>
@@ -594,7 +610,7 @@
                                                 <div class="info-text operator-stirrer-hint" id="monitor-stirrer-hint">Загрузка статуса мешалки…</div>
                                             </article>
 
-                                            <article id="dashboard-mini-chart-card" class="operator-card operator-card-chart operator-card-metrics">
+                                            <article id="dashboard-mini-chart-card" class="operator-card operator-card-chart operator-card-metrics" data-gauge-section="chart">
                                                 <div class="operator-section-card-head">
                                                     <div>
                                                         <h3 class="operator-card-title">Температуры (5 мин)</h3>
@@ -3414,7 +3430,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.19"></script>
+    <script src="app.js?v=2.4.20"></script>
 </body>
 
 </html>

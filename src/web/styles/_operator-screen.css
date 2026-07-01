@@ -255,6 +255,11 @@
     font-size: 0.93rem;
 }
 
+.operator-guidance-inline {
+    margin-top: 12px;
+    margin-bottom: 0;
+}
+
 .operator-mission-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -350,6 +355,12 @@
     background: rgba(15, 23, 42, 0.55);
 }
 
+[data-theme="dark"] .operator-fold-summary-badge,
+[data-theme="dark"] .operator-gauges-filter,
+[data-theme="dark"] .operator-inline-fold-action {
+    background: rgba(15, 23, 42, 0.55);
+}
+
 [data-theme="dark"] .operator-mission-control.is-good {
     background: linear-gradient(135deg, rgba(34, 197, 94, 0.16), rgba(15, 23, 42, 0.56));
 }
@@ -422,6 +433,50 @@
     line-height: 1.35;
 }
 
+.operator-fold-summary-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.operator-fold-summary-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 84px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--landing-ink);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.operator-fold-summary-badge.is-good {
+    color: #166534;
+    border-color: rgba(34, 197, 94, 0.28);
+    background: rgba(220, 252, 231, 0.76);
+}
+
+.operator-fold-summary-badge.is-warn {
+    color: #b45309;
+    border-color: rgba(245, 158, 11, 0.28);
+    background: rgba(254, 243, 199, 0.8);
+}
+
+.operator-fold-summary-badge.is-danger {
+    color: #b91c1c;
+    border-color: rgba(239, 68, 68, 0.25);
+    background: rgba(254, 226, 226, 0.82);
+}
+
+.operator-fold-summary-badge.is-muted {
+    color: var(--landing-ink);
+}
+
 .operator-fold-summary-action {
     min-width: 92px;
     padding: 7px 10px;
@@ -451,6 +506,41 @@
 
 .operator-fold-body {
     padding: 0 0 14px;
+}
+
+.operator-gauges-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 14px 14px;
+}
+
+.operator-gauges-filter {
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--landing-muted);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+}
+
+.operator-gauges-filter:hover {
+    border-color: rgba(59, 130, 246, 0.38);
+    color: var(--landing-ink);
+}
+
+.operator-gauges-filter.is-active {
+    border-color: rgba(59, 130, 246, 0.4);
+    background: rgba(59, 130, 246, 0.12);
+    color: var(--landing-ink);
+}
+
+.is-gauge-filter-hidden {
+    display: none !important;
 }
 
 .operator-fold-body .operator-card {
@@ -671,6 +761,63 @@
     color: var(--landing-muted);
     line-height: 1.45;
     font-size: 0.92rem;
+}
+
+.operator-inline-fold {
+    margin-top: 10px;
+    border-top: 1px solid var(--landing-border);
+    padding-top: 10px;
+}
+
+.operator-inline-fold-summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--landing-ink);
+}
+
+.operator-inline-fold-summary::-webkit-details-marker {
+    display: none;
+}
+
+.operator-inline-fold-summary strong {
+    font-size: 0.92rem;
+    color: var(--landing-ink);
+}
+
+.operator-inline-fold-action {
+    min-width: 90px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--landing-border);
+    background: rgba(255, 255, 255, 0.68);
+    text-align: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: transparent;
+}
+
+.operator-inline-fold[open] .operator-inline-fold-action {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.26);
+}
+
+.operator-inline-fold[open] .operator-inline-fold-action::before {
+    content: 'Свернуть';
+    color: var(--landing-ink);
+}
+
+.operator-inline-fold:not([open]) .operator-inline-fold-action::before {
+    content: 'Подробнее';
+    color: var(--landing-ink);
+}
+
+.operator-inline-fold-body {
+    padding-top: 10px;
 }
 
 .operator-guidance.is-good {
@@ -1078,6 +1225,10 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(120px, 1fr));
     gap: 7px;
+}
+
+.operator-level-grid-secondary {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
 }
 
 .operator-level-item {
