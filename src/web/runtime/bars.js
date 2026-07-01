@@ -14,6 +14,11 @@ function setIndicatorValue(id, text, tone = 'muted') {
     el.classList.add(`is-${tone}`);
 }
 
+function setElementHidden(id, hidden) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = Boolean(hidden);
+}
+
 function formatIndicatorPercent(value) {
     return `${clampPercent(toFinite(value, 0) * 100).toFixed(0)}%`;
 }
@@ -141,6 +146,62 @@ function setGuidance(title, detail, tone = 'muted') {
     textEl.textContent = detail;
 }
 
+function syncOperatorQuietPanels(state, context = {}) {
+    const mode = resolveMode(state?.mode, state?.modeStr);
+    const lifecycle = String(state?.v2?.lifecycle || 'idle').toLowerCase();
+    const lastReasonCode = String(state?.v2?.lastReasonCode || 'RC_NONE');
+    const operatorMessage = String(state?.v2?.operatorMessage || '').trim();
+    const hasRuntimeItems = Boolean(context.hasRuntimeItems);
+    const hasGuidanceContext = Object.prototype.hasOwnProperty.call(context, 'guidanceTone');
+    const hasDiagnosticsContext = Object.prototype.hasOwnProperty.call(context, 'diagnosticsTone');
+
+    if (hasGuidanceContext) {
+        const guidanceTone = String(context.guidanceTone || 'muted').toLowerCase();
+        const hasLimit = Boolean(context.hasLimit);
+        const activeAlarm = Boolean(context.activeAlarm);
+        const guidanceVisible =
+            activeAlarm ||
+            hasLimit ||
+            operatorMessage.length > 0 ||
+            guidanceTone === 'warn' ||
+            guidanceTone === 'danger';
+        setElementHidden('operator-guidance', !guidanceVisible);
+    }
+
+    const runtimeCard = document.getElementById('mode-runtime-card');
+    if (runtimeCard) {
+        const shouldOpenRuntime =
+            hasRuntimeItems ||
+            mode !== MODE_IDLE ||
+            lifecycle === 'starting' ||
+            lifecycle === 'running' ||
+            lifecycle === 'paused';
+        if (shouldOpenRuntime) runtimeCard.setAttribute('open', 'open');
+        else runtimeCard.removeAttribute('open');
+    }
+
+    if (hasDiagnosticsContext) {
+        const diagnosticsTone = String(context.diagnosticsTone || 'muted').toLowerCase();
+        const hasLimit = Boolean(context.hasLimit);
+        const activeAlarm = Boolean(context.activeAlarm);
+        const telemetryDanger = Boolean(context.telemetryDanger);
+        const diagnosticsMeaningful =
+            activeAlarm ||
+            hasLimit ||
+            telemetryDanger ||
+            diagnosticsTone === 'warn' ||
+            diagnosticsTone === 'danger' ||
+            operatorMessage.length > 0 ||
+            lastReasonCode !== 'RC_NONE';
+
+        updateDiagnosticsPanelState(diagnosticsTone, context.diagnosticsText || 'Скрыто', {
+            show: diagnosticsMeaningful,
+            forceOpen: diagnosticsTone === 'danger',
+            forceClosed: diagnosticsTone !== 'danger'
+        });
+    }
+}
+
 function getPublishedGuidance(state) {
     const guidance = state?.v2?.guidance;
     if (!guidance || typeof guidance !== 'object') {
@@ -203,11 +264,23 @@ function setFoldSummaryBadge(id, text, tone = 'muted') {
     badge.classList.add(`is-${tone}`);
 }
 
-function updateDiagnosticsPanelState(tone = 'muted', text = 'Скрыто') {
+function updateDiagnosticsPanelState(tone = 'muted', text = 'Скрыто', options = {}) {
     setFoldSummaryBadge('monitor-diagnostics-badge', text, tone);
-    if (tone !== 'danger') return;
     const panel = document.getElementById('monitor-diagnostics-panel');
-    panel?.setAttribute('open', 'open');
+    if (!panel) return;
+
+    const shouldShow = options.show !== undefined ? Boolean(options.show) : true;
+    panel.hidden = !shouldShow;
+    if (!shouldShow) return;
+
+    if (tone === 'danger' || options.forceOpen) {
+        panel.setAttribute('open', 'open');
+        return;
+    }
+
+    if (options.forceClosed) {
+        panel.removeAttribute('open');
+    }
 }
 
 function setPreflightItem(id, text, tone = 'muted') {
@@ -630,11 +703,11 @@ function getLifecycleLabel(value) {
 
 function getActiveLimitsLabel(indicators, activeLimits) {
     const labels = [];
-    if (Boolean(activeLimits.antiOscillationActive)) labels.push('антидребезг');
+    if (activeLimits.antiOscillationActive) labels.push('антидребезг');
     if (Boolean(indicators.powerLimited) || Boolean(activeLimits.powerCapped)) labels.push('мощность');
-    if (Boolean(activeLimits.takeoffBlocked)) labels.push('отбор');
-    if (Boolean(activeLimits.phaseAdvanceBlocked)) labels.push('фаза');
-    if (Boolean(activeLimits.pumpCapped)) labels.push('насос');
+    if (activeLimits.takeoffBlocked) labels.push('отбор');
+    if (activeLimits.phaseAdvanceBlocked) labels.push('фаза');
+    if (activeLimits.pumpCapped) labels.push('насос');
     return labels.length ? labels.join(', ') : 'нет';
 }
 
@@ -1467,7 +1540,7 @@ function buildGuidance(state, indicators, activeLimits) {
     };
 }
 
-function renderProcessIndicatorsCard() {
+export function renderProcessIndicatorsCard() {
     const s = runtimeMonitorState;
     const indicators = s?.v2?.indicators || {};
     const activeLimits = s?.v2?.activeLimits || {};
@@ -1580,6 +1653,7 @@ function renderProcessIndicatorsPanel() {
     const processHealth = toFinite(indicators.processHealth, 0);
     const headsScore = toFinite(indicators.headsCompletionScore, 0);
     const bodyScore = toFinite(indicators.bodyEndScore, 0);
+    const activeAlarm = Boolean(s?.currentAlarm?.active);
     const telemetryCoverage = toFinite(indicators.telemetryCoverage, -1);
     const decisionTrust = toFinite(indicators.decisionTrust, -1);
     const takeoffConfidence = toFinite(indicators.takeoffConfidence, -1);
@@ -1709,7 +1783,14 @@ function renderProcessIndicatorsPanel() {
         diagnosticsTone = 'warn';
         diagnosticsText = 'Есть ограничения';
     }
-    updateDiagnosticsPanelState(diagnosticsTone, diagnosticsText);
+    syncOperatorQuietPanels(s, {
+        guidanceTone: guidance.tone,
+        diagnosticsTone,
+        diagnosticsText,
+        hasLimit,
+        activeAlarm,
+        telemetryDanger: freshness.tone === 'danger'
+    });
 }
 
 export function renderRuntimeBars(items) {
@@ -1921,6 +2002,9 @@ export function renderModeRuntimeCard() {
     renderRuntimeBars(items);
     updateManualTiles();
     renderProcessIndicatorsPanel();
+    syncOperatorQuietPanels(s, {
+        hasRuntimeItems: items.length > 0
+    });
     if (manualEl) {
         manualEl.style.display = mode === MODE_MANUAL ? 'grid' : 'none';
     }

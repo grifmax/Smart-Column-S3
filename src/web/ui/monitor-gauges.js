@@ -25,6 +25,10 @@ function setHidden(id, hidden) {
     if (el) el.hidden = Boolean(hidden);
 }
 
+function getAvailableGaugeSections() {
+    return Object.keys(GAUGE_SECTION_LABELS).filter((section) => isSectionAvailable(section));
+}
+
 function isTemperatureChannelVisible(key) {
     const channel = runtimeMonitorState.temperatureChannels?.[key];
     return Boolean(
@@ -54,11 +58,35 @@ function hasPressureMargin() {
     return Number.isFinite(margin);
 }
 
+function hasVolumeSectionData() {
+    const volumes = runtimeMonitorState?.volumes || {};
+    const pump = runtimeMonitorState?.pump || {};
+    const lifecycle = String(runtimeMonitorState?.v2?.lifecycle || 'idle').toLowerCase();
+
+    return Boolean(
+        Number(toFiniteOrZero(volumes.heads)) > 0 ||
+        Number(toFiniteOrZero(volumes.body)) > 0 ||
+        Number(toFiniteOrZero(volumes.tails)) > 0 ||
+        Number(toFiniteOrZero(pump.totalMl)) > 0 ||
+        Number(toFiniteOrZero(pump.speedMlH)) > 0 ||
+        hasPressureSignal() ||
+        hasPressureMargin() ||
+        lifecycle === 'starting' ||
+        lifecycle === 'running' ||
+        lifecycle === 'paused'
+    );
+}
+
 function isStirrerVisible() {
     return Boolean(
         runtimeMonitorState?.stirrer?.available ||
         runtimeMonitorState?.equipment?.modules?.mcp4725?.available
     );
+}
+
+function toFiniteOrZero(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
 }
 
 function getGaugeSectionCards() {
@@ -129,6 +157,8 @@ export function syncMonitorGaugeVisibility() {
     );
     setHidden('dashboard-power-card', !powerAvailable);
 
+    setHidden('dashboard-volumes-card', !hasVolumeSectionData());
+
     const pressureVisible = hasPressureSignal();
     const pressureMarginVisible = pressureVisible && hasPressureMargin();
     setHidden('pressure-atm-row', !pressureVisible);
@@ -136,6 +166,11 @@ export function syncMonitorGaugeVisibility() {
 
     setHidden('monitor-stirrer-card', !isStirrerVisible());
     setHidden('dashboard-mini-chart-card', !temperaturesVisible);
+
+    const filtersEl = document.getElementById('monitor-gauges-filters');
+    if (filtersEl) {
+        filtersEl.hidden = getAvailableGaugeSections().length <= 1;
+    }
 
     applyGaugeFilter(activeGaugeFilter);
 }
