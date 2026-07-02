@@ -19,6 +19,32 @@ function setElementHidden(id, hidden) {
     if (el) el.hidden = Boolean(hidden);
 }
 
+function hasMeaningfulConfidence(value) {
+    return toFinite(value, -1) >= 0;
+}
+
+function getPressureAvailability(state, indicators) {
+    const pressure = state?.pressure || {};
+    const signalAvailable = Boolean(indicators?.pressureSensorAvailable || pressure.ok);
+    const hardwareAvailable = signalAvailable || Boolean(pressure.ads1115Available);
+    return {
+        signalAvailable,
+        hardwareAvailable
+    };
+}
+
+function isCoolingMetricsRelevant(mode, indicators) {
+    return (
+        mode === MODE_RECT ||
+        mode === MODE_MANUAL ||
+        mode === MODE_DIST ||
+        mode === MODE_NBK ||
+        Boolean(indicators?.coolingSensorAvailable) ||
+        Boolean(indicators?.coolingDemand) ||
+        Boolean(indicators?.recoveryActive)
+    );
+}
+
 function formatIndicatorPercent(value) {
     return `${clampPercent(toFinite(value, 0) * 100).toFixed(0)}%`;
 }
@@ -1834,6 +1860,9 @@ function renderProcessIndicatorsPanel() {
         Boolean(activeLimits.takeoffBlocked) ||
         Boolean(activeLimits.phaseAdvanceBlocked) ||
         Boolean(activeLimits.pumpCapped);
+    const pressureAvailability = getPressureAvailability(s, indicators);
+    const coolingRelevant = isCoolingMetricsRelevant(mode, indicators);
+    const quietIdle = mode === MODE_IDLE && lifecycle === 'idle' && !activeAlarm && !hasLimit;
 
     setIndicatorValue(
         'indicator-lifecycle',
@@ -1936,6 +1965,37 @@ function renderProcessIndicatorsPanel() {
         getConfidenceTone(powerLimitConfidence, true)
     );
 
+    const showPressureMarginCard = pressureAvailability.signalAvailable;
+    const showCoolingCard = coolingRelevant;
+    const showStabilityCard = !quietIdle || stability < 0.999 || activeAlarm || hasLimit;
+    const showFloodRiskCard =
+        mode === MODE_RECT ||
+        mode === MODE_MANUAL ||
+        mode === MODE_NBK ||
+        floodRisk > 0.001;
+    const showCoolingMarginCard = coolingRelevant;
+    const showProcessHealthCard = !quietIdle || processHealth < 0.999 || activeAlarm || hasLimit;
+    const showPressureCubeCard = pressureAvailability.hardwareAvailable;
+    const showRecoveryCard = Boolean(indicators.recoveryActive);
+
+    setElementHidden('operator-stat-pressure-margin-card', !showPressureMarginCard);
+    setElementHidden('operator-stat-cooling-card', !showCoolingCard);
+    setElementHidden('operator-secondary-stability-card', !showStabilityCard);
+    setElementHidden('operator-secondary-flood-risk-card', !showFloodRiskCard);
+    setElementHidden('operator-secondary-cooling-margin-card', !showCoolingMarginCard);
+    setElementHidden('operator-secondary-process-health-card', !showProcessHealthCard);
+    setElementHidden('operator-secondary-pressure-cube-card', !showPressureCubeCard);
+    setElementHidden('operator-secondary-recovery-card', !showRecoveryCard);
+
+    const secondaryVisibleCount = [
+        showStabilityCard,
+        showFloodRiskCard,
+        showCoolingMarginCard,
+        showProcessHealthCard,
+        showPressureCubeCard,
+        showRecoveryCard
+    ].filter(Boolean).length;
+
     const guidance = getPublishedGuidance(s) || buildGuidance(s, indicators, activeLimits);
     setGuidance(guidance.title, guidance.detail, guidance.tone);
     const reasonInsight = getPublishedReasonInsight(s) || getReasonCodeInsight(lastReasonCode, operatorMessage);
@@ -1950,6 +2010,62 @@ function renderProcessIndicatorsPanel() {
         diagnosticsTone = 'warn';
         diagnosticsText = 'Есть ограничения';
     }
+
+    const showLastReasonRow = lastReasonCode !== 'RC_NONE' || operatorMessage.length > 0;
+    const showTelemetryRow = telemetryCoverage >= 0 && (!quietIdle || telemetryCoverage < 0.999 || activeAlarm || hasLimit);
+    const showDecisionRow = decisionTrust >= 0 && (!quietIdle || decisionTrust < 0.999 || activeAlarm || hasLimit);
+    const showDegradedRow = Boolean(indicators.degradedModeActive);
+    const showAdaptiveRow =
+        mode !== MODE_IDLE &&
+        (
+            Boolean(indicators.adaptiveControlAllowed) ||
+            Boolean(indicators.columnSensorsAvailable) ||
+            Boolean(indicators.coolingSensorAvailable) ||
+            Boolean(indicators.degradedModeActive)
+        );
+    const showFreshnessRow = mode !== MODE_IDLE || !indicators.sensorFreshnessOk;
+    const showPressureRow = pressureAvailability.hardwareAvailable;
+    const showPressureRateRow = pressureAvailability.signalAvailable;
+    const showPressureMarginRow = pressureAvailability.signalAvailable;
+    const showPressureStableRow = pressureAvailability.signalAvailable;
+    const showHeadsScoreRow = showHeadsConfidence && (!quietIdle || headsScore > 0.001);
+    const showBodyScoreRow = showBodyConfidence && (!quietIdle || bodyScore > 0.001);
+    const showPowerLimitRow = hasLimit;
+    const showTakeoffConfidenceRow = showTakeoffConfidence && hasMeaningfulConfidence(takeoffConfidence);
+    const showHeadsConfidenceRow = showHeadsConfidence && hasMeaningfulConfidence(headsEndConfidence);
+    const showBodyConfidenceRow = showBodyConfidence && hasMeaningfulConfidence(bodyEndConfidence);
+    const showTailsConfidenceRow = showTailsConfidence && hasMeaningfulConfidence(tailsTransitionConfidence);
+    const showPowerLimitConfidenceRow = hasLimit || powerLimitConfidence > 0.001;
+    const showReasonInsight = showLastReasonRow || activeAlarm || hasLimit;
+
+    setElementHidden('operator-diag-last-reason-row', !showLastReasonRow);
+    setElementHidden('operator-diag-telemetry-row', !showTelemetryRow);
+    setElementHidden('operator-diag-decision-row', !showDecisionRow);
+    setElementHidden('operator-diag-degraded-row', !showDegradedRow);
+    setElementHidden('operator-diag-adaptive-row', !showAdaptiveRow);
+    setElementHidden('operator-diag-freshness-row', !showFreshnessRow);
+    setElementHidden('operator-diag-pressure-row', !showPressureRow);
+    setElementHidden('operator-diag-pressure-rate-row', !showPressureRateRow);
+    setElementHidden('operator-diag-pressure-margin-row', !showPressureMarginRow);
+    setElementHidden('operator-diag-pressure-stable-row', !showPressureStableRow);
+    setElementHidden('operator-diag-heads-score-row', !showHeadsScoreRow);
+    setElementHidden('operator-diag-body-score-row', !showBodyScoreRow);
+    setElementHidden('operator-diag-power-limit-row', !showPowerLimitRow);
+    setElementHidden('operator-diag-confidence-takeoff-row', !showTakeoffConfidenceRow);
+    setElementHidden('operator-diag-confidence-heads-row', !showHeadsConfidenceRow);
+    setElementHidden('operator-diag-confidence-body-row', !showBodyConfidenceRow);
+    setElementHidden('operator-diag-confidence-tails-row', !showTailsConfidenceRow);
+    setElementHidden('operator-diag-confidence-power-limit-row', !showPowerLimitConfidenceRow);
+    setElementHidden('operator-reason-insight', !showReasonInsight);
+
+    const secondaryPanel = document.getElementById('operator-process-secondary');
+    if (secondaryPanel) {
+        secondaryPanel.hidden = secondaryVisibleCount === 0;
+        if (secondaryVisibleCount === 0) {
+            secondaryPanel.removeAttribute('open');
+        }
+    }
+
     syncOperatorQuietPanelsCompact(s, {
         guidanceTone: guidance.tone,
         diagnosticsTone,

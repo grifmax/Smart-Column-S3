@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.24">
+    <link rel="stylesheet" href="style.css?v=2.4.25">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.24" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.25" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -360,19 +360,19 @@
                                             </summary>
                                             <div class="operator-card-body">
                                                 <div class="operator-status-grid operator-status-grid-compact">
-                                                    <div class="operator-stat">
+                                                    <div id="operator-stat-lifecycle-card" class="operator-stat">
                                                         <span class="operator-stat-label">Контур</span>
                                                         <strong id="indicator-lifecycle" class="operator-stat-value operator-indicator-value">idle</strong>
                                                     </div>
-                                                    <div class="operator-stat">
+                                                    <div id="operator-stat-takeoff-card" class="operator-stat">
                                                         <span class="operator-stat-label">Отбор</span>
                                                         <strong id="indicator-takeoff" class="operator-stat-value operator-indicator-value">--</strong>
                                                     </div>
-                                                    <div class="operator-stat">
+                                                    <div id="operator-stat-cooling-card" class="operator-stat">
                                                         <span class="operator-stat-label">Охлаждение</span>
                                                         <strong id="indicator-cooling-status" class="operator-stat-value operator-indicator-value">--</strong>
                                                     </div>
-                                                    <div class="operator-stat">
+                                                    <div id="operator-stat-pressure-margin-card" class="operator-stat">
                                                         <span class="operator-stat-label">Запас по давлению</span>
                                                         <strong id="indicator-pressure-margin" class="operator-stat-value operator-indicator-value">--</strong>
                                                     </div>
@@ -384,27 +384,27 @@
                                                     </summary>
                                                     <div class="operator-inline-fold-body">
                                                         <div class="operator-level-grid operator-level-grid-secondary">
-                                                            <div class="operator-level-item">
+                                                            <div id="operator-secondary-stability-card" class="operator-level-item">
                                                                 <span class="operator-level-label">Стабильность</span>
                                                                 <strong id="indicator-stability" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
                                                             </div>
-                                                            <div class="operator-level-item">
+                                                            <div id="operator-secondary-flood-risk-card" class="operator-level-item">
                                                                 <span class="operator-level-label">Риск захлёба</span>
                                                                 <strong id="indicator-flood-risk" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
                                                             </div>
-                                                            <div class="operator-level-item">
+                                                            <div id="operator-secondary-cooling-margin-card" class="operator-level-item">
                                                                 <span class="operator-level-label">Запас охлаждения</span>
                                                                 <strong id="indicator-cooling-margin" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
                                                             </div>
-                                                            <div class="operator-level-item">
+                                                            <div id="operator-secondary-process-health-card" class="operator-level-item">
                                                                 <span class="operator-level-label">Здоровье процесса</span>
                                                                 <strong id="indicator-process-health" class="operator-level-value operator-level-main operator-indicator-value">--</strong>
                                                             </div>
-                                                            <div class="operator-level-item">
+                                                            <div id="operator-secondary-pressure-cube-card" class="operator-level-item">
                                                                 <span class="operator-level-label">Давление куба</span>
                                                                 <strong id="indicator-pressure-cube" class="operator-level-value operator-indicator-value">--</strong>
                                                             </div>
-                                                            <div class="operator-level-item">
+                                                            <div id="operator-secondary-recovery-card" class="operator-level-item">
                                                                 <span class="operator-level-label">Восстановление</span>
                                                                 <strong id="indicator-recovery" class="operator-level-value operator-indicator-value">--</strong>
                                                             </div>
@@ -429,41 +429,41 @@
                                             <div class="operator-fold-body">
                                                 <article class="operator-card">
                                                     <div class="operator-list">
-                                                        <div class="operator-list-row"><span>Последняя причина</span><strong
+                                                        <div id="operator-diag-last-reason-row" class="operator-list-row"><span>Последняя причина</span><strong
                                                                 id="indicator-last-reason" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Покрытие телеметрии</span><strong
+                                                        <div id="operator-diag-telemetry-row" class="operator-list-row"><span>Покрытие телеметрии</span><strong
                                                                 id="indicator-telemetry-coverage" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Уверенность автоматики</span><strong
+                                                        <div id="operator-diag-decision-row" class="operator-list-row"><span>Уверенность автоматики</span><strong
                                                                 id="indicator-decision-trust" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Упрощённый режим</span><strong
+                                                        <div id="operator-diag-degraded-row" class="operator-list-row"><span>Упрощённый режим</span><strong
                                                                 id="indicator-degraded-mode" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Адаптивное управление</span><strong
+                                                        <div id="operator-diag-adaptive-row" class="operator-list-row"><span>Адаптивное управление</span><strong
                                                                 id="indicator-adaptive-control" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Свежесть датчиков</span><strong
+                                                        <div id="operator-diag-freshness-row" class="operator-list-row"><span>Свежесть датчиков</span><strong
                                                                 id="indicator-sensor-freshness" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Давление куба</span><strong
+                                                        <div id="operator-diag-pressure-row" class="operator-list-row"><span>Давление куба</span><strong
                                                                 id="indicator-pressure-diagnostics" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Скорость давления</span><strong
+                                                        <div id="operator-diag-pressure-rate-row" class="operator-list-row"><span>Скорость давления</span><strong
                                                                 id="indicator-pressure-rate" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Запас до лимита</span><strong
+                                                        <div id="operator-diag-pressure-margin-row" class="operator-list-row"><span>Запас до лимита</span><strong
                                                                 id="indicator-pressure-margin-diagnostics" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Стабильность давления</span><strong
+                                                        <div id="operator-diag-pressure-stable-row" class="operator-list-row"><span>Стабильность давления</span><strong
                                                                 id="indicator-pressure-stable" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Завершение голов</span><strong
+                                                        <div id="operator-diag-heads-score-row" class="operator-list-row"><span>Завершение голов</span><strong
                                                                 id="indicator-heads-score" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Вероятность конца тела</span><strong
+                                                        <div id="operator-diag-body-score-row" class="operator-list-row"><span>Вероятность конца тела</span><strong
                                                                 id="indicator-body-score" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Ограничения safety</span><strong
+                                                        <div id="operator-diag-power-limit-row" class="operator-list-row"><span>Ограничения safety</span><strong
                                                                 id="indicator-power-limit" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Уверенность старта отбора</span><strong
+                                                        <div id="operator-diag-confidence-takeoff-row" class="operator-list-row"><span>Уверенность старта отбора</span><strong
                                                                 id="indicator-confidence-takeoff" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Уверенность конца голов</span><strong
+                                                        <div id="operator-diag-confidence-heads-row" class="operator-list-row"><span>Уверенность конца голов</span><strong
                                                                 id="indicator-confidence-heads-end" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Уверенность конца тела</span><strong
+                                                        <div id="operator-diag-confidence-body-row" class="operator-list-row"><span>Уверенность конца тела</span><strong
                                                                 id="indicator-confidence-body-end" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Уверенность перехода в хвосты</span><strong
+                                                        <div id="operator-diag-confidence-tails-row" class="operator-list-row"><span>Уверенность перехода в хвосты</span><strong
                                                                 id="indicator-confidence-tails" class="operator-indicator-value">--</strong></div>
-                                                        <div class="operator-list-row"><span>Уверенность power-limit</span><strong
+                                                        <div id="operator-diag-confidence-power-limit-row" class="operator-list-row"><span>Уверенность power-limit</span><strong
                                                                 id="indicator-confidence-power-limit" class="operator-indicator-value">--</strong></div>
                                                     </div>
                                                     <div id="operator-reason-insight" class="operator-reason-insight is-muted">
@@ -3439,7 +3439,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.24"></script>
+    <script src="app.js?v=2.4.25"></script>
 </body>
 
 </html>
