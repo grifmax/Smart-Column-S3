@@ -75,7 +75,7 @@
 }
 
 .operator-monitor-layout {
-    grid-template-columns: minmax(420px, 0.9fr) minmax(360px, 1fr);
+    grid-template-columns: minmax(400px, 0.78fr) minmax(520px, 1.22fr);
     gap: 20px;
 }
 
@@ -94,6 +94,13 @@
 .col-stack-monitor-main,
 .col-stack-scheme {
     min-width: 0;
+}
+
+.operator-priority-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
 }
 
 .operator-grid {
@@ -172,6 +179,18 @@
     margin-bottom: 0;
 }
 
+.operator-card-toggle-copy {
+    min-width: 0;
+}
+
+.operator-card-toggle-note {
+    display: block;
+    margin-top: 4px;
+    color: var(--landing-muted);
+    font-size: 0.84rem;
+    line-height: 1.35;
+}
+
 .operator-card-toggle-state {
     min-width: 92px;
     padding: 7px 10px;
@@ -216,6 +235,16 @@
     display: grid;
     gap: 14px;
     margin-top: 0;
+}
+
+.operator-stack-kicker {
+    margin-top: 2px;
+    padding: 0 2px;
+    color: var(--landing-muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
 }
 
 .operator-mission-control {
@@ -1030,6 +1059,18 @@
     gap: 8px;
 }
 
+.operator-priority-grid .operator-card-runtime {
+    height: 100%;
+}
+
+.operator-priority-grid .operator-card-runtime .operator-runtime-bars {
+    grid-template-columns: 1fr;
+}
+
+.operator-priority-grid .operator-card-runtime .operator-runtime-manual {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+}
+
 .operator-runtime-track {
     border-radius: 10px;
     border: 1px solid var(--landing-border);
@@ -1578,6 +1619,12 @@
     margin-bottom: 0;
 }
 
+@media (min-width: 1360px) {
+    .operator-priority-grid {
+        grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);
+    }
+}
+
 @media (max-width: 1280px) {
     .operator-monitor-layout {
         grid-template-columns: minmax(0, 1fr);
@@ -1590,6 +1637,10 @@
 
 @media (max-width: 640px) {
     .operator-mission-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .operator-priority-grid {
         grid-template-columns: 1fr;
     }
 
@@ -1627,6 +1678,10 @@
     .operator-card-toggle {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .operator-card-toggle-copy {
+        width: 100%;
     }
 
     .operator-fold-summary-action {

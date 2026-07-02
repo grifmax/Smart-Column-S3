@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.22">
+    <link rel="stylesheet" href="style.css?v=2.4.23">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.22" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.23" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -259,95 +259,103 @@
                                     </article>
                                 </div>
                                 <div class="col-stack col-stack-monitor-main">
-                                    <div id="operator-mission-control" class="operator-mission-control is-muted">
-                                        <div class="operator-mission-head">
-                                            <span class="operator-mission-kicker">Сейчас важно</span>
-                                            <strong id="operator-mission-title">Ожидание сценария</strong>
-                                        </div>
-                                        <p id="operator-mission-text" class="operator-mission-text">
-                                            После выбора режима здесь появится цель процесса, ближайший риск и одно рекомендуемое действие.
-                                        </p>
-                                        <div class="operator-mission-grid">
-                                            <div id="operator-mission-goal-card" class="operator-mission-item">
-                                                <span>Цель</span>
-                                                <strong id="operator-mission-goal">--</strong>
+                                    <div class="operator-priority-grid">
+                                        <div id="operator-mission-control" class="operator-mission-control is-muted">
+                                            <div class="operator-mission-head">
+                                                <span class="operator-mission-kicker">Сейчас важно</span>
+                                                <strong id="operator-mission-title">Ожидание сценария</strong>
                                             </div>
-                                            <div id="operator-mission-risk-card" class="operator-mission-item">
-                                                <span>Ближайший риск</span>
-                                                <strong id="operator-mission-risk">--</strong>
-                                            </div>
-                                            <div id="operator-mission-action-card" class="operator-mission-item">
-                                                <span>Следующий шаг</span>
-                                                <strong id="operator-mission-action">--</strong>
-                                            </div>
-                                        </div>
-                                        <div id="operator-guidance" class="operator-guidance operator-guidance-inline is-muted">
-                                            <div class="operator-guidance-head">
-                                                <span class="operator-guidance-kicker">Контекст</span>
-                                                <strong id="operator-guidance-title">Ожидание статуса</strong>
-                                            </div>
-                                            <p id="operator-guidance-text" class="operator-guidance-text">
-                                                Подсказка появится после первого обновления indicators v2.
+                                            <p id="operator-mission-text" class="operator-mission-text">
+                                                После выбора режима здесь появится цель процесса, ближайший риск и одно рекомендуемое действие.
                                             </p>
+                                            <div class="operator-mission-grid">
+                                                <div id="operator-mission-goal-card" class="operator-mission-item">
+                                                    <span>Цель</span>
+                                                    <strong id="operator-mission-goal">--</strong>
+                                                </div>
+                                                <div id="operator-mission-risk-card" class="operator-mission-item">
+                                                    <span>Ближайший риск</span>
+                                                    <strong id="operator-mission-risk">--</strong>
+                                                </div>
+                                                <div id="operator-mission-action-card" class="operator-mission-item">
+                                                    <span>Следующий шаг</span>
+                                                    <strong id="operator-mission-action">--</strong>
+                                                </div>
+                                            </div>
+                                            <div id="operator-guidance" class="operator-guidance operator-guidance-inline is-muted">
+                                                <div class="operator-guidance-head">
+                                                    <span class="operator-guidance-kicker">Контекст</span>
+                                                    <strong id="operator-guidance-title">Ожидание статуса</strong>
+                                                </div>
+                                                <p id="operator-guidance-text" class="operator-guidance-text">
+                                                    Подсказка появится после первого обновления indicators v2.
+                                                </p>
+                                            </div>
                                         </div>
+                                        <details class="operator-card operator-card-runtime operator-card-collapsible" id="mode-runtime-card" open>
+                                            <summary class="operator-card-toggle">
+                                                <div class="operator-card-toggle-copy">
+                                                    <h3 class="operator-card-title" id="mode-runtime-title">Прогресс режима</h3>
+                                                    <span class="operator-card-toggle-note">Фаза, остаток и рабочие шаги текущего сценария</span>
+                                                </div>
+                                                <span class="operator-card-toggle-state"></span>
+                                            </summary>
+                                            <div class="operator-card-body">
+                                                <div id="mode-runtime-caption" class="operator-runtime-caption">Ожидание запуска
+                                                    процесса</div>
+                                                <div id="mode-runtime-bars" class="operator-runtime-bars"></div>
+                                                <div id="mode-runtime-rect" class="operator-runtime-manual"
+                                                    style="display: none;">
+                                                </div>
+                                                <div id="mode-runtime-manual" class="operator-runtime-manual"
+                                                    style="display: none;">
+                                                    <button class="operator-edit-tile" type="button"
+                                                        data-edit-param="manual-power">
+                                                        <span class="operator-edit-label">Мощность</span>
+                                                        <strong id="manual-power-display">-- Вт</strong>
+                                                    </button>
+                                                    <button class="operator-edit-tile" type="button"
+                                                        data-edit-param="manual-speed">
+                                                        <span class="operator-edit-label">Скорость отбора</span>
+                                                        <strong id="manual-speed-display">-- мл/ч</strong>
+                                                    </button>
+                                                    <button class="operator-edit-tile" type="button"
+                                                        data-edit-param="water-autostart-cube-temp">
+                                                        <span class="operator-edit-label">Подача воды (автостарт)</span>
+                                                        <strong id="water-autostart-display">-- °C</strong>
+                                                    </button>
+                                                    <button class="operator-edit-tile" type="button"
+                                                        data-edit-param="manual-heads">
+                                                        <span class="operator-edit-label">Головы</span>
+                                                        <strong id="manual-heads-display">-- мл</strong>
+                                                    </button>
+                                                    <button class="operator-edit-tile" type="button"
+                                                        data-edit-param="manual-body">
+                                                        <span class="operator-edit-label">Тело</span>
+                                                        <strong id="manual-body-display">-- мл</strong>
+                                                    </button>
+                                                    <button class="operator-edit-tile" type="button"
+                                                        data-edit-param="manual-tails">
+                                                        <span class="operator-edit-label">Хвосты</span>
+                                                        <strong id="manual-tails-display">-- мл</strong>
+                                                    </button>
+                                                    <button class="operator-edit-tile" type="button"
+                                                        data-edit-param="rect-power">
+                                                        <span class="operator-edit-label">Мощность</span>
+                                                        <strong id="rect-power-display">-- Вт</strong>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </details>
                                     </div>
-                                    <details class="operator-card operator-card-runtime operator-card-collapsible" id="mode-runtime-card" open>
-                                        <summary class="operator-card-toggle">
-                                            <h3 class="operator-card-title" id="mode-runtime-title">Прогресс режима</h3>
-                                            <span class="operator-card-toggle-state"></span>
-                                        </summary>
-                                        <div class="operator-card-body">
-                                            <div id="mode-runtime-caption" class="operator-runtime-caption">Ожидание запуска
-                                                процесса</div>
-                                            <div id="mode-runtime-bars" class="operator-runtime-bars"></div>
-                                            <div id="mode-runtime-rect" class="operator-runtime-manual"
-                                                style="display: none;">
-                                            </div>
-                                            <div id="mode-runtime-manual" class="operator-runtime-manual"
-                                                style="display: none;">
-                                                <button class="operator-edit-tile" type="button"
-                                                    data-edit-param="manual-power">
-                                                    <span class="operator-edit-label">Мощность</span>
-                                                    <strong id="manual-power-display">-- Вт</strong>
-                                                </button>
-                                                <button class="operator-edit-tile" type="button"
-                                                    data-edit-param="manual-speed">
-                                                    <span class="operator-edit-label">Скорость отбора</span>
-                                                    <strong id="manual-speed-display">-- мл/ч</strong>
-                                                </button>
-                                                <button class="operator-edit-tile" type="button"
-                                                    data-edit-param="water-autostart-cube-temp">
-                                                    <span class="operator-edit-label">Подача воды (автостарт)</span>
-                                                    <strong id="water-autostart-display">-- °C</strong>
-                                                </button>
-                                                <button class="operator-edit-tile" type="button"
-                                                    data-edit-param="manual-heads">
-                                                    <span class="operator-edit-label">Головы</span>
-                                                    <strong id="manual-heads-display">-- мл</strong>
-                                                </button>
-                                                <button class="operator-edit-tile" type="button"
-                                                    data-edit-param="manual-body">
-                                                    <span class="operator-edit-label">Тело</span>
-                                                    <strong id="manual-body-display">-- мл</strong>
-                                                </button>
-                                                <button class="operator-edit-tile" type="button"
-                                                    data-edit-param="manual-tails">
-                                                    <span class="operator-edit-label">Хвосты</span>
-                                                    <strong id="manual-tails-display">-- мл</strong>
-                                                </button>
-                                                <button class="operator-edit-tile" type="button"
-                                                    data-edit-param="rect-power">
-                                                    <span class="operator-edit-label">Мощность</span>
-                                                    <strong id="rect-power-display">-- Вт</strong>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </details>
 
                                     <div class="operator-panel-stack">
                                         <details class="operator-card operator-card-status operator-card-process operator-card-collapsible" open>
                                             <summary class="operator-card-toggle">
-                                                <h3 class="operator-card-title">Состояние процесса</h3>
+                                                <div class="operator-card-toggle-copy">
+                                                    <h3 class="operator-card-title">Состояние процесса</h3>
+                                                    <span class="operator-card-toggle-note">Короткая оперативная сводка без глубокой инженерной раскладки</span>
+                                                </div>
                                                 <span class="operator-card-toggle-state"></span>
                                             </summary>
                                             <div class="operator-card-body">
@@ -405,6 +413,7 @@
                                                 </details>
                                             </div>
                                         </details>
+                                        <div class="operator-stack-kicker">Глубже по запросу</div>
 
                                         <details id="monitor-diagnostics-panel" class="operator-fold-panel">
                                             <summary class="operator-fold-summary">
@@ -3430,7 +3439,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.22"></script>
+    <script src="app.js?v=2.4.23"></script>
 </body>
 
 </html>
