@@ -420,6 +420,173 @@ function ensureMissionControlBindings() {
     });
 }
 
+function isMissionPlaceholder(text) {
+    const value = String(text || '').trim();
+    return !value || value === '--' || value === '—';
+}
+
+function isGenericMissionRisk(text) {
+    const value = String(text || '').trim().toLowerCase();
+    return value.startsWith('критичных');
+}
+
+function isGenericMissionAction(text) {
+    const value = String(text || '').trim().toLowerCase();
+    return value.startsWith('продолжать процесс');
+}
+
+function setMissionCardStateCompact(cardId, valueId, text, route = null) {
+    const card = document.getElementById(cardId);
+    const valueEl = document.getElementById(valueId);
+    if (!card || !valueEl) return;
+
+    valueEl.textContent = text;
+    card._missionRoute = route || null;
+    card.classList.toggle('is-actionable', Boolean(route));
+    card.tabIndex = route ? 0 : -1;
+    card.setAttribute('role', route ? 'button' : 'group');
+    card.setAttribute('aria-disabled', route ? 'false' : 'true');
+    card.title = route ? 'Открыть связанную секцию' : '';
+}
+
+function setMissionCardVisibilityCompact(cardId, visible) {
+    const card = document.getElementById(cardId);
+    if (!card) return;
+    card.hidden = !visible;
+    if (!visible) {
+        card._missionRoute = null;
+        card.classList.remove('is-actionable');
+        card.tabIndex = -1;
+        card.setAttribute('role', 'group');
+        card.setAttribute('aria-disabled', 'true');
+        card.removeAttribute('title');
+    }
+}
+
+function syncMissionLayoutCompact(root, visibleCount = 0, quiet = false) {
+    if (!root) return;
+    root.classList.toggle('is-quiet', Boolean(quiet));
+    root.classList.toggle('has-single-card', visibleCount <= 1);
+    root.classList.toggle('has-two-cards', visibleCount === 2);
+}
+
+function setMissionControlCompact(title, detail, tone = 'muted', goal = '--', risk = '--', action = '--', routes = {}, options = {}) {
+    const root = document.getElementById('operator-mission-control');
+    const titleEl = document.getElementById('operator-mission-title');
+    const textEl = document.getElementById('operator-mission-text');
+    if (!root || !titleEl || !textEl) return;
+
+    const quiet = Boolean(options.quiet);
+    const showGoal = !isMissionPlaceholder(goal);
+    const showRisk = !isMissionPlaceholder(risk) && !(quiet && isGenericMissionRisk(risk));
+    let showAction = !isMissionPlaceholder(action) && !(quiet && showGoal && isGenericMissionAction(action));
+    if (!showGoal && !showRisk && !showAction) {
+        showAction = true;
+    }
+
+    root.classList.remove('is-good', 'is-warn', 'is-danger', 'is-muted');
+    root.classList.add(`is-${tone}`);
+    titleEl.textContent = title;
+    textEl.textContent = detail;
+
+    setMissionCardStateCompact('operator-mission-goal-card', 'operator-mission-goal', goal, showGoal ? (routes.goal || null) : null);
+    setMissionCardStateCompact('operator-mission-risk-card', 'operator-mission-risk', risk, showRisk ? (routes.risk || null) : null);
+    setMissionCardStateCompact('operator-mission-action-card', 'operator-mission-action', action, showAction ? (routes.action || null) : null);
+
+    setMissionCardVisibilityCompact('operator-mission-goal-card', showGoal);
+    setMissionCardVisibilityCompact('operator-mission-risk-card', showRisk);
+    setMissionCardVisibilityCompact('operator-mission-action-card', showAction);
+    syncMissionLayoutCompact(root, [showGoal, showRisk, showAction].filter(Boolean).length, quiet);
+
+    setMissionActionButtonState('operator-mission-goal-btn', 'К цели', showGoal ? (routes.goal || null) : null);
+    setMissionActionButtonState('operator-mission-risk-btn', 'Проверить риск', showRisk ? (routes.risk || null) : null);
+    setMissionActionButtonState('operator-mission-action-btn', 'К действию', showAction ? (routes.action || null) : null);
+}
+
+function syncOperatorQuietPanelsCompact(state, context = {}) {
+    const mode = resolveMode(state?.mode, state?.modeStr);
+    const lifecycle = String(state?.v2?.lifecycle || 'idle').toLowerCase();
+    const lastReasonCode = String(state?.v2?.lastReasonCode || 'RC_NONE');
+    const operatorMessage = String(state?.v2?.operatorMessage || '').trim();
+    const hasRuntimeItems = Boolean(context.hasRuntimeItems);
+    const hasGuidanceContext = Object.prototype.hasOwnProperty.call(context, 'guidanceTone');
+    const hasDiagnosticsContext = Object.prototype.hasOwnProperty.call(context, 'diagnosticsTone');
+    const activeAlarm = Boolean(context.activeAlarm);
+    const hasLimit = Boolean(context.hasLimit);
+    const telemetryDanger = Boolean(context.telemetryDanger);
+    const guidanceTone = String(context.guidanceTone || 'muted').toLowerCase();
+    const diagnosticsTone = String(context.diagnosticsTone || 'muted').toLowerCase();
+
+    if (hasGuidanceContext) {
+        const guidanceVisible =
+            activeAlarm ||
+            hasLimit ||
+            operatorMessage.length > 0 ||
+            guidanceTone === 'warn' ||
+            guidanceTone === 'danger';
+        setElementHidden('operator-guidance', !guidanceVisible);
+    }
+
+    const shouldOpenRuntime =
+        hasRuntimeItems ||
+        mode !== MODE_IDLE ||
+        lifecycle === 'starting' ||
+        lifecycle === 'running' ||
+        lifecycle === 'paused';
+
+    const quietState =
+        mode === MODE_IDLE &&
+        lifecycle === 'idle' &&
+        !activeAlarm &&
+        !hasLimit &&
+        !telemetryDanger &&
+        operatorMessage.length === 0 &&
+        (guidanceTone === 'muted' || guidanceTone === 'good') &&
+        (diagnosticsTone === 'muted' || diagnosticsTone === 'good');
+
+    const runtimeCard = document.getElementById('mode-runtime-card');
+    if (runtimeCard) {
+        if (shouldOpenRuntime) runtimeCard.setAttribute('open', 'open');
+        else runtimeCard.removeAttribute('open');
+        runtimeCard.classList.toggle('is-quiet', quietState && !shouldOpenRuntime);
+    }
+
+    const processCard = document.querySelector('.operator-card-process');
+    if (processCard) {
+        processCard.classList.toggle('is-quiet', quietState);
+    }
+
+    const secondaryPanel = document.getElementById('operator-process-secondary');
+    if (secondaryPanel) {
+        if (activeAlarm || hasLimit || telemetryDanger || diagnosticsTone === 'danger') {
+            secondaryPanel.setAttribute('open', 'open');
+        } else {
+            secondaryPanel.removeAttribute('open');
+        }
+    }
+
+    if (hasDiagnosticsContext) {
+        const diagnosticsMeaningful =
+            activeAlarm ||
+            hasLimit ||
+            telemetryDanger ||
+            diagnosticsTone === 'warn' ||
+            diagnosticsTone === 'danger' ||
+            operatorMessage.length > 0 ||
+            lastReasonCode !== 'RC_NONE';
+
+        updateDiagnosticsPanelState(diagnosticsTone, context.diagnosticsText || 'Скрыто', {
+            show: diagnosticsMeaningful,
+            forceOpen: diagnosticsTone === 'danger',
+            forceClosed: diagnosticsTone !== 'danger'
+        });
+    }
+}
+
+// Keep legacy helpers referenced while the monitor layer is being migrated in-place.
+const legacyMissionHelperRefs = [setMissionControl, syncOperatorQuietPanels];
+void legacyMissionHelperRefs;
+
 function getReasonCodeLabel(code) {
     const normalized = String(code || 'RC_NONE');
     const labels = {
@@ -1783,7 +1950,7 @@ function renderProcessIndicatorsPanel() {
         diagnosticsTone = 'warn';
         diagnosticsText = 'Есть ограничения';
     }
-    syncOperatorQuietPanels(s, {
+    syncOperatorQuietPanelsCompact(s, {
         guidanceTone: guidance.tone,
         diagnosticsTone,
         diagnosticsText,
@@ -1996,13 +2163,27 @@ export function renderModeRuntimeCard() {
     const activeLimits = s?.v2?.activeLimits || {};
     const mission = buildMissionSnapshot(s, indicators, activeLimits);
     const missionRoutes = buildMissionRoutes(s, indicators, activeLimits);
+    const missionQuiet =
+        mode === MODE_IDLE &&
+        String(s?.v2?.lifecycle || 'idle').toLowerCase() === 'idle' &&
+        mission.tone !== 'warn' &&
+        mission.tone !== 'danger';
     const preflight = getRuntimePreflightState(s);
-    setMissionControl(mission.title, mission.detail, mission.tone, mission.goal, mission.risk, mission.action, missionRoutes);
+    setMissionControlCompact(
+        mission.title,
+        mission.detail,
+        mission.tone,
+        mission.goal,
+        mission.risk,
+        mission.action,
+        missionRoutes,
+        { quiet: missionQuiet }
+    );
     setPreflightState(preflight.title, preflight.detail, preflight.tone, preflight.checks);
     renderRuntimeBars(items);
     updateManualTiles();
     renderProcessIndicatorsPanel();
-    syncOperatorQuietPanels(s, {
+    syncOperatorQuietPanelsCompact(s, {
         hasRuntimeItems: items.length > 0
     });
     if (manualEl) {

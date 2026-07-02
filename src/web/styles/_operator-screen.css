@@ -1523,6 +1523,61 @@
     color: #fca5a5;
 }
 
+.operator-card-collapsible[open] .operator-card-toggle-state::before {
+    content: 'Свернуть';
+    color: var(--landing-ink);
+}
+
+.operator-card-collapsible:not([open]) .operator-card-toggle-state::before {
+    content: 'Показать';
+    color: var(--landing-ink);
+}
+
+.operator-fold-panel[open] .operator-fold-summary-action::before {
+    content: 'Свернуть';
+    color: var(--landing-ink);
+}
+
+.operator-fold-panel:not([open]) .operator-fold-summary-action::before {
+    content: 'Показать';
+    color: var(--landing-ink);
+}
+
+.operator-mission-item[hidden] {
+    display: none !important;
+}
+
+.operator-mission-control.is-quiet {
+    padding: 12px 14px;
+}
+
+.operator-mission-control.is-quiet .operator-mission-text {
+    margin-top: 4px;
+    font-size: 0.88rem;
+}
+
+.operator-mission-control.has-single-card .operator-mission-grid {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.operator-mission-control.has-two-cards .operator-mission-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.operator-card-runtime.is-quiet .operator-card-body,
+.operator-card-process.is-quiet .operator-card-body {
+    padding-top: 0;
+}
+
+.operator-card-runtime.is-quiet .operator-runtime-caption {
+    margin-bottom: 0;
+    font-size: 0.88rem;
+}
+
+.operator-card-process.is-quiet .operator-status-grid-compact {
+    margin-bottom: 0;
+}
+
 @media (max-width: 1280px) {
     .operator-monitor-layout {
         grid-template-columns: minmax(0, 1fr);

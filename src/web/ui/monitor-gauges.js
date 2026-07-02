@@ -20,6 +20,23 @@ const GAUGE_SECTION_LABELS = {
 let gaugeFilterBindingsReady = false;
 let activeGaugeFilter = 'temperatures';
 
+function getGaugeSectionLabel(section) {
+    switch (section) {
+    case 'temperatures':
+        return 'Температуры';
+    case 'power':
+        return 'Питание';
+    case 'volumes':
+        return 'Объёмы';
+    case 'stirrer':
+        return 'Мешалка';
+    case 'chart':
+        return 'График';
+    default:
+        return 'Показометры';
+    }
+}
+
 function setHidden(id, hidden) {
     const el = document.getElementById(id);
     if (el) el.hidden = Boolean(hidden);
@@ -107,7 +124,7 @@ function getFirstAvailableSection() {
 function updateGaugeSummaryBadge(section) {
     const badge = document.getElementById('monitor-gauges-badge');
     if (!badge) return;
-    badge.textContent = GAUGE_SECTION_LABELS[section] || 'Показометры';
+    badge.textContent = getGaugeSectionLabel(section);
 }
 
 function applyGaugeFilter(section = activeGaugeFilter) {
