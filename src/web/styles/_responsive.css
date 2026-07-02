@@ -24,6 +24,42 @@
 
 /* Mobile/tablet: hide sidebar, show hamburger */
 @media (max-width: 900px) {
+    .titlebar {
+        min-height: auto;
+        height: auto;
+        padding: 8px 10px;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .titlebar-title {
+        font-size: 12px;
+        line-height: 1.2;
+    }
+
+    .titlebar-status {
+        order: 3;
+        width: 100%;
+        min-width: 0;
+        gap: 6px;
+        font-size: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+
+    .titlebar-status > span:nth-of-type(2) {
+        display: none;
+    }
+
+    .user-menu-container[data-cloud-only="1"] {
+        margin-left: 0 !important;
+    }
+
+    .titlebar-controls {
+        margin-left: auto;
+    }
+
     .toolbar {
         position: sticky;
         top: 0;
@@ -49,7 +85,17 @@
         flex: 1 1 100%;
         min-width: 0;
         overflow-x: auto;
+        margin-left: 0 !important;
         padding-bottom: 2px;
+    }
+
+    .toolbar-status-items .status-item {
+        white-space: nowrap;
+    }
+
+    .toolbar-status-items .separator:last-of-type,
+    .toolbar-status-items .status-item:last-of-type {
+        display: none;
     }
 
     .toolbar-group {
@@ -66,9 +112,17 @@
     }
 
     .toolbar-kpi {
-        min-width: 132px;
-        flex: 0 0 132px;
-        padding: 8px 12px;
+        min-width: 124px;
+        flex: 0 0 124px;
+        padding: 8px 10px;
+    }
+
+    .toolbar-kpi-value {
+        font-size: 16px;
+    }
+
+    .toolbar-kpi-label {
+        font-size: 9px;
     }
 
     .content-body {

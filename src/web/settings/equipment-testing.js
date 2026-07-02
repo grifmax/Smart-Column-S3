@@ -1245,7 +1245,7 @@ function initEquipmentPaneWorkbench({
     function syncLayout() {
         const isMobile = mediaQuery.matches;
         pane.dataset.equipmentWorkbenchLayout = isMobile ? 'mobile' : 'desktop';
-        nav.hidden = false;
+        nav.hidden = isMobile;
 
         if (!isMobile && !state[stateKey]) {
             state[stateKey] = resolvedCards[0]?.meta.id || null;
@@ -1260,10 +1260,10 @@ function initEquipmentPaneWorkbench({
             if (card.toggle) {
                 card.toggle.classList.toggle('is-active', isActive);
                 card.toggle.setAttribute('aria-expanded', String(isActive));
-                card.toggle.hidden = isMobile;
+                card.toggle.hidden = !isMobile;
             }
-            card.body.hidden = false;
-            card.card.hidden = !isActive;
+            card.body.hidden = isMobile ? !isActive : false;
+            card.card.hidden = isMobile ? false : !isActive;
 
             const navButton = buttonsById.get(card.meta.id);
             if (navButton) {
@@ -1461,7 +1461,7 @@ function initEquipmentTestingWorkbench() {
     function syncTestingLayout() {
         const isMobile = mediaQuery.matches;
         testingPane.dataset.testingLayout = isMobile ? 'mobile' : 'desktop';
-        nav.hidden = false;
+        nav.hidden = isMobile;
 
         if (!isMobile && !state.activeTestingCard) {
             state.activeTestingCard = resolvedCards[0]?.meta.id || null;
@@ -1476,10 +1476,10 @@ function initEquipmentTestingWorkbench() {
             if (card.toggle) {
                 card.toggle.classList.toggle('is-active', isActive);
                 card.toggle.setAttribute('aria-expanded', String(isActive));
-                card.toggle.hidden = isMobile;
+                card.toggle.hidden = !isMobile;
             }
-            card.body.hidden = false;
-            card.card.hidden = !isActive;
+            card.body.hidden = isMobile ? !isActive : false;
+            card.card.hidden = isMobile ? false : !isActive;
 
             const navButton = buttonsById.get(card.meta.id);
             if (navButton) {
@@ -1735,7 +1735,7 @@ export function setEquipmentSection(sectionId) {
         void refreshEquipmentTestingStatus();
     }
 
-    document.dispatchEvent(new CustomEvent('equipment-section-changed', {
+    document.dispatchEvent(new window.CustomEvent('equipment-section-changed', {
         detail: { sectionId }
     }));
     syncEquipmentTestingPolling(sectionId === 'testing');

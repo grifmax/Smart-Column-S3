@@ -1506,7 +1506,17 @@
     }
 
     .equipment-test-mobile-toggle {
-        display: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-bottom: 1px solid var(--border-color);
+        background: linear-gradient(180deg, var(--bg-card), var(--bg-secondary));
+        cursor: pointer;
+        text-align: left;
+        font: inherit;
     }
 
     .equipment-test-mobile-icon {
@@ -1559,6 +1569,10 @@
 
     .equipment-test-card-body {
         padding: 0 12px 12px;
+    }
+
+    .equipment-test-card:not(.is-active) .equipment-test-card-body {
+        padding-bottom: 0;
     }
 
     .equipment-test-card-body > .equipment-test-card-group-badge,
