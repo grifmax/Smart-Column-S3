@@ -295,6 +295,42 @@
         font-size: 1.06em;
     }
 
+    .operator-mobile-diagnostics-trigger {
+        display: flex;
+    }
+
+    .operator-stack-kicker {
+        display: none;
+    }
+
+    .is-mobile-inline-hidden {
+        display: none !important;
+    }
+
+    .operator-mobile-diagnostics-dialog {
+        width: min(94vw, 760px);
+        max-height: calc(100vh - 32px);
+    }
+
+    .operator-mobile-diagnostics-modal .modal-body {
+        padding: 14px;
+    }
+
+    .operator-mobile-diagnostics-modal-content {
+        gap: 12px;
+    }
+
+    .operator-mobile-diagnostics-modal-content .operator-fold-summary,
+    .operator-mobile-diagnostics-modal-content .operator-card-toggle {
+        align-items: flex-start;
+    }
+
+    .operator-mobile-diagnostics-modal-content .operator-status-grid,
+    .operator-mobile-diagnostics-modal-content .operator-level-grid,
+    .operator-mobile-diagnostics-modal-content .operator-list {
+        grid-template-columns: 1fr;
+    }
+
     .cards {
         grid-template-columns: 1fr;
     }

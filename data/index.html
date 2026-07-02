@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.26">
+    <link rel="stylesheet" href="style.css?v=2.4.27">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.26" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.27" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -282,21 +282,28 @@
                                                     <strong id="operator-mission-action">--</strong>
                                                 </div>
                                             </div>
-                                            <div id="operator-guidance" class="operator-guidance operator-guidance-inline is-muted">
-                                                <div class="operator-guidance-head">
-                                                    <span class="operator-guidance-kicker">Контекст</span>
-                                                    <strong id="operator-guidance-title">Ожидание статуса</strong>
-                                                </div>
-                                                <p id="operator-guidance-text" class="operator-guidance-text">
-                                                    Подсказка появится после первого обновления indicators v2.
-                                                </p>
+                                        <div id="operator-guidance" class="operator-guidance operator-guidance-inline is-muted">
+                                            <div class="operator-guidance-head">
+                                                <span class="operator-guidance-kicker">Контекст</span>
+                                                <strong id="operator-guidance-title">Ожидание статуса</strong>
                                             </div>
+                                            <p id="operator-guidance-text" class="operator-guidance-text">
+                                                Подсказка появится после первого обновления indicators v2.
+                                            </p>
                                         </div>
-                                        <details class="operator-card operator-card-runtime operator-card-collapsible" id="mode-runtime-card" open>
-                                            <summary class="operator-card-toggle">
-                                                <div class="operator-card-toggle-copy">
-                                                    <h3 class="operator-card-title" id="mode-runtime-title">Прогресс режима</h3>
-                                                    <span class="operator-card-toggle-note">Фаза, остаток и рабочие шаги текущего сценария</span>
+                                    </div>
+                                    <button id="mobile-diagnostics-trigger" class="operator-mobile-diagnostics-trigger" type="button" onclick="openMobileDiagnosticsModal()">
+                                        <span class="operator-mobile-diagnostics-trigger-copy">
+                                            <strong>Диагностика</strong>
+                                            <span>Прогресс, состояние и инженерный контекст по запросу</span>
+                                        </span>
+                                        <span id="mobile-diagnostics-trigger-badge" class="operator-mobile-diagnostics-trigger-badge is-muted">Скрыто</span>
+                                    </button>
+                                    <details class="operator-card operator-card-runtime operator-card-collapsible" id="mode-runtime-card" open>
+                                        <summary class="operator-card-toggle">
+                                            <div class="operator-card-toggle-copy">
+                                                <h3 class="operator-card-title" id="mode-runtime-title">Прогресс режима</h3>
+                                                <span class="operator-card-toggle-note">Фаза, остаток и рабочие шаги текущего сценария</span>
                                                 </div>
                                                 <span class="operator-card-toggle-state"></span>
                                             </summary>
@@ -350,7 +357,7 @@
                                     </div>
 
                                     <div class="operator-panel-stack">
-                                        <details class="operator-card operator-card-status operator-card-process operator-card-collapsible" open>
+                                        <details id="operator-process-card" class="operator-card operator-card-status operator-card-process operator-card-collapsible" open>
                                             <summary class="operator-card-toggle">
                                                 <div class="operator-card-toggle-copy">
                                                     <h3 class="operator-card-title">Состояние процесса</h3>
@@ -3412,6 +3419,21 @@
         </div>
     </div>
 
+    <div id="mobile-diagnostics-modal" class="modal-overlay operator-mobile-diagnostics-modal">
+        <div class="modal-content operator-mobile-diagnostics-dialog">
+            <div class="modal-header">
+                <div>
+                    <div class="operator-start-modal-kicker">Мобильный обзор</div>
+                    <div class="modal-title">Диагностика и прогресс</div>
+                </div>
+                <button class="modal-close" onclick="closeMobileDiagnosticsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="mobile-diagnostics-modal-content" class="operator-mobile-diagnostics-modal-content"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Safety Modal (Soft Failures) -->
     <div id="safety-modal" class="modal" style="display: none; z-index: 10000;">
         <div class="modal-content" style="border: 2px solid var(--danger, #dc3545); max-width: 450px;">
@@ -3439,7 +3461,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.26"></script>
+    <script src="app.js?v=2.4.27"></script>
 </body>
 
 </html>

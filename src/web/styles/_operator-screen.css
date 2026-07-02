@@ -1619,6 +1619,91 @@
     margin-bottom: 0;
 }
 
+.operator-mobile-diagnostics-trigger {
+    display: none;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    background: linear-gradient(135deg, rgba(18, 30, 56, 0.98), rgba(13, 22, 40, 0.94));
+    color: #e5eefc;
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18);
+    text-align: left;
+}
+
+.operator-mobile-diagnostics-trigger-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.operator-mobile-diagnostics-trigger-copy strong {
+    font-family: 'Exo 2', 'Manrope', sans-serif;
+    font-size: 1rem;
+    line-height: 1.1;
+}
+
+.operator-mobile-diagnostics-trigger-copy span {
+    color: rgba(226, 232, 240, 0.82);
+    font-size: 0.84rem;
+    line-height: 1.35;
+}
+
+.operator-mobile-diagnostics-trigger-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 88px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    background: rgba(148, 163, 184, 0.16);
+    color: #dbeafe;
+    white-space: nowrap;
+}
+
+.operator-mobile-diagnostics-trigger-badge.is-good {
+    background: rgba(34, 197, 94, 0.18);
+    color: #86efac;
+}
+
+.operator-mobile-diagnostics-trigger-badge.is-warn {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fcd34d;
+}
+
+.operator-mobile-diagnostics-trigger-badge.is-danger {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+.operator-mobile-diagnostics-trigger-badge.is-muted {
+    background: rgba(148, 163, 184, 0.14);
+    color: #cbd5e1;
+}
+
+.operator-mobile-diagnostics-dialog {
+    max-width: min(92vw, 860px);
+}
+
+.operator-mobile-diagnostics-modal-content {
+    display: grid;
+    gap: 14px;
+}
+
+.operator-mobile-diagnostics-modal-content > * {
+    margin: 0;
+}
+
+body.mobile-diagnostics-open {
+    overflow: hidden;
+}
+
 @media (min-width: 1360px) {
     .operator-priority-grid {
         grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);

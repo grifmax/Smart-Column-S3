@@ -5,6 +5,16 @@ import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { estimateRectTargets } from '../runtime/state.js';
 
 let missionBindingsReady = false;
+let diagnosticsPanelBindingsReady = false;
+let mobileDiagnosticsBindingsReady = false;
+
+const MOBILE_MONITOR_MEDIA = '(max-width: 900px)';
+const MOBILE_DIAGNOSTICS_SECTION_IDS = [
+    'mode-runtime-card',
+    'operator-process-card',
+    'monitor-diagnostics-panel'
+];
+const mobileDiagnosticsHome = new Map();
 
 function setIndicatorValue(id, text, tone = 'muted') {
     const el = document.getElementById(id);
@@ -292,22 +302,157 @@ function setFoldSummaryBadge(id, text, tone = 'muted') {
 
 function updateDiagnosticsPanelState(tone = 'muted', text = 'Скрыто', options = {}) {
     setFoldSummaryBadge('monitor-diagnostics-badge', text, tone);
+    setFoldSummaryBadge('mobile-diagnostics-trigger-badge', text, tone);
     const panel = document.getElementById('monitor-diagnostics-panel');
     if (!panel) return;
 
     const shouldShow = options.show !== undefined ? Boolean(options.show) : true;
     panel.hidden = !shouldShow;
-    if (!shouldShow) return;
+    if (!shouldShow) {
+        panel.dataset.userExpanded = '';
+        return;
+    }
 
     if (tone === 'danger' || options.forceOpen) {
+        panel.dataset.autoToggle = '1';
         panel.setAttribute('open', 'open');
         return;
     }
 
-    if (options.forceClosed) {
+    const userExpanded = panel.dataset.userExpanded === '1';
+    if (options.forceClosed && !userExpanded) {
+        panel.dataset.autoToggle = '1';
         panel.removeAttribute('open');
     }
 }
+
+function bindDiagnosticsPanelState() {
+    if (diagnosticsPanelBindingsReady) return;
+    diagnosticsPanelBindingsReady = true;
+
+    const panel = document.getElementById('monitor-diagnostics-panel');
+    if (!panel) return;
+
+    panel.addEventListener('toggle', () => {
+        if (panel.dataset.autoToggle === '1') {
+            panel.dataset.autoToggle = '';
+            return;
+        }
+        panel.dataset.userExpanded = panel.hasAttribute('open') ? '1' : '';
+    });
+}
+
+function isMobileMonitorLayout() {
+    return window.matchMedia(MOBILE_MONITOR_MEDIA).matches;
+}
+
+function rememberMobileDiagnosticsHome(id) {
+    if (mobileDiagnosticsHome.has(id)) return;
+    const element = document.getElementById(id);
+    if (!element || !element.parentNode) return;
+    mobileDiagnosticsHome.set(id, {
+        parent: element.parentNode,
+        nextSibling: element.nextSibling
+    });
+}
+
+function restoreMobileDiagnosticsSections() {
+    MOBILE_DIAGNOSTICS_SECTION_IDS.forEach((id) => {
+        const element = document.getElementById(id);
+        const home = mobileDiagnosticsHome.get(id);
+        if (!element || !home?.parent) return;
+
+        if (home.nextSibling && home.nextSibling.parentNode === home.parent) {
+            home.parent.insertBefore(element, home.nextSibling);
+        } else {
+            home.parent.appendChild(element);
+        }
+    });
+}
+
+function syncMobileDiagnosticsLayout() {
+    const modal = document.getElementById('mobile-diagnostics-modal');
+    const modalContent = document.getElementById('mobile-diagnostics-modal-content');
+    const mobileLayout = isMobileMonitorLayout();
+    const modalOpen = Boolean(modal && modal.classList.contains('show'));
+
+    if (!mobileLayout) {
+        if (modalOpen) {
+            closeMobileDiagnosticsModal();
+            return;
+        }
+        restoreMobileDiagnosticsSections();
+    }
+
+    MOBILE_DIAGNOSTICS_SECTION_IDS.forEach((id) => {
+        const element = document.getElementById(id);
+        if (!element) return;
+
+        const shouldHideInline = mobileLayout && !modalOpen;
+        element.classList.toggle('is-mobile-inline-hidden', shouldHideInline);
+
+        if (mobileLayout && modalOpen && modalContent && element.parentNode !== modalContent) {
+            modalContent.appendChild(element);
+        }
+    });
+}
+
+function openMobileDiagnosticsModal() {
+    if (!isMobileMonitorLayout()) return;
+
+    const modal = document.getElementById('mobile-diagnostics-modal');
+    const modalContent = document.getElementById('mobile-diagnostics-modal-content');
+    if (!modal || !modalContent) return;
+
+    MOBILE_DIAGNOSTICS_SECTION_IDS.forEach((id) => {
+        rememberMobileDiagnosticsHome(id);
+        const element = document.getElementById(id);
+        if (!element) return;
+        element.classList.remove('is-mobile-inline-hidden');
+        modalContent.appendChild(element);
+    });
+
+    modal.classList.add('show');
+    document.body.classList.add('mobile-diagnostics-open');
+}
+
+function closeMobileDiagnosticsModal() {
+    const modal = document.getElementById('mobile-diagnostics-modal');
+    if (!modal) return;
+
+    modal.classList.remove('show');
+    document.body.classList.remove('mobile-diagnostics-open');
+    restoreMobileDiagnosticsSections();
+    syncMobileDiagnosticsLayout();
+}
+
+function bindMobileDiagnosticsModal() {
+    if (mobileDiagnosticsBindingsReady) return;
+    mobileDiagnosticsBindingsReady = true;
+
+    MOBILE_DIAGNOSTICS_SECTION_IDS.forEach((id) => rememberMobileDiagnosticsHome(id));
+    syncMobileDiagnosticsLayout();
+
+    const modal = document.getElementById('mobile-diagnostics-modal');
+    if (modal) {
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) closeMobileDiagnosticsModal();
+        });
+    }
+
+    window.addEventListener('resize', syncMobileDiagnosticsLayout);
+    window.addEventListener('orientationchange', syncMobileDiagnosticsLayout);
+    window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeMobileDiagnosticsModal();
+    });
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', syncMobileDiagnosticsLayout);
+    }
+}
+
+window.openMobileDiagnosticsModal = openMobileDiagnosticsModal;
+window.closeMobileDiagnosticsModal = closeMobileDiagnosticsModal;
 
 function setPreflightItem(id, text, tone = 'muted') {
     const el = document.getElementById(id);
@@ -2313,6 +2458,9 @@ export function renderModeRuntimeCard() {
 
 export function initRuntimeMonitorUi() {
     ensureMissionControlBindings();
+    bindDiagnosticsPanelState();
+    bindMobileDiagnosticsModal();
+    syncMobileDiagnosticsLayout();
     const tiles = document.querySelectorAll('[data-edit-param]');
     tiles.forEach((tile) => {
         const openFromTile = () => {
