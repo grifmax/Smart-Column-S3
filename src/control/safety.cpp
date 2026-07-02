@@ -141,7 +141,8 @@ RequiredSensorsMask buildRequiredSensorsMask(Mode mode, const Settings& settings
 }
 
 bool isPressureSensorBlockingForMode(Mode mode) {
-    return mode != Mode::RECTIFICATION && mode != Mode::MANUAL_RECT;
+    (void)mode;
+    return false;
 }
 
 RequiredSensorsMask buildBlockingSensorFailureMask(Mode mode, const Settings& settings) {

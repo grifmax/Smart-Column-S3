@@ -1311,7 +1311,8 @@ static bool requiresAdaptiveColumnTopForMode(Mode mode) {
 }
 
 static bool isPressureStartupBlockingForMode(Mode mode) {
-  return mode != Mode::RECTIFICATION && mode != Mode::MANUAL_RECT;
+  (void)mode;
+  return false;
 }
 
 static String buildBlockingRequiredSensorsList(
@@ -1909,8 +1910,8 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
             true);
   } else if (hasNonBlockingSensorGap) {
     addItem("sensors", "warn", "Обязательные датчики",
-            "Датчик давления куба сейчас не подтверждён. Для ректификации это не блокирует старт, "
-            "но идти нужно с усиленным операторским контролем.",
+            "Датчик давления куба сейчас не подтверждён. Старт для этого режима не блокируется, "
+            "но процесс нужно вести с усиленным операторским контролем.",
             false);
   } else if (!sensorsFresh) {
     addItem("sensors", "danger", "Свежесть телеметрии",
@@ -2036,7 +2037,7 @@ static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
             "Давление",
             pressureStartupBlocking
                 ? String("Датчик давления куба сейчас не подтверждён. Для этого режима старт лучше не продолжать без манометра.")
-                : String("Датчик давления куба сейчас не подтверждён. Старт возможен, но контроль процесса нужно вести внимательнее."),
+                : String("Датчик давления куба сейчас не подтверждён. Старт возможен, но манометр остаётся рекомендованным, а контроль процесса нужно вести внимательнее."),
             pressureStartupBlocking);
   } else if (absCubePressure >= g_settings.safety.pressureMaxMmHg) {
     addItem("pressure", "danger", "Давление",
