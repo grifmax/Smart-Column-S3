@@ -19,6 +19,17 @@ const GAUGE_SECTION_LABELS = {
 
 let gaugeFilterBindingsReady = false;
 let activeGaugeFilter = 'temperatures';
+const MIN_MEANINGFUL_TEMP_C = 0.05;
+
+function getTemperatureValue(key) {
+    const numeric = Number(runtimeMonitorState?.temps?.[key]);
+    return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function hasMeaningfulTemperatureValue(key) {
+    const value = getTemperatureValue(key);
+    return value !== undefined && Math.abs(value) >= MIN_MEANINGFUL_TEMP_C;
+}
 
 function getGaugeSectionLabel(section) {
     switch (section) {
@@ -49,10 +60,11 @@ function getAvailableGaugeSections() {
 function isTemperatureChannelVisible(key) {
     const channel = runtimeMonitorState.temperatureChannels?.[key];
     return Boolean(
-        channel?.installed ||
+        (channel?.installed ||
         channel?.assigned ||
         channel?.detected ||
-        channel?.valid
+        channel?.valid) &&
+        hasMeaningfulTemperatureValue(key)
     );
 }
 

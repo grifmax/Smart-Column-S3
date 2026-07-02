@@ -6,6 +6,7 @@ import {
     isStatusTempInvalid
 } from '../core/status-values.js';
 import { runtimeMonitorState } from '../globals.js';
+const MIN_MEANINGFUL_TEMP_C = 0.05;
 
 function setHidden(id, hidden) {
     const el = document.getElementById(id);
@@ -34,6 +35,10 @@ function isTempChannelVisible(key) {
     );
 }
 
+function hasMeaningfulTemp(value) {
+    return Number.isFinite(value) && Math.abs(value) >= MIN_MEANINGFUL_TEMP_C;
+}
+
 function hasPressureSignal() {
     const pressure = runtimeMonitorState.pressure || {};
     return Boolean(
@@ -52,13 +57,15 @@ function hasPowerSignal(data) {
 }
 
 export function updateKpiStrip(data) {
-    const cubeTemp = isStatusTempInvalid(data, 'cube')
+    const rawCubeTemp = isStatusTempInvalid(data, 'cube')
         ? undefined
         : getStatusTemperature(data, 'cube', 't_cube');
+    const cubeTemp = hasMeaningfulTemp(rawCubeTemp) ? rawCubeTemp : undefined;
     const columnTopVisible = isTempChannelVisible('columnTop');
-    const columnTopTemp = columnTopVisible && !isStatusTempInvalid(data, 'columnTop')
+    const rawColumnTopTemp = columnTopVisible && !isStatusTempInvalid(data, 'columnTop')
         ? getStatusTemperature(data, 'columnTop', 't_column_top')
         : undefined;
+    const columnTopTemp = hasMeaningfulTemp(rawColumnTopTemp) ? rawColumnTopTemp : undefined;
     const powerVisible = hasPowerSignal(data);
     const powerValue = powerVisible
         ? getStatusPower(data, 'power', 'power')
@@ -76,7 +83,7 @@ export function updateKpiStrip(data) {
     renderKpiValue('kpi-pump', pumpSpeed, 0, 'мл/ч');
 
     setHidden('kpi-card-temp-cube', cubeTemp === undefined);
-    setHidden('kpi-card-tsarga', !columnTopVisible);
+    setHidden('kpi-card-tsarga', !columnTopVisible || columnTopTemp === undefined);
     setHidden('kpi-card-power', !powerVisible);
     setHidden('kpi-card-pressure', !pressureVisible);
     setHidden('kpi-card-pump', pumpSpeed === undefined || pumpSpeed === null);
