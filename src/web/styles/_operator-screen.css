@@ -103,6 +103,10 @@
     align-items: start;
 }
 
+.operator-priority-grid.is-single-card {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .operator-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1707,6 +1711,10 @@ body.mobile-diagnostics-open {
 @media (min-width: 1360px) {
     .operator-priority-grid {
         grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);
+    }
+
+    .operator-priority-grid.is-single-card {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 

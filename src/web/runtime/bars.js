@@ -687,6 +687,9 @@ function syncOperatorQuietPanelsCompact(state, context = {}) {
     const telemetryDanger = Boolean(context.telemetryDanger);
     const guidanceTone = String(context.guidanceTone || 'muted').toLowerCase();
     const diagnosticsTone = String(context.diagnosticsTone || 'muted').toLowerCase();
+    const primaryVisibleCount = Math.max(0, Number(context.primaryVisibleCount) || 0);
+    const secondaryVisibleCount = Math.max(0, Number(context.secondaryVisibleCount) || 0);
+    const diagnosticsVisible = Boolean(context.diagnosticsVisible);
 
     if (hasGuidanceContext) {
         const guidanceVisible =
@@ -716,14 +719,26 @@ function syncOperatorQuietPanelsCompact(state, context = {}) {
         (diagnosticsTone === 'muted' || diagnosticsTone === 'good');
 
     const runtimeCard = document.getElementById('mode-runtime-card');
+    const priorityGrid = document.querySelector('.operator-priority-grid');
     if (runtimeCard) {
-        if (shouldOpenRuntime) runtimeCard.setAttribute('open', 'open');
-        else runtimeCard.removeAttribute('open');
+        runtimeCard.hidden = quietState && !shouldOpenRuntime;
+        if (runtimeCard.hidden) {
+            runtimeCard.removeAttribute('open');
+        } else if (shouldOpenRuntime) {
+            runtimeCard.setAttribute('open', 'open');
+        } else {
+            runtimeCard.removeAttribute('open');
+        }
         runtimeCard.classList.toggle('is-quiet', quietState && !shouldOpenRuntime);
     }
+    if (priorityGrid) {
+        priorityGrid.classList.toggle('is-single-card', !runtimeCard || runtimeCard.hidden);
+    }
 
-    const processCard = document.querySelector('.operator-card-process');
+    const processCard = document.getElementById('operator-process-card');
+    const processVisible = !quietState || primaryVisibleCount > 0 || secondaryVisibleCount > 0;
     if (processCard) {
+        processCard.hidden = !processVisible;
         processCard.classList.toggle('is-quiet', quietState);
     }
 
@@ -734,6 +749,21 @@ function syncOperatorQuietPanelsCompact(state, context = {}) {
         } else {
             secondaryPanel.removeAttribute('open');
         }
+    }
+
+    const stackKicker = document.querySelector('.operator-stack-kicker');
+    if (stackKicker) {
+        stackKicker.hidden = !diagnosticsVisible;
+    }
+
+    const diagnosticsTrigger = document.getElementById('mobile-diagnostics-trigger');
+    if (diagnosticsTrigger) {
+        diagnosticsTrigger.hidden = !isMobileMonitorLayout() || (!diagnosticsVisible && runtimeCard?.hidden && !processVisible);
+    }
+
+    const panelStack = document.querySelector('.operator-panel-stack');
+    if (panelStack) {
+        panelStack.hidden = !processVisible && !diagnosticsVisible;
     }
 
     if (hasDiagnosticsContext) {
@@ -2112,6 +2142,18 @@ function renderProcessIndicatorsPanel() {
 
     const showPressureMarginCard = pressureAvailability.signalAvailable;
     const showCoolingCard = coolingRelevant;
+    const showLifecycleCard =
+        mode !== MODE_IDLE ||
+        lifecycle !== 'idle' ||
+        activeAlarm ||
+        hasLimit ||
+        operatorMessage.length > 0;
+    const showTakeoffCard =
+        mode === MODE_RECT ||
+        mode === MODE_MANUAL ||
+        mode === MODE_DIST ||
+        mode === MODE_NBK ||
+        (hasLimit && Boolean(indicators.takeoffAllowed) === false);
     const showStabilityCard = !quietIdle || stability < 0.999 || activeAlarm || hasLimit;
     const showFloodRiskCard =
         mode === MODE_RECT ||
@@ -2123,6 +2165,8 @@ function renderProcessIndicatorsPanel() {
     const showPressureCubeCard = pressureAvailability.hardwareAvailable;
     const showRecoveryCard = Boolean(indicators.recoveryActive);
 
+    setElementHidden('operator-stat-lifecycle-card', !showLifecycleCard);
+    setElementHidden('operator-stat-takeoff-card', !showTakeoffCard);
     setElementHidden('operator-stat-pressure-margin-card', !showPressureMarginCard);
     setElementHidden('operator-stat-cooling-card', !showCoolingCard);
     setElementHidden('operator-secondary-stability-card', !showStabilityCard);
@@ -2139,6 +2183,12 @@ function renderProcessIndicatorsPanel() {
         showProcessHealthCard,
         showPressureCubeCard,
         showRecoveryCard
+    ].filter(Boolean).length;
+    const primaryVisibleCount = [
+        showLifecycleCard,
+        showTakeoffCard,
+        showCoolingCard,
+        showPressureMarginCard
     ].filter(Boolean).length;
 
     const guidance = getPublishedGuidance(s) || buildGuidance(s, indicators, activeLimits);
@@ -2182,6 +2232,26 @@ function renderProcessIndicatorsPanel() {
     const showTailsConfidenceRow = showTailsConfidence && hasMeaningfulConfidence(tailsTransitionConfidence);
     const showPowerLimitConfidenceRow = hasLimit || powerLimitConfidence > 0.001;
     const showReasonInsight = showLastReasonRow || activeAlarm || hasLimit;
+    const diagnosticsVisible =
+        showLastReasonRow ||
+        showTelemetryRow ||
+        showDecisionRow ||
+        showDegradedRow ||
+        showAdaptiveRow ||
+        showFreshnessRow ||
+        showPressureRow ||
+        showPressureRateRow ||
+        showPressureMarginRow ||
+        showPressureStableRow ||
+        showHeadsScoreRow ||
+        showBodyScoreRow ||
+        showPowerLimitRow ||
+        showTakeoffConfidenceRow ||
+        showHeadsConfidenceRow ||
+        showBodyConfidenceRow ||
+        showTailsConfidenceRow ||
+        showPowerLimitConfidenceRow ||
+        showReasonInsight;
 
     setElementHidden('operator-diag-last-reason-row', !showLastReasonRow);
     setElementHidden('operator-diag-telemetry-row', !showTelemetryRow);
@@ -2217,7 +2287,10 @@ function renderProcessIndicatorsPanel() {
         diagnosticsText,
         hasLimit,
         activeAlarm,
-        telemetryDanger: freshness.tone === 'danger'
+        telemetryDanger: freshness.tone === 'danger',
+        primaryVisibleCount,
+        secondaryVisibleCount,
+        diagnosticsVisible
     });
 }
 
