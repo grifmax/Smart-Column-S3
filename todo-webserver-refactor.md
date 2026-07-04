@@ -401,7 +401,7 @@ src/interface/api/settings/
 
 ### Компиляция
 
-- [ ] `npm run build`
+- [x] `npm run build`
 - [x] `pio run -e esp32s3`
 
 ### Минимальная ручная smoke-проверка
@@ -415,7 +415,7 @@ src/interface/api/settings/
 ### По этапам
 
 - [ ] Wi-Fi: scan / profiles / connect
-- [ ] OTA: GET `/update` + upload
+- [x] OTA: GET `/update` + upload
 - [ ] calibration: temp / pressure / scan
 - [ ] testing: stop-all / test actions
 - [ ] profiles: CRUD / load / export / import

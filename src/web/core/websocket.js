@@ -2,6 +2,7 @@
 import { startStatusPolling, stopStatusPolling } from '../ui/landing.js';
 import { updateUI } from '../ui/update-ui.js';
 import { addLog } from './logs.js';
+import { isCloudProxyMode } from './cloud-detect.js';
 
 // ============================================================================
 
@@ -12,6 +13,14 @@ import { addLog } from './logs.js';
 
 
 export function connectWebSocket() {
+    if (isCloudProxyMode) {
+        setIsConnected(false);
+        updateConnectionStatus(false);
+        startStatusPolling(true);
+        addLog('Cloud proxy mode: WebSocket отключен, используется HTTP polling.', 'info');
+        return;
+    }
+
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         return;
     }
