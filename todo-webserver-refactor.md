@@ -1,6 +1,6 @@
 # TODO: Webserver Refactor
 
-Статус: `planned`
+Статус: `in_progress`
 
 Цель этого документа: разложить по шагам безопасный рефакторинг `src/interface/webserver.cpp`, чтобы позже пройти его по чеклисту без потерь маршрутов, побочных эффектов и служебной логики.
 
@@ -139,18 +139,18 @@ src/interface/api/settings/
 
 Цель: сделать инфраструктуру, не ломая поведение.
 
-- [ ] создать `src/interface/api/`
-- [ ] создать `src/interface/api/api_routes.h`
-- [ ] создать `src/interface/webserver_shared.h`
-- [ ] определить в `webserver_shared.h`:
+- [x] создать `src/interface/api/`
+- [x] создать `src/interface/api/api_routes.h`
+- [x] создать `src/interface/webserver_shared.h`
+- [x] определить в `webserver_shared.h`:
   - forward declarations
   - shared externs
   - список общих helper contracts, если нужно
-- [ ] убедиться, что текущий `webserver.cpp` собирается без функциональных изменений после подготовки include-слоя
+- [x] убедиться, что текущий `webserver.cpp` собирается без функциональных изменений после подготовки include-слоя
 
 Критерий готовности:
-- [ ] проект собирается без изменений поведения
-- [ ] инфраструктура для следующих этапов уже существует
+- [x] проект собирается без изменений поведения
+- [x] инфраструктура для следующих этапов уже существует
 
 ---
 
@@ -160,45 +160,45 @@ src/interface/api/settings/
 
 ### 7.1 `api_health.cpp`
 
-- [ ] вынести `/api/health`
-- [ ] вынести `/api/version`
+- [x] вынести `/api/health`
+- [x] вынести `/api/version`
 - [ ] проверить, что payload версии не изменился
 
 ### 7.2 `api_logs.cpp`
 
-- [ ] вынести `/api/logs/events`
-- [ ] вынести `/api/logs/events/clear`
-- [ ] вынести `/api/export`
+- [x] вынести `/api/logs/events`
+- [x] вынести `/api/logs/events/clear`
+- [x] вынести `/api/export`
 - [ ] проверить очистку системного журнала
 
 ### 7.3 `api_charts.cpp`
 
-- [ ] вынести `/api/charts/live`
-- [ ] вынести `/api/charts/live/reset`
+- [x] вынести `/api/charts/live`
+- [x] вынести `/api/charts/live/reset`
 - [ ] проверить работу live history reset
 
 ### 7.4 `api_energy.cpp`
 
-- [ ] вынести `/api/energy`
+- [x] вынести `/api/energy`
 - [ ] проверить payload энергомониторинга
 
 ### 7.5 `api_ota.cpp`
 
-- [ ] вынести `/update` GET
-- [ ] вынести upload-handler OTA
+- [x] вынести `/update` GET
+- [x] вынести upload-handler OTA
 - [ ] проверить, что форма OTA всё ещё открывается
 - [ ] проверить, что upload firmware остаётся рабочим
 
 ### 7.6 `api_wifi.cpp`
 
-- [ ] вынести `/api/wifi/scan`
-- [ ] вынести `/api/wifi/status`
-- [ ] вынести `/api/wifi/profiles` и связанные POST handlers
+- [x] вынести `/api/wifi/scan`
+- [x] вынести `/api/wifi/status`
+- [x] вынести `/api/wifi/profiles` и связанные POST handlers
 - [ ] проверить reorder / delete / connect
 
 Критерий готовности этапа:
-- [ ] `webserver.cpp` стал заметно меньше
-- [ ] все перечисленные маршруты собираются из отдельных модулей
+- [x] `webserver.cpp` стал заметно меньше
+- [x] все перечисленные маршруты собираются из отдельных модулей
 - [ ] ручная smoke-проверка пройдена
 
 ---
@@ -209,40 +209,40 @@ src/interface/api/settings/
 
 ### 8.1 `api_pump.cpp`
 
-- [ ] вынести `PumpCalibrationSession`
-- [ ] вынести `/api/pump/calibrate/start`
-- [ ] вынести `/api/pump/calibrate/stop`
-- [ ] вынести `/api/pump/calibrate/cancel`
-- [ ] вынести `/api/pump/start`
-- [ ] вынести `/api/pump/stop`
-- [ ] вынести `/api/pump/status`
-- [ ] вынести `/api/pump/diag`
+- [x] вынести `PumpCalibrationSession`
+- [x] вынести `/api/pump/calibrate/start`
+- [x] вынести `/api/pump/calibrate/stop`
+- [x] вынести `/api/pump/calibrate/cancel`
+- [x] вынести `/api/pump/start`
+- [x] вынести `/api/pump/stop`
+- [x] вынести `/api/pump/status`
+- [x] вынести `/api/pump/diag`
 - [ ] проверить, что состояние калибровки не теряется
 
 ### 8.2 `api_testing.cpp`
 
-- [ ] вынести `EquipmentTestingAction`
-- [ ] вынести `g_equipmentTestingActions`
-- [ ] вынести `g_equipmentTestingActionCount`
-- [ ] вынести `g_equipmentTestingActionNext`
-- [ ] вынести tone/log/history helpers equipment testing
-- [ ] вынести `/api/testing/status`
-- [ ] вынести `/api/testing/stop-all`
-- [ ] вынести сервисные тест-маршруты насос / мешалка / нагрев / клапаны / servo
+- [x] вынести `EquipmentTestingAction`
+- [x] вынести `g_equipmentTestingActions`
+- [x] вынести `g_equipmentTestingActionCount`
+- [x] вынести `g_equipmentTestingActionNext`
+- [x] вынести tone/log/history helpers equipment testing
+- [x] вынести `/api/testing/status`
+- [x] вынести `/api/testing/stop-all`
+- [x] вынести сервисные тест-маршруты насос / мешалка / нагрев / клапаны / servo
 - [ ] проверить историю и системный лог equipment testing
 
 ### 8.3 `api_calibration.cpp`
 
-- [ ] вынести `/api/calibration`
-- [ ] вынести `/api/calibration/pump`
-- [ ] вынести `/api/calibration/temp`
-- [ ] вынести pressure/arеometer calibration handlers
-- [ ] вынести `/api/calibration/scan`
-- [ ] вынести `/api/calibration/scan/raw`
+- [x] вынести `/api/calibration`
+- [x] вынести `/api/calibration/pump`
+- [x] вынести `/api/calibration/temp`
+- [x] вынести pressure/arеometer calibration handlers
+- [x] вынести `/api/calibration/scan`
+- [x] вынести `/api/calibration/scan/raw`
 - [ ] проверить DS18B20 scan и pressure calibration table
 
 Критерий готовности этапа:
-- [ ] stateful части больше не живут в `webserver.cpp`
+- [x] stateful части больше не живут в `webserver.cpp`
 - [ ] калибровка и сервисный workbench не сломаны
 
 ---
@@ -394,7 +394,7 @@ src/interface/api/settings/
 ### Компиляция
 
 - [ ] `npm run build`
-- [ ] `pio run -e esp32s3`
+- [x] `pio run -e esp32s3`
 
 ### Минимальная ручная smoke-проверка
 
@@ -434,7 +434,7 @@ src/interface/api/settings/
 
 ### Высокий приоритет
 
-- [ ] Этап 0
+- [x] Этап 0
 - [ ] Этап 1
 - [ ] Этап 2
 

@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.30] - 2026-07-04
+
+### Changed
+- `src/interface/webserver.cpp` переведён на первый модульный слой: добавлены `src/interface/api/`, `api_routes.h` и `webserver_shared.h`, а координатор теперь подключает вынесенные register-модули вместо того, чтобы держать весь HTTP-код в одном файле. (codex)
+- Из монолита вынесены самые безопасные маршруты этапа 1: `health/version`, `logs/export`, `charts/live`, `energy`, `wifi` и OTA web-update, без изменения URL и с сохранением прежней серверной логики. (codex)
+- В отдельные stateful-модули этапа 2 вынесены `pump`, `testing` и `calibration`, включая их runtime-состояние и сервисные helper’ы, так что калибровка и service workbench больше не живут внутри `webserver.cpp`. (codex)
+
+### Fixed
+- Версия прошивки поднята до `2.4.30` для фиксации первого прохода рефакторинга webserver-слоя; frontend-ассеты не менялись, поэтому `npm run build` для этого шага не требовался. (codex)
+
 ## [2.4.29] - 2026-07-03
 
 ### Changed
