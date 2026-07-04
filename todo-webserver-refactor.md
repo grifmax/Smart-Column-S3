@@ -410,7 +410,7 @@ src/interface/api/settings/
 - [x] `/api/health`
 - [x] `/api/status`
 - [x] websocket соединение
-- [ ] главная страница Web UI открывается и обновляется
+- [x] главная страница Web UI открывается и обновляется
 
 ### По этапам
 
