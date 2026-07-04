@@ -6,6 +6,7 @@
 
 #include "webserver.h"
 #include "api/api_routes.h"
+#include "web_live.h"
 #include "webserver_shared.h"
 #include "../config.h"
 #include "../fs_compat.h"
@@ -1939,6 +1940,7 @@ void init() {
   });
 
   server.addHandler(&ws);
+  WebServerLive::bindWebSocket(&ws);
 
   // WiFi Setup Wizard — при первом запуске (нет сохранённого SSID)
   // редирект на лёгкую страницу wifi.html вместо тяжёлого index.html
@@ -4214,6 +4216,15 @@ void init() {
 }
 
 void broadcastState(const SystemState &state) {
+  WebServerLive::broadcastState(state);
+}
+
+void broadcastEvent(const char *event, const char *message) {
+  WebServerLive::broadcastEvent(event, message);
+}
+
+#if 0
+void broadcastState(const SystemState &state) {
   LiveChartHistory::recordState(state, millis());
   ws.cleanupClients();
   if (ws.count() == 0)
@@ -4615,5 +4626,6 @@ void broadcastEvent(const char *event, const char *message) {
   serializeJson(doc, json);
   ws.textAll(json);
 }
+#endif
 
 } // namespace WebServer

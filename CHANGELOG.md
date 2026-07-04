@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.35] - 2026-07-04
+
+### Changed
+- Во второй части этапа 6 live/WebSocket слой вынесен в `src/interface/web_live.cpp`: `broadcastState()` и `broadcastEvent()` больше не живут в `webserver.cpp`, а coordinator только привязывает `AsyncWebSocket` через `bindWebSocket()` и делегирует broadcast-вызовы. (codex)
+- JSON fillers для live-слоя дополнительно не дублировались: `fillAlarmJson`, `fillV2StatusJson`, `fillSafetyActionV2Json` и `fillStirrerJson` уже используются как общий shared/status слой, так что вынесение websocket прошло без второй копии сериализаторов. (codex)
+- `src/interface/webserver.cpp` ещё сильнее ужат до coordinator-роли: legacy inline broadcast-блок помечен как отключённый, а активная логика live-пакетов теперь сосредоточена в отдельном runtime-модуле. (codex)
+
+### Fixed
+- Версия прошивки поднята до `2.4.35` для фиксации live-layer выноса; `pio run -e esp32s3` проходит успешно, frontend-ассеты не менялись и `npm run build` для этого шага не требовался. (codex)
+
 ## [2.4.34] - 2026-07-04
 
 ### Changed

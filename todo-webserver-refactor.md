@@ -20,7 +20,7 @@
 
 - [ ] `webserver.cpp` перестаёт быть главным местом со всей HTTP-логикой
 - [ ] маршруты разложены по тематическим модулям
-- [ ] `broadcastState()` и `broadcastEvent()` вынесены из route-registration слоя
+- [x] `broadcastState()` и `broadcastEvent()` вынесены из route-registration слоя
 - [ ] общие helper-функции и shared state перестают жить в случайном `static`-хаосе
 - [ ] каждый этап проходит сборку без регрессий API
 - [ ] итоговая структура понятна любому, кто открыл `src/interface/`
@@ -366,13 +366,9 @@ src/interface/api/settings/
 
 ### 12.2 `web_live.cpp`
 
-- [ ] вынести `broadcastState(const SystemState&)`
-- [ ] вынести `broadcastEvent(const char*, const char*)`
-- [ ] если нужно, вынести shared JSON fillers:
-  - `fillAlarmJson`
-  - `fillV2StatusJson`
-  - `fillSafetyActionV2Json`
-  - `fillStirrerJson`
+- [x] вынести `broadcastState(const SystemState&)`
+- [x] вынести `broadcastEvent(const char*, const char*)`
+- [x] shared JSON fillers не дублируются: `fillAlarmJson`, `fillV2StatusJson`, `fillSafetyActionV2Json`, `fillStirrerJson` уже переиспользуются через общий слой
 - [ ] проверить websocket fast/full broadcasts
 
 Критерий готовности этапа:
