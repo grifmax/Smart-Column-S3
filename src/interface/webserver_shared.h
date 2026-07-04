@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 
+#include "../control/safety.h"
 #include "../control/v2/status_adapter.h"
 #include "../types.h"
 
@@ -14,6 +15,10 @@ extern EnergyHistory g_energyHistory;
 bool hasConfiguredWiFi();
 
 const char *getModeString(Mode mode);
+const char *getPhaseString(RectPhase phase);
+const char *getMashPhaseString(MashPhase phase);
+const char *getNbkPhaseString(NbkPhase phase);
+const char *getFermPhaseString(FermentationPhase phase);
 const char *getFractionToken(Fraction fraction);
 const char *getFractionLabel(Fraction fraction);
 
@@ -36,9 +41,19 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
                            JsonObject params);
 void fillAlarmJson(JsonObject alarm, const SystemState &state,
                    const Settings &settings);
+void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2 &status,
+                      const ControlV2::MetricsSnapshotV2 &metrics);
 void fillSafetyActionV2Json(JsonObject v2,
                             const ControlV2::ModeStatusV2 &status,
                             const ControlV2::MetricsSnapshotV2 &metrics);
+String buildBlockingRequiredSensorsList(
+    const Safety::RequiredSensorsMask &required, const SystemState &state,
+    bool includePressure);
+String buildMissingRequiredSensorsList(Mode mode, const Settings &settings,
+                                       const SystemState &state);
+String buildStartupMissingSensorsList(
+    const Safety::RequiredSensorsMask &required, const SystemState &state,
+    bool includePressure);
 void fillTemperatureTopologyJson(JsonObject topology,
                                  const EquipmentSettings &equipment);
 void fillTemperatureModeSupportJson(JsonObject modes,

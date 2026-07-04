@@ -355,13 +355,13 @@ src/interface/api/settings/
 
 ### 12.1 `api_status.cpp`
 
-- [ ] вынести `/api/status`
-- [ ] вынести `fillTemperatureTopologyJson`
-- [ ] вынести `fillTemperatureModeSupportJson`
-- [ ] вынести `buildBlockingRequiredSensorsList`
-- [ ] вынести `buildMissingRequiredSensorsList`
-- [ ] вынести `buildStartupMissingSensorsList`
-- [ ] вынести helper-цепочку preflight / topology / mode-support
+- [x] вынести `/api/status`
+- [x] вынести `fillTemperatureTopologyJson`
+- [x] вынести `fillTemperatureModeSupportJson`
+- [x] вынести `buildBlockingRequiredSensorsList`
+- [x] вынести `buildMissingRequiredSensorsList`
+- [x] вынести `buildStartupMissingSensorsList`
+- [x] вынести helper-цепочку preflight / topology / mode-support
 - [ ] аккуратно проверить payload `/api/status` побайтно или по ключам
 
 ### 12.2 `web_live.cpp`

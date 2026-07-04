@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.34] - 2026-07-04
+
+### Changed
+- В рамках этапа 6 рефакторинга webserver выделен `src/interface/api/api_status.cpp`: route `GET /api/status` теперь регистрируется отдельно от координатора, а payload статуса остался на прежних ключах и структуре за счёт прямого переноса серверной логики. (codex)
+- В тот же модуль вынесены `fillTemperatureTopologyJson`, `fillTemperatureModeSupportJson` и цепочка required-sensors helper'ов для preflight/status, так что `api_process.cpp` и status-слой теперь опираются на общий источник вместо локальных копий в `webserver.cpp`. (codex)
+- `webserver_shared.h` расширен phase/v2/status declarations, поэтому coordinator больше не держит приватные версии phase-string и status helper'ов, нужных уже не только live-блоку. (codex)
+
+### Fixed
+- Версия прошивки поднята до `2.4.34` для фиксации status-выноса; `pio run -e esp32s3` проходит успешно, frontend-ассеты не менялись и `npm run build` для этого шага не требовался. (codex)
+
 ## [2.4.33] - 2026-07-04
 
 ### Changed

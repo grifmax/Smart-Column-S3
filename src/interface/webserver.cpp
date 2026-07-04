@@ -81,7 +81,7 @@ const char *getModeString(Mode mode) {
   }
 }
 
-static const char *getPhaseString(RectPhase phase) {
+const char *getPhaseString(RectPhase phase) {
   switch (phase) {
   case RectPhase::IDLE:
     return "idle";
@@ -108,7 +108,7 @@ static const char *getPhaseString(RectPhase phase) {
   }
 }
 
-static const char *getMashPhaseString(MashPhase phase) {
+const char *getMashPhaseString(MashPhase phase) {
   switch (phase) {
   case MashPhase::IDLE:
     return "idle";
@@ -129,7 +129,7 @@ static const char *getMashPhaseString(MashPhase phase) {
   }
 }
 
-static const char *getNbkPhaseString(NbkPhase phase) {
+const char *getNbkPhaseString(NbkPhase phase) {
   switch (phase) {
   case NbkPhase::IDLE:
     return "idle";
@@ -148,7 +148,7 @@ static const char *getNbkPhaseString(NbkPhase phase) {
   }
 }
 
-static const char *getFermPhaseString(FermentationPhase phase) {
+const char *getFermPhaseString(FermentationPhase phase) {
   switch (phase) {
   case FermentationPhase::IDLE:
     return "idle";
@@ -326,8 +326,8 @@ void fillAlarmJson(JsonObject alarm, const SystemState& state, const Settings& s
   alarm["resetBlockedReason"] = latched && !resetAvailable ? resetBlockedReason : "";
 }
 
-static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& status,
-                             const ControlV2::MetricsSnapshotV2& metrics) {
+void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& status,
+                      const ControlV2::MetricsSnapshotV2& metrics) {
   v2["available"] = true;
   v2["mode"] = static_cast<int>(status.mode);
   v2["lifecycle"] = ControlV2::modeLifecycleToString(status.lifecycle);
@@ -697,6 +697,7 @@ static bool isPressureStartupBlockingForMode(Mode mode) {
   return false;
 }
 
+#if 0
 static String buildBlockingRequiredSensorsList(
     const Safety::RequiredSensorsMask &required, const SystemState &state,
     bool includePressure) {
@@ -818,6 +819,7 @@ void fillTemperatureModeSupportJson(JsonObject modes,
     modeJson["reason"] = supported ? "" : reason;
   }
 }
+#endif
 
 static bool expectsAutoStirrerForMode(Mode mode, const Settings &settings) {
   if (!settings.stirrer.enabled) {
@@ -1984,6 +1986,7 @@ void init() {
 
   // API endpoints
   // GET /api/status - полное состояние системы
+#if 0
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
     ControlV2::updateRuntime(g_state, g_settings);
     syncStirrerState();
@@ -2364,6 +2367,9 @@ void init() {
     serializeJson(doc, json);
     request->send(200, "application/json", json);
   });
+#endif
+
+  registerStatusRoutes(server);
 
   registerChartsRoutes(server);
   registerHealthRoutes(server);

@@ -31,4 +31,5 @@ void registerProcessRoutes(AsyncWebServer &server);
 void registerProfilesRoutes(AsyncWebServer &server);
 void registerSafetyRoutes(AsyncWebServer &server);
 void registerSettingsRoutes(AsyncWebServer &server);
+void registerStatusRoutes(AsyncWebServer &server);
 void registerTestingRoutes(AsyncWebServer &server);
