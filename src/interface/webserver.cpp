@@ -572,7 +572,7 @@ static bool handleSecurityGate(AsyncWebServerRequest* request) {
   return true;
 }
 
-static void applySecuritySettings() {
+void applySecuritySettings() {
   Security::init(g_settings.security.username, g_settings.security.password);
   Security::setAuthEnabled(g_settings.security.authEnabled);
   Security::setRateLimitEnabled(g_settings.security.rateLimitEnabled);
@@ -2917,6 +2917,9 @@ void init() {
   // EQUIPMENT SETTINGS API
   // --------------------------------------------------------------------------
 
+  registerSettingsRoutes(server);
+
+#if 0
   // GET /api/settings/equipment - получить настройки оборудования
   server.on("/api/settings/equipment", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
@@ -4178,6 +4181,7 @@ void init() {
     delay(500);
     ESP.restart();
   });
+#endif
 
   registerCalibrationRoutes(server);
 

@@ -322,19 +322,31 @@ src/interface/api/settings/
 - [ ] вынести `/api/settings/demo` GET/POST
 - [ ] вынести `/api/reboot/status`
 - [ ] вынести `/api/reboot`
-- [ ] вынести ручные runtime endpoints:
-  - `/api/manual/heater`
-  - `/api/rect/heater`
-  - `/api/manual/pump`
-  - `/api/manual/valves`
-  - `/api/manual/phase`
-  - `/api/manual/volumes`
+- [x] вынести `/api/settings/equipment` GET/POST
+- [x] вынести `/api/settings/safety` GET/POST
+- [x] вынести `/api/settings/security` GET/POST
+- [x] вынести `/api/settings/nbk` GET/POST
+- [x] вынести `/api/settings/fermentation` GET/POST
+- [x] вынести `/api/settings/stirrer` GET/POST
+- [x] вынести `/api/settings/mqtt` GET/POST
+- [x] вынести `/api/settings/mqtt/test`
+- [x] вынести `/api/settings/rect` GET/POST
+- [x] вынести `/api/settings/demo` GET/POST
+- [x] вынести `/api/reboot/status`
+- [x] вынести `/api/reboot`
+- [x] вынести ручные runtime endpoints:
+  - [x] `/api/manual/heater`
+  - [x] `/api/rect/heater`
+  - [x] `/api/manual/pump`
+  - [x] `/api/manual/valves`
+  - [x] `/api/manual/phase`
+  - [x] `/api/manual/volumes`
 
 Второй проход, если понадобится:
 - [ ] разделить `api_settings.cpp` на несколько settings-подмодулей
 
 Критерий готовности этапа:
-- [ ] настройки полностью живут вне координатора
+- [x] настройки полностью живут вне координатора
 - [ ] Web UI настроек работает без регрессий
 
 ---

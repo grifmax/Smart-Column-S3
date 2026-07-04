@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.33] - 2026-07-04
+
+### Changed
+- Этап 5 рефакторинга webserver собран в единый модуль `src/interface/api/api_settings.cpp`: настройки `equipment/safety/security/nbk/fermentation/stirrer/mqtt/rect`, demo-mode, reboot API и ручные runtime endpoints теперь регистрируются вне `webserver.cpp`, без смены URL и контрактов payload. (codex)
+- Координатор `src/interface/webserver.cpp` переведён ещё на один уровень выше: settings/manual/demo/reboot блок отключён как legacy inline-реализация, а роуты подключаются через `registerSettingsRoutes()`. (codex)
+- Для переиспользования runtime-настроек security наружу поднят `applySecuritySettings()`, чтобы модуль settings применял auth/rate-limit без копирования логики из координатора. (codex)
+
+### Fixed
+- Версия прошивки поднята до `2.4.33` для фиксации этапа 5; `pio run -e esp32s3` проходит успешно, frontend-ассеты не менялись и `npm run build` для этого шага не требовался. (codex)
+
 ## [2.4.32] - 2026-07-04
 
 ### Changed

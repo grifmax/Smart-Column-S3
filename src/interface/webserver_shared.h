@@ -29,6 +29,7 @@ void fillStirrerJson(JsonObject stirrer, const SystemState &state);
 void sendStirrerStateResponse(AsyncWebServerRequest *request, int statusCode,
                               bool success, const char *message);
 bool ensureStirrerReady(AsyncWebServerRequest *request);
+void applySecuritySettings();
 bool parseRequestedMode(const char *modeStr, Mode &mode);
 void applyBoosterStartOverride(JsonObject params, Settings &settings);
 bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
