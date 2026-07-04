@@ -180,13 +180,13 @@ src/interface/api/settings/
 ### 7.4 `api_energy.cpp`
 
 - [x] вынести `/api/energy`
-- [ ] проверить payload энергомониторинга
+- [x] проверить payload энергомониторинга
 
 ### 7.5 `api_ota.cpp`
 
 - [x] вынести `/update` GET
 - [x] вынести upload-handler OTA
-- [ ] проверить, что форма OTA всё ещё открывается
+- [x] проверить, что форма OTA всё ещё открывается
 - [ ] проверить, что upload firmware остаётся рабочим
 
 ### 7.6 `api_wifi.cpp`
