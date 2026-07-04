@@ -162,7 +162,7 @@ src/interface/api/settings/
 
 - [x] вынести `/api/health`
 - [x] вынести `/api/version`
-- [ ] проверить, что payload версии не изменился
+- [x] проверить, что payload версии не изменился
 
 ### 7.2 `api_logs.cpp`
 
@@ -362,7 +362,7 @@ src/interface/api/settings/
 - [x] вынести `buildMissingRequiredSensorsList`
 - [x] вынести `buildStartupMissingSensorsList`
 - [x] вынести helper-цепочку preflight / topology / mode-support
-- [ ] аккуратно проверить payload `/api/status` побайтно или по ключам
+- [x] аккуратно проверить payload `/api/status` побайтно или по ключам
 
 ### 12.2 `web_live.cpp`
 
@@ -373,7 +373,7 @@ src/interface/api/settings/
 
 Критерий готовности этапа:
 - [x] `webserver.cpp` остаётся координатором
-- [ ] `/api/status` и websocket live layer работают как раньше
+- [x] `/api/status` и websocket live layer работают как раньше
 
 ---
 
@@ -406,10 +406,10 @@ src/interface/api/settings/
 
 ### Минимальная ручная smoke-проверка
 
-- [ ] `/api/version`
-- [ ] `/api/health`
-- [ ] `/api/status`
-- [ ] websocket соединение
+- [x] `/api/version`
+- [x] `/api/health`
+- [x] `/api/status`
+- [x] websocket соединение
 - [ ] главная страница Web UI открывается и обновляется
 
 ### По этапам
@@ -454,7 +454,7 @@ src/interface/api/settings/
 
 ### Самый рискованный, в конце
 
-- [ ] Этап 6
+- [x] Этап 6
 - [x] Этап 7
 
 ---
