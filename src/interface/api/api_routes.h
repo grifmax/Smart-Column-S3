@@ -25,5 +25,7 @@ void registerOtaRoutes(AsyncWebServer &server);
 void registerWifiRoutes(AsyncWebServer &server);
 
 void registerCalibrationRoutes(AsyncWebServer &server);
+void registerHistoryRoutes(AsyncWebServer &server);
 void registerPumpRoutes(AsyncWebServer &server);
+void registerProfilesRoutes(AsyncWebServer &server);
 void registerTestingRoutes(AsyncWebServer &server);

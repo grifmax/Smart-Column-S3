@@ -251,30 +251,30 @@ src/interface/api/settings/
 
 ### 9.1 `api_history.cpp`
 
-- [ ] вынести `/api/history` GET
-- [ ] вынести `/api/history` DELETE
-- [ ] вынести `/api/history/:id` GET
-- [ ] вынести `/api/history/:id` DELETE
-- [ ] вынести `/api/history/:id/export`
-- [ ] вынести `/api/history/demo` POST/DELETE
+- [x] вынести `/api/history` GET
+- [x] вынести `/api/history` DELETE
+- [x] вынести `/api/history/:id` GET
+- [x] вынести `/api/history/:id` DELETE
+- [x] вынести `/api/history/:id/export`
+- [x] вынести `/api/history/demo` POST/DELETE
 - [ ] проверить export/import history-потоки, если есть body-handlers
 
 ### 9.2 `api_profiles.cpp`
 
-- [ ] вынести `/api/profiles` GET
-- [ ] вынести `/api/profiles` POST
-- [ ] вынести `/api/profiles` DELETE
-- [ ] вынести `/api/profiles/:id` GET
-- [ ] вынести `/api/profiles/:id` PUT
-- [ ] вынести `/api/profiles/:id` DELETE
-- [ ] вынести `/api/profiles/:id/load`
-- [ ] вынести `/api/profiles/:id/export`
-- [ ] вынести `/api/profiles/export`
-- [ ] вынести `/api/profiles/import`
+- [x] вынести `/api/profiles` GET
+- [x] вынести `/api/profiles` POST
+- [x] вынести `/api/profiles` DELETE
+- [x] вынести `/api/profiles/:id` GET
+- [x] вынести `/api/profiles/:id` PUT
+- [x] вынести `/api/profiles/:id` DELETE
+- [x] вынести `/api/profiles/:id/load`
+- [x] вынести `/api/profiles/:id/export`
+- [x] вынести `/api/profiles/export`
+- [x] вынести `/api/profiles/import`
 - [ ] проверить profile CRUD из Web UI
 
 Критерий готовности этапа:
-- [ ] история и профили независимы от остального маршрутизатора
+- [x] история и профили независимы от остального маршрутизатора
 - [ ] импорт/экспорт живы
 
 ---

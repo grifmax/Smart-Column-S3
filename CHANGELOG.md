@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.31] - 2026-07-04
+
+### Changed
+- Этап 3 рефакторинга webserver вынес историю процессов в отдельный модуль `src/interface/api/api_history.cpp`: список, детали, delete, export, demo dataset и advisor snapshot теперь регистрируются вне `webserver.cpp`, без смены URL и форматов ответов. (codex)
+- Профили вынесены в `src/interface/api/api_profiles.cpp`: list/detail/load/export/import/CRUD и полная сериализация профиля с learning/validation больше не живут в координаторе. (codex)
+- `webserver.cpp` дополнительно ужат до более чистой coordinator-роли за счёт подключения `registerHistoryRoutes()` и `registerProfilesRoutes()`. (codex)
+
+### Fixed
+- Версия прошивки поднята до `2.4.31` для фиксации этапа 3; frontend-ассеты не менялись, поэтому `npm run build` для этого шага не требовался. (codex)
+
 ## [2.4.30] - 2026-07-04
 
 ### Changed
