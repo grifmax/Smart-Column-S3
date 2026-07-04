@@ -305,7 +305,7 @@ void appendTempSensorMeta(JsonObject obj, uint8_t index) {
 void syncStirrerState();
 void fillStirrerJson(JsonObject stirrer, const SystemState &state);
 
-static void fillAlarmJson(JsonObject alarm, const SystemState& state, const Settings& settings) {
+void fillAlarmJson(JsonObject alarm, const SystemState& state, const Settings& settings) {
   const bool active = (state.currentAlarm.type != AlarmType::NONE);
   const bool latched = Safety::isLatched(state);
   char resetBlockedReason[128] = "";
@@ -438,8 +438,8 @@ static void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2& statu
           : "";
 }
 
-static void fillSafetyActionV2Json(JsonObject v2, const ControlV2::ModeStatusV2& status,
-                                   const ControlV2::MetricsSnapshotV2& metrics) {
+void fillSafetyActionV2Json(JsonObject v2, const ControlV2::ModeStatusV2& status,
+                            const ControlV2::MetricsSnapshotV2& metrics) {
   v2["available"] = true;
   v2["safetyLatched"] = status.safetyLatched;
   v2["lastReasonCode"] = ControlV2::reasonCodeToString(status.lastReasonCode);
@@ -487,9 +487,8 @@ static void fillStirrerSettingsJson(JsonObject settings,
   settings["autoNbk"] = source.stirrer.autoNbk;
 }
 
-static void sendStirrerStateResponse(AsyncWebServerRequest *request,
-                                     int statusCode, bool success,
-                                     const char *message) {
+void sendStirrerStateResponse(AsyncWebServerRequest *request, int statusCode,
+                              bool success, const char *message) {
   syncStirrerState();
 
   JsonDocument doc;
@@ -503,7 +502,7 @@ static void sendStirrerStateResponse(AsyncWebServerRequest *request,
   request->send(statusCode, "application/json", json);
 }
 
-static bool ensureStirrerReady(AsyncWebServerRequest *request) {
+bool ensureStirrerReady(AsyncWebServerRequest *request) {
   if (g_state.mode != Mode::IDLE) {
     char reason[128];
     snprintf(reason, sizeof(reason),
@@ -657,7 +656,7 @@ static void normalizeRectFractions(RectParams &params) {
   params.bodyPercent = clampFloatRange(params.bodyPercent - excess, 0.0f, 100.0f);
 }
 
-static bool parseRequestedMode(const char *modeStr, Mode &mode) {
+bool parseRequestedMode(const char *modeStr, Mode &mode) {
   if (!modeStr) {
     return false;
   }
@@ -1118,7 +1117,7 @@ static void resolveBoosterStartOverride(JsonObject params, bool &enabled,
   }
 }
 
-static void applyBoosterStartOverride(JsonObject params, Settings &settings) {
+void applyBoosterStartOverride(JsonObject params, Settings &settings) {
   bool boosterEnabled = settings.equipment.boosterHeaterEnabled;
   float boosterStopCubeTempC = settings.equipment.boosterHeaterStopCubeTempC;
   resolveBoosterStartOverride(params, boosterEnabled, boosterStopCubeTempC);
@@ -1126,8 +1125,8 @@ static void applyBoosterStartOverride(JsonObject params, Settings &settings) {
   settings.equipment.boosterHeaterStopCubeTempC = boosterStopCubeTempC;
 }
 
-static bool buildProcessPreflight(JsonDocument &doc, Mode mode,
-                                  const char *modeStr, JsonObject params) {
+bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
+                           JsonObject params) {
   ControlV2::updateRuntime(g_state, g_settings);
   syncStirrerState();
 
@@ -2371,7 +2370,10 @@ void init() {
   registerLogsRoutes(server);
 
   registerHistoryRoutes(server);
+  registerProcessRoutes(server);
+  registerSafetyRoutes(server);
 
+#if 0
   server.on(
       "/api/process/preflight", HTTP_POST,
       [](AsyncWebServerRequest *request) {},
@@ -2909,6 +2911,7 @@ void init() {
 
         request->send(200, "application/json", "{\"success\":true}");
       });
+#endif
 
   // --------------------------------------------------------------------------
   // EQUIPMENT SETTINGS API

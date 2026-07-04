@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 
+#include "../control/v2/status_adapter.h"
 #include "../types.h"
 
 extern SystemState g_state;
@@ -25,6 +26,18 @@ void appendTempSensorMeta(JsonObject obj, uint8_t index);
 
 void syncStirrerState();
 void fillStirrerJson(JsonObject stirrer, const SystemState &state);
+void sendStirrerStateResponse(AsyncWebServerRequest *request, int statusCode,
+                              bool success, const char *message);
+bool ensureStirrerReady(AsyncWebServerRequest *request);
+bool parseRequestedMode(const char *modeStr, Mode &mode);
+void applyBoosterStartOverride(JsonObject params, Settings &settings);
+bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
+                           JsonObject params);
+void fillAlarmJson(JsonObject alarm, const SystemState &state,
+                   const Settings &settings);
+void fillSafetyActionV2Json(JsonObject v2,
+                            const ControlV2::ModeStatusV2 &status,
+                            const ControlV2::MetricsSnapshotV2 &metrics);
 void fillTemperatureTopologyJson(JsonObject topology,
                                  const EquipmentSettings &equipment);
 void fillTemperatureModeSupportJson(JsonObject modes,

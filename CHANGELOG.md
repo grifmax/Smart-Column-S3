@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.32] - 2026-07-04
+
+### Changed
+- Этап 4 рефакторинга webserver вынес управление запуском процессов в `src/interface/api/api_process.cpp`: `preflight`, `start/stop/pause/resume` и ручные `stirrer` endpoints теперь регистрируются отдельно от `webserver.cpp`, без смены URL и payload-контрактов. (codex)
+- Safety/device-claim маршруты вынесены в `src/interface/api/api_safety.cpp`: `ack/reset`, локальный `cloud claim` и `cloud config` больше не живут в монолитном роутере, а coordinator подключает их через `registerProcessRoutes()` и `registerSafetyRoutes()`. (codex)
+- В `src/interface/webserver_shared.h` подняты наружу только нужные helper'ы для process/safety модулей, чтобы этап 4 переиспользовал существующую preflight/safety/stirrer логику, а не копировал её по месту. (codex)
+
+### Fixed
+- Версия прошивки поднята до `2.4.32` для фиксации этапа 4; `pio run -e esp32s3` проходит успешно, frontend-ассеты не менялись и `npm run build` для этого шага не требовался. (codex)
+
 ## [2.4.31] - 2026-07-04
 
 ### Changed

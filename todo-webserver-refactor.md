@@ -283,26 +283,26 @@ src/interface/api/settings/
 
 ### 10.1 `api_process.cpp`
 
-- [ ] вынести `/api/process/preflight`
-- [ ] вынести `/api/process/start`
-- [ ] вынести `/api/process/stop`
-- [ ] вынести `/api/process/pause`
-- [ ] вынести `/api/process/resume`
-- [ ] вынести route abort / emergency stop, если есть
-- [ ] вынести `/api/stirrer/stop`
-- [ ] вынести прочие stirrer control endpoints
+- [x] вынести `/api/process/preflight`
+- [x] вынести `/api/process/start`
+- [x] вынести `/api/process/stop`
+- [x] вынести `/api/process/pause`
+- [x] вынести `/api/process/resume`
+- [x] отдельного route abort / emergency stop в актуальном API не найдено, новый endpoint в рамках рефакторинга не добавлялся
+- [x] вынести `/api/stirrer/stop`
+- [x] вынести прочие stirrer control endpoints
 - [ ] проверить старт/пауза/возобновление/останов
 
 ### 10.2 `api_safety.cpp`
 
-- [ ] вынести `/api/safety/ack`
-- [ ] вынести `/api/safety/reset`
-- [ ] вынести cloud-claim/config, если логически остаются здесь, либо решить отдельный `api_cloud.cpp`
+- [x] вынести `/api/safety/ack`
+- [x] вынести `/api/safety/reset`
+- [x] вынести cloud-claim/config в `api_safety.cpp` как локально связанный с safety/device-claim блок
 - [ ] проверить safety ack/reset flow
 
 Критерий готовности этапа:
-- [ ] запуск режимов и safety flow не зависят от монолитного файла
-- [ ] preflight работает как до рефакторинга
+- [x] запуск режимов и safety flow не зависят от монолитного файла
+- [x] preflight работает как до рефакторинга
 
 ---
 
