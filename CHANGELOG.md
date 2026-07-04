@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.36] - 2026-07-04
+
+### Changed
+- Завершён 7 этап рефакторинга webserver: `src/interface/webserver.cpp` заново собран как компактный coordinator на ~130 строк, где остались только `AsyncWebServer`/`AsyncWebSocket`, middleware security-gate, captive-portal endpoints, регистрация `registerXxxRoutes(...)`, `onNotFound` и `server.begin()`. (codex)
+- Активный shared/helper слой вынесен в `src/interface/webserver_shared.cpp`, поэтому phase/status/preflight/stirrer/security helpers больше не смешиваются с регистрацией HTTP-маршрутов в одном файле. (codex)
+- В `src/interface/webserver_shared.h` добавлен явный контракт `handleSecurityGate(...)`, а сам helper-слой дополнительно очищен от дублирующихся forward declarations, лишних include'ов и мёртвых helper-объявлений, которые оставались после прошлых этапов. (codex)
+
+### Fixed
+- Версия прошивки поднята до `2.4.36`; `pio run -e esp32s3` проходит успешно, frontend-ассеты не менялись и `npm run build` для этого шага не требовался. (codex)
+
 ## [2.4.35] - 2026-07-04
 
 ### Changed

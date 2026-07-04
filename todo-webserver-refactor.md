@@ -18,12 +18,12 @@
 
 ## 1. Целевой результат
 
-- [ ] `webserver.cpp` перестаёт быть главным местом со всей HTTP-логикой
-- [ ] маршруты разложены по тематическим модулям
+- [x] `webserver.cpp` перестаёт быть главным местом со всей HTTP-логикой
+- [x] маршруты разложены по тематическим модулям
 - [x] `broadcastState()` и `broadcastEvent()` вынесены из route-registration слоя
-- [ ] общие helper-функции и shared state перестают жить в случайном `static`-хаосе
-- [ ] каждый этап проходит сборку без регрессий API
-- [ ] итоговая структура понятна любому, кто открыл `src/interface/`
+- [x] общие helper-функции и shared state перестают жить в случайном `static`-хаосе
+- [x] каждый этап проходит сборку без регрессий API
+- [x] итоговая структура понятна любому, кто открыл `src/interface/`
 
 ---
 
@@ -87,8 +87,8 @@ src/interface/api/settings/
 
 ### 4.1 Координатор
 
-- [ ] `webserver.cpp` оставить координатором
-- [ ] в координаторе держать только:
+- [x] `webserver.cpp` оставить координатором
+- [x] в координаторе держать только:
   - `AsyncWebServer server`
   - `AsyncWebSocket ws`
   - middleware
@@ -98,11 +98,11 @@ src/interface/api/settings/
 
 ### 4.2 Регистрация маршрутов
 
-- [ ] каждый API-модуль экспортирует одну публичную функцию вида:
+- [x] каждый API-модуль экспортирует одну публичную функцию вида:
   - `void registerHealthRoutes(AsyncWebServer& server);`
   - `void registerLogsRoutes(AsyncWebServer& server);`
   - `void registerStatusRoutes(AsyncWebServer& server, AsyncWebSocket& ws);`
-- [ ] не делать глобальную магию через конструкторы и auto-registration
+- [x] не делать глобальную магию через конструкторы и auto-registration
 
 ### 4.3 Shared state
 
@@ -112,14 +112,14 @@ src/interface/api/settings/
   - `g_energyHistory`
   - `ws`
   - служебные singleton-like вызовы (`Logger`, `Safety`, `Profiles`, `CloudTunnel`, `MQTT`, `ControlV2`)
-- [ ] не плодить одинаковые `extern`-объявления по всем файлам хаотично
-- [ ] сделать один понятный shared header
+- [x] не плодить одинаковые `extern`-объявления по всем файлам хаотично
+- [x] сделать один понятный shared header
 
 ### 4.4 Helpers
 
-- [ ] вынести общие helpers по смыслу, а не “куда влезло”
-- [ ] не держать JSON / preflight / safety / stirrer helpers вперемешку
-- [ ] если helper нужен более чем одному модулю, выносить его в общий shared/helper слой
+- [x] вынести общие helpers по смыслу, а не “куда влезло”
+- [x] не держать JSON / preflight / safety / stirrer helpers вперемешку
+- [x] если helper нужен более чем одному модулю, выносить его в общий shared/helper слой
 
 ---
 
@@ -372,14 +372,14 @@ src/interface/api/settings/
 - [ ] проверить websocket fast/full broadcasts
 
 Критерий готовности этапа:
-- [ ] `webserver.cpp` остаётся координатором
+- [x] `webserver.cpp` остаётся координатором
 - [ ] `/api/status` и websocket live layer работают как раньше
 
 ---
 
 ## 13. Этап 7. Финальная уборка координатора
 
-- [ ] оставить в `webserver.cpp` только:
+- [x] оставить в `webserver.cpp` только:
   - создание `server`
   - создание `ws`
   - middleware
@@ -387,13 +387,13 @@ src/interface/api/settings/
   - вызовы `registerXxxRoutes(...)`
   - `onNotFound`
   - `server.begin()`
-- [ ] убрать оставшиеся лишние `static` helpers
-- [ ] привести include-порядок к понятному виду
-- [ ] убрать дублирующиеся helper declarations
+- [x] убрать оставшиеся лишние `static` helpers
+- [x] привести include-порядок к понятному виду
+- [x] убрать дублирующиеся helper declarations
 
 Критерий готовности этапа:
-- [ ] `webserver.cpp` стал маленьким и понятным
-- [ ] архитектура читается с первого открытия файла
+- [x] `webserver.cpp` стал маленьким и понятным
+- [x] архитектура читается с первого открытия файла
 
 ---
 
@@ -443,19 +443,19 @@ src/interface/api/settings/
 ### Высокий приоритет
 
 - [x] Этап 0
-- [ ] Этап 1
-- [ ] Этап 2
+- [x] Этап 1
+- [x] Этап 2
 
 ### Средний приоритет
 
-- [ ] Этап 3
-- [ ] Этап 4
-- [ ] Этап 5
+- [x] Этап 3
+- [x] Этап 4
+- [x] Этап 5
 
 ### Самый рискованный, в конце
 
 - [ ] Этап 6
-- [ ] Этап 7
+- [x] Этап 7
 
 ---
 
