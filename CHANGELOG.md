@@ -7,6 +7,11 @@
 
 ---
 
+## [2.4.50] - 2026-07-05
+
+### Changed
+- Рефакторинг `api_settings.cpp`: settings-роуты и связанные runtime/system handlers разнесены по внутренним подмодулям `settings_equipment`, `settings_thresholds`, `settings_modes`, `settings_mqtt`, `settings_runtime` и `settings_system`, а `registerSettingsRoutes(...)` оставлен тонким координатором. URL, payload и поведение API при этом не менялись. (codex)
+
 ## [2.4.49] - 2026-07-05
 
 ### Fixed
