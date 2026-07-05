@@ -229,7 +229,7 @@ src/interface/api/settings/
 - [x] вынести `/api/testing/status`
 - [x] вынести `/api/testing/stop-all`
 - [x] вынести сервисные тест-маршруты насос / мешалка / нагрев / клапаны / servo
-- [ ] проверить историю и системный лог equipment testing
+- [x] проверить историю и системный лог equipment testing
 
 ### 8.3 `api_calibration.cpp`
 
@@ -243,7 +243,7 @@ src/interface/api/settings/
 
 Критерий готовности этапа:
 - [x] stateful части больше не живут в `webserver.cpp`
-- [ ] калибровка и сервисный workbench не сломаны
+- [x] калибровка и сервисный workbench не сломаны
 
 ---
 
@@ -298,7 +298,7 @@ src/interface/api/settings/
 - [x] вынести `/api/safety/ack`
 - [x] вынести `/api/safety/reset`
 - [x] вынести cloud-claim/config в `api_safety.cpp` как локально связанный с safety/device-claim блок
-- [ ] проверить safety ack/reset flow
+- [x] проверить safety ack/reset flow
 
 Критерий готовности этапа:
 - [x] запуск режимов и safety flow не зависят от монолитного файла
@@ -417,11 +417,11 @@ src/interface/api/settings/
 - [ ] Wi-Fi: scan / profiles / connect
 - [x] OTA: GET `/update` + upload
 - [x] calibration: temp / pressure / scan
-- [ ] testing: stop-all / test actions
+- [x] testing: stop-all / test actions
 - [x] profiles: CRUD / load / export / import
 - [x] history: list / details / export / clear
 - [ ] process: preflight / start / pause / resume / stop
-- [ ] safety: ack / reset
+- [x] safety: ack / reset
 
 ---
 
