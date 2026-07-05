@@ -7,6 +7,11 @@
 
 ---
 
+## [2.4.47] - 2026-07-05
+
+### Fixed
+- Для `ESPAsyncWebServer` вынесен общий helper разбора chunked JSON body в `webserver_shared`, и на него переведены POST-ручки `process`, `pump`, `wifi`, `safety`, `calibration`, `testing` и `settings`. Это убирает скрытую зависимость от single-chunk payload и должно стабилизировать большие запросы из Web UI, включая настройки, preflight, cloud config и сервисные действия. (codex)
+
 ## [2.4.46] - 2026-07-05
 
 ### Fixed

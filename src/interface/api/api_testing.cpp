@@ -609,13 +609,10 @@ void registerTestingRoutes(AsyncWebServer &server) {
       "/api/testing/pump", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"message\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -670,13 +667,10 @@ void registerTestingRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"message\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -778,13 +772,10 @@ void registerTestingRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"message\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -854,13 +845,10 @@ void registerTestingRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"message\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -957,13 +945,10 @@ void registerTestingRoutes(AsyncWebServer &server) {
       "/api/testing/servo", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"message\":\"Invalid JSON\"}")) {
           return;
         }
 

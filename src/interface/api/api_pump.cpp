@@ -85,15 +85,10 @@ void registerPumpRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, data, len);
-        if (error) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"message\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -169,16 +164,10 @@ void registerPumpRoutes(AsyncWebServer &server) {
       "/api/pump/start", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, data, len);
-
-        if (error) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 

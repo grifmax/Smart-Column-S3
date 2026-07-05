@@ -122,11 +122,9 @@ void registerCalibrationRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, data, len);
-
-        if (error) {
-          request->send(400, "application/json",
-                        "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -187,11 +185,9 @@ void registerCalibrationRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, data, len);
-
-        if (error) {
-          request->send(400, "application/json",
-                        "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -318,11 +314,9 @@ void registerCalibrationRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, data, len);
-
-        if (error) {
-          request->send(400, "application/json",
-                        "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -439,11 +433,9 @@ void registerCalibrationRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, data, len);
-
-        if (error) {
-          request->send(400, "application/json",
-                        "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 

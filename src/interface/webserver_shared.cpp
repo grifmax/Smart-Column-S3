@@ -570,6 +570,36 @@ bool collectRequestBody(AsyncWebServerRequest *request, const uint8_t *data,
   return true;
 }
 
+bool deserializeRequestJsonBody(AsyncWebServerRequest *request,
+                                const uint8_t *data, size_t len, size_t index,
+                                size_t total, JsonDocument &doc,
+                                const char *invalidJsonPayload,
+                                bool allowEmpty,
+                                const char *emptyBodyPayload) {
+  String body;
+  if (!collectRequestBody(request, data, len, index, total, body)) {
+    return false;
+  }
+
+  if (body.isEmpty()) {
+    if (allowEmpty) {
+      doc.clear();
+      return true;
+    }
+
+    request->send(400, "application/json",
+                  emptyBodyPayload ? emptyBodyPayload : invalidJsonPayload);
+    return false;
+  }
+
+  if (deserializeJson(doc, body)) {
+    request->send(400, "application/json", invalidJsonPayload);
+    return false;
+  }
+
+  return true;
+}
+
 uint16_t clampU16Range(uint32_t value, uint16_t minValue,
                        uint16_t maxValue) {
   if (value < minValue) return minValue;

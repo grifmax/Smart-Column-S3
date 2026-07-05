@@ -127,7 +127,7 @@ src/interface/api/settings/
 
 - [ ] скрытые зависимости через `static`-функции в верхней части `webserver.cpp`
 - [ ] stateful-логика pump calibration и equipment testing
-- [ ] POST body handlers `ESPAsyncWebServer`
+- [x] POST body handlers `ESPAsyncWebServer`
 - [ ] OTA-upload маршрут и асинхронный upload callback
 - [ ] WebSocket broadcast и периодический full/fast packet
 - [ ] дублирование JSON helper-кода при неаккуратном переносе
@@ -239,7 +239,7 @@ src/interface/api/settings/
 - [x] вынести pressure/arеometer calibration handlers
 - [x] вынести `/api/calibration/scan`
 - [x] вынести `/api/calibration/scan/raw`
-- [ ] проверить DS18B20 scan и pressure calibration table
+- [x] проверить DS18B20 scan и pressure calibration table
 
 Критерий готовности этапа:
 - [x] stateful части больше не живут в `webserver.cpp`
@@ -416,7 +416,7 @@ src/interface/api/settings/
 
 - [ ] Wi-Fi: scan / profiles / connect
 - [x] OTA: GET `/update` + upload
-- [ ] calibration: temp / pressure / scan
+- [x] calibration: temp / pressure / scan
 - [ ] testing: stop-all / test actions
 - [x] profiles: CRUD / load / export / import
 - [x] history: list / details / export / clear
@@ -432,7 +432,7 @@ src/interface/api/settings/
 - [ ] убрать дубли helper-объявлений в начале файла
 - [ ] унифицировать naming register-функций
 - [ ] выделить response helper для JSON success/error
-- [ ] выделить body-parse helper для POST маршрутов
+- [x] выделить body-parse helper для POST маршрутов
 - [ ] привести регулярочные route-handlers к одному стилю
 - [ ] подготовить базу под unit-level тестирование JSON builders, если позже пойдём туда
 

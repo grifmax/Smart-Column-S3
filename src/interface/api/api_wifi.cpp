@@ -105,15 +105,10 @@ void registerWifiRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -188,15 +183,10 @@ void registerWifiRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -241,15 +231,10 @@ void registerWifiRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -291,18 +276,12 @@ void registerWifiRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, data, len);
-
-        if (error) {
-          LOG_E("WiFi: JSON parse error: %s", error.c_str());
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"error\":\"Invalid JSON\"}")) {
+          LOG_E("WiFi: JSON parse error");
           Logger::logf(1, "WiFi connect rejected: invalid JSON");
-          request->send(400, "application/json",
-                        "{\"error\":\"Invalid JSON\"}");
           return;
         }
 

@@ -52,16 +52,17 @@ void registerSafetyRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
-
         uint32_t ttl = 600;
-        if (len > 0) {
-          JsonDocument doc;
-          if (deserializeJson(doc, data, len) == DeserializationError::Ok) {
-            ttl = doc["ttlSeconds"] | 600;
-            if (ttl < 60) ttl = 60;
-            if (ttl > 3600) ttl = 3600;
-          }
+        JsonDocument doc;
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}", true)) {
+          return;
+        }
+        if (!doc.isNull()) {
+          ttl = doc["ttlSeconds"] | 600;
+          if (ttl < 60) ttl = 60;
+          if (ttl > 3600) ttl = 3600;
         }
 
         CloudTunnel::generateClaim(ttl);
@@ -82,12 +83,10 @@ void registerSafetyRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 

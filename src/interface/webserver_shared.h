@@ -67,3 +67,9 @@ uint16_t clampU16Range(uint32_t value, uint16_t minValue, uint16_t maxValue);
 float clampFloatRange(float value, float minValue, float maxValue);
 bool collectRequestBody(AsyncWebServerRequest *request, const uint8_t *data,
                         size_t len, size_t index, size_t total, String &body);
+bool deserializeRequestJsonBody(AsyncWebServerRequest *request,
+                                const uint8_t *data, size_t len, size_t index,
+                                size_t total, JsonDocument &doc,
+                                const char *invalidJsonPayload,
+                                bool allowEmpty = false,
+                                const char *emptyBodyPayload = nullptr);

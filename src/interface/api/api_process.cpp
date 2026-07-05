@@ -16,14 +16,10 @@ void registerProcessRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"message\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -55,17 +51,11 @@ void registerProcessRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, data, len);
-
-        if (error) {
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"message\":\"Invalid JSON\"}")) {
           LOG_E("Process start: JSON parse error");
-          request->send(400, "application/json",
-                        "{\"success\":false,\"message\":\"Invalid JSON\"}");
           return;
         }
 
@@ -324,25 +314,19 @@ void registerProcessRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
-
-        if (total == 0) {
-          return;
-        }
-
         if (!ensureStirrerReady(request)) {
           return;
         }
 
         uint8_t speed = g_settings.stirrer.defaultSpeedPercent;
-        if (len > 0) {
-          JsonDocument doc;
-          if (deserializeJson(doc, data, len)) {
-            request->send(400, "application/json",
-                          "{\"success\":false,\"error\":\"Invalid JSON\"}");
-            return;
-          }
+        JsonDocument doc;
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}", true)) {
+          return;
+        }
 
+        if (!doc.isNull()) {
           const int requestedSpeed = doc["speed"] | 0;
           if (requestedSpeed < 0 || requestedSpeed > 100) {
             request->send(400, "application/json",
@@ -382,12 +366,6 @@ void registerProcessRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
-
-        if (total == 0) {
-          return;
-        }
-
         if (!ensureStirrerReady(request)) {
           return;
         }
@@ -399,9 +377,11 @@ void registerProcessRoutes(AsyncWebServer &server) {
         }
 
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}",
+                false,
+                "{\"success\":false,\"error\":\"Speed is required\"}")) {
           return;
         }
 

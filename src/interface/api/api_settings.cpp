@@ -248,14 +248,10 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -439,14 +435,10 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -499,14 +491,10 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -585,14 +573,10 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -635,14 +619,10 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -694,18 +674,12 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
-        if (total == 0) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}",
+                false,
+                "{\"success\":false,\"error\":\"Request body is required\"}")) {
           return;
         }
 
@@ -775,14 +749,10 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -883,10 +853,6 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         if (!g_settings.mqtt.enabled) {
           Logger::logf(1, "MQTT test rejected: MQTT is disabled");
           request->send(400, "application/json",
@@ -909,9 +875,9 @@ void registerSettingsRoutes(AsyncWebServer &server) {
         }
 
         JsonDocument doc;
-        if (len > 0 && deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}", true)) {
           return;
         }
         const char *message =
@@ -972,14 +938,10 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -1090,13 +1052,9 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(request, data, len, index, total, doc,
+                                        "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -1139,13 +1097,9 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(request, data, len, index, total, doc,
+                                        "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -1186,13 +1140,9 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(request, data, len, index, total, doc,
+                                        "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -1216,13 +1166,9 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(request, data, len, index, total, doc,
+                                        "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -1256,13 +1202,9 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(request, data, len, index, total, doc,
+                                        "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -1292,13 +1234,9 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(request, data, len, index, total, doc,
+                                        "{\"error\":\"Invalid JSON\"}")) {
           return;
         }
 
@@ -1348,14 +1286,10 @@ void registerSettingsRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) {
-          return;
-        }
-
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"message\":\"Invalid JSON\"}")) {
           return;
         }
 
