@@ -7,6 +7,53 @@
 
 ---
 
+## [2.4.46] - 2026-07-05
+
+### Fixed
+- Исправлен конфликт GET-маршрутов калибровки в `ESPAsyncWebServer`: `/api/calibration`, `/api/calibration/scan` и `/api/calibration/scan/raw` теперь зарегистрированы как anchored regex routes, поэтому live-контроллер больше не подменяет scan-ответы общим calibration snapshot по prefix-match. (codex)
+
+## [2.4.45] - 2026-07-05
+
+### Fixed
+- Облегчён public demo history dataset: demo-прогоны теперь сохраняют сильно меньше точек временного ряда, но сохраняют форму кривых, фазовые участки и типовые warning/advisor-сценарии. Это снижает давление на память при сериализации `saveProcessHistory(...)` и должно восстановить `POST /api/history/demo` на live-контроллере. (codex)
+
+## [2.4.44] - 2026-07-04
+
+### Fixed
+- Для public demo history dataset исправлен подсчёт и очистка demo-записей в LittleFS: helper теперь корректно обрабатывает имена файлов как `process_*.json`, так и полные пути. Это восстанавливает правдивый `demoCount` в `POST/DELETE /api/history/demo` и убирает ложный ответ `success:true` вместе с `demoCount:0`. (codex)
+
+## [2.4.43] - 2026-07-04
+
+### Fixed
+- Для API профилей и истории исправлена обработка chunked request body в `ESPAsyncWebServer`: `PUT /api/profiles/:id`, `POST /api/profiles`, `POST /api/profiles/import`, `POST /api/history/:id/advisor` и `POST /api/history/demo` теперь собирают тело запроса целиком до парсинга JSON. Это убирает ложные `count:0`, случайные `Invalid JSON` и зависимость от размера payload. (codex)
+
+## [2.4.42] - 2026-07-04
+
+### Fixed
+- Для profile-routing устранён последний static-vs-id конфликт: `GET /api/profiles/export` теперь регистрируется раньше generic `GET /api/profiles/:id`, поэтому токен `export` больше не ошибочно трактуется как profile-id и batch export снова отдаёт полный snapshot профилей. (codex)
+
+## [2.4.41] - 2026-07-04
+
+### Fixed
+- Исправлен порядок регистрации `ESPAsyncWebServer`-маршрутов для этапа 3: nested endpoints `history/:id`, `history/demo`, `profiles/:id`, `profiles/export`, `profiles/import` и `profiles/:id/load` теперь объявляются раньше базовых `/api/history` и `/api/profiles`, поэтому больше не перехватываются prefix-match обработчиками списка. (codex)
+- После этого live path-routing снова различает list/detail/update/export/import/delete сценарии, а редактор профилей и история процессов получают корректные JSON-ответы вместо ложного списка по вложенным URL. (codex)
+
+## [2.4.40] - 2026-07-04
+
+### Fixed
+- Исправлен стартовый bootstrap истории и профилей: в `setup()` теперь реально вызываются `initHistory()` и `initProfiles()`, поэтому API этапа 3 больше не зависит от случайного ленивого состояния и поднимает свои хранилища сразу при boot. (codex)
+- Для обоих модулей хранения добавлено явное создание каталогов `LittleFS /history` и `LittleFS /profiles`, так что demo-history, built-in профили и пользовательские записи больше не упираются в отсутствующие директории. (codex)
+
+## [2.4.39] - 2026-07-04
+
+### Fixed
+- Исправлен backend-сбой профилей на live-контроллере: `initProfiles()` теперь реально создаёт каталог `LittleFS /profiles` через `LittleFS.mkdir(...)`, поэтому built-in профили и пользовательский `POST /api/profiles` больше не падают из-за отсутствующего каталога хранения. (codex)
+
+## [2.4.38] - 2026-07-04
+
+### Fixed
+- Исправлен runtime-сбой в редакторе профилей: `src/web/profiles/crud.js` снова экранирует текстовые поля через локальный `escapeHtml(...)`, поэтому открытие summary/import-блоков и дальнейший CRUD профилей больше не падают с `ReferenceError: escapeHtml is not defined` на live Web UI контроллера. (codex)
+
 ## [2.4.37] - 2026-07-04
 
 ### Fixed

@@ -9,13 +9,14 @@
 #include <Arduino.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
-#include <Preferences.h>
 #include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 #include <freertos/queue.h>
+#include <freertos/task.h>
+
 
 #include "config.h"
 #include "types.h"
@@ -25,9 +26,12 @@
 #include "drivers/heater.h"
 #include "drivers/pump.h"
 #include "drivers/sensors.h"
-#include "live_chart_history.h"
 #include "drivers/stirrer.h"
 #include "drivers/valves.h"
+#include "history.h"
+#include "live_chart_history.h"
+#include "profiles.h"
+
 
 // Управление
 #include "control/demo_simulator.h"
@@ -38,11 +42,12 @@
 
 // Интерфейсы
 #include "interface/buttons.h"
+#include "interface/cloud_tunnel.h"
 #include "interface/mqtt.h"
 #include "interface/ota.h"
 #include "interface/webserver.h"
-#include "interface/cloud_tunnel.h"
 #include "interface/wifi_profiles.h"
+
 
 // Хранение
 #include "storage/logger.h"
@@ -58,7 +63,8 @@ EnergyHistory g_energyHistory; // История энергопотреблен�
 RebootTracker g_rebootTracker; // Отслеживание перезагрузок (Analysis Step 1)
 
 // Очередь для неблокирующего зуммера (Analysis Step 1)
-BootGpioSelfTest g_bootGpioSelfTest; // Safe bring-up опасных GPIO до старта драйверов
+BootGpioSelfTest
+    g_bootGpioSelfTest; // Safe bring-up опасных GPIO до старта драйверов
 struct BuzzerCmd {
   uint8_t count;
   uint16_t duration;
@@ -77,7 +83,7 @@ uint32_t g_lastDisplayUpdate = 0;
 uint32_t g_lastWebBroadcast = 0;
 uint32_t g_lastLogWrite = 0;
 uint32_t g_lastSafetyCheck = 0;
-uint32_t g_lastSelfCheck = 0;   // #14: self-check лог каждые 30 мин
+uint32_t g_lastSelfCheck = 0; // #14: self-check лог каждые 30 мин
 
 // =============================================================================
 // ПРОТОТИПЫ
@@ -87,17 +93,18 @@ void initHardware();
 void initNetwork();
 void loadSettings();
 void runTasks();
-void resetWiFiAndRestart(); 
-static void showBootStage(const char* message);
+void resetWiFiAndRestart();
+static void showBootStage(const char *message);
 static void handleLoggerLifecycle(uint32_t now);
-void buzzerTask(void* pvParameters);
+void buzzerTask(void *pvParameters);
 static bool isWatchdogResetReason(esp_reset_reason_t reason);
 static bool isCrashResetReason(esp_reset_reason_t reason);
 static bool isUserResetReason(esp_reset_reason_t reason);
-static const char* resetReasonToString(esp_reset_reason_t reason);
+static const char *resetReasonToString(esp_reset_reason_t reason);
 static void runBootGpioSelfTest();
-static void registerBootOutputCheck(const char* label, int16_t pin, bool highLevel);
-static void registerBootInputCheck(const char* label, int16_t pin, bool pullup,
+static void registerBootOutputCheck(const char *label, int16_t pin,
+                                    bool highLevel);
+static void registerBootInputCheck(const char *label, int16_t pin, bool pullup,
                                    int8_t expectedLevel);
 
 // =============================================================================
@@ -106,7 +113,8 @@ static void registerBootInputCheck(const char* label, int16_t pin, bool pullup,
 
 namespace Buzzer {
 void beep(uint8_t count, uint16_t duration) {
-  if (g_buzzerQueue == nullptr) return;
+  if (g_buzzerQueue == nullptr)
+    return;
   BuzzerCmd cmd = {count, duration};
   xQueueSend(g_buzzerQueue, &cmd, 0);
 }
@@ -125,26 +133,38 @@ static bool isUserResetReason(esp_reset_reason_t reason) {
   return reason == ESP_RST_SW || reason == ESP_RST_EXT;
 }
 
-static const char* resetReasonToString(esp_reset_reason_t reason) {
+static const char *resetReasonToString(esp_reset_reason_t reason) {
   switch (reason) {
-    case ESP_RST_POWERON: return "Power On";
-    case ESP_RST_EXT: return "External Pin";
-    case ESP_RST_SW: return "Software Reset";
-    case ESP_RST_PANIC: return "Exception/Panic";
-    case ESP_RST_INT_WDT: return "Interrupt WDT";
-    case ESP_RST_TASK_WDT: return "Task WDT";
-    case ESP_RST_WDT: return "Other WDT";
-    case ESP_RST_DEEPSLEEP: return "Deep Sleep";
-    case ESP_RST_BROWNOUT: return "Brownout";
-    case ESP_RST_SDIO: return "SDIO Reset";
-    default: return "Other";
+  case ESP_RST_POWERON:
+    return "Power On";
+  case ESP_RST_EXT:
+    return "External Pin";
+  case ESP_RST_SW:
+    return "Software Reset";
+  case ESP_RST_PANIC:
+    return "Exception/Panic";
+  case ESP_RST_INT_WDT:
+    return "Interrupt WDT";
+  case ESP_RST_TASK_WDT:
+    return "Task WDT";
+  case ESP_RST_WDT:
+    return "Other WDT";
+  case ESP_RST_DEEPSLEEP:
+    return "Deep Sleep";
+  case ESP_RST_BROWNOUT:
+    return "Brownout";
+  case ESP_RST_SDIO:
+    return "SDIO Reset";
+  default:
+    return "Other";
   }
 }
 
-static void registerBootOutputCheck(const char* label, int16_t pin,
+static void registerBootOutputCheck(const char *label, int16_t pin,
                                     bool highLevel) {
-  if (g_bootGpioSelfTest.checkedCount >= BOOT_GPIO_CHECK_MAX) return;
-  BootGpioCheckItem& item =
+  if (g_bootGpioSelfTest.checkedCount >= BOOT_GPIO_CHECK_MAX)
+    return;
+  BootGpioCheckItem &item =
       g_bootGpioSelfTest.items[g_bootGpioSelfTest.checkedCount++];
   item.pin = pin;
   item.mode = highLevel ? 1 : 0;
@@ -164,10 +184,11 @@ static void registerBootOutputCheck(const char* label, int16_t pin,
   item.ok = item.actualLevel == item.expectedLevel;
 }
 
-static void registerBootInputCheck(const char* label, int16_t pin, bool pullup,
+static void registerBootInputCheck(const char *label, int16_t pin, bool pullup,
                                    int8_t expectedLevel) {
-  if (g_bootGpioSelfTest.checkedCount >= BOOT_GPIO_CHECK_MAX) return;
-  BootGpioCheckItem& item =
+  if (g_bootGpioSelfTest.checkedCount >= BOOT_GPIO_CHECK_MAX)
+    return;
+  BootGpioCheckItem &item =
       g_bootGpioSelfTest.items[g_bootGpioSelfTest.checkedCount++];
   item.pin = pin;
   item.mode = pullup ? 3 : 2;
@@ -219,14 +240,26 @@ static void runBootGpioSelfTest() {
         g_bootGpioSelfTest.checkedCount, g_bootGpioSelfTest.boardRev);
 }
 
+static void logOneWireBootCheckResult() {
+  for (uint8_t i = 0; i < g_bootGpioSelfTest.checkedCount; ++i) {
+    if (strcmp(g_bootGpioSelfTest.items[i].label, "1-Wire") == 0) {
+      LOG_I("1-Wire boot check: %s. Pin %d expected %d, got %d.",
+            g_bootGpioSelfTest.items[i].ok ? "OK" : "FAIL",
+            g_bootGpioSelfTest.items[i].pin,
+            g_bootGpioSelfTest.items[i].expectedLevel,
+            g_bootGpioSelfTest.items[i].actualLevel);
+    }
+  }
+}
+
 // =============================================================================
 // SETUP
 // =============================================================================
 
 void setup() {
   Serial.begin(115200);
-  delay(500); 
-  
+  delay(500);
+
   Serial.println("\n\n=============================");
   Serial.println("Smart-Column S3 - Starting...");
   Serial.println("=============================");
@@ -238,6 +271,7 @@ void setup() {
   g_state.rectPhase = RectPhase::IDLE;
   g_state.safetyOk = true;
   runBootGpioSelfTest();
+  logOneWireBootCheckResult();
 
   // 2. Проверка причины перезагрузки
   esp_reset_reason_t resetReason = esp_reset_reason();
@@ -245,14 +279,15 @@ void setup() {
   g_rebootTracker.lastReason = (uint8_t)resetReason;
   strncpy(g_rebootTracker.lastReasonStr, resetReasonToString(resetReason),
           sizeof(g_rebootTracker.lastReasonStr) - 1);
-  g_rebootTracker.lastReasonStr[sizeof(g_rebootTracker.lastReasonStr) - 1] = '\0';
+  g_rebootTracker.lastReasonStr[sizeof(g_rebootTracker.lastReasonStr) - 1] =
+      '\0';
 
   if (isWatchdogResetReason(resetReason)) {
     Serial.println("WARNING: Previous reset was due to Watchdog!");
   }
 
   // 3. WatchDog Timer
-  esp_task_wdt_init(60, true); 
+  esp_task_wdt_init(60, true);
   esp_task_wdt_add(NULL);
 
   // 4. Очередь зуммера (Analysis Step 1)
@@ -271,11 +306,13 @@ void setup() {
   NVSManager::init();
   loadSettings();
   LiveChartHistory::init();
+  initHistory();
+  initProfiles();
 
   // Сохранить причину перезагрузки, если изменилась
   g_rebootTracker.totalReboots = g_settings.rebootCountTotal + 1;
-  g_rebootTracker.wdtReboots =
-      g_settings.rebootCountWdt + (isWatchdogResetReason(resetReason) ? 1U : 0U);
+  g_rebootTracker.wdtReboots = g_settings.rebootCountWdt +
+                               (isWatchdogResetReason(resetReason) ? 1U : 0U);
   g_rebootTracker.crashReboots =
       g_settings.rebootCountCrash + (isCrashResetReason(resetReason) ? 1U : 0U);
   g_rebootTracker.userReboots =
@@ -295,7 +332,8 @@ void setup() {
     g_settings.rebootCountCrash = g_rebootTracker.crashReboots;
     g_settings.rebootCountUser = g_rebootTracker.userReboots;
     NVSManager::saveSettings(g_settings);
-    LOG_I("Reboot stats updated in NVS: reason=%d total=%u wdt=%u crash=%u user=%u",
+    LOG_I("Reboot stats updated in NVS: reason=%d total=%u wdt=%u crash=%u "
+          "user=%u",
           g_settings.lastRebootReason, g_settings.rebootCountTotal,
           g_settings.rebootCountWdt, g_settings.rebootCountCrash,
           g_settings.rebootCountUser);
@@ -326,7 +364,8 @@ void setup() {
     MQTT::setBaseTopic(g_settings.mqtt.baseTopic);
     MQTT::init(g_settings.mqtt.server, g_settings.mqtt.port,
                g_settings.mqtt.username[0] ? g_settings.mqtt.username : nullptr,
-               g_settings.mqtt.password[0] ? g_settings.mqtt.password : nullptr);
+               g_settings.mqtt.password[0] ? g_settings.mqtt.password
+                                           : nullptr);
   }
 
   Logger::init();
@@ -334,7 +373,7 @@ void setup() {
 
   LOG_I("System ready!");
   Logger::logf(0, "System ready: firmware %s", FW_VERSION);
-  
+
   Display::update(g_state);
   g_lastDisplayUpdate = millis();
 
@@ -350,53 +389,65 @@ void setup() {
 // Улучшенная функция самоконтроля системы с event logging
 static void performSystemHealthCheck(uint32_t now) {
   static uint32_t lastCheck = 0;
-  if (now - lastCheck < 1800000) return; // Раз в 30 минут
+  if (now - lastCheck < 1800000)
+    return; // Раз в 30 минут
   lastCheck = now;
 
   LOG_I("Health Check: Starting comprehensive system diagnostic...");
-  
+
   // 1. Основные системные метрики
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t uptimeSec = now / 1000;
-  
+
   // 2. Проверка датчиков температуры на стабильность
   bool sensorsStable = true;
   for (int i = 0; i < 7; i++) {
     if (g_state.health.tempErrors[i] > 50) {
       sensorsStable = false;
-      LOG_W("Health Check: Sensor %d unstable (%u errors)", i, g_state.health.tempErrors[i]);
+      LOG_W("Health Check: Sensor %d unstable (%u errors)", i,
+            g_state.health.tempErrors[i]);
     }
   }
 
   // 3. Проверка критических систем
   bool wifiOk = (WiFi.status() == WL_CONNECTED);
   int32_t wifiRssi = wifiOk ? WiFi.RSSI() : 0;
-  bool criticalSensorsOk = g_state.health.tempSensorsOk >= 2; // Минимум куб и царга низ
-  
+  bool criticalSensorsOk =
+      g_state.health.tempSensorsOk >= 2; // Минимум куб и царга низ
+
   // 4. Формирование расширенного сообщения для логов
   char logMsg[256];
-  const char* resetStr = "Other";
+  const char *resetStr = "Other";
   switch (g_state.health.lastRebootReason) {
-    case 1: resetStr = "PowerOn"; break;
-    case 3: resetStr = "SWD WDT"; break;
-    case 4: resetStr = "HWD WDT"; break;
-    case 5: resetStr = "DeepSleep"; break;
-    case 6: resetStr = "SW Reset"; break;
-    case 7: resetStr = "Panic"; break;
-    default: resetStr = "Unknown"; break;
+  case 1:
+    resetStr = "PowerOn";
+    break;
+  case 3:
+    resetStr = "SWD WDT";
+    break;
+  case 4:
+    resetStr = "HWD WDT";
+    break;
+  case 5:
+    resetStr = "DeepSleep";
+    break;
+  case 6:
+    resetStr = "SW Reset";
+    break;
+  case 7:
+    resetStr = "Panic";
+    break;
+  default:
+    resetStr = "Unknown";
+    break;
   }
-  
+
   snprintf(logMsg, sizeof(logMsg),
-           "[HEALTHCHECK] H:%uKB U:%us Rb:%s T:%u/%u PzemSp:%u Wifi:%s(%d) Healh:%u%%",
-           freeHeap / 1024,
-           uptimeSec,
-           resetStr,
-           g_state.health.tempSensorsOk,
-           g_state.health.tempSensorsTotal,
-           g_state.health.pzemSpikeCount,
-           wifiOk ? "OK" : "FAIL",
-           wifiRssi,
-           g_state.health.overallHealth);
+           "[HEALTHCHECK] H:%uKB U:%us Rb:%s T:%u/%u PzemSp:%u Wifi:%s(%d) "
+           "Healh:%u%%",
+           freeHeap / 1024, uptimeSec, resetStr, g_state.health.tempSensorsOk,
+           g_state.health.tempSensorsTotal, g_state.health.pzemSpikeCount,
+           wifiOk ? "OK" : "FAIL", wifiRssi, g_state.health.overallHealth);
 
   // 5. Запись в системный лог
   Logger::logf(0, "%s", logMsg);
@@ -405,12 +456,12 @@ static void performSystemHealthCheck(uint32_t now) {
   // 6. Анализ состояния и принятие решений
   bool needsAttention = false;
   String alertMessage = "🩺 *Системная диагностика*\n";
-  
+
   if (!criticalSensorsOk) {
     needsAttention = true;
     alertMessage += "- ❌ Критические датчики недоступны\n";
   }
-  
+
   if (!wifiOk && !g_settings.wifi.apMode) {
     needsAttention = true;
     alertMessage += "- ❌ Потеря соединения WiFi\n";
@@ -418,7 +469,7 @@ static void performSystemHealthCheck(uint32_t now) {
     needsAttention = true;
     alertMessage += "- ⚠️ Слабый сигнал WiFi\n";
   }
-  
+
   if (freeHeap < 32768) {
     needsAttention = true;
     alertMessage += "- ⚠️ Критически низкая память\n";
@@ -426,12 +477,12 @@ static void performSystemHealthCheck(uint32_t now) {
     needsAttention = true;
     alertMessage += "- ⚠️ Низкая память\n";
   }
-  
+
   if (g_state.health.cpuTemp > 85) {
     needsAttention = true;
     alertMessage += "- ⚠️ Перегрев процессора\n";
   }
-  
+
   // Проверка на нестабильные датчики
   bool hasUnstableSensors = false;
   for (int i = 0; i < 7; i++) {
@@ -444,7 +495,7 @@ static void performSystemHealthCheck(uint32_t now) {
     needsAttention = true;
     alertMessage += "- ⚠️ Нестабильные датчики температуры\n";
   }
-  
+
   if (needsAttention) {
     Logger::logf(1, "%s", alertMessage.c_str());
   } else {
@@ -464,13 +515,14 @@ void loop() {
   }
 
   uint32_t now = millis();
-  
+
   // Периодическая диагностика и самоконтроль
   performSystemHealthCheck(now);
 
   // OTA Updates
   OTA::handle();
-  if (OTA::isUpdating()) return;
+  if (OTA::isUpdating())
+    return;
 
   // Демо-симулятор
   if (g_settings.demoMode) {
@@ -523,16 +575,19 @@ void loop() {
 #endif
 
   CloudTunnel::loop();
-  
+
   handleLoggerLifecycle(now);
   if (Logger::isSessionActive() && now - g_lastLogWrite >= INTERVAL_LOG_WRITE) {
     g_lastLogWrite = now;
     Logger::writeData(g_state);
   }
 
-  // Pump::update() теперь вызывается в отдельной высокоприоритетной задаче (src/drivers/pump.cpp)
-  Heater::update();     // PERF-3 fix: плавный разгон ТЭНа (ramp) был реализован, но не вызывался
-  Valves::update();     // ARCH-3 fix: неблокирующий движок сервопривода фракционника
+  // Pump::update() теперь вызывается в отдельной высокоприоритетной задаче
+  // (src/drivers/pump.cpp)
+  Heater::update(); // PERF-3 fix: плавный разгон ТЭНа (ramp) был реализован, но
+                    // не вызывался
+  Valves::update(); // ARCH-3 fix: неблокирующий движок сервопривода
+                    // фракционника
   if (!g_settings.demoMode) {
     g_state.pump.running = Pump::isRunning();
     g_state.pump.speedMlPerHour = Pump::getSpeed();
@@ -548,14 +603,16 @@ void loop() {
   }
 
   g_state.uptime = now / 1000;
-  
-// Здоровье системы (обновление каждые 5 секунд для MQTT и базового мониторинга)
-static uint32_t lastHealthUpdate = 0;
-if (now - lastHealthUpdate >= 5000) {
-  lastHealthUpdate = now;
-  Sensors::updateHealth(g_state.health);
-  if (g_settings.mqtt.enabled) MQTT::publishHealth(g_state.health);
-}
+
+  // Здоровье системы (обновление каждые 5 секунд для MQTT и базового
+  // мониторинга)
+  static uint32_t lastHealthUpdate = 0;
+  if (now - lastHealthUpdate >= 5000) {
+    lastHealthUpdate = now;
+    Sensors::updateHealth(g_state.health);
+    if (g_settings.mqtt.enabled)
+      MQTT::publishHealth(g_state.health);
+  }
 
   esp_task_wdt_reset();
   yield();
@@ -576,7 +633,8 @@ void initHardware() {
   Pump::init();
   Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
   Valves::init();
-  if (g_settings.fractionator.enabled) Valves::initFractionator();
+  if (g_settings.fractionator.enabled)
+    Valves::initFractionator();
   Stirrer::init(); // MCP4725 DAC мешалки
   Display::init();
   Buttons::init();
@@ -587,14 +645,14 @@ void initHardware() {
 void initNetwork() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
-  
+
   if (WiFiProfiles::hasConfiguredProfiles(g_settings.wifi)) {
     WiFiProfiles::connectBestAvailable(g_settings.wifi, 10000);
   } else {
     g_dnsServer.start(53, "*", WiFi.softAPIP());
     g_captivePortalActive = true;
   }
-  
+
   if (MDNS.begin("smart-column")) {
     MDNS.addService("http", "tcp", 80);
   }
@@ -615,25 +673,26 @@ void resetWiFiAndRestart() {
   ESP.restart();
 }
 
-static void showBootStage(const char* message) {
+static void showBootStage(const char *message) {
 #ifdef DISPLAY_ENABLED
   Display::showMessage("BOOT", message, 0);
 #endif
 }
 
-static bool isProcessModeActive(Mode mode) {
-  return mode != Mode::IDLE;
-}
+static bool isProcessModeActive(Mode mode) { return mode != Mode::IDLE; }
 
 static void handleLoggerLifecycle(uint32_t now) {
   static Mode loggedMode = Mode::IDLE;
-  if (g_state.mode == loggedMode) return;
-  if (isProcessModeActive(loggedMode)) Logger::stopSession();
-  if (isProcessModeActive(g_state.mode)) Logger::startSession();
+  if (g_state.mode == loggedMode)
+    return;
+  if (isProcessModeActive(loggedMode))
+    Logger::stopSession();
+  if (isProcessModeActive(g_state.mode))
+    Logger::startSession();
   loggedMode = g_state.mode;
 }
 
-void buzzerTask(void* pvParameters) {
+void buzzerTask(void *pvParameters) {
   BuzzerCmd cmd;
   for (;;) {
     if (xQueueReceive(g_buzzerQueue, &cmd, portMAX_DELAY) == pdTRUE) {

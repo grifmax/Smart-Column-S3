@@ -9,6 +9,17 @@ import { addMashStep, createStepRow, readStepsFromUI, setMashProfileUI } from '.
 let currentProfileIsBuiltin = false;
 let profileFormLiveBindingsReady = false;
 
+function escapeHtml(value) {
+
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+
+}
+
 const PROFILE_FORM_DEFAULTS = {
     metadata: {
         name: '',

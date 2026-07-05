@@ -23,8 +23,10 @@ bool initHistory() {
     // Проверить существование директории /history
     if (!LittleFS.exists(HISTORY_DIR)) {
         Serial.println("Создание директории /history");
-        // LittleFS не требует явного создания директорий
-        // Они создаются автоматически при сохранении файла
+        if (!LittleFS.mkdir(HISTORY_DIR)) {
+            Serial.println("Ошибка: не удалось создать директорию /history");
+            return false;
+        }
     }
 
     // Провести ротацию файлов (удалить лишние)

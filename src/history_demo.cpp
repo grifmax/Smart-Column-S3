@@ -14,9 +14,32 @@ constexpr uint32_t kRectBaselineId = 1735804800UL;
 constexpr uint32_t kRectOptimizedId = 1736413200UL;
 constexpr uint32_t kRectSafetyId = 1737021600UL;
 constexpr uint32_t kDistillationId = 1737630000UL;
+constexpr uint8_t kRectBaselineSamples = 16;
+constexpr uint8_t kRectOptimizedSamples = 16;
+constexpr uint8_t kRectSafetySamples = 12;
+constexpr uint8_t kDistillationSamples = 12;
 
 String demoNote(const char* title) {
     return String(kDemoDatasetTag) + " " + title;
+}
+
+float remapSampleIndex(uint8_t index, uint8_t sampleCount, float maxModelIndex) {
+    if (sampleCount <= 1) {
+        return 0.0f;
+    }
+    return maxModelIndex * static_cast<float>(index) /
+           static_cast<float>(sampleCount - 1);
+}
+
+uint32_t spreadSampleTime(uint32_t startTime, uint32_t endTime, uint8_t index,
+                          uint8_t sampleCount) {
+    if (sampleCount <= 1 || endTime <= startTime) {
+        return startTime;
+    }
+    const uint32_t duration = endTime - startTime;
+    return startTime +
+           static_cast<uint32_t>((static_cast<uint64_t>(duration) * index) /
+                                 static_cast<uint64_t>(sampleCount - 1));
 }
 
 bool isDemoHistory(const ProcessHistory& history) {
@@ -174,40 +197,45 @@ ProcessHistory makeRectBaselineHistory() {
     addPhase(history, "tails", kRectBaselineId + 20700UL,
              history.metadata.endTime, 78.37f, 78.41f, 650, 900,
              "RC_TAILS_TARGET_REACHED");
-    for (uint8_t index = 0; index < 49; ++index) {
-        const uint32_t time =
-            history.metadata.startTime + static_cast<uint32_t>(index) * 480UL;
+    for (uint8_t index = 0; index < kRectBaselineSamples; ++index) {
+        const float sampleIndex =
+            remapSampleIndex(index, kRectBaselineSamples, 48.0f);
+        const uint32_t time = spreadSampleTime(history.metadata.startTime,
+                                               history.metadata.endTime, index,
+                                               kRectBaselineSamples);
         uint16_t power = 2350;
         uint16_t pumpSpeed = 0;
-        float cube = 23.4f + static_cast<float>(index) * 1.50f;
+        float cube = 23.4f + sampleIndex * 1.50f;
         float columnTop = 22.5f;
         float columnBottom = 22.9f;
-        float deflegmator = 20.8f + static_cast<float>(index) * 0.20f;
-        float processHealth = 0.85f + 0.07f * sinf(index * 0.13f);
-        float stabilityIndex = 0.86f + 0.05f * cosf(index * 0.15f);
-        float floodRisk = 0.08f + 0.05f * fabsf(sinf(index * 0.12f));
-        float coolingMargin = 12.4f - 0.06f * index;
-        float headsScore = index < 23 ? static_cast<float>(index) / 23.0f : 1.0f;
-        float bodyScore =
-            index < 25 ? 0.0f : (static_cast<float>(index) - 25.0f) / 22.0f;
+        float deflegmator = 20.8f + sampleIndex * 0.20f;
+        float processHealth = 0.85f + 0.07f * sinf(sampleIndex * 0.13f);
+        float stabilityIndex = 0.86f + 0.05f * cosf(sampleIndex * 0.15f);
+        float floodRisk = 0.08f + 0.05f * fabsf(sinf(sampleIndex * 0.12f));
+        float coolingMargin = 12.4f - 0.06f * sampleIndex;
+        float headsScore =
+            sampleIndex < 23.0f ? sampleIndex / 23.0f : 1.0f;
+        float bodyScore = sampleIndex < 25.0f
+                              ? 0.0f
+                              : (sampleIndex - 25.0f) / 22.0f;
         bool takeoffAllowed = false;
 
-        if (index >= 10) {
-            columnTop = 78.18f + 0.02f * sinf(index * 0.30f);
-            columnBottom = 77.45f + 0.10f * sinf(index * 0.24f);
+        if (sampleIndex >= 10.0f) {
+            columnTop = 78.18f + 0.02f * sinf(sampleIndex * 0.30f);
+            columnBottom = 77.45f + 0.10f * sinf(sampleIndex * 0.24f);
         }
-        if (index >= 15 && index < 24) {
+        if (sampleIndex >= 15.0f && sampleIndex < 24.0f) {
             pumpSpeed = 280;
             takeoffAllowed = true;
-        } else if (index >= 24 && index < 44) {
+        } else if (sampleIndex >= 24.0f && sampleIndex < 44.0f) {
             pumpSpeed = 1180;
             takeoffAllowed = true;
-            bodyScore = (static_cast<float>(index) - 24.0f) / 20.0f;
-        } else if (index >= 44) {
+            bodyScore = (sampleIndex - 24.0f) / 20.0f;
+        } else if (sampleIndex >= 44.0f) {
             pumpSpeed = 900;
             takeoffAllowed = true;
             floodRisk = 0.18f;
-            coolingMargin = 8.8f - 0.10f * (index - 44);
+            coolingMargin = 8.8f - 0.10f * (sampleIndex - 44.0f);
             bodyScore = 1.0f;
         }
 
@@ -289,45 +317,50 @@ ProcessHistory makeRectOptimizedHistory() {
     addPhase(history, "tails", kRectOptimizedId + 20220UL,
              history.metadata.endTime, 78.39f, 78.46f, 620, 920,
              "RC_TAILS_TARGET_REACHED");
-    for (uint8_t index = 0; index < 50; ++index) {
-        const uint32_t time =
-            history.metadata.startTime + static_cast<uint32_t>(index) * 456UL;
+    for (uint8_t index = 0; index < kRectOptimizedSamples; ++index) {
+        const float sampleIndex =
+            remapSampleIndex(index, kRectOptimizedSamples, 49.0f);
+        const uint32_t time = spreadSampleTime(history.metadata.startTime,
+                                               history.metadata.endTime, index,
+                                               kRectOptimizedSamples);
         uint16_t power = 2300;
         uint16_t pumpSpeed = 0;
-        float cube = 24.1f + static_cast<float>(index) * 1.47f;
+        float cube = 24.1f + sampleIndex * 1.47f;
         float columnTop = 22.8f;
         float columnBottom = 23.4f;
-        float deflegmator = 21.3f + static_cast<float>(index) * 0.20f;
-        float processHealth = 0.84f + 0.05f * sinf(index * 0.11f);
-        float stabilityIndex = 0.84f + 0.05f * cosf(index * 0.16f);
-        float floodRisk = 0.10f + 0.04f * fabsf(sinf(index * 0.14f));
-        float coolingMargin = 11.8f - 0.07f * index;
-        float headsScore = index < 22 ? static_cast<float>(index) / 22.0f : 1.0f;
-        float bodyScore =
-            index < 24 ? 0.0f : (static_cast<float>(index) - 24.0f) / 24.0f;
+        float deflegmator = 21.3f + sampleIndex * 0.20f;
+        float processHealth = 0.84f + 0.05f * sinf(sampleIndex * 0.11f);
+        float stabilityIndex = 0.84f + 0.05f * cosf(sampleIndex * 0.16f);
+        float floodRisk = 0.10f + 0.04f * fabsf(sinf(sampleIndex * 0.14f));
+        float coolingMargin = 11.8f - 0.07f * sampleIndex;
+        float headsScore =
+            sampleIndex < 22.0f ? sampleIndex / 22.0f : 1.0f;
+        float bodyScore = sampleIndex < 24.0f
+                              ? 0.0f
+                              : (sampleIndex - 24.0f) / 24.0f;
         bool takeoffAllowed = false;
 
-        if (index >= 10) {
-            columnTop = 78.17f + 0.025f * sinf(index * 0.29f);
-            columnBottom = 77.50f + 0.12f * sinf(index * 0.22f);
+        if (sampleIndex >= 10.0f) {
+            columnTop = 78.17f + 0.025f * sinf(sampleIndex * 0.29f);
+            columnBottom = 77.50f + 0.12f * sinf(sampleIndex * 0.22f);
         }
-        if (index >= 15 && index < 23) {
+        if (sampleIndex >= 15.0f && sampleIndex < 23.0f) {
             pumpSpeed = 300;
             takeoffAllowed = true;
-        } else if (index >= 23 && index < 45) {
+        } else if (sampleIndex >= 23.0f && sampleIndex < 45.0f) {
             pumpSpeed = 1240;
             takeoffAllowed = true;
-            if (index >= 33 && index <= 36) {
-                floodRisk = 0.31f + 0.05f * sinf(index);
-                coolingMargin = 6.6f + 0.2f * cosf(index);
+            if (sampleIndex >= 33.0f && sampleIndex <= 36.0f) {
+                floodRisk = 0.31f + 0.05f * sinf(sampleIndex);
+                coolingMargin = 6.6f + 0.2f * cosf(sampleIndex);
                 processHealth -= 0.08f;
                 stabilityIndex -= 0.10f;
             }
-        } else if (index >= 45) {
+        } else if (sampleIndex >= 45.0f) {
             pumpSpeed = 920;
             takeoffAllowed = true;
             floodRisk = 0.22f;
-            coolingMargin = 7.4f - 0.08f * (index - 45);
+            coolingMargin = 7.4f - 0.08f * (sampleIndex - 45.0f);
             bodyScore = 1.0f;
         }
 
@@ -423,39 +456,44 @@ ProcessHistory makeRectSafetyHistory() {
     addPhase(history, "body", kRectSafetyId + 10620UL, history.metadata.endTime,
              78.36f, 78.62f, 1570, 1280, "RC_SAFETY_TRIP_OVERHEAT",
              "Охлаждение перестало держать late body, поэтому safety supervisor остановил процесс.");
-    for (uint8_t index = 0; index < 34; ++index) {
-        const uint32_t time =
-            history.metadata.startTime + static_cast<uint32_t>(index) * 466UL;
+    for (uint8_t index = 0; index < kRectSafetySamples; ++index) {
+        const float sampleIndex =
+            remapSampleIndex(index, kRectSafetySamples, 33.0f);
+        const uint32_t time = spreadSampleTime(history.metadata.startTime,
+                                               history.metadata.endTime, index,
+                                               kRectSafetySamples);
         uint16_t power = 2300;
         uint16_t pumpSpeed = 0;
-        float cube = 23.7f + static_cast<float>(index) * 2.0f;
+        float cube = 23.7f + sampleIndex * 2.0f;
         float columnTop = 22.6f;
         float columnBottom = 23.0f;
-        float deflegmator = 21.1f + static_cast<float>(index) * 0.40f;
-        float processHealth = 0.88f - 0.012f * index;
-        float stabilityIndex = 0.86f - 0.013f * index;
-        float floodRisk = 0.08f + 0.02f * index;
-        float coolingMargin = 13.0f - 0.33f * index;
-        float headsScore = index < 18 ? static_cast<float>(index) / 18.0f : 1.0f;
-        float bodyScore =
-            index < 22 ? 0.0f : (static_cast<float>(index) - 22.0f) / 10.0f;
+        float deflegmator = 21.1f + sampleIndex * 0.40f;
+        float processHealth = 0.88f - 0.012f * sampleIndex;
+        float stabilityIndex = 0.86f - 0.013f * sampleIndex;
+        float floodRisk = 0.08f + 0.02f * sampleIndex;
+        float coolingMargin = 13.0f - 0.33f * sampleIndex;
+        float headsScore =
+            sampleIndex < 18.0f ? sampleIndex / 18.0f : 1.0f;
+        float bodyScore = sampleIndex < 22.0f
+                              ? 0.0f
+                              : (sampleIndex - 22.0f) / 10.0f;
         bool takeoffAllowed = false;
 
-        if (index >= 10) {
-            columnTop = 78.18f + 0.03f * sinf(index * 0.27f);
-            columnBottom = 77.48f + 0.12f * sinf(index * 0.24f);
+        if (sampleIndex >= 10.0f) {
+            columnTop = 78.18f + 0.03f * sinf(sampleIndex * 0.27f);
+            columnBottom = 77.48f + 0.12f * sinf(sampleIndex * 0.24f);
         }
-        if (index >= 15 && index < 22) {
+        if (sampleIndex >= 15.0f && sampleIndex < 22.0f) {
             pumpSpeed = 300;
             takeoffAllowed = true;
-        } else if (index >= 22) {
+        } else if (sampleIndex >= 22.0f) {
             pumpSpeed = 1280;
-            takeoffAllowed = index < 33;
-            if (index >= 28) {
-                deflegmator += 2.2f + 0.35f * (index - 28);
-                columnTop += 0.08f + 0.02f * (index - 28);
-                floodRisk = 0.48f + 0.05f * (index - 28);
-                coolingMargin = 4.2f - 0.6f * (index - 28);
+            takeoffAllowed = sampleIndex < 33.0f;
+            if (sampleIndex >= 28.0f) {
+                deflegmator += 2.2f + 0.35f * (sampleIndex - 28.0f);
+                columnTop += 0.08f + 0.02f * (sampleIndex - 28.0f);
+                floodRisk = 0.48f + 0.05f * (sampleIndex - 28.0f);
+                coolingMargin = 4.2f - 0.6f * (sampleIndex - 28.0f);
                 processHealth -= 0.12f;
                 stabilityIndex -= 0.14f;
             }
@@ -546,25 +584,28 @@ ProcessHistory makeDistillationHistory() {
     addPhase(history, "working", kDistillationId + 5100UL,
              history.metadata.endTime, 78.5f, 98.1f, 5650, 0,
              "RC_DISTILLATION_TARGET_VOLUME_REACHED");
-    for (uint8_t index = 0; index < 33; ++index) {
-        const uint32_t time =
-            history.metadata.startTime + static_cast<uint32_t>(index) * 445UL;
+    for (uint8_t index = 0; index < kDistillationSamples; ++index) {
+        const float sampleIndex =
+            remapSampleIndex(index, kDistillationSamples, 32.0f);
+        const uint32_t time = spreadSampleTime(history.metadata.startTime,
+                                               history.metadata.endTime, index,
+                                               kDistillationSamples);
         TimeseriesPoint point;
         point.time = time;
-        point.cube = 21.9f + static_cast<float>(index) * 2.33f;
-        point.columnTop = 21.4f + static_cast<float>(index) * 2.17f;
-        point.columnBottom = 21.7f + static_cast<float>(index) * 1.97f;
+        point.cube = 21.9f + sampleIndex * 2.33f;
+        point.columnTop = 21.4f + sampleIndex * 2.17f;
+        point.columnBottom = 21.7f + sampleIndex * 1.97f;
         point.deflegmator = 0.0f;
-        point.power = index < 6 ? 3200 : 2850;
-        point.voltage = 228.0f + 1.2f * sinf(index * 0.22f);
+        point.power = sampleIndex < 6.0f ? 3200 : 2850;
+        point.voltage = 228.0f + 1.2f * sinf(sampleIndex * 0.22f);
         point.current = point.power / 228.0f;
         point.pumpSpeed = 0;
-        point.processHealth = 0.84f + 0.05f * sinf(index * 0.20f);
-        point.stabilityIndex = 0.72f + 0.06f * cosf(index * 0.17f);
+        point.processHealth = 0.84f + 0.05f * sinf(sampleIndex * 0.20f);
+        point.stabilityIndex = 0.72f + 0.06f * cosf(sampleIndex * 0.17f);
         point.floodRisk = 0.0f;
         point.coolingMarginC = 0.0f;
         point.headsCompletionScore = 0.0f;
-        point.bodyEndScore = static_cast<float>(index) / 32.0f;
+        point.bodyEndScore = sampleIndex / 32.0f;
         point.takeoffAllowed = false;
         point.sensorFreshnessOk = true;
         history.timeseries.push_back(point);
@@ -599,8 +640,13 @@ bool saveDemoHistory(const ProcessHistory& history, DemoHistorySeedResult& resul
 }
 
 String extractHistoryId(const String& filename) {
-    static const String prefix = String(HISTORY_DIR) + "/process_";
-    return filename.substring(prefix.length(), filename.length() - 5);
+    const int slashPos = filename.lastIndexOf('/');
+    const String basename = slashPos >= 0 ? filename.substring(slashPos + 1) : filename;
+    static const String prefix = "process_";
+    if (!basename.startsWith(prefix) || !basename.endsWith(".json")) {
+        return "";
+    }
+    return basename.substring(prefix.length(), basename.length() - 5);
 }
 
 }  // namespace
@@ -616,11 +662,9 @@ uint16_t countPublicDemoDatasetEntries() {
     while (file) {
         if (!file.isDirectory()) {
             const String filename = file.name();
-            if (filename.startsWith(String(HISTORY_DIR) + "/process_") &&
-                filename.endsWith(".json")) {
-                if (isDemoHistoryFile(extractHistoryId(filename))) {
+            const String id = extractHistoryId(filename);
+            if (!id.isEmpty() && isDemoHistoryFile(id)) {
                     count++;
-                }
             }
         }
         file = root.openNextFile();
@@ -640,12 +684,9 @@ bool clearPublicDemoDataset(DemoHistorySeedResult& result) {
     while (file) {
         if (!file.isDirectory()) {
             const String filename = file.name();
-            if (filename.startsWith(String(HISTORY_DIR) + "/process_") &&
-                filename.endsWith(".json")) {
-                const String id = extractHistoryId(filename);
-                if (isDemoHistoryFile(id)) {
-                    demoIds.push_back(id);
-                }
+            const String id = extractHistoryId(filename);
+            if (!id.isEmpty() && isDemoHistoryFile(id)) {
+                demoIds.push_back(id);
             }
         }
         file = root.openNextFile();

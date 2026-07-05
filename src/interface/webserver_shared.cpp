@@ -542,6 +542,34 @@ float clampFloatRange(float value, float minValue, float maxValue) {
   return value;
 }
 
+bool collectRequestBody(AsyncWebServerRequest *request, const uint8_t *data,
+                        size_t len, size_t index, size_t total, String &body) {
+  if (index == 0) {
+    delete static_cast<String *>(request->_tempObject);
+    String *buffer = new String();
+    buffer->reserve(total);
+    request->_tempObject = buffer;
+  }
+
+  String *buffer = static_cast<String *>(request->_tempObject);
+  if (buffer == nullptr) {
+    return false;
+  }
+
+  for (size_t i = 0; i < len; ++i) {
+    *buffer += static_cast<char>(data[i]);
+  }
+
+  if (index + len != total) {
+    return false;
+  }
+
+  body = *buffer;
+  delete buffer;
+  request->_tempObject = nullptr;
+  return true;
+}
+
 uint16_t clampU16Range(uint32_t value, uint16_t minValue,
                        uint16_t maxValue) {
   if (value < minValue) return minValue;

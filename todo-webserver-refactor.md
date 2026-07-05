@@ -187,7 +187,7 @@ src/interface/api/settings/
 - [x] вынести `/update` GET
 - [x] вынести upload-handler OTA
 - [x] проверить, что форма OTA всё ещё открывается
-- [ ] проверить, что upload firmware остаётся рабочим
+- [x] проверить, что upload firmware остаётся рабочим
 
 ### 7.6 `api_wifi.cpp`
 
@@ -199,7 +199,7 @@ src/interface/api/settings/
 Критерий готовности этапа:
 - [x] `webserver.cpp` стал заметно меньше
 - [x] все перечисленные маршруты собираются из отдельных модулей
-- [ ] ручная smoke-проверка пройдена
+- [x] ручная smoke-проверка пройдена
 
 ---
 
@@ -257,7 +257,7 @@ src/interface/api/settings/
 - [x] вынести `/api/history/:id` DELETE
 - [x] вынести `/api/history/:id/export`
 - [x] вынести `/api/history/demo` POST/DELETE
-- [ ] проверить export/import history-потоки, если есть body-handlers
+- [x] проверить export/import history-потоки, если есть body-handlers
 
 ### 9.2 `api_profiles.cpp`
 
@@ -271,11 +271,11 @@ src/interface/api/settings/
 - [x] вынести `/api/profiles/:id/export`
 - [x] вынести `/api/profiles/export`
 - [x] вынести `/api/profiles/import`
-- [ ] проверить profile CRUD из Web UI
+- [x] проверить profile CRUD из Web UI
 
 Критерий готовности этапа:
 - [x] история и профили независимы от остального маршрутизатора
-- [ ] импорт/экспорт живы
+- [x] импорт/экспорт живы
 
 ---
 
@@ -418,8 +418,8 @@ src/interface/api/settings/
 - [x] OTA: GET `/update` + upload
 - [ ] calibration: temp / pressure / scan
 - [ ] testing: stop-all / test actions
-- [ ] profiles: CRUD / load / export / import
-- [ ] history: list / details / export / clear
+- [x] profiles: CRUD / load / export / import
+- [x] history: list / details / export / clear
 - [ ] process: preflight / start / pause / resume / stop
 - [ ] safety: ack / reset
 

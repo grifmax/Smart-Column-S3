@@ -368,7 +368,10 @@ bool initProfiles() {
     // Проверить существование директории /profiles
     if (!LittleFS.exists(PROFILES_DIR)) {
         Serial.println("Создание директории /profiles");
-        // LittleFS не требует явного создания директорий
+        if (!LittleFS.mkdir(PROFILES_DIR)) {
+            Serial.println("Ошибка: не удалось создать директорию /profiles");
+            return false;
+        }
     }
 
     // Загрузить встроенные рецепты если их нет

@@ -6,36 +6,12 @@
 #include "storage/logger.h"
 
 void registerProfilesRoutes(AsyncWebServer &server) {
-  server.on("/api/profiles", HTTP_GET, [](AsyncWebServerRequest *request) {
-    std::vector<ProfileListItem> profiles = getProfileList();
-
-    JsonDocument doc;
-    doc["total"] = profiles.size();
-
-    JsonArray profileArray = doc["profiles"].to<JsonArray>();
-    for (const auto &prof : profiles) {
-      JsonObject p = profileArray.add<JsonObject>();
-      p["id"] = prof.id;
-      p["name"] = prof.name;
-      p["description"] = prof.description;
-      p["category"] = prof.category;
-      JsonArray tags = p["tags"].to<JsonArray>();
-      for (const auto &tag : prof.tags) {
-        tags.add(tag);
-      }
-      p["author"] = prof.author;
-      p["useCount"] = prof.useCount;
-      p["lastUsed"] = prof.lastUsed;
-      p["updated"] = prof.updated;
-      p["successRate"] = prof.successRate;
-      p["successfulRuns"] = prof.successfulRuns;
-      p["isBuiltin"] = prof.isBuiltin;
-    }
-
-    String response;
-    serializeJson(doc, response);
-    request->send(200, "application/json", response);
-  });
+  server.on("/api/profiles/export", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              bool includeBuiltin = request->hasParam("includeBuiltin");
+              String json = exportAllProfilesToJSON(includeBuiltin);
+              request->send(200, "application/json", json);
+            });
 
   server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_GET,
             [](AsyncWebServerRequest *request) {
@@ -283,7 +259,10 @@ void registerProfilesRoutes(AsyncWebServer &server) {
       [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index + len != total) return;
+        String body;
+        if (!collectRequestBody(request, data, len, index, total, body)) {
+          return;
+        }
 
         String id = request->pathArg(0);
         Profile profile;
@@ -300,7 +279,7 @@ void registerProfilesRoutes(AsyncWebServer &server) {
         }
 
         JsonDocument doc;
-        if (deserializeJson(doc, data, len)) {
+        if (deserializeJson(doc, body)) {
           request->send(400, "application/json",
                         "{\"success\":false,\"error\":\"Invalid JSON\"}");
           return;
@@ -546,44 +525,68 @@ void registerProfilesRoutes(AsyncWebServer &server) {
             });
 
   server.on(
-      "/api/profiles", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
-      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
-         size_t index, size_t total) {
-        if (index == 0) {
-          String jsonStr = "";
-          for (size_t i = 0; i < len; i++) jsonStr += static_cast<char>(data[i]);
-
-          String newId = importProfileFromJSON(jsonStr);
-          if (!newId.isEmpty()) {
-            request->send(201, "application/json",
-                          "{\"success\":true,\"id\":\"" + newId + "\"}");
-          } else {
-            request->send(400, "application/json",
-                          "{\"error\":\"Failed to create profile\"}");
-          }
-        }
-      });
-
-  server.on("/api/profiles/export", HTTP_GET,
-            [](AsyncWebServerRequest *request) {
-              bool includeBuiltin = request->hasParam("includeBuiltin");
-              String json = exportAllProfilesToJSON(includeBuiltin);
-              request->send(200, "application/json", json);
-            });
-
-  server.on(
       "/api/profiles/import", HTTP_POST, [](AsyncWebServerRequest *request) {},
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (index == 0) {
-          String jsonStr = "";
-          for (size_t i = 0; i < len; i++) jsonStr += static_cast<char>(data[i]);
+        String body;
+        if (!collectRequestBody(request, data, len, index, total, body)) {
+          return;
+        }
 
-          uint16_t count = importProfilesFromJSON(jsonStr);
-          request->send(200, "application/json",
-                        "{\"success\":true,\"count\":" + String(count) +
-                            ",\"imported\":" + String(count) + "}");
+        uint16_t count = importProfilesFromJSON(body);
+        request->send(200, "application/json",
+                      "{\"success\":true,\"count\":" + String(count) +
+                          ",\"imported\":" + String(count) + "}");
+      });
+
+  server.on(
+      "/api/profiles", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        String body;
+        if (!collectRequestBody(request, data, len, index, total, body)) {
+          return;
+        }
+
+        String newId = importProfileFromJSON(body);
+        if (!newId.isEmpty()) {
+          request->send(201, "application/json",
+                        "{\"success\":true,\"id\":\"" + newId + "\"}");
+        } else {
+          request->send(400, "application/json",
+                        "{\"error\":\"Failed to create profile\"}");
         }
       });
+
+  server.on("/api/profiles", HTTP_GET, [](AsyncWebServerRequest *request) {
+    std::vector<ProfileListItem> profiles = getProfileList();
+
+    JsonDocument doc;
+    doc["total"] = profiles.size();
+
+    JsonArray profileArray = doc["profiles"].to<JsonArray>();
+    for (const auto &prof : profiles) {
+      JsonObject p = profileArray.add<JsonObject>();
+      p["id"] = prof.id;
+      p["name"] = prof.name;
+      p["description"] = prof.description;
+      p["category"] = prof.category;
+      JsonArray tags = p["tags"].to<JsonArray>();
+      for (const auto &tag : prof.tags) {
+        tags.add(tag);
+      }
+      p["author"] = prof.author;
+      p["useCount"] = prof.useCount;
+      p["lastUsed"] = prof.lastUsed;
+      p["updated"] = prof.updated;
+      p["successRate"] = prof.successRate;
+      p["successfulRuns"] = prof.successfulRuns;
+      p["isBuiltin"] = prof.isBuiltin;
+    }
+
+    String response;
+    serializeJson(doc, response);
+    request->send(200, "application/json", response);
+  });
 }

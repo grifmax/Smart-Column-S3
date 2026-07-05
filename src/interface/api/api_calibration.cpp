@@ -20,7 +20,7 @@ static bool isZeroTempAddressLocal(const uint8_t address[8]) {
 }
 
 void registerCalibrationRoutes(AsyncWebServer &server) {
-  server.on("/api/calibration", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("^\\/api\\/calibration$", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
 
     JsonObject pump = doc["pump"].to<JsonObject>();
@@ -545,7 +545,7 @@ void registerCalibrationRoutes(AsyncWebServer &server) {
         request->send(200, "application/json", json);
       });
 
-  server.on("/api/calibration/scan", HTTP_GET,
+  server.on("^\\/api\\/calibration\\/scan$", HTTP_GET,
             [](AsyncWebServerRequest *request) {
               uint8_t addresses[TEMP_COUNT][8] = {};
               uint8_t count = Sensors::scanDS18B20(addresses);
@@ -626,7 +626,7 @@ void registerCalibrationRoutes(AsyncWebServer &server) {
               request->send(200, "application/json", json);
             });
 
-  server.on("/api/calibration/scan/raw", HTTP_GET,
+  server.on("^\\/api\\/calibration\\/scan\\/raw$", HTTP_GET,
             [](AsyncWebServerRequest *request) {
               uint8_t addresses[TEMP_COUNT][8] = {};
               uint8_t count = Sensors::scanDS18B20(addresses);
