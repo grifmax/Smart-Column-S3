@@ -429,7 +429,7 @@ src/interface/api/settings/
 
 Это не часть первого обязательного прохода, но рядом будет удобно заметить и почистить.
 
-- [ ] убрать дубли helper-объявлений в начале файла
+- [x] убрать дубли helper-объявлений в начале файла
 - [ ] унифицировать naming register-функций
 - [x] выделить response helper для JSON success/error
 - [x] выделить body-parse helper для POST маршрутов

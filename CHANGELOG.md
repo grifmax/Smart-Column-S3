@@ -7,6 +7,11 @@
 
 ---
 
+## [2.4.52] - 2026-07-05
+
+### Changed
+- В `cloud_tunnel.cpp` убраны дубли базовых helper-функций, которые уже живут в `webserver_shared`: cloud-слой теперь переиспользует общие реализации для security apply, topology support, clamps, mode parsing, booster override и V2/alarm JSON fillers, а локально оставляет только cloud-специфичные обёртки и payload-расширения. Это уменьшает расхождение между локальным Web API и облачным туннелем и упрощает дальнейшую поддержку рефакторинга. (codex)
+
 ## [2.4.51] - 2026-07-05
 
 ### Changed
