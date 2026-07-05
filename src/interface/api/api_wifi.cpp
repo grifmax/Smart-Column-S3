@@ -1,6 +1,8 @@
 #include "api_routes.h"
 
 #include <WiFi.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include "interface/wifi_profiles.h"
 #include "interface/webserver_shared.h"
@@ -41,6 +43,16 @@ static bool isValidIpOrEmpty(const char *value) {
   }
   IPAddress ip;
   return ip.fromString(value);
+}
+
+static void beginWiFiConnectionTask(void *param) {
+  WiFiProfile *profile = static_cast<WiFiProfile *>(param);
+  if (profile != nullptr) {
+    vTaskDelay(pdMS_TO_TICKS(250));
+    WiFiProfiles::beginConnection(*profile);
+    delete profile;
+  }
+  vTaskDelete(nullptr);
 }
 
 void registerWifiRoutes(AsyncWebServer &server) {
@@ -101,8 +113,101 @@ void registerWifiRoutes(AsyncWebServer &server) {
             });
 
   server.on(
-      "/api/wifi/profile", HTTP_POST, [](AsyncWebServerRequest *request) {},
-      NULL,
+      "^\\/api\\/wifi\\/profile\\/reorder$", HTTP_POST,
+      [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        JsonDocument doc;
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
+          return;
+        }
+
+        const char *ssid = doc["ssid"] | "";
+        const char *direction = doc["direction"] | "up";
+        if (!ssid[0]) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"error\":\"SSID required\"}");
+          return;
+        }
+
+        const int shift = (strcmp(direction, "down") == 0) ? 1 : -1;
+        if (!WiFiProfiles::moveProfile(g_settings.wifi, ssid, shift)) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"error\":\"Cannot change profile priority\"}");
+          return;
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          Logger::logf(2, "WiFi profile reorder save failed: %s", ssid);
+          request->send(
+              500, "application/json",
+              "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        JsonDocument out;
+        out["success"] = true;
+        buildWiFiProfilesResponse(out);
+
+        String json;
+        serializeJson(out, json);
+        Logger::logf(0, "WiFi profile reordered: %s moved %s", ssid,
+                     shift > 0 ? "down" : "up");
+        request->send(200, "application/json", json);
+      });
+
+  server.on(
+      "^\\/api\\/wifi\\/profile\\/delete$", HTTP_POST,
+      [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        JsonDocument doc;
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
+          return;
+        }
+
+        const char *ssid = doc["ssid"] | "";
+        if (!ssid[0]) {
+          request->send(
+              400, "application/json",
+              "{\"success\":false,\"error\":\"SSID required\"}");
+          return;
+        }
+
+        if (!WiFiProfiles::deleteProfile(g_settings.wifi, ssid)) {
+          request->send(
+              404, "application/json",
+              "{\"success\":false,\"error\":\"Profile not found\"}");
+          return;
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          Logger::logf(2, "WiFi profile delete save failed: %s", ssid);
+          request->send(
+              500, "application/json",
+              "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          return;
+        }
+
+        JsonDocument out;
+        out["success"] = true;
+        buildWiFiProfilesResponse(out);
+
+        String json;
+        serializeJson(out, json);
+        Logger::logf(0, "WiFi profile deleted: %s", ssid);
+        request->send(200, "application/json", json);
+      });
+
+  server.on(
+      "^\\/api\\/wifi\\/profile$", HTTP_POST,
+      [](AsyncWebServerRequest *request) {}, NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
         JsonDocument doc;
@@ -151,7 +256,8 @@ void registerWifiRoutes(AsyncWebServer &server) {
         }
 
         const bool makePreferred = doc["makePreferred"] | false;
-        if (!WiFiProfiles::upsertProfile(g_settings.wifi, profile, makePreferred)) {
+        if (!WiFiProfiles::upsertProfile(g_settings.wifi, profile,
+                                         makePreferred)) {
           request->send(
               400, "application/json",
               "{\"success\":false,\"error\":\"Failed to save WiFi profile (limit reached or invalid SSID)\"}");
@@ -179,100 +285,8 @@ void registerWifiRoutes(AsyncWebServer &server) {
       });
 
   server.on(
-      "/api/wifi/profile/reorder", HTTP_POST,
-      [](AsyncWebServerRequest *request) {}, NULL,
-      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
-         size_t index, size_t total) {
-        JsonDocument doc;
-        if (!deserializeRequestJsonBody(
-                request, data, len, index, total, doc,
-                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
-          return;
-        }
-
-        const char *ssid = doc["ssid"] | "";
-        const char *direction = doc["direction"] | "up";
-        if (!ssid[0]) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"SSID required\"}");
-          return;
-        }
-
-        const int shift = (strcmp(direction, "down") == 0) ? 1 : -1;
-        if (!WiFiProfiles::moveProfile(g_settings.wifi, ssid, shift)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"Cannot change profile priority\"}");
-          return;
-        }
-
-        if (!NVSManager::saveSettings(g_settings)) {
-          Logger::logf(2, "WiFi profile reorder save failed: %s", ssid);
-          request->send(
-              500, "application/json",
-              "{\"success\":false,\"error\":\"Failed to save settings\"}");
-          return;
-        }
-
-        JsonDocument out;
-        out["success"] = true;
-        buildWiFiProfilesResponse(out);
-
-        String json;
-        serializeJson(out, json);
-        Logger::logf(0, "WiFi profile reordered: %s moved %s", ssid,
-                     shift > 0 ? "down" : "up");
-        request->send(200, "application/json", json);
-      });
-
-  server.on(
-      "/api/wifi/profile/delete", HTTP_POST,
-      [](AsyncWebServerRequest *request) {}, NULL,
-      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
-         size_t index, size_t total) {
-        JsonDocument doc;
-        if (!deserializeRequestJsonBody(
-                request, data, len, index, total, doc,
-                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
-          return;
-        }
-
-        const char *ssid = doc["ssid"] | "";
-        if (!ssid[0]) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"SSID required\"}");
-          return;
-        }
-
-        if (!WiFiProfiles::deleteProfile(g_settings.wifi, ssid)) {
-          request->send(
-              404, "application/json",
-              "{\"success\":false,\"error\":\"Profile not found\"}");
-          return;
-        }
-
-        if (!NVSManager::saveSettings(g_settings)) {
-          Logger::logf(2, "WiFi profile delete save failed: %s", ssid);
-          request->send(
-              500, "application/json",
-              "{\"success\":false,\"error\":\"Failed to save settings\"}");
-          return;
-        }
-
-        JsonDocument out;
-        out["success"] = true;
-        buildWiFiProfilesResponse(out);
-
-        String json;
-        serializeJson(out, json);
-        Logger::logf(0, "WiFi profile deleted: %s", ssid);
-        request->send(200, "application/json", json);
-      });
-
-  server.on(
-      "/api/wifi/connect", HTTP_POST, [](AsyncWebServerRequest *request) {},
+      "^\\/api\\/wifi\\/connect$", HTTP_POST,
+      [](AsyncWebServerRequest *request) {},
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
@@ -379,12 +393,29 @@ void registerWifiRoutes(AsyncWebServer &server) {
 
         if (NVSManager::saveSettings(g_settings)) {
           LOG_I("WiFi: Settings saved, connecting to %s", ssid);
+          WiFiProfile *profileCopy = new WiFiProfile(profileToConnect);
+          if (profileCopy == nullptr) {
+            LOG_E("WiFi: Failed to allocate connect task profile");
+            Logger::logf(2, "WiFi connect allocation failed: %s", ssid);
+            request->send(500, "application/json",
+                          "{\"error\":\"Failed to schedule WiFi connect\"}");
+            return;
+          }
+
+          BaseType_t taskCreated = xTaskCreate(
+              beginWiFiConnectionTask, "wifi-connect", 4096, profileCopy, 1, nullptr);
+          if (taskCreated != pdPASS) {
+            delete profileCopy;
+            LOG_E("WiFi: Failed to create connect task");
+            Logger::logf(2, "WiFi connect task create failed: %s", ssid);
+            request->send(500, "application/json",
+                          "{\"error\":\"Failed to schedule WiFi connect\"}");
+            return;
+          }
+
           request->send(
               200, "application/json",
               "{\"status\":\"connecting\",\"message\":\"Connecting to WiFi, please wait...\"}");
-
-          delay(100);
-          WiFiProfiles::beginConnection(profileToConnect);
         } else {
           LOG_E("WiFi: Failed to save settings to NVS");
           Logger::logf(2, "WiFi connect save failed: %s", ssid);

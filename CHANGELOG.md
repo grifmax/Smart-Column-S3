@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.49] - 2026-07-05
+
+### Fixed
+- Исправлен live-таймаут ответа у `POST /api/wifi/connect`: переподключение Wi-Fi больше не стартует синхронно прямо в HTTP handler через `delay()` и мгновенный `WiFi.begin()`, а откладывается в короткую FreeRTOS-задачу после отправки ответа. Это должно вернуть стабильный JSON-ответ клиенту и убрать подвисание Web UI на ручном connect. (codex)
+
+## [2.4.48] - 2026-07-05
+
+### Fixed
+- Исправлен live-конфликт Wi-Fi POST-маршрутов в `ESPAsyncWebServer`: `POST /api/wifi/profile/delete` и `POST /api/wifi/profile/reorder` раньше перехватывались более общим `POST /api/wifi/profile` из-за prefix-match, поэтому delete/reorder фактически превращались в upsert. Все конфликтующие Wi-Fi POST endpoints переведены на anchored exact regex routes, и delete/reorder/connect снова должны выполнять именно свою логику. (codex)
+
 ## [2.4.47] - 2026-07-05
 
 ### Fixed

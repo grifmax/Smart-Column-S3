@@ -194,7 +194,7 @@ src/interface/api/settings/
 - [x] вынести `/api/wifi/scan`
 - [x] вынести `/api/wifi/status`
 - [x] вынести `/api/wifi/profiles` и связанные POST handlers
-- [ ] проверить reorder / delete / connect
+- [x] проверить reorder / delete / connect
 
 Критерий готовности этапа:
 - [x] `webserver.cpp` стал заметно меньше
@@ -291,7 +291,7 @@ src/interface/api/settings/
 - [x] отдельного route abort / emergency stop в актуальном API не найдено, новый endpoint в рамках рефакторинга не добавлялся
 - [x] вынести `/api/stirrer/stop`
 - [x] вынести прочие stirrer control endpoints
-- [ ] проверить старт/пауза/возобновление/останов
+- [x] проверить старт/пауза/возобновление/останов
 
 ### 10.2 `api_safety.cpp`
 
@@ -369,7 +369,7 @@ src/interface/api/settings/
 - [x] вынести `broadcastState(const SystemState&)`
 - [x] вынести `broadcastEvent(const char*, const char*)`
 - [x] shared JSON fillers не дублируются: `fillAlarmJson`, `fillV2StatusJson`, `fillSafetyActionV2Json`, `fillStirrerJson` уже переиспользуются через общий слой
-- [ ] проверить websocket fast/full broadcasts
+- [x] проверить websocket fast/full broadcasts
 
 Критерий готовности этапа:
 - [x] `webserver.cpp` остаётся координатором
@@ -414,13 +414,13 @@ src/interface/api/settings/
 
 ### По этапам
 
-- [ ] Wi-Fi: scan / profiles / connect
+- [x] Wi-Fi: scan / profiles / connect
 - [x] OTA: GET `/update` + upload
 - [x] calibration: temp / pressure / scan
 - [x] testing: stop-all / test actions
 - [x] profiles: CRUD / load / export / import
 - [x] history: list / details / export / clear
-- [ ] process: preflight / start / pause / resume / stop
+- [x] process: preflight / start / pause / resume / stop
 - [x] safety: ack / reset
 
 ---
