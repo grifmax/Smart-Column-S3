@@ -13,246 +13,231 @@ void registerProfilesRoutes(AsyncWebServer &server) {
               request->send(200, "application/json", json);
             });
 
-  server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_GET,
-            [](AsyncWebServerRequest *request) {
-              String id = request->pathArg(0);
+  server.on(
+      "^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_GET,
+      [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
 
-              Profile profile;
-              if (loadProfile(id, profile)) {
-                JsonDocument doc;
+        Profile profile;
+        if (loadProfile(id, profile)) {
+          JsonDocument doc;
 
-                doc["id"] = profile.id;
+          doc["id"] = profile.id;
 
-                JsonObject metadata = doc["metadata"].to<JsonObject>();
-                metadata["name"] = profile.metadata.name;
-                metadata["description"] = profile.metadata.description;
-                metadata["category"] = profile.metadata.category;
+          JsonObject metadata = doc["metadata"].to<JsonObject>();
+          metadata["name"] = profile.metadata.name;
+          metadata["description"] = profile.metadata.description;
+          metadata["category"] = profile.metadata.category;
 
-                JsonArray tags = metadata["tags"].to<JsonArray>();
-                for (const auto &tag : profile.metadata.tags) {
-                  tags.add(tag);
+          JsonArray tags = metadata["tags"].to<JsonArray>();
+          for (const auto &tag : profile.metadata.tags) {
+            tags.add(tag);
+          }
+
+          metadata["created"] = profile.metadata.created;
+          metadata["updated"] = profile.metadata.updated;
+          metadata["author"] = profile.metadata.author;
+          metadata["isBuiltin"] = profile.metadata.isBuiltin;
+
+          JsonObject parameters = doc["parameters"].to<JsonObject>();
+          parameters["mode"] = profile.parameters.mode;
+          parameters["model"] = profile.parameters.model;
+
+          JsonObject heater = parameters["heater"].to<JsonObject>();
+          heater["maxPower"] = profile.parameters.heater.maxPower;
+          heater["autoMode"] = profile.parameters.heater.autoMode;
+          heater["pidKp"] = profile.parameters.heater.pidKp;
+          heater["pidKi"] = profile.parameters.heater.pidKi;
+          heater["pidKd"] = profile.parameters.heater.pidKd;
+          heater["boosterEnabled"] = profile.parameters.heater.boosterEnabled;
+          heater["boosterStopCubeTempC"] =
+              profile.parameters.heater.boosterStopCubeTempC;
+
+          JsonObject rectification =
+              parameters["rectification"].to<JsonObject>();
+          rectification["stabilizationMin"] =
+              profile.parameters.rectification.stabilizationMin;
+          rectification["headsVolume"] =
+              profile.parameters.rectification.headsVolume;
+          rectification["bodyVolume"] =
+              profile.parameters.rectification.bodyVolume;
+          rectification["tailsVolume"] =
+              profile.parameters.rectification.tailsVolume;
+          rectification["headsSpeed"] =
+              profile.parameters.rectification.headsSpeed;
+          rectification["bodySpeed"] =
+              profile.parameters.rectification.bodySpeed;
+          rectification["tailsSpeed"] =
+              profile.parameters.rectification.tailsSpeed;
+          rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
+
+          JsonObject distillation =
+              parameters["distillation"].to<JsonObject>();
+          distillation["headsVolume"] =
+              profile.parameters.distillation.headsVolume;
+          distillation["targetVolume"] =
+              profile.parameters.distillation.targetVolume;
+          distillation["speed"] = profile.parameters.distillation.speed;
+          distillation["endTemp"] = profile.parameters.distillation.endTemp;
+
+          JsonObject mashing = parameters["mashing"].to<JsonObject>();
+          JsonArray mashingSteps = mashing["steps"].to<JsonArray>();
+          for (const auto &stepData : profile.parameters.mashing.steps) {
+            JsonObject step = mashingSteps.add<JsonObject>();
+            step["temperature"] = stepData.temperature;
+            step["duration"] = stepData.duration;
+            step["name"] = stepData.name;
+          }
+
+          JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
+          temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
+          temperatures["maxColumn"] = profile.parameters.temperatures.maxColumn;
+          temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
+          temperatures["bodyStart"] =
+              profile.parameters.temperatures.bodyStart;
+          temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
+
+          ProfileBaroCorrectionSummary baroSummary;
+          TemperatureParams effectiveTemps =
+              getEffectiveProfileTemperatures(profile, &baroSummary);
+
+          JsonObject effectiveTemperatures =
+              doc["effectiveTemperatures"].to<JsonObject>();
+          effectiveTemperatures["maxCube"] = effectiveTemps.maxCube;
+          effectiveTemperatures["maxColumn"] = effectiveTemps.maxColumn;
+          effectiveTemperatures["headsEnd"] = effectiveTemps.headsEnd;
+          effectiveTemperatures["bodyStart"] = effectiveTemps.bodyStart;
+          effectiveTemperatures["bodyEnd"] = effectiveTemps.bodyEnd;
+
+          JsonObject baroCorrection = doc["baroCorrection"].to<JsonObject>();
+          baroCorrection["enabled"] = baroSummary.enabled;
+          baroCorrection["applicable"] = baroSummary.applicable;
+          baroCorrection["applied"] = baroSummary.applied;
+          baroCorrection["baselinePressureMmHg"] =
+              baroSummary.baselinePressureMmHg;
+          baroCorrection["currentPressureMmHg"] =
+              baroSummary.currentPressureMmHg;
+          baroCorrection["pressureDeltaMmHg"] = baroSummary.pressureDeltaMmHg;
+          baroCorrection["boilingShiftC"] = baroSummary.boilingShiftC;
+          baroCorrection["appliedShiftC"] = baroSummary.appliedShiftC;
+          baroCorrection["strength"] = baroSummary.strength;
+          baroCorrection["maxShiftC"] = baroSummary.maxShiftC;
+          baroCorrection["note"] = baroSummary.note;
+
+          JsonObject safety = parameters["safety"].to<JsonObject>();
+          safety["maxRuntime"] = profile.parameters.safety.maxRuntime;
+          safety["waterFlowMin"] = profile.parameters.safety.waterFlowMin;
+          safety["pressureMax"] = profile.parameters.safety.pressureMax;
+
+          JsonObject statistics = doc["statistics"].to<JsonObject>();
+          statistics["useCount"] = profile.statistics.useCount;
+          statistics["lastUsed"] = profile.statistics.lastUsed;
+          statistics["avgDuration"] = profile.statistics.avgDuration;
+          statistics["avgYield"] = profile.statistics.avgYield;
+          statistics["successRate"] = profile.statistics.successRate;
+
+          JsonObject learning = doc["learning"].to<JsonObject>();
+          learning["successfulRuns"] = profile.learning.successfulRuns;
+          learning["failedRuns"] = profile.learning.failedRuns;
+          learning["avgEnergyUsed"] = profile.learning.avgEnergyUsed;
+          learning["avgEnergyPerLiter"] = profile.learning.avgEnergyPerLiter;
+          learning["avgProcessHealth"] = profile.learning.avgProcessHealth;
+          learning["avgStabilityIndex"] = profile.learning.avgStabilityIndex;
+          learning["typicalCubeFinalTemp"] =
+              profile.learning.typicalCubeFinalTemp;
+          learning["typicalColumnTopFinalTemp"] =
+              profile.learning.typicalColumnTopFinalTemp;
+          learning["lastProcessId"] = profile.learning.lastProcessId;
+          learning["lastSuccessfulProcessId"] =
+              profile.learning.lastSuccessfulProcessId;
+
+          if (!profile.learning.lastSuccessfulProcessId.isEmpty()) {
+            ProcessHistory lastSuccessfulHistory;
+            if (loadProcessHistory(profile.learning.lastSuccessfulProcessId,
+                                   lastSuccessfulHistory)) {
+              JsonObject baseline =
+                  learning["lastSuccessfulRun"].to<JsonObject>();
+              baseline["id"] = lastSuccessfulHistory.id;
+              baseline["startTime"] = lastSuccessfulHistory.metadata.startTime;
+              baseline["duration"] = lastSuccessfulHistory.metadata.duration;
+              baseline["totalCollected"] =
+                  lastSuccessfulHistory.results.totalCollected;
+              baseline["energyUsed"] = lastSuccessfulHistory.metrics.energyUsed;
+              baseline["avgProcessHealth"] =
+                  lastSuccessfulHistory.metrics.avgProcessHealth;
+              baseline["avgStabilityIndex"] =
+                  lastSuccessfulHistory.metrics.avgStabilityIndex;
+              baseline["cubeFinal"] = lastSuccessfulHistory.metrics.cube.final;
+              baseline["columnTopFinal"] =
+                  lastSuccessfulHistory.metrics.columnTop.final;
+
+              if (!lastSuccessfulHistory.advisorSnapshot.schemaVersion.isEmpty() ||
+                  !lastSuccessfulHistory.advisorSnapshot.items.empty()) {
+                JsonObject advisor =
+                    learning["lastAdvisorSnapshot"].to<JsonObject>();
+                advisor["schemaVersion"] =
+                    lastSuccessfulHistory.advisorSnapshot.schemaVersion;
+                advisor["createdAt"] =
+                    lastSuccessfulHistory.advisorSnapshot.createdAt;
+                advisor["baselineProcessId"] =
+                    lastSuccessfulHistory.advisorSnapshot.baselineProcessId;
+                advisor["baselineProfile"] =
+                    lastSuccessfulHistory.advisorSnapshot.baselineProfile;
+                JsonArray advisorItems = advisor["items"].to<JsonArray>();
+                for (const auto &item :
+                     lastSuccessfulHistory.advisorSnapshot.items) {
+                  JsonObject advisorItem = advisorItems.add<JsonObject>();
+                  advisorItem["kind"] = item.kind;
+                  advisorItem["code"] = item.code;
+                  advisorItem["tone"] = item.tone;
+                  advisorItem["title"] = item.title;
+                  advisorItem["detail"] = item.detail;
+                  advisorItem["action"] = item.action;
+                  advisorItem["parameterKey"] = item.parameterKey;
+                  advisorItem["previousValue"] = item.previousValue;
+                  advisorItem["suggestedValue"] = item.suggestedValue;
                 }
-
-                metadata["created"] = profile.metadata.created;
-                metadata["updated"] = profile.metadata.updated;
-                metadata["author"] = profile.metadata.author;
-                metadata["isBuiltin"] = profile.metadata.isBuiltin;
-
-                JsonObject parameters = doc["parameters"].to<JsonObject>();
-                parameters["mode"] = profile.parameters.mode;
-                parameters["model"] = profile.parameters.model;
-
-                JsonObject heater = parameters["heater"].to<JsonObject>();
-                heater["maxPower"] = profile.parameters.heater.maxPower;
-                heater["autoMode"] = profile.parameters.heater.autoMode;
-                heater["pidKp"] = profile.parameters.heater.pidKp;
-                heater["pidKi"] = profile.parameters.heater.pidKi;
-                heater["pidKd"] = profile.parameters.heater.pidKd;
-                heater["boosterEnabled"] = profile.parameters.heater.boosterEnabled;
-                heater["boosterStopCubeTempC"] =
-                    profile.parameters.heater.boosterStopCubeTempC;
-
-                JsonObject rectification =
-                    parameters["rectification"].to<JsonObject>();
-                rectification["stabilizationMin"] =
-                    profile.parameters.rectification.stabilizationMin;
-                rectification["headsVolume"] =
-                    profile.parameters.rectification.headsVolume;
-                rectification["bodyVolume"] =
-                    profile.parameters.rectification.bodyVolume;
-                rectification["tailsVolume"] =
-                    profile.parameters.rectification.tailsVolume;
-                rectification["headsSpeed"] =
-                    profile.parameters.rectification.headsSpeed;
-                rectification["bodySpeed"] =
-                    profile.parameters.rectification.bodySpeed;
-                rectification["tailsSpeed"] =
-                    profile.parameters.rectification.tailsSpeed;
-                rectification["purgeMin"] =
-                    profile.parameters.rectification.purgeMin;
-
-                JsonObject distillation =
-                    parameters["distillation"].to<JsonObject>();
-                distillation["headsVolume"] =
-                    profile.parameters.distillation.headsVolume;
-                distillation["targetVolume"] =
-                    profile.parameters.distillation.targetVolume;
-                distillation["speed"] = profile.parameters.distillation.speed;
-                distillation["endTemp"] = profile.parameters.distillation.endTemp;
-
-                JsonObject mashing = parameters["mashing"].to<JsonObject>();
-                JsonArray mashingSteps = mashing["steps"].to<JsonArray>();
-                for (const auto &stepData : profile.parameters.mashing.steps) {
-                  JsonObject step = mashingSteps.add<JsonObject>();
-                  step["temperature"] = stepData.temperature;
-                  step["duration"] = stepData.duration;
-                  step["name"] = stepData.name;
-                }
-
-                JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
-                temperatures["maxCube"] = profile.parameters.temperatures.maxCube;
-                temperatures["maxColumn"] =
-                    profile.parameters.temperatures.maxColumn;
-                temperatures["headsEnd"] = profile.parameters.temperatures.headsEnd;
-                temperatures["bodyStart"] =
-                    profile.parameters.temperatures.bodyStart;
-                temperatures["bodyEnd"] = profile.parameters.temperatures.bodyEnd;
-
-                ProfileBaroCorrectionSummary baroSummary;
-                TemperatureParams effectiveTemps =
-                    getEffectiveProfileTemperatures(profile, &baroSummary);
-
-                JsonObject effectiveTemperatures =
-                    doc["effectiveTemperatures"].to<JsonObject>();
-                effectiveTemperatures["maxCube"] = effectiveTemps.maxCube;
-                effectiveTemperatures["maxColumn"] = effectiveTemps.maxColumn;
-                effectiveTemperatures["headsEnd"] = effectiveTemps.headsEnd;
-                effectiveTemperatures["bodyStart"] = effectiveTemps.bodyStart;
-                effectiveTemperatures["bodyEnd"] = effectiveTemps.bodyEnd;
-
-                JsonObject baroCorrection = doc["baroCorrection"].to<JsonObject>();
-                baroCorrection["enabled"] = baroSummary.enabled;
-                baroCorrection["applicable"] = baroSummary.applicable;
-                baroCorrection["applied"] = baroSummary.applied;
-                baroCorrection["baselinePressureMmHg"] =
-                    baroSummary.baselinePressureMmHg;
-                baroCorrection["currentPressureMmHg"] =
-                    baroSummary.currentPressureMmHg;
-                baroCorrection["pressureDeltaMmHg"] =
-                    baroSummary.pressureDeltaMmHg;
-                baroCorrection["boilingShiftC"] = baroSummary.boilingShiftC;
-                baroCorrection["appliedShiftC"] = baroSummary.appliedShiftC;
-                baroCorrection["strength"] = baroSummary.strength;
-                baroCorrection["maxShiftC"] = baroSummary.maxShiftC;
-                baroCorrection["note"] = baroSummary.note;
-
-                JsonObject safety = parameters["safety"].to<JsonObject>();
-                safety["maxRuntime"] = profile.parameters.safety.maxRuntime;
-                safety["waterFlowMin"] = profile.parameters.safety.waterFlowMin;
-                safety["pressureMax"] = profile.parameters.safety.pressureMax;
-
-                JsonObject statistics = doc["statistics"].to<JsonObject>();
-                statistics["useCount"] = profile.statistics.useCount;
-                statistics["lastUsed"] = profile.statistics.lastUsed;
-                statistics["avgDuration"] = profile.statistics.avgDuration;
-                statistics["avgYield"] = profile.statistics.avgYield;
-                statistics["successRate"] = profile.statistics.successRate;
-
-                JsonObject learning = doc["learning"].to<JsonObject>();
-                learning["successfulRuns"] = profile.learning.successfulRuns;
-                learning["failedRuns"] = profile.learning.failedRuns;
-                learning["avgEnergyUsed"] = profile.learning.avgEnergyUsed;
-                learning["avgEnergyPerLiter"] = profile.learning.avgEnergyPerLiter;
-                learning["avgProcessHealth"] = profile.learning.avgProcessHealth;
-                learning["avgStabilityIndex"] =
-                    profile.learning.avgStabilityIndex;
-                learning["typicalCubeFinalTemp"] =
-                    profile.learning.typicalCubeFinalTemp;
-                learning["typicalColumnTopFinalTemp"] =
-                    profile.learning.typicalColumnTopFinalTemp;
-                learning["lastProcessId"] = profile.learning.lastProcessId;
-                learning["lastSuccessfulProcessId"] =
-                    profile.learning.lastSuccessfulProcessId;
-
-                if (!profile.learning.lastSuccessfulProcessId.isEmpty()) {
-                  ProcessHistory lastSuccessfulHistory;
-                  if (loadProcessHistory(profile.learning.lastSuccessfulProcessId,
-                                         lastSuccessfulHistory)) {
-                    JsonObject baseline =
-                        learning["lastSuccessfulRun"].to<JsonObject>();
-                    baseline["id"] = lastSuccessfulHistory.id;
-                    baseline["startTime"] =
-                        lastSuccessfulHistory.metadata.startTime;
-                    baseline["duration"] =
-                        lastSuccessfulHistory.metadata.duration;
-                    baseline["totalCollected"] =
-                        lastSuccessfulHistory.results.totalCollected;
-                    baseline["energyUsed"] =
-                        lastSuccessfulHistory.metrics.energyUsed;
-                    baseline["avgProcessHealth"] =
-                        lastSuccessfulHistory.metrics.avgProcessHealth;
-                    baseline["avgStabilityIndex"] =
-                        lastSuccessfulHistory.metrics.avgStabilityIndex;
-                    baseline["cubeFinal"] =
-                        lastSuccessfulHistory.metrics.cube.final;
-                    baseline["columnTopFinal"] =
-                        lastSuccessfulHistory.metrics.columnTop.final;
-
-                    if (!lastSuccessfulHistory.advisorSnapshot.schemaVersion
-                             .isEmpty() ||
-                        !lastSuccessfulHistory.advisorSnapshot.items.empty()) {
-                      JsonObject advisor =
-                          learning["lastAdvisorSnapshot"].to<JsonObject>();
-                      advisor["schemaVersion"] =
-                          lastSuccessfulHistory.advisorSnapshot.schemaVersion;
-                      advisor["createdAt"] =
-                          lastSuccessfulHistory.advisorSnapshot.createdAt;
-                      advisor["baselineProcessId"] =
-                          lastSuccessfulHistory.advisorSnapshot
-                              .baselineProcessId;
-                      advisor["baselineProfile"] =
-                          lastSuccessfulHistory.advisorSnapshot.baselineProfile;
-                      JsonArray advisorItems = advisor["items"].to<JsonArray>();
-                      for (const auto &item :
-                           lastSuccessfulHistory.advisorSnapshot.items) {
-                        JsonObject advisorItem =
-                            advisorItems.add<JsonObject>();
-                        advisorItem["kind"] = item.kind;
-                        advisorItem["code"] = item.code;
-                        advisorItem["tone"] = item.tone;
-                        advisorItem["title"] = item.title;
-                        advisorItem["detail"] = item.detail;
-                        advisorItem["action"] = item.action;
-                        advisorItem["parameterKey"] = item.parameterKey;
-                        advisorItem["previousValue"] = item.previousValue;
-                        advisorItem["suggestedValue"] = item.suggestedValue;
-                      }
-                    }
-                  }
-                }
-
-                JsonObject validation = doc["validation"].to<JsonObject>();
-                validation["validatedAt"] = profile.validation.validatedAt;
-                validation["sourceProcessId"] =
-                    profile.validation.sourceProcessId;
-                validation["atmosphereHpa"] = profile.validation.atmosphereHpa;
-                validation["atmosphereMmHg"] = profile.validation.atmosphereMmHg;
-                validation["columnHeightMm"] =
-                    profile.validation.columnHeightMm;
-                validation["packingType"] = profile.validation.packingType;
-                validation["packingCoeff"] = profile.validation.packingCoeff;
-                validation["heaterPowerW"] = profile.validation.heaterPowerW;
-                validation["targetPowerW"] = profile.validation.targetPowerW;
-                validation["feedVolumeL"] = profile.validation.feedVolumeL;
-                validation["feedAbvPercent"] =
-                    profile.validation.feedAbvPercent;
-                validation["cubeChargePercent"] =
-                    profile.validation.cubeChargePercent;
-                validation["headsActualMl"] = profile.validation.headsActualMl;
-                validation["bodyActualMl"] = profile.validation.bodyActualMl;
-                validation["tailsActualMl"] = profile.validation.tailsActualMl;
-                validation["headsCutColumnTopC"] =
-                    profile.validation.headsCutColumnTopC;
-                validation["bodyCutColumnTopC"] =
-                    profile.validation.bodyCutColumnTopC;
-                validation["tailsCutColumnTopC"] =
-                    profile.validation.tailsCutColumnTopC;
-                validation["cubeFinalC"] = profile.validation.cubeFinalC;
-                validation["columnTopFinalC"] =
-                    profile.validation.columnTopFinalC;
-                validation["avgStabilityIndex"] =
-                    profile.validation.avgStabilityIndex;
-                validation["avgProcessHealth"] =
-                    profile.validation.avgProcessHealth;
-
-                String response;
-                serializeJson(doc, response);
-                request->send(200, "application/json", response);
-              } else {
-                request->send(404, "application/json",
-                              "{\"error\":\"Profile not found\"}");
               }
-            });
+            }
+          }
+
+          JsonObject validation = doc["validation"].to<JsonObject>();
+          validation["validatedAt"] = profile.validation.validatedAt;
+          validation["sourceProcessId"] = profile.validation.sourceProcessId;
+          validation["atmosphereHpa"] = profile.validation.atmosphereHpa;
+          validation["atmosphereMmHg"] = profile.validation.atmosphereMmHg;
+          validation["columnHeightMm"] = profile.validation.columnHeightMm;
+          validation["packingType"] = profile.validation.packingType;
+          validation["packingCoeff"] = profile.validation.packingCoeff;
+          validation["heaterPowerW"] = profile.validation.heaterPowerW;
+          validation["targetPowerW"] = profile.validation.targetPowerW;
+          validation["feedVolumeL"] = profile.validation.feedVolumeL;
+          validation["feedAbvPercent"] = profile.validation.feedAbvPercent;
+          validation["cubeChargePercent"] = profile.validation.cubeChargePercent;
+          validation["headsActualMl"] = profile.validation.headsActualMl;
+          validation["bodyActualMl"] = profile.validation.bodyActualMl;
+          validation["tailsActualMl"] = profile.validation.tailsActualMl;
+          validation["headsCutColumnTopC"] =
+              profile.validation.headsCutColumnTopC;
+          validation["bodyCutColumnTopC"] =
+              profile.validation.bodyCutColumnTopC;
+          validation["tailsCutColumnTopC"] =
+              profile.validation.tailsCutColumnTopC;
+          validation["cubeFinalC"] = profile.validation.cubeFinalC;
+          validation["columnTopFinalC"] = profile.validation.columnTopFinalC;
+          validation["avgStabilityIndex"] =
+              profile.validation.avgStabilityIndex;
+          validation["avgProcessHealth"] =
+              profile.validation.avgProcessHealth;
+
+          String response;
+          serializeJson(doc, response);
+          request->send(200, "application/json", response);
+        } else {
+          request->send(404, "application/json",
+                        "{\"error\":\"Profile not found\"}");
+        }
+      });
 
   server.on(
       "^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_PUT,
@@ -473,48 +458,48 @@ void registerProfilesRoutes(AsyncWebServer &server) {
                       "{\"success\":true,\"id\":\"" + profile.id + "\"}");
       });
 
-  server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/load$", HTTP_POST,
-            [](AsyncWebServerRequest *request) {
-              String id = request->pathArg(0);
+  server.on(
+      "^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/load$", HTTP_POST,
+      [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
 
-              if (applyProfile(id)) {
-                Logger::logf(0, "Profile loaded: %s", id.c_str());
-                request->send(200, "application/json",
-                              "{\"success\":true,\"message\":\"Profile loaded\"}");
-              } else {
-                Logger::logf(1, "Profile load failed: %s not found", id.c_str());
-                request->send(404, "application/json",
-                              "{\"error\":\"Profile not found\"}");
-              }
-            });
+        if (applyProfile(id)) {
+          Logger::logf(0, "Profile loaded: %s", id.c_str());
+          request->send(200, "application/json",
+                        "{\"success\":true,\"message\":\"Profile loaded\"}");
+        } else {
+          Logger::logf(1, "Profile load failed: %s not found", id.c_str());
+          request->send(404, "application/json",
+                        "{\"error\":\"Profile not found\"}");
+        }
+      });
 
-  server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/export$", HTTP_GET,
-            [](AsyncWebServerRequest *request) {
-              String id = request->pathArg(0);
-              String json = exportProfileToJSON(id);
-              if (json.isEmpty()) {
-                request->send(
-                    404, "application/json",
-                    "{\"success\":false,\"error\":\"Profile not found\"}");
-                return;
-              }
-              request->send(200, "application/json", json);
-            });
+  server.on(
+      "^\\/api\\/profiles\\/([a-zA-Z0-9_]+)\\/export$", HTTP_GET,
+      [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
+        String json = exportProfileToJSON(id);
+        if (json.isEmpty()) {
+          request->send(404, "application/json",
+                        "{\"success\":false,\"error\":\"Profile not found\"}");
+          return;
+        }
+        request->send(200, "application/json", json);
+      });
 
-  server.on("^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_DELETE,
-            [](AsyncWebServerRequest *request) {
-              String id = request->pathArg(0);
+  server.on(
+      "^\\/api\\/profiles\\/([a-zA-Z0-9_]+)$", HTTP_DELETE,
+      [](AsyncWebServerRequest *request) {
+        String id = request->pathArg(0);
 
-              if (deleteProfile(id)) {
-                request->send(
-                    200, "application/json",
-                    "{\"success\":true,\"message\":\"Profile deleted\"}");
-              } else {
-                request->send(
-                    404, "application/json",
-                    "{\"error\":\"Profile not found or builtin\"}");
-              }
-            });
+        if (deleteProfile(id)) {
+          request->send(200, "application/json",
+                        "{\"success\":true,\"message\":\"Profile deleted\"}");
+        } else {
+          request->send(404, "application/json",
+                        "{\"error\":\"Profile not found or builtin\"}");
+        }
+      });
 
   server.on("/api/profiles", HTTP_DELETE,
             [](AsyncWebServerRequest *request) {

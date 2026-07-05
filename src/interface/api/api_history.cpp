@@ -5,19 +5,19 @@
 #include "interface/webserver_shared.h"
 
 void registerHistoryRoutes(AsyncWebServer &server) {
-  server.on("^\\/api\\/history\\/([0-9]+)$", HTTP_GET,
-            [](AsyncWebServerRequest *request) {
-              const String id = request->pathArg(0);
-              ProcessHistory history;
-              if (!loadProcessHistory(id, history)) {
-                request->send(404, "application/json",
-                              "{\"error\":\"Process not found\"}");
-                return;
-              }
+  server.on(
+      "^\\/api\\/history\\/([0-9]+)$", HTTP_GET,
+      [](AsyncWebServerRequest *request) {
+        const String id = request->pathArg(0);
+        ProcessHistory history;
+        if (!loadProcessHistory(id, history)) {
+          request->send(404, "application/json",
+                        "{\"error\":\"Process not found\"}");
+          return;
+        }
 
-              request->send(200, "application/json",
-                            exportProcessToJSON(history));
-            });
+        request->send(200, "application/json", exportProcessToJSON(history));
+      });
 
   server.on(
       "^\\/api\\/history\\/([0-9]+)\\/advisor$", HTTP_POST,
@@ -89,58 +89,58 @@ void registerHistoryRoutes(AsyncWebServer &server) {
         request->send(200, "application/json", json);
       });
 
-  server.on("^\\/api\\/history\\/([0-9]+)\\/export$", HTTP_GET,
-            [](AsyncWebServerRequest *request) {
-              const String id = request->pathArg(0);
-              const String format = request->hasParam("format")
-                                        ? request->getParam("format")->value()
-                                        : "csv";
+  server.on(
+      "^\\/api\\/history\\/([0-9]+)\\/export$", HTTP_GET,
+      [](AsyncWebServerRequest *request) {
+        const String id = request->pathArg(0);
+        const String format = request->hasParam("format")
+                                  ? request->getParam("format")->value()
+                                  : "csv";
 
-              ProcessHistory history;
-              if (!loadProcessHistory(id, history)) {
-                request->send(404, "application/json",
-                              "{\"error\":\"Process not found\"}");
-                return;
-              }
+        ProcessHistory history;
+        if (!loadProcessHistory(id, history)) {
+          request->send(404, "application/json",
+                        "{\"error\":\"Process not found\"}");
+          return;
+        }
 
-              String body;
-              String contentType;
-              String filename;
-              if (format == "json") {
-                body = exportProcessToJSON(history);
-                contentType = "application/json; charset=utf-8";
-                filename = "process_" + id + ".json";
-              } else if (format == "csv") {
-                body = exportProcessToCSV(history);
-                contentType = "text/csv; charset=utf-8";
-                filename = "process_" + id + ".csv";
-              } else {
-                request->send(400, "application/json",
-                              "{\"error\":\"Invalid format. Use csv or json\"}");
-                return;
-              }
+        String body;
+        String contentType;
+        String filename;
+        if (format == "json") {
+          body = exportProcessToJSON(history);
+          contentType = "application/json; charset=utf-8";
+          filename = "process_" + id + ".json";
+        } else if (format == "csv") {
+          body = exportProcessToCSV(history);
+          contentType = "text/csv; charset=utf-8";
+          filename = "process_" + id + ".csv";
+        } else {
+          request->send(400, "application/json",
+                        "{\"error\":\"Invalid format. Use csv or json\"}");
+          return;
+        }
 
-              AsyncWebServerResponse *response =
-                  request->beginResponse(200, contentType, body);
-              response->addHeader(
-                  "Content-Disposition",
-                  "attachment; filename=\"" + filename + "\"");
-              request->send(response);
-            });
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, contentType, body);
+        response->addHeader("Content-Disposition",
+                            "attachment; filename=\"" + filename + "\"");
+        request->send(response);
+      });
 
-  server.on("^\\/api\\/history\\/([0-9]+)$", HTTP_DELETE,
-            [](AsyncWebServerRequest *request) {
-              const String id = request->pathArg(0);
-              if (deleteProcess(id)) {
-                request->send(
-                    200, "application/json",
-                    "{\"success\":true,\"message\":\"Process deleted\"}");
-                return;
-              }
+  server.on(
+      "^\\/api\\/history\\/([0-9]+)$", HTTP_DELETE,
+      [](AsyncWebServerRequest *request) {
+        const String id = request->pathArg(0);
+        if (deleteProcess(id)) {
+          request->send(200, "application/json",
+                        "{\"success\":true,\"message\":\"Process deleted\"}");
+          return;
+        }
 
-              request->send(404, "application/json",
-                            "{\"error\":\"Process not found\"}");
-            });
+        request->send(404, "application/json",
+                      "{\"error\":\"Process not found\"}");
+      });
 
   server.on(
       "/api/history/demo", HTTP_POST, [](AsyncWebServerRequest *request) {},

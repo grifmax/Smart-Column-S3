@@ -20,101 +20,105 @@ static bool isZeroTempAddressLocal(const uint8_t address[8]) {
 }
 
 void registerCalibrationRoutes(AsyncWebServer &server) {
-  server.on("^\\/api\\/calibration$", HTTP_GET, [](AsyncWebServerRequest *request) {
-    JsonDocument doc;
+  server.on(
+      "^\\/api\\/calibration$", HTTP_GET,
+      [](AsyncWebServerRequest *request) {
+        JsonDocument doc;
 
-    JsonObject pump = doc["pump"].to<JsonObject>();
-    pump["mlPerRev"] = g_settings.pumpCal.mlPerRevolution;
-    pump["stepsPerRev"] = g_settings.pumpCal.stepsPerRevolution;
-    pump["microsteps"] = g_settings.pumpCal.microsteps;
+        JsonObject pump = doc["pump"].to<JsonObject>();
+        pump["mlPerRev"] = g_settings.pumpCal.mlPerRevolution;
+        pump["stepsPerRev"] = g_settings.pumpCal.stepsPerRevolution;
+        pump["microsteps"] = g_settings.pumpCal.microsteps;
 
-    JsonArray temps = doc["temperatures"].to<JsonArray>();
-    for (uint8_t i = 0; i < TEMP_COUNT; i++) {
-      JsonObject t = temps.add<JsonObject>();
-      t["index"] = i;
-      t["name"] = getTempSensorLabel(i);
-      t["offset"] = g_settings.tempCal.offsets[i];
+        JsonArray temps = doc["temperatures"].to<JsonArray>();
+        for (uint8_t i = 0; i < TEMP_COUNT; i++) {
+          JsonObject t = temps.add<JsonObject>();
+          t["index"] = i;
+          t["name"] = getTempSensorLabel(i);
+          t["offset"] = g_settings.tempCal.offsets[i];
 
-      char assignedAddrStr[24];
-      formatTempAddress(g_settings.tempCal.addresses[i], assignedAddrStr,
-                        sizeof(assignedAddrStr));
-      uint8_t detectedAddress[8] = {0};
-      char detectedAddrStr[24];
-      if (Sensors::getDiscoveredTempAddress(i, detectedAddress)) {
-        formatTempAddress(detectedAddress, detectedAddrStr,
-                          sizeof(detectedAddrStr));
-      } else {
-        detectedAddrStr[0] = '\0';
-      }
-      t["address"] = detectedAddrStr[0] != '\0' ? detectedAddrStr : assignedAddrStr;
-      t["assignedAddress"] = assignedAddrStr;
-      t["detectedAddress"] = detectedAddrStr;
-      t["mappingMode"] = assignedAddrStr[0] != '\0' ? "manual" : "auto";
+          char assignedAddrStr[24];
+          formatTempAddress(g_settings.tempCal.addresses[i], assignedAddrStr,
+                            sizeof(assignedAddrStr));
+          uint8_t detectedAddress[8] = {0};
+          char detectedAddrStr[24];
+          if (Sensors::getDiscoveredTempAddress(i, detectedAddress)) {
+            formatTempAddress(detectedAddress, detectedAddrStr,
+                              sizeof(detectedAddrStr));
+          } else {
+            detectedAddrStr[0] = '\0';
+          }
+          t["address"] =
+              detectedAddrStr[0] != '\0' ? detectedAddrStr : assignedAddrStr;
+          t["assignedAddress"] = assignedAddrStr;
+          t["detectedAddress"] = detectedAddrStr;
+          t["mappingMode"] = assignedAddrStr[0] != '\0' ? "manual" : "auto";
 
-      float currentTemp = 0;
-      switch (i) {
-      case TEMP_CUBE:
-        currentTemp = g_state.temps.cube;
-        break;
-      case TEMP_COLUMN_BOTTOM:
-        currentTemp = g_state.temps.columnBottom;
-        break;
-      case TEMP_COLUMN_TOP:
-        currentTemp = g_state.temps.columnTop;
-        break;
-      case TEMP_REFLUX:
-        currentTemp = g_state.temps.reflux;
-        break;
-      case TEMP_TSA:
-        currentTemp = g_state.temps.tsa;
-        break;
-      case TEMP_WATER_IN:
-        currentTemp = g_state.temps.waterIn;
-        break;
-      case TEMP_WATER_OUT:
-        currentTemp = g_state.temps.waterOut;
-        break;
-      }
-      t["current"] = currentTemp;
-      t["valid"] = g_state.temps.valid[i];
-    }
+          float currentTemp = 0;
+          switch (i) {
+          case TEMP_CUBE:
+            currentTemp = g_state.temps.cube;
+            break;
+          case TEMP_COLUMN_BOTTOM:
+            currentTemp = g_state.temps.columnBottom;
+            break;
+          case TEMP_COLUMN_TOP:
+            currentTemp = g_state.temps.columnTop;
+            break;
+          case TEMP_REFLUX:
+            currentTemp = g_state.temps.reflux;
+            break;
+          case TEMP_TSA:
+            currentTemp = g_state.temps.tsa;
+            break;
+          case TEMP_WATER_IN:
+            currentTemp = g_state.temps.waterIn;
+            break;
+          case TEMP_WATER_OUT:
+            currentTemp = g_state.temps.waterOut;
+            break;
+          }
+          t["current"] = currentTemp;
+          t["valid"] = g_state.temps.valid[i];
+        }
 
-    JsonObject pressureSensor = doc["pressureSensor"].to<JsonObject>();
-    pressureSensor["pointCount"] = g_settings.pressureCal.pointCount;
-    JsonArray pressureVoltages = pressureSensor["voltagePoints"].to<JsonArray>();
-    JsonArray pressureMmHgPoints =
-        pressureSensor["pressurePoints"].to<JsonArray>();
-    for (uint8_t i = 0; i < g_settings.pressureCal.pointCount; i++) {
-      pressureVoltages.add(g_settings.pressureCal.voltagePoints[i]);
-      pressureMmHgPoints.add(g_settings.pressureCal.pressurePoints[i]);
-    }
-    pressureSensor["zeroOffsetMmHg"] = g_settings.pressureCal.zeroOffsetMmHg;
-    pressureSensor["ads1115Available"] = g_state.health.ads1115Ok;
-    pressureSensor["source"] = "ADS1115 A1 @ 0x48";
-    pressureSensor["currentVoltage"] = g_state.pressure.sensorVoltage;
-    pressureSensor["currentAdc"] = g_state.pressure.sensorAdc;
-    pressureSensor["currentPressure"] = g_state.pressure.cube;
-    pressureSensor["valid"] = g_state.pressure.ok;
-    pressureSensor["calibrated"] = g_settings.pressureCal.pointCount >= 2;
+        JsonObject pressureSensor = doc["pressureSensor"].to<JsonObject>();
+        pressureSensor["pointCount"] = g_settings.pressureCal.pointCount;
+        JsonArray pressureVoltages =
+            pressureSensor["voltagePoints"].to<JsonArray>();
+        JsonArray pressureMmHgPoints =
+            pressureSensor["pressurePoints"].to<JsonArray>();
+        for (uint8_t i = 0; i < g_settings.pressureCal.pointCount; i++) {
+          pressureVoltages.add(g_settings.pressureCal.voltagePoints[i]);
+          pressureMmHgPoints.add(g_settings.pressureCal.pressurePoints[i]);
+        }
+        pressureSensor["zeroOffsetMmHg"] = g_settings.pressureCal.zeroOffsetMmHg;
+        pressureSensor["ads1115Available"] = g_state.health.ads1115Ok;
+        pressureSensor["source"] = "ADS1115 A1 @ 0x48";
+        pressureSensor["currentVoltage"] = g_state.pressure.sensorVoltage;
+        pressureSensor["currentAdc"] = g_state.pressure.sensorAdc;
+        pressureSensor["currentPressure"] = g_state.pressure.cube;
+        pressureSensor["valid"] = g_state.pressure.ok;
+        pressureSensor["calibrated"] = g_settings.pressureCal.pointCount >= 2;
 
-    JsonObject hydro = doc["hydrometer"].to<JsonObject>();
-    hydro["densityOffset"] = g_settings.hydroCal.densityOffset;
-    hydro["pointCount"] = g_settings.hydroCal.pointCount;
-    JsonArray abvPoints = hydro["abvPoints"].to<JsonArray>();
-    JsonArray pressurePoints = hydro["pressurePoints"].to<JsonArray>();
-    for (uint8_t i = 0; i < g_settings.hydroCal.pointCount; i++) {
-      abvPoints.add(g_settings.hydroCal.abvPoints[i]);
-      pressurePoints.add(g_settings.hydroCal.pressurePoints[i]);
-    }
-    hydro["currentPressure"] = g_state.hydrometer.pressure;
-    hydro["currentDensity"] = g_state.hydrometer.density;
-    hydro["currentABV"] = g_state.hydrometer.abv;
-    hydro["valid"] = g_state.hydrometer.valid;
+        JsonObject hydro = doc["hydrometer"].to<JsonObject>();
+        hydro["densityOffset"] = g_settings.hydroCal.densityOffset;
+        hydro["pointCount"] = g_settings.hydroCal.pointCount;
+        JsonArray abvPoints = hydro["abvPoints"].to<JsonArray>();
+        JsonArray pressurePoints = hydro["pressurePoints"].to<JsonArray>();
+        for (uint8_t i = 0; i < g_settings.hydroCal.pointCount; i++) {
+          abvPoints.add(g_settings.hydroCal.abvPoints[i]);
+          pressurePoints.add(g_settings.hydroCal.pressurePoints[i]);
+        }
+        hydro["currentPressure"] = g_state.hydrometer.pressure;
+        hydro["currentDensity"] = g_state.hydrometer.density;
+        hydro["currentABV"] = g_state.hydrometer.abv;
+        hydro["valid"] = g_state.hydrometer.valid;
 
-    String json;
-    serializeJson(doc, json);
-    request->send(200, "application/json", json);
-  });
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+      });
 
   server.on(
       "/api/calibration/pump", HTTP_POST, [](AsyncWebServerRequest *request) {},
