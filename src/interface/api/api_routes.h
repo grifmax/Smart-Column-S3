@@ -17,19 +17,19 @@ typedef enum {
 
 #include <ESPAsyncWebServer.h>
 
-void registerChartsRoutes(AsyncWebServer &server);
-void registerHealthRoutes(AsyncWebServer &server);
-void registerLogsRoutes(AsyncWebServer &server);
-void registerEnergyRoutes(AsyncWebServer &server);
-void registerOtaRoutes(AsyncWebServer &server);
-void registerWifiRoutes(AsyncWebServer &server);
+void registerChartsApiRoutes(AsyncWebServer &server);
+void registerHealthApiRoutes(AsyncWebServer &server);
+void registerLogsApiRoutes(AsyncWebServer &server);
+void registerEnergyApiRoutes(AsyncWebServer &server);
+void registerOtaApiRoutes(AsyncWebServer &server);
+void registerWifiApiRoutes(AsyncWebServer &server);
 
-void registerCalibrationRoutes(AsyncWebServer &server);
-void registerHistoryRoutes(AsyncWebServer &server);
-void registerPumpRoutes(AsyncWebServer &server);
-void registerProcessRoutes(AsyncWebServer &server);
-void registerProfilesRoutes(AsyncWebServer &server);
-void registerSafetyRoutes(AsyncWebServer &server);
-void registerSettingsRoutes(AsyncWebServer &server);
-void registerStatusRoutes(AsyncWebServer &server);
-void registerTestingRoutes(AsyncWebServer &server);
+void registerCalibrationApiRoutes(AsyncWebServer &server);
+void registerHistoryApiRoutes(AsyncWebServer &server);
+void registerPumpApiRoutes(AsyncWebServer &server);
+void registerProcessApiRoutes(AsyncWebServer &server);
+void registerProfilesApiRoutes(AsyncWebServer &server);
+void registerSafetyApiRoutes(AsyncWebServer &server);
+void registerSettingsApiRoutes(AsyncWebServer &server);
+void registerStatusApiRoutes(AsyncWebServer &server);
+void registerTestingApiRoutes(AsyncWebServer &server);

@@ -5,7 +5,7 @@
 
 static bool g_webUpdateIsFilesystem = false;
 
-void registerOtaRoutes(AsyncWebServer &server) {
+void registerOtaApiRoutes(AsyncWebServer &server) {
   server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
     String html = F(
         "<!DOCTYPE html><html><head>"

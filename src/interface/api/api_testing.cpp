@@ -579,7 +579,7 @@ static bool parseFractionPresetToken(const String &token, Fraction &fraction) {
   return false;
 }
 
-void registerTestingRoutes(AsyncWebServer &server) {
+void registerTestingApiRoutes(AsyncWebServer &server) {
   server.on("/api/testing/status", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
     fillEquipmentTestingStatus(doc);

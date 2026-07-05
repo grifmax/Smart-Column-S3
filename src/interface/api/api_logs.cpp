@@ -2,7 +2,7 @@
 
 #include "storage/logger.h"
 
-void registerLogsRoutes(AsyncWebServer &server) {
+void registerLogsApiRoutes(AsyncWebServer &server) {
   server.on("/api/logs/events", HTTP_GET, [](AsyncWebServerRequest *request) {
     uint16_t limit = 100;
     uint32_t since = 0;

@@ -8,7 +8,7 @@
 #include "drivers/valves.h"
 #include "interface/webserver_shared.h"
 
-void registerRuntimeSettingsRoutes(AsyncWebServer &server) {
+void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
   server.on(
       "/api/manual/heater", HTTP_POST,
       [](AsyncWebServerRequest *request) {}, NULL,

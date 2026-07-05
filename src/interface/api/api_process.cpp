@@ -10,7 +10,7 @@
 #include "interface/webserver_shared.h"
 #include "storage/logger.h"
 
-void registerProcessRoutes(AsyncWebServer &server) {
+void registerProcessApiRoutes(AsyncWebServer &server) {
   server.on(
       "/api/process/preflight", HTTP_POST,
       [](AsyncWebServerRequest *request) {}, NULL,

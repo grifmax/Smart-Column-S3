@@ -55,7 +55,7 @@ static void beginWiFiConnectionTask(void *param) {
   vTaskDelete(nullptr);
 }
 
-void registerWifiRoutes(AsyncWebServer &server) {
+void registerWifiApiRoutes(AsyncWebServer &server) {
   server.on("/api/wifi/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
     LOG_I("WiFi: Scanning networks...");
 

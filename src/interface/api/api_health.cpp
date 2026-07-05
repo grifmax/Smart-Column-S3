@@ -6,7 +6,7 @@
 
 #include "interface/webserver_shared.h"
 
-void registerHealthRoutes(AsyncWebServer &server) {
+void registerHealthApiRoutes(AsyncWebServer &server) {
   server.on("/api/health", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
 

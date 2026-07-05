@@ -94,23 +94,23 @@ void init() {
       .setDefaultFile("index.html")
       .setTemplateProcessor(nullptr);
 
-  registerStatusRoutes(server);
-  registerChartsRoutes(server);
-  registerHealthRoutes(server);
-  registerLogsRoutes(server);
+  registerStatusApiRoutes(server);
+  registerChartsApiRoutes(server);
+  registerHealthApiRoutes(server);
+  registerLogsApiRoutes(server);
 
-  registerHistoryRoutes(server);
-  registerProcessRoutes(server);
-  registerSafetyRoutes(server);
-  registerSettingsRoutes(server);
+  registerHistoryApiRoutes(server);
+  registerProcessApiRoutes(server);
+  registerSafetyApiRoutes(server);
+  registerSettingsApiRoutes(server);
 
-  registerCalibrationRoutes(server);
-  registerPumpRoutes(server);
-  registerTestingRoutes(server);
-  registerEnergyRoutes(server);
-  registerWifiRoutes(server);
-  registerOtaRoutes(server);
-  registerProfilesRoutes(server);
+  registerCalibrationApiRoutes(server);
+  registerPumpApiRoutes(server);
+  registerTestingApiRoutes(server);
+  registerEnergyApiRoutes(server);
+  registerWifiApiRoutes(server);
+  registerOtaApiRoutes(server);
+  registerProfilesApiRoutes(server);
 
   server.onNotFound(
       [](AsyncWebServerRequest *request) { request->send(404, "text/plain", "Not Found"); });

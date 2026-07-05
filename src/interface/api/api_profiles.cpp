@@ -5,7 +5,7 @@
 #include "interface/webserver_shared.h"
 #include "storage/logger.h"
 
-void registerProfilesRoutes(AsyncWebServer &server) {
+void registerProfilesApiRoutes(AsyncWebServer &server) {
   server.on("/api/profiles/export", HTTP_GET,
             [](AsyncWebServerRequest *request) {
               bool includeBuiltin = request->hasParam("includeBuiltin");

@@ -15,7 +15,7 @@ struct PumpCalibrationSession {
 
 static PumpCalibrationSession g_pumpCalSession;
 
-void registerPumpRoutes(AsyncWebServer &server) {
+void registerPumpApiRoutes(AsyncWebServer &server) {
   server.on("/api/pump/calibrate/start", HTTP_POST,
             [](AsyncWebServerRequest *request) {
               if (g_state.mode != Mode::IDLE) {

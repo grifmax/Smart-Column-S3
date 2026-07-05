@@ -75,7 +75,7 @@ void normalizeRectFractions(RectParams &params) {
 
 } // namespace
 
-void registerModeSettingsRoutes(AsyncWebServer &server) {
+void registerModeSettingsApiRoutes(AsyncWebServer &server) {
   server.on("/api/settings/nbk", HTTP_GET,
             [](AsyncWebServerRequest *request) {
               JsonDocument doc;

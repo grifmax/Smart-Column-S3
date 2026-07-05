@@ -19,7 +19,7 @@ static bool isZeroTempAddressLocal(const uint8_t address[8]) {
   return true;
 }
 
-void registerCalibrationRoutes(AsyncWebServer &server) {
+void registerCalibrationApiRoutes(AsyncWebServer &server) {
   server.on(
       "^\\/api\\/calibration$", HTTP_GET,
       [](AsyncWebServerRequest *request) {

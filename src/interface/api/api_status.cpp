@@ -135,7 +135,7 @@ void fillTemperatureModeSupportJson(JsonObject modes,
   }
 }
 
-void registerStatusRoutes(AsyncWebServer &server) {
+void registerStatusApiRoutes(AsyncWebServer &server) {
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
     ControlV2::updateRuntime(g_state, g_settings);
     syncStirrerState();

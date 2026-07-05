@@ -7,7 +7,7 @@
 #include "storage/logger.h"
 #include "storage/nvs_manager.h"
 
-void registerThresholdSettingsRoutes(AsyncWebServer &server) {
+void registerThresholdSettingsApiRoutes(AsyncWebServer &server) {
   server.on("/api/settings/safety", HTTP_GET,
             [](AsyncWebServerRequest *request) {
               JsonDocument doc;

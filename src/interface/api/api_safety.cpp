@@ -6,7 +6,7 @@
 #include "interface/webserver_shared.h"
 #include "storage/nvs_manager.h"
 
-void registerSafetyRoutes(AsyncWebServer &server) {
+void registerSafetyApiRoutes(AsyncWebServer &server) {
   server.on("/api/safety/ack", HTTP_POST, [](AsyncWebServerRequest *request) {
     Safety::acknowledge(g_state);
     ControlV2::updateRuntime(g_state, g_settings);

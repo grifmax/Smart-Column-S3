@@ -8,7 +8,7 @@
 #include "storage/logger.h"
 #include "storage/nvs_manager.h"
 
-void registerMqttSettingsRoutes(AsyncWebServer &server) {
+void registerMqttSettingsApiRoutes(AsyncWebServer &server) {
   server.on("/api/settings/mqtt", HTTP_GET,
             [](AsyncWebServerRequest *request) {
               JsonDocument doc;

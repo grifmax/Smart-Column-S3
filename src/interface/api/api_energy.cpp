@@ -4,7 +4,7 @@
 
 #include "interface/webserver_shared.h"
 
-void registerEnergyRoutes(AsyncWebServer &server) {
+void registerEnergyApiRoutes(AsyncWebServer &server) {
   server.on("/api/energy", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
 

@@ -4,7 +4,7 @@
 #include "../../history_demo.h"
 #include "interface/webserver_shared.h"
 
-void registerHistoryRoutes(AsyncWebServer &server) {
+void registerHistoryApiRoutes(AsyncWebServer &server) {
   server.on(
       "^\\/api\\/history\\/([0-9]+)$", HTTP_GET,
       [](AsyncWebServerRequest *request) {

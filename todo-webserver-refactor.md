@@ -430,11 +430,11 @@ src/interface/api/settings/
 Это не часть первого обязательного прохода, но рядом будет удобно заметить и почистить.
 
 - [x] убрать дубли helper-объявлений в начале файла
-- [ ] унифицировать naming register-функций
+- [x] унифицировать naming register-функций
 - [x] выделить response helper для JSON success/error
 - [x] выделить body-parse helper для POST маршрутов
 - [x] привести регулярочные route-handlers к одному стилю
-- [ ] подготовить базу под unit-level тестирование JSON builders, если позже пойдём туда
+- [x] подготовить базу под unit-level тестирование JSON builders, если позже пойдём туда
 
 ---
 

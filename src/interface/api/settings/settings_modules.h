@@ -2,9 +2,9 @@
 
 #include "../api_routes.h"
 
-void registerEquipmentSettingsRoutes(AsyncWebServer &server);
-void registerThresholdSettingsRoutes(AsyncWebServer &server);
-void registerModeSettingsRoutes(AsyncWebServer &server);
-void registerMqttSettingsRoutes(AsyncWebServer &server);
-void registerRuntimeSettingsRoutes(AsyncWebServer &server);
-void registerSystemSettingsRoutes(AsyncWebServer &server);
+void registerEquipmentSettingsApiRoutes(AsyncWebServer &server);
+void registerThresholdSettingsApiRoutes(AsyncWebServer &server);
+void registerModeSettingsApiRoutes(AsyncWebServer &server);
+void registerMqttSettingsApiRoutes(AsyncWebServer &server);
+void registerRuntimeSettingsApiRoutes(AsyncWebServer &server);
+void registerSystemSettingsApiRoutes(AsyncWebServer &server);

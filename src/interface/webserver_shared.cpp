@@ -2225,15 +2225,15 @@ void init() {
   });
 #endif
 
-  registerStatusRoutes(server);
+  registerStatusApiRoutes(server);
 
-  registerChartsRoutes(server);
-  registerHealthRoutes(server);
-  registerLogsRoutes(server);
+  registerChartsApiRoutes(server);
+  registerHealthApiRoutes(server);
+  registerLogsApiRoutes(server);
 
-  registerHistoryRoutes(server);
-  registerProcessRoutes(server);
-  registerSafetyRoutes(server);
+  registerHistoryApiRoutes(server);
+  registerProcessApiRoutes(server);
+  registerSafetyApiRoutes(server);
 
 #if 0
   server.on(
@@ -2779,7 +2779,7 @@ void init() {
   // EQUIPMENT SETTINGS API
   // --------------------------------------------------------------------------
 
-  registerSettingsRoutes(server);
+  registerSettingsApiRoutes(server);
 
 #if 0
   // GET /api/settings/equipment - получить настройки оборудования
@@ -4045,20 +4045,20 @@ void init() {
   });
 #endif
 
-  registerCalibrationRoutes(server);
+  registerCalibrationApiRoutes(server);
 
-  registerPumpRoutes(server);
-  registerTestingRoutes(server);
-  registerEnergyRoutes(server);
+  registerPumpApiRoutes(server);
+  registerTestingApiRoutes(server);
+  registerEnergyApiRoutes(server);
 
-  registerWifiRoutes(server);
-  registerOtaRoutes(server);
+  registerWifiApiRoutes(server);
+  registerOtaApiRoutes(server);
 
   // ==========================================================================
   // PROFILES API
   // ==========================================================================
 
-  registerProfilesRoutes(server);
+  registerProfilesApiRoutes(server);
 
   // 404
   server.onNotFound([](AsyncWebServerRequest *request) {

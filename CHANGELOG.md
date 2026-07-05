@@ -7,6 +7,12 @@
 
 ---
 
+## [2.4.53] - 2026-07-05
+
+### Changed
+- Именование route-registration функций унифицировано по всему `src/interface/api/`: верхнеуровневые модули теперь используют шаблон `register...ApiRoutes`, а settings-подмодули приведены к тому же стилю. Это упрощает навигацию по API-слою и снижает путаницу между публичными API-регистраторами и внутренними settings-регистраторами. (codex)
+- Добавлен базовый host-side test harness `native_json_tests` с общими JSON assertion helper-ами и первым smoke-тестом, чтобы дальше можно было покрывать JSON builders unit-level проверками без прошивки на ESP32. (codex)
+
 ## [2.4.52] - 2026-07-05
 
 ### Changed

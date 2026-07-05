@@ -4,7 +4,7 @@
 #include "control/safety.h"
 #include "interface/webserver_shared.h"
 
-void registerChartsRoutes(AsyncWebServer &server) {
+void registerChartsApiRoutes(AsyncWebServer &server) {
   server.on("/api/charts/live", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
     doc["success"] = true;

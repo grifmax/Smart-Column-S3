@@ -36,7 +36,7 @@ void fillStirrerSettingsJson(JsonObject settings, const Settings &source) {
 
 } // namespace
 
-void registerEquipmentSettingsRoutes(AsyncWebServer &server) {
+void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
   server.on("/api/settings/equipment", HTTP_GET,
             [](AsyncWebServerRequest *request) {
               JsonDocument doc;

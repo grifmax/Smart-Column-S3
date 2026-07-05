@@ -2,11 +2,11 @@
 
 #include "settings/settings_modules.h"
 
-void registerSettingsRoutes(AsyncWebServer &server) {
-  registerEquipmentSettingsRoutes(server);
-  registerThresholdSettingsRoutes(server);
-  registerModeSettingsRoutes(server);
-  registerMqttSettingsRoutes(server);
-  registerRuntimeSettingsRoutes(server);
-  registerSystemSettingsRoutes(server);
+void registerSettingsApiRoutes(AsyncWebServer &server) {
+  registerEquipmentSettingsApiRoutes(server);
+  registerThresholdSettingsApiRoutes(server);
+  registerModeSettingsApiRoutes(server);
+  registerMqttSettingsApiRoutes(server);
+  registerRuntimeSettingsApiRoutes(server);
+  registerSystemSettingsApiRoutes(server);
 }

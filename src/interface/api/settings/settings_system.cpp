@@ -6,7 +6,7 @@
 #include "interface/webserver_shared.h"
 #include "storage/logger.h"
 
-void registerSystemSettingsRoutes(AsyncWebServer &server) {
+void registerSystemSettingsApiRoutes(AsyncWebServer &server) {
   server.on(
       "/api/settings/demo", HTTP_POST,
       [](AsyncWebServerRequest *request) {}, NULL,
