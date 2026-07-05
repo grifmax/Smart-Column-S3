@@ -169,13 +169,13 @@ src/interface/api/settings/
 - [x] вынести `/api/logs/events`
 - [x] вынести `/api/logs/events/clear`
 - [x] вынести `/api/export`
-- [ ] проверить очистку системного журнала
+- [x] проверить очистку системного журнала
 
 ### 7.3 `api_charts.cpp`
 
 - [x] вынести `/api/charts/live`
 - [x] вынести `/api/charts/live/reset`
-- [ ] проверить работу live history reset
+- [x] проверить работу live history reset
 
 ### 7.4 `api_energy.cpp`
 
