@@ -217,7 +217,7 @@ src/interface/api/settings/
 - [x] вынести `/api/pump/stop`
 - [x] вынести `/api/pump/status`
 - [x] вынести `/api/pump/diag`
-- [ ] проверить, что состояние калибровки не теряется
+- [x] проверить, что состояние калибровки не теряется
 
 ### 8.2 `api_testing.cpp`
 
@@ -310,18 +310,18 @@ src/interface/api/settings/
 
 Первый проход: один файл `api_settings.cpp`, без сверхдробления.
 
-- [ ] вынести `/api/settings/equipment` GET/POST
-- [ ] вынести `/api/settings/safety` GET/POST
-- [ ] вынести `/api/settings/security` GET/POST
-- [ ] вынести `/api/settings/nbk` GET/POST
-- [ ] вынести `/api/settings/fermentation` GET/POST
-- [ ] вынести `/api/settings/stirrer` GET/POST
-- [ ] вынести `/api/settings/mqtt` GET/POST
-- [ ] вынести `/api/settings/mqtt/test`
-- [ ] вынести `/api/settings/rect` GET/POST
-- [ ] вынести `/api/settings/demo` GET/POST
-- [ ] вынести `/api/reboot/status`
-- [ ] вынести `/api/reboot`
+- [x] вынести `/api/settings/equipment` GET/POST
+- [x] вынести `/api/settings/safety` GET/POST
+- [x] вынести `/api/settings/security` GET/POST
+- [x] вынести `/api/settings/nbk` GET/POST
+- [x] вынести `/api/settings/fermentation` GET/POST
+- [x] вынести `/api/settings/stirrer` GET/POST
+- [x] вынести `/api/settings/mqtt` GET/POST
+- [x] вынести `/api/settings/mqtt/test`
+- [x] вынести `/api/settings/rect` GET/POST
+- [x] вынести `/api/settings/demo` GET/POST
+- [x] вынести `/api/reboot/status`
+- [x] вынести `/api/reboot`
 - [x] вынести `/api/settings/equipment` GET/POST
 - [x] вынести `/api/settings/safety` GET/POST
 - [x] вынести `/api/settings/security` GET/POST
@@ -478,13 +478,13 @@ src/interface/api/settings/
 
 Рефакторинг можно считать завершённым, когда:
 
-- [ ] `webserver.cpp` больше не монолитный
-- [ ] маршруты разнесены по доменам
-- [ ] shared helpers не размазаны случайно
-- [ ] live websocket слой отделён от HTTP registration
-- [ ] проект собирается и OTA-заливается без сюрпризов
-- [ ] Web UI, запуск режимов, история, профили, калибровка и OTA проходят ручную smoke-проверку
-- [ ] по git-истории видно понятные шаги, а не один гигантский коммит
+- [x] `webserver.cpp` больше не монолитный
+- [x] маршруты разнесены по доменам
+- [x] shared helpers не размазаны случайно
+- [x] live websocket слой отделён от HTTP registration
+- [x] проект собирается и OTA-заливается без сюрпризов
+- [x] Web UI, запуск режимов, история, профили, калибровка и OTA проходят ручную smoke-проверку
+- [x] по git-истории видно понятные шаги, а не один гигантский коммит
 
 ---
 
