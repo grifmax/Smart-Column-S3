@@ -127,25 +127,19 @@ void registerWifiRoutes(AsyncWebServer &server) {
         const char *ssid = doc["ssid"] | "";
         const char *direction = doc["direction"] | "up";
         if (!ssid[0]) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"SSID required\"}");
+          sendJsonError(request, 400, "SSID required");
           return;
         }
 
         const int shift = (strcmp(direction, "down") == 0) ? 1 : -1;
         if (!WiFiProfiles::moveProfile(g_settings.wifi, ssid, shift)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"Cannot change profile priority\"}");
+          sendJsonError(request, 400, "Cannot change profile priority");
           return;
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
           Logger::logf(2, "WiFi profile reorder save failed: %s", ssid);
-          request->send(
-              500, "application/json",
-              "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings");
           return;
         }
 
@@ -174,24 +168,18 @@ void registerWifiRoutes(AsyncWebServer &server) {
 
         const char *ssid = doc["ssid"] | "";
         if (!ssid[0]) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"SSID required\"}");
+          sendJsonError(request, 400, "SSID required");
           return;
         }
 
         if (!WiFiProfiles::deleteProfile(g_settings.wifi, ssid)) {
-          request->send(
-              404, "application/json",
-              "{\"success\":false,\"error\":\"Profile not found\"}");
+          sendJsonError(request, 404, "Profile not found");
           return;
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
           Logger::logf(2, "WiFi profile delete save failed: %s", ssid);
-          request->send(
-              500, "application/json",
-              "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings");
           return;
         }
 
@@ -219,9 +207,7 @@ void registerWifiRoutes(AsyncWebServer &server) {
 
         const char *ssid = doc["ssid"] | "";
         if (!ssid[0]) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"SSID required\"}");
+          sendJsonError(request, 400, "SSID required");
           return;
         }
 
@@ -239,9 +225,8 @@ void registerWifiRoutes(AsyncWebServer &server) {
 
         if (profile.useStaticIp &&
             (!profile.ip[0] || !profile.gateway[0] || !profile.subnet[0])) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"Static IP requires IP, gateway and subnet\"}");
+          sendJsonError(request, 400,
+                        "Static IP requires IP, gateway and subnet");
           return;
         }
         if (!isValidIpOrEmpty(profile.ip) ||
@@ -249,26 +234,22 @@ void registerWifiRoutes(AsyncWebServer &server) {
             !isValidIpOrEmpty(profile.subnet) ||
             !isValidIpOrEmpty(profile.dns1) ||
             !isValidIpOrEmpty(profile.dns2)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"Invalid IP address format\"}");
+          sendJsonError(request, 400, "Invalid IP address format");
           return;
         }
 
         const bool makePreferred = doc["makePreferred"] | false;
         if (!WiFiProfiles::upsertProfile(g_settings.wifi, profile,
                                          makePreferred)) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"Failed to save WiFi profile (limit reached or invalid SSID)\"}");
+          sendJsonError(
+              request, 400,
+              "Failed to save WiFi profile (limit reached or invalid SSID)");
           return;
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
           Logger::logf(2, "WiFi profile save failed: %s", ssid);
-          request->send(
-              500, "application/json",
-              "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings");
           return;
         }
 
@@ -307,8 +288,7 @@ void registerWifiRoutes(AsyncWebServer &server) {
         const bool makePreferred = doc["makePreferred"] | false;
 
         if (!ssid || strlen(ssid) == 0) {
-          request->send(400, "application/json",
-                        "{\"error\":\"SSID required\"}");
+          sendJsonError(request, 400, "SSID required", false);
           return;
         }
 
@@ -363,9 +343,8 @@ void registerWifiRoutes(AsyncWebServer &server) {
         if (profileToConnect.useStaticIp &&
             (!profileToConnect.ip[0] || !profileToConnect.gateway[0] ||
              !profileToConnect.subnet[0])) {
-          request->send(
-              400, "application/json",
-              "{\"error\":\"Static IP requires IP, gateway and subnet\"}");
+          sendJsonError(request, 400,
+                        "Static IP requires IP, gateway and subnet", false);
           return;
         }
         if (!isValidIpOrEmpty(profileToConnect.ip) ||
@@ -373,16 +352,14 @@ void registerWifiRoutes(AsyncWebServer &server) {
             !isValidIpOrEmpty(profileToConnect.subnet) ||
             !isValidIpOrEmpty(profileToConnect.dns1) ||
             !isValidIpOrEmpty(profileToConnect.dns2)) {
-          request->send(400, "application/json",
-                        "{\"error\":\"Invalid IP address format\"}");
+          sendJsonError(request, 400, "Invalid IP address format", false);
           return;
         }
 
         if (saveProfile) {
           if (!WiFiProfiles::upsertProfile(g_settings.wifi, profileToConnect,
                                            makePreferred)) {
-            request->send(400, "application/json",
-                          "{\"error\":\"Failed to save WiFi profile\"}");
+            sendJsonError(request, 400, "Failed to save WiFi profile", false);
             return;
           }
           WiFiProfiles::getProfileBySsid(g_settings.wifi, ssid, profileToConnect);
@@ -397,8 +374,8 @@ void registerWifiRoutes(AsyncWebServer &server) {
           if (profileCopy == nullptr) {
             LOG_E("WiFi: Failed to allocate connect task profile");
             Logger::logf(2, "WiFi connect allocation failed: %s", ssid);
-            request->send(500, "application/json",
-                          "{\"error\":\"Failed to schedule WiFi connect\"}");
+            sendJsonError(request, 500, "Failed to schedule WiFi connect",
+                          false);
             return;
           }
 
@@ -408,8 +385,8 @@ void registerWifiRoutes(AsyncWebServer &server) {
             delete profileCopy;
             LOG_E("WiFi: Failed to create connect task");
             Logger::logf(2, "WiFi connect task create failed: %s", ssid);
-            request->send(500, "application/json",
-                          "{\"error\":\"Failed to schedule WiFi connect\"}");
+            sendJsonError(request, 500, "Failed to schedule WiFi connect",
+                          false);
             return;
           }
 
@@ -419,8 +396,7 @@ void registerWifiRoutes(AsyncWebServer &server) {
         } else {
           LOG_E("WiFi: Failed to save settings to NVS");
           Logger::logf(2, "WiFi connect save failed: %s", ssid);
-          request->send(500, "application/json",
-                        "{\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings", false);
         }
       });
 }

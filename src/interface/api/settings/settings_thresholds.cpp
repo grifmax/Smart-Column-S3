@@ -58,12 +58,11 @@ void registerThresholdSettingsRoutes(AsyncWebServer &server) {
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
-          request->send(500, "application/json",
-                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings");
           return;
         }
 
-        request->send(200, "application/json", "{\"success\":true}");
+        sendJsonSuccess(request);
       });
 
   server.on("/api/settings/security", HTTP_GET,
@@ -107,8 +106,7 @@ void registerThresholdSettingsRoutes(AsyncWebServer &server) {
             hasPasswordField ? (doc["password"] | "") : nullptr;
 
         if (authEnabled && (!username || strlen(username) == 0)) {
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"Username required\"}");
+          sendJsonError(request, 400, "Username required");
           return;
         }
 
@@ -116,9 +114,7 @@ void registerThresholdSettingsRoutes(AsyncWebServer &server) {
             (g_settings.security.password[0] != '\0');
         if (authEnabled &&
             (!hasStoredPassword && (!password || strlen(password) == 0))) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"Password required to enable auth\"}");
+          sendJsonError(request, 400, "Password required to enable auth");
           return;
         }
 
@@ -135,8 +131,7 @@ void registerThresholdSettingsRoutes(AsyncWebServer &server) {
 
         if (!NVSManager::saveSettings(g_settings)) {
           Logger::logf(2, "Security settings save failed");
-          request->send(500, "application/json",
-                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings");
           return;
         }
 
@@ -146,6 +141,6 @@ void registerThresholdSettingsRoutes(AsyncWebServer &server) {
             authEnabled ? "enabled" : "disabled",
             rateLimitEnabled ? "enabled" : "disabled",
             g_settings.security.username);
-        request->send(200, "application/json", "{\"success\":true}");
+        sendJsonSuccess(request);
       });
 }

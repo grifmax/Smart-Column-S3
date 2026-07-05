@@ -7,6 +7,11 @@
 
 ---
 
+## [2.4.51] - 2026-07-05
+
+### Changed
+- В `webserver_shared` добавлены базовые response helpers `sendJsonSuccess(...)` и `sendJsonError(...)`, и на них переведены однотипные JSON-ответы в `settings_*` и части `api_wifi.cpp`. Это сокращает дублирование ручного `request->send(..., "application/json", ...)` без изменения URL и с сохранением прежних payload-форматов там, где они были нестандартными. (codex)
+
 ## [2.4.50] - 2026-07-05
 
 ### Changed

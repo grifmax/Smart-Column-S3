@@ -115,12 +115,11 @@ void registerModeSettingsRoutes(AsyncWebServer &server) {
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
-          request->send(500, "application/json",
-                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings");
           return;
         }
 
-        request->send(200, "application/json", "{\"success\":true}");
+        sendJsonSuccess(request);
       });
 
   server.on("/api/settings/fermentation", HTTP_GET,
@@ -160,12 +159,11 @@ void registerModeSettingsRoutes(AsyncWebServer &server) {
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
-          request->send(500, "application/json",
-                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings");
           return;
         }
 
-        request->send(200, "application/json", "{\"success\":true}");
+        sendJsonSuccess(request);
       });
 
   server.on("/api/settings/rect", HTTP_GET,
@@ -279,8 +277,7 @@ void registerModeSettingsRoutes(AsyncWebServer &server) {
 
         g_settings.rectParams = updated;
         if (!NVSManager::saveSettings(g_settings)) {
-          request->send(500, "application/json",
-                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings");
           return;
         }
 

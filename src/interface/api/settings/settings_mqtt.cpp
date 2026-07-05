@@ -68,9 +68,7 @@ void registerMqttSettingsRoutes(AsyncWebServer &server) {
         if (enabled && (!serverValue || serverValue[0] == '\0')) {
           Logger::logf(1,
                        "MQTT settings rejected: server is required when enabled");
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"MQTT server is required when enabled\"}");
+          sendJsonError(request, 400, "MQTT server is required when enabled");
           return;
         }
         if (port == 0) {
@@ -101,12 +99,11 @@ void registerMqttSettingsRoutes(AsyncWebServer &server) {
 
         if (!NVSManager::saveSettings(g_settings)) {
           Logger::logf(2, "MQTT settings save failed");
-          request->send(500, "application/json",
-                        "{\"success\":false,\"error\":\"Failed to save settings\"}");
+          sendJsonError(request, 500, "Failed to save settings");
           return;
         }
 
-        request->send(200, "application/json", "{\"success\":true}");
+        sendJsonSuccess(request);
         Logger::logf(
             0,
             "MQTT settings updated: %s, server=%s:%u, topic=%s, interval=%lums",
@@ -138,22 +135,17 @@ void registerMqttSettingsRoutes(AsyncWebServer &server) {
          size_t index, size_t total) {
         if (!g_settings.mqtt.enabled) {
           Logger::logf(1, "MQTT test rejected: MQTT is disabled");
-          request->send(400, "application/json",
-                        "{\"success\":false,\"error\":\"MQTT disabled\"}");
+          sendJsonError(request, 400, "MQTT disabled");
           return;
         }
         if (g_settings.mqtt.server[0] == '\0') {
           Logger::logf(1, "MQTT test rejected: broker is not configured");
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"error\":\"MQTT server is not configured\"}");
+          sendJsonError(request, 400, "MQTT server is not configured");
           return;
         }
         if (WiFi.status() != WL_CONNECTED) {
           Logger::logf(1, "MQTT test rejected: WiFi STA is not connected");
-          request->send(
-              503, "application/json",
-              "{\"success\":false,\"error\":\"WiFi STA not connected\"}");
+          sendJsonError(request, 503, "WiFi STA not connected");
           return;
         }
 
@@ -183,14 +175,12 @@ void registerMqttSettingsRoutes(AsyncWebServer &server) {
 
         if (!MQTT::isConnected()) {
           Logger::logf(1, "MQTT test failed: broker unavailable");
-          request->send(
-              503, "application/json",
-              "{\"success\":false,\"error\":\"MQTT broker unavailable\"}");
+          sendJsonError(request, 503, "MQTT broker unavailable");
           return;
         }
 
         MQTT::publishNotification("MQTT test", message, "info");
         Logger::logf(0, "MQTT test notification sent");
-        request->send(200, "application/json", "{\"success\":true}");
+        sendJsonSuccess(request);
       });
 }

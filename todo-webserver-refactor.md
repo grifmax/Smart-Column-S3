@@ -431,7 +431,7 @@ src/interface/api/settings/
 
 - [ ] убрать дубли helper-объявлений в начале файла
 - [ ] унифицировать naming register-функций
-- [ ] выделить response helper для JSON success/error
+- [x] выделить response helper для JSON success/error
 - [x] выделить body-parse helper для POST маршрутов
 - [ ] привести регулярочные route-handlers к одному стилю
 - [ ] подготовить базу под unit-level тестирование JSON builders, если позже пойдём туда

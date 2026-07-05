@@ -33,6 +33,10 @@ void syncStirrerState();
 void fillStirrerJson(JsonObject stirrer, const SystemState &state);
 void sendStirrerStateResponse(AsyncWebServerRequest *request, int statusCode,
                               bool success, const char *message);
+void sendJsonSuccess(AsyncWebServerRequest *request, int statusCode = 200,
+                     const char *message = nullptr);
+void sendJsonError(AsyncWebServerRequest *request, int statusCode,
+                   const char *error, bool includeSuccess = true);
 bool ensureStirrerReady(AsyncWebServerRequest *request);
 bool handleSecurityGate(AsyncWebServerRequest *request);
 void applySecuritySettings();

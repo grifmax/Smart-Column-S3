@@ -30,11 +30,12 @@ void registerSystemSettingsRoutes(AsyncWebServer &server) {
         prefs.putBool("demoMode", enabled);
         prefs.end();
 
-        char response[128];
-        snprintf(response, sizeof(response),
-                 "{\"success\":true,\"demoMode\":%s}",
-                 enabled ? "true" : "false");
-        request->send(200, "application/json", response);
+        JsonDocument out;
+        out["success"] = true;
+        out["demoMode"] = enabled;
+        String json;
+        serializeJson(out, json);
+        request->send(200, "application/json", json);
       });
 
   server.on("/api/settings/demo", HTTP_GET,
@@ -88,8 +89,7 @@ void registerSystemSettingsRoutes(AsyncWebServer &server) {
   server.on("/api/reboot", HTTP_POST, [](AsyncWebServerRequest *request) {
     LOG_W("Reboot requested via API");
     Logger::logf(1, "System reboot requested via API");
-    request->send(200, "application/json",
-                  "{\"success\":true,\"message\":\"Rebooting...\"}");
+    sendJsonSuccess(request, 200, "Rebooting...");
 
     delay(500);
     ESP.restart();

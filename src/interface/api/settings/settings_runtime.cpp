@@ -137,7 +137,7 @@ void registerRuntimeSettingsRoutes(AsyncWebServer &server) {
         const bool allOff = doc["allOff"] | false;
         if (allOff) {
           Valves::closeAll();
-          request->send(200, "application/json", "{\"success\":true}");
+          sendJsonSuccess(request);
           return;
         }
 
@@ -156,7 +156,7 @@ void registerRuntimeSettingsRoutes(AsyncWebServer &server) {
           Valves::setStartStop(duty);
         }
 
-        request->send(200, "application/json", "{\"success\":true}");
+        sendJsonSuccess(request);
       });
 
   server.on(
@@ -171,14 +171,12 @@ void registerRuntimeSettingsRoutes(AsyncWebServer &server) {
         }
 
         if (g_state.mode != Mode::MANUAL_RECT) {
-          request->send(400, "application/json",
-                        "{\"error\":\"Not in MANUAL_RECT mode\"}");
+          sendJsonError(request, 400, "Not in MANUAL_RECT mode", false);
           return;
         }
 
         if (doc["phase"].isNull()) {
-          request->send(400, "application/json",
-                        "{\"error\":\"Missing phase\"}");
+          sendJsonError(request, 400, "Missing phase", false);
           return;
         }
 
@@ -220,8 +218,7 @@ void registerRuntimeSettingsRoutes(AsyncWebServer &server) {
         }
 
         if (!changed) {
-          request->send(400, "application/json",
-                        "{\"error\":\"At least one field is required\"}");
+          sendJsonError(request, 400, "At least one field is required", false);
           return;
         }
 

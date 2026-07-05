@@ -460,6 +460,32 @@ void sendStirrerStateResponse(AsyncWebServerRequest *request, int statusCode,
   request->send(statusCode, "application/json", json);
 }
 
+void sendJsonSuccess(AsyncWebServerRequest *request, int statusCode,
+                     const char *message) {
+  JsonDocument doc;
+  doc["success"] = true;
+  if (message && message[0] != '\0') {
+    doc["message"] = message;
+  }
+
+  String json;
+  serializeJson(doc, json);
+  request->send(statusCode, "application/json", json);
+}
+
+void sendJsonError(AsyncWebServerRequest *request, int statusCode,
+                   const char *error, bool includeSuccess) {
+  JsonDocument doc;
+  if (includeSuccess) {
+    doc["success"] = false;
+  }
+  doc["error"] = error ? error : "Unknown error";
+
+  String json;
+  serializeJson(doc, json);
+  request->send(statusCode, "application/json", json);
+}
+
 bool ensureStirrerReady(AsyncWebServerRequest *request) {
   if (g_state.mode != Mode::IDLE) {
     char reason[128];
