@@ -26,6 +26,25 @@ const char *getPackingTypeKey(PackingType type) {
   }
 }
 
+PackingType parsePackingTypeKey(const char *value, PackingType fallback) {
+  if (value == nullptr || value[0] == '\0') {
+    return fallback;
+  }
+  if (strcmp(value, "spn_3_5") == 0) {
+    return PackingType::SPN_3_5;
+  }
+  if (strcmp(value, "spn_4_0") == 0) {
+    return PackingType::SPN_4_0;
+  }
+  if (strcmp(value, "raschig") == 0) {
+    return PackingType::RASCHIG;
+  }
+  if (strcmp(value, "custom") == 0) {
+    return PackingType::CUSTOM;
+  }
+  return fallback;
+}
+
 void fillStirrerSettingsJson(JsonObject settings, const Settings &source) {
   settings["enabled"] = source.stirrer.enabled;
   settings["defaultSpeedPercent"] = source.stirrer.defaultSpeedPercent;
@@ -188,6 +207,15 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
           g_settings.equipment.columnHeightMm =
               clampU16Range(doc["columnHeightMm"].as<uint32_t>(), 500, 3000);
         }
+        if (!doc["packingType"].isNull()) {
+          g_settings.equipment.packingType = parsePackingTypeKey(
+              doc["packingType"].as<const char *>(),
+              g_settings.equipment.packingType);
+        }
+        if (!doc["packingCoeff"].isNull()) {
+          g_settings.equipment.packingCoeff =
+              clampFloatRange(doc["packingCoeff"].as<float>(), 1.0f, 15.0f);
+        }
         if (!doc["cubeVolumeL"].isNull()) {
           g_settings.equipment.cubeVolumeL =
               clampFloatRange(doc["cubeVolumeL"].as<float>(), 5.0f, 250.0f);
@@ -327,6 +355,9 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
 
         JsonDocument resp;
         resp["success"] = true;
+        resp["packingType"] =
+            getPackingTypeKey(g_settings.equipment.packingType);
+        resp["packingCoeff"] = g_settings.equipment.packingCoeff;
         resp["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
         resp["ds2482Address"] = g_settings.equipment.ds2482Address;
         JsonObject temperatureTopology =

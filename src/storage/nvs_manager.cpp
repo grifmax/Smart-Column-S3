@@ -287,6 +287,15 @@ bool loadSettings(Settings& settings) {
 
     // Оборудование
     settings.equipment.columnHeightMm = prefs.getUShort(NVS_KEY_COLUMN_HEIGHT, DEFAULT_COLUMN_HEIGHT_MM);
+    {
+        const uint8_t packingTypeValue = prefs.getUChar(
+            NVS_KEY_PACKING_TYPE,
+            static_cast<uint8_t>(settings.equipment.packingType));
+        settings.equipment.packingType =
+            packingTypeValue <= static_cast<uint8_t>(PackingType::CUSTOM)
+                ? static_cast<PackingType>(packingTypeValue)
+                : PackingType::SPN_3_5;
+    }
     settings.equipment.heaterPowerW = prefs.getUShort(NVS_KEY_HEATER_POWER, DEFAULT_HEATER_POWER_W);
     settings.equipment.cubeVolumeL = prefs.getFloat(NVS_KEY_CUBE_VOLUME, (float)DEFAULT_CUBE_VOLUME_L);
     settings.equipment.packingCoeff = prefs.getFloat(NVS_KEY_PACKING_COEFF, DEFAULT_PACKING_COEFF);
@@ -375,6 +384,29 @@ bool loadSettings(Settings& settings) {
     if (prefs.getBytesLength(NVS_KEY_FRACTION_ENABLED) == sizeof(settings.fractionator.positionsEnabled)) {
         prefs.getBytes(NVS_KEY_FRACTION_ENABLED, settings.fractionator.positionsEnabled, sizeof(settings.fractionator.positionsEnabled));
     }
+    const size_t fractionProgramBytes = prefs.getBytesLength(NVS_KEY_FRACTION_PROGRAM);
+    if (fractionProgramBytes == sizeof(settings.fractionProgram)) {
+        prefs.getBytes(NVS_KEY_FRACTION_PROGRAM, &settings.fractionProgram,
+                       sizeof(settings.fractionProgram));
+    } else {
+        settings.fractionProgram = FractionProgram{};
+    }
+    if (settings.fractionProgram.schemaVersion != 2 ||
+        settings.fractionProgram.stepCount > FRACTION_PROGRAM_MAX_STEPS) {
+        settings.fractionProgram = FractionProgram{};
+    } else {
+        for (uint8_t i = 0; i < settings.fractionProgram.stepCount; ++i) {
+            FractionProgramStep& step = settings.fractionProgram.steps[i];
+            if (step.routeIndex >= FRACTION_COUNT) step.routeIndex = 0;
+            step.endConditions &= FRACTION_PROGRAM_END_VOLUME |
+                                  FRACTION_PROGRAM_END_TIME |
+                                  FRACTION_PROGRAM_END_TEMPERATURE |
+                                  FRACTION_PROGRAM_END_LEVEL;
+            if (step.pumpRateMlH < 0.0f) step.pumpRateMlH = 0.0f;
+            if (step.endVolumeMl < 0.0f) step.endVolumeMl = 0.0f;
+            step.name[sizeof(step.name) - 1] = 0;
+        }
+    }
 
     // Дисплей
     settings.displaySettings.enabled = prefs.getBool("disp_en", true);
@@ -401,6 +433,105 @@ bool loadSettings(Settings& settings) {
     settings.rectParams.purgeMin = prefs.getUShort(NVS_KEY_RECT_PURGE_MIN, RECT_PURGE_TIME_MIN);
     settings.rectParams.baroCorrectionEnabled =
         prefs.getBool(NVS_KEY_RECT_BARO_ENABLED, RECT_BARO_CORRECTION_ENABLED_DEFAULT != 0);
+    settings.rectParams.takeoffBackendType = static_cast<RectTakeoffBackendType>(
+        prefs.getUChar(NVS_KEY_RECT_TAKEOFF_BACKEND, RECT_TAKEOFF_BACKEND_DEFAULT));
+    settings.rectParams.refluxMode = static_cast<RectRefluxMode>(
+        prefs.getUChar(NVS_KEY_RECT_REFLUX_MODE, RECT_REFLUX_MODE_DEFAULT));
+    settings.rectParams.srRatio =
+        prefs.getFloat(NVS_KEY_RECT_SR_RATIO, RECT_SR_RATIO_DEFAULT);
+    settings.rectParams.autonomousCycleSec =
+        prefs.getUShort(NVS_KEY_RECT_AUTO_CYCLE, RECT_AUTO_CYCLE_SEC_DEFAULT);
+    settings.rectParams.autonomousPauseSec =
+        prefs.getUShort(NVS_KEY_RECT_AUTO_PAUSE, RECT_AUTO_PAUSE_SEC_DEFAULT);
+    settings.rectParams.chimAutoPercent =
+        prefs.getFloat(NVS_KEY_RECT_CHIM_AUTO, RECT_CHIM_AUTO_PERCENT_DEFAULT);
+    settings.rectParams.chimTimePerH =
+        prefs.getFloat(NVS_KEY_RECT_CHIM_TIME, RECT_CHIM_TIME_PER_H_DEFAULT);
+    settings.rectParams.chimBegPercent =
+        prefs.getFloat(NVS_KEY_RECT_CHIM_BEG, RECT_CHIM_BEG_PERCENT_DEFAULT);
+    settings.rectParams.chimMinPercent =
+        prefs.getFloat(NVS_KEY_RECT_CHIM_MIN, RECT_CHIM_MIN_PERCENT_DEFAULT);
+    settings.rectParams.usePbMode =
+        prefs.getUChar(NVS_KEY_RECT_USE_PB, RECT_USE_PB_MODE_DEFAULT);
+    settings.rectParams.timpPbMs =
+        prefs.getUInt(NVS_KEY_RECT_TIMP_PB, RECT_TIMP_PB_MS_DEFAULT);
+    settings.rectParams.routingSettlingMs =
+        prefs.getUShort(NVS_KEY_RECT_ROUTE_SETTLE,
+                        RECT_ROUTING_SETTLING_MS_DEFAULT);
+    settings.rectParams.routingRetargetMinMs =
+        prefs.getUShort(NVS_KEY_RECT_ROUTE_RETARGET,
+                        RECT_ROUTING_RETARGET_MIN_MS_DEFAULT);
+    settings.rectParams.valvePulsePeriodMs =
+        prefs.getUShort(NVS_KEY_RECT_VALVE_PULSE_PERIOD,
+                        RECT_VALVE_PULSE_PERIOD_MS_DEFAULT);
+    settings.rectParams.valvePulseMinOpenMs =
+        prefs.getUShort(NVS_KEY_RECT_VALVE_PULSE_MIN_OPEN,
+                        RECT_VALVE_PULSE_MIN_OPEN_MS_DEFAULT);
+    settings.rectParams.valvePulseMaxOpenMs =
+        prefs.getUShort(NVS_KEY_RECT_VALVE_PULSE_MAX_OPEN,
+                        RECT_VALVE_PULSE_MAX_OPEN_MS_DEFAULT);
+    if (prefs.getBytesLength(NVS_KEY_RECT_PHASE_POWER) ==
+        sizeof(settings.rectParams.phasePowerPercent)) {
+        prefs.getBytes(NVS_KEY_RECT_PHASE_POWER,
+                       settings.rectParams.phasePowerPercent,
+                       sizeof(settings.rectParams.phasePowerPercent));
+    }
+    if (static_cast<uint8_t>(settings.rectParams.takeoffBackendType) >
+        static_cast<uint8_t>(RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)) {
+        settings.rectParams.takeoffBackendType = RectTakeoffBackendType::PUMP;
+    }
+    if (static_cast<uint8_t>(settings.rectParams.refluxMode) >
+        static_cast<uint8_t>(RectRefluxMode::AUTONOMOUS)) {
+        settings.rectParams.refluxMode = RectRefluxMode::ML_H;
+    }
+    settings.rectParams.srRatio =
+        constrain(settings.rectParams.srRatio, 0.0f, 20.0f);
+    settings.rectParams.autonomousCycleSec =
+        settings.rectParams.autonomousCycleSec > 0
+            ? settings.rectParams.autonomousCycleSec
+            : static_cast<uint16_t>(1);
+    if (settings.rectParams.autonomousPauseSec >=
+        settings.rectParams.autonomousCycleSec) {
+        settings.rectParams.autonomousPauseSec =
+            settings.rectParams.autonomousCycleSec - 1;
+    }
+    settings.rectParams.chimAutoPercent =
+        constrain(settings.rectParams.chimAutoPercent, 0.0f, 200.0f);
+    settings.rectParams.chimTimePerH =
+        constrain(settings.rectParams.chimTimePerH, -2000.0f, 2000.0f);
+    settings.rectParams.chimBegPercent =
+        constrain(settings.rectParams.chimBegPercent, -100.0f, 200.0f);
+    settings.rectParams.chimMinPercent =
+        constrain(settings.rectParams.chimMinPercent, 0.0f, 100.0f);
+    settings.rectParams.routingSettlingMs =
+        constrain(settings.rectParams.routingSettlingMs, 0, 10000);
+    settings.rectParams.routingRetargetMinMs =
+        constrain(settings.rectParams.routingRetargetMinMs, 0, 30000);
+    settings.rectParams.valvePulsePeriodMs =
+        constrain(settings.rectParams.valvePulsePeriodMs, 100, 5000);
+    settings.rectParams.valvePulseMinOpenMs =
+        constrain(settings.rectParams.valvePulseMinOpenMs, 0,
+                  settings.rectParams.valvePulsePeriodMs);
+    settings.rectParams.valvePulseMaxOpenMs =
+        constrain(settings.rectParams.valvePulseMaxOpenMs,
+                  settings.rectParams.valvePulseMinOpenMs,
+                  settings.rectParams.valvePulsePeriodMs);
+    if (settings.rectParams.phasePowerPercent[RECT_POWER_STABILIZATION] == 0) {
+        settings.rectParams.phasePowerPercent[RECT_POWER_STABILIZATION] =
+            RECT_PHASE_POWER_STAB_DEFAULT;
+    }
+    if (settings.rectParams.phasePowerPercent[RECT_POWER_HEADS] == 0) {
+        settings.rectParams.phasePowerPercent[RECT_POWER_HEADS] =
+            RECT_PHASE_POWER_HEADS_DEFAULT;
+    }
+    if (settings.rectParams.phasePowerPercent[RECT_POWER_BODY] == 0) {
+        settings.rectParams.phasePowerPercent[RECT_POWER_BODY] =
+            RECT_PHASE_POWER_BODY_DEFAULT;
+    }
+    if (settings.rectParams.phasePowerPercent[RECT_POWER_TAILS] == 0) {
+        settings.rectParams.phasePowerPercent[RECT_POWER_TAILS] =
+            RECT_PHASE_POWER_TAILS_DEFAULT;
+    }
 
     // Дистилляция
     settings.distillationUi.speedMlH = prefs.getFloat(NVS_KEY_DIST_SPEED, 500.0f);
@@ -501,6 +632,8 @@ bool saveSettings(const Settings& settings) {
 
     // Оборудование
     prefs.putUShort(NVS_KEY_COLUMN_HEIGHT, settings.equipment.columnHeightMm);
+    prefs.putUChar(NVS_KEY_PACKING_TYPE,
+                   static_cast<uint8_t>(settings.equipment.packingType));
     prefs.putUShort(NVS_KEY_HEATER_POWER, settings.equipment.heaterPowerW);
     prefs.putFloat(NVS_KEY_CUBE_VOLUME, settings.equipment.cubeVolumeL);
     prefs.putFloat(NVS_KEY_PACKING_COEFF, settings.equipment.packingCoeff);
@@ -527,6 +660,8 @@ bool saveSettings(const Settings& settings) {
     prefs.putBool(NVS_KEY_FRACTION_MASTER, settings.fractionator.enabled);
     prefs.putBytes(NVS_KEY_FRACTION_ANGLES, settings.fractionator.angles, sizeof(settings.fractionator.angles));
     prefs.putBytes(NVS_KEY_FRACTION_ENABLED, settings.fractionator.positionsEnabled, sizeof(settings.fractionator.positionsEnabled));
+    prefs.putBytes(NVS_KEY_FRACTION_PROGRAM, &settings.fractionProgram,
+                   sizeof(settings.fractionProgram));
 
     // Дисплей
     prefs.putBool("disp_en", settings.displaySettings.enabled);
@@ -552,6 +687,33 @@ bool saveSettings(const Settings& settings) {
     prefs.putUShort(NVS_KEY_RECT_STAB_MIN, settings.rectParams.stabilizationMin);
     prefs.putUShort(NVS_KEY_RECT_PURGE_MIN, settings.rectParams.purgeMin);
     prefs.putBool(NVS_KEY_RECT_BARO_ENABLED, settings.rectParams.baroCorrectionEnabled);
+    prefs.putUChar(NVS_KEY_RECT_TAKEOFF_BACKEND,
+                   static_cast<uint8_t>(settings.rectParams.takeoffBackendType));
+    prefs.putUChar(NVS_KEY_RECT_REFLUX_MODE,
+                   static_cast<uint8_t>(settings.rectParams.refluxMode));
+    prefs.putFloat(NVS_KEY_RECT_SR_RATIO, settings.rectParams.srRatio);
+    prefs.putUShort(NVS_KEY_RECT_AUTO_CYCLE,
+                    settings.rectParams.autonomousCycleSec);
+    prefs.putUShort(NVS_KEY_RECT_AUTO_PAUSE,
+                    settings.rectParams.autonomousPauseSec);
+    prefs.putFloat(NVS_KEY_RECT_CHIM_AUTO, settings.rectParams.chimAutoPercent);
+    prefs.putFloat(NVS_KEY_RECT_CHIM_TIME, settings.rectParams.chimTimePerH);
+    prefs.putFloat(NVS_KEY_RECT_CHIM_BEG, settings.rectParams.chimBegPercent);
+    prefs.putFloat(NVS_KEY_RECT_CHIM_MIN, settings.rectParams.chimMinPercent);
+    prefs.putBytes(NVS_KEY_RECT_PHASE_POWER, settings.rectParams.phasePowerPercent,
+                   sizeof(settings.rectParams.phasePowerPercent));
+    prefs.putUChar(NVS_KEY_RECT_USE_PB, settings.rectParams.usePbMode);
+    prefs.putUInt(NVS_KEY_RECT_TIMP_PB, settings.rectParams.timpPbMs);
+    prefs.putUShort(NVS_KEY_RECT_ROUTE_SETTLE,
+                    settings.rectParams.routingSettlingMs);
+    prefs.putUShort(NVS_KEY_RECT_ROUTE_RETARGET,
+                    settings.rectParams.routingRetargetMinMs);
+    prefs.putUShort(NVS_KEY_RECT_VALVE_PULSE_PERIOD,
+                    settings.rectParams.valvePulsePeriodMs);
+    prefs.putUShort(NVS_KEY_RECT_VALVE_PULSE_MIN_OPEN,
+                    settings.rectParams.valvePulseMinOpenMs);
+    prefs.putUShort(NVS_KEY_RECT_VALVE_PULSE_MAX_OPEN,
+                    settings.rectParams.valvePulseMaxOpenMs);
 
     // Дистилляция
     prefs.putFloat(NVS_KEY_DIST_SPEED, settings.distillationUi.speedMlH);

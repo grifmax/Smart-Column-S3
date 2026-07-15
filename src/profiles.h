@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include "fs_compat.h"
+#include "types.h"
 #include <vector>
 
 struct ProcessHistory;
@@ -36,14 +37,32 @@ struct HeaterParams {
 };
 
 struct RectificationParams {
-    uint16_t stabilizationMin;
-    uint16_t headsVolume;
-    uint16_t bodyVolume;
-    uint16_t tailsVolume;
-    uint16_t headsSpeed;
-    uint16_t bodySpeed;
-    uint16_t tailsSpeed;
-    uint16_t purgeMin;
+    uint16_t stabilizationMin = 30;
+    uint16_t headsVolume = 300;
+    uint16_t bodyVolume = 3200;
+    uint16_t tailsVolume = 300;
+    uint16_t headsSpeed = 300;
+    uint16_t bodySpeed = 600;
+    uint16_t tailsSpeed = 360;
+    uint16_t purgeMin = 5;
+    bool baroCorrectionEnabled = true;
+    RectTakeoffBackendType takeoffBackendType = RectTakeoffBackendType::PUMP;
+    RectRefluxMode refluxMode = RectRefluxMode::ML_H;
+    float srTarget = 0.0f;
+    uint16_t autonomousCycleSec = 900;
+    uint16_t autonomousPauseSec = 90;
+    float chimAutoPercent = 0.0f;
+    float chimTimePerH = 0.0f;
+    float chimBegPercent = 0.0f;
+    float chimMinPercent = 35.0f;
+    uint8_t usePbMode = 0;
+    uint32_t timpPbMs = 15000;
+    uint16_t valvePulsePeriodMs = 1000;
+    uint16_t valvePulseMinOpenMs = 80;
+    uint16_t valvePulseMaxOpenMs = 900;
+    uint16_t routingSettlingMs = 1500;
+    uint16_t routingRetargetMinMs = 3000;
+    uint8_t phasePowerPercent[RECT_POWER_COUNT] = {70, 60, 60, 50};
 };
 
 struct DistillationParams {
@@ -132,6 +151,7 @@ struct ProfileValidationSnapshot {
     float columnTopFinalC = 0.0f;
     float avgStabilityIndex = 0.0f;
     float avgProcessHealth = 0.0f;
+    String equipmentSnapshotJson;
 };
 
 struct ProfileBaroCorrectionSummary {
@@ -188,6 +208,8 @@ void updateProfileLearning(const ProcessHistory& history);
 ProfileBaroCorrectionSummary evaluateProfileBaroCorrection(
     const Profile& profile,
     int enabledOverride = -1);
+String buildValidationEquipmentSnapshotJson();
+void appendProfileValidationJson(JsonObject validation, const Profile& profile);
 TemperatureParams getEffectiveProfileTemperatures(
     const Profile& profile,
     ProfileBaroCorrectionSummary* summary = nullptr,

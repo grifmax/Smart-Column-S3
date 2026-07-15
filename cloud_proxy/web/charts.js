@@ -4,8 +4,14 @@ let ws = null;
 let reconnectInterval = null;
 let isConnected = false;
 let chartsPaused = false;
-let currentPeriod = 60; // секунды
-const DATA_RETENTION_SECONDS = 6 * 60 * 60; // 6 часов буфера в памяти браузера
+let currentPeriod = 3600; // секунды
+const DATA_RETENTION_SECONDS = 0; // история приходит с контроллера, локально не обрезаем
+const chartLogs = [];
+let liveChartMeta = {
+    deviceNowMs: 0,
+    temperatures: {},
+    power: { available: false }
+};
 
 // Anomaly detection settings
 let anomalyDetectionEnabled = false;
@@ -38,14 +44,202 @@ let chartData = {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    initCharts();
     loadChartPreferences();
     setupCheckboxListeners();
     setupPeriodButtons();
     setupAnomalyControls();
     loadAnomalySettings();
-    connectWebSocket();
+    if (initCharts()) {
+        addChartLog('Страница графиков готова', 'info');
+    } else {
+        addChartLog('Страница графиков готова, но библиотека графиков не загрузилась', 'warning');
+    }
+    loadLiveHistory().finally(() => {
+        connectWebSocket();
+    });
 });
+
+// ============================================================================
+// Logs
+// ============================================================================
+
+function addChartLog(message, type = 'info') {
+    const container = document.getElementById('log-container');
+    const timestamp = new Date().toLocaleTimeString();
+    const line = `[${timestamp}] ${message}`;
+    chartLogs.push(line);
+    if (chartLogs.length > 500) chartLogs.shift();
+
+    if (!container) return;
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${type}`;
+    entry.textContent = line;
+    container.appendChild(entry);
+    container.scrollTop = container.scrollHeight;
+
+    const entries = container.querySelectorAll('.log-entry');
+    if (entries.length > 300) entries[0].remove();
+}
+
+function clearLogs() {
+    if (!confirm('Очистить логи?')) return;
+    chartLogs.length = 0;
+    const container = document.getElementById('log-container');
+    if (container) container.innerHTML = '';
+    addChartLog('Логи очищены', 'info');
+}
+
+function downloadLogs() {
+    const rows = ['timestamp,message'];
+    chartLogs.forEach((line) => {
+        const match = line.match(/^\[(.*?)\]\s*(.*)$/);
+        const ts = match ? match[1] : '';
+        const msg = match ? match[2] : line;
+        rows.push(`"${ts.replace(/"/g, '""')}","${msg.replace(/"/g, '""')}"`);
+    });
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `smart-column-logs-${Date.now()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    addChartLog('Экспорт логов выполнен', 'success');
+}
+
+function isTemperatureChannelVisible(key) {
+    const channel = liveChartMeta?.temperatures?.[key];
+    return Boolean(channel?.assigned || channel?.detected);
+}
+
+function isPowerChannelVisible() {
+    return Boolean(liveChartMeta?.power?.available);
+}
+
+function toClientTimestamp(sampleMs) {
+    const deviceNowMs = Number(liveChartMeta?.deviceNowMs || 0);
+    if (!Number.isFinite(deviceNowMs) || deviceNowMs <= 0) {
+        return Date.now();
+    }
+    return Date.now() - Math.max(0, deviceNowMs - Number(sampleMs || 0));
+}
+
+function setHistoryMeta(meta) {
+    const temperatures = meta?.temperatures && typeof meta.temperatures === 'object'
+        ? meta.temperatures
+        : {};
+    liveChartMeta = {
+        deviceNowMs: Number(meta?.deviceNowMs || meta?.generatedAtMs || 0),
+        temperatures,
+        power: meta?.power && typeof meta.power === 'object'
+            ? { ...meta.power }
+            : { available: false }
+    };
+}
+
+function setCheckboxHidden(id, hidden) {
+    const checkbox = document.getElementById(id);
+    const label = checkbox?.closest('label');
+    if (label) label.hidden = Boolean(hidden);
+}
+
+function syncChartMetaVisibility() {
+    setCheckboxHidden('check-temp-column-bottom', !isTemperatureChannelVisible('columnBottom'));
+    setCheckboxHidden('check-temp-column-top', !isTemperatureChannelVisible('columnTop'));
+    setCheckboxHidden('check-temp-reflux', !isTemperatureChannelVisible('reflux'));
+    setCheckboxHidden('check-temp-tsa', !isTemperatureChannelVisible('tsa'));
+    setCheckboxHidden('check-temp-water-in', !isTemperatureChannelVisible('waterIn'));
+    setCheckboxHidden('check-temp-water-out', !isTemperatureChannelVisible('waterOut'));
+
+    const powerHidden = !isPowerChannelVisible();
+    setCheckboxHidden('check-power-voltage', powerHidden);
+    setCheckboxHidden('check-power-current', powerHidden);
+    setCheckboxHidden('check-power-power', powerHidden);
+    setCheckboxHidden('check-power-energy', powerHidden);
+    setCheckboxHidden('check-power-frequency', powerHidden);
+    setCheckboxHidden('check-power-pf', powerHidden);
+}
+
+function clearChartBuffers() {
+    chartData = {
+        temperatures: { time: [], cube: [], columnBottom: [], columnTop: [], reflux: [], tsa: [], waterIn: [], waterOut: [] },
+        pressure: { time: [], cube: [], atm: [], flood: [] },
+        power: { time: [], voltage: [], current: [], power: [], energy: [], frequency: [], pf: [] },
+        pump: { time: [], speed: [], volume: [] },
+        abv: { time: [], value: [] },
+        fractions: { heads: 0, body: 0, tails: 0 }
+    };
+}
+
+function applyHistoryPoint(point) {
+    const timestamp = toClientTimestamp(point.ms);
+
+    appendData(chartData.temperatures, 'time', timestamp);
+    appendData(chartData.temperatures, 'cube', point.t_cube ?? null);
+    appendData(chartData.temperatures, 'columnBottom', point.t_column_bottom ?? null);
+    appendData(chartData.temperatures, 'columnTop', point.t_column_top ?? null);
+    appendData(chartData.temperatures, 'reflux', point.t_reflux ?? null);
+    appendData(chartData.temperatures, 'tsa', point.t_tsa ?? null);
+    appendData(chartData.temperatures, 'waterIn', point.t_water_in ?? null);
+    appendData(chartData.temperatures, 'waterOut', point.t_water_out ?? null);
+
+    appendData(chartData.pressure, 'time', timestamp);
+    appendData(chartData.pressure, 'cube', point.p_cube ?? null);
+    appendData(chartData.pressure, 'atm', point.p_atm ?? null);
+    appendData(chartData.pressure, 'flood', point.p_flood ?? null);
+
+    appendData(chartData.power, 'time', timestamp);
+    appendData(chartData.power, 'voltage', point.pzem_ok ? (point.voltage ?? null) : null);
+    appendData(chartData.power, 'current', point.pzem_ok ? (point.current ?? null) : null);
+    appendData(chartData.power, 'power', point.pzem_ok ? (point.power ?? null) : null);
+    appendData(chartData.power, 'energy', point.pzem_ok ? (point.energy ?? null) : null);
+    appendData(chartData.power, 'frequency', point.pzem_ok ? (point.frequency ?? null) : null);
+    appendData(chartData.power, 'pf', point.pzem_ok ? (point.pf ?? null) : null);
+
+    appendData(chartData.pump, 'time', timestamp);
+    appendData(chartData.pump, 'speed', point.pump_speed ?? null);
+    appendData(chartData.pump, 'volume', point.pump_volume ?? null);
+
+    appendData(chartData.abv, 'time', timestamp);
+    appendData(chartData.abv, 'value', point.abv ?? null);
+
+    if (point.volume_heads !== undefined) chartData.fractions.heads = Number(point.volume_heads) || 0;
+    if (point.volume_body !== undefined) chartData.fractions.body = Number(point.volume_body) || 0;
+    if (point.volume_tails !== undefined) chartData.fractions.tails = Number(point.volume_tails) || 0;
+}
+
+function applyHistoryPayload(payload) {
+    clearChartBuffers();
+    setHistoryMeta({
+        ...payload?.meta,
+        deviceNowMs: payload?.generatedAtMs
+    });
+    syncChartMetaVisibility();
+
+    const aggregateCutoffMs = Math.max(0, Number(payload?.generatedAtMs || 0) - (60 * 60 * 1000));
+    const aggregate = Array.isArray(payload?.aggregate) ? payload.aggregate : [];
+    const minute = Array.isArray(payload?.minute) ? payload.minute : [];
+
+    aggregate
+        .filter((point) => Number(point?.ms || 0) < aggregateCutoffMs)
+        .forEach(applyHistoryPoint);
+    minute.forEach(applyHistoryPoint);
+
+    refreshVisibleWindow();
+}
+
+async function loadLiveHistory() {
+    try {
+        const response = await fetch('/api/charts/live');
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
+        applyHistoryPayload(payload);
+        addChartLog('История графиков загружена из памяти контроллера', 'success');
+    } catch (error) {
+        addChartLog(`Не удалось загрузить историю графиков: ${error.message}`, 'warning');
+    }
+}
 
 // ============================================================================
 // WebSocket
@@ -53,7 +247,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}/ws`;
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
 
     try {
         ws = new WebSocket(wsUrl);
@@ -61,6 +255,7 @@ function connectWebSocket() {
         ws.onopen = function() {
             isConnected = true;
             updateConnectionStatus(true);
+            addChartLog('WebSocket подключен', 'success');
             if (reconnectInterval) {
                 clearInterval(reconnectInterval);
                 reconnectInterval = null;
@@ -75,16 +270,19 @@ function connectWebSocket() {
                 updateChartData(data);
             } catch (e) {
                 console.error('JSON parse error:', e);
+                addChartLog(`Ошибка JSON: ${e.message}`, 'error');
             }
         };
 
         ws.onerror = function(error) {
             console.error('WebSocket error:', error);
+            addChartLog('Ошибка WebSocket', 'error');
         };
 
         ws.onclose = function() {
             isConnected = false;
             updateConnectionStatus(false);
+            addChartLog('WebSocket отключен, ожидаю переподключение', 'warning');
 
             if (!reconnectInterval) {
                 reconnectInterval = setInterval(() => {
@@ -95,12 +293,14 @@ function connectWebSocket() {
     } catch (e) {
         console.error('WebSocket creation error:', e);
         updateConnectionStatus(false);
+        addChartLog(`Ошибка создания WebSocket: ${e.message}`, 'error');
     }
 }
 
 function updateConnectionStatus(connected) {
     const statusDot = document.getElementById('connection-status');
     const statusText = document.getElementById('connection-text');
+    if (!statusDot || !statusText) return;
 
     if (connected) {
         statusDot.className = 'status-dot online';
@@ -116,6 +316,14 @@ function updateConnectionStatus(connected) {
 // ============================================================================
 
 function initCharts() {
+    if (typeof window.ApexCharts === 'undefined') {
+        document.querySelectorAll('.chart, .chart-bar').forEach((el) => {
+            if (!el) return;
+            el.innerHTML = '<div class="info-display">Графики временно недоступны: библиотека ApexCharts не загрузилась</div>';
+        });
+        return false;
+    }
+
     // Общие настройки для всех графиков
     const commonOptions = {
         chart: {
@@ -279,6 +487,7 @@ function initCharts() {
         legend: { show: false }
     });
     chartsInstances.fractions.render();
+    return true;
 }
 
 // ============================================================================
@@ -291,13 +500,49 @@ function updateChartData(data) {
     // Температуры
     if (data.t_cube !== undefined) {
         appendData(chartData.temperatures, 'time', now);
-        appendData(chartData.temperatures, 'cube', data.t_cube);
-        appendData(chartData.temperatures, 'columnBottom', data.t_column_bottom || 0);
-        appendData(chartData.temperatures, 'columnTop', data.t_column_top || 0);
-        appendData(chartData.temperatures, 'reflux', data.t_reflux || 0);
-        appendData(chartData.temperatures, 'tsa', data.t_tsa || 0);
-        appendData(chartData.temperatures, 'waterIn', data.t_water_in || 0);
-        appendData(chartData.temperatures, 'waterOut', data.t_water_out || 0);
+        appendData(chartData.temperatures, 'cube', data.tempValid?.cube === false ? null : data.t_cube);
+        appendData(
+            chartData.temperatures,
+            'columnBottom',
+            isTemperatureChannelVisible('columnBottom') && data.tempValid?.columnBottom !== false
+                ? (data.t_column_bottom ?? null)
+                : null
+        );
+        appendData(
+            chartData.temperatures,
+            'columnTop',
+            isTemperatureChannelVisible('columnTop') && data.tempValid?.columnTop !== false
+                ? (data.t_column_top ?? null)
+                : null
+        );
+        appendData(
+            chartData.temperatures,
+            'reflux',
+            isTemperatureChannelVisible('reflux') && data.tempValid?.reflux !== false
+                ? (data.t_reflux ?? null)
+                : null
+        );
+        appendData(
+            chartData.temperatures,
+            'tsa',
+            isTemperatureChannelVisible('tsa') && data.tempValid?.tsa !== false
+                ? (data.t_tsa ?? null)
+                : null
+        );
+        appendData(
+            chartData.temperatures,
+            'waterIn',
+            isTemperatureChannelVisible('waterIn') && data.tempValid?.waterIn !== false
+                ? (data.t_water_in ?? null)
+                : null
+        );
+        appendData(
+            chartData.temperatures,
+            'waterOut',
+            isTemperatureChannelVisible('waterOut') && data.tempValid?.waterOut !== false
+                ? (data.t_water_out ?? null)
+                : null
+        );
 
         updateChart('temperatures', [
             chartData.temperatures.cube,
@@ -319,8 +564,8 @@ function updateChartData(data) {
     if (data.p_cube !== undefined) {
         appendData(chartData.pressure, 'time', now);
         appendData(chartData.pressure, 'cube', data.p_cube);
-        appendData(chartData.pressure, 'atm', data.p_atm || 1013);
-        appendData(chartData.pressure, 'flood', data.p_flood || 0);
+        appendData(chartData.pressure, 'atm', data.p_atm ?? null);
+        appendData(chartData.pressure, 'flood', data.p_flood ?? null);
 
         updateChart('pressure', [
             chartData.pressure.cube,
@@ -333,14 +578,19 @@ function updateChartData(data) {
     }
 
     // Мощность
-    if (data.voltage !== undefined) {
+    if (data.voltage !== undefined || data.pzem_ok !== undefined) {
+        if (data.pzem_ok !== undefined) {
+            liveChartMeta.power.available = Boolean(data.pzem_ok);
+            syncChartMetaVisibility();
+        }
         appendData(chartData.power, 'time', now);
-        appendData(chartData.power, 'voltage', data.voltage);
-        appendData(chartData.power, 'current', data.current || 0);
-        appendData(chartData.power, 'power', data.power || 0);
-        appendData(chartData.power, 'energy', data.energy || 0);
-        appendData(chartData.power, 'frequency', data.frequency || 50);
-        appendData(chartData.power, 'pf', data.pf || 0);
+        const powerOnline = data.pzem_ok !== false && isPowerChannelVisible();
+        appendData(chartData.power, 'voltage', powerOnline ? (data.voltage ?? null) : null);
+        appendData(chartData.power, 'current', powerOnline ? (data.current ?? null) : null);
+        appendData(chartData.power, 'power', powerOnline ? (data.power ?? null) : null);
+        appendData(chartData.power, 'energy', powerOnline ? (data.energy ?? null) : null);
+        appendData(chartData.power, 'frequency', powerOnline ? (data.frequency ?? null) : null);
+        appendData(chartData.power, 'pf', powerOnline ? (data.pf ?? null) : null);
 
         updateChart('power', [
             chartData.power.voltage,
@@ -360,7 +610,7 @@ function updateChartData(data) {
     if (data.pump_speed !== undefined) {
         appendData(chartData.pump, 'time', now);
         appendData(chartData.pump, 'speed', data.pump_speed);
-        appendData(chartData.pump, 'volume', data.pump_volume || 0);
+        appendData(chartData.pump, 'volume', data.pump_volume ?? null);
 
         updateChart('pump', [
             chartData.pump.speed,
@@ -379,16 +629,18 @@ function updateChartData(data) {
     // Фракции (обновляем только значения)
     if (data.volume_heads !== undefined) {
         chartData.fractions.heads = data.volume_heads;
-        chartData.fractions.body = data.volume_body || 0;
-        chartData.fractions.tails = data.volume_tails || 0;
+        chartData.fractions.body = data.volume_body ?? 0;
+        chartData.fractions.tails = data.volume_tails ?? 0;
 
-        chartsInstances.fractions.updateSeries([{
-            data: [
-                chartData.fractions.heads,
-                chartData.fractions.body,
-                chartData.fractions.tails
-            ]
-        }]);
+        if (chartsInstances.fractions) {
+            chartsInstances.fractions.updateSeries([{
+                data: [
+                    chartData.fractions.heads,
+                    chartData.fractions.body,
+                    chartData.fractions.tails
+                ]
+            }]);
+        }
     }
 
     // Uptime
@@ -647,18 +899,16 @@ function resumeCharts() {
     chartsPaused = false;
 }
 
-function clearCharts() {
+async function clearCharts() {
     if (confirm('Очистить все графики?')) {
+        try {
+            await fetch('/api/charts/live/reset', { method: 'POST' });
+        } catch (error) {
+            addChartLog(`Не удалось очистить историю в контроллере: ${error.message}`, 'warning');
+        }
+
         // Очистить данные
-        Object.keys(chartData).forEach(key => {
-            if (key === 'fractions') {
-                chartData[key] = { heads: 0, body: 0, tails: 0 };
-            } else {
-                Object.keys(chartData[key]).forEach(subkey => {
-                    chartData[key][subkey] = [];
-                });
-            }
-        });
+        clearChartBuffers();
 
         // Обновить графики
         Object.keys(chartsInstances).forEach(name => {
@@ -669,7 +919,11 @@ function clearCharts() {
             }
         });
 
-        chartsInstances.fractions.updateSeries([{ data: [0, 0, 0] }]);
+        if (chartsInstances.fractions) {
+            chartsInstances.fractions.updateSeries([{ data: [0, 0, 0] }]);
+        }
+
+        addChartLog('Локальная и контроллерная история графиков очищена', 'success');
     }
 }
 

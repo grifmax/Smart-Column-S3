@@ -182,6 +182,35 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
               doc["stabilizationMin"] = params.stabilizationMin;
               doc["purgeMin"] = params.purgeMin;
               doc["baroCorrectionEnabled"] = params.baroCorrectionEnabled;
+              doc["takeoffBackendType"] =
+                  static_cast<uint8_t>(params.takeoffBackendType);
+              doc["refluxMode"] = static_cast<uint8_t>(params.refluxMode);
+              doc["srRatio"] = params.srRatio;
+              doc["autonomousCycleSec"] = params.autonomousCycleSec;
+              doc["autonomousPauseSec"] = params.autonomousPauseSec;
+              doc["chimAutoPercent"] = params.chimAutoPercent;
+              doc["chimTimePerH"] = params.chimTimePerH;
+              doc["chimBegPercent"] = params.chimBegPercent;
+              doc["chimMinPercent"] = params.chimMinPercent;
+              doc["usePbMode"] = params.usePbMode;
+              doc["timpPbMs"] = params.timpPbMs;
+              doc["routingSettlingMs"] = params.routingSettlingMs;
+              doc["routingRetargetMinMs"] = params.routingRetargetMinMs;
+              doc["valvePulsePeriodMs"] = params.valvePulsePeriodMs;
+              doc["valvePulseMinOpenMs"] = params.valvePulseMinOpenMs;
+              doc["valvePulseMaxOpenMs"] = params.valvePulseMaxOpenMs;
+              JsonArray phasePower = doc["phasePowerPercent"].to<JsonArray>();
+              for (uint8_t i = 0; i < RECT_POWER_COUNT; ++i) {
+                phasePower.add(params.phasePowerPercent[i]);
+              }
+              doc["phasePowerStabilization"] =
+                  params.phasePowerPercent[RECT_POWER_STABILIZATION];
+              doc["phasePowerHeads"] =
+                  params.phasePowerPercent[RECT_POWER_HEADS];
+              doc["phasePowerBody"] =
+                  params.phasePowerPercent[RECT_POWER_BODY];
+              doc["phasePowerTails"] =
+                  params.phasePowerPercent[RECT_POWER_TAILS];
 
               String json;
               serializeJson(doc, json);
@@ -270,6 +299,104 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
           updated.baroCorrectionEnabled =
               params["baroCorrectionEnabled"].as<bool>();
         }
+        if (!params["takeoffBackendType"].isNull()) {
+          updated.takeoffBackendType =
+              static_cast<RectTakeoffBackendType>(clampU16Range(
+                  params["takeoffBackendType"].as<uint32_t>(), 0,
+                  static_cast<uint32_t>(
+                      RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
+        }
+        if (!params["refluxMode"].isNull()) {
+          updated.refluxMode = static_cast<RectRefluxMode>(clampU16Range(
+              params["refluxMode"].as<uint32_t>(), 0,
+              static_cast<uint32_t>(RectRefluxMode::AUTONOMOUS)));
+        }
+        if (!params["srRatio"].isNull()) {
+          updated.srRatio =
+              clampFloatRange(params["srRatio"].as<float>(), 0.0f, 20.0f);
+        }
+        if (!params["autonomousCycleSec"].isNull()) {
+          updated.autonomousCycleSec = clampU16Range(
+              params["autonomousCycleSec"].as<uint32_t>(), 1, 7200);
+        }
+        if (!params["autonomousPauseSec"].isNull()) {
+          updated.autonomousPauseSec = clampU16Range(
+              params["autonomousPauseSec"].as<uint32_t>(), 0, 7199);
+        }
+        if (!params["chimAutoPercent"].isNull()) {
+          updated.chimAutoPercent = clampFloatRange(
+              params["chimAutoPercent"].as<float>(), 0.0f, 200.0f);
+        }
+        if (!params["chimTimePerH"].isNull()) {
+          updated.chimTimePerH = clampFloatRange(
+              params["chimTimePerH"].as<float>(), -2000.0f, 2000.0f);
+        }
+        if (!params["chimBegPercent"].isNull()) {
+          updated.chimBegPercent = clampFloatRange(
+              params["chimBegPercent"].as<float>(), -100.0f, 200.0f);
+        }
+        if (!params["chimMinPercent"].isNull()) {
+          updated.chimMinPercent = clampFloatRange(
+              params["chimMinPercent"].as<float>(), 0.0f, 100.0f);
+        }
+        if (params["phasePowerPercent"].is<JsonArray>()) {
+          JsonArray phasePower = params["phasePowerPercent"].as<JsonArray>();
+          for (uint8_t i = 0; i < RECT_POWER_COUNT && i < phasePower.size();
+               ++i) {
+            updated.phasePowerPercent[i] = clampU8Range(
+                phasePower[i].as<uint32_t>(), 1, 100);
+          }
+        }
+        if (!params["phasePowerStabilization"].isNull()) {
+          updated.phasePowerPercent[RECT_POWER_STABILIZATION] =
+              clampU8Range(params["phasePowerStabilization"].as<uint32_t>(), 1,
+                           100);
+        }
+        if (!params["phasePowerHeads"].isNull()) {
+          updated.phasePowerPercent[RECT_POWER_HEADS] =
+              clampU8Range(params["phasePowerHeads"].as<uint32_t>(), 1, 100);
+        }
+        if (!params["phasePowerBody"].isNull()) {
+          updated.phasePowerPercent[RECT_POWER_BODY] =
+              clampU8Range(params["phasePowerBody"].as<uint32_t>(), 1, 100);
+        }
+        if (!params["phasePowerTails"].isNull()) {
+          updated.phasePowerPercent[RECT_POWER_TAILS] =
+              clampU8Range(params["phasePowerTails"].as<uint32_t>(), 1, 100);
+        }
+        if (!params["usePbMode"].isNull()) {
+          updated.usePbMode =
+              clampU8Range(params["usePbMode"].as<uint32_t>(), 0, 3);
+        }
+        if (!params["timpPbMs"].isNull()) {
+          const uint32_t timpPbMs = params["timpPbMs"].as<uint32_t>();
+          updated.timpPbMs = timpPbMs > 600000UL ? 600000UL : timpPbMs;
+        }
+        if (!params["routingSettlingMs"].isNull()) {
+          updated.routingSettlingMs = clampU16Range(
+              params["routingSettlingMs"].as<uint32_t>(), 0, 10000);
+        }
+        if (!params["routingRetargetMinMs"].isNull()) {
+          updated.routingRetargetMinMs = clampU16Range(
+              params["routingRetargetMinMs"].as<uint32_t>(), 0, 30000);
+        }
+        if (!params["valvePulsePeriodMs"].isNull()) {
+          updated.valvePulsePeriodMs = clampU16Range(
+              params["valvePulsePeriodMs"].as<uint32_t>(), 100, 5000);
+        }
+        if (!params["valvePulseMinOpenMs"].isNull()) {
+          updated.valvePulseMinOpenMs = clampU16Range(
+              params["valvePulseMinOpenMs"].as<uint32_t>(), 0,
+              updated.valvePulsePeriodMs);
+        }
+        if (!params["valvePulseMaxOpenMs"].isNull()) {
+          updated.valvePulseMaxOpenMs = clampU16Range(
+              params["valvePulseMaxOpenMs"].as<uint32_t>(),
+              updated.valvePulseMinOpenMs, updated.valvePulsePeriodMs);
+        }
+        if (updated.autonomousPauseSec >= updated.autonomousCycleSec) {
+          updated.autonomousPauseSec = updated.autonomousCycleSec - 1;
+        }
 
         if (fractionsUpdated) {
           normalizeRectFractions(updated);
@@ -295,6 +422,39 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
         out["purgeMin"] = g_settings.rectParams.purgeMin;
         out["baroCorrectionEnabled"] =
             g_settings.rectParams.baroCorrectionEnabled;
+        out["takeoffBackendType"] =
+            static_cast<uint8_t>(g_settings.rectParams.takeoffBackendType);
+        out["refluxMode"] =
+            static_cast<uint8_t>(g_settings.rectParams.refluxMode);
+        out["srRatio"] = g_settings.rectParams.srRatio;
+        out["autonomousCycleSec"] =
+            g_settings.rectParams.autonomousCycleSec;
+        out["autonomousPauseSec"] =
+            g_settings.rectParams.autonomousPauseSec;
+        out["chimAutoPercent"] = g_settings.rectParams.chimAutoPercent;
+        out["chimTimePerH"] = g_settings.rectParams.chimTimePerH;
+        out["chimBegPercent"] = g_settings.rectParams.chimBegPercent;
+        out["chimMinPercent"] = g_settings.rectParams.chimMinPercent;
+        out["usePbMode"] = g_settings.rectParams.usePbMode;
+        out["timpPbMs"] = g_settings.rectParams.timpPbMs;
+        out["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
+        out["routingRetargetMinMs"] =
+            g_settings.rectParams.routingRetargetMinMs;
+        out["valvePulsePeriodMs"] = g_settings.rectParams.valvePulsePeriodMs;
+        out["valvePulseMinOpenMs"] = g_settings.rectParams.valvePulseMinOpenMs;
+        out["valvePulseMaxOpenMs"] = g_settings.rectParams.valvePulseMaxOpenMs;
+        JsonArray outPhasePower = out["phasePowerPercent"].to<JsonArray>();
+        for (uint8_t i = 0; i < RECT_POWER_COUNT; ++i) {
+          outPhasePower.add(g_settings.rectParams.phasePowerPercent[i]);
+        }
+        out["phasePowerStabilization"] =
+            g_settings.rectParams.phasePowerPercent[RECT_POWER_STABILIZATION];
+        out["phasePowerHeads"] =
+            g_settings.rectParams.phasePowerPercent[RECT_POWER_HEADS];
+        out["phasePowerBody"] =
+            g_settings.rectParams.phasePowerPercent[RECT_POWER_BODY];
+        out["phasePowerTails"] =
+            g_settings.rectParams.phasePowerPercent[RECT_POWER_TAILS];
 
         String json;
         serializeJson(out, json);

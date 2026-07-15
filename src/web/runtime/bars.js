@@ -2,7 +2,7 @@ import { runtimeMonitorState, currentMode, resolveMode, maxHeaterPower, MODE_IDL
 import { activateTabById } from '../core/tabs.js';
 import { clampPercent, runtimeEscapeHtml, toFinite, formatDurationSafe } from '../runtime/helpers.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
-import { estimateRectTargets } from '../runtime/state.js';
+import { estimateRectTargets, getRectificationTakeoffRateMlH } from '../runtime/state.js';
 
 let missionBindingsReady = false;
 let diagnosticsPanelBindingsReady = false;
@@ -112,6 +112,98 @@ function formatSignedValue(value, digits = 1, unit = '') {
     }
     const sign = numeric > 0 ? '+' : '';
     return `${sign}${numeric.toFixed(digits)}${unit}`;
+}
+
+function getRectTakeoffBackendLabel(backendType) {
+    if (backendType === 1) return '3 клапана';
+    if (backendType === 2) return '1 клапан + переключение';
+    return 'насос';
+}
+
+function getRectTakeoffFractionLabel(fraction, fallback = 'отбор закрыт') {
+    if (fraction === 1) return 'головы';
+    if (fraction === 2) return 'тело';
+    if (fraction === 3) return 'хвосты';
+    return fallback;
+}
+
+function getRectTakeoffValveLabel(backendType, activeValve) {
+    if (backendType === 2) {
+        return activeValve === 1 ? 'общий клапан отбора' : 'закрыт';
+    }
+    if (activeValve === 1) return 'клапан голов';
+    if (activeValve === 2) return 'клапан тела';
+    if (activeValve === 3) return 'клапан хвостов';
+    return 'закрыт';
+}
+
+function getRectTakeoffDutyLabel(backendType, actualDuty, backendActive, requestedFraction) {
+    const dutyByte = Math.max(0, Math.min(255, Math.round(toFinite(actualDuty, 0))));
+    const dutyPercent = clampPercent((dutyByte / 255) * 100);
+
+    if (backendType === 0) {
+        if (backendActive) return 'непрерывный (100%)';
+        if (requestedFraction > 0) return 'пауза / закрыт';
+        return 'выкл';
+    }
+
+    if (!backendActive && requestedFraction === 0) {
+        return 'выкл';
+    }
+
+    return `${dutyByte}/255 (${dutyPercent.toFixed(0)}%)`;
+}
+
+function renderRectTakeoffDetails(container, rectification) {
+    if (!container) return;
+
+    const backendType = Math.round(toFinite(rectification?.takeoffBackendType, 0));
+    const backendLabel = getRectTakeoffBackendLabel(backendType);
+    const backendActive = Boolean(rectification?.takeoffBackendActive);
+    const routingReady = Boolean(rectification?.takeoffRoutingReady ?? true);
+    const requestedFraction = Math.round(toFinite(rectification?.takeoffRequestedFraction, 0));
+    const routedFraction = Math.round(toFinite(rectification?.takeoffRoutedFraction, 0));
+    const activeFraction = Math.round(toFinite(rectification?.takeoffActiveFraction, 0));
+    const activeValve = Math.round(toFinite(rectification?.takeoffActiveValve, 0));
+    const actualDuty = Math.round(toFinite(rectification?.takeoffActualDuty, 0));
+    const actualRate = Math.max(0, toFinite(rectification?.takeoffActualEquivalentRateMlH, 0));
+
+    const requestedLabel = getRectTakeoffFractionLabel(requestedFraction);
+    const routedLabel = getRectTakeoffFractionLabel(
+        routedFraction,
+        backendType === 2 ? 'маршрут не занят' : 'канал не выбран'
+    );
+    const activeLabel = getRectTakeoffFractionLabel(activeFraction);
+    const activeValveLabel = getRectTakeoffValveLabel(backendType, activeValve);
+    const routeLabel = backendType === 2
+        ? (routingReady ? routedLabel : `${routedLabel} -> ${requestedLabel}`)
+        : (routedFraction > 0 ? routedLabel : requestedLabel);
+    const dutyLabel = getRectTakeoffDutyLabel(backendType, actualDuty, backendActive, requestedFraction);
+    const equivalentRateLabel = `${actualRate.toFixed(0)} мл/ч`;
+    const stateLabel = backendActive
+        ? `отбор открыт${actualRate > 0 ? ` • ${actualRate.toFixed(0)} мл/ч` : ''}`
+        : requestedFraction > 0
+            ? (routingReady ? 'готов к отбору' : 'ждет маршрута')
+            : 'отбор закрыт';
+
+    const cards = [
+        { label: 'Исполнитель', value: backendLabel },
+        { label: 'Команда', value: requestedLabel },
+        { label: 'Маршрут', value: routeLabel },
+        { label: 'Статус', value: stateLabel },
+        { label: 'Duty / импульс', value: dutyLabel },
+        { label: 'Эквив. скорость', value: equivalentRateLabel },
+        { label: 'Активная фракция', value: activeLabel },
+        { label: 'Активный клапан', value: activeValveLabel },
+        { label: 'Готовность', value: routingReady ? 'маршрут готов' : 'переключение' }
+    ];
+
+    container.innerHTML = cards.map((card) => `
+        <div class="operator-stat">
+            <span class="operator-stat-label">${runtimeEscapeHtml(card.label)}</span>
+            <strong class="operator-stat-value">${runtimeEscapeHtml(card.value)}</strong>
+        </div>
+    `).join('');
 }
 
 function renderPressureIndicators(state, indicators) {
@@ -483,6 +575,7 @@ export function setPreflightState(title, detail, tone = 'muted', checks = {}) {
     setPreflightItem('runtime-preflight-safety', checks.safety?.text || '--', checks.safety?.tone || 'muted');
     setPreflightItem('runtime-preflight-alarm', checks.alarm?.text || '--', checks.alarm?.tone || 'muted');
     setPreflightItem('runtime-preflight-profile', checks.profile?.text || '--', checks.profile?.tone || 'muted');
+    setPreflightItem('runtime-preflight-takeoff', checks.takeoff?.text || '--', checks.takeoff?.tone || 'muted');
     setPreflightItem('runtime-preflight-water', checks.water?.text || '--', checks.water?.tone || 'muted');
 }
 
@@ -2364,12 +2457,46 @@ export function renderModeRuntimeCard() {
         titleEl.textContent = 'Прогресс авто-ректификации';
         const effectiveAbv = getEffectiveAbvForCalculations();
         const abvSourceText = effectiveAbv.source === 'sensor' ? 'датчик' : 'план';
-        captionEl.textContent = `Фаза: ${s.phaseStr || phase || '-'} • крепость расчета ${effectiveAbv.value.toFixed(1)}% (${abvSourceText})`;
+        const backendType = Math.round(toFinite(s.rectification.takeoffBackendType, 0));
+        const backendLabel = getRectTakeoffBackendLabel(backendType);
+        const routingReady = Boolean(s.rectification.takeoffRoutingReady ?? true);
+        const activeFraction = Math.round(toFinite(s.rectification.takeoffActiveFraction, 0));
+        const requestedFraction = Math.round(toFinite(s.rectification.takeoffRequestedFraction, 0));
+        const actualRate = Math.max(0, toFinite(s.rectification.takeoffActualEquivalentRateMlH, 0));
+        const activeFractionLabel = getRectTakeoffFractionLabel(
+            activeFraction || requestedFraction,
+            'отбор закрыт'
+        );
+        captionEl.textContent = `Фаза: ${s.phaseStr || phase || '-'} • крепость расчета ${effectiveAbv.value.toFixed(1)}% (${abvSourceText}) • ${backendLabel} • ${routingReady ? 'маршрут готов' : 'маршрут переключается'} • ${activeFractionLabel}${actualRate > 0 ? ` • ${actualRate.toFixed(0)} мл/ч` : ''}`;
 
         const est = estimateRectTargets(s.rectification, effectiveAbv.value);
-        const heaterKw = Math.max(0.1, toFinite(s.equipment.heaterPowerW, maxHeaterPower) / 1000);
-        const headsSpeed = toFinite(s.rectification.headsSpeedMlHKw, 0) * heaterKw;
-        const bodySpeed = toFinite(s.rectification.bodySpeedMlHKw, 0) * heaterKw;
+        const effectiveEquipment = {
+            ...s.equipment,
+            heaterPowerW: Math.max(0, toFinite(s.equipment.heaterPowerW, maxHeaterPower))
+        };
+        const rectMode = Math.round(toFinite(s.rectification.refluxMode, 0));
+        const directHeadsSpeed = getRectificationTakeoffRateMlH(
+            s.rectification.headsSpeedMlHKw,
+            effectiveEquipment
+        );
+        const directBodySpeed = getRectificationTakeoffRateMlH(
+            s.rectification.bodySpeedMlHKw,
+            effectiveEquipment
+        );
+        const rectDuty = (() => {
+            if (rectMode === 1) {
+                const ratio = Math.max(0, toFinite(s.rectification.srRatio, 0));
+                return ratio <= 0 ? 0 : (1 / (ratio + 1));
+            }
+            if (rectMode === 2) {
+                const cycle = Math.max(1, toFinite(s.rectification.autonomousCycleSec, 900));
+                const pause = Math.max(0, Math.min(cycle - 1, toFinite(s.rectification.autonomousPauseSec, 90)));
+                return Math.max(0, (cycle - pause) / cycle);
+            }
+            return 1;
+        })();
+        const headsSpeed = rectMode === 0 ? directHeadsSpeed : directHeadsSpeed * rectDuty;
+        const bodySpeed = rectMode === 0 ? directBodySpeed : directBodySpeed * rectDuty;
         const tailsSpeed = Math.max(0, bodySpeed / 2);
         const targetHeads = toFinite(s.rectification.headsTargetMl, 0) > 0 ? toFinite(s.rectification.headsTargetMl, 0) : est.heads;
         const targetBody = toFinite(s.rectification.bodyTargetMl, 0) > 0 ? toFinite(s.rectification.bodyTargetMl, 0) : est.body;
@@ -2380,11 +2507,18 @@ export function renderModeRuntimeCard() {
             { key: 'body', label: 'Тело', target: targetBody, speed: bodySpeed, value: toFinite(s.volumes.body, 0), pending: phase < PHASE_BODY || phase === PHASE_POST_HEADS_STAB },
             { key: 'tails', label: 'Хвосты', target: targetTails, speed: tailsSpeed, value: toFinite(s.volumes.tails, 0), pending: phase < PHASE_TAILS }
         ].forEach((part) => {
+            const partFractionId = part.key === 'heads' ? 1 : part.key === 'body' ? 2 : 3;
             const target = Math.max(0, part.target);
             const value = Math.max(0, part.value);
+            const effectiveSpeed =
+                partFractionId === activeFraction && actualRate > 0
+                    ? actualRate
+                    : part.speed;
             const pct = target > 0 ? clampPercent((value / target) * 100) : 0;
             const remMl = Math.max(0, target - value);
-            const remSec = (part.speed > 0 && remMl > 0) ? (remMl / part.speed) * 3600 : 0;
+            const remSec = (effectiveSpeed > 0 && remMl > 0)
+                ? (remMl / effectiveSpeed) * 3600
+                : 0;
             items.push({
                 label: part.label,
                 percent: pct,
@@ -2469,6 +2603,23 @@ export function renderModeRuntimeCard() {
         titleEl.textContent = 'Ручная ректификация';
         captionEl.textContent = 'Параметры ниже редактируются нажатием на плитку';
 
+        const backendType = Math.round(toFinite(s.rectification.takeoffBackendType, 0));
+        const backendLabel = backendType === 1
+            ? '3 клапана'
+            : backendType === 2
+                ? '1 клапан + переключение'
+                : 'насос';
+        const routingReady = Boolean(s.rectification.takeoffRoutingReady ?? true);
+        const activeFraction = Math.round(toFinite(s.rectification.takeoffActiveFraction, 0));
+        const activeFractionLabel = activeFraction === 1
+            ? 'головы'
+            : activeFraction === 2
+                ? 'тело'
+                : activeFraction === 3
+                    ? 'хвосты'
+                    : 'отбор закрыт';
+        captionEl.textContent = `Отбор: ${backendLabel} • ${routingReady ? 'маршрут готов' : 'маршрут переключается'} • ${activeFractionLabel}`;
+
         const heads = Math.max(0, toFinite(s.volumes.heads, 0));
         const body = Math.max(0, toFinite(s.volumes.body, 0));
         const tails = Math.max(0, toFinite(s.volumes.tails, 0));
@@ -2526,6 +2677,11 @@ export function renderModeRuntimeCard() {
     const rectEl = document.getElementById('mode-runtime-rect');
     if (rectEl) {
         rectEl.style.display = mode === MODE_RECT ? 'grid' : 'none';
+        if (mode === MODE_RECT) {
+            renderRectTakeoffDetails(rectEl, s.rectification);
+        } else {
+            rectEl.innerHTML = '';
+        }
     }
 }
 

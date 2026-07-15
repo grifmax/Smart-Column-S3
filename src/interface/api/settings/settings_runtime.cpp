@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "control/fsm.h"
+#include "control/rect_takeoff.h"
 #include "control/watt_control.h"
 #include "drivers/heater.h"
 #include "drivers/pump.h"
@@ -109,6 +110,16 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
         }
 
         const float speed = doc["speed"] | 0.0f;
+        if (g_state.mode == Mode::MANUAL_RECT) {
+          FSM::ManualRect::setTakeoffRateMlH(speed);
+          char resp[128];
+          snprintf(resp, sizeof(resp),
+                   "{\"success\":true,\"manualRect\":true,\"speed\":%.1f}",
+                   speed > 0.0f ? speed : 0.0f);
+          request->send(200, "application/json", resp);
+          return;
+        }
+
         if (speed <= 0.0f) {
           Pump::stop();
           request->send(200, "application/json",
@@ -146,6 +157,12 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
         }
         if (!doc["heads"].isNull()) {
           Valves::setHeads(doc["heads"].as<bool>());
+        }
+        if (!doc["body"].isNull()) {
+          Valves::setBody(doc["body"].as<bool>());
+        }
+        if (!doc["tails"].isNull()) {
+          Valves::setTails(doc["tails"].as<bool>());
         }
         if (!doc["uno"].isNull()) {
           Valves::setUno(doc["uno"].as<bool>());

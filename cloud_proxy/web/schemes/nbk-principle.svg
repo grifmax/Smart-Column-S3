@@ -1,0 +1,312 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1040" width="1600" height="1040">
+  <defs>
+    <style>
+      text { font-family: "Segoe UI", "DejaVu Sans", sans-serif; fill: #111; }
+      .title { font-size: 26px; font-weight: 700; }
+      .sub { font-size: 12px; fill: #444; }
+      .sheet { fill: #fff; stroke: #000; stroke-width: 1.5; }
+      .zone { fill: none; stroke: #9a9a9a; stroke-width: 1.1; stroke-dasharray: 8 6; }
+      .zone-title { font-size: 13px; font-weight: 700; }
+      .block { fill: #fff; stroke: #000; stroke-width: 1.5; }
+      .blk-title { font-size: 14px; font-weight: 700; }
+      .blk-sub { font-size: 11px; fill: #444; }
+      .tiny { font-size: 10px; fill: #555; }
+      .pin { font-size: 11px; }
+      .sig { fill: none; stroke: #555; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+      .power12 { fill: none; stroke: #007a3d; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+      .power5 { fill: none; stroke: #1d70b8; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+      .power33 { fill: none; stroke: #0097a7; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+      .ac { fill: none; stroke: #b74d2f; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .neutral { fill: none; stroke: #506070; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+      .gnd { fill: none; stroke: #666; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .rail-tag { font-size: 11px; font-weight: 700; }
+      .note { font-size: 10px; fill: #333; }
+    </style>
+  </defs>
+
+  <rect x="10" y="10" width="1580" height="1020" class="sheet"/>
+
+  <text x="36" y="48" class="title">Принципиальная электрическая схема автоматики НБК</text>
+  <text x="36" y="68" class="sub">Smart-Column S3, ESP32-S3 DevKitC-1 N16R8. Пины и узлы приведены по текущему src/config.h, а не по старой спецификации.</text>
+
+  <rect x="26" y="96" width="350" height="356" class="zone"/>
+  <text x="40" y="118" class="zone-title">1. Силовая часть 220 В</text>
+
+  <rect x="44" y="144" width="92" height="72" class="block"/>
+  <text x="58" y="170" class="blk-title">X1</text>
+  <text x="58" y="188" class="blk-sub">Ввод сети</text>
+  <text x="58" y="204" class="tiny">L / N / PE</text>
+
+  <rect x="170" y="144" width="92" height="72" class="block"/>
+  <text x="184" y="170" class="blk-title">QF1</text>
+  <text x="184" y="188" class="blk-sub">Автомат</text>
+  <text x="184" y="204" class="tiny">и предохранитель</text>
+
+  <rect x="44" y="254" width="120" height="88" class="block"/>
+  <text x="58" y="280" class="blk-title">U7</text>
+  <text x="58" y="298" class="blk-sub">PZEM-004T v3.0</text>
+  <text x="58" y="316" class="tiny">L/N IN - L/N OUT</text>
+  <text x="58" y="332" class="tiny">измерение V/A/W/f/PF</text>
+
+  <rect x="204" y="254" width="94" height="88" class="block"/>
+  <text x="218" y="280" class="blk-title">K1</text>
+  <text x="218" y="298" class="blk-sub">SSR-40DA</text>
+  <text x="218" y="316" class="tiny">силовой ключ</text>
+
+  <rect x="44" y="378" width="120" height="56" class="block"/>
+  <text x="58" y="402" class="blk-title">EK1</text>
+  <text x="58" y="420" class="blk-sub">ТЭН 220 В</text>
+
+  <rect x="204" y="378" width="94" height="56" class="block"/>
+  <text x="218" y="402" class="blk-title">PS1</text>
+  <text x="218" y="420" class="blk-sub">БП 220 - 12 В</text>
+
+  <path d="M136,170 L170,170" class="ac"/>
+  <path d="M262,170 L322,170 L322,278 L164,278" class="ac"/>
+  <path d="M164,302 L204,302" class="ac"/>
+  <path d="M298,302 L338,302 L338,406 L164,406" class="ac"/>
+  <path d="M136,188 L336,188 L336,406 L164,406" class="neutral"/>
+  <path d="M262,188 L262,378" class="neutral"/>
+  <path d="M90,216 L90,236" class="gnd"/>
+  <path d="M74,236 L106,236" class="gnd"/>
+  <path d="M78,242 L102,242" class="gnd"/>
+  <path d="M82,248 L98,248" class="gnd"/>
+  <text x="112" y="246" class="tiny">PE на корпус и ТЭН</text>
+
+  <rect x="26" y="472" width="350" height="528" class="zone"/>
+  <text x="40" y="494" class="zone-title">2. Низковольтное питание и интерфейсы</text>
+
+  <rect x="44" y="518" width="118" height="64" class="block"/>
+  <text x="58" y="544" class="blk-title">DC1</text>
+  <text x="58" y="562" class="blk-sub">LM2596</text>
+  <text x="58" y="578" class="tiny">12 В - 5.1 В</text>
+
+  <rect x="44" y="620" width="118" height="88" class="block"/>
+  <text x="58" y="646" class="blk-title">U4</text>
+  <text x="58" y="664" class="blk-sub">ADS1115</text>
+  <text x="58" y="680" class="tiny">I2C 0x48</text>
+  <text x="58" y="696" class="tiny">A1 от датчика давления, A0 резерв под ареометр</text>
+
+  <rect x="202" y="620" width="118" height="88" class="block"/>
+  <text x="216" y="646" class="blk-title">B1 / B2</text>
+  <text x="216" y="664" class="blk-sub">BMP280</text>
+  <text x="216" y="680" class="tiny">0x76 / 0x77</text>
+  <text x="216" y="696" class="tiny">атм. давление</text>
+
+  <rect x="44" y="748" width="118" height="80" class="block"/>
+  <text x="58" y="774" class="blk-title">R1</text>
+  <text x="58" y="792" class="blk-sub">4.7 кОм</text>
+  <text x="58" y="808" class="tiny">подтяжка OneWire</text>
+
+  <rect x="202" y="748" width="118" height="80" class="block"/>
+  <text x="216" y="774" class="blk-title">T1...T7</text>
+  <text x="216" y="792" class="blk-sub">DS18B20 x7</text>
+  <text x="216" y="808" class="tiny">OneWire GPIO4</text>
+
+  <rect x="44" y="868" width="118" height="72" class="block"/>
+  <text x="58" y="894" class="blk-title">F1</text>
+  <text x="58" y="912" class="blk-sub">YF-S201</text>
+  <text x="58" y="928" class="tiny">GPIO3</text>
+
+  <rect x="202" y="868" width="118" height="72" class="block"/>
+  <text x="216" y="894" class="blk-title">LS1</text>
+  <text x="216" y="912" class="blk-sub">Датчик уровня</text>
+  <text x="216" y="928" class="tiny">GPIO1, опция</text>
+
+  <rect x="420" y="96" width="438" height="904" class="zone"/>
+  <text x="434" y="118" class="zone-title">3. Контроллер U1</text>
+
+  <rect x="472" y="148" width="334" height="764" class="block"/>
+  <text x="490" y="180" class="blk-title">U1</text>
+  <text x="490" y="200" class="blk-sub">ESP32-S3 DevKitC-1 N16R8</text>
+  <text x="490" y="220" class="tiny">питание 5 В на VIN/USB-C, внутренняя логика 3.3 В</text>
+
+  <text x="490" y="258" class="pin">GPIO4  - OneWire DS18B20</text>
+  <text x="490" y="286" class="pin">GPIO21 - I2C SDA</text>
+  <text x="490" y="314" class="pin">GPIO9  - I2C SCL</text>
+  <text x="490" y="342" class="pin">GPIO3  - датчик потока воды</text>
+  <text x="490" y="370" class="pin">GPIO1  - датчик уровня</text>
+  <text x="490" y="398" class="pin">GPIO20 - UART1 RX от PZEM TX</text>
+  <text x="490" y="426" class="pin">GPIO19 - UART1 TX к PZEM RX</text>
+  <text x="490" y="454" class="pin">GPIO38 - буззер</text>
+  <text x="490" y="482" class="pin">GPIO5  - PWM 1 Гц, управление нагревом</text>
+  <text x="490" y="510" class="pin">GPIO6  - STEP насоса</text>
+  <text x="490" y="538" class="pin">GPIO7  - DIR насоса</text>
+  <text x="490" y="566" class="pin">GPIO15 - EN драйвера насоса</text>
+  <text x="490" y="594" class="pin">GPIO16 - клапан охлаждения</text>
+  <text x="490" y="622" class="pin">GPIO17 - клапан голов</text>
+  <text x="490" y="650" class="pin">GPIO18 - клапан УНО</text>
+  <text x="490" y="678" class="pin">GPIO8  - сервопривод MG996R, опция</text>
+  <text x="490" y="706" class="pin">GPIO14 - клапан Start/Stop PWM, опция</text>
+
+  <text x="490" y="754" class="tiny">Общая GND обязательна для ADS1115, BMP280, TMC2209, MOSFET-модулей,</text>
+  <text x="490" y="770" class="tiny">PZEM UART, YF-S201, датчика уровня и логики клапанов.</text>
+  <text x="490" y="806" class="tiny">GPIO19/20 заняты под PZEM в текущем config.h.</text>
+  <text x="490" y="822" class="tiny">В старой SPEC были GPIO43/44, но это уже неактуально.</text>
+
+  <rect x="902" y="96" width="668" height="904" class="zone"/>
+  <text x="916" y="118" class="zone-title">4. Исполнительные механизмы и подключение датчиков</text>
+
+  <rect x="930" y="148" width="130" height="76" class="block"/>
+  <text x="944" y="174" class="blk-title">U2</text>
+  <text x="944" y="192" class="blk-sub">PC817</text>
+  <text x="944" y="208" class="tiny">оптроразвязка SSR</text>
+
+  <rect x="930" y="262" width="146" height="92" class="block"/>
+  <text x="944" y="288" class="blk-title">U3</text>
+  <text x="944" y="306" class="blk-sub">TMC2209</text>
+  <text x="944" y="322" class="tiny">STEP / DIR / EN</text>
+  <text x="944" y="338" class="tiny">VMOT = 12 В</text>
+
+  <rect x="1112" y="262" width="134" height="92" class="block"/>
+  <text x="1126" y="288" class="blk-title">M1</text>
+  <text x="1126" y="306" class="blk-sub">NEMA17</text>
+  <text x="1126" y="322" class="tiny">перистальтический насос</text>
+
+  <rect x="930" y="392" width="118" height="72" class="block"/>
+  <text x="944" y="418" class="blk-title">Q1</text>
+  <text x="944" y="436" class="blk-sub">MOSFET</text>
+  <text x="944" y="452" class="tiny">GPIO16</text>
+
+  <rect x="1088" y="392" width="118" height="72" class="block"/>
+  <text x="1102" y="418" class="blk-title">Y1</text>
+  <text x="1102" y="436" class="blk-sub">Клапан воды</text>
+  <text x="1102" y="452" class="tiny">12 В NC</text>
+
+  <rect x="930" y="500" width="118" height="72" class="block"/>
+  <text x="944" y="526" class="blk-title">Q2</text>
+  <text x="944" y="544" class="blk-sub">MOSFET</text>
+  <text x="944" y="560" class="tiny">GPIO17</text>
+
+  <rect x="1088" y="500" width="118" height="72" class="block"/>
+  <text x="1102" y="526" class="blk-title">Y2</text>
+  <text x="1102" y="544" class="blk-sub">Клапан голов</text>
+  <text x="1102" y="560" class="tiny">12 В NC</text>
+
+  <rect x="930" y="608" width="118" height="72" class="block"/>
+  <text x="944" y="634" class="blk-title">Q3</text>
+  <text x="944" y="652" class="blk-sub">MOSFET</text>
+  <text x="944" y="668" class="tiny">GPIO18</text>
+
+  <rect x="1088" y="608" width="118" height="72" class="block"/>
+  <text x="1102" y="634" class="blk-title">Y3</text>
+  <text x="1102" y="652" class="blk-sub">Клапан УНО</text>
+  <text x="1102" y="668" class="tiny">12 В NC</text>
+
+  <rect x="930" y="722" width="134" height="72" class="block"/>
+  <text x="944" y="748" class="blk-title">SV1</text>
+  <text x="944" y="766" class="blk-sub">MG996R</text>
+  <text x="944" y="782" class="tiny">GPIO8, опция</text>
+
+  <rect x="1100" y="722" width="140" height="72" class="block"/>
+  <text x="1114" y="748" class="blk-title">Y4</text>
+  <text x="1114" y="766" class="blk-sub">Start/Stop</text>
+  <text x="1114" y="782" class="tiny">GPIO14 PWM, опция</text>
+
+  <rect x="1284" y="148" width="240" height="156" class="block"/>
+  <text x="1298" y="174" class="blk-title">X2 / X3 / X4 / X5</text>
+  <text x="1298" y="194" class="blk-sub">Полевые клеммы</text>
+  <text x="1298" y="216" class="tiny">X2: насос / шаговик</text>
+  <text x="1298" y="234" class="tiny">X3: клапаны 12 В</text>
+  <text x="1298" y="252" class="tiny">X4: DS18B20 / flow / level</text>
+  <text x="1298" y="270" class="tiny">X5: I2C / PZEM UART / buzzer</text>
+  <text x="1298" y="288" class="tiny">Отдельная клемма PE на корпус шкафа</text>
+
+  <rect x="1284" y="360" width="240" height="136" class="block"/>
+  <text x="1298" y="386" class="blk-title">S1</text>
+  <text x="1298" y="404" class="blk-sub">Pressure Sensor</text>
+  <text x="1298" y="422" class="tiny">давление куба</text>
+  <text x="1298" y="440" class="tiny">выход - ADS1115 A1</text>
+  <text x="1298" y="458" class="tiny">питание по вашему модулю датчика</text>
+  <text x="1298" y="476" class="tiny">общая GND с ESP32/ADC</text>
+
+  <rect x="1284" y="526" width="240" height="168" class="block"/>
+  <text x="1298" y="552" class="blk-title">Назначение DS18B20</text>
+  <text x="1298" y="572" class="tiny">T1 Куб</text>
+  <text x="1298" y="590" class="tiny">T2 Низ колонны</text>
+  <text x="1298" y="608" class="tiny">T3 Верх колонны</text>
+  <text x="1298" y="626" class="tiny">T4 Дефлегматор</text>
+  <text x="1298" y="644" class="tiny">T5 ТСА</text>
+  <text x="1298" y="662" class="tiny">T6 Вода IN</text>
+  <text x="1298" y="680" class="tiny">T7 Вода OUT</text>
+
+  <rect x="1284" y="722" width="240" height="196" class="block"/>
+  <text x="1298" y="748" class="blk-title">Примечания</text>
+  <text x="1298" y="770" class="note">1. MOSFET-каналы для клапанов - low-side,</text>
+  <text x="1298" y="786" class="note">   активный HIGH на GPIO 16/17/18.</text>
+  <text x="1298" y="808" class="note">2. На катушках клапанов нужен обратный диод.</text>
+  <text x="1298" y="830" class="note">3. TMC2209: EN активен LOW.</text>
+  <text x="1298" y="852" class="note">4. OneWire - подтяжка 4.7 кОм к 3.3 В.</text>
+  <text x="1298" y="874" class="note">5. Силовую часть 220 В разводить отдельно</text>
+  <text x="1298" y="890" class="note">   от логики и датчиков.</text>
+
+  <path d="M298,406 L430,406 L430,540 L472,540" class="power12"/>
+  <text x="324" y="398" class="rail-tag" fill="#007a3d">+12 В</text>
+
+  <path d="M162,550 L472,550" class="power5"/>
+  <text x="176" y="542" class="rail-tag" fill="#1d70b8">+5 В</text>
+
+  <path d="M162,788 L202,788" class="power33"/>
+  <path d="M320,788 L430,788 L430,580 L472,580" class="power33"/>
+  <text x="170" y="780" class="rail-tag" fill="#0097a7">+3.3 В</text>
+
+  <path d="M44,958 L1540,958" class="gnd"/>
+  <text x="54" y="950" class="rail-tag">GND</text>
+
+  <path d="M162,652 L472,286" class="sig"/>
+  <path d="M320,652 L472,314" class="sig"/>
+  <path d="M162,788 L472,258" class="sig"/>
+  <path d="M320,788 L472,258" class="sig"/>
+  <path d="M320,908 L472,342" class="sig"/>
+  <path d="M162,908 L472,370" class="sig"/>
+  <path d="M164,298 L472,398" class="sig"/>
+  <path d="M164,320 L472,426" class="sig"/>
+
+  <path d="M806,482 L930,182" class="sig"/>
+  <text x="818" y="476" class="tiny">GPIO5</text>
+  <path d="M1060,182 L1130,182 L1130,302" class="sig"/>
+
+  <path d="M806,510 L930,302" class="sig"/>
+  <path d="M806,538 L930,318" class="sig"/>
+  <path d="M806,566 L930,334" class="sig"/>
+  <text x="820" y="504" class="tiny">STEP</text>
+  <text x="820" y="532" class="tiny">DIR</text>
+  <text x="820" y="560" class="tiny">EN</text>
+  <path d="M1076,308 L1112,308" class="sig"/>
+
+  <path d="M806,594 L930,428" class="sig"/>
+  <path d="M806,622 L930,536" class="sig"/>
+  <path d="M806,650 L930,644" class="sig"/>
+  <path d="M1048,428 L1088,428" class="sig"/>
+  <path d="M1048,536 L1088,536" class="sig"/>
+  <path d="M1048,644 L1088,644" class="sig"/>
+  <path d="M806,678 L930,758" class="sig"/>
+  <path d="M806,706 L1100,758" class="sig"/>
+
+  <path d="M298,406 L930,290" class="power12"/>
+  <path d="M298,406 L930,428" class="power12"/>
+  <path d="M298,406 L930,536" class="power12"/>
+  <path d="M298,406 L930,644" class="power12"/>
+  <path d="M298,406 L930,758" class="power5"/>
+  <path d="M298,406 L1100,758" class="power12"/>
+
+  <path d="M136,406 L1540,406" class="neutral"/>
+  <text x="346" y="398" class="rail-tag" fill="#506070">N</text>
+  <text x="346" y="178" class="rail-tag" fill="#b74d2f">L</text>
+
+  <path d="M44,958 L995,958 L995,464" class="gnd"/>
+  <path d="M44,958 L995,958 L995,572" class="gnd"/>
+  <path d="M44,958 L995,958 L995,680" class="gnd"/>
+  <path d="M44,958 L1000,958 L1000,354" class="gnd"/>
+  <path d="M44,958 L1000,958 L1000,794" class="gnd"/>
+  <path d="M44,958 L1110,958 L1110,464" class="gnd"/>
+  <path d="M44,958 L1110,958 L1110,572" class="gnd"/>
+  <path d="M44,958 L1110,958 L1110,680" class="gnd"/>
+  <path d="M44,958 L1130,958 L1130,354" class="gnd"/>
+  <path d="M44,958 L1290,958 L1290,432" class="gnd"/>
+  <path d="M44,958 L520,958 L520,220" class="gnd"/>
+
+  <text x="930" y="482" class="tiny">обратный диод на катушке</text>
+  <text x="930" y="590" class="tiny">обратный диод на катушке</text>
+  <text x="930" y="698" class="tiny">обратный диод на катушке</text>
+</svg>

@@ -58,6 +58,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Запускаем fallback polling сразу, после подключения WS он будет остановлен.
     startStatusPolling(true);
-    connectWebSocket();
+    if (!isCloudProxyMode) {
+        connectWebSocket();
+    }
 
 });

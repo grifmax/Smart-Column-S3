@@ -741,12 +741,18 @@
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
+                const temps = data.temps || {};
+                const pickTemp = (key, legacyKey) => {
+                    const value = temps[key] ?? data[legacyKey];
+                    const num = Number(value);
+                    return Number.isFinite(num) ? num : undefined;
+                };
 
                 // Обновить температуры
-                document.getElementById('temp-cube').textContent = data.temps?.cube?.toFixed(1) || '--';
-                document.getElementById('temp-column').textContent = data.temps?.column?.toFixed(1) || '--';
-                document.getElementById('temp-defleg').textContent = data.temps?.defleg?.toFixed(1) || '--';
-                document.getElementById('temp-product').textContent = data.temps?.product?.toFixed(1) || '--';
+                document.getElementById('temp-cube').textContent = pickTemp('cube', 't_cube')?.toFixed(1) || '--';
+                document.getElementById('temp-column').textContent = (pickTemp('columnTop', 't_column_top') ?? pickTemp('columnBottom', 't_column_bottom'))?.toFixed(1) || '--';
+                document.getElementById('temp-defleg').textContent = pickTemp('reflux', 't_reflux')?.toFixed(1) || '--';
+                document.getElementById('temp-product').textContent = (pickTemp('waterOut', 't_water_out') ?? pickTemp('tsa', 't_tsa'))?.toFixed(1) || '--';
 
                 // Обновить состояние процесса
                 processRunning = data.modeStr !== 'idle';

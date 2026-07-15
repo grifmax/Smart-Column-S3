@@ -3,7 +3,9 @@
  */
 
 #include "profiles.h"
+#include "drivers/sensors.h"
 #include "history.h"
+#include "interface/webserver_shared.h"
 #include <FS.h>
 #include <algorithm>
 #include <cmath>
@@ -125,6 +127,20 @@ uint16_t clampMashDuration(uint16_t value) {
     return value;
 }
 
+uint8_t clampProfileU8(uint32_t value, uint8_t minValue, uint8_t maxValue) {
+    return static_cast<uint8_t>(
+        std::min<uint32_t>(maxValue, std::max<uint32_t>(minValue, value)));
+}
+
+uint16_t clampProfileU16(uint32_t value, uint16_t minValue, uint16_t maxValue) {
+    return static_cast<uint16_t>(
+        std::min<uint32_t>(maxValue, std::max<uint32_t>(minValue, value)));
+}
+
+float clampProfileFloat(float value, float minValue, float maxValue) {
+    return std::min(maxValue, std::max(minValue, value));
+}
+
 void appendMashingJson(JsonObject parameters, const MashingParams& mashing) {
     JsonObject mashingJson = parameters["mashing"].to<JsonObject>();
     JsonArray steps = mashingJson["steps"].to<JsonArray>();
@@ -136,6 +152,291 @@ void appendMashingJson(JsonObject parameters, const MashingParams& mashing) {
         step["temperature"] = source.temperature;
         step["duration"] = source.duration;
         step["name"] = source.name;
+    }
+}
+
+void appendRectificationJson(JsonObject parameters,
+                             const RectificationParams& rectification) {
+    JsonObject rectificationJson = parameters["rectification"].to<JsonObject>();
+    rectificationJson["stabilizationMin"] = rectification.stabilizationMin;
+    rectificationJson["headsVolume"] = rectification.headsVolume;
+    rectificationJson["bodyVolume"] = rectification.bodyVolume;
+    rectificationJson["tailsVolume"] = rectification.tailsVolume;
+    rectificationJson["headsSpeed"] = rectification.headsSpeed;
+    rectificationJson["bodySpeed"] = rectification.bodySpeed;
+    rectificationJson["tailsSpeed"] = rectification.tailsSpeed;
+    rectificationJson["purgeMin"] = rectification.purgeMin;
+    rectificationJson["baroCorrectionEnabled"] =
+        rectification.baroCorrectionEnabled;
+    rectificationJson["takeoffBackendType"] =
+        static_cast<uint8_t>(rectification.takeoffBackendType);
+    rectificationJson["refluxMode"] =
+        static_cast<uint8_t>(rectification.refluxMode);
+    rectificationJson["srTarget"] = rectification.srTarget;
+    rectificationJson["srRatio"] = rectification.srTarget;
+    rectificationJson["autonomousCycleSec"] =
+        rectification.autonomousCycleSec;
+    rectificationJson["autonomousPauseSec"] =
+        rectification.autonomousPauseSec;
+    rectificationJson["chimAutoPercent"] = rectification.chimAutoPercent;
+    rectificationJson["chimTimePerH"] = rectification.chimTimePerH;
+    rectificationJson["chimBegPercent"] = rectification.chimBegPercent;
+    rectificationJson["chimMinPercent"] = rectification.chimMinPercent;
+    rectificationJson["usePbMode"] = rectification.usePbMode;
+    rectificationJson["timpPbMs"] = rectification.timpPbMs;
+    rectificationJson["routingSettlingMs"] =
+        rectification.routingSettlingMs;
+    rectificationJson["routingRetargetMinMs"] =
+        rectification.routingRetargetMinMs;
+    rectificationJson["valvePulsePeriodMs"] =
+        rectification.valvePulsePeriodMs;
+    rectificationJson["valvePulseMinOpenMs"] =
+        rectification.valvePulseMinOpenMs;
+    rectificationJson["valvePulseMaxOpenMs"] =
+        rectification.valvePulseMaxOpenMs;
+
+    JsonArray phasePowerPercent =
+        rectificationJson["phasePowerPercent"].to<JsonArray>();
+    for (uint8_t index = 0; index < RECT_POWER_COUNT; ++index) {
+        phasePowerPercent.add(rectification.phasePowerPercent[index]);
+    }
+
+    rectificationJson["phasePowerStabilization"] =
+        rectification.phasePowerPercent[RECT_POWER_STABILIZATION];
+    rectificationJson["phasePowerHeads"] =
+        rectification.phasePowerPercent[RECT_POWER_HEADS];
+    rectificationJson["phasePowerBody"] =
+        rectification.phasePowerPercent[RECT_POWER_BODY];
+    rectificationJson["phasePowerTails"] =
+        rectification.phasePowerPercent[RECT_POWER_TAILS];
+}
+
+void loadRectificationParamsFromJson(JsonVariantConst rectificationVariant,
+                                     RectificationParams& rectification) {
+    if (!rectificationVariant.is<JsonObjectConst>()) {
+        return;
+    }
+
+    JsonObjectConst rectificationJson =
+        rectificationVariant.as<JsonObjectConst>();
+    rectification.stabilizationMin =
+        rectificationJson["stabilizationMin"] | rectification.stabilizationMin;
+    rectification.headsVolume =
+        rectificationJson["headsVolume"] | rectification.headsVolume;
+    rectification.bodyVolume =
+        rectificationJson["bodyVolume"] | rectification.bodyVolume;
+    rectification.tailsVolume =
+        rectificationJson["tailsVolume"] | rectification.tailsVolume;
+    rectification.headsSpeed =
+        rectificationJson["headsSpeed"] | rectification.headsSpeed;
+    rectification.bodySpeed =
+        rectificationJson["bodySpeed"] | rectification.bodySpeed;
+    rectification.tailsSpeed =
+        rectificationJson["tailsSpeed"] | rectification.tailsSpeed;
+    rectification.purgeMin =
+        rectificationJson["purgeMin"] | rectification.purgeMin;
+    rectification.baroCorrectionEnabled =
+        rectificationJson["baroCorrectionEnabled"] |
+        rectification.baroCorrectionEnabled;
+    rectification.refluxMode = static_cast<RectRefluxMode>(
+        clampProfileU8(
+            rectificationJson["refluxMode"] |
+                static_cast<uint8_t>(rectification.refluxMode),
+            0,
+            static_cast<uint8_t>(RectRefluxMode::AUTONOMOUS)));
+    if (!rectificationJson["srTarget"].isNull()) {
+        rectification.srTarget =
+            clampProfileFloat(rectificationJson["srTarget"].as<float>(),
+                              0.0f,
+                              20.0f);
+    } else if (!rectificationJson["srRatio"].isNull()) {
+        rectification.srTarget =
+            clampProfileFloat(rectificationJson["srRatio"].as<float>(),
+                              0.0f,
+                              20.0f);
+    }
+    rectification.autonomousCycleSec =
+        clampProfileU16(rectificationJson["autonomousCycleSec"] |
+                            rectification.autonomousCycleSec,
+                        1,
+                        7200);
+    rectification.autonomousPauseSec =
+        clampProfileU16(rectificationJson["autonomousPauseSec"] |
+                            rectification.autonomousPauseSec,
+                        0,
+                        7199);
+    rectification.chimAutoPercent =
+        clampProfileFloat(rectificationJson["chimAutoPercent"] |
+                              rectification.chimAutoPercent,
+                          0.0f,
+                          200.0f);
+    rectification.chimTimePerH =
+        clampProfileFloat(rectificationJson["chimTimePerH"] |
+                              rectification.chimTimePerH,
+                          -2000.0f,
+                          2000.0f);
+    rectification.chimBegPercent =
+        clampProfileFloat(rectificationJson["chimBegPercent"] |
+                              rectification.chimBegPercent,
+                          -100.0f,
+                          200.0f);
+    rectification.chimMinPercent =
+        clampProfileFloat(rectificationJson["chimMinPercent"] |
+                              rectification.chimMinPercent,
+                          0.0f,
+                          100.0f);
+    rectification.usePbMode =
+        clampProfileU8(rectificationJson["usePbMode"] |
+                           rectification.usePbMode,
+                       0,
+                       3);
+    rectification.timpPbMs = std::min<uint32_t>(
+        600000UL, rectificationJson["timpPbMs"] | rectification.timpPbMs);
+    rectification.routingSettlingMs =
+        clampProfileU16(rectificationJson["routingSettlingMs"] |
+                            rectification.routingSettlingMs,
+                        0,
+                        10000);
+    rectification.routingRetargetMinMs =
+        clampProfileU16(rectificationJson["routingRetargetMinMs"] |
+                            rectification.routingRetargetMinMs,
+                        0,
+                        30000);
+    rectification.valvePulsePeriodMs =
+        clampProfileU16(rectificationJson["valvePulsePeriodMs"] |
+                            rectification.valvePulsePeriodMs,
+                        100,
+                        5000);
+    rectification.valvePulseMinOpenMs =
+        clampProfileU16(rectificationJson["valvePulseMinOpenMs"] |
+                            rectification.valvePulseMinOpenMs,
+                        0,
+                        rectification.valvePulsePeriodMs);
+    rectification.valvePulseMaxOpenMs =
+        clampProfileU16(rectificationJson["valvePulseMaxOpenMs"] |
+                            rectification.valvePulseMaxOpenMs,
+                        rectification.valvePulseMinOpenMs,
+                        rectification.valvePulsePeriodMs);
+
+    rectification.takeoffBackendType = static_cast<RectTakeoffBackendType>(
+        clampProfileU8(
+            rectificationJson["takeoffBackendType"] |
+                static_cast<uint8_t>(rectification.takeoffBackendType),
+            0,
+            static_cast<uint8_t>(
+                RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
+
+    JsonVariantConst phasePowerVariant = rectificationJson["phasePowerPercent"];
+    if (phasePowerVariant.is<JsonArrayConst>()) {
+        size_t index = 0;
+        for (JsonVariantConst value : phasePowerVariant.as<JsonArrayConst>()) {
+            if (index >= RECT_POWER_COUNT) {
+                break;
+            }
+            rectification.phasePowerPercent[index] =
+                clampProfileU8(value | rectification.phasePowerPercent[index], 1,
+                               100);
+            index++;
+        }
+    }
+    rectification.phasePowerPercent[RECT_POWER_STABILIZATION] =
+        clampProfileU8(
+            rectificationJson["phasePowerStabilization"] |
+                rectification.phasePowerPercent[RECT_POWER_STABILIZATION],
+            1,
+            100);
+    rectification.phasePowerPercent[RECT_POWER_HEADS] = clampProfileU8(
+        rectificationJson["phasePowerHeads"] |
+            rectification.phasePowerPercent[RECT_POWER_HEADS],
+        1,
+        100);
+    rectification.phasePowerPercent[RECT_POWER_BODY] = clampProfileU8(
+        rectificationJson["phasePowerBody"] |
+            rectification.phasePowerPercent[RECT_POWER_BODY],
+        1,
+        100);
+    rectification.phasePowerPercent[RECT_POWER_TAILS] = clampProfileU8(
+        rectificationJson["phasePowerTails"] |
+            rectification.phasePowerPercent[RECT_POWER_TAILS],
+        1,
+        100);
+    if (rectification.autonomousPauseSec >= rectification.autonomousCycleSec) {
+        rectification.autonomousPauseSec =
+            rectification.autonomousCycleSec > 0
+                ? rectification.autonomousCycleSec - 1
+                : 0;
+    }
+}
+
+void applyRectificationSettings(const RectificationParams& rectification) {
+    g_settings.rectParams.stabilizationMin = rectification.stabilizationMin;
+    g_settings.rectParams.purgeMin = rectification.purgeMin;
+    g_settings.rectParams.headsSpeedMlHKw = rectification.headsSpeed;
+    g_settings.rectParams.bodySpeedMlHKw = rectification.bodySpeed;
+    g_settings.rectParams.baroCorrectionEnabled =
+        rectification.baroCorrectionEnabled;
+    g_settings.rectParams.takeoffBackendType = rectification.takeoffBackendType;
+    g_settings.rectParams.refluxMode = rectification.refluxMode;
+    g_settings.rectParams.srRatio = rectification.srTarget;
+    g_settings.rectParams.autonomousCycleSec =
+        rectification.autonomousCycleSec;
+    g_settings.rectParams.autonomousPauseSec =
+        rectification.autonomousPauseSec;
+    g_settings.rectParams.chimAutoPercent = rectification.chimAutoPercent;
+    g_settings.rectParams.chimTimePerH = rectification.chimTimePerH;
+    g_settings.rectParams.chimBegPercent = rectification.chimBegPercent;
+    g_settings.rectParams.chimMinPercent = rectification.chimMinPercent;
+    g_settings.rectParams.usePbMode = rectification.usePbMode;
+    g_settings.rectParams.timpPbMs = rectification.timpPbMs;
+    g_settings.rectParams.routingSettlingMs =
+        rectification.routingSettlingMs;
+    g_settings.rectParams.routingRetargetMinMs =
+        rectification.routingRetargetMinMs;
+    g_settings.rectParams.valvePulsePeriodMs =
+        rectification.valvePulsePeriodMs;
+    g_settings.rectParams.valvePulseMinOpenMs =
+        rectification.valvePulseMinOpenMs;
+    g_settings.rectParams.valvePulseMaxOpenMs =
+        rectification.valvePulseMaxOpenMs;
+    for (uint8_t index = 0; index < RECT_POWER_COUNT; ++index) {
+        g_settings.rectParams.phasePowerPercent[index] =
+            rectification.phasePowerPercent[index];
+    }
+}
+
+void captureRectificationSettings(RectificationParams& rectification) {
+    rectification.stabilizationMin = g_settings.rectParams.stabilizationMin;
+    rectification.purgeMin = g_settings.rectParams.purgeMin;
+    rectification.headsSpeed = g_settings.rectParams.headsSpeedMlHKw;
+    rectification.bodySpeed = g_settings.rectParams.bodySpeedMlHKw;
+    rectification.baroCorrectionEnabled =
+        g_settings.rectParams.baroCorrectionEnabled;
+    rectification.takeoffBackendType = g_settings.rectParams.takeoffBackendType;
+    rectification.refluxMode = g_settings.rectParams.refluxMode;
+    rectification.srTarget = g_settings.rectParams.srRatio;
+    rectification.autonomousCycleSec =
+        g_settings.rectParams.autonomousCycleSec;
+    rectification.autonomousPauseSec =
+        g_settings.rectParams.autonomousPauseSec;
+    rectification.chimAutoPercent = g_settings.rectParams.chimAutoPercent;
+    rectification.chimTimePerH = g_settings.rectParams.chimTimePerH;
+    rectification.chimBegPercent = g_settings.rectParams.chimBegPercent;
+    rectification.chimMinPercent = g_settings.rectParams.chimMinPercent;
+    rectification.usePbMode = g_settings.rectParams.usePbMode;
+    rectification.timpPbMs = g_settings.rectParams.timpPbMs;
+    rectification.routingSettlingMs =
+        g_settings.rectParams.routingSettlingMs;
+    rectification.routingRetargetMinMs =
+        g_settings.rectParams.routingRetargetMinMs;
+    rectification.valvePulsePeriodMs =
+        g_settings.rectParams.valvePulsePeriodMs;
+    rectification.valvePulseMinOpenMs =
+        g_settings.rectParams.valvePulseMinOpenMs;
+    rectification.valvePulseMaxOpenMs =
+        g_settings.rectParams.valvePulseMaxOpenMs;
+    for (uint8_t index = 0; index < RECT_POWER_COUNT; ++index) {
+        rectification.phasePowerPercent[index] =
+            g_settings.rectParams.phasePowerPercent[index];
     }
 }
 
@@ -202,6 +503,57 @@ float getCurrentAtmosphereMmHg() {
     return hpaToMmHg(atmosphereHpa);
 }
 
+String buildValidationEquipmentSnapshotJson() {
+    JsonDocument doc;
+    doc["heaterPowerW"] = g_settings.equipment.heaterPowerW;
+    doc["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+    doc["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
+    doc["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
+    doc["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
+    doc["boosterHeaterEnabled"] = g_settings.equipment.boosterHeaterEnabled;
+    doc["boosterHeaterPowerW"] = g_settings.equipment.boosterHeaterPowerW;
+    doc["boosterHeaterStopCubeTempC"] =
+        g_settings.equipment.boosterHeaterStopCubeTempC;
+    doc["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
+    doc["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
+    doc["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
+    doc["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+    doc["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
+    doc["ds2482Address"] = g_settings.equipment.ds2482Address;
+    doc["tempBusGpioPin"] = PIN_ONEWIRE;
+    doc["temperatureBusSource"] = Sensors::getTemperatureBusSourceKey();
+    doc["temperatureBusSourceLabel"] = Sensors::getTemperatureBusSourceLabel();
+    doc["bodyLevelSensorEnabled"] = g_settings.equipment.bodyLevelSensorEnabled;
+    doc["bodyLevelThresholdV"] = g_settings.equipment.bodyLevelThresholdV;
+    doc["bodyLevelTriggerAbove"] = g_settings.equipment.bodyLevelTriggerAbove;
+    doc["leakSensorEnabled"] = g_settings.equipment.leakSensorEnabled;
+    doc["leakThresholdV"] = g_settings.equipment.leakThresholdV;
+    doc["leakTriggerAbove"] = g_settings.equipment.leakTriggerAbove;
+    doc["packingType"] = packingTypeToString(g_settings.equipment.packingType);
+    doc["packingCoeff"] = g_settings.equipment.packingCoeff;
+
+    JsonObject boardProfile = doc["boardProfile"].to<JsonObject>();
+    boardProfile["rev"] = BOARD_REV_LABEL;
+    boardProfile["name"] = BOARD_PROFILE_NAME;
+    boardProfile["code"] = BOARD_REV;
+
+    JsonObject temperatureTopology = doc["temperatureTopology"].to<JsonObject>();
+    fillTemperatureTopologyJson(temperatureTopology, g_settings.equipment);
+
+    JsonObject supportedModes = doc["supportedModes"].to<JsonObject>();
+    fillTemperatureModeSupportJson(supportedModes, g_settings);
+
+    JsonObject modules = doc["modules"].to<JsonObject>();
+    fillEquipmentModulesJson(modules);
+
+    JsonObject safetyChannels = doc["safetyChannels"].to<JsonObject>();
+    fillSafetyChannelsJson(safetyChannels);
+
+    String json;
+    serializeJson(doc, json);
+    return json;
+}
+
 ProfileValidationSnapshot buildValidationSnapshot(const ProcessHistory& history) {
     ProfileValidationSnapshot snapshot;
     snapshot.validatedAt = history.metadata.endTime > 0
@@ -235,6 +587,7 @@ ProfileValidationSnapshot buildValidationSnapshot(const ProcessHistory& history)
     snapshot.columnTopFinalC = history.metrics.columnTop.final;
     snapshot.avgStabilityIndex = history.metrics.avgStabilityIndex;
     snapshot.avgProcessHealth = history.metrics.avgProcessHealth;
+    snapshot.equipmentSnapshotJson = buildValidationEquipmentSnapshotJson();
     return snapshot;
 }
 
@@ -275,9 +628,18 @@ void appendValidationJson(JsonObject validation,
     validation["columnTopFinalC"] = snapshot.columnTopFinalC;
     validation["avgStabilityIndex"] = snapshot.avgStabilityIndex;
     validation["avgProcessHealth"] = snapshot.avgProcessHealth;
+    validation["equipmentSnapshotJson"] = snapshot.equipmentSnapshotJson;
+}
+
+void appendStoredProfileValidationJson(JsonObject validation, const Profile& profile) {
+    appendValidationJson(validation, profile.validation);
 }
 
 } // namespace
+
+void appendProfileValidationJson(JsonObject validation, const Profile& profile) {
+    appendStoredProfileValidationJson(validation, profile);
+}
 
 ProfileBaroCorrectionSummary evaluateProfileBaroCorrection(
     const Profile& profile,
@@ -447,15 +809,7 @@ bool saveProfile(const Profile& profile) {
         profile.parameters.heater.boosterStopCubeTempC;
 
     // Ректификация
-    JsonObject rectification = parameters["rectification"].to<JsonObject>();
-    rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
-    rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
-    rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
-    rectification["tailsVolume"] = profile.parameters.rectification.tailsVolume;
-    rectification["headsSpeed"] = profile.parameters.rectification.headsSpeed;
-    rectification["bodySpeed"] = profile.parameters.rectification.bodySpeed;
-    rectification["tailsSpeed"] = profile.parameters.rectification.tailsSpeed;
-    rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
+    appendRectificationJson(parameters, profile.parameters.rectification);
 
     // Дистилляция
     JsonObject distillation = parameters["distillation"].to<JsonObject>();
@@ -487,7 +841,7 @@ bool saveProfile(const Profile& profile) {
     statistics["avgYield"] = profile.statistics.avgYield;
     statistics["successRate"] = profile.statistics.successRate;
     appendLearningJson(doc["learning"].to<JsonObject>(), profile.learning);
-    appendValidationJson(doc["validation"].to<JsonObject>(), profile.validation);
+    appendProfileValidationJson(doc["validation"].to<JsonObject>(), profile);
 
     // Сериализовать в файл
     if (serializeJson(doc, file) == 0) {
@@ -574,14 +928,8 @@ bool loadProfile(const String& id, Profile& profile) {
         g_settings.equipment.boosterHeaterStopCubeTempC;
 
     // Ректификация
-    profile.parameters.rectification.stabilizationMin = doc["parameters"]["rectification"]["stabilizationMin"];
-    profile.parameters.rectification.headsVolume = doc["parameters"]["rectification"]["headsVolume"];
-    profile.parameters.rectification.bodyVolume = doc["parameters"]["rectification"]["bodyVolume"];
-    profile.parameters.rectification.tailsVolume = doc["parameters"]["rectification"]["tailsVolume"];
-    profile.parameters.rectification.headsSpeed = doc["parameters"]["rectification"]["headsSpeed"];
-    profile.parameters.rectification.bodySpeed = doc["parameters"]["rectification"]["bodySpeed"];
-    profile.parameters.rectification.tailsSpeed = doc["parameters"]["rectification"]["tailsSpeed"];
-    profile.parameters.rectification.purgeMin = doc["parameters"]["rectification"]["purgeMin"];
+    loadRectificationParamsFromJson(doc["parameters"]["rectification"],
+                                    profile.parameters.rectification);
 
     // Дистилляция
     profile.parameters.distillation.headsVolume = doc["parameters"]["distillation"]["headsVolume"];
@@ -665,6 +1013,8 @@ bool loadProfile(const String& id, Profile& profile) {
         doc["validation"]["avgStabilityIndex"] | 0.0f;
     profile.validation.avgProcessHealth =
         doc["validation"]["avgProcessHealth"] | 0.0f;
+    profile.validation.equipmentSnapshotJson =
+        doc["validation"]["equipmentSnapshotJson"] | "";
 
     Serial.printf("Профиль загружен: %s\n", profile.metadata.name.c_str());
     return true;
@@ -1140,10 +1490,7 @@ bool applyProfile(const String& id) {
     g_settings.safety.pressureMaxMmHg = profile.parameters.safety.pressureMax;
 
     if (profile.metadata.category == "rectification" || profile.parameters.mode == "rectification") {
-        g_settings.rectParams.stabilizationMin = profile.parameters.rectification.stabilizationMin;
-        g_settings.rectParams.purgeMin = profile.parameters.rectification.purgeMin;
-        g_settings.rectParams.headsSpeedMlHKw = profile.parameters.rectification.headsSpeed;
-        g_settings.rectParams.bodySpeedMlHKw = profile.parameters.rectification.bodySpeed;
+        applyRectificationSettings(profile.parameters.rectification);
 
         // Пересчет абсолютных объемов в проценты от сырья (aaMl = volumeL * 10 * abv)
         float aaMl = g_settings.rectParams.feedVolumeL * 10.0f * g_settings.rectParams.feedAbvPercent;
@@ -1341,10 +1688,7 @@ String createProfileFromSettings(const String& name, const String& description, 
     profile.parameters.temperatures.bodyEnd = 85.0;
 
     if (category == "rectification" || category == "manual_rect") {
-        profile.parameters.rectification.stabilizationMin = g_settings.rectParams.stabilizationMin;
-        profile.parameters.rectification.purgeMin = g_settings.rectParams.purgeMin;
-        profile.parameters.rectification.headsSpeed = g_settings.rectParams.headsSpeedMlHKw;
-        profile.parameters.rectification.bodySpeed = g_settings.rectParams.bodySpeedMlHKw;
+        captureRectificationSettings(profile.parameters.rectification);
         profile.parameters.rectification.tailsSpeed = g_settings.rectParams.bodySpeedMlHKw; // fallback
 
         // Пересчет процентов в абсолютные мл
@@ -1417,15 +1761,7 @@ String exportProfileToJSON(const String& id) {
     heater["pidKi"] = profile.parameters.heater.pidKi;
     heater["pidKd"] = profile.parameters.heater.pidKd;
 
-    JsonObject rectification = parameters["rectification"].to<JsonObject>();
-    rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
-    rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
-    rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
-    rectification["tailsVolume"] = profile.parameters.rectification.tailsVolume;
-    rectification["headsSpeed"] = profile.parameters.rectification.headsSpeed;
-    rectification["bodySpeed"] = profile.parameters.rectification.bodySpeed;
-    rectification["tailsSpeed"] = profile.parameters.rectification.tailsSpeed;
-    rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
+    appendRectificationJson(parameters, profile.parameters.rectification);
 
     JsonObject distillation = parameters["distillation"].to<JsonObject>();
     distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
@@ -1453,7 +1789,7 @@ String exportProfileToJSON(const String& id) {
     statistics["avgYield"] = profile.statistics.avgYield;
     statistics["successRate"] = profile.statistics.successRate;
     appendLearningJson(doc["learning"].to<JsonObject>(), profile.learning);
-    appendValidationJson(doc["validation"].to<JsonObject>(), profile.validation);
+    appendProfileValidationJson(doc["validation"].to<JsonObject>(), profile);
 
     String json;
     serializeJson(doc, json);
@@ -1511,15 +1847,7 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
             heater["boosterStopCubeTempC"] =
                 profile.parameters.heater.boosterStopCubeTempC;
 
-            JsonObject rectification = parameters["rectification"].to<JsonObject>();
-            rectification["stabilizationMin"] = profile.parameters.rectification.stabilizationMin;
-            rectification["headsVolume"] = profile.parameters.rectification.headsVolume;
-            rectification["bodyVolume"] = profile.parameters.rectification.bodyVolume;
-            rectification["tailsVolume"] = profile.parameters.rectification.tailsVolume;
-            rectification["headsSpeed"] = profile.parameters.rectification.headsSpeed;
-            rectification["bodySpeed"] = profile.parameters.rectification.bodySpeed;
-            rectification["tailsSpeed"] = profile.parameters.rectification.tailsSpeed;
-            rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
+            appendRectificationJson(parameters, profile.parameters.rectification);
 
             JsonObject distillation = parameters["distillation"].to<JsonObject>();
             distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
@@ -1547,7 +1875,8 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
             statistics["avgYield"] = profile.statistics.avgYield;
             statistics["successRate"] = profile.statistics.successRate;
             appendLearningJson(obj["learning"].to<JsonObject>(), profile.learning);
-            appendValidationJson(obj["validation"].to<JsonObject>(), profile.validation);
+            appendProfileValidationJson(obj["validation"].to<JsonObject>(),
+                                        profile);
 
             exported++;
         }
@@ -1607,14 +1936,8 @@ String importProfileFromJSON(const String& jsonStr) {
         doc["parameters"]["heater"]["boosterStopCubeTempC"] |
         g_settings.equipment.boosterHeaterStopCubeTempC;
 
-    profile.parameters.rectification.stabilizationMin = doc["parameters"]["rectification"]["stabilizationMin"];
-    profile.parameters.rectification.headsVolume = doc["parameters"]["rectification"]["headsVolume"];
-    profile.parameters.rectification.bodyVolume = doc["parameters"]["rectification"]["bodyVolume"];
-    profile.parameters.rectification.tailsVolume = doc["parameters"]["rectification"]["tailsVolume"];
-    profile.parameters.rectification.headsSpeed = doc["parameters"]["rectification"]["headsSpeed"];
-    profile.parameters.rectification.bodySpeed = doc["parameters"]["rectification"]["bodySpeed"];
-    profile.parameters.rectification.tailsSpeed = doc["parameters"]["rectification"]["tailsSpeed"];
-    profile.parameters.rectification.purgeMin = doc["parameters"]["rectification"]["purgeMin"];
+    loadRectificationParamsFromJson(doc["parameters"]["rectification"],
+                                    profile.parameters.rectification);
 
     profile.parameters.distillation.headsVolume = doc["parameters"]["distillation"]["headsVolume"];
     profile.parameters.distillation.targetVolume = doc["parameters"]["distillation"]["targetVolume"];

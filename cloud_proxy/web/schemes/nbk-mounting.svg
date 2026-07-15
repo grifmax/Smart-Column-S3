@@ -1,0 +1,266 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1040" width="1600" height="1040">
+  <defs>
+    <style>
+      text { font-family: "Segoe UI", "DejaVu Sans", sans-serif; fill: #111; }
+      .title { font-size: 26px; font-weight: 700; }
+      .sub { font-size: 12px; fill: #444; }
+      .cabinet { fill: #fafafa; stroke: #000; stroke-width: 2; }
+      .rail { fill: #d8dde2; stroke: #666; stroke-width: 1.2; }
+      .module { fill: #fff; stroke: #000; stroke-width: 1.5; }
+      .terminal { fill: #f6f6f6; stroke: #666; stroke-width: 1.2; }
+      .group { fill: none; stroke: #999; stroke-width: 1.1; stroke-dasharray: 8 6; }
+      .label { font-size: 13px; font-weight: 700; }
+      .small { font-size: 11px; fill: #444; }
+      .tiny { font-size: 10px; fill: #555; }
+      .route-ac { fill: none; stroke: #b74d2f; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+      .route-12 { fill: none; stroke: #0a8b4d; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .route-5 { fill: none; stroke: #1d70b8; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+      .route-sig { fill: none; stroke: #6c55c4; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .route-bus { fill: none; stroke: #d08a18; stroke-width: 2.2; stroke-dasharray: 7 5; stroke-linecap: round; stroke-linejoin: round; }
+      .route-gnd { fill: none; stroke: #666; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+      .legend-title { font-size: 12px; font-weight: 700; }
+      .legend-text { font-size: 11px; }
+    </style>
+  </defs>
+
+  <rect x="10" y="10" width="1580" height="1020" fill="#fff" stroke="#000" stroke-width="1.5"/>
+
+  <text x="36" y="48" class="title">Монтажная схема шкафа автоматики НБК</text>
+  <text x="36" y="68" class="sub">Вариант компоновки: силовая часть сверху, логика по центру, клеммы датчиков и полевых линий снизу. Силовые и сигнальные жгуты разнесены.</text>
+
+  <rect x="40" y="96" width="1200" height="900" class="cabinet"/>
+  <text x="58" y="122" class="label">Шкаф / монтажная панель</text>
+
+  <rect x="74" y="154" width="1132" height="18" class="rail"/>
+  <rect x="74" y="414" width="1132" height="18" class="rail"/>
+  <rect x="74" y="712" width="1132" height="18" class="rail"/>
+
+  <rect x="1260" y="96" width="306" height="900" fill="none" stroke="#888" stroke-width="1.2"/>
+  <text x="1280" y="122" class="label">Легенда и требования</text>
+
+  <rect x="72" y="138" width="1136" height="200" class="group"/>
+  <text x="88" y="158" class="label">Верхняя зона: 220 В и силовые модули</text>
+
+  <rect x="90" y="188" width="118" height="78" class="terminal"/>
+  <text x="106" y="214" class="label">X1</text>
+  <text x="106" y="232" class="small">Ввод сети</text>
+  <text x="106" y="248" class="tiny">L / N / PE</text>
+
+  <rect x="236" y="188" width="110" height="78" class="module"/>
+  <text x="252" y="214" class="label">QF1</text>
+  <text x="252" y="232" class="small">Автомат</text>
+  <text x="252" y="248" class="tiny">+ предохранитель</text>
+
+  <rect x="378" y="188" width="126" height="78" class="module"/>
+  <text x="394" y="214" class="label">U7</text>
+  <text x="394" y="232" class="small">PZEM-004T</text>
+  <text x="394" y="248" class="tiny">в разрыв линии L/N</text>
+
+  <rect x="536" y="188" width="154" height="78" class="module"/>
+  <text x="552" y="214" class="label">PS1</text>
+  <text x="552" y="232" class="small">БП DR-60-12</text>
+  <text x="552" y="248" class="tiny">220 В - 12 В / 5 А</text>
+
+  <rect x="726" y="188" width="118" height="78" class="module"/>
+  <text x="742" y="214" class="label">K1</text>
+  <text x="742" y="232" class="small">SSR-40DA</text>
+  <text x="742" y="248" class="tiny">на радиаторе</text>
+
+  <rect x="880" y="188" width="122" height="78" class="terminal"/>
+  <text x="896" y="214" class="label">X2</text>
+  <text x="896" y="232" class="small">Выход на ТЭН</text>
+  <text x="896" y="248" class="tiny">Lsw / N / PE</text>
+
+  <rect x="1034" y="188" width="142" height="78" class="module"/>
+  <text x="1050" y="214" class="label">PE-шина</text>
+  <text x="1050" y="232" class="small">корпус шкафа</text>
+  <text x="1050" y="248" class="tiny">и защитное заземление</text>
+
+  <path d="M208,216 L236,216" class="route-ac"/>
+  <path d="M346,216 L378,216" class="route-ac"/>
+  <path d="M504,216 L726,216" class="route-ac"/>
+  <path d="M844,216 L880,216" class="route-ac"/>
+  <path d="M208,240 L880,240" class="route-gnd"/>
+  <path d="M148,266 L148,304 L1104,304 L1104,266" class="route-gnd"/>
+
+  <rect x="72" y="362" width="1136" height="268" class="group"/>
+  <text x="88" y="382" class="label">Средняя зона: логика, драйверы, интерфейсные платы</text>
+
+  <rect x="96" y="454" width="210" height="134" class="module"/>
+  <text x="114" y="480" class="label">U1</text>
+  <text x="114" y="498" class="small">ESP32-S3 DevKitC-1</text>
+  <text x="114" y="516" class="tiny">GPIO5  нагрев</text>
+  <text x="114" y="532" class="tiny">GPIO6/7/15 насос</text>
+  <text x="114" y="548" class="tiny">GPIO16/17/18 клапаны</text>
+  <text x="114" y="564" class="tiny">GPIO4 / 21 / 9 / 19 / 20 / 3 / 1 / 38</text>
+
+  <rect x="336" y="454" width="118" height="88" class="module"/>
+  <text x="352" y="480" class="label">DC1</text>
+  <text x="352" y="498" class="small">LM2596</text>
+  <text x="352" y="514" class="tiny">12 В - 5.1 В</text>
+
+  <rect x="488" y="454" width="122" height="88" class="module"/>
+  <text x="504" y="480" class="label">U2</text>
+  <text x="504" y="498" class="small">PC817</text>
+  <text x="504" y="514" class="tiny">логика SSR</text>
+
+  <rect x="646" y="454" width="136" height="88" class="module"/>
+  <text x="662" y="480" class="label">U3</text>
+  <text x="662" y="498" class="small">TMC2209</text>
+  <text x="662" y="514" class="tiny">рядом с X3 насоса</text>
+
+  <rect x="820" y="454" width="118" height="88" class="module"/>
+  <text x="836" y="480" class="label">Q1</text>
+  <text x="836" y="498" class="small">MOSFET вода</text>
+  <text x="836" y="514" class="tiny">GPIO16</text>
+
+  <rect x="962" y="454" width="118" height="88" class="module"/>
+  <text x="978" y="480" class="label">Q2</text>
+  <text x="978" y="498" class="small">MOSFET головы</text>
+  <text x="978" y="514" class="tiny">GPIO17</text>
+
+  <rect x="1104" y="454" width="118" height="88" class="module"/>
+  <text x="1120" y="480" class="label">Q3</text>
+  <text x="1120" y="498" class="small">MOSFET УНО</text>
+  <text x="1120" y="514" class="tiny">GPIO18</text>
+
+  <rect x="336" y="564" width="136" height="88" class="module"/>
+  <text x="352" y="590" class="label">U4</text>
+  <text x="352" y="608" class="small">ADS1115</text>
+  <text x="352" y="624" class="tiny">рядом с MPX5010DP</text>
+
+  <rect x="506" y="564" width="136" height="88" class="module"/>
+  <text x="522" y="590" class="label">B1/B2</text>
+  <text x="522" y="608" class="small">BMP280 x2</text>
+  <text x="522" y="624" class="tiny">на общей I2C гребенке</text>
+
+  <rect x="676" y="564" width="140" height="88" class="module"/>
+  <text x="692" y="590" class="label">S1</text>
+  <text x="692" y="608" class="small">MPX5010DP</text>
+  <text x="692" y="624" class="tiny">короткий аналоговый шлейф</text>
+
+  <rect x="850" y="564" width="144" height="88" class="module"/>
+  <text x="866" y="590" class="label">Опция 1</text>
+  <text x="866" y="608" class="small">MG996R driver</text>
+  <text x="866" y="624" class="tiny">если нужен фракционник</text>
+
+  <rect x="1030" y="564" width="160" height="88" class="module"/>
+  <text x="1046" y="590" class="label">Опция 2</text>
+  <text x="1046" y="608" class="small">PWM Start/Stop</text>
+  <text x="1046" y="624" class="tiny">GPIO14, доп. клапан</text>
+
+  <rect x="72" y="660" width="1136" height="300" class="group"/>
+  <text x="88" y="680" class="label">Нижняя зона: клеммы полевых линий и вводы кабелей</text>
+
+  <rect x="96" y="748" width="154" height="116" class="terminal"/>
+  <text x="114" y="776" class="label">X3</text>
+  <text x="114" y="796" class="small">Насос / TMC2209</text>
+  <text x="114" y="814" class="tiny">A+, A-, B+, B- к NEMA17</text>
+  <text x="114" y="830" class="tiny">12V, GND, STEP, DIR, EN</text>
+  <text x="114" y="846" class="tiny">если драйвер вынесен на плату</text>
+
+  <rect x="284" y="748" width="154" height="116" class="terminal"/>
+  <text x="302" y="776" class="label">X4</text>
+  <text x="302" y="796" class="small">Клапаны 12 В</text>
+  <text x="302" y="814" class="tiny">Y1 вода</text>
+  <text x="302" y="830" class="tiny">Y2 головы</text>
+  <text x="302" y="846" class="tiny">Y3 УНО</text>
+
+  <rect x="472" y="748" width="174" height="116" class="terminal"/>
+  <text x="490" y="776" class="label">X5</text>
+  <text x="490" y="796" class="small">OneWire / DS18B20</text>
+  <text x="490" y="814" class="tiny">3.3V / DQ / GND</text>
+  <text x="490" y="830" class="tiny">лучше отдельный экранированный жгут</text>
+  <text x="490" y="846" class="tiny">и адреса датчиков подписать</text>
+
+  <rect x="680" y="748" width="174" height="116" class="terminal"/>
+  <text x="698" y="776" class="label">X6</text>
+  <text x="698" y="796" class="small">I2C / BMP / ADS</text>
+  <text x="698" y="814" class="tiny">SDA / SCL / VCC / GND</text>
+  <text x="698" y="830" class="tiny">MPX5010DP рядом с ADS1115</text>
+
+  <rect x="888" y="748" width="174" height="116" class="terminal"/>
+  <text x="906" y="776" class="label">X7</text>
+  <text x="906" y="796" class="small">PZEM / flow / level</text>
+  <text x="906" y="814" class="tiny">UART1 RX/TX, GPIO3, GPIO1</text>
+  <text x="906" y="830" class="tiny">отдельно от 220 В трасс</text>
+
+  <rect x="1096" y="748" width="118" height="116" class="terminal"/>
+  <text x="1114" y="776" class="label">X8</text>
+  <text x="1114" y="796" class="small">Buzzer</text>
+  <text x="1114" y="814" class="tiny">GPIO38 / GND</text>
+
+  <path d="M690,266 L690,454" class="route-12"/>
+  <path d="M690,454 L336,454" class="route-12"/>
+  <path d="M690,454 L646,454" class="route-12"/>
+  <path d="M690,454 L820,454" class="route-12"/>
+  <path d="M690,454 L962,454" class="route-12"/>
+  <path d="M690,454 L1104,454" class="route-12"/>
+
+  <path d="M408,542 L408,454 L336,454" class="route-5"/>
+  <path d="M408,542 L201,542 L201,454" class="route-5"/>
+  <path d="M201,588 L201,748" class="route-5"/>
+
+  <path d="M306,494 L488,494" class="route-sig"/>
+  <path d="M306,512 L646,512" class="route-sig"/>
+  <path d="M306,530 L646,530" class="route-sig"/>
+  <path d="M306,548 L646,548" class="route-sig"/>
+  <path d="M306,566 L820,566 L820,494" class="route-sig"/>
+  <path d="M306,584 L962,584 L962,494" class="route-sig"/>
+  <path d="M306,602 L1104,602 L1104,494" class="route-sig"/>
+  <path d="M306,620 L850,620" class="route-sig"/>
+  <path d="M306,638 L1030,638" class="route-sig"/>
+
+  <path d="M306,476 L472,476 L472,748" class="route-bus"/>
+  <path d="M306,458 L336,458 L336,620" class="route-bus"/>
+  <path d="M306,458 L506,458 L506,620" class="route-bus"/>
+  <path d="M306,458 L680,458 L680,748" class="route-bus"/>
+
+  <path d="M726,226 L488,226 L488,454" class="route-sig"/>
+  <path d="M782,498 L862,498 L862,748 L96,748" class="route-sig"/>
+
+  <path d="M208,226 L208,908 L1180,908" class="route-gnd"/>
+  <path d="M1180,226 L1180,908" class="route-gnd"/>
+  <text x="980" y="900" class="tiny">Общая шина 0V/GND по нижнему каналу</text>
+
+  <path d="M208,216 L236,216" class="route-ac"/>
+  <path d="M346,216 L378,216" class="route-ac"/>
+  <path d="M504,216 L726,216" class="route-ac"/>
+  <path d="M844,216 L880,216" class="route-ac"/>
+  <text x="876" y="282" class="tiny">ТЭН выводить отдельным силовым кабелем</text>
+
+  <rect x="1280" y="160" width="266" height="214" class="module"/>
+  <text x="1298" y="188" class="legend-title">Цвет жгутов</text>
+  <line x1="1298" y1="214" x2="1348" y2="214" class="route-ac"/>
+  <text x="1360" y="218" class="legend-text">220 В AC, только верхняя зона</text>
+  <line x1="1298" y1="244" x2="1348" y2="244" class="route-12"/>
+  <text x="1360" y="248" class="legend-text">12 В силовое питание</text>
+  <line x1="1298" y1="274" x2="1348" y2="274" class="route-5"/>
+  <text x="1360" y="278" class="legend-text">5 В питание логики</text>
+  <line x1="1298" y1="304" x2="1348" y2="304" class="route-sig"/>
+  <text x="1360" y="308" class="legend-text">GPIO / UART / PWM</text>
+  <line x1="1298" y1="334" x2="1348" y2="334" class="route-bus"/>
+  <text x="1360" y="338" class="legend-text">OneWire / I2C шины</text>
+
+  <rect x="1280" y="396" width="266" height="238" class="module"/>
+  <text x="1298" y="424" class="legend-title">Монтажные требования</text>
+  <text x="1298" y="452" class="legend-text">1. SSR ставить на радиатор и с зазором.</text>
+  <text x="1298" y="476" class="legend-text">2. PS1 и AC клеммы держать вверху шкафа.</text>
+  <text x="1298" y="500" class="legend-text">3. DS18B20 и I2C вести отдельно от силовых.</text>
+  <text x="1298" y="524" class="legend-text">4. Катушки клапанов: обратный диод у катушки.</text>
+  <text x="1298" y="548" class="legend-text">5. PE-шину соединить с корпусом шкафа.</text>
+  <text x="1298" y="572" class="legend-text">6. MPX5010DP разместить близко к ADS1115.</text>
+  <text x="1298" y="596" class="legend-text">7. TMC2209 и моторный жгут отнести от I2C.</text>
+  <text x="1298" y="620" class="legend-text">8. PZEM UART не класть рядом с SSR линией.</text>
+
+  <rect x="1280" y="656" width="266" height="236" class="module"/>
+  <text x="1298" y="684" class="legend-title">Подпись вводов</text>
+  <text x="1298" y="712" class="legend-text">X1 - сеть 220 В</text>
+  <text x="1298" y="736" class="legend-text">X2 - ТЭН и PE</text>
+  <text x="1298" y="760" class="legend-text">X3 - насос / драйвер</text>
+  <text x="1298" y="784" class="legend-text">X4 - клапаны 12 В</text>
+  <text x="1298" y="808" class="legend-text">X5 - DS18B20</text>
+  <text x="1298" y="832" class="legend-text">X6 - I2C + MPX5010DP</text>
+  <text x="1298" y="856" class="legend-text">X7 - PZEM, flow, level</text>
+  <text x="1298" y="880" class="legend-text">X8 - buzzer / сервис</text>
+</svg>

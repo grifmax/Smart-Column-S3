@@ -1,0 +1,564 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 760" width="720" height="760" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#eef4f9"/>
+      <stop offset="100%" stop-color="#dbe8f3"/>
+    </linearGradient>
+    <linearGradient id="panel-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f2f7fb"/>
+    </linearGradient>
+    <linearGradient id="metal-h" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#91a3b4"/>
+      <stop offset="22%" stop-color="#c2d0db"/>
+      <stop offset="50%" stop-color="#eef4f8"/>
+      <stop offset="78%" stop-color="#c4d0db"/>
+      <stop offset="100%" stop-color="#8fa2b3"/>
+    </linearGradient>
+    <linearGradient id="metal-v" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f2f6f9"/>
+      <stop offset="100%" stop-color="#a9bac8"/>
+    </linearGradient>
+    <linearGradient id="cube-liquid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#c6a26a" stop-opacity="0.86"/>
+      <stop offset="100%" stop-color="#7b4d1c" stop-opacity="0.93"/>
+    </linearGradient>
+    <linearGradient id="feed-liquid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e8bd72"/>
+      <stop offset="100%" stop-color="#ad6b28"/>
+    </linearGradient>
+    <linearGradient id="product-liquid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#aee7ff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#4fa8d9" stop-opacity="0.72"/>
+    </linearGradient>
+    <linearGradient id="controller-glow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#21435d"/>
+      <stop offset="100%" stop-color="#153246"/>
+    </linearGradient>
+    <linearGradient id="status-chip" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fdfefe"/>
+      <stop offset="100%" stop-color="#dbe6ee"/>
+    </linearGradient>
+    <pattern id="packing" patternUnits="userSpaceOnUse" width="10" height="10">
+      <circle cx="5" cy="5" r="1.9" fill="#6a7c8d" opacity="0.68"/>
+    </pattern>
+    <filter id="shadow-md" x="-12%" y="-12%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#33536d" flood-opacity="0.18"/>
+    </filter>
+    <filter id="shadow-sm" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#1d3547" flood-opacity="0.16"/>
+    </filter>
+    <filter id="blue-glow" x="-30%" y="-30%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="clip-cube-shell">
+      <rect x="76" y="553" width="190" height="190" rx="18" ry="18"/>
+    </clipPath>
+    <marker id="arrow-flow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9c5b16"/>
+    </marker>
+    <marker id="arrow-signal" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3b7da9"/>
+    </marker>
+  </defs>
+
+  <style>
+    text {
+      font-family: 'Manrope', 'Segoe UI', sans-serif;
+      fill: #1f3446;
+      user-select: none;
+    }
+    .title {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+    .subtitle {
+      font-size: 11.5px;
+      font-weight: 600;
+      fill: #577086;
+      letter-spacing: 0.24px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      fill: #325066;
+    }
+    .label {
+      font-size: 11px;
+      font-weight: 700;
+      fill: #355166;
+    }
+    .small {
+      font-size: 10px;
+      font-weight: 600;
+      fill: #617b91;
+    }
+    .tiny {
+      font-size: 9px;
+      font-weight: 600;
+      fill: #6d879b;
+    }
+    .value-text {
+      font-size: 11px;
+      font-weight: 800;
+      fill: #12283a;
+    }
+    .chip-text {
+      font-size: 10px;
+      font-weight: 800;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+    .panel {
+      fill: url(#panel-gradient);
+      stroke: #c6d5e1;
+      stroke-width: 1.4;
+    }
+    .card {
+      fill: #ffffff;
+      stroke: #cbdae6;
+      stroke-width: 1.2;
+    }
+    .instrument-box {
+      fill: url(#status-chip);
+      stroke: #9fb5c8;
+      stroke-width: 1.2;
+      rx: 10;
+      ry: 10;
+    }
+    .metal {
+      fill: url(#metal-h);
+      stroke: #6c8295;
+      stroke-width: 1.7;
+    }
+    .metal-v {
+      fill: url(#metal-v);
+      stroke: #6c8295;
+      stroke-width: 1.6;
+    }
+    .glass {
+      fill: rgba(235, 246, 255, 0.55);
+      stroke: #7d95a8;
+      stroke-width: 1.4;
+    }
+    .struct {
+      fill: #ffffff;
+      stroke: #7d93a6;
+      stroke-width: 1.4;
+    }
+    .struct-line {
+      fill: none;
+      stroke: #9db2c4;
+      stroke-width: 1;
+    }
+    .pipe {
+      fill: none;
+      stroke: #6f8293;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .pipe-feed {
+      fill: none;
+      stroke: #9c5b16;
+      stroke-width: 3.3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .pipe-product {
+      fill: none;
+      stroke: #6196b8;
+      stroke-width: 2.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .pipe-water {
+      fill: none;
+      stroke: #2c7ec7;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .water-highlight {
+      fill: none;
+      stroke: #76d2ff;
+      stroke-width: 4.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0;
+      filter: url(#blue-glow);
+      stroke-dasharray: 10 8;
+    }
+    #anim-water-flow.flowing .water-highlight {
+      opacity: 0.92;
+      animation: water-flow 1.2s linear infinite;
+    }
+    .signal {
+      fill: none;
+      stroke: #4b88af;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 7 6;
+      opacity: 0.82;
+    }
+    .signal-node {
+      fill: #4b88af;
+    }
+    .drop {
+      fill: #4fa8d9;
+      opacity: 0;
+      transform-origin: center;
+    }
+    .condensing .drop {
+      opacity: 0.7;
+    }
+    .bubble {
+      fill: #efd8a8;
+      opacity: 0.34;
+    }
+    .controller-shell {
+      fill: url(#controller-glow);
+      stroke: #173045;
+      stroke-width: 1.6;
+    }
+    .controller-card {
+      fill: #f7fbfe;
+      stroke: #b8cfdf;
+      stroke-width: 1.15;
+    }
+    .controller-dark {
+      fill: #17384d;
+      stroke: #2b5875;
+      stroke-width: 1.15;
+    }
+    .controller-dark text,
+    .controller-dark .small,
+    .controller-dark .tiny {
+      fill: #e7f2fb;
+    }
+    .valve .valve-core {
+      fill: #d86767;
+      stroke: #8e3f3f;
+      stroke-width: 1.2;
+    }
+    .valve .valve-arm {
+      stroke: #466277;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+    }
+    .valve-open .valve-core {
+      fill: #49b168;
+      stroke: #2d7a44;
+    }
+    .phase-pill {
+      fill: url(#status-chip);
+      stroke: #b9cad7;
+      stroke-width: 1;
+    }
+    #txt-phase {
+      font-size: 12px;
+      font-weight: 900;
+      text-anchor: middle;
+      dominant-baseline: central;
+      fill: #e67e22;
+      letter-spacing: 0.6px;
+    }
+    .chip {
+      fill: rgba(30, 57, 75, 0.07);
+      stroke: rgba(49, 86, 108, 0.15);
+      stroke-width: 0.8;
+    }
+    .heater-aura {
+      opacity: 0.15;
+      transition: opacity 0.25s ease;
+    }
+    #svg-heater.heater-on .heater-aura {
+      opacity: 0.88;
+    }
+    #pump-impeller {
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+    .legend-line {
+      stroke: #d4e0ea;
+      stroke-width: 1;
+      stroke-dasharray: 4 4;
+    }
+    @keyframes water-flow {
+      from { stroke-dashoffset: 0; }
+      to { stroke-dashoffset: -36; }
+    }
+    @keyframes drop-fall {
+      0% { opacity: 0; transform: translateY(0); }
+      25% { opacity: 0.8; }
+      100% { opacity: 0; transform: translateY(18px); }
+    }
+  </style>
+
+  <rect x="0" y="0" width="720" height="760" fill="url(#bg-gradient)"/>
+  <rect x="18" y="18" width="684" height="724" rx="26" ry="26" class="panel" filter="url(#shadow-md)"/>
+
+  <text x="42" y="54" class="title">Автоматика НБК</text>
+  <text x="42" y="77" class="subtitle">Непрерывная бражная колонна: нагрев, стабилизация, подача браги, охлаждение и аварийная защита</text>
+
+  <rect x="32" y="98" width="312" height="626" rx="24" ry="24" class="panel"/>
+  <rect x="360" y="98" width="326" height="626" rx="24" ry="24" class="controller-shell" filter="url(#shadow-sm)"/>
+
+  <text x="52" y="126" class="section-title">Процесс</text>
+  <text x="382" y="126" class="section-title" fill="#dff0fb">Управление</text>
+
+  <line x1="348" y1="150" x2="348" y2="700" class="legend-line"/>
+
+  <rect x="18" y="262" width="88" height="128" rx="16" ry="16" class="glass"/>
+  <rect x="28" y="308" width="68" height="72" rx="12" ry="12" fill="url(#feed-liquid)" opacity="0.92"/>
+  <text x="62" y="286" class="label" text-anchor="middle">Бак браги</text>
+  <text x="62" y="401" class="tiny" text-anchor="middle">Непрерывная</text>
+  <text x="62" y="414" class="tiny" text-anchor="middle">подача</text>
+
+  <path d="M96,352 L110,352 L110,430" class="pipe-feed" marker-end="url(#arrow-flow)"/>
+
+  <g id="zone-pump" filter="url(#shadow-sm)">
+    <circle cx="110" cy="450" r="22" fill="#ffffff" stroke="#6a8397" stroke-width="2"/>
+    <circle cx="110" cy="450" r="7.5" fill="#dbe8f1" stroke="#6a8397" stroke-width="1.2"/>
+    <g id="pump-impeller" stroke="#4f6879" stroke-width="2.2" stroke-linecap="round">
+      <line x1="110" y1="432" x2="110" y2="446"/>
+      <line x1="110" y1="454" x2="110" y2="468"/>
+      <line x1="92" y1="450" x2="106" y2="450"/>
+      <line x1="114" y1="450" x2="128" y2="450"/>
+      <line x1="98" y1="438" x2="108" y2="446"/>
+      <line x1="122" y1="462" x2="112" y2="454"/>
+      <line x1="122" y1="438" x2="112" y2="446"/>
+      <line x1="98" y1="462" x2="108" y2="454"/>
+    </g>
+  </g>
+  <text x="110" y="484" class="label" text-anchor="middle">Дозирующий насос</text>
+
+  <path d="M132,450 L132,330 L146,330" class="pipe-feed" marker-end="url(#arrow-flow)"/>
+  <text x="90" y="332" class="small">Подача браги</text>
+
+  <g id="zone-reflux" filter="url(#shadow-sm)">
+    <rect x="136" y="38" width="70" height="120" rx="7" ry="7" class="metal"/>
+    <line x1="144" y1="46" x2="144" y2="150" class="struct-line"/>
+    <line x1="198" y1="46" x2="198" y2="150" class="struct-line"/>
+    <g id="anim-condensate">
+      <circle cx="154" cy="56" r="2.3" class="drop"/>
+      <circle cx="167" cy="50" r="2.1" class="drop"/>
+      <circle cx="181" cy="59" r="2.4" class="drop"/>
+      <circle cx="190" cy="53" r="2.2" class="drop"/>
+    </g>
+  </g>
+  <text x="171" y="30" class="label" text-anchor="middle">Дефлегматор</text>
+
+  <g id="zone-tsa">
+    <path d="M152,38 L152,12" class="pipe"/>
+    <path d="M190,38 L190,12" class="pipe"/>
+  </g>
+
+  <rect x="146" y="158" width="50" height="18" rx="4" ry="4" class="metal-v"/>
+
+  <g id="zone-node" filter="url(#shadow-sm)">
+    <rect x="136" y="173" width="70" height="70" rx="7" ry="7" class="metal"/>
+    <line x1="144" y1="181" x2="144" y2="235" class="struct-line"/>
+    <line x1="198" y1="181" x2="198" y2="235" class="struct-line"/>
+  </g>
+  <path d="M206,204 L254,204 L254,223" class="pipe"/>
+  <text x="171" y="166" class="label" text-anchor="middle">Узел отбора</text>
+
+  <g id="zone-cooling" filter="url(#shadow-sm)">
+    <rect x="246" y="223" width="20" height="100" rx="5" ry="5" class="metal-v"/>
+    <line x1="248" y1="230" x2="248" y2="316" class="struct-line"/>
+    <line x1="264" y1="230" x2="264" y2="316" class="struct-line"/>
+  </g>
+  <text x="256" y="216" class="label" text-anchor="middle">Доохладитель</text>
+
+  <path d="M256,323 L256,350 L320,350 L320,420" class="pipe-product" marker-end="url(#arrow-signal)"/>
+
+  <g id="product-jar" filter="url(#shadow-sm)">
+    <rect x="286" y="420" width="68" height="118" rx="18" ry="18" class="glass"/>
+    <rect x="296" y="472" width="48" height="56" rx="12" ry="12" fill="url(#product-liquid)"/>
+    <rect x="296" y="410" width="48" height="12" rx="6" ry="6" class="metal-v"/>
+  </g>
+  <text x="320" y="552" class="label" text-anchor="middle">Спирт-сырец</text>
+
+  <g id="anim-water-flow">
+    <path d="M334,296 L266,296" class="pipe-water"/>
+    <path d="M266,296 L266,126 L206,126" class="pipe-water"/>
+    <path d="M206,68 L334,68" class="pipe-water"/>
+    <path d="M334,296 L266,296" class="water-highlight"/>
+    <path d="M266,296 L266,126 L206,126" class="water-highlight"/>
+    <path d="M206,68 L334,68" class="water-highlight"/>
+  </g>
+
+  <g id="svg-valve-water" class="valve valve-closed" transform="translate(334 296)" filter="url(#shadow-sm)">
+    <circle cx="0" cy="0" r="11" class="valve-core"/>
+    <line x1="-15" y1="0" x2="15" y2="0" class="valve-arm"/>
+    <line x1="0" y1="-15" x2="0" y2="15" class="valve-arm"/>
+  </g>
+  <text x="360" y="301" class="small">Клапан воды</text>
+
+  <g id="zone-column" filter="url(#shadow-sm)">
+    <rect x="146" y="244" width="50" height="244" fill="url(#packing)" stroke="#5f7283" stroke-width="1.9"/>
+    <rect x="150" y="248" width="42" height="236" fill="rgba(255,255,255,0.12)"/>
+  </g>
+  <text x="171" y="238" class="label" text-anchor="middle">Колонна НБК</text>
+
+  <g id="zone-neck">
+    <rect x="136" y="436" width="70" height="42" rx="7" ry="7" class="metal"/>
+    <line x1="144" y1="444" x2="144" y2="470" class="struct-line"/>
+    <line x1="198" y1="444" x2="198" y2="470" class="struct-line"/>
+  </g>
+  <path d="M76,553 L146,488 L196,488 L266,553 Z" class="metal"/>
+
+  <g id="zone-cube" filter="url(#shadow-sm)">
+    <rect id="cube-shell" x="76" y="553" width="190" height="190" rx="18" ry="18" class="metal-v"/>
+  </g>
+  <path id="anim-liquid-level" d="M76 743 L266 743 L266 630 Q171 620 76 630 Z" fill="url(#cube-liquid)" opacity="0.94" clip-path="url(#clip-cube-shell)"/>
+
+  <g id="anim-boil-bubbles" pointer-events="none">
+    <circle cx="110" cy="708" r="4" class="bubble"/>
+    <circle cx="135" cy="695" r="3" class="bubble"/>
+    <circle cx="165" cy="710" r="4" class="bubble"/>
+    <circle cx="193" cy="700" r="3.5" class="bubble"/>
+    <circle cx="224" cy="708" r="4" class="bubble"/>
+  </g>
+
+  <g id="svg-heater">
+    <ellipse cx="171" cy="730" rx="94" ry="18" fill="#ff7d3a" opacity="0.32" class="heater-aura"/>
+    <rect id="heater-bar" x="82" y="730" width="180" height="5" rx="2.5" ry="2.5" fill="#4f1f16"/>
+  </g>
+
+  <text x="171" y="546" class="label" text-anchor="middle">Парогенератор / куб</text>
+  <text x="171" y="582" class="small" text-anchor="middle">Пар поднимается вверх, брага подается в колонну</text>
+
+  <rect x="84" y="592" width="176" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="96" y="610" class="small">T куба</text>
+  <text x="246" y="610" id="txt-temp-cube" class="value-text" text-anchor="end">--.- °C</text>
+
+  <rect x="84" y="625" width="176" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="96" y="643" class="small">Давление</text>
+  <text x="246" y="643" id="txt-pressure-cube" class="value-text" text-anchor="end">--.- мм</text>
+
+  <rect x="84" y="658" width="176" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="96" y="676" class="small">Объем в кубе</text>
+  <text x="246" y="676" id="txt-volume-cube" class="value-text" text-anchor="end">--.- л</text>
+
+  <rect x="84" y="691" width="176" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="96" y="709" class="small">Абсолютный спирт</text>
+  <text x="246" y="709" id="txt-aa-cube" class="value-text" text-anchor="end">АС --.-- л</text>
+
+  <rect x="20" y="92" width="96" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="32" y="110" class="small">T ТСА</text>
+  <text x="104" y="110" id="txt-temp-tsa" class="value-text" text-anchor="end">--.- °C</text>
+
+  <rect x="16" y="182" width="110" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="28" y="200" class="small">T флегмы</text>
+  <text x="118" y="200" id="txt-temp-reflux" class="value-text" text-anchor="end">--.- °C</text>
+
+  <rect x="18" y="250" width="112" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="30" y="268" class="small">T верха</text>
+  <text x="122" y="268" id="txt-temp-col-top" class="value-text" text-anchor="end">--.- °C</text>
+
+  <rect x="18" y="356" width="112" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="30" y="374" class="small">T низа</text>
+  <text x="122" y="374" id="txt-temp-col-mid" class="value-text" text-anchor="end">--.- °C</text>
+
+  <rect x="278" y="182" width="114" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="290" y="200" class="small">T продукта</text>
+  <text x="384" y="200" id="txt-temp-node" class="value-text" text-anchor="end">--.- °C</text>
+
+  <rect x="278" y="92" width="114" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="290" y="110" class="small">Вода OUT</text>
+  <text x="384" y="110" id="txt-water-out" class="value-text" text-anchor="end">--.- °C</text>
+
+  <rect x="278" y="126" width="114" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="290" y="144" class="small">Вода IN</text>
+  <text x="384" y="144" id="txt-water-in" class="value-text" text-anchor="end">--.- °C</text>
+
+  <rect x="278" y="560" width="114" height="28" rx="10" ry="10" class="instrument-box"/>
+  <text x="290" y="578" class="small">Крепость</text>
+  <text x="384" y="578" id="txt-abv" class="value-text" text-anchor="end">--.-%</text>
+
+  <circle cx="332" cy="350" r="4" class="signal-node"/>
+  <circle cx="270" cy="604" r="4" class="signal-node"/>
+  <circle cx="196" cy="256" r="4" class="signal-node"/>
+  <circle cx="196" cy="378" r="4" class="signal-node"/>
+  <circle cx="206" cy="90" r="4" class="signal-node"/>
+  <circle cx="206" cy="204" r="4" class="signal-node"/>
+
+  <path d="M206,90 C300,90 332,150 372,150" class="signal" marker-end="url(#arrow-signal)"/>
+  <path d="M206,204 C312,204 328,224 372,224" class="signal" marker-end="url(#arrow-signal)"/>
+  <path d="M196,256 C300,256 328,258 372,258" class="signal" marker-end="url(#arrow-signal)"/>
+  <path d="M196,378 C300,378 328,292 372,292" class="signal" marker-end="url(#arrow-signal)"/>
+  <path d="M270,604 C324,604 342,326 372,326" class="signal" marker-end="url(#arrow-signal)"/>
+  <path d="M332,350 C350,350 358,360 372,360" class="signal" marker-end="url(#arrow-signal)"/>
+
+  <path d="M516,424 C456,424 390,430 262,732" class="signal" marker-end="url(#arrow-signal)"/>
+  <path d="M518,454 C440,454 338,452 132,450" class="signal" marker-end="url(#arrow-signal)"/>
+  <path d="M520,484 C440,484 394,380 334,296" class="signal" marker-end="url(#arrow-signal)"/>
+
+  <rect x="378" y="138" width="290" height="82" rx="18" ry="18" class="controller-card"/>
+  <text x="396" y="162" class="label">Smart-Column S3</text>
+  <text x="396" y="183" class="small">ESP32-S3, SSR, датчики DS18B20, управление насосом и клапанами</text>
+  <rect x="544" y="150" width="108" height="48" rx="12" ry="12" class="controller-dark"/>
+  <text x="598" y="173" class="chip-text" fill="#f4fbff">NBK AUTO</text>
+  <text x="598" y="190" class="tiny" fill="#cfe8f6" text-anchor="middle">FSM + Safety</text>
+
+  <rect x="378" y="236" width="134" height="146" rx="16" ry="16" class="controller-card"/>
+  <text x="396" y="258" class="label">Входы</text>
+  <rect x="394" y="272" width="102" height="20" rx="8" ry="8" class="chip"/>
+  <text x="404" y="286" class="tiny">T1 Куб / ПГ</text>
+  <rect x="394" y="297" width="102" height="20" rx="8" ry="8" class="chip"/>
+  <text x="404" y="311" class="tiny">T2 Низ колонны</text>
+  <rect x="394" y="322" width="102" height="20" rx="8" ry="8" class="chip"/>
+  <text x="404" y="336" class="tiny">T3 Верх / ТСА</text>
+  <rect x="394" y="347" width="102" height="20" rx="8" ry="8" class="chip"/>
+  <text x="404" y="361" class="tiny">P1 Давление</text>
+
+  <rect x="526" y="236" width="142" height="146" rx="16" ry="16" class="controller-card"/>
+  <text x="544" y="258" class="label">Фаза процесса</text>
+  <rect x="544" y="272" width="106" height="34" rx="14" ry="14" class="phase-pill"/>
+  <text x="597" y="289" id="txt-phase">НАГРЕВ</text>
+  <text x="544" y="324" class="small">Алгоритм НБК</text>
+  <text x="544" y="342" class="tiny">1. Разогрев ПГ и автостарт воды</text>
+  <text x="544" y="358" class="tiny">2. Стабилизация колонны</text>
+  <text x="544" y="374" class="tiny">3. Подача браги по T низа</text>
+
+  <rect x="378" y="398" width="290" height="128" rx="16" ry="16" class="controller-card"/>
+  <text x="396" y="420" class="label">Выходы и исполнительные механизмы</text>
+  <text x="396" y="446" class="small">Нагреватель</text>
+  <text x="642" y="446" id="txt-power-actual" class="value-text" text-anchor="end">--- Вт</text>
+  <text x="396" y="465" class="tiny">Уставка</text>
+  <text x="470" y="465" id="txt-power-set" class="value-text">--%</text>
+  <rect x="396" y="474" width="176" height="12" rx="6" ry="6" fill="#d8e5ef" stroke="#b9cddb" stroke-width="0.8"/>
+  <rect id="anim-power-bar" x="396" y="474" width="0" height="12" rx="6" ry="6" fill="#f06b3b"/>
+
+  <text x="396" y="505" class="small">Дозирующий насос</text>
+  <text x="642" y="505" id="txt-pump-speed" class="value-text" text-anchor="end">0 мл/ч</text>
+  <text x="396" y="523" class="tiny">Пуск при T низа &gt; порога + гистерезис</text>
+
+  <text x="544" y="505" class="small">Охлаждение</text>
+  <text x="544" y="523" class="tiny">Электроклапан + контроль воды OUT</text>
+
+  <rect x="378" y="542" width="290" height="146" rx="16" ry="16" class="controller-card"/>
+  <text x="396" y="564" class="label">Защита</text>
+  <text x="396" y="588" class="tiny">• Перегрев воды на выходе</text>
+  <text x="396" y="606" class="tiny">• Рост давления в кубе</text>
+  <text x="396" y="624" class="tiny">• Отказ датчика T низа колонны</text>
+  <text x="396" y="642" class="tiny">• Остановка помпы при провале температуры</text>
+  <text x="396" y="660" class="tiny">• Финиш: насос OFF, ТЭН OFF, добег охлаждения</text>
+
+  <rect x="544" y="580" width="104" height="76" rx="14" ry="14" class="controller-dark"/>
+  <text x="596" y="604" class="chip-text" fill="#eaf7ff">SAFE STOP</text>
+  <text x="596" y="622" class="tiny" fill="#cfe8f6" text-anchor="middle">Pump OFF</text>
+  <text x="596" y="637" class="tiny" fill="#cfe8f6" text-anchor="middle">Heater OFF</text>
+
+  <text x="42" y="714" class="subtitle">Схема концептуальная: подходит как операторская визуализация и как основа для дальнейшей анимации режима НБК.</text>
+</svg>

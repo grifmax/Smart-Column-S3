@@ -36,6 +36,7 @@
 // Управление
 #include "control/demo_simulator.h"
 #include "control/fsm.h"
+#include "control/rect_takeoff.h"
 #include "control/safety.h"
 #include "control/v2/status_adapter.h"
 #include "control/watt_control.h"
@@ -595,6 +596,16 @@ void loop() {
     Stirrer::syncState(g_state); // обновить g_state.stirrer
   }
 
+  if ((g_state.mode == Mode::RECTIFICATION ||
+       g_state.mode == Mode::MANUAL_RECT) &&
+      g_settings.rectParams.takeoffBackendType !=
+          RectTakeoffBackendType::PUMP) {
+    const RectTakeoffFeedback takeoffFeedback = RectTakeoff::getFeedback();
+    g_state.pump.running = takeoffFeedback.backendActive;
+    g_state.pump.speedMlPerHour = takeoffFeedback.actualEquivalentRateMlH;
+    g_state.pump.totalVolumeMl = takeoffFeedback.sessionVolumeMl;
+  }
+
   ControlV2::updateRuntime(g_state, g_settings);
   Buttons::update();
 
@@ -634,7 +645,7 @@ void initHardware() {
   Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
   Valves::init();
   if (g_settings.fractionator.enabled)
-    Valves::initFractionator();
+    Valves::initFractionator(g_settings.fractionator);
   Stirrer::init(); // MCP4725 DAC мешалки
   Display::init();
   Buttons::init();

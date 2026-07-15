@@ -530,6 +530,30 @@ const TESTING_TEMPLATE = `
                     </div>
                     <div class="equipment-actuator-row">
                         <div>
+                            <strong>Тело</strong>
+                            <div class="info-text">Основной отбор</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-body-toggle-pulse-hint">Импульсный тест готов.</div>
+                        </div>
+                        <span class="equipment-status-badge muted" id="equipment-test-body-toggle-badge">—</span>
+                        <div class="equipment-actuator-actions">
+                            <button class="btn btn-secondary" type="button" id="equipment-test-body-toggle">Открыть тело</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-body-pulse">Импульс</button>
+                        </div>
+                    </div>
+                    <div class="equipment-actuator-row">
+                        <div>
+                            <strong>Хвосты</strong>
+                            <div class="info-text">Отбор хвостов</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-tails-toggle-pulse-hint">Импульсный тест готов.</div>
+                        </div>
+                        <span class="equipment-status-badge muted" id="equipment-test-tails-toggle-badge">—</span>
+                        <div class="equipment-actuator-actions">
+                            <button class="btn btn-secondary" type="button" id="equipment-test-tails-toggle">Открыть хвосты</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-tails-pulse">Импульс</button>
+                        </div>
+                    </div>
+                    <div class="equipment-actuator-row">
+                        <div>
                             <strong>УНО</strong>
                             <div class="info-text">Непрерывный отбор</div>
                             <div class="equipment-actuator-meta" id="equipment-test-uno-toggle-pulse-hint">Импульсный тест готов.</div>
@@ -3034,9 +3058,28 @@ function renderStirrerStatus(stirrer, testingAllowed, demoMode) {
     if (stopButton) stopButton.disabled = !running;
 }
 
-function renderValveButtonState(id, open, label, testingAllowed, pulse, demoMode) {
+function renderValveButtonState(id, open, label, testingAllowed, pulse, demoMode, available = true, unavailableHint = 'Недоступно на этой плате') {
     const button = byId(id);
     const badge = byId(`${id}-badge`);
+    const pulseButton = byId(id.replace('-toggle', '-pulse'));
+    const hint = byId(`${id}-pulse-hint`);
+
+    if (!available) {
+        updateBadge(badge, 'Нет канала', 'muted');
+        if (button) {
+            button.textContent = `Недоступно: ${label}`;
+            button.dataset.nextOpen = 'false';
+            button.disabled = true;
+        }
+        if (pulseButton) {
+            pulseButton.disabled = true;
+        }
+        if (hint) {
+            hint.textContent = unavailableHint;
+        }
+        return;
+    }
+
     const pulseActive = !!pulse?.active;
     const remainingMs = Number(pulse?.remainingMs || 0);
     updateBadge(
@@ -3050,12 +3093,10 @@ function renderValveButtonState(id, open, label, testingAllowed, pulse, demoMode
         button.disabled = !testingAllowed && !open;
     }
 
-    const pulseButton = byId(id.replace('-toggle', '-pulse'));
     if (pulseButton) {
         pulseButton.disabled = !testingAllowed || pulseActive;
     }
 
-    const hint = byId(`${id}-pulse-hint`);
     if (hint) {
         if (pulseActive) {
             hint.textContent = `${demoMode ? 'Симуляция' : 'Импульс'}: автозакрытие через ${formatNumber(remainingMs / 1000, 1, ' с')}`;
@@ -3322,6 +3363,8 @@ function renderTestingStatus(status) {
     renderStirrerStatus(status.stirrer, status.testingAllowed, status.demoMode);
     renderValveButtonState('equipment-test-water-toggle', !!status.valves?.water, 'воду', status.testingAllowed, status.valves?.waterPulse, status.demoMode);
     renderValveButtonState('equipment-test-heads-toggle', !!status.valves?.heads, 'головы', status.testingAllowed, status.valves?.headsPulse, status.demoMode);
+    renderValveButtonState('equipment-test-body-toggle', !!status.valves?.body, 'тело', status.testingAllowed, status.valves?.bodyPulse, status.demoMode, !!status.valves?.bodyAvailable, 'На текущей плате нет отдельного канала body.');
+    renderValveButtonState('equipment-test-tails-toggle', !!status.valves?.tails, 'хвосты', status.testingAllowed, status.valves?.tailsPulse, status.demoMode, !!status.valves?.tailsAvailable, 'На текущей плате нет отдельного канала tails.');
     renderValveButtonState('equipment-test-uno-toggle', !!status.valves?.uno, 'УНО', status.testingAllowed, status.valves?.unoPulse, status.demoMode);
     renderStartStopPwmStatus(status.valves, status.coolingSettings, status.testingAllowed, status.demoMode);
     renderServoStatus(status.servo, status.testingAllowed);
@@ -3339,7 +3382,7 @@ function renderTestingStatus(status) {
 
     const closeValvesButton = byId('equipment-test-valves-close-all');
     if (closeValvesButton) {
-        const hasOpenValve = !!status.valves?.water || !!status.valves?.heads || !!status.valves?.uno || Number(status.valves?.startStopDuty || 0) > 0;
+        const hasOpenValve = !!status.valves?.water || !!status.valves?.heads || !!status.valves?.body || !!status.valves?.tails || !!status.valves?.uno || Number(status.valves?.startStopDuty || 0) > 0;
         closeValvesButton.disabled = !status.testingAllowed && !hasOpenValve;
     }
 }
@@ -3462,7 +3505,7 @@ async function handleValveToggle(target, nextOpen) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, open: nextOpen })
     });
-    if (target === 'water' || target === 'heads' || target === 'uno' || target === 'all') {
+    if (target === 'water' || target === 'heads' || target === 'body' || target === 'tails' || target === 'uno' || target === 'all') {
         setCommissioningManualCheck('valves', true);
     }
     renderTestingStatus(status);
@@ -3665,6 +3708,20 @@ function bindTestingActions() {
     });
     byId('equipment-test-heads-pulse')?.addEventListener('click', () => {
         void handleValvePulse('heads').catch((error) => addLog(`✗ Импульс голов: ${error.message}`, 'error'));
+    });
+    byId('equipment-test-body-toggle')?.addEventListener('click', (event) => {
+        const nextOpen = event.currentTarget.dataset.nextOpen === 'true';
+        void handleValveToggle('body', nextOpen).catch((error) => addLog(`✗ Клапан тела: ${error.message}`, 'error'));
+    });
+    byId('equipment-test-body-pulse')?.addEventListener('click', () => {
+        void handleValvePulse('body').catch((error) => addLog(`✗ Импульс тела: ${error.message}`, 'error'));
+    });
+    byId('equipment-test-tails-toggle')?.addEventListener('click', (event) => {
+        const nextOpen = event.currentTarget.dataset.nextOpen === 'true';
+        void handleValveToggle('tails', nextOpen).catch((error) => addLog(`✗ Клапан хвостов: ${error.message}`, 'error'));
+    });
+    byId('equipment-test-tails-pulse')?.addEventListener('click', () => {
+        void handleValvePulse('tails').catch((error) => addLog(`✗ Импульс хвостов: ${error.message}`, 'error'));
     });
     byId('equipment-test-uno-toggle')?.addEventListener('click', (event) => {
         const nextOpen = event.currentTarget.dataset.nextOpen === 'true';

@@ -1,134 +1,157 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 1000" id="dist-scheme">
-  <defs>
-    <linearGradient id="distHeatGradient" x1="0%" y1="100%" x2="0%" y2="0%">
-      <stop offset="0%" style="stop-color:#ff0000;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#ff6600;stop-opacity:0.5" />
-    </linearGradient>
-
-    <linearGradient id="coolWaterGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#00bfff;stop-opacity:0.8" />
-      <stop offset="100%" style="stop-color:#0080ff;stop-opacity:0.3" />
-    </linearGradient>
-  </defs>
-
-  <!-- Куб (большой, 60% высоты) -->
-  <g id="dist-cube" class="cube">
-    <rect x="150" y="650" width="300" height="300" rx="15" fill="#dc3545" stroke="#004080" stroke-width="5"/>
-
-    <!-- Волны жидкости в кубе -->
-    <path d="M 160 670 Q 200 660, 240 670 T 320 670 T 400 670 T 440 670"
-          stroke="#fff" stroke-width="2" fill="none" opacity="0.4" class="liquid-wave w1"/>
-    <path d="M 160 690 Q 200 680, 240 690 T 320 690 T 400 690 T 440 690"
-          stroke="#fff" stroke-width="2" fill="none" opacity="0.3" class="liquid-wave w2"/>
-
-    <!-- Индикаторы нагрева -->
-    <line x1="180" y1="920" x2="260" y2="920" stroke="#fff" stroke-width="4" class="heat-indicator" opacity="0.6"/>
-    <line x1="340" y1="920" x2="420" y2="920" stroke="#fff" stroke-width="4" class="heat-indicator" opacity="0.6"/>
-
-    <!-- Пузыри кипения -->
-    <circle cx="200" cy="850" r="6" fill="#fff" opacity="0.5" class="boiling-bubble b1"/>
-    <circle cx="250" cy="880" r="5" fill="#fff" opacity="0.5" class="boiling-bubble b2"/>
-    <circle cx="300" cy="870" r="7" fill="#fff" opacity="0.5" class="boiling-bubble b3"/>
-    <circle cx="350" cy="860" r="6" fill="#fff" opacity="0.5" class="boiling-bubble b4"/>
-    <circle cx="400" cy="890" r="5" fill="#fff" opacity="0.5" class="boiling-bubble b5"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Creator: CorelDRAW -->
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="210mm" height="297mm" version="1.1" style="shape-rendering:geometricPrecision; text-rendering:geometricPrecision; image-rendering:optimizeQuality; fill-rule:evenodd; clip-rule:evenodd"
+viewBox="0 0 21000 29700"
+ xmlns:xlink="http://www.w3.org/1999/xlink"
+ xmlns:xodm="http://www.corel.com/coreldraw/odm/2003">
+ <defs>
+  <font id="FontID1" horiz-adv-x="703" font-variant="normal" style="fill-rule:nonzero" font-style="normal" font-weight="700">
+	<font-face 
+		font-family="Segoe UI">
+		<font-face-src>
+			<font-face-name name="Segoe UI Полужирный"/>
+		</font-face-src>
+	</font-face>
+   <missing-glyph><path d="M0 0z"/></missing-glyph>
+   <glyph unicode="-" horiz-adv-x="404" d="M337.007 212.832l-267.173 0 0 108.004 267.173 0 0 -108.004z"/>
+   <glyph unicode="." horiz-adv-x="270" d="M133.841 -12.1632c-25.5134,0 -46.6794,7.83129 -63.5136,23.3243 -16.9883,15.678 -25.3284,34.84 -25.3284,57.671 0,23.4939 8.66375,42.6713 26.0067,57.671 17.4971,14.9997 39.1564,22.4918 65.1631,22.4918 26.5,0 48.0052,-7.66171 64.824,-22.831 16.68,-14.9997 25.0046,-34.1617 25.0046,-57.3318 0,-23.6634 -8.49417,-43.1646 -25.4979,-58.3338 -17.1733,-15.1693 -39.326,-22.6614 -66.6584,-22.6614z"/>
+   <glyph unicode="C" horiz-adv-x="624" d="M581.997 24.835c-50.9959,-24.6655 -117.824,-36.9982 -200.16,-36.9982 -107.341,0 -191.836,31.4947 -253.33,94.6692 -61.6791,63.159 -92.3414,147.33 -92.3414,252.497 0,111.997 34.5008,202.827 103.672,272.492 69.1558,69.6645 159,104.505 269.332,104.505 68.3234,0 125.994,-8.66375 172.828,-26.0067l0 -151.831c-46.8336,28.0107 -100.157,42.0084 -160.171,42.0084 -65.6564,0 -118.826,-20.6728 -159.154,-62.0028 -40.3435,-41.3301 -60.5075,-97.3361 -60.5075,-168.003 0,-67.6605 19.0078,-121.662 57.1622,-161.836 38.0002,-40.1585 89.3353,-60.3225 153.835,-60.3225 61.5095,0 117.839,14.9997 168.835,44.9991l0 -144.17z"/>
+   <glyph unicode="°" horiz-adv-x="379" d="M194.826 436.995c-38.6631,0 -71.499,13.5043 -98.3227,40.3435 -26.8391,26.8237 -40.3435,59.49 -40.3435,97.8294 0,38.4936 13.5043,70.8362 40.3435,97.1666 26.8237,26.3304 59.6596,39.6652 98.3227,39.6652 38.3394,0 71.1753,-13.3348 98.3382,-39.6652 27.1629,-26.3304 40.8368,-58.673 40.8368,-97.1666 0,-38.3394 -13.6739,-71.0057 -40.8368,-97.8294 -27.1629,-26.8391 -59.9988,-40.3435 -98.3382,-40.3435zm0 201.178c-17.6666,0 -32.4968,-6.01221 -44.6599,-18.3449 -12.1632,-12.1632 -18.3295,-26.9933 -18.3295,-44.6599 0,-17.4971 6.16637,-32.6663 18.3295,-45.1687 12.1632,-12.5023 26.9933,-18.8383 44.6599,-18.8383 17.1733,0 32.0035,6.33594 44.5058,18.8383 12.3327,12.5023 18.4991,27.6716 18.4991,45.1687 0,17.6666 -6.16637,32.4968 -18.3295,44.6599 -12.1632,12.3327 -27.1629,18.3449 -44.6753,18.3449z"/>
+  </font>
+  <font id="FontID0" horiz-adv-x="722" font-variant="normal" style="fill-rule:nonzero" font-weight="700">
+	<font-face 
+		font-family="Arial">
+		<font-face-src>
+			<font-face-name name="Arial Полужирный"/>
+		</font-face-src>
+	</font-face>
+   <missing-glyph><path d="M0 0z"/></missing-glyph>
+   <glyph unicode="I" horiz-adv-x="277" d="M68 0l0 716 145.008 0 0 -716 -145.008 0z"/>
+   <glyph unicode="N" horiz-adv-x="722" d="M73.0079 0l0 716 140.315 0 294.677 -479.843 0 479.843 134.016 0 0 -716 -144.85 0 -290.173 470.677 0 -470.677 -133.984 0z"/>
+   <glyph unicode="O" horiz-adv-x="777" d="M42.9921 353.669c0,73.0079 11.0236,134.331 32.8504,184 16.1575,36.5039 38.4882,69.3228 66.6457,98.3307 28.189,29.0079 59.0236,50.4882 92.5039,64.6614 44.6614,18.8346 96.189,28.3465 154.52,28.3465 105.669,0 189.984,-32.8504 253.48,-98.3307 63.3386,-65.6693 95.0236,-156.85 95.0236,-273.669 0,-115.843 -31.5276,-206.52 -94.3622,-271.843 -62.8346,-65.5118 -146.992,-98.1732 -252.157,-98.1732 -106.488,0 -191.339,32.5039 -254.173,97.6693 -62.8346,65.0079 -94.3307,154.677 -94.3307,269.008zm149.008 4.8189c0,-81.1654 18.8346,-142.646 56.3465,-184.661 37.4803,-41.8268 85.1654,-62.8346 142.835,-62.8346 57.8268,0 105.165,20.8504 142.331,62.3307 36.9764,41.6693 55.4961,104 55.4961,187.181 0,82.1732 -18.0157,143.496 -54.1732,183.843 -36,40.4724 -83.8425,60.6614 -143.654,60.6614 -59.685,0 -107.843,-20.5039 -144.346,-61.3543 -36.5039,-40.9764 -54.8346,-102.646 -54.8346,-185.165z"/>
+   <glyph unicode="T" horiz-adv-x="610" d="M234.016 0l0 594.992 -212 0 0 121.008 568 0 0 -121.008 -211.024 0 0 -594.992 -144.976 0z"/>
+   <glyph unicode="U" horiz-adv-x="722" d="M73.0079 716l145.008 0 0 -388c0,-61.6693 1.82677,-101.512 5.32283,-119.654 6.17323,-29.3543 20.6614,-53.0079 43.6535,-70.6772 23.1811,-17.8268 54.6772,-26.6772 94.6772,-26.6772 40.5039,0 71.1496,8.34646 91.8425,25.1654 20.6614,16.8504 32.9764,37.3543 37.1654,61.8583 4.15748,24.4724 6.33071,64.9764 6.33071,121.638l0 396.346 145.008 0 0 -376.504c0,-85.9843 -3.84252,-146.835 -11.685,-182.331 -7.84252,-35.4961 -22.1732,-65.5118 -43.1496,-89.9843 -20.8504,-24.5039 -48.8504,-43.8425 -83.8425,-58.3622 -35.1811,-14.4882 -80.8504,-21.8268 -137.323,-21.8268 -68.189,0 -119.843,7.84252 -155.024,23.685 -35.1496,15.811 -62.9921,36.315 -83.4961,61.6693 -20.5039,25.3228 -33.8268,51.6535 -40.315,79.4961 -9.51181,40.9764 -14.1732,101.669 -14.1732,181.827l0 382.331z"/>
+  </font>
+  <style type="text/css">
+   <![CDATA[
+    @font-face { font-family:"Segoe UI";font-variant:normal;font-style:normal;font-weight:bold;src:url("#FontID1") format(svg)}
+    @font-face { font-family:"Arial";font-variant:normal;font-weight:bold;src:url("#FontID0") format(svg)}
+    .str6 {stroke:black;stroke-width:52.92;stroke-miterlimit:22.9256;stroke-opacity:0.600000}
+    .str3 {stroke:black;stroke-width:26.46;stroke-miterlimit:22.9256}
+    .str4 {stroke:#666666;stroke-width:26.46;stroke-miterlimit:22.9256}
+    .str0 {stroke:black;stroke-width:52.92;stroke-miterlimit:22.9256}
+    .str1 {stroke:#001DBC;stroke-width:52.92;stroke-miterlimit:22.9256}
+    .str2 {stroke:#001DBC;stroke-width:105.83;stroke-linecap:round;stroke-miterlimit:22.9256}
+    .str5 {stroke:#E17055;stroke-width:105.83;stroke-linecap:round;stroke-miterlimit:22.9256}
+    .fil2 {fill:none;fill-rule:nonzero}
+    .fil8 {fill:#0050EF}
+    .fil10 {fill:#333333}
+    .fil12 {fill:#E17055}
+    .fil7 {fill:black;fill-rule:nonzero}
+    .fil6 {fill:#0050EF;fill-rule:nonzero}
+    .fil14 {fill:#3498DB;fill-rule:nonzero}
+    .fil1 {fill:#BDC3C7;fill-rule:nonzero}
+    .fil11 {fill:#E17055;fill-rule:nonzero}
+    .fil4 {fill:aliceblue;fill-rule:nonzero}
+    .fil0 {fill:white;fill-rule:nonzero}
+    .fil3 {fill:#ECF0F1;fill-rule:nonzero;fill-opacity:0.000000}
+    .fil5 {fill:#0050EF;fill-rule:nonzero;fill-opacity:0.200000}
+    .fil15 {fill:white;fill-rule:nonzero;fill-opacity:0.600000}
+    .fil17 {fill:url(#id0);fill-rule:nonzero}
+    .fil13 {fill:url(#id1);fill-rule:nonzero}
+    .fil9 {fill:url(#id2);fill-rule:nonzero}
+    .fil16 {fill:url(#id3);fill-rule:nonzero}
+    .fnt0 {font-weight:bold;font-size:317.5px;font-family:'Arial'}
+    .fnt2 {font-weight:bold;font-size:317.5px;font-family:'Arial'}
+    .fnt3 {font-weight:bold;font-size:631.93px;font-family:'Segoe UI'}
+    .fnt1 {font-weight:bold;font-size:648.68px;font-family:'Segoe UI'}
+    .fnt5 {font-weight:bold;font-size:658.5px;font-family:'Segoe UI'}
+    .fnt4 {font-weight:bold;font-size:712.52px;font-family:'Segoe UI'}
+   ]]>
+  </style>
+  <linearGradient id="id0" gradientUnits="userSpaceOnUse" x1="11417.88" y1="8152.19" x2="11417.88" y2="9181.14">
+   <stop offset="0" style="stop-opacity:1; stop-color:whitesmoke"/>
+   <stop offset="1" style="stop-opacity:1; stop-color:#B3B3B3"/>
+  </linearGradient>
+  <linearGradient id="id1" gradientUnits="userSpaceOnUse" xlink:href="#id0" x1="15664.51" y1="10279.66" x2="15664.51" y2="11267.08">
+  </linearGradient>
+  <linearGradient id="id2" gradientUnits="userSpaceOnUse" xlink:href="#id0" x1="15747.07" y1="14720.57" x2="15747.07" y2="15734.18">
+  </linearGradient>
+  <linearGradient id="id3" gradientUnits="userSpaceOnUse" xlink:href="#id0" x1="7973.96" y1="17555.63" x2="7973.96" y2="18668.96">
+  </linearGradient>
+ </defs>
+ <g id="Слой_x0020_1">
+  <metadata id="CorelCorpID_0Corel-Layer"/>
+  <g id="zone-cube">
+   <path class="fil0 str0" d="M6795.83 16966.67l4762.5 0c146.1,-0.01 264.58,118.47 264.58,264.57l0.01 5291.68c-0.01,146.09 -118.49,264.57 -264.59,264.57l-4762.5 0.01c-146.09,-0.01 -264.57,-118.49 -264.57,-264.59l-0.01 -5291.66c0.01,-146.11 118.49,-264.59 264.59,-264.59z"/>
+   <rect class="fil0 str0" x="6795.83" y="22655.21" width="4762.5" height="396.88"/>
+   <polygon class="fil0 str0" points="6531.25,16966.67 7854.17,14850 10500,14850 11822.92,16966.67 "/>
+   <path class="fil1 str0" d="M6478.33 16834.38l5397.5 0c43.83,-0.02 79.38,35.53 79.38,79.36l0 105.84c0,43.82 -35.55,79.37 -79.38,79.37l-5397.5 0.01c-43.82,-0.01 -79.37,-35.56 -79.37,-79.39l0 -105.82c0,-43.84 35.55,-79.39 79.38,-79.39z"/>
+   <path class="fil1 str0" d="M7774.79 14717.71l2804.59 0c29.22,-0.01 52.92,23.69 52.92,52.91l-0.01 158.76c0.01,29.21 -23.69,52.91 -52.91,52.91l-2804.59 0c-29.21,0 -52.91,-23.7 -52.91,-52.92l-0.01 -158.75c0.01,-29.22 23.71,-52.92 52.93,-52.92z"/>
   </g>
-
-  <!-- Пар поднимается -->
-  <g class="vapor-flow">
-    <ellipse cx="300" cy="630" rx="30" ry="15" fill="#fff" opacity="0.3" class="vapor-cloud v1"/>
-    <ellipse cx="280" cy="580" rx="35" ry="18" fill="#fff" opacity="0.3" class="vapor-cloud v2"/>
-    <ellipse cx="320" cy="530" rx="32" ry="16" fill="#fff" opacity="0.3" class="vapor-cloud v3"/>
-    <ellipse cx="290" cy="480" rx="38" ry="20" fill="#fff" opacity="0.3" class="vapor-cloud v4"/>
-    <ellipse cx="310" cy="430" rx="35" ry="17" fill="#fff" opacity="0.3" class="vapor-cloud v5"/>
+  <path class="fil0 str0" d="M7192.71 20406.25l2910.41 0c73.06,-0.01 132.3,59.23 132.3,132.28l0 1322.93c0,73.04 -59.24,132.28 -132.29,132.28l-2910.42 0.01c-73.04,-0.01 -132.28,-59.25 -132.28,-132.3l-0.01 -1322.91c0.01,-73.06 59.25,-132.3 132.3,-132.3z"/>
+  <line class="fil2 str0" x1="7325" y1="20803.13" x2="9970.83" y2= "20803.13" />
+  <line class="fil2 str0" x1="7325" y1="21200" x2="9970.83" y2= "21200" />
+  <line class="fil2 str0" x1="7325" y1="21596.88" x2="9970.83" y2= "21596.88" />
+  <g id="anim-vapor">
+   <path class="fil3" d="M10235.41 18818.75c0,-219.19 -473.83,-396.87 -1058.33,-396.87 -584.5,0 -1058.33,177.68 -1058.33,396.87 0,219.19 473.83,396.87 1058.33,396.87 584.5,0 1058.33,-177.68 1058.33,-396.87z"/>
+   <path class="fil3" d="M10367.7 19612.5c0,-263.03 -533.06,-476.25 -1190.62,-476.25 -657.56,0 -1190.62,213.22 -1190.62,476.25 0,263.03 533.06,476.25 1190.62,476.25 657.56,0 1190.62,-213.22 1190.62,-476.25z"/>
+   <path class="fil3" d="M10103.12 18025c0,-175.35 -414.6,-317.5 -926.04,-317.5 -511.44,0 -926.04,142.15 -926.04,317.5 0,175.35 414.6,317.5 926.04,317.5 511.44,0 926.04,-142.15 926.04,-317.5z"/>
   </g>
-
-  <!-- Холодильник (вертикальная труба с змеевиком) -->
-  <g id="condenser">
-    <rect x="260" y="200" width="80" height="250" rx="8" fill="#ffd700" stroke="#004080" stroke-width="4"/>
-
-    <!-- Змеевик охлаждения (спираль) -->
-    <path d="M 270 220 Q 290 230, 270 240 Q 250 250, 270 260 Q 290 270, 270 280 Q 250 290, 270 300 Q 290 310, 270 320 Q 250 330, 270 340 Q 290 350, 270 360 Q 250 370, 270 380 Q 290 390, 270 400 Q 250 410, 270 420"
-          stroke="#007bff" stroke-width="6" fill="none" class="cooling-coil"/>
-
-    <!-- Охлаждающая вода -->
-    <g class="cooling-water">
-      <circle cx="275" cy="230" r="3" fill="#00bfff" class="water-drop wd1" opacity="0"/>
-      <circle cx="265" cy="260" r="3" fill="#00bfff" class="water-drop wd2" opacity="0"/>
-      <circle cx="275" cy="290" r="3" fill="#00bfff" class="water-drop wd3" opacity="0"/>
-      <circle cx="265" cy="320" r="3" fill="#00bfff" class="water-drop wd4" opacity="0"/>
-      <circle cx="275" cy="350" r="3" fill="#00bfff" class="water-drop wd5" opacity="0"/>
-      <circle cx="265" cy="380" r="3" fill="#00bfff" class="water-drop wd6" opacity="0"/>
-    </g>
-
-    <!-- Конденсат стекает -->
-    <g class="condensation">
-      <circle cx="300" cy="240" r="4" fill="#00bfff" class="condensate-drop cd1" opacity="0"/>
-      <circle cx="290" cy="280" r="4" fill="#00bfff" class="condensate-drop cd2" opacity="0"/>
-      <circle cx="310" cy="320" r="4" fill="#00bfff" class="condensate-drop cd3" opacity="0"/>
-      <circle cx="300" cy="360" r="4" fill="#00bfff" class="condensate-drop cd4" opacity="0"/>
-      <circle cx="290" cy="400" r="4" fill="#00bfff" class="condensate-drop cd5" opacity="0"/>
-    </g>
+  <rect class="fil0 str0" x="8515.62" y="10881.25" width="1322.92" height="3836.46"/>
+  <path class="fil1 str0" d="M8436.25 10748.96l1481.67 0c29.23,-0.01 52.93,23.69 52.93,52.91l-0.02 158.75c0.02,29.22 -23.68,52.92 -52.9,52.92l-1481.68 0c-29.21,0 -52.91,-23.7 -52.91,-52.92l-0.01 -158.75c0.01,-29.22 23.71,-52.92 52.93,-52.92z"/>
+  <path class="fil0 str0" d="M8515.62 10748.96l0 -1719.79c0,-705.56 352.78,-1058.34 1058.34,-1058.34l1058.33 0 0 1322.92c-705.55,0 -970.14,485.07 -793.75,1455.21l-1322.92 0z"/>
+  <path class="fil0 str0" d="M10632.29 7970.83l3836.46 0c705.56,0 1058.33,352.78 1058.33,1058.34l0 1058.33 -1322.91 0c0,-529.17 -440.98,-793.75 -1322.92,-793.75l-2248.96 0 0 -1322.92z"/>
+  <path class="fil1 str0" d="M10552.92 7838.54l158.75 0c29.22,0 52.92,23.7 52.92,52.92l-0.01 1481.66c0.01,29.22 -23.69,52.92 -52.91,52.92l-158.75 0c-29.22,0 -52.92,-23.7 -52.92,-52.92l0 -1481.66c0,-29.22 23.7,-52.92 52.92,-52.92z"/>
+  <path class="fil1 str0" d="M14124.79 9955.21l1481.67 0c29.22,-0.01 52.92,23.69 52.92,52.91l0 158.75c0,29.22 -23.7,52.92 -52.92,52.92l-1481.67 0c-29.22,0 -52.92,-23.7 -52.92,-52.92l0.01 -158.75c-0.01,-29.22 23.69,-52.92 52.91,-52.92z"/>
+  <rect class="fil0 str0" x="14601.04" y="10219.79" width="529.17" height="7408.33"/>
+  <rect class="fil4 str1" x="14204.16" y="11013.54" width="1322.92" height="5820.83"/>
+  <polygon class="fil5" points="14204.16,16834.37 15527.08,16834.37 15527.08,11013.53 14204.16,11013.53 "/>
+  <polygon class="fil6" points="15791.67,16305.21 15923.96,16437.5 15923.96,16172.92 "/>
+  <g>
+   <path class="fil7" d="M15527.08 16305.21l1455.21 0 -1455.21 0zm0 0l0 0 0 0z"/>
+   <path id="_1" class="fil2 str2" d="M15527.08 16305.21l1455.21 0m-1455.21 0l0 0 0 0z"/>
   </g>
-
-  <!-- Выходная трубка -->
-  <line x1="300" y1="450" x2="300" y2="520" stroke="#004080" stroke-width="6" class="output-pipe"/>
-
-  <!-- Капли падают в банку -->
-  <g class="dripping">
-    <circle cx="300" cy="530" r="5" fill="#28a745" class="final-drop fd1" opacity="0"/>
-    <circle cx="300" cy="560" r="5" fill="#28a745" class="final-drop fd2" opacity="0"/>
+  <g transform="matrix(1 0 0 1 6746.87 1534.58)">
+   <text x="10500" y="14850"  class="fil8 fnt0">IN</text>
   </g>
-
-  <!-- Банка сборная (большая зелёная) -->
-  <g id="collection-jar">
-    <rect x="220" y="580" width="160" height="200" rx="10" fill="none" stroke="#28a745" stroke-width="5"/>
-    <rect x="220" y="780" width="160" height="30" rx="10" fill="#28a745" stroke="#004080" stroke-width="3"/>
-
-    <!-- Жидкость в банке -->
-    <rect x="225" y="600" width="150" height="0" fill="#28a745" opacity="0.6" class="jar-liquid-dist" id="dist-liquid"/>
-
-    <!-- Шкала объёма -->
-    <line x1="210" y1="680" x2="220" y2="680" stroke="#666" stroke-width="2"/>
-    <text x="200" y="685" text-anchor="end" font-size="12" fill="#666">1L</text>
-    <line x1="210" y1="730" x2="220" y2="730" stroke="#666" stroke-width="2"/>
-    <text x="200" y="735" text-anchor="end" font-size="12" fill="#666">500ml</text>
-
-    <!-- Ареометр плавает -->
-    <g class="hydrometer" transform="translate(300, 700)">
-      <rect x="-8" y="-60" width="16" height="80" rx="8" fill="#fff" stroke="#333" stroke-width="2"/>
-      <circle cx="0" cy="25" r="10" fill="#dc3545"/>
-      <text x="0" y="-25" text-anchor="middle" font-size="14" font-weight="bold" fill="#333" id="dist-abv">0%</text>
-    </g>
-
-    <!-- Волны при падении капель -->
-    <ellipse cx="300" cy="600" rx="40" ry="8" fill="none" stroke="#28a745" stroke-width="2" opacity="0" class="splash-wave"/>
-
-    <text x="300" y="820" text-anchor="middle" font-size="18" font-weight="bold" fill="#28a745">PRODUCT</text>
-    <text x="300" y="840" text-anchor="middle" font-size="14" fill="#666" id="dist-volume">0 ml</text>
+  <polygon class="fil0 str3" points="16717.71,16040.62 16717.71,16569.79 16453.13,16305.21 "/>
+  <polygon class="fil0 str3" points="16188.54,16040.63 16188.54,16569.79 16453.13,16305.21 "/>
+  <path class="fil9 str4" d="M15899.11 14720.57l1966.41 0c83.96,0 152.04,68.08 152.04,152.04l0 709.53c0,83.96 -68.08,152.04 -152.04,152.04l-1966.41 0c-83.94,0 -152.02,-68.08 -152.02,-152.04l-0.02 -709.53c0.02,-83.96 68.1,-152.04 152.06,-152.04z"/>
+  <text x="15985.94" y="15247.63" id="txt-water-in" class="fil10 fnt1">--.- °C</text>
+  <polygon class="fil11" points="16056.25,11542.71 15923.96,11675 15923.96,11410.42 "/>
+  <g>
+   <path class="fil7" d="M15527.08 11542.71l529.17 0 -529.17 0zm0 0l0 0 0 0z"/>
+   <path id="_1_0" class="fil2 str5" d="M15527.08 11542.71l529.17 0m-529.17 0l0 0 0 0z"/>
   </g>
-
-  <!-- Кнопка Power -->
-  <g id="dist-power-btn" class="power-btn">
-    <circle cx="300" cy="130" r="35" fill="#6c757d" stroke="#333" stroke-width="3" class="power-circle"/>
-    <path d="M 300 105 L 300 130 M 293 115 A 18 18 0 1 1 307 115"
-          stroke="#ffd700" stroke-width="5" fill="none" stroke-linecap="round" class="power-icon"/>
+  <g transform="matrix(1 0 0 1 5953.12 -3227.91)">
+   <text x="10500" y="14850"  class="fil12 fnt2">OUT</text>
   </g>
-
-  <!-- Температуры -->
-  <g class="temp-indicators">
-    <text x="50" y="800" font-size="16" font-weight="bold" fill="#666">T куб:</text>
-    <text x="50" y="825" font-size="20" font-weight="bold" fill="#dc3545" id="dist-temp-cube">--°C</text>
-
-    <text x="50" y="350" font-size="16" font-weight="bold" fill="#666">T пар:</text>
-    <text x="50" y="375" font-size="20" font-weight="bold" fill="#ffd700" id="dist-temp-vapor">--°C</text>
-
-    <text x="450" y="700" font-size="16" font-weight="bold" fill="#666">T продукт:</text>
-    <text x="450" y="725" font-size="20" font-weight="bold" fill="#28a745" id="dist-temp-product">--°C</text>
+  <path class="fil13 str4" d="M15812.61 10279.66l1915.56 0c81.79,0.01 148.11,66.34 148.11,148.13l0 691.16c0,81.81 -66.32,148.13 -148.11,148.13l-1915.56 -0.02c-81.78,0.02 -148.1,-66.3 -148.1,-148.09l0 -691.2c0,-81.77 66.32,-148.1 148.11,-148.1z"/>
+  <text x="15897.16" y="10793.11" id="txt-water-out" class="fil10 fnt3">--.- °C</text>
+  <polygon class="fil0 str0" points="14601.04,17628.12 15130.21,17628.12 14997.92,18421.87 14733.33,18421.87 "/>
+  <circle id="drop-tails-1" class="fil14" cx="14865.63" cy="18474.79" r="79.37"/>
+  <circle id="drop-tails-2" class="fil14" cx="14865.63" cy="18474.79" r="79.37"/>
+  <circle id="drop-tails-3" class="fil14" cx="14865.63" cy="18474.79" r="79.37"/>
+  <path class="fil15 str6" d="M14178.08 19161.41c-179.7,179.7 -718.82,1797.03 -718.82,3234.65 0,718.82 2875.25,718.82 2875.25,0 0,-1437.62 -539.11,-3054.95 -718.81,-3234.65l-1437.62 0z"/>
+  <rect class="fil0 str0" x="14357.77" y="22575.76" width="1078.22" height="179.7"/>
+  <g id="ind-power-heater">
+   <rect class="fil0 str3" x="11624.78" y="18527.71" width="2306.59" height="1111.46"/>
+   <text x="11757.07" y="18925.67" class="fil10 fnt0">SET</text>
+   <text x="12445.61" y="18925.67" id="txt-power-set" class="fil10 fnt0">--%</text>
+   <text x="11757.07" y="19454.83" class="fil10 fnt0">ACT</text>
+   <text x="12445.61" y="19454.83" id="txt-power-actual" class="fil10 fnt0">---W</text>
+   <rect class="fil4 str3" x="11757.07" y="19640.15" width="2041.99" height="132.29"/>
+   <rect id="anim-power-bar" class="fil12" x="11757.07" y="19640.15" width="0" height="132.29"/>
   </g>
-
-  <!-- Индикатор мощности -->
-  <g class="power-indicator">
-    <text x="480" y="920" font-size="14" fill="#666">ТЭН:</text>
-    <text x="480" y="945" font-size="18" font-weight="bold" fill="#ff6600" id="dist-power-level">0%</text>
+  <g id="ind-temp-cube">
+   <path class="fil16 str4" d="M8140.96 17555.63l2159.84 0c92.24,0 167.02,74.78 167.02,167l-0.02 779.33c0.02,92.22 -74.76,167 -166.98,167l-2159.86 0c-92.2,0 -166.98,-74.78 -166.98,-167l-0.02 -779.33c0.02,-92.22 74.8,-167 167.02,-167z"/>
+   <text x="8236.29" y="18134.55" id="txt-temp-cube" class="fil10 fnt4">--.- °C</text>
   </g>
+  <g id="ind-temp-neck">
+   <path class="fil17 str4" d="M11572.22 8152.19l1996.11 0c85.25,0.02 154.36,69.13 154.36,154.36l-0.02 720.23c0.02,85.25 -69.09,154.36 -154.32,154.36l-1996.13 -0.02c-85.21,0.02 -154.32,-69.09 -154.32,-154.32l-0.02 -720.27c0.02,-85.21 69.13,-154.32 154.36,-154.32z"/>
+   <text x="11660.35" y="8687.24" id="txt-temp-col-top" class="fil10 fnt5">--.- °C</text>
+  </g>
+ </g>
 </svg>

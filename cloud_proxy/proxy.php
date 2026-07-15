@@ -132,9 +132,18 @@ function proxyToESP32($path, $method = 'GET', $data = null, $headers = []) {
         if (!empty($decoded['bodyBase64'])) {
             $body = base64_decode($decoded['bodyBase64']);
         }
+        $contentType = !empty($decoded['contentType'])
+            ? $decoded['contentType']
+            : 'application/json; charset=utf-8';
+        $contentDisposition = !empty($decoded['contentDisposition'])
+            ? $decoded['contentDisposition']
+            : null;
 
         http_response_code($status);
-        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Type: ' . $contentType);
+        if ($contentDisposition) {
+            header('Content-Disposition: ' . $contentDisposition);
+        }
         echo $body;
         exit;
     }
@@ -233,6 +242,9 @@ if (strpos($path, 'api/web/') === 0) {
 // API запросы проксируем к ESP32
 if (strpos($path, 'api/') === 0) {
     $apiPath = '/' . $path;
+    if (!empty($_SERVER['QUERY_STRING'])) {
+        $apiPath .= '?' . $_SERVER['QUERY_STRING'];
+    }
     
     // Получаем тело запроса если есть
     $input = null;
@@ -318,4 +330,3 @@ if (file_exists($filePath) && is_file($filePath)) {
 http_response_code(404);
 header('Content-Type: text/html; charset=utf-8');
 echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>404 Not Found</title></head><body><h1>404 Not Found</h1><p>File not found: ' . htmlspecialchars($path, ENT_QUOTES, 'UTF-8') . '</p></body></html>';
-

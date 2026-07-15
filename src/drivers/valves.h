@@ -16,7 +16,9 @@ namespace Valves {
     enum class ValveId : uint8_t {
         WATER = 0,
         HEADS = 1,
-        UNO = 2
+        BODY = 2,
+        TAILS = 3,
+        UNO = 4
     };
 
     /**
@@ -27,7 +29,9 @@ namespace Valves {
     /**
      * Инициализация фракционника (вызывать если включён)
      */
-    void initFractionator();
+    void initFractionator(const FractionatorSettings& settings);
+
+    void configureFractionator(const FractionatorSettings& settings);
     
     // =========================================================================
     // ОСНОВНЫЕ КЛАПАНЫ
@@ -44,12 +48,41 @@ namespace Valves {
      */
     void setHeads(bool open);
     bool getHeads();
+
+    /**
+     * Клапан отбора тела
+     */
+    void setBody(bool open);
+    bool getBody();
+
+    /**
+     * Клапан отбора хвостов
+     */
+    void setTails(bool open);
+    bool getTails();
     
     /**
      * Клапан УНО (непрерывный отбор)
      */
     void setUno(bool open);
     bool getUno();
+
+    /**
+     * Наличие отдельных продуктовых клапанов в текущей конфигурации платы
+     */
+    bool hasHeadsValve();
+    bool hasBodyValve();
+    bool hasTailsValve();
+    bool hasUnoValve();
+    bool isProductValveAvailable(RectTakeoffFraction fraction);
+    bool isAnyTakeoffValveOpen();
+
+    /**
+     * Управление продуктовым клапаном с гарантией взаимного исключения
+     */
+    void setProductValve(RectTakeoffFraction fraction, bool open);
+    RectTakeoffFraction getActiveProductValve();
+    void closeProductValves();
 
     /**
      * Кратковременно открыть клапан для сервисного теста

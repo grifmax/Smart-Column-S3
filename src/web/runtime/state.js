@@ -1,12 +1,26 @@
 ﻿import { runtimeMonitorState, resolveMode, plannedAbvUserSet, plannedAbvPercent, setPlannedAbvPercent } from '../globals.js';
 import { toFinite, normalizeAbvPercent, clampPercent } from './helpers.js';
 
+const DEFAULT_HEATER_POWER_W = 3000;
+const DEFAULT_COLUMN_HEIGHT_MM = 1500;
+const DEFAULT_PACKING_COEFF = 15;
+
 function readFiniteCandidate(source, keys) {
     if (!source || typeof source !== 'object') return undefined;
     for (const key of keys) {
         if (!(key in source)) continue;
         const value = toFinite(source[key], NaN);
         if (Number.isFinite(value)) return value;
+    }
+    return undefined;
+}
+
+function readStringCandidate(source, keys) {
+    if (!source || typeof source !== 'object') return undefined;
+    for (const key of keys) {
+        if (!(key in source)) continue;
+        const value = String(source[key] ?? '').trim();
+        if (value) return value;
     }
     return undefined;
 }
@@ -20,6 +34,16 @@ const TEMP_ROLE_KEYS = [
     'waterIn',
     'waterOut'
 ];
+
+const TEMP_LEGACY_KEYS = {
+    cube: 't_cube',
+    columnBottom: 't_column_bottom',
+    columnTop: 't_column_top',
+    reflux: 't_reflux',
+    tsa: 't_tsa',
+    waterIn: 't_water_in',
+    waterOut: 't_water_out'
+};
 
 function ensureTemperatureChannels(target) {
     if (!target.temperatureChannels || typeof target.temperatureChannels !== 'object') {
@@ -61,6 +85,31 @@ function mergeTemperatureChannelsFromStatus(target, temperatures) {
     });
 }
 
+function mergeTemperatureChannelsFromValues(target, data) {
+    const channels = ensureTemperatureChannels(target);
+    const explicitMetaKeys = new Set(
+        Array.isArray(data?.temperatures)
+            ? data.temperatures
+                .map((item, index) => String(item?.roleKey || TEMP_ROLE_KEYS[index] || '').trim())
+                .filter(Boolean)
+            : []
+    );
+
+    TEMP_ROLE_KEYS.forEach((key) => {
+        if (explicitMetaKeys.has(key)) return;
+        const value = readStatusTemperature(data, key, TEMP_LEGACY_KEYS[key], undefined);
+        if (value === undefined) return;
+
+        channels[key] = {
+            ...channels[key],
+            installed: true,
+            assigned: channels[key]?.assigned ?? false,
+            detected: true,
+            valid: true
+        };
+    });
+}
+
 function mergeTemperatureValidityFromWs(target, tempValid) {
     if (!tempValid || typeof tempValid !== 'object') return;
     const channels = ensureTemperatureChannels(target);
@@ -71,6 +120,13 @@ function mergeTemperatureValidityFromWs(target, tempValid) {
             valid: Boolean(tempValid[key])
         };
     });
+}
+
+function readStatusTemperature(data, key, legacyKey, currentValue) {
+    const temps = data?.temps && typeof data.temps === 'object' ? data.temps : null;
+    const value = temps?.[key] ?? data?.[legacyKey];
+    if (value === undefined || value === null) return undefined;
+    return toFinite(value, currentValue);
 }
 
 function mergeEquipmentState(s, data) {
@@ -87,8 +143,19 @@ function mergeEquipmentState(s, data) {
             return;
         }
     };
+    const assignString = (field, keys) => {
+        for (const source of sources) {
+            const value = readStringCandidate(source, keys);
+            if (value === undefined) continue;
+            s.equipment[field] = value;
+            return;
+        }
+    };
 
     assign('heaterPowerW', ['heaterPowerW', 'heater_power_w']);
+    assign('columnHeightMm', ['columnHeightMm', 'column_height_mm']);
+    assignString('packingType', ['packingType', 'packing_type']);
+    assign('packingCoeff', ['packingCoeff', 'packing_coeff']);
     assign('cubeVolumeL', ['cubeVolumeL', 'cube_volume_l']);
     assign('minHeaterSubmergeL', ['minHeaterSubmergeL', 'min_heater_submerge_l']);
     assign('waterAutoStartCubeTempC', [
@@ -180,12 +247,15 @@ function mergePressureState(s, data) {
     if (atm !== undefined) s.pressure.atm = atm;
 
     if (pressure?.ok !== undefined) s.pressure.ok = Boolean(pressure.ok);
+    else if (pressure?.available !== undefined) s.pressure.ok = Boolean(pressure.available);
     else if (data?.v2?.indicators?.pressureSensorAvailable !== undefined) {
         s.pressure.ok = Boolean(data.v2.indicators.pressureSensorAvailable);
     }
 
     if (pressure?.ads1115Available !== undefined) {
         s.pressure.ads1115Available = Boolean(pressure.ads1115Available);
+    } else if (pressure?.available !== undefined) {
+        s.pressure.ads1115Available = Boolean(pressure.available);
     } else if (pressure?.ok !== undefined) {
         s.pressure.ads1115Available = Boolean(pressure.ok);
     }
@@ -465,11 +535,25 @@ export function updateRuntimeStateFromStatus(data) {
         if (data.pump.speedMlH !== undefined) s.pump.speedMlH = toFinite(data.pump.speedMlH, s.pump.speedMlH);
         if (data.pump.totalMl !== undefined) s.pump.totalMl = toFinite(data.pump.totalMl, s.pump.totalMl);
     }
-    if (data.temps && typeof data.temps === 'object') {
-        if (data.temps.cube !== undefined) s.temps.cube = toFinite(data.temps.cube, s.temps.cube);
-        if (data.temps.columnBottom !== undefined) s.temps.columnBottom = toFinite(data.temps.columnBottom, s.temps.columnBottom);
+    {
+        const cube = readStatusTemperature(data, 'cube', 't_cube', s.temps.cube);
+        const columnBottom = readStatusTemperature(data, 'columnBottom', 't_column_bottom', s.temps.columnBottom);
+        const columnTop = readStatusTemperature(data, 'columnTop', 't_column_top', s.temps.columnTop);
+        const reflux = readStatusTemperature(data, 'reflux', 't_reflux', s.temps.reflux);
+        const tsa = readStatusTemperature(data, 'tsa', 't_tsa', s.temps.tsa);
+        const waterIn = readStatusTemperature(data, 'waterIn', 't_water_in', s.temps.waterIn);
+        const waterOut = readStatusTemperature(data, 'waterOut', 't_water_out', s.temps.waterOut);
+
+        if (cube !== undefined) s.temps.cube = cube;
+        if (columnBottom !== undefined) s.temps.columnBottom = columnBottom;
+        if (columnTop !== undefined) s.temps.columnTop = columnTop;
+        if (reflux !== undefined) s.temps.reflux = reflux;
+        if (tsa !== undefined) s.temps.tsa = tsa;
+        if (waterIn !== undefined) s.temps.waterIn = waterIn;
+        if (waterOut !== undefined) s.temps.waterOut = waterOut;
     }
     mergeTemperatureChannelsFromStatus(s, data.temperatures);
+    mergeTemperatureChannelsFromValues(s, data);
     if (data.valves && typeof data.valves === 'object') {
         s.valves = { ...s.valves, ...data.valves };
     }
@@ -601,4 +685,29 @@ export function estimateRectTargets(rect, abvPercentOverride = null) {
     const body = absoluteAlcoholMl * (toFinite(rect.bodyPercent, 0) / 100);
     const tails = absoluteAlcoholMl * (toFinite(rect.tailsPercent, 0) / 100);
     return { heads, body, tails };
+}
+
+export function getRectificationColumnCapacityFactor(equipment = {}) {
+    const columnHeightMm = Math.max(
+        1,
+        toFinite(equipment.columnHeightMm, DEFAULT_COLUMN_HEIGHT_MM)
+    );
+    const packingCoeff = Math.max(
+        0.1,
+        toFinite(equipment.packingCoeff, DEFAULT_PACKING_COEFF)
+    );
+    const normalizedHeight = columnHeightMm / DEFAULT_COLUMN_HEIGHT_MM;
+    const normalizedPacking = packingCoeff / DEFAULT_PACKING_COEFF;
+    const combinedFactor = Math.sqrt(Math.max(0, normalizedHeight * normalizedPacking));
+    return Math.min(1.5, Math.max(0.5, combinedFactor));
+}
+
+export function getConfiguredHeaterPowerKw(equipment = {}) {
+    return Math.max(0.1, toFinite(equipment.heaterPowerW, DEFAULT_HEATER_POWER_W) / 1000);
+}
+
+export function getRectificationTakeoffRateMlH(speedMlHKw, equipment = {}) {
+    return Math.max(0, toFinite(speedMlHKw, 0)) *
+        getConfiguredHeaterPowerKw(equipment) *
+        getRectificationColumnCapacityFactor(equipment);
 }

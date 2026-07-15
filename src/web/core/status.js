@@ -29,6 +29,7 @@ import { updateCloudUiFromStatus } from '../cloud/cloud-config.js';
 import { formatUptime } from './utils.js';
 import { addLog } from './logs.js';
 import { updateProcessNotifications } from '../runtime/process-notifications.js';
+import { showNotification } from './notifications.js';
 import { syncStirrerUi } from '../settings/equipment.js';
 import { syncMonitorGaugeVisibility } from '../ui/monitor-gauges.js';
 import { updateMiniChart } from '../ui/mini-chart.js';
@@ -57,6 +58,46 @@ function normalizeStatusTemps(data = {}) {
 }
 
 let statusRequestInFlight = false;
+let fractionConfirmationKey = '';
+let fractionConfirmationInFlight = false;
+
+function handleFractionProgramConfirmation(data = {}) {
+    const fractionProgram = data.fractionProgram && typeof data.fractionProgram === 'object'
+        ? data.fractionProgram
+        : {};
+    if (!fractionProgram.waitingForConfirmation) {
+        fractionConfirmationKey = '';
+        return;
+    }
+
+    const prompt = String(fractionProgram.confirmationPrompt || 'Install the collection container and confirm');
+    const key = `${Number(fractionProgram.currentStep) || 0}:${prompt}`;
+    if (fractionConfirmationInFlight || fractionConfirmationKey === key) return;
+
+    fractionConfirmationKey = key;
+    showNotification('Fraction program requires confirmation', {
+        body: prompt,
+        requireInteraction: true
+    });
+
+    if (!window.confirm(`${prompt}\n\nStart routing and collection?`)) return;
+    fractionConfirmationInFlight = true;
+    fetch('/api/fraction-program/confirm', { method: 'POST' })
+        .then(async (response) => {
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || `HTTP ${response.status}`);
+            }
+            addLog('Fraction routing started after operator confirmation', 'success');
+        })
+        .catch((error) => {
+            fractionConfirmationKey = '';
+            addLog(`Fraction confirmation failed: ${error.message}`, 'error');
+        })
+        .finally(() => {
+            fractionConfirmationInFlight = false;
+        });
+}
 
 // ============================================================================
 
@@ -94,6 +135,7 @@ export async function loadStatus() {
 
 
         const data = await response.json();
+        handleFractionProgramConfirmation(data);
         setIsConnected(true);
         updateConnectionStatus(true);
 

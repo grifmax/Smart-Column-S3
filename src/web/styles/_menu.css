@@ -34,6 +34,24 @@
     white-space: nowrap;
 }
 
+.menu-dropdown-nav {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+}
+
+.menu-dropdown-section-title {
+    padding: 10px 6px 2px;
+}
+
+.menu-dropdown-section-title:first-child {
+    padding-top: 2px;
+}
+
+.menu-dropdown-item {
+    width: 100%;
+}
+
 .tab {
     background: var(--bg-card);
     border: 2px solid var(--border-color);

@@ -11,6 +11,8 @@
 #include <WiFi.h>
 
 #include "control/fsm.h"
+#include "control/fsm_utils.h"
+#include "control/rect_takeoff.h"
 #include "control/v2/reason_codes.h"
 #include "drivers/sensors.h"
 #include "drivers/stirrer.h"
@@ -805,12 +807,23 @@ static ProcessDryRunForecast buildRectificationDryRunForecast(
   forecast.tailsMl =
       forecast.absoluteAlcoholMl * (clampFloatRange(rect.tailsPercent, 0.0f, 100.0f) / 100.0f);
 
-  const float heaterPowerKw =
-      fmaxf(0.1f, static_cast<float>(g_settings.equipment.heaterPowerW) / 1000.0f);
-  forecast.headsSpeedMlH =
-      clampFloatRange(rect.headsSpeedMlHKw, 10.0f, 2000.0f) * heaterPowerKw;
-  forecast.bodySpeedMlH =
-      clampFloatRange(rect.bodySpeedMlHKw, 50.0f, 3000.0f) * heaterPowerKw;
+  const float heaterPowerKw = FSM::getConfiguredHeaterPowerKw(g_settings);
+  float rectDuty = 1.0f;
+  if (rect.refluxMode == RectRefluxMode::SR_RATIO) {
+    rectDuty = rect.srRatio <= 0.0f ? 0.0f : (1.0f / (rect.srRatio + 1.0f));
+  } else if (rect.refluxMode == RectRefluxMode::AUTONOMOUS) {
+    const float cycle = rect.autonomousCycleSec > 0
+        ? static_cast<float>(rect.autonomousCycleSec)
+        : 1.0f;
+    const float pause = rect.autonomousPauseSec < rect.autonomousCycleSec
+        ? static_cast<float>(rect.autonomousPauseSec)
+        : (cycle - 1.0f);
+    rectDuty = fmaxf(0.0f, (cycle - pause) / cycle);
+  }
+  forecast.headsSpeedMlH = FSM::getRectificationTakeoffRateMlH(
+      g_settings, clampFloatRange(rect.headsSpeedMlHKw, 10.0f, 2000.0f)) * rectDuty;
+  forecast.bodySpeedMlH = FSM::getRectificationTakeoffRateMlH(
+      g_settings, clampFloatRange(rect.bodySpeedMlHKw, 50.0f, 3000.0f)) * rectDuty;
   forecast.tailsSpeedMlH = fmaxf(50.0f, forecast.bodySpeedMlH * 0.60f);
 
   const float headsMin =
@@ -846,6 +859,16 @@ static ProcessDryRunForecast buildRectificationDryRunForecast(
             : clampFloatRange(rect.bodySpeedMlHKw, 50.0f, 3000.0f);
     const float currentBodySpeedMlHKw =
         clampFloatRange(rect.bodySpeedMlHKw, 50.0f, 3000.0f);
+    const float baselineBodySpeedMlH = FSM::getRectificationTakeoffRateMlH(
+        activeProfile->validation.heaterPowerW,
+        activeProfile->validation.columnHeightMm,
+        activeProfile->validation.packingCoeff,
+        baselineBodySpeedMlHKw);
+    const float currentBodySpeedMlH = FSM::getRectificationTakeoffRateMlH(
+        g_settings.equipment.heaterPowerW,
+        g_settings.equipment.columnHeightMm,
+        g_settings.equipment.packingCoeff,
+        currentBodySpeedMlHKw);
     const float baselineDurationMin =
         activeProfile->statistics.avgDuration > 0
             ? static_cast<float>(activeProfile->statistics.avgDuration) / 60.0f
@@ -861,7 +884,7 @@ static ProcessDryRunForecast buildRectificationDryRunForecast(
                              0.55f, 1.90f);
       const float speedRatio =
           clampForecastRatio(
-              safeRatio(baselineBodySpeedMlHKw, currentBodySpeedMlHKw, 1.0f),
+              safeRatio(baselineBodySpeedMlH, currentBodySpeedMlH, 1.0f),
               0.70f, 1.35f);
       const float baselineScale =
           clampForecastRatio(aaRatio * 0.45f + chargeRatio * 0.35f + speedRatio * 0.20f,
@@ -935,7 +958,8 @@ static ProcessDryRunForecast buildRectificationDryRunForecast(
     forecast.riskTone = "warn";
     forecast.riskDetail =
         "Куб загружен почти под рабочий предел. Прогрев и стабилизация могут занять дольше среднего baseline.";
-  } else if (rect.bodySpeedMlHKw <= rect.headsSpeedMlHKw) {
+  } else if (rect.refluxMode == RectRefluxMode::ML_H &&
+             rect.bodySpeedMlHKw <= rect.headsSpeedMlHKw) {
     forecast.riskTone = "warn";
     forecast.riskDetail =
         "Скорость тела не выше скорости голов. Такой сценарий безопасен, но обычно даёт слишком консервативный и длинный прогон.";
@@ -1100,6 +1124,16 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
                                : "Не нужно",
                            coolingRelevant
                                ? (waterTelemetryReady ? "good" : "warn")
+                               : "muted");
+
+  setProcessPreflightCheck(checks, "takeoff",
+                           (mode == Mode::RECTIFICATION ||
+                            mode == Mode::MANUAL_RECT)
+                               ? "РџСЂРѕРІРµСЂСЊС‚Рµ"
+                               : "РќРµ РЅСѓР¶РЅРѕ",
+                           (mode == Mode::RECTIFICATION ||
+                            mode == Mode::MANUAL_RECT)
+                               ? "warn"
                                : "muted");
 
   auto addItem = [&](const char *id, const char *tone, const char *title,
@@ -1296,10 +1330,14 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
             "Давление перед стартом выглядит нормальным и стабильным.", false);
   }
 
-  const bool takeoffValvesOpen = Valves::getHeads() || Valves::getUno();
+  const bool takeoffValvesOpen = Valves::isAnyTakeoffValveOpen();
+  if (takeoffValvesOpen &&
+      (mode == Mode::RECTIFICATION || mode == Mode::MANUAL_RECT)) {
+    setProcessPreflightCheck(checks, "takeoff", "Р‘Р»РѕРє", "danger");
+  }
   if (takeoffValvesOpen) {
     addItem("valves", "danger", "Клапаны отбора",
-            "Перед стартом уже открыт один из клапанов отбора. Сначала закройте "
+            "Перед стартом уже открыта одна из линий отбора. Сначала закройте "
             "сервисные линии, чтобы процесс не стартовал в некорректной конфигурации.",
             true);
   } else {
@@ -1380,6 +1418,11 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
         rect.bodySpeedMlHKw =
             clampFloatRange(params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
       }
+      if (!params["takeoffBackendType"].isNull()) {
+        rect.takeoffBackendType = static_cast<RectTakeoffBackendType>(clampU16Range(
+            params["takeoffBackendType"].as<uint32_t>(), 0,
+            static_cast<uint32_t>(RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
+      }
       if (!params["stabilizationMin"].isNull()) {
         rect.stabilizationMin =
             clampU16Range(params["stabilizationMin"].as<uint32_t>(), 1, 180);
@@ -1389,6 +1432,23 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
       }
       if (!params["baroCorrectionEnabled"].isNull()) {
         rect.baroCorrectionEnabled = params["baroCorrectionEnabled"].as<bool>();
+      }
+      if (!params["refluxMode"].isNull()) {
+        rect.refluxMode = static_cast<RectRefluxMode>(clampU16Range(
+            params["refluxMode"].as<uint32_t>(), 0,
+            static_cast<uint32_t>(RectRefluxMode::AUTONOMOUS)));
+      }
+      if (!params["srRatio"].isNull()) {
+        rect.srRatio =
+            clampFloatRange(params["srRatio"].as<float>(), 0.0f, 20.0f);
+      }
+      if (!params["autonomousCycleSec"].isNull()) {
+        rect.autonomousCycleSec = clampU16Range(
+            params["autonomousCycleSec"].as<uint32_t>(), 1, 7200);
+      }
+      if (!params["autonomousPauseSec"].isNull()) {
+        rect.autonomousPauseSec = clampU16Range(
+            params["autonomousPauseSec"].as<uint32_t>(), 0, 7199);
       }
     }
 
@@ -1402,7 +1462,9 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
       addItem("rect-profile", "danger", "Параметры запуска режима",
               "Объём сырца ниже минимального уровня для безопасного погружения ТЭНа.",
               true);
-    } else if (fractionsSum > 100.0f || rect.bodySpeedMlHKw <= rect.headsSpeedMlHKw) {
+    } else if (fractionsSum > 100.0f ||
+               (rect.refluxMode == RectRefluxMode::ML_H &&
+                rect.bodySpeedMlHKw <= rect.headsSpeedMlHKw)) {
       addItem("rect-profile", "warn", "Параметры запуска режима",
               fractionsSum > 100.0f
                   ? String("Сумма фракций выше 100%. Проверьте профиль перед реальным запуском.")
@@ -1412,6 +1474,24 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
     } else {
       addItem("rect-profile", "good", "Параметры запуска режима",
               "Объём, фракции и скорости ректификации выглядят согласованно.", false);
+    }
+
+    String takeoffBackendDetail;
+    if (!RectTakeoff::validateBackendConfiguration(rect.takeoffBackendType,
+                                                   &takeoffBackendDetail)) {
+      addItem("rect-takeoff", "danger", "Исполнитель отбора",
+              takeoffBackendDetail, true);
+      setProcessPreflightCheck(checks, "takeoff", "Р‘Р»РѕРє", "danger");
+      setProcessPreflightCheck(checks, "takeoff", "Р‘Р»РѕРє", "danger");
+    } else {
+      addItem("rect-takeoff", "good", "Исполнитель отбора",
+              takeoffBackendDetail, false);
+      if (!takeoffValvesOpen) {
+        setProcessPreflightCheck(checks, "takeoff", "OK", "good");
+      }
+      if (!takeoffValvesOpen) {
+        setProcessPreflightCheck(checks, "takeoff", "OK", "good");
+      }
     }
 
     if (activeProfileLoaded && rectProfile) {
@@ -1483,6 +1563,16 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
     } else {
       addItem("manual-profile", "good", "Параметры ручной ректификации",
               "Ручной профиль выглядит полным и согласованным.", false);
+    }
+
+    String takeoffBackendDetail;
+    if (!RectTakeoff::validateBackendConfiguration(
+            g_settings.rectParams.takeoffBackendType, &takeoffBackendDetail)) {
+      addItem("manual-takeoff", "danger", "Исполнитель отбора",
+              takeoffBackendDetail, true);
+    } else {
+      addItem("manual-takeoff", "good", "Исполнитель отбора",
+              takeoffBackendDetail, false);
     }
   } else if (mode == Mode::DISTILLATION) {
     const float endTemp =
@@ -2005,9 +2095,12 @@ void init() {
     JsonObject valves = doc["valves"].to<JsonObject>();
     valves["water"] = Valves::getWater();
     valves["heads"] = Valves::getHeads();
+    valves["body"] = Valves::getBody();
+    valves["bodyAvailable"] = Valves::hasBodyValve();
+    valves["tailsAvailable"] = Valves::hasTailsValve();
     valves["uno"] = Valves::getUno();
     valves["startStopDuty"] = Valves::getStartStop();
-    valves["tails"] = false; // Отдельного канала хвостов в драйвере нет
+    valves["tails"] = Valves::getTails();
 
     // Ареометр
     JsonObject hydro = doc["hydrometer"].to<JsonObject>();
@@ -2075,6 +2168,32 @@ void init() {
     rect["tailsPercent"] = g_settings.rectParams.tailsPercent;
     rect["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
     rect["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+    rect["takeoffBackendType"] =
+        static_cast<uint8_t>(g_settings.rectParams.takeoffBackendType);
+    rect["refluxMode"] = static_cast<uint8_t>(g_settings.rectParams.refluxMode);
+    rect["srRatio"] = g_settings.rectParams.srRatio;
+    rect["autonomousCycleSec"] = g_settings.rectParams.autonomousCycleSec;
+    rect["autonomousPauseSec"] = g_settings.rectParams.autonomousPauseSec;
+    rect["chimAutoPercent"] = g_settings.rectParams.chimAutoPercent;
+    rect["chimTimePerH"] = g_settings.rectParams.chimTimePerH;
+    rect["chimBegPercent"] = g_settings.rectParams.chimBegPercent;
+    rect["chimMinPercent"] = g_settings.rectParams.chimMinPercent;
+    rect["phasePowerStabilization"] =
+        g_settings.rectParams.phasePowerPercent[RECT_POWER_STABILIZATION];
+    rect["phasePowerHeads"] =
+        g_settings.rectParams.phasePowerPercent[RECT_POWER_HEADS];
+    rect["phasePowerBody"] =
+        g_settings.rectParams.phasePowerPercent[RECT_POWER_BODY];
+    rect["phasePowerTails"] =
+        g_settings.rectParams.phasePowerPercent[RECT_POWER_TAILS];
+    rect["usePbMode"] = g_settings.rectParams.usePbMode;
+    rect["timpPbMs"] = g_settings.rectParams.timpPbMs;
+    rect["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
+    rect["routingRetargetMinMs"] =
+        g_settings.rectParams.routingRetargetMinMs;
+    rect["valvePulsePeriodMs"] = g_settings.rectParams.valvePulsePeriodMs;
+    rect["valvePulseMinOpenMs"] = g_settings.rectParams.valvePulseMinOpenMs;
+    rect["valvePulseMaxOpenMs"] = g_settings.rectParams.valvePulseMaxOpenMs;
 
     float rectHeadsTargetMl = 0.0f;
     float rectBodyTargetMl = 0.0f;
@@ -2546,6 +2665,14 @@ void init() {
                       "{\"success\":true,\"message\":\"Process resumed\"}");
       });
 
+  server.on("/api/fraction-program/confirm", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              if (!FSM::Distillation::confirmFractionProgram(g_state, g_settings)) {
+                request->send(409, "application/json", "{\"success\":false,\"error\":\"No fraction confirmation is pending\"}");
+                return;
+              }
+              request->send(200, "application/json", "{\"success\":true,\"message\":\"Fraction routing started\"}");
+            });
   // POST /api/stirrer/start - запуск мешалки
   server.on(
       "/api/stirrer/start", HTTP_POST,
@@ -3590,6 +3717,30 @@ void init() {
     doc["stabilizationMin"] = params.stabilizationMin;
     doc["purgeMin"] = params.purgeMin;
     doc["baroCorrectionEnabled"] = params.baroCorrectionEnabled;
+    doc["refluxMode"] = static_cast<uint8_t>(params.refluxMode);
+    doc["srRatio"] = params.srRatio;
+    doc["autonomousCycleSec"] = params.autonomousCycleSec;
+    doc["autonomousPauseSec"] = params.autonomousPauseSec;
+    doc["chimAutoPercent"] = params.chimAutoPercent;
+    doc["chimTimePerH"] = params.chimTimePerH;
+    doc["chimBegPercent"] = params.chimBegPercent;
+    doc["chimMinPercent"] = params.chimMinPercent;
+    doc["usePbMode"] = params.usePbMode;
+    doc["timpPbMs"] = params.timpPbMs;
+    doc["routingSettlingMs"] = params.routingSettlingMs;
+    doc["routingRetargetMinMs"] = params.routingRetargetMinMs;
+    doc["valvePulsePeriodMs"] = params.valvePulsePeriodMs;
+    doc["valvePulseMinOpenMs"] = params.valvePulseMinOpenMs;
+    doc["valvePulseMaxOpenMs"] = params.valvePulseMaxOpenMs;
+    JsonArray phasePower = doc["phasePowerPercent"].to<JsonArray>();
+    for (uint8_t i = 0; i < RECT_POWER_COUNT; ++i) {
+      phasePower.add(params.phasePowerPercent[i]);
+    }
+    doc["phasePowerStabilization"] =
+        params.phasePowerPercent[RECT_POWER_STABILIZATION];
+    doc["phasePowerHeads"] = params.phasePowerPercent[RECT_POWER_HEADS];
+    doc["phasePowerBody"] = params.phasePowerPercent[RECT_POWER_BODY];
+    doc["phasePowerTails"] = params.phasePowerPercent[RECT_POWER_TAILS];
 
     String json;
     serializeJson(doc, json);
@@ -3675,6 +3826,97 @@ void init() {
         if (!params["baroCorrectionEnabled"].isNull()) {
           updated.baroCorrectionEnabled = params["baroCorrectionEnabled"].as<bool>();
         }
+        if (!params["refluxMode"].isNull()) {
+          updated.refluxMode = static_cast<RectRefluxMode>(clampU16Range(
+              params["refluxMode"].as<uint32_t>(), 0,
+              static_cast<uint32_t>(RectRefluxMode::AUTONOMOUS)));
+        }
+        if (!params["srRatio"].isNull()) {
+          updated.srRatio =
+              clampFloatRange(params["srRatio"].as<float>(), 0.0f, 20.0f);
+        }
+        if (!params["autonomousCycleSec"].isNull()) {
+          updated.autonomousCycleSec = clampU16Range(
+              params["autonomousCycleSec"].as<uint32_t>(), 1, 7200);
+        }
+        if (!params["autonomousPauseSec"].isNull()) {
+          updated.autonomousPauseSec = clampU16Range(
+              params["autonomousPauseSec"].as<uint32_t>(), 0, 7199);
+        }
+        if (!params["chimAutoPercent"].isNull()) {
+          updated.chimAutoPercent = clampFloatRange(
+              params["chimAutoPercent"].as<float>(), 0.0f, 200.0f);
+        }
+        if (!params["chimTimePerH"].isNull()) {
+          updated.chimTimePerH = clampFloatRange(
+              params["chimTimePerH"].as<float>(), -2000.0f, 2000.0f);
+        }
+        if (!params["chimBegPercent"].isNull()) {
+          updated.chimBegPercent = clampFloatRange(
+              params["chimBegPercent"].as<float>(), -100.0f, 200.0f);
+        }
+        if (!params["chimMinPercent"].isNull()) {
+          updated.chimMinPercent = clampFloatRange(
+              params["chimMinPercent"].as<float>(), 0.0f, 100.0f);
+        }
+        if (params["phasePowerPercent"].is<JsonArray>()) {
+          JsonArray phasePower = params["phasePowerPercent"].as<JsonArray>();
+          for (uint8_t i = 0; i < RECT_POWER_COUNT && i < phasePower.size();
+               ++i) {
+            updated.phasePowerPercent[i] =
+                clampU8Range(phasePower[i].as<uint32_t>(), 1, 100);
+          }
+        }
+        if (!params["phasePowerStabilization"].isNull()) {
+          updated.phasePowerPercent[RECT_POWER_STABILIZATION] =
+              clampU8Range(params["phasePowerStabilization"].as<uint32_t>(), 1,
+                           100);
+        }
+        if (!params["phasePowerHeads"].isNull()) {
+          updated.phasePowerPercent[RECT_POWER_HEADS] =
+              clampU8Range(params["phasePowerHeads"].as<uint32_t>(), 1, 100);
+        }
+        if (!params["phasePowerBody"].isNull()) {
+          updated.phasePowerPercent[RECT_POWER_BODY] =
+              clampU8Range(params["phasePowerBody"].as<uint32_t>(), 1, 100);
+        }
+        if (!params["phasePowerTails"].isNull()) {
+          updated.phasePowerPercent[RECT_POWER_TAILS] =
+              clampU8Range(params["phasePowerTails"].as<uint32_t>(), 1, 100);
+        }
+        if (!params["usePbMode"].isNull()) {
+          updated.usePbMode =
+              clampU8Range(params["usePbMode"].as<uint32_t>(), 0, 3);
+        }
+        if (!params["timpPbMs"].isNull()) {
+          const uint32_t timpPbMs = params["timpPbMs"].as<uint32_t>();
+          updated.timpPbMs = timpPbMs > 600000UL ? 600000UL : timpPbMs;
+        }
+        if (!params["routingSettlingMs"].isNull()) {
+          updated.routingSettlingMs = clampU16Range(
+              params["routingSettlingMs"].as<uint32_t>(), 0, 10000);
+        }
+        if (!params["routingRetargetMinMs"].isNull()) {
+          updated.routingRetargetMinMs = clampU16Range(
+              params["routingRetargetMinMs"].as<uint32_t>(), 0, 30000);
+        }
+        if (!params["valvePulsePeriodMs"].isNull()) {
+          updated.valvePulsePeriodMs = clampU16Range(
+              params["valvePulsePeriodMs"].as<uint32_t>(), 100, 5000);
+        }
+        if (!params["valvePulseMinOpenMs"].isNull()) {
+          updated.valvePulseMinOpenMs = clampU16Range(
+              params["valvePulseMinOpenMs"].as<uint32_t>(), 0,
+              updated.valvePulsePeriodMs);
+        }
+        if (!params["valvePulseMaxOpenMs"].isNull()) {
+          updated.valvePulseMaxOpenMs = clampU16Range(
+              params["valvePulseMaxOpenMs"].as<uint32_t>(),
+              updated.valvePulseMinOpenMs, updated.valvePulsePeriodMs);
+        }
+        if (updated.autonomousPauseSec >= updated.autonomousCycleSec) {
+          updated.autonomousPauseSec = updated.autonomousCycleSec - 1;
+        }
 
         if (fractionsUpdated) {
           normalizeRectFractions(updated);
@@ -3700,6 +3942,37 @@ void init() {
         out["stabilizationMin"] = g_settings.rectParams.stabilizationMin;
         out["purgeMin"] = g_settings.rectParams.purgeMin;
         out["baroCorrectionEnabled"] = g_settings.rectParams.baroCorrectionEnabled;
+        out["refluxMode"] =
+            static_cast<uint8_t>(g_settings.rectParams.refluxMode);
+        out["srRatio"] = g_settings.rectParams.srRatio;
+        out["autonomousCycleSec"] =
+            g_settings.rectParams.autonomousCycleSec;
+        out["autonomousPauseSec"] =
+            g_settings.rectParams.autonomousPauseSec;
+        out["chimAutoPercent"] = g_settings.rectParams.chimAutoPercent;
+        out["chimTimePerH"] = g_settings.rectParams.chimTimePerH;
+        out["chimBegPercent"] = g_settings.rectParams.chimBegPercent;
+        out["chimMinPercent"] = g_settings.rectParams.chimMinPercent;
+        out["usePbMode"] = g_settings.rectParams.usePbMode;
+        out["timpPbMs"] = g_settings.rectParams.timpPbMs;
+        out["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
+        out["routingRetargetMinMs"] =
+            g_settings.rectParams.routingRetargetMinMs;
+        out["valvePulsePeriodMs"] = g_settings.rectParams.valvePulsePeriodMs;
+        out["valvePulseMinOpenMs"] = g_settings.rectParams.valvePulseMinOpenMs;
+        out["valvePulseMaxOpenMs"] = g_settings.rectParams.valvePulseMaxOpenMs;
+        JsonArray outPhasePower = out["phasePowerPercent"].to<JsonArray>();
+        for (uint8_t i = 0; i < RECT_POWER_COUNT; ++i) {
+          outPhasePower.add(g_settings.rectParams.phasePowerPercent[i]);
+        }
+        out["phasePowerStabilization"] =
+            g_settings.rectParams.phasePowerPercent[RECT_POWER_STABILIZATION];
+        out["phasePowerHeads"] =
+            g_settings.rectParams.phasePowerPercent[RECT_POWER_HEADS];
+        out["phasePowerBody"] =
+            g_settings.rectParams.phasePowerPercent[RECT_POWER_BODY];
+        out["phasePowerTails"] =
+            g_settings.rectParams.phasePowerPercent[RECT_POWER_TAILS];
 
         String json;
         serializeJson(out, json);
@@ -3820,7 +4093,8 @@ void init() {
       });
 
   // POST /api/manual/valves - управление клапанами
-  // body: { "water":true/false, "heads":true/false, "uno":true/false, "allOff":true }
+  // body: { "water":true/false, "heads":true/false, "body":true/false,
+  //         "tails":true/false, "uno":true/false, "allOff":true }
   server.on(
       "/api/manual/valves", HTTP_POST, [](AsyncWebServerRequest *request) {},
       NULL,
@@ -3846,6 +4120,12 @@ void init() {
         }
         if (!doc["heads"].isNull()) {
           Valves::setHeads(doc["heads"].as<bool>());
+        }
+        if (!doc["body"].isNull()) {
+          Valves::setBody(doc["body"].as<bool>());
+        }
+        if (!doc["tails"].isNull()) {
+          Valves::setTails(doc["tails"].as<bool>());
         }
         if (!doc["uno"].isNull()) {
           Valves::setUno(doc["uno"].as<bool>());
@@ -4143,6 +4423,7 @@ void broadcastState(const SystemState &state) {
   JsonObject fastEquipment = fastDoc["equipment"].to<JsonObject>();
   fastEquipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
   fastEquipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+  fastEquipment["packingCoeff"] = g_settings.equipment.packingCoeff;
   fastEquipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   fastEquipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
   fastEquipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
@@ -4185,8 +4466,12 @@ void broadcastState(const SystemState &state) {
   JsonObject fastValves = fastDoc["valves"].to<JsonObject>();
   fastValves["water"] = Valves::getWater();
   fastValves["heads"] = Valves::getHeads();
+  fastValves["body"] = Valves::getBody();
+  fastValves["bodyAvailable"] = Valves::hasBodyValve();
+  fastValves["tailsAvailable"] = Valves::hasTailsValve();
   fastValves["uno"] = Valves::getUno();
   fastValves["startStopDuty"] = Valves::getStartStop();
+  fastValves["tails"] = Valves::getTails();
   fastValves["tails"] = false;
 
   fastDoc["abv"] = state.hydrometer.abv;
@@ -4268,9 +4553,12 @@ void broadcastState(const SystemState &state) {
   JsonObject valves = doc["valves"].to<JsonObject>();
   valves["water"] = Valves::getWater();
   valves["heads"] = Valves::getHeads();
+  valves["body"] = Valves::getBody();
+  valves["bodyAvailable"] = Valves::hasBodyValve();
+  valves["tailsAvailable"] = Valves::hasTailsValve();
   valves["uno"] = Valves::getUno();
   valves["startStopDuty"] = Valves::getStartStop();
-  valves["tails"] = false;
+  valves["tails"] = Valves::getTails();
 
   doc["abv"] = state.hydrometer.abv;
   doc["abv_valid"] = state.hydrometer.valid;
@@ -4285,6 +4573,7 @@ void broadcastState(const SystemState &state) {
   JsonObject equipment = doc["equipment"].to<JsonObject>();
   equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
   equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+  equipment["packingCoeff"] = g_settings.equipment.packingCoeff;
   equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
   equipment["waterAutoStartCubeTempC"] =
@@ -4338,6 +4627,32 @@ void broadcastState(const SystemState &state) {
   rect["tailsPercent"] = g_settings.rectParams.tailsPercent;
   rect["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
   rect["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+  rect["takeoffBackendType"] =
+      static_cast<uint8_t>(g_settings.rectParams.takeoffBackendType);
+  rect["refluxMode"] = static_cast<uint8_t>(g_settings.rectParams.refluxMode);
+  rect["srRatio"] = g_settings.rectParams.srRatio;
+  rect["autonomousCycleSec"] = g_settings.rectParams.autonomousCycleSec;
+  rect["autonomousPauseSec"] = g_settings.rectParams.autonomousPauseSec;
+  rect["chimAutoPercent"] = g_settings.rectParams.chimAutoPercent;
+  rect["chimTimePerH"] = g_settings.rectParams.chimTimePerH;
+  rect["chimBegPercent"] = g_settings.rectParams.chimBegPercent;
+  rect["chimMinPercent"] = g_settings.rectParams.chimMinPercent;
+  rect["phasePowerStabilization"] =
+      g_settings.rectParams.phasePowerPercent[RECT_POWER_STABILIZATION];
+  rect["phasePowerHeads"] =
+      g_settings.rectParams.phasePowerPercent[RECT_POWER_HEADS];
+  rect["phasePowerBody"] =
+      g_settings.rectParams.phasePowerPercent[RECT_POWER_BODY];
+  rect["phasePowerTails"] =
+      g_settings.rectParams.phasePowerPercent[RECT_POWER_TAILS];
+  rect["usePbMode"] = g_settings.rectParams.usePbMode;
+  rect["timpPbMs"] = g_settings.rectParams.timpPbMs;
+  rect["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
+  rect["routingRetargetMinMs"] =
+      g_settings.rectParams.routingRetargetMinMs;
+  rect["valvePulsePeriodMs"] = g_settings.rectParams.valvePulsePeriodMs;
+  rect["valvePulseMinOpenMs"] = g_settings.rectParams.valvePulseMinOpenMs;
+  rect["valvePulseMaxOpenMs"] = g_settings.rectParams.valvePulseMaxOpenMs;
 
   float rectHeadsTargetMl = 0.0f;
   float rectBodyTargetMl = 0.0f;

@@ -12,6 +12,8 @@ const DEFAULT_STIRRER_SETTINGS = Object.freeze({
     autoFermentation: false,
     autoNbk: false
 });
+const DEFAULT_PACKING_TYPE = 'spn_3_5';
+const PACKING_TYPE_OPTIONS = new Set(['spn_3_5', 'spn_4_0', 'raschig', 'custom']);
 const DEFAULT_TEMPERATURE_TOPOLOGY = Object.freeze({
     cube: true,
     columnBottom: true,
@@ -63,6 +65,11 @@ function clamp(value, min, max, fallback = min) {
     if (parsed < min) return min;
     if (parsed > max) return max;
     return parsed;
+}
+
+function normalizePackingType(value, fallback = DEFAULT_PACKING_TYPE) {
+    const normalized = String(value || '').trim();
+    return PACKING_TYPE_OPTIONS.has(normalized) ? normalized : fallback;
 }
 
 function setInputValue(id, value) {
@@ -946,6 +953,8 @@ export async function loadEquipmentSettings() {
         const data = await response.json();
         setInputValue('heater-power-w', clamp(data.heaterPowerW, 1000, 10000, 3000));
         setInputValue('column-height', clamp(data.columnHeightMm, 500, 3000, 1500));
+        setInputValue('packing-type', normalizePackingType(data.packingType));
+        setInputValue('packing-coeff', clamp(data.packingCoeff, 1, 15, 15).toFixed(1));
         setInputValue('cube-volume-l', clamp(data.cubeVolumeL, 5, 250, DEFAULT_CUBE_VOLUME_L).toFixed(1));
         setInputValue('water-autostart-cube-temp', clamp(data.waterAutoStartCubeTempC, 20, 60, 45).toFixed(1));
         setCheckboxValue('booster-heater-enabled', Boolean(data.boosterHeaterEnabled));
@@ -958,6 +967,8 @@ export async function loadEquipmentSettings() {
             ...runtimeMonitorState.equipment,
             heaterPowerW: clamp(data.heaterPowerW, 1000, 10000, 3000),
             columnHeightMm: clamp(data.columnHeightMm, 500, 3000, 1500),
+            packingType: normalizePackingType(data.packingType),
+            packingCoeff: clamp(data.packingCoeff, 1, 15, 15),
             cubeVolumeL: clamp(data.cubeVolumeL, 5, 250, DEFAULT_CUBE_VOLUME_L),
             minHeaterSubmergeL: clamp(data.minHeaterSubmergeL, 0.5, 100, 7.5),
             waterAutoStartCubeTempC: clamp(data.waterAutoStartCubeTempC, 20, 60, 45),
@@ -1035,6 +1046,8 @@ export async function loadEquipmentSettings() {
 export async function saveEquipment() {
     const heaterPower = clamp(getInputValue('heater-power-w', 3000), 1000, 10000, 3000);
     const columnHeight = clamp(getInputValue('column-height', 1500), 500, 3000, 1500);
+    const packingType = normalizePackingType(document.getElementById('packing-type')?.value);
+    const packingCoeff = clamp(getInputValue('packing-coeff', 15), 1, 15, 15);
     const cubeVolume = clamp(getInputValue('cube-volume-l', DEFAULT_CUBE_VOLUME_L), 5, 250, DEFAULT_CUBE_VOLUME_L);
     const waterAutoStartCubeTempC = clamp(getInputValue('water-autostart-cube-temp', 45), 20, 60, 45);
     const boosterHeaterEnabled = getCheckboxValue('booster-heater-enabled', false);
@@ -1094,6 +1107,8 @@ export async function saveEquipment() {
             body: JSON.stringify({
                 heaterPowerW: Math.round(heaterPower),
                 columnHeightMm: Math.round(columnHeight),
+                packingType,
+                packingCoeff,
                 cubeVolumeL: cubeVolume,
                 waterAutoStartCubeTempC,
                 boosterHeaterEnabled,
@@ -1126,6 +1141,8 @@ export async function saveEquipment() {
             ...runtimeMonitorState.equipment,
             heaterPowerW: Math.round(heaterPower),
             columnHeightMm: Math.round(columnHeight),
+            packingType: normalizePackingType(result.packingType || packingType),
+            packingCoeff: clamp(result.packingCoeff ?? packingCoeff, 1, 15, packingCoeff),
             cubeVolumeL: cubeVolume,
             waterAutoStartCubeTempC,
             boosterHeaterEnabled,
@@ -1261,6 +1278,15 @@ export function initEquipmentSettingsUi() {
         cubeVolumeInput.addEventListener('input', () => updateCubeVolumeHint());
         cubeVolumeInput.addEventListener('change', () => updateCubeVolumeHint({ normalizeInput: true }));
         cubeVolumeInput.addEventListener('blur', () => updateCubeVolumeHint({ normalizeInput: true }));
+    }
+
+    const packingCoeffInput = document.getElementById('packing-coeff');
+    if (packingCoeffInput) {
+        const normalizePackingCoeffInput = () => {
+            packingCoeffInput.value = clamp(packingCoeffInput.value, 1, 15, 15).toFixed(1);
+        };
+        packingCoeffInput.addEventListener('change', normalizePackingCoeffInput);
+        packingCoeffInput.addEventListener('blur', normalizePackingCoeffInput);
     }
 
     const extenderInput = document.getElementById('cube-extender-add-l');

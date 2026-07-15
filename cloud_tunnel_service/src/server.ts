@@ -34,7 +34,8 @@ const WS_PATH = process.env.WS_PATH || "/ws/device";
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY || "";
 
 const db = createPool({
-  host: process.env.DB_HOST || "localhost",
+  // On some Ubuntu installs, "localhost" resolves to ::1 while MySQL listens only on 127.0.0.1.
+  host: process.env.DB_HOST || "127.0.0.1",
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASS || "",
   database: process.env.DB_NAME || "co111685_proxy",

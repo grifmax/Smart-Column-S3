@@ -1,6 +1,10 @@
 ﻿import { currentProfileId, setCurrentProfileId } from './state.js';
 import { loadProfilesList } from './list.js';
-import { getProfileCompatibility, getProfileCompatibilityBadge } from './compat.js';
+import {
+    getProfileCompatibility,
+    getProfileCompatibilityBadge,
+    getProfileEquipmentMismatch
+} from './compat.js';
 import { loadStatus } from '../core/status.js';
 import { activateTabById } from '../core/tabs.js';
 import { selectControlMode } from '../modes/control-panel.js';
@@ -47,7 +51,25 @@ const PROFILE_FORM_DEFAULTS = {
             headsSpeed: 300,
             bodySpeed: 600,
             tailsSpeed: 360,
-            purgeMin: 5
+            purgeMin: 5,
+            baroCorrectionEnabled: true,
+            takeoffBackendType: 0,
+            refluxMode: 0,
+            srTarget: 0,
+            autonomousCycleSec: 900,
+            autonomousPauseSec: 90,
+            chimAutoPercent: 0,
+            chimTimePerH: 0,
+            chimBegPercent: 0,
+            chimMinPercent: 35,
+            usePbMode: 0,
+            timpPbMs: 15000,
+            valvePulsePeriodMs: 1000,
+            valvePulseMinOpenMs: 80,
+            valvePulseMaxOpenMs: 900,
+            routingSettlingMs: 1500,
+            routingRetargetMinMs: 3000,
+            phasePowerPercent: [70, 60, 60, 50]
         },
         distillation: {
             headsVolume: 150,
@@ -239,14 +261,55 @@ function normalizeProfileDraft(profile = null) {
         draft.parameters.heater.boosterStopCubeTempC,
         1
     );
-    draft.parameters.rectification.stabilizationMin = clampNumber(profile?.parameters?.rectification?.stabilizationMin, 1, 180, draft.parameters.rectification.stabilizationMin);
-    draft.parameters.rectification.headsVolume = clampNumber(profile?.parameters?.rectification?.headsVolume, 1, 10000, draft.parameters.rectification.headsVolume);
-    draft.parameters.rectification.bodyVolume = clampNumber(profile?.parameters?.rectification?.bodyVolume, 1, 50000, draft.parameters.rectification.bodyVolume);
-    draft.parameters.rectification.tailsVolume = clampNumber(profile?.parameters?.rectification?.tailsVolume, 0, 20000, draft.parameters.rectification.tailsVolume);
-    draft.parameters.rectification.headsSpeed = clampNumber(profile?.parameters?.rectification?.headsSpeed, 10, 2000, draft.parameters.rectification.headsSpeed);
-    draft.parameters.rectification.bodySpeed = clampNumber(profile?.parameters?.rectification?.bodySpeed, 50, 3000, draft.parameters.rectification.bodySpeed);
-    draft.parameters.rectification.tailsSpeed = clampNumber(profile?.parameters?.rectification?.tailsSpeed, 0, 3000, draft.parameters.rectification.tailsSpeed);
-    draft.parameters.rectification.purgeMin = clampNumber(profile?.parameters?.rectification?.purgeMin, 1, 120, draft.parameters.rectification.purgeMin);
+    const rectificationProfile = profile?.parameters?.rectification && typeof profile.parameters.rectification === 'object'
+        ? profile.parameters.rectification
+        : {};
+    const rectificationPhasePower = Array.isArray(rectificationProfile.phasePowerPercent)
+        ? rectificationProfile.phasePowerPercent
+        : [];
+
+    draft.parameters.rectification.stabilizationMin = clampNumber(rectificationProfile.stabilizationMin, 1, 180, draft.parameters.rectification.stabilizationMin);
+    draft.parameters.rectification.headsVolume = clampNumber(rectificationProfile.headsVolume, 1, 10000, draft.parameters.rectification.headsVolume);
+    draft.parameters.rectification.bodyVolume = clampNumber(rectificationProfile.bodyVolume, 1, 50000, draft.parameters.rectification.bodyVolume);
+    draft.parameters.rectification.tailsVolume = clampNumber(rectificationProfile.tailsVolume, 0, 20000, draft.parameters.rectification.tailsVolume);
+    draft.parameters.rectification.headsSpeed = clampNumber(rectificationProfile.headsSpeed, 10, 2000, draft.parameters.rectification.headsSpeed);
+    draft.parameters.rectification.bodySpeed = clampNumber(rectificationProfile.bodySpeed, 50, 3000, draft.parameters.rectification.bodySpeed);
+    draft.parameters.rectification.tailsSpeed = clampNumber(rectificationProfile.tailsSpeed, 0, 3000, draft.parameters.rectification.tailsSpeed);
+    draft.parameters.rectification.purgeMin = clampNumber(rectificationProfile.purgeMin, 1, 120, draft.parameters.rectification.purgeMin);
+    draft.parameters.rectification.baroCorrectionEnabled = Boolean(
+        rectificationProfile.baroCorrectionEnabled ?? draft.parameters.rectification.baroCorrectionEnabled
+    );
+    draft.parameters.rectification.takeoffBackendType = clampNumber(rectificationProfile.takeoffBackendType, 0, 2, draft.parameters.rectification.takeoffBackendType);
+    draft.parameters.rectification.refluxMode = clampNumber(rectificationProfile.refluxMode, 0, 2, draft.parameters.rectification.refluxMode);
+    draft.parameters.rectification.srTarget = clampNumber(
+        rectificationProfile.srTarget ?? rectificationProfile.srRatio,
+        0,
+        20,
+        draft.parameters.rectification.srTarget,
+        1
+    );
+    draft.parameters.rectification.autonomousCycleSec = clampNumber(rectificationProfile.autonomousCycleSec, 1, 7200, draft.parameters.rectification.autonomousCycleSec);
+    draft.parameters.rectification.autonomousPauseSec = clampNumber(rectificationProfile.autonomousPauseSec, 0, 7199, draft.parameters.rectification.autonomousPauseSec);
+    if (draft.parameters.rectification.autonomousPauseSec >= draft.parameters.rectification.autonomousCycleSec) {
+        draft.parameters.rectification.autonomousPauseSec = Math.max(0, draft.parameters.rectification.autonomousCycleSec - 1);
+    }
+    draft.parameters.rectification.chimAutoPercent = clampNumber(rectificationProfile.chimAutoPercent, 0, 200, draft.parameters.rectification.chimAutoPercent, 1);
+    draft.parameters.rectification.chimTimePerH = clampNumber(rectificationProfile.chimTimePerH, -2000, 2000, draft.parameters.rectification.chimTimePerH, 0);
+    draft.parameters.rectification.chimBegPercent = clampNumber(rectificationProfile.chimBegPercent, -100, 200, draft.parameters.rectification.chimBegPercent, 1);
+      draft.parameters.rectification.chimMinPercent = clampNumber(rectificationProfile.chimMinPercent, 0, 100, draft.parameters.rectification.chimMinPercent, 1);
+      draft.parameters.rectification.usePbMode = clampNumber(rectificationProfile.usePbMode, 0, 3, draft.parameters.rectification.usePbMode);
+      draft.parameters.rectification.timpPbMs = clampNumber(rectificationProfile.timpPbMs, 0, 600000, draft.parameters.rectification.timpPbMs);
+      draft.parameters.rectification.valvePulsePeriodMs = clampNumber(rectificationProfile.valvePulsePeriodMs, 100, 5000, draft.parameters.rectification.valvePulsePeriodMs);
+      draft.parameters.rectification.valvePulseMinOpenMs = clampNumber(rectificationProfile.valvePulseMinOpenMs, 0, draft.parameters.rectification.valvePulsePeriodMs, draft.parameters.rectification.valvePulseMinOpenMs);
+      draft.parameters.rectification.valvePulseMaxOpenMs = clampNumber(rectificationProfile.valvePulseMaxOpenMs, draft.parameters.rectification.valvePulseMinOpenMs, draft.parameters.rectification.valvePulsePeriodMs, draft.parameters.rectification.valvePulseMaxOpenMs);
+      draft.parameters.rectification.routingSettlingMs = clampNumber(rectificationProfile.routingSettlingMs, 0, 10000, draft.parameters.rectification.routingSettlingMs);
+      draft.parameters.rectification.routingRetargetMinMs = clampNumber(rectificationProfile.routingRetargetMinMs, 0, 30000, draft.parameters.rectification.routingRetargetMinMs);
+      draft.parameters.rectification.phasePowerPercent = [
+        clampNumber(rectificationProfile.phasePowerStabilization ?? rectificationPhasePower[0], 1, 100, draft.parameters.rectification.phasePowerPercent[0]),
+        clampNumber(rectificationProfile.phasePowerHeads ?? rectificationPhasePower[1], 1, 100, draft.parameters.rectification.phasePowerPercent[1]),
+        clampNumber(rectificationProfile.phasePowerBody ?? rectificationPhasePower[2], 1, 100, draft.parameters.rectification.phasePowerPercent[2]),
+        clampNumber(rectificationProfile.phasePowerTails ?? rectificationPhasePower[3], 1, 100, draft.parameters.rectification.phasePowerPercent[3])
+    ];
     draft.parameters.distillation.headsVolume = clampNumber(profile?.parameters?.distillation?.headsVolume, 0, 10000, draft.parameters.distillation.headsVolume);
     draft.parameters.distillation.targetVolume = clampNumber(profile?.parameters?.distillation?.targetVolume, 1, 50000, draft.parameters.distillation.targetVolume);
     draft.parameters.distillation.speed = clampNumber(profile?.parameters?.distillation?.speed, 50, 120000, draft.parameters.distillation.speed);
@@ -321,6 +384,32 @@ async function buildProfileDraftFromSystem(category = 'rectification') {
         draft.parameters.rectification.headsVolume = clampNumber(absoluteAlcoholMl * headsPercent / 100, 1, 10000, draft.parameters.rectification.headsVolume);
         draft.parameters.rectification.bodyVolume = clampNumber(absoluteAlcoholMl * bodyPercent / 100, 1, 50000, draft.parameters.rectification.bodyVolume);
         draft.parameters.rectification.tailsVolume = clampNumber(absoluteAlcoholMl * tailsPercent / 100, 0, 20000, draft.parameters.rectification.tailsVolume);
+        draft.parameters.rectification.baroCorrectionEnabled = Boolean(rect.baroCorrectionEnabled ?? draft.parameters.rectification.baroCorrectionEnabled);
+        draft.parameters.rectification.takeoffBackendType = clampNumber(rect.takeoffBackendType, 0, 2, draft.parameters.rectification.takeoffBackendType);
+        draft.parameters.rectification.refluxMode = clampNumber(rect.refluxMode, 0, 2, draft.parameters.rectification.refluxMode);
+        draft.parameters.rectification.srTarget = clampNumber(rect.srRatio, 0, 20, draft.parameters.rectification.srTarget, 1);
+        draft.parameters.rectification.autonomousCycleSec = clampNumber(rect.autonomousCycleSec, 1, 7200, draft.parameters.rectification.autonomousCycleSec);
+        draft.parameters.rectification.autonomousPauseSec = clampNumber(rect.autonomousPauseSec, 0, 7199, draft.parameters.rectification.autonomousPauseSec);
+        draft.parameters.rectification.chimAutoPercent = clampNumber(rect.chimAutoPercent, 0, 200, draft.parameters.rectification.chimAutoPercent, 1);
+        draft.parameters.rectification.chimTimePerH = clampNumber(rect.chimTimePerH, -2000, 2000, draft.parameters.rectification.chimTimePerH);
+        draft.parameters.rectification.chimBegPercent = clampNumber(rect.chimBegPercent, -100, 200, draft.parameters.rectification.chimBegPercent, 1);
+        draft.parameters.rectification.chimMinPercent = clampNumber(rect.chimMinPercent, 0, 100, draft.parameters.rectification.chimMinPercent, 1);
+        draft.parameters.rectification.usePbMode = clampNumber(rect.usePbMode, 0, 3, draft.parameters.rectification.usePbMode);
+        draft.parameters.rectification.timpPbMs = clampNumber(rect.timpPbMs, 0, 600000, draft.parameters.rectification.timpPbMs);
+        draft.parameters.rectification.valvePulsePeriodMs = clampNumber(rect.valvePulsePeriodMs, 100, 5000, draft.parameters.rectification.valvePulsePeriodMs);
+        draft.parameters.rectification.valvePulseMinOpenMs = clampNumber(rect.valvePulseMinOpenMs, 0, draft.parameters.rectification.valvePulsePeriodMs, draft.parameters.rectification.valvePulseMinOpenMs);
+        draft.parameters.rectification.valvePulseMaxOpenMs = clampNumber(rect.valvePulseMaxOpenMs, draft.parameters.rectification.valvePulseMinOpenMs, draft.parameters.rectification.valvePulsePeriodMs, draft.parameters.rectification.valvePulseMaxOpenMs);
+        draft.parameters.rectification.routingSettlingMs = clampNumber(rect.routingSettlingMs, 0, 10000, draft.parameters.rectification.routingSettlingMs);
+        draft.parameters.rectification.routingRetargetMinMs = clampNumber(rect.routingRetargetMinMs, 0, 30000, draft.parameters.rectification.routingRetargetMinMs);
+        draft.parameters.rectification.phasePowerPercent = [
+            clampNumber(rect.phasePowerStabilization, 1, 100, draft.parameters.rectification.phasePowerPercent[0]),
+            clampNumber(rect.phasePowerHeads, 1, 100, draft.parameters.rectification.phasePowerPercent[1]),
+            clampNumber(rect.phasePowerBody, 1, 100, draft.parameters.rectification.phasePowerPercent[2]),
+            clampNumber(rect.phasePowerTails, 1, 100, draft.parameters.rectification.phasePowerPercent[3])
+        ];
+        if (draft.parameters.rectification.autonomousPauseSec >= draft.parameters.rectification.autonomousCycleSec) {
+            draft.parameters.rectification.autonomousPauseSec = Math.max(0, draft.parameters.rectification.autonomousCycleSec - 1);
+        }
         draft.parameters.distillation.headsVolume = clampNumber(distillation.headsVolumeMl, 0, 10000, draft.parameters.distillation.headsVolume);
         draft.parameters.distillation.targetVolume = clampNumber(distillation.targetVolumeMl, 1, 50000, draft.parameters.distillation.targetVolume);
         draft.parameters.distillation.speed = clampNumber(distillation.speedMlH, 50, 120000, draft.parameters.distillation.speed);
@@ -363,6 +452,27 @@ function populateProfileForm(profile) {
     setInputValue('profile-rect-heads-speed', draft.parameters.rectification.headsSpeed);
     setInputValue('profile-rect-body-speed', draft.parameters.rectification.bodySpeed);
     setInputValue('profile-rect-tails-speed', draft.parameters.rectification.tailsSpeed);
+    setCheckboxValue('profile-rect-baro-correction-enabled', draft.parameters.rectification.baroCorrectionEnabled);
+    setInputValue('profile-rect-takeoff-backend-type', draft.parameters.rectification.takeoffBackendType);
+    setInputValue('profile-rect-reflux-mode', draft.parameters.rectification.refluxMode);
+    setInputValue('profile-rect-sr-target', draft.parameters.rectification.srTarget);
+    setInputValue('profile-rect-autonomous-cycle-sec', draft.parameters.rectification.autonomousCycleSec);
+    setInputValue('profile-rect-autonomous-pause-sec', draft.parameters.rectification.autonomousPauseSec);
+    setInputValue('profile-rect-chim-auto-percent', draft.parameters.rectification.chimAutoPercent);
+    setInputValue('profile-rect-chim-time-per-h', draft.parameters.rectification.chimTimePerH);
+    setInputValue('profile-rect-chim-beg-percent', draft.parameters.rectification.chimBegPercent);
+    setInputValue('profile-rect-chim-min-percent', draft.parameters.rectification.chimMinPercent);
+    setInputValue('profile-rect-use-pb-mode', draft.parameters.rectification.usePbMode);
+    setInputValue('profile-rect-timp-pb-ms', draft.parameters.rectification.timpPbMs);
+    setInputValue('profile-rect-valve-pulse-period-ms', draft.parameters.rectification.valvePulsePeriodMs);
+    setInputValue('profile-rect-valve-pulse-min-open-ms', draft.parameters.rectification.valvePulseMinOpenMs);
+    setInputValue('profile-rect-valve-pulse-max-open-ms', draft.parameters.rectification.valvePulseMaxOpenMs);
+    setInputValue('profile-rect-routing-settling-ms', draft.parameters.rectification.routingSettlingMs);
+    setInputValue('profile-rect-routing-retarget-min-ms', draft.parameters.rectification.routingRetargetMinMs);
+    setInputValue('profile-rect-phase-power-stabilization', draft.parameters.rectification.phasePowerPercent[0]);
+    setInputValue('profile-rect-phase-power-heads', draft.parameters.rectification.phasePowerPercent[1]);
+    setInputValue('profile-rect-phase-power-body', draft.parameters.rectification.phasePowerPercent[2]);
+    setInputValue('profile-rect-phase-power-tails', draft.parameters.rectification.phasePowerPercent[3]);
     setInputValue('profile-dist-heads-volume', draft.parameters.distillation.headsVolume);
     setInputValue('profile-dist-target-volume', draft.parameters.distillation.targetVolume);
     setInputValue('profile-dist-speed', draft.parameters.distillation.speed);
@@ -522,10 +632,13 @@ function syncProfileModalDeleteButton() {
 
 }
 
-function collectProfileFromForm() {
+  function collectProfileFromForm() {
 
-    const category = String(getInputValue('profile-category', 'rectification')).trim() || 'rectification';
-    const tagsStr = String(getInputValue('profile-tags', '')).trim();
+      const category = String(getInputValue('profile-category', 'rectification')).trim() || 'rectification';
+      const tagsStr = String(getInputValue('profile-tags', '')).trim();
+      const valvePulsePeriodMs = clampNumber(getInputValue('profile-rect-valve-pulse-period-ms', 1000), 100, 5000, 1000);
+      const valvePulseMinOpenMs = clampNumber(getInputValue('profile-rect-valve-pulse-min-open-ms', 80), 0, valvePulsePeriodMs, 80);
+      const valvePulseMaxOpenMs = clampNumber(getInputValue('profile-rect-valve-pulse-max-open-ms', 900), valvePulseMinOpenMs, valvePulsePeriodMs, 900);
 
     return normalizeProfileDraft({
         metadata: {
@@ -554,7 +667,30 @@ function collectProfileFromForm() {
                 headsSpeed: clampNumber(getInputValue('profile-rect-heads-speed', 300), 10, 2000, 300),
                 bodySpeed: clampNumber(getInputValue('profile-rect-body-speed', 600), 50, 3000, 600),
                 tailsSpeed: clampNumber(getInputValue('profile-rect-tails-speed', 360), 0, 3000, 360),
-                purgeMin: clampNumber(getInputValue('profile-rect-purge', 5), 1, 120, 5)
+                purgeMin: clampNumber(getInputValue('profile-rect-purge', 5), 1, 120, 5),
+                baroCorrectionEnabled: getCheckboxValue('profile-rect-baro-correction-enabled', true),
+                takeoffBackendType: clampNumber(getInputValue('profile-rect-takeoff-backend-type', 0), 0, 2, 0),
+                refluxMode: clampNumber(getInputValue('profile-rect-reflux-mode', 0), 0, 2, 0),
+                srTarget: clampNumber(getInputValue('profile-rect-sr-target', 0), 0, 20, 0, 1),
+                autonomousCycleSec: clampNumber(getInputValue('profile-rect-autonomous-cycle-sec', 900), 1, 7200, 900),
+                autonomousPauseSec: clampNumber(getInputValue('profile-rect-autonomous-pause-sec', 90), 0, 7199, 90),
+                chimAutoPercent: clampNumber(getInputValue('profile-rect-chim-auto-percent', 0), 0, 200, 0, 1),
+                chimTimePerH: clampNumber(getInputValue('profile-rect-chim-time-per-h', 0), -2000, 2000, 0),
+                chimBegPercent: clampNumber(getInputValue('profile-rect-chim-beg-percent', 0), -100, 200, 0, 1),
+                  chimMinPercent: clampNumber(getInputValue('profile-rect-chim-min-percent', 35), 0, 100, 35, 1),
+                  usePbMode: clampNumber(getInputValue('profile-rect-use-pb-mode', 0), 0, 3, 0),
+                  timpPbMs: clampNumber(getInputValue('profile-rect-timp-pb-ms', 15000), 0, 600000, 15000),
+                  valvePulsePeriodMs,
+                  valvePulseMinOpenMs,
+                  valvePulseMaxOpenMs,
+                  routingSettlingMs: clampNumber(getInputValue('profile-rect-routing-settling-ms', 1500), 0, 10000, 1500),
+                  routingRetargetMinMs: clampNumber(getInputValue('profile-rect-routing-retarget-min-ms', 3000), 0, 30000, 3000),
+                  phasePowerPercent: [
+                    clampNumber(getInputValue('profile-rect-phase-power-stabilization', 70), 1, 100, 70),
+                    clampNumber(getInputValue('profile-rect-phase-power-heads', 60), 1, 100, 60),
+                    clampNumber(getInputValue('profile-rect-phase-power-body', 60), 1, 100, 60),
+                    clampNumber(getInputValue('profile-rect-phase-power-tails', 50), 1, 100, 50)
+                ]
             },
             distillation: {
                 headsVolume: clampNumber(getInputValue('profile-dist-heads-volume', 150), 0, 10000, 150),
@@ -887,6 +1023,16 @@ function buildProfileTopologyWarning(profile) {
     }
 
     return `Совместимость: ${compatibility.detail || 'Для этого профиля не хватает обязательных датчиков текущей комплектации.'}`;
+}
+
+function buildProfileEquipmentWarning(profile) {
+    const mismatch = getProfileEquipmentMismatch(profile);
+    if (!mismatch.known || !mismatch.changed) {
+        return '';
+    }
+
+    const details = mismatch.messages.slice(0, 6).map((item) => `- ${item}`).join('\n');
+    return `Профиль валидировался на другой конфигурации железа.\n${details}`;
 }
 
 async function fetchProfileLoadWarning(profileId) {
@@ -1266,8 +1412,10 @@ export async function quickLoadProfile(id) {
         const warningParts = [];
         const topologyWarning = buildProfileTopologyWarning(profile);
         const baroWarning = isMashingProfile ? '' : buildProfileLoadWarning(profile);
+        const equipmentWarning = buildProfileEquipmentWarning(profile);
         if (topologyWarning) warningParts.push(topologyWarning);
         if (baroWarning) warningParts.push(baroWarning);
+        if (equipmentWarning) warningParts.push(equipmentWarning);
         const warning = warningParts.join('\n\n');
         const confirmText = isMashingProfile
             ? (warning

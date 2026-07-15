@@ -34,6 +34,58 @@ enum class RectPhase : uint8_t {
   COMPLETED
 };
 
+enum class RectRefluxMode : uint8_t {
+  ML_H = 0,
+  SR_RATIO,
+  AUTONOMOUS
+};
+
+enum class RectTakeoffBackendType : uint8_t {
+  PUMP = 0,
+  VALVE_MULTI,
+  VALVE_SINGLE_SWITCHED
+};
+
+enum class RectTakeoffFraction : uint8_t {
+  NONE = 0,
+  HEADS,
+  BODY,
+  TAILS
+};
+
+struct RectTakeoffCommand {
+  RectTakeoffBackendType backendType = RectTakeoffBackendType::PUMP;
+  RectTakeoffFraction fraction = RectTakeoffFraction::NONE;
+  float equivalentRateMlH = 0.0f;
+  bool enabled = false;
+  bool fullReflux = true;
+  bool periodicTakeoff = false;
+  bool periodicTakeoffActive = false;
+  uint32_t periodicCycleMs = 0;
+  uint32_t periodicOpenMs = 0;
+};
+
+struct RectTakeoffFeedback {
+  RectTakeoffBackendType backendType = RectTakeoffBackendType::PUMP;
+  bool backendActive = false;
+  bool routingReady = true;
+  float actualEquivalentRateMlH = 0.0f;
+  uint8_t actualDuty = 0;
+  float sessionVolumeMl = 0.0f;
+  RectTakeoffFraction requestedFraction = RectTakeoffFraction::NONE;
+  RectTakeoffFraction routedFraction = RectTakeoffFraction::NONE;
+  RectTakeoffFraction activeFraction = RectTakeoffFraction::NONE;
+  RectTakeoffFraction activeValve = RectTakeoffFraction::NONE;
+};
+
+enum RectPhasePowerIndex : uint8_t {
+  RECT_POWER_STABILIZATION = 0,
+  RECT_POWER_HEADS = 1,
+  RECT_POWER_BODY = 2,
+  RECT_POWER_TAILS = 3,
+  RECT_POWER_COUNT = 4
+};
+
 // Фазы НБК
 enum class NbkPhase : uint8_t {
   IDLE = 0,
@@ -310,6 +362,17 @@ struct HoldState {
   bool active = false;
 };
 
+struct FractionProgramRuntime {
+  bool active = false;
+  bool waitingForConfirmation = false;
+  bool routing = false;
+  uint8_t currentStep = 0;
+  uint32_t stepStartedAtMs = 0;
+  float stepStartVolumeMl = 0.0f;
+  uint32_t routingStartedAtMs = 0;
+  char confirmationPrompt[64] = {};
+};
+
 // Состояние системы (полная версия)
 struct SystemState {
   Mode mode = Mode::IDLE;
@@ -334,6 +397,7 @@ struct SystemState {
   HoldState hold;
   NbkPhase nbkPhase = NbkPhase::IDLE;
   FermentationPhase fermPhase = FermentationPhase::IDLE;
+  FractionProgramRuntime fractionProgram;
 };
 
 // Структуры настроек (именованные для typedef)
@@ -435,8 +499,39 @@ struct EquipmentSettings {
 
 struct FractionatorSettings {
   bool enabled = false;
-  uint16_t angles[5] = {0, 45, 90, 135, 180};
+  uint16_t angles[5] = {0, 36, 72, 108, 144};
   bool positionsEnabled[5] = {true, false, true, false, true};
+};
+
+static constexpr uint8_t FRACTION_PROGRAM_MAX_STEPS = 8;
+
+enum FractionProgramEndCondition : uint8_t {
+  FRACTION_PROGRAM_END_NONE = 0,
+  FRACTION_PROGRAM_END_VOLUME = 1 << 0,
+  FRACTION_PROGRAM_END_TIME = 1 << 1,
+  FRACTION_PROGRAM_END_TEMPERATURE = 1 << 2,
+  FRACTION_PROGRAM_END_LEVEL = 1 << 3
+};
+
+struct FractionProgramStep {
+  char name[24] = {};
+  uint8_t routeIndex = 0;
+  float pumpRateMlH = 0.0f;
+  uint16_t heaterPowerW = 0;
+  bool requireOperatorConfirmation = false;
+  char confirmationPrompt[64] = {};
+  uint8_t endConditions = FRACTION_PROGRAM_END_NONE;
+  float endVolumeMl = 0.0f;
+  uint32_t endDurationSec = 0;
+  uint8_t temperatureSensorIndex = 0;
+  float endTemperatureC = 0.0f;
+};
+
+struct FractionProgram {
+  uint8_t schemaVersion = 2;
+  bool enabled = false;
+  uint8_t stepCount = 0;
+  FractionProgramStep steps[FRACTION_PROGRAM_MAX_STEPS];
 };
 
 // Калибровка гидрометра
@@ -467,6 +562,23 @@ struct RectParams {
   uint16_t stabilizationMin = 30;
   uint16_t purgeMin = 5;
   bool baroCorrectionEnabled = true;
+  RectTakeoffBackendType takeoffBackendType = RectTakeoffBackendType::PUMP;
+  RectRefluxMode refluxMode = RectRefluxMode::ML_H;
+  float srRatio = 0.0f;
+  uint16_t autonomousCycleSec = 900;
+  uint16_t autonomousPauseSec = 90;
+  float chimAutoPercent = 0.0f;
+  float chimTimePerH = 0.0f;
+  float chimBegPercent = 0.0f;
+  float chimMinPercent = 35.0f;
+  uint8_t phasePowerPercent[RECT_POWER_COUNT] = {70, 60, 60, 50};
+  uint8_t usePbMode = 0;
+  uint32_t timpPbMs = 15000;
+  uint16_t valvePulsePeriodMs = 1000;
+  uint16_t valvePulseMinOpenMs = 80;
+  uint16_t valvePulseMaxOpenMs = 900;
+  uint16_t routingSettlingMs = 1500;
+  uint16_t routingRetargetMinMs = 3000;
 };
 
 struct DistillationUiSettings {
@@ -538,6 +650,7 @@ struct Settings {
   CloudSettings cloud;
   EquipmentSettings equipment;
   FractionatorSettings fractionator;
+  FractionProgram fractionProgram;
   DisplaySettings displaySettings; // Настройки дисплея
   RectParams rectParams;
   DistillationUiSettings distillationUi;

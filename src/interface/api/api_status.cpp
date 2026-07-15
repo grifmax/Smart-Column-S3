@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "control/fsm.h"
+#include "control/rect_takeoff.h"
 #include "drivers/display.h"
 #include "drivers/heater.h"
 #include "drivers/sensors.h"
@@ -293,9 +294,12 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     JsonObject valves = doc["valves"].to<JsonObject>();
     valves["water"] = Valves::getWater();
     valves["heads"] = Valves::getHeads();
+    valves["body"] = Valves::getBody();
+    valves["bodyAvailable"] = Valves::hasBodyValve();
+    valves["tailsAvailable"] = Valves::hasTailsValve();
     valves["uno"] = Valves::getUno();
     valves["startStopDuty"] = Valves::getStartStop();
-    valves["tails"] = false;
+    valves["tails"] = Valves::getTails();
 
     JsonObject hydro = doc["hydrometer"].to<JsonObject>();
     hydro["abv"] = g_state.hydrometer.abv;
@@ -310,6 +314,7 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     JsonObject equipment = doc["equipment"].to<JsonObject>();
     equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+    equipment["packingCoeff"] = g_settings.equipment.packingCoeff;
     equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
     equipment["minHeaterSubmergeL"] =
         g_settings.equipment.minHeaterSubmergeL;
@@ -371,6 +376,7 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
         g_settings.safety.pressureRiseRateMmHgMin;
 
     JsonObject rect = doc["rectification"].to<JsonObject>();
+    const RectTakeoffFeedback takeoffFeedback = RectTakeoff::getFeedback();
     rect["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
     rect["feedAbvPercent"] = g_settings.rectParams.feedAbvPercent;
     rect["headsPercent"] = g_settings.rectParams.headsPercent;
@@ -378,6 +384,43 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     rect["tailsPercent"] = g_settings.rectParams.tailsPercent;
     rect["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
     rect["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+    rect["takeoffBackendType"] =
+        static_cast<uint8_t>(g_settings.rectParams.takeoffBackendType);
+    rect["takeoffBackendActive"] = takeoffFeedback.backendActive;
+    rect["takeoffRoutingReady"] = takeoffFeedback.routingReady;
+    rect["takeoffActualEquivalentRateMlH"] =
+        takeoffFeedback.actualEquivalentRateMlH;
+    rect["takeoffActualDuty"] = takeoffFeedback.actualDuty;
+    rect["takeoffSessionVolumeMl"] = takeoffFeedback.sessionVolumeMl;
+    rect["takeoffRequestedFraction"] =
+        static_cast<uint8_t>(takeoffFeedback.requestedFraction);
+    rect["takeoffRoutedFraction"] =
+        static_cast<uint8_t>(takeoffFeedback.routedFraction);
+    rect["takeoffActiveFraction"] =
+        static_cast<uint8_t>(takeoffFeedback.activeFraction);
+    rect["takeoffActiveValve"] =
+        static_cast<uint8_t>(takeoffFeedback.activeValve);
+    rect["refluxMode"] = static_cast<uint8_t>(g_settings.rectParams.refluxMode);
+    rect["srRatio"] = g_settings.rectParams.srRatio;
+    rect["autonomousCycleSec"] = g_settings.rectParams.autonomousCycleSec;
+    rect["autonomousPauseSec"] = g_settings.rectParams.autonomousPauseSec;
+    rect["chimAutoPercent"] = g_settings.rectParams.chimAutoPercent;
+    rect["chimTimePerH"] = g_settings.rectParams.chimTimePerH;
+    rect["chimBegPercent"] = g_settings.rectParams.chimBegPercent;
+    rect["chimMinPercent"] = g_settings.rectParams.chimMinPercent;
+    rect["phasePowerStabilization"] =
+        g_settings.rectParams.phasePowerPercent[RECT_POWER_STABILIZATION];
+    rect["phasePowerHeads"] =
+        g_settings.rectParams.phasePowerPercent[RECT_POWER_HEADS];
+    rect["phasePowerBody"] =
+        g_settings.rectParams.phasePowerPercent[RECT_POWER_BODY];
+    rect["phasePowerTails"] =
+        g_settings.rectParams.phasePowerPercent[RECT_POWER_TAILS];
+    rect["usePbMode"] = g_settings.rectParams.usePbMode;
+    rect["timpPbMs"] = g_settings.rectParams.timpPbMs;
+    rect["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
+    rect["routingRetargetMinMs"] =
+        g_settings.rectParams.routingRetargetMinMs;
 
     float rectHeadsTargetMl = 0.0f;
     float rectBodyTargetMl = 0.0f;
@@ -499,6 +542,13 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
             ? (g_state.mashing.stepDuration - mashElapsedSec)
             : 0;
 
+    JsonObject fractionProgram = doc["fractionProgram"].to<JsonObject>();
+    fractionProgram["enabled"] = g_settings.fractionProgram.enabled;
+    fractionProgram["active"] = g_state.fractionProgram.active;
+    fractionProgram["currentStep"] = g_state.fractionProgram.currentStep;
+    fractionProgram["waitingForConfirmation"] = g_state.fractionProgram.waitingForConfirmation;
+    fractionProgram["routing"] = g_state.fractionProgram.routing;
+    fractionProgram["confirmationPrompt"] = g_state.fractionProgram.confirmationPrompt;
     JsonObject hold = doc["hold"].to<JsonObject>();
     hold["active"] = g_state.hold.active;
     hold["stepCount"] = g_state.hold.stepCount;

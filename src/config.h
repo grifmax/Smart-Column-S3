@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.53"
+#define FIRMWARE_VERSION "2.4.55"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -306,6 +306,27 @@
 #define RECT_PURGE_TIME_MIN 10         // Продувка между фракциями
 #define RECT_FEED_ABV_DEFAULT 40.0f    // Крепость спирта-сырца по умолчанию, %
 #define RECT_BARO_CORRECTION_ENABLED_DEFAULT 1
+#define RECT_REFLUX_MODE_DEFAULT 0
+#define RECT_SR_RATIO_DEFAULT 0.0f
+#define RECT_AUTO_CYCLE_SEC_DEFAULT 900
+#define RECT_AUTO_PAUSE_SEC_DEFAULT 90
+#define RECT_CHIM_AUTO_PERCENT_DEFAULT 0.0f
+#define RECT_CHIM_TIME_PER_H_DEFAULT 0.0f
+#define RECT_CHIM_BEG_PERCENT_DEFAULT 0.0f
+#define RECT_CHIM_MIN_PERCENT_DEFAULT 35.0f
+#define RECT_PHASE_POWER_STAB_DEFAULT 70
+#define RECT_PHASE_POWER_HEADS_DEFAULT 60
+#define RECT_PHASE_POWER_BODY_DEFAULT 60
+#define RECT_PHASE_POWER_TAILS_DEFAULT 50
+#define RECT_TAKEOFF_BACKEND_DEFAULT 0
+#define RECT_USE_PB_MODE_DEFAULT 0
+#define RECT_TIMP_PB_MS_DEFAULT 15000UL
+#define RECT_VALVE_PULSE_PERIOD_MS_DEFAULT 1000UL
+#define RECT_VALVE_PULSE_MIN_OPEN_MS_DEFAULT 80UL
+#define RECT_VALVE_PULSE_MAX_OPEN_MS_DEFAULT 900UL
+#define RECT_ROUTING_SETTLING_MS_DEFAULT 1500UL
+#define RECT_ROUTING_RETARGET_MIN_MS_DEFAULT 3000UL
+#define RECT_SR_CONTROL_CYCLE_SEC 60UL
 #define PROFILE_BARO_CORRECTION_STRENGTH 0.5f
 #define PROFILE_BARO_CORRECTION_MAX_SHIFT_C 0.35f
 
@@ -411,6 +432,7 @@
 #define NVS_KEY_FRACTION_ANGLES "frac_ang"
 #define NVS_KEY_FRACTION_ENABLED "frac_en"
 #define NVS_KEY_FRACTION_MASTER "frac_master"
+#define NVS_KEY_FRACTION_PROGRAM "frac_prog"
 #define NVS_KEY_RECT_HEADS_PCT "rect_hpct"
 #define NVS_KEY_RECT_BODY_PCT "rect_bpct"
 #define NVS_KEY_RECT_TAILS_PCT "rect_tpct"
@@ -422,6 +444,23 @@
 #define NVS_KEY_RECT_FEED_ABV "rect_fabv"
 #define NVS_KEY_RECT_FEEDSTOCK "rect_feed"
 #define NVS_KEY_RECT_BARO_ENABLED "rect_baro"
+#define NVS_KEY_RECT_REFLUX_MODE "rect_rmod"
+#define NVS_KEY_RECT_SR_RATIO "rect_srr"
+#define NVS_KEY_RECT_AUTO_CYCLE "rect_acyc"
+#define NVS_KEY_RECT_AUTO_PAUSE "rect_apse"
+#define NVS_KEY_RECT_CHIM_AUTO "rect_caut"
+#define NVS_KEY_RECT_CHIM_TIME "rect_ctim"
+#define NVS_KEY_RECT_CHIM_BEG "rect_cbeg"
+#define NVS_KEY_RECT_CHIM_MIN "rect_cmin"
+#define NVS_KEY_RECT_PHASE_POWER "rect_ppwr"
+#define NVS_KEY_RECT_TAKEOFF_BACKEND "rect_tbk"
+#define NVS_KEY_RECT_USE_PB "rect_upb"
+#define NVS_KEY_RECT_TIMP_PB "rect_tpb"
+#define NVS_KEY_RECT_VALVE_PULSE_PERIOD "rect_vpp"
+#define NVS_KEY_RECT_VALVE_PULSE_MIN_OPEN "rect_vpmi"
+#define NVS_KEY_RECT_VALVE_PULSE_MAX_OPEN "rect_vpma"
+#define NVS_KEY_RECT_ROUTE_SETTLE "rect_rset"
+#define NVS_KEY_RECT_ROUTE_RETARGET "rect_rrtg"
 #define NVS_KEY_DIST_SPEED "dist_spd"
 #define NVS_KEY_DIST_HEADS_VOL "dist_hvol"
 #define NVS_KEY_DIST_TARGET_VOL "dist_tvol"

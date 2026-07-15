@@ -52,10 +52,12 @@ namespace FSM {
     namespace ManualRect {
         void update(SystemState& state, const Settings& settings);
         void setPhase(SystemState& state, RectPhase phase);
+        void setTakeoffRateMlH(float speedMlH);
     }
     
     namespace Distillation {
         void update(SystemState& state, const Settings& settings);
+        bool confirmFractionProgram(SystemState& state, const Settings& settings);
         void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC);
         void setPowerWatts(uint16_t powerWatts);
         void setPowerPercent(uint8_t powerPercent);

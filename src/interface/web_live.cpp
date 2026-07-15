@@ -7,6 +7,7 @@
 #include "../config.h"
 #include "../live_chart_history.h"
 #include "control/fsm.h"
+#include "control/rect_takeoff.h"
 #include "drivers/display.h"
 #include "drivers/sensors.h"
 #include "drivers/valves.h"
@@ -91,6 +92,7 @@ void broadcastState(const SystemState &state) {
   JsonObject fastEquipment = fastDoc["equipment"].to<JsonObject>();
   fastEquipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
   fastEquipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+  fastEquipment["packingCoeff"] = g_settings.equipment.packingCoeff;
   fastEquipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   fastEquipment["minHeaterSubmergeL"] =
       g_settings.equipment.minHeaterSubmergeL;
@@ -152,9 +154,12 @@ void broadcastState(const SystemState &state) {
   JsonObject fastValves = fastDoc["valves"].to<JsonObject>();
   fastValves["water"] = Valves::getWater();
   fastValves["heads"] = Valves::getHeads();
+  fastValves["body"] = Valves::getBody();
+  fastValves["bodyAvailable"] = Valves::hasBodyValve();
+  fastValves["tailsAvailable"] = Valves::hasTailsValve();
   fastValves["uno"] = Valves::getUno();
   fastValves["startStopDuty"] = Valves::getStartStop();
-  fastValves["tails"] = false;
+  fastValves["tails"] = Valves::getTails();
 
   fastDoc["abv"] = state.hydrometer.abv;
   fastDoc["abv_valid"] = state.hydrometer.valid;
@@ -173,6 +178,24 @@ void broadcastState(const SystemState &state) {
   fastDoc["display_slow"] = displayStats.slowFrames;
   fastDoc["display_hard"] = displayStats.hardWatchdogRecoveries;
   fastDoc["display_gap_ms"] = displayStats.lastUpdateGapMs;
+  JsonObject fastRect = fastDoc["rectification"].to<JsonObject>();
+  const RectTakeoffFeedback fastTakeoffFeedback = RectTakeoff::getFeedback();
+  fastRect["takeoffBackendType"] =
+      static_cast<uint8_t>(g_settings.rectParams.takeoffBackendType);
+  fastRect["takeoffBackendActive"] = fastTakeoffFeedback.backendActive;
+  fastRect["takeoffRoutingReady"] = fastTakeoffFeedback.routingReady;
+  fastRect["takeoffActualEquivalentRateMlH"] =
+      fastTakeoffFeedback.actualEquivalentRateMlH;
+  fastRect["takeoffActualDuty"] = fastTakeoffFeedback.actualDuty;
+  fastRect["takeoffSessionVolumeMl"] = fastTakeoffFeedback.sessionVolumeMl;
+  fastRect["takeoffRequestedFraction"] =
+      static_cast<uint8_t>(fastTakeoffFeedback.requestedFraction);
+  fastRect["takeoffRoutedFraction"] =
+      static_cast<uint8_t>(fastTakeoffFeedback.routedFraction);
+  fastRect["takeoffActiveFraction"] =
+      static_cast<uint8_t>(fastTakeoffFeedback.activeFraction);
+  fastRect["takeoffActiveValve"] =
+      static_cast<uint8_t>(fastTakeoffFeedback.activeValve);
 
   String fastJson;
   serializeJson(fastDoc, fastJson);
@@ -235,9 +258,12 @@ void broadcastState(const SystemState &state) {
   JsonObject valves = doc["valves"].to<JsonObject>();
   valves["water"] = Valves::getWater();
   valves["heads"] = Valves::getHeads();
+  valves["body"] = Valves::getBody();
+  valves["bodyAvailable"] = Valves::hasBodyValve();
+  valves["tailsAvailable"] = Valves::hasTailsValve();
   valves["uno"] = Valves::getUno();
   valves["startStopDuty"] = Valves::getStartStop();
-  valves["tails"] = false;
+  valves["tails"] = Valves::getTails();
 
   doc["abv"] = state.hydrometer.abv;
   doc["abv_valid"] = state.hydrometer.valid;
@@ -253,6 +279,7 @@ void broadcastState(const SystemState &state) {
   JsonObject equipment = doc["equipment"].to<JsonObject>();
   equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
   equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
+  equipment["packingCoeff"] = g_settings.equipment.packingCoeff;
   equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
   equipment["minHeaterSubmergeL"] =
       g_settings.equipment.minHeaterSubmergeL;
@@ -313,6 +340,7 @@ void broadcastState(const SystemState &state) {
       g_settings.safety.pressureRiseRateMmHgMin;
 
   JsonObject rect = doc["rectification"].to<JsonObject>();
+  const RectTakeoffFeedback takeoffFeedback = RectTakeoff::getFeedback();
   rect["feedVolumeL"] = g_settings.rectParams.feedVolumeL;
   rect["feedAbvPercent"] = g_settings.rectParams.feedAbvPercent;
   rect["headsPercent"] = g_settings.rectParams.headsPercent;
@@ -320,6 +348,43 @@ void broadcastState(const SystemState &state) {
   rect["tailsPercent"] = g_settings.rectParams.tailsPercent;
   rect["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
   rect["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+  rect["takeoffBackendType"] =
+      static_cast<uint8_t>(g_settings.rectParams.takeoffBackendType);
+  rect["takeoffBackendActive"] = takeoffFeedback.backendActive;
+  rect["takeoffRoutingReady"] = takeoffFeedback.routingReady;
+  rect["takeoffActualEquivalentRateMlH"] =
+      takeoffFeedback.actualEquivalentRateMlH;
+  rect["takeoffActualDuty"] = takeoffFeedback.actualDuty;
+  rect["takeoffSessionVolumeMl"] = takeoffFeedback.sessionVolumeMl;
+  rect["takeoffRequestedFraction"] =
+      static_cast<uint8_t>(takeoffFeedback.requestedFraction);
+  rect["takeoffRoutedFraction"] =
+      static_cast<uint8_t>(takeoffFeedback.routedFraction);
+  rect["takeoffActiveFraction"] =
+      static_cast<uint8_t>(takeoffFeedback.activeFraction);
+  rect["takeoffActiveValve"] =
+      static_cast<uint8_t>(takeoffFeedback.activeValve);
+  rect["refluxMode"] = static_cast<uint8_t>(g_settings.rectParams.refluxMode);
+  rect["srRatio"] = g_settings.rectParams.srRatio;
+  rect["autonomousCycleSec"] = g_settings.rectParams.autonomousCycleSec;
+  rect["autonomousPauseSec"] = g_settings.rectParams.autonomousPauseSec;
+  rect["chimAutoPercent"] = g_settings.rectParams.chimAutoPercent;
+  rect["chimTimePerH"] = g_settings.rectParams.chimTimePerH;
+  rect["chimBegPercent"] = g_settings.rectParams.chimBegPercent;
+  rect["chimMinPercent"] = g_settings.rectParams.chimMinPercent;
+  rect["phasePowerStabilization"] =
+      g_settings.rectParams.phasePowerPercent[RECT_POWER_STABILIZATION];
+  rect["phasePowerHeads"] =
+      g_settings.rectParams.phasePowerPercent[RECT_POWER_HEADS];
+  rect["phasePowerBody"] =
+      g_settings.rectParams.phasePowerPercent[RECT_POWER_BODY];
+  rect["phasePowerTails"] =
+      g_settings.rectParams.phasePowerPercent[RECT_POWER_TAILS];
+  rect["usePbMode"] = g_settings.rectParams.usePbMode;
+  rect["timpPbMs"] = g_settings.rectParams.timpPbMs;
+  rect["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
+  rect["routingRetargetMinMs"] =
+      g_settings.rectParams.routingRetargetMinMs;
 
   float rectHeadsTargetMl = 0.0f;
   float rectBodyTargetMl = 0.0f;

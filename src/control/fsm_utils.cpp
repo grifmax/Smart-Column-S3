@@ -1,5 +1,6 @@
 #include "fsm_utils.h"
 #include <Arduino.h>
+#include <math.h>
 #include "../drivers/heater.h"
 #include "watt_control.h"
 #include "v2/safety_supervisor.h"
@@ -45,6 +46,69 @@ uint16_t getConfiguredHeaterPowerWatts(const Settings& settings) {
     return settings.equipment.heaterPowerW > 0
         ? settings.equipment.heaterPowerW
         : DEFAULT_HEATER_POWER_W;
+}
+
+float getConfiguredHeaterPowerKw(uint16_t heaterPowerW) {
+    const uint16_t configuredPowerW =
+        heaterPowerW > 0 ? heaterPowerW : DEFAULT_HEATER_POWER_W;
+    return fmaxf(0.1f, static_cast<float>(configuredPowerW) / 1000.0f);
+}
+
+float getConfiguredHeaterPowerKw(const Settings& settings) {
+    return getConfiguredHeaterPowerKw(getConfiguredHeaterPowerWatts(settings));
+}
+
+float getRectificationColumnCapacityFactor(uint16_t columnHeightMm, float packingCoeff) {
+    const float normalizedHeight =
+        static_cast<float>(columnHeightMm > 0 ? columnHeightMm : DEFAULT_COLUMN_HEIGHT_MM) /
+        static_cast<float>(DEFAULT_COLUMN_HEIGHT_MM);
+    const float normalizedPacking =
+        (packingCoeff > 0.0f ? packingCoeff : DEFAULT_PACKING_COEFF) /
+        DEFAULT_PACKING_COEFF;
+    const float combinedFactor =
+        sqrtf(fmaxf(0.0f, normalizedHeight * normalizedPacking));
+
+    return clampFloat(combinedFactor, 0.5f, 1.5f);
+}
+
+float getRectificationColumnCapacityFactor(const Settings& settings) {
+    return getRectificationColumnCapacityFactor(
+        settings.equipment.columnHeightMm,
+        settings.equipment.packingCoeff
+    );
+}
+
+float getRectificationTakeoffRateMlH(uint16_t heaterPowerW,
+                                     uint16_t columnHeightMm,
+                                     float packingCoeff,
+                                     float speedMlHKw) {
+    return fmaxf(0.0f, speedMlHKw) * getConfiguredHeaterPowerKw(heaterPowerW) *
+           getRectificationColumnCapacityFactor(columnHeightMm, packingCoeff);
+}
+
+float getRectificationTakeoffRateMlH(const Settings& settings, float speedMlHKw) {
+    return getRectificationTakeoffRateMlH(
+        settings.equipment.heaterPowerW,
+        settings.equipment.columnHeightMm,
+        settings.equipment.packingCoeff,
+        speedMlHKw
+    );
+}
+
+float getRectificationDirectTakeoffSpeedMlH(const Settings& settings, RectPhase phase) {
+    switch (phase) {
+        case RectPhase::HEADS:
+            return getRectificationTakeoffRateMlH(
+                settings, settings.rectParams.headsSpeedMlHKw);
+        case RectPhase::TAILS:
+            return getRectificationTakeoffRateMlH(
+                       settings, settings.rectParams.bodySpeedMlHKw) *
+                   0.6f;
+        case RectPhase::BODY:
+        default:
+            return getRectificationTakeoffRateMlH(
+                settings, settings.rectParams.bodySpeedMlHKw);
+    }
 }
 
 uint16_t applyFullHeatPower(const Settings& settings) {

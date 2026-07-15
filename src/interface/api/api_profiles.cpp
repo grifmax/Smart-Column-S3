@@ -70,6 +70,54 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
           rectification["tailsSpeed"] =
               profile.parameters.rectification.tailsSpeed;
           rectification["purgeMin"] = profile.parameters.rectification.purgeMin;
+          rectification["baroCorrectionEnabled"] =
+              profile.parameters.rectification.baroCorrectionEnabled;
+          rectification["takeoffBackendType"] = static_cast<uint8_t>(
+              profile.parameters.rectification.takeoffBackendType);
+          rectification["refluxMode"] =
+              static_cast<uint8_t>(profile.parameters.rectification.refluxMode);
+          rectification["srTarget"] = profile.parameters.rectification.srTarget;
+          rectification["srRatio"] = profile.parameters.rectification.srTarget;
+          rectification["autonomousCycleSec"] =
+              profile.parameters.rectification.autonomousCycleSec;
+          rectification["autonomousPauseSec"] =
+              profile.parameters.rectification.autonomousPauseSec;
+          rectification["chimAutoPercent"] =
+              profile.parameters.rectification.chimAutoPercent;
+          rectification["chimTimePerH"] =
+              profile.parameters.rectification.chimTimePerH;
+          rectification["chimBegPercent"] =
+              profile.parameters.rectification.chimBegPercent;
+          rectification["chimMinPercent"] =
+              profile.parameters.rectification.chimMinPercent;
+          rectification["usePbMode"] =
+              profile.parameters.rectification.usePbMode;
+          rectification["timpPbMs"] = profile.parameters.rectification.timpPbMs;
+          rectification["routingSettlingMs"] =
+              profile.parameters.rectification.routingSettlingMs;
+          rectification["routingRetargetMinMs"] =
+              profile.parameters.rectification.routingRetargetMinMs;
+          rectification["valvePulsePeriodMs"] =
+              profile.parameters.rectification.valvePulsePeriodMs;
+          rectification["valvePulseMinOpenMs"] =
+              profile.parameters.rectification.valvePulseMinOpenMs;
+          rectification["valvePulseMaxOpenMs"] =
+              profile.parameters.rectification.valvePulseMaxOpenMs;
+          JsonArray phasePowerPercent =
+              rectification["phasePowerPercent"].to<JsonArray>();
+          for (uint8_t index = 0; index < RECT_POWER_COUNT; ++index) {
+            phasePowerPercent.add(
+                profile.parameters.rectification.phasePowerPercent[index]);
+          }
+          rectification["phasePowerStabilization"] =
+              profile.parameters.rectification
+                  .phasePowerPercent[RECT_POWER_STABILIZATION];
+          rectification["phasePowerHeads"] =
+              profile.parameters.rectification.phasePowerPercent[RECT_POWER_HEADS];
+          rectification["phasePowerBody"] =
+              profile.parameters.rectification.phasePowerPercent[RECT_POWER_BODY];
+          rectification["phasePowerTails"] =
+              profile.parameters.rectification.phasePowerPercent[RECT_POWER_TAILS];
 
           JsonObject distillation =
               parameters["distillation"].to<JsonObject>();
@@ -201,34 +249,8 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
             }
           }
 
-          JsonObject validation = doc["validation"].to<JsonObject>();
-          validation["validatedAt"] = profile.validation.validatedAt;
-          validation["sourceProcessId"] = profile.validation.sourceProcessId;
-          validation["atmosphereHpa"] = profile.validation.atmosphereHpa;
-          validation["atmosphereMmHg"] = profile.validation.atmosphereMmHg;
-          validation["columnHeightMm"] = profile.validation.columnHeightMm;
-          validation["packingType"] = profile.validation.packingType;
-          validation["packingCoeff"] = profile.validation.packingCoeff;
-          validation["heaterPowerW"] = profile.validation.heaterPowerW;
-          validation["targetPowerW"] = profile.validation.targetPowerW;
-          validation["feedVolumeL"] = profile.validation.feedVolumeL;
-          validation["feedAbvPercent"] = profile.validation.feedAbvPercent;
-          validation["cubeChargePercent"] = profile.validation.cubeChargePercent;
-          validation["headsActualMl"] = profile.validation.headsActualMl;
-          validation["bodyActualMl"] = profile.validation.bodyActualMl;
-          validation["tailsActualMl"] = profile.validation.tailsActualMl;
-          validation["headsCutColumnTopC"] =
-              profile.validation.headsCutColumnTopC;
-          validation["bodyCutColumnTopC"] =
-              profile.validation.bodyCutColumnTopC;
-          validation["tailsCutColumnTopC"] =
-              profile.validation.tailsCutColumnTopC;
-          validation["cubeFinalC"] = profile.validation.cubeFinalC;
-          validation["columnTopFinalC"] = profile.validation.columnTopFinalC;
-          validation["avgStabilityIndex"] =
-              profile.validation.avgStabilityIndex;
-          validation["avgProcessHealth"] =
-              profile.validation.avgProcessHealth;
+          appendProfileValidationJson(doc["validation"].to<JsonObject>(),
+                                      profile);
 
           String response;
           serializeJson(doc, response);
@@ -354,6 +376,117 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
             if (!rectification["purgeMin"].isNull())
               profile.parameters.rectification.purgeMin = clampU16Range(
                   rectification["purgeMin"].as<uint32_t>(), 1, 120);
+            if (!rectification["baroCorrectionEnabled"].isNull())
+              profile.parameters.rectification.baroCorrectionEnabled =
+                  rectification["baroCorrectionEnabled"].as<bool>();
+            if (!rectification["takeoffBackendType"].isNull())
+              profile.parameters.rectification.takeoffBackendType =
+                  static_cast<RectTakeoffBackendType>(clampU16Range(
+                      rectification["takeoffBackendType"].as<uint32_t>(), 0,
+                      static_cast<uint32_t>(
+                          RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
+            if (!rectification["refluxMode"].isNull())
+              profile.parameters.rectification.refluxMode =
+                  static_cast<RectRefluxMode>(clampU16Range(
+                      rectification["refluxMode"].as<uint32_t>(), 0,
+                      static_cast<uint32_t>(RectRefluxMode::AUTONOMOUS)));
+            if (!rectification["srTarget"].isNull())
+              profile.parameters.rectification.srTarget = clampFloatRange(
+                  rectification["srTarget"].as<float>(), 0.0f, 20.0f);
+            else if (!rectification["srRatio"].isNull())
+              profile.parameters.rectification.srTarget = clampFloatRange(
+                  rectification["srRatio"].as<float>(), 0.0f, 20.0f);
+            if (!rectification["autonomousCycleSec"].isNull())
+              profile.parameters.rectification.autonomousCycleSec =
+                  clampU16Range(
+                      rectification["autonomousCycleSec"].as<uint32_t>(), 1,
+                      7200);
+            if (!rectification["autonomousPauseSec"].isNull())
+              profile.parameters.rectification.autonomousPauseSec =
+                  clampU16Range(
+                      rectification["autonomousPauseSec"].as<uint32_t>(), 0,
+                      7199);
+            if (!rectification["chimAutoPercent"].isNull())
+              profile.parameters.rectification.chimAutoPercent =
+                  clampFloatRange(rectification["chimAutoPercent"].as<float>(),
+                                  0.0f, 200.0f);
+            if (!rectification["chimTimePerH"].isNull())
+              profile.parameters.rectification.chimTimePerH =
+                  clampFloatRange(rectification["chimTimePerH"].as<float>(),
+                                  -2000.0f, 2000.0f);
+            if (!rectification["chimBegPercent"].isNull())
+              profile.parameters.rectification.chimBegPercent =
+                  clampFloatRange(rectification["chimBegPercent"].as<float>(),
+                                  -100.0f, 200.0f);
+            if (!rectification["chimMinPercent"].isNull())
+              profile.parameters.rectification.chimMinPercent =
+                  clampFloatRange(rectification["chimMinPercent"].as<float>(),
+                                  0.0f, 100.0f);
+            if (!rectification["usePbMode"].isNull())
+              profile.parameters.rectification.usePbMode = clampU8Range(
+                  rectification["usePbMode"].as<uint32_t>(), 0, 3);
+            if (!rectification["timpPbMs"].isNull()) {
+              const uint32_t timpPbMs = rectification["timpPbMs"].as<uint32_t>();
+              profile.parameters.rectification.timpPbMs =
+                  timpPbMs > 600000UL ? 600000UL : timpPbMs;
+            }
+            if (!rectification["routingSettlingMs"].isNull())
+              profile.parameters.rectification.routingSettlingMs =
+                  clampU16Range(
+                      rectification["routingSettlingMs"].as<uint32_t>(), 0,
+                      10000);
+            if (!rectification["routingRetargetMinMs"].isNull())
+              profile.parameters.rectification.routingRetargetMinMs =
+                  clampU16Range(
+                      rectification["routingRetargetMinMs"].as<uint32_t>(), 0,
+                      30000);
+            if (!rectification["valvePulsePeriodMs"].isNull())
+              profile.parameters.rectification.valvePulsePeriodMs =
+                  clampU16Range(
+                      rectification["valvePulsePeriodMs"].as<uint32_t>(), 100,
+                      5000);
+            if (!rectification["valvePulseMinOpenMs"].isNull())
+              profile.parameters.rectification.valvePulseMinOpenMs =
+                  clampU16Range(
+                      rectification["valvePulseMinOpenMs"].as<uint32_t>(), 0,
+                      profile.parameters.rectification.valvePulsePeriodMs);
+            if (!rectification["valvePulseMaxOpenMs"].isNull())
+              profile.parameters.rectification.valvePulseMaxOpenMs =
+                  clampU16Range(
+                      rectification["valvePulseMaxOpenMs"].as<uint32_t>(),
+                      profile.parameters.rectification.valvePulseMinOpenMs,
+                      profile.parameters.rectification.valvePulsePeriodMs);
+            if (rectification["phasePowerPercent"].is<JsonArray>()) {
+              JsonArray phasePower = rectification["phasePowerPercent"].as<JsonArray>();
+              for (uint8_t index = 0;
+                   index < RECT_POWER_COUNT && index < phasePower.size();
+                   ++index) {
+                profile.parameters.rectification.phasePowerPercent[index] =
+                    clampU8Range(phasePower[index].as<uint32_t>(), 1, 100);
+              }
+            }
+            if (!rectification["phasePowerStabilization"].isNull())
+              profile.parameters.rectification
+                  .phasePowerPercent[RECT_POWER_STABILIZATION] = clampU8Range(
+                  rectification["phasePowerStabilization"].as<uint32_t>(), 1,
+                  100);
+            if (!rectification["phasePowerHeads"].isNull())
+              profile.parameters.rectification.phasePowerPercent[RECT_POWER_HEADS] =
+                  clampU8Range(rectification["phasePowerHeads"].as<uint32_t>(), 1,
+                               100);
+            if (!rectification["phasePowerBody"].isNull())
+              profile.parameters.rectification.phasePowerPercent[RECT_POWER_BODY] =
+                  clampU8Range(rectification["phasePowerBody"].as<uint32_t>(), 1,
+                               100);
+            if (!rectification["phasePowerTails"].isNull())
+              profile.parameters.rectification.phasePowerPercent[RECT_POWER_TAILS] =
+                  clampU8Range(rectification["phasePowerTails"].as<uint32_t>(), 1,
+                               100);
+            if (profile.parameters.rectification.autonomousPauseSec >=
+                profile.parameters.rectification.autonomousCycleSec) {
+              profile.parameters.rectification.autonomousPauseSec =
+                  profile.parameters.rectification.autonomousCycleSec - 1;
+            }
           }
 
           JsonObject distillation = parameters["distillation"].is<JsonObject>()

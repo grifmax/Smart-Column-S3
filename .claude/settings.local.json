@@ -69,7 +69,12 @@
       "Bash(grep -E '\\\\.\\(ts|tsx|js|jsx\\)$')",
       "Bash(grep -E '\\\\.\\(py\\)$')",
       "Bash(sed 's/.*\\\\.//')",
-      "Bash(grep -E '\\\\.\\(dart\\)$')"
+      "Bash(grep -E '\\\\.\\(dart\\)$')",
+      "Bash(ls /Users/Shared/search42/cindylee27/Workspace/desktop/metrics-proxy-layer 2>/dev/null || echo \"Directory not found\")",
+      "Read(//Users/Shared/search42/cindylee27/Workspace/desktop/**)",
+      "Bash(which pdftotext *)",
+      "Read(//usr/**)",
+      "Bash(pdftotext \"c:/distiller/Smart-Column-S3/HelloDistiller.pdf\" -)"
     ]
   }
 }

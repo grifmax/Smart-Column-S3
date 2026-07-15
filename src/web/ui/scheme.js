@@ -1105,6 +1105,7 @@ function applySchemeTheme(svg) {
     const isDark = theme === 'dark';
     const strokeColor = isDark ? '#d5dbe4' : '#000000';
     const labelColor = isDark ? '#e8edf5' : '#333333';
+    const indicatorColor = '#2c3e50';
     const bodyFill = isDark ? '#2c3138' : '#ffffff';
 
     svg.querySelectorAll('.struct').forEach((el) => {
@@ -1114,8 +1115,11 @@ function applySchemeTheme(svg) {
     svg.querySelectorAll('.struct-line,.pipe,.jar,.valve').forEach((el) => {
         el.style.stroke = strokeColor;
     });
-    svg.querySelectorAll('.label-text,.indicator-text').forEach((el) => {
+    svg.querySelectorAll('.label-text').forEach((el) => {
         el.style.fill = labelColor;
+    });
+    svg.querySelectorAll('.indicator-text').forEach((el) => {
+        el.style.fill = indicatorColor;
     });
 
     // In dark theme some scheme lines use hardcoded stroke="#000" in SVG attributes.

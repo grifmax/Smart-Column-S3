@@ -377,6 +377,8 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   activeTests["heater"] = heaterActive;
   activeTests["waterValve"] = Valves::getWater();
   activeTests["headsValve"] = Valves::getHeads();
+  activeTests["bodyValve"] = Valves::getBody();
+  activeTests["tailsValve"] = Valves::getTails();
   activeTests["unoValve"] = Valves::getUno();
   activeTests["startStopDuty"] = Valves::getStartStop() > 0;
   activeTests["servoMoving"] = Valves::isServoMoving();
@@ -424,6 +426,10 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   JsonObject valves = doc["valves"].to<JsonObject>();
   valves["water"] = Valves::getWater();
   valves["heads"] = Valves::getHeads();
+  valves["body"] = Valves::getBody();
+  valves["bodyAvailable"] = Valves::hasBodyValve();
+  valves["tailsAvailable"] = Valves::hasTailsValve();
+  valves["tails"] = Valves::getTails();
   valves["uno"] = Valves::getUno();
   valves["startStopDuty"] = Valves::getStartStop();
   JsonObject coolingSettings = doc["coolingSettings"].to<JsonObject>();
@@ -439,6 +445,14 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   headsPulse["active"] = Valves::isPulseActive(Valves::ValveId::HEADS);
   headsPulse["remainingMs"] =
       Valves::getPulseRemainingMs(Valves::ValveId::HEADS);
+  JsonObject bodyPulse = valves["bodyPulse"].to<JsonObject>();
+  bodyPulse["active"] = Valves::isPulseActive(Valves::ValveId::BODY);
+  bodyPulse["remainingMs"] =
+      Valves::getPulseRemainingMs(Valves::ValveId::BODY);
+  JsonObject tailsPulse = valves["tailsPulse"].to<JsonObject>();
+  tailsPulse["active"] = Valves::isPulseActive(Valves::ValveId::TAILS);
+  tailsPulse["remainingMs"] =
+      Valves::getPulseRemainingMs(Valves::ValveId::TAILS);
   JsonObject unoPulse = valves["unoPulse"].to<JsonObject>();
   unoPulse["active"] = Valves::isPulseActive(Valves::ValveId::UNO);
   unoPulse["remainingMs"] =
@@ -903,6 +917,44 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
                                          open ? "Клапан голов открыт вручную."
                                               : "Клапан голов закрыт вручную.");
           }
+        } else if (target == "body") {
+          if (!Valves::hasBodyValve()) {
+            request->send(
+                409, "application/json",
+                "{\"success\":false,\"message\":\"Body valve is not available on this board\"}");
+            return;
+          }
+          if (action == "pulse") {
+            if (durationMs < 100) durationMs = 100;
+            if (durationMs > 10000) durationMs = 10000;
+            Valves::pulse(Valves::ValveId::BODY, durationMs);
+            recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С‚РµР»Р°",
+                                         "РљР»Р°РїР°РЅ С‚РµР»Р° РїРѕР»СѓС‡РёР» СЃРµСЂРІРёСЃРЅС‹Р№ РёРјРїСѓР»СЊСЃ.");
+          } else {
+            Valves::setBody(open);
+            recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С‚РµР»Р°",
+                                         open ? "РљР»Р°РїР°РЅ С‚РµР»Р° РѕС‚РєСЂС‹С‚ РІСЂСѓС‡РЅСѓСЋ."
+                                              : "РљР»Р°РїР°РЅ С‚РµР»Р° Р·Р°РєСЂС‹С‚ РІСЂСѓС‡РЅСѓСЋ.");
+          }
+        } else if (target == "tails") {
+          if (!Valves::hasTailsValve()) {
+            request->send(
+                409, "application/json",
+                "{\"success\":false,\"message\":\"Tails valve is not available on this board\"}");
+            return;
+          }
+          if (action == "pulse") {
+            if (durationMs < 100) durationMs = 100;
+            if (durationMs > 10000) durationMs = 10000;
+            Valves::pulse(Valves::ValveId::TAILS, durationMs);
+            recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ",
+                                         "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ РїРѕР»СѓС‡РёР» СЃРµСЂРІРёСЃРЅС‹Р№ РёРјРїСѓР»СЊСЃ.");
+          } else {
+            Valves::setTails(open);
+            recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ",
+                                         open ? "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ РѕС‚РєСЂС‹С‚ РІСЂСѓС‡РЅСѓСЋ."
+                                              : "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ Р·Р°РєСЂС‹С‚ РІСЂСѓС‡РЅСѓСЋ.");
+          }
         } else if (target == "uno") {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
@@ -979,6 +1031,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
             g_settings.fractionator.angles[i] = static_cast<uint16_t>(angle);
             g_settings.fractionator.positionsEnabled[i] = enabled[i].as<bool>();
           }
+          Valves::configureFractionator(g_settings.fractionator);
           NVSManager::saveSettings(g_settings);
           recordEquipmentTestingAction(
               "success", "Сервопривод",

@@ -11,6 +11,7 @@
 #include "../../storage/logger.h"
 #include "../fsm.h"
 #include "../fsm_utils.h"
+#include "../rect_takeoff.h"
 #include "safety_supervisor.h"
 #include "transition_logger.h"
 
@@ -51,6 +52,17 @@ struct PendingSafetyOperatorActionV2 {
 
 PendingSafetyOperatorActionV2 g_pendingSafetyAction;
 const char* getPhaseToken(Mode mode, uint16_t phaseId);
+
+float getCurrentCollectedVolumeMl(Mode mode, const SystemState& state,
+                                  const Settings& settings) {
+    const bool usesTakeoffSessionVolume =
+        (mode == Mode::RECTIFICATION || mode == Mode::MANUAL_RECT) &&
+        settings.rectParams.takeoffBackendType != RectTakeoffBackendType::PUMP;
+    if (usesTakeoffSessionVolume) {
+        return RectTakeoff::getFeedback().sessionVolumeMl;
+    }
+    return state.pump.totalVolumeMl;
+}
 
 void copyGuidanceText(char* dst, size_t size, const char* src) {
     if (dst == nullptr || size == 0) {
@@ -407,10 +419,6 @@ ProcessParameters buildHistoryParameters(const SystemState& state,
     switch (state.mode) {
         case Mode::RECTIFICATION:
         case Mode::MANUAL_RECT: {
-            const float heaterPowerKw =
-                settings.equipment.heaterPowerW > 0
-                    ? (settings.equipment.heaterPowerW / 1000.0f)
-                    : 1.0f;
             const float absoluteAlcoholMl = estimateAbsoluteAlcoholMl(settings);
             params.headVolume = clampHistoryU16(
                 absoluteAlcoholMl * (settings.rectParams.headsPercent / 100.0f));
@@ -419,9 +427,11 @@ ProcessParameters buildHistoryParameters(const SystemState& state,
             params.tailVolume = clampHistoryU16(
                 absoluteAlcoholMl * (settings.rectParams.tailsPercent / 100.0f));
             params.pumpSpeedHead = clampHistoryU16(
-                settings.rectParams.headsSpeedMlHKw * heaterPowerKw);
+                FSM::getRectificationTakeoffRateMlH(
+                    settings, settings.rectParams.headsSpeedMlHKw));
             params.pumpSpeedBody = clampHistoryU16(
-                settings.rectParams.bodySpeedMlHKw * heaterPowerKw);
+                FSM::getRectificationTakeoffRateMlH(
+                    settings, settings.rectParams.bodySpeedMlHKw));
             break;
         }
         case Mode::DISTILLATION:
@@ -720,7 +730,8 @@ void startHistoryTracking(const SystemState& state) {
         }
     }
     g_prevPhaseStartMs = millis();
-    g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
+    g_prevPhaseStartVolumeMl =
+        getCurrentCollectedVolumeMl(state.mode, state, g_settings);
     g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
 }
 
@@ -734,7 +745,9 @@ void recordCompletedPhase(Mode mode, uint16_t phaseId, ReasonCodeV2 reasonCode,
 
     const uint32_t startMs = g_prevPhaseStartMs > 0 ? g_prevPhaseStartMs : nowMs;
     const uint32_t durationSec = (nowMs >= startMs) ? (nowMs - startMs) / 1000UL : 0;
-    float phaseVolumeMl = state.pump.totalVolumeMl - g_prevPhaseStartVolumeMl;
+    float phaseVolumeMl =
+        getCurrentCollectedVolumeMl(mode, state, g_settings) -
+        g_prevPhaseStartVolumeMl;
     if (phaseVolumeMl < 0.0f) {
         phaseVolumeMl = 0.0f;
     }
@@ -1055,7 +1068,8 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         g_prevPhaseId = getActivePhaseId(state);
         g_modeStartMs = (state.mode == Mode::IDLE) ? 0 : now;
         g_prevPhaseStartMs = now;
-        g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
+        g_prevPhaseStartVolumeMl =
+            getCurrentCollectedVolumeMl(state.mode, state, settings);
         g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
     }
     if (!g_prevSafetyInitialized) {
@@ -1072,7 +1086,8 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         logTransitionEvent(explicitTransition.mode, explicitTransition.fromPhaseId,
                            explicitTransition.toPhaseId, explicitTransition.reasonCode,
                            explicitTransition.operatorMessage, g_lastIndicators, limits, now,
-                           state.pump.totalVolumeMl);
+                           getCurrentCollectedVolumeMl(explicitTransition.mode,
+                                                       state, settings));
     }
 
     if (state.mode != g_prevMode) {
@@ -1107,7 +1122,8 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
         g_prevMode = state.mode;
         g_prevPhaseId = currentPhaseId;
         g_prevPhaseStartMs = now;
-        g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
+        g_prevPhaseStartVolumeMl =
+            getCurrentCollectedVolumeMl(state.mode, state, settings);
         g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
     } else if (currentPhaseId != g_prevPhaseId) {
         ReasonCodeV2 phaseReason = explicitTransition.reasonCode;
@@ -1120,13 +1136,15 @@ void updateRuntime(const SystemState& state, const Settings& settings) {
             setStatusReason(phaseReason, phaseMessage);
             logTransitionEvent(state.mode, g_prevPhaseId, currentPhaseId, phaseReason,
                                phaseMessage, g_lastIndicators, limits, now,
-                               state.pump.totalVolumeMl);
+                               getCurrentCollectedVolumeMl(state.mode, state,
+                                                           settings));
         }
         recordCompletedPhase(state.mode, g_prevPhaseId, phaseReason,
                              phaseMessage, state, now);
         g_prevPhaseId = currentPhaseId;
         g_prevPhaseStartMs = now;
-        g_prevPhaseStartVolumeMl = state.pump.totalVolumeMl;
+        g_prevPhaseStartVolumeMl =
+            getCurrentCollectedVolumeMl(state.mode, state, settings);
         g_prevPhaseStartTempC = getRepresentativePhaseTemp(state);
     }
 

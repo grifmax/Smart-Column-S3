@@ -688,8 +688,12 @@ static void handleHttpRequest(JsonDocument& req) {
     JsonObject valves = doc["valves"].to<JsonObject>();
     valves["water"] = Valves::getWater();
     valves["heads"] = Valves::getHeads();
+    valves["body"] = Valves::getBody();
+    valves["bodyAvailable"] = Valves::hasBodyValve();
+    valves["tailsAvailable"] = Valves::hasTailsValve();
     valves["uno"] = Valves::getUno();
     valves["startStopDuty"] = Valves::getStartStop();
+    valves["tails"] = Valves::getTails();
 
     JsonObject hydrometer = doc["hydrometer"].to<JsonObject>();
     hydrometer["abv"] = g_state.hydrometer.abv;
@@ -1952,9 +1956,16 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["tailsPercent"] = params.tailsPercent;
     doc["headsSpeedMlHKw"] = params.headsSpeedMlHKw;
     doc["bodySpeedMlHKw"] = params.bodySpeedMlHKw;
+    doc["takeoffBackendType"] =
+        static_cast<uint8_t>(params.takeoffBackendType);
     doc["stabilizationMin"] = params.stabilizationMin;
     doc["purgeMin"] = params.purgeMin;
     doc["baroCorrectionEnabled"] = params.baroCorrectionEnabled;
+    doc["routingSettlingMs"] = params.routingSettlingMs;
+    doc["routingRetargetMinMs"] = params.routingRetargetMinMs;
+    doc["valvePulsePeriodMs"] = params.valvePulsePeriodMs;
+    doc["valvePulseMinOpenMs"] = params.valvePulseMinOpenMs;
+    doc["valvePulseMaxOpenMs"] = params.valvePulseMaxOpenMs;
     String out;
     serializeJson(doc, out);
     sendHttpResponse(requestId, 200, out);
@@ -2005,6 +2016,13 @@ static void handleHttpRequest(JsonDocument& req) {
       updated.bodySpeedMlHKw =
           clampFloatRange(params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
     }
+    if (!params["takeoffBackendType"].isNull()) {
+      updated.takeoffBackendType =
+          static_cast<RectTakeoffBackendType>(clampU16Range(
+              params["takeoffBackendType"].as<uint32_t>(), 0,
+              static_cast<uint32_t>(
+                  RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
+    }
     if (!params["stabilizationMin"].isNull()) {
       updated.stabilizationMin =
           clampU16Range(params["stabilizationMin"].as<uint32_t>(), 1, 180);
@@ -2014,6 +2032,28 @@ static void handleHttpRequest(JsonDocument& req) {
     }
     if (!params["baroCorrectionEnabled"].isNull()) {
       updated.baroCorrectionEnabled = params["baroCorrectionEnabled"].as<bool>();
+    }
+    if (!params["routingSettlingMs"].isNull()) {
+      updated.routingSettlingMs = clampU16Range(
+          params["routingSettlingMs"].as<uint32_t>(), 0, 10000);
+    }
+    if (!params["routingRetargetMinMs"].isNull()) {
+      updated.routingRetargetMinMs = clampU16Range(
+          params["routingRetargetMinMs"].as<uint32_t>(), 0, 30000);
+    }
+    if (!params["valvePulsePeriodMs"].isNull()) {
+      updated.valvePulsePeriodMs = clampU16Range(
+          params["valvePulsePeriodMs"].as<uint32_t>(), 100, 5000);
+    }
+    if (!params["valvePulseMinOpenMs"].isNull()) {
+      updated.valvePulseMinOpenMs = clampU16Range(
+          params["valvePulseMinOpenMs"].as<uint32_t>(), 0,
+          updated.valvePulsePeriodMs);
+    }
+    if (!params["valvePulseMaxOpenMs"].isNull()) {
+      updated.valvePulseMaxOpenMs = clampU16Range(
+          params["valvePulseMaxOpenMs"].as<uint32_t>(),
+          updated.valvePulseMinOpenMs, updated.valvePulsePeriodMs);
     }
 
     if (fractionsUpdated) {
@@ -2036,9 +2076,17 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["tailsPercent"] = g_settings.rectParams.tailsPercent;
     doc["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
     doc["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+    doc["takeoffBackendType"] =
+        static_cast<uint8_t>(g_settings.rectParams.takeoffBackendType);
     doc["stabilizationMin"] = g_settings.rectParams.stabilizationMin;
     doc["purgeMin"] = g_settings.rectParams.purgeMin;
     doc["baroCorrectionEnabled"] = g_settings.rectParams.baroCorrectionEnabled;
+    doc["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
+    doc["routingRetargetMinMs"] =
+        g_settings.rectParams.routingRetargetMinMs;
+    doc["valvePulsePeriodMs"] = g_settings.rectParams.valvePulsePeriodMs;
+    doc["valvePulseMinOpenMs"] = g_settings.rectParams.valvePulseMinOpenMs;
+    doc["valvePulseMaxOpenMs"] = g_settings.rectParams.valvePulseMaxOpenMs;
     String out;
     serializeJson(doc, out);
     sendHttpResponse(requestId, 200, out);
@@ -2522,6 +2570,13 @@ static void handleHttpRequest(JsonDocument& req) {
           g_settings.rectParams.bodySpeedMlHKw = clampFloatRange(
               params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
         }
+        if (!params["takeoffBackendType"].isNull()) {
+          g_settings.rectParams.takeoffBackendType =
+              static_cast<RectTakeoffBackendType>(clampU16Range(
+                  params["takeoffBackendType"].as<uint32_t>(), 0,
+                  static_cast<uint32_t>(
+                      RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
+        }
         if (!params["stabilizationMin"].isNull()) {
           g_settings.rectParams.stabilizationMin =
               clampU16Range(params["stabilizationMin"].as<uint32_t>(), 1, 180);
@@ -2533,6 +2588,29 @@ static void handleHttpRequest(JsonDocument& req) {
         if (!params["baroCorrectionEnabled"].isNull()) {
           g_settings.rectParams.baroCorrectionEnabled =
               params["baroCorrectionEnabled"].as<bool>();
+        }
+        if (!params["routingSettlingMs"].isNull()) {
+          g_settings.rectParams.routingSettlingMs = clampU16Range(
+              params["routingSettlingMs"].as<uint32_t>(), 0, 10000);
+        }
+        if (!params["routingRetargetMinMs"].isNull()) {
+          g_settings.rectParams.routingRetargetMinMs = clampU16Range(
+              params["routingRetargetMinMs"].as<uint32_t>(), 0, 30000);
+        }
+        if (!params["valvePulsePeriodMs"].isNull()) {
+          g_settings.rectParams.valvePulsePeriodMs = clampU16Range(
+              params["valvePulsePeriodMs"].as<uint32_t>(), 100, 5000);
+        }
+        if (!params["valvePulseMinOpenMs"].isNull()) {
+          g_settings.rectParams.valvePulseMinOpenMs = clampU16Range(
+              params["valvePulseMinOpenMs"].as<uint32_t>(), 0,
+              g_settings.rectParams.valvePulsePeriodMs);
+        }
+        if (!params["valvePulseMaxOpenMs"].isNull()) {
+          g_settings.rectParams.valvePulseMaxOpenMs = clampU16Range(
+              params["valvePulseMaxOpenMs"].as<uint32_t>(),
+              g_settings.rectParams.valvePulseMinOpenMs,
+              g_settings.rectParams.valvePulsePeriodMs);
         }
         normalizeRectFractions(g_settings.rectParams);
       }

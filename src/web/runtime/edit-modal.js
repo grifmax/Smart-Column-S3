@@ -220,7 +220,7 @@ export function getRuntimeEditConfig(paramKey) {
             step: '1',
             min: '0',
             max: '5000',
-            hint: '0 = остановить насос.',
+            hint: '0 = остановить отбор.',
             value: toFinite(s.pump.speedMlH, 0).toFixed(0),
             quickAdjustments: {
                 groups: [

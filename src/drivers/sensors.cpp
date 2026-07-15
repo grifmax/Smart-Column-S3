@@ -183,6 +183,17 @@ static int8_t findDs18b20AddressIndex(DeviceAddress addresses[], uint8_t count,
     return -1;
 }
 
+static int8_t findFirstUnusedDs18b20AddressIndex(uint8_t count,
+                                                 const bool used[]) {
+    for (uint8_t i = 0; i < count; ++i) {
+        if (used && used[i]) {
+            continue;
+        }
+        return static_cast<int8_t>(i);
+    }
+    return -1;
+}
+
 static void invalidateTemperatureState(Temperatures& temps) {
     for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
         temps.valid[i] = false;
@@ -607,6 +618,28 @@ static uint8_t discoverDs18b20(bool logInventory) {
                 bestAddresses, count, tempCal.addresses[role], busAddressUsed);
             if (busIndex < 0) {
                 continue;
+            }
+
+            memcpy(ds18b20Addresses[role], bestAddresses[busIndex],
+                   sizeof(DeviceAddress));
+            ds18b20Found[role] = true;
+            busAddressUsed[busIndex] = true;
+            if (!isUsingDs2482Backend()) {
+                ds18b20.setResolution(ds18b20Addresses[role], 12);
+            }
+        }
+
+        // Support mixed mapping mode: pinned roles keep their exact addresses,
+        // while unpinned roles continue to work in auto-by-order mode.
+        for (uint8_t role = 0; role < TEMP_COUNT; ++role) {
+            if (!isZeroDeviceAddress(tempCal.addresses[role])) {
+                continue;
+            }
+
+            const int8_t busIndex =
+                findFirstUnusedDs18b20AddressIndex(count, busAddressUsed);
+            if (busIndex < 0) {
+                break;
             }
 
             memcpy(ds18b20Addresses[role], bestAddresses[busIndex],

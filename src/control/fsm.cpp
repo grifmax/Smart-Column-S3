@@ -6,6 +6,7 @@
 
 #include "fsm.h"
 #include "fsm_utils.h"
+#include "rect_takeoff.h"
 #include "v2/status_adapter.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
@@ -125,7 +126,7 @@ void noteModeExitTransition(const SystemState& state,
 void finalizeModeStop(SystemState& state) {
     Heater::setPower(0);
     Heater::setBoosterEnabled(false);
-    Pump::stop();
+    RectTakeoff::stop();
     Stirrer::stop(); // остановить мешалку при выходе из любого режима
     Valves::closeAll();
 
@@ -136,6 +137,7 @@ void finalizeModeStop(SystemState& state) {
     state.mashing.active = false;
     state.hold.active = false;
     state.paused = false;
+    state.fractionProgram = FractionProgramRuntime{};
     state.stirrer.autoMode = false;
     pauseStartTime = 0;
 }
@@ -179,7 +181,7 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
     // Сброс предыдущего состояния
     Heater::setPower(0);
     Heater::setBoosterEnabled(false);
-    Pump::stop();
+    RectTakeoff::stop();
     Valves::closeAll();
     
     state.mode = mode;
@@ -211,6 +213,7 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
                 "Distillation started");
             break;
         case Mode::MANUAL_RECT:
+            Rectification::initSession(state, settings);
             ManualRect::setPhase(state, RectPhase::HEATING);
             break;
         case Mode::MASHING:
@@ -293,7 +296,7 @@ void pause(SystemState& state) {
 
     Heater::setPower(0);
     Heater::setBoosterEnabled(false);
-    Pump::stop();
+    RectTakeoff::stop();
     // Охлаждение оставляем если куб горячий
     if (state.temps.cube < 45.0f) Valves::setWater(false);
 

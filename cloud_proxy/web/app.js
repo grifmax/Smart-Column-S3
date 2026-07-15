@@ -1,2625 +1,1363 @@
-// Smart-Column S3 - Web UI JavaScript
-
-let ws = null;
-let reconnectInterval = null;
-let isConnected = false;
-let miniChart = null;
-let miniChartData = {
-    timestamps: [],
-    cube: [],
-    columnTop: [],
-    reflux: []
-};
-const MINI_CHART_MAX_POINTS = 60; // 5 минут при обновлении каждые 5 секунд
-
-// Состояние процесса
-let currentMode = 0;  // 0 = IDLE
-let currentPaused = false;
-let maxHeaterPower = 3000;  // Будет обновлено из настроек
-
-// Инициализация при загрузке страницы
-document.addEventListener('DOMContentLoaded', function () {
-    initTabs();
-    loadTheme();
-    loadDemoMode();  // Загрузить состояние демо-режима
-    initMiniChart();
-    loadMemoryStatsPreference();
-    loadPumpInfo();
-    loadVersionInfo();
-    loadUserInfo();  // Загрузить информацию о пользователе
-    loadESP32Config();  // Загрузить настройки ESP32
-    loadStatus();  // Загрузить начальный статус
-    connectWebSocket();
-
-    // Периодический опрос статуса (резервный вариант если WebSocket отключён)
-    setInterval(loadStatus, 2000);
-});
-
-// ============================================================================
-// WebSocket
-// ============================================================================
-
-function connectWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}/ws`;
-
-    addLog('Подключение к WebSocket...');
-
-    try {
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = function () {
-            isConnected = true;
-            updateConnectionStatus(true);
-            addLog('✅ Подключено к контроллеру', 'info');
-
-            // Остановить попытки переподключения
-            if (reconnectInterval) {
-                clearInterval(reconnectInterval);
-                reconnectInterval = null;
-            }
-        };
-
-        ws.onmessage = function (event) {
-            try {
-                const data = JSON.parse(event.data);
-                updateUI(data);
-            } catch (e) {
-                console.error('Ошибка парсинга JSON:', e);
-            }
-        };
-
-        ws.onerror = function (error) {
-            console.error('WebSocket error:', error);
-            addLog('❌ Ошибка подключения', 'error');
-        };
-
-        ws.onclose = function () {
-            isConnected = false;
-            updateConnectionStatus(false);
-            addLog('⚠️ Соединение разорвано. Переподключение...', 'warning');
-
-            // Попытка переподключения каждые 5 секунд
-            if (!reconnectInterval) {
-                reconnectInterval = setInterval(() => {
-                    if (!isConnected) {
-                        connectWebSocket();
-                    }
-                }, 5000);
-            }
-        };
-    } catch (e) {
-        console.error('Ошибка создания WebSocket:', e);
-        updateConnectionStatus(false);
-    }
-}
-
-function sendCommand(action, param = '', value = 0) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        const cmd = { action, param, value };
-        ws.send(JSON.stringify(cmd));
-        addLog(`📤 Команда: ${action} ${param} ${value}`);
-    } else {
-        addLog('❌ Нет подключения к контроллеру', 'error');
-    }
-}
-
-function updateConnectionStatus(connected) {
-    const statusDot = document.getElementById('connection-status');
-    const statusText = document.getElementById('connection-text');
-
-    if (connected) {
-        statusDot.className = 'status-dot online';
-        statusText.textContent = 'Подключено';
-    } else {
-        statusDot.className = 'status-dot offline';
-        statusText.textContent = 'Отключено';
-    }
-}
-
-// ============================================================================
-// Mini Chart
-// ============================================================================
-
-function initMiniChart() {
-    const options = {
-        chart: {
-            type: 'line',
-            height: 200,
-            animations: {
-                enabled: true,
-                dynamicAnimation: {
-                    speed: 500
-                }
-            },
-            toolbar: {
-                show: false
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: [
-            {
-                name: 'Куб',
-                data: []
-            },
-            {
-                name: 'Царга верх',
-                data: []
-            },
-            {
-                name: 'Дефлегматор',
-                data: []
-            }
-        ],
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    minute: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: '°C'
-            },
-            decimalsInFloat: 1
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        colors: ['#dc3545', '#007bff', '#17a2b8'],
-        legend: {
-            show: true,
-            position: 'top'
-        },
-        tooltip: {
-            x: {
-                format: 'HH:mm:ss'
-            }
-        }
-    };
-
-    miniChart = new ApexCharts(document.querySelector("#mini-chart"), options);
-    miniChart.render();
-}
-
-function updateMiniChart(data) {
-    if (!miniChart) return;
-
-    const now = new Date().getTime();
-
-    // Добавить новые данные
-    if (data.t_cube !== undefined) {
-        miniChartData.timestamps.push(now);
-        miniChartData.cube.push(data.t_cube);
-        miniChartData.columnTop.push(data.t_column_top || null);
-        miniChartData.reflux.push(data.t_reflux || null);
-
-        // Ограничить количество точек
-        if (miniChartData.timestamps.length > MINI_CHART_MAX_POINTS) {
-            miniChartData.timestamps.shift();
-            miniChartData.cube.shift();
-            miniChartData.columnTop.shift();
-            miniChartData.reflux.shift();
-        }
-
-        // Обновить график
-        miniChart.updateSeries([
-            {
-                name: 'Куб',
-                data: miniChartData.timestamps.map((t, i) => ({
-                    x: t,
-                    y: miniChartData.cube[i]
-                }))
-            },
-            {
-                name: 'Царга верх',
-                data: miniChartData.timestamps.map((t, i) => ({
-                    x: t,
-                    y: miniChartData.columnTop[i]
-                }))
-            },
-            {
-                name: 'Дефлегматор',
-                data: miniChartData.timestamps.map((t, i) => ({
-                    x: t,
-                    y: miniChartData.reflux[i]
-                }))
-            }
-        ]);
-    }
-}
-
-// ============================================================================
-// UI Updates
-// ============================================================================
-
-function updateUI(data) {
-    // Режим
-    if (data.mode !== undefined) {
-        const modeNames = ['IDLE', 'RECT', 'MANUAL', 'DIST', 'MASH', 'HOLD'];
-        const modeName = modeNames[data.mode] || 'UNKNOWN';
-        const modeEl = document.getElementById('mode');
-        modeEl.textContent = modeName;
-        modeEl.className = `value mode-${modeName.toLowerCase()}`;
-    }
-
-    // Фаза
-    if (data.phase !== undefined) {
-        const phaseNames = ['IDLE', 'HEATING', 'STABIL', 'HEADS', 'PURGE', 'BODY', 'TAILS', 'FINISH', 'ERROR'];
-        document.getElementById('phase').textContent = phaseNames[data.phase] || '—';
-    }
-
-    // Температуры
-    if (data.t_cube !== undefined) {
-        document.getElementById('temp-cube').textContent = data.t_cube.toFixed(1) + '°C';
-    }
-    if (data.t_column_bottom !== undefined) {
-        document.getElementById('temp-column-bottom').textContent = data.t_column_bottom.toFixed(1) + '°C';
-    }
-    if (data.t_column_top !== undefined) {
-        document.getElementById('temp-column-top').textContent = data.t_column_top.toFixed(1) + '°C';
-    }
-    if (data.t_reflux !== undefined) {
-        document.getElementById('temp-reflux').textContent = data.t_reflux.toFixed(1) + '°C';
-    }
-    if (data.t_tsa !== undefined) {
-        document.getElementById('temp-tsa').textContent = data.t_tsa.toFixed(1) + '°C';
-    }
-
-    // Давление
-    if (data.p_cube !== undefined) {
-        document.getElementById('pressure-cube').textContent = data.p_cube.toFixed(1) + ' мм рт.ст.';
-    }
-    if (data.p_atm !== undefined) {
-        document.getElementById('pressure-atm').textContent = data.p_atm.toFixed(1) + ' гПа';
-    }
-    if (data.p_flood !== undefined) {
-        document.getElementById('pressure-flood').textContent = data.p_flood.toFixed(1) + ' мм';
-    }
-
-    // Мощность (PZEM-004T)
-    if (data.voltage !== undefined) {
-        document.getElementById('power-voltage').textContent = data.voltage.toFixed(1) + ' V';
-    }
-    if (data.current !== undefined) {
-        document.getElementById('power-current').textContent = data.current.toFixed(2) + ' A';
-    }
-    if (data.power !== undefined) {
-        document.getElementById('power-power').textContent = data.power.toFixed(0) + ' W';
-    }
-    if (data.energy !== undefined) {
-        document.getElementById('power-energy').textContent = data.energy.toFixed(3) + ' кВт·ч';
-    }
-    if (data.frequency !== undefined) {
-        document.getElementById('power-frequency').textContent = data.frequency.toFixed(1) + ' Гц';
-    }
-    if (data.pf !== undefined) {
-        document.getElementById('power-pf').textContent = data.pf.toFixed(2);
-    }
-
-    // Насос
-    if (data.pump_speed !== undefined) {
-        document.getElementById('pump-speed').textContent = data.pump_speed.toFixed(0) + ' мл/С‡';
-    }
-    if (data.pump_volume !== undefined) {
-        document.getElementById('pump-volume').textContent = data.pump_volume.toFixed(0) + ' мл';
-    }
-
-    // Объёмы фракций
-    if (data.volume_heads !== undefined) {
-        document.getElementById('volume-heads').textContent = data.volume_heads.toFixed(0) + ' мл';
-    }
-    if (data.volume_body !== undefined) {
-        document.getElementById('volume-body').textContent = data.volume_body.toFixed(0) + ' мл';
-    }
-    if (data.volume_tails !== undefined) {
-        document.getElementById('volume-tails').textContent = data.volume_tails.toFixed(0) + ' мл';
-    }
-
-    // Ареометр
-    if (data.abv !== undefined) {
-        document.getElementById('abv').textContent = data.abv.toFixed(1) + '%';
-    }
-
-    // Uptime
-    if (data.uptime !== undefined) {
-        document.getElementById('uptime').textContent = formatUptime(data.uptime);
-    }
-
-    // События
-    if (data.type === 'event') {
-        addLog(data.message, data.level || 'info');
-    }
-
-    // Обновить мини-график
-    updateMiniChart(data);
-
-    // Обновить статистику памяти
-    if (data.memory !== undefined) {
-        updateMemoryStats(data.memory);
-    }
-
-    // Обновить анимацию колонны
-    if (typeof updateColumnAnimation === 'function') {
-        updateColumnAnimation(data);
-    }
-}
-
-function formatUptime(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
-}
-
-function pad(num) {
-    return num.toString().padStart(2, '0');
-}
-
-// ============================================================================
-// Tabs
-// ============================================================================
-
-function initTabs() {
-    const tabs = document.querySelectorAll('.tab');
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const targetId = tab.getAttribute('data-tab');
-
-            // Убрать активный класс со всех вкладок
-            tabs.forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-
-            // Добавить активный класс к выбранной вкладке
-            tab.classList.add('active');
-            document.getElementById(targetId).classList.add('active');
-
-            // Загрузить историю при переключении на вкладку "История"
-            if (targetId === 'history') {
-                loadHistoryList();
-            }
-        });
-    });
-}
-
-// ============================================================================
-// Control Functions
-// ============================================================================
-
-async function startRectification() {
-    try {
-        addLog('📤 Отправка команды запуска авто-ректификации...', 'info');
-
-        const response = await fetch('/api/process/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: 'rectification' })
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            addLog('✅ Авто-ректификация запущена', 'success');
-            if (data.warning) {
-                addLog('⚠️ ' + data.warning, 'warning');
-            }
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            const error = await response.text();
-            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка сети: ' + e.message, 'error');
-        console.error('Start rectification error:', e);
-    }
-}
-
-function startManual() {
-    // Переход на страницу ручного управления
-    window.location.href = 'manual.html';
-}
-
-async function startDistillation() {
-    try {
-        addLog('📤 Отправка команды запуска дистилляции...', 'info');
-
-        const response = await fetch('/api/process/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: 'distillation' })
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            addLog('✅ Дистилляция запущена', 'success');
-            if (data.warning) {
-                addLog('⚠️ ' + data.warning, 'warning');
-            }
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            const error = await response.text();
-            addLog('❌ Ошибка (' + response.status + '): ' + error, 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка сети: ' + e.message, 'error');
-        console.error('Start distillation error:', e);
-    }
-}
-
-async function stopProcess() {
-    if (!confirm('Остановить процесс?')) return;
-
-    try {
-        const response = await fetch('/api/process/stop', {
-            method: 'POST'
-        });
-
-        if (response.ok) {
-            addLog('✅ Процесс остановлен', 'warning');
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            addLog('❌ Ошибка остановки', 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка: ' + e.message, 'error');
-    }
-}
-
-async function pauseProcess() {
-    try {
-        const response = await fetch('/api/process/pause', {
-            method: 'POST'
-        });
-
-        if (response.ok) {
-            addLog('✅ Процесс приостановлен', 'info');
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            addLog('❌ Ошибка паузы', 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка: ' + e.message, 'error');
-    }
-}
-
-async function resumeProcess() {
-    try {
-        const response = await fetch('/api/process/resume', {
-            method: 'POST'
-        });
-
-        if (response.ok) {
-            addLog('✅ Процесс возобновлен', 'info');
-            setTimeout(loadStatus, 500); // Обновить статус
-        } else {
-            addLog('❌ Ошибка возобновления', 'error');
-        }
-    } catch (e) {
-        addLog('❌ Ошибка: ' + e.message, 'error');
-    }
-}
-
-function updateHeater(value) {
-    document.getElementById('heater-value').textContent = value;
-    sendCommand('heater', 'power', parseInt(value));
-}
-
-function updatePump(value) {
-    document.getElementById('pump-value').textContent = value;
-    sendCommand('pump', 'speed', parseInt(value));
-}
-
-function toggleValve(name) {
-    sendCommand('valve', name, 1);
-    addLog(`🔄 Переключение клапана: ${name}`);
-}
-
-// ============================================================================
-// Загрузка статуса и обновление кнопок
-// ============================================================================
-
-async function loadStatus() {
-    try {
-        const response = await fetch('/api/status');
-        if (!response.ok) return;
-
-        const data = await response.json();
-
-        // Обновить состояние процесса
-        currentMode = data.mode || 0;
-        currentPaused = data.paused || false;
-
-        // Сохранить мощность ТЭНа из настроек
-        if (data.equipment && data.equipment.heaterPowerW) {
-            maxHeaterPower = data.equipment.heaterPowerW;
-            updateHeaterSlider();
-        }
-
-        // Обновить UI с новым форматом данных
-        updateUIFromStatus(data);
-
-        // Обновить состояние кнопок
-        updateButtonStates();
-
-    } catch (e) {
-        console.error('Ошибка загрузки статуса:', e);
-    }
-}
-
-function updateUIFromStatus(data) {
-    // Режим
-    if (data.modeStr !== undefined) {
-        const modeEl = document.getElementById('mode');
-        if (modeEl) {
-            modeEl.textContent = data.modeStr.toUpperCase();
-            modeEl.className = `value mode-${data.modeStr}`;
-        }
-    }
-
-    // Фаза
-    if (data.phaseStr !== undefined) {
-        const phaseEl = document.getElementById('phase');
-        if (phaseEl) {
-            phaseEl.textContent = data.phaseStr.toUpperCase() || '—';
-        }
-    }
-
-    // Температуры
-    if (data.temps) {
-        if (data.temps.cube !== undefined) {
-            const el = document.getElementById('temp-cube');
-            if (el) el.textContent = data.temps.cube.toFixed(1) + '°C';
-        }
-        if (data.temps.columnBottom !== undefined) {
-            const el = document.getElementById('temp-column-bottom');
-            if (el) el.textContent = data.temps.columnBottom.toFixed(1) + '°C';
-        }
-        if (data.temps.columnTop !== undefined) {
-            const el = document.getElementById('temp-column-top');
-            if (el) el.textContent = data.temps.columnTop.toFixed(1) + '°C';
-        }
-        if (data.temps.reflux !== undefined) {
-            const el = document.getElementById('temp-reflux');
-            if (el) el.textContent = data.temps.reflux.toFixed(1) + '°C';
-        }
-        if (data.temps.tsa !== undefined) {
-            const el = document.getElementById('temp-tsa');
-            if (el) el.textContent = data.temps.tsa.toFixed(1) + '°C';
-        }
-    }
-
-    // Давление
-    if (data.pressure) {
-        if (data.pressure.cube !== undefined) {
-            const el = document.getElementById('pressure-cube');
-            if (el) el.textContent = data.pressure.cube.toFixed(1) + ' мм рт.ст.';
-        }
-        if (data.pressure.atm !== undefined) {
-            const el = document.getElementById('pressure-atm');
-            if (el) el.textContent = data.pressure.atm.toFixed(1) + ' гПа';
-        }
-    }
-
-    // Мощность
-    if (data.power) {
-        if (data.power.voltage !== undefined) {
-            const el = document.getElementById('power-voltage');
-            if (el) el.textContent = data.power.voltage.toFixed(1) + ' V';
-        }
-        if (data.power.current !== undefined) {
-            const el = document.getElementById('power-current');
-            if (el) el.textContent = data.power.current.toFixed(2) + ' A';
-        }
-        if (data.power.power !== undefined) {
-            const el = document.getElementById('power-power');
-            if (el) el.textContent = data.power.power.toFixed(0) + ' W';
-        }
-        if (data.power.energy !== undefined) {
-            const el = document.getElementById('power-energy');
-            if (el) el.textContent = data.power.energy.toFixed(3) + ' кВт·ч';
-        }
-        if (data.power.frequency !== undefined) {
-            const el = document.getElementById('power-frequency');
-            if (el) el.textContent = data.power.frequency.toFixed(1) + ' Гц';
-        }
-        if (data.power.pf !== undefined) {
-            const el = document.getElementById('power-pf');
-            if (el) el.textContent = data.power.pf.toFixed(2);
-        }
-    }
-
-    // Насос
-    if (data.pump) {
-        if (data.pump.speedMlH !== undefined) {
-            const el = document.getElementById('pump-speed');
-            if (el) el.textContent = data.pump.speedMlH.toFixed(0) + ' мл/С‡';
-        }
-        if (data.pump.totalMl !== undefined) {
-            const el = document.getElementById('pump-volume');
-            if (el) el.textContent = data.pump.totalMl.toFixed(0) + ' мл';
-        }
-    }
-
-    // Объёмы фракций
-    if (data.volumes) {
-        if (data.volumes.heads !== undefined) {
-            const el = document.getElementById('volume-heads');
-            if (el) el.textContent = data.volumes.heads.toFixed(0) + ' мл';
-        }
-        if (data.volumes.body !== undefined) {
-            const el = document.getElementById('volume-body');
-            if (el) el.textContent = data.volumes.body.toFixed(0) + ' мл';
-        }
-        if (data.volumes.tails !== undefined) {
-            const el = document.getElementById('volume-tails');
-            if (el) el.textContent = data.volumes.tails.toFixed(0) + ' мл';
-        }
-    }
-
-    // Ареометр
-    if (data.hydrometer && data.hydrometer.abv !== undefined) {
-        const el = document.getElementById('abv');
-        if (el) el.textContent = data.hydrometer.abv.toFixed(1) + '%';
-    }
-
-    // Uptime
-    if (data.uptime !== undefined) {
-        const el = document.getElementById('uptime');
-        if (el) el.textContent = formatUptime(data.uptime);
-    }
-}
-
-function updateButtonStates() {
-    const isIdle = currentMode === 0;
-
-    // Кнопки запуска режимов
-    const btnRect = document.querySelector('button[onclick="startRectification()"]');
-    const btnManual = document.querySelector('button[onclick="startManual()"]');
-    const btnDist = document.querySelector('button[onclick="startDistillation()"]');
-
-    // Кнопки управления
-    const btnStop = document.querySelector('button[onclick="stopProcess()"]');
-    const btnPause = document.querySelector('button[onclick="pauseProcess()"]');
-    const btnResume = document.querySelector('button[onclick="resumeProcess()"]');
-
-    // Настройка состояний
-    if (btnRect) {
-        btnRect.disabled = !isIdle;
-        btnRect.classList.toggle('btn-disabled', !isIdle);
-    }
-    if (btnManual) {
-        btnManual.disabled = !isIdle;
-        btnManual.classList.toggle('btn-disabled', !isIdle);
-    }
-    if (btnDist) {
-        btnDist.disabled = !isIdle;
-        btnDist.classList.toggle('btn-disabled', !isIdle);
-    }
-
-    if (btnStop) {
-        btnStop.disabled = isIdle;
-        btnStop.classList.toggle('btn-disabled', isIdle);
-    }
-    if (btnPause) {
-        btnPause.disabled = isIdle || currentPaused;
-        btnPause.classList.toggle('btn-disabled', isIdle || currentPaused);
-    }
-    if (btnResume) {
-        btnResume.disabled = isIdle || !currentPaused;
-        btnResume.classList.toggle('btn-disabled', isIdle || !currentPaused);
-    }
-}
-
-function updateHeaterSlider() {
-    const slider = document.getElementById('heater-power');
-    const label = document.querySelector('label[for="heater-power"]');
-
-    if (slider) {
-        slider.max = maxHeaterPower;
-        slider.step = 50;  // Шаг 50 Вт
-    }
-
-    if (label) {
-        label.innerHTML = `Мощность нагрева: <span id="heater-value">0</span> Вт (макс ${maxHeaterPower})`;
-    }
-}
-
-// ============================================================================
-// Settings
-// ============================================================================
-
-function saveWiFi() {
-    const ssid = document.getElementById('wifi-ssid').value;
-    const password = document.getElementById('wifi-password').value;
-
-    if (ssid) {
-        sendCommand('wifi', 'save', 0);
-        addLog('💾 WiFi настройки сохранены', 'info');
-        alert('WiFi настройки сохранены. Перезагрузите контроллер.');
-    }
-}
-
-async function saveEquipment() {
-    const heaterPower = document.getElementById('heater-power-w').value;
-    const columnHeight = document.getElementById('column-height').value;
-    const mlPerRev = parseFloat(document.getElementById('pump-ml-per-rev').value);
-    const stepsPerRev = parseInt(document.getElementById('pump-steps-per-rev').value);
-
-    // Проверка и сохранение параметров насоса
-    const pumpData = {};
-    let hasPumpData = false;
-
-    if (mlPerRev && mlPerRev > 0) {
-        pumpData.mlPerRev = mlPerRev;
-        hasPumpData = true;
-    }
-
-    if (stepsPerRev && stepsPerRev > 0) {
-        pumpData.stepsPerRev = stepsPerRev;
-        hasPumpData = true;
-    }
-
-    if (hasPumpData) {
-        try {
-            const response = await fetch('/api/calibration/pump', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(pumpData)
-            });
-
-            if (response.ok) {
-                let msg = '✓ Параметры насоса сохранены:';
-                if (pumpData.mlPerRev) msg += ' ' + pumpData.mlPerRev.toFixed(3) + ' мл/об';
-                if (pumpData.stepsPerRev) msg += ', ' + pumpData.stepsPerRev + ' шагов/об';
-                addLog(msg, 'success');
-            } else {
-                addLog('✗ Ошибка сохранения параметров насоса', 'error');
-            }
-        } catch (error) {
-            addLog('✗ Ошибка соединения при сохранении насоса', 'error');
-        }
-    }
-
-    // Сохранение других параметров оборудования (через WebSocket)
-    sendCommand('equipment', 'save', 0);
-    addLog('💾 Настройки оборудования сохранены', 'info');
-}
-
-function toggleMqttFields() {
-    const enabled = document.getElementById('mqtt-enabled').checked;
-    const fields = document.getElementById('mqtt-fields');
-    fields.style.display = enabled ? 'block' : 'none';
-}
-
-function saveMqtt() {
-    const enabled = document.getElementById('mqtt-enabled').checked;
-    const server = document.getElementById('mqtt-server').value;
-    const port = document.getElementById('mqtt-port').value;
-    const username = document.getElementById('mqtt-username').value;
-    const password = document.getElementById('mqtt-password').value;
-    const baseTopic = document.getElementById('mqtt-base-topic').value;
-    const discovery = document.getElementById('mqtt-discovery').checked;
-    const publishInterval = document.getElementById('mqtt-publish-interval').value;
-
-    if (enabled && !server) {
-        alert('Укажите адрес MQTT сервера');
-        return;
-    }
-
-    sendCommand('mqtt', 'save', 0);
-    addLog('💾 MQTT настройки сохранены', 'info');
-    alert('MQTT настройки сохранены. Перезагрузите контроллер.');
-}
-
-function toggleAuthFields() {
-    const enabled = document.getElementById('auth-enabled').checked;
-    const fields = document.getElementById('auth-fields');
-    fields.style.display = enabled ? 'block' : 'none';
-}
-
-function saveSecurity() {
-    const authEnabled = document.getElementById('auth-enabled').checked;
-    const username = document.getElementById('web-username').value;
-    const password = document.getElementById('web-password').value;
-    const rateLimitEnabled = document.getElementById('rate-limit-enabled').checked;
-
-    if (authEnabled && (!username || !password)) {
-        alert('Укажите имя пользователя и пароль');
-        return;
-    }
-
-    sendCommand('security', 'save', 0);
-    addLog('💾 Настройки безопасности сохранены', 'info');
-    alert('Настройки безопасности сохранены. Перезагрузите контроллер.');
-}
-
-function toggleDemoMode() {
-    const enabled = document.getElementById('demo-mode-enabled').checked;
-
-    // Сохранить в localStorage
-    localStorage.setItem('demoMode', enabled ? 'true' : 'false');
-
-    // Отправить на сервер
-    fetch('/api/settings/demo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: enabled })
-    }).then(response => {
-        if (response.ok) {
-            addLog(enabled ? '🧪 Демо-режим ВКЛЮЧЁН' : '✅ Демо-режим отключён', 'info');
-        } else {
-            addLog('⚠️ Ошибка сохранения демо-режима на сервер', 'warning');
-        }
-    }).catch(err => {
-        addLog('⚠️ Демо-режим сохранён локально (сервер недоступен)', 'warning');
-    });
-}
-
-function loadDemoMode() {
-    const saved = localStorage.getItem('demoMode');
-    const checkbox = document.getElementById('demo-mode-enabled');
-    if (checkbox && saved === 'true') {
-        checkbox.checked = true;
-    }
-}
-
-// Перезагрузка контроллера
-function rebootController() {
-    if (!confirm('Перезагрузить контроллер ESP32?\n\nВсе текущие процессы будут остановлены!')) {
-        return;
-    }
-
-    addLog('🔄 Отправка команды перезагрузки...', 'warning');
-
-    fetch('/api/reboot', {
-        method: 'POST'
-    }).then(response => {
-        if (response.ok) {
-            addLog('✅ Контроллер перезагружается...', 'success');
-            // Показать сообщение и попробовать переподключиться через 5 сек
-            setTimeout(() => {
-                addLog('🔌 Попытка переподключения...', 'info');
-                window.location.reload();
-            }, 5000);
-        } else {
-            addLog('❌ Ошибка перезагрузки', 'error');
-        }
-    }).catch(err => {
-        addLog('❌ Ошибка сети: ' + err.message, 'error');
-    });
-}
-
-function setTheme(theme) {
-    document.body.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-
-    // Обновить тему мини-графика
-    if (miniChart) {
-        miniChart.updateOptions({
-            theme: {
-                mode: theme
-            }
-        });
-    }
-
-    addLog(`🎨 Тема изменена: ${theme}`, 'info');
-}
-
-function loadTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    document.body.setAttribute('data-theme', savedTheme);
-}
-
-// ============================================================================
-// Logs
-// ============================================================================
-
-function addLog(message, type = 'info') {
-    const logContainer = document.getElementById('log-container');
-    const timestamp = new Date().toLocaleTimeString();
-    const entry = document.createElement('div');
-    entry.className = `log-entry ${type}`;
-    entry.textContent = `[${timestamp}] ${message}`;
-
-    logContainer.appendChild(entry);
-
-    // Автоскролл вниз
-    logContainer.scrollTop = logContainer.scrollHeight;
-
-    // Ограничить количество записей (последние 100)
-    const entries = logContainer.querySelectorAll('.log-entry');
-    if (entries.length > 100) {
-        entries[0].remove();
-    }
-}
-
-function clearLogs() {
-    if (confirm('Очистить логи?')) {
-        document.getElementById('log-container').innerHTML = '';
-        addLog('Логи очищены', 'info');
-    }
-}
-
-function downloadLogs() {
-    addLog('📥 Запрос экспорта логов...', 'info');
-    window.open('/api/export', '_blank');
-}
-
-// ============================================================================
-// Memory Statistics
-// ============================================================================
-
-function updateMemoryStats(mem) {
-    const memStatsDiv = document.getElementById('memory-stats');
-    if (memStatsDiv.style.display === 'none') return;
-
-    // Форматирование байтов в KB/MB
-    const formatBytes = (bytes) => {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    };
-
-    // SRAM (Heap)
-    const heapUsed = mem.heap_total - mem.heap_free;
-    document.getElementById('mem-heap-used').textContent = formatBytes(heapUsed);
-    document.getElementById('mem-heap-total').textContent = formatBytes(mem.heap_total);
-    document.getElementById('mem-heap-pct').textContent = mem.heap_used_pct.toFixed(1) + '%';
-
-    // PSRAM
-    document.getElementById('mem-psram-free').textContent = formatBytes(mem.psram_free);
-    document.getElementById('mem-psram-total').textContent = formatBytes(mem.psram_total);
-
-    // Flash
-    document.getElementById('mem-flash-pct').textContent = mem.flash_used_pct.toFixed(1) + '%';
-}
-
-function toggleMemoryStats() {
-    const checkbox = document.getElementById('show-memory-stats');
-    const memStatsDiv = document.getElementById('memory-stats');
-
-    if (checkbox.checked) {
-        memStatsDiv.style.display = 'block';
-        localStorage.setItem('showMemoryStats', 'true');
-    } else {
-        memStatsDiv.style.display = 'none';
-        localStorage.setItem('showMemoryStats', 'false');
-    }
-}
-
-function loadMemoryStatsPreference() {
-    const showMemoryStats = localStorage.getItem('showMemoryStats') === 'true';
-    const checkbox = document.getElementById('show-memory-stats');
-    const memStatsDiv = document.getElementById('memory-stats');
-
-    if (checkbox) {
-        checkbox.checked = showMemoryStats;
-    }
-
-    if (memStatsDiv) {
-        memStatsDiv.style.display = showMemoryStats ? 'block' : 'none';
-    }
-}
-
-// ============================================================================
-// Загрузка информации о насосе
-// ============================================================================
-
-async function loadPumpInfo() {
-    try {
-        const response = await fetch('/api/calibration');
-        if (!response.ok) {
-            throw new Error('Failed to load calibration data');
-        }
-
-        const data = await response.json();
-
-        // Обновить информацию о насосе
-        const mlPerRevEl = document.getElementById('pump-ml-per-rev');
-        const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
-
-        if (mlPerRevEl && data.pump) {
-            // Теперь это input поле, устанавливаем value
-            mlPerRevEl.value = data.pump.mlPerRev.toFixed(3);
-        }
-
-        if (stepsPerRevEl && data.pump) {
-            // Показываем общее количество шагов
-            const totalSteps = data.pump.stepsPerRev * data.pump.microsteps;
-            stepsPerRevEl.value = totalSteps;
-        }
-    } catch (error) {
-        console.error('Error loading pump info:', error);
-        const mlPerRevEl = document.getElementById('pump-ml-per-rev');
-        const stepsPerRevEl = document.getElementById('pump-steps-per-rev');
-
-        if (mlPerRevEl) mlPerRevEl.placeholder = 'Ошибка загрузки';
-        if (stepsPerRevEl) stepsPerRevEl.placeholder = 'Ошибка загрузки';
-    }
-}
-
-// Загрузка информации о версиях
-async function loadVersionInfo() {
-    try {
-        const response = await fetch('/api/version');
-        if (!response.ok) {
-            throw new Error('Failed to load version info');
-        }
-
-        const data = await response.json();
-
-        // Обновить информацию о прошивке
-        if (data.firmware) {
-            document.getElementById('firmware-version').textContent = data.firmware.version || 'Unknown';
-            document.getElementById('firmware-build-date').textContent = data.firmware.buildDate || 'Unknown';
-            document.getElementById('firmware-build-time').textContent = data.firmware.buildTime || 'Unknown';
-        }
-
-        if (data.board) {
-            const flashMB = (data.board.flashSize / (1024 * 1024)).toFixed(0);
-            const psramMB = (data.board.psramSize / (1024 * 1024)).toFixed(0);
-            document.getElementById('board-chip').textContent =
-                `${data.board.chip} (Flash: ${flashMB}MB, PSRAM: ${psramMB}MB)`;
-        }
-
-        // Обновить информацию о фронтенде
-        if (data.frontend) {
-            document.getElementById('frontend-build-date').textContent =
-                data.frontend.buildDate || data.frontend.note || 'Unknown';
-            document.getElementById('frontend-build-time').textContent =
-                data.frontend.buildTime || '-';
-        }
-
-        addLog('✓ Информация о версиях обновлена', 'success');
-    } catch (error) {
-        console.error('Error loading version info:', error);
-        document.getElementById('firmware-version').textContent = 'Ошибка загрузки';
-        document.getElementById('frontend-build-date').textContent = 'Ошибка загрузки';
-        addLog('✗ Ошибка загрузки версий', 'error');
-    }
-}
-
-// ============================================================================
-// История процессов
-// ============================================================================
-
-let historyData = [];
-
-async function loadHistoryList() {
-    try {
-        const response = await fetch('/api/history');
-        if (!response.ok) {
-            throw new Error('Failed to load history');
-        }
-
-        const data = await response.json();
-        historyData = data.processes || [];
-
-        // Применить фильтры
-        applyHistoryFilters();
-
-        addLog(`📚 Загружено процессов: ${historyData.length}`, 'info');
-    } catch (error) {
-        console.error('Error loading history:', error);
-        addLog('❌ Ошибка загрузки истории', 'error');
-
-        // Показать пустой список
-        const historyListEl = document.getElementById('history-list');
-        if (historyListEl) {
-            historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет данных или ошибка загрузки</div>';
-        }
-    }
-}
-
-function applyHistoryFilters() {
-    const typeFilter = document.getElementById('history-filter-type')?.value || 'all';
-    const sortBy = document.getElementById('history-sort')?.value || 'date-desc';
-
-    let filtered = [...historyData];
-
-    // Фильтр по типу
-    if (typeFilter !== 'all') {
-        filtered = filtered.filter(p => p.type === typeFilter);
-    }
-
-    // Сортировка
-    filtered.sort((a, b) => {
-        switch (sortBy) {
-            case 'date-desc':
-                return b.startTime - a.startTime;
-            case 'date-asc':
-                return a.startTime - b.startTime;
-            case 'duration-desc':
-                return b.duration - a.duration;
-            case 'duration-asc':
-                return a.duration - b.duration;
-            default:
-                return 0;
-        }
-    });
-
-    // Отрисовать список
-    renderHistoryList(filtered);
-
-    // Обновить статистику
-    updateHistoryStats(filtered);
-}
-
-function renderHistoryList(processes) {
-    const historyListEl = document.getElementById('history-list');
-    if (!historyListEl) return;
-
-    if (processes.length === 0) {
-        historyListEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет процессов для отображения</div>';
-        return;
-    }
-
-    historyListEl.innerHTML = '';
-
-    processes.forEach(process => {
-        const itemEl = renderHistoryItem(process);
-        historyListEl.appendChild(itemEl);
-    });
-}
-
-let selectedProcesses = new Set();
-
-function renderHistoryItem(process) {
-    const div = document.createElement('div');
-    div.className = 'history-item';
-    div.dataset.processId = process.id;
-
-    const typeNames = {
-        rectification: 'Ректификация',
-        distillation: 'Дистилляция',
-        mashing: 'Затирка',
-        hold: 'Выдержка'
-    };
-
-    const statusNames = {
-        completed: 'Завершен',
-        stopped: 'Остановлен',
-        error: 'Ошибка'
-    };
-
-    const typeName = typeNames[process.type] || process.type;
-    const statusName = statusNames[process.status] || process.status;
-
-    const startDate = new Date(process.startTime * 1000);
-    const durationHours = (process.duration / 3600).toFixed(1);
-    const isSelected = selectedProcesses.has(process.id);
-
-    div.innerHTML = `
-        <div class="history-header">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <input type="checkbox"
-                       class="history-checkbox"
-                       data-process-id="${process.id}"
-                       ${isSelected ? 'checked' : ''}
-                       onchange="toggleProcessSelection('${process.id}')">
-                <div>
-                    <span class="history-type history-type-${process.type}">${typeName}</span>
-                    <span class="history-status history-status-${process.status}">${statusName}</span>
+(()=>{var En=[],Xr=new Set,uf=250,mf=2e3,Sn=0,Po=null,Io=null,Zr=!1,Rl=!1;function Vn(){return document.getElementById("log-container")}function pf(e){if(e)for(;e.children.length>uf;)e.firstElementChild?.remove()}function ff(e){if(!e||e.dataset.logsPlaceholderCleared==="1")return;e.children.length===1&&e.firstElementChild?.textContent?.includes("Инициализация")&&(e.innerHTML=""),e.dataset.logsPlaceholderCleared="1"}function Ao(e,t="info",n=null){let o=Vn();if(!o||n&&Xr.has(n))return!1;ff(o);let i=document.createElement("div");return i.className=`log-entry ${t}`,i.textContent=e,o.appendChild(i),o.scrollTop=o.scrollHeight,pf(o),n&&Xr.add(n),!0}function ql(){if(!En.length)return;En.splice(0,En.length).forEach(({text:t,type:n})=>{Ao(t,n)})}function gf(e){if(typeof e=="number")return e>=2?"error":e===1?"warning":"info";switch(String(e||"").toLowerCase()){case"error":case"danger":case"critical":return"error";case"warning":case"warn":return"warning";case"success":return"success";default:return"info"}}function bf(e){let t=Math.max(0,Math.floor((Number(e)||0)/1e3)),n=Math.floor(t/3600),o=Math.floor(t%3600/60),i=t%60;return`T+${String(n).padStart(2,"0")}:${String(o).padStart(2,"0")}:${String(i).padStart(2,"0")}`}function hf(e){!Array.isArray(e)||e.length===0||e.forEach(t=>{let n=String(t?.kind||"").trim(),o=String(t?.title||"").trim(),i=String(t?.detail||"").trim(),r=String(t?.message||"").trim();if(!r)return;let a=Number(t?.seq)||0,s=bf(t?.timestamp),l=gf((t?.tone||t?.levelStr)??t?.level),c=a>0?`sys:${a}`:`sys:${s}:${r}`,d=n==="equipment_test"?`[${s}] Сервис: ${o||"Действие"}${i?` — ${i}`:""}`:`[${s}] ${r}`;Ao(d,l,c),a>Sn&&(Sn=a)})}function Fl(e){console.error("System log sync failed:",e),Io!==!1&&(Io=!1,Ao(`[${new Date().toLocaleTimeString()}] Ошибка синхронизации системного журнала: ${e.message}`,"error","system-log-sync-error"))}async function Ll(){if(!(!Vn()||Zr))try{Zr=!0;let t=Sn>0?`?since=${encodeURIComponent(Sn)}`:"?limit=120",n=await fetch(`/api/logs/events${t}`,{cache:"no-store"});if(!n.ok)throw new Error(`HTTP ${n.status}`);let o=await n.json();hf(o?.events);let i=Number(o?.nextSeq);Number.isFinite(i)&&i>Sn&&(Sn=i),ql(),Io===!1&&Ao(`[${new Date().toLocaleTimeString()}] Системный журнал снова доступен`,"success","system-log-sync-ok"),Io=!0}finally{Zr=!1}}function _l(){return document.visibilityState!=="hidden"&&document.getElementById("logs")?.classList.contains("active")}function Qr(){Po&&(clearInterval(Po),Po=null)}function Li(e=!1){if(!Vn()){Qr();return}if(!_l()){Qr();return}Po||(Po=window.setInterval(()=>{if(!_l()){Qr();return}Ll().catch(Fl)},mf)),e&&Ll().catch(Fl)}function Ol(){let e=Vn();if(e){if(ql(),e.dataset.systemLogsInit==="1"){Li();return}e.dataset.systemLogsInit="1",Rl||(document.addEventListener("app-tab-changed",()=>Li(!0)),document.addEventListener("visibilitychange",()=>Li()),Rl=!0),Li()}}function h(e,t="info"){let o=`[${new Date().toLocaleTimeString()}] ${e}`;if(!Vn()){En.push({text:o,type:t}),En.length>100&&En.shift();return}Ao(o,t)}function Hl(){if(!confirm("Очистить логи?"))return;let e=Vn();e&&(e.innerHTML="",e.dataset.logsPlaceholderCleared="1"),En.length=0,Xr.clear(),Sn=0,Io=null,fetch("/api/logs/events/clear",{method:"POST"}).catch(t=>{console.error("Failed to clear system logs:",t)}),h("Журнал очищен","info")}function Dl(){h("Запрос экспорта логов...","info"),window.open("/api/export","_blank")}var jn=null;function ea(e){jn=e}var No=null;function ta(e){No=e}var na=!1;function Zt(e){na=e}var Ot=null;function oa(e){Ot=e}var fe={timestamps:[],cube:[],columnTop:[],reflux:[]},Wn=360,qe=37,ge=0;function Bo(e){ge=e}var zn=!1;function ko(e){zn=e}var me=3e3;function Vl(e){me=e}var W=0,j=1,pe=2,J=3,Ce=4,Pe=5,de=6,Re=7;function Ze(e){switch(e){case W:return"Idle";case j:return"Rectification";case J:return"Manual";case pe:return"Distillation";case Ce:return"Mashing";case Pe:return"Пастеризация";case de:return"NBK";case Re:return"Fermentation";default:return"Unknown"}}function Un(e){switch(e){case W:return"mode-idle";case j:return"mode-rectification";case J:return"mode-manual";case pe:return"mode-distillation";case Ce:return"mode-mashing";case Pe:return"mode-hold";case de:return"mode-nbk";case Re:return"mode-fermentation";default:return"mode-idle"}}function xe(e,t){let n=Number(e);return Number.isFinite(n)?n:typeof t!="string"?W:{idle:W,rect:j,rectification:j,manual:J,dist:pe,distillation:pe,mash:Ce,mashing:Ce,hold:Pe,nbk:de,fermentation:Re}[t.toLowerCase()]??W}var _i=3,ia=4,ra=5,aa=6,S={mode:W,modeStr:"idle",phase:0,phaseStr:"IDLE",safetyOk:!0,currentAlarm:{active:!1,latched:!1,type:"none",typeCode:0,level:"none",levelCode:0,message:"",timestamp:0,acknowledged:!1,resetAvailable:!0,resetBlockedReason:""},activeProfile:{id:"",loaded:!1,name:"",category:"",mashing:{steps:[]},validation:{},baseTemperatures:{},baroPreview:{},effectiveTemperaturesPreview:{}},v2:{available:!1,lifecycle:"idle",phaseId:0,phaseToken:"idle",timestampMs:0,safetyLatched:!1,lastReasonCode:"RC_NONE",operatorMessage:"",guidance:{tone:"muted",title:"",detail:"",action:""},reasonInsight:{tone:"muted",title:"",detail:"",action:""},activeLimits:{powerCapped:!1,maxHeaterPowerPercent:100,pumpCapped:!1,maxPumpSpeedMlH:0,takeoffBlocked:!1,phaseAdvanceBlocked:!1,antiOscillationActive:!1,antiOscillationHoldSec:0},commandTargets:{heaterPowerPercent:0,pumpSpeedMlH:0,waterValveOpen:!1,headsValveOpen:!1,stopRequested:!1},indicators:{processHealth:0,telemetryCoverage:0,decisionTrust:0,sensorFreshnessOk:!1,pressureStable:!1,pressureSensorAvailable:!1,columnSensorsAvailable:!1,coolingSensorAvailable:!1,boilingDetected:!1,columnStable:!1,targetReached:!1,powerLimited:!1,recoveryActive:!1,takeoffAllowed:!1,degradedModeActive:!1,adaptiveControlAllowed:!1,distHeatingComplete:!1,distHeadsOptionalComplete:!1,distBodyNearEnd:!1,steamReady:!1,nbkWorkingStable:!1,nbkFeedAllowed:!1,finishLikely:!1,tempInBand:!1,stepReady:!1,stepHoldStable:!1,heatingTooSlow:!1,overshootRisk:!1,fermTempInBand:!1,longDeviation:!1,heatingDemand:!1,coolingDemand:!1,heatingRateCPerMin:0,topTempRateCPerMin:0,pressureRateMmHgPerMin:0,coolingMarginC:0,distPressureMargin:0,nbkPressureMargin:0,nbkColumnLoad:0,feedEnergyBalance:0,stabilityIndex:0,floodRisk:0,headsCompletionScore:0,bodyEndScore:0,takeoffConfidence:-1,headsEndConfidence:-1,bodyEndConfidence:-1,tailsTransitionConfidence:-1,powerLimitConfidence:0},safety:{severity:"none",event:"none",reasonCode:"RC_NONE",requiresAcknowledge:!1,message:"",resetAvailable:!0,resetBlockedReason:""}},pressure:{cube:0,atm:0,ok:!1,ads1115Available:!1,sensorVoltage:0,sensorAdc:0,source:"ADS1115 A1",lastUpdate:0},power:{available:!1,power:0,setPercent:0,setW:0,errorW:0,closedLoopActive:!1},hydrometer:{abv:0,valid:!1},pump:{speedMlH:0,totalMl:0},temperatureChannels:{},stirrer:{running:!1,speedPercent:0,available:!1,autoMode:!1,lastUpdate:0},temps:{cube:0,columnBottom:0},valves:{water:!1,heads:!1,body:!1,bodyAvailable:!1,tails:!1,tailsAvailable:!1,uno:!1},volumes:{heads:0,body:0,tails:0},equipment:{heaterPowerW:me,cubeVolumeL:qe,minHeaterSubmergeL:7.5,waterAutoStartCubeTempC:45,boosterHeaterEnabled:!1,boosterHeaterPowerW:3e3,boosterHeaterStopCubeTempC:78,coolingPwmEnabled:!1,coolingPwmMinDuty:0,coolingPwmMaxDuty:255,coolingPwmStartupDuty:96,coolingPwmCurrentDuty:0,useDs2482ForTemps:!1,ds2482Address:24,tempBusGpioPin:18,temperatureBusSource:"gpio",temperatureBusSourceLabel:"GPIO 1-Wire",bodyLevelSensorEnabled:!1,bodyLevelThresholdV:1.5,bodyLevelTriggerAbove:!0,leakSensorEnabled:!1,leakThresholdV:1.5,leakTriggerAbove:!0,temperatureTopology:{},supportedModes:{},modules:{},safetyChannels:{}},stirrerSettings:{enabled:!1,defaultSpeedPercent:50,autoMashing:!0,autoFermentation:!1,autoNbk:!1},rectification:{feedVolumeL:qe,feedAbvPercent:40,headsPercent:8,bodyPercent:84,tailsPercent:8,headsSpeedMlHKw:300,bodySpeedMlHKw:600,takeoffBackendType:0,takeoffBackendActive:!1,takeoffRoutingReady:!0,takeoffActualEquivalentRateMlH:0,takeoffActualDuty:0,takeoffSessionVolumeMl:0,takeoffRequestedFraction:0,takeoffRoutedFraction:0,takeoffActiveFraction:0,refluxMode:0,srRatio:0,autonomousCycleSec:900,autonomousPauseSec:90,chimAutoPercent:0,chimTimePerH:0,chimBegPercent:0,chimMinPercent:35,phasePowerStabilization:70,phasePowerHeads:60,phasePowerBody:60,phasePowerTails:50,usePbMode:0,timpPbMs:15e3,routingSettlingMs:1500,routingRetargetMinMs:3e3,headsTargetMl:0,bodyTargetMl:0,tailsTargetMl:0},distillation:{speedMlH:0,headsVolumeMl:0,targetVolumeMl:0,endTempC:0,powerW:0,powerPercent:0},nbk:{powerW:2500,pumpSpeedMlH:2e4,columnBottomTempThresholdC:95,phase:0,phaseStr:"idle"},fermentation:{targetTempC:28,hysteresisC:.5,useHeater:!0,phase:0,phaseStr:"idle"},safetySettings:{pressureMaxMmHg:50,tsaMaxC:55,waterOutMaxC:70,waterOutRiseRateCMin:8,pressureRiseRateMmHgMin:20},mashing:{active:!1,stepCount:0,currentStep:0,stepDurationSec:0,elapsedSec:0,remainingSec:0,stepName:""},hold:{active:!1,stepCount:0,currentStep:0,stepDurationSec:0,elapsedSec:0,remainingSec:0,targetTemp:0},progress:{phaseElapsedSec:0,phaseTargetSec:0,phaseRemainingSec:0,phasePercent:0}},Qt=null;function sa(e){Qt=e}function Nt(e=qe){let t=Number(S?.equipment?.cubeVolumeL);if(Number.isFinite(t)&&t>0)return t;let n=Number(document.getElementById("cube-volume-l")?.value);return Number.isFinite(n)&&n>0?n:e}function Xt(e,t=qe){let n=Math.max(1,Math.min(250,Nt(t))),o=Number(e);return Number.isFinite(o)?o<1?1:o>n?n:o:Math.min(t,n)}var la="ui.plannedAbvPercent",xt=40,ca=!1;function Ro(e){xt=e}function da(e){ca=e}function jl(e,t=2){let n=String(e);for(;n.length<t;)n="0"+n;return n}function en(e){if(!Number.isFinite(e)||e<0)return"0:00:00";let t=Math.floor(e/3600),n=Math.floor(e%3600/60),o=Math.floor(e%60);return`${t}:${jl(n)}:${jl(o)}`}function y(e,t=0){let n=Number(e);return Number.isFinite(n)?n:t}function nt(e){let t=y(e,0);return t<0?0:t>100?100:t}function tn(e){return String(e??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}function Cn(e){let t=Math.max(0,Math.round(y(e,0)));return en(t)}function Ht(e,t=40){let n=y(e,t);return n<0?0:n>100?100:n}function Dt(e,t){if(!(!e||typeof e!="object"))for(let n of t){if(!(n in e))continue;let o=y(e[n],NaN);if(Number.isFinite(o))return o}}var Fo=["cube","columnBottom","columnTop","reflux","tsa","waterIn","waterOut"],yf={cube:"t_cube",columnBottom:"t_column_bottom",columnTop:"t_column_top",reflux:"t_reflux",tsa:"t_tsa",waterIn:"t_water_in",waterOut:"t_water_out"};function ua(e){return(!e.temperatureChannels||typeof e.temperatureChannels!="object")&&(e.temperatureChannels={}),Fo.forEach(t=>{let n=e.temperatureChannels[t];(!n||typeof n!="object")&&(e.temperatureChannels[t]={installed:!1,assigned:!1,detected:!1,valid:!1,assignedAddress:"",detectedAddress:""})}),e.temperatureChannels}function vf(e,t){let n=ua(e);Array.isArray(t)&&t.forEach((o,i)=>{let r=String(o?.roleKey||Fo[i]||"").trim();if(!r)return;let a=n[r]||{};n[r]={...a,installed:!!o?.installed,assigned:!!o?.assigned,detected:!!o?.detected,valid:!!o?.valid,assignedAddress:String(o?.assignedAddress||""),detectedAddress:String(o?.detectedAddress||"")}})}function wf(e,t){let n=ua(e),o=new Set(Array.isArray(t?.temperatures)?t.temperatures.map((i,r)=>String(i?.roleKey||Fo[r]||"").trim()).filter(Boolean):[]);Fo.forEach(i=>{o.has(i)||nn(t,i,yf[i],void 0)===void 0||(n[i]={...n[i],installed:!0,assigned:n[i]?.assigned??!1,detected:!0,valid:!0})})}function Sf(e,t){if(!t||typeof t!="object")return;let n=ua(e);Fo.forEach(o=>{t[o]!==void 0&&(n[o]={...n[o],valid:!!t[o]})})}function nn(e,t,n,o){let r=(e?.temps&&typeof e.temps=="object"?e.temps:null)?.[t]??e?.[n];if(r!=null)return y(r,o)}function Wl(e,t){let n=[];t?.equipment&&typeof t.equipment=="object"&&n.push(t.equipment),t?.settings?.equipment&&typeof t.settings.equipment=="object"&&n.push(t.settings.equipment),t&&typeof t=="object"&&n.push(t);let o=(i,r)=>{for(let a of n){let s=Dt(a,r);if(s!==void 0){e.equipment[i]=s;return}}};o("heaterPowerW",["heaterPowerW","heater_power_w"]),o("cubeVolumeL",["cubeVolumeL","cube_volume_l"]),o("minHeaterSubmergeL",["minHeaterSubmergeL","min_heater_submerge_l"]),o("waterAutoStartCubeTempC",["waterAutoStartCubeTempC","water_auto_start_cube_temp_c","water_auto_start_cube_temp"]),o("boosterHeaterPowerW",["boosterHeaterPowerW","booster_heater_power_w"]),o("boosterHeaterStopCubeTempC",["boosterHeaterStopCubeTempC","booster_heater_stop_cube_temp_c"]),o("coolingPwmMinDuty",["coolingPwmMinDuty","cooling_pwm_min_duty"]),o("coolingPwmMaxDuty",["coolingPwmMaxDuty","cooling_pwm_max_duty"]),o("coolingPwmStartupDuty",["coolingPwmStartupDuty","cooling_pwm_startup_duty"]),o("coolingPwmCurrentDuty",["coolingPwmCurrentDuty","cooling_pwm_current_duty"]),o("ds2482Address",["ds2482Address"]),o("tempBusGpioPin",["tempBusGpioPin"]);for(let i of n){if(i.coolingPwmEnabled!==void 0){e.equipment.coolingPwmEnabled=!!i.coolingPwmEnabled;break}if(i.cooling_pwm_enabled!==void 0){e.equipment.coolingPwmEnabled=!!i.cooling_pwm_enabled;break}}for(let i of n){if(i.boosterHeaterEnabled!==void 0){e.equipment.boosterHeaterEnabled=!!i.boosterHeaterEnabled;break}if(i.booster_heater_enabled!==void 0){e.equipment.boosterHeaterEnabled=!!i.booster_heater_enabled;break}}for(let i of n)if(i.useDs2482ForTemps!==void 0){e.equipment.useDs2482ForTemps=!!i.useDs2482ForTemps;break}for(let i of n)if(i.temperatureBusSource!==void 0){e.equipment.temperatureBusSource=String(i.temperatureBusSource||"");break}for(let i of n)if(i.temperatureBusSourceLabel!==void 0){e.equipment.temperatureBusSourceLabel=String(i.temperatureBusSourceLabel||"");break}}function zl(e,t){let n=t?.stirrer&&typeof t.stirrer=="object"?t.stirrer:null;if(n){if(n.running!==void 0&&(e.stirrer.running=!!n.running),n.speed!==void 0||n.speedPercent!==void 0){let o=y(n.speedPercent??n.speed,e.stirrer.speedPercent);e.stirrer.speedPercent=Math.max(0,Math.min(100,o))}n.available!==void 0&&(e.stirrer.available=!!n.available),n.autoMode!==void 0&&(e.stirrer.autoMode=!!n.autoMode),n.lastUpdate!==void 0&&(e.stirrer.lastUpdate=y(n.lastUpdate,e.stirrer.lastUpdate))}}function Ul(e,t){let n=t?.pressure&&typeof t.pressure=="object"?t.pressure:null,o=n?Dt(n,["cube","cubeMmHg","currentPressure"]):Dt(t,["p_cube"]);o!==void 0&&(e.pressure.cube=o);let i=n?Dt(n,["atm","atmosphere","atmosphereHpa"]):Dt(t,["p_atm"]);i!==void 0&&(e.pressure.atm=i),n?.ok!==void 0?e.pressure.ok=!!n.ok:n?.available!==void 0?e.pressure.ok=!!n.available:t?.v2?.indicators?.pressureSensorAvailable!==void 0&&(e.pressure.ok=!!t.v2.indicators.pressureSensorAvailable),n?.ads1115Available!==void 0?e.pressure.ads1115Available=!!n.ads1115Available:n?.available!==void 0?e.pressure.ads1115Available=!!n.available:n?.ok!==void 0&&(e.pressure.ads1115Available=!!n.ok);let r=n?Dt(n,["sensorVoltage","currentVoltage"]):void 0;r!==void 0&&(e.pressure.sensorVoltage=r);let a=n?Dt(n,["sensorAdc","currentAdc"]):void 0;a!==void 0&&(e.pressure.sensorAdc=a),n?.source!==void 0&&(e.pressure.source=String(n.source));let s=n?Dt(n,["lastUpdate"]):void 0;s!==void 0&&(e.pressure.lastUpdate=s)}function Kl(e,t){let n=[];t?.safetySettings&&typeof t.safetySettings=="object"&&n.push(t.safetySettings),t?.safety&&typeof t.safety=="object"&&n.push(t.safety),t?.settings?.safety&&typeof t.settings.safety=="object"&&n.push(t.settings.safety),t&&typeof t=="object"&&n.push(t);let o=(i,r)=>{for(let a of n){let s=Dt(a,r);if(s!==void 0){e.safetySettings[i]=s;return}}};o("pressureMaxMmHg",["pressureMaxMmHg","pressure_max_mmhg","safetyPressureMaxMmHg"]),o("tsaMaxC",["tsaMaxC","tsa_max_c","safetyTsaMaxC"]),o("waterOutMaxC",["waterOutMaxC","water_out_max_c","safetyWaterOutMaxC"]),o("waterOutRiseRateCMin",["waterOutRiseRateCMin","water_out_rise_rate_c_min","safetyWaterOutRiseRateCMin"]),o("pressureRiseRateMmHgMin",["pressureRiseRateMmHgMin","pressure_rise_rate_mmhg_min","safetyPressureRiseRateMmHgMin"])}function Gl(e,t){let n=t?.currentAlarm&&typeof t.currentAlarm=="object"?t.currentAlarm:t?.alarm&&typeof t.alarm=="object"?t.alarm:null;n&&(e.currentAlarm={...e.currentAlarm,active:!!n.active,latched:!!n.latched,type:n.type!==void 0?String(n.type):e.currentAlarm.type,typeCode:y(n.typeCode??n.type,e.currentAlarm.typeCode),level:n.level!==void 0?String(n.level):e.currentAlarm.level,levelCode:y(n.levelCode??n.level,e.currentAlarm.levelCode),message:n.message!==void 0?String(n.message):e.currentAlarm.message,timestamp:y(n.timestamp,e.currentAlarm.timestamp),acknowledged:n.acknowledged!==void 0?!!n.acknowledged:e.currentAlarm.acknowledged,resetAvailable:n.resetAvailable!==void 0?!!n.resetAvailable:e.currentAlarm.resetAvailable,resetBlockedReason:n.resetBlockedReason!==void 0?String(n.resetBlockedReason):e.currentAlarm.resetBlockedReason})}function Yl(e,t){let n=t?.activeProfile&&typeof t.activeProfile=="object"?t.activeProfile:null;n&&(e.activeProfile={...e.activeProfile,id:n.id!==void 0?String(n.id):e.activeProfile.id,loaded:n.loaded!==void 0?!!n.loaded:e.activeProfile.loaded,name:n.name!==void 0?String(n.name):e.activeProfile.name,category:n.category!==void 0?String(n.category):e.activeProfile.category,mashing:n.mashing&&typeof n.mashing=="object"?{...e.activeProfile.mashing,steps:Array.isArray(n.mashing.steps)?n.mashing.steps.map(o=>({...o})):e.activeProfile.mashing.steps}:e.activeProfile.mashing,validation:n.validation&&typeof n.validation=="object"?{...n.validation}:e.activeProfile.validation,baseTemperatures:n.baseTemperatures&&typeof n.baseTemperatures=="object"?{...n.baseTemperatures}:e.activeProfile.baseTemperatures,baroPreview:n.baroPreview&&typeof n.baroPreview=="object"?{...n.baroPreview}:e.activeProfile.baroPreview,effectiveTemperaturesPreview:n.effectiveTemperaturesPreview&&typeof n.effectiveTemperaturesPreview=="object"?{...n.effectiveTemperaturesPreview}:e.activeProfile.effectiveTemperaturesPreview})}function Jl(e,t){let n=t?.v2&&typeof t.v2=="object"?t.v2:null;if(!n)return;let o=n?.safety&&typeof n.safety=="object"?n.safety:null,i=n?.activeLimits&&typeof n.activeLimits=="object"?n.activeLimits:null,r=n?.commandTargets&&typeof n.commandTargets=="object"?n.commandTargets:null,a=n?.indicators&&typeof n.indicators=="object"?n.indicators:null,s=n?.guidance&&typeof n.guidance=="object"?n.guidance:null,l=n?.reasonInsight&&typeof n.reasonInsight=="object"?n.reasonInsight:null;e.v2={...e.v2,available:n.available!==void 0?!!n.available:e.v2.available,lifecycle:n.lifecycle!==void 0?String(n.lifecycle):e.v2.lifecycle,phaseId:n.phaseId!==void 0?y(n.phaseId,e.v2.phaseId):e.v2.phaseId,phaseToken:n.phaseToken!==void 0?String(n.phaseToken):e.v2.phaseToken,timestampMs:n.timestampMs!==void 0?y(n.timestampMs,e.v2.timestampMs):e.v2.timestampMs,safetyLatched:n.safetyLatched!==void 0?!!n.safetyLatched:e.v2.safetyLatched,lastReasonCode:n.lastReasonCode!==void 0?String(n.lastReasonCode):e.v2.lastReasonCode,operatorMessage:n.operatorMessage!==void 0?String(n.operatorMessage):e.v2.operatorMessage,guidance:s?{...e.v2.guidance,tone:s.tone!==void 0?String(s.tone):e.v2.guidance.tone,title:s.title!==void 0?String(s.title):e.v2.guidance.title,detail:s.detail!==void 0?String(s.detail):e.v2.guidance.detail,action:s.action!==void 0?String(s.action):e.v2.guidance.action}:e.v2.guidance,reasonInsight:l?{...e.v2.reasonInsight,tone:l.tone!==void 0?String(l.tone):e.v2.reasonInsight.tone,title:l.title!==void 0?String(l.title):e.v2.reasonInsight.title,detail:l.detail!==void 0?String(l.detail):e.v2.reasonInsight.detail,action:l.action!==void 0?String(l.action):e.v2.reasonInsight.action}:e.v2.reasonInsight,activeLimits:i?{...e.v2.activeLimits,powerCapped:i.powerCapped!==void 0?!!i.powerCapped:e.v2.activeLimits.powerCapped,maxHeaterPowerPercent:i.maxHeaterPowerPercent!==void 0?y(i.maxHeaterPowerPercent,e.v2.activeLimits.maxHeaterPowerPercent):e.v2.activeLimits.maxHeaterPowerPercent,pumpCapped:i.pumpCapped!==void 0?!!i.pumpCapped:e.v2.activeLimits.pumpCapped,maxPumpSpeedMlH:i.maxPumpSpeedMlH!==void 0?y(i.maxPumpSpeedMlH,e.v2.activeLimits.maxPumpSpeedMlH):e.v2.activeLimits.maxPumpSpeedMlH,takeoffBlocked:i.takeoffBlocked!==void 0?!!i.takeoffBlocked:e.v2.activeLimits.takeoffBlocked,phaseAdvanceBlocked:i.phaseAdvanceBlocked!==void 0?!!i.phaseAdvanceBlocked:e.v2.activeLimits.phaseAdvanceBlocked,antiOscillationActive:i.antiOscillationActive!==void 0?!!i.antiOscillationActive:e.v2.activeLimits.antiOscillationActive,antiOscillationHoldSec:i.antiOscillationHoldSec!==void 0?y(i.antiOscillationHoldSec,e.v2.activeLimits.antiOscillationHoldSec):e.v2.activeLimits.antiOscillationHoldSec}:e.v2.activeLimits,commandTargets:r?{...e.v2.commandTargets,heaterPowerPercent:r.heaterPowerPercent!==void 0?y(r.heaterPowerPercent,e.v2.commandTargets.heaterPowerPercent):e.v2.commandTargets.heaterPowerPercent,pumpSpeedMlH:r.pumpSpeedMlH!==void 0?y(r.pumpSpeedMlH,e.v2.commandTargets.pumpSpeedMlH):e.v2.commandTargets.pumpSpeedMlH,waterValveOpen:r.waterValveOpen!==void 0?!!r.waterValveOpen:e.v2.commandTargets.waterValveOpen,headsValveOpen:r.headsValveOpen!==void 0?!!r.headsValveOpen:e.v2.commandTargets.headsValveOpen,stopRequested:r.stopRequested!==void 0?!!r.stopRequested:e.v2.commandTargets.stopRequested}:e.v2.commandTargets,indicators:a?{...e.v2.indicators,processHealth:a.processHealth!==void 0?y(a.processHealth,e.v2.indicators.processHealth):e.v2.indicators.processHealth,telemetryCoverage:a.telemetryCoverage!==void 0?y(a.telemetryCoverage,e.v2.indicators.telemetryCoverage):e.v2.indicators.telemetryCoverage,decisionTrust:a.decisionTrust!==void 0?y(a.decisionTrust,e.v2.indicators.decisionTrust):e.v2.indicators.decisionTrust,sensorFreshnessOk:a.sensorFreshnessOk!==void 0?!!a.sensorFreshnessOk:e.v2.indicators.sensorFreshnessOk,pressureStable:a.pressureStable!==void 0?!!a.pressureStable:e.v2.indicators.pressureStable,pressureSensorAvailable:a.pressureSensorAvailable!==void 0?!!a.pressureSensorAvailable:e.v2.indicators.pressureSensorAvailable,columnSensorsAvailable:a.columnSensorsAvailable!==void 0?!!a.columnSensorsAvailable:e.v2.indicators.columnSensorsAvailable,coolingSensorAvailable:a.coolingSensorAvailable!==void 0?!!a.coolingSensorAvailable:e.v2.indicators.coolingSensorAvailable,boilingDetected:a.boilingDetected!==void 0?!!a.boilingDetected:e.v2.indicators.boilingDetected,columnStable:a.columnStable!==void 0?!!a.columnStable:e.v2.indicators.columnStable,targetReached:a.targetReached!==void 0?!!a.targetReached:e.v2.indicators.targetReached,powerLimited:a.powerLimited!==void 0?!!a.powerLimited:e.v2.indicators.powerLimited,recoveryActive:a.recoveryActive!==void 0?!!a.recoveryActive:e.v2.indicators.recoveryActive,takeoffAllowed:a.takeoffAllowed!==void 0?!!a.takeoffAllowed:e.v2.indicators.takeoffAllowed,degradedModeActive:a.degradedModeActive!==void 0?!!a.degradedModeActive:e.v2.indicators.degradedModeActive,adaptiveControlAllowed:a.adaptiveControlAllowed!==void 0?!!a.adaptiveControlAllowed:e.v2.indicators.adaptiveControlAllowed,distHeatingComplete:a.distHeatingComplete!==void 0?!!a.distHeatingComplete:e.v2.indicators.distHeatingComplete,distHeadsOptionalComplete:a.distHeadsOptionalComplete!==void 0?!!a.distHeadsOptionalComplete:e.v2.indicators.distHeadsOptionalComplete,distBodyNearEnd:a.distBodyNearEnd!==void 0?!!a.distBodyNearEnd:e.v2.indicators.distBodyNearEnd,steamReady:a.steamReady!==void 0?!!a.steamReady:e.v2.indicators.steamReady,nbkWorkingStable:a.nbkWorkingStable!==void 0?!!a.nbkWorkingStable:e.v2.indicators.nbkWorkingStable,nbkFeedAllowed:a.nbkFeedAllowed!==void 0?!!a.nbkFeedAllowed:e.v2.indicators.nbkFeedAllowed,finishLikely:a.finishLikely!==void 0?!!a.finishLikely:e.v2.indicators.finishLikely,tempInBand:a.tempInBand!==void 0?!!a.tempInBand:e.v2.indicators.tempInBand,stepReady:a.stepReady!==void 0?!!a.stepReady:e.v2.indicators.stepReady,stepHoldStable:a.stepHoldStable!==void 0?!!a.stepHoldStable:e.v2.indicators.stepHoldStable,heatingTooSlow:a.heatingTooSlow!==void 0?!!a.heatingTooSlow:e.v2.indicators.heatingTooSlow,overshootRisk:a.overshootRisk!==void 0?!!a.overshootRisk:e.v2.indicators.overshootRisk,fermTempInBand:a.fermTempInBand!==void 0?!!a.fermTempInBand:e.v2.indicators.fermTempInBand,longDeviation:a.longDeviation!==void 0?!!a.longDeviation:e.v2.indicators.longDeviation,heatingDemand:a.heatingDemand!==void 0?!!a.heatingDemand:e.v2.indicators.heatingDemand,coolingDemand:a.coolingDemand!==void 0?!!a.coolingDemand:e.v2.indicators.coolingDemand,heatingRateCPerMin:a.heatingRateCPerMin!==void 0?y(a.heatingRateCPerMin,e.v2.indicators.heatingRateCPerMin):e.v2.indicators.heatingRateCPerMin,topTempRateCPerMin:a.topTempRateCPerMin!==void 0?y(a.topTempRateCPerMin,e.v2.indicators.topTempRateCPerMin):e.v2.indicators.topTempRateCPerMin,pressureRateMmHgPerMin:a.pressureRateMmHgPerMin!==void 0?y(a.pressureRateMmHgPerMin,e.v2.indicators.pressureRateMmHgPerMin):e.v2.indicators.pressureRateMmHgPerMin,coolingMarginC:a.coolingMarginC!==void 0?y(a.coolingMarginC,e.v2.indicators.coolingMarginC):e.v2.indicators.coolingMarginC,distPressureMargin:a.distPressureMargin!==void 0?y(a.distPressureMargin,e.v2.indicators.distPressureMargin):e.v2.indicators.distPressureMargin,nbkPressureMargin:a.nbkPressureMargin!==void 0?y(a.nbkPressureMargin,e.v2.indicators.nbkPressureMargin):e.v2.indicators.nbkPressureMargin,nbkColumnLoad:a.nbkColumnLoad!==void 0?y(a.nbkColumnLoad,e.v2.indicators.nbkColumnLoad):e.v2.indicators.nbkColumnLoad,feedEnergyBalance:a.feedEnergyBalance!==void 0?y(a.feedEnergyBalance,e.v2.indicators.feedEnergyBalance):e.v2.indicators.feedEnergyBalance,stabilityIndex:a.stabilityIndex!==void 0?y(a.stabilityIndex,e.v2.indicators.stabilityIndex):e.v2.indicators.stabilityIndex,floodRisk:a.floodRisk!==void 0?y(a.floodRisk,e.v2.indicators.floodRisk):e.v2.indicators.floodRisk,headsCompletionScore:a.headsCompletionScore!==void 0?y(a.headsCompletionScore,e.v2.indicators.headsCompletionScore):e.v2.indicators.headsCompletionScore,bodyEndScore:a.bodyEndScore!==void 0?y(a.bodyEndScore,e.v2.indicators.bodyEndScore):e.v2.indicators.bodyEndScore,takeoffConfidence:a.takeoffConfidence!==void 0?y(a.takeoffConfidence,e.v2.indicators.takeoffConfidence):e.v2.indicators.takeoffConfidence,headsEndConfidence:a.headsEndConfidence!==void 0?y(a.headsEndConfidence,e.v2.indicators.headsEndConfidence):e.v2.indicators.headsEndConfidence,bodyEndConfidence:a.bodyEndConfidence!==void 0?y(a.bodyEndConfidence,e.v2.indicators.bodyEndConfidence):e.v2.indicators.bodyEndConfidence,tailsTransitionConfidence:a.tailsTransitionConfidence!==void 0?y(a.tailsTransitionConfidence,e.v2.indicators.tailsTransitionConfidence):e.v2.indicators.tailsTransitionConfidence,powerLimitConfidence:a.powerLimitConfidence!==void 0?y(a.powerLimitConfidence,e.v2.indicators.powerLimitConfidence):e.v2.indicators.powerLimitConfidence}:e.v2.indicators,safety:o?{...e.v2.safety,severity:o.severity!==void 0?String(o.severity):e.v2.safety.severity,event:o.event!==void 0?String(o.event):e.v2.safety.event,reasonCode:o.reasonCode!==void 0?String(o.reasonCode):e.v2.safety.reasonCode,requiresAcknowledge:o.requiresAcknowledge!==void 0?!!o.requiresAcknowledge:e.v2.safety.requiresAcknowledge,message:o.message!==void 0?String(o.message):e.v2.safety.message,resetAvailable:o.resetAvailable!==void 0?!!o.resetAvailable:e.v2.safety.resetAvailable,resetBlockedReason:o.resetBlockedReason!==void 0?String(o.resetBlockedReason):e.v2.safety.resetBlockedReason}:e.v2.safety}}function qi(e){if(!e||typeof e!="object")return;let t=S;t.mode=xe(e.mode??t.mode,e.modeStr??t.modeStr),e.modeStr!==void 0&&(t.modeStr=String(e.modeStr)),e.phase!==void 0&&(t.phase=y(e.phase,t.phase)),e.phaseStr!==void 0&&(t.phaseStr=String(e.phaseStr)),e.safetyOk!==void 0&&(t.safetyOk=!!e.safetyOk),Gl(t,e),Yl(t,e),Jl(t,e),Ul(t,e),e.power&&typeof e.power=="object"&&(e.power.available!==void 0&&(t.power.available=!!e.power.available),e.power.power!==void 0&&(t.power.power=y(e.power.power,t.power.power)),e.power.setPercent!==void 0&&(t.power.setPercent=y(e.power.setPercent,t.power.setPercent)),e.power.setW!==void 0&&(t.power.setW=y(e.power.setW,t.power.setW)),e.power.errorW!==void 0&&(t.power.errorW=y(e.power.errorW,t.power.errorW)),e.power.closedLoopActive!==void 0&&(t.power.closedLoopActive=!!e.power.closedLoopActive)),e.hydrometer&&typeof e.hydrometer=="object"&&(e.hydrometer.abv!==void 0&&(t.hydrometer.abv=y(e.hydrometer.abv,t.hydrometer.abv)),e.hydrometer.valid!==void 0&&(t.hydrometer.valid=!!e.hydrometer.valid)),e.pump&&typeof e.pump=="object"&&(e.pump.speedMlH!==void 0&&(t.pump.speedMlH=y(e.pump.speedMlH,t.pump.speedMlH)),e.pump.totalMl!==void 0&&(t.pump.totalMl=y(e.pump.totalMl,t.pump.totalMl)));{let n=nn(e,"cube","t_cube",t.temps.cube),o=nn(e,"columnBottom","t_column_bottom",t.temps.columnBottom),i=nn(e,"columnTop","t_column_top",t.temps.columnTop),r=nn(e,"reflux","t_reflux",t.temps.reflux),a=nn(e,"tsa","t_tsa",t.temps.tsa),s=nn(e,"waterIn","t_water_in",t.temps.waterIn),l=nn(e,"waterOut","t_water_out",t.temps.waterOut);n!==void 0&&(t.temps.cube=n),o!==void 0&&(t.temps.columnBottom=o),i!==void 0&&(t.temps.columnTop=i),r!==void 0&&(t.temps.reflux=r),a!==void 0&&(t.temps.tsa=a),s!==void 0&&(t.temps.waterIn=s),l!==void 0&&(t.temps.waterOut=l)}vf(t,e.temperatures),wf(t,e),e.valves&&typeof e.valves=="object"&&(t.valves={...t.valves,...e.valves}),e.volumes&&typeof e.volumes=="object"&&(e.volumes.heads!==void 0&&(t.volumes.heads=y(e.volumes.heads,t.volumes.heads)),e.volumes.body!==void 0&&(t.volumes.body=y(e.volumes.body,t.volumes.body)),e.volumes.tails!==void 0&&(t.volumes.tails=y(e.volumes.tails,t.volumes.tails))),Wl(t,e),zl(t,e),e.rectification&&typeof e.rectification=="object"&&(t.rectification={...t.rectification,...e.rectification},!ca&&e.rectification.feedAbvPercent!==void 0&&Ro(Ht(e.rectification.feedAbvPercent,xt))),e.distillation&&typeof e.distillation=="object"&&(t.distillation={...t.distillation,...e.distillation}),e.nbk&&typeof e.nbk=="object"&&(t.nbk={...t.nbk,...e.nbk}),e.fermentation&&typeof e.fermentation=="object"&&(t.fermentation={...t.fermentation,...e.fermentation}),e.nbkPhase!==void 0&&(t.nbk.phase=y(e.nbkPhase,t.nbk.phase)),e.nbkPhaseStr!==void 0&&(t.nbk.phaseStr=String(e.nbkPhaseStr)),e.fermPhase!==void 0&&(t.fermentation.phase=y(e.fermPhase,t.fermentation.phase)),e.fermPhaseStr!==void 0&&(t.fermentation.phaseStr=String(e.fermPhaseStr)),Kl(t,e),e.mashing&&typeof e.mashing=="object"&&(t.mashing={...t.mashing,...e.mashing}),e.hold&&typeof e.hold=="object"&&(t.hold={...t.hold,...e.hold}),e.progress&&typeof e.progress=="object"&&(t.progress={...t.progress,...e.progress})}function Zl(e){if(!e||typeof e!="object")return;let t=S;(e.mode!==void 0||e.modeStr!==void 0)&&(t.mode=xe(e.mode??t.mode,e.modeStr??t.modeStr)),e.modeStr!==void 0&&(t.modeStr=String(e.modeStr)),e.phase!==void 0&&(t.phase=y(e.phase,t.phase)),e.phaseStr!==void 0&&(t.phaseStr=String(e.phaseStr)),e.safetyOk!==void 0&&(t.safetyOk=!!e.safetyOk),Gl(t,e),Yl(t,e),Jl(t,e),Ul(t,e),e.power&&typeof e.power=="object"?(e.power.available!==void 0&&(t.power.available=!!e.power.available),e.power.power!==void 0&&(t.power.power=y(e.power.power,t.power.power)),e.power.setPercent!==void 0&&(t.power.setPercent=y(e.power.setPercent,t.power.setPercent)),e.power.setW!==void 0&&(t.power.setW=y(e.power.setW,t.power.setW)),e.power.errorW!==void 0&&(t.power.errorW=y(e.power.errorW,t.power.errorW)),e.power.closedLoopActive!==void 0&&(t.power.closedLoopActive=!!e.power.closedLoopActive)):e.power!==void 0&&(t.power.power=y(e.power,t.power.power)),e.pzem_ok!==void 0&&(t.power.available=!!e.pzem_ok),e.abv!==void 0&&(t.hydrometer.abv=y(e.abv,t.hydrometer.abv)),e.abv_valid!==void 0&&(t.hydrometer.valid=!!e.abv_valid),e.pump_speed!==void 0&&(t.pump.speedMlH=y(e.pump_speed,t.pump.speedMlH)),e.pump_volume!==void 0&&(t.pump.totalMl=y(e.pump_volume,t.pump.totalMl)),e.t_cube!==void 0&&(t.temps.cube=y(e.t_cube,t.temps.cube)),e.t_column_bottom!==void 0&&(t.temps.columnBottom=y(e.t_column_bottom,t.temps.columnBottom)),Sf(t,e.tempValid),e.valves&&typeof e.valves=="object"&&(t.valves={...t.valves,...e.valves}),e.volume_heads!==void 0&&(t.volumes.heads=y(e.volume_heads,t.volumes.heads)),e.volume_body!==void 0&&(t.volumes.body=y(e.volume_body,t.volumes.body)),e.volume_tails!==void 0&&(t.volumes.tails=y(e.volume_tails,t.volumes.tails)),e.phase_elapsed_sec!==void 0&&(t.progress.phaseElapsedSec=y(e.phase_elapsed_sec,t.progress.phaseElapsedSec)),e.phase_target_sec!==void 0&&(t.progress.phaseTargetSec=y(e.phase_target_sec,t.progress.phaseTargetSec)),e.phase_remaining_sec!==void 0&&(t.progress.phaseRemainingSec=y(e.phase_remaining_sec,t.progress.phaseRemainingSec)),e.phase_percent!==void 0&&(t.progress.phasePercent=nt(e.phase_percent)),e.mashing&&typeof e.mashing=="object"&&(t.mashing={...t.mashing,...e.mashing}),e.hold&&typeof e.hold=="object"&&(t.hold={...t.hold,...e.hold}),e.progress&&typeof e.progress=="object"&&(t.progress={...t.progress,...e.progress}),e.rectification&&typeof e.rectification=="object"&&(t.rectification={...t.rectification,...e.rectification}),e.distillation&&typeof e.distillation=="object"&&(t.distillation={...t.distillation,...e.distillation}),e.nbk&&typeof e.nbk=="object"&&(t.nbk={...t.nbk,...e.nbk}),e.fermentation&&typeof e.fermentation=="object"&&(t.fermentation={...t.fermentation,...e.fermentation}),e.nbkPhase!==void 0&&(t.nbk.phase=y(e.nbkPhase,t.nbk.phase)),e.nbkPhaseStr!==void 0&&(t.nbk.phaseStr=String(e.nbkPhaseStr)),e.fermPhase!==void 0&&(t.fermentation.phase=y(e.fermPhase,t.fermentation.phase)),e.fermPhaseStr!==void 0&&(t.fermentation.phaseStr=String(e.fermPhaseStr)),Kl(t,e),Wl(t,e),zl(t,e)}function Lo(e,t=null){let n=y(e.feedVolumeL,0),o=t===null?y(e.feedAbvPercent,0):Ht(t,y(e.feedAbvPercent,0)),i=Math.max(0,n*1e3*(o/100)),r=i*(y(e.headsPercent,0)/100),a=i*(y(e.bodyPercent,0)/100),s=i*(y(e.tailsPercent,0)/100);return{heads:r,body:a,tails:s}}function Ql(){try{let e=localStorage.getItem(la);e!==null&&(Ro(Ht(e,xt)),da(!0))}catch(e){console.warn("planned ABV load failed:",e)}}function Xl(e){Ro(Ht(e,xt)),da(!0);try{localStorage.setItem(la,xt.toFixed(1))}catch(t){console.warn("planned ABV save failed:",t)}}function Qe(){let e=S,t=Number(e.hydrometer.abv),n=Number.isFinite(t)&&t>0,o=Ht(t,xt);return e.hydrometer.valid&&n?{value:o,source:"sensor"}:{value:xt,source:"planned"}}function Vt(){let e=document.getElementById("abv"),t=document.getElementById("abv-source-dot");if(!e)return;let n=Qe();n.source==="sensor"?e.textContent=`${n.value.toFixed(1)}%`:e.textContent=`~${n.value.toFixed(1)}%`,t&&(n.source==="sensor"?(t.classList.remove("abv-source-offline"),t.classList.add("abv-source-online"),t.title="Ареометр ONLINE (данные с датчика)"):(t.classList.remove("abv-source-online"),t.classList.add("abv-source-offline"),t.title="Ареометр OFF/нет данных (используется плановая крепость)"))}function Ef(){let e=[],t=Number(window.visualViewport?.width);Number.isFinite(t)&&t>0&&e.push(t);let n=Number(window.innerWidth);Number.isFinite(n)&&n>0&&e.push(n);let o=Number(document.documentElement?.clientWidth);return Number.isFinite(o)&&o>0&&e.push(o),e.length?Math.min(...e):1920}function Cf(e){let t=document.createElement("div");return t.className="sidebar-section-title menu-dropdown-section-title",t.textContent=e.textContent?.trim()||"",t}function xf(e){let t=e.cloneNode(!0);t.classList.add("menu-dropdown-item"),t.classList.remove("tab"),t.removeAttribute("id"),t instanceof HTMLButtonElement&&(t.type="button");let n=e.getAttribute("data-tab");return n?(t.dataset.menuTab=n,t.removeAttribute("data-tab"),t.removeAttribute("onclick")):e.classList.contains("active")&&(t.dataset.menuCurrentPage="1"),t}function Mf(){let e=document.getElementById("main-sidebar"),t=document.getElementById("top-menu-dropdown"),n=t?.querySelector(".tabs-dropdown");if(!e||!t||!n)return;n.classList.add("menu-dropdown-nav");let o=document.createDocumentFragment();for(let i of e.children)if(i instanceof HTMLElement&&!(i.classList.contains("sidebar-collapse-btn")||i.classList.contains("sidebar-spacer")||i.classList.contains("sidebar-footer"))){if(i.classList.contains("sidebar-section-title")){o.appendChild(Cf(i));continue}i.classList.contains("sidebar-item")&&o.appendChild(xf(i))}n.replaceChildren(o)}function ma(e=""){document.querySelectorAll("#top-menu-dropdown .menu-dropdown-item").forEach(n=>{let o=!!e&&n.getAttribute("data-menu-tab")===e,i=o?document.querySelector(`.sidebar-item.tab[data-tab="${e}"]`):null,r=n.getAttribute("data-menu-current-page")==="1",a=o||!!i?.classList.contains("active")||r;n.classList.toggle("active",a),a?n.setAttribute("aria-current","page"):n.removeAttribute("aria-current")})}function on(){let e=document.getElementById("top-menu-dropdown"),t=document.getElementById("top-menu-toggle");e&&e.classList.remove("open"),t&&t.setAttribute("aria-expanded","false")}function ec(){let e=document.getElementById("top-menu-dropdown"),t=document.getElementById("top-menu-toggle");if(!e||!t)return;if(!(Ef()<=900)){e.style.position="",e.style.left="",e.style.right="",e.style.top="",e.style.width="",e.style.maxWidth="";return}let o=t.getBoundingClientRect(),i=10,r=Math.max(i,Math.round(o.bottom+8));e.style.position="fixed",e.style.left=`${i}px`,e.style.right=`${i}px`,e.style.top=`${r}px`,e.style.width="auto",e.style.maxWidth="none"}function tc(e){e&&e.stopPropagation();let t=document.getElementById("top-menu-dropdown"),n=document.getElementById("top-menu-toggle");if(!t||!n)return;let o=!t.classList.contains("open");o&&ec(),t.classList.toggle("open",o),n.setAttribute("aria-expanded",o?"true":"false")}function nc(){Mf();let e=document.querySelector(".sidebar-item.active[data-tab]")?.getAttribute("data-tab")||"";ma(e),document.addEventListener("click",n=>{let o=n.target.closest("#top-menu-dropdown [data-menu-tab]");if(!o)return;n.preventDefault();let i=o.getAttribute("data-menu-tab");if(!i){on();return}let r=document.querySelector(`.sidebar-item.tab[data-tab="${i}"]`);r instanceof HTMLElement?r.click():on()}),document.addEventListener("click",n=>{let o=n.target.closest("#top-menu-dropdown .menu-dropdown-item");!o||o.hasAttribute("data-menu-tab")||on()}),document.addEventListener("click",n=>{let o=document.getElementById("top-menu-dropdown"),i=document.getElementById("top-menu-toggle");if(!o||!i)return;let r=n.target;o.contains(r)||i.contains(r)||on()}),document.addEventListener("keydown",n=>{n.key==="Escape"&&on()});let t=()=>{let n=document.getElementById("top-menu-dropdown");n&&n.classList.contains("open")&&ec()};window.addEventListener("resize",t),window.addEventListener("orientationchange",t),window.visualViewport&&window.visualViewport.addEventListener("resize",t)}var Tf={monitor:"Главная",control:"Режимы",profiles:"Профили",settings:"Настройки",wifi:"WiFi",equipment:"Оборудование",safety:"Безопасность",history:"История",tools:"Инструменты"};function pa(e){let t=document.getElementById("toolbar-page-title");if(!t)return;let n=e==="monitor"&&window.matchMedia("(max-width: 900px)").matches;t.textContent=n?"":Tf[e]||""}function oc(){let e=document.querySelectorAll(".tab");e.forEach(n=>{n.addEventListener("click",()=>{let o=n.getAttribute("data-tab");if(!o){on();return}e.forEach(r=>r.classList.remove("active")),document.querySelectorAll(".tab-content").forEach(r=>r.classList.remove("active")),document.querySelectorAll(".sidebar-item").forEach(r=>{r.getAttribute("data-tab")&&r.classList.remove("active")}),document.querySelectorAll(`.tab[data-tab="${o}"]`).forEach(r=>r.classList.add("active"));let i=document.getElementById(o);i&&i.classList.add("active"),ma(o),pa(o),document.dispatchEvent(new CustomEvent("app-tab-changed",{detail:{tabId:o}})),o==="history"&&typeof loadHistoryList=="function"&&loadHistoryList(),on()})});let t=document.querySelector(".tab.active[data-tab]");t&&pa(t.getAttribute("data-tab"))}function Oi(e){let t=document.querySelector(`.tab[data-tab="${e}"]`);t&&t.click()}window.addEventListener("resize",()=>{let e=document.querySelector(".tab.active[data-tab]");e&&pa(e.getAttribute("data-tab"))});var ic=!1,rc=!1,ac=!1,$f="(max-width: 900px)",ji=["mode-runtime-card","operator-process-card","monitor-diagnostics-panel"],va=new Map;function oe(e,t,n="muted"){let o=document.getElementById(e);o&&(o.textContent=t,o.classList.remove("is-good","is-warn","is-danger","is-muted"),o.classList.add(`is-${n}`))}function X(e,t){let n=document.getElementById(e);n&&(n.hidden=!!t)}function Hi(e){return y(e,-1)>=0}function Pf(e,t){let n=e?.pressure||{},o=!!(t?.pressureSensorAvailable||n.ok),i=o||!!n.ads1115Available;return{signalAvailable:o,hardwareAvailable:i}}function If(e,t){return e===j||e===J||e===pe||e===de||!!t?.coolingSensorAvailable||!!t?.coolingDemand||!!t?.recoveryActive}function _o(e){return`${nt(y(e,0)*100).toFixed(0)}%`}function xn(e){let t=y(e,-1);return t<0?"—":`${nt(t*100).toFixed(0)}%`}function qo(e,t=!1){let n=y(e,-1);return n<0?"muted":t?n>=.75?"danger":n>=.45?"warn":"good":n>=.75?"good":n>=.45?"warn":"danger"}function sc(e,t,n,o=!1){let i=y(e,-1);return i<0?"muted":o?i>=n?"danger":i>=t?"warn":"good":i>=n?"good":i>=t?"warn":"danger"}function Di(e,t,n,o=!1){let i=o?!e:!!e;return{text:i?t:n,tone:i?"good":"danger"}}function Af(e,t=1,n=""){let o=Number(e);return Number.isFinite(o)?`${o>0?"+":""}${o.toFixed(t)}${n}`:"—"}function Nf(e){return e===1?"3 клапана":e===2?"1 клапан + переключение":"насос"}function fa(e,t="отбор закрыт"){return e===1?"головы":e===2?"тело":e===3?"хвосты":t}function Bf(e,t){if(!e)return;let n=Math.round(y(t?.takeoffBackendType,0)),o=Nf(n),i=!!t?.takeoffBackendActive,r=!!(t?.takeoffRoutingReady??!0),a=Math.round(y(t?.takeoffRequestedFraction,0)),s=Math.round(y(t?.takeoffRoutedFraction,0)),l=Math.round(y(t?.takeoffActiveFraction,0)),c=Math.max(0,y(t?.takeoffActualEquivalentRateMlH,0)),d=fa(a),m=fa(s,n===2?"маршрут не занят":"канал не выбран"),f=fa(l),b=n===2?r?m:`${m} -> ${d}`:s>0?m:d,u=i?`отбор открыт${c>0?` • ${c.toFixed(0)} мл/ч`:""}`:a>0?r?"готов к отбору":"ждет маршрута":"отбор закрыт",p=[{label:"Исполнитель",value:o},{label:"Команда",value:d},{label:"Маршрут",value:b},{label:"Статус",value:u},{label:"Активная фракция",value:f},{label:"Готовность",value:r?"маршрут готов":"переключение"}];e.innerHTML=p.map(g=>`
+        <div class="operator-stat">
+            <span class="operator-stat-label">${tn(g.label)}</span>
+            <strong class="operator-stat-value">${tn(g.value)}</strong>
+        </div>
+    `).join("")}function kf(e,t){let n=e?.pressure||{},o=Number(n.cube),i=Number(t.pressureRateMmHgPerMin),r=Number(t.distPressureMargin),a=!!(t.pressureSensorAvailable||n.ok),l=a||!!n.ads1115Available?"Нет сигнала":"Нет датчика",c="muted";a&&(Number.isFinite(r)&&r<=0?c="danger":Number.isFinite(r)&&r<10?c="warn":c="good");let d="muted";if(a&&Number.isFinite(i)){let f=Math.abs(i);f>=3?d="danger":f>=1?d="warn":d="good"}oe("indicator-pressure-cube",a&&Number.isFinite(o)?`${o.toFixed(1)} мм`:l,c),oe("indicator-pressure-margin",a&&Number.isFinite(r)?`${r.toFixed(1)} мм`:"—",c),oe("indicator-pressure-diagnostics",a&&Number.isFinite(o)?`${o.toFixed(1)} мм рт.ст.`:l,c),oe("indicator-pressure-rate",a&&Number.isFinite(i)?Af(i,1," мм/мин"):"—",d),oe("indicator-pressure-margin-diagnostics",a&&Number.isFinite(r)?`${r.toFixed(1)} мм`:"—",c);let m=document.getElementById("pressure-flood");m&&(m.textContent=a&&Number.isFinite(r)?`${r.toFixed(1)} мм`:"-- мм")}function Rf(e,t,n="muted"){let o=document.getElementById("operator-guidance"),i=document.getElementById("operator-guidance-title"),r=document.getElementById("operator-guidance-text");!o||!i||!r||(o.classList.remove("is-good","is-warn","is-danger","is-muted"),o.classList.add(`is-${n}`),i.textContent=e,r.textContent=t)}function Ff(e){let t=e?.v2?.guidance;if(!t||typeof t!="object")return null;let n=String(t.title||"").trim(),o=String(t.detail||"").trim();return!n&&!o?null:{tone:String(t.tone||"muted").trim()||"muted",title:n||"Operator Guidance",detail:o||"Подсказка пока не опубликована."}}function Lf(e){let t=e?.v2?.reasonInsight;if(!t||typeof t!="object")return null;let n=String(t.title||"").trim(),o=String(t.detail||"").trim(),i=String(t.action||"").trim();return!n&&!o&&!i?null:{tone:String(t.tone||"muted").trim()||"muted",title:n||"Причина процесса",detail:o||"Расшифровка причины пока не опубликована.",action:i||"Ориентируйтесь на diagnostics, lifecycle и системный журнал."}}function _f(e,t,n,o="muted"){let i=document.getElementById("operator-reason-insight"),r=document.getElementById("operator-reason-title"),a=document.getElementById("operator-reason-detail"),s=document.getElementById("operator-reason-action");!i||!r||!a||!s||(i.classList.remove("is-good","is-warn","is-danger","is-muted"),i.classList.add(`is-${o}`),r.textContent=e,a.textContent=t,s.textContent=n)}function lc(e,t,n="muted"){let o=document.getElementById(e);o&&(o.textContent=t,o.classList.remove("is-good","is-warn","is-danger","is-muted"),o.classList.add(`is-${n}`))}function qf(e="muted",t="Скрыто",n={}){lc("monitor-diagnostics-badge",t,e),lc("mobile-diagnostics-trigger-badge",t,e);let o=document.getElementById("monitor-diagnostics-panel");if(!o)return;let i=n.show!==void 0?!!n.show:!0;if(o.hidden=!i,!i){o.dataset.userExpanded="";return}if(e==="danger"||n.forceOpen){o.dataset.autoToggle="1",o.setAttribute("open","open");return}let r=o.dataset.userExpanded==="1";n.forceClosed&&!r&&(o.dataset.autoToggle="1",o.removeAttribute("open"))}function Of(){if(rc)return;rc=!0;let e=document.getElementById("monitor-diagnostics-panel");e&&e.addEventListener("toggle",()=>{if(e.dataset.autoToggle==="1"){e.dataset.autoToggle="";return}e.dataset.userExpanded=e.hasAttribute("open")?"1":""})}function wa(){return window.matchMedia($f).matches}function dc(e){if(va.has(e))return;let t=document.getElementById(e);!t||!t.parentNode||va.set(e,{parent:t.parentNode,nextSibling:t.nextSibling})}function uc(){ji.forEach(e=>{let t=document.getElementById(e),n=va.get(e);!t||!n?.parent||(n.nextSibling&&n.nextSibling.parentNode===n.parent?n.parent.insertBefore(t,n.nextSibling):n.parent.appendChild(t))})}function Kn(){let e=document.getElementById("mobile-diagnostics-modal"),t=document.getElementById("mobile-diagnostics-modal-content"),n=wa(),o=!!(e&&e.classList.contains("show"));if(!n){if(o){Vi();return}uc()}ji.forEach(i=>{let r=document.getElementById(i);if(!r)return;let a=n&&!o;r.classList.toggle("is-mobile-inline-hidden",a),n&&o&&t&&r.parentNode!==t&&t.appendChild(r)})}function Hf(){if(!wa())return;let e=document.getElementById("mobile-diagnostics-modal"),t=document.getElementById("mobile-diagnostics-modal-content");!e||!t||(ji.forEach(n=>{dc(n);let o=document.getElementById(n);o&&(o.classList.remove("is-mobile-inline-hidden"),t.appendChild(o))}),e.classList.add("show"),document.body.classList.add("mobile-diagnostics-open"))}function Vi(){let e=document.getElementById("mobile-diagnostics-modal");e&&(e.classList.remove("show"),document.body.classList.remove("mobile-diagnostics-open"),uc(),Kn())}function Df(){if(ac)return;ac=!0,ji.forEach(t=>dc(t)),Kn();let e=document.getElementById("mobile-diagnostics-modal");e&&e.addEventListener("click",t=>{t.target===e&&Vi()}),window.addEventListener("resize",Kn),window.addEventListener("orientationchange",Kn),window.addEventListener("keydown",t=>{t.key==="Escape"&&Vi()}),window.visualViewport&&window.visualViewport.addEventListener("resize",Kn)}window.openMobileDiagnosticsModal=Hf;window.closeMobileDiagnosticsModal=Vi;function Mn(e,t,n="muted"){let o=document.getElementById(e);if(!o)return;o.textContent=t,o.classList.remove("is-good","is-warn","is-danger","is-muted"),o.classList.add(`is-${n}`);let i=o.closest(".operator-preflight-item");i&&(i.classList.remove("is-good","is-warn","is-danger","is-muted"),i.classList.add(`is-${n}`))}function Wi(e,t,n="muted",o={}){let i=document.getElementById("runtime-preflight"),r=document.getElementById("runtime-preflight-title"),a=document.getElementById("runtime-preflight-text");!i||!r||!a||(i.classList.remove("is-good","is-warn","is-danger","is-muted"),i.classList.add(`is-${n}`),r.textContent=e,a.textContent=t,Mn("runtime-preflight-v2",o.v2?.text||"--",o.v2?.tone||"muted"),Mn("runtime-preflight-sensors",o.sensors?.text||"--",o.sensors?.tone||"muted"),Mn("runtime-preflight-safety",o.safety?.text||"--",o.safety?.tone||"muted"),Mn("runtime-preflight-alarm",o.alarm?.text||"--",o.alarm?.tone||"muted"),Mn("runtime-preflight-profile",o.profile?.text||"--",o.profile?.tone||"muted"),Mn("runtime-preflight-takeoff",o.takeoff?.text||"--",o.takeoff?.tone||"muted"),Mn("runtime-preflight-water",o.water?.text||"--",o.water?.tone||"muted"))}function ga(e,t,n=null){let o=document.getElementById(e);o&&(o.textContent=t,o._missionRoute=n||null,o.disabled=!n,o.hidden=!n,o.title=n?t:"")}function mc(e,t=8){if(!e)return;let n=document.getElementById(e);if(n?.closest("details")?.setAttribute("open","open"),!(!!n&&n.getClientRects().length>0)){if(t<=0)return;window.setTimeout(()=>mc(e,t-1),90);return}n.scrollIntoView({block:"center",behavior:"smooth"}),typeof n.focus=="function"&&n.focus({preventScroll:!0}),n.classList.remove("control-field-attention"),n.offsetWidth,n.classList.add("control-field-attention"),window.setTimeout(()=>n.classList.remove("control-field-attention"),1700)}function cc(e){e&&(e.tabId&&Oi(e.tabId),window.setTimeout(()=>{e.modeKey&&document.querySelector(`[data-mode-select="${e.modeKey}"]`)?.click(),e.targetId&&window.setTimeout(()=>mc(e.targetId),e.modeKey?120:0)},0))}function Vf(){ic||(ic=!0,["operator-mission-goal-card","operator-mission-risk-card","operator-mission-action-card"].forEach(e=>{let t=document.getElementById(e);if(!t)return;let n=()=>cc(t._missionRoute||null);t.addEventListener("click",n),t.addEventListener("keydown",o=>{o.key!=="Enter"&&o.key!==" "||(o.preventDefault(),n())})}),["operator-mission-goal-btn","operator-mission-risk-btn","operator-mission-action-btn"].forEach(e=>{let t=document.getElementById(e);t&&t.addEventListener("click",()=>cc(t._missionRoute||null))}))}function ba(e){let t=String(e||"").trim();return!t||t==="--"||t==="—"}function jf(e){return String(e||"").trim().toLowerCase().startsWith("критичных")}function Wf(e){return String(e||"").trim().toLowerCase().startsWith("продолжать процесс")}function ha(e,t,n,o=null){let i=document.getElementById(e),r=document.getElementById(t);!i||!r||(r.textContent=n,i._missionRoute=o||null,i.classList.toggle("is-actionable",!!o),i.tabIndex=o?0:-1,i.setAttribute("role",o?"button":"group"),i.setAttribute("aria-disabled",o?"false":"true"),i.title=o?"Открыть связанную секцию":"")}function ya(e,t){let n=document.getElementById(e);n&&(n.hidden=!t,t||(n._missionRoute=null,n.classList.remove("is-actionable"),n.tabIndex=-1,n.setAttribute("role","group"),n.setAttribute("aria-disabled","true"),n.removeAttribute("title")))}function zf(e,t=0,n=!1){e&&(e.classList.toggle("is-quiet",!!n),e.classList.toggle("has-single-card",t<=1),e.classList.toggle("has-two-cards",t===2))}function Uf(e,t,n="muted",o="--",i="--",r="--",a={},s={}){let l=document.getElementById("operator-mission-control"),c=document.getElementById("operator-mission-title"),d=document.getElementById("operator-mission-text");if(!l||!c||!d)return;let m=!!s.quiet,f=!ba(o),b=!ba(i)&&!(m&&jf(i)),u=!ba(r)&&!(m&&f&&Wf(r));!f&&!b&&!u&&(u=!0),l.classList.remove("is-good","is-warn","is-danger","is-muted"),l.classList.add(`is-${n}`),c.textContent=e,d.textContent=t,ha("operator-mission-goal-card","operator-mission-goal",o,f&&a.goal||null),ha("operator-mission-risk-card","operator-mission-risk",i,b&&a.risk||null),ha("operator-mission-action-card","operator-mission-action",r,u&&a.action||null),ya("operator-mission-goal-card",f),ya("operator-mission-risk-card",b),ya("operator-mission-action-card",u),zf(l,[f,b,u].filter(Boolean).length,m),ga("operator-mission-goal-btn","К цели",f&&a.goal||null),ga("operator-mission-risk-btn","Проверить риск",b&&a.risk||null),ga("operator-mission-action-btn","К действию",u&&a.action||null)}function pc(e,t={}){let n=xe(e?.mode,e?.modeStr),o=String(e?.v2?.lifecycle||"idle").toLowerCase(),i=String(e?.v2?.lastReasonCode||"RC_NONE"),r=String(e?.v2?.operatorMessage||"").trim(),a=!!t.hasRuntimeItems,s=Object.prototype.hasOwnProperty.call(t,"guidanceTone"),l=Object.prototype.hasOwnProperty.call(t,"diagnosticsTone"),c=!!t.activeAlarm,d=!!t.hasLimit,m=!!t.telemetryDanger,f=String(t.guidanceTone||"muted").toLowerCase(),b=String(t.diagnosticsTone||"muted").toLowerCase(),u=Math.max(0,Number(t.primaryVisibleCount)||0),p=Math.max(0,Number(t.secondaryVisibleCount)||0),g=!!t.diagnosticsVisible;if(s){let k=c||d||r.length>0||f==="warn"||f==="danger";X("operator-guidance",!k)}let v=a||n!==W||o==="starting"||o==="running"||o==="paused",w=n===W&&o==="idle"&&!c&&!d&&!m&&r.length===0&&(f==="muted"||f==="good")&&(b==="muted"||b==="good"),C=document.getElementById("mode-runtime-card"),P=document.querySelector(".operator-priority-grid");C&&(C.hidden=w&&!v,C.hidden?C.removeAttribute("open"):v?C.setAttribute("open","open"):C.removeAttribute("open"),C.classList.toggle("is-quiet",w&&!v)),P&&P.classList.toggle("is-single-card",!C||C.hidden);let E=document.getElementById("operator-process-card"),M=!w||u>0||p>0;E&&(E.hidden=!M,E.classList.toggle("is-quiet",w));let A=document.getElementById("operator-process-secondary");A&&(c||d||m||b==="danger"?A.setAttribute("open","open"):A.removeAttribute("open"));let $=document.querySelector(".operator-stack-kicker");$&&($.hidden=!g);let I=document.getElementById("mobile-diagnostics-trigger");I&&(I.hidden=!wa()||!g&&C?.hidden&&!M);let R=document.querySelector(".operator-panel-stack");if(R&&(R.hidden=!M&&!g),l){let k=c||d||m||b==="warn"||b==="danger"||r.length>0||i!=="RC_NONE";qf(b,t.diagnosticsText||"Скрыто",{show:k,forceOpen:b==="danger",forceClosed:b!=="danger"})}}function Gn(e){let t=String(e||"RC_NONE");return{RC_NONE:"Нет",RC_MODE_START_REQUEST:"Запуск режима",RC_MODE_STOP_REQUEST:"Останов режима",RC_PRECHECK_OK:"Проверки пройдены",RC_PRECHECK_FAIL_SENSOR:"Проблема с датчиками",RC_PRECHECK_FAIL_SAFETY_LATCH:"Активен safety latch",RC_HEATING_COMPLETE:"Разгон завершён",RC_STABILIZATION_TIMER_OK:"Стабилизация по таймеру",RC_STABILITY_WINDOW_REACHED:"Окно стабильности достигнуто",RC_HEADS_VOLUME_REACHED:"Головы по объёму завершены",RC_HEADS_SCORE_REACHED:"Головы завершены по score",RC_POST_HEADS_STABILIZATION_COMPLETE:"Постстабилизация завершена",RC_PURGE_COMPLETE:"Продувка завершена",RC_BODY_TARGET_VOLUME_REACHED:"Тело по объёму завершено",RC_BODY_END_DETECTED:"Обнаружен конец тела",RC_TAILS_TARGET_REACHED:"Хвосты завершены",RC_FINISH_COOLDOWN_COMPLETE:"Финишное охлаждение завершено",RC_DISTILLATION_HEADS_OPTIONAL_SKIPPED:"Головы пропущены",RC_DISTILLATION_END_TEMP_REACHED:"Достигнута стоп-температура",RC_DISTILLATION_TARGET_VOLUME_REACHED:"Целевой объём достигнут",RC_NBK_STEAM_READY:"Пар готов",RC_NBK_STABILIZATION_COMPLETE:"НБК стабилизирована",RC_NBK_FEED_ENABLED:"Подача разрешена",RC_NBK_FINISH_LIKELY:"Вероятен финиш НБК",RC_TEMP_STEP_REACHED:"Целевая температура достигнута",RC_TEMP_STEP_HOLD_COMPLETE:"Выдержка завершена",RC_TEMP_STEP_TIMEOUT:"Таймаут температурного шага",RC_FERM_TARGET_REACHED:"Цель брожения достигнута",RC_SAFETY_LIMIT_POWER:"Ограничение мощности",RC_SAFETY_LIMIT_TAKEOFF:"Ограничение отбора",RC_SAFETY_PHASE_BLOCKED:"Переход фазы заблокирован",RC_SAFETY_RECOVERY_ENTERED:"Вход в recovery",RC_SAFETY_RECOVERY_EXITED:"Выход из recovery",RC_SAFETY_TRIP_PRESSURE:"Авария по давлению",RC_SAFETY_TRIP_SENSOR:"Авария по датчикам",RC_SAFETY_TRIP_OVERHEAT:"Авария по перегреву",RC_SAFETY_TRIP_POWER:"Авария по питанию",RC_SAFETY_TRIP_GENERIC:"Общая авария safety",RC_SAFETY_ACKNOWLEDGED:"Авария подтверждена",RC_SAFETY_RESET_COMPLETED:"Safety reset выполнен",RC_OPERATOR_SERVICE_ACTION:"Сервисное действие оператора",RC_MANUAL_OPERATOR_SWITCH:"Ручное переключение",RC_MANUAL_OPERATOR_STOP:"Ручной останов",RC_PHASE_RECOVERY_APPLIED:"Применено восстановление фазы",RC_PHASE_TRANSITION_INFERRED:"Переход фазы определён автоматически",RC_UNSPECIFIED:"Без уточнения"}[t]||t.replace(/^RC_/,"")}function Kf(e,t=""){let n=String(e||"RC_NONE"),o=Gn(n),i=String(t||"").trim();if(i)return{tone:n.startsWith("RC_SAFETY_")?"danger":"warn",title:o,detail:i,action:"Сверьте это сообщение с alarm, датчиками и текущими ограничениями автоматики."};switch(n){case"RC_NONE":return{tone:"muted",title:"Ожидание причины",detail:"Автоматика ещё не публиковала осмысленную последнюю причину или переход фазы.",action:"Ничего исправлять не нужно. После первого события здесь появится расшифровка."};case"RC_MODE_START_REQUEST":return{tone:"good",title:o,detail:"Режим принят в работу и автоматика начала штатный сценарий запуска.",action:"Следите за lifecycle, стабильностью и тем, что контур выходит в рабочее окно без ограничений."};case"RC_MODE_STOP_REQUEST":case"RC_MANUAL_OPERATOR_STOP":return{tone:"warn",title:o,detail:"Текущий сценарий был остановлен оператором или переведён к завершению вручную.",action:"Проверьте, что нагрев, насос и отбор действительно свернулись в безопасное состояние."};case"RC_PRECHECK_OK":return{tone:"good",title:o,detail:"Предпусковые условия были валидны: датчики, safety и базовая телеметрия выглядели рабочими.",action:"Можно использовать это как ориентир для следующего старта аналогичного режима."};case"RC_PRECHECK_FAIL_SENSOR":case"RC_SAFETY_TRIP_SENSOR":return{tone:"danger",title:o,detail:"Автоматика потеряла доверие к температурным данным или свежести телеметрии.",action:"Проверьте датчики, шину 1-Wire/I2C, обновление статуса и не продолжайте процесс вслепую."};case"RC_PRECHECK_FAIL_SAFETY_LATCH":return{tone:"danger",title:o,detail:"Перед запуском уже был активен safety latch, поэтому старт заблокирован на стороне контроллера.",action:"Сначала разберите причину trip, затем подтвердите или сбросьте аварийное состояние."};case"RC_SAFETY_LIMIT_POWER":return{tone:"warn",title:o,detail:"Safety supervisor уже принудительно ограничивает нагрев из-за риска по процессу.",action:"Проверьте охлаждение, давление, TSA и не наращивайте мощность, пока ограничение не исчезнет."};case"RC_SAFETY_LIMIT_TAKEOFF":return{tone:"warn",title:o,detail:"Автоматика временно запрещает или душит отбор, потому что колонна не выглядит достаточно стабильной.",action:"Дождитесь рабочего окна по stability, pressure и cooling margin, не открывайте отбор вручную."};case"RC_SAFETY_PHASE_BLOCKED":return{tone:"warn",title:o,detail:"Переход к следующей фазе был задержан защитной логикой, потому что условия ещё неубедительны.",action:"Смотрите diagnostics и guidance: сначала нужно снять ограничение, а не форсировать фазу."};case"RC_SAFETY_RECOVERY_ENTERED":case"RC_PHASE_RECOVERY_APPLIED":return{tone:"warn",title:o,detail:"Система вошла в recovery или восстановила фазу после нестабильного участка процесса.",action:"Дайте колонне заново стабилизироваться и не делайте резких изменений нагрева, воды и отбора."};case"RC_SAFETY_RECOVERY_EXITED":return{tone:"good",title:o,detail:"Recovery завершён, автоматика считает, что система вернулась в рабочее состояние.",action:"Проверьте, что показатели действительно ровные, и только потом возвращайтесь к обычной нагрузке."};case"RC_SAFETY_TRIP_PRESSURE":return{tone:"danger",title:o,detail:"Процесс был аварийно ограничен или остановлен из-за опасного давления.",action:"Проверьте засоры, захлёб, клапаны, холодильник и не перезапускайте процесс до нормализации."};case"RC_SAFETY_TRIP_OVERHEAT":return{tone:"danger",title:o,detail:"Автоматика увидела перегрев по критическим температурным каналам.",action:"Проверьте воду, TSA, дефлегматор и фактическую тепловую нагрузку перед продолжением."};case"RC_SAFETY_TRIP_POWER":return{tone:"danger",title:o,detail:"Защита сработала из-за питания, мощности или связанного с ними аномального поведения нагрузки.",action:"Проверьте SSR, сеть, PZEM и реальную подачу мощности на нагрев."};case"RC_SAFETY_TRIP_GENERIC":return{tone:"danger",title:o,detail:"Сработала общая safety-авария без более узкой классификации.",action:"Сверьте журнал, alarm и последние transition-события, прежде чем возвращать процесс в работу."};case"RC_HEADS_VOLUME_REACHED":case"RC_HEADS_SCORE_REACHED":return{tone:"good",title:o,detail:"Этап голов считается завершённым: либо по объёму, либо по индикаторам качества перехода.",action:"Проверьте, что колонна готова к следующей фазе, и контролируйте качество входа в тело."};case"RC_BODY_END_DETECTED":case"RC_BODY_TARGET_VOLUME_REACHED":return{tone:"warn",title:o,detail:"Автоматика считает, что основной отбор тела закончен по цели или признакам завершения.",action:"Сверьте продукт, верха колонны и body score, чтобы подтвердить корректность перехода."};case"RC_TAILS_TARGET_REACHED":case"RC_FINISH_COOLDOWN_COMPLETE":return{tone:"good",title:o,detail:"Сценарий дошёл до хвостовой или финишной части и штатно завершает цикл.",action:"Оцените результат прогона и подготовьте историю/отчёт для следующего запуска."};case"RC_DISTILLATION_END_TEMP_REACHED":case"RC_DISTILLATION_TARGET_VOLUME_REACHED":return{tone:"good",title:o,detail:"Дистилляция дошла до заданного технологического финиша по температуре или объёму.",action:"Сверьте фактический выход и энергозатраты с целями профиля."};case"RC_NBK_STEAM_READY":case"RC_NBK_STABILIZATION_COMPLETE":case"RC_NBK_FEED_ENABLED":return{tone:"good",title:o,detail:"НБК проходит ключевые точки готовности и автоматика разрешает следующий рабочий этап.",action:"Контролируйте пар, подачу браги и давление без резких изменений нагрузки."};case"RC_NBK_FINISH_LIKELY":return{tone:"warn",title:o,detail:"Автоматика видит признаки приближения к финалу НБК и снижает уверенность в обычном режиме работы.",action:"Подготовьтесь к завершению и внимательнее следите за низом колонны, давлением и подачей."};case"RC_TEMP_STEP_REACHED":case"RC_TEMP_STEP_HOLD_COMPLETE":case"RC_TEMP_STEP_TIMEOUT":return{tone:n==="RC_TEMP_STEP_TIMEOUT"?"warn":"good",title:o,detail:n==="RC_TEMP_STEP_TIMEOUT"?"Температурный шаг завершён по таймауту, а не по идеальному выполнению профиля.":"Температурный шаг профиля отработан и автоматика готова двигаться дальше.",action:"Проверьте, насколько фактический нагрев совпал с профилем, особенно если это был таймаут."};case"RC_FERM_TARGET_REACHED":return{tone:"good",title:o,detail:"Контур брожения вышел в заданный температурный диапазон и удерживает цель.",action:"Продолжайте наблюдать за длительными отклонениями и стабильностью температуры среды."};case"RC_OPERATOR_SERVICE_ACTION":case"RC_MANUAL_OPERATOR_SWITCH":return{tone:"warn",title:o,detail:"Состояние процесса менялось из-за сервисного или ручного действия оператора, а не по чистой автоматике.",action:"Учитывайте это при разборе истории: сравнивать такой участок с эталонным автопрогоном нужно осторожно."};case"RC_PHASE_TRANSITION_INFERRED":return{tone:"warn",title:o,detail:"Переход фазы пришлось восстановить аналитически по текущему состоянию процесса.",action:"Проверьте историю переходов: желательно понять, почему явный transition был пропущен."};default:return{tone:"muted",title:o,detail:"Причина зафиксирована, но для неё ещё нет отдельной операторской расшифровки.",action:"Ориентируйтесь на lifecycle, guidance, diagnostics и системный журнал для детального разбора."}}}function fc(e){let t=String(e||"idle").toLowerCase();return{idle:"Ожидание",starting:"Запуск",running:"Работа",paused:"Пауза",stopping:"Останов",completed:"Завершён",faulted:"Авария"}[t]||e}function Sa(e,t){let n=[];return t.antiOscillationActive&&n.push("антидребезг"),(e.powerLimited||t.powerCapped)&&n.push("мощность"),t.takeoffBlocked&&n.push("отбор"),t.phaseAdvanceBlocked&&n.push("фаза"),t.pumpCapped&&n.push("насос"),n.length?n.join(", "):"нет"}function jt(e){return`${Math.max(0,y(e,0)).toFixed(0)} мл`}function Gf(e){switch(e){case j:return"rectification";case J:return"manual";case pe:return"distillation";case Ce:return"mashing";case Pe:return"hold";case de:return"nbk";case Re:return"fermentation";default:return""}}function Yf(e){let t=Gf(e);switch(t){case"rectification":return{tabId:"control",modeKey:t,targetId:"rect-start-feed-volume"};case"manual":return{tabId:"control",modeKey:t,targetId:"manual-feed-volume"};case"distillation":return{tabId:"control",modeKey:t,targetId:"dist-start-end-temp"};case"mashing":return{tabId:"control",modeKey:t,targetId:"mash-steps"};case"hold":return{tabId:"control",modeKey:t,targetId:"hold-steps"};case"nbk":return{tabId:"control",modeKey:t,targetId:"nbk-power-w"};case"fermentation":return{tabId:"control",modeKey:t,targetId:"ferm-target-temp"};default:return{tabId:"control",targetId:"mode-start-button"}}}function Jf(e,t,n){let o=xe(e.mode,e.modeStr),i=String(e?.v2?.lifecycle||"idle").toLowerCase(),r=Yf(o),a=o===j||o===J,s=y(t.coolingMarginC,0),l=y(t.floodRisk,0),c=y(t.stabilityIndex,0),d=y(t.bodyEndScore,0),m=y(t.headsCompletionScore,0),f=!!t.powerLimited||!!n.powerCapped||!!n.takeoffBlocked||!!n.phaseAdvanceBlocked||!!n.pumpCapped;return e?.v2?.available?e?.currentAlarm?.active||e?.v2?.safetyLatched||i==="faulted"?{goal:{tabId:"control",targetId:"mode-start-status"},risk:{tabId:"monitor",targetId:"indicator-last-reason"},action:{tabId:"safety"}}:t.sensorFreshnessOk?t.recoveryActive?{goal:r,risk:{tabId:"monitor",targetId:"indicator-recovery"},action:{tabId:"monitor",targetId:"indicator-stability"}}:a&&l>=.65?{goal:r,risk:{tabId:"monitor",targetId:"indicator-flood-risk"},action:{tabId:"monitor",targetId:"indicator-cooling-margin"}}:a&&s<=0?{goal:r,risk:{tabId:"monitor",targetId:"indicator-cooling-margin"},action:{tabId:"monitor",targetId:"landing-water-out"}}:o===Re&&(!t.fermTempInBand||t.longDeviation)?{goal:r,risk:{tabId:"monitor",targetId:"operator-guidance"},action:{tabId:"control",modeKey:"fermentation",targetId:"ferm-target-temp"}}:(o===Ce||o===Pe)&&(t.overshootRisk||t.heatingTooSlow)?{goal:r,risk:{tabId:"monitor",targetId:"operator-guidance"},action:r}:o===de&&!t.steamReady?{goal:r,risk:{tabId:"monitor",targetId:"operator-guidance"},action:{tabId:"control",modeKey:"nbk",targetId:"nbk-power-w"}}:o===de&&!t.nbkFeedAllowed?{goal:r,risk:{tabId:"monitor",targetId:"operator-guidance"},action:{tabId:"control",modeKey:"nbk",targetId:"nbk-pump-speed"}}:n.takeoffBlocked||a&&!t.takeoffAllowed?{goal:r,risk:{tabId:"monitor",targetId:"indicator-takeoff"},action:{tabId:"monitor",targetId:"indicator-stability"}}:a&&s<5?{goal:r,risk:{tabId:"monitor",targetId:"indicator-cooling-margin"},action:{tabId:"monitor",targetId:"landing-water-out"}}:a&&l>=.35?{goal:r,risk:{tabId:"monitor",targetId:"indicator-flood-risk"},action:{tabId:"monitor",targetId:"indicator-pressure-stable"}}:o===j&&d>=.8?{goal:r,risk:{tabId:"monitor",targetId:"indicator-body-score"},action:{tabId:"control",modeKey:"rectification",targetId:"rect-start-body-percent"}}:o===j&&m>=.8?{goal:r,risk:{tabId:"monitor",targetId:"indicator-heads-score"},action:{tabId:"control",modeKey:"rectification",targetId:"rect-start-body-speed"}}:a&&c<.45?{goal:r,risk:{tabId:"monitor",targetId:"indicator-stability"},action:o===j?{tabId:"control",modeKey:"rectification",targetId:"rect-start-stabilization"}:r}:f?{goal:r,risk:{tabId:"monitor",targetId:"indicator-power-limit"},action:{tabId:"monitor",targetId:"indicator-last-reason"}}:String(e?.v2?.operatorMessage||"").trim()?{goal:r,risk:{tabId:"monitor",targetId:"operator-guidance"},action:{tabId:"monitor",targetId:"operator-guidance"}}:{goal:r,risk:{tabId:"monitor",targetId:a?"operator-guidance":"indicator-process-health"},action:o===W?{tabId:"control",targetId:"mode-start-button"}:{tabId:"monitor",targetId:"operator-guidance"}}:{goal:{tabId:"monitor",targetId:"indicator-sensor-freshness"},risk:{tabId:"monitor",targetId:"indicator-sensor-freshness"},action:{tabId:"equipment"}}:{goal:{tabId:"control",targetId:"mode-start-button"},risk:{tabId:"control",targetId:"mode-start-status"},action:{tabId:"control",targetId:"mode-start-button"}}}function Zf(e,t,n){let o=xe(e.mode,e.modeStr),i=String(e?.v2?.lifecycle||"idle").toLowerCase(),r=String(e?.v2?.operatorMessage||"").trim(),a=String(e?.v2?.lastReasonCode||"RC_NONE"),s=y(e.phase,0),l=y(t.stabilityIndex,0),c=y(t.floodRisk,0),d=y(t.coolingMarginC,0),m=y(t.bodyEndScore,0),f=y(t.headsCompletionScore,0),b=o===j||o===J,u=!!t.powerLimited||!!n.powerCapped||!!n.takeoffBlocked||!!n.phaseAdvanceBlocked||!!n.pumpCapped;if(!e?.v2?.available)return{tone:"muted",title:"Ждём телеметрию автоматики",detail:"После первого полного статуса indicators v2 здесь появится короткая диспетчерская сводка по текущему сценарию.",goal:"Подготовить режим и проверить стартовые параметры",risk:"Нет свежего статуса safety и датчиков",action:"Дождаться первого полного пакета или перейти во вкладку режимов"};if(e?.currentAlarm?.active||e?.v2?.safetyLatched||i==="faulted")return{tone:"danger",title:"Процесс удержан safety",detail:r||`Автоматика остановила сценарий. Последняя причина: ${Gn(a)}.`,goal:"Удержать установку в безопасном состоянии",risk:Gn(a),action:"Проверить alarm, воду, датчики и снять блокировку только после устранения причины"};if(!t.sensorFreshnessOk)return{tone:"danger",title:"Нет доверия к телеметрии",detail:"Данные датчиков устарели, поэтому автоматика и веб-панель не могут уверенно вести процесс.",goal:"Вернуть свежие показания всех ключевых датчиков",risk:"Старые данные по температуре, давлению или safety",action:"Проверить соединение датчиков и дождаться обновления телеметрии"};let p="Пульт ожидает следующий запуск",g="Система в idle, можно подготовить следующий сценарий и проверить стартовые условия.",v="Подготовить следующий запуск";if(o===j){let w=Qe(),C=Lo(e.rectification,w.value),P=y(e.rectification.headsTargetMl,0)>0?y(e.rectification.headsTargetMl,0):C.heads,E=y(e.rectification.bodyTargetMl,0)>0?y(e.rectification.bodyTargetMl,0):C.body,M=y(e.rectification.tailsTargetMl,0)>0?y(e.rectification.tailsTargetMl,0):C.tails,A=Math.max(0,P-y(e.volumes.heads,0)),$=Math.max(0,E-y(e.volumes.body,0)),I=Math.max(0,M-y(e.volumes.tails,0));p=i==="starting"?"Колонна выходит на рабочее окно":"Ректификация под контролем",g=`Фаза: ${e.phaseStr||s||"-"}. Автоматика ведёт профиль отбора и следит за стабильностью колонны.`,s<_i?v="Вывести колонну в рабочее окно перед отбором голов":s===_i?v=`Добрать головы, осталось около ${jt(A)}`:s===ia?v="Дождаться постстабилизации перед переходом на тело":s===ra?v=`Вести тело, осталось около ${jt($)}`:s>=aa&&(v=`Добрать хвосты, осталось около ${jt(I)}`)}else if(o===pe){let w=Math.max(0,y(e.distillation.targetVolumeMl,0)),C=Math.max(0,y(e.pump.totalMl,0)),P=Math.max(0,w-C),E=Math.max(0,y(e.distillation.speedMlH,0));p="Перегон под контролем",g=w>0?`Собрано ${jt(C)} из ${jt(w)} при скорости около ${E.toFixed(0)} мл/ч.`:`Фаза: ${e.phaseStr||s||"-"}. Процесс идёт без жёстко заданного целевого объёма.`,v=w>0?`Добрать перегон, осталось около ${jt(P)}`:"Вести перегон до стоп-температуры или технологического сигнала завершения"}else if(o===Ce){let w=Math.max(0,Math.round(y(e.mashing.stepCount,0))),C=Math.max(0,Math.round(y(e.mashing.currentStep,0))),P=w>0?Math.min(C+1,w):0,E=String(e.mashing.stepName||"").trim();p="Заторный профиль выполняется",g=w>0?`Активен шаг ${P} из ${w}, до конца текущего шага около ${Cn(e.mashing.remainingSec)}.`:"Профиль затирки ещё не загружен или ждёт запуска.",v=w>0?`Шаг ${P} из ${w}${E?`: ${E}`:""}`:"Подготовить и запустить профиль затирки"}else if(o===Pe){let w=y(e.hold.targetTemp,0),C=Math.max(0,Math.round(y(e.hold.currentStep,0)))+1;p="Пауза выдержки выполняется",g=`Осталось около ${Cn(e.hold.remainingSec)}. ${w>0?`Цель по температуре ${w.toFixed(1)}°C.`:"Шаг идёт без активного нагрева."}`,v=w>0?`Удерживать около ${w.toFixed(1)}°C до завершения шага ${C}`:`Довести до конца шаг выдержки ${C}`}else if(o===J){let w=Math.max(0,y(e.volumes.heads,0)),C=Math.max(0,y(e.volumes.body,0)),P=Math.max(0,y(e.volumes.tails,0));p="Ручной режим под контролем",g=`Собрано: головы ${jt(w)}, тело ${jt(C)}, хвосты ${jt(P)}.`,v="Вести ручной отбор и корректировать мощность, воду и насос по месту"}else if(o===de)p="НБК под контролем",g=`Фаза: ${e.nbk?.phaseStr||e.phaseStr||"idle"}. Подача ${y(e.pump.speedMlH,0).toFixed(0)} мл/ч, мощность ${y(e.nbk?.powerW,0).toFixed(0)} Вт.`,t.steamReady?t.nbkFeedAllowed?v="Вести стабильную подачу браги без провала по пару и давлению":v="Дождаться разрешения подачи браги":v="Разогреть НБК до готовности пара";else if(o===Re){let w=y(e.fermentation?.targetTempC,0),C=y(e.fermentation?.hysteresisC,0);p="Брожение под контролем",g=w>0?`Контур удерживает около ${w.toFixed(1)}°C с гистерезисом ${C.toFixed(1)}°C.`:"Контур брожения активен, но целевая температура не задана.",v=w>0?`Удерживать температуру брожения около ${w.toFixed(1)}°C`:"Задать и удерживать рабочую температуру брожения"}return i==="paused"?(p="Процесс на паузе",g=r||`${p}. Перед продолжением убедитесь, что условия процесса всё ещё валидны.`):i==="stopping"?(p="Процесс завершает цикл",g=r||"Автоматика сворачивает режим и ведёт установку к безопасной остановке."):i==="completed"&&(p="Цикл завершён",g=r||"Основной сценарий отработан, можно провести оценку результата и подготовить следующий запуск."),t.recoveryActive?{tone:"warn",title:p,detail:g,goal:v,risk:"Система в recovery и ждёт повторной стабилизации",action:"Не форсировать процесс, дождаться ровного окна по температуре, давлению и охлаждению"}:b&&c>=.65?{tone:"danger",title:p,detail:g,goal:v,risk:"Высокий риск захлёба колонны",action:"Не повышать мощность, снизить нагрузку и проверить охлаждение с давлением"}:b&&d<=0?{tone:"danger",title:p,detail:g,goal:v,risk:"Охлаждение на пределе, запас исчерпан",action:"Добавить воду или снизить нагрузку, пока не вернётся положительный cooling margin"}:o===Re&&(!t.fermTempInBand||t.longDeviation)?{tone:"warn",title:p,detail:g,goal:v,risk:t.longDeviation?"Температура брожения долго вне диапазона":"Температура брожения ещё не вошла в диапазон",action:"Проверить контур нагрева или охлаждения и не оставлять процесс без контроля"}:(o===Ce||o===Pe)&&t.overshootRisk?{tone:"warn",title:p,detail:g,goal:v,risk:"Есть риск перегрева на текущем шаге",action:"Следить за подходом к цели и не поднимать нагрев агрессивнее профиля"}:(o===Ce||o===Pe)&&t.heatingTooSlow?{tone:"warn",title:p,detail:g,goal:v,risk:"Нагрев отстаёт от профиля",action:"Проверить реальную мощность, теплопотери и корректность задания шага"}:o===de&&!t.steamReady?{tone:"warn",title:p,detail:g,goal:v,risk:"Пар ещё не готов для устойчивой подачи",action:"Дождаться выхода НБК в рабочее окно перед подачей браги"}:o===de&&!t.nbkFeedAllowed?{tone:"warn",title:p,detail:g,goal:v,risk:"Подача браги пока заблокирована автоматикой",action:"Не открывать подачу вручную, дождаться разрешения по пару и устойчивости"}:n.takeoffBlocked||b&&!t.takeoffAllowed?{tone:"warn",title:p,detail:g,goal:v,risk:"Отбор пока не разрешён автоматикой",action:"Дождаться устойчивого окна по stability, cooling margin и состоянию датчиков"}:b&&d<5?{tone:"warn",title:p,detail:g,goal:v,risk:`Запас охлаждения низкий: ${d.toFixed(1)}°C`,action:"Не форсировать мощность и следить, чтобы охлаждение не просело ещё сильнее"}:b&&c>=.35?{tone:"warn",title:p,detail:g,goal:v,risk:"Нагрузка колонны растёт, риск захлёба повышен",action:"Следить за верхом колонны, давлением и скоростью отбора без резких движений"}:o===j&&m>=.8?{tone:"warn",title:p,detail:g,goal:v,risk:"Тело близко к завершению по body score",action:"Подготовить переход по профилю и внимательнее контролировать качество продукта"}:o===j&&f>=.8?{tone:"good",title:p,detail:g,goal:v,risk:"Критичных рисков не видно, головы почти завершены",action:"Подготовиться к переходу на тело по правилам текущего профиля"}:b&&l<.45?{tone:"warn",title:p,detail:g,goal:v,risk:"Колонна ещё не вошла в устойчивое окно",action:"Дать системе стабилизироваться и не ускорять отбор раньше времени"}:u?{tone:"warn",title:p,detail:g,goal:v,risk:`Активны ограничения: ${Sa(t,n)}`,action:"Понять причину ограничений до того, как усиливать нагрев, насос или отбор"}:r?{tone:o===W?"muted":"good",title:p,detail:g,goal:v,risk:"Критичных рисков по indicators v2 сейчас не видно",action:r}:{tone:o===W?"good":"muted",title:p,detail:g,goal:v,risk:b?"Критичных ограничений по колонне сейчас не видно":"Критичных ограничений по процессу сейчас не видно",action:o===W?"Перейти в режимы, проверить параметры и запускать сценарий":"Продолжать процесс и сверять ключевые показатели по этой панели"}}function gc(e=S){let t=e?.v2?.indicators||{},n=e?.v2?.activeLimits||{},o=String(e?.v2?.lifecycle||"idle").toLowerCase(),i=!!e?.currentAlarm?.active,r=!!e?.v2?.safetyLatched,a=!!e?.v2?.available,s=!!t.sensorFreshnessOk,l=String(e?.v2?.operatorMessage||"").trim(),c=!!t.powerLimited||!!n.powerCapped||!!n.takeoffBlocked||!!n.phaseAdvanceBlocked||!!n.pumpCapped,d={v2:{text:a?"OK":"Нет данных",tone:a?"good":"warn"},sensors:{text:a?s?"OK":"Проверьте":"Ждём",tone:a?s?"good":"danger":"muted"},safety:{text:a?r?"Latch":"Норма":"Ждём",tone:a?r?"danger":"good":"muted"},alarm:{text:i?"Активна":"Нет",tone:i?"danger":"good"}};return a?i||r||o==="faulted"?{tone:"danger",title:"Запуск заблокирован",detail:l||"Есть активная авария или safety latch. Сначала снимите блокировку и проверьте причину последнего trip.",checks:d}:s?o==="starting"||o==="running"||o==="paused"||o==="stopping"?{tone:"warn",title:"Режим уже активен",detail:l||`Сейчас lifecycle: ${fc(o)}. Это уже не стартовый экран, а контроль запущенного процесса.`,checks:d}:c?{tone:"warn",title:"Старт возможен с оговорками",detail:`Автоматика уже видит ограничения: ${Sa(t,n)}. Перед запуском лучше понять, почему они появились заранее.`,checks:d}:{tone:"good",title:"Можно запускать",detail:"Контур v2 на связи, датчики свежие, аварий и latch сейчас нет. Можно переходить к старту режима с веб-интерфейса.",checks:d}:{tone:"danger",title:"Нужна проверка датчиков",detail:"Телеметрия устарела. Без свежих датчиков автоматика не должна запускать процесс в рабочем режиме.",checks:d}:{tone:"muted",title:"Ждём статус автоматики",detail:"Контур indicators v2 ещё не прислал полный пакет. Перед запуском дождитесь первого осмысленного статуса.",checks:d}}function Bt(e=S){let t=gc(e),n=String(e?.v2?.lifecycle||"idle").toLowerCase(),o=!!e?.currentAlarm?.active,i=!!e?.v2?.safetyLatched,r=!!e?.v2?.indicators?.sensorFreshnessOk,s=!(ge===W)||n==="starting"||n==="running"||n==="paused"||n==="stopping",l=s||o||i||n==="faulted"||!!e?.v2?.available&&!r;return s?{tone:"warn",title:"Сначала завершите текущий процесс",detail:"Пока автоматика не вернулась в idle, запуск нового режима с панели недоступен.",disabled:!0,buttonLabel:"Открыть управление",preflight:t}:l?{tone:"danger",title:t.title,detail:t.detail,disabled:!0,buttonLabel:"Проверить условия старта",preflight:t}:t.tone==="warn"?{tone:"warn",title:"Можно запускать с оговорками",detail:t.detail,disabled:!1,buttonLabel:"Выбрать режим и запустить",preflight:t}:t.tone==="good"?{tone:"good",title:"Система готова к запуску",detail:"Выберите режим, проверьте параметры и запускайте процесс с панели управления.",disabled:!1,buttonLabel:"Выбрать режим и запустить",preflight:t}:{tone:"muted",title:"Статус запуска уточняется",detail:t.detail,disabled:!1,buttonLabel:"Открыть режимы",preflight:t}}function Qf(e,t,n){let o=xe(e.mode,e.modeStr),i=String(e?.v2?.lifecycle||"idle"),r=String(e?.v2?.operatorMessage||"").trim(),a=String(e?.v2?.lastReasonCode||"RC_NONE"),s=y(t.stabilityIndex,0),l=y(t.floodRisk,0),c=y(t.coolingMarginC,0),d=y(t.bodyEndScore,0),m=y(t.headsCompletionScore,0),f=o===j||o===J;return e?.v2?.available?e?.currentAlarm?.active||e?.v2?.safetyLatched||i==="faulted"?{tone:"danger",title:"Safety удерживает процесс",detail:r||`Последняя причина: ${Gn(a)}. Проверьте alarm, ограничения и состояние датчиков.`}:t.sensorFreshnessOk?t.recoveryActive?{tone:"warn",title:"Идёт recovery",detail:r||"Система уже ограничивала процесс и сейчас ждёт повторной стабилизации перед нормальной работой."}:f&&l>=.65?{tone:"danger",title:"Высокий риск захлёба",detail:"Не повышайте мощность и не ускоряйте отбор. Проверьте охлаждение, давление и загрузку колонны."}:f&&c<=0?{tone:"danger",title:"Охлаждение на пределе",detail:"Cooling margin исчерпан. Нужна вода или снижение нагрузки, иначе процесс станет нестабильным."}:n.takeoffBlocked||!t.takeoffAllowed?{tone:"warn",title:"Отбор пока заблокирован",detail:r||"Ждём безопасное окно по stability, cooling margin и состоянию датчиков."}:f&&c<5?{tone:"warn",title:"Низкий запас охлаждения",detail:`Сейчас запас ${c.toFixed(1)}°C. Лучше не форсировать процесс, пока охлаждение не выровняется.`}:f&&l>=.35?{tone:"warn",title:"Риск захлёба растёт",detail:"Колонна уже нагружена. Следите за верхом колонны, давлением и скоростью отбора."}:o===j&&d>=.8?{tone:"warn",title:"Вероятен конец тела",detail:"Body End Score высокий. Пора внимательно смотреть на качество продукта и готовить переход дальше по профилю."}:o===j&&m>=.8?{tone:"good",title:"Головы почти завершены",detail:"Heads Completion Score высокий. Можно готовиться к переходу на тело по правилам профиля."}:f&&s<.45?{tone:"warn",title:"Колонна стабилизируется",detail:"Пока нет уверенного стабильного окна. Лучше дождаться ровного поведения температуры верха и давления."}:f&&s>=.75&&t.takeoffAllowed?{tone:"good",title:"Процесс устойчив",detail:"Стабильность высокая, отбор разрешён, активных ограничений safety сейчас нет."}:{tone:"muted",title:"Процесс под наблюдением",detail:r||`Последняя причина: ${Gn(a)}. Критичных ограничений сейчас не видно.`}:{tone:"danger",title:"Данные датчиков устарели",detail:"Автоматика снижает доверие к process indicators. Проверьте соединение датчиков и обновление телеметрии."}:{tone:"muted",title:"Ожидание indicators v2",detail:"Ждём первый полный статус автоматики, чтобы показать осмысленную подсказку."}}function Xf(){let e=S,t=e?.v2?.indicators||{},n=e?.v2?.activeLimits||{},o=xe(e.mode,e.modeStr),i=String(e?.v2?.lifecycle||"idle"),r=String(e?.v2?.lastReasonCode||"RC_NONE"),a=String(e?.v2?.operatorMessage||"").trim(),s=y(t.coolingMarginC,0),l=y(t.stabilityIndex,0),c=y(t.floodRisk,0),d=y(t.processHealth,0),m=y(t.headsCompletionScore,0),f=y(t.bodyEndScore,0),b=!!e?.currentAlarm?.active,u=y(t.telemetryCoverage,-1),p=y(t.decisionTrust,-1),g=y(t.takeoffConfidence,-1),v=y(t.headsEndConfidence,-1),w=y(t.bodyEndConfidence,-1),C=y(t.tailsTransitionConfidence,-1),P=y(t.powerLimitConfidence,0),E=!!t.powerLimited||!!n.powerCapped||!!n.takeoffBlocked||!!n.phaseAdvanceBlocked||!!n.pumpCapped,M=Pf(e,t),A=If(o,t),$=o===W&&i==="idle"&&!b&&!E;oe("indicator-lifecycle",fc(i),i==="running"?"good":i==="faulted"?"danger":"muted"),oe("indicator-last-reason",Gn(r),r==="RC_NONE"?"muted":"warn");let I=Di(t.takeoffAllowed,"Разрешён","Заблокирован");oe("indicator-takeoff",I.text,I.tone);let R="good";s<=0?R="danger":s<5&&(R="warn"),oe("indicator-cooling-status",`${s.toFixed(1)} °C`,R),oe("indicator-stability",_o(l),l>=.75?"good":l>=.45?"warn":"danger"),oe("indicator-flood-risk",_o(c),c<.35?"good":c<.65?"warn":"danger"),oe("indicator-cooling-margin",`${s.toFixed(1)}°C`,R),oe("indicator-process-health",_o(d),d>=.85?"good":d>=.65?"warn":"danger");let k=Di(t.sensorFreshnessOk,"OK","Просрочены");oe("indicator-sensor-freshness",k.text,k.tone),oe("indicator-telemetry-coverage",xn(u),sc(u,.7,.9)),oe("indicator-decision-trust",xn(p),sc(p,.55,.8)),oe("indicator-degraded-mode",t.degradedModeActive?"Активен":"Нет",t.degradedModeActive?"warn":"good"),oe("indicator-adaptive-control",t.adaptiveControlAllowed?"Разрешён":"Ограничен",t.adaptiveControlAllowed?"good":"warn");let te=Di(t.pressureStable,"Стабильно","Дрейф");oe("indicator-pressure-stable",te.text,te.tone),kf(e,t),oe("indicator-heads-score",_o(m),m>=.8?"good":m>=.5?"warn":"muted"),oe("indicator-body-score",_o(f),f>=.8?"danger":f>=.55?"warn":"good");let V=Di(t.recoveryActive,"Активен","Нет");oe("indicator-recovery",V.text,V.tone),oe("indicator-power-limit",Sa(t,n),E?"warn":"good");let ne=o===j||o===J||o===pe||o===de,et=o===j||o===J||o===pe,mt=o===j||o===J||o===pe,At=o===j||o===J||o===pe||o===de;oe("indicator-confidence-takeoff",ne?xn(g):"—",ne?qo(g):"muted"),oe("indicator-confidence-heads-end",et?xn(v):"—",et?qo(v):"muted"),oe("indicator-confidence-body-end",mt?xn(w):"—",mt?qo(w):"muted"),oe("indicator-confidence-tails",At?xn(C):"—",At?qo(C):"muted"),oe("indicator-confidence-power-limit",xn(P),qo(P,!0));let _t=M.signalAvailable,F=A,G=o!==W||i!=="idle"||b||E||a.length>0,ae=o===j||o===J||o===pe||o===de||E&&!t.takeoffAllowed,Se=!$||l<.999||b||E,ye=o===j||o===J||o===de||c>.001,Le=A,ke=!$||d<.999||b||E,ce=M.hardwareAvailable,Ct=!!t.recoveryActive;X("operator-stat-lifecycle-card",!G),X("operator-stat-takeoff-card",!ae),X("operator-stat-pressure-margin-card",!_t),X("operator-stat-cooling-card",!F),X("operator-secondary-stability-card",!Se),X("operator-secondary-flood-risk-card",!ye),X("operator-secondary-cooling-margin-card",!Le),X("operator-secondary-process-health-card",!ke),X("operator-secondary-pressure-cube-card",!ce),X("operator-secondary-recovery-card",!Ct);let Ge=[Se,ye,Le,ke,ce,Ct].filter(Boolean).length,Ye=[G,ae,F,_t].filter(Boolean).length,pt=Ff(e)||Qf(e,t,n);Rf(pt.title,pt.detail,pt.tone);let tt=Lf(e)||Kf(r,a);_f(tt.title,tt.detail,tt.action,tt.tone);let He="good",_e="Фон";b||i==="faulted"||k.tone==="danger"?(He="danger",_e="Требует внимания"):(E||d<.85||p<.8)&&(He="warn",_e="Есть ограничения");let Je=r!=="RC_NONE"||a.length>0,De=u>=0&&(!$||u<.999||b||E),qt=p>=0&&(!$||p<.999||b||E),vn=!!t.degradedModeActive,wn=o!==W&&(!!t.adaptiveControlAllowed||!!t.columnSensorsAvailable||!!t.coolingSensorAvailable||!!t.degradedModeActive),Jt=o!==W||!t.sensorFreshnessOk,Dn=M.hardwareAvailable,Co=M.signalAvailable,xo=M.signalAvailable,Fi=M.signalAvailable,Mo=et&&(!$||m>.001),To=mt&&(!$||f>.001),$o=E,Pl=ne&&Hi(g),Il=et&&Hi(v),Al=mt&&Hi(w),Nl=At&&Hi(C),Bl=E||P>.001,kl=Je||b||E,df=Je||De||qt||vn||wn||Jt||Dn||Co||xo||Fi||Mo||To||$o||Pl||Il||Al||Nl||Bl||kl;X("operator-diag-last-reason-row",!Je),X("operator-diag-telemetry-row",!De),X("operator-diag-decision-row",!qt),X("operator-diag-degraded-row",!vn),X("operator-diag-adaptive-row",!wn),X("operator-diag-freshness-row",!Jt),X("operator-diag-pressure-row",!Dn),X("operator-diag-pressure-rate-row",!Co),X("operator-diag-pressure-margin-row",!xo),X("operator-diag-pressure-stable-row",!Fi),X("operator-diag-heads-score-row",!Mo),X("operator-diag-body-score-row",!To),X("operator-diag-power-limit-row",!$o),X("operator-diag-confidence-takeoff-row",!Pl),X("operator-diag-confidence-heads-row",!Il),X("operator-diag-confidence-body-row",!Al),X("operator-diag-confidence-tails-row",!Nl),X("operator-diag-confidence-power-limit-row",!Bl),X("operator-reason-insight",!kl);let Jr=document.getElementById("operator-process-secondary");Jr&&(Jr.hidden=Ge===0,Ge===0&&Jr.removeAttribute("open")),pc(e,{guidanceTone:pt.tone,diagnosticsTone:He,diagnosticsText:_e,hasLimit:E,activeAlarm:b,telemetryDanger:k.tone==="danger",primaryVisibleCount:Ye,secondaryVisibleCount:Ge,diagnosticsVisible:df})}function eg(e){let t=document.getElementById("mode-runtime-bars");if(t){if(!e.length){t.innerHTML="";return}t.innerHTML=e.map(n=>{let o=nt(n.percent),i=tn(n.label||"Этап"),r=n.stateClass?` ${tn(n.stateClass)}`:"",a=tn(n.primary||""),s=tn(n.metaLeft||""),l=tn(n.metaRight||"");return`
+            <div class="operator-runtime-track${r}">
+                <div class="operator-runtime-head">
+                    <span>${i}</span>
+                    <strong>${a}</strong>
+                </div>
+                <div class="operator-runtime-bar">
+                    <div class="operator-runtime-fill" style="width:${o.toFixed(1)}%"></div>
+                </div>
+                <div class="operator-runtime-meta">
+                    <span>${s}</span>
+                    <span>${l}</span>
                 </div>
             </div>
-            <div class="history-date">${startDate.toLocaleString('ru-RU')}</div>
+        `}).join("")}}function tg(){let e=S,t=Math.max(0,y(e.power.power,0)),n=Math.max(0,y(e.power.setW,t)),o=document.getElementById("rect-power-display"),i=document.getElementById("manual-power-display"),r=document.getElementById("manual-speed-display"),a=document.getElementById("water-autostart-display"),s=document.getElementById("manual-heads-display"),l=document.getElementById("manual-body-display"),c=document.getElementById("manual-tails-display");o&&(o.textContent=`${n.toFixed(0)} Вт`),i&&(i.textContent=`${n.toFixed(0)} Вт`),r&&(r.textContent=`${y(e.pump.speedMlH,0).toFixed(0)} мл/ч`),a&&(a.textContent=`${y(e.equipment.waterAutoStartCubeTempC,45).toFixed(1)} °C`),s&&(s.textContent=`${y(e.volumes.heads,0).toFixed(0)} мл`),l&&(l.textContent=`${y(e.volumes.body,0).toFixed(0)} мл`),c&&(c.textContent=`${y(e.volumes.tails,0).toFixed(0)} мл`)}function Yn(){let e=document.getElementById("mode-runtime-title"),t=document.getElementById("mode-runtime-caption"),n=document.getElementById("mode-runtime-manual");if(!e||!t)return;let o=S,i=xe(o.mode,o.modeStr),r=y(o.phase,0),a=[];if(i===j){e.textContent="Прогресс авто-ректификации";let u=Qe(),p=u.source==="sensor"?"датчик":"план";t.textContent=`Фаза: ${o.phaseStr||r||"-"} • крепость расчета ${u.value.toFixed(1)}% (${p})`;let g=Math.round(y(o.rectification.takeoffBackendType,0)),v=g===1?"3 РєР»Р°РїР°РЅР°":g===2?"1 РєР»Р°РїР°РЅ + РїРµСЂРµРєР»СЋС‡РµРЅРёРµ":"РЅР°СЃРѕСЃ",w=!!(o.rectification.takeoffRoutingReady??!0),C=Math.round(y(o.rectification.takeoffActiveFraction,0)),P=Math.round(y(o.rectification.takeoffRequestedFraction,0)),E=Math.max(0,y(o.rectification.takeoffActualEquivalentRateMlH,0)),M=C===1?"РіРѕР»РѕРІС‹":C===2?"С‚РµР»Рѕ":C===3?"С…РІРѕСЃС‚С‹":P===1?"РіРѕР»РѕРІС‹":P===2?"С‚РµР»Рѕ":P===3?"С…РІРѕСЃС‚С‹":"РѕС‚Р±РѕСЂ Р·Р°РєСЂС‹С‚";t.textContent=`Р¤Р°Р·Р°: ${o.phaseStr||r||"-"} вЂў РєСЂРµРїРѕСЃС‚СЊ СЂР°СЃС‡РµС‚Р° ${u.value.toFixed(1)}% (${p}) вЂў ${v} вЂў ${w?"РјР°СЂС€СЂСѓС‚ РіРѕС‚РѕРІ":"РјР°СЂС€СЂСѓС‚ РїРµСЂРµРєР»СЋС‡Р°РµС‚СЃСЏ"} вЂў ${M}${E>0?` вЂў ${E.toFixed(0)} РјР»/С‡`:""}`;let A=Lo(o.rectification,u.value),$=Math.max(.1,y(o.equipment.heaterPowerW,me)/1e3),I=Math.round(y(o.rectification.refluxMode,0)),R=y(o.rectification.headsSpeedMlHKw,0)*$,k=y(o.rectification.bodySpeedMlHKw,0)*$,te=(()=>{if(I===1){let F=Math.max(0,y(o.rectification.srRatio,0));return F<=0?0:1/(F+1)}if(I===2){let F=Math.max(1,y(o.rectification.autonomousCycleSec,900)),G=Math.max(0,Math.min(F-1,y(o.rectification.autonomousPauseSec,90)));return Math.max(0,(F-G)/F)}return 1})(),V=I===0?R:R*te,ne=I===0?k:k*te,et=Math.max(0,ne/2),mt=y(o.rectification.headsTargetMl,0)>0?y(o.rectification.headsTargetMl,0):A.heads,At=y(o.rectification.bodyTargetMl,0)>0?y(o.rectification.bodyTargetMl,0):A.body,_t=y(o.rectification.tailsTargetMl,0)>0?y(o.rectification.tailsTargetMl,0):A.tails;[{key:"heads",label:"Головы",target:mt,speed:V,value:y(o.volumes.heads,0),pending:r<_i},{key:"body",label:"Тело",target:At,speed:ne,value:y(o.volumes.body,0),pending:r<ra||r===ia},{key:"tails",label:"Хвосты",target:_t,speed:et,value:y(o.volumes.tails,0),pending:r<aa}].forEach(F=>{let G=F.key==="heads"?1:F.key==="body"?2:3,ae=Math.max(0,F.target),Se=Math.max(0,F.value),ye=G===C&&E>0?E:F.speed,Le=ae>0?nt(Se/ae*100):0,ke=Math.max(0,ae-Se),ce=ye>0&&ke>0?ke/ye*3600:0;a.push({label:F.label,percent:Le,primary:ae>0?`${(100-Le).toFixed(0)}% осталось`:"Цель не задана",metaLeft:ae>0?`${Se.toFixed(0)} / ${ae.toFixed(0)} мл`:`${Se.toFixed(0)} мл`,metaRight:ce>0?`~${Cn(ce)}`:F.pending?"ожидание":"—",stateClass:F.pending?"is-pending":""})})}else if(i===pe){e.textContent="Прогресс дистилляции";let u=Math.max(0,y(o.distillation.targetVolumeMl,0)),p=Math.max(0,y(o.distillation.speedMlH,0)),g=Math.max(0,y(o.pump.totalMl,0)),v=u>0?nt(g/u*100):nt(o.progress.phasePercent),w=Math.max(0,u-g),C=u>0&&p>0?w/p*3600:y(o.progress.phaseRemainingSec,0);t.textContent=u>0?`Цель ${u.toFixed(0)} мл, скорость ${p.toFixed(0)} мл/ч`:`Фаза: ${o.phaseStr||r||"-"}`,a.push({label:"Перегон",percent:v,primary:`${(100-v).toFixed(0)}% осталось`,metaLeft:u>0?`${g.toFixed(0)} / ${u.toFixed(0)} мл`:`${g.toFixed(0)} мл`,metaRight:C>0?`~${Cn(C)}`:"—",stateClass:u>0?"":"is-waiting"})}else if(i===Ce){e.textContent="Прогресс затирки";let u=Math.max(0,Math.round(y(o.mashing.stepCount,0))),p=Math.max(0,Math.round(y(o.mashing.currentStep,0))),g=Math.max(0,y(o.mashing.elapsedSec,0)),v=Math.max(0,y(o.mashing.stepDurationSec,0)),w=v>0?nt(g/v*100):0;t.textContent=u>0?`Шаг ${Math.min(p+1,u)} из ${u}`:"Ожидание профиля затирки";for(let C=0;C<u;C+=1){let P=0,E="ожидание",M="—",A="is-pending";C<p?(P=100,E="завершено",A=""):C===p&&(P=w,E=`${(100-P).toFixed(0)}% осталось`,M=`~${Cn(o.mashing.remainingSec)}`,A=""),a.push({label:C===p&&o.mashing.stepName?o.mashing.stepName:`Шаг ${C+1}`,percent:P,primary:E,metaLeft:C===p?`${g.toFixed(0)} / ${v.toFixed(0)} с`:"",metaRight:M,stateClass:A})}}else if(i===Pe){e.textContent="Пастеризация";let u=Math.max(0,y(o.hold.stepDurationSec,0)),p=Math.max(0,y(o.hold.elapsedSec,0)),g=u>0?nt(p/u*100):nt(o.progress.phasePercent),v=u>p?u-p:y(o.progress.phaseRemainingSec,0),w=y(o.hold.targetTemp,0);t.textContent=w>0?`Цель ${w.toFixed(1)}°C`:"Шаг-пауза без нагрева",a.push({label:"Обратный отсчет",percent:g,primary:`${Cn(v)} осталось`,metaLeft:u>0?`${p.toFixed(0)} / ${u.toFixed(0)} с`:"",metaRight:`шаг ${Math.round(y(o.hold.currentStep,0))+1}`,stateClass:""})}else if(i===J){e.textContent="Ручная ректификация",t.textContent="Параметры ниже редактируются нажатием на плитку";let u=Math.round(y(o.rectification.takeoffBackendType,0)),p=u===1?"3 клапана":u===2?"1 клапан + переключение":"насос",g=!!(o.rectification.takeoffRoutingReady??!0),v=Math.round(y(o.rectification.takeoffActiveFraction,0)),w=v===1?"головы":v===2?"тело":v===3?"хвосты":"отбор закрыт";t.textContent=`Отбор: ${p} • ${g?"маршрут готов":"маршрут переключается"} • ${w}`;let C=Math.max(0,y(o.volumes.heads,0)),P=Math.max(0,y(o.volumes.body,0)),E=Math.max(0,y(o.volumes.tails,0)),M=Math.max(1,C+P+E);[{label:"Головы",value:C},{label:"Тело",value:P},{label:"Хвосты",value:E}].forEach(A=>{let $=nt(A.value/M*100);a.push({label:A.label,percent:$,primary:`${A.value.toFixed(0)} мл`,metaLeft:`доля ${$.toFixed(0)}%`,metaRight:"",stateClass:""})})}else e.textContent="Прогресс режима",t.textContent="После запуска здесь появятся фаза, остаток и рабочие шаги процесса.";let s=o?.v2?.indicators||{},l=o?.v2?.activeLimits||{},c=Zf(o,s,l),d=Jf(o,s,l),m=i===W&&String(o?.v2?.lifecycle||"idle").toLowerCase()==="idle"&&c.tone!=="warn"&&c.tone!=="danger",f=gc(o);Uf(c.title,c.detail,c.tone,c.goal,c.risk,c.action,d,{quiet:m}),Wi(f.title,f.detail,f.tone,f.checks),eg(a),tg(),Xf(),pc(o,{hasRuntimeItems:a.length>0}),n&&(n.style.display=i===J?"grid":"none");let b=document.getElementById("mode-runtime-rect");b&&(b.style.display=i===j?"grid":"none",i===j?Bf(b,o.rectification):b.innerHTML="")}function bc(){Vf(),Of(),Df(),Kn(),document.querySelectorAll("[data-edit-param]").forEach(n=>{let o=()=>{let i=n.getAttribute("data-edit-param");i&&openRuntimeEditModal(i,n)};n.addEventListener("click",o),n.tagName!=="BUTTON"&&n.addEventListener("keydown",i=>{i.key!=="Enter"&&i.key!==" "||(i.preventDefault(),o())})});let t=document.getElementById("runtime-edit-modal");t&&t.addEventListener("click",n=>{n.target===t&&closeRuntimeEditModal()})}var hc={[W]:"schemes/column-tesla.svg",[j]:"schemes/column-tesla.svg",[J]:"schemes/column-tesla.svg",[pe]:"schemes/distillation-animated.svg",[Ce]:"schemes/mash-animated.svg",[Pe]:"schemes/hold-animated.svg",[de]:"schemes/nbk-automation.svg",[Re]:"schemes/hold-animated.svg"},ng="control.manualRectSettings",Ho=553,Ma=553,Ta=743,yc=38,vc=488,Ea=553,og="2.4.53",ig=420,Oo=210,rg=300,ag=16,sg=[{tempC:78.2,abvPercent:96},{tempC:79,abvPercent:92},{tempC:80,abvPercent:88},{tempC:81,abvPercent:84},{tempC:82,abvPercent:78},{tempC:83,abvPercent:72},{tempC:84,abvPercent:66},{tempC:85,abvPercent:60},{tempC:86,abvPercent:54},{tempC:87,abvPercent:47},{tempC:88,abvPercent:40},{tempC:89,abvPercent:34},{tempC:90,abvPercent:28},{tempC:91,abvPercent:23},{tempC:92,abvPercent:18},{tempC:93,abvPercent:14},{tempC:94,abvPercent:10},{tempC:95,abvPercent:7},{tempC:96,abvPercent:4.5},{tempC:97,abvPercent:2.5},{tempC:98,abvPercent:1.2},{tempC:99,abvPercent:.5},{tempC:100,abvPercent:0}];function lg(e){let t=xe(e?.mode??S.mode,e?.modeStr??S.modeStr),n=hc[t]||hc[j],o=n.includes("?")?"&":"?";return`${n}${o}v=${og}`}function cg(e,t){let n=lg(t),o=e.dataset.schemePath||e.getAttribute("data")||"";return e.dataset.schemePath||(e.dataset.schemePath=o),o===n?!1:(e.dataset.schemePath=n,e.data=n,!0)}function Zn(e,t){let n=e&&typeof e=="object"?e[t]:void 0,o=Number(n);return Number.isFinite(o)?o:void 0}function Mt(e,t,n,o){let i=Zn(e?.[t],n);if(i!==void 0)return i;let r=Number(e?.[o]);return Number.isFinite(r)?r:void 0}function dg(e){let t=Zn(e?.power,"power");if(t!==void 0)return t;let n=Number(e?.power);return Number.isFinite(n)?n:void 0}function wc(){return Math.max(1,Number(S?.equipment?.heaterPowerW)||Number(me)||3e3)}function ug(e){let t=Zn(e?.power,"setW");if(t!==void 0)return Math.round(t);let n=Zn(e?.power,"setPercent");if(n!==void 0)return Math.round(n/100*wc());let o=Zn(e?.distillation,"powerW");if(o!==void 0)return Math.round(o);let i=Zn(e?.distillation,"powerPercent");if(i!==void 0)return Math.round(i/100*wc());let r=Number(S?.power?.setW);if(Number.isFinite(r))return Math.round(r);let a=Number(S?.distillation?.powerW);return Number.isFinite(a)?Math.round(a):void 0}function ot(...e){for(let t of e){let n=Number(t);if(Number.isFinite(n)&&n>0)return n}}function $a(){try{let e=localStorage.getItem(ng);if(!e)return null;let t=JSON.parse(e);return t&&typeof t=="object"?t:null}catch{return null}}function mg(){let e=document.getElementById("manual-tails-pwm-enabled");return e?!!e.checked:!!$a()?.tails?.pwmEnabled}function pg(){let e=document.getElementById("manual-tails-enabled");return e?!!e.checked:!!$a()?.tails?.enabled}function Cc(){let e=$a(),t=Number(document.getElementById("manual-feed-volume")?.value),n=Number(document.getElementById("manual-feed-abv")?.value),o=ot(t,e?.feed?.volumeL,S?.rectification?.feedVolumeL,20),i=ot(n,e?.feed?.abvPercent,S?.rectification?.feedAbvPercent,40);return{volumeL:Number(o)||20,abvPercent:Math.max(0,Math.min(100,Number(i)||40)),settings:e||{}}}function fg(e,t){let n=Number(t);if(Number.isFinite(n)&&e.length!==0){if(n<=e[0].tempC)return e[0].abvPercent;for(let o=1;o<e.length;o++){let i=e[o-1],r=e[o];if(n<=r.tempC){let a=r.tempC-i.tempC;if(a<=0)return r.abvPercent;let s=(n-i.tempC)/a;return i.abvPercent+(r.abvPercent-i.abvPercent)*s}}return e[e.length-1].abvPercent}}function gg(e,t){let n=fg(sg,e);return Number.isFinite(n)?Math.max(0,Math.min(100,n)):Math.max(0,Math.min(100,Number(t)||0))}function bg(e,t,n,o){let i=e?.rectification||{},r=n*((Number(i.headsPercent)||0)/100),a=n*((Number(i.bodyPercent)||0)/100),s=n*((Number(i.tailsPercent)||0)/100),l=ot(i.headsTargetMl,t?.heads?.volume,r,300)||300,c=o?ot(i.tailsTargetMl,s,800)||800:1,d=Math.max(0,n-l-(o?c:0)),m=ot(i.bodyTargetMl,d,a,3e3)||3e3;return{headsTargetMl:l,bodyTargetMl:m,tailsTargetMl:c}}function kt(e,t){e&&(e.style.display=t?"":"none")}function Ca(e,t){if(!e)return;let n=Number(e.getAttribute("data-top")),o=Number(e.getAttribute("data-bottom"));if(!Number.isFinite(n)||!Number.isFinite(o)||o<=n)return;let i=Math.max(0,Math.min(1,t||0)),a=(o-n)*i;e.setAttribute("y",`${o-a}`),e.setAttribute("height",`${a}`)}function hg(e){if(e.getElementById("pump-spin-style"))return;let t=e.createElementNS("http://www.w3.org/2000/svg","style");t.setAttribute("id","pump-spin-style"),t.textContent="@keyframes pump-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }",e.documentElement.appendChild(t)}function yg(e,t){let n=e.getElementById("pump-impeller");if(!n)return;let o=Number(t);if(!(Number.isFinite(o)&&o>0)){n._spinAnimation&&(n._spinAnimation.cancel(),n._spinAnimation=null),n.style.animation="none",n.dataset.spinDurationMs="";return}let r=Math.max(300,Math.min(2400,18e4/o)),a=Number(n.dataset.spinDurationMs||0);!n._spinAnimation||Math.abs(a-r)>80?(n._spinAnimation&&(n._spinAnimation.cancel(),n._spinAnimation=null),n.style.transformBox="fill-box",n.style.transformOrigin="center",typeof n.animate=="function"?n._spinAnimation=n.animate([{transform:"rotate(0deg)"},{transform:"rotate(360deg)"}],{duration:r,iterations:1/0,easing:"linear"}):(hg(e),n.style.animation=`pump-spin ${r.toFixed(0)}ms linear infinite`),n.dataset.spinDurationMs=r.toFixed(0)):n._spinAnimation?.playState==="paused"&&n._spinAnimation.play()}function vg(e,t,n){let o=Number(t)||0,i=Number(n);if(!Number.isFinite(i))return 0;let r=Date.now();if(!e._tsaTrend)return e._tsaTrend={prevTsa:i,prevTs:r},0;let a=Number(e._tsaTrend.prevTsa),s=Number(e._tsaTrend.prevTs);if(e._tsaTrend.prevTsa=i,e._tsaTrend.prevTs=r,o<45||!Number.isFinite(a)||!Number.isFinite(s))return 0;let l=r-s;if(l<=0)return 0;let c=l/6e4;return(i-a)/c}function Jn(e,t,n,o){if(!e)return;let i=Math.max(0,Number(n)||0);if(i<=.01){e.setAttribute("height","0"),e.style.opacity="0";return}e.setAttribute("y",Number(t).toFixed(2)),e.setAttribute("height",i.toFixed(2)),e.style.opacity=Number(o).toFixed(3)}function Sc(e,t,n,o,i,r,a,s,l,c){let d=R=>Math.max(0,Math.min(1,R)),m=Number(a),f=Number(s),b=Number(l),u=Number(c);if(!(u>m)||!(f>m)||!(b>f)||!(u>b)){Jn(e,m,0,0),Jn(t,f,0,0),Jn(n,b,0,0);return}let p=u-m,g=f-m,v=b-f,w=u-b,C=p*d(o),P,E,M;if(i){P=Math.min(g,C);let R=Math.max(0,C-P);E=Math.min(v,R),M=Math.max(0,R-E)}else{M=Math.min(w,C);let R=Math.max(0,C-M);E=Math.min(v,R),P=Math.max(0,R-E)}let A=i?m:f-P,$=i?f:b-E,I=i?b:u-M;Jn(e,A,P,r),Jn(t,$,E,r),Jn(n,I,M,r)}function wg(e){let t=Number(e);if(!(!Number.isFinite(t)||t<=0))return t>2e4?t*.00750061683:t>820?t*.750061683:t>=80&&t<=130?t*7.50061683:t}function Sg(e){let t=[Mt(e,"pressure","atm","p_atm"),S?.pressure?.atm,S?.p_atm];for(let n of t){let o=wg(n);if(Number.isFinite(o))return o}}function Eg(e){let t=xe(S?.mode,S?.modeStr),n=Cc(),o=ot(e?._feedAbvPercent,t===J?n.abvPercent:void 0,S?.rectification?.feedAbvPercent,S?.rectification?.feedABV,Qe()?.value,40),i=Math.max(0,Math.min(100,Number(o)||40)),r=Math.max(78.3,Math.min(100,100-.215*i)),a=Number(e?._atmPressureMmHg),s=Number.isFinite(a)?r+(a-760)*.037:r;return Math.max(74,Math.min(104,s))}function Cg(e){e._boilTimer&&(clearTimeout(e._boilTimer),e._boilTimer=null),e._boilAnimation&&(e._boilAnimation.cancel(),e._boilAnimation=null),e._boilActive=!1,e.style.opacity="0",e.style.transform=""}function xg(e){let t=e.getElementById("anim-boil-pops");if(t)return t;t=e.createElementNS("http://www.w3.org/2000/svg","g"),t.setAttribute("id","anim-boil-pops"),t.setAttribute("pointer-events","none");let o=e.getElementById("anim-boil-bubbles");return o?.parentNode?o.parentNode.insertBefore(t,o.nextSibling):e.documentElement&&e.documentElement.appendChild(t),t}function Ec(e,t,n,o=.5){let i=xg(e);if(!i)return;let r="http://www.w3.org/2000/svg",a=Math.max(.2,Math.min(1.4,Number(o)||.5)),s=e.createElementNS(r,"circle");s.setAttribute("cx",t.toFixed(2)),s.setAttribute("cy",n.toFixed(2)),s.setAttribute("r",(1.25+.45*a).toFixed(2)),s.setAttribute("fill","none"),s.setAttribute("stroke","#d9f2ff"),s.setAttribute("stroke-width",(1.35+.75*a).toFixed(2)),s.setAttribute("opacity","0.95"),i.appendChild(s);let l=e.createElementNS(r,"circle");l.setAttribute("cx",t.toFixed(2)),l.setAttribute("cy",n.toFixed(2)),l.setAttribute("r",(1.2+.65*a).toFixed(2)),l.setAttribute("fill","#eefbff"),l.setAttribute("opacity","0.9"),i.appendChild(l);let c=(m,f)=>{typeof m.animate!="function"&&setTimeout(()=>{m.remove()},f)};if(typeof s.animate=="function"){let m=s.animate([{opacity:.95,transform:"scale(0.45)"},{opacity:.42,transform:`scale(${(1.9+a).toFixed(2)})`},{opacity:0,transform:`scale(${(2.8+1.35*a).toFixed(2)})`}],{duration:230+100*a,easing:"cubic-bezier(0.15, 0.6, 0.25, 1)",iterations:1});m.onfinish=()=>s.remove()}else c(s,320);if(typeof l.animate=="function"){let m=l.animate([{opacity:.9,transform:"scale(1)"},{opacity:.35,transform:"scale(1.65)"},{opacity:0,transform:"scale(2.2)"}],{duration:160+75*a,easing:"ease-out",iterations:1});m.onfinish=()=>l.remove()}else c(l,220);let d=4+Math.round(3*a);for(let m=0;m<d;m++){let f=e.createElementNS(r,"circle");f.setAttribute("cx",t.toFixed(2)),f.setAttribute("cy",n.toFixed(2)),f.setAttribute("r",(.65+Math.random()*.55).toFixed(2)),f.setAttribute("fill","#b7e6ff"),f.setAttribute("opacity","0.85"),i.appendChild(f);let b=(-95+m*(190/Math.max(1,d-1))+(Math.random()-.5)*16)*(Math.PI/180),u=(4.8+Math.random()*8.8)*(.65+a),p=Math.cos(b)*u,g=Math.sin(b)*u,v=180+Math.random()*230;if(typeof f.animate=="function"){let w=f.animate([{opacity:.85,transform:"translate(0px, 0px) scale(1)"},{opacity:.65,transform:`translate(${p.toFixed(2)}px, ${(g*.85).toFixed(2)}px) scale(0.9)`},{opacity:0,transform:`translate(${(p*1.2).toFixed(2)}px, ${(g+1.8).toFixed(2)}px) scale(0.55)`}],{duration:v,easing:"cubic-bezier(0.2, 0.65, 0.2, 1)",iterations:1});w.onfinish=()=>f.remove()}else c(f,v+40)}}function Mg(e,t,n=.5){if(t._boilActive)return;t._boilActive=!0,t._boilIntensity=Math.max(0,Math.min(1.2,Number(n)||.5));let o=Number(t.dataset.startX||t.getAttribute("cx")||170),i=Number(t.dataset.startY||t.getAttribute("cy")||716);t.dataset.startX=String(o),t.dataset.startY=String(i);let r=()=>{if(!t._boilActive)return;let a=Math.max(.2,Math.min(1.4,Number(t._boilIntensity)||.5)),s=Math.max(220,760-220*a)+Math.random()*520;t._boilTimer=setTimeout(()=>{if(!t._boilActive)return;let l=Number(e._cubeLiquidTopY||Ho),c=(Math.random()-.5)*4.5,d=Math.random()*4,m=o+c,f=i+d,b=Math.max(Ma+10,Math.min(Ta-8,l+1+Math.random()*4)),u=Math.max(16,f-b),p=(-6+Math.random()*12)*(.5+a*.5),g=Math.max(1300,2100-260*a)+Math.random()*1300,v=m+p,w=b+Math.random()*1.2;typeof t.animate=="function"?(t._boilAnimation=t.animate([{opacity:0,transform:`translate(${c.toFixed(2)}px, ${d.toFixed(2)}px) scale(0.2)`},{opacity:.84,transform:`translate(${(p*.55).toFixed(2)}px, ${(-u*.62).toFixed(2)}px) scale(${(1+.3*a).toFixed(2)})`},{opacity:.08,transform:`translate(${p.toFixed(2)}px, ${(-u).toFixed(2)}px) scale(${(1.35+.55*a).toFixed(2)})`}],{duration:g,easing:"cubic-bezier(0.18, 0.1, 0.28, 1)",iterations:1}),t._boilAnimation.onfinish=()=>{t._boilAnimation=null,Ec(e,v,w,a),r()}):(t.style.opacity="0.75",t.style.transform=`translate(${p.toFixed(2)}px, ${(-u).toFixed(2)}px)`,t._boilTimer=setTimeout(()=>{t._boilActive&&(t.style.opacity="0",t.style.transform="",Ec(e,v,w,a),r())},g))},s)};r()}function Tg(e){let t=e.getElementById("anim-boil-pops");if(t)for(;t.firstChild;)t.removeChild(t.firstChild)}function $g(e,t,n,o,i){let r=e.getElementById("anim-boil-bubbles");if(!r)return;let a=Number(t),s=Number(n)||0,l=Number(i),c=Number.isFinite(a)&&Number.isFinite(l)&&a>=l-5.5,d=Number.isFinite(a)&&a>=72,m=s>120&&(c||d),f=Number.isFinite(a)&&Number.isFinite(l)?Math.max(0,Math.min(1,(a-(l-8))/8)):Math.max(0,Math.min(1,(a-70)/12)),b=Number.isFinite(a)&&Number.isFinite(l)?Math.max(0,a-l):Math.max(0,a-78),u=m?Math.max(.18,Math.min(1.15,s/2800*.42+f*.42+b/4.5*.56)):0;e._cubeLiquidTopY=Number.isFinite(o)?o:Ho,r.style.opacity=m?"1":"0",r.querySelectorAll(".bubble").forEach(g=>{m?(g._boilIntensity=u,Mg(e,g,u)):Cg(g)}),m||Tg(e)}function xc(e){let t=e.getElementById("anim-liquid-level");if(!t)return null;if(String(t.tagName||"").toLowerCase()==="path")return t;let i=e.createElementNS("http://www.w3.org/2000/svg","path");i.setAttribute("id","anim-liquid-level"),i.setAttribute("fill",t.getAttribute("fill")||"url(#grad-cube-liquid)"),i.setAttribute("opacity",t.getAttribute("opacity")||"0.9"),i.setAttribute("pointer-events",t.getAttribute("pointer-events")||"none"),i.setAttribute("d","");let r=t.getAttribute("clip-path");return r&&i.setAttribute("clip-path",r),t.parentNode?.replaceChild(i,t),i}function Pg(e){let t="clip-liquid-wave-dynamic",n="clip-liquid-wave-path",o=e.getElementById(t),i=e.getElementById(n);if(!o||!i){let a="http://www.w3.org/2000/svg",s=e.querySelector("defs");if(!s&&e.documentElement&&(s=e.createElementNS(a,"defs"),e.documentElement.insertBefore(s,e.documentElement.firstChild)),!s)return null;o||(o=e.createElementNS(a,"clipPath"),o.setAttribute("id",t),s.appendChild(o)),i||(i=e.createElementNS(a,"path"),i.setAttribute("id",n),i.setAttribute("d",""),o.appendChild(i))}let r=`url(#${t})`;return["anim-gradient-cube-heat","anim-gradient-cube-reflux"].forEach(a=>{let s=e.getElementById(a);s&&s.getAttribute("clip-path")!==r&&s.setAttribute("clip-path",r)}),i}function xa(e,t,n,o,i,r=0,a=0){if(!e)return;let s=Number(n),l=Number(o),c=Number(i),d=Number(t);if(!Number.isFinite(s)||!Number.isFinite(l)||!Number.isFinite(c)||!Number.isFinite(d)||l<=s)return;let m=Math.max(0,Number(r)||0),f=l-s,b=Math.max(18,Math.min(64,Math.round(f/4))),u=.11,p=.26,g=`M ${s.toFixed(2)} ${c.toFixed(2)} L ${l.toFixed(2)} ${c.toFixed(2)} `;for(let C=b;C>=0;C--){let P=s+f*C/b,E=Math.sin(P*u+a),M=Math.sin(P*u*1.85-a*1.35)*p,A=d+(E+M)*m,$=Math.min(c-.6,Math.max(Ma+.6,A));g+=`L ${P.toFixed(2)} ${$.toFixed(2)} `}g+="Z",e.setAttribute("d",g);let v=e.ownerDocument,w=Pg(v);w&&w.setAttribute("d",g)}function Ig(e){let t=e._liquidWaveState;t&&(t.active=!1,t.rafId&&(cancelAnimationFrame(t.rafId),t.rafId=0))}function Ag(e,t,n,o,i){let r=xc(e);if(!r)return;let a=e.getElementById("liquid-wave-line");a&&(a.style.display="none");let s=e._cubeLiquidGeom||{left:76,right:266,bottom:Ta},l=Math.max(Ma+1,Math.min(742,Number(t)||Ho)),c=Number(n)||0,d=Number(o),m=Number(i);if(!(Number.isFinite(d)&&Number.isFinite(m)&&d>=m&&c>80)){Ig(e),xa(r,l,s.left,s.right,s.bottom,0,0);return}let b=Math.max(0,d-m),u=Math.max(0,Math.min(1,b/4.2)),p=Math.max(0,Math.min(1,c/3e3)),g=Math.max(.5,Math.min(5.8,.7+u*3.1+p*1.3)),v=.0024+u*.0036+p*.0014;e._liquidWaveState||(e._liquidWaveState={active:!1,rafId:0,top:l,amplitude:g,speed:v});let w=e._liquidWaveState;if(w.top=l,w.amplitude=g,w.speed=v,w.left=s.left,w.right=s.right,w.bottom=s.bottom,w.active)return;w.active=!0;let C=P=>{if(!w.active)return;let E=P*w.speed;xa(r,w.top,w.left,w.right,w.bottom,w.amplitude,E),w.rafId=requestAnimationFrame(C)};w.rafId=requestAnimationFrame(C)}function Ng(e,t,n,o,i,r,a,s=!1){let l=e.getElementById("anim-gradient-core-heat"),c=e.getElementById("anim-gradient-core-reflux"),d=e.getElementById("anim-gradient-lid-heat"),m=e.getElementById("anim-gradient-lid-reflux"),f=e.getElementById("anim-gradient-cube-heat"),b=e.getElementById("anim-gradient-cube-reflux");if(!l||!c||!d||!m||!f||!b)return;let u=Number(t)||0,p=Number(n)||0,g=Number(o),v=Number.isFinite(g)&&g>0?g:s?66:0,w=Number(i)||0,C=Number(r)||0,P=vg(e,u,w),E=_t=>Math.max(0,Math.min(1,_t)),M=E((u-45)/35),A=E(Math.max((v-58)/20,s?.28:0)),$=E(1-Math.abs(p-76.6)/3.5),I=E((w-78.5)/3),R=E((C-8)/20),k=E((P-.02)/.2),te=Math.max(I,R,k),V=.24+.7*M+.18*te,ne=.18+.62*A+.2*$;ne*=1-Math.min(.8,M*.78+te*.52),V=Math.min(1,V),ne=Math.max(.03,Math.min(1,ne));let et=Math.max(Ea+1,Math.min(Ta,Number(a)||Ho)),mt=Math.min(.96,.1+M*.8+te*.22),At=Math.max(.12,(.14+A*.74+(s?.08:0))*(1-te*.55));Sc(l,d,f,V,!1,mt,yc,vc,Ea,et),Sc(c,m,b,ne,!0,At,yc,vc,Ea,et)}function Bg(e){e._refluxChaosTimer&&(clearTimeout(e._refluxChaosTimer),e._refluxChaosTimer=null),e._refluxChaosAnimation&&(e._refluxChaosAnimation.cancel(),e._refluxChaosAnimation=null),e._refluxChaosActive=!1,e.style.opacity="0",e.style.transform=""}function kg(e){if(e._refluxChaosActive)return;e._refluxChaosActive=!0;let t=()=>{if(!e._refluxChaosActive)return;let n=120+Math.random()*950;e._refluxChaosTimer=setTimeout(()=>{if(!e._refluxChaosActive)return;let o=450+Math.random()*1200,i=-.18+Math.random()*.36,r=-.22+Math.random()*.44,a=128+Math.random()*52;typeof e.animate=="function"?(e._refluxChaosAnimation=e.animate([{opacity:0,transform:`translate(${i.toFixed(2)}px, 0px) scale(0.92)`},{opacity:.95,transform:`translate(${i.toFixed(2)}px, ${(a*.32).toFixed(2)}px) scale(1)`},{opacity:0,transform:`translate(${r.toFixed(2)}px, ${a.toFixed(2)}px) scale(0.58)`}],{duration:o,easing:"cubic-bezier(0.25, 0.05, 0.35, 1)",iterations:1}),e._refluxChaosAnimation.onfinish=()=>{e._refluxChaosAnimation=null,t()}):(e.style.opacity="0.9",e.style.transform=`translate(${r.toFixed(2)}px, ${a.toFixed(2)}px)`,e._refluxChaosTimer=setTimeout(()=>{e._refluxChaosActive&&(e.style.opacity="0",e.style.transform="",t())},o))},n)};t()}function Rg(e,t,n=!1,o=void 0){let i=e.getElementById("zone-reflux");if(!i)return;let r=Number(t),a=Number(o),s=Number.isFinite(r)&&r>=58,l=n&&(!Number.isFinite(a)||a>=55),c=s||l;i.classList.toggle("condensing",c),i.querySelectorAll(".drop").forEach(m=>{c?kg(m):Bg(m)})}function Qn(e,t,n){let o=e.getElementById(t);o&&(o.classList.toggle("valve-open",!!n),o.classList.toggle("valve-closed",!n))}async function Fg(e,t){let n=await fetch(e,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)});if(!n.ok){let o=await n.text();throw new Error(o||`HTTP ${n.status}`)}}async function Lg(e,t,n){let i={water:"svg-valve-water",heads:"svg-valve-heads",uno:"svg-valve-uno"}[t];if(i){Qn(e,i,n);try{await Fg("/api/manual/valves",{[t]:n}),S.valves={...S.valves,[t]:n},h(`Valve ${t}: ${n?"open":"closed"}`,"info")}catch(r){Qn(e,i,!n),h(`Valve ${t}: request failed (${r.message})`,"error")}}}function _g(e){let t=document.body?.getAttribute("data-theme")==="dark"?"dark":"light";if(e._appliedTheme===t)return;e._appliedTheme=t;let n=t==="dark",o=n?"#d5dbe4":"#000000",i=n?"#e8edf5":"#333333",r=n?"#2c3138":"#ffffff";e.querySelectorAll(".struct").forEach(a=>{a.style.stroke=o,a.style.fill=r}),e.querySelectorAll(".struct-line,.pipe,.jar,.valve").forEach(a=>{a.style.stroke=o}),e.querySelectorAll(".label-text,.indicator-text").forEach(a=>{a.style.fill=i}),e.querySelectorAll("[stroke]").forEach(a=>{let s=String(a.getAttribute("stroke")||"").trim().toLowerCase();(s==="#000"||s==="#000000"||s==="black")&&(a.style.stroke=n?o:"")})}function qg(e){if(e._interactiveBound)return;e._interactiveBound=!0;let t=(o,i)=>{let r=e.getElementById(o);r&&(r.style.cursor="pointer",r.addEventListener("click",a=>{a.preventDefault(),a.stopPropagation();let s=!r.classList.contains("valve-open");Lg(e,i,s)}))};t("svg-valve-water","water"),t("svg-valve-heads","heads"),t("svg-valve-uno","uno");let n=e.getElementById("svg-valve-tails");n&&(n.style.cursor="not-allowed",n.addEventListener("click",o=>{o.preventDefault(),o.stopPropagation(),h("Tails valve control is not available in current hardware","warning")}))}function eo(e){let t=document.querySelector(".operator-scheme");if(!t)return;if(cg(t,e)){t._schemeLoadPending||(t._schemeLoadPending=!0,t.addEventListener("load",()=>{t._schemeLoadPending=!1,eo(e)},{once:!0}));return}let n=t.contentDocument;if(!n){t._schemeLoadPending||(t._schemeLoadPending=!0,t.addEventListener("load",()=>{t._schemeLoadPending=!1,eo(e)},{once:!0}));return}_g(n),qg(n);let o=xe(e?.mode??S.mode,e?.modeStr??S.modeStr),i=Cc(),r=i.settings||{},a=pg(),s=mg();kt(n.getElementById("zone-tails-left-branch"),s),kt(n.getElementById("ind-volume-tails"),s);let l=o===J?a:!0;kt(n.getElementById("collector-tails-pipe"),l),kt(n.getElementById("pipe-tails-down"),l),kt(n.getElementById("svg-valve-tails"),l),kt(n.getElementById("jar-tails-right"),l),kt(n.getElementById("label-tails-right"),l),kt(n.getElementById("ind-volume-body-small"),l),kt(n.getElementById("drop-tails"),l),kt(n.getElementById("anim-liquid-tails"),l);let c=Mt(e,"temps","cube","t_cube"),d=Mt(e,"temps","columnTop","t_column_top"),m=ot(Mt(e,"temps","columnBottom","t_column_bottom"),Mt(e,"temps","columnMiddle","t_column_bottom")),f=Mt(e,"temps","product","t_product"),b=Mt(e,"temps","reflux","t_reflux"),u=Mt(e,"temps","tsa","t_tsa"),p=Mt(e,"temps","waterIn","t_water_in"),g=Mt(e,"temps","waterOut","t_water_out"),v=(F,G,ae="")=>{let Se=n.getElementById(F);Se&&G!==void 0&&(Se.textContent=`${G.toFixed(1)}${ae}`)};v("txt-temp-cube",c," °C"),v("txt-temp-col-top",d," °C"),v("txt-temp-col-mid",m," °C"),v("txt-temp-node",f," °C"),v("txt-temp-reflux",b," °C"),v("txt-temp-tsa",u," °C"),v("txt-water-in",p," °C"),v("txt-water-out",g," °C");let w;e.pressure&&e.pressure.cube!==void 0?w=e.pressure.cube:e.p_cube!==void 0&&(w=e.p_cube);let C=Sg(e);Number.isFinite(C)&&(n._atmPressureMmHg=C);let P=Ho;if(w!==void 0){let F=n.getElementById("txt-pressure-cube");F&&(F.textContent=`${w.toFixed(1)} мм рт.ст.`)}let E=n.getElementById("txt-abv");if(E){let F=Qe();E.textContent=F.value.toFixed(1)+"%";let G=E.previousElementSibling;G&&(G.style.stroke=F.source==="sensor"?"#6610f2":"#7f8c8d",G.style.strokeWidth=F.source==="sensor"?"2":"1")}let M=dg(e),A=ug(e);if(M!==void 0){let F=n.getElementById("svg-heater");F&&(M>0?F.classList.add("heater-on"):F.classList.remove("heater-on"));let G=n.getElementById("heater-bar");if(G){let ke=S&&S.equipment&&S.equipment.heaterPowerW?S.equipment.heaterPowerW:3e3,ce=Math.min(1,Math.max(0,M/ke));if(ce<=0)G.setAttribute("fill","#3a3a3a"),G.setAttribute("height","6"),G.setAttribute("y","729"),G.style.filter="url(#heater-soft)";else{let Ct=Math.round(58+197*ce),Ge=Math.round(58*(1-ce)),Ye=Math.round(58*(1-ce)),pt=`rgb(${Ct},${Ge},${Ye})`,tt=6+3*ce;G.setAttribute("fill",pt),G.setAttribute("height",String(tt)),G.setAttribute("y",String(735-tt));let He=4+14*ce,_e=.3+.7*ce;G.style.filter=`url(#heater-soft) drop-shadow(0 0 ${He}px rgba(${Ct},${Ge},${Ye},${_e}))`+(ce>.3?` drop-shadow(0 0 ${He*2}px rgba(255,${Math.round(60*(1-ce))},0,${_e*.4}))`:"")}}let ae=n.getElementById("anim-vapor");ae&&(M>0?ae.classList.add("vapor-active"):ae.classList.remove("vapor-active"));let Se=n.getElementById("anim-power-bar");if(Se){let ke=S&&S.equipment&&S.equipment.heaterPowerW?S.equipment.heaterPowerW:3e3,ce=Math.min(1,Math.max(0,M/ke));Se.setAttribute("width",ce*160)}let ye=n.getElementById("txt-power-set");ye&&A!==void 0&&(ye.textContent=`${A.toFixed(0)} Вт`);let Le=n.getElementById("txt-power-actual");Le&&(Le.textContent=`${M.toFixed(0)} Вт`)}let $=e.valves&&typeof e.valves=="object"?e.valves:S.valves;if($){$.water!==void 0&&Qn(n,"svg-valve-water",$.water),$.heads!==void 0&&Qn(n,"svg-valve-heads",$.heads),$.uno!==void 0&&Qn(n,"svg-valve-uno",$.uno),$.tails!==void 0&&Qn(n,"svg-valve-tails",$.tails);let F=n.getElementById("anim-water-flow");F&&$.water!==void 0&&($.water?F.classList.add("flowing"):F.classList.remove("flowing"))}let I=!!$?.water,R=p!==void 0&&g!==void 0&&g>p&&g>20,k=I||R;n.querySelectorAll(".pipe-water").forEach(F=>{F.classList.toggle("active",k)}),Rg(n,b,k,c);let te=xc(n);if(te&&S){let F=S,G=Number(document.getElementById("rect-start-feed-volume")?.value),ae=Number(document.getElementById("rect-start-feed-abv")?.value),Se=ot(o===J?i.volumeL:void 0,o===j?G:void 0,(F.distillation?.targetVolumeMl||0)/1e3,F.rectification?.feedVolumeL,G,20)||20,ye=ot(o===J?i.abvPercent:void 0,o===j?ae:void 0,F.rectification?.feedAbvPercent,ae,Qe()?.value,40)||40;n._feedAbvPercent=ye;let Le=Number(document.getElementById("cube-volume-l")?.value),ke=ot(Le,F.equipment?.cubeVolumeL,F.equipment?.cubeVolume,F.rectification?.cubeVolumeL,F.distillation?.cubeVolumeL,Se,20),ce=Math.min(ke||20,Se),Ct=(F.volumes?.heads||0)+(F.volumes?.body||0)+(F.volumes?.tails||0),Ge=Math.max(Ct,F.pump?.totalMl||0),Ye=Math.max(0,ce-Ge/1e3),pt=ot(c,d,f,b),tt=gg(pt,ye),He=Math.max(0,ce*(ye/100)),_e=Math.max(0,Math.min(He,Ye*(tt/100))),Je=Math.max(0,Math.min(1,Ye/(ke||1))),De=n.getElementById("cube-shell"),qt=Number(De?.getAttribute("x"))||76,vn=Number(De?.getAttribute("y"))||553,wn=Number(De?.getAttribute("width"))||190,Jt=Number(De?.getAttribute("height"))||190,Dn=vn+Jt,Co=qt,xo=qt+wn,Fi=Jt*Je,Mo=Dn-Fi;xa(te,Mo,Co,xo,Dn,0,0),P=Mo,te.removeAttribute("clip-path"),n._cubeLiquidGeom={left:Co,right:xo,bottom:Dn};let To=n.getElementById("txt-volume-cube");To&&(To.textContent=`${Ye.toFixed(1)} л`);let $o=n.getElementById("txt-aa-cube");$o&&($o.textContent=`АС ${_e.toFixed(2)} л`)}let V=Eg(n);Ng(n,c,m,b,u,w,P,k),$g(n,c,M,P,V),Ag(n,P,M,c,V);let ne=Mt(e,"pump","speedMlH","pump_speed");if(ne!==void 0||$){let F=ne!==void 0?ne:S.pump.speedMlH||0,G=n.getElementById("svg-valve-heads"),ae=n.getElementById("svg-valve-uno"),Se=n.getElementById("svg-valve-tails"),ye=(pt,tt,He)=>{for(let _e=1;_e<=3;_e++){let Je=He?_e===1?He:null:n.getElementById(`${pt}-${_e}`);if(Je)if(F>0&&tt){let De=180/F;De<.1&&(De=.1),De>2&&(De=2);let qt=He?"drop-fall":"dripping";Je.style.animation=`${qt} ${De.toFixed(2)}s infinite linear`}else Je.style.animation="none",Je.style.opacity="0"}},Le=n.getElementById("drop-heads"),ke=n.getElementById("drop-uno"),ce=n.getElementById("drop-tails");Le&&ye("drop-heads",G?.classList.contains("valve-open"),Le),ke&&ye("drop-uno",ae?.classList.contains("valve-open"),ke),ce&&ye("drop-tails",Se?.classList.contains("valve-open"),ce),n.querySelector(".drop-dist")!==null&&ye("drop-tails",!0);let Ge=n.getElementById("txt-pump-speed");Ge&&(Ge.textContent=F.toFixed(0)+" мл/ч");let Ye=n.getElementById("zone-pump");Ye&&Ye.classList.toggle("pump-running",F>0),yg(n,F)}let et=n.getElementById("txt-phase");if(et&&e.phase!==void 0){let F=["ОЖИДАНИЕ","НАГРЕВ","СТАБИЛ.","ГОЛОВЫ","ПРОДУВКА","ТЕЛО","ХВОСТЫ","ФИНИШ","ОШИБКА"],G=["#7f8c8d","#e67e22","#f1c40f","#e74c3c","#3498db","#2ecc71","#9b59b6","#27ae60","#c0392b"];o===de?(F=["ОЖИДАНИЕ","НАГРЕВ","СТАБИЛ.","ПОДАЧА","ФИНИШ","ГОТОВО"],G=["#7f8c8d","#e67e22","#f1c40f","#2ecc71","#16a085","#2c7a7b"]):o===Re&&(F=["ОЖИДАНИЕ","РАБОТА","ГОТОВО"],G=["#7f8c8d","#2ecc71","#16a085"]);let ae=Number(e.phase);ae>=0&&ae<F.length&&(et.textContent=F[ae],et.setAttribute("fill",G[ae]))}if(S){let F=S,G=ot(o===J?i.volumeL:void 0,F.rectification?.feedVolumeL,20)||20,ae=ot(o===J?i.abvPercent:void 0,F.rectification?.feedAbvPercent,40)||40,Se=Math.max(0,G*1e3*(ae/100)),ye=bg(F,r,Se,l),Le=F.volumes?.heads||0,ke=Math.max(1,ye.headsTargetMl),ce=Math.min(1,Le/ke),Ct=n.getElementById("anim-liquid-heads");Ct&&Ca(Ct,ce);let Ge=n.getElementById("txt-volume-heads");Ge&&(Ge.textContent=`${Le.toFixed(0)} мл`);let Ye=F.volumes?.body||0,pt=Math.max(1,ye.bodyTargetMl),tt=Math.min(1,Ye/pt),He=n.getElementById("anim-liquid-body");He&&Ca(He,tt);let _e=n.getElementById("txt-volume-body");_e&&(_e.textContent=`${Ye.toFixed(0)} мл`);let Je=F.volumes?.tails||0,De=Math.max(1,ye.tailsTargetMl),qt=Math.min(1,Je/De),vn=n.getElementById("anim-liquid-tails");vn&&Ca(vn,qt);let wn=n.getElementById("txt-volume-tails");wn&&(wn.textContent=`${Je.toFixed(0)} мл`);let Jt=n.getElementById("txt-volume-tails-right");Jt&&(Jt.textContent=`${Je.toFixed(0)} мл`)}let mt=n.getElementById("anim-condensate"),At=n.getElementById("svg-heater"),_t=n.getElementById("anim-water-flow");if(mt&&At&&_t){let F=At.classList.contains("heater-on"),G=_t.classList.contains("flowing");F&&G?mt.classList.add("condensing"):mt.classList.remove("condensing")}}var Xn=100;function Og(e){let t=e?.closest(".cols-layout"),n=Math.round(ig*Xn/100);if(!t)return Math.max(Oo,n);let o=t.clientWidth;if(!Number.isFinite(o)||o<=0)return Math.max(Oo,n);if(window.matchMedia("(max-width: 900px)").matches){let r=Math.round(o*(Math.max(50,Math.min(Xn,100))/100));return Math.max(Oo,Math.min(r,o))}let i=Math.max(Oo,Math.floor(o-rg-ag));return Math.max(Oo,Math.min(n,i))}function Hg(e){if(!e)return;let t=e.closest(".operator-scheme-wrap");if(t){let n=Og(e);t.style.setProperty("--scheme-target-width",`${n}px`)}e.style.width="100%",e.style.height="auto",e.style.transform="none",e.style.maxWidth="none"}function zi(){let e=document.getElementById("main-scheme-svg");Hg(e)}function Mc(e){e>0?Xn=Math.min(Xn+10,200):Xn=Math.max(Xn-10,50),zi()}function Ui(e){return e&&typeof e=="object"?e:null}function Do(e,t=""){return e!=null?String(e):t}function Dg(e){return Ui(e?.currentAlarm)||Ui(e?.alarm)}function Vg(e){return Ui(e?.v2?.safety)}function to(e){let t=Dg(e),n=Ui(e?.v2),o=Vg(e),i=Number(t?.typeCode??t?.type??0),r=!!t?.active||i!==0||!!n?.safetyLatched,a=t?.latched!==void 0?!!t.latched:!!n?.safetyLatched,s=e?.safetyOk!==void 0?!!e.safetyOk:!r,l=Do(o?.severity,r?a?"latched_trip":"warning":"none"),c=Do(o?.message,Do(t?.message)),d=o?.resetAvailable!==void 0?!!o.resetAvailable:t?.resetAvailable!==void 0?!!t.resetAvailable:!r,m=Do(o?.resetBlockedReason,Do(t?.resetBlockedReason)),f=t?.acknowledged!==void 0?!!t.acknowledged:!1,b=o?.requiresAcknowledge!==void 0?!!o.requiresAcknowledge:r&&!f&&!d,u="SAFETY OK",p="landing-chip landing-chip-ok";return l==="recovery"||r&&d?(u="RESET READY",p="landing-chip landing-chip-recovery"):r&&f?(u="SAFETY ACKED",p="landing-chip landing-chip-neutral"):l==="limited"?(u="SAFETY LIMITED",p="landing-chip landing-chip-warn"):l==="warning"?(u="SAFETY WARN",p="landing-chip landing-chip-warn"):(r||s===!1)&&(u="SAFETY ALERT",p="landing-chip landing-chip-warn"),{alarm:t,safety:o,active:r,latched:a,safetyOk:s,alarmTypeCode:i,severity:l,message:c,resetAvailable:d,resetBlockedReason:m,acknowledged:f,requiresAcknowledge:b,chipText:u,chipClass:p,chipTitle:m||c||"",shouldShowModal:s===!1&&r&&i!==0&&(!f||d),primaryActionLabel:d?"♻ СБРОСИТЬ АВАРИЮ":"✅ ИГНОРИРОВАТЬ И ПРОДОЛЖИТЬ",primaryActionBackground:d?"#0d6efd":"#6c757d"}}function Ki(e){let t=document.getElementById("landing-mode-chip");if(t&&e.mode!==void 0){let r=xe(e.mode,e.modeStr);t.textContent=Ze(r).toUpperCase(),t.className=`landing-chip ${Un(r)}`}let n=document.getElementById("landing-phase-chip");n&&e.phaseText!==void 0&&(n.textContent=`PHASE ${e.phaseText||"-"}`);let o=document.getElementById("landing-safety-chip");if(o){let r=to(e);o.textContent=r.chipText,o.className=r.chipClass,o.title=r.chipTitle}if(e.tCube!==void 0){let r=document.getElementById("landing-cube-value");r&&(r.textContent=`${e.tCube.toFixed(1)}°C`)}if(e.power!==void 0){let r=document.getElementById("landing-power-value");r&&(r.textContent=`${e.power.toFixed(0)} W`)}if(e.pressureCube!==void 0){let r=document.getElementById("landing-pressure-value");r&&(r.textContent=`${e.pressureCube.toFixed(1)} мм`)}if(e.pumpSpeed!==void 0){let r=document.getElementById("landing-pump-value");r&&(r.textContent=`${e.pumpSpeed.toFixed(0)} мл/ч`)}if(e.abv!==void 0){let r=document.getElementById("landing-abv-value");r&&(r.textContent=`${e.abv.toFixed(1)} %`)}if(e.waterIn!==void 0){let r=document.getElementById("landing-water-in");r&&(r.textContent=`${e.waterIn.toFixed(1)}°C`)}if(e.waterOut!==void 0){let r=document.getElementById("landing-water-out");r&&(r.textContent=`${e.waterOut.toFixed(1)}°C`)}if(e.voltage!==void 0){let r=document.getElementById("landing-voltage");r&&(r.textContent=`${e.voltage.toFixed(0)} V`)}let i=document.getElementById("landing-updated");i&&(i.textContent=new Date().toLocaleTimeString("ru-RU",{hour12:!1}))}var jg=2e3,Vo=null;function no(e=!1){Vo||(e&&document.visibilityState!=="hidden"&&ie(),Vo=setInterval(()=>{document.visibilityState!=="hidden"&&ie()},jg))}function Tc(){Vo&&(clearInterval(Vo),Vo=null)}var Wg="ui.operatorView";var $c=!1,Pc=null;function zg(){let e=[],t=Number(window.visualViewport?.width);Number.isFinite(t)&&t>0&&e.push(t);let n=Number(window.innerWidth);Number.isFinite(n)&&n>0&&e.push(n);let o=Number(document.documentElement?.clientWidth);Number.isFinite(o)&&o>0&&e.push(o);let i=Number(document.querySelector("#monitor .operator-screen")?.getBoundingClientRect?.().width);return Number.isFinite(i)&&i>0&&e.push(i),e.length?Math.min(...e):1920}function jo(){clearTimeout(Pc),Pc=setTimeout(()=>{Gi()},120)}function Ic(e){let t=document.querySelector("#monitor .operator-screen"),n=document.getElementById("operator-view-toggle");if(!t)return;let o=e==="compact"?"compact":"instrument",i=o==="instrument";t.setAttribute("data-view",o),t.classList.toggle("operator-screen-instrument",i),t.classList.toggle("operator-screen-compact",!i),n&&(n.textContent=`View: ${i?"Instrument":"Compact"}`,n.classList.toggle("btn-info",i),n.classList.toggle("btn-warning",!i))}function Ac(){let e=document.querySelector("#monitor .operator-screen");if(!e)return;let t=e.classList.contains("operator-screen-instrument")?"compact":"instrument";Ic(t);try{localStorage.setItem(Wg,t)}catch(n){console.warn("operator view save failed:",n)}}function Ug(){return zg()>=1024?"instrument":"compact"}function Gi(){document.querySelector("#monitor .operator-screen")&&Ic(Ug())}function Nc(){document.querySelector("#monitor .operator-screen")&&(Gi(),!$c&&($c=!0,window.addEventListener("resize",jo),window.addEventListener("orientationchange",jo),window.visualViewport&&(window.visualViewport.addEventListener("resize",jo),window.visualViewport.addEventListener("scroll",jo)),typeof ResizeObserver<"u"&&new ResizeObserver(()=>jo()).observe(document.documentElement)))}var it=!1;function Kg(){if(window.isSecureContext)return!0;let e=window.location?.hostname||"";return e==="localhost"||e==="127.0.0.1"||e==="::1"}function Wo(){return"Notification"in window?Kg()?{available:!0,reason:""}:{available:!1,reason:"Для браузерных уведомлений откройте Web UI по HTTPS (или localhost)"}:{available:!1,reason:"Браузер не поддерживает уведомления"}}async function Bc(){let e=document.getElementById("browser-notifications-enabled"),t=Wo();if(!t.available)return it=!1,e&&(e.checked=!1,e.disabled=!1,e.title=t.reason),!1;let n=localStorage.getItem("browser-notifications")==="1";return it=Notification.permission==="granted"&&n,e&&(e.checked=it,e.disabled=!1,e.title=""),it}async function Gg(){let e=Wo();return e.available?Notification.permission==="denied"?(it=!1,alert("Разрешение на уведомления заблокировано в браузере. Разрешите их в настройках сайта."),!1):(it=await Notification.requestPermission()==="granted",it):(alert(e.reason),it=!1,!1)}function Wt(e,t={}){if(!it||Notification.permission!=="granted"||!Wo().available)return;let n={icon:"/manifest/icon-192.png",badge:"/manifest/icon-72.png",vibrate:[200,100,200],...t};if(navigator.serviceWorker&&navigator.serviceWorker.ready)navigator.serviceWorker.ready.then(o=>{o.showNotification(e,n)}).catch(()=>{try{new Notification(e,n)}catch{}});else try{new Notification(e,n)}catch{}}async function kc(){let e=document.getElementById("browser-notifications-enabled");if(!e)return;let t=Wo();if(!t.available){it=!1,e.checked=!1,e.disabled=!1,e.title=t.reason,localStorage.setItem("browser-notifications","0"),h(t.reason,"warning"),alert(t.reason);return}if(e.disabled=!1,e.title="",e.checked){let n=await Gg();e.checked=n,n?h("✓ Браузерные уведомления включены","success"):h("✗ Нет разрешения на браузерные уведомления","error")}else it=!1,h("ℹ Браузерные уведомления отключены","info");localStorage.setItem("browser-notifications",it?"1":"0")}function Rc(){let e=Wo();if(!e.available){alert(e.reason);return}if(!it){alert("Сначала включите уведомления!");return}Wt("Тестовое уведомление",{body:"Smart-Column S3: уведомления работают корректно!"})}var Fc={RC_MODE_START_REQUEST:"Запуск подтвержден оператором",RC_MODE_STOP_REQUEST:"Остановлено оператором",RC_PRECHECK_OK:"Проверки перед запуском пройдены",RC_PRECHECK_FAIL_SENSOR:"Предпусковая проверка датчиков не пройдена",RC_PRECHECK_FAIL_SAFETY_LATCH:"Есть защелкнутая авария безопасности",RC_HEATING_COMPLETE:"Нагрев завершен",RC_STABILIZATION_TIMER_OK:"Выдержка стабилизации завершена",RC_STABILITY_WINDOW_REACHED:"Достигнуто окно стабильности",RC_HEADS_VOLUME_REACHED:"Отбор голов завершен по объему",RC_HEADS_SCORE_REACHED:"Отбор голов завершен по индикаторам",RC_POST_HEADS_STABILIZATION_COMPLETE:"Пост-стабилизация завершена",RC_PURGE_COMPLETE:"Продувка завершена",RC_BODY_TARGET_VOLUME_REACHED:"Отбор тела завершен по объему",RC_BODY_END_DETECTED:"Обнаружен конец тела",RC_TAILS_TARGET_REACHED:"Отбор хвостов завершен",RC_FINISH_COOLDOWN_COMPLETE:"Финишное охлаждение завершено",RC_DISTILLATION_HEADS_OPTIONAL_SKIPPED:"Этап голов пропущен",RC_DISTILLATION_END_TEMP_REACHED:"Достигнута конечная температура",RC_DISTILLATION_TARGET_VOLUME_REACHED:"Достигнут целевой объем",RC_NBK_STEAM_READY:"Колонна готова к паровой работе",RC_NBK_STABILIZATION_COMPLETE:"Стабилизация НБК завершена",RC_NBK_FEED_ENABLED:"Подача браги разрешена",RC_NBK_FINISH_LIKELY:"Вероятно достигнут финиш процесса",RC_TEMP_STEP_REACHED:"Температурная ступень достигнута",RC_TEMP_STEP_HOLD_COMPLETE:"Выдержка температурной ступени завершена",RC_TEMP_STEP_TIMEOUT:"Ступень завершена по таймауту",RC_FERM_TARGET_REACHED:"Целевая температура ферментации достигнута",RC_SAFETY_LIMIT_POWER:"Ограничение мощности по безопасности",RC_SAFETY_LIMIT_TAKEOFF:"Ограничение отбора по безопасности",RC_SAFETY_PHASE_BLOCKED:"Переход фазы заблокирован безопасностью",RC_SAFETY_RECOVERY_ENTERED:"Условия безопасности восстановлены",RC_SAFETY_RECOVERY_EXITED:"Режим восстановления завершен",RC_SAFETY_TRIP_PRESSURE:"Авария по давлению",RC_SAFETY_TRIP_SENSOR:"Авария по датчикам",RC_SAFETY_TRIP_OVERHEAT:"Авария по перегреву",RC_SAFETY_TRIP_POWER:"Авария по питанию",RC_SAFETY_TRIP_GENERIC:"Неидентифицированная авария",RC_SAFETY_ACKNOWLEDGED:"Авария подтверждена оператором",RC_SAFETY_RESET_COMPLETED:"Авария сброшена оператором",RC_MANUAL_OPERATOR_SWITCH:"Ручное переключение оператором",RC_MANUAL_OPERATOR_STOP:"Ручная остановка оператором",RC_PHASE_RECOVERY_APPLIED:"Фаза процесса восстановлена",RC_PHASE_TRANSITION_INFERRED:"Переход фазы восстановлен системой"},oo=null,Pa=null,Ia=null,Aa=null;function Yg(e){return!e||e==="RC_NONE"||e==="RC_UNSPECIFIED"?"":Fc[e]?Fc[e]:e.replace(/^RC_/,"").toLowerCase().split("_").map(t=>t?t[0].toUpperCase()+t.slice(1):"").join(" ")}function zo(e){return e.filter(Boolean).join(`
+`)}function Jg(){let e=String(S?.v2?.operatorMessage||"").trim();return e||Yg(S?.v2?.lastReasonCode||"RC_NONE")}function Yi(){let e=Number(S?.mode??W),t=String(S?.phaseStr||""),n=String(S?.v2?.lastReasonCode||"RC_NONE"),o=String(S?.v2?.operatorMessage||"");if(oo===null){oo=e,Pa=t,Ia=n,Aa=o;return}let i=Jg();oo!==e?e===W?Wt("Процесс завершён",{body:zo([`Режим: ${Ze(oo)}`,i])}):oo===W?Wt("Процесс запущен",{body:zo([`Режим: ${Ze(e)}`,i])}):Wt("Смена режима",{body:zo([`Режим: ${Ze(e)}`,i])}):e!==W&&t&&t!=="-"&&Pa!==t?Wt("Смена этапа",{body:zo([`Новый этап: ${t}`,i])}):e!==W&&Ia!==n&&i&&i!==Aa&&Wt("Изменение процесса",{body:zo([`Режим: ${Ze(e)}`,i])}),oo=e,Pa=t,Ia=n,Aa=o}function ft(e,t){let n=t||Ze(e);if(ge===W)return!0;if(ge===e)return h(`Mode "${n}" is already running`,"warning"),!1;let o=Ze(ge);return confirm(`Current mode "${o}" is running.\\nSwitch to "${n}"?\\n\\nCurrent process will be stopped.`)}function Ji(e,t=78){let n=Number(String(e??"").trim().replace(",","."));return Number.isFinite(n)?n<20?20:n>100?100:n:t}function io(e,t={}){return{boosterEnabled:!!(document.getElementById(e.enabled)?.checked??t.boosterEnabled??!1),boosterStopCubeTempC:Ji(document.getElementById(e.stopTemp)?.value,t.boosterStopCubeTempC??78)}}function Lc(e,t={}){let n=document.getElementById(e.enabled);n&&(n.checked=!!t.boosterEnabled);let o=document.getElementById(e.stopTemp);o&&(o.value=String(Ji(t.boosterStopCubeTempC,78)))}async function ro(e){let t=S?.equipment||{},n={boosterEnabled:!!t.boosterHeaterEnabled,boosterStopCubeTempC:Ji(t.boosterHeaterStopCubeTempC,78)};try{let o=await fetch("/api/settings/equipment");if(!o.ok)throw new Error(`HTTP ${o.status}`);let i=await o.json(),r={boosterEnabled:!!(i.boosterHeaterEnabled??n.boosterEnabled),boosterStopCubeTempC:Ji(i.boosterHeaterStopCubeTempC,n.boosterStopCubeTempC)};return S.equipment={...S.equipment,boosterHeaterEnabled:r.boosterEnabled,boosterHeaterStopCubeTempC:r.boosterStopCubeTempC},Lc(e,r),r}catch{return Lc(e,n),n}}var _c={0:{heads:6,body:84,tails:10},1:{heads:8,body:80,tails:12},2:{heads:7,body:81,tails:12},3:{heads:5,body:75,tails:20},4:{heads:8,body:74,tails:18},5:{heads:6,body:78,tails:16},6:{heads:7,body:79,tails:14},7:{heads:8,body:84,tails:8}},qc={enabled:"rect-start-booster-enabled",stopTemp:"rect-start-booster-stop-cube-temp"};function Y(e,t,n,o){let i=Number(e);return Number.isFinite(i)?i<t?t:i>n?n:i:o}function Zi(){let e=document.getElementById("rect-start-modal");e&&(e.style.display="none")}function ao(){let e=Y(document.getElementById("rect-start-heads-percent")?.value,0,40,0),t=Y(document.getElementById("rect-start-body-percent")?.value,0,100,0),n=Y(document.getElementById("rect-start-tails-percent")?.value,0,100,0),o=e+t+n,i=document.getElementById("rect-start-fractions-sum");i&&(i.textContent=`Sum: ${o.toFixed(1)}%`,i.style.color=o>100?"var(--danger)":"var(--text-secondary)")}function ka(){let e=document.getElementById("rect-start-feedstock"),t=document.getElementById("rect-start-heads-percent"),n=document.getElementById("rect-start-body-percent"),o=document.getElementById("rect-start-tails-percent");if(!e||!t||!n||!o)return;let i=Y(e.value,0,7,0),r=_c[i]||_c[7];t.value=r.heads.toFixed(1),n.value=r.body.toFixed(1),o.value=r.tails.toFixed(1),ao()}function Zg(e){e.headsPercent=Y(e.headsPercent,0,40,0),e.bodyPercent=Y(e.bodyPercent,0,100,0),e.tailsPercent=Y(e.tailsPercent,0,100,0);let t=e.headsPercent+e.bodyPercent+e.tailsPercent;if(t<=100)return e;let n=t-100;return e.tailsPercent>=n?(e.tailsPercent-=n,e):(n-=e.tailsPercent,e.tailsPercent=0,e.bodyPercent=Math.max(0,e.bodyPercent-n),e)}function Qi(){let e=Math.max(1,Math.min(250,Nt())),t=Math.round(Y(document.getElementById("rect-start-reflux-mode")?.value,0,2,0)),n=Math.round(Y(document.getElementById("rect-start-phase-power-stabilization")?.value,1,100,70)),o=Math.round(Y(document.getElementById("rect-start-phase-power-heads")?.value,1,100,60)),i=Math.round(Y(document.getElementById("rect-start-phase-power-body")?.value,1,100,60)),r=Math.round(Y(document.getElementById("rect-start-phase-power-tails")?.value,1,100,50)),a={feedstock:Y(document.getElementById("rect-start-feedstock")?.value,0,7,0),feedVolumeL:Y(document.getElementById("rect-start-feed-volume")?.value,1,e,Xt(20)),feedAbvPercent:Y(document.getElementById("rect-start-feed-abv")?.value,1,96,40),headsPercent:Y(document.getElementById("rect-start-heads-percent")?.value,0,40,8),bodyPercent:Y(document.getElementById("rect-start-body-percent")?.value,0,100,84),tailsPercent:Y(document.getElementById("rect-start-tails-percent")?.value,0,100,8),headsSpeedMlHKw:Y(document.getElementById("rect-start-heads-speed")?.value,10,2e3,300),bodySpeedMlHKw:Y(document.getElementById("rect-start-body-speed")?.value,50,3e3,600),takeoffBackendType:Math.round(Y(document.getElementById("rect-start-takeoff-backend")?.value,0,2,0)),stabilizationMin:Math.round(Y(document.getElementById("rect-start-stabilization")?.value,1,180,30)),purgeMin:Math.round(Y(document.getElementById("rect-start-purge")?.value,1,120,5)),baroCorrectionEnabled:!!document.getElementById("rect-start-baro-correction-enabled")?.checked,refluxMode:t,srRatio:Y(document.getElementById("rect-start-sr-ratio")?.value,0,20,0),autonomousCycleSec:Math.round(Y(document.getElementById("rect-start-auto-cycle")?.value,1,7200,900)),autonomousPauseSec:Math.round(Y(document.getElementById("rect-start-auto-pause")?.value,0,7199,90)),chimAutoPercent:Y(document.getElementById("rect-start-chim-auto")?.value,0,200,0),chimTimePerH:Y(document.getElementById("rect-start-chim-time")?.value,-2e3,2e3,0),chimBegPercent:Y(document.getElementById("rect-start-chim-beg")?.value,-100,200,0),chimMinPercent:Y(document.getElementById("rect-start-chim-min")?.value,0,100,35),phasePowerStabilization:n,phasePowerHeads:o,phasePowerBody:i,phasePowerTails:r,phasePowerPercent:[n,o,i,r],usePbMode:Math.round(Y(document.getElementById("rect-start-use-pb-mode")?.value,0,3,0)),timpPbMs:Math.round(Y(document.getElementById("rect-start-timp-pb-ms")?.value,0,6e5,15e3)),routingSettlingMs:Math.round(Y(document.getElementById("rect-start-routing-settling-ms")?.value,0,1e4,1500)),routingRetargetMinMs:Math.round(Y(document.getElementById("rect-start-routing-retarget-min-ms")?.value,0,3e4,3e3)),...io(qc)};return a.autonomousPauseSec>=a.autonomousCycleSec&&(a.autonomousPauseSec=Math.max(0,a.autonomousCycleSec-1)),Zg(a)}function Qg(e){let t=(i,r)=>{let a=document.getElementById(i);a&&r!==void 0&&r!==null&&(a.value=String(r))};t("rect-start-feedstock",e.feedstock??0);let n=document.getElementById("rect-start-feed-volume");if(n){let i=Math.max(1,Math.min(250,Nt()));n.max=String(i),n.value=String(Xt(e.feedVolumeL??20))}t("rect-start-feed-abv",e.feedAbvPercent??40),t("rect-start-heads-percent",e.headsPercent??8),t("rect-start-body-percent",e.bodyPercent??84),t("rect-start-tails-percent",e.tailsPercent??8),t("rect-start-heads-speed",e.headsSpeedMlHKw??300),t("rect-start-body-speed",e.bodySpeedMlHKw??600),t("rect-start-takeoff-backend",e.takeoffBackendType??0),t("rect-start-stabilization",e.stabilizationMin??30),t("rect-start-purge",e.purgeMin??5),t("rect-start-reflux-mode",e.refluxMode??0),t("rect-start-sr-ratio",e.srRatio??0),t("rect-start-auto-cycle",e.autonomousCycleSec??900),t("rect-start-auto-pause",e.autonomousPauseSec??90),t("rect-start-chim-auto",e.chimAutoPercent??0),t("rect-start-chim-time",e.chimTimePerH??0),t("rect-start-chim-beg",e.chimBegPercent??0),t("rect-start-chim-min",e.chimMinPercent??35),t("rect-start-phase-power-stabilization",e.phasePowerStabilization??70),t("rect-start-phase-power-heads",e.phasePowerHeads??60),t("rect-start-phase-power-body",e.phasePowerBody??60),t("rect-start-phase-power-tails",e.phasePowerTails??50),t("rect-start-use-pb-mode",e.usePbMode??0),t("rect-start-timp-pb-ms",e.timpPbMs??15e3),t("rect-start-routing-settling-ms",e.routingSettlingMs??1500),t("rect-start-routing-retarget-min-ms",e.routingRetargetMinMs??3e3);let o=document.getElementById("rect-start-baro-correction-enabled");o&&(o.checked=e.baroCorrectionEnabled!==!1),Na(),Ba(),ao()}function Na(){let e=Math.round(Y(document.getElementById("rect-start-reflux-mode")?.value,0,2,0)),t=document.getElementById("rect-start-sr-ratio-group"),n=document.getElementById("rect-start-auto-cycle-group"),o=document.getElementById("rect-start-auto-pause-group");t&&(t.style.display=e===1?"":"none"),n&&(n.style.display=e===2?"":"none"),o&&(o.style.display=e===2?"":"none")}function Ba(){let e=Math.round(Y(document.getElementById("rect-start-takeoff-backend")?.value,0,2,0)),t=document.getElementById("rect-start-routing-fields-group"),n=document.getElementById("rect-start-routing-settling-ms"),o=document.getElementById("rect-start-routing-retarget-min-ms"),i=e===2;t&&(t.style.display=i?"":"none"),n&&(n.disabled=!i),o&&(o.disabled=!i)}function Ra(){let e=document.getElementById("rect-start-feed-volume");if(!e)return;let t=Math.max(1,Math.min(250,Nt()));e.max=String(t),e.value=String(Xt(e.value,Number(e.value)||20))}async function Fa(){let e=!1;try{let t=await fetch("/api/settings/rect");t.ok?(Qg(await t.json()),e=!0):h(`Rect settings load error: ${t.status}`,"warning")}catch(t){h(`Rect settings load network error: ${t.message}`,"warning")}try{await ro(qc)}catch(t){h(`Booster settings load error: ${t.message}`,"warning")}return e}async function Oc(){await Fa();let e=document.getElementById("rect-start-modal");return e?(e.style.display="flex",!0):!1}async function Hc(e){e&&(e.disabled=!0);try{let t=Qi(),n={...t};delete n.boosterEnabled,delete n.boosterStopCubeTempC;let o=await fetch("/api/settings/rect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(n)});if(!o.ok){let a=await o.text();return h(`Rect settings save error (${o.status}): ${a}`,"error"),!1}Zi(),h("Starting auto-rectification with updated settings...","info");let i=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"rectification",params:t})});if(!i.ok){let a=await i.text();return h(`Start error (${i.status}): ${a}`,"error"),!1}let r=await i.json();return h("Auto-rectification started","success"),r.warning&&h(`Warning: ${r.warning}`,"warning"),setTimeout(ie,500),!0}catch(t){return h(`Start rectification network error: ${t.message}`,"error"),console.error("saveAndStartRectification error:",t),!1}finally{e&&(e.disabled=!1)}}async function Dc(){await Hc(document.getElementById("rect-start-confirm"))}function Vc(){let e=document.getElementById("rect-start-modal");e&&e.addEventListener("click",i=>{i.target===e&&Zi()});let t=document.getElementById("rect-start-feedstock");t&&t.addEventListener("change",ka);let n=document.getElementById("rect-start-reflux-mode");n&&n.addEventListener("change",Na);let o=document.getElementById("rect-start-takeoff-backend");o&&o.addEventListener("change",Ba),["rect-start-heads-percent","rect-start-body-percent","rect-start-tails-percent"].forEach(i=>{let r=document.getElementById(i);r&&r.addEventListener("input",ao)}),Ra(),Na(),Ba(),ao()}async function Xi(){return ft(j,"Auto-rectification")?await Hc(document.getElementById("mode-start-button")):!1}async function er(){if(!ft(J,"Manual rectification"))return!1;try{let e={...Qi()};delete e.boosterEnabled,delete e.boosterStopCubeTempC,await fetch("/api/settings/rect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)}),h("Starting manual rectification...","info");let t=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"manual_rect"})});if(!t.ok){let o=await t.text();return h(`Start manual error (${t.status}): ${o}`,"error"),!1}let n=await t.json();return h("Manual rectification started","success"),n.warning&&h(`Warning: ${n.warning}`,"warning"),setTimeout(ie,500),!0}catch(e){return h(`Manual start network error: ${e.message}`,"error"),console.error("startManual error:",e),!1}}var Wc={enabled:"dist-start-booster-enabled",stopTemp:"dist-start-booster-stop-cube-temp"};function jc(e,t,n,o){let i=Number(e);return Number.isFinite(i)?i<t?t:i>n?n:i:o}function so(){let e=Math.max(1,Number(me)||3e3),t=jc(document.getElementById("dist-start-power-percent")?.value,0,e,Math.round(e*.6));return{endTemp:jc(document.getElementById("dist-start-end-temp")?.value,70,110,96),powerW:t,powerPercent:Math.min(100,Math.max(0,Math.round(t/e*100))),...io(Wc)}}async function zc(){try{return await ro(Wc),!0}catch(e){return h(`Ошибка загрузки booster-настроек дистилляции: ${e.message}`,"warning"),!1}}async function tr(e=null){if(!ft(pe,"Distillation"))return!1;let t=e||so();try{h("Отправка команды запуска дистилляции...","info");let n=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"distillation",params:t})});if(n.ok){let i=await n.json();return h("Дистилляция запущена","success"),i.warning&&h(`Предупреждение: ${i.warning}`,"warning"),setTimeout(ie,500),!0}let o=await n.text();return h(`Ошибка запуска дистилляции (${n.status}): ${o}`,"error"),!1}catch(n){return h(`Сетевая ошибка дистилляции: ${n.message}`,"error"),console.error("Start distillation error:",n),!1}}function Uc(){try{let e=document.getElementById("extra-mode-select"),t=document.getElementById("mashing-controls"),n=document.getElementById("hold-controls"),o=s=>{let l=s||"none";t&&(t.style.display=l==="mashing"?"":"none"),n&&(n.style.display=l==="hold"?"":"none");try{localStorage.setItem("control.extraMode",l)}catch{}},i=document.getElementById("mash-profile-name");i&&!i.value&&(i.value="Default Mashing");let r=document.getElementById("mash-steps");r&&r.children.length===0&&(rn({temperature:38,duration:20,name:"Кислотная пауза"}),rn({temperature:52,duration:20,name:"Белковая пауза"}),rn({temperature:63,duration:40,name:"Мальтозная пауза"}),rn({temperature:72,duration:20,name:"Осахаривание"}),rn({temperature:78,duration:10,name:"Мэш-аут"}));let a=document.getElementById("hold-steps");if(a&&a.children.length===0&&La({temperature:65,duration:60}),e){e.addEventListener("change",()=>o(e.value));let s="none";try{s=localStorage.getItem("control.extraMode")||"none"}catch{}(!e.value||e.value==="none")&&(e.value=s),o(e.value)}else t&&(t.style.display=""),n&&(n.style.display="")}catch(e){console.error("initMashingHoldControls error:",e)}}function Uo({mode:e,temperature:t,duration:n,name:o,useCooling:i}){let r=document.createElement("div");r.dataset.stepRow=e,r.style.display="flex",r.style.gap="10px",r.style.flexWrap="wrap",r.style.alignItems="center",r.style.marginBottom="8px";let a=document.createElement("input");a.type="number",a.step="0.1",a.min="0",a.placeholder=e==="hold"?"Темп. или пауза":"Темп., °C",a.value=(t??"")===""?"":String(t),a.dataset.field="temperature",a.style.width="140px";let s=document.createElement("input");if(s.type="number",s.step="1",s.min="1",s.placeholder="Мин",s.value=(n??"")===""?"":String(n),s.dataset.field="duration",s.style.width="110px",r.appendChild(a),r.appendChild(s),e==="hold"){let c=document.createElement("label");c.className="checkbox-label",c.style.display="inline-flex",c.style.alignItems="center",c.style.gap="8px",c.style.minHeight="38px";let d=document.createElement("input");d.type="checkbox",d.dataset.field="useCooling",d.checked=!!i;let m=document.createElement("span");m.textContent="Охлаждение",c.append(d,m),r.appendChild(c)}if(e==="mash"){let c=document.createElement("input");c.type="text",c.placeholder="Имя шага (опц.)",c.value=o||"",c.dataset.field="name",c.style.flex="1",c.style.minWidth="180px",r.appendChild(c)}let l=document.createElement("button");return l.className="btn btn-sm",l.textContent="✖",l.title="Удалить шаг",l.onclick=()=>r.remove(),r.appendChild(l),r}function rn(e={}){let t=document.getElementById("mash-steps");t&&t.appendChild(Uo({mode:"mash",temperature:e.temperature,duration:e.duration,name:e.name}))}function nr(e="Mashing",t=[],n=""){let o=document.getElementById("mash-profile-name");o&&(o.value=String(e||"Mashing").trim()||"Mashing");let i=document.getElementById("mash-steps");if(!i)return;i.innerHTML="",i.dataset.profileId=n?String(n):"",(Array.isArray(t)?t:[]).forEach(a=>rn(a))}function La(e={}){let t=document.getElementById("hold-steps");t&&t.appendChild(Uo({mode:"hold",temperature:e.temperature,duration:e.duration,useCooling:e.useCooling}))}function Ve(e,t){let n=document.getElementById(e);if(!n)return[];let o=Array.from(n.querySelectorAll(`div[data-step-row="${t}"]`)),i=[];for(let r of o){let a=r.querySelector('input[data-field="temperature"]')?.value??"",s=r.querySelector('input[data-field="duration"]')?.value??"",l=Number.parseFloat(a),c=Number.parseInt(s,10);if(!Number.isFinite(c)||c<=0||t==="mash"&&(!Number.isFinite(l)||l<=0))continue;let d={duration:c};if(t==="mash"){d.temperature=l;let m=(r.querySelector('input[data-field="name"]')?.value??"").trim();m&&(d.name=m)}else t==="hold"&&(Number.isFinite(l)&&l>0?d.temperature=l:d.temperature=0,d.useCooling=!!r.querySelector('input[data-field="useCooling"]')?.checked);i.push(d)}return i}async function or(){if(!ft(Ce,"Mashing"))return!1;try{let e=(document.getElementById("mash-profile-name")?.value??"").trim()||"Mashing",t=Ve("mash-steps","mash");if(!t.length)return h("✗ Затирка: добавьте хотя бы один корректный шаг (температура и длительность)","error"),!1;h("📤 Отправка команды запуска затирки...","info");let n=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"mashing",params:{profile:{name:e,steps:t}}})});if(n.ok){let i=await n.json();return h("✓ Затирка запущена","success"),i.warning&&h(`⚠️ ${i.warning}`,"warning"),setTimeout(ie,500),!0}let o=await n.text();return h(`✗ Ошибка (${n.status}): ${o}`,"error"),!1}catch(e){return h(`✗ Ошибка сети: ${e.message}`,"error"),console.error("Start mashing error:",e),!1}}async function ir(){if(!ft(Pe,"Пастеризация"))return!1;try{let e=Ve("hold-steps","hold");if(!e.length)return h("✗ Пастеризация: добавьте хотя бы один корректный шаг или паузу с длительностью","error"),!1;h("📤 Отправка команды запуска пастеризации...","info");let t=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"hold",params:{steps:e}})});if(t.ok){let o=await t.json();return h("✓ Пастеризация запущена","success"),o.warning&&h(`⚠️ ${o.warning}`,"warning"),setTimeout(ie,500),!0}let n=await t.text();return h(`✗ Ошибка (${t.status}): ${n}`,"error"),!1}catch(e){return h(`✗ Ошибка сети: ${e.message}`,"error"),console.error("Start hold error:",e),!1}}var zt={powerW:2500,pumpSpeedMlH:2e4,columnBottomTempThresholdC:95},an={targetTempC:28,hysteresisC:.5,useHeater:!0},Kc={enabled:"nbk-booster-enabled",stopTemp:"nbk-booster-stop-cube-temp"};function Tn(e){return document.getElementById(e)}function Rt(e,t,n,o){let i=Number(String(e??"").trim().replace(",","."));return Number.isFinite(i)?i<t?t:i>n?n:i:o}function gt(e,t){let n=Tn(e);if(n){if(n.type==="checkbox"){n.checked=!!t;return}t!=null&&(n.value=String(t))}}function Ko(){return{powerW:Rt(Tn("nbk-power-w")?.value,500,5500,zt.powerW),pumpSpeedMlH:Rt(Tn("nbk-pump-speed")?.value,100,12e4,zt.pumpSpeedMlH),columnBottomTempThresholdC:Rt(Tn("nbk-column-bottom-threshold")?.value,50,110,zt.columnBottomTempThresholdC),...io(Kc)}}function Go(){return{targetTempC:Rt(Tn("ferm-target-temp")?.value,5,45,an.targetTempC),hysteresisC:Rt(Tn("ferm-hysteresis")?.value,.1,10,an.hysteresisC),useHeater:!!Tn("ferm-use-heater")?.checked}}async function Gc(){let e=!1;try{let t=await fetch("/api/settings/nbk");if(!t.ok)throw new Error(`HTTP ${t.status}`);let n=await t.json(),o={powerW:Rt(n.powerW,500,5500,zt.powerW),pumpSpeedMlH:Rt(n.pumpSpeedMlH,100,12e4,zt.pumpSpeedMlH),columnBottomTempThresholdC:Rt(n.columnBottomTempThresholdC,50,110,zt.columnBottomTempThresholdC)};gt("nbk-power-w",o.powerW),gt("nbk-pump-speed",o.pumpSpeedMlH),gt("nbk-column-bottom-threshold",o.columnBottomTempThresholdC),e=!0}catch(t){h(`Ошибка загрузки настроек НБК: ${t.message}`,"warning"),gt("nbk-power-w",zt.powerW),gt("nbk-pump-speed",zt.pumpSpeedMlH),gt("nbk-column-bottom-threshold",zt.columnBottomTempThresholdC)}try{await ro(Kc)}catch(t){h(`Ошибка загрузки booster-настроек НБК: ${t.message}`,"warning")}return e}async function Yc(){try{let e=await fetch("/api/settings/fermentation");if(!e.ok)throw new Error(`HTTP ${e.status}`);let t=await e.json(),n={targetTempC:Rt(t.targetTempC,5,45,an.targetTempC),hysteresisC:Rt(t.hysteresisC,.1,10,an.hysteresisC),useHeater:t.useHeater!==void 0?!!t.useHeater:an.useHeater};return gt("ferm-target-temp",n.targetTempC),gt("ferm-hysteresis",n.hysteresisC),gt("ferm-use-heater",n.useHeater),!0}catch(e){return h(`Ошибка загрузки настроек ферментации: ${e.message}`,"warning"),gt("ferm-target-temp",an.targetTempC),gt("ferm-hysteresis",an.hysteresisC),gt("ferm-use-heater",an.useHeater),!1}}async function Xg(e,t,n){let o=await fetch(e,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)});if(!o.ok){let i=await o.text();throw new Error(i||`HTTP ${o.status}`)}h(n,"info")}async function Jc(e,t,n,o,i,r,a,s,l){if(!ft(o,i))return!1;try{await Xg(r,t,a),h(s,"info");let c=await fetch("/api/process/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:e,params:n})});if(!c.ok){let m=await c.text();throw new Error(m||`HTTP ${c.status}`)}let d=await c.json();return h(l,"success"),d.warning&&h(`Предупреждение: ${d.warning}`,"warning"),setTimeout(ie,500),!0}catch(c){return h(`${i}: ${c.message}`,"error"),!1}}async function Zc(){let e=Ko(),t={...e};return delete t.boosterEnabled,delete t.boosterStopCubeTempC,await Jc("nbk",t,e,de,"НБК","/api/settings/nbk","Настройки НБК сохранены","Запуск НБК...","НБК запущена")}async function Qc(){let e=Go();return await Jc("fermentation",e,e,Re,"Ферментация","/api/settings/fermentation","Настройки ферментации сохранены","Запуск ферментации...","Ферментация запущена")}var ad="control.selectedMode",sd="control.manualRectSettings",eb={rectification:"rectification",manual:"manualRect",distillation:"distillation",mashing:"mashing",hold:"hold",nbk:"nbk",fermentation:"fermentation"},rr={rectification:{title:"Авто-ректификация",subtitle:"Параметры запуска процесса",startLabel:"▶️ Сохранить и запустить авто-ректификацию",startClass:"btn-success",modeValue:j},manual:{title:"Ручная ректификация",subtitle:"Старт режима и ручное управление ТЭН/насос/клапаны",startLabel:"▶️ Запустить ручную ректификацию",startClass:"btn-warning",modeValue:J},distillation:{title:"Дистилляция",subtitle:"Быстрые параметры запуска дистилляции",startLabel:"▶️ Запустить дистилляцию",startClass:"btn-info",modeValue:pe},mashing:{title:"Затирка",subtitle:"Температурный профиль и шаги затирки",startLabel:"▶️ Запустить затирку",startClass:"btn-success",modeValue:Ce},hold:{title:"Пастеризация",subtitle:"Температурные шаги, паузы и управляемое охлаждение",startLabel:"▶️ Запустить пастеризацию",startClass:"btn-success",modeValue:Pe},nbk:{title:"НБК",subtitle:"Непрерывная бражная колонна: мощность, подача браги и контроль температуры низа колонны",startLabel:"▶️ Запустить НБК",startClass:"btn-warning",modeValue:de},fermentation:{title:"Ферментация",subtitle:"Поддержание температуры брожения по датчику в кубе или ферментере",startLabel:"▶️ Запустить ферментацию",startClass:"btn-info",modeValue:Re}},se="rectification",Xc=!1,ed=!1,td=!1,nd=!1,od=!1,be=null,Qo=0;function tb(){let e=S?.activeProfile?.mashing?.steps;return Array.isArray(e)?e.slice(0,10).map((t,n)=>{let o=Number(t?.temperature),i=Number(t?.duration),r=String(t?.name||"").trim()||`Шаг ${n+1}`;return!Number.isFinite(o)||o<=0||!Number.isFinite(i)||i<=0?null:{temperature:Math.round(o*10)/10,duration:Math.round(i),name:r}}).filter(Boolean):[]}function nb(){let e=S?.activeProfile||{};if(!e.loaded||e.category!=="mashing")return;let t=tb();if(!t.length)return;let o=document.getElementById("mash-steps")?.dataset?.profileId||"",i=String(e.id||"");o&&i&&o===i||nr(e.name||"Затирка",t,i)}function ob(e){return rr[e]||rr.rectification}function ib(e=se,t=S){let n=eb[e];if(!n)return{known:!1,supported:!0,reason:"",key:""};let o=t?.equipment?.supportedModes?.[n];return!o||typeof o.supported!="boolean"?{known:!1,supported:!0,reason:"",key:n}:{known:!0,supported:!!o.supported,reason:String(o.reason||"").trim(),key:n}}function Xo(e=se,t=S){let n=ib(e,t);return!n.known||n.supported?"":n.reason||"Для текущей комплектации не хватает обязательных термодатчиков."}function Oa(){let e=Xo(se,S);return e?(h(`Запуск режима заблокирован: ${e}`,"warning"),Ae(),!1):!0}function rb(e){try{localStorage.setItem(ad,e)}catch{}}function ld(e){document.querySelectorAll("[data-mode-select]").forEach(t=>{let n=t.dataset.modeSelect===e,o=Xo(t.dataset.modeSelect,S);t.classList.toggle("active",n),t.classList.toggle("control-mode-selected",n),t.classList.toggle("control-mode-topology-blocked",!!o),t.title=o?`Недоступно для текущей комплектации: ${o}`:""})}function ab(e){document.querySelectorAll("[data-mode-panel]").forEach(t=>{let n=t.dataset.modePanel===e;t.style.display=n?"":"none"})}function cd(e){let t=document.getElementById("control-mode-title"),n=document.getElementById("control-mode-subtitle"),o=document.getElementById("mode-start-button"),i=document.getElementById("mode-start-confirm-button"),r={rectification:{title:"Авто-ректификация",subtitle:"Параметры запуска процесса",startLabel:"Сохранить и запустить авто-ректификацию"},manual:{title:"Ручная ректификация",subtitle:"Старт режима и ручное управление нагревом с настройкой отбора тела",startLabel:"Запустить ручную ректификацию"},distillation:{title:"Дистилляция",subtitle:"Быстрые параметры запуска дистилляции",startLabel:"Запустить дистилляцию"},mashing:{title:"Затирка",subtitle:"Температурный профиль и шаги затирки",startLabel:"Запустить затирку"},hold:{title:"Пастеризация",subtitle:"Температурные шаги, паузы и управляемое охлаждение",startLabel:"Запустить пастеризацию"},nbk:{title:"НБК",subtitle:"Непрерывная бражная колонна: мощность, подача браги и контроль низа колонны",startLabel:"Запустить НБК"},fermentation:{title:"Ферментация",subtitle:"Поддержание температуры брожения по датчику в кубе или ферментере",startLabel:"Запустить ферментацию"}},a=ob(e),s=r[e]||r.rectification,l=Xo(e,S);t&&(t.textContent=s.title),n&&(n.textContent=l?`${s.subtitle} Сейчас запуск недоступен: ${l}`:s.subtitle),o&&(o.textContent=s.startLabel,o.dataset.mode=String(a.modeValue),o.classList.remove("btn-success","btn-warning","btn-info"),o.classList.add("btn-primary"),o.title=l||""),i&&(i.textContent=s.startLabel,i.title=l||"")}function Ae(){ld(se),cd(se);let e=document.getElementById("mode-start-button"),t=document.getElementById("mode-start-status"),n=document.getElementById("mode-start-confirm-button"),o=Bt(S),i=Xo(se,S),r=!!i,a=ge!==W,s=!!be&&!be.ready&&!a,l=!!be&&be.ready&&Number(be.warningCount||0)>0,c=a?o:r?{...o,tone:"danger",title:"Режим не поддерживается этой комплектацией",detail:i,disabled:!0}:s?{...o,tone:"danger",title:be.title||o.title,detail:be.detail||o.detail,disabled:!0}:l?{...o,tone:"warn",title:be.title||o.title,detail:be.detail||o.detail}:o;e&&(e.disabled=c.disabled,e.classList.toggle("btn-disabled",c.disabled),e.title=c.disabled?c.detail:""),t&&(t.classList.remove("is-good","is-warn","is-danger","is-muted"),t.classList.add(`is-${c.tone}`),t.textContent=a?"Новый запуск недоступен, пока текущий процесс не остановлен и автоматика не вернётся в idle.":`${c.title}. ${c.detail}`),n&&(n.disabled=c.disabled),lb(),gb(),db(),Wa()}function Ha(){Qo&&(window.clearTimeout(Qo),Qo=0)}function id(){return H("mode-start-modal")?.classList.contains("active")||!1}function Da(){let e=Bt(S).preflight;e&&Wi(e.title,e.detail,e.tone,e.checks)}function Yo(e){let t=Number(e);return Number.isFinite(t)?`${Math.round(t)}%`:"—"}function Jo(e){let t=Number(e);if(!Number.isFinite(t)||t<=0)return"—";let n=Math.round(t),o=Math.floor(n/60),i=n%60;return o<=0?`${i} мин`:i===0?`${o} ч`:`${o} ч ${i} мин`}function dd(e,t=1,n=""){let o=Number(e);return Number.isFinite(o)?`${o>=0?"+":""}${o.toFixed(t)}${n}`:"—"}function $n(e,t,n,o,i=""){let r=document.createElement("div");r.className=`modal-advisor-item is-${t||"muted"}`;let a=document.createElement("strong");a.textContent=n,r.appendChild(a);let s=document.createElement("div");if(s.className="modal-advisor-text",s.textContent=o,r.appendChild(s),i){let l=document.createElement("div");l.className="modal-advisor-action",l.textContent=i,r.appendChild(l)}e.appendChild(r)}function Zo(e){return String(e??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}function lo(e,t){let n=Number(e||0),o=Number(t||0);return n>0?!(o>0)||Math.abs(o-n)<.01?`${n.toFixed(2)}°C`:`${n.toFixed(2)}°C → ${o.toFixed(2)}°C`:"—"}function Pn(e){let t=Number(e||0);return t>0?`${t.toFixed(1)} мм рт.ст.`:"—"}function sb(e){let t=Number(e||0);return t>0?new Date(t*1e3).toLocaleString("ru-RU"):"—"}function Va(e,t,n){let o=!!t?.boosterEnabled,i=Number(t?.boosterStopCubeTempC),r=Number(S?.temps?.cube||0);if(!o){ue(e,"muted","Разгонный ТЭН","Booster SSR для этого запуска отключён. Разогрев пойдёт только через основной TRIAC.",n);return}if(Number.isFinite(i)&&r>0&&r>=i){ue(e,"warn","Разгонный ТЭН",`Booster SSR включён, но куб уже ${r.toFixed(1)} °C и выше порога ${i.toFixed(1)} °C. На старте он почти сразу не понадобится.`,n);return}ue(e,"good","Разгонный ТЭН",Number.isFinite(i)?`Booster SSR будет работать только на фазе разогрева и отключится при ${i.toFixed(1)} °C по кубу.`:"Booster SSR будет участвовать только в фазе разогрева.",n)}function lb(){let e=H("rect-adaptive-recipe-section"),t=H("rect-active-profile-summary");if(!e||!t)return;let n=se==="rectification";if(e.style.display=n?"":"none",!n)return;let o=S.activeProfile||{},i=o.validation||{},r=o.baseTemperatures||{},a=o.baroPreview||{},s=o.effectiveTemperaturesPreview||{},l=In("rect-start-baro-correction-enabled"),c="muted",d="Активный профиль не загружен",m="Загрузите профиль ректификации, чтобы увидеть baseline давления, ожидаемый сдвиг порогов и поведение рецепта для текущего запуска.";if(o.loaded){let f=o.name||o.id||"без названия",b=String(o.category||"").trim();b&&b!=="rectification"?(c="danger",d=`Профиль "${f}" не подходит для авто-ректификации`,m=`Сейчас активен профиль категории "${b}". Для адаптивной ректификации загрузите профиль именно категории "rectification".`):l?a.applicable?a.applied?(c="warn",d=`Профиль "${f}" адаптируется под текущее давление`,m=`Рецепт валидирован при ${Pn(a.baselinePressureMmHg)}, сейчас ${Pn(a.currentPressureMmHg)}. Сдвиг составит ${dd(a.appliedShiftC,2,"°C")}: головы ${lo(r.headsEnd,s.headsEnd)}, тело ${lo(r.bodyStart,s.bodyStart)}, конец тела ${lo(r.bodyEnd,s.bodyEnd)}.`):(c="good",d=`Профиль "${f}" близок к своему baseline`,m=`Baseline ${Pn(a.baselinePressureMmHg)}, сейчас ${Pn(a.currentPressureMmHg)}. Условия близки, поэтому заметный сдвиг порогов не требуется.`):(c="warn",d=`Профиль "${f}" загружен`,m=a.note||"Для автоматической поправки рецепта пока не хватает baseline профиля или текущего давления BMP280."):(c="muted",d=`Профиль "${f}" загружен, барокоррекция отключена`,m=`Рецепт валидирован при ${Pn(i.atmosphereMmHg||a.baselinePressureMmHg)}. Для этого запуска пороги останутся базовыми: головы ${lo(r.headsEnd,r.headsEnd)}, тело ${lo(r.bodyStart,r.bodyStart)} - ${lo(r.bodyEnd,r.bodyEnd)}.`)}t.className=`control-profile-summary is-${c}`,t.innerHTML=`
+        <div class="control-profile-summary-title">${Zo(d)}</div>
+        <div class="control-profile-summary-text">${Zo(m)}</div>
+        <div class="control-profile-summary-meta">
+            <div>
+                <span>Baseline профиля</span>
+                <strong>${Zo(Pn(i.atmosphereMmHg||a.baselinePressureMmHg))}</strong>
+            </div>
+            <div>
+                <span>Текущее давление</span>
+                <strong>${Zo(Pn(a.currentPressureMmHg))}</strong>
+            </div>
+            <div>
+                <span>Валидация</span>
+                <strong>${Zo(sb(i.validatedAt))}</strong>
+            </div>
         </div>
+    `}function cb(){let e=Bt(S),t=e.preflight||{};return{tone:t.tone||e.tone||"muted",title:t.title||e.title||"Проверка перед запуском",detail:t.detail||e.detail||"Собираем сигналы готовности.",action:"Откройте чек-лист и проверьте ключевые уставки перед подтверждением запуска.",confidence:{}}}function db(e=be){let t=H("mode-start-advisor"),n=H("mode-start-advisor-title"),o=H("mode-start-advisor-summary"),i=H("mode-start-advisor-detail"),r=H("mode-start-advisor-action"),a=H("mode-start-advisor-meta");if(!t||!n||!o||!i||!r||!a)return;let s=e?.advisor||cb(),l=s.tone||e?.tone||"muted",c=s.confidence||{},d=Yo(c.startup),m=Yo(c.decision);t.classList.remove("is-good","is-warn","is-danger","is-muted"),t.classList.add(`is-${l}`),n.textContent=s.title||"Совет перед запуском",o.textContent=e?.advisor?`Уверенность старта ${d}, инженерная оценка ${m}`:"Покажем краткую рекомендацию после backend preflight",i.textContent=s.detail||"Собираем рекомендации перед запуском.",r.textContent=s.action||"",a.innerHTML="",$n(a,l,"Уверенность запуска",`Старт: ${d}. Process health: ${Yo(c.processHealth)}, stability: ${Yo(c.stability)}.`);let f=s.profile||{};if(f.relevant){let g=f.loaded&&f.matchesMode?"good":"warn",v=f.name||"Профиль не привязан",w=f.loaded?f.matchesMode?`Активный профиль: ${v}. Категория согласована с выбранным режимом.`:`Активный профиль: ${v}. Категория не совпадает с выбранным режимом.`:"Запуск пойдёт без активного профиля, baseline для Run Advisor будет слабее.";$n(a,g,"Связка с профилем",w)}let b=s.baroCorrection||{};if(b.enabled){let g="muted",v=b.note||"Барокоррекция профиля включена.",w=b.effectiveTemperatures||{};b.applicable&&b.applied?(g="warn",v=`Baseline ${Number(b.baselinePressureMmHg||0).toFixed(1)} мм рт.ст., сейчас ${Number(b.currentPressureMmHg||0).toFixed(1)} мм рт.ст., мягкий сдвиг ${dd(b.appliedShiftC,2,"°C")}. Пороги на этот запуск: головы до ${Number(w.headsEnd||0).toFixed(2)}°C, тело ${Number(w.bodyStart||0).toFixed(2)}-${Number(w.bodyEnd||0).toFixed(2)}°C.`):b.applicable?(g="good",v=b.note||"Отклонение давления небольшое, заметный сдвиг порогов не требуется."):(g="warn",v=b.note||"Для preview барокоррекции не хватает baseline профиля или текущего давления BMP280."),$n(a,g,"Барокоррекция профиля",v)}let u=s.dryRun||{};if(u.supported){let g=u.charge||{},v=u.volumes||{},w=u.speeds||{},C=Jo(u.totalMin),P=Jo(u.heatingMin),E=Jo(u.preparationMin),M=Jo(u.takeoffMin),A=Jo(u.baselineDurationMin),$=Number.isFinite(Number(u.energyKwh))?`${Number(u.energyKwh).toFixed(1)} кВт·ч`:"—",I=Number.isFinite(Number(u.baselineEnergyKwh))?`${Number(u.baselineEnergyKwh).toFixed(1)} кВт·ч`:"—",R=`${u.summary||`Ожидаемо ${C}.`} Сырец ${Number(g.feedVolumeL||0).toFixed(1)} л при ${Number(g.feedAbvPercent||0).toFixed(1)}%, головы/тело/хвосты ${Number(v.headsMl||0).toFixed(0)} / ${Number(v.bodyMl||0).toFixed(0)} / ${Number(v.tailsMl||0).toFixed(0)} мл. Подготовка ${E}, прогрев ${P}, отбор ${M}. Энергия ${$}.`,k=u.usesLearning?`Прогноз подмешивает baseline профиля: длительность ${A}, энергия ${I}.`:"Пока это модель по текущим уставкам без сильной опоры на успешный baseline профиля.";$n(a,u.usesLearning?"good":"muted","Dry-run запуска",R,k),(Number.isFinite(Number(w.headsMlH))||Number.isFinite(Number(w.bodyMlH)))&&$n(a,"muted","Темп отбора в прогнозе",`Головы около ${Number(w.headsMlH||0).toFixed(0)} мл/ч, тело ${Number(w.bodyMlH||0).toFixed(0)} мл/ч, хвосты ${Number(w.tailsMlH||0).toFixed(0)} мл/ч.`),(u.riskTitle||u.riskDetail)&&$n(a,u.riskTone||"muted",u.riskTitle||"Риск dry-run",u.riskDetail||"Сигналов риска для dry-run не обнаружено.")}let p=[["Отбор",c.takeoff],["Конец голов",c.headsEnd],["Конец тела",c.bodyEnd],["Переход в хвосты",c.tails],["Power limit",c.powerLimit]].filter(([,g])=>Number.isFinite(Number(g)));if(p.length){let g=p.map(([v,w])=>`${v}: ${Yo(w)}`).join(" • ");$n(a,"muted","Сигналы автоматики",g)}}function ub(){let e=H("mode-start-modal");e&&e.classList.add("active")}function ei(){let e=H("mode-start-modal");e&&(Ha(),e.classList.remove("active"),be=null,Da(),Ae())}function mb(e){let t=H(e);t&&(ei(),window.setTimeout(()=>{let n=t.closest("details");for(;n;)n.open=!0,n=n.parentElement?.closest("details")||null;t.scrollIntoView({block:"center",behavior:"smooth"}),typeof t.focus=="function"&&t.focus({preventScroll:!0}),t.classList.remove("control-field-attention"),t.offsetWidth,t.classList.add("control-field-attention"),window.setTimeout(()=>t.classList.remove("control-field-attention"),1700)},30))}function ue(e,t,n,o,i=""){e.push({tone:t,title:n,detail:o,targetId:i})}function _a(e){let t=Math.floor(e/60),n=Math.round(e%60);return t<=0?`${n} мин`:n===0?`${t} ч`:`${t} ч ${n} мин`}function pb(){let t={tone:Bt(S).tone,kicker:"Прогноз запуска",title:"Что запустится",text:"Проверьте настройки режима, затем переходите к старту.",metrics:[]};if(se==="rectification"){let n=Qe(),o={...S.rectification,feedVolumeL:z("rect-start-feed-volume",20),feedAbvPercent:z("rect-start-feed-abv",40),headsPercent:z("rect-start-heads-percent",8),bodyPercent:z("rect-start-body-percent",84),tailsPercent:z("rect-start-tails-percent",8),headsSpeedMlHKw:z("rect-start-heads-speed",300),bodySpeedMlHKw:z("rect-start-body-speed",600),stabilizationMin:z("rect-start-stabilization",30),purgeMin:z("rect-start-purge",5),boosterEnabled:In("rect-start-booster-enabled",!!S?.equipment?.boosterHeaterEnabled),boosterStopCubeTempC:z("rect-start-booster-stop-cube-temp",Number(S?.equipment?.boosterHeaterStopCubeTempC||78))},i=Lo(o,n.value),r=Math.max(0,Number(S.equipment.heaterPowerW||me)||0),a=Math.max(.1,r/1e3),s=o.headsSpeedMlHKw*a,l=o.bodySpeedMlHKw*a;return t.title="Авто-ректификация",t.text=`Будет рассчитан отбор фракций по ${n.source==="sensor"?"данным ареометра":"плановой крепости"}, затем выполнены стабилизация и продувка перед телом.`,t.metrics=[{label:"Сырец",value:`${o.feedVolumeL.toFixed(1)} л • ${o.feedAbvPercent.toFixed(1)}%`},{label:"Фракции",value:`${i.heads.toFixed(0)} / ${i.body.toFixed(0)} / ${i.tails.toFixed(0)} мл`},{label:"Скорости",value:`головы ${s.toFixed(0)} • тело ${l.toFixed(0)} мл/ч`},{label:"Подготовка",value:`${_a(o.stabilizationMin+o.purgeMin)}`}],t}if(se==="manual"){let n=sr(),o=n.heads.mode==="time"?`${n.heads.time.toFixed(0)} мин`:n.heads.mode==="speed"?`${n.heads.speed.toFixed(0)} мл/ч`:`${n.heads.temp.toFixed(1)} °C`;return t.title="Ручная ректификация",t.text="Запустится ручной режим с живым управлением нагревом и насосом, а логика фракций останется опорой для оператора.",t.metrics=[{label:"Сырец",value:`${n.feed.volumeL.toFixed(1)} л • ${n.feed.abvPercent.toFixed(1)}%`},{label:"Головы",value:`${n.heads.volume.toFixed(0)} мл • ${o}`},{label:"Тело",value:`скачок ${n.body.spikeThreshold.toFixed(2)} °C • шаг ${n.body.speedDecrement.toFixed(0)}%`},{label:"Хвосты",value:n.tails.enabled?"отбор включён":"отбор отключён"}],t}if(se==="distillation"){let n=so(),o=z("dist-start-power-fact",0);return t.title="Дистилляция",t.text="Процесс пойдёт на заданной мощности и завершится по температуре окончания, без сложной фазовой логики колонны.",t.metrics=[{label:"Стоп-условие",value:`${n.endTemp.toFixed(1)} °C`},{label:"Уставка",value:`${n.powerW.toFixed(0)} Вт`},{label:"Факт сейчас",value:`${o.toFixed(0)} Вт`}],t}if(se==="nbk"){let n=Ko();return t.title="НБК",t.text="Система прогреет НБК, дождётся рабочей температуры низа колонны и затем откроет подачу браги на заданной скорости.",t.metrics=[{label:"Нагрев",value:`${n.powerW.toFixed(0)} Вт`},{label:"Подача",value:`${n.pumpSpeedMlH.toFixed(0)} мл/ч`},{label:"Защитный порог",value:`${n.columnBottomTempThresholdC.toFixed(1)} °C`}],t}if(se==="fermentation"){let n=Go();return t.title="Ферментация",t.text="Контур перейдёт в режим поддержания температуры и будет держать среду около цели с указанным гистерезисом.",t.metrics=[{label:"Цель",value:`${n.targetTempC.toFixed(1)} °C`},{label:"Гистерезис",value:`${n.hysteresisC.toFixed(1)} °C`},{label:"Нагрев",value:n.useHeater?"ТЭН участвует":"ТЭН отключён"}],t}if(se==="mashing"){let n=Ve("mash-steps","mash"),o=n.map(r=>Number(r.temperature)).filter(Number.isFinite),i=n.reduce((r,a)=>r+Number(a.duration||0),0);return t.title="Затирка",t.text="Профиль пройдёт по шагам затирки последовательно, удерживая температуру и таймер каждого этапа.",t.metrics=[{label:"Шаги",value:`${n.length} этап(ов)`},{label:"Длительность",value:_a(i)},{label:"Диапазон",value:o.length?`${Math.min(...o).toFixed(1)}–${Math.max(...o).toFixed(1)} °C`:"не задан"}],t}if(se==="hold"){let n=Ve("hold-steps","hold"),o=n.reduce((r,a)=>r+Number(a.duration||0),0),i=n.filter(r=>Number(r.temperature)>0);return t.title="Пастеризация",t.text="Режим выполнит температурные ступени и паузы по списку, включая охлаждение там, где оно отмечено в шагах.",t.metrics=[{label:"Шаги",value:`${n.length} этап(ов)`},{label:"Длительность",value:_a(o)},{label:"Темп. ступени",value:`${i.length} активных шаг(ов)`}],t}return t}function fb(e){let t=Xo(se,S);return t?{...e,tone:"danger",kicker:"Комплектация ограничивает режим",text:`Этот режим сейчас нельзя запустить: ${t}`,metrics:[{label:"Статус",value:"Запуск заблокирован"},...e.metrics].slice(0,4)}:e}function gb(){let e=H("control-mode-summary"),t=H("control-mode-summary-title"),n=H("control-mode-summary-kicker"),o=H("control-mode-summary-text"),i=H("control-mode-summary-metrics");if(!e||!t||!n||!o||!i)return;let r=fb(pb());e.classList.remove("is-good","is-warn","is-danger","is-muted"),e.classList.add(`is-${r.tone}`),t.textContent=r.title,n.textContent=r.kicker,o.textContent=r.text,i.innerHTML="",r.metrics.forEach(a=>{let s=document.createElement("div");s.className="control-mode-summary-metric";let l=document.createElement("span");l.textContent=a.label;let c=document.createElement("strong");c.textContent=a.value,s.append(l,c),i.appendChild(s)})}function bb(e){let t={feedVolumeL:z("rect-start-feed-volume",20),feedAbvPercent:z("rect-start-feed-abv",40),headsPercent:z("rect-start-heads-percent",8),bodyPercent:z("rect-start-body-percent",84),tailsPercent:z("rect-start-tails-percent",8),headsSpeedMlHKw:z("rect-start-heads-speed",300),bodySpeedMlHKw:z("rect-start-body-speed",600),boosterEnabled:In("rect-start-booster-enabled",!!S?.equipment?.boosterHeaterEnabled),boosterStopCubeTempC:z("rect-start-booster-stop-cube-temp",Number(S?.equipment?.boosterHeaterStopCubeTempC||78))},n=t.headsPercent+t.bodyPercent+t.tailsPercent,o=Math.max(1,Math.min(250,Nt()));ue(e,t.feedVolumeL>0&&t.feedVolumeL<=o?"good":"danger","Сырец и объём куба",t.feedVolumeL<=o?`Объём ${t.feedVolumeL.toFixed(1)} л укладывается в лимит куба ${o.toFixed(1)} л.`:`Объём ${t.feedVolumeL.toFixed(1)} л превышает допустимый лимит куба ${o.toFixed(1)} л.`,"rect-start-feed-volume"),ue(e,n>100?"danger":n<99?"warn":"good","Баланс фракций",n>100?`Сумма фракций ${n.toFixed(1)}%. Нужно не больше 100%.`:n<99?`Сумма фракций ${n.toFixed(1)}%. Проверьте, не потеряли ли часть выхода.`:`Сумма фракций ${n.toFixed(1)}%. Баланс выглядит корректно.`,"rect-start-heads-percent"),ue(e,t.bodySpeedMlHKw>t.headsSpeedMlHKw?"good":"warn","Скорости отбора",t.bodySpeedMlHKw>t.headsSpeedMlHKw?`Тело (${t.bodySpeedMlHKw.toFixed(0)}) быстрее голов (${t.headsSpeedMlHKw.toFixed(0)}), логика профиля сохранена.`:"Скорость тела не выше скорости голов. Обычно тело ведут заметно быстрее.","rect-start-body-speed"),Va(e,t,"rect-start-booster-enabled")}function hb(e){let t=sr(),n=Math.max(1,Math.min(250,Nt())),o=t.heads.mode,i=t.tails.enabled;ue(e,t.feed.volumeL>0&&t.feed.volumeL<=n?"good":"danger","Сырец для ручной ректификации",t.feed.volumeL<=n?`Объём ${t.feed.volumeL.toFixed(1)} л и крепость ${t.feed.abvPercent.toFixed(1)}% выглядят рабочими.`:`Объём ${t.feed.volumeL.toFixed(1)} л превышает лимит куба ${n.toFixed(1)} л.`,"manual-feed-volume"),ue(e,o==="time"?t.heads.time>=30?"good":"warn":o==="speed"?t.heads.speed>=50?"good":"warn":t.heads.temp>=75&&t.heads.temp<=85?"good":"warn","Режим отбора голов",o==="time"?`Отбор по времени: ${t.heads.time.toFixed(0)} мин на ${t.heads.volume.toFixed(0)} мл.`:o==="speed"?`Отбор по скорости: ${t.heads.speed.toFixed(0)} мл/ч на ${t.heads.volume.toFixed(0)} мл.`:`Отбор по температуре куба: ${t.heads.temp.toFixed(1)} °C.`,o==="time"?"manual-heads-time":o==="speed"?"manual-heads-speed":"manual-heads-temp"),ue(e,t.body.spikeThreshold>0&&t.body.speedDecrement>0?"good":"warn","Переход тела и хвостов",`Порог скачка ${t.body.spikeThreshold.toFixed(2)} °C, декремент ${t.body.speedDecrement.toFixed(0)}%, режим перехода: ${t.body.toTailsMode}.`,"manual-body-spike-threshold"),ue(e,i?t.tails.stopMode==="temp"?t.tails.stopTemp>=85&&t.tails.stopTemp<=99?"good":"warn":t.tails.stopAbv>=10&&t.tails.stopAbv<=70?"good":"warn":"warn","Хвосты",i?t.tails.stopMode==="temp"?`Остановка хвостов по температуре куба: ${t.tails.stopTemp.toFixed(1)} °C.`:`Остановка хвостов по крепости: ${t.tails.stopAbv.toFixed(0)}%.`:"Отбор хвостов отключён. Это допустимо, но проверьте, что хвостовая часть вам не нужна.",i?t.tails.stopMode==="temp"?"manual-tails-stop-temp":"manual-tails-stop-abv":"manual-tails-enabled")}function yb(e){let t=so(),n=z("dist-start-power-fact",0);ue(e,t.powerW>0?"good":"danger","Мощность нагрева",t.powerW>0?`Установка ${t.powerW.toFixed(0)} Вт, фактическая мощность сейчас около ${n.toFixed(0)} Вт.`:"Старт с нулевой мощностью не имеет смысла. Поднимите уставку нагрева.","dist-start-power-percent"),ue(e,t.endTemp>=88&&t.endTemp<=100?"good":"warn","Температура окончания",t.endTemp>=88&&t.endTemp<=100?`Стоп-температура ${t.endTemp.toFixed(1)} °C находится в рабочем диапазоне.`:`Стоп-температура ${t.endTemp.toFixed(1)} °C выглядит нетипично. Проверьте целевой сценарий.`,"dist-start-end-temp"),Va(e,t,"dist-start-booster-enabled")}function vb(e){let t=Ko();ue(e,t.powerW>=1e3?"good":"warn","Мощность НБК",t.powerW>=1e3?`Рабочая мощность ${t.powerW.toFixed(0)} Вт задана.`:`Мощность ${t.powerW.toFixed(0)} Вт может быть слишком низкой для устойчивой НБК.`,"nbk-power-w"),ue(e,t.pumpSpeedMlH>=500?"good":"warn","Подача браги",t.pumpSpeedMlH>=500?`Подача ${t.pumpSpeedMlH.toFixed(0)} мл/ч задана.`:"Подача браги выглядит слишком низкой. Проверьте производительность насоса.","nbk-pump-speed"),ue(e,t.columnBottomTempThresholdC>=85&&t.columnBottomTempThresholdC<=100?"good":"warn","Порог температуры низа колонны",`Порог защиты ${t.columnBottomTempThresholdC.toFixed(1)} °C.`,"nbk-column-bottom-threshold"),Va(e,t,"nbk-booster-enabled")}function wb(e){let t=Go();ue(e,t.targetTempC>=18&&t.targetTempC<=32?"good":"warn","Целевая температура",`Задано ${t.targetTempC.toFixed(1)} °C.`,"ferm-target-temp"),ue(e,t.hysteresisC>=.2&&t.hysteresisC<=2?"good":"warn","Гистерезис",`Гистерезис ${t.hysteresisC.toFixed(1)} °C.`,"ferm-hysteresis"),ue(e,t.useHeater?"good":"warn","Контур поддержания",t.useHeater?"ТЭН участвует в поддержании температуры.":"Поддержание без ТЭНа включено. Убедитесь, что внешний контур действительно справится.","ferm-use-heater")}function Sb(e){let t=Ve("mash-steps","mash"),n=sn("mash-profile-name","").trim();if(ue(e,n?"good":"warn","Имя профиля",n?`Профиль назван: ${n}.`:"Профиль без имени тоже запустится, но его будет сложнее отличить в истории.","mash-profile-name"),ue(e,t.length>0?"good":"danger","Шаги затирки",t.length>0?`Подготовлено ${t.length} шаг(ов) затирки.`:"Нужен хотя бы один корректный шаг с температурой и длительностью.",t.length>0?"mash-steps":"mash-add-step-button"),t.length>0){let o=t.some((i,r)=>r>0&&i.temperature<t[r-1].temperature-5);ue(e,o?"warn":"good","Последовательность температур",o?"Температуры шагов сильно скачут вниз. Проверьте, точно ли такой профиль задуман.":"Последовательность температур выглядит логичной для пошагового профиля.","mash-steps")}}function Eb(e){let t=Ve("hold-steps","hold"),n=t.filter(o=>Number(o.temperature)>0);ue(e,t.length>0?"good":"danger","Шаги пастеризации",t.length>0?`Подготовлено ${t.length} шаг(ов).`:"Нужен хотя бы один корректный шаг или пауза с длительностью.",t.length>0?"hold-steps":"hold-add-step-button"),ue(e,n.length>0?"good":"warn","Температурные ступени",n.length>0?`Есть ${n.length} температурных шаг(ов) с активным нагревом.`:"Сейчас заданы только паузы без температуры. Это допустимо, но проверьте сценарий.","hold-steps")}function Cb(){let e=Bt(S),t=[];switch(ue(t,e.tone,e.title,e.detail),se){case"rectification":bb(t);break;case"manual":hb(t);break;case"distillation":yb(t);break;case"nbk":vb(t);break;case"fermentation":wb(t);break;case"mashing":Sb(t);break;case"hold":Eb(t);break;default:break}return t}function xb(){switch(se){case"rectification":return{mode:"rectification",params:Qi()};case"manual":return{mode:"manual_rect",params:sr()};case"distillation":return{mode:"distillation",params:so()};case"mashing":return{mode:"mashing",params:{profile:{name:sn("mash-profile-name","Mashing").trim()||"Mashing",steps:Ve("mash-steps","mash")}}};case"hold":return{mode:"hold",params:{steps:Ve("hold-steps","hold")}};case"nbk":return{mode:"nbk",params:Ko()};case"fermentation":return{mode:"fermentation",params:Go()};default:return null}}function Mb(e){switch(e){case"rect-profile":return"rect-start-feed-volume";case"manual-profile":return"manual-feed-volume";case"dist-profile":return"dist-start-power-percent";case"mash-profile":return"mash-steps";case"hold-profile":return"hold-steps";case"nbk-profile":return"nbk-power-w";case"fermentation-profile":return"ferm-target-temp";case"profile":return se==="rectification"?"rect-start-feed-volume":se==="manual"?"manual-feed-volume":se==="distillation"?"dist-start-power-percent":se==="mashing"?"mash-steps":"";case"rect-takeoff":return"rect-start-takeoff-backend";case"manual-takeoff":return"rect-start-takeoff-backend";case"valves":return"monitor-diagnostics-panel";case"baro":return se==="rectification"?"rect-start-baro-correction-enabled":"";case"booster":return se==="rectification"?"rect-start-booster-enabled":se==="distillation"?"dist-start-booster-enabled":se==="nbk"?"nbk-booster-enabled":"";case"water":return"indicator-cooling-margin";case"sensors":return"indicator-sensor-freshness";case"cooling":return"indicator-cooling-margin";case"pressure":return"indicator-pressure-stable";case"stirrer":return"monitor-stirrer-card";default:return""}}function rd(){Ha(),Qo=window.setTimeout(()=>{Qo=0,ja({silent:!0})},180)}async function ja(e={}){let{silent:t=!1}=e,n=xb();if(!n)return be=null,Ae(),null;try{let o=await fetch("/api/process/preflight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(n)}),i=await o.json();if(!o.ok||!i?.success)throw new Error(i?.message||`HTTP ${o.status}`);return be=i,Wi(i.title,i.detail,i.tone,i.checks||{}),Ae(),i}catch(o){return be=null,Da(),Ae(),t||h(`Не удалось получить backend preflight: ${o?.message||o}`,"warning"),null}}function Wa(){let e=H("mode-start-checklist"),t=H("mode-start-checklist-summary"),n=H("mode-start-checklist-items");if(!e||!t||!n)return;let o=Array.isArray(be?.items)?be.items.map(l=>({tone:l.tone||"muted",title:l.title||l.id||"Проверка",detail:l.detail||"",targetId:Mb(l.id||""),blocking:!!l.blocking})):null,i=o||Cb(),r=o?Number(be?.blockingCount||0):i.filter(l=>l.tone==="danger").length,a=o?Number(be?.warningCount||0):i.filter(l=>l.tone==="warn").length,s=r>0?"danger":a>0?"warn":"good";e.classList.remove("is-good","is-warn","is-danger","is-muted"),e.classList.add(`is-${s}`),t.textContent=r>0?`${r} критичных пункта, ${a} предупреждений`:a>0?`${a} пункт(ов) требуют внимания`:"Все основные проверки выглядят нормально",o&&(t.textContent=r>0?`${r} критичных пункта, ${a} предупреждений`:a>0?`${a} пункт(ов) требуют внимания`:"Backend preflight не видит критичных блокировок"),n.innerHTML="",i.forEach(l=>{let c=document.createElement("div");c.className=`control-start-checklist-item is-${l.tone}`;let d=document.createElement("div");d.className="control-start-checklist-copy";let m=document.createElement("strong");m.textContent=l.title;let f=document.createElement("span");if(f.textContent=l.detail,d.append(m,f),c.appendChild(d),l.targetId){let b=document.createElement("button");b.type="button",b.className="btn btn-secondary btn-sm",b.textContent=l.tone==="good"?"Открыть":"Исправить",b.addEventListener("click",()=>mb(l.targetId)),c.appendChild(b)}n.appendChild(c)})}function Tb(){let e={rectification:"Авто-ректификация",manual:"Ручная ректификация",distillation:"Дистилляция",nbk:"НБК",fermentation:"Ферментация",mashing:"Затирка",hold:"Пастеризация"};document.querySelectorAll("[data-mode-select]").forEach(s=>{let l=s.dataset.modeSelect;s.classList.remove("btn-success","btn-warning","btn-info"),s.classList.add("btn"),e[l]&&(s.textContent=e[l])});let t=document.getElementById("history-filter-type");t&&(t.innerHTML=`
+            <option value="all">Все типы</option>
+            <option value="rectification">Ректификация</option>
+            <option value="distillation">Дистилляция</option>
+            <option value="nbk">НБК</option>
+            <option value="fermentation">Ферментация</option>
+            <option value="mashing">Затирка</option>
+            <option value="hold">Пастеризация</option>
+        `,t.closest("div")?.classList.add("history-toolbar"));let n=document.getElementById("pump-speed-control")?.closest(".control-group"),o=document.getElementById("manual-body-speed-decrement")?.closest(".form-group");if(n&&o&&!document.getElementById("manual-body-pump-hint")){n.style.gridColumn="1 / -1";let s=document.createElement("div");s.id="manual-body-pump-hint",s.className="control-inline-hint",s.textContent="Ручная подача для отбора тела и сервисной настройки потока.",n.appendChild(s),o.insertAdjacentElement("afterend",n)}document.querySelector('#control-panel-manual .controls button[onclick*="toggleValve"]')?.closest(".control-group")?.remove(),document.getElementById("dist-start-speed")?.closest(".form-group")?.remove(),document.getElementById("dist-start-heads-volume")?.closest(".form-group")?.remove(),document.getElementById("dist-start-target-volume")?.closest(".form-group")?.remove();let i=document.querySelector("#control-panel-hold .control-subsection-title");i&&(i.textContent="Пастеризация");let r=document.querySelector("#control-panel-hold .form-group > label");r&&(r.textContent="Шаги (температура °C, длительность мин)");let a=document.getElementById("hold-steps");if(a&&!document.getElementById("hold-steps-hint")){let s=document.createElement("div");s.id="hold-steps-hint",s.className="control-inline-hint",s.textContent="Если температура не указана, это пауза без нагрева. Охлаждение используется только для шага с температурой ниже предыдущего.",a.insertAdjacentElement("beforebegin",s)}}async function $b(){if(Xc)return;Xc=!!await Fa()}async function Pb(){if(ed)return;ed=!!await zc()}async function Ib(){if(td)return;td=!!await Gc()}async function Ab(){if(nd)return;nd=!!await Yc()}function Nb(){let e=document.querySelector('.tab[data-tab="monitor"]');e&&e.click(),window.requestAnimationFrame(()=>{window.scrollTo({top:0,left:0,behavior:"smooth"})})}async function ti(e,t={}){let n=rr[e]?e:"rectification";se=n,be=null,Ha(),ld(n),ab(n),cd(n),n==="rectification"?await $b():n==="distillation"?await Pb():n==="nbk"?await Ib():n==="fermentation"?await Ab():n==="mashing"&&nb(),t.persist!==!1&&rb(n),Ae()}async function Bb(){if(!Oa())return!1;if(ge!==W)return h("Сначала остановите текущий процесс, затем запускайте новый режим.","warning"),Ae(),!1;let e=Bt(S);if(e.disabled)return h(`Запуск заблокирован: ${e.detail}`,"warning"),Ae(),!1;let t;switch(se){case"rectification":t=await Xi();break;case"manual":Qa({silent:!0}),t=await er();break;case"distillation":t=await tr(so());break;case"mashing":t=await or();break;case"hold":t=await ir();break;case"nbk":t=await Zc();break;case"fermentation":t=await Qc();break;default:return h("Не выбран режим запуска","warning"),!1}return t&&(Nb(),setTimeout(ie,250)),Ae(),t}async function ud(){if(!Oa())return!1;let e=await ja();if(!e)return h("Не удалось подтвердить условия старта на контроллере. Повторите попытку.","warning"),!1;if(!e.ready)return h(`Запуск заблокирован: ${e.detail}`,"warning"),!1;let t=await Bb();return t&&ei(),t}async function md(){if(!Oa())return!1;if(ge!==W)return h("Сначала остановите текущий процесс, затем запускайте новый режим.","warning"),Ae(),!1;let e=Bt(S);return e.disabled?(h(`Запуск заблокирован: ${e.detail}`,"warning"),Ae(),!1):(be=null,Ae(),ub(),Da(),await ja(),!1)}async function pd(){if(!document.getElementById("control-mode-panel"))return;es(),Tb();let e="rectification";try{let o=localStorage.getItem(ad);o&&rr[o]&&(e=o)}catch{}let t=document.getElementById("control-mode-panel");if(t){let o=()=>{be=null,Ae(),id()&&rd()};t.addEventListener("input",o),t.addEventListener("change",o)}["mash-steps","hold-steps"].forEach(o=>{let i=document.getElementById(o);if(!i)return;new MutationObserver(()=>{be=null,Ae(),id()&&rd()}).observe(i,{childList:!0,subtree:!0})});let n=H("mode-start-modal");n&&n.addEventListener("click",o=>{o.target===n&&ei()}),document.addEventListener("runtime-status-updated",()=>{Ae()}),await ti(e,{persist:!1}),Ae()}function H(e){return document.getElementById(e)}function Ie(e,t){let n=H(e);if(!(!n||t===void 0||t===null)){if(n.type==="checkbox"){n.checked=!!t;return}n.value=String(t)}}function z(e,t){let n=Number(H(e)?.value);return Number.isFinite(n)?n:t}function sn(e,t){let n=H(e)?.value;return typeof n=="string"&&n.length>0?n:t}function In(e){return!!H(e)?.checked}function ar(){let e=z("manual-heads-volume",50),t=Math.max(1,z("manual-heads-time",180)),n=e/t*60,o=H("manual-heads-calc-speed");o&&(o.textContent=n.toFixed(1))}function za(){let e=z("manual-heads-volume",50),t=Math.max(1,z("manual-heads-speed",300)),n=e/t*60,o=H("manual-heads-calc-time");o&&(o.textContent=n.toFixed(0))}function Ua(){let e=sn("manual-heads-mode","time"),t=H("manual-heads-time-group"),n=H("manual-heads-speed-group"),o=H("manual-heads-temp-group");t&&(t.style.display=e==="time"?"":"none"),n&&(n.style.display=e==="speed"?"":"none"),o&&(o.style.display=e==="temp"?"":"none"),e==="time"&&ar(),e==="speed"&&za()}function Ka(){let e=sn("manual-body-to-tails-mode","stabilize"),t=H("manual-body-stabilize-group"),n=H("manual-body-temp-group");t&&(t.style.display=e==="stabilize"||e==="both"?"":"none"),n&&(n.style.display=e==="temp"||e==="both"?"":"none")}function Ga(){let e=H("manual-tails-settings");e&&(e.style.display=In("manual-tails-enabled")?"":"none")}function Ya(){let e=sn("manual-tails-stop-mode","temp"),t=H("manual-tails-temp-group"),n=H("manual-tails-abv-group");t&&(t.style.display=e==="temp"?"":"none"),n&&(n.style.display=e==="abv"?"":"none")}function Ja(){let e=H("manual-tails-pwm-settings");e&&(e.style.display=In("manual-tails-pwm-enabled")?"":"none")}function Za(){let e=H("manual-feed-volume");if(!e)return;let t=Math.max(1,Math.min(250,Nt()));e.max=String(t),e.value=String(Xt(e.value,Number(e.value)||20))}function sr(){return{feed:{volumeL:Xt(z("manual-feed-volume",20),20),abvPercent:z("manual-feed-abv",40)},heads:{volume:z("manual-heads-volume",50),mode:sn("manual-heads-mode","time"),time:z("manual-heads-time",180),speed:z("manual-heads-speed",300),temp:z("manual-heads-temp",78.5)},body:{spikeThreshold:z("manual-body-spike-threshold",.2),speedDecrement:z("manual-body-speed-decrement",5),toTailsMode:sn("manual-body-to-tails-mode","stabilize"),stabilizeTimeout:z("manual-body-stabilize-timeout",10),toTailsTemp:z("manual-body-to-tails-temp",92)},tails:{enabled:In("manual-tails-enabled"),stopMode:sn("manual-tails-stop-mode","temp"),stopTemp:z("manual-tails-stop-temp",93),stopAbv:z("manual-tails-stop-abv",40),pwmEnabled:In("manual-tails-pwm-enabled"),pwmDuty:z("manual-tails-pwm-duty",30),pwmPeriod:z("manual-tails-pwm-period",10)}}}function qa(e){let t=e?.feed||{},n=e?.heads||{},o=e?.body||{},i=e?.tails||{},r=H("manual-feed-volume");if(r){let s=Math.max(1,Math.min(250,Nt()));r.max=String(s),r.value=String(Xt(t.volumeL??20,20))}Ie("manual-feed-abv",t.abvPercent??40),Ie("manual-heads-volume",n.volume??50),Ie("manual-heads-mode",n.mode??"time"),Ie("manual-heads-time",n.time??180),Ie("manual-heads-speed",n.speed??300),Ie("manual-heads-temp",n.temp??78.5),Ie("manual-body-spike-threshold",o.spikeThreshold??.2),Ie("manual-body-speed-decrement",o.speedDecrement??5),Ie("manual-body-to-tails-mode",o.toTailsMode??"stabilize"),Ie("manual-body-stabilize-timeout",o.stabilizeTimeout??10),Ie("manual-body-to-tails-temp",o.toTailsTemp??92),Ie("manual-tails-enabled",i.enabled??!1),Ie("manual-tails-stop-mode",i.stopMode??"temp"),Ie("manual-tails-stop-temp",i.stopTemp??93),Ie("manual-tails-stop-abv",i.stopAbv??40),Ie("manual-tails-pwm-enabled",i.pwmEnabled??!1),Ie("manual-tails-pwm-duty",i.pwmDuty??30),Ie("manual-tails-pwm-period",i.pwmPeriod??10);let a=H("manual-tails-pwm-duty-val");a&&(a.textContent=`${z("manual-tails-pwm-duty",30)}%`),Ua(),Ka(),Ga(),Ya(),Ja()}function Qa(e={}){let{silent:t=!1}=e,n=sr();try{localStorage.setItem(sd,JSON.stringify(n)),t||h("Параметры ручной ректификации сохранены","info")}catch{t||h("Не удалось сохранить параметры ручной ректификации","warning")}}function Xa(e={}){let{silent:t=!1}=e;try{let n=localStorage.getItem(sd);if(!n){qa({});return}qa(JSON.parse(n)),t||h("Параметры ручной ректификации загружены","info")}catch{qa({}),t||h("Ошибка загрузки параметров ручной ректификации","warning")}}function es(){if(od||!H("manual-heads-mode"))return;od=!0;let e=H("manual-heads-volume");e&&e.addEventListener("input",ar);let t=H("manual-tails-pwm-duty");t&&t.addEventListener("input",()=>{let n=H("manual-tails-pwm-duty-val");n&&(n.textContent=`${t.value}%`)}),Xa({silent:!0}),Za()}function ln(e,t=NaN){let n=String(e??"").trim().replace(/\s+/g,"").replace(",","."),o=Number(n);return Number.isFinite(o)?o:t}function fd(e){let t=String(e??"").trim();if(!t||t.toLowerCase()==="any")return 0;let n=t.replace(",","."),o=n.indexOf(".");return o>=0?Math.max(0,n.length-o-1):0}function kb(e,t,n){let o=e;return Number.isFinite(t)&&(o=Math.max(t,o)),Number.isFinite(n)&&(o=Math.min(n,o)),o}function ts(e,t){return Number.isFinite(e)?t>0?e.toFixed(t):String(Math.round(e)):""}function Rb(e){let t=ln(e.dataset.stepperStep,NaN);if(Number.isFinite(t)&&t>0)return t;let n=ln(e.step,NaN);return Number.isFinite(n)&&n>0?n:1}function Fb(e){return e.dataset.stepperStep?fd(e.dataset.stepperStep):fd(e.step)}function Lb(e,t){let n=Math.max(1e-6,Rb(e)),o=Fb(e),i=ln(e.min,NaN),r=ln(e.max,NaN),a=Math.max(1,Math.round(Math.abs(t))),s=t>0,l=e.dataset.stepperStep,c=e.getAttribute("step"),d=ln(e.value,NaN);l&&e.setAttribute("step",String(n));let m=ln(e.value,NaN);Number.isFinite(m)?e.value=ts(m,o):String(e.value).trim()===""&&(e.value=Number.isFinite(i)?ts(i,o):"0");let f=!1;try{if(typeof e.stepUp=="function"&&typeof e.stepDown=="function"){s?e.stepUp(a):e.stepDown(a);let b=ln(e.value,NaN);Number.isFinite(b)&&Number.isFinite(d)?f=Math.abs(b-d)>1e-7:f=Number.isFinite(b)}}catch{f=!1}if(!f){let b=ln(e.value,Number.isFinite(i)?i:0),u=n*(s?a:-a),p=kb(b+u,i,r);e.value=ts(p,o)}l&&(c===null?e.removeAttribute("step"):e.setAttribute("step",c)),e.dispatchEvent(new Event("input",{bubbles:!0})),e.dispatchEvent(new Event("change",{bubbles:!0}))}function co(e,t,n){let o=document.createElement("button");return o.type="button",o.className="btn btn-sm equipment-step-btn",o.textContent=e,o.addEventListener("click",()=>Lb(n,t)),o}function _b(e){if(!e||e.dataset.stepperWrapped==="1"||e.closest(".equipment-num-stepper")||e.disabled||e.readOnly)return;let t=document.createElement("div");t.className="equipment-num-stepper";let n=String(e.dataset.stepperMode||"full").toLowerCase(),o=document.createElement("div");o.className="equipment-step-group equipment-step-group-left";let i=document.createElement("div");i.className="equipment-step-group equipment-step-group-right",n==="pair"?(o.appendChild(co("-",-1,e)),i.appendChild(co("+",1,e))):(o.appendChild(co("--",-10,e)),o.appendChild(co("-",-1,e)),i.appendChild(co("+",1,e)),i.appendChild(co("++",10,e))),e.classList.add("equipment-num-input"),e.dataset.stepperWrapped="1";let r=e.parentNode;r&&(r.insertBefore(t,e),t.appendChild(o),t.appendChild(e),t.appendChild(i))}function Tt(e){let t=e||document.getElementById("equipment");if(!t)return;t.querySelectorAll('input[type="number"]:not([data-no-stepper="1"])').forEach(o=>_b(o))}var Sd="equipment.cubeExtenderPresetL",ze=Object.freeze({enabled:!1,defaultSpeedPercent:50,autoMashing:!0,autoFermentation:!1,autoNbk:!1}),qb=Object.freeze({cube:!0,columnBottom:!0,columnTop:!0,reflux:!0,tsa:!0,waterIn:!0,waterOut:!0}),lr=Object.freeze([{key:"cube",id:"temp-topology-cube",label:"Куб"},{key:"columnBottom",id:"temp-topology-column-bottom",label:"Царга низ"},{key:"columnTop",id:"temp-topology-column-top",label:"Царга верх"},{key:"reflux",id:"temp-topology-reflux",label:"Дефлегматор"},{key:"tsa",id:"temp-topology-tsa",label:"ТСА"},{key:"waterIn",id:"temp-topology-water-in",label:"Вода вход"},{key:"waterOut",id:"temp-topology-water-out",label:"Вода выход"}]),Ed=Object.freeze({rectification:"Авто-ректификация",manualRect:"Ручная ректификация",distillation:"Дистилляция",nbk:"НБК",mashing:"Затирка",hold:"Пастеризация",fermentation:"Ферментация"});function ni(e,t=0){let n=Number(String(e??"").trim().replace(",","."));return Number.isFinite(n)?n:t}function Cd(e,t=NaN){if(typeof e=="number")return Number.isFinite(e)?e:t;if(typeof e!="string")return t;let n=e.trim().replace(",",".");return n?ni(n,t):t}function L(e,t,n,o=t){let i=ni(e,o);return i<t?t:i>n?n:i}function We(e,t){let n=document.getElementById(e);n&&t!==void 0&&t!==null&&(n.value=String(t))}function at(e,t){let n=document.getElementById(e);n&&(n.checked=!!t)}function bt(e,t){let n=document.getElementById(e);n&&t!==void 0&&t!==null&&(n.textContent=String(t))}function gd(e,t=1,n=""){let o=Number(e);return Number.isFinite(o)?`${o.toFixed(t)}${n}`:"--"}function Ob(e){let t=Math.max(0,Math.floor(Number(e)||0)),n=Math.floor(t/3600),o=Math.floor(t%3600/60),i=t%60;return`${n}:${String(o).padStart(2,"0")}:${String(i).padStart(2,"0")}`}function ve(e){return String(e??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}function ns(e={}){return{cube:e?.cube!==!1,columnBottom:e?.columnBottom!==!1,columnTop:e?.columnTop!==!1,reflux:e?.reflux!==!1,tsa:e?.tsa!==!1,waterIn:e?.waterIn!==!1,waterOut:e?.waterOut!==!1,installedCount:Number.isFinite(Number(e?.installedCount))?Math.max(0,Number(e.installedCount)):lr.reduce((t,n)=>t+(e?.[n.key]!==!1?1:0),0)}}function os(e={}){let t={};return Object.keys(Ed).forEach(n=>{let o=e?.[n];t[n]={supported:!!o?.supported,reason:String(o?.reason||"")}}),t}function xd(e={}){let t=ns(e.temperatureTopology),n=os(e.supportedModes);lr.forEach(a=>{at(a.id,!!t[a.key])});let o=document.getElementById("temp-topology-summary"),i=document.getElementById("temp-topology-mode-support"),r=document.getElementById("temp-topology-hint");if(o){let a=lr.filter(s=>t[s.key]).map(s=>s.label);o.textContent=a.length?`Установлено ролей: ${t.installedCount}. ${a.join(", ")}.`:"Пока не отмечен ни один установленный термодатчик."}if(i){let a=Object.entries(Ed).map(([s,l])=>{let c=n[s]||{supported:!1,reason:""},d=c.supported?"success":"warning",m=c.supported?"Поддержан":"Нужна топология",f=c.supported?"Текущей конфигурации достаточно для базового запуска.":c.reason||"Для этого режима пока не хватает обязательных ролей.";return`
+                <div class="equipment-module-card">
+                    <div class="equipment-module-card-head">
+                        <strong>${ve(l)}</strong>
+                        <span class="equipment-status-badge ${d}">${m}</span>
+                    </div>
+                    <div class="equipment-module-card-role">${ve(f)}</div>
+                </div>
+            `});i.innerHTML=a.join("")}r&&(r.textContent=t.installedCount>=3?"Отмечайте только реально установленные роли. Preflight и commissioning будут считать отсутствующие датчики опциональными.":"Для lite-комплектаций это поле особенно важно: оно убирает ложные аварии по отсутствующим датчикам и сразу показывает, какие режимы уже поддержаны.")}function is(e={}){let t=!!e.useDs2482ForTemps,n=L(e.ds2482Address,24,27,24),o=L(e.tempBusGpioPin,0,48,18),i=String(e.temperatureBusSource||(t?"ds2482":"gpio")),r=String(e.temperatureBusSourceLabel||(i==="ds2482"?"DS2482S-100":"GPIO 1-Wire")),a=e.modules?.ds2482||{},s=!!a.available;at("temp-bus-use-ds2482",t),We("temp-bus-ds2482-address",String(n));let l=document.getElementById("temp-bus-ds2482-address");l&&(l.disabled=!t);let c=t?`${r} • ${s?"мост отвечает":"мост не найден"}`:`${r} • прямой пин GPIO${o}`;bt("temp-bus-settings-state",c);let d=t?`Адрес ${a.address||`0x${n.toString(16).toUpperCase()}`}. После установки моста система будет читать все DS18B20 через I2C-to-1-Wire backend.`:`Сейчас используется прямой 1-Wire на GPIO${o}. Переключатель нужен для перехода на DS2482S-100 без новой прошивки.`;bt("temp-bus-settings-hint",d)}function Hb(e={}){let t=!!e.available,n=Number.isFinite(Number(e.uartNum))?Number(e.uartNum):1,o=Number.isFinite(Number(e.baudRate))?Number(e.baudRate):9600,i=Number.isFinite(Number(e.rxPin))?Number(e.rxPin):20,r=Number.isFinite(Number(e.txPin))?Number(e.txPin):19,a=[];if(t){let s=gd(e.voltage,1," В"),l=gd(e.power,0," Вт");s!=="--"&&a.push(s),l!=="--"&&a.push(l)}bt("pzem-settings-state",t?`Подключен • UART${n} • ${o} бод`:`Не обнаружен • ожидание на UART${n}`),bt("pzem-settings-hint",`GPIO${i} RX ← PZEM TX, GPIO${r} TX → PZEM RX`+(a.length?` • ${a.join(" • ")}`:""))}function bd(e=null,t=null){let n=document.getElementById("reboot-settings-summary"),o=document.getElementById("reboot-settings-state"),i=document.getElementById("reboot-settings-hint");if(!n&&!o&&!i)return;if(!e||t){n&&(n.innerHTML='<div class="equipment-inline-stat"><span>Статус</span><strong>Нет данных</strong></div>'),o&&(o.textContent="Диагностика перезагрузок недоступна"),i&&(i.textContent=t?.message?`Не удалось получить /api/reboot/status: ${t.message}`:"Контроллер ещё не отдал данные о перезагрузках.");return}let r=Math.max(0,Number(e.totalReboots||0)),a=Math.max(0,Number(e.wdtReboots||0)),s=Math.max(0,Number(e.crashReboots||0)),l=Math.max(0,Number(e.userReboots||0)),c=Math.max(0,Number((e.otherReboots??r-a-s-l)||0)),d=Math.max(0,Number(e.uptimeSec||0)),m=Number.isFinite(Number(e.healthOverall))?Math.max(0,Math.min(100,Math.round(Number(e.healthOverall)))):null,f=Number.isFinite(Number(e.freeHeap))?Math.max(0,Math.round(Number(e.freeHeap)/1024)):null,b=String(e.lastReasonStr||"Unknown"),u=String(e.lastReasonKind||"other");n&&(n.innerHTML=`
+            <div class="equipment-inline-stat"><span>Последний reason</span><strong>${ve(b)}</strong></div>
+            <div class="equipment-inline-stat"><span>Всего</span><strong>${r}</strong></div>
+            <div class="equipment-inline-stat"><span>WDT</span><strong>${a}</strong></div>
+            <div class="equipment-inline-stat"><span>Panic</span><strong>${s}</strong></div>
+            <div class="equipment-inline-stat"><span>User</span><strong>${l}</strong></div>
+        `);let p=[];m!==null&&p.push(`health ${m}%`),f!==null&&p.push(`heap ${f} KB`),o&&(o.textContent=`Последняя загрузка: ${b} • uptime ${Ob(d)}${p.length?` • ${p.join(" • ")}`:""}`);let g=`Накоплено перезагрузок: всего ${r}, WDT ${a}, panic ${s}, user ${l}, прочие ${c}.`;u==="wdt"?g=`Последний рестарт был watchdog-типа. Проверьте зависания задач, длинные блокировки и тайминги периферии. ${g}`:u==="crash"?g=`Последний рестарт был panic/exception. Смотрите системный лог и последние действия перед падением. ${g}`:u==="user"?g=`Последний рестарт выглядит управляемым: software/external reset. ${g}`:r<=1&&(g="Это первый зафиксированный запуск после очистки или прошивки. База причин перезагрузки только набирается."),i&&(i.textContent=g)}function Db(e=null,t=null){let n=document.getElementById("boot-gpio-summary"),o=document.getElementById("boot-gpio-list"),i=document.getElementById("boot-gpio-hint");if(!n||!o||!i)return;if(!e||!e.completed){n.innerHTML='<div class="equipment-inline-stat"><span>Статус</span><strong>Нет данных</strong></div>',o.innerHTML=`
+            <div class="equipment-module-card">
+                <div class="equipment-module-card-head">
+                    <strong>Boot GPIO self-test недоступен</strong>
+                    <span class="equipment-status-badge muted">Нет данных</span>
+                </div>
+                <div class="equipment-module-card-role">Контроллер ещё не отдал отчёт о безопасной стартовой инициализации пинов.</div>
+            </div>
+        `,i.textContent="Если блок остаётся пустым, проверьте версию прошивки и payload /api/settings/equipment.";return}let r=Array.isArray(e.items)?e.items:[],a=r.filter(f=>!!f?.ok).length,s=Math.max(0,Number(e.checkedCount||r.length||0)),l=String(e.boardRev||"UNKNOWN"),c=!!e.overallOk,d=String(t?.name||"");n.innerHTML=`
+        <div class="equipment-inline-stat"><span>Плата</span><strong>${ve(l)}</strong></div>
+        ${d?`<div class="equipment-inline-stat"><span>Профиль</span><strong>${ve(d)}</strong></div>`:""}
+        <div class="equipment-inline-stat"><span>Проверено</span><strong>${a}/${s}</strong></div>
+        <div class="equipment-inline-stat"><span>Итог</span><strong>${c?"OK":"WARN"}</strong></div>
+    `,o.innerHTML=r.map(f=>{let b=ve(f?.label||"GPIO"),u=Number.isFinite(Number(f?.pin))?`GPIO${Number(f.pin)}`:"—",g={output_low:"Выход LOW",output_high:"Выход HIGH",input:"Вход",input_pullup:"Вход PULLUP"}[String(f?.mode||"")]||String(f?.mode||"unknown"),v=Number.isFinite(Number(f?.expectedLevel))?Number(f.expectedLevel)>0?"HIGH":"LOW":"—",w=Number.isFinite(Number(f?.actualLevel))?Number(f.actualLevel)>0?"HIGH":"LOW":"—",C=!!f?.ok;return`
+            <div class="equipment-module-card">
+                <div class="equipment-module-card-head">
+                    <strong>${b}</strong>
+                    <span class="equipment-status-badge ${C?"success":"warning"}">${C?"OK":"Проверить"}</span>
+                </div>
+                <div class="equipment-module-card-meta">
+                    <span>${ve(u)}</span>
+                    <span>${ve(g)}</span>
+                    <span>ждём ${ve(v)}</span>
+                    <span>факт ${ve(w)}</span>
+                </div>
+                <div class="equipment-module-card-role">${C?"Линия на старте ушла в ожидаемое безопасное состояние.":"Фактический уровень не совпал с ожидаемым safe-state. Проверьте обвязку и подтяжки."}</div>
+            </div>
+        `}).join("");let m=d?` Активный compile-time профиль: ${d}.`:"";i.textContent=c?`Опасные линии на старте выставились корректно: силовой контур не должен самопроизвольно включаться до инициализации драйверов.${m}`:`Есть несовпадения safe-state на старте. Это не обязательно авария, но wiring и подтяжки лучше проверить до серьёзных прогонов.${m}`}function Md(e={}){return{bmp280Primary:e.bmp280Primary&&typeof e.bmp280Primary=="object"?e.bmp280Primary:{},bmp280Secondary:e.bmp280Secondary&&typeof e.bmp280Secondary=="object"?e.bmp280Secondary:{},ads1115:e.ads1115&&typeof e.ads1115=="object"?e.ads1115:{},ads1115Secondary:e.ads1115Secondary&&typeof e.ads1115Secondary=="object"?e.ads1115Secondary:{},ds2482:e.ds2482&&typeof e.ds2482=="object"?e.ds2482:{},mcp4725:e.mcp4725&&typeof e.mcp4725=="object"?e.mcp4725:{},pzem004t:e.pzem004t&&typeof e.pzem004t=="object"?e.pzem004t:{}}}function Td(e={}){return{bodyLevel:e.bodyLevel&&typeof e.bodyLevel=="object"?e.bodyLevel:{},leak:e.leak&&typeof e.leak=="object"?e.leak:{},vaporPrimary:e.vaporPrimary&&typeof e.vaporPrimary=="object"?e.vaporPrimary:{},vaporSecondary:e.vaporSecondary&&typeof e.vaporSecondary=="object"?e.vaporSecondary:{}}}function Vb(e={}){let t=!!e.available,n=e.expected!==!1;return t?{text:"Онлайн",tone:"success"}:n?{text:"Нет ответа",tone:"danger"}:{text:"Опция",tone:"muted"}}function jb(e={}){let t=Vb(e),n=Number.isFinite(Number(e.rxPin))&&Number.isFinite(Number(e.txPin))?`GPIO${Number(e.rxPin)} / GPIO${Number(e.txPin)}`:"",o=Number.isFinite(Number(e.baudRate))?`${Number(e.baudRate)} бод`:"",i=[n,o].filter(Boolean).map(r=>`<span>${ve(r)}</span>`).join("");return`
+        <div class="equipment-module-card">
+            <div class="equipment-module-card-head">
+                <strong>${ve(e.label||"Модуль")}</strong>
+                <span class="equipment-status-badge ${t.tone}">${t.text}</span>
+            </div>
+            <div class="equipment-module-card-meta">
+                <span>${ve(e.bus||"—")}</span>
+                <span>${ve(e.address||"—")}</span>
+                ${i}
+            </div>
+            <div class="equipment-module-card-role">${ve(e.role||"—")}</div>
+        </div>
+    `}function Wb(e={}){switch(String(e.status||"")){case"triggered":return{text:"Сработал",tone:"danger"};case"armed":return{text:"Охрана",tone:"success"};case"ready":return{text:"Чтение",tone:"success"};case"no_signal":return{text:"Нет сигнала",tone:"warning"};case"offline":return{text:"Офлайн",tone:"danger"};case"reserved":return{text:"Резерв",tone:"muted"};default:return{text:"Проверка",tone:"warning"}}}function zb(e={}){let t=Wb(e),n=Number.isFinite(Number(e.voltage))?`${Number(e.voltage).toFixed(3)} V`:"",o=Number.isFinite(Number(e.adc))?`ADC ${Math.round(Number(e.adc))}`:"",i=Number.isFinite(Number(e.pin))?`GPIO${Number(e.pin)}`:"",r=Number.isFinite(Number(e.thresholdV))?`Порог ${Number(e.thresholdV).toFixed(3)} V`:"",a=e.enabled?e.triggerAbove?"Сработка выше порога":"Сработка ниже порога":"Мониторинг выключен",s=[n,o,i,r].filter(Boolean).map(l=>`<span>${ve(l)}</span>`).join("");return`
+        <div class="equipment-module-card">
+            <div class="equipment-module-card-head">
+                <strong>${ve(e.label||"Канал")}</strong>
+                <span class="equipment-status-badge ${t.tone}">${t.text}</span>
+            </div>
+            <div class="equipment-module-card-meta">
+                <span>${ve(e.bus||"?")}</span>
+                <span>${ve(e.address||"?")}</span>
+                ${s}
+            </div>
+            <div class="equipment-module-card-role">${ve(e.role||"?")}</div>
+            <div class="equipment-module-card-role">${ve(a)}</div>
+        </div>
+    `}function hd(e={}){at("body-level-enabled",!!e.bodyLevelSensorEnabled),We("body-level-threshold-v",L(e.bodyLevelThresholdV,0,4.096,1.5).toFixed(3)),at("body-level-trigger-above",e.bodyLevelTriggerAbove!==!1),at("leak-sensor-enabled",!!e.leakSensorEnabled),We("leak-threshold-v",L(e.leakThresholdV,0,4.096,1.5).toFixed(3)),at("leak-trigger-above",e.leakTriggerAbove!==!1)}function Ub(e={}){let t=document.getElementById("hardware-modules-list"),n=document.getElementById("hardware-modules-hint");if(!t)return;let o=Md(e),i=[o.bmp280Primary,o.bmp280Secondary,o.ads1115,o.ads1115Secondary,o.ds2482,o.mcp4725,o.pzem004t];t.innerHTML=i.map(l=>jb(l)).join("");let r=i.filter(l=>!!l.available).length,a=i.filter(l=>l.expected!==!1).length,s=i.filter(l=>l.expected!==!1&&!l.available).length;n&&(n.textContent=s>0?`Онлайн ${r}/${i.length}. Обязательных модулей без ответа: ${s}/${a}.`:`Онлайн ${r}/${i.length}. Все обязательные модули отвечают.`)}function Kb(e={}){let t=document.getElementById("safety-channels-list"),n=document.getElementById("safety-channels-hint");if(!t)return;let o=Td(e),i=[o.bodyLevel,o.leak,o.vaporPrimary,o.vaporSecondary];t.innerHTML=i.map(d=>zb(d)).join("");let r=i.filter(d=>String(d.status||"")==="ready").length,a=i.filter(d=>String(d.status||"")==="armed").length,s=i.filter(d=>String(d.status||"")==="triggered").length,l=i.filter(d=>String(d.status||"")==="reserved").length,c=i.filter(d=>{let m=String(d.status||"");return m==="offline"||m==="no_signal"}).length;n&&(n.textContent=s>0?`Сработавших каналов: ${s}. В охране: ${a}. Просто читаются: ${r}. Резервов: ${l}.`:c>0?`В охране: ${a}. Просто читаются: ${r}. Резервов: ${l}. Без live-сигнала: ${c}.`:`В охране: ${a}. Просто читаются: ${r}. Резервов: ${l}.`)}function Gb(e,t,n){let o=document.getElementById(e);o&&(o.textContent=t,o.className=`equipment-status-badge ${n}`)}function yd(){let e=S.equipment||{},t=!!e.coolingPwmEnabled,n=L(e.coolingPwmMinDuty,0,255,0),o=L(e.coolingPwmMaxDuty,n,255,255),i=L(e.coolingPwmStartupDuty,n,o,n),r=L(e.coolingPwmCurrentDuty,0,255,0);at("cooling-pwm-enabled",t),We("cooling-pwm-min-duty",n),We("cooling-pwm-max-duty",o),We("cooling-pwm-startup-duty",i),bt("cooling-actuator-state",`${t?"Автоконтур включён":"Автоконтур выключен"} • окно ${n}-${o}/255 • сейчас ${r}/255`),bt("cooling-actuator-hint",`Стартовая подача ${i}/255. Сервисный PWM-канал доступен в карточке клапанов.`)}function je(e,t=0){return Cd(document.getElementById(e)?.value,t)}function rt(e,t=!1){let n=document.getElementById(e);return n?!!n.checked:t}function Yb(){Ra(),Za()}function An(e={}){let{normalizeInput:t=!1}=e,n=document.getElementById("cube-volume-l"),o=Cd(n?.value,S?.equipment?.cubeVolumeL??qe),i=L(o,5,250,qe),r=document.getElementById("cube-volume-hint");r&&(r.textContent=`Лимит объема сырца: ${i.toFixed(1)} л`),n&&t&&(n.value=i.toFixed(1)),S.equipment={...S.equipment,cubeVolumeL:i},Yb()}function $d(){let e=document.getElementById("cube-extender-add-l");if(e){try{let t=localStorage.getItem(Sd);if(t!==null){let n=L(t,1,100,qe);e.value=n.toFixed(0);return}}catch{}e.value=qe.toFixed(0)}}function Pd(e){try{localStorage.setItem(Sd,String(e))}catch{}}function cr(e,t={}){return fetch(e,t).then(async n=>{let o=await n.json().catch(()=>({}));if(!n.ok){let i=o?.message||o?.error||`HTTP ${n.status}`;throw new Error(i)}return o})}function Jb(e){return e?.settings&&typeof e.settings=="object"?e.settings:e&&typeof e=="object"?e:{}}function Zb(e){return e?.stirrer&&typeof e.stirrer=="object"?e.stirrer:e&&typeof e=="object"?e:{}}function rs(e={}){let t=Jb(e);S.stirrerSettings={...S.stirrerSettings,enabled:t.enabled!==void 0?!!t.enabled:S.stirrerSettings.enabled,defaultSpeedPercent:L(t.defaultSpeedPercent,1,100,S.stirrerSettings.defaultSpeedPercent??ze.defaultSpeedPercent),autoMashing:t.autoMashing!==void 0?!!t.autoMashing:S.stirrerSettings.autoMashing,autoFermentation:t.autoFermentation!==void 0?!!t.autoFermentation:S.stirrerSettings.autoFermentation,autoNbk:t.autoNbk!==void 0?!!t.autoNbk:S.stirrerSettings.autoNbk}}function as(e={}){let t=Zb(e),n=S.stirrer||{};S.stirrer={...n,running:t.running!==void 0?!!t.running:n.running,speedPercent:L(t.speedPercent??t.speed,0,100,n.speedPercent??0),available:t.available!==void 0?!!t.available:n.available,autoMode:t.autoMode!==void 0?!!t.autoMode:n.autoMode,lastUpdate:ni(t.lastUpdate,n.lastUpdate??0)}}function Qb(e){let t=[];return e.autoMashing&&t.push("затирка"),e.autoNbk&&t.push("НБК"),e.autoFermentation&&t.push("ферментация"),t}function Xb(e){switch(ge){case 4:return!!e.autoMashing;case 6:return!!e.autoNbk;case 7:return!!e.autoFermentation;default:return!1}}function eh(e,t){return!!(t.available||t.running||t.autoMode||Xb(e))}function th(e,t){return t.running?L(t.speedPercent,0,100,e.defaultSpeedPercent):L(e.defaultSpeedPercent,1,100,ze.defaultSpeedPercent)}function nh(){switch(ge){case 1:return"ректификация";case 2:return"дистилляция";case 3:return"ручной режим";case 4:return"затирка";case 5:return"пастеризация";case 6:return"НБК";case 7:return"ферментация";default:return"активный режим"}}function oh(e,t){let n=!S.safetyOk||!!S.currentAlarm?.latched,o=Qb(e),i=o.length?`Автостарт настроен для режимов: ${o.join(", ")}.`:"Автостарт не включен ни для одного режима.",r=ge!==W,a=nh(),s=zn?`${a} на паузе`:a;return e.enabled?t.available?t.running?{badgeText:t.autoMode?"Авто":"Ручной ход",badgeTone:t.autoMode?"warning":"success",modeText:t.autoMode?"Авто":"Ручной",availabilityText:"MCP4725 OK",settingsHint:i,monitorHint:t.autoMode?`Скорость управляется автоматически из FSM. Активен режим: ${s}.`:"Ручное управление активно."}:n?{badgeText:"Блокировка",badgeTone:"warning",modeText:"Ожидание",availabilityText:"MCP4725 OK",settingsHint:i,monitorHint:"Ручной запуск временно заблокирован защитой."}:r?{badgeText:"FSM",badgeTone:"warning",modeText:"Занята",availabilityText:"MCP4725 OK",settingsHint:`${i} Ручное управление доступно только в простое.`,monitorHint:`Ручное управление доступно только в простое. Сейчас активен ${s}.`}:{badgeText:"Готова",badgeTone:"muted",modeText:"Ожидание",availabilityText:"MCP4725 OK",settingsHint:i,monitorHint:"Готова к ручному запуску."}:{badgeText:"Нет DAC",badgeTone:"danger",modeText:"Недоступна",availabilityText:"Нет MCP4725",settingsHint:i,monitorHint:"MCP4725 не обнаружен на шине I2C."}:{badgeText:"Отключена",badgeTone:"danger",modeText:"Выкл",availabilityText:t.available?"MCP4725 OK":"Нет MCP4725",settingsHint:"Ручной запуск и автоуправление отключены.",monitorHint:"Включите мешалку в параметрах оборудования."}}function cn(e={}){let{syncSettingsForm:t=!1,syncSpeedInput:n=!0}=e,o=S.stirrerSettings||ze,i=S.stirrer||{},r=oh(o,i),a=th(o,i),s=!S.safetyOk||!!S.currentAlarm?.latched,l=ge!==W,c=o.enabled&&i.available&&!s&&!l,d=document.getElementById("monitor-stirrer-card");if(d&&(d.style.display=eh(o,i)?"":"none"),t&&(at("stirrer-enabled",o.enabled),We("stirrer-default-speed",L(o.defaultSpeedPercent,1,100,ze.defaultSpeedPercent)),at("stirrer-auto-mashing",o.autoMashing),at("stirrer-auto-fermentation",o.autoFermentation),at("stirrer-auto-nbk",o.autoNbk)),n){let p=document.getElementById("monitor-stirrer-speed-input");p&&document.activeElement!==p&&(p.value=String(Math.round(a)))}let m=document.getElementById("monitor-stirrer-speed-input");m&&(m.disabled=!c),Gb("monitor-stirrer-badge",r.badgeText,r.badgeTone),bt("monitor-stirrer-speed",`${Math.round(L(i.speedPercent,0,100,0))} %`),bt("monitor-stirrer-mode",r.modeText),bt("monitor-stirrer-availability",r.availabilityText),bt("monitor-stirrer-hint",r.monitorHint),bt("stirrer-settings-state",`${r.badgeText} • ${Math.round(L(i.speedPercent,0,100,0))}% • ${r.availabilityText}`),bt("stirrer-settings-hint",r.settingsHint);let f=document.getElementById("monitor-stirrer-start");f&&(f.disabled=!c||i.running);let b=document.getElementById("monitor-stirrer-apply");b&&(b.disabled=!c||!i.running);let u=document.getElementById("monitor-stirrer-stop");u&&(u.disabled=!i.running)}function Id(){let e=document.getElementById("cube-volume-l"),t=document.getElementById("cube-extender-add-l");if(!e||!t)return;let n=L(e.value,5,250,qe),o=L(t.value,1,100,qe),i=L(n+o,5,250,n);e.value=i.toFixed(1),t.value=o.toFixed(0),Pd(o.toFixed(0)),An({normalizeInput:!0})}async function ih(){try{let e=await cr("/api/settings/stirrer");rs(e),as(e)}catch(e){h(`✗ Ошибка загрузки настроек мешалки: ${e.message}`,"error")}finally{cn({syncSettingsForm:!0,syncSpeedInput:!0})}}async function ss(){try{let e=await fetch("/api/settings/equipment");if(!e.ok)throw new Error(`HTTP ${e.status}`);let t=await e.json();We("heater-power-w",L(t.heaterPowerW,1e3,1e4,3e3)),We("column-height",L(t.columnHeightMm,500,3e3,1500)),We("cube-volume-l",L(t.cubeVolumeL,5,250,qe).toFixed(1)),We("water-autostart-cube-temp",L(t.waterAutoStartCubeTempC,20,60,45).toFixed(1)),at("booster-heater-enabled",!!t.boosterHeaterEnabled),We("booster-heater-power-w",L(t.boosterHeaterPowerW,1e3,1e4,3e3)),We("booster-heater-stop-cube-temp",L(t.boosterHeaterStopCubeTempC,20,100,78).toFixed(1)),at("temp-bus-use-ds2482",!!t.useDs2482ForTemps),We("temp-bus-ds2482-address",String(L(t.ds2482Address,24,27,24))),S.equipment={...S.equipment,heaterPowerW:L(t.heaterPowerW,1e3,1e4,3e3),columnHeightMm:L(t.columnHeightMm,500,3e3,1500),cubeVolumeL:L(t.cubeVolumeL,5,250,qe),minHeaterSubmergeL:L(t.minHeaterSubmergeL,.5,100,7.5),waterAutoStartCubeTempC:L(t.waterAutoStartCubeTempC,20,60,45),boosterHeaterEnabled:!!t.boosterHeaterEnabled,boosterHeaterPowerW:L(t.boosterHeaterPowerW,1e3,1e4,3e3),boosterHeaterStopCubeTempC:L(t.boosterHeaterStopCubeTempC,20,100,78),coolingPwmEnabled:!!t.coolingPwmEnabled,coolingPwmMinDuty:L(t.coolingPwmMinDuty,0,255,0),coolingPwmMaxDuty:L(t.coolingPwmMaxDuty,0,255,255),coolingPwmStartupDuty:L(t.coolingPwmStartupDuty,0,255,96),coolingPwmCurrentDuty:L(t.coolingPwmCurrentDuty,0,255,0),useDs2482ForTemps:!!t.useDs2482ForTemps,ds2482Address:L(t.ds2482Address,24,27,24),tempBusGpioPin:L(t.tempBusGpioPin,0,48,18),temperatureBusSource:String(t.temperatureBusSource||(t.useDs2482ForTemps?"ds2482":"gpio")),temperatureBusSourceLabel:String(t.temperatureBusSourceLabel||(t.useDs2482ForTemps?"DS2482S-100":"GPIO 1-Wire")),bodyLevelSensorEnabled:!!t.bodyLevelSensorEnabled,bodyLevelThresholdV:L(t.bodyLevelThresholdV,0,4.096,1.5),bodyLevelTriggerAbove:t.bodyLevelTriggerAbove!==!1,leakSensorEnabled:!!t.leakSensorEnabled,leakThresholdV:L(t.leakThresholdV,0,4.096,1.5),leakTriggerAbove:t.leakTriggerAbove!==!1,pzem:t.pzem&&typeof t.pzem=="object"?{...t.pzem}:S.equipment?.pzem||{},boardProfile:t.boardProfile&&typeof t.boardProfile=="object"?{...t.boardProfile}:S.equipment?.boardProfile||{},bootGpio:t.bootGpio&&typeof t.bootGpio=="object"?{...t.bootGpio}:S.equipment?.bootGpio||{},modules:Md(t.modules),safetyChannels:Td(t.safetyChannels),temperatureTopology:ns(t.temperatureTopology),supportedModes:os(t.supportedModes)},Hb(S.equipment.pzem),Db(S.equipment.bootGpio,S.equipment.boardProfile),Ub(S.equipment.modules),is(S.equipment),Kb(S.equipment.safetyChannels),hd(S.equipment),xd(S.equipment),yd(),window.renderControlStartState?.(),window.loadProfilesList?.()}catch(e){h(`✗ Ошибка загрузки настроек оборудования: ${e.message}`,"error")}try{let e=await cr("/api/reboot/status");S.reboot=e,bd(e)}catch(e){bd(null,e)}finally{await ih(),Tt(),$d(),An({normalizeInput:!0}),hd(S.equipment),yd(),window.renderControlStartState?.(),window.loadProfilesList?.()}}async function Ad(){let e=L(je("heater-power-w",3e3),1e3,1e4,3e3),t=L(je("column-height",1500),500,3e3,1500),n=L(je("cube-volume-l",qe),5,250,qe),o=L(je("water-autostart-cube-temp",45),20,60,45),i=rt("booster-heater-enabled",!1),r=L(je("booster-heater-power-w",3e3),1e3,1e4,3e3),a=L(je("booster-heater-stop-cube-temp",78),20,100,78),s=rt("cooling-pwm-enabled",!1),l=L(je("cooling-pwm-min-duty",0),0,255,0),c=L(je("cooling-pwm-max-duty",255),l,255,255),d=L(je("cooling-pwm-startup-duty",96),l,c,l),m=rt("temp-bus-use-ds2482",!1),f=L(je("temp-bus-ds2482-address",24),24,27,24),b=rt("body-level-enabled",!1),u=L(je("body-level-threshold-v",1.5),0,4.096,1.5),p=rt("body-level-trigger-above",!0),g=rt("leak-sensor-enabled",!1),v=L(je("leak-threshold-v",1.5),0,4.096,1.5),w=rt("leak-trigger-above",!0),C=lr.reduce((M,A)=>(M[A.key]=rt(A.id,qb[A.key]),M),{}),P=ni(document.getElementById("pump-ml-per-rev")?.value,NaN),E=ni(document.getElementById("pump-steps-per-rev")?.value,NaN);if(Number.isFinite(P)&&P>0||Number.isFinite(E)&&E>0)try{let M={};Number.isFinite(P)&&P>0&&(M.mlPerRev=P),Number.isFinite(E)&&E>0&&(M.stepsPerRev=Math.round(E)),(await fetch("/api/calibration/pump",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(M)})).ok?h("✓ Параметры насоса сохранены","success"):h("✗ Ошибка сохранения параметров насоса","error")}catch{h("✗ Ошибка соединения при сохранении насоса","error")}try{let M=await fetch("/api/settings/equipment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({heaterPowerW:Math.round(e),columnHeightMm:Math.round(t),cubeVolumeL:n,waterAutoStartCubeTempC:o,boosterHeaterEnabled:i,boosterHeaterPowerW:Math.round(r),boosterHeaterStopCubeTempC:a,coolingPwmEnabled:s,coolingPwmMinDuty:Math.round(l),coolingPwmMaxDuty:Math.round(c),coolingPwmStartupDuty:Math.round(d),useDs2482ForTemps:m,ds2482Address:Math.round(f),bodyLevelSensorEnabled:b,bodyLevelThresholdV:u,bodyLevelTriggerAbove:p,leakSensorEnabled:g,leakThresholdV:v,leakTriggerAbove:w,temperatureTopology:C})});if(!M.ok){let $=await M.text();h(`✗ Ошибка сохранения оборудования (${M.status}): ${$}`,"error");return}let A=await M.json().catch(()=>({}));S.equipment={...S.equipment,heaterPowerW:Math.round(e),columnHeightMm:Math.round(t),cubeVolumeL:n,waterAutoStartCubeTempC:o,boosterHeaterEnabled:i,boosterHeaterPowerW:Math.round(r),boosterHeaterStopCubeTempC:a,coolingPwmEnabled:s,coolingPwmMinDuty:Math.round(l),coolingPwmMaxDuty:Math.round(c),coolingPwmStartupDuty:Math.round(d),useDs2482ForTemps:m,ds2482Address:Math.round(f),temperatureBusSource:m?"ds2482":"gpio",temperatureBusSourceLabel:m?"DS2482S-100":"GPIO 1-Wire",bodyLevelSensorEnabled:b,bodyLevelThresholdV:u,bodyLevelTriggerAbove:p,leakSensorEnabled:g,leakThresholdV:v,leakTriggerAbove:w,temperatureTopology:ns(A.temperatureTopology||C),supportedModes:os(A.supportedModes)},xd(S.equipment),is(S.equipment),window.renderControlStartState?.(),window.loadProfilesList?.(),An({normalizeInput:!0}),h("💾 Настройки оборудования сохранены","success")}catch(M){h(`✗ Ошибка сети при сохранении оборудования: ${M.message}`,"error")}}async function Nd(){let e={enabled:rt("stirrer-enabled",ze.enabled),defaultSpeedPercent:L(je("stirrer-default-speed",ze.defaultSpeedPercent),1,100,ze.defaultSpeedPercent),autoMashing:rt("stirrer-auto-mashing",ze.autoMashing),autoFermentation:rt("stirrer-auto-fermentation",ze.autoFermentation),autoNbk:rt("stirrer-auto-nbk",ze.autoNbk)};try{let t=await cr("/api/settings/stirrer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)});rs(t),as(t),cn({syncSettingsForm:!0,syncSpeedInput:!0}),h("💾 Настройки мешалки сохранены","success")}catch(t){h(`✗ Ошибка сети при сохранении мешалки: ${t.message}`,"error")}}function ls(){return L(je("monitor-stirrer-speed-input",S.stirrerSettings?.defaultSpeedPercent??ze.defaultSpeedPercent),1,100,S.stirrerSettings?.defaultSpeedPercent??ze.defaultSpeedPercent)}async function cs(e,t,n){let o={method:"POST",headers:{"Content-Type":"application/json"}};t!==void 0&&(o.body=JSON.stringify(t));let i=await cr(e,o);as(i),cn({syncSpeedInput:!0}),h(n,"success")}async function rh(){let e=ls();await cs("/api/stirrer/start",{speed:e},`✓ Мешалка запущена на ${e}%`)}async function ah(){let e=ls();await cs("/api/stirrer/set",{speed:e},`✓ Скорость мешалки изменена: ${e}%`)}async function sh(){await cs("/api/stirrer/stop",void 0,"✓ Мешалка остановлена")}function vd(){let e=document.getElementById("stirrer-default-speed");e&&(e.value=String(L(e.value,1,100,ze.defaultSpeedPercent)))}function wd(){let e=document.getElementById("monitor-stirrer-speed-input");e&&(e.value=String(ls()))}function Bd(){Tt();let e=()=>{is({...S.equipment,useDs2482ForTemps:rt("temp-bus-use-ds2482",!1),ds2482Address:L(je("temp-bus-ds2482-address",24),24,27,24)})},t=document.getElementById("cube-volume-l");t&&(t.addEventListener("input",()=>An()),t.addEventListener("change",()=>An({normalizeInput:!0})),t.addEventListener("blur",()=>An({normalizeInput:!0})));let n=document.getElementById("cube-extender-add-l");n&&n.addEventListener("change",()=>{let r=L(n.value,1,100,qe);n.value=r.toFixed(0),Pd(r.toFixed(0))});let o=document.getElementById("stirrer-default-speed");o&&(o.addEventListener("change",vd),o.addEventListener("blur",vd));let i=document.getElementById("monitor-stirrer-speed-input");i&&(i.addEventListener("change",wd),i.addEventListener("blur",wd)),document.getElementById("temp-bus-use-ds2482")?.addEventListener("change",e),document.getElementById("temp-bus-ds2482-address")?.addEventListener("change",e),document.querySelectorAll("[data-stirrer-speed-preset]").forEach(r=>{r.addEventListener("click",()=>{let a=L(r.dataset.stirrerSpeedPreset,1,100,ze.defaultSpeedPercent);We("monitor-stirrer-speed-input",a)})}),document.getElementById("monitor-stirrer-start")?.addEventListener("click",()=>{rh().catch(r=>h(`✗ Мешалка: ${r.message}`,"error"))}),document.getElementById("monitor-stirrer-apply")?.addEventListener("click",()=>{ah().catch(r=>h(`✗ Мешалка: ${r.message}`,"error"))}),document.getElementById("monitor-stirrer-stop")?.addEventListener("click",()=>{sh().catch(r=>h(`✗ Мешалка: ${r.message}`,"error"))}),$d(),An({normalizeInput:!0}),rs(ze),cn({syncSettingsForm:!0,syncSpeedInput:!0}),e()}var Rd=[{key:"columnBottom",rowId:"temp-column-bottom-row"},{key:"columnTop",rowId:"temp-column-top-row"},{key:"reflux",rowId:"temp-reflux-row"},{key:"tsa",rowId:"temp-tsa-row"},{key:"waterIn",rowId:"landing-water-in-row"},{key:"waterOut",rowId:"landing-water-out-row"}],Fd={temperatures:"Температуры",power:"Питание",volumes:"Объёмы",stirrer:"Мешалка",chart:"График"},kd=!1,ii="temperatures",lh=.05;function ch(e){let t=Number(S?.temps?.[e]);return Number.isFinite(t)?t:void 0}function dh(e){let t=ch(e);return t!==void 0&&Math.abs(t)>=lh}function uh(e){switch(e){case"temperatures":return"Температуры";case"power":return"Питание";case"volumes":return"Объёмы";case"stirrer":return"Мешалка";case"chart":return"График";default:return"Показометры"}}function dn(e,t){let n=document.getElementById(e);n&&(n.hidden=!!t)}function mh(){return Object.keys(Fd).filter(e=>dr(e))}function Ld(e){let t=S.temperatureChannels?.[e];return!!((t?.installed||t?.assigned||t?.detected||t?.valid)&&dh(e))}function ph(){return Rd.some(e=>Ld(e.key))}function _d(){let e=S.pressure||{};return!!(e.ok||e.ads1115Available||Number.isFinite(Number(e.cube))&&Number(e.cube)>0||Number.isFinite(Number(e.atm))&&Number(e.atm)>0)}function qd(){let e=Number(S?.v2?.indicators?.distPressureMargin);return Number.isFinite(e)}function fh(){let e=S?.volumes||{},t=S?.pump||{},n=String(S?.v2?.lifecycle||"idle").toLowerCase();return!!(Number(oi(e.heads))>0||Number(oi(e.body))>0||Number(oi(e.tails))>0||Number(oi(t.totalMl))>0||Number(oi(t.speedMlH))>0||_d()||qd()||n==="starting"||n==="running"||n==="paused")}function gh(){return!!(S?.stirrer?.available||S?.equipment?.modules?.mcp4725?.available)}function oi(e){let t=Number(e);return Number.isFinite(t)?t:0}function Od(){return Array.from(document.querySelectorAll("[data-gauge-section]"))}function dr(e){return Od().some(t=>t.dataset.gaugeSection===e&&!t.hidden)}function bh(){return Object.keys(Fd).find(e=>dr(e))||"temperatures"}function hh(e){let t=document.getElementById("monitor-gauges-badge");t&&(t.textContent=uh(e))}function Hd(e=ii){let t=dr(e)?e:bh();ii=t,Od().forEach(n=>{let o=n.dataset.gaugeSection===t;n.classList.toggle("is-gauge-filter-hidden",!o)}),document.querySelectorAll("[data-gauge-filter]").forEach(n=>{let o=n.dataset.gaugeFilter===t;n.classList.toggle("is-active",o),n.setAttribute("aria-selected",o?"true":"false"),n.hidden=!dr(n.dataset.gaugeFilter||"")}),hh(t)}function yh(){kd||(kd=!0,document.querySelectorAll("[data-gauge-filter]").forEach(e=>{e.addEventListener("click",()=>{ii=e.dataset.gaugeFilter||"temperatures",Hd(ii)})}))}function ur(){yh(),Rd.forEach(r=>{dn(r.rowId,!Ld(r.key))});let e=ph();dn("dashboard-temperatures-card",!e);let t=!!(S.power?.available||S.equipment?.modules?.pzem004t?.available);dn("dashboard-power-card",!t),dn("dashboard-volumes-card",!fh());let n=_d(),o=n&&qd();dn("pressure-atm-row",!n),dn("pressure-flood-row",!o),dn("monitor-stirrer-card",!gh()),dn("dashboard-mini-chart-card",!e);let i=document.getElementById("monitor-gauges-filters");i&&(i.hidden=mh().length<=1),Hd(ii)}function mr(e){let t=Number(e);return Number.isFinite(t)?t:void 0}function pr(e,t,n,...o){let i=e?.[t];if(i&&typeof i=="object"){let r=mr(i[n]);if(r!==void 0)return r}for(let r of o){let a=mr(e?.[r]);if(a!==void 0)return a}}function Nn(e,t,n){return pr(e,"temps",t,n)}function fr(e,t,n){return pr(e,"pressure",t,n)}function ri(e,t,n){return pr(e,"power",t,n)}function gr(e,t,n){return pr(e,"pump",t,n)}function br(e,t,n){let o=mr(e?.[t]);return o!==void 0?o:mr(e?.[n])}function Bn(e,t){return!!(e?.tempValid&&typeof e.tempValid=="object"&&e.tempValid[t]===!1||Array.isArray(e?.temperatures)&&e.temperatures.find(o=>o?.roleKey===t)?.valid===!1)}function hr(e){let t=S.temperatureChannels?.[e];return!!(t?.installed||t?.assigned||t?.detected||t?.valid)}function uo(e){let t=Number(e);return!Number.isFinite(t)||t<10||t>150?null:t}function Dd(e){return Array.isArray(e)&&e.some(t=>t!==null)}function Vd(){if(!Ot)return;let e=[{key:"cube",name:"Куб",source:fe.cube},{key:"columnTop",name:"Царга верх",source:fe.columnTop},{key:"reflux",name:"Дефлегматор",source:fe.reflux}].filter(t=>t.key==="cube"?Dd(t.source):hr(t.key)||Dd(t.source)).map(t=>({name:t.name,data:fe.timestamps.map((n,o)=>({x:n,y:t.source[o]}))}));Ot.updateSeries(e.length?e:[{name:"Куб",data:[]}],!0)}async function vh(){try{let e=await fetch("/api/charts/live"),t=await e.json().catch(()=>({}));if(!e.ok)throw new Error(t?.error||`HTTP ${e.status}`);let n=Number(t?.generatedAtMs||0),o=Array.isArray(t?.minute)?t.minute:[],i=t?.meta?.temperatures&&typeof t.meta.temperatures=="object"?t.meta.temperatures:{},r=d=>{let m=i?.[d];return!!(m?.installed||m?.assigned||m?.detected||hr(d))},a=[],s=[],l=[],c=[];o.forEach(d=>{let m=Number(d?.ms||0),f=n>0?Date.now()-Math.max(0,n-m):Date.now();a.push(f),s.push(uo(br(d,"cube","t_cube"))),l.push(r("columnTop")?uo(br(d,"columnTop","t_column_top")):null),c.push(r("reflux")?uo(br(d,"reflux","t_reflux")):null)}),fe.timestamps.splice(0,fe.timestamps.length,...a.slice(-Wn)),fe.cube.splice(0,fe.cube.length,...s.slice(-Wn)),fe.columnTop.splice(0,fe.columnTop.length,...l.slice(-Wn)),fe.reflux.splice(0,fe.reflux.length,...c.slice(-Wn)),Vd()}catch(e){h(`Не удалось загрузить историю мини-графика: ${e.message}`,"warning")}}function jd(){let e=document.querySelector("#mini-chart");if(!e)return;let t=window.matchMedia("(max-width: 768px)").matches;if(typeof window.ApexCharts>"u"){e.innerHTML='<div class="info-display">Мини-график временно недоступен</div>',h("Мини-график недоступен: библиотека графика не загружена","warning"),oa(null);return}let n={chart:{type:"line",height:t?280:220,animations:{enabled:!0,dynamicAnimation:{speed:500}},toolbar:{show:!0,tools:{download:!t,selection:!t,zoom:!0,zoomin:!t,zoomout:!t,pan:!t,reset:!0},autoSelected:"zoom",offsetX:t?-2:0,offsetY:t?-2:0},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:[{name:"Куб",data:[]},{name:"Царга верх",data:[]},{name:"Дефлегматор",data:[]}],xaxis:{type:"datetime",labels:{datetimeFormatter:{minute:"HH:mm"}}},yaxis:{title:{text:"°C"},decimalsInFloat:1},stroke:{curve:"smooth",width:2},colors:["#dc3545","#007bff","#17a2b8"],legend:{show:!0,position:t?"bottom":"top",horizontalAlign:t?"left":"center",fontSize:t?"11px":"12px",itemMargin:{horizontal:t?10:12,vertical:t?6:4}},tooltip:{x:{format:"HH:mm:ss"}},responsive:[{breakpoint:768,options:{chart:{height:280},legend:{position:"bottom",horizontalAlign:"left",fontSize:"11px",itemMargin:{horizontal:10,vertical:6}}}}]};oa(new ApexCharts(e,n)),Ot.render(),vh()}function yr(e){if(!Ot)return;let t=new Date().getTime(),n=Nn(e,"cube","t_cube"),o=Nn(e,"columnTop","t_column_top"),i=Nn(e,"reflux","t_reflux");n===void 0&&o===void 0&&i===void 0||(fe.timestamps.push(t),fe.cube.push(Bn(e,"cube")?null:uo(n)),fe.columnTop.push(hr("columnTop")&&!Bn(e,"columnTop")?uo(o):null),fe.reflux.push(hr("reflux")&&!Bn(e,"reflux")?uo(i):null),fe.timestamps.length>Wn&&(fe.timestamps.shift(),fe.cube.shift(),fe.columnTop.shift(),fe.reflux.shift()),Vd())}var wh=.05;function ai(e,t){let n=document.getElementById(e);n&&(n.hidden=!!t)}function si(e,t,n,o){let i=document.getElementById(e);if(i){if(t==null){i.innerHTML=`--<span class="toolbar-kpi-unit">${o}</span>`;return}i.innerHTML=`${t.toFixed(n)}<span class="toolbar-kpi-unit">${o}</span>`}}function Sh(e){let t=S.temperatureChannels?.[e];return!!(t?.installed||t?.assigned||t?.detected||t?.valid)}function Wd(e){return Number.isFinite(e)&&Math.abs(e)>=wh}function Eh(){let e=S.pressure||{};return!!(e.ok||e.ads1115Available||Number.isFinite(Number(e.cube))&&Number(e.cube)>0)}function Ch(e){return e?.power?.available===!1||e?.pzem_ok===!1?!1:!!(S.power?.available||S.equipment?.modules?.pzem004t?.available)}function vr(e){let t=Bn(e,"cube")?void 0:Nn(e,"cube","t_cube"),n=Wd(t)?t:void 0,o=Sh("columnTop"),i=o&&!Bn(e,"columnTop")?Nn(e,"columnTop","t_column_top"):void 0,r=Wd(i)?i:void 0,a=Ch(e),s=a?ri(e,"power","power"):void 0,l=Eh(),c=l?fr(e,"cube","p_cube"):void 0,d=gr(e,"speedMlH","pump_speed");si("kpi-temp-cube",n,1,"°C"),si("kpi-tsarga",r,1,"°C"),si("kpi-power",s,0,"W"),si("kpi-pressure",c,1,"мм"),si("kpi-pump",d,0,"мл/ч"),ai("kpi-card-temp-cube",n===void 0),ai("kpi-card-tsarga",!o||r===void 0),ai("kpi-card-power",!a),ai("kpi-card-pressure",!l),ai("kpi-card-pump",d==null)}function zd(e){if(document.getElementById("memory-stats").style.display==="none")return;let n=i=>i<1024?i+" B":i<1024*1024?(i/1024).toFixed(1)+" KB":(i/(1024*1024)).toFixed(1)+" MB",o=e.heap_total-e.heap_free;document.getElementById("mem-heap-used").textContent=n(o),document.getElementById("mem-heap-total").textContent=n(e.heap_total),document.getElementById("mem-heap-pct").textContent=e.heap_used_pct.toFixed(1)+"%",document.getElementById("mem-psram-free").textContent=n(e.psram_free),document.getElementById("mem-psram-total").textContent=n(e.psram_total),document.getElementById("mem-flash-pct").textContent=e.flash_used_pct.toFixed(1)+"%"}function Ud(){let e=document.getElementById("show-memory-stats"),t=document.getElementById("memory-stats");e.checked?(t.style.display="block",localStorage.setItem("showMemoryStats","true")):(t.style.display="none",localStorage.setItem("showMemoryStats","false"))}function Kd(){let e=localStorage.getItem("showMemoryStats")==="true",t=document.getElementById("show-memory-stats"),n=document.getElementById("memory-stats");t&&(t.checked=e),n&&(n.style.display=e?"block":"none")}function xh(e){return e?.querySelector(".btn.btn-primary")}function us(e){let t=document.getElementById("safety-modal"),n=document.getElementById("safety-modal-msg");if(!t||!n)return;let o=to(e),i=xh(t);if(i&&(i.textContent=o.primaryActionLabel,i.style.background=o.primaryActionBackground),o.shouldShowModal){let r=o.message||"Неизвестная ошибка датчика";o.severity==="recovery"||o.resetAvailable?r+=`
+
+Условия безопасности восстановлены. Теперь можно выполнить сброс аварии.`:o.resetBlockedReason?r+=`
+
+Сброс пока недоступен: ${o.resetBlockedReason}`:o.acknowledged&&(r+=`
+
+Авария подтверждена оператором. Ожидаем восстановления условий безопасности.`),n.textContent=r,t.style.display==="none"&&(t.style.display="flex",console.warn("Safety Alarm active:",r))}else t.style.display!=="none"&&(t.style.display="none")}async function Mh(){try{let t=to(S).resetAvailable?"/api/safety/reset":"/api/safety/ack",n=await fetch(t,{method:"POST"}),o=await n.json().catch(()=>null);o&&(qi(o),us(S));let i=to(S);if(n.ok)t==="/api/safety/reset"?(ds(),console.log("Safety alarm reset by user")):i.acknowledged&&(ds(),console.log("Safety alarm acknowledged by user"));else{let r=o?.reason||i.resetBlockedReason;alert(r||"Операция безопасности отклонена. Проверьте состояние датчиков.")}}catch(e){console.error("Error acknowledging safety:",e)}}function ds(){let e=document.getElementById("safety-modal");e&&(e.style.display="none")}window.acknowledgeSafety=Mh;window.closeSafetyModal=ds;function Gd(e){let t;if(Zl(e),ur(),Yi(),e.mode!==void 0){let o=Number(e.mode),i=Number.isFinite(o)?Ze(o).toUpperCase():"UNKNOWN",r=Number.isFinite(o)?Un(o):"mode-idle",a=document.getElementById("mode");a.textContent=i,a.className=`value ${r}`,Number.isFinite(o)&&Bo(o)}e.paused!==void 0&&ko(!!e.paused),e.phase!==void 0&&(t=["IDLE","HEATING","STABIL","HEADS","PURGE","BODY","TAILS","FINISH","ERROR"][e.phase]||"-",document.getElementById("phase").textContent=t),e.t_cube!==void 0&&(document.getElementById("temp-cube").textContent=e.t_cube.toFixed(1)+"°C"),e.t_column_bottom!==void 0&&(document.getElementById("temp-column-bottom").textContent=e.t_column_bottom.toFixed(1)+"°C"),e.t_column_top!==void 0&&(document.getElementById("temp-column-top").textContent=e.t_column_top.toFixed(1)+"°C"),e.t_reflux!==void 0&&(document.getElementById("temp-reflux").textContent=e.t_reflux.toFixed(1)+"°C"),e.t_tsa!==void 0&&(document.getElementById("temp-tsa").textContent=e.t_tsa.toFixed(1)+"°C"),e.tempValid&&typeof e.tempValid=="object"&&(e.tempValid.columnBottom===!1&&(document.getElementById("temp-column-bottom").textContent="--°C"),e.tempValid.columnTop===!1&&(document.getElementById("temp-column-top").textContent="--°C"),e.tempValid.reflux===!1&&(document.getElementById("temp-reflux").textContent="--°C"),e.tempValid.tsa===!1&&(document.getElementById("temp-tsa").textContent="--°C"),e.tempValid.waterIn===!1&&(document.getElementById("landing-water-in").textContent="--.-°C"),e.tempValid.waterOut===!1&&(document.getElementById("landing-water-out").textContent="--.-°C")),e.p_cube!==void 0&&(document.getElementById("pressure-cube").textContent=e.p_cube.toFixed(1)+" мм рт.ст."),e.p_atm!==void 0&&(document.getElementById("pressure-atm").textContent=e.p_atm.toFixed(1)+" гПа");let n=e?.v2?.indicators?.distPressureMargin!==void 0?Number(e.v2.indicators.distPressureMargin):e.p_flood!==void 0?Number(e.p_flood):NaN;if(Number.isFinite(n)&&(document.getElementById("pressure-flood").textContent=n.toFixed(1)+" мм"),e.voltage!==void 0&&(document.getElementById("power-voltage").textContent=e.voltage.toFixed(1)+" V"),e.current!==void 0&&(document.getElementById("power-current").textContent=e.current.toFixed(2)+" A"),e.power!==void 0){document.getElementById("power-power").textContent=e.power.toFixed(0)+" W";let o=document.getElementById("dist-start-power-fact");o&&(o.value=Number(e.power).toFixed(0))}if(e.energy!==void 0&&(document.getElementById("power-energy").textContent=e.energy.toFixed(3)+" кВт·ч"),e.frequency!==void 0&&(document.getElementById("power-frequency").textContent=e.frequency.toFixed(1)+" Гц"),e.pf!==void 0&&(document.getElementById("power-pf").textContent=e.pf.toFixed(2)),e.pzem_ok===!1&&(document.getElementById("power-voltage").textContent="-- V",document.getElementById("power-current").textContent="-- A",document.getElementById("power-energy").textContent="-- кВт·ч",document.getElementById("power-frequency").textContent="-- Гц",document.getElementById("power-pf").textContent="--",document.getElementById("landing-voltage").textContent="-- V"),e.distillation&&(e.distillation.powerW!==void 0||e.distillation.powerPercent!==void 0)){let o=document.getElementById("dist-start-power-percent");if(o&&document.activeElement!==o){let i=Math.max(1,Number(me)||3e3),r=e.distillation.powerW!==void 0?Math.max(0,Math.min(i,Number(e.distillation.powerW)||0)):Math.round(Math.max(0,Math.min(100,Number(e.distillation.powerPercent)||0))/100*i);o.value=String(r),o.max=String(i),o.step="50"}}if(e.pump_speed!==void 0&&(document.getElementById("pump-speed").textContent=e.pump_speed.toFixed(0)+" мл/ч"),e.pump_volume!==void 0&&(document.getElementById("pump-volume").textContent=e.pump_volume.toFixed(0)+" мл"),e.volume_heads!==void 0&&(document.getElementById("volume-heads").textContent=e.volume_heads.toFixed(0)+" мл"),e.volume_body!==void 0&&(document.getElementById("volume-body").textContent=e.volume_body.toFixed(0)+" мл"),e.volume_tails!==void 0&&(document.getElementById("volume-tails").textContent=e.volume_tails.toFixed(0)+" мл"),Vt(),e.uptime!==void 0){document.getElementById("uptime").textContent=en(e.uptime);let o=document.getElementById("operator-uptime");o&&(o.textContent=en(e.uptime))}e.type==="event"&&h(e.message,e.level||"info"),yr(e),e.memory!==void 0&&zd(e.memory),typeof updateColumnAnimation=="function"&&updateColumnAnimation(e),eo(e),Ki({mode:e.mode,modeStr:e.modeStr,phaseText:t,safetyOk:e.safetyOk,alarm:e.alarm,currentAlarm:e.currentAlarm,v2:e.v2,tCube:e.t_cube,power:e.power,pressureCube:e.p_cube,pumpSpeed:e.pump_speed,abv:Qe().value,waterIn:e.t_water_in,waterOut:e.t_water_out,voltage:e.voltage}),cn({syncSpeedInput:!0}),Yn(),wr(),vr(e),us(e),document.dispatchEvent(new CustomEvent("runtime-status-updated"))}var ms=!1;function Yd(e){ms=e}async function Jd(){let e=new AbortController,t=setTimeout(()=>e.abort(),1200);try{let n=await fetch("/api/web/user",{credentials:"same-origin",signal:e.signal});return n.status===404?!1:n.status===200||n.status===401||n.status>=400}catch{return!1}finally{clearTimeout(t)}}function Zd(e){document.querySelectorAll('[data-cloud-only="1"]').forEach(t=>{t.style.display=e?"":"none"})}function ps(){if(ms){Zt(!1),un(!1),no(!0),h("Cloud proxy mode: WebSocket отключен, используется HTTP polling.","info");return}if(jn&&(jn.readyState===WebSocket.OPEN||jn.readyState===WebSocket.CONNECTING))return;let t=`${window.location.protocol==="https:"?"wss:":"ws:"}//${window.location.host}/ws`;h("Подключение к WebSocket...");try{let n=new WebSocket(t);ea(n),n.onopen=function(){Zt(!0),Tc(),un(!0),h("✓ Подключено к контроллеру","info"),No&&(clearInterval(No),ta(null))},n.onmessage=function(o){try{let i=JSON.parse(o.data);Gd(i)}catch(i){console.error("Ошибка парсинга JSON:",i)}},n.onerror=function(o){console.error("WebSocket error:",o),h("✗ Ошибка подключения","error")},n.onclose=function(){Zt(!1),jn===n&&ea(null),no(!0),un(!1),h("⚠️ Соединение разорвано. Переподключение...","warning"),No||ta(setInterval(()=>{na||ps()},5e3))}}catch(n){console.error("Ошибка создания WebSocket:",n),un(!1),no(!0)}}function un(e){let t=document.getElementById("connection-status"),n=document.getElementById("connection-text");!t||!n||(e?(t.className="status-indicator online",n.textContent="Подключено"):(t.className="status-indicator",n.textContent="Отключено"))}function Th(e={}){let t=e.temps&&typeof e.temps=="object"?e.temps:{},n=(o,i)=>{let r=t[o]??e[i];if(r==null)return;let a=Number(r);return Number.isFinite(a)?a:void 0};return{cube:n("cube","t_cube"),columnBottom:n("columnBottom","t_column_bottom"),columnTop:n("columnTop","t_column_top"),reflux:n("reflux","t_reflux"),tsa:n("tsa","t_tsa"),waterIn:n("waterIn","t_water_in"),waterOut:n("waterOut","t_water_out")}}var fs=!1;async function ie(){if(!fs)try{fs=!0;let e=await fetch("/api/status");if(!e.ok){let n=`✗ Статус недоступен (/api/status): HTTP ${e.status}`;h(n,"error"),Zt(!1),un(!1),Bo(W),ko(!1),wr();return}let t=await e.json();Zt(!0),un(!0),Bo(xe(t.mode,t.modeStr)),ko(!!t.paused),t.equipment&&t.equipment.heaterPowerW&&(Vl(t.equipment.heaterPowerW),Ph());try{$h(t),document.dispatchEvent(new CustomEvent("runtime-status-updated"))}catch(n){console.error("updateUIFromStatus error:",n)}wr()}catch(e){console.error("Ошибка загрузки статуса:",e),Zt(!1),un(!1)}finally{fs=!1}}function $h(e){let t="-";if(qi(e),ur(),Gi(),Yi(),e.modeStr!==void 0||e.mode!==void 0){let o=document.getElementById("mode");if(o){let i=xe(e.mode,e.modeStr);o.textContent=Ze(i).toUpperCase(),o.className=`value ${Un(i)}`}}if(e.phaseStr!==void 0){let o=document.getElementById("phase");o&&(t=e.phaseStr.toUpperCase()||"-",o.textContent=t)}Qd(e);let n=Th(e);if(n.cube!==void 0){let o=document.getElementById("temp-cube");o&&(o.textContent=n.cube.toFixed(1)+"°C")}if(n.columnBottom!==void 0){let o=document.getElementById("temp-column-bottom");o&&(o.textContent=n.columnBottom.toFixed(1)+"°C")}if(n.columnTop!==void 0){let o=document.getElementById("temp-column-top");o&&(o.textContent=n.columnTop.toFixed(1)+"°C")}if(n.reflux!==void 0){let o=document.getElementById("temp-reflux");o&&(o.textContent=n.reflux.toFixed(1)+"°C")}if(n.tsa!==void 0){let o=document.getElementById("temp-tsa");o&&(o.textContent=n.tsa.toFixed(1)+"°C")}if(S.temperatureChannels?.columnBottom?.valid===!1){let o=document.getElementById("temp-column-bottom");o&&(o.textContent="--°C")}if(S.temperatureChannels?.columnTop?.valid===!1){let o=document.getElementById("temp-column-top");o&&(o.textContent="--°C")}if(S.temperatureChannels?.reflux?.valid===!1){let o=document.getElementById("temp-reflux");o&&(o.textContent="--°C")}if(S.temperatureChannels?.tsa?.valid===!1){let o=document.getElementById("temp-tsa");o&&(o.textContent="--°C")}if(S.temperatureChannels?.waterIn?.valid===!1){let o=document.getElementById("landing-water-in");o&&(o.textContent="--.-°C")}if(S.temperatureChannels?.waterOut?.valid===!1){let o=document.getElementById("landing-water-out");o&&(o.textContent="--.-°C")}if(e.pressure){if(e.pressure.cube!==void 0){let o=document.getElementById("pressure-cube");o&&(o.textContent=e.pressure.cube.toFixed(1)+" мм рт.ст.")}if(e.pressure.atm!==void 0){let o=document.getElementById("pressure-atm");o&&(o.textContent=e.pressure.atm.toFixed(1)+" гПа")}}if(e.power){if(e.power.voltage!==void 0){let o=document.getElementById("power-voltage");o&&(o.textContent=e.power.voltage.toFixed(1)+" V")}if(e.power.current!==void 0){let o=document.getElementById("power-current");o&&(o.textContent=e.power.current.toFixed(2)+" A")}if(e.power.power!==void 0){let o=document.getElementById("power-power");o&&(o.textContent=e.power.power.toFixed(0)+" W");let i=document.getElementById("dist-start-power-fact");i&&(i.value=e.power.power.toFixed(0))}if(e.power.energy!==void 0){let o=document.getElementById("power-energy");o&&(o.textContent=e.power.energy.toFixed(3)+" кВт·ч")}if(e.power.frequency!==void 0){let o=document.getElementById("power-frequency");o&&(o.textContent=e.power.frequency.toFixed(1)+" Гц")}if(e.power.pf!==void 0){let o=document.getElementById("power-pf");o&&(o.textContent=e.power.pf.toFixed(2))}}if(e.power?.available===!1){let o=document.getElementById("power-voltage"),i=document.getElementById("power-current"),r=document.getElementById("power-energy"),a=document.getElementById("power-frequency"),s=document.getElementById("power-pf"),l=document.getElementById("landing-voltage");o&&(o.textContent="-- V"),i&&(i.textContent="-- A"),r&&(r.textContent="-- кВт·ч"),a&&(a.textContent="-- Гц"),s&&(s.textContent="--"),l&&(l.textContent="-- V")}if(e.distillation&&(e.distillation.powerW!==void 0||e.distillation.powerPercent!==void 0)){let o=document.getElementById("dist-start-power-percent");if(o&&document.activeElement!==o){let i=Math.max(1,Number(me)||3e3),r=e.distillation.powerW!==void 0?Math.max(0,Math.min(i,Number(e.distillation.powerW)||0)):Math.round(Math.max(0,Math.min(100,Number(e.distillation.powerPercent)||0))/100*i);o.value=String(r),o.max=String(i),o.step="50"}}if(e.pump){if(e.pump.speedMlH!==void 0){let o=document.getElementById("pump-speed");o&&(o.textContent=e.pump.speedMlH.toFixed(0)+" мл/ч");let i=document.getElementById("toolbar-pump-speed");i&&(i.textContent=e.pump.speedMlH.toFixed(0)+" мл/ч")}if(e.pump.totalMl!==void 0){let o=document.getElementById("pump-volume");o&&(o.textContent=e.pump.totalMl.toFixed(0)+" мл")}}if(e.volumes){if(e.volumes.heads!==void 0){let o=document.getElementById("volume-heads");o&&(o.textContent=e.volumes.heads.toFixed(0)+" мл")}if(e.volumes.body!==void 0){let o=document.getElementById("volume-body");o&&(o.textContent=e.volumes.body.toFixed(0)+" мл")}if(e.volumes.tails!==void 0){let o=document.getElementById("volume-tails");o&&(o.textContent=e.volumes.tails.toFixed(0)+" мл")}}if(Vt(),e.uptime!==void 0){let o=document.getElementById("uptime");o&&(o.textContent=en(e.uptime));let i=document.getElementById("operator-uptime");i&&(i.textContent=en(e.uptime))}Ki({mode:e.mode,modeStr:e.modeStr,phaseText:t,safetyOk:e.safetyOk,alarm:e.alarm,currentAlarm:e.currentAlarm,v2:e.v2,tCube:n.cube,power:ri(e,"power","power"),pressureCube:fr(e,"cube","p_cube"),pumpSpeed:gr(e,"speedMlH","pump_speed"),abv:Qe().value,waterIn:n.waterIn,waterOut:n.waterOut,voltage:ri(e,"voltage","voltage")}),yr(e),vr(e),cn({syncSpeedInput:!0}),eo(e),Yn()}function wr(){let e=ge===W,t=($,I)=>document.querySelector(`button[data-mode-action="${$}"]`)||document.querySelector(`button[onclick="${I}"]`),n=t("rectification","startRectification()"),o=t("manual","startManual()"),i=t("distillation","startDistillation()"),r=t("mashing","startMashing()"),a=t("hold","startHold()"),s=t("nbk","startNbk()"),l=t("fermentation","startFermentation()");[{mode:j,button:n},{mode:J,button:o},{mode:pe,button:i},{mode:Ce,button:r},{mode:Pe,button:a},{mode:de,button:s},{mode:Re,button:l}].forEach(({mode:$,button:I})=>{if(!I)return;I.dataset.baseText||(I.dataset.baseText=I.textContent.trim());let R=ge===$,k=!e&&!R;I.disabled=k,I.classList.toggle("btn-disabled",k),I.classList.toggle("btn-active-mode",R),I.textContent=R?`Running: ${I.dataset.baseText}`:I.dataset.baseText});let d=Bt(S),m=document.getElementById("mode-start-button");m&&(m.disabled=d.disabled,m.classList.toggle("btn-disabled",d.disabled),m.title=d.disabled?d.detail:"");let f=document.getElementById("mode-start-status");f&&(f.classList.remove("is-good","is-warn","is-danger","is-muted"),f.classList.add(`is-${d.tone}`),f.textContent=`${d.title}. ${d.detail}`),(($,I)=>{let R=Array.from(document.querySelectorAll(`button[data-runtime-action="${$}"]`)),k=Array.from(document.querySelectorAll(`button[onclick="${I}"]`));return Array.from(new Set([...R,...k]))})("stop","stopProcess()").forEach($=>{$.disabled=e,$.classList.toggle("btn-disabled",e)});let p=document.getElementById("runtime-pause-resume-btn");if(p){let $=p.querySelector(".operator-scheme-btn-icon"),I=p.querySelector(".operator-scheme-btn-label");p.disabled=e,p.classList.toggle("btn-disabled",e),p.classList.remove("operator-scheme-btn-pause","operator-scheme-btn-start"),zn&&!e?(p.classList.add("operator-scheme-btn-start"),p.dataset.runtimeAction="resume",p.setAttribute("onclick","resumeProcess()"),$&&($.textContent="▶"),I&&(I.textContent="Запустить")):(p.classList.add("operator-scheme-btn-pause"),p.dataset.runtimeAction="pause",p.setAttribute("onclick","pauseProcess()"),$&&($.textContent="⏸"),I&&(I.textContent="Пауза"))}let g=document.getElementById("toolbar-pause-btn");g&&(g.disabled=e,g.classList.toggle("btn-disabled",e),zn&&!e?(g.classList.replace("warning","success"),g.innerHTML="▶ Пуск"):(g.classList.replace("success","warning"),g.innerHTML="⏸ Пауза"));let v=document.getElementById("toolbar-stop-btn");v&&(v.disabled=e,v.classList.toggle("btn-disabled",e));let w=document.querySelector("#monitor .operator-scheme-wrap"),C=document.querySelector("#monitor .operator-scheme-controls"),P=document.getElementById("monitor-idle-mode-cta"),E=document.getElementById("monitor-idle-cta-title"),M=document.getElementById("monitor-idle-cta-text"),A=document.getElementById("monitor-idle-cta-button");w&&(w.style.display=e?"none":""),C&&(C.style.display=e?"none":""),P&&(P.style.display=e?"flex":"none"),P&&(P.classList.remove("is-good","is-warn","is-danger","is-muted"),P.classList.add(`is-${d.tone}`)),E&&(E.textContent=d.title),M&&(M.textContent=d.detail),A&&(A.textContent=d.disabled?"🛠 Проверить условия старта":`🧭 ${d.buttonLabel}`,A.classList.remove("btn-primary","btn-warning","btn-danger","btn-success"),A.classList.add(d.tone==="danger"?"btn-danger":d.tone==="good"?"btn-success":d.tone==="warn"?"btn-warning":"btn-primary")),typeof window.renderControlStartState=="function"&&window.renderControlStartState()}function Ph(){let e=document.getElementById("heater-power"),t=document.querySelector('label[for="heater-power"]');e&&(e.max=me,e.step=50),t&&(t.innerHTML=`Мощность нагрева: <span id="heater-value">0</span> Вт (макс ${me})`)}function Qd(e){let t=document.getElementById("device-id");t&&e.deviceId&&(t.textContent=String(e.deviceId));let n=document.getElementById("cloud-enabled"),o=document.getElementById("cloud-tunnel-url"),i=document.getElementById("cloud-conn-status"),r=document.getElementById("cloud-auth-status"),a=document.getElementById("cloud-claim-status");if(e.cloud&&(n&&typeof e.cloud.enabled=="boolean"&&(n.checked=e.cloud.enabled),o&&typeof e.cloud.tunnelUrl=="string"&&document.activeElement!==o&&(o.value||(o.value=e.cloud.tunnelUrl)),i&&(i.textContent=e.cloud.connected?"online":"offline"),r&&(r.textContent=e.cloud.authenticated?"ok":"no"),a))if(e.cloud.claimActive&&e.cloud.claimCode){let s=null;e.cloud.claimExpiresAt!==void 0&&e.uptime!==void 0&&(s=Math.max(0,Math.round(Number(e.cloud.claimExpiresAt)-Number(e.uptime)))),a.textContent=s!==null?`${e.cloud.claimCode} (ещё ~${s}с)`:String(e.cloud.claimCode)}else a.textContent="нет"}async function Xd(){let e=document.getElementById("cloud-enabled"),t=document.getElementById("cloud-tunnel-url"),n=!!e?.checked,o=(t?.value||"").trim();try{h("📤 Сохранение настроек облака...","info");let i=await fetch("/api/cloud/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:n,tunnelUrl:o})});if(!i.ok){let r=await i.text();h("✗ Ошибка сохранения облака: "+r,"error");return}h("✓ Настройки облака сохранены","success"),setTimeout(ie,500)}catch(i){h("✗ Ошибка сети: "+i.message,"error")}}async function eu(){try{h("📤 Генерация PIN для привязки...","info");let e=await fetch("/api/cloud/claim",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ttlSeconds:600})});if(!e.ok){let n=await e.text();h("✗ Ошибка генерации PIN: "+n,"error");return}let t=await e.json();h("✓ PIN сгенерирован: "+(t.claimCode||""),"success"),setTimeout(ie,200)}catch(e){h("✗ Ошибка сети: "+e.message,"error")}}async function Sr(){let e=document.getElementById("discovered-devices");if(e){e.innerHTML='<p class="info-text" style="margin: 0; color: var(--text-secondary);">Загрузка доступных устройств...</p>';try{let t=await fetch("/api/web/devices/discovered",{credentials:"same-origin"});if(!t.ok){let r=await t.text();e.innerHTML=`<p class="info-text" style="margin: 0; color: var(--text-secondary);">Ошибка: ${t.status}</p>`,console.error("Failed to load discovered devices:",t.status,r);return}let o=(await t.json()).devices||[];if(!o.length){e.innerHTML='<p class="info-text" style="margin: 0; color: var(--text-secondary);">Нет доступных устройств. Сгенерируйте PIN на устройстве и обновите.</p>';return}let i=document.createElement("div");i.style.display="flex",i.style.flexDirection="column",i.style.gap="8px",o.forEach(r=>{let a=document.createElement("div");a.style.display="flex",a.style.alignItems="center",a.style.justifyContent="space-between",a.style.gap="10px",a.style.padding="8px 10px",a.style.border="1px solid var(--border-color)",a.style.borderRadius="6px",a.style.background="var(--bg-primary)";let s=document.createElement("div");s.style.display="flex",s.style.flexDirection="column";let l=document.createElement("div");l.style.fontWeight="600",l.textContent=r.deviceId;let c=document.createElement("div");c.style.fontSize="0.85em",c.style.color="var(--text-secondary)";let d=r.lastSeenAt?new Date(r.lastSeenAt).toLocaleString("ru-RU"):"—",m=r.expiresAt?new Date(r.expiresAt).toLocaleString("ru-RU"):"—";c.textContent=`lastSeen: ${d} | expires: ${m}`,s.appendChild(l),s.appendChild(c);let f=document.createElement("button");f.className="btn btn-sm",f.textContent="Выбрать",f.onclick=()=>{let b=document.getElementById("claim-device-id"),u=document.getElementById("claim-device-pin");b&&(b.value=r.deviceId||""),u&&u.focus()},a.appendChild(s),a.appendChild(f),i.appendChild(a)}),e.innerHTML="",e.appendChild(i)}catch(t){console.error("loadDiscoveredDevices error:",t),e.innerHTML='<p class="info-text" style="margin: 0; color: var(--text-secondary);">Ошибка загрузки списка</p>'}}}async function tu(){let e=document.getElementById("claim-device-id"),t=document.getElementById("claim-device-pin"),n=(e?.value||"").trim(),o=(t?.value||"").trim();if(!n||!o){alert("Введите Device ID и PIN");return}try{let i=await fetch("/api/web/devices/claim",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json; charset=utf-8"},body:JSON.stringify({deviceId:n,claimCode:o})}),r=await i.text(),a=null;try{a=JSON.parse(r)}catch{a=null}if(!i.ok){let s=a&&(a.error||a.message)?a.error||a.message:r;alert(`Ошибка привязки: ${s}`);return}alert("Устройство привязано и добавлено в аккаунт"),t&&(t.value=""),await mn(),await Sr()}catch(i){console.error("claimDeviceToAccount error:",i),alert("Ошибка сети при привязке")}}var ht=null,li=[];async function mn(){try{let e=await fetch("/api/web/esp32/devices",{credentials:"same-origin"});if(!e.ok){let i=await e.text();if(console.error("Failed to load devices:",e.status,i),e.status===401){let r=document.getElementById("esp32-device-select");r&&(r.innerHTML='<option value="">Требуется авторизация</option>');return}throw new Error("Failed to load devices: "+e.status)}li=(await e.json()).devices||[];let n=document.getElementById("esp32-device-select");if(!n||(n.innerHTML='<option value="">-- Выберите устройство --</option>',li.length===0))return;li.forEach(i=>{let r=document.createElement("option");r.value=i.id;let a=i.tunnelEnabled?` ☁️${i.tunnelStatus?" "+i.tunnelStatus:""}`:"";r.textContent=i.name+(i.is_active?" (активно)":"")+a,n.appendChild(r)});let o=li.find(i=>i.is_active);o&&(n.value=o.id,Er())}catch(e){console.error("Error loading ESP32 devices:",e);let t=document.getElementById("esp32-device-select");t&&(t.innerHTML='<option value="">Ошибка загрузки</option>')}}async function Er(){let e=document.getElementById("esp32-device-select");if(!e||!e.value){document.getElementById("esp32-device-form").style.display="none";return}ht=parseInt(e.value);let t=li.find(n=>n.id===ht);if(t)document.getElementById("esp32-device-name").value=t.name||"",document.getElementById("esp32-host").value=t.host||"",document.getElementById("esp32-port").value=t.port||80,document.getElementById("esp32-use-https").checked=t.useHttps||!1,document.getElementById("esp32-username").value=t.username||"",document.getElementById("esp32-password").value="",document.getElementById("esp32-timeout").value=t.timeout||5,document.getElementById("esp32-enabled").checked=!0,ci(),document.getElementById("esp32-device-form").style.display="block",document.getElementById("esp32-activate-btn").style.display=t.is_active?"none":"inline-block",document.getElementById("esp32-delete-btn").style.display="inline-block";else try{let n=await fetch(`/api/web/esp32/devices/${ht}`);if(!n.ok)throw new Error("Failed to load device");let i=(await n.json()).device;document.getElementById("esp32-device-name").value=i.name||"",document.getElementById("esp32-host").value=i.host||"",document.getElementById("esp32-port").value=i.port||80,document.getElementById("esp32-use-https").checked=i.useHttps||!1,document.getElementById("esp32-username").value=i.username||"",document.getElementById("esp32-password").value="",document.getElementById("esp32-timeout").value=i.timeout||5,document.getElementById("esp32-enabled").checked=!0,ci(),document.getElementById("esp32-device-form").style.display="block",document.getElementById("esp32-activate-btn").style.display=i.is_active?"none":"inline-block",document.getElementById("esp32-delete-btn").style.display="inline-block"}catch(n){console.error("Error loading device:",n),alert("Ошибка загрузки устройства")}}function nu(){ht=null,document.getElementById("esp32-device-select").value="",document.getElementById("esp32-device-name").value="",document.getElementById("esp32-host").value="",document.getElementById("esp32-port").value="80",document.getElementById("esp32-use-https").checked=!1,document.getElementById("esp32-username").value="",document.getElementById("esp32-password").value="",document.getElementById("esp32-timeout").value="5",document.getElementById("esp32-enabled").checked=!1,document.getElementById("esp32-device-form").style.display="block",document.getElementById("esp32-activate-btn").style.display="none",document.getElementById("esp32-delete-btn").style.display="none",ci()}async function ou(){await mn()}function ci(){let e=document.getElementById("esp32-enabled").checked,t=document.getElementById("esp32-fields");t&&(t.style.display=e?"block":"none")}async function gs(){let e=document.getElementById("esp32-device-name").value.trim();if(!e){alert("Укажите название устройства");return}let t={name:e,enabled:document.getElementById("esp32-enabled").checked,host:document.getElementById("esp32-host").value.trim(),port:parseInt(document.getElementById("esp32-port").value)||80,useHttps:document.getElementById("esp32-use-https").checked,username:document.getElementById("esp32-username").value.trim(),password:document.getElementById("esp32-password").value.trim(),timeout:parseInt(document.getElementById("esp32-timeout").value)||5};if(t.enabled&&!t.host){alert("Укажите адрес ESP32");return}try{let n;if(ht?(t.id=ht,n=await fetch(`/api/web/esp32/devices/${ht}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)})):(t.is_active=!0,n=await fetch("/api/web/esp32/devices",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)})),!n.ok){let o=await n.json();throw new Error(o.error||"Failed to save device")}await n.json(),alert("Устройство сохранено успешно!"),await mn(),t.password&&(document.getElementById("esp32-password").value="")}catch(n){console.error("Error saving ESP32 device:",n),alert("Ошибка сохранения устройства: "+n.message)}}async function iu(){await gs()}async function ru(){if(!ht){alert("Выберите устройство");return}try{let e=await fetch(`/api/web/esp32/devices/${ht}/activate`,{method:"POST"});if(!e.ok){let t=await e.json();throw new Error(t.error||"Failed to activate device")}alert("Устройство активировано!"),await mn(),Er()}catch(e){console.error("Error activating device:",e),alert("Ошибка активации устройства: "+e.message)}}async function au(){if(!ht){alert("Выберите устройство");return}if(confirm("Удалить это устройство?"))try{let e=await fetch(`/api/web/esp32/devices/${ht}`,{method:"DELETE"});if(!e.ok){let t=await e.json();throw new Error(t.error||"Failed to delete device")}alert("Устройство удалено"),ht=null,document.getElementById("esp32-device-select").value="",document.getElementById("esp32-device-form").style.display="none",await mn()}catch(e){console.error("Error deleting device:",e),alert("Ошибка удаления устройства: "+e.message)}}async function su(){let e=document.getElementById("esp32-test-result");if(e){e.style.display="block",e.innerHTML="Проверка подключения...",e.style.background="var(--bg-secondary)",e.style.color="var(--text-primary)";try{let n=await(await fetch("/api/web/esp32/test",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin"})).json();n.success?(e.style.background="rgba(40, 167, 69, 0.2)",e.style.color="#28a745",e.style.border="1px solid #28a745",e.innerHTML="✓ "+(n.message||"Подключение успешно!")):(e.style.background="rgba(220, 53, 69, 0.2)",e.style.color="#dc3545",e.style.border="1px solid #dc3545",e.innerHTML="✗ "+(n.error||"Ошибка подключения"))}catch(t){console.error("Error testing ESP32 connection:",t),e.style.background="rgba(220, 53, 69, 0.2)",e.style.color="#dc3545",e.style.border="1px solid #dc3545",e.innerHTML="✗ Ошибка: "+t.message}}}document.addEventListener("DOMContentLoaded",function(){let e=document.getElementById("compare-modal");e&&e.addEventListener("click",function(t){t.target===e&&closeCompareModal()})});async function lu(){try{let e=await fetch("/api/web/user",{credentials:"same-origin"});if(!e.ok){let o=await e.text();if(console.error("Failed to load user info:",e.status,o),e.status===401){let i=document.getElementById("current-username");i&&(i.textContent="Не авторизован");return}throw new Error("Failed to load user info: "+e.status)}let t=await e.json(),n=document.getElementById("current-username");n&&(n.textContent=t.username||"Неизвестно")}catch(e){console.error("Error loading user info:",e);let t=document.getElementById("current-username");t&&(t.textContent="Ошибка загрузки")}}function cu(){let e=document.getElementById("user-menu");e&&(e.style.display=e.style.display==="none"?"block":"none")}document.addEventListener("click",function(e){let t=document.getElementById("user-info"),n=document.getElementById("user-menu");n&&t&&!t.contains(e.target)&&!n.contains(e.target)&&(n.style.display="none")});async function du(){try{(await fetch("/api/web/user/logout")).ok?window.location.href="/login":alert("Ошибка выхода из системы")}catch(e){console.error("Error logging out:",e),alert("Ошибка выхода из системы")}}async function uu(){try{await fetch("/api/web/user/logout",{credentials:"same-origin"})}catch(e){console.warn("Switch account: logout request failed, redirecting to login anyway:",e)}window.location.href="/login?switch=1"}function mu(e){document.body.setAttribute("data-theme",e),localStorage.setItem("theme",e),Ot&&Ot.updateOptions({theme:{mode:e}}),h(`🌓 Тема изменена: ${e}`,"info")}function pu(){let e=localStorage.getItem("theme")||"light";document.body.setAttribute("data-theme",e)}function fu(e){yt.has(e)?yt.delete(e):yt.add(e),Ih()}function Ih(){let e=document.getElementById("compare-processes-btn");e&&(e.disabled=yt.size<2,e.textContent=`📊 Сравнить выбранные (${yt.size})`)}function gu(e){let t=document.getElementById("hist-stat-total"),n=document.getElementById("hist-stat-completed"),o=document.getElementById("hist-stat-time"),i=document.getElementById("hist-stat-energy");if(!t)return;let r=e.length,a=e.filter(c=>c.status==="completed").length,s=e.reduce((c,d)=>c+(d.duration||0),0),l=0;t.textContent=r,n.textContent=a,o.textContent=(s/3600).toFixed(1)+" ч",i.textContent=l.toFixed(1)+" кВт·ч"}async function bu(){if(confirm("Удалить ВСЮ историю процессов? Это действие необратимо!"))try{if(!(await fetch("/api/history",{method:"DELETE",headers:{"Content-Type":"application/json"}})).ok)throw new Error("Failed to clear history");h("🗑️ История полностью очищена","info"),await kn()}catch(e){console.error("Error clearing history:",e),h("❌ Ошибка при очистке истории","error"),alert("Ошибка при очистке истории")}}async function hu(){let e=confirm(`Перезагрузить demo dataset заново?
+
+OK — сначала удалить старые demo-запуски и загрузить их заново.
+Отмена — просто добавить недостающие demo-запуски.`);try{let t=await fetch("/api/history/demo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({replace:e})});if(!t.ok)throw new Error("Failed to load public demo dataset");let n=await t.json();h(`🧪 Demo dataset: +${n.imported||0}, пропущено ${n.skipped||0}, всего demo ${n.demoCount||0}`,"info"),await kn()}catch(t){console.error("Error loading public demo dataset:",t),h("❌ Ошибка загрузки demo dataset","error"),alert("Ошибка загрузки demo dataset")}}async function yu(){if(confirm(`Удалить только demo dataset из истории?
+
+Реальные процессы останутся нетронутыми.`))try{let e=await fetch("/api/history/demo",{method:"DELETE",headers:{"Content-Type":"application/json"}});if(!e.ok)throw new Error("Failed to clear public demo dataset");let t=await e.json();h(`🧹 Demo dataset удалён: ${t.removed||0} запусков`,"info"),await kn()}catch(e){console.error("Error clearing public demo dataset:",e),h("❌ Ошибка удаления demo dataset","error"),alert("Ошибка удаления demo dataset")}}async function vu(e){if(confirm("Удалить этот процесс из истории?"))try{if(!(await fetch(`/api/history/${e}`,{method:"DELETE",headers:{"Content-Type":"application/json"}})).ok)throw new Error("Failed to delete history item");h(`🗑️ Процесс ${e} удалён из истории`,"info"),await kn()}catch(t){console.error("Error deleting history item:",t),h("❌ Ошибка при удалении процесса","error"),alert("Ошибка при удалении процесса")}}var di=[];async function kn(){try{let e=await fetch("/api/history");if(!e.ok)throw new Error("Failed to load history");di=(await e.json()).processes||[],bs(),h(`📚 Загружено процессов: ${di.length}`,"info")}catch(e){console.error("Error loading history:",e),h("❌ Ошибка загрузки истории","error");let t=document.getElementById("history-list");t&&(t.innerHTML='<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет данных или ошибка загрузки</div>')}}function bs(){let e=document.getElementById("history-filter-type")?.value||"all",t=document.getElementById("history-filter-status")?.value||"all",n=document.getElementById("history-sort")?.value||"date-desc",o=[...di];e!=="all"&&(o=o.filter(i=>i.type===e)),t!=="all"&&(o=o.filter(i=>i.status===t)),o.sort((i,r)=>{switch(n){case"date-desc":return r.startTime-i.startTime;case"date-asc":return i.startTime-r.startTime;case"duration-desc":return r.duration-i.duration;case"duration-asc":return i.duration-r.duration;default:return 0}}),Ah(o),gu(o)}function Ah(e){let t=document.getElementById("history-list");if(t){if(e.length===0){t.innerHTML='<div style="text-align: center; padding: 20px; color: var(--text-secondary);">Нет процессов для отображения</div>';return}t.innerHTML="",e.forEach(n=>{let o=_h(n);t.appendChild(o)})}}var yt=new Set;function $t(e){return String(e??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;")}function Nh(e){let t=[];return e.safetyTrip&&t.push("trip"),e.safetyAck&&t.push("ack"),e.safetyRecovery&&t.push("recovery"),e.safetyReset&&t.push("reset"),e.safetyLimited&&t.push("limited"),t.length>0?`Safety: ${t.join(" -> ")}`:""}function wu(e){let t=String(e||"").trim();return!t||t==="RC_NONE"||t==="RC_UNSPECIFIED"?"":t.replace(/^RC_/,"").toLowerCase().split("_").map(n=>n?n[0].toUpperCase()+n.slice(1):"").join(" ")}function Bh(e){let t={heating:"Нагрев",stabilization:"Стабилизация",post_heads_stabilization:"Пост-стабилизация",heads:"Отбор голов",body:"Отбор тела",tails:"Отбор хвостов",purge:"Продувка",finish:"Завершение",completed:"Завершено",working:"Работа",running:"Выполнение",acid_rest:"Кислотная пауза",protein_rest:"Белковая пауза",beta_amylase:"Бета-амилаза",alpha_amylase:"Альфа-амилаза",mash_out:"Мэш-аут",hold_step:"Шаг выдержки"},n=String(e||"").trim();return n?t[n]||n:""}function hs(e){return{completed:"FINISH",operator_stop:"OPERATOR STOP",safety_stop:"SAFETY STOP",error:"ERROR"}[String(e||"").trim()]||""}function kh(e){let t=hs(e.completionState),n=String(e.completionOperatorMessage||"").trim(),o=wu(e.completionReasonCode);return t?n||o?`${t}: ${n||o}`:t:""}function Rh(e){let t=Bh(e.lastPhaseName),n=String(e.completionOperatorMessage||e.lastOperatorMessage||"").trim(),o=wu(e.completionReasonCode||e.lastReasonCode),i=hs(e.completionState);if(!t&&!n&&!o&&!i)return"";let r=n||o,a=i||t||"Итог";return r?t&&i?`${a} • ${t}: ${r}`:`${a}: ${r}`:t&&i?`${i} • ${t}`:t||i}function Cr(e){return`${(Math.max(0,Math.min(1,Number(e||0)))*100).toFixed(0)}%`}function xr(e,t,n,o=!1){let i=Math.max(0,Math.min(1,Number(e||0)));return o?i>=n?"danger":i>=t?"warn":"good":i>=n?"good":i>=t?"warn":"danger"}function Fh(e){let t=Number(e||0);return t<=0?"danger":t<4?"warn":"good"}function Lh(e){let t=e?.indicatorsSummary;if(!t||!t.available||Number(t.samples||0)<=0)return"";let n=Number(t.avgStabilityIndex||0),o=Number(t.minCoolingMarginC||0),i=Number(t.maxFloodRisk||0),r=Number(t.freshnessShare||0),a=Number(t.takeoffShare||0);return`
+        <div class="history-indicators">
+            ${[`<span class="history-indicator-chip is-${xr(n,.45,.75)}">Stability ${$t(Cr(n))}</span>`,`<span class="history-indicator-chip is-${Fh(o)}">Cooling min ${$t(o.toFixed(1))}°C</span>`,`<span class="history-indicator-chip is-${xr(i,.35,.65,!0)}">Flood max ${$t(Cr(i))}</span>`,`<span class="history-indicator-chip is-${xr(a,.65,.85)}">Takeoff ${$t(Cr(a))}</span>`,`<span class="history-indicator-chip is-${xr(r,.85,.97)}">Telemetry ${$t(Cr(r))}</span>`].join("")}
+        </div>
+    `}function _h(e){let t=document.createElement("div");t.className="history-item",t.dataset.processId=e.id;let n={rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка",hold:"Пастеризация",nbk:"НБК",fermentation:"Ферментация"},o={completed:"Завершен",stopped:"Остановлен",error:"Ошибка"},i=n[e.type]||e.type,r=o[e.status]||e.status,a=new Date(e.startTime*1e3),s=(e.duration/3600).toFixed(1),l=yt.has(e.id),c=String(e.safetySummary||"").trim(),d=String(e.safetyState||"none").trim()||"none",m=Nh(e),f=c?`<span class="history-safety-badge history-safety-${d}" title="${$t(m)}">Safety ${$t(c)}</span>`:"",b=String(e.completionState||"").trim(),u=kh(e),p=hs(b),g=p?`<span class="history-completion-badge history-completion-${b}" title="${$t(u)}">${$t(p)}</span>`:"",v=Rh(e),w=v?`<div class="history-outcome" title="${$t(v)}">${$t(v)}</div>`:"",C=Lh(e);return t.innerHTML=`
+
+        <div class="history-header">
+
+            <div style="display: flex; align-items: center; gap: 10px;">
+
+                <input type="checkbox"
+
+                       class="history-checkbox"
+
+                       data-process-id="${e.id}"
+
+                       ${l?"checked":""}
+
+                       onchange="toggleProcessSelection('${e.id}')">
+
+                <div>
+
+                    <span class="history-type history-type-${e.type}">${i}</span>
+
+                    <span class="history-status history-status-${e.status}">${r}</span>
+
+                    ${g}
+
+                    ${f}
+
+                    ${w}
+
+                    ${C}
+
+                </div>
+
+            </div>
+
+            <div class="history-date">${a.toLocaleString("ru-RU")}</div>
+
+        </div>
+
         <div class="history-info">
+
             <div class="history-metric">
+
                 <span class="metric-label">⏱️ Длительность:</span>
-                <span class="metric-value">${durationHours} С‡</span>
+
+                <span class="metric-value">${s} ч</span>
+
             </div>
+
             <div class="history-metric">
+
                 <span class="metric-label">💧 Объём:</span>
-                <span class="metric-value">${process.totalVolume || 0} мл</span>
+
+                <span class="metric-value">${e.totalVolume||0} мл</span>
+
             </div>
+
         </div>
+
         <div class="history-actions">
-            <button class="btn-secondary" onclick="viewHistoryDetails('${process.id}')">🔍 Подробно</button>
-            <button class="btn-secondary" onclick="exportHistory('${process.id}')">📥 Экспорт</button>
-            <button class="btn-danger" onclick="deleteHistoryItem('${process.id}')">🗑️ Удалить</button>
+
+            <button class="btn-secondary" onclick="viewHistoryDetails('${e.id}')">👁️ Подробно</button>
+
+            <button class="btn-secondary" onclick="exportHistory('${e.id}')">📥 Экспорт</button>
+
+            <button class="btn-danger" onclick="deleteHistoryItem('${e.id}')">🗑️ Удалить</button>
+
         </div>
-    `;
 
-    return div;
-}
+    `,t}async function xu(e){try{let t=await fetch(`/api/history/${e}`);if(!t.ok)throw new Error("Не удалось загрузить детали истории");let n=await t.json(),o=vs(n),i=null;if(o?.id)try{let r=await fetch(`/api/history/${o.id}`);r.ok&&(i=await r.json())}catch(r){console.warn("Не удалось загрузить эталонный прогон для Run Advisor:",r)}cy(n,{previousSummary:o,previousSuccessfulProcess:i}),addLog(`👁️ Просмотр процесса ${e}`,"info")}catch(t){console.error("Ошибка загрузки деталей истории:",t),addLog("❌ Ошибка загрузки деталей процесса","error"),alert("Ошибка загрузки деталей процесса")}}var mi=null,pi=null,qh="run-advisor-v3",Oh={targetPower:{label:"мощность",step:50,format:e=>`${Math.round(Number(e||0))} Вт`},stabilizationTime:{label:"стабилизация",step:60,format:e=>Mu(e)},pumpSpeedHead:{label:"скорость голов",step:5,format:e=>`${Math.round(Number(e||0))} мл/ч`},pumpSpeedBody:{label:"скорость тела",step:5,format:e=>`${Math.round(Number(e||0))} мл/ч`},headVolume:{label:"объём голов",step:10,format:e=>`${Math.round(Number(e||0))} мл`}};function Hh(e){return String(e||"").trim().toLowerCase()}function lt(e){return String(e?.process?.profile||e?.profile||"").trim()}function Dh(e){return String(e?.process?.profileId||e?.profileId||"").trim()}function Su(e){let t=Dh(e);if(t)return`id:${t}`;let n=Hh(lt(e));return n?`name:${n}`:""}function vs(e){let t=String(e?.id||"").trim(),n=String(e?.process?.type||"").trim(),o=Su(e),i=Number(e?.metadata?.startTime||0);return!n||!o||i<=0?null:[...di].filter(r=>String(r?.id||"").trim()!==t).filter(r=>String(r?.type||"").trim()===n).filter(r=>Su(r)===o).filter(r=>Number(r?.startTime||0)<i).filter(r=>!!r?.completedSuccessfully||String(r?.status||"").trim()==="completed").sort((r,a)=>Number(a?.startTime||0)-Number(r?.startTime||0))[0]||null}var Vh={RC_SAFETY_LIMIT_POWER:"Ограничение мощности",RC_SAFETY_LIMIT_TAKEOFF:"Ограничение отбора",RC_SAFETY_PHASE_BLOCKED:"Переход фазы заблокирован",RC_SAFETY_RECOVERY_ENTERED:"Условия безопасности восстановлены",RC_SAFETY_RECOVERY_EXITED:"Режим восстановления завершён",RC_SAFETY_TRIP_PRESSURE:"Авария по давлению",RC_SAFETY_TRIP_SENSOR:"Авария по датчикам",RC_SAFETY_TRIP_OVERHEAT:"Авария по перегреву",RC_SAFETY_TRIP_POWER:"Авария по питанию",RC_SAFETY_TRIP_GENERIC:"Неидентифицированная авария",RC_SAFETY_ACKNOWLEDGED:"Авария подтверждена оператором",RC_SAFETY_RESET_COMPLETED:"Авария сброшена оператором",RC_OPERATOR_SERVICE_ACTION:"Сервисное действие оператора"};function ws(e){let t=String(e||"").trim();return!t||t==="RC_NONE"?"":t.replace(/^RC_/,"").replace(/_/g," ").toLowerCase()}function vt(e,t,n){let o=document.createElement("div");o.className="modal-info-item";let i=document.createElement("div");i.className="modal-info-label",i.textContent=t;let r=document.createElement("div");r.className="modal-info-value",r.textContent=n,o.appendChild(i),o.appendChild(r),e.appendChild(o)}function Rn(e,t,n){let o=document.createElement("div");o.className="modal-phase-detail",o.appendChild(document.createTextNode(`${t}: `));let i=document.createElement("strong");i.textContent=n,o.appendChild(i),e.appendChild(o)}function Ss(e){let t=String(e||"").trim();return!t||t==="RC_NONE"?"":Vh[t]||ws(t)}function ys(e,t="",n=!1){let o=String(e||"").trim(),i=String(t||"").trim(),r=Ss(o)||"Итог процесса";if(i)return{tone:o.startsWith("RC_SAFETY_")?"danger":n?"good":"warn",title:r,detail:i,action:o.startsWith("RC_SAFETY_")?"Перед следующим запуском нужно устранить причину safety-события, а не только повторить старт.":"Используйте этот комментарий как главный контекст при сравнении прогона с успешными запусками."};switch(o){case"RC_NONE":case"":return{tone:n?"good":"muted",title:n?"Цикл завершён":"Причина не зафиксирована",detail:n?"Процесс завершился без явной финальной причины в истории переходов.":"Для этого прогона не удалось восстановить явную финальную причину завершения.",action:n?"Ориентируйтесь на фазы, графики и итоговые показатели качества.":"Сверьте хронологию безопасности, предупреждения и последние фазы процесса."};case"RC_MODE_STOP_REQUEST":case"RC_MANUAL_OPERATOR_STOP":return{tone:"warn",title:r,detail:"Цикл был остановлен оператором, поэтому финал нельзя считать полностью автоматическим эталоном.",action:"При сравнении с другими прогонами учитывайте, что завершение было ручным."};case"RC_SAFETY_TRIP_PRESSURE":case"RC_SAFETY_TRIP_SENSOR":case"RC_SAFETY_TRIP_OVERHEAT":case"RC_SAFETY_TRIP_POWER":case"RC_SAFETY_TRIP_GENERIC":return{tone:"danger",title:r,detail:"Процесс завершился аварийным safety-событием, поэтому результат нужно трактовать как защитную остановку.",action:"Перед повторением сценария проверьте первопричину trip по датчикам, давлению, охлаждению и питанию."};case"RC_SAFETY_LIMIT_POWER":case"RC_SAFETY_LIMIT_TAKEOFF":case"RC_SAFETY_PHASE_BLOCKED":return{tone:"warn",title:r,detail:"Автоматика завершала или ограничивала цикл через защитные лимиты, а не в полностью свободном рабочем окне.",action:"Для следующего прогона проверьте охлаждение, стабильность колонны и корректность профиля."};case"RC_SAFETY_RECOVERY_ENTERED":case"RC_PHASE_RECOVERY_APPLIED":return{tone:"warn",title:r,detail:"История показывает вход в recovery или восстановление фазы, значит процесс пережил нестабильный участок.",action:"Смотрите графики и хронологию safety, чтобы понять, где автоматика потеряла устойчивость."};case"RC_HEADS_VOLUME_REACHED":case"RC_HEADS_SCORE_REACHED":case"RC_BODY_TARGET_VOLUME_REACHED":case"RC_BODY_END_DETECTED":case"RC_TAILS_TARGET_REACHED":case"RC_FINISH_COOLDOWN_COMPLETE":case"RC_DISTILLATION_END_TEMP_REACHED":case"RC_DISTILLATION_TARGET_VOLUME_REACHED":case"RC_TEMP_STEP_HOLD_COMPLETE":case"RC_FERM_TARGET_REACHED":return{tone:n?"good":"warn",title:r,detail:"Процесс дошёл до ожидаемой технологической точки завершения или перехода по правилам автоматики.",action:"Используйте этот прогон как материал для сравнения профиля, выхода и энергозатрат."};default:return{tone:n?"good":"muted",title:r,detail:"В истории есть финальная причина, но для неё ещё нет отдельной расширенной расшифровки.",action:"Ориентируйтесь на последние фазы, графики, предупреждения и safety timeline."}}}function jh(e){let t=Array.isArray(e?.phases)?e.phases:[],n=Array.isArray(e?.results?.warnings)?e.results.warnings:[],o=Array.isArray(e?.results?.errors)?e.results.errors:[],i=!!e?.metadata?.completedSuccessfully,r=t.length>0?t[t.length-1]:null,a=String(r?.reasonCode||"").trim(),s=String(r?.operatorMessage||"").trim();if(a||s)return ys(a,s,i);let l=[...o,...n].filter(c=>String(c?.reasonCode||"").trim()||String(c?.operatorMessage||"").trim()).sort((c,d)=>Number(c?.time||0)-Number(d?.time||0)).pop();return l?ys(String(l.reasonCode||""),String(l.operatorMessage||""),i):ys("","",i)}function Wh(e,t){let n=jh(t),o=document.createElement("div");o.className="modal-info-item modal-info-item-wide";let i=document.createElement("div");i.className="modal-info-label",i.textContent="Итог сценария";let r=document.createElement("div");r.className=`modal-history-insight is-${n.tone}`;let a=document.createElement("div");a.className="modal-history-insight-head";let s=document.createElement("strong");s.textContent=n.title,a.appendChild(s);let l=document.createElement("p");l.className="modal-history-insight-text",l.textContent=n.detail;let c=document.createElement("p");c.className="modal-history-insight-action",c.textContent=n.action,r.appendChild(a),r.appendChild(l),r.appendChild(c),o.appendChild(i),o.appendChild(r),e.appendChild(o)}function zh(e){let t=String(e?.reasonCode||"").trim(),n=String(e?.message||"").toLowerCase();return t.startsWith("RC_SAFETY_")||n.includes("safety")||n.includes("авари")||n.includes("перегрев")||n.includes("давлен")}function Uh(e){let t=String(e?.reasonCode||"").trim(),n=String(e?.severity||"").trim().toLowerCase();return t==="RC_SAFETY_RECOVERY_ENTERED"||t==="RC_SAFETY_RECOVERY_EXITED"?"recovery":t==="RC_SAFETY_ACKNOWLEDGED"||t==="RC_SAFETY_RESET_COMPLETED"?"info":t==="RC_SAFETY_LIMIT_POWER"||t==="RC_SAFETY_LIMIT_TAKEOFF"||t==="RC_SAFETY_PHASE_BLOCKED"?"limited":n==="error"||t.startsWith("RC_SAFETY_TRIP_")?"error":"warning"}function Es(e){let t=Array.isArray(e?.results?.errors)?e.results.errors:[],n=Array.isArray(e?.results?.warnings)?e.results.warnings:[];return[...t,...n].filter(zh).map(o=>({...o,tone:Uh(o),title:Ss(o?.reasonCode)||String(o?.severity||"Событие")})).sort((o,i)=>Number(o?.time||0)-Number(i?.time||0))}function Kh(e,t){let n=Es(t);if(n.length===0)return;let o=document.createElement("div");o.className="modal-info-item modal-info-item-wide";let i=document.createElement("div");i.className="modal-info-label",i.textContent="Хронология безопасности";let r=document.createElement("div");r.className="modal-info-value",r.textContent=`${n.length} ${n.length===1?"событие":n.length<5?"события":"событий"}`;let a=document.createElement("div");a.className="modal-event-list",n.forEach(s=>{let l=document.createElement("div");l.className=`modal-event-item is-${s.tone}`;let c=document.createElement("div");c.className="modal-event-header";let d=document.createElement("div");d.className=`modal-event-kind is-${s.tone}`,d.textContent=s.title,c.appendChild(d);let m=Number(s?.time||0);if(m>0){let p=document.createElement("div");p.className="modal-event-meta",p.textContent=new Date(m*1e3).toLocaleString("ru-RU"),c.appendChild(p)}l.appendChild(c);let f=document.createElement("div");f.className="modal-event-message",f.textContent=String(s?.message||"Без текста"),l.appendChild(f);let b=Ss(s?.reasonCode);if(b){let p=document.createElement("div");p.className="modal-event-extra",p.textContent=`Код: ${b}`,l.appendChild(p)}let u=String(s?.operatorMessage||"").trim();if(u){let p=document.createElement("div");p.className="modal-event-extra",p.textContent=`Комментарий: ${u}`,l.appendChild(p)}a.appendChild(l)}),o.appendChild(i),o.appendChild(r),o.appendChild(a),e.appendChild(o)}function Eu(e,t,n,o){if(!Array.isArray(n)||n.length===0)return;let i=document.createElement("div");i.className="modal-info-item modal-info-item-wide";let r=document.createElement("div");r.className="modal-info-label",r.textContent=t;let a=document.createElement("div");a.className="modal-info-value",a.textContent=`${n.length} ${n.length===1?"событие":n.length<5?"события":"событий"}`;let s=document.createElement("div");s.className="modal-event-list",n.forEach(l=>{let c=document.createElement("div");c.className=`modal-event-item ${o==="error"?"is-error":"is-warning"}`;let d=Number(l?.time||0);if(d>0){let u=document.createElement("div");u.className="modal-event-meta",u.textContent=new Date(d*1e3).toLocaleString("ru-RU"),c.appendChild(u)}let m=document.createElement("div");m.className="modal-event-message",m.textContent=String(l?.message||"Без текста"),c.appendChild(m);let f=ws(l?.reasonCode);if(f){let u=document.createElement("div");u.className="modal-event-extra",u.textContent=`Причина: ${f}`,c.appendChild(u)}let b=String(l?.operatorMessage||"").trim();if(b){let u=document.createElement("div");u.className="modal-event-extra",u.textContent=`Комментарий: ${b}`,c.appendChild(u)}s.appendChild(c)}),i.appendChild(r),i.appendChild(a),i.appendChild(s),e.appendChild(i)}function Gh(e,t){let n=String(t||"").trim();if(!n)return;let o=document.createElement("div");o.className="modal-info-item modal-info-item-wide";let i=document.createElement("div");i.className="modal-info-label",i.textContent="Заметки";let r=document.createElement("div");r.className="modal-note-text",r.textContent=n,o.appendChild(i),o.appendChild(r),e.appendChild(o)}function Yh(e,t){let n=t?.metrics?.indicators;if(!n)return;let o=Number(n.samples||0);if(o<=0)return;let i=P=>`${(Number(P||0)/o*100).toFixed(0)}%`,r=Number(n.processHealth?.avg||0),a=Number(n.processHealth?.min||0),s=Number(n.stabilityIndexAvg||0),l=Number(n.coolingMarginC?.min||0),c=Number(n.floodRisk?.max||0),d=Number(n.takeoffAllowedSamples||0)/o,m=Number(n.sensorFreshnessOkSamples||0)/o;vt(e,"Здоровье процесса",`${(r*100).toFixed(0)}%`),vt(e,"Мин. здоровье",`${(a*100).toFixed(0)}%`),vt(e,"Стабильность",`${(s*100).toFixed(0)}%`),vt(e,"Риск захлёба",`${(Number(n.floodRisk?.avg||0)*100).toFixed(0)}% / max ${(c*100).toFixed(0)}%`),vt(e,"Запас охлаждения",`${Number(n.coolingMarginC?.avg||0).toFixed(1)}°C / min ${l.toFixed(1)}°C`),vt(e,"Отбор разрешён",i(n.takeoffAllowedSamples)),vt(e,"Свежесть датчиков",i(n.sensorFreshnessOkSamples)),vt(e,"Финальные score",`heads ${(Number(n.headsCompletionScoreFinal||0)*100).toFixed(0)}%, body ${(Number(n.bodyEndScoreFinal||0)*100).toFixed(0)}%`);let f=document.createElement("div");f.className="modal-info-item modal-info-item-wide";let b=document.createElement("div");b.className="modal-info-label",b.textContent="Indicators verdict";let u=document.createElement("div"),p=m<.95||l<=0||c>=.8?"danger":s<.55||d<.65||l<4||c>=.55?"warn":"good";u.className=`modal-history-insight is-${p}`;let g=document.createElement("div");g.className="modal-history-insight-head";let v=document.createElement("strong");v.textContent=p==="good"?"Indicators выглядели рабочими":p==="warn"?"Indicators показывают узкое рабочее окно":"Indicators подтверждают проблемный прогон";let w=document.createElement("p");w.className="modal-history-insight-text",w.textContent=`Process health ${Oe(r)}, минимум ${Oe(a)}, stability ${Oe(s)}, flood max ${Oe(c)}, cooling margin min ${l.toFixed(1)}°C, takeoff window ${Oe(d)}, telemetry freshness ${Oe(m)}.`;let C=document.createElement("p");C.className="modal-history-insight-action",C.textContent=p==="good"?"Этот запуск подходит как reference для baseline и последующих сравнений профиля.":p==="warn"?"Сценарий рабочий, но запас устойчивости небольшой. Это хороший кандидат для мягкой оптимизации профиля.":"Перед повторением сценария сначала устраните телеметрию/охлаждение/захлёб, а уже потом сравнивайте профили.",g.appendChild(v),u.appendChild(g),u.appendChild(w),u.appendChild(C),f.appendChild(b),f.appendChild(u),e.appendChild(f)}function ui(e){let t=Math.max(0,Math.round(Number(e||0))),n=Math.floor(t/3600),o=Math.round(t%3600/60);return n<=0?`${o} мин`:o<=0?`${n} ч`:`${n} ч ${o} мин`}function Oe(e){return`${(Number(e||0)*100).toFixed(0)}%`}function Jh(e,t=null,n=null){let o=[],i=!!e?.metadata?.completedSuccessfully,r=Number(e?.results?.totalCollected||0),a=Number(e?.results?.headsCollected||0),s=Number(e?.results?.bodyCollected||0),l=Number(e?.results?.tailsCollected||0),c=Number(e?.metrics?.power?.energyUsed||0),d=Number(e?.metrics?.power?.avgPower||0),m=Ft(e),f=e?.metrics?.indicators||null,b=Ue(e),u=Es(e),p=Array.isArray(e?.results?.warnings)?e.results.warnings.length:0,g=Array.isArray(e?.results?.errors)?e.results.errors.length:0,v=Number(st(e,"heating")?.duration||0),w=Number(st(e,["stabilization","post_heads_stabilization"])?.duration||0),C=Number(st(e,"heads")?.duration||0),P=Number(st(e,"body")?.duration||0),E=Number(st(e,"tails")?.duration||0),M=[v>0?`разгон ${ui(v)}`:"",w>0?`стабилизация ${ui(w)}`:"",C>0?`головы ${ui(C)}`:"",P>0?`тело ${ui(P)}`:"",E>0?`хвосты ${ui(E)}`:""].filter(Boolean);if(M.length&&o.push({tone:i?"good":"warn",title:"Фазы и темп прогона",detail:`Хронология прогона: ${M.join(", ")}.`,action:t?"Сравните длительность разгона, стабилизации и тела с прошлым успешным baseline: там чаще всего видны реальные отклонения профиля.":"Этот разбор уже полезен как первый baseline по времени фаз для следующих запусков."}),r>0){let $=a/r,I=s/r,R=l/r;o.push({tone:I>=.7?"good":"muted",title:"Выход и фракции",detail:`Собрано ${Math.round(r)} мл: головы ${Math.round(a)} мл (${Oe($)}), тело ${Math.round(s)} мл (${Oe(I)}), хвосты ${Math.round(l)} мл (${Oe(R)}).`,action:I>=.7?"Выход тела выглядит уверенно. Дальше имеет смысл смотреть не на объём сам по себе, а на устойчивость и энергию на литр.":"Если тело получилось коротким, проверьте конец рабочего окна, момент перехода в хвосты и запас охлаждения."})}if(c>0||d>0||m!==null){let $=t?Ft(t):null,I=m!==null&&$!==null&&$>0?(m-$)/$:null;o.push({tone:I!==null?I>.1?"warn":"good":"muted",title:"Энергия и эффективность",detail:`Потреблено ${c.toFixed(2)} кВт·ч при средней мощности ${Math.round(d)} Вт.${m!==null?` Удельная энергия ${m.toFixed(2)} кВт·ч/л.`:""}`,action:I!==null?I>.1?`Относительно прошлого успешного прогона энергоёмкость выросла на ${pn(I)}. Ищите потери во времени фаз и узком рабочем окне.`:`Относительно прошлого успешного прогона энергоёмкость не ухудшилась критично (${pn(I)}).`:"Если хотите улучшать профиль системно, это одна из ключевых метрик для сравнения между прогонами."})}if(f&&b){let $=Number(f.processHealth?.avg||0),I=Number(f.processHealth?.min||0),R=Number(f.stabilityIndexAvg||0),k=Number(f.floodRisk?.max||0),te=Number(f.coolingMarginC?.min||0),V=Number(b.takeoffShare||0),ne=te<=0||k>=.8?"danger":R<.55||V<.65||te<4?"warn":"good";o.push({tone:ne,title:"Устойчивость процесса",detail:`Process health ${Oe($)}, минимум ${Oe(I)}, stability ${Oe(R)}, flood risk max ${Oe(k)}, cooling margin min ${te.toFixed(1)}°C, окно отбора ${Oe(V)}.`,action:ne==="good"?"Рабочее окно выглядело достаточно спокойным. Такой прогон можно использовать как инженерный baseline.":"Именно здесь находится главный материал для настройки профиля: охлаждение, flood risk и ширина окна отбора."})}if(o.push({tone:g>0?"danger":u.length>0||p>0?"warn":"good",title:"Safety и ограничения",detail:`Safety-событий: ${u.length}. Предупреждений: ${p}. Ошибок: ${g}.`,action:u.length>0?"Перед следующим запуском сначала разберите safety timeline и только потом меняйте сам профиль.":"Если safety не вмешивался, оценка профиля и повторяемости будет намного чище."}),t&&n){let $=fi(e,t),I=new Date(Number(t?.metadata?.startTime||n?.startTime||0)*1e3);if($){let R=$.weightedScore>=.9?"good":$.weightedScore<=-.9?"warn":"muted";o.push({tone:R,title:"Отклонение от эталона профиля",detail:`Сравнение с успешным прогоном от ${I.toLocaleString("ru-RU")}: stability ${pn($.stabilityDelta)}, окно отбора ${pn($.takeoffDelta)}, cooling margin ${Cs($.coolingDelta,1,"°C")}, энергоёмкость ${$.previousEnergyPerLiter!==null&&$.currentEnergyPerLiter!==null&&$.previousEnergyPerLiter>0?pn(($.currentEnergyPerLiter-$.previousEnergyPerLiter)/$.previousEnergyPerLiter):"н/д"}.`,action:R==="good"?"Текущий прогон можно рассматривать как более сильный baseline для профиля.":R==="warn"?"Профиль или условия прогона просели относительно baseline. Меняйте только один параметр за следующий запуск.":"Сдвиг относительно baseline есть, но пока без уверенного инженерного вердикта."})}}else o.push({tone:"muted",title:"Эталон профиля ещё не сформирован",detail:"Для этого прогона нет предыдущего успешного baseline того же профиля, поэтому отчёт пока оценивает только текущий запуск.",action:"Первый успешный прогон этого профиля станет опорной точкой для следующего честного сравнения."});let A=Ts(e,t,n)[0];return A&&o.push({tone:A.tone,title:"Что делать перед следующим запуском",detail:A.detail,action:A.action}),o.slice(0,7)}function st(e,t){let o=(Array.isArray(t)?t:[t]).map(r=>String(r||"").trim()).filter(Boolean);return(Array.isArray(e?.phases)?e.phases:[]).find(r=>o.includes(String(r?.name||"").trim()))||null}function Ft(e){let t=Number(e?.metrics?.power?.energyUsed||0),n=Number(e?.results?.totalCollected||0);return t<=0||n<=0?null:t/(n/1e3)}function Ue(e){let t=e?.metrics?.indicators,n=Number(t?.samples||0);return!t||n<=0?null:{takeoffShare:Number(t.takeoffAllowedSamples||0)/n,freshnessShare:Number(t.sensorFreshnessOkSamples||0)/n,avgStability:Number(t.stabilityIndexAvg||0),minCoolingMargin:Number(t.coolingMarginC?.min||0),maxFloodRisk:Number(t.floodRisk?.max||0)}}function pn(e,t=0){return`${e>0?"+":""}${(e*100).toFixed(t)}%`}function Cs(e,t=1,n=""){return`${e>0?"+":""}${Number(e||0).toFixed(t)}${n}`}function Fn(e,t){let n=Number(e||0),o=Math.max(1,Number(t||1));return Math.round(n/o)*o}function Xe(e,t){let n=Number(e?.parameters?.[t]||0);return n>0?n:0}function Mu(e){return`${Math.round(Number(e||0)/60)} мин`}function xs(e){return Oh[String(e||"").trim()]||null}function Ln(e,t){let n=xs(e);return n?n.format(Number(t||0)):`${Number(t||0)}`}function Zh(e){return String(e||"").trim().toLowerCase().replace(/[^a-z0-9а-яё]+/gi,"_").replace(/^_+|_+$/g,"")||"advisor_item"}function mo(e){return{tone:String(e?.tone||"muted").trim()||"muted",kind:String(e?.kind||"observation").trim()||"observation",code:String(e?.code||Zh(e?.title)).trim()||"advisor_item",title:String(e?.title||"").trim(),detail:String(e?.detail||"").trim(),action:String(e?.action||"").trim(),parameterKey:String(e?.parameterKey||"").trim(),previousValue:Number(e?.previousValue||0),suggestedValue:Number(e?.suggestedValue||0)}}function Qh(e,t,n,o=null){let i=(Array.isArray(o)?o:Ts(e,t,n)).map(r=>mo(r)).filter(r=>r.title);return i.length?{schemaVersion:qh,createdAt:Number(e?.metadata?.endTime||e?.metadata?.startTime||0),baselineProcessId:String(t?.id||n?.id||"").trim(),baselineProfile:lt(e),items:i}:null}function Cu(e){if(!e||typeof e!="object")return null;let t=Array.isArray(e.items)?e.items.map(n=>mo(n)).filter(n=>n.title):[];return{schemaVersion:String(e.schemaVersion||"").trim(),createdAt:Number(e.createdAt||0),baselineProcessId:String(e.baselineProcessId||"").trim(),baselineProfile:String(e.baselineProfile||"").trim(),items:t}}function Xh(e,t){let n=Cu(e),o=Cu(t);return JSON.stringify(n)===JSON.stringify(o)}async function ey(e,t,n,o=null){let i=String(e?.id||"").trim();if(!i)return;let r=Qh(e,t,n,o);if(!r||Xh(r,e?.advisorSnapshot))return;let a=await fetch(`/api/history/${i}/advisor`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(r)});if(!a.ok)throw new Error(`Не удалось сохранить advisor snapshot (${a.status})`);e.advisorSnapshot=r}function ty(e,t,n,o){let i=xs(o),r=Number(e||0),a=Number(t||0),s=Number(n||0);if(!i||r<=0||a<=0||s<=0)return null;let l=s>a?"increase":s<a?"decrease":"keep";if(l==="keep")return null;let c=Math.max(1,Number(i.step||1)),d=Math.max(c,Math.abs(s-a)*.35),m=Math.max(c/2,Math.abs(s-a)*.15),f=l==="increase"?r>=s-d:r<=s+d,b=!f&&(l==="increase"?r>a+m:r<a-m);return{direction:l,applied:f,partial:b,step:c,currentValue:r,baselineValue:a,suggestedValue:s}}function ny(e,t){let n=t?.advisorSnapshot,o=lt(e),i=fi(e,t),r=new Date(Number(t?.metadata?.startTime||0)*1e3);if(!n||!Array.isArray(n.items)||!i)return[];let a=n.items.map(u=>mo(u)).filter(u=>u.kind==="adjustment"&&u.parameterKey&&u.suggestedValue>0);if(!a.length)return[];let s=0,l=0,c=0,d=a.map(u=>{let p=xs(u.parameterKey),g=Xe(t,u.parameterKey)||Number(u.previousValue||0),v=Xe(e,u.parameterKey),w=ty(v,g,u.suggestedValue,u.parameterKey);if(!p||!w)return null;w.applied?s+=1:w.partial?l+=1:c+=1;let C="muted",P=`Проверка совета: ${p.label}`,E="";return w.applied&&i.weightedScore>=.9?(C="good",P=`Совет по "${p.label}" сработал`,E="Эту правку можно считать рабочей, но всё равно лучше подтвердить её повторным запуском без новых изменений поверх."):w.applied&&i.weightedScore<=-.9?(C="warn",P=`Совет по "${p.label}" применили, но эффект слабый`,E="Не закрепляйте это как новый baseline автоматически: либо откатите правку, либо меняйте уже другой параметр отдельно."):w.applied?(C="muted",P=`Совет по "${p.label}" применили частично успешно`,E="Пока эффект смешанный. Полезно повторить запуск с теми же уставками и не наслаивать новые изменения."):w.partial?(C="muted",P=`Совет по "${p.label}" перенесли не полностью`,E="Сейчас сложно честно судить о результате: уставка двинулась в нужную сторону, но не дошла до рекомендованного уровня."):(C="muted",P=`Совет по "${p.label}" не применяли`,E="Если хотите проверить старую гипотезу, перенесите именно эту правку в следующий запуск отдельно от остальных изменений."),{tone:C,kind:"follow_up",code:`follow_up_${u.code}`,title:P,detail:`После успешного прогона от ${r.toLocaleString("ru-RU")} Run Advisor советовал ${Ln(u.parameterKey,g)} -> ${Ln(u.parameterKey,u.suggestedValue)}. Текущий запуск: ${Ln(u.parameterKey,v)}.`,action:E}}).filter(Boolean);if(!d.length)return[];let m="muted",f=`Память рекомендаций для профиля ${o||"без профиля"}`,b="Это мостик между запусками: он показывает, какие советы реально были перенесены в следующий прогон.";return s>0&&i.weightedScore>=.9?(m="good",f="Прошлые рекомендации, вероятно, помогли",b='У вас уже появляется инженерная цепочка "совет -> изменение -> улучшение". Это хороший кандидат на новый рабочий baseline.'):s>0&&i.weightedScore<=-.9?(m="warn",f="Прошлые рекомендации применили, но улучшения нет",b="Лучше не усиливать эти правки дальше. Следующий запуск делайте либо с откатом, либо с изоляцией одного изменения."):l>0&&s===0?(m="muted",f="Прошлые рекомендации перенесены только частично",b="Промежуточные правки труднее оценивать. Для честного сравнения полезно доводить одну гипотезу до конца."):c>0&&s===0&&l===0&&(m="muted",f="Прошлые рекомендации пока не использовались",b="Snapshot сохранён именно для этого: чтобы на следующем прогоне можно было осознанно проверить старую рекомендацию, а не потерять её в истории."),[{tone:m,kind:"follow_up",code:"follow_up_summary",title:f,detail:`Из прошлого успешного прогона найдено ${a.length} инженерных рекомендаций: применено ${s}, частично перенесено ${l}, не тронуто ${c}. Относительно предыдущего успешного запуска итоговый score сейчас ${Cs(i.weightedScore,2)}.`,action:b},...d.slice(0,3)]}function oy(e,t){return[{key:"targetPower",label:"мощность",suffix:" Вт"},{key:"stabilizationTime",label:"стабилизация",suffix:" сек",formatter:o=>Mu(o)},{key:"pumpSpeedHead",label:"головы",suffix:" мл/ч"},{key:"pumpSpeedBody",label:"тело",suffix:" мл/ч"},{key:"headVolume",label:"объём голов",suffix:" мл"}].map(o=>{let i=Xe(e,o.key),r=Xe(t,o.key);if(i<=0||r<=0||i===r)return null;let a=o.formatter||(s=>`${s}${o.suffix}`);return`${o.label}: ${a(r)} -> ${a(i)}`}).filter(Boolean)}function fi(e,t){let n=Ue(e),o=Ue(t),i=Ft(e),r=Ft(t),a=Number(e?.metadata?.duration||0),s=Number(t?.metadata?.duration||0);if(!n||!o)return null;let l=n.avgStability-o.avgStability,c=n.takeoffShare-o.takeoffShare,d=o.maxFloodRisk-n.maxFloodRisk,m=n.minCoolingMargin-o.minCoolingMargin,f=i!==null&&r!==null&&r>0?(r-i)/r:0,b=s>0?(s-a)/s:0,u=l*4+c*3+d*2.5+m*.35+f*1.5+b*1;return{currentIndicators:n,previousIndicators:o,currentEnergyPerLiter:i,previousEnergyPerLiter:r,currentDuration:a,previousDuration:s,stabilityDelta:l,takeoffDelta:c,floodDelta:d,coolingDelta:m,energyDelta:f,durationDelta:b,weightedScore:u}}function Ms(e,t,n){if(!lt(e)||!t||!n)return null;let i=oy(e,t),r=fi(e,t);if(!r)return null;let a=i.length>0,s=a?`Последние изменения профиля: ${i.slice(0,3).join("; ")}.`:"Между эталоном и текущим прогоном явных изменений ключевых уставок профиля не найдено.";return r.weightedScore>=.9?{tone:"good",kind:"verdict",code:a?"profile_changes_helped":"current_run_better_than_baseline",title:a?"Вердикт: последние правки профиля, вероятно, помогли":"Вердикт: текущий прогон сильнее эталона",detail:`${s} Стабильность ${(r.currentIndicators.avgStability*100).toFixed(0)}% против ${(r.previousIndicators.avgStability*100).toFixed(0)}%, окно отбора ${(r.currentIndicators.takeoffShare*100).toFixed(0)}% против ${(r.previousIndicators.takeoffShare*100).toFixed(0)}%, flood risk ${(r.currentIndicators.maxFloodRisk*100).toFixed(0)}% против ${(r.previousIndicators.maxFloodRisk*100).toFixed(0)}%.`,action:a?"Эти правки можно считать удачным направлением. Закрепите их как новый рабочий baseline и проверяйте повторяемость на следующем запуске.":"Текущий запуск можно рассматривать как более сильный baseline для этого профиля."}:r.weightedScore<=-.9?{tone:"warn",kind:"verdict",code:a?"profile_changes_failed":"current_run_worse_than_baseline",title:a?"Вердикт: последние правки профиля не помогли":"Вердикт: текущий прогон хуже эталона",detail:`${s} Рабочее окно просело: стабильность ${(r.currentIndicators.avgStability*100).toFixed(0)}% против ${(r.previousIndicators.avgStability*100).toFixed(0)}%, запас охлаждения ${r.currentIndicators.minCoolingMargin.toFixed(1)}°C против ${r.previousIndicators.minCoolingMargin.toFixed(1)}°C, flood risk ${(r.currentIndicators.maxFloodRisk*100).toFixed(0)}% против ${(r.previousIndicators.maxFloodRisk*100).toFixed(0)}%.`,action:a?"Откатите последнюю правку или меняйте только один параметр за следующий запуск, чтобы понять реальную причину ухудшения.":"Без смены уставок профиль деградировал относительно эталона: проверьте сырьё, охлаждение, давление и состояние оборудования."}:{tone:"muted",kind:"verdict",code:a?"profile_changes_mixed":"current_run_neutral_vs_baseline",title:a?"Вердикт: правки дали смешанный результат":"Вердикт: существенного сдвига относительно эталона нет",detail:`${s} Часть метрик улучшилась, часть осталась на месте или просела, поэтому уверенного инженерного вывода пока нет.`,action:a?"Не добавляйте новые правки поверх этих. Лучше повторить запуск с теми же настройками и проверить, воспроизводится ли эффект.":"Этот запуск полезен как промежуточная точка, но не как уверенно новый baseline."}}function Tu(e,t,n){let o=lt(e);if(!o)return[{tone:"muted",title:"У прогона нет привязанного профиля",detail:"Run Advisor не может подобрать эталонный запуск, если процесс сохранён без имени профиля.",action:"Сохраняйте и запускайте режим через профиль, чтобы включить сравнение с успешной историей."}];if(!t)return[{tone:"muted",title:"Ещё нет эталонного успешного прогона",detail:`Для профиля "${o}" не найден предыдущий успешный запуск в истории.`,action:"Первый успешный прогон этого профиля станет базой для следующего сравнения."}];let i=[],r=new Date(Number(t?.metadata?.startTime||n?.startTime||0)*1e3),a=Number(e?.metadata?.duration||0),s=Number(t?.metadata?.duration||0),l=Number(st(e,"heating")?.duration||0),c=Number(st(t,"heating")?.duration||0),d=Number(st(e,["stabilization","post_heads_stabilization"])?.duration||0),m=Number(st(t,["stabilization","post_heads_stabilization"])?.duration||0),f=Ft(e),b=Ft(t),u=Ue(e),p=Ue(t);if(i.push({tone:"muted",kind:"comparison",code:"baseline_profile_reference",title:`Эталон профиля: ${o}`,detail:`Сравнение с успешным прогоном от ${r.toLocaleString("ru-RU")} для того же профиля.`,action:"Ниже показаны главные отклонения текущего запуска от последнего успешного эталона."}),l>0&&c>0){let g=(l-c)/c;Math.abs(g)>=.12&&i.push({tone:g>0?"warn":"good",kind:"comparison",code:g>0?"heating_slower_than_baseline":"heating_faster_than_baseline",title:g>0?"Разгон стал заметно дольше":"Разгон стал быстрее эталона",detail:`Фаза нагрева ${Math.round(l/60)} мин против ${Math.round(c/60)} мин (${pn(g)}).`,action:g>0?"Проверьте мощность разгона, стартовый объём, напряжение сети и теплопотери.":"Быстрый разгон полезен, но проверьте, не вырос ли риск захлёба в начале рабочего окна."})}if(d>0&&m>0){let g=(d-m)/m;Math.abs(g)>=.15&&i.push({tone:g>0?"warn":"good",kind:"comparison",code:g>0?"stabilization_slower_than_baseline":"stabilization_faster_than_baseline",title:g>0?"Стабилизация затянулась":"Стабилизация проходит быстрее",detail:`Рабочая выдержка ${Math.round(d/60)} мин против ${Math.round(m/60)} мин (${pn(g)}).`,action:g>0?"Если это повторяется, проверьте охлаждение, давление и не завышена ли нагрузка на колонну.":"Ускорение хорошее только если при этом не просели стабильность и качество отбора."})}if(u&&p){let g=u.avgStability-p.avgStability,v=u.takeoffShare-p.takeoffShare,w=u.maxFloodRisk-p.maxFloodRisk,C=u.minCoolingMargin-p.minCoolingMargin;g<=-.08||v<=-.1||w>=.12||C<=-1?i.push({tone:"warn",kind:"comparison",code:"working_window_worse_than_baseline",title:"Рабочее окно хуже эталона",detail:`Стабильность ${(u.avgStability*100).toFixed(0)}% vs ${(p.avgStability*100).toFixed(0)}%, отбор разрешён ${(u.takeoffShare*100).toFixed(0)}% vs ${(p.takeoffShare*100).toFixed(0)}%, flood risk ${(u.maxFloodRisk*100).toFixed(0)}% vs ${(p.maxFloodRisk*100).toFixed(0)}%.`,action:"Для следующего запуска начните мягче: проверьте охлаждение, давление и первые минуты отбора."}):(g>=.08||v>=.1||w<=-.12&&C>=1)&&i.push({tone:"good",kind:"comparison",code:"working_window_better_than_baseline",title:"Рабочее окно стало устойчивее",detail:`Стабильность ${(u.avgStability*100).toFixed(0)}% vs ${(p.avgStability*100).toFixed(0)}%, запас охлаждения ${u.minCoolingMargin.toFixed(1)}°C vs ${p.minCoolingMargin.toFixed(1)}°C.`,action:"Этот прогон выглядит сильнее эталона. Его уже можно рассматривать как новый опорный запуск профиля."})}if(f!==null&&b!==null){let g=(f-b)/b,v=s>0?(a-s)/s:0;(Math.abs(g)>=.1||Math.abs(v)>=.12)&&i.push({tone:g>0||v>0?"warn":"good",kind:"comparison",code:g>0||v>0?"economy_worse_than_baseline":"economy_better_than_baseline",title:g>0||v>0?"Экономика прогона хуже эталона":"Экономика прогона лучше эталона",detail:`Энергия на литр ${f.toFixed(2)} против ${b.toFixed(2)} кВт·ч/л (${pn(g)}), общая длительность ${Cs((a-s)/3600,1," ч")}.`,action:g>0||v>0?"Посмотрите, где ушло время: разгон, стабилизация или узкое окно отбора.":"Текущий профиль даёт более быстрый или более энергоэффективный результат без явного инженерного штрафа."})}return i.slice(0,4)}function $u(e,t,n=null){let o=Tu(e,t,n),i=Ms(e,t,n);if(!i)return o.slice(0,5);let[r,...a]=o;return[r||null,i,...a].filter(Boolean).slice(0,5)}function Pu(e,t){let n=String(e?.process?.type||"").trim(),o=Ue(e),i=t?Ue(t):null,r=[];if(!t||!o)return r;let a=Number(st(e,"heating")?.duration||0),s=Number(st(t,"heating")?.duration||0),l=Number(st(e,["stabilization","post_heads_stabilization"])?.duration||0),c=Number(st(t,["stabilization","post_heads_stabilization"])?.duration||0),d=Xe(e,"targetPower"),m=Xe(t,"targetPower"),f=Xe(e,"stabilizationTime"),b=Xe(t,"stabilizationTime"),u=Xe(e,"pumpSpeedHead"),p=Xe(t,"pumpSpeedHead"),g=Xe(e,"pumpSpeedBody"),v=Xe(t,"pumpSpeedBody"),w=Xe(e,"headVolume"),C=Xe(t,"headVolume"),P=Number(e?.metrics?.indicators?.headsCompletionScoreFinal||0),E=Number(e?.metrics?.indicators?.bodyEndScoreFinal||0),M=d||m,A=f||b,$=u||p,I=g||v,R=w||C;if(M>0&&(o.maxFloodRisk>=.8||o.minCoolingMargin<=2||o.takeoffShare<.6)){let k=Math.max(300,Fn(M*.94,50));k<M&&r.push({tone:"warn",kind:"adjustment",code:"reduce_target_power",parameterKey:"targetPower",previousValue:M,suggestedValue:k,title:"Профиль: слегка снизить мощность разгона",detail:`Текущая нагрузка ${M} Вт выглядит жёсткой для этого профиля. Безопасная пробная коррекция: ${M} -> ${k} Вт.`,action:"Сначала уменьшите мощность на 4-6% и посмотрите, улучшатся ли flood risk, cooling margin и окно разрешённого отбора."})}else if(M>0&&s>0&&a>s*1.18&&o.maxFloodRisk<.45&&o.minCoolingMargin>5){let k=Fn(M*1.04,50);k>M&&r.push({tone:"good",kind:"adjustment",code:"increase_target_power_carefully",parameterKey:"targetPower",previousValue:M,suggestedValue:k,title:"Профиль: можно аккуратно ускорить разгон",detail:`Разгон заметно дольше эталона, но по cooling margin и flood risk запас хороший. Пробный шаг: ${M} -> ${k} Вт.`,action:"Поднимайте мощность маленьким шагом 3-5% и контролируйте первые минуты после выхода на рабочий режим."})}if(A>0&&(P<.75||i&&o.takeoffShare<i.takeoffShare-.08||c>0&&l>c*1.15)){let k=Math.max(300,Fn(A*1.15,60));k>A&&r.push({tone:"warn",kind:"adjustment",code:"increase_stabilization_time",parameterKey:"stabilizationTime",previousValue:A,suggestedValue:k,title:"Профиль: увеличить стабилизацию",detail:`Текущая уставка стабилизации ${Math.round(A/60)} мин. Безопасный шаг: поднять до ${Math.round(k/60)} мин.`,action:"Это консервативная правка: она помогает головам и старту тела без риска пережать профиль слишком сильно."})}if(n==="rectification"&&$>0&&(P<.72||i&&o.avgStability<i.avgStability-.08)){let k=Math.max(50,Fn($*.92,5));k<$&&r.push({tone:"warn",kind:"adjustment",code:"reduce_head_takeoff_speed",parameterKey:"pumpSpeedHead",previousValue:$,suggestedValue:k,title:"Профиль: замедлить отбор голов",detail:`Скорость голов ${$} мл/ч выглядит слишком агрессивной. Пробный шаг: ${$} -> ${k} мл/ч.`,action:"Замедление голов обычно безопаснее, чем попытка компенсировать проблему только объёмом."})}if(n==="rectification"&&R>0&&P<.68){let k=Math.max(R+10,Fn(R*1.08,10));k>R&&r.push({tone:"warn",kind:"adjustment",code:"increase_head_volume",parameterKey:"headVolume",previousValue:R,suggestedValue:k,title:"Профиль: немного увеличить объём голов",detail:`Текущая уставка ${R} мл. Консервативная поправка: ${R} -> ${k} мл.`,action:"Увеличивайте объём небольшим шагом и лучше вместе с дополнительной стабилизацией, а не отдельно."})}if(I>0&&(E>.9||o.maxFloodRisk>=.7||o.takeoffShare<.65)){let k=Math.max(50,Fn(I*.93,5));k<I&&r.push({tone:"warn",kind:"adjustment",code:"reduce_body_takeoff_speed",parameterKey:"pumpSpeedBody",previousValue:I,suggestedValue:k,title:"Профиль: смягчить скорость отбора тела",detail:`Скорость тела ${I} мл/ч можно чуть разгрузить. Пробный шаг: ${I} -> ${k} мл/ч.`,action:"Начните с небольшого снижения 5-7%: это самый безопасный способ расширить рабочее окно без полной перенастройки режима."})}else if(I>0&&i&&o.avgStability>i.avgStability+.08&&o.minCoolingMargin>i.minCoolingMargin+1&&o.maxFloodRisk<.45){let k=Fn(I*1.04,5);k>I&&r.push({tone:"good",kind:"adjustment",code:"increase_body_takeoff_speed_carefully",parameterKey:"pumpSpeedBody",previousValue:I,suggestedValue:k,title:"Профиль: можно аккуратно ускорить тело",detail:`Тело идёт устойчивее эталона. Осторожный шаг: ${I} -> ${k} мл/ч.`,action:"Если будете ускорять, меняйте только один параметр за запуск и контролируйте flood risk вместе с cooling margin."})}return r.slice(0,3)}function Ts(e,t=null,n=null){let o=e?.metrics?.indicators,i=String(e?.process?.type||"").trim(),r=!!e?.metadata?.completedSuccessfully,a=Ms(e,t,n),s=Tu(e,t,n),l=Pu(e,t),c=[...a?[a]:[],...s,...l];if(!o)return c.slice(0,6);let d=Number(o.stabilityIndexAvg||0),m=Number(o.coolingMarginC?.min||0),f=Number(o.floodRisk?.max||0),b=Math.max(1,Number(o.samples||0)),u=Number(o.takeoffAllowedSamples||0)/b,p=Number(o.sensorFreshnessOkSamples||0)/b,g=Number(o.headsCompletionScoreFinal||0),v=Number(o.bodyEndScoreFinal||0);p<.95&&c.push({tone:"danger",title:"Телеметрия была неполной",detail:`Свежие данные были доступны только ${(p*100).toFixed(0)}% времени.`,action:"Перед сравнением профилей сначала стабилизируйте датчики и качество потока данных."}),m<=0?c.push({tone:"danger",title:"Охлаждение уходило в красную зону",detail:`Минимальный cooling margin опускался до ${m.toFixed(1)}°C.`,action:"Для следующего запуска проверьте воду, дефлегматор и не форсируйте мощность на этом профиле."}):m<4&&c.push({tone:"warn",title:"Запас охлаждения был низким",detail:`Минимальный cooling margin всего ${m.toFixed(1)}°C.`,action:"Есть смысл немного разгрузить колонну или заранее усилить охлаждение."}),f>=.8?c.push({tone:"danger",title:"Высокий риск захлёба",detail:`Пиковый flood risk достигал ${(f*100).toFixed(0)}%.`,action:"Следующий прогон лучше начать мягче: меньше мощность, меньше отбор, внимательнее к давлению."}):f>=.55&&c.push({tone:"warn",title:"Колонна работала на грани",detail:`Максимальный flood risk доходил до ${(f*100).toFixed(0)}%.`,action:"Профиль рабочий, но запас устойчивости небольшой. Хорошая точка для аккуратной оптимизации."}),(i==="rectification"||i==="distillation"||i==="nbk")&&d<.55&&c.push({tone:"warn",title:"Средняя стабильность ниже желаемой",detail:`Средний stability index около ${(d*100).toFixed(0)}%.`,action:"Стоит проверить разгон, стабилизацию и первые минуты отбора: там, вероятно, теряется повторяемость."}),(i==="rectification"||i==="distillation"||i==="nbk")&&u<.65&&c.push({tone:"warn",title:"Окно разрешённого отбора было узким",detail:`Автоматика считала отбор допустимым только ${(u*100).toFixed(0)}% времени.`,action:"Для следующего запуска полезно снять нагрузку с колонны или увеличить выдержку перед телом."}),i==="rectification"&&g<.75&&c.push({tone:"warn",title:"Головы закончились неубедительно",detail:`Финальный heads score всего ${(g*100).toFixed(0)}%.`,action:"Проверьте, не стоит ли увеличить стабилизацию или объём/длительность голов."}),i==="rectification"&&v>.9&&c.push({tone:"warn",title:"Конец тела пришёл жёстко",detail:`Финальный body end score ${(v*100).toFixed(0)}%.`,action:"Есть смысл заранее смягчать конец тела, чтобы переход не был таким резким."}),c.length===0&&c.push({tone:r?"good":"muted",title:r?"Прогон выглядит повторяемым":"Грубых инженерных провалов не видно",detail:r?"По сохранённым indicators явных провалов по устойчивости, охлаждению и safety не видно.":"Даже без идеального финала indicators не показывают явную системную проблему этого прогона.",action:"Этот запуск можно использовать как опорный для сравнения следующих версий профиля."});let w=[],C=new Set;return c.forEach(P=>{let E=mo(P),M=E.title;!M||C.has(M)||(C.add(M),w.push(E))}),w.slice(0,6)}function iy(e,t=null,n=null){let o=[],i=Ue(e),r=Pu(e,t).map(d=>mo(d)).filter(d=>d.title),a=Ms(e,t,n),s=Array.isArray(e?.results?.errors)?e.results.errors.length:0,l=Es(e).length,c=lt(e);if(i&&(i.freshnessShare<.95||s>0||l>0)&&o.push({tone:s>0?"danger":"warn",title:"Сначала стабилизировать измерения и safety",detail:`Перед новой настройкой профиля нужно убрать шум входных данных: telemetry freshness ${Oe(i.freshnessShare)}, safety-событий ${l}, ошибок ${s}.`,action:"Пока датчики или safety шумят, сравнение с baseline будет нечестным и любые правки рецепта легко окажутся ложными."}),i&&(i.minCoolingMargin<=0||i.maxFloodRisk>=.8)&&o.push({tone:"danger",title:"Следующий запуск начать мягче",detail:`Текущий прогон заходил в красную зону: cooling margin min ${i.minCoolingMargin.toFixed(1)}°C, flood risk max ${Oe(i.maxFloodRisk)}.`,action:"Сначала разгрузите колонну и только потом проверяйте тонкие профильные гипотезы."}),r.length>0){let d=r[0];if(o.push({tone:d.tone,title:"Проверить одну профильную правку",detail:`Перенесите в следующий запуск только одну гипотезу: ${Ln(d.parameterKey,d.previousValue)} -> ${Ln(d.parameterKey,d.suggestedValue)}.`,action:`${d.action} Не добавляйте поверх неё другие изменения, иначе baseline-сравнение потеряет смысл.`}),r.length>1){let m=r[1];o.push({tone:"muted",title:"Вторую правку пока держать в резерве",detail:`Следующая кандидатная гипотеза уже есть: ${Ln(m.parameterKey,m.previousValue)} -> ${Ln(m.parameterKey,m.suggestedValue)}.`,action:"Её имеет смысл проверять только после отдельного прогона с первой правкой, а не одновременно."})}}else t&&a?.tone==="good"?o.push({tone:"good",title:"Повторить запуск без новых правок",detail:"Текущий прогон выглядит сильнее baseline, но это ещё нужно подтвердить повторяемостью без новых изменений.",action:"Если следующий запуск повторит результат, его уже можно закреплять как новый рабочий baseline профиля."}):!t&&c?o.push({tone:"muted",title:"Сначала получить первый эталон профиля",detail:`Для профиля "${c}" пока нет предыдущего успешного baseline, поэтому сейчас важнее чисто завершить повторяемый запуск, чем тонко оптимизировать уставки.`,action:"Первый уверенно успешный прогон станет опорной точкой для уже настоящей инженерной оптимизации."}):o.push({tone:"muted",title:"Повторить сценарий без лишних изменений",detail:"По этому прогону нет одной доминирующей правки, которую стоило бы немедленно переносить в профиль.",action:"Лучший следующий шаг сейчас — повторить запуск в тех же условиях и посмотреть, воспроизводится ли картина."});return o.push({tone:"muted",title:"Фиксировать результат после следующего прогона",detail:"После следующего запуска сразу откройте history details и сравните его с текущим baseline, а не по памяти.",action:"Задача Run Advisor не заменить оператора, а оставить вам чистую инженерную цепочку: гипотеза -> один запуск -> сравнение -> решение."}),o.slice(0,4).map((d,m)=>mo({...d,kind:"plan",code:`next_run_plan_${m+1}`,title:`Шаг ${m+1}. ${d.title}`}))}function Mr(e,t,n){if(!n.length)return;let o=document.createElement("div");o.className="modal-info-item modal-info-item-wide";let i=document.createElement("div");i.className="modal-info-label",i.textContent=t;let r=document.createElement("div");r.className="modal-advisor-list",n.forEach(a=>{let s=document.createElement("div");s.className=`modal-advisor-item is-${a.tone}`;let l=document.createElement("strong");l.textContent=a.title;let c=document.createElement("p");c.className="modal-advisor-text",c.textContent=a.detail;let d=document.createElement("p");d.className="modal-advisor-action",d.textContent=a.action,s.appendChild(l),s.appendChild(c),s.appendChild(d),r.appendChild(s)}),o.appendChild(i),o.appendChild(r),e.appendChild(o)}function ry(e,t,n=null){let o=ny(t,n);Mr(e,"Память рекомендаций",o)}function ay(e,t,n=null,o=null){let i=Jh(t,n,o);return Mr(e,"Run Advisor v1: отчёт по прогону",i),i}function sy(e,t,n=null,o=null){let i=Ts(t,n,o);return Mr(e,"Run Advisor: рекомендации",i),i}function ly(e,t,n=null,o=null){let i=iy(t,n,o);return Mr(e,"План следующего запуска",i),i}function cy(e,t={}){let n=t.previousSuccessfulProcess||null,o=t.previousSummary||null,i={rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка",hold:"Пастеризация",nbk:"НБК",fermentation:"Ферментация"},r=new Date(e.metadata.startTime*1e3),a=new Date(e.metadata.endTime*1e3),s=i[e.process.type]||e.process.type;document.getElementById("modal-title").textContent=`${s} - ${r.toLocaleDateString("ru-RU")}`;let l=document.getElementById("modal-info-grid");l.innerHTML=`
 
-function toggleProcessSelection(processId) {
-    if (selectedProcesses.has(processId)) {
-        selectedProcesses.delete(processId);
-    } else {
-        selectedProcesses.add(processId);
-    }
-    updateCompareButton();
-}
-
-function updateCompareButton() {
-    const compareBtn = document.getElementById('compare-processes-btn');
-    if (compareBtn) {
-        compareBtn.disabled = selectedProcesses.size < 2;
-        compareBtn.textContent = `📊 Сравнить выбранные (${selectedProcesses.size})`;
-    }
-}
-
-function updateHistoryStats(processes) {
-    const totalEl = document.getElementById('hist-stat-total');
-    const completedEl = document.getElementById('hist-stat-completed');
-    const timeEl = document.getElementById('hist-stat-time');
-    const energyEl = document.getElementById('hist-stat-energy');
-
-    if (!totalEl) return;
-
-    const total = processes.length;
-    const completed = processes.filter(p => p.status === 'completed').length;
-    const totalTime = processes.reduce((sum, p) => sum + (p.duration || 0), 0);
-    const totalEnergy = 0; // Будет реализовано позже, когда появится поле energy в процессах
-
-    totalEl.textContent = total;
-    completedEl.textContent = completed;
-    timeEl.textContent = (totalTime / 3600).toFixed(1) + ' С‡';
-    energyEl.textContent = totalEnergy.toFixed(1) + ' кВт·ч';
-}
-
-async function clearHistory() {
-    if (!confirm('Удалить ВСЮ историю процессов? Это действие необратимо!')) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/history', {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to clear history');
-        }
-
-        addLog('🗑️ История полностью очищена', 'info');
-        await loadHistoryList();
-    } catch (error) {
-        console.error('Error clearing history:', error);
-        addLog('❌ Ошибка при очистке истории', 'error');
-        alert('Ошибка при очистке истории');
-    }
-}
-
-async function deleteHistoryItem(id) {
-    if (!confirm('Удалить этот процесс из истории?')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/history/${id}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to delete history item');
-        }
-
-        addLog(`🗑️ Процесс ${id} удален из истории`, 'info');
-        await loadHistoryList();
-    } catch (error) {
-        console.error('Error deleting history item:', error);
-        addLog('❌ Ошибка при удалении процесса', 'error');
-        alert('Ошибка при удалении процесса');
-    }
-}
-
-async function viewHistoryDetails(id) {
-    try {
-        const response = await fetch(`/api/history/${id}`);
-        if (!response.ok) {
-            throw new Error('Failed to load history details');
-        }
-
-        const process = await response.json();
-
-        // Создать модальное окно с деталями
-        showHistoryDetailsModal(process);
-
-        addLog(`👁️ Просмотр процесса ${id}`, 'info');
-    } catch (error) {
-        console.error('Error loading history details:', error);
-        addLog('❌ Ошибка загрузки деталей процесса', 'error');
-        alert('Ошибка загрузки деталей процесса');
-    }
-}
-
-let tempChart = null;
-let powerChart = null;
-
-function showHistoryDetailsModal(process) {
-    const typeNames = {
-        rectification: 'Ректификация',
-        distillation: 'Дистилляция',
-        mashing: 'Затирка',
-        hold: 'Выдержка'
-    };
-
-    const startDate = new Date(process.metadata.startTime * 1000);
-    const endDate = new Date(process.metadata.endTime * 1000);
-    const typeName = typeNames[process.process.type] || process.process.type;
-
-    // Установить заголовок
-    document.getElementById('modal-title').textContent = `${typeName} - ${startDate.toLocaleDateString('ru-RU')}`;
-
-    // Заполнить основную информацию
-    const infoGrid = document.getElementById('modal-info-grid');
-    infoGrid.innerHTML = `
         <div class="modal-info-item">
+
             <div class="modal-info-label">Тип процесса</div>
-            <div class="modal-info-value">${typeName}</div>
+
+            <div class="modal-info-value">${s}</div>
+
         </div>
+
         <div class="modal-info-item">
+
             <div class="modal-info-label">Режим</div>
-            <div class="modal-info-value">${process.process.mode === 'auto' ? 'Авто' : 'Ручной'}</div>
+
+            <div class="modal-info-value">${e.process.mode==="auto"?"Авто":"Ручной"}</div>
+
         </div>
+
         <div class="modal-info-item">
+
+            <div class="modal-info-label">Профиль</div>
+
+            <div class="modal-info-value">${lt(e)||"—"}</div>
+
+        </div>
+
+        <div class="modal-info-item">
+
             <div class="modal-info-label">Начало</div>
-            <div class="modal-info-value">${startDate.toLocaleString('ru-RU')}</div>
+
+            <div class="modal-info-value">${r.toLocaleString("ru-RU")}</div>
+
         </div>
+
         <div class="modal-info-item">
+
             <div class="modal-info-label">Окончание</div>
-            <div class="modal-info-value">${endDate.toLocaleString('ru-RU')}</div>
+
+            <div class="modal-info-value">${a.toLocaleString("ru-RU")}</div>
+
         </div>
+
         <div class="modal-info-item">
+
             <div class="modal-info-label">Длительность</div>
-            <div class="modal-info-value">${(process.metadata.duration / 3600).toFixed(1)} С‡</div>
+
+            <div class="modal-info-value">${(e.metadata.duration/3600).toFixed(1)} ч</div>
+
         </div>
+
         <div class="modal-info-item">
+
             <div class="modal-info-label">Статус</div>
-            <div class="modal-info-value">${process.metadata.completedSuccessfully ? '✅ Успешно' : '⚠️ Прервано'}</div>
+
+            <div class="modal-info-value">${e.metadata.completedSuccessfully?"✅ Успешно":"⚠️ Прервано"}</div>
+
         </div>
+
         <div class="modal-info-item">
+
             <div class="modal-info-label">Средняя мощность</div>
-            <div class="modal-info-value">${process.metrics?.power?.avgPower || 0} Вт</div>
+
+            <div class="modal-info-value">${e.metrics?.power?.avgPower||0} Вт</div>
+
         </div>
+
         <div class="modal-info-item">
+
             <div class="modal-info-label">Потреблено энергии</div>
-            <div class="modal-info-value">${(process.metrics?.power?.energyUsed || 0).toFixed(2)} кВт·ч</div>
+
+            <div class="modal-info-value">${(e.metrics?.power?.energyUsed||0).toFixed(2)} кВт·ч</div>
+
         </div>
-    `;
 
-    // Построить график температур
-    renderTempChart(process);
-
-    // Построить график мощности
-    renderPowerChart(process);
-
-    // Заполнить фазы
-    renderPhases(process);
-
-    // Заполнить результаты
-    const resultsGrid = document.getElementById('modal-results-grid');
-    resultsGrid.innerHTML = `
-        <div class="modal-info-item">
-            <div class="modal-info-label">Головы</div>
-            <div class="modal-info-value">${process.results.headsCollected || 0} мл</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Тело</div>
-            <div class="modal-info-value">${process.results.bodyCollected || 0} мл</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Хвосты</div>
-            <div class="modal-info-value">${process.results.tailsCollected || 0} мл</div>
-        </div>
-        <div class="modal-info-item">
-            <div class="modal-info-label">Всего собрано</div>
-            <div class="modal-info-value">${process.results.totalCollected || 0} мл</div>
-        </div>
-    `;
-
-    // Привязать обработчики к кнопкам экспорта
-    const exportCsvBtn = document.getElementById('modal-export-csv');
-    const exportJsonBtn = document.getElementById('modal-export-json');
-
-    if (exportCsvBtn) {
-        exportCsvBtn.onclick = () => exportHistoryCSV(process.id);
-    }
-
-    if (exportJsonBtn) {
-        exportJsonBtn.onclick = () => exportHistoryJSON(process.id);
-    }
-
-    // Показать модальное окно
-    document.getElementById('history-modal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeHistoryModal() {
-    document.getElementById('history-modal').classList.remove('active');
-    document.body.style.overflow = '';
-
-    // Уничтожить графики
-    if (tempChart) {
-        tempChart.destroy();
-        tempChart = null;
-    }
-    if (powerChart) {
-        powerChart.destroy();
-        powerChart = null;
-    }
-}
-
-function renderTempChart(process) {
-    const chartEl = document.getElementById('modal-temp-chart');
-    chartEl.innerHTML = '';
-
-    if (!process.timeseries || process.timeseries.data.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';
-        return;
-    }
-
-    const data = process.timeseries.data;
-
-    const options = {
-        chart: {
-            type: 'line',
-            height: 350,
-            animations: {
-                enabled: false
-            },
-            toolbar: {
-                show: true
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: [
-            {
-                name: 'Куб',
-                data: data.map(p => ({ x: p.time * 1000, y: p.cube }))
-            },
-            {
-                name: 'Царга верх',
-                data: data.map(p => ({ x: p.time * 1000, y: p.columnTop }))
-            }
-        ],
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    hour: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: 'Температура (°C)'
-            },
-            decimalsInFloat: 1
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        colors: ['#dc3545', '#007bff'],
-        legend: {
-            show: true,
-            position: 'top'
-        },
-        tooltip: {
-            x: {
-                format: 'dd MMM HH:mm'
-            }
-        }
-    };
-
-    tempChart = new ApexCharts(chartEl, options);
-    tempChart.render();
-}
-
-function renderPowerChart(process) {
-    const chartEl = document.getElementById('modal-power-chart');
-    chartEl.innerHTML = '';
-
-    if (!process.timeseries || process.timeseries.data.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';
-        return;
-    }
-
-    const data = process.timeseries.data;
-
-    const options = {
-        chart: {
-            type: 'area',
-            height: 300,
-            animations: {
-                enabled: false
-            },
-            toolbar: {
-                show: true
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: [
-            {
-                name: 'Мощность',
-                data: data.map(p => ({ x: p.time * 1000, y: p.power }))
-            }
-        ],
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    hour: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: 'Мощность (Вт)'
-            },
-            decimalsInFloat: 0
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        fill: {
-            type: 'gradient',
-            gradient: {
-                shadeIntensity: 1,
-                opacityFrom: 0.7,
-                opacityTo: 0.3
-            }
-        },
-        colors: ['#28a745'],
-        tooltip: {
-            x: {
-                format: 'dd MMM HH:mm'
-            }
-        }
-    };
-
-    powerChart = new ApexCharts(chartEl, options);
-    powerChart.render();
-}
-
-function renderPhases(process) {
-    const phasesEl = document.getElementById('modal-phases');
-
-    if (!process.phases || process.phases.length === 0) {
-        phasesEl.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет информации о фазах</p>';
-        return;
-    }
-
-    const phaseNames = {
-        heating: 'Нагрев',
-        stabilization: 'Стабилизация',
-        heads: 'Отбор голов',
-        body: 'Отбор тела',
-        tails: 'Отбор хвостов',
-        purge: 'Очистка',
-        finish: 'Завершение'
-    };
-
-    phasesEl.innerHTML = '';
-
-    process.phases.forEach(phase => {
-        const phaseEl = document.createElement('div');
-        phaseEl.className = 'modal-phase-item';
-
-        const phaseName = phaseNames[phase.name] || phase.name;
-        const startDate = new Date(phase.startTime * 1000);
-        const endDate = new Date(phase.endTime * 1000);
-
-        phaseEl.innerHTML = `
-            <div class="modal-phase-name">${phaseName}</div>
-            <div class="modal-phase-details">
-                <div class="modal-phase-detail">Начало: <strong>${startDate.toLocaleTimeString('ru-RU')}</strong></div>
-                <div class="modal-phase-detail">Окончание: <strong>${endDate.toLocaleTimeString('ru-RU')}</strong></div>
-                <div class="modal-phase-detail">Длительность: <strong>${(phase.duration / 60).toFixed(0)} мин</strong></div>
-                <div class="modal-phase-detail">Объём: <strong>${phase.volume || 0} мл</strong></div>
-                <div class="modal-phase-detail">Средняя скорость: <strong>${phase.avgSpeed || 0} мл/ч</strong></div>
+    `,dy(e),uy(e),my(e);let c=document.getElementById("modal-results-grid");c.innerHTML="",vt(c,"Головы",`${e.results.headsCollected||0} мл`),vt(c,"Тело",`${e.results.bodyCollected||0} мл`),vt(c,"Хвосты",`${e.results.tailsCollected||0} мл`),vt(c,"Всего собрано",`${e.results.totalCollected||0} мл`),Wh(c,e),ay(c,e,n,o),ly(c,e,n,o),ry(c,e,n);let d=sy(c,e,n,o);Yh(c,e),Kh(c,e),Eu(c,"Ошибки и аварии",e.results?.errors||[],"error"),Eu(c,"Предупреждения",e.results?.warnings||[],"warning"),Gh(c,e.notes);let m=document.getElementById("modal-export-csv"),f=document.getElementById("modal-export-json"),b=document.getElementById("modal-export-anonymized"),u=document.getElementById("modal-compare-baseline");if(m&&(m.onclick=()=>exportHistoryCSV(e.id)),f&&(f.onclick=()=>exportHistoryJSON(e.id)),b&&(b.onclick=()=>window.exportHistoryAnonymized?.(e.id,e)),u){let p=!!(n?.id||o?.id);u.style.display=p?"":"none",u.disabled=!p,u.onclick=p?()=>window.compareProcessWithBaseline?.(e,{previousSummary:o,previousSuccessfulProcess:n}):null}document.getElementById("history-modal").classList.add("active"),document.body.style.overflow="hidden",ey(e,n,o,d).catch(p=>{console.warn("Не удалось сохранить advisor snapshot:",p)})}function gi(){document.getElementById("history-modal").classList.remove("active"),document.body.style.overflow="",mi&&(mi.destroy(),mi=null),pi&&(pi.destroy(),pi=null)}function dy(e){let t=document.getElementById("modal-temp-chart");if(t.innerHTML="",!e.timeseries||e.timeseries.data.length===0){t.innerHTML='<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';return}let n=e.timeseries.data,o={chart:{type:"line",height:350,animations:{enabled:!1},toolbar:{show:!0,tools:{download:!0,selection:!0,zoom:!0,zoomin:!0,zoomout:!0,pan:!0,reset:!0},autoSelected:"zoom"},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:[{name:"Куб",data:n.map(i=>({x:i.time*1e3,y:i.cube}))},{name:"Царга верх",data:n.map(i=>({x:i.time*1e3,y:i.columnTop}))}],xaxis:{type:"datetime",labels:{datetimeFormatter:{hour:"HH:mm"}}},yaxis:{title:{text:"Температура (°C)"},decimalsInFloat:1},stroke:{curve:"smooth",width:2},colors:["#dc3545","#007bff"],legend:{show:!0,position:"top"},tooltip:{x:{format:"dd MMM HH:mm"}}};mi=new ApexCharts(t,o),mi.render()}function uy(e){let t=document.getElementById("modal-power-chart");if(t.innerHTML="",!e.timeseries||e.timeseries.data.length===0){t.innerHTML='<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет данных временного ряда</p>';return}let n=e.timeseries.data,o={chart:{type:"area",height:300,animations:{enabled:!1},toolbar:{show:!0,tools:{download:!0,selection:!0,zoom:!0,zoomin:!0,zoomout:!0,pan:!0,reset:!0},autoSelected:"zoom"},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:[{name:"Мощность",data:n.map(i=>({x:i.time*1e3,y:i.power}))}],xaxis:{type:"datetime",labels:{datetimeFormatter:{hour:"HH:mm"}}},yaxis:{title:{text:"Мощность (Вт)"},decimalsInFloat:0},stroke:{curve:"smooth",width:2},fill:{type:"gradient",gradient:{shadeIntensity:1,opacityFrom:.7,opacityTo:.3}},colors:["#28a745"],tooltip:{x:{format:"dd MMM HH:mm"}}};pi=new ApexCharts(t,o),pi.render()}function my(e){let t=document.getElementById("modal-phases");if(!e.phases||e.phases.length===0){t.innerHTML='<p style="text-align: center; color: var(--text-secondary); padding: 20px;">Нет информации о фазах</p>';return}let n={heating:"Нагрев",stabilization:"Стабилизация",heads:"Отбор голов",body:"Отбор тела",tails:"Отбор хвостов",purge:"Очистка",finish:"Завершение"};t.innerHTML="",e.phases.forEach(o=>{let i=document.createElement("div");i.className="modal-phase-item";let r=n[o.name]||o.name,a=new Date(o.startTime*1e3),s=new Date(o.endTime*1e3),l=document.createElement("div");l.className="modal-phase-name",l.textContent=r;let c=document.createElement("div");c.className="modal-phase-details",Rn(c,"Начало",a.toLocaleTimeString("ru-RU")),Rn(c,"Окончание",s.toLocaleTimeString("ru-RU")),Rn(c,"Длительность",`${(o.duration/60).toFixed(0)} мин`),Rn(c,"Объём",`${o.volume||0} мл`),Rn(c,"Средняя скорость",`${o.avgSpeed||0} мл/ч`);let d=ws(o.reasonCode);d&&Rn(c,"Причина",d);let m=String(o.operatorMessage||"").trim();m&&Rn(c,"Комментарий",m),i.appendChild(l),i.appendChild(c),t.appendChild(i)})}document.addEventListener("DOMContentLoaded",function(){let e=document.getElementById("history-modal");e&&e.addEventListener("click",function(t){t.target===e&&gi()})});var Tr=["#dc3545","#007bff","#28a745","#ffc107","#6f42c1"],hi=null,yi=null;async function Nu(){if(yt.size<2){alert("Выберите минимум 2 процесса для сравнения");return}if(yt.size>5){alert("Можно сравнить максимум 5 процессов одновременно");return}try{addLog(`📊 Загрузка ${yt.size} процессов для сравнения...`,"info");let e=[];for(let t of yt){let n=await fetch(`/api/history/${t}`);n.ok&&e.push(await n.json())}if(e.length<2){alert("Не удалось загрузить процессы для сравнения");return}ku(e),addLog(`✓ Сравнение ${e.length} процессов`,"info")}catch(e){console.error("Error comparing processes:",e),addLog("❌ Ошибка при сравнении процессов","error"),alert("Ошибка при сравнении процессов")}}async function Bu(e,t={}){try{let n=e&&typeof e=="object"?e:await Iu(e);if(!n?.id){alert("Не удалось загрузить текущий прогон для сравнения");return}let o=t.previousSummary||vs(n),i=t.previousSuccessfulProcess||null;if(!i&&o?.id&&(i=await Iu(o.id)),!i?.id){alert("Для этого профиля пока нет прошлого успешного baseline");return}gi();let r=lt(n)||"без профиля";ku([i,n],{title:`Профиль "${r}": текущий прогон vs baseline`,compareMode:"baseline",baselineProcessId:String(i.id||"").trim(),currentProcessId:String(n.id||"").trim(),previousSummary:o,profileName:r}),addLog(`📈 Baseline compare для профиля "${r}"`,"info")}catch(n){console.error("Error comparing process with baseline:",n),addLog("❌ Ошибка при загрузке baseline сравнения","error"),alert("Ошибка при подготовке baseline сравнения")}}async function Iu(e){let t=String(e||"").trim();if(!t)return null;let n=await fetch(`/api/history/${t}`);return n.ok?n.json():null}function $r(e){return{rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка",hold:"Пастеризация",nbk:"НБК",fermentation:"Ферментация"}[e?.process?.type]||e?.process?.type||"Процесс"}function Pr(e,t={}){let n=String(e?.id||"").trim();return n?n===String(t.baselineProcessId||"").trim()?"baseline":n===String(t.currentProcessId||"").trim()?"current":"":""}function Is(e,t,n={}){let o=Pr(e,n),i=new Date(Number(e?.metadata?.startTime||0)*1e3).toLocaleDateString("ru-RU");return o==="baseline"?`Baseline (${i})`:o==="current"?`Текущий (${i})`:`Процесс ${t+1} (${i})`}function $s(e){return`${(Number(e||0)/3600).toFixed(1)} ч`}function Ut(e){return`${(Number(e||0)*100).toFixed(0)}%`}function bi(e,t=0){let n=Number(e||0);return`${n>0?"+":""}${(n*100).toFixed(t)}%`}function Au(e,t=1,n=""){let o=Number(e||0);return`${o>0?"+":""}${o.toFixed(t)}${n}`}function Ps(e,t="—"){return String(e??"").trim()||t}function py(e,t={}){let n=document.getElementById("compare-overview-section"),o=document.getElementById("compare-overview-title"),i=document.getElementById("compare-overview");if(!n||!o||!i)return;if(!(t.compareMode==="baseline"&&e.length===2)){n.style.display="none",i.innerHTML="";return}let a=e.find(w=>Pr(w,t)==="baseline")||e[0],s=e.find(w=>Pr(w,t)==="current")||e[1],l=t.profileName||lt(s)||"без профиля",c=$u(s,a,t.previousSummary||null),d=fi(s,a),m=Ue(a),f=Ue(s),b=Ft(a),u=Ft(s),p=new Date(Number(a?.metadata?.startTime||0)*1e3).toLocaleString("ru-RU"),g=new Date(Number(s?.metadata?.startTime||0)*1e3).toLocaleString("ru-RU");o.textContent=`🧭 Baseline профиля: ${l}`,n.style.display="";let v=[{label:"Длительность",baseline:$s(a?.metadata?.duration||0),current:$s(s?.metadata?.duration||0),delta:Number(a?.metadata?.duration||0)>0?bi((Number(s?.metadata?.duration||0)-Number(a?.metadata?.duration||0))/Number(a?.metadata?.duration||0)):"—"},{label:"Энергия на литр",baseline:b!==null?`${b.toFixed(2)} кВт·ч/л`:"—",current:u!==null?`${u.toFixed(2)} кВт·ч/л`:"—",delta:b!==null&&u!==null&&b>0?bi((u-b)/b):"—"},{label:"Стабильность",baseline:m?Ut(m.avgStability):"—",current:f?Ut(f.avgStability):"—",delta:d?bi(d.stabilityDelta):"—"},{label:"Окно отбора",baseline:m?Ut(m.takeoffShare):"—",current:f?Ut(f.takeoffShare):"—",delta:d?bi(d.takeoffDelta):"—"},{label:"Flood risk max",baseline:m?Ut(m.maxFloodRisk):"—",current:f?Ut(f.maxFloodRisk):"—",delta:d?bi(d.floodDelta):"—"},{label:"Cooling margin min",baseline:m?`${m.minCoolingMargin.toFixed(1)}°C`:"—",current:f?`${f.minCoolingMargin.toFixed(1)}°C`:"—",delta:d?Au(d.coolingDelta,1,"°C"):"—"}];i.innerHTML=`
+        <div class="compare-overview-grid">
+            <div class="compare-overview-card is-baseline">
+                <div class="compare-overview-label">Эталонный прогон</div>
+                <strong>${$r(a)}</strong>
+                <p>${p}</p>
+                <p>Профиль: ${Ps(lt(a),"без профиля")}</p>
+                <p>Статус: ${a?.metadata?.completedSuccessfully?"✅ успешный":"⚠️ неуспешный"}</p>
             </div>
-        `;
+            <div class="compare-overview-card is-current">
+                <div class="compare-overview-label">Текущий прогон</div>
+                <strong>${$r(s)}</strong>
+                <p>${g}</p>
+                <p>Профиль: ${Ps(lt(s),"без профиля")}</p>
+                <p>Итоговый score: ${d?Au(d.weightedScore,2):"—"}</p>
+            </div>
+        </div>
+        <div class="compare-overview-metrics">
+            <table class="compare-overview-table">
+                <thead>
+                    <tr>
+                        <th>Метрика</th>
+                        <th>Baseline</th>
+                        <th>Текущий</th>
+                        <th>Δ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${v.map(w=>`
+                        <tr>
+                            <td>${w.label}</td>
+                            <td>${w.baseline}</td>
+                            <td>${w.current}</td>
+                            <td>${w.delta}</td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+        <div class="compare-overview-insights">
+            ${c.map(w=>`
+                <div class="modal-history-insight is-${String(w?.tone||"muted").trim()||"muted"}">
+                    <div class="modal-history-insight-head">
+                        <strong>${String(w?.title||"").trim()}</strong>
+                    </div>
+                    <p class="modal-history-insight-text">${String(w?.detail||"").trim()}</p>
+                    <p class="modal-history-insight-action">${String(w?.action||"").trim()}</p>
+                </div>
+            `).join("")}
+        </div>
+    `}function ku(e,t={}){As();let n=document.getElementById("compare-modal-title"),o=document.getElementById("compare-process-list");!o||!n||(n.textContent=t.title||`Сравнение процессов (${e.length})`,o.innerHTML="",e.forEach((i,r)=>{let a=Pr(i,t),s=document.createElement("div");s.className=`compare-process-badge ${a?`is-${a}`:""}`,s.style.setProperty("--compare-accent",Tr[r%Tr.length]);let l=a==="baseline"?"BASELINE":a==="current"?"CURRENT":`#${r+1}`;s.innerHTML=`
+            <div class="compare-process-badge-role">${l}</div>
+            <strong>${$r(i)}</strong>
+            <span>${new Date(Number(i?.metadata?.startTime||0)*1e3).toLocaleString("ru-RU")}</span>
+            <span>Профиль: ${Ps(lt(i),"без профиля")}</span>
+        `,o.appendChild(s)}),py(e,t),fy(e,Tr,t),gy(e,Tr,t),by(e,t),document.getElementById("compare-modal").classList.add("active"),document.body.style.overflow="hidden")}function As(){let e=document.getElementById("compare-modal");e&&e.classList.remove("active"),document.body.style.overflow="",hi&&(hi.destroy(),hi=null),yi&&(yi.destroy(),yi=null)}function fy(e,t,n={}){let o=document.getElementById("compare-temp-chart");o.innerHTML="";let i=[];if(e.forEach((r,a)=>{r.timeseries&&r.timeseries.data&&r.timeseries.data.length>0&&i.push({name:Is(r,a,n),data:r.timeseries.data.map(s=>({x:s.time*1e3,y:s.cube}))})}),i.length===0){o.innerHTML='<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';return}hi=new ApexCharts(o,{chart:{type:"line",height:400,animations:{enabled:!1},toolbar:{show:!0,tools:{download:!0,selection:!0,zoom:!0,zoomin:!0,zoomout:!0,pan:!0,reset:!0},autoSelected:"zoom"},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:i,xaxis:{type:"datetime",labels:{datetimeFormatter:{hour:"HH:mm"}}},yaxis:{title:{text:"Температура куба (°C)"},decimalsInFloat:1},stroke:{curve:"smooth",width:2},colors:t,legend:{show:!0,position:"top"},tooltip:{x:{format:"dd MMM HH:mm"}}}),hi.render()}function gy(e,t,n={}){let o=document.getElementById("compare-power-chart");o.innerHTML="";let i=[];if(e.forEach((r,a)=>{r.timeseries&&r.timeseries.data&&r.timeseries.data.length>0&&i.push({name:Is(r,a,n),data:r.timeseries.data.map(s=>({x:s.time*1e3,y:s.power}))})}),i.length===0){o.innerHTML='<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';return}yi=new ApexCharts(o,{chart:{type:"line",height:300,animations:{enabled:!1},toolbar:{show:!0,tools:{download:!0,selection:!0,zoom:!0,zoomin:!0,zoomout:!0,pan:!0,reset:!0},autoSelected:"zoom"},zoom:{enabled:!0,type:"x"},background:"transparent"},theme:{mode:document.body.getAttribute("data-theme")||"light"},series:i,xaxis:{type:"datetime",labels:{datetimeFormatter:{hour:"HH:mm"}}},yaxis:{title:{text:"Мощность (Вт)"},decimalsInFloat:0},stroke:{curve:"smooth",width:2},colors:t,legend:{show:!0,position:"top"},tooltip:{x:{format:"dd MMM HH:mm"}}}),yi.render()}function by(e,t={}){let n=document.getElementById("compare-table");if(!n)return;let o=[{label:"Длительность",getValue:i=>$s(i?.metadata?.duration||0)},{label:"Средняя мощность",getValue:i=>`${Math.round(Number(i?.metrics?.power?.avgPower||0))} Вт`},{label:"Потреблено энергии",getValue:i=>`${Number(i?.metrics?.power?.energyUsed||0).toFixed(2)} кВт·ч`},{label:"Энергия на литр",getValue:i=>{let r=Ft(i);return r!==null?`${r.toFixed(2)} кВт·ч/л`:"—"}},{label:"Головы",getValue:i=>`${Number(i?.results?.headsCollected||0)} мл`},{label:"Тело",getValue:i=>`${Number(i?.results?.bodyCollected||0)} мл`},{label:"Хвосты",getValue:i=>`${Number(i?.results?.tailsCollected||0)} мл`},{label:"Всего собрано",getValue:i=>`${Number(i?.results?.totalCollected||0)} мл`},{label:"Стабильность",getValue:i=>{let r=Ue(i);return r?Ut(r.avgStability):"—"}},{label:"Окно отбора",getValue:i=>{let r=Ue(i);return r?Ut(r.takeoffShare):"—"}},{label:"Flood risk max",getValue:i=>{let r=Ue(i);return r?Ut(r.maxFloodRisk):"—"}},{label:"Cooling margin min",getValue:i=>{let r=Ue(i);return r?`${r.minCoolingMargin.toFixed(1)}°C`:"—"}},{label:"Статус",getValue:i=>i?.metadata?.completedSuccessfully?"✅ Успешно":"⚠️ Прервано"}];n.innerHTML=`
+        <table class="compare-table">
+            <thead>
+                <tr>
+                    <th>Параметр</th>
+                    ${e.map((i,r)=>`
+                        <th>
+                            ${Is(i,r,t)}
+                            <br>
+                            <span>${$r(i)}</span>
+                        </th>
+                    `).join("")}
+                </tr>
+            </thead>
+            <tbody>
+                ${o.map(i=>`
+                    <tr>
+                        <td>${i.label}</td>
+                        ${e.map(r=>`<td>${i.getValue(r)}</td>`).join("")}
+                    </tr>
+                `).join("")}
+            </tbody>
+        </table>
+    `}var hy="smart-column-anonymized-run-report-v1";function yy(e,t="run"){return String(e||"").trim().toLowerCase().replace(/[^a-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"")||t}function vy(e){let t=Number(e?.metadata?.startTime||e?.startTime||0),n=Number(e?.metadata?.endTime||e?.endTime||0);if(t>0&&n>=t)return Math.max(0,Math.round(n-t));let o=Number(e?.metadata?.durationSec||e?.durationSec||e?.duration||0);return Number.isFinite(o)&&o>0?Math.round(o):0}function wy(e){let t=Array.isArray(e?.timeseries?.data)?e.timeseries.data:[];return t.length?{sampleCount:t.length,points:t.map((n,o)=>({index:o,relativeTimeSec:Number(n?.time||0),cubeC:Number(n?.cube||0),columnTopC:Number(n?.columnTop||0),refluxC:Number(n?.reflux||0),powerW:Number(n?.power||0),pressureMmHg:Number(n?.pressure||0),speedMlH:Number(n?.speed||0)}))}:null}function Sy(e){return(Array.isArray(e?.phases)?e.phases:[]).map((n,o)=>({index:o,name:String(n?.name||"").trim(),durationSec:Math.max(0,Math.round(Number(n?.duration||0))),volumeMl:Number(n?.volume||0),avgSpeedMlH:Number(n?.avgSpeed||0),reasonCode:String(n?.reasonCode||"").trim(),operatorMessage:String(n?.operatorMessage||"").trim()}))}function Ey(e){let t=e?.indicatorsSummary?.safety||e?.process?.safety||e?.safety||{};return{lastReasonCode:String(e?.process?.lastReasonCode||e?.lastReasonCode||e?.v2?.lastReasonCode||"").trim(),safetySummary:t&&typeof t=="object"?{...t}:null,alarmCount:Number(e?.metadata?.alarmCount||e?.alarmCount||0),safetyTripCount:Number(e?.metadata?.safetyTripCount||e?.safetyTripCount||0)}}function Cy(e){let t=e?.advisorSnapshot;return!t||typeof t!="object"?null:{verdict:t?.verdict&&typeof t.verdict=="object"?{...t.verdict}:null,highlights:Array.isArray(t?.highlights)?t.highlights.map(n=>({...n})):[],recommendations:Array.isArray(t?.recommendations)?t.recommendations.map(n=>({title:String(n?.title||"").trim(),detail:String(n?.detail||"").trim(),action:String(n?.action||"").trim(),tone:String(n?.tone||"").trim(),parameter:String(n?.parameter||"").trim(),suggestion:n?.suggestion&&typeof n.suggestion=="object"?{...n.suggestion}:null})):[],compareSummary:t?.compareSummary&&typeof t.compareSummary=="object"?{...t.compareSummary}:null,baselineProfile:String(t?.baselineProfile||"").trim(),learningApplied:!!t?.learningApplied}}function xy(e){let t=String(e?.process?.type||e?.type||"").trim(),n=String(e?.process?.status||e?.status||"").trim(),o=String(e?.process?.profile||e?.profile||"").trim();return{schema:hy,exportedAt:new Date().toISOString(),privacy:{sanitized:!0,removed:["internal run id","absolute timestamps","device/network identifiers","local paths and export-only metadata"]},run:{type:t,status:n,completedSuccessfully:!!(e?.completedSuccessfully||n==="completed"),durationSec:vy(e),profileName:o||"Unnamed profile",summary:e?.summary&&typeof e.summary=="object"?{...e.summary}:null,results:e?.results&&typeof e.results=="object"?{...e.results}:null,indicatorsSummary:e?.indicatorsSummary&&typeof e.indicatorsSummary=="object"?{...e.indicatorsSummary}:null,safety:Ey(e),phases:Sy(e),advisorSnapshot:Cy(e),timeseries:wy(e)}}}function My(e,t){let n=new Blob([JSON.stringify(e,null,2)],{type:"application/json;charset=utf-8"}),o=URL.createObjectURL(n),i=document.createElement("a");i.href=o,i.download=t,document.body.appendChild(i),i.click(),document.body.removeChild(i),URL.revokeObjectURL(o)}async function Ty(e){let t=await fetch(`/api/history/${e}`,{cache:"no-store"});if(!t.ok)throw new Error("Не удалось загрузить процесс для анонимизированного отчёта");return t.json()}async function Ir(e,t=null){try{t||(t=confirm(`Выберите формат экспорта:
 
-        phasesEl.appendChild(phaseEl);
-    });
-}
-
-// Закрытие модального окна при клике на overlay
-document.addEventListener('DOMContentLoaded', function () {
-    const modalOverlay = document.getElementById('history-modal');
-    if (modalOverlay) {
-        modalOverlay.addEventListener('click', function (e) {
-            if (e.target === modalOverlay) {
-                closeHistoryModal();
-            }
-        });
-    }
-});
-
-async function exportHistory(id, format = null) {
-    try {
-        // Если формат не указан, спросить у пользователя
-        if (!format) {
-            const choice = confirm('Выберите формат экспорта:\n\nОК - CSV (таблица)\nОтмена - JSON (данные)');
-            format = choice ? 'csv' : 'json';
-        }
-
-        addLog(`📥 Экспорт процесса ${id} в формате ${format.toUpperCase()}...`, 'info');
-
-        // Открыть экспорт в новой вкладке
-        window.open(`/api/history/${id}/export?format=${format}`, '_blank');
-
-        addLog(`✅ Экспорт процесса ${id} начат`, 'info');
-    } catch (error) {
-        console.error('Error exporting history:', error);
-        addLog('❌ Ошибка экспорта', 'error');
-    }
-}
-
-async function exportHistoryCSV(id) {
-    await exportHistory(id, 'csv');
-}
-
-async function exportHistoryJSON(id) {
-    await exportHistory(id, 'json');
-}
-
-// ============================================================================
-// Сравнение процессов
-// ============================================================================
-
-let compareTempChart = null;
-let comparePowerChart = null;
-
-async function compareSelected() {
-    if (selectedProcesses.size < 2) {
-        alert('Выберите минимум 2 процесса для сравнения');
-        return;
-    }
-
-    if (selectedProcesses.size > 5) {
-        alert('Можно сравнить максимум 5 процессов одновременно');
-        return;
-    }
-
-    try {
-        addLog(`📊 Загрузка ${selectedProcesses.size} процессов для сравнения...`, 'info');
-
-        // Загрузить все выбранные процессы
-        const processes = [];
-        for (const processId of selectedProcesses) {
-            const response = await fetch(`/api/history/${processId}`);
-            if (response.ok) {
-                const process = await response.json();
-                processes.push(process);
-            }
-        }
-
-        if (processes.length < 2) {
-            alert('Не удалось загрузить процессы для сравнения');
-            return;
-        }
-
-        showCompareModal(processes);
-        addLog(`✅ Сравнение ${processes.length} процессов`, 'info');
-    } catch (error) {
-        console.error('Error comparing processes:', error);
-        addLog('❌ Ошибка при сравнении процессов', 'error');
-        alert('Ошибка при сравнении процессов');
-    }
-}
-
-function showCompareModal(processes) {
-    // Заполнить список процессов
-    const processList = document.getElementById('compare-process-list');
-    processList.innerHTML = '';
-
-    const colors = ['#dc3545', '#007bff', '#28a745', '#ffc107', '#6f42c1'];
-
-    processes.forEach((process, index) => {
-        const typeNames = {
-            rectification: 'Ректификация',
-            distillation: 'Дистилляция',
-            mashing: 'Затирка',
-            hold: 'Выдержка'
-        };
-
-        const badge = document.createElement('div');
-        badge.style.cssText = `
-            padding: 10px 15px;
-            background: ${colors[index]};
-            color: white;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 0.9em;
-        `;
-        badge.textContent = `${typeNames[process.process.type] || process.process.type} - ${new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU')}`;
-        processList.appendChild(badge);
-    });
-
-    // Построить графики сравнения
-    renderCompareTempChart(processes, colors);
-    renderComparePowerChart(processes, colors);
-    renderCompareTable(processes);
-
-    // Показать модальное окно
-    document.getElementById('compare-modal').classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeCompareModal() {
-    document.getElementById('compare-modal').classList.remove('active');
-    document.body.style.overflow = '';
-
-    // Уничтожить графики
-    if (compareTempChart) {
-        compareTempChart.destroy();
-        compareTempChart = null;
-    }
-    if (comparePowerChart) {
-        comparePowerChart.destroy();
-        comparePowerChart = null;
-    }
-}
-
-function renderCompareTempChart(processes, colors) {
-    const chartEl = document.getElementById('compare-temp-chart');
-    chartEl.innerHTML = '';
-
-    const series = [];
-
-    processes.forEach((process, index) => {
-        if (process.timeseries && process.timeseries.data && process.timeseries.data.length > 0) {
-            const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
-            series.push({
-                name: `Процесс ${index + 1} (${startDate})`,
-                data: process.timeseries.data.map(p => ({
-                    x: p.time * 1000,
-                    y: p.cube
-                }))
-            });
-        }
-    });
-
-    if (series.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';
-        return;
-    }
-
-    const options = {
-        chart: {
-            type: 'line',
-            height: 400,
-            animations: {
-                enabled: false
-            },
-            toolbar: {
-                show: true
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: series,
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    hour: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: 'Температура куба (°C)'
-            },
-            decimalsInFloat: 1
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        colors: colors,
-        legend: {
-            show: true,
-            position: 'top'
-        },
-        tooltip: {
-            x: {
-                format: 'dd MMM HH:mm'
-            }
-        }
-    };
-
-    compareTempChart = new ApexCharts(chartEl, options);
-    compareTempChart.render();
-}
-
-function renderComparePowerChart(processes, colors) {
-    const chartEl = document.getElementById('compare-power-chart');
-    chartEl.innerHTML = '';
-
-    const series = [];
-
-    processes.forEach((process, index) => {
-        if (process.timeseries && process.timeseries.data && process.timeseries.data.length > 0) {
-            const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
-            series.push({
-                name: `Процесс ${index + 1} (${startDate})`,
-                data: process.timeseries.data.map(p => ({
-                    x: p.time * 1000,
-                    y: p.power
-                }))
-            });
-        }
-    });
-
-    if (series.length === 0) {
-        chartEl.innerHTML = '<p style="text-align: center; padding: 20px;">Нет данных для сравнения</p>';
-        return;
-    }
-
-    const options = {
-        chart: {
-            type: 'line',
-            height: 300,
-            animations: {
-                enabled: false
-            },
-            toolbar: {
-                show: true
-            },
-            background: 'transparent'
-        },
-        theme: {
-            mode: document.body.getAttribute('data-theme') || 'light'
-        },
-        series: series,
-        xaxis: {
-            type: 'datetime',
-            labels: {
-                datetimeFormatter: {
-                    hour: 'HH:mm'
-                }
-            }
-        },
-        yaxis: {
-            title: {
-                text: 'Мощность (Вт)'
-            },
-            decimalsInFloat: 0
-        },
-        stroke: {
-            curve: 'smooth',
-            width: 2
-        },
-        colors: colors,
-        legend: {
-            show: true,
-            position: 'top'
-        },
-        tooltip: {
-            x: {
-                format: 'dd MMM HH:mm'
-            }
-        }
-    };
-
-    comparePowerChart = new ApexCharts(chartEl, options);
-    comparePowerChart.render();
-}
-
-function renderCompareTable(processes) {
-    const tableEl = document.getElementById('compare-table');
-
-    let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">';
-    html += '<thead><tr style="background: var(--bg-secondary);">';
-    html += '<th style="padding: 10px; border: 1px solid var(--border-color);">Параметр</th>';
-
-    processes.forEach((process, index) => {
-        const startDate = new Date(process.metadata.startTime * 1000).toLocaleDateString('ru-RU');
-        html += `<th style="padding: 10px; border: 1px solid var(--border-color);">Процесс ${index + 1}<br><span style="font-size: 0.8em; font-weight: normal;">${startDate}</span></th>`;
-    });
-
-    html += '</tr></thead><tbody>';
-
-    // Строки таблицы
-    const rows = [
-        { label: 'Длительность', getValue: (p) => (p.metadata.duration / 3600).toFixed(1) + ' ч' },
-        { label: 'Средняя мощность', getValue: (p) => (p.metrics?.power?.avgPower || 0) + ' Вт' },
-        { label: 'Потреблено энергии', getValue: (p) => (p.metrics?.power?.energyUsed || 0).toFixed(2) + ' кВт·ч' },
-        { label: 'Головы', getValue: (p) => (p.results?.headsCollected || 0) + ' мл' },
-        { label: 'Тело', getValue: (p) => (p.results?.bodyCollected || 0) + ' мл' },
-        { label: 'Хвосты', getValue: (p) => (p.results?.tailsCollected || 0) + ' мл' },
-        { label: 'Всего собрано', getValue: (p) => (p.results?.totalCollected || 0) + ' мл' },
-        { label: 'Статус', getValue: (p) => p.metadata.completedSuccessfully ? '✅ Успешно' : '⚠️ Прервано' }
-    ];
-
-    rows.forEach(row => {
-        html += '<tr>';
-        html += `<td style="padding: 10px; border: 1px solid var(--border-color); font-weight: 600;">${row.label}</td>`;
-        processes.forEach(process => {
-            html += `<td style="padding: 10px; border: 1px solid var(--border-color);">${row.getValue(process)}</td>`;
-        });
-        html += '</tr>';
-    });
-
-    html += '</tbody></table>';
-    tableEl.innerHTML = html;
-}
-
-// ============================================================================
-// PROFILES - Управление профилями процессов
-// ============================================================================
-
-let currentProfileId = null; // ID профиля для просмотра/редактирования
-
-// Загрузка списка профилей
-function loadProfilesList() {
-    const listEl = document.getElementById('profiles-list');
-    if (!listEl) return;
-
-    listEl.innerHTML = '<p class="info-text">Загрузка профилей...</p>';
-
-    fetch('/api/profiles')
-        .then(response => response.json())
-        .then(data => {
-            if (data.profiles && data.profiles.length > 0) {
-                renderProfilesList(data.profiles);
-                updateProfilesStats(data.profiles);
-            } else {
-                listEl.innerHTML = '<p class="info-text">📁 Профили не найдены. Создайте первый профиль!</p>';
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка загрузки профилей:', error);
-            listEl.innerHTML = '<p class="error-text">❌ Ошибка загрузки профилей</p>';
-        });
-}
-
-// Отрисовка списка профилей
-function renderProfilesList(profiles) {
-    const listEl = document.getElementById('profiles-list');
-    const filter = document.getElementById('profile-filter-category').value;
-
-    // Применить фильтр
-    const filtered = filter === 'all'
-        ? profiles
-        : profiles.filter(p => p.category === filter);
-
-    if (filtered.length === 0) {
-        listEl.innerHTML = '<p class="info-text">📁 Профили не найдены для выбранной категории</p>';
-        return;
-    }
-
-    let html = '';
-    filtered.forEach(profile => {
-        html += renderProfileItem(profile);
-    });
-
-    listEl.innerHTML = html;
-}
-
-// Отрисовка элемента профиля
-function renderProfileItem(profile) {
-    const categoryIcons = {
-        'rectification': '🌀',
-        'distillation': '🔥',
-        'mashing': 'рџЊѕ'
-    };
-
-    const categoryNames = {
-        'rectification': 'Ректификация',
-        'distillation': 'Дистилляция',
-        'mashing': 'Затирка'
-    };
-
-    const icon = categoryIcons[profile.category] || 'рџ"Ѓ';
-    const catName = categoryNames[profile.category] || profile.category;
-    const builtinBadge = profile.isBuiltin ? '<span style="background: #2196F3; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Встроенный</span>' : '';
-
-    const lastUsed = profile.lastUsed > 0
-        ? new Date(profile.lastUsed * 1000).toLocaleDateString('ru-RU')
-        : 'Не использовался';
-
-    return `
+ОК - CSV (таблица)
+Отмена - JSON (данные)`)?"csv":"json"),h(`📥 Экспорт процесса ${e} в формате ${t.toUpperCase()}...`,"info"),window.open(`/api/history/${e}/export?format=${t}`,"_blank"),h(`✅ Экспорт процесса ${e} начат`,"info")}catch(n){console.error("Error exporting history:",n),h("✗ Ошибка экспорта","error")}}async function Ru(e){await Ir(e,"csv")}async function Fu(e){await Ir(e,"json")}async function Lu(e,t=null){try{h(`🕶️ Готовим anonymized run report для ${e}...`,"info");let n=t&&typeof t=="object"?t:await Ty(e),o=xy(n),i=yy(o?.run?.type,"run"),r=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");My(o,`run_report_${i}_anonymized_${r}.json`),h(`✅ Anonymized run report для ${e} сохранён`,"success")}catch(n){console.error("Error exporting anonymized history report:",n),h("❌ Ошибка экспорта anonymized run report","error")}}async function _u(){if(confirm("РћСЃС‚Р°РЅРѕРІРёС‚СЊ РїСЂРѕС†РµСЃСЃ?"))try{(await fetch("/api/process/stop",{method:"POST"})).ok?(h("вњ“ РџСЂРѕС†РµСЃСЃ РѕСЃС‚Р°РЅРѕРІР»РµРЅ","warning"),setTimeout(ie,500)):h("вњ— РћС€РёР±РєР° РѕСЃС‚Р°РЅРѕРІРєРё","error")}catch(e){h("вњ— РћС€РёР±РєР°: "+e.message,"error")}}async function qu(){try{(await fetch("/api/process/pause",{method:"POST"})).ok?(h("вњ“ РџСЂРѕС†РµСЃСЃ РїСЂРёРѕСЃС‚Р°РЅРѕРІР»РµРЅ","info"),setTimeout(ie,500)):h("вњ— РћС€РёР±РєР° РїР°СѓР·С‹","error")}catch(e){h("вњ— РћС€РёР±РєР°: "+e.message,"error")}}async function Ou(){try{(await fetch("/api/process/resume",{method:"POST"})).ok?(h("вњ“ РџСЂРѕС†РµСЃСЃ РІРѕР·РѕР±РЅРѕРІР»РµРЅ","info"),setTimeout(ie,500)):h("вњ— РћС€РёР±РєР° РІРѕР·РѕР±РЅРѕРІР»РµРЅРёСЏ","error")}catch(e){h("вњ— РћС€РёР±РєР°: "+e.message,"error")}}async function Hu(e){document.getElementById("heater-value").textContent=e;try{let t=await fetch("/api/manual/heater",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({powerW:parseInt(e,10)||0})});if(!t.ok)throw new Error(await t.text())}catch(t){h("вњ— РћС€РёР±РєР° СѓСЃС‚Р°РЅРѕРІРєРё РјРѕС‰РЅРѕСЃС‚Рё: "+t.message,"error")}}function Du(e){document.getElementById("pump-value").textContent=e,fetch("/api/manual/pump",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({speed:parseInt(e,10)||0})}).then(async t=>{if(!t.ok)throw new Error(await t.text());S.pump={...S.pump,speedMlH:parseInt(e,10)||0},setTimeout(ie,300)}).catch(t=>{h("вњ— РћС€РёР±РєР° СѓСЃС‚Р°РЅРѕРІРєРё РЅР°СЃРѕСЃР°: "+t.message,"error")})}function Vu(e){let n=!!!S?.valves?.[e];fetch("/api/manual/valves",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({[e]:n})}).then(async o=>{if(!o.ok)throw new Error(await o.text());S.valves={...S.valves,[e]:n},h(`рџ”„ РљР»Р°РїР°РЅ ${e}: ${n?"open":"closed"}`),setTimeout(ie,300)}).catch(o=>{h("вњ— РћС€РёР±РєР° СѓРїСЂР°РІР»РµРЅРёСЏ РєР»Р°РїР°РЅРѕРј: "+o.message,"error")})}var Ne=null;function fn(e){Ne=e}var $y=Object.freeze({rectification:"rectification",distillation:"distillation",mashing:"mashing"}),Py=Object.freeze({rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка"});function Iy(e={}){return String(e?.metadata?.category||e?.category||"").trim().toLowerCase()}function Ar(e={},t=S){let n=Iy(e),o=$y[n],i=Py[n]||n||"Профиль";if(!o)return{category:n,categoryLabel:i,modeKey:"",known:!1,supported:!0,reason:""};let r=t?.equipment?.supportedModes?.[o];return!r||typeof r.supported!="boolean"?{category:n,categoryLabel:i,modeKey:o,known:!1,supported:!0,reason:""}:{category:n,categoryLabel:i,modeKey:o,known:!0,supported:!!r.supported,reason:String(r.reason||"").trim()}}function po(e={},t=S){let n=Ar(e,t);return n.known?n.supported?{tone:"good",label:"Совместим с текущим железом",detail:""}:{tone:"warn",label:"Нужна другая комплектация",detail:n.reason||"Для этого профиля не хватает обязательных датчиков."}:{tone:"muted",label:"Комплектация не проверена",detail:""}}function fo(e){return String(e??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}function Ay(e){let t=Array.isArray(e?.tags)?e.tags.join(" "):"";return[e?.name,e?.description,e?.category,e?.author,e?.id,t].filter(Boolean).join(" ").toLowerCase()}function Kt(){let e=document.getElementById("profiles-list");e&&(e.innerHTML='<p class="info-text">Загрузка профилей...</p>',fetch("/api/profiles").then(t=>t.json()).then(t=>{let n=Array.isArray(t)?t:t.profiles||[];n.length>0?(Ny(n),ky(n)):e.innerHTML='<p class="info-text">📁 Профили не найдены. Создайте первый профиль!</p>'}).catch(t=>{console.error("Ошибка загрузки профилей:",t),e.innerHTML='<p class="error-text">❌ Ошибка загрузки профилей</p>'}))}function Ny(e){let t=document.getElementById("profiles-list"),n=document.getElementById("profile-filter-category")?.value||"all",o=String(document.getElementById("profile-search")?.value||"").trim().toLowerCase(),i=e.filter(r=>{let a=n==="all"||r.category===n,s=!o||Ay(r).includes(o);return a&&s});if(i.length===0){t.innerHTML=o?'<p class="info-text">🔎 По этому запросу профили не найдены</p>':'<p class="info-text">📁 Профили не найдены для выбранной категории</p>';return}t.innerHTML=i.map(By).join("")}function By(e){let t={rectification:"🌀",distillation:"🔥",mashing:"🌾"},n={rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка"},o=t[e.category]||"📁",i=n[e.category]||e.category,r=e.isBuiltin?'<span style="background: #2196F3; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; margin-left: 8px;">Встроенный</span>':"",a=e.lastUsed>0?new Date(e.lastUsed*1e3).toLocaleDateString("ru-RU"):"Не использовался",s=Number(e.successfulRuns||0)>0?` • Успешность: ${Number(e.successRate||0).toFixed(0)}%`:"",l=String(e.description||"").trim(),c=Array.isArray(e.tags)?e.tags.filter(Boolean):[],d=po(e),m=d.detail?`
+            <div style="margin-top: 8px;">
+                <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.8em; border: 1px solid ${d.tone==="warn"?"rgba(216,119,6,0.35)":"var(--border-color)"}; background: ${d.tone==="warn"?"rgba(245,158,11,0.12)":"var(--bg-secondary)"}; color: var(--text-primary);">
+                    ${fo(d.label)}
+                </span>
+                <div style="margin-top: 6px; color: var(--text-secondary); font-size: 0.85em; line-height: 1.45;">
+                    ${fo(d.detail)}
+                </div>
+            </div>
+        `:d.tone==="good"?`
+                <div style="margin-top: 8px;">
+                    <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.8em; border: 1px solid rgba(34,197,94,0.25); background: rgba(34,197,94,0.12); color: var(--text-primary);">
+                        ${fo(d.label)}
+                    </span>
+                </div>
+            `:"";return`
         <div class="profile-item" style="background: var(--bg-primary); padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--accent-color);">
-            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
-                <div style="flex: 1;">
+            <div style="display: flex; justify-content: space-between; align-items: start; gap: 12px; margin-bottom: 10px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 240px;">
                     <div style="font-weight: 600; font-size: 1.1em; margin-bottom: 5px;">
-                        ${icon} ${profile.name}${builtinBadge}
+                        ${o} ${fo(e.name)}${r}
                     </div>
                     <div style="color: var(--text-secondary); font-size: 0.9em;">
-                        ${catName} • Использований: ${profile.useCount} • Последнее: ${lastUsed}
+                        ${i} • Использований: ${e.useCount}${s} • Последнее: ${a}
                     </div>
+                    ${l?`
+                        <div style="margin-top: 8px; color: var(--text-secondary); line-height: 1.45;">
+                            ${fo(l)}
+                        </div>
+                    `:""}
+                    ${m}
+                    ${c.length?`
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px;">
+                            ${c.slice(0,4).map(f=>`
+                                <span style="padding: 4px 8px; border-radius: 999px; background: var(--bg-secondary); border: 1px solid var(--border-color); font-size: 0.8em; color: var(--text-secondary);">
+                                    #${fo(f)}
+                                </span>
+                            `).join("")}
+                        </div>
+                    `:""}
                 </div>
-                <div style="display: flex; gap: 5px;">
-                    <button class="btn-icon" onclick="viewProfile('${profile.id}')" title="Просмотр">👁️</button>
-                    <button class="btn-icon btn-success" onclick="quickLoadProfile('${profile.id}')" title="Загрузить">📥</button>
-                    <button class="btn-icon" onclick="exportProfile('${profile.id}')" title="Экспорт">📤</button>
-                    ${!profile.isBuiltin ? `<button class="btn-icon btn-danger" onclick="deleteProfile('${profile.id}')" title="Удалить">🗑️</button>` : ''}
+                <div style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end;">
+                    <button class="btn-icon" onclick="viewProfile('${e.id}')" title="Просмотр">👁️</button>
+                    <button class="btn-icon btn-success" onclick="quickLoadProfile('${e.id}')" title="Загрузить">📥</button>
+                    <button class="btn-icon" onclick="showDuplicateProfileModal('${e.id}')" title="Сделать копию">📄</button>
+                    ${e.isBuiltin?"":`<button class="btn-icon" onclick="showEditProfileModal('${e.id}')" title="Редактировать">✏️</button>`}
+                    <button class="btn-icon" onclick="exportProfile('${e.id}')" title="Экспорт">📤</button>
+                    ${e.isBuiltin?"":`<button class="btn-icon btn-danger" onclick="deleteProfile('${e.id}')" title="Удалить">🗑️</button>`}
                 </div>
             </div>
         </div>
-    `;
-}
-
-// Обновление статистики профилей
-function updateProfilesStats(profiles) {
-    document.getElementById('prof-stat-total').textContent = profiles.length;
-
-    const builtin = profiles.filter(p => p.isBuiltin).length;
-    const user = profiles.length - builtin;
-
-    document.getElementById('prof-stat-builtin').textContent = builtin;
-    document.getElementById('prof-stat-user').textContent = user;
-
-    // Самый используемый
-    if (profiles.length > 0) {
-        const mostUsed = profiles.reduce((prev, current) =>
-            (prev.useCount > current.useCount) ? prev : current
-        );
-        document.getElementById('prof-stat-popular').textContent =
-            mostUsed.useCount > 0 ? mostUsed.name : '—';
-    } else {
-        document.getElementById('prof-stat-popular').textContent = '—';
-    }
-}
-
-// Показать модальное окно создания профиля
-function showCreateProfileModal() {
-    currentProfileId = null;
-    document.getElementById('profile-modal-title').textContent = 'Создание профиля';
-    document.getElementById('profile-name').value = '';
-    document.getElementById('profile-description').value = '';
-    document.getElementById('profile-category').value = 'rectification';
-    document.getElementById('profile-tags').value = '';
-    document.getElementById('profile-modal').style.display = 'flex';
-}
-
-// Закрыть модальное окно создания
-function closeProfileModal() {
-    document.getElementById('profile-modal').style.display = 'none';
-}
-
-// Сохранить профиль
-function saveProfile() {
-    const name = document.getElementById('profile-name').value.trim();
-    const description = document.getElementById('profile-description').value.trim();
-    const category = document.getElementById('profile-category').value;
-    const tagsStr = document.getElementById('profile-tags').value.trim();
-    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
-
-    if (!name) {
-        alert('Пожалуйста, введите название профиля');
-        return;
-    }
-
-    // TODO: Получить текущие параметры из формы управления
-    // Пока используем значения по умолчанию
-    const profile = {
-        metadata: {
-            name: name,
-            description: description,
-            category: category,
-            tags: tags,
-            author: 'user'
-        },
-        parameters: {
-            mode: category,
-            model: 'classic',
-            heater: {
-                maxPower: 3000,
-                autoMode: true,
-                pidKp: 2.0,
-                pidKi: 0.5,
-                pidKd: 1.0
-            },
-            rectification: {
-                stabilizationMin: 20,
-                headsVolume: 50,
-                bodyVolume: 2000,
-                tailsVolume: 100,
-                headsSpeed: 150,
-                bodySpeed: 300,
-                tailsSpeed: 400,
-                purgeMin: 5
-            },
-            distillation: {
-                headsVolume: 0,
-                targetVolume: 3000,
-                speed: 500,
-                endTemp: 96.0
-            },
-            temperatures: {
-                maxCube: 98.0,
-                maxColumn: 82.0,
-                headsEnd: 78.5,
-                bodyStart: 78.0,
-                bodyEnd: 85.0
-            },
-            safety: {
-                maxRuntime: 720,
-                waterFlowMin: 2.0,
-                pressureMax: 150
-            }
-        }
-    };
-
-    fetch('/api/profiles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profile)
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                closeProfileModal();
-                loadProfilesList();
-                alert('✅ Профиль успешно создан!');
-            } else {
-                alert('❌ Ошибка создания профиля: ' + (data.error || 'Неизвестная ошибка'));
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка сохранения профиля:', error);
-            alert('❌ Ошибка сохранения профиля');
-        });
-}
-
-// Просмотр профиля
-function viewProfile(id) {
-    fetch(`/api/profiles/${id}`)
-        .then(response => response.json())
-        .then(profile => {
-            showProfileViewModal(profile);
-        })
-        .catch(error => {
-            console.error('Ошибка загрузки профиля:', error);
-            alert('❌ Ошибка загрузки профиля');
-        });
-}
-
-// Показать модальное окно просмотра профиля
-function showProfileViewModal(profile) {
-    currentProfileId = profile.id;
-    document.getElementById('profile-view-title').textContent = profile.metadata.name;
-
-    const body = document.getElementById('profile-view-body');
-    const catNames = {
-        'rectification': 'Ректификация',
-        'distillation': 'Дистилляция',
-        'mashing': 'Затирка'
-    };
-
-    let html = `
-        <div class="modal-section">
-            <div class="modal-section-title">📋 Метаданные</div>
-            <div class="modal-info-grid">
-                <div><strong>Название:</strong> ${profile.metadata.name}</div>
-                <div><strong>Категория:</strong> ${catNames[profile.metadata.category] || profile.metadata.category}</div>
-                <div><strong>Описание:</strong> ${profile.metadata.description || '—'}</div>
-                <div><strong>Автор:</strong> ${profile.metadata.author}</div>
-                <div><strong>Теги:</strong> ${profile.metadata.tags.join(', ') || '—'}</div>
-                <div><strong>Встроенный:</strong> ${profile.metadata.isBuiltin ? 'Да' : 'Нет'}</div>
+    `}function ky(e){document.getElementById("prof-stat-total").textContent=e.length;let t=e.filter(o=>o.isBuiltin).length,n=e.length-t;if(document.getElementById("prof-stat-builtin").textContent=t,document.getElementById("prof-stat-user").textContent=n,e.length>0){let o=e.reduce((i,r)=>i.useCount>r.useCount?i:r);document.getElementById("prof-stat-popular").textContent=o.useCount>0?o.name:"—"}else document.getElementById("prof-stat-popular").textContent="—"}var Gt=!1,ju=!1;function Nr(e){return String(e??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}var Br={metadata:{name:"",description:"",category:"rectification",tags:[]},parameters:{mode:"rectification",model:"classic",heater:{maxPower:3e3,autoMode:!0,pidKp:2,pidKi:.5,pidKd:1,boosterEnabled:!1,boosterStopCubeTempC:78},rectification:{stabilizationMin:30,headsVolume:300,bodyVolume:3200,tailsVolume:300,headsSpeed:300,bodySpeed:600,tailsSpeed:360,purgeMin:5},distillation:{headsVolume:150,targetVolume:3e3,speed:1200,endTemp:96},mashing:{steps:[{temperature:38,duration:20,name:"Кислотная пауза"},{temperature:52,duration:20,name:"Белковая пауза"},{temperature:63,duration:40,name:"Мальтозная пауза"},{temperature:72,duration:20,name:"Осахаривание"},{temperature:78,duration:10,name:"Мэш-аут"}]},temperatures:{maxCube:98,maxColumn:82,headsEnd:78.5,bodyStart:78,bodyEnd:85},safety:{maxRuntime:720,waterFlowMin:2,pressureMax:50}}};function Ry(e){return JSON.parse(JSON.stringify(e))}function N(e,t,n,o,i=null){let r=Number(e);if(!Number.isFinite(r))return o;let a=Math.max(t,Math.min(n,r));if(i!==null){let s=10**i;a=Math.round(a*s)/s}return a}function ee(e,t){let n=document.getElementById(e);n&&(n.value=t??"")}function Wu(e,t){let n=document.getElementById(e);n&&(n.checked=!!t)}function Q(e,t=""){let n=document.getElementById(e);return n?n.value:t}function zu(e,t=!1){let n=document.getElementById(e);return n?n.checked:t}function go(e,t=Br.parameters.mashing.steps){return(Array.isArray(e)&&e.length?e:t).slice(0,10).map((o,i)=>{let r=N(o?.temperature,20,100,0,1),a=N(o?.duration,1,240,0),s=String(o?.name||"").trim()||`Шаг ${i+1}`;return!(r>0)||!(a>0)?null:{temperature:r,duration:a,name:s}}).filter(Boolean)}function Fy(e){let t=document.getElementById(e);t&&(t.innerHTML="")}function Ns(e,t){let n=document.getElementById(e);n&&(Fy(e),go(t).forEach(o=>{n.appendChild(Uo({mode:"mash",temperature:o.temperature,duration:o.duration,name:o.name}))}))}function Ku(){if((String(Q("profile-category","rectification")).trim()||"rectification")!=="mashing"||Ve("profile-mash-steps","mash").length>0)return;let n=Ve("mash-steps","mash");Ns("profile-mash-steps",n.length?n:Br.parameters.mashing.steps)}function Ly(e){let t=go(e?.parameters?.mashing?.steps),n=String(e?.metadata?.name||e?.name||"Затирка").trim()||"Затирка";nr(n,t,e?.id||"")}function kr(e=null){let t=Ry(Br);return!e||typeof e!="object"||(t.metadata.name=String(e?.metadata?.name||e?.name||"").trim(),t.metadata.description=String(e?.metadata?.description||"").trim(),t.metadata.category=String(e?.metadata?.category||e?.category||"rectification").trim()||"rectification",t.metadata.tags=Array.isArray(e?.metadata?.tags)?e.metadata.tags.map(n=>String(n||"").trim()).filter(Boolean):[],t.parameters.mode=String(e?.parameters?.mode||t.metadata.category||"rectification").trim()||t.metadata.category,t.parameters.model=String(e?.parameters?.model||"classic").trim()||"classic",t.parameters.heater.maxPower=N(e?.parameters?.heater?.maxPower,300,1e4,t.parameters.heater.maxPower),t.parameters.heater.autoMode=!!(e?.parameters?.heater?.autoMode??t.parameters.heater.autoMode),t.parameters.heater.pidKp=N(e?.parameters?.heater?.pidKp,0,100,t.parameters.heater.pidKp,2),t.parameters.heater.pidKi=N(e?.parameters?.heater?.pidKi,0,100,t.parameters.heater.pidKi,2),t.parameters.heater.pidKd=N(e?.parameters?.heater?.pidKd,0,100,t.parameters.heater.pidKd,2),t.parameters.heater.boosterEnabled=!!(e?.parameters?.heater?.boosterEnabled??t.parameters.heater.boosterEnabled),t.parameters.heater.boosterStopCubeTempC=N(e?.parameters?.heater?.boosterStopCubeTempC,20,100,t.parameters.heater.boosterStopCubeTempC,1),t.parameters.rectification.stabilizationMin=N(e?.parameters?.rectification?.stabilizationMin,1,180,t.parameters.rectification.stabilizationMin),t.parameters.rectification.headsVolume=N(e?.parameters?.rectification?.headsVolume,1,1e4,t.parameters.rectification.headsVolume),t.parameters.rectification.bodyVolume=N(e?.parameters?.rectification?.bodyVolume,1,5e4,t.parameters.rectification.bodyVolume),t.parameters.rectification.tailsVolume=N(e?.parameters?.rectification?.tailsVolume,0,2e4,t.parameters.rectification.tailsVolume),t.parameters.rectification.headsSpeed=N(e?.parameters?.rectification?.headsSpeed,10,2e3,t.parameters.rectification.headsSpeed),t.parameters.rectification.bodySpeed=N(e?.parameters?.rectification?.bodySpeed,50,3e3,t.parameters.rectification.bodySpeed),t.parameters.rectification.tailsSpeed=N(e?.parameters?.rectification?.tailsSpeed,0,3e3,t.parameters.rectification.tailsSpeed),t.parameters.rectification.purgeMin=N(e?.parameters?.rectification?.purgeMin,1,120,t.parameters.rectification.purgeMin),t.parameters.distillation.headsVolume=N(e?.parameters?.distillation?.headsVolume,0,1e4,t.parameters.distillation.headsVolume),t.parameters.distillation.targetVolume=N(e?.parameters?.distillation?.targetVolume,1,5e4,t.parameters.distillation.targetVolume),t.parameters.distillation.speed=N(e?.parameters?.distillation?.speed,50,12e4,t.parameters.distillation.speed),t.parameters.distillation.endTemp=N(e?.parameters?.distillation?.endTemp,50,110,t.parameters.distillation.endTemp,1),t.parameters.mashing.steps=go(e?.parameters?.mashing?.steps,t.metadata.category==="mashing"?Br.parameters.mashing.steps:[]),t.parameters.temperatures.maxCube=N(e?.parameters?.temperatures?.maxCube,50,120,t.parameters.temperatures.maxCube,2),t.parameters.temperatures.maxColumn=N(e?.parameters?.temperatures?.maxColumn,50,110,t.parameters.temperatures.maxColumn,2),t.parameters.temperatures.headsEnd=N(e?.parameters?.temperatures?.headsEnd,50,110,t.parameters.temperatures.headsEnd,2),t.parameters.temperatures.bodyStart=N(e?.parameters?.temperatures?.bodyStart,50,110,t.parameters.temperatures.bodyStart,2),t.parameters.temperatures.bodyEnd=N(e?.parameters?.temperatures?.bodyEnd,50,120,t.parameters.temperatures.bodyEnd,2),t.parameters.safety.maxRuntime=N(e?.parameters?.safety?.maxRuntime,10,5e3,t.parameters.safety.maxRuntime),t.parameters.safety.waterFlowMin=N(e?.parameters?.safety?.waterFlowMin,0,20,t.parameters.safety.waterFlowMin,1),t.parameters.safety.pressureMax=N(e?.parameters?.safety?.pressureMax,5,200,t.parameters.safety.pressureMax)),t}async function _y(e="rectification"){let t=kr(null);if(t.metadata.category=e,t.parameters.mode=e,e==="mashing"){let n=Ve("mash-steps","mash");t.parameters.mashing.steps=go(n)}try{let[n,o,i,r]=await Promise.all([fetch("/api/settings/equipment"),fetch("/api/settings/safety"),fetch("/api/settings/rect"),fetch("/api/status")]),a=n.ok?await n.json():{},s=o.ok?await o.json():{},l=i.ok?await i.json():{},c=r.ok?await r.json():{},d=c?.distillation&&typeof c.distillation=="object"?c.distillation:{},m=c?.activeProfile?.baseTemperatures&&typeof c.activeProfile.baseTemperatures=="object"?c.activeProfile.baseTemperatures:{},f=N(l.feedVolumeL,1,250,25,1),b=N(l.feedAbvPercent,1,96,40,1),u=Math.max(0,f*10*b),p=N(l.headsPercent,0,40,8,1),g=N(l.bodyPercent,0,100,84,1),v=N(l.tailsPercent,0,100,8,1);t.parameters.heater.maxPower=N(a.heaterPowerW,300,1e4,t.parameters.heater.maxPower),t.parameters.heater.boosterEnabled=!!(a.boosterHeaterEnabled??t.parameters.heater.boosterEnabled),t.parameters.heater.boosterStopCubeTempC=N(a.boosterHeaterStopCubeTempC,20,100,t.parameters.heater.boosterStopCubeTempC,1),t.parameters.rectification.stabilizationMin=N(l.stabilizationMin,1,180,t.parameters.rectification.stabilizationMin),t.parameters.rectification.purgeMin=N(l.purgeMin,1,120,t.parameters.rectification.purgeMin),t.parameters.rectification.headsSpeed=N(l.headsSpeedMlHKw,10,2e3,t.parameters.rectification.headsSpeed),t.parameters.rectification.bodySpeed=N(l.bodySpeedMlHKw,50,3e3,t.parameters.rectification.bodySpeed),t.parameters.rectification.tailsSpeed=N(l.bodySpeedMlHKw,50,3e3,t.parameters.rectification.bodySpeed*.6,0),t.parameters.rectification.headsVolume=N(u*p/100,1,1e4,t.parameters.rectification.headsVolume),t.parameters.rectification.bodyVolume=N(u*g/100,1,5e4,t.parameters.rectification.bodyVolume),t.parameters.rectification.tailsVolume=N(u*v/100,0,2e4,t.parameters.rectification.tailsVolume),t.parameters.distillation.headsVolume=N(d.headsVolumeMl,0,1e4,t.parameters.distillation.headsVolume),t.parameters.distillation.targetVolume=N(d.targetVolumeMl,1,5e4,t.parameters.distillation.targetVolume),t.parameters.distillation.speed=N(d.speedMlH,50,12e4,t.parameters.distillation.speed),t.parameters.distillation.endTemp=N(d.endTempC,50,110,t.parameters.distillation.endTemp,1),t.parameters.temperatures.maxCube=N(m.maxCube,50,120,t.parameters.temperatures.maxCube,2),t.parameters.temperatures.maxColumn=N(m.maxColumn,50,110,t.parameters.temperatures.maxColumn,2),t.parameters.temperatures.headsEnd=N(m.headsEnd,50,110,t.parameters.temperatures.headsEnd,2),t.parameters.temperatures.bodyStart=N(m.bodyStart,50,110,t.parameters.temperatures.bodyStart,2),t.parameters.temperatures.bodyEnd=N(m.bodyEnd,50,120,t.parameters.temperatures.bodyEnd,2),t.parameters.safety.pressureMax=N(s.pressureMaxMmHg,5,200,t.parameters.safety.pressureMax)}catch(n){console.warn("Не удалось полностью собрать текущие системные настройки для нового профиля:",n)}return t}function Bs(e){let t=kr(e);ee("profile-name",t.metadata.name),ee("profile-description",t.metadata.description),ee("profile-category",t.metadata.category),ee("profile-tags",t.metadata.tags.join(", ")),ee("profile-model",t.parameters.model),ee("profile-heater-max-power",t.parameters.heater.maxPower),Wu("profile-heater-auto-mode",t.parameters.heater.autoMode),ee("profile-heater-pid-kp",t.parameters.heater.pidKp),ee("profile-heater-pid-ki",t.parameters.heater.pidKi),ee("profile-heater-pid-kd",t.parameters.heater.pidKd),Wu("profile-heater-booster-enabled",t.parameters.heater.boosterEnabled),ee("profile-heater-booster-stop-cube-temp",t.parameters.heater.boosterStopCubeTempC),ee("profile-rect-stabilization",t.parameters.rectification.stabilizationMin),ee("profile-rect-purge",t.parameters.rectification.purgeMin),ee("profile-rect-heads-volume",t.parameters.rectification.headsVolume),ee("profile-rect-body-volume",t.parameters.rectification.bodyVolume),ee("profile-rect-tails-volume",t.parameters.rectification.tailsVolume),ee("profile-rect-heads-speed",t.parameters.rectification.headsSpeed),ee("profile-rect-body-speed",t.parameters.rectification.bodySpeed),ee("profile-rect-tails-speed",t.parameters.rectification.tailsSpeed),ee("profile-dist-heads-volume",t.parameters.distillation.headsVolume),ee("profile-dist-target-volume",t.parameters.distillation.targetVolume),ee("profile-dist-speed",t.parameters.distillation.speed),ee("profile-dist-end-temp",t.parameters.distillation.endTemp),Ns("profile-mash-steps",t.parameters.mashing.steps),ee("profile-temp-max-cube",t.parameters.temperatures.maxCube),ee("profile-temp-max-column",t.parameters.temperatures.maxColumn),ee("profile-temp-heads-end",t.parameters.temperatures.headsEnd),ee("profile-temp-body-start",t.parameters.temperatures.bodyStart),ee("profile-temp-body-end",t.parameters.temperatures.bodyEnd),ee("profile-safety-max-runtime",t.parameters.safety.maxRuntime),ee("profile-safety-water-flow-min",t.parameters.safety.waterFlowMin),ee("profile-safety-pressure-max",t.parameters.safety.pressureMax),_s(t.metadata.category),Rs(t),Fs()}function ks(){if(ju)return;let e=document.getElementById("profile-modal");if(!e)return;let t=()=>{Rs(Ls()),Fs()};e.addEventListener("input",n=>{n.target instanceof HTMLElement&&n.target.closest("#profile-editor-summary")||t()}),e.addEventListener("change",t),ju=!0}function qy(e){let t=e?.metadata?.category||"rectification",n=[{label:"Категория",value:t==="mashing"?"Затирка":t==="distillation"?"Дистилляция":"Ректификация"},{label:"Мощность",value:`${Number(e?.parameters?.heater?.maxPower||0).toFixed(0)} Вт`}];if(t==="rectification")n.push({label:"Стабилизация",value:`${Number(e?.parameters?.rectification?.stabilizationMin||0).toFixed(0)} мин`},{label:"Тело",value:`${Number(e?.parameters?.rectification?.bodyVolume||0).toFixed(0)} мл`},{label:"Скорость тела",value:`${Number(e?.parameters?.rectification?.bodySpeed||0).toFixed(0)} мл/ч/кВт`},{label:"Давление max",value:`${Number(e?.parameters?.safety?.pressureMax||0).toFixed(0)} мм`});else if(t==="distillation")n.push({label:"Целевой объём",value:`${Number(e?.parameters?.distillation?.targetVolume||0).toFixed(0)} мл`},{label:"Скорость",value:`${Number(e?.parameters?.distillation?.speed||0).toFixed(0)} мл/ч`},{label:"Финиш",value:`${Number(e?.parameters?.distillation?.endTemp||0).toFixed(1)} °C`},{label:"Давление max",value:`${Number(e?.parameters?.safety?.pressureMax||0).toFixed(0)} мм`});else if(t==="mashing"){let o=Array.isArray(e?.parameters?.mashing?.steps)?e.parameters.mashing.steps:[],i=o.reduce((r,a)=>r+Number(a?.duration||0),0);n.push({label:"Шагов",value:`${o.length}`},{label:"Общая длительность",value:`${i.toFixed(0)} мин`},{label:"Старт / финиш",value:o.length?`${Number(o[0]?.temperature||0).toFixed(1)} → ${Number(o[o.length-1]?.temperature||0).toFixed(1)} °C`:"Нет шагов"},{label:"Макс. куб",value:`${Number(e?.parameters?.temperatures?.maxCube||0).toFixed(1)} °C`})}return n}function Rs(e=null){let t=document.getElementById("profile-editor-summary");if(!t)return;let n=e||Ls(),o=po(n),i=qy(n),r=[];n.metadata.name||r.push("Добавьте понятное имя профиля, чтобы потом не путаться в истории и compare-view."),n.metadata.category==="mashing"&&(!Array.isArray(n?.parameters?.mashing?.steps)||n.parameters.mashing.steps.length===0)&&r.push("Для профиля затирки нужен хотя бы один температурный шаг."),o.tone==="warn"&&o.detail&&r.push(o.detail),r.push(Ne?"После сохранения обновится текущая пользовательская версия профиля.":"После сохранения появится новый пользовательский профиль без затрагивания встроенных рецептов."),t.innerHTML=`
+        <div class="profile-import-meta">
+            <div class="profile-import-meta-title">${n.metadata.name||"Новый профиль"}</div>
+            <div class="profile-import-meta-copy">
+                ${n.metadata.description||"Профиль собирается из текущих полей редактора. Здесь видно, что именно получится перед сохранением."}
             </div>
         </div>
-
+        <div class="profile-import-card ${o.tone==="warn"?"is-warning":o.tone==="good"?"is-good":""}">
+            <div class="profile-import-card-head">
+                <strong>Совместимость с текущим железом</strong>
+                <span class="profile-import-badge ${o.tone==="warn"?"is-warning":o.tone==="good"?"is-good":""}">${o.label}</span>
+            </div>
+            ${o.detail?`<div class="profile-import-note-block"><p>${Nr(o.detail)}</p></div>`:""}
+        </div>
+        <div class="profile-editor-summary-grid">
+            ${i.map(a=>`
+                <div class="profile-editor-summary-metric">
+                    <span>${Nr(a.label)}</span>
+                    <strong>${Nr(a.value)}</strong>
+                </div>
+            `).join("")}
+        </div>
+        <div class="profile-import-card ${r.length>2?"is-warning":""}">
+            <div class="profile-import-card-head">
+                <strong>Что проверить перед сохранением</strong>
+                <span class="profile-import-badge ${r.length>2?"is-warning":"is-good"}">${r.length>2?"Проверить":"Готово"}</span>
+            </div>
+            <ul class="profile-import-list">
+                ${r.map(a=>`<li>${Nr(a)}</li>`).join("")}
+            </ul>
+        </div>
+    `}function Fs(){let e=document.getElementById("profile-modal-delete-btn");if(!e)return;let t=!!Ne&&!Gt;e.style.display=t?"":"none"}function Ls(){let e=String(Q("profile-category","rectification")).trim()||"rectification",t=String(Q("profile-tags","")).trim();return kr({metadata:{name:String(Q("profile-name","")).trim(),description:String(Q("profile-description","")).trim(),category:e,tags:t?t.split(",").map(n=>n.trim()).filter(Boolean):[]},parameters:{mode:e,model:String(Q("profile-model","classic")).trim()||"classic",heater:{maxPower:N(Q("profile-heater-max-power",3e3),300,1e4,3e3),autoMode:zu("profile-heater-auto-mode",!0),pidKp:N(Q("profile-heater-pid-kp",2),0,100,2,2),pidKi:N(Q("profile-heater-pid-ki",.5),0,100,.5,2),pidKd:N(Q("profile-heater-pid-kd",1),0,100,1,2),boosterEnabled:zu("profile-heater-booster-enabled",!1),boosterStopCubeTempC:N(Q("profile-heater-booster-stop-cube-temp",78),20,100,78,1)},rectification:{stabilizationMin:N(Q("profile-rect-stabilization",30),1,180,30),headsVolume:N(Q("profile-rect-heads-volume",300),1,1e4,300),bodyVolume:N(Q("profile-rect-body-volume",3200),1,5e4,3200),tailsVolume:N(Q("profile-rect-tails-volume",300),0,2e4,300),headsSpeed:N(Q("profile-rect-heads-speed",300),10,2e3,300),bodySpeed:N(Q("profile-rect-body-speed",600),50,3e3,600),tailsSpeed:N(Q("profile-rect-tails-speed",360),0,3e3,360),purgeMin:N(Q("profile-rect-purge",5),1,120,5)},distillation:{headsVolume:N(Q("profile-dist-heads-volume",150),0,1e4,150),targetVolume:N(Q("profile-dist-target-volume",3e3),1,5e4,3e3),speed:N(Q("profile-dist-speed",1200),50,12e4,1200),endTemp:N(Q("profile-dist-end-temp",96),50,110,96,1)},mashing:{steps:go(Ve("profile-mash-steps","mash"),[])},temperatures:{maxCube:N(Q("profile-temp-max-cube",98),50,120,98,2),maxColumn:N(Q("profile-temp-max-column",82),50,110,82,2),headsEnd:N(Q("profile-temp-heads-end",78.5),50,110,78.5,2),bodyStart:N(Q("profile-temp-body-start",78),50,110,78,2),bodyEnd:N(Q("profile-temp-body-end",85),50,120,85,2)},safety:{maxRuntime:N(Q("profile-safety-max-runtime",720),10,5e3,720),waterFlowMin:N(Q("profile-safety-water-flow-min",2),0,20,2,1),pressureMax:N(Q("profile-safety-pressure-max",50),5,200,50)}}})}function _s(e=null){let t=String(e||Q("profile-category","rectification")).trim()||"rectification";document.querySelectorAll("[data-profile-category-block]").forEach(n=>{let o=String(n.getAttribute("data-profile-category-block")||"").trim();n.style.display=o===t?"":"none"}),Ku(),Rs()}function Gu(e={}){let t=document.getElementById("profile-mash-steps");t&&t.appendChild(Uo({mode:"mash",temperature:e.temperature,duration:e.duration,name:e.name}))}function Yu(){Ns("profile-mash-steps",Ve("mash-steps","mash")),Ku()}async function Ju(){ks(),fn(null),Gt=!1,document.getElementById("profile-modal-title").textContent="Создание профиля",Bs(await _y("rectification")),document.getElementById("profile-modal").style.display="flex"}function Oy(e){let t=String(e||"").trim();return t?/\(копия\)$/i.test(t)?t:`${t} (копия)`:"Новый профиль"}async function qs(e){try{ks();let t=await fetch(`/api/profiles/${e}`);if(!t.ok)throw new Error("Не удалось загрузить профиль для копирования");let n=await t.json(),o=kr(n);o.metadata.name=Oy(n?.metadata?.name||n?.name),fn(null),Gt=!1,document.getElementById("profile-modal-title").textContent="Новый профиль на основе выбранного",Bs(o),document.getElementById("profile-modal").style.display="flex"}catch(t){console.error("Ошибка создания копии профиля:",t),alert("❌ Ошибка подготовки копии профиля")}}function Rr(){document.getElementById("profile-modal").style.display="none",Gt=!1,fn(null),Fs()}async function Zu(){let e=Ls();if(!e.metadata.name){alert("Пожалуйста, введите название профиля");return}if(e.metadata.category==="mashing"&&(!Array.isArray(e.parameters?.mashing?.steps)||e.parameters.mashing.steps.length===0)){alert("Для профиля затирки добавьте хотя бы один шаг.");return}if(Ne&&Gt){alert("Встроенный профиль нельзя редактировать напрямую.");return}try{let t=await fetch(Ne?`/api/profiles/${Ne}`:"/api/profiles",{method:Ne?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)}),n=await t.json();if(!t.ok||!n.success)throw new Error(n.error||"Неизвестная ошибка");Rr(),Kt(),alert(Ne?"✅ Профиль успешно обновлён!":"✅ Профиль успешно создан!")}catch(t){console.error("Ошибка сохранения профиля:",t),alert(`❌ Ошибка сохранения профиля: ${t.message||"Неизвестная ошибка"}`)}}function Qu(e){fetch(`/api/profiles/${e}`).then(t=>t.json()).then(t=>{Wy(t)}).catch(t=>{console.error("Ошибка загрузки профиля:",t),alert("❌ Ошибка загрузки профиля")})}async function Os(e){try{ks();let t=await fetch(`/api/profiles/${e}`);if(!t.ok)throw new Error("Не удалось загрузить профиль для редактирования");let n=await t.json();if(n?.metadata?.isBuiltin){alert("Встроенный профиль нельзя редактировать напрямую. Сначала создайте пользовательскую копию.");return}fn(n.id),Gt=!!n?.metadata?.isBuiltin,document.getElementById("profile-modal-title").textContent="Редактирование профиля",Bs(n),document.getElementById("profile-modal").style.display="flex"}catch(t){console.error("Ошибка открытия редактора профиля:",t),alert("❌ Ошибка загрузки профиля для редактирования")}}function Xu(){if(!Ne||Gt)return;let e=Ne;Rr(),Ds(e)}function em(){Ne&&(vi(),Os(Ne))}function tm(){if(!Ne)return;let e=Ne;vi(),qs(e)}function Uu(e){let t=Number(e||0);return t>0?`${Math.round(t/60)} мин`:"—"}function Z(e,t=1,n=""){let o=Number(e||0);return o>0?`${o.toFixed(t)}${n}`:"—"}function Hy(e){let t=Number(e||0);return t?new Date(t*1e3).toLocaleString("ru-RU"):"—"}function Dy(e){return{spn_3_5:"СПН 3.5",spn_4_0:"СПН 4.0",raschig:"Кольца Рашига",custom:"Своя насадка"}[String(e||"").trim()]||"—"}function gn(e,t){let n=Number(e||0),o=Number(t||0);return n>0?!(o>0)||Math.abs(o-n)<.01?`${n.toFixed(2)}°C`:`${n.toFixed(2)}°C → ${o.toFixed(2)}°C`:"—"}function Vy(e){let t=e?.baroCorrection||{},n=e?.effectiveTemperatures||{};if(!t.enabled||!t.applicable||!t.applied)return"";let o=Number(t.pressureDeltaMmHg||0),i=Number(t.appliedShiftC||0),r=Math.abs(o),a=`${o>=0?"+":""}${o.toFixed(1)}`,s=`${i>=0?"+":""}${i.toFixed(2)}`;return`${r>=12?"Внимание":"Замечание"}: профиль "${e?.metadata?.name||e?.id||""}" валидирован при ${Number(t.baselinePressureMmHg||0).toFixed(1)} мм рт.ст., сейчас ${Number(t.currentPressureMmHg||0).toFixed(1)} мм рт.ст. (Δ ${a}). Мягкая барокоррекция сдвинет пороги на ${s}°C: головы ${gn(e?.parameters?.temperatures?.headsEnd,n.headsEnd)}, тело ${gn(e?.parameters?.temperatures?.bodyStart,n.bodyStart)}, конец тела ${gn(e?.parameters?.temperatures?.bodyEnd,n.bodyEnd)}.`}function jy(e){let t=po(e);return t.tone!=="warn"?"":`Совместимость: ${t.detail||"Для этого профиля не хватает обязательных датчиков текущей комплектации."}`}function Wy(e){fn(e.id),Gt=!!e?.metadata?.isBuiltin,document.getElementById("profile-view-title").textContent=e.metadata.name;let t=document.getElementById("profile-view-body"),n={rectification:"Ректификация",distillation:"Дистилляция",mashing:"Затирка"},o=e.learning||{},i=e.validation||{},r=e.baroCorrection||{},a=e.effectiveTemperatures||e.parameters.temperatures||{},s=o.lastSuccessfulRun||null,l=Array.isArray(o.lastAdvisorSnapshot?.items)?o.lastAdvisorSnapshot.items.slice(0,3):[],c=Ar(e),d=po(e),m=go(e?.parameters?.mashing?.steps,[]),f="";e.metadata.category==="rectification"?f=`
         <div class="modal-section">
             <div class="modal-section-title">⚙️ Параметры ректификации</div>
             <div class="modal-info-grid">
-                <div><strong>Стабилизация:</strong> ${profile.parameters.rectification.stabilizationMin} мин</div>
-                <div><strong>Объём голов:</strong> ${profile.parameters.rectification.headsVolume} мл</div>
-                <div><strong>Объём тела:</strong> ${profile.parameters.rectification.bodyVolume} мл</div>
-                <div><strong>Объём хвостов:</strong> ${profile.parameters.rectification.tailsVolume} мл</div>
-                <div><strong>Скорость голов:</strong> ${profile.parameters.rectification.headsSpeed} мл/ч/кВт</div>
-                <div><strong>Скорость тела:</strong> ${profile.parameters.rectification.bodySpeed} мл/ч/кВт</div>
+                <div><strong>Стабилизация:</strong> ${e.parameters.rectification.stabilizationMin} мин</div>
+                <div><strong>Продувка:</strong> ${e.parameters.rectification.purgeMin} мин</div>
+                <div><strong>Объём голов:</strong> ${e.parameters.rectification.headsVolume} мл</div>
+                <div><strong>Объём тела:</strong> ${e.parameters.rectification.bodyVolume} мл</div>
+                <div><strong>Объём хвостов:</strong> ${e.parameters.rectification.tailsVolume} мл</div>
+                <div><strong>Скорость голов:</strong> ${e.parameters.rectification.headsSpeed} мл/ч/кВт</div>
+                <div><strong>Скорость тела:</strong> ${e.parameters.rectification.bodySpeed} мл/ч/кВт</div>
+                <div><strong>Скорость хвостов:</strong> ${e.parameters.rectification.tailsSpeed} мл/ч/кВт</div>
             </div>
-        </div>
+        </div>`:e.metadata.category==="distillation"?f=`
+        <div class="modal-section">
+            <div class="modal-section-title">🥃 Параметры дистилляции</div>
+            <div class="modal-info-grid">
+                <div><strong>Головы:</strong> ${Z(e.parameters.distillation.headsVolume,0," мл")}</div>
+                <div><strong>Целевой объём:</strong> ${Z(e.parameters.distillation.targetVolume,0," мл")}</div>
+                <div><strong>Скорость:</strong> ${Z(e.parameters.distillation.speed,0," мл/ч")}</div>
+                <div><strong>Температура завершения:</strong> ${Z(e.parameters.distillation.endTemp,1,"°C")}</div>
+            </div>
+        </div>`:e.metadata.category==="mashing"&&(f=`
+        <div class="modal-section">
+            <div class="modal-section-title">🌾 Рецепт затирки</div>
+            ${m.length?`
+                <div style="display: grid; gap: 10px;">
+                    ${m.map((g,v)=>`
+                        <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary);">
+                            <div style="font-weight: 600; margin-bottom: 4px;">${g.name||`Шаг ${v+1}`}</div>
+                            <div style="color: var(--text-secondary);">
+                                ${g.temperature.toFixed(1)}°C • ${g.duration} мин
+                            </div>
+                        </div>
+                    `).join("")}
+                </div>
+            `:'<div style="color: var(--text-secondary);">Шаги затирки пока не сохранены.</div>'}
+        </div>`);let b=`
 
         <div class="modal-section">
+
+            <div class="modal-section-title">📋 Метаданные</div>
+
+            <div class="modal-info-grid">
+
+                <div><strong>Название:</strong> ${e.metadata.name}</div>
+
+                <div><strong>Категория:</strong> ${n[e.metadata.category]||e.metadata.category}</div>
+
+                <div><strong>Описание:</strong> ${e.metadata.description||"—"}</div>
+
+                <div><strong>Автор:</strong> ${e.metadata.author}</div>
+
+                <div><strong>Теги:</strong> ${e.metadata.tags.join(", ")||"—"}</div>
+
+                <div><strong>Встроенный:</strong> ${e.metadata.isBuiltin?"Да":"Нет"}</div>
+
+                <div><strong>Совместимость:</strong> ${d.label}</div>
+
+            </div>
+
+            ${c.known&&!c.supported?`
+                <div style="margin-top: 12px; padding: 12px; border-radius: 10px; border: 1px solid rgba(216,119,6,0.35); background: rgba(245,158,11,0.12); color: var(--text-primary);">
+                    <strong>Профиль не подходит для текущей комплектации.</strong>
+                    <div style="margin-top: 6px; color: var(--text-secondary);">
+                        ${c.reason||"Для этого профиля не хватает обязательных датчиков."}
+                    </div>
+                </div>
+            `:""}
+
+        </div>
+
+
+
+        <div class="modal-section">
+
+            <div class="modal-section-title">🔥 Нагрев</div>
+
+            <div class="modal-info-grid">
+
+                <div><strong>Макс. мощность:</strong> ${Z(e.parameters.heater.maxPower,0," Вт")}</div>
+
+                <div><strong>Авто-режим нагрева:</strong> ${e.parameters.heater.autoMode?"Да":"Нет"}</div>
+
+                <div><strong>Booster SSR:</strong> ${e.parameters.heater.boosterEnabled?"Включён":"Отключён"}</div>
+
+                <div><strong>Отключать booster при:</strong> ${Z(e.parameters.heater.boosterStopCubeTempC,1,"°C")}</div>
+
+            </div>
+
+        </div>
+
+
+
+        ${f}
+
+
+
+        <div class="modal-section">
+
             <div class="modal-section-title">🌡️ Температурные пороги</div>
+
             <div class="modal-info-grid">
-                <div><strong>Макс. куб:</strong> ${profile.parameters.temperatures.maxCube}°C</div>
-                <div><strong>Макс. колонна:</strong> ${profile.parameters.temperatures.maxColumn}°C</div>
-                <div><strong>Окончание голов:</strong> ${profile.parameters.temperatures.headsEnd}°C</div>
-                <div><strong>Начало тела:</strong> ${profile.parameters.temperatures.bodyStart}°C</div>
-                <div><strong>Окончание тела:</strong> ${profile.parameters.temperatures.bodyEnd}°C</div>
+
+                <div><strong>Макс. куб:</strong> ${gn(e.parameters.temperatures.maxCube,a.maxCube)}</div>
+
+                <div><strong>Макс. колонна:</strong> ${gn(e.parameters.temperatures.maxColumn,a.maxColumn)}</div>
+
+                <div><strong>Окончание голов:</strong> ${gn(e.parameters.temperatures.headsEnd,a.headsEnd)}</div>
+
+                <div><strong>Начало тела:</strong> ${gn(e.parameters.temperatures.bodyStart,a.bodyStart)}</div>
+
+                <div><strong>Окончание тела:</strong> ${gn(e.parameters.temperatures.bodyEnd,a.bodyEnd)}</div>
+
             </div>
+
+            <div style="margin-top: 12px; color: var(--text-secondary);">
+                ${r.enabled?r.applicable?r.applied?`Барокоррекция активна: baseline ${Z(r.baselinePressureMmHg,1," мм рт.ст.")} • сейчас ${Z(r.currentPressureMmHg,1," мм рт.ст.")} • мягкий сдвиг ${r.appliedShiftC>=0?"+":""}${Number(r.appliedShiftC||0).toFixed(2)}°C.`:r.note||"Барокоррекция включена, но текущий сдвиг слишком мал для применения.":r.note||"Барокоррекция включена, но ещё нет достаточных данных для baseline.":"Барокоррекция выключена в настройках ректификации."}
+            </div>
+
+        </div>
+
+
+
+        <div class="modal-section">
+
+            <div class="modal-section-title">📊 Статистика использования</div>
+
+            <div class="modal-info-grid">
+
+                <div><strong>Использований:</strong> ${e.statistics.useCount}</div>
+
+                <div><strong>Средняя длительность:</strong> ${Uu(e.statistics.avgDuration)}</div>
+
+                <div><strong>Средний выход:</strong> ${e.statistics.avgYield} мл</div>
+
+                <div><strong>Успешность:</strong> ${e.statistics.successRate.toFixed(1)}%</div>
+
+                <div><strong>Успешных прогонов:</strong> ${o.successfulRuns||0}</div>
+
+                <div><strong>Неуспешных прогонов:</strong> ${o.failedRuns||0}</div>
+
+            </div>
+
         </div>
 
         <div class="modal-section">
-            <div class="modal-section-title">📊 Статистика использования</div>
+
+            <div class="modal-section-title">🧠 Learning Loop</div>
+
             <div class="modal-info-grid">
-                <div><strong>Использований:</strong> ${profile.statistics.useCount}</div>
-                <div><strong>Средняя длительность:</strong> ${Math.round(profile.statistics.avgDuration / 60)} мин</div>
-                <div><strong>Средний выход:</strong> ${profile.statistics.avgYield} мл</div>
-                <div><strong>Успешность:</strong> ${profile.statistics.successRate.toFixed(1)}%</div>
+
+                <div><strong>Средняя энергия:</strong> ${Z(o.avgEnergyUsed,2," кВт·ч")}</div>
+
+                <div><strong>Энергия на литр:</strong> ${Z(o.avgEnergyPerLiter,2," кВт·ч/л")}</div>
+
+                <div><strong>Process health:</strong> ${Z((o.avgProcessHealth||0)*100,0,"%")}</div>
+
+                <div><strong>Stability index:</strong> ${Z((o.avgStabilityIndex||0)*100,0,"%")}</div>
+
+                <div><strong>Типовой финал куба:</strong> ${Z(o.typicalCubeFinalTemp,1,"°C")}</div>
+
+                <div><strong>Типовой верх колонны:</strong> ${Z(o.typicalColumnTopFinalTemp,2,"°C")}</div>
+
+            </div>
+
+        </div>
+
+        <div class="modal-section">
+
+            <div class="modal-section-title">🧪 Условия последней валидации</div>
+
+            <div class="modal-info-grid">
+
+                <div><strong>Дата валидации:</strong> ${Hy(i.validatedAt)}</div>
+
+                <div><strong>ID baseline:</strong> ${i.sourceProcessId||"—"}</div>
+
+                <div><strong>Атм. давление:</strong> ${Z(i.atmosphereMmHg,1," мм рт.ст.")}</div>
+
+                <div><strong>Высота колонны:</strong> ${Z(i.columnHeightMm,0," мм")}</div>
+
+                <div><strong>Насадка:</strong> ${Dy(i.packingType)}</div>
+
+                <div><strong>Коэфф. насадки:</strong> ${Z(i.packingCoeff,1)}</div>
+
+                <div><strong>Мощность ТЭНа:</strong> ${Z(i.heaterPowerW,0," Вт")}</div>
+
+                <div><strong>Рабочая мощность:</strong> ${Z(i.targetPowerW,0," Вт")}</div>
+
+                <div><strong>Объём сырья:</strong> ${Z(i.feedVolumeL,1," л")}</div>
+
+                <div><strong>Крепость сырья:</strong> ${Z(i.feedAbvPercent,1,"%")}</div>
+
+                <div><strong>Заполнение куба:</strong> ${Z(i.cubeChargePercent,0,"%")}</div>
+
+                <div><strong>Стабильность:</strong> ${Z((i.avgStabilityIndex||0)*100,0,"%")}</div>
+
+            </div>
+
+            <div class="modal-info-grid" style="margin-top: 12px;">
+
+                <div><strong>Факт голов:</strong> ${Z(i.headsActualMl,0," мл")}</div>
+
+                <div><strong>Факт тела:</strong> ${Z(i.bodyActualMl,0," мл")}</div>
+
+                <div><strong>Факт хвостов:</strong> ${Z(i.tailsActualMl,0," мл")}</div>
+
+                <div><strong>Срез голов:</strong> ${Z(i.headsCutColumnTopC,2,"°C")}</div>
+
+                <div><strong>Срез тела:</strong> ${Z(i.bodyCutColumnTopC,2,"°C")}</div>
+
+                <div><strong>Срез хвостов:</strong> ${Z(i.tailsCutColumnTopC,2,"°C")}</div>
+
+                <div><strong>Финал куба:</strong> ${Z(i.cubeFinalC,1,"°C")}</div>
+
+                <div><strong>Финал верха:</strong> ${Z(i.columnTopFinalC,2,"°C")}</div>
+
+                <div><strong>Process health:</strong> ${Z((i.avgProcessHealth||0)*100,0,"%")}</div>
+
+            </div>
+
+        </div>
+
+        <div class="modal-section">
+
+            <div class="modal-section-title">🎯 Последний успешный baseline</div>
+
+            <div class="modal-info-grid">
+
+                <div><strong>ID прогона:</strong> ${s?.id||"—"}</div>
+
+                <div><strong>Длительность:</strong> ${Uu(s?.duration)}</div>
+
+                <div><strong>Выход:</strong> ${s?.totalCollected?`${s.totalCollected} мл`:"—"}</div>
+
+                <div><strong>Энергия:</strong> ${Z(s?.energyUsed,2," кВт·ч")}</div>
+
+            </div>
+
+            ${l.length?`
+                <div style="margin-top: 14px;">
+                    <strong>Последние рекомендации Run Advisor:</strong>
+                    <div style="display: grid; gap: 10px; margin-top: 10px;">
+                        ${l.map(g=>`
+                            <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary);">
+                                <div style="font-weight: 600; margin-bottom: 6px;">${g.title}</div>
+                                <div style="color: var(--text-secondary); margin-bottom: 6px;">${g.detail}</div>
+                                <div>${g.action}</div>
+                            </div>
+                        `).join("")}
+                    </div>
+                </div>
+            `:'<div style="margin-top: 14px; color: var(--text-secondary);">Для последнего успешного прогона snapshot рекомендаций пока не сохранён.</div>'}
+
+        </div>
+
+    `;t.innerHTML=b;let u=document.getElementById("profile-view-edit-btn");u&&(u.style.display=e?.metadata?.isBuiltin?"none":"");let p=document.getElementById("profile-view-duplicate-btn");p&&(p.style.display=""),document.getElementById("profile-view-modal").style.display="flex"}function vi(){document.getElementById("profile-view-modal").style.display="none",Gt=!1,fn(null)}async function Hs(e){try{let t=await fetch(`/api/profiles/${e}`);if(!t.ok)throw new Error("Не удалось загрузить профиль");let n=await t.json(),o=n?.metadata?.category==="mashing",i=Ar(n),r=[],a=jy(n),s=o?"":Vy(n);a&&r.push(a),s&&r.push(s);let l=r.join(`
+
+`),c=o?l?`Загрузить этот рецепт в панель затирки и сделать его активным профилем?
+
+${l}`:"Загрузить этот рецепт в панель затирки и сделать его активным профилем?":l?`Загрузить этот профиль в текущие настройки?
+
+${l}`:"Загрузить этот профиль в текущие настройки?";if(!confirm(c))return;let d=await fetch(`/api/profiles/${e}/load`,{method:"POST"}),m=await d.json();if(!d.ok||!m.success)throw new Error(m.error||"Неизвестная ошибка");o?(Oi("control"),await ti("mashing"),Ly(n),alert(i.known&&!i.supported?`⚠️ Рецепт затирки загружен, но текущая комплектация ограничивает запуск.
+
+${i.reason||"Проверьте топологию термодатчиков."}`:"✅ Рецепт затирки загружен в панель управления.")):alert(i.known&&!i.supported?`⚠️ Профиль загружен, но его запуск на текущем железе будет заблокирован.
+
+${i.reason||"Проверьте топологию термодатчиков."}`:'✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".'),ie()}catch(t){console.error("Ошибка загрузки профиля:",t),alert(`❌ Ошибка загрузки профиля: ${t.message||"Неизвестная ошибка"}`)}}function nm(){Ne&&(vi(),Hs(Ne))}function Ds(e){confirm("Удалить этот профиль? Действие нельзя отменить.")&&fetch(`/api/profiles/${e}`,{method:"DELETE"}).then(t=>t.json()).then(t=>{t.success?(Kt(),alert("✅ Профиль удалён")):alert("❌ "+(t.error||"Ошибка удаления профиля"))}).catch(t=>{console.error("Ошибка удаления профиля:",t),alert("❌ Ошибка удаления профиля")})}function om(){confirm("Удалить ВСЕ пользовательские профили? Встроенные рецепты останутся. Действие нельзя отменить!")&&fetch("/api/profiles",{method:"DELETE"}).then(e=>e.json()).then(e=>{e.success?(Kt(),alert("✅ Все пользовательские профили удалены")):alert("❌ Ошибка очистки профилей")}).catch(e=>{console.error("Ошибка очистки профилей:",e),alert("❌ Ошибка очистки профилей")})}var im="smart-column-profiles-snapshot-v1",zy=.75006156,_n=null,Ws=null;function Uy(e,t="profile"){return String(e||"").trim().replace(/[\\/:*?"<>|]+/g,"_").replace(/\s+/g,"_")||t}function Vs(e){return String(e??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}function ct(e,t=0){let n=Number(e);return Number.isFinite(n)?n:t}function rm(e,t){let n=new Blob([JSON.stringify(e,null,2)],{type:"application/json"}),o=URL.createObjectURL(n),i=document.createElement("a");i.href=o,i.download=t,document.body.appendChild(i),i.click(),document.body.removeChild(i),URL.revokeObjectURL(o)}function we(e,t=1,n=""){let o=Number(e);return Number.isFinite(o)?`${o.toFixed(t)}${n}`:"—"}function Ky(e){if(!e)return"—";let t=new Date(e);return Number.isNaN(t.getTime())?String(e):t.toLocaleString("ru-RU")}function Gy(e){let t=Number(e?.pressure?.atm??e?.p_atm??0);return!Number.isFinite(t)||t<=0?0:t*zy}async function wi(e){try{let t=await fetch(e);return t.ok?await t.json():{}}catch{return{}}}async function am(){let[e,t,n,o]=await Promise.all([wi("/api/version"),wi("/api/settings/equipment"),wi("/api/settings/safety"),wi("/api/status")]);return{firmwareVersion:e?.firmware||e?.version||"",board:e?.board||e?.chipModel||"",heaterPowerW:ct(t?.heaterPowerW,0),columnHeightMm:ct(t?.columnHeightMm,0),cubeVolumeL:ct(t?.cubeVolumeL,0),packingType:String(t?.packingType||"").trim(),packingCoeff:ct(t?.packingCoeff,0),pressureMaxMmHg:ct(n?.pressureMaxMmHg,0),currentPressureMmHg:Gy(o)}}function sm(e,t,n={}){return{firmwareVersion:e?.firmwareVersion||"",board:e?.board||"",deviceContext:{heaterPowerW:t?.heaterPowerW||0,columnHeightMm:t?.columnHeightMm||0,cubeVolumeL:t?.cubeVolumeL||0,packingType:t?.packingType||"",packingCoeff:t?.packingCoeff||0,pressureMaxMmHg:t?.pressureMaxMmHg||0,currentPressureMmHg:t?.currentPressureMmHg||0},...n}}function Yy(e){if(Array.isArray(e))return{schema:"",meta:{},profiles:e};if(e&&Array.isArray(e.profiles))return{schema:String(e.schema||""),meta:{...e.meta&&typeof e.meta=="object"?e.meta:{},exportedAt:e.exportedAt||e?.meta?.exportedAt||""},profiles:e.profiles};if(e&&e.profile&&e.profile.metadata&&e.profile.parameters)return{schema:String(e.schema||""),meta:{...e.meta&&typeof e.meta=="object"?e.meta:{},exportedAt:e.exportedAt||e?.meta?.exportedAt||""},profiles:[e.profile]};if(e&&e.metadata&&e.parameters)return{schema:"",meta:{},profiles:[e]};throw new Error("Неверный формат JSON для импорта профилей")}function Jy(e,t){let n=Number(e),o=Number(t);return!(n>0)||!(o>0)?0:Math.abs(o-n)/n}function Zy(e,t,n){let o=e?.validation&&typeof e.validation=="object"?e.validation:{},i=n?.deviceContext&&typeof n.deviceContext=="object"?n.deviceContext:{},r=e?.metadata?.name||e?.name||"Без имени",a=[],s=[],l="good";if(!e?.metadata?.name||!e?.parameters)return{title:r,tone:"danger",warnings:["Профиль неполный: не хватает имени или основных параметров."],notes:[]};o.validatedAt||s.push("У профиля нет validation context успешного baseline, совместимость оценена только по уставкам.");let c=o.heaterPowerW||i.heaterPowerW||0,d=Jy(t.heaterPowerW,c);d>=.25?(l="warning",a.push(`Мощность: профиль валидирован под ${we(c,0," Вт")}, у вас ${we(t.heaterPowerW,0," Вт")}.`)):d>=.1&&s.push(`Мощность установки отличается: baseline ${we(c,0," Вт")} vs текущее ${we(t.heaterPowerW,0," Вт")}.`);let m=o.columnHeightMm||i.columnHeightMm||0,f=Math.abs(ct(m,0)-ct(t.columnHeightMm,0));m>0&&t.columnHeightMm>0&&(f>=150?(l="warning",a.push(`Высота колонны отличается на ${we(f,0," мм")} (${we(m,0," мм")} в baseline).`)):f>=50&&s.push(`Высота колонны немного отличается: baseline ${we(m,0," мм")} vs текущее ${we(t.columnHeightMm,0," мм")}.`));let b=String(o.packingType||i.packingType||"").trim();b&&t.packingType&&b!==t.packingType&&(l="warning",a.push(`Насадка не совпадает: baseline ${b}, сейчас ${t.packingType}.`));let u=o.packingCoeff||i.packingCoeff||0,p=Math.abs(ct(u,0)-ct(t.packingCoeff,0));u>0&&t.packingCoeff>0&&(p>=.4?(l="warning",a.push(`Коэффициент насадки заметно отличается: baseline ${we(u,1)} vs текущее ${we(t.packingCoeff,1)}.`)):p>=.15&&s.push(`Коэффициент насадки немного отличается: baseline ${we(u,1)} vs текущее ${we(t.packingCoeff,1)}.`));let g=o.feedVolumeL||0;g>0&&t.cubeVolumeL>0&&g>t.cubeVolumeL?(l="danger",a.push(`Baseline был на ${we(g,1," л")}, что больше текущего куба ${we(t.cubeVolumeL,1," л")}.`)):g>0&&t.cubeVolumeL>0&&g>t.cubeVolumeL*.85&&(l=l==="good"?"warning":l,a.push(`Профиль рассчитан на почти полный куб: baseline ${we(g,1," л")} при лимите ${we(t.cubeVolumeL,1," л")}.`));let v=Math.abs(ct(o.atmosphereMmHg,0)-ct(t.currentPressureMmHg,0));o.atmosphereMmHg>0&&t.currentPressureMmHg>0&&v>=12&&s.push(`Атмосферное давление заметно отличается: baseline ${we(o.atmosphereMmHg,1," мм рт.ст.")} vs сейчас ${we(t.currentPressureMmHg,1," мм рт.ст.")}. Барокоррекция поможет, но запуск всё равно лучше перепроверить.`);let w=Math.abs(ct(e?.parameters?.safety?.pressureMax,0)-ct(t.pressureMaxMmHg,0));return t.pressureMaxMmHg>0&&w>=20&&s.push("Лимит давления в профиле отличается от текущего safety-порога устройства."),{title:r,tone:l,warnings:a,notes:s}}function Qy(e){let t={rectification:"ректификация",distillation:"дистилляция",mashing:"затирание"},n=new Map;return e.forEach(o=>{let i=String(o?.metadata?.category||o?.parameters?.mode||"other").trim()||"other";n.set(i,(n.get(i)||0)+1)}),Array.from(n.entries()).map(([o,i])=>`${t[o]||o}: ${i}`).join(" • ")}function Xy(e){let t=e.tone==="danger"?"is-danger":e.tone==="warning"?"is-warning":"is-good",n=e.tone==="danger"?"Риск":e.tone==="warning"?"Проверить":"Совместим";return`
+        <div class="profile-import-card ${t}">
+            <div class="profile-import-card-head">
+                <strong>${Vs(e.title)}</strong>
+                <span class="profile-import-badge ${t}">${n}</span>
+            </div>
+            ${e.warnings.length?`
+                <ul class="profile-import-list">
+                    ${e.warnings.map(o=>`<li>${Vs(o)}</li>`).join("")}
+                </ul>
+            `:""}
+            ${e.notes.length?`
+                <div class="profile-import-note-block">
+                    ${e.notes.map(o=>`<p>${Vs(o)}</p>`).join("")}
+                </div>
+            `:""}
+        </div>
+    `}function ev(e,t){let n=e.profiles,o=Qy(n),i=n.map(c=>Zy(c,t,e.meta)),r=i.filter(c=>c.tone==="danger").length,a=i.filter(c=>c.tone==="warning").length,s=[`Профилей к импорту: ${n.length}`,o?`Состав: ${o}`:"",e.schema?`Schema: ${e.schema}`:"Schema: legacy/plain JSON",e.meta?.scope?`Scope: ${e.meta.scope}`:"",e.meta?.firmwareVersion?`Экспорт с прошивки: ${e.meta.firmwareVersion}`:"",e.meta?.board?`Плата: ${e.meta.board}`:"",e.meta?.exportedAt?`Дата экспорта: ${Ky(e.meta.exportedAt)}`:"",t?.heaterPowerW?`Текущая установка: ${we(t.heaterPowerW,0," Вт")} • ${we(t.columnHeightMm,0," мм")} • куб ${we(t.cubeVolumeL,1," л")}`:"",r>0?`Профилей с риском несовместимости: ${r}`:"",a>0?`Профилей, которые стоит перепроверить: ${a}`:""].filter(Boolean).join(`
+`),l=`
+        <div class="profile-import-meta">
+            <div class="profile-import-meta-title">Проверка совместимости перед импортом</div>
+            <div class="profile-import-meta-copy">
+                Сравнение выполнено по validation context профиля, мощности, высоте колонны, насадке, объёму куба и текущим safety-лимитам.
             </div>
         </div>
-    `;
+        <div class="profile-import-cards">
+            ${i.map(Xy).join("")}
+        </div>
+    `;return{profiles:n,summary:s,detailsHtml:l}}function js(e="",t="",n=!1){let o=document.getElementById("import-preview"),i=document.getElementById("import-preview-text"),r=document.getElementById("import-preview-details");!o||!i||!r||(i.textContent=e,r.innerHTML=t,o.style.display=n?"block":"none")}async function lm(){let[e,t]=await Promise.all([wi("/api/version").then(n=>({firmwareVersion:n?.firmware||n?.version||"",board:n?.board||n?.chipModel||""})),am()]);return{versionMeta:e,deviceContext:t}}async function cm(e){try{let[t,n]=await Promise.all([fetch(`/api/profiles/${e}/export`),lm()]);if(!t.ok)throw new Error("Не удалось экспортировать профиль");let o=await t.json(),i=`profile_${Uy(o?.metadata?.name,e)}_${e}.json`;rm({schema:im,exportedAt:new Date().toISOString(),meta:sm(n.versionMeta,n.deviceContext,{scope:"single-profile",profileCount:1}),profile:o},i)}catch(t){console.error("Ошибка экспорта профиля:",t),alert("❌ Ошибка экспорта профиля")}}async function dm(){let e=confirm("Включить встроенные рецепты в экспорт?");try{let[t,n]=await Promise.all([fetch(`/api/profiles/export${e?"?includeBuiltin=true":""}`),lm()]);if(!t.ok)throw new Error("Не удалось экспортировать профили");let o=await t.json();if(!Array.isArray(o)||o.length===0){alert("Нет профилей для экспорта");return}let i=new Date().toISOString().split("T")[0];rm({schema:im,exportedAt:new Date().toISOString(),meta:sm(n.versionMeta,n.deviceContext,{scope:"profiles-batch",includeBuiltin:e,profileCount:o.length}),profiles:o},`profiles_export_${i}.json`),alert(`✅ Экспортировано профилей: ${o.length}`)}catch(t){console.error("Ошибка экспорта профилей:",t),alert("❌ Ошибка экспорта профилей")}}function um(){_n=null,Ws=am(),document.getElementById("import-file-input").value="",document.getElementById("import-btn").disabled=!0,js("","",!1),document.getElementById("profile-import-modal").style.display="flex",document.getElementById("import-file-input").onchange=function(e){let t=e.target.files?.[0];if(!t)return;let n=new FileReader;n.onload=function(o){Promise.resolve(Ws).then(i=>{let r=JSON.parse(o.target.result),a=Yy(r),s=ev(a,i||{});_n=s.profiles,js(s.summary,s.detailsHtml,!0),document.getElementById("import-btn").disabled=s.profiles.length===0}).catch(i=>{console.error("Ошибка чтения файла профилей:",i),_n=null,js("","",!1),document.getElementById("import-btn").disabled=!0,alert(`❌ Ошибка чтения файла: ${i.message||"Неверный формат JSON"}`)})},n.readAsText(t)}}function zs(){document.getElementById("profile-import-modal").style.display="none",_n=null,Ws=null}function mm(){if(!Array.isArray(_n)||_n.length===0){alert("Выберите корректный файл профилей для импорта");return}fetch("/api/profiles/import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(_n)}).then(e=>e.json()).then(e=>{if(e.success){let t=Number(e.imported??e.count??0);zs(),Kt(),alert(`✅ Импортировано профилей: ${t}`)}else alert("❌ Ошибка импорта: "+(e.error||"Неизвестная ошибка"))}).catch(e=>{console.error("Ошибка импорта профилей:",e),alert("❌ Ошибка импорта профилей")})}function pm(e){return e?.supportsUnitToggle?!!document.getElementById("runtime-edit-unit-watts")?.checked:!1}function tv(e){let t=e?.quickAdjustments?.groups;return!Array.isArray(t)||t.length===0?[]:t}function nv(e){return`${e>=0?"+":""}${e}`}function Us(e){let t=document.getElementById("runtime-edit-quick-actions");if(!t)return;let n=tv(e);if(!n.length){t.style.display="none",t.innerHTML="";return}let o=pm(e)?"watts":"percent";t.innerHTML=n.map(i=>{let a=(Array.isArray(i.deltas)?i.deltas:[]).map(l=>`<button type="button" class="btn btn-sm runtime-edit-quick-btn" data-runtime-delta-unit="${i.unit}" data-runtime-delta="${l}">${nv(l)}</button>`).join("");return`
+            <div class="runtime-edit-quick-group${i.unit===o?" is-active":""}">
+                <div class="runtime-edit-quick-label">${i.label}</div>
+                <div class="runtime-edit-quick-row">${a}</div>
+            </div>
+        `}).join(""),t.querySelectorAll("[data-runtime-delta]").forEach(i=>{i.addEventListener("click",()=>{let r=String(i.getAttribute("data-runtime-delta-unit")||"").trim(),a=y(i.getAttribute("data-runtime-delta"),NaN);ov(r,a),Us(e)})}),t.style.display="grid"}function ov(e,t){let n=Qt,o=document.getElementById("runtime-edit-value");if(!n||!o||!Number.isFinite(t))return;let i=y(o.min,Number.NEGATIVE_INFINITY),r=y(o.max,Number.POSITIVE_INFINITY),a=y(o.value,i||0);if(n.supportsUnitToggle){let l=Math.max(1,y(n.heaterMaxW,me)),c=pm(n),d=c?a/l*100:a,m;e==="watts"?m=Math.max(0,Math.min(l,d/100*l+t))/l*100:m=d+t,m=Math.max(0,Math.min(100,m)),o.value=String(Math.round(c?m/100*l:m)),o.focus();return}let s=Math.min(r,Math.max(i,a+t));o.value=String(Math.round(s)),o.focus()}function fm(e){return e?e.querySelector(".runtime-edit-popover")||e.querySelector(".modal-content"):null}function iv(e,t){let n=fm(e);if(!n)return;let o=window.innerWidth||document.documentElement.clientWidth||0,i=window.innerHeight||document.documentElement.clientHeight||0,r=8,a=n.getBoundingClientRect();if(!(t instanceof Element)){let f=Math.max(r,Math.round((o-a.width)/2)),b=Math.max(r,Math.round((i-a.height)/2));n.style.left=`${f}px`,n.style.top=`${b}px`;return}let s=t.getBoundingClientRect(),l=s.right+r;l+a.width+r>o&&(l=s.left-a.width-r),l<r&&(l=s.left+(s.width-a.width)/2);let c=s.top+(s.height-a.height)/2;c<r&&(c=r),c+a.height+r>i&&(c=i-a.height-r);let d=Math.max(r,Math.min(l,o-a.width-r)),m=Math.max(r,Math.min(c,i-a.height-r));n.style.left=`${Math.round(d)}px`,n.style.top=`${Math.round(m)}px`}function rv(e){let t=S,n=Math.max(1,y(t.equipment.heaterPowerW,me)),o=Math.max(0,y(t.power.power,0)),i=Math.max(0,Math.round(y(t.power.setW,y(t.distillation.powerW,o))));return{"rect-power":{title:"Мощность нагрева (ректификация)",label:"Мощность, Вт",step:"50",min:"-1",max:String(n),hint:"Задайте мощность в ваттах. Установите -1 для возврата к автоматическому управлению.",value:String(i),allowInRect:!0,quickAdjustments:{groups:[{unit:"watts",label:"Быстрые шаги, Вт",deltas:[-50,-250,50,250]}]},submit:async a=>{let s=Number(a)<0?-1:Math.min(n,Math.max(0,Math.round(Number(a)))),l=await fetch("/api/rect/heater",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({powerW:s})});if(!l.ok)throw new Error(await l.text())}},"manual-power":{title:"Мощность нагрева",label:"Мощность, Вт",step:"50",min:"0",max:String(n),hint:"Применяется сразу в ручном режиме.",value:String(i),quickAdjustments:{groups:[{unit:"watts",label:"Быстрые шаги, Вт",deltas:[-50,-250,50,250]}]},submit:async a=>{let s=Math.min(n,Math.max(0,Math.round(Number(a)))),l=await fetch("/api/manual/heater",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({powerW:s})});if(!l.ok)throw new Error(await l.text())}},"planned-abv":{title:"Плановая крепость",label:"Крепость, %",step:"0.1",min:"0",max:"100",hint:"Используется для расчёта целей и времени, пока электронный ареометр OFF.",value:Ht(xt,40).toFixed(1),allowAnyMode:!0,submit:async a=>{Xl(a),Vt(),Yn()}},"manual-speed":{title:"Скорость отбора",label:"Скорость, мл/ч",step:"1",min:"0",max:"5000",hint:"0 = остановить отбор.",value:y(t.pump.speedMlH,0).toFixed(0),quickAdjustments:{groups:[{unit:"mlh",label:"Быстрые шаги, мл/ч",deltas:[-10,-100,10,100]}]},submit:async a=>{let s=await fetch("/api/manual/pump",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({speed:Number(a)})});if(!s.ok)throw new Error(await s.text())}},"water-autostart-cube-temp":{title:"Подача холодной воды",label:"Автостарт по T куба, °C",step:"0.5",min:"20",max:"60",hint:"Температура куба, при которой система автоматически откроет подачу воды.",value:y(t.equipment.waterAutoStartCubeTempC,45).toFixed(1),allowAnyMode:!0,quickAdjustments:{groups:[{unit:"celsius",label:"Быстрые шаги, °C",deltas:[-1,-5,1,5]}]},submit:async a=>{let s=await fetch("/api/settings/equipment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({waterAutoStartCubeTempC:Number(a)})});if(!s.ok)throw new Error(await s.text())}},"safety-pressure-max":{title:"Авария: давление куба",label:"Порог, мм рт.ст.",step:"0.5",min:"5",max:"200",hint:"При превышении этого давления сработает аварийная остановка.",value:y(t.safetySettings.pressureMaxMmHg,50).toFixed(1),allowAnyMode:!0,quickAdjustments:{groups:[{unit:"mmhg",label:"Быстрые шаги, мм рт.ст.",deltas:[-1,-5,1,5]}]},submit:async a=>{let s=await fetch("/api/settings/safety",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pressureMaxMmHg:Number(a)})});if(!s.ok)throw new Error(await s.text())}},"safety-tsa-max":{title:"Авария: температура TSA",label:"Порог, °C",step:"0.5",min:"35",max:"120",hint:"При превышении температуры TSA сработает аварийная остановка.",value:y(t.safetySettings.tsaMaxC,55).toFixed(1),allowAnyMode:!0,quickAdjustments:{groups:[{unit:"celsius",label:"Быстрые шаги, °C",deltas:[-1,-5,1,5]}]},submit:async a=>{let s=await fetch("/api/settings/safety",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tsaMaxC:Number(a)})});if(!s.ok)throw new Error(await s.text())}},"safety-water-out-max":{title:"Авария: вода на выходе",label:"Порог, °C",step:"0.5",min:"30",max:"120",hint:"Максимально допустимая температура охлаждающей воды на выходе.",value:y(t.safetySettings.waterOutMaxC,70).toFixed(1),allowAnyMode:!0,quickAdjustments:{groups:[{unit:"celsius",label:"Быстрые шаги, °C",deltas:[-1,-5,1,5]}]},submit:async a=>{let s=await fetch("/api/settings/safety",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({waterOutMaxC:Number(a)})});if(!s.ok)throw new Error(await s.text())}},"manual-heads":{title:"Объем фракции: Головы",label:"Головы, мл",step:"1",min:"0",max:"100000",hint:"Коррекция учетного объема на экране.",value:y(t.volumes.heads,0).toFixed(0),submit:async a=>{let s=await fetch("/api/manual/volumes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({heads:Number(a),syncTotal:!0})});if(!s.ok)throw new Error(await s.text())}},"manual-body":{title:"Объем фракции: Тело",label:"Тело, мл",step:"1",min:"0",max:"100000",hint:"Коррекция учетного объема на экране.",value:y(t.volumes.body,0).toFixed(0),submit:async a=>{let s=await fetch("/api/manual/volumes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({body:Number(a),syncTotal:!0})});if(!s.ok)throw new Error(await s.text())}},"manual-tails":{title:"Объем фракции: Хвосты",label:"Хвосты, мл",step:"1",min:"0",max:"100000",hint:"Коррекция учетного объема на экране.",value:y(t.volumes.tails,0).toFixed(0),submit:async a=>{let s=await fetch("/api/manual/volumes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tails:Number(a),syncTotal:!0})});if(!s.ok)throw new Error(await s.text())}}}[e]||null}function gm(e,t=null){let n=rv(e);if(!n)return;let o=!!n.allowAnyMode,i=!!n.allowInRect&&ge===j;if(!o&&ge!==J&&!i){h("Редактирование параметров доступно только в ручной или авто-ректификации","warning");return}let r=document.getElementById("runtime-edit-modal"),a=document.getElementById("runtime-edit-title"),s=document.getElementById("runtime-edit-label"),l=document.getElementById("runtime-edit-value"),c=document.getElementById("runtime-edit-hint"),d=document.getElementById("runtime-edit-unit-toggle"),m=document.getElementById("runtime-edit-unit-watts");!n||!r||!a||!s||!l||!c||(sa(n),a.textContent=n.title,s.textContent=n.label,l.min=n.min,l.max=n.max,l.step=n.step,l.value=n.value,c.textContent=n.hint,d&&m&&(n.supportsUnitToggle?(m.checked=!1,d.style.display="block"):d.style.display="none"),Us(n),r.style.display="block",requestAnimationFrame(()=>{let f=t instanceof Element?t:document.activeElement;iv(r,f),l.focus(),l.select()}))}function bm(){let e=document.getElementById("runtime-edit-unit-watts"),t=document.getElementById("runtime-edit-label"),n=document.getElementById("runtime-edit-value"),o=Qt;if(!o||!e||!t||!n)return;let i=o.heaterMaxW||me;if(e.checked){let a=y(n.value,0),s=Math.round(a/100*i);t.textContent="Мощность, Вт",n.min="0",n.max=String(i),n.step="10",n.value=String(s)}else{let a=y(n.value,0),s=Math.round(a/i*100);t.textContent="Мощность, %",n.min=o.min,n.max=o.max,n.step=o.step,n.value=String(Math.min(100,Math.max(0,s)))}Us(o),n.focus()}function Ks(){sa(null);let e=document.getElementById("runtime-edit-modal");if(!e)return;let t=fm(e);t&&(t.style.left="",t.style.top=""),e.style.display="none"}async function hm(){if(!Qt)return;let e=document.getElementById("runtime-edit-value"),t=document.getElementById("runtime-edit-unit-watts");if(!e)return;let n=y(e.min,0),o=y(e.max,Number.POSITIVE_INFINITY),i=y(e.value,NaN);if(!Number.isFinite(i)){alert("Введите корректное число");return}if(i<n&&(i=n),i>o&&(i=o),t&&t.checked&&Qt.supportsUnitToggle){let r=Qt.heaterMaxW||me;i=Math.round(i/r*100),i=Math.min(100,Math.max(0,i))}try{await Qt.submit(i),Ks(),h("Параметр обновлен","success"),setTimeout(ie,250)}catch(r){let a=r?.message||"Ошибка сохранения";h(`Ошибка изменения параметра: ${a}`,"error")}}async function ym(){let e=document.getElementById("demo-mode-enabled");if(!e)return;let t=!!e.checked;localStorage.setItem("demoMode",t?"true":"false");try{if(!(await fetch("/api/settings/demo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:t})})).ok){h("⚠️ Ошибка сохранения демо-режима на сервер","warning");return}h(t?"🧪 Демо-режим ВКЛЮЧЁН":"✅ Демо-режим отключён","info")}catch{h("⚠️ Демо-режим сохранён локально (сервер недоступен)","warning")}}async function vm(){let e=document.getElementById("demo-mode-enabled");if(e){try{let t=await fetch("/api/settings/demo");if(t.ok){let o=!!(await t.json())?.demoMode;e.checked=o,localStorage.setItem("demoMode",o?"true":"false");return}}catch{}e.checked=localStorage.getItem("demoMode")==="true"}}function wm(){confirm(`Перезагрузить контроллер ESP32?
 
-    body.innerHTML = html;
-    document.getElementById('profile-view-modal').style.display = 'flex';
-}
+Все текущие процессы будут остановлены!`)&&(h("🔄 Отправка команды перезагрузки...","warning"),fetch("/api/reboot",{method:"POST"}).then(e=>{e.ok?(h("✓ Контроллер перезагружается...","success"),setTimeout(()=>{h("📌 Попытка переподключения...","info"),window.location.reload()},5e3)):h("✗ Ошибка перезагрузки","error")}).catch(e=>{h(`❌ Ошибка сети: ${e.message}`,"error")}))}var Pm="equipment.activeSection",Im="settings.activeSection",Am="equipment.parameters.activeCard",Nm="equipment.calibration.activeCard",Bm="equipment.testing.activeCard",km="equipment.commissioning.manual",Rm="equipment.commissioning.report",av="/api/testing/status",sv=1500,lv=1,Fm="(max-width: 900px)",Lm=[{id:"actuators",label:"Исполнительные узлы"},{id:"sensors",label:"Датчики и отклик"},{id:"service",label:"Сервис и питание"}],Ti=[{id:"pump",selector:"#equipment-test-pump-toggle",group:"actuators",icon:"🧪",title:"Насос",shortTitle:"Насос",description:"Ручной запуск, контроль скорости и быстрый переход к калибровке."},{id:"stirrer",selector:"#equipment-test-stirrer-start",group:"actuators",icon:"🌀",title:"Мешалка куба",shortTitle:"Мешалка",description:"Ручной запуск 0-10 В, оперативная смена скорости и остановка без перехода на главный экран."},{id:"valves",selector:"#equipment-test-water-toggle",group:"actuators",icon:"🚰",title:"Клапаны",shortTitle:"Клапаны",description:"Открытие по одному и короткие импульсы по гидравлическим каналам."},{id:"servo",selector:"#equipment-test-servo-angle-apply",group:"actuators",icon:"🎯",title:"Сервопривод фракционника",shortTitle:"Сервопривод",description:"Быстрые позиции, ручной угол и сохранение сервисных пресетов."},{id:"heater",selector:"#equipment-test-heater-start",group:"service",icon:"⚡",title:"Нагрев",shortTitle:"Нагрев",description:"Основной TRIAC, booster SSR, zero-cross, PZEM и ручной тест в одной силовой панели."},{id:"service-overview",selector:"#equipment-test-stop-all",group:"service",icon:"🛠️",title:"Сервисное тестирование оборудования",shortTitle:"Сервис",description:"Общий сервисный контур, стоп всех тестов, пусконаладка и автосамопроверка железа в одном инженерном окне."},{id:"temps",selector:"#equipment-test-temps-refresh",group:"sensors",icon:"🌡️",title:"Термометры",shortTitle:"Термометры",description:"Текущие показания всех датчиков температуры рядом с сервисными действиями."},{id:"pressure",selector:"#equipment-test-pressure-start",group:"sensors",icon:"💨",title:"Датчик давления",shortTitle:"Давление",description:"Проверка отклика датчика продувкой с подсветкой изменения сигнала."},{id:"hydrometer",selector:"#equipment-test-hydrometer-badge",group:"sensors",icon:"🧫",title:"Ареометр",shortTitle:"Ареометр",description:"Живые данные ареометра и быстрый переход к его калибровочной таблице."}],cv=[{id:"core",label:"Базовые узлы"},{id:"process",label:"Куб и процесс"},{id:"automation",label:"Автоматика"},{id:"diagnostics",label:"Шина и модули"}],Js=[{id:"pump-settings",selector:"#pump-ml-per-rev",group:"core",icon:"🧪",title:"Насос и дозирование",shortTitle:"Насос",description:"Шаги, объём на оборот и базовые параметры дозирования для стабильной подачи."},{id:"cube-settings",selector:"#heater-power-w",group:"process",icon:"🥃",title:"Куб, ТЭН и колонна",shortTitle:"Куб и ТЭН",description:"Мощность нагрева, геометрия колонны и рабочий объём куба в одном компактном блоке."},{id:"cooling-settings",selector:"#water-autostart-cube-temp",group:"process",icon:"💧",title:"Охлаждение и автостарт",shortTitle:"Охлаждение",description:"Порог автоматического запуска воды и связанные технологические настройки."},{id:"stirrer-settings",selector:"#stirrer-enabled",group:"automation",icon:"🌀",title:"Мешалка куба",shortTitle:"Мешалка",description:"Ручное включение, скорость по умолчанию и автозапуск для режимов, где перемешивание нужно постоянно."},{id:"hardware-status",selector:"#hardware-modules-list",group:"diagnostics",icon:"HW",title:"Шина и модули",shortTitle:"Модули",description:"Статусы I2C/UART модулей, адреса и роль каждого датчика или платы в железе."}],dv=[{id:"actuators",label:"Исполнительные узлы"},{id:"sensors",label:"Датчики"}],Zs=[{id:"connection",label:"Подключение",title:"Подключение",subtitle:"Облако и привязка контроллера без длинной ленты карточек.",storageKey:"settings.connection.activeCard",stateKey:"activeSettingsConnectionCard",defs:[{id:"cloud",selector:"#cloud-enabled",group:"main",icon:"☁️",title:"Облако",shortTitle:"Облако",description:"WSS-туннель и статус привязки устройства."},{id:"esp32",selector:"#esp32-device-select",group:"main",icon:"📡",title:"Подключение к ESP32",shortTitle:"ESP32",description:"Привязка устройства, список контроллеров и сетевые параметры."}]},{id:"integrations",label:"Интеграции",title:"Интеграции",subtitle:"MQTT и уведомления собраны в один компактный рабочий раздел.",storageKey:"settings.integrations.activeCard",stateKey:"activeSettingsIntegrationsCard",defs:[{id:"mqtt",selector:"#mqtt-enabled",group:"main",icon:"📡",title:"MQTT",shortTitle:"MQTT",description:"Брокер, discovery и публикация состояний."},{id:"notifications",selector:"#browser-notifications-enabled",group:"main",icon:"🔔",title:"Браузерные уведомления",shortTitle:"Уведомления",description:"Локальные push-уведомления в браузере."}]},{id:"access",label:"Доступ",title:"Доступ и защита",subtitle:"Управление аутентификацией и ограничением запросов.",storageKey:"settings.access.activeCard",stateKey:"activeSettingsAccessCard",defs:[{id:"security",selector:"#auth-enabled",group:"main",icon:"🔒",title:"Безопасность",shortTitle:"Безопасность",description:"Аутентификация и rate limit."}]},{id:"interface",label:"Интерфейс",title:"Интерфейс",subtitle:"Тема и визуальное поведение интерфейса без перегруженного экрана.",storageKey:"settings.interface.activeCard",stateKey:"activeSettingsInterfaceCard",defs:[{id:"theme",selector:`button[onclick="setTheme('light')"]`,group:"main",icon:"🎨",title:"Тема интерфейса",shortTitle:"Тема",description:"Переключение цветовой схемы."},{id:"display",selector:"#show-memory-stats",group:"main",icon:"🖥️",title:"Отображение",shortTitle:"Отображение",description:"Небольшие системные опции отображения."}]},{id:"system",label:"Система",title:"Система",subtitle:"Сервисные системные карточки с быстрым доступом к ключевым действиям.",storageKey:"settings.system.activeCard",stateKey:"activeSettingsSystemCard",defs:[{id:"demo",selector:"#demo-mode-enabled",group:"main",icon:"🧪",title:"Демо-режим",shortTitle:"Демо",description:"Симуляция оборудования без реального железа."},{id:"reboot",selector:'button[onclick="rebootController()"]',group:"main",icon:"🔄",title:"Перезагрузка",shortTitle:"Перезагрузка",description:"Безопасный перезапуск контроллера."},{id:"versions",selector:"#firmware-version",group:"main",icon:"ℹ️",title:"Информация о версиях",shortTitle:"Версии",description:"Backend/frontend build info и плата."}]}],Qs=[{id:"pump-calibration",selector:"#cal-speed",group:"actuators",icon:"🧪",title:"Калибровка насоса",shortTitle:"Насос",description:"Налив по таре, расчёт времени и обновление коэффициента подачи без лишних переходов."},{id:"temp-calibration",selector:"#sensorList",group:"sensors",icon:"🌡️",title:"Калибровка термометров",shortTitle:"Термометры",description:"Сканирование датчиков, ручная коррекция и быстрый сервисный доступ к каждому термометру."},{id:"pressure-calibration",selector:"#pressureCurrent",group:"sensors",icon:"🎛️",title:"Калибровка манометра",shortTitle:"Манометр",description:"Таблица давления для ADS1115 A1 по эталонному манометру: живое напряжение, ADC и сохранённые точки интерполяции."},{id:"hydrometer-calibration",selector:"#hydrometerCurrent",group:"sensors",icon:"🧪",title:"Калибровка ареометра",shortTitle:"Ареометр",description:"Таблица ABV по сигналу попугая, текущее показание и сервисная подстройка без JSON-ручек."},{id:"calibration-backup",selector:"#calibration-import-preview",group:"sensors",icon:"🗂️",title:"Резерв и восстановление",shortTitle:"Snapshot",description:"Экспорт и импорт полного calibration snapshot для переноса или быстрого отката."}],x={activeSection:"parameters",activeParameterCard:"pump-settings",activeCalibrationCard:"pump-calibration",activeTestingCard:"pump",pollingHandle:null,pollingRequestInFlight:!1,pollingListenersBound:!1,lastStatus:null,pendingStirrerSpeed:null,heaterPendingPowerW:0,pressureTest:{active:!1,baseline:null,min:null,max:null,success:!1},commissioning:{manual:qv()||{pump:!1,valves:!1,heater:!1}},serviceContourMemory:{},serviceContourHistory:[],selfCheckHistory:[],selfCheckLastSignature:"",selfCheckLastRecordedAt:0,activeSettingsSection:"connection"},_m=new Map,Xs=null,uv=`
+    <div class="equipment-testing-stack">
+        <div class="card equipment-card equipment-test-status-card">
+            <div class="equipment-test-status-head">
+                <div>
+                    <h2>Сервисное тестирование оборудования</h2>
+                    <p class="equipment-subtitle">Каждый физический узел вынесен в отдельную группу. Сначала проверь блокировки и только потом запускай исполнительные тесты.</p>
+                </div>
+                <button class="btn btn-danger" type="button" id="equipment-test-stop-all">Остановить все тесты</button>
+            </div>
+            <div class="equipment-test-chip-row">
+                <span class="equipment-status-badge muted" id="equipment-test-allow-badge">Загрузка…</span>
+                <span class="equipment-status-badge muted" id="equipment-test-demo-badge">—</span>
+                <span class="equipment-status-badge muted" id="equipment-test-process-badge">—</span>
+                <span class="equipment-status-badge muted" id="equipment-test-alarm-badge">—</span>
+            </div>
+            <div class="equipment-inline-stats equipment-test-summary-stats" id="equipment-test-active-summary"></div>
+            <div class="equipment-test-alert" id="equipment-test-availability-hint">Загрузка сервисного статуса…</div>
+            <div class="equipment-service-contour-card">
+                <div class="equipment-service-contour-head">
+                    <div>
+                        <h3>Сервисный контур</h3>
+                        <p class="equipment-hint">Быстрый снимок по ключевым узлам перед ручными тестами: термошина, АЦП, барометрия, кубовый манометр, zero-cross и силовой монитор.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-service-contour-badge">Проверяем…</span>
+                </div>
+                <div class="equipment-test-alert subtle" id="equipment-service-contour-hint">Ожидаем данные по сервисному контуру…</div>
+                <div class="equipment-service-contour-next" id="equipment-service-contour-next">
+                    <div class="equipment-test-journal-empty">После загрузки появится рекомендуемый следующий шаг.</div>
+                </div>
+                <div class="equipment-service-contour-grid" id="equipment-service-contour-grid">
+                    <div class="equipment-test-journal-empty">Контур появится после загрузки сервисного статуса.</div>
+                </div>
+                <div class="equipment-service-contour-history">
+                    <div class="equipment-test-journal-head">
+                        <h3>Недавние события контура</h3>
+                        <span class="equipment-hint">Локальная история появления, потери и восстановления сервисных узлов</span>
+                    </div>
+                    <div class="equipment-test-journal-list" id="equipment-service-contour-history">
+                        <div class="equipment-test-journal-empty">История появится после первого изменения состояния контура.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="equipment-commissioning-card">
+                <div class="equipment-commissioning-head">
+                    <div>
+                        <h3>Мастер пусконаладки</h3>
+                        <p class="equipment-hint">Короткий чек-лист по текущему железу: что уже подтверждено, а что ещё нужно руками добить.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-commissioning-overall-badge">Проверяем…</span>
+                </div>
+                <div class="equipment-inline-stats equipment-commissioning-summary" id="equipment-commissioning-summary"></div>
+                <div class="equipment-test-alert subtle" id="equipment-commissioning-next-step">Ожидаем сервисный статус…</div>
+                <div class="equipment-commissioning-actions">
+                    <button class="btn btn-sm btn-secondary" type="button" id="equipment-commissioning-save">Сохранить снимок</button>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" id="equipment-commissioning-reset">Сбросить чек-лист</button>
+                </div>
+                <div class="equipment-info-box equipment-commissioning-snapshot" id="equipment-commissioning-snapshot">Снимок пусконаладки ещё не сохранён.</div>
+                <div class="equipment-commissioning-steps" id="equipment-commissioning-steps">
+                    <div class="equipment-test-journal-empty">Чек-лист появится после загрузки статуса.</div>
+                </div>
+            </div>
+            <div class="equipment-selfcheck-card">
+                <div class="equipment-selfcheck-head">
+                    <div>
+                        <h3>Автосамопроверка железа</h3>
+                        <p class="equipment-hint">Короткий снимок по health и обязательным модулям: что контроллер реально видит прямо сейчас.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-selfcheck-badge">Проверяем…</span>
+                </div>
+                <div class="equipment-inline-stats equipment-selfcheck-summary" id="equipment-selfcheck-summary"></div>
+                <div class="equipment-test-alert subtle" id="equipment-selfcheck-hint">Ожидаем данные по модулям и health…</div>
+                <div class="equipment-selfcheck-actions">
+                    <button class="btn btn-sm btn-secondary" type="button" id="equipment-selfcheck-open-modules">Шина и модули</button>
+                    <button class="btn btn-sm btn-secondary" type="button" id="equipment-selfcheck-open-temps">Термометры</button>
+                </div>
+                <div class="equipment-selfcheck-modules" id="equipment-selfcheck-modules">
+                    <div class="equipment-test-journal-empty">Снимок модулей появится после загрузки статуса.</div>
+                </div>
+                <div class="equipment-selfcheck-history">
+                    <div class="equipment-test-journal-head">
+                        <h3>Недавние изменения precheck</h3>
+                        <span class="equipment-hint">Локальная история сервиса, пока страница открыта</span>
+                    </div>
+                    <div class="equipment-test-journal-list" id="equipment-selfcheck-history">
+                        <div class="equipment-test-journal-empty">История появится после первых изменений состояния.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="equipment-test-journal">
+                <div class="equipment-test-journal-head">
+                    <h3>Последние действия оператора</h3>
+                    <span class="equipment-hint">Последние ручные команды из сервисного экрана</span>
+                </div>
+                <div class="equipment-test-journal-list" id="equipment-test-action-journal">
+                    <div class="equipment-test-journal-empty">Сервисных действий пока не было.</div>
+                </div>
+            </div>
+        </div>
 
-// Закрыть модальное окно просмотра
-function closeProfileViewModal() {
-    document.getElementById('profile-view-modal').style.display = 'none';
-    currentProfileId = null;
-}
+        <div class="equipment-testing-grid">
+            <div class="card equipment-card equipment-test-card">
+                <div class="equipment-test-card-head">
+                    <div>
+                        <h2>Насос</h2>
+                        <p class="equipment-subtitle">Ручной запуск, контроль скорости, объёма и быстрый переход к калибровке.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-test-pump-badge">—</span>
+                </div>
+                <div class="equipment-test-metrics">
+                    <div class="equipment-test-metric"><span>Цель</span><strong id="equipment-test-pump-target">--</strong></div>
+                    <div class="equipment-test-metric"><span>Факт</span><strong id="equipment-test-pump-applied">--</strong></div>
+                    <div class="equipment-test-metric"><span>Объём</span><strong id="equipment-test-pump-volume">--</strong></div>
+                </div>
+                <div class="form-group">
+                    <label for="equipment-test-pump-speed">Скорость насоса, мл/ч</label>
+                    <input type="number" id="equipment-test-pump-speed" value="1200" min="1" max="5000" step="50" data-stepper-mode="pair" data-stepper-step="50">
+                </div>
+                <div class="equipment-quick-actions">
+                    <button type="button" class="btn btn-sm btn-secondary" data-pump-speed-preset="300">300</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-pump-speed-preset="800">800</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-pump-speed-preset="1500">1500</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-pump-speed-preset="3000">3000</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-pump-speed-preset="5000">5000</button>
+                </div>
+                <div class="equipment-inline-stats">
+                    <div class="equipment-inline-stat"><span>Задача</span><strong id="equipment-test-pump-task">--</strong></div>
+                    <div class="equipment-inline-stat"><span>Циклы</span><strong id="equipment-test-pump-loops">--</strong></div>
+                    <div class="equipment-inline-stat"><span>Таймауты</span><strong id="equipment-test-pump-locks">--</strong></div>
+                    <div class="equipment-actuator-row">
+                        <div>
+                            <strong>PWM охлаждения</strong>
+                            <div class="info-text">Ручная подача duty на пропорциональный канал охлаждения</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-start-stop-hint">Настройте рабочее окно в параметрах оборудования, затем проверьте duty здесь.</div>
+                        </div>
+                        <span class="equipment-status-badge muted" id="equipment-test-start-stop-badge">—</span>
+                        <div class="equipment-inline-row">
+                            <input type="number" id="equipment-test-start-stop-duty" value="96" min="0" max="255" step="1" data-stepper-mode="pair" data-stepper-step="1">
+                            <button class="btn btn-secondary" type="button" id="equipment-test-start-stop-apply">Применить</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-start-stop-startup">Стартовое</button>
+                            <button class="btn btn-danger" type="button" id="equipment-test-start-stop-stop">0</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-success" type="button" id="equipment-test-pump-toggle">Запустить насос</button>
+                    <button class="btn btn-secondary" type="button" id="equipment-test-pump-open-calibration">К калибровке</button>
+                </div>
+            </div>
 
-// Быстрая загрузка профиля
-function quickLoadProfile(id) {
-    if (!confirm('Загрузить этот профиль в текущие настройки?')) return;
+            <div class="card equipment-card equipment-test-card">
+                <div class="equipment-test-card-head">
+                    <div>
+                        <h2>Мешалка куба</h2>
+                        <p class="equipment-subtitle">Ручной тест выхода 0-10 В, смена скорости на лету и быстрый переход в режим ручного управления.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-test-stirrer-badge">—</span>
+                </div>
+                <div class="equipment-test-metrics">
+                    <div class="equipment-test-metric"><span>Скорость</span><strong id="equipment-test-stirrer-speed-live">--</strong></div>
+                    <div class="equipment-test-metric"><span>Режим</span><strong id="equipment-test-stirrer-mode">--</strong></div>
+                    <div class="equipment-test-metric"><span>DAC</span><strong id="equipment-test-stirrer-available">--</strong></div>
+                </div>
+                <div class="form-group">
+                    <label for="equipment-test-stirrer-speed">Скорость мешалки, %</label>
+                    <input type="number" id="equipment-test-stirrer-speed" value="50" min="1" max="100" step="1" data-stepper-mode="pair" data-stepper-step="1">
+                    <small class="equipment-hint" id="equipment-test-stirrer-hint">Загрузка статуса мешалки…</small>
+                </div>
+                <div class="equipment-quick-actions">
+                    <button type="button" class="btn btn-sm btn-secondary" data-stirrer-speed-preset="25">25%</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-stirrer-speed-preset="50">50%</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-stirrer-speed-preset="75">75%</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-stirrer-speed-preset="100">100%</button>
+                </div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-success" type="button" id="equipment-test-stirrer-start">Запустить мешалку</button>
+                    <button class="btn btn-secondary" type="button" id="equipment-test-stirrer-apply">Применить скорость</button>
+                    <button class="btn btn-danger" type="button" id="equipment-test-stirrer-stop">Стоп</button>
+                </div>
+            </div>
 
-    fetch(`/api/profiles/${id}/load`, {
-        method: 'POST'
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('✅ Профиль успешно загружен! Проверьте настройки в разделе "Управление".');
-            } else {
-                alert('❌ Ошибка загрузки профиля: ' + (data.error || 'Неизвестная ошибка'));
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка загрузки профиля:', error);
-            alert('❌ Ошибка загрузки профиля');
-        });
-}
+            <div class="card equipment-card equipment-test-card">
+                <div class="equipment-test-card-head">
+                    <div>
+                        <h2>Клапаны</h2>
+                        <p class="equipment-subtitle">Открытие по одному, импульс на заданное время и быстрый общий сброс.</p>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="equipment-test-valve-pulse-duration">Длительность импульса, мс</label>
+                    <input type="number" id="equipment-test-valve-pulse-duration" value="1200" min="100" max="10000" step="100" data-stepper-mode="pair" data-stepper-step="100">
+                </div>
+                <div class="equipment-actuator-list">
+                    <div class="equipment-actuator-row">
+                        <div>
+                            <strong>Вода</strong>
+                            <div class="info-text">Подача охлаждения</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-water-toggle-pulse-hint">Импульсный тест готов.</div>
+                        </div>
+                        <span class="equipment-status-badge muted" id="equipment-test-water-toggle-badge">—</span>
+                        <div class="equipment-actuator-actions">
+                            <button class="btn btn-secondary" type="button" id="equipment-test-water-toggle">Открыть воду</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-water-pulse">Импульс</button>
+                        </div>
+                    </div>
+                    <div class="equipment-actuator-row">
+                        <div>
+                            <strong>Головы</strong>
+                            <div class="info-text">Отбор голов</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-heads-toggle-pulse-hint">Импульсный тест готов.</div>
+                        </div>
+                        <span class="equipment-status-badge muted" id="equipment-test-heads-toggle-badge">—</span>
+                        <div class="equipment-actuator-actions">
+                            <button class="btn btn-secondary" type="button" id="equipment-test-heads-toggle">Открыть головы</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-heads-pulse">Импульс</button>
+                        </div>
+                    </div>
+                    <div class="equipment-actuator-row">
+                        <div>
+                            <strong>Тело</strong>
+                            <div class="info-text">Основной отбор</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-body-toggle-pulse-hint">Импульсный тест готов.</div>
+                        </div>
+                        <span class="equipment-status-badge muted" id="equipment-test-body-toggle-badge">—</span>
+                        <div class="equipment-actuator-actions">
+                            <button class="btn btn-secondary" type="button" id="equipment-test-body-toggle">Открыть тело</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-body-pulse">Импульс</button>
+                        </div>
+                    </div>
+                    <div class="equipment-actuator-row">
+                        <div>
+                            <strong>Хвосты</strong>
+                            <div class="info-text">Отбор хвостов</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-tails-toggle-pulse-hint">Импульсный тест готов.</div>
+                        </div>
+                        <span class="equipment-status-badge muted" id="equipment-test-tails-toggle-badge">—</span>
+                        <div class="equipment-actuator-actions">
+                            <button class="btn btn-secondary" type="button" id="equipment-test-tails-toggle">Открыть хвосты</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-tails-pulse">Импульс</button>
+                        </div>
+                    </div>
+                    <div class="equipment-actuator-row">
+                        <div>
+                            <strong>УНО</strong>
+                            <div class="info-text">Непрерывный отбор</div>
+                            <div class="equipment-actuator-meta" id="equipment-test-uno-toggle-pulse-hint">Импульсный тест готов.</div>
+                        </div>
+                        <span class="equipment-status-badge muted" id="equipment-test-uno-toggle-badge">—</span>
+                        <div class="equipment-actuator-actions">
+                            <button class="btn btn-secondary" type="button" id="equipment-test-uno-toggle">Открыть УНО</button>
+                            <button class="btn btn-outline-secondary" type="button" id="equipment-test-uno-pulse">Импульс</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-danger" type="button" id="equipment-test-valves-close-all">Закрыть все клапаны</button>
+                </div>
+            </div>
 
-// Загрузка профиля в настройки (из модального окна)
-function loadProfileToSettings() {
-    if (!currentProfileId) return;
-    closeProfileViewModal();
-    quickLoadProfile(currentProfileId);
-}
+            <div class="card equipment-card equipment-test-card">
+                <div class="equipment-test-card-head">
+                    <div>
+                        <h2>Сервопривод фракционника</h2>
+                        <p class="equipment-subtitle">Быстрые позиции, ручной угол и сохранение сервисных пресетов.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-test-servo-badge">—</span>
+                </div>
+                <div class="equipment-inline-stats">
+                    <div class="equipment-inline-stat"><span>Позиция</span><strong id="equipment-test-servo-fraction">—</strong></div>
+                    <div class="equipment-inline-stat"><span>Угол</span><strong id="equipment-test-servo-angle-live">—</strong></div>
+                </div>
+                <div class="equipment-test-alert subtle" id="equipment-test-servo-status">Статус сервопривода будет показан после загрузки.</div>
+                <div class="equipment-preset-grid">
+                    <button type="button" class="equipment-preset-button" data-servo-preset="heads"><span>Головы</span><small class="equipment-preset-angle">0°</small></button>
+                    <button type="button" class="equipment-preset-button" data-servo-preset="subheads"><span>Подголовники</span><small class="equipment-preset-angle">0°</small></button>
+                    <button type="button" class="equipment-preset-button" data-servo-preset="body"><span>Тело</span><small class="equipment-preset-angle">0°</small></button>
+                    <button type="button" class="equipment-preset-button" data-servo-preset="pretails"><span>Предхвостье</span><small class="equipment-preset-angle">0°</small></button>
+                    <button type="button" class="equipment-preset-button" data-servo-preset="tails"><span>Хвосты</span><small class="equipment-preset-angle">0°</small></button>
+                </div>
+                <div class="equipment-inline-row equipment-servo-manual-row">
+                    <input type="number" id="equipment-test-servo-angle" min="0" max="180" step="1" value="0" data-stepper-mode="pair" data-stepper-step="1">
+                    <button class="btn btn-secondary" type="button" id="equipment-test-servo-angle-apply">Перевести в угол</button>
+                </div>
+                <div class="equipment-servo-config-grid">
+                    <div class="equipment-servo-config-row">
+                        <span>Головы</span>
+                        <label><input type="checkbox" id="equipment-servo-enabled-0" checked> Активно</label>
+                        <input type="number" id="equipment-servo-angle-0" min="0" max="180" step="1" value="0" data-stepper-mode="pair" data-stepper-step="1">
+                    </div>
+                    <div class="equipment-servo-config-row">
+                        <span>Подголовники</span>
+                        <label><input type="checkbox" id="equipment-servo-enabled-1"> Активно</label>
+                        <input type="number" id="equipment-servo-angle-1" min="0" max="180" step="1" value="36" data-stepper-mode="pair" data-stepper-step="1">
+                    </div>
+                    <div class="equipment-servo-config-row">
+                        <span>Тело</span>
+                        <label><input type="checkbox" id="equipment-servo-enabled-2" checked> Активно</label>
+                        <input type="number" id="equipment-servo-angle-2" min="0" max="180" step="1" value="72" data-stepper-mode="pair" data-stepper-step="1">
+                    </div>
+                    <div class="equipment-servo-config-row">
+                        <span>Предхвостье</span>
+                        <label><input type="checkbox" id="equipment-servo-enabled-3"> Активно</label>
+                        <input type="number" id="equipment-servo-angle-3" min="0" max="180" step="1" value="108" data-stepper-mode="pair" data-stepper-step="1">
+                    </div>
+                    <div class="equipment-servo-config-row">
+                        <span>Хвосты</span>
+                        <label><input type="checkbox" id="equipment-servo-enabled-4" checked> Активно</label>
+                        <input type="number" id="equipment-servo-angle-4" min="0" max="180" step="1" value="144" data-stepper-mode="pair" data-stepper-step="1">
+                    </div>
+                </div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-primary" type="button" id="equipment-test-servo-save">Сохранить позиции</button>
+                </div>
+            </div>
 
-// Удаление профиля
-function deleteProfile(id) {
-    if (!confirm('Удалить этот профиль? Действие нельзя отменить.')) return;
+            <div class="card equipment-card equipment-test-card equipment-test-card-danger">
+                <div class="equipment-test-card-head">
+                    <div>
+                        <h2>Нагрев</h2>
+                        <p class="equipment-subtitle">Полная силовая панель: основной TRIAC, booster SSR, синхронизация zero-cross, PZEM и ручной тест нагрева.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-test-heater-badge">—</span>
+                </div>
+                <div class="equipment-test-metrics">
+                    <div class="equipment-test-metric"><span>Текущая уставка</span><strong id="equipment-test-heater-power">--</strong></div>
+                    <div class="equipment-test-metric"><span>Сетпоинт</span><strong id="equipment-test-heater-setpoint">--</strong></div>
+                    <div class="equipment-test-metric"><span>Мин. погружение</span><strong id="equipment-test-heater-submerge">--</strong></div>
+                    <div class="equipment-test-metric"><span>Основной ТЭН</span><strong id="equipment-test-heater-main-power">--</strong></div>
+                    <div class="equipment-test-metric"><span>Booster SSR</span><strong id="equipment-test-heater-booster-power">--</strong></div>
+                    <div class="equipment-test-metric"><span>Стоп booster</span><strong id="equipment-test-heater-booster-stop">--</strong></div>
+                </div>
+                <div class="equipment-test-chip-row">
+                    <span class="equipment-status-badge muted" id="equipment-test-heater-backend">—</span>
+                    <span class="equipment-status-badge muted" id="equipment-test-heater-booster">—</span>
+                    <span class="equipment-status-badge muted" id="equipment-test-heater-zc">—</span>
+                    <span class="equipment-status-badge muted" id="equipment-test-heater-pzem">—</span>
+                </div>
+                <div class="equipment-test-metrics">
+                    <div class="equipment-test-metric"><span>Фазовая задержка</span><strong id="equipment-test-heater-delay">--</strong></div>
+                    <div class="equipment-test-metric"><span>Zero-cross</span><strong id="equipment-test-heater-zc-count">--</strong></div>
+                    <div class="equipment-test-metric"><span>Gate pulses</span><strong id="equipment-test-heater-fire-count">--</strong></div>
+                    <div class="equipment-test-metric"><span>PZEM мощность</span><strong id="equipment-test-heater-real-power">--</strong></div>
+                    <div class="equipment-test-metric"><span>Напряжение</span><strong id="equipment-test-heater-voltage">--</strong></div>
+                    <div class="equipment-test-metric"><span>Ток</span><strong id="equipment-test-heater-current">--</strong></div>
+                    <div class="equipment-test-metric"><span>Частота</span><strong id="equipment-test-heater-frequency">--</strong></div>
+                    <div class="equipment-test-metric"><span>cos φ</span><strong id="equipment-test-heater-pf">--</strong></div>
+                </div>
+                <div class="form-group">
+                    <label for="equipment-test-heater-power-input">Мощность теста, Вт</label>
+                    <input type="number" id="equipment-test-heater-power-input" value="1200" min="100" max="3000" step="50" data-stepper-mode="pair" data-stepper-step="50">
+                </div>
+                <div class="equipment-test-alert subtle" id="equipment-test-heater-diag">Диагностика контура нагрева появится после загрузки статуса.</div>
+                <div class="equipment-test-alert subtle">Памятка по монтажу: для phase-control используйте MOC3021/MOC3023; G силового симистора должен идти в ветку A2, а не A1.</div>
+                <div class="equipment-test-alert danger">Перед стартом ТЭН должен быть полностью погружен в жидкость. Без подтверждения запуск не выполняется.</div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-danger" type="button" id="equipment-test-heater-start">Запустить нагрев</button>
+                    <button class="btn btn-secondary" type="button" id="equipment-test-heater-stop">Остановить нагрев</button>
+                </div>
+            </div>
 
-    fetch(`/api/profiles/${id}`, {
-        method: 'DELETE'
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                loadProfilesList();
-                alert('✅ Профиль удалён');
-            } else {
-                alert('❌ ' + (data.error || 'Ошибка удаления профиля'));
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка удаления профиля:', error);
-            alert('❌ Ошибка удаления профиля');
-        });
-}
+            <div class="card equipment-card equipment-test-card">
+                <div class="equipment-test-card-head">
+                    <div>
+                        <h2>Термометры</h2>
+                        <p class="equipment-subtitle">Текущие показания всех датчиков температуры рядом с быстрыми сервисными действиями.</p>
+                    </div>
+                </div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-secondary" type="button" id="equipment-test-temps-refresh">Обновить</button>
+                    <button class="btn btn-secondary" type="button" id="equipment-test-temps-open-calibration">К калибровке</button>
+                </div>
+                <div class="equipment-test-sensors-grid" id="equipment-testing-temps-list">
+                    <div class="equipment-test-sensor">Загрузка…</div>
+                </div>
+            </div>
 
-// Очистка пользовательских профилей
-function clearUserProfiles() {
-    if (!confirm('Удалить ВСЕ пользовательские профили? Встроенные рецепты останутся. Действие нельзя отменить!')) return;
+            <div class="card equipment-card equipment-test-card">
+                <div class="equipment-test-card-head">
+                    <div>
+                        <h2>Датчик давления</h2>
+                        <p class="equipment-subtitle">Попроси оператора слегка подуть в датчик. При заметном изменении давления карточка подтвердит отклик.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-test-pressure-badge">—</span>
+                </div>
+                <div class="equipment-test-metrics">
+                    <div class="equipment-test-metric"><span>Куб</span><strong id="equipment-test-pressure-value">--</strong></div>
+                </div>
+                <div class="equipment-inline-stats" id="equipment-test-pressure-summary"></div>
+                <div class="equipment-test-alert subtle" id="equipment-test-pressure-hint">Для теста нажмите кнопку ниже.</div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-secondary" type="button" id="equipment-test-pressure-start">Начать тест продувки</button>
+                </div>
+            </div>
 
-    fetch('/api/profiles', {
-        method: 'DELETE'
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                loadProfilesList();
-                alert('✅ Все пользовательские профили удалены');
-            } else {
-                alert('❌ Ошибка очистки профилей');
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка очистки профилей:', error);
-            alert('❌ Ошибка очистки профилей');
-        });
-}
+            <div class="card equipment-card equipment-test-card">
+                <div class="equipment-test-card-head">
+                    <div>
+                        <h2>Ареометр</h2>
+                        <p class="equipment-subtitle">Живые показания ареометра и быстрый переход к таблице его калибровки.</p>
+                    </div>
+                    <span class="equipment-status-badge muted" id="equipment-test-hydrometer-badge">—</span>
+                </div>
+                <div class="equipment-test-metrics">
+                    <div class="equipment-test-metric"><span>Давление</span><strong id="equipment-test-hydrometer-pressure">--</strong></div>
+                    <div class="equipment-test-metric"><span>Плотность</span><strong id="equipment-test-hydrometer-density">--</strong></div>
+                    <div class="equipment-test-metric"><span>ABV</span><strong id="equipment-test-hydrometer-abv">--</strong></div>
+                </div>
+                <div class="equipment-test-alert subtle">Если показания плавают или не сходятся с реальным продуктом, открой таблицу калибровки и задай 2-5 опорных точек.</div>
+                <div class="controls equipment-actions">
+                    <button class="btn btn-secondary" type="button" id="equipment-test-hydrometer-open-calibration">К калибровке</button>
+                </div>
+            </div>
 
-// Экспорт одного профиля
-function exportProfile(id) {
-    fetch(`/api/profiles/${id}/export`)
-        .then(response => response.json())
-        .then(data => {
-            // Создаем blob и скачиваем
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `profile_${data.metadata.name.replace(/\s+/g, '_')}_${id}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        })
-        .catch(error => {
-            console.error('Ошибка экспорта профиля:', error);
-            alert('❌ Ошибка экспорта профиля');
-        });
-}
-
-// Экспорт всех профилей
-function exportAllProfiles() {
-    const includeBuiltin = confirm('Включить встроенные рецепты в экспорт?');
-
-    fetch(`/api/profiles/export${includeBuiltin ? '?includeBuiltin=true' : ''}`)
-        .then(response => response.json())
-        .then(data => {
-            if (!data || data.length === 0) {
-                alert('Нет профилей для экспорта');
-                return;
-            }
-
-            // Создаем blob и скачиваем
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const timestamp = new Date().toISOString().split('T')[0];
-            a.download = `profiles_export_${timestamp}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            alert(`✅ Экспортировано профилей: ${data.length}`);
-        })
-        .catch(error => {
-            console.error('Ошибка экспорта профилей:', error);
-            alert('❌ Ошибка экспорта профилей');
-        });
-}
-
-// Показать модальное окно импорта
-let importFileData = null;
-
-function showImportModal() {
-    importFileData = null;
-    document.getElementById('import-file-input').value = '';
-    document.getElementById('import-preview').style.display = 'none';
-    document.getElementById('import-btn').disabled = true;
-    document.getElementById('profile-import-modal').style.display = 'flex';
-
-    // Добавляем обработчик выбора файла
-    document.getElementById('import-file-input').onchange = function (e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function (event) {
-            try {
-                importFileData = JSON.parse(event.target.result);
-
-                // Показываем предпросмотр
-                let previewText = '';
-                if (Array.isArray(importFileData)) {
-                    previewText = `Массив из ${importFileData.length} профилей`;
-                } else if (importFileData.metadata) {
-                    previewText = `Профиль: ${importFileData.metadata.name}`;
-                } else {
-                    throw new Error('Неверный формат JSON');
-                }
-
-                document.getElementById('import-preview-text').textContent = previewText;
-                document.getElementById('import-preview').style.display = 'block';
-                document.getElementById('import-btn').disabled = false;
-            } catch (error) {
-                alert('❌ Ошибка чтения файла: неверный формат JSON');
-                importFileData = null;
-                document.getElementById('import-btn').disabled = true;
-            }
-        };
-        reader.readAsText(file);
-    };
-}
-
-// Закрыть модальное окно импорта
-function closeImportModal() {
-    document.getElementById('profile-import-modal').style.display = 'none';
-    importFileData = null;
-}
-
-// Выполнить импорт профилей
-function doImportProfiles() {
-    if (!importFileData) {
-        alert('Выберите файл для импорта');
-        return;
-    }
-
-    fetch('/api/profiles/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(importFileData)
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                closeImportModal();
-                loadProfilesList();
-                alert(`✅ Импортировано профилей: ${data.imported}`);
-            } else {
-                alert('❌ Ошибка импорта: ' + (data.error || 'Неизвестная ошибка'));
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка импорта профилей:', error);
-            alert('❌ Ошибка импорта профилей');
-        });
-}
-
-// ============================================================================
-
-// Закрытие модального окна сравнения при клике на overlay
-document.addEventListener('DOMContentLoaded', function () {
-    const compareOverlay = document.getElementById('compare-modal');
-    if (compareOverlay) {
-        compareOverlay.addEventListener('click', function (e) {
-            if (e.target === compareOverlay) {
-                closeCompareModal();
-            }
-        });
-    }
-});
-// ============================================================================
-// Информация о пользователе
-// ============================================================================
-
-async function loadUserInfo() {
-    try {
-        const response = await fetch('/api/web/user');
-        if (!response.ok) {
-            throw new Error('Failed to load user info');
-        }
-        const user = await response.json();
-        const usernameElement = document.getElementById('current-username');
-        if (usernameElement) {
-            usernameElement.textContent = user.username || 'Неизвестно';
-        }
-    } catch (error) {
-        console.error('Error loading user info:', error);
-        const usernameElement = document.getElementById('current-username');
-        if (usernameElement) {
-            usernameElement.textContent = 'Ошибка загрузки';
-        }
-    }
-}
-
-// ============================================================================
-// Настройки ESP32
-// ============================================================================
-
-async function loadESP32Config() {
-    try {
-        const response = await fetch('/api/web/esp32/config');
-        if (!response.ok) {
-            throw new Error('Failed to load ESP32 config');
-        }
-        const config = await response.json();
-        
-        // Заполняем поля формы
-        document.getElementById('esp32-enabled').checked = config.enabled || false;
-        document.getElementById('esp32-host').value = config.host || '';
-        document.getElementById('esp32-port').value = config.port || 80;
-        document.getElementById('esp32-use-https').checked = config.useHttps || false;
-        document.getElementById('esp32-username').value = config.username || '';
-        document.getElementById('esp32-password').value = ''; // Не показываем пароль
-        document.getElementById('esp32-timeout').value = config.timeout || 5;
-        
-        // Показываем/скрываем поля в зависимости от состояния
-        toggleESP32Fields();
-    } catch (error) {
-        console.error('Error loading ESP32 config:', error);
-    }
-}
-
-function toggleESP32Fields() {
-    const enabled = document.getElementById('esp32-enabled').checked;
-    const fields = document.getElementById('esp32-fields');
-    if (fields) {
-        fields.style.display = enabled ? 'block' : 'none';
-    }
-}
-
-async function saveESP32Config() {
-    const config = {
-        enabled: document.getElementById('esp32-enabled').checked,
-        host: document.getElementById('esp32-host').value.trim(),
-        port: parseInt(document.getElementById('esp32-port').value) || 80,
-        useHttps: document.getElementById('esp32-use-https').checked,
-        username: document.getElementById('esp32-username').value.trim(),
-        password: document.getElementById('esp32-password').value.trim(),
-        timeout: parseInt(document.getElementById('esp32-timeout').value) || 5
-    };
-    
-    // Валидация
-    if (config.enabled && !config.host) {
-        alert('Укажите адрес ESP32');
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/web/esp32/config', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(config)
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to save config');
-        }
-        
-        const result = await response.json();
-        alert('Настройки сохранены успешно!');
-        
-        // Если пароль был введен, очищаем поле
-        if (config.password) {
-            document.getElementById('esp32-password').value = '';
-        }
-    } catch (error) {
-        console.error('Error saving ESP32 config:', error);
-        alert('Ошибка сохранения настроек: ' + error.message);
-    }
-}
-
-async function testESP32Connection() {
-    const resultDiv = document.getElementById('esp32-test-result');
-    if (!resultDiv) return;
-    
-    resultDiv.style.display = 'block';
-    resultDiv.innerHTML = 'Проверка подключения...';
-    resultDiv.style.background = 'var(--bg-secondary)';
-    resultDiv.style.color = 'var(--text-primary)';
-    
-    try {
-        const response = await fetch('/api/web/esp32/test', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            resultDiv.style.background = 'rgba(40, 167, 69, 0.2)';
-            resultDiv.style.color = '#28a745';
-            resultDiv.style.border = '1px solid #28a745';
-            resultDiv.innerHTML = '✅ ' + (result.message || 'Подключение успешно!');
-        } else {
-            resultDiv.style.background = 'rgba(220, 53, 69, 0.2)';
-            resultDiv.style.color = '#dc3545';
-            resultDiv.style.border = '1px solid #dc3545';
-            resultDiv.innerHTML = '❌ ' + (result.error || 'Ошибка подключения');
-        }
-    } catch (error) {
-        console.error('Error testing ESP32 connection:', error);
-        resultDiv.style.background = 'rgba(220, 53, 69, 0.2)';
-        resultDiv.style.color = '#dc3545';
-        resultDiv.style.border = '1px solid #dc3545';
-        resultDiv.innerHTML = '❌ Ошибка: ' + error.message;
-    }
-}
+        </div>
+    </div>
+`,mv=`
+    <div id="equipment-heater-confirm-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <div class="modal-title">Подтверждение запуска ТЭНа</div>
+                <button class="modal-close" type="button" id="equipment-test-heater-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-section">
+                    <div class="modal-section-title">Опасное действие</div>
+                    <p class="equipment-subtitle" style="margin-bottom: 0;">Перед включением убедись, что ТЭН полностью погружен в воду или жидкость, а силовой канал подключен корректно.</p>
+                </div>
+                <div class="equipment-test-alert danger">
+                    Будет отправлена команда на <strong id="equipment-test-heater-confirm-power">0 Вт</strong> мощности.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" type="button" id="equipment-test-heater-cancel">Отмена</button>
+                <button class="btn btn-danger" type="button" id="equipment-test-heater-confirm">Подтверждаю запуск</button>
+            </div>
+        </div>
+    </div>
+`;function T(e){return document.getElementById(e)}function le(e,t=document){return t.querySelector(e)}function Lt(e,t=document){return[...t.querySelectorAll(e)]}function K(e,t,n){let o=document.createElement(e);return t&&(o.className=t),typeof n=="string"&&(o.textContent=n),o}function pv(e,t=0){let n=Number(String(e??"").trim().replace(",","."));return Number.isFinite(n)?n:t}function Me(e,t,n,o=t){let i=pv(e,o);return i<t?t:i>n?n:i}function $i(e=null){return Math.max(1,Number(e?.mainPowerW)||Number(x.lastStatus?.equipment?.heaterPowerW)||Number(me)||3e3)}function Sm(e,t=null){let n=Me(e,0,100,0);return Math.round(n/100*$i(t))}function fv(e,t=null){return Math.min(100,Math.max(0,Math.round(Me(e,0,$i(t),0)/$i(t)*100)))}function U(e,t){let n=T(e);n&&(n.textContent=t)}function gv(e,t){let n=T(e);n&&(n.innerHTML=t)}function he(e,t,n="neutral"){e&&(e.textContent=t,e.className=`equipment-status-badge ${n}`)}function tl(e,t="Да",n="Нет"){return e?t:n}function D(e,t=1,n=""){let o=Number(e);return Number.isFinite(o)?`${o.toFixed(t)}${n}`:`--${n}`}function bv(e){return e?.valid?D(e.value,2," °C"):"Нет сигнала"}function hv(e){return Lm.find(t=>t.id===e)?.label??"Тестирование"}function yv(e,t,n="Раздел оборудования"){return e.find(o=>o.id===t)?.label??n}function qm(e){let t=K("button","equipment-test-mobile-toggle");t.type="button";let n=K("span","equipment-test-mobile-icon",e.icon);n.setAttribute("aria-hidden","true");let o=K("span","equipment-test-mobile-copy");o.append(K("span","equipment-test-mobile-title",e.shortTitle),K("span","equipment-test-mobile-description",e.description));let i=K("span","equipment-test-mobile-chevron","▾");return i.setAttribute("aria-hidden","true"),t.append(n,o,i),t}function vv(e){return qm(e)}function wv(e){let t=K("aside","equipment-testing-sidebar");t.setAttribute("aria-label","Навигация по сервисным тестам");let n=K("div","equipment-testing-sidebar-header");n.append(K("div","equipment-testing-sidebar-title","Тестирование"),K("div","equipment-testing-sidebar-subtitle","Открыт один сервисный узел, остальные доступны через компактное меню.")),t.appendChild(n);let o=new Map;for(let i of Lm){let r=i.id?e.filter(a=>a.meta.group===i.id):[];if(r.length){t.appendChild(K("div","sidebar-section-title",i.label));for(let a of r){let s=K("button","sidebar-item equipment-testing-nav-item");s.type="button",s.dataset.testingCardId=a.meta.id,s.append(K("span","icon",a.meta.icon),K("span","label",a.meta.shortTitle)),t.appendChild(s),o.set(a.meta.id,s)}}}return{nav:t,buttonsById:o}}function Sv(e,t,n,o){let i=K("aside","equipment-testing-sidebar");i.setAttribute("aria-label",`${n}: навигация по карточкам`);let r=K("div","equipment-testing-sidebar-header");r.append(K("div","equipment-testing-sidebar-title",n),K("div","equipment-testing-sidebar-subtitle",o)),i.appendChild(r);let a=new Map;for(let s of t){let l=e.filter(c=>c.meta.group===s.id);if(l.length){s.label&&i.appendChild(K("div","sidebar-section-title",s.label));for(let c of l){let d=K("button","sidebar-item equipment-testing-nav-item");d.type="button",d.dataset.equipmentWorkbenchCardId=c.meta.id,d.append(K("span","icon",c.meta.icon),K("span","label",c.meta.shortTitle)),i.appendChild(d),a.set(c.meta.id,d)}}}return{nav:i,buttonsById:a}}function Ev(e,t){if(e.dataset.testingEnhanced==="1")return{card:e,meta:t,body:e.querySelector(".equipment-test-card-body"),toggle:e.querySelector(".equipment-test-mobile-toggle")};e.dataset.testingEnhanced="1",e.dataset.testingCardId=t.id,e.dataset.testingCardGroup=t.group;let n=[...e.childNodes],o=K("div","equipment-test-card-body");for(let s of n)o.appendChild(s);let i=o.querySelector("h2");if(i){i.classList.add("equipment-test-card-title"),i.textContent="";let s=K("span","equipment-test-card-title-icon",t.icon);s.setAttribute("aria-hidden","true");let l=K("span","equipment-test-card-title-text",t.title);i.append(s,l);let c=K("div","equipment-test-card-group-badge",hv(t.group));i.before(c)}let r=o.querySelector(".equipment-subtitle");r&&(r.textContent=t.description,r.classList.add("equipment-test-card-description"));let a=qm(t);return e.textContent="",e.append(a,o),{card:e,meta:t,body:o,toggle:a}}function Cv(e,t,n){if(e.dataset.equipmentWorkbenchEnhanced==="1")return{card:e,meta:t,body:e.querySelector(".equipment-test-card-body"),toggle:e.querySelector(".equipment-test-mobile-toggle")};e.dataset.equipmentWorkbenchEnhanced="1",e.dataset.equipmentWorkbenchCardId=t.id,e.dataset.equipmentWorkbenchGroup=t.group,e.classList.add("equipment-test-card");let o=[...e.childNodes],i=K("div","equipment-test-card-body");for(let l of o)i.appendChild(l);let r=i.querySelector("h2");if(r){r.classList.add("equipment-test-card-title"),r.textContent="";let l=K("span","equipment-test-card-title-icon",t.icon);l.setAttribute("aria-hidden","true");let c=K("span","equipment-test-card-title-text",t.title);r.append(l,c);let d=K("div","equipment-test-card-group-badge",yv(n,t.group));r.before(d)}let a=i.querySelector(".equipment-subtitle");a&&(a.textContent=t.description,a.classList.add("equipment-test-card-description"));let s=vv(t);return e.textContent="",e.append(s,i),{card:e,meta:t,body:i,toggle:s}}function xv(e){let t=[];for(let n of Ti){let o=e.find(i=>i.querySelector(n.selector));o&&t.push(Ev(o,n))}return t}function Mv(e,t,n){let o=[];for(let i of t){let r=e.find(a=>a.querySelector(i.selector));r&&o.push(Cv(r,i,n))}return o}function Si({className:e="",title:t,subtitle:n,actionsHtml:o=""}){let i=document.createElement("div");return i.className=`card equipment-card ${e}`.trim(),i.innerHTML=`
+        <h2>${t}</h2>
+        <p class="equipment-subtitle">${n}</p>
+        <div class="equipment-grid"></div>
+        ${o}
+    `,i}function Tv(e,t){return e.find(n=>n.querySelector(`#${t}`))??null}function Ei(e,t,n){let o=new Set;for(let i of n){let r=Tv(t,i);!r||o.has(r)||(o.add(r),e.appendChild(r))}}function $v(){let e=le('[data-equipment-section-pane="parameters"] .cards'),t=le(".equipment-card-params",e);if(!e||!t||e.dataset.parametersPrepared==="1")return;let n=le(".equipment-grid",t);if(!n)return;e.dataset.parametersPrepared="1";let o=[...n.querySelectorAll(".form-group")],i=Si({className:"equipment-pane-card equipment-pane-card-parameters",title:"Насос и дозирование",subtitle:"Коэффициенты подачи и шаги на оборот, которые влияют на точность насоса во всех режимах.",actionsHtml:`
+            <div class="controls equipment-actions">
+                <button class="btn btn-primary" type="button" onclick="saveEquipment()">Сохранить параметры</button>
+            </div>
+        `});Ei(le(".equipment-grid",i),o,["pump-ml-per-rev","pump-steps-per-rev"]);let r=Si({className:"equipment-pane-card equipment-pane-card-parameters",title:"Куб, ТЭН и колонна",subtitle:"Габариты, мощность и рабочий объём, от которых зависит поведение нагрева и ограничения процесса.",actionsHtml:`
+            <div class="controls equipment-actions">
+                <button class="btn btn-primary" type="button" onclick="saveEquipment()">Сохранить параметры</button>
+            </div>
+        `});Ei(le(".equipment-grid",r),o,["heater-power-w","booster-heater-enabled","booster-heater-power-w","booster-heater-stop-cube-temp","column-height","cube-volume-l","cube-extender-add-l"]);let a=Si({className:"equipment-pane-card equipment-pane-card-parameters",title:"Охлаждение и автостарт",subtitle:"Порог автоматического запуска воды и сервисные настройки, которые оператор обычно ищет перед запуском.",actionsHtml:`
+            <div class="controls equipment-actions">
+                <button class="btn btn-primary" type="button" onclick="saveEquipment()">Сохранить параметры</button>
+            </div>
+        `});Ei(le(".equipment-grid",a),o,["water-autostart-cube-temp","cooling-pwm-enabled","cooling-pwm-min-duty","cooling-pwm-max-duty","cooling-pwm-startup-duty"]);let s=Si({className:"equipment-pane-card equipment-pane-card-parameters",title:"Мешалка куба",subtitle:"Включение, скорость по умолчанию и автозапуск для затирки, НБК и ферментации.",actionsHtml:`
+            <div class="controls equipment-actions">
+                <button class="btn btn-primary" type="button" onclick="saveStirrerSettings()">Сохранить мешалку</button>
+            </div>
+        `});Ei(le(".equipment-grid",s),o,["stirrer-settings-state","stirrer-enabled","stirrer-default-speed","stirrer-auto-mashing","stirrer-auto-nbk","stirrer-auto-fermentation"]);let l=Si({className:"equipment-pane-card equipment-pane-card-parameters",title:"Шина и модули",subtitle:"Показывает, что именно ESP32-S3 видит на I2C и UART: датчики, DAC мешалки и монитор питания.",actionsHtml:`
+            <div class="controls equipment-actions">
+                <button class="btn btn-secondary" type="button" onclick="loadEquipmentSettings()">Обновить статусы</button>
+            </div>
+        `});Ei(le(".equipment-grid",l),o,["boot-gpio-list","hardware-modules-list","reboot-settings-state","pzem-settings-state"]),e.innerHTML="",e.append(i,r,a,s,l)}function el(e,t,n){try{let o=localStorage.getItem(e);if(t.some(i=>i.id===o))return o}catch{}return n}function Pv(e,t){try{localStorage.setItem(e,t)}catch{}}function Om({sectionId:e,paneSelector:t,storageKey:n,groups:o,defs:i,title:r,subtitle:a,stateKey:s}){let l=le(t),c=le(".cards",l);if(!l||!c||c.dataset.equipmentWorkbench==="1")return;let d=[...c.querySelectorAll(".equipment-card")],m=Mv(d,i,o);if(!m.length)return;c.dataset.equipmentWorkbench="1";let f=K("div","equipment-testing-shell equipment-pane-workbench-shell"),b=K("div","equipment-testing-main equipment-pane-workbench-main"),u=K("div","equipment-testing-card-stack equipment-pane-workbench-stack"),{nav:p,buttonsById:g}=Sv(m,o,r,a);c.parentNode.insertBefore(f,c),f.append(p,b),b.appendChild(u),u.appendChild(c);let v=window.matchMedia(Fm);x[s]=el(n,i,i[0]?.id||null);function w(E){let M=m.find(A=>A.meta.id===E);M&&requestAnimationFrame(()=>{M.toggle.scrollIntoView({block:"start",behavior:"smooth"})})}function C(){let E=v.matches;l.dataset.equipmentWorkbenchLayout=E?"mobile":"desktop",p.hidden=E,!E&&!x[s]&&(x[s]=m[0]?.meta.id||null),E&&!x[s]&&(x[s]=m[0]?.meta.id||null);for(let M of m){let A=M.meta.id===x[s];M.card.classList.toggle("is-active",A),M.toggle&&(M.toggle.classList.toggle("is-active",A),M.toggle.setAttribute("aria-expanded",String(A)),M.toggle.hidden=!E),M.body.hidden=E?!A:!1,M.card.hidden=E?!1:!A;let $=g.get(M.meta.id);$&&($.classList.toggle("active",A),$.setAttribute("aria-current",A?"true":"false"))}}function P(E){E!==null&&!m.some(M=>M.meta.id===E)||(x[s]=E,E&&Pv(n,E),C())}_m.set(e,{setActiveCard:P,firstCardId:i[0]?.id||null});for(let E of m)E.toggle.addEventListener("click",()=>{let M=v.matches,A=x[s]===E.meta.id;if(M&&A){P(null);return}P(E.meta.id),M&&w(E.meta.id)});for(let[E,M]of g.entries())M.addEventListener("click",()=>{P(E),b.scrollIntoView({block:"start",behavior:"smooth"})});typeof v.addEventListener=="function"?v.addEventListener("change",C):typeof v.addListener=="function"&&v.addListener(C),C()}function qn(e,t){let n=_m.get(e);n&&n.setActiveCard(t??n.firstCardId)}function Iv(){let e=T("equipment");if(!e||le(".equipment-local-nav",e))return;let t=le(".cards",e),n=le(".equipment-card-params",t),o=le(".equipment-card-pump",t),i=le(".equipment-card-temp",t),r=le(".equipment-card-pressure",t),a=le(".equipment-card-hydrometer",t);if(!t||!n||!o||!i||!r||!a)return;let s=document.createElement("div");s.className="equipment-shell workbench-shell",s.innerHTML=`
+        <div class="equipment-local-nav workbench-local-nav" role="tablist" aria-label="Подразделы оборудования">
+            <button class="equipment-local-nav-btn workbench-local-nav-btn active" type="button" data-equipment-section-btn="parameters">Параметры</button>
+            <button class="equipment-local-nav-btn workbench-local-nav-btn" type="button" data-equipment-section-btn="calibration">Калибровка</button>
+            <button class="equipment-local-nav-btn workbench-local-nav-btn" type="button" data-equipment-section-btn="testing">Тестирование</button>
+        </div>
+        <div class="equipment-pane active" data-equipment-section-pane="parameters"><div class="cards"></div></div>
+        <div class="equipment-pane" data-equipment-section-pane="calibration"><div class="cards"></div></div>
+        <div class="equipment-pane" data-equipment-section-pane="testing"></div>
+    `,le('[data-equipment-section-pane="parameters"] .cards',s)?.appendChild(n);let l=le('[data-equipment-section-pane="calibration"] .cards',s);l?.appendChild(o),l?.appendChild(i),l?.appendChild(r),l?.appendChild(a);let c=le('[data-equipment-section-pane="testing"]',s);c&&(c.innerHTML=uv),e.innerHTML="",e.appendChild(s)}function Av(){let e=T("settings");if(!e||le(".settings-shell",e))return;let t=le(".cards",e);if(!t)return;let n=[...t.querySelectorAll(".card")];if(!n.length)return;let o=document.createElement("div");o.className="equipment-shell settings-shell workbench-shell";let i=document.createElement("div");i.className="equipment-local-nav settings-local-nav workbench-local-nav",i.setAttribute("role","tablist"),i.setAttribute("aria-label","Подразделы настроек");let r=document.createElement("div");r.className="settings-pane-host";for(let a of Zs){let s=K("button","equipment-local-nav-btn workbench-local-nav-btn");s.type="button",s.dataset.settingsSectionBtn=a.id,s.textContent=a.label,i.appendChild(s);let l=K("div","equipment-pane settings-pane");l.dataset.settingsSectionPane=a.id,l.innerHTML='<div class="cards"></div>';let c=le(".cards",l);for(let d of a.defs){let m=n.find(f=>f.querySelector(d.selector));m&&c.appendChild(m)}r.appendChild(l)}o.append(i,r),e.innerHTML="",e.appendChild(o)}function Nv(){let e=le('[data-equipment-section-pane="testing"]'),t=le(".equipment-testing-grid",e);if(!e||!t||t.dataset.testingWorkbench==="1")return;let n=le(".equipment-test-status-card",e);n&&n.classList.add("equipment-test-card");let o=[n,...t.querySelectorAll(".equipment-test-card")].filter(Boolean),i=xv(o);if(!i.length)return;t.dataset.testingWorkbench="1";let r=K("div","equipment-testing-shell"),a=K("div","equipment-testing-main"),s=K("div","equipment-testing-card-stack"),{nav:l,buttonsById:c}=wv(i);t.parentNode.insertBefore(r,n||t),r.append(l,a),a.appendChild(s),n?s.append(n,t):s.appendChild(t);let d=window.matchMedia(Fm);x.activeTestingCard=Hm();function m(u){let p=i.find(g=>g.meta.id===u);p&&requestAnimationFrame(()=>{p.toggle.scrollIntoView({block:"start",behavior:"smooth"})})}function f(){let u=d.matches;e.dataset.testingLayout=u?"mobile":"desktop",l.hidden=u,!u&&!x.activeTestingCard&&(x.activeTestingCard=i[0]?.meta.id||null),u&&!x.activeTestingCard&&(x.activeTestingCard=i[0]?.meta.id||null);for(let p of i){let g=p.meta.id===x.activeTestingCard;p.card.classList.toggle("is-active",g),p.toggle&&(p.toggle.classList.toggle("is-active",g),p.toggle.setAttribute("aria-expanded",String(g)),p.toggle.hidden=!u),p.body.hidden=u?!g:!1,p.card.hidden=u?!1:!g;let v=c.get(p.meta.id);v&&(v.classList.toggle("active",g),v.setAttribute("aria-current",g?"true":"false"))}}function b(u){u!==null&&!i.some(p=>p.meta.id===u)||(x.activeTestingCard=u,u&&_v(u),f())}Xs={setActiveCard:b,firstCardId:Ti[0]?.id||null};for(let u of i)u.toggle.addEventListener("click",()=>{let p=d.matches,g=x.activeTestingCard===u.meta.id;if(p&&g){b(null);return}b(u.meta.id),p&&m(u.meta.id)});for(let[u,p]of c.entries())p.addEventListener("click",()=>{b(u),a.scrollIntoView({block:"start",behavior:"smooth"})});typeof d.addEventListener=="function"?d.addEventListener("change",f):typeof d.addListener=="function"&&d.addListener(f),f()}function Bv(){$v(),Om({sectionId:"parameters",paneSelector:'[data-equipment-section-pane="parameters"]',storageKey:Am,groups:cv,defs:Js,title:"Параметры",subtitle:"Открыт один компактный блок настроек, остальные доступны через меню без длинной простыни форм.",stateKey:"activeParameterCard"})}function kv(){Om({sectionId:"calibration",paneSelector:'[data-equipment-section-pane="calibration"]',storageKey:Nm,groups:dv,defs:Qs,title:"Калибровка",subtitle:"Открыт один сервисный мастер, остальные остаются под рукой через компактное меню.",stateKey:"activeCalibrationCard"})}function Rv(){T("equipment-heater-confirm-modal")||document.body.insertAdjacentHTML("beforeend",mv)}function Em(){return T("equipment")?.classList.contains("active")&&x.activeSection==="testing"}function Fv(){try{let e=localStorage.getItem(Pm);if(e==="parameters"||e==="calibration"||e==="testing")return e}catch{}return"parameters"}function Lv(e){try{localStorage.setItem(Pm,e)}catch{}}function Hm(){try{let e=localStorage.getItem(Bm);if(Ti.some(t=>t.id===e))return e}catch{}return Ti[0]?.id||"pump"}function _v(e){try{localStorage.setItem(Bm,e)}catch{}}function qv(){try{let e=localStorage.getItem(km);if(!e)return null;let t=JSON.parse(e);return!t||typeof t!="object"?null:{pump:!!t.pump,valves:!!t.valves,heater:!!t.heater}}catch{return null}}function Dm(){try{localStorage.setItem(km,JSON.stringify(x.commissioning.manual))}catch{}}function Ov(){try{let e=localStorage.getItem(Rm);if(!e)return null;let t=JSON.parse(e);return t&&typeof t=="object"?t:null}catch{return null}}function Hv(e){try{localStorage.setItem(Rm,JSON.stringify(e))}catch{}}function Cm(){x.commissioning.manual={pump:!1,valves:!1,heater:!1},Dm()}function yo(e,t=!0){Object.prototype.hasOwnProperty.call(x.commissioning.manual,e)&&(x.commissioning.manual[e]=!!t,Dm())}function Fr(){return[{id:"pump",label:"насос"},{id:"valves",label:"клапаны"},{id:"heater",label:"нагрев"}]}function ho(e={}){return[e.bodyLevel&&typeof e.bodyLevel=="object"?e.bodyLevel:{},e.leak&&typeof e.leak=="object"?e.leak:{},e.vaporPrimary&&typeof e.vaporPrimary=="object"?e.vaporPrimary:{},e.vaporSecondary&&typeof e.vaporSecondary=="object"?e.vaporSecondary:{}]}function Dv(e){return Ti.find(t=>t.id===e)||null}function Vm(e){Xs?.setActiveCard(e??Xs?.firstCardId??null)}function xm(e,t){if(bn(e),e==="testing"){Vm(t);return}qn(e,t)}function bn(e){x.activeSection=e,Lv(e),Lt("[data-equipment-section-btn]").forEach(t=>{t.classList.toggle("active",t.dataset.equipmentSectionBtn===e)}),Lt("[data-equipment-section-pane]").forEach(t=>{t.classList.toggle("active",t.dataset.equipmentSectionPane===e)}),qn(e,null),e==="calibration"?window.loadCalibrationData?.():e==="testing"&&Pi(),document.dispatchEvent(new window.CustomEvent("equipment-section-changed",{detail:{sectionId:e}})),Mi(e==="testing")}function Vv(){try{let e=localStorage.getItem(Im);if(Zs.some(t=>t.id===e))return e}catch{}return Zs[0]?.id||"connection"}function jv(e){try{localStorage.setItem(Im,e)}catch{}}function Wv(){Lt("[data-settings-section-btn]").forEach(e=>{e.addEventListener("click",()=>{jm(e.dataset.settingsSectionBtn)})})}function jm(e){x.activeSettingsSection=e,jv(e),Lt("[data-settings-section-btn]").forEach(t=>{t.classList.toggle("active",t.dataset.settingsSectionBtn===e)}),Lt("[data-settings-section-pane]").forEach(t=>{t.classList.toggle("active",t.dataset.settingsSectionPane===e)}),qn(`settings:${e}`,null)}function zv(e={}){let t=[];return e.pump&&t.push("Насос"),e.stirrer&&t.push("Мешалка"),e.heater&&t.push("ТЭН"),e.waterValve&&t.push("Вода"),e.headsValve&&t.push("Головы"),e.unoValve&&t.push("УНО"),e.servoMoving&&t.push("Сервопривод"),t.length?t.join(", "):"Ничего не включено"}function Wm(e=[]){return Array.isArray(e)?e.reduce((t,n)=>t+(n?.valid?1:0),0):0}function Uv(e={}){return{cube:e?.cube!==!1,columnBottom:e?.columnBottom!==!1,columnTop:e?.columnTop!==!1,reflux:e?.reflux!==!1,tsa:e?.tsa!==!1,waterIn:e?.waterIn!==!1,waterOut:e?.waterOut!==!1,installedCount:Number.isFinite(Number(e?.installedCount))?Math.max(0,Number(e.installedCount)):0}}function Kv(e=[]){return Array.isArray(e)?e.filter(t=>t?.installed!==!1):[]}function nl(e){let t=Array.isArray(e?.temperatures)?e.temperatures:[],n=Uv(e?.temperatureTopology||{}),o=Kv(t),i=Wm(o),r=e?.pressure||{},a=e?.heater||{},s=e?.power||{},l=e?.supportedModes||{},c=Fr(),d=c.filter(V=>x.commissioning.manual[V.id]),m=c.filter(V=>!x.commissioning.manual[V.id]),f=o.map(V=>String(V?.label||"").trim()).filter(Boolean),b=f.length,u={rectification:"Ректификация",manualRect:"Ручная ректификация",distillation:"Дистилляция",nbk:"НБК",mashing:"Затор",hold:"Пауза",fermentation:"Брожение"},p=Object.entries(l).filter(([,V])=>V&&V.supported===!1).map(([V,ne])=>String(ne.label||ne.title||ne.name||u[V]||V).trim()).filter(Boolean),g=x.pressureTest.min!==null&&x.pressureTest.max!==null?Math.abs(Number(x.pressureTest.max)-Number(x.pressureTest.min)):null,v=ho(e?.safetyChannels||{}),w=v.filter(V=>{let ne=String(V.status||"");return ne==="ready"||ne==="armed"}),C=v.filter(V=>String(V.status||"")==="reserved"),P=v.filter(V=>{let ne=String(V.status||"");return ne==="offline"||ne==="no_signal"}),E=v.filter(V=>String(V.status||"")==="triggered"),M=[],A={id:"safe-window",title:"Безопасное сервисное окно",blocking:!0,tone:"success",label:"ОК",description:"Контроллер в IDLE, защёлкнутых аварий нет, сервисные тесты разрешены."};e?.testingAllowed?e?.demoMode&&(A.tone="warning",A.label="Демо",A.description="Сервисный экран открыт в демо-режиме: UI живой, но реальное железо не проверяется."):(A.tone="danger",A.label="Стоп",A.description=e?.availabilityReason||"Сервисное тестирование сейчас заблокировано."),M.push(A);let $={id:"temperatures",title:"Термометры и 1-Wire шина",blocking:!0,tone:"success",label:"ОК",description:`Видим ${i} рабочих датч. температуры. Можно сверять живые показания и продолжать пусконаладку.`,actions:[{type:"open",label:"Открыть термометры",section:"testing",cardId:"temps"},{type:"open",label:"К калибровке",section:"calibration",cardId:"temp-calibration"}]};i<=0?($.tone="danger",$.label="Нет",$.description="Рабочие DS18B20 не подтверждены. Сначала проверьте сканирование, адреса и общую 1-Wire линию."):i===1&&($.tone="warning",$.label="Мало",$.description="Сейчас подтверждён только один термодатчик. Для нормальной пусконаладки лучше увидеть хотя бы куб и колонну."),M.push($),$.title="Термометры и 1-Wire шина",$.actions=[{type:"open",label:"Открыть термометры",section:"testing",cardId:"temps"},{type:"open",label:"К калибровке",section:"calibration",cardId:"temp-calibration"}],b<=0?($.tone="warning",$.label="Схема",$.description="В оборудовании не отмечен ни один установленный термодатчик. Из-за этого пусковая логика не сможет корректно оценивать готовность режимов."):i<=0?($.tone="danger",$.label="Нет",$.description="Ни один из отмеченных DS18B20 сейчас не подтвержден. Сначала проверьте сканирование, адреса и общую 1-Wire линию."):i<b?($.tone="warning",$.label="Частично",$.description=`Подтверждено ${i} из ${b} установленных датчиков. Проверьте неответившие DS18B20 и сохранённую топологию оборудования.`):p.length>0?($.tone="warning",$.label="Lite",$.description=`Подключённая комплектация подтверждена, но часть режимов будет недоступна: ${p.join(", ")}.`):($.tone="success",$.label="OK",$.description=`Подтверждено ${i} из ${b} установленных термодатчиков (${f.join(", ")}).`);let I={id:"pressure",title:"Манометр куба",blocking:!!r?.ads1115Available,tone:"success",label:"ОК",description:x.pressureTest.success?`Отклик продувкой подтверждён. Диапазон теста ${D(g,1," мм рт.ст.")}.`:"Сигнал давления есть, но продувка ещё не подтверждена.",actions:[{type:"open",label:"Открыть датчик",section:"testing",cardId:"pressure"},{type:"pressure-toggle",label:x.pressureTest.active?"Сбросить тест":"Начать продувку"}]};r?.ads1115Available?r?.ok?x.pressureTest.success||(I.tone="warning",I.label="Ждёт продувку",I.description="Сигнал есть, но отклик продувкой ещё не подтверждён. Нажмите кнопку и слегка подуйте в сухую линию."):(I.tone="danger",I.label="Нет сигнала",I.description="Канал давления не даёт валидного сигнала. Проверьте ADS1115, проводку и сам датчик куба."):(I.tone="warning",I.label="Нет ADS",I.description="ADS1115 A1 сейчас не виден. Шаг оставлен как напоминание, но не считаем его блокером."),M.push(I);let R={id:"heater",title:"Силовой контур нагрева",blocking:a?.backend==="triac",tone:"success",label:"ОК",description:"TRIAC backend подтверждён, zero-cross виден, PZEM на линии — силовой канал читается штатно.",actions:[{type:"open",label:"Открыть нагрев",section:"testing",cardId:"heater"}]};a?.backend==="triac"?a?.zeroCrossSeen?s?.available||(R.tone="warning",R.label="Без PZEM",R.description="Zero-cross уже виден, но PZEM сейчас офлайн. Нагрев работает, но силовой мониторинг пока неполный."):(R.tone="danger",R.label="Нет sync",R.description="Основной TRIAC выбран, но zero-cross не виден. Без синхронизации фазовое управление пока не подтверждено."):a?.backend==="ssr"?(R.tone="warning",R.label="SSR",R.description="Основной канал сейчас не в TRIAC-режиме. Для фазового управления откройте карточку нагрева и проверьте backend."):(R.tone="warning",R.label="Нет данных",R.description="Контур нагрева ещё не описал свой backend. Откройте сервисную карточку и проверьте диагностику."),M.push(R);let k={id:"aux-safety",title:"Дополнительные safety-каналы",blocking:!1,tone:"success",label:"Готово",description:"ADS1115 отвечает за давление куба и резервные safety-каналы, а GPIO1/GPIO3 оставлены под будущие датчики по месту.",actions:[{type:"open",label:"Открыть статусы",section:"parameters",cardId:"hardware-status"}]};E.length>0?(k.tone="danger",k.label="Сработка",k.description="Один из настроенных safety-каналов уже в состоянии сработки. Проверьте A2/A3, пороги и реальное состояние датчиков."):P.length>0?(k.tone="warning",k.label="Проверь ADS",k.description="Каналы A2/A3 заведены в инженерные статусы, но сам модуль ADS1115 сейчас не виден. GPIO1/GPIO3 пока остаются резервом под будущие датчики."):w.length<2?(k.tone="warning",k.label=`${w.length}/2`,k.description="Часть дополнительных каналов уже готова, но live-сигналы на A2/A3 ещё не подтверждены. Перед запуском проверьте питание ADS, входы ADC и конфигурацию."):C.length>0&&(k.tone="warning",k.label="Резерв",k.description="Резервные входы и статусы на будущее уже заведены через A2/A3, а прямые каналы под газ и пар оставлены на GPIO1/GPIO3 для отдельной реализации."),M.push(k);let te={id:"manual-actuators",title:"Ручное подтверждение исполнительных узлов",blocking:!0,tone:"success",label:"ОК",description:d.length?`Подтверждены: ${d.map(V=>V.label).join(", ")}.`:"После живой проверки отметьте вручную насос, клапаны и нагрев.",actions:[{type:"open-missing-manual",label:"Открыть следующий узел"},{type:"toggle-manual",target:"pump",label:x.commissioning.manual.pump?"Насос OK":"Отметить насос"},{type:"toggle-manual",target:"valves",label:x.commissioning.manual.valves?"Клапаны OK":"Отметить клапаны"},{type:"toggle-manual",target:"heater",label:x.commissioning.manual.heater?"Нагрев OK":"Отметить нагрев"},{type:"reset-manual",label:"Сброс"}]};return m.length&&(te.tone="warning",te.label=`${d.length}/${c.length}`,te.description=`После живой проверки отметьте вручную: ${m.map(V=>V.label).join(", ")}.`),M.push(te),M}function Gv(e){if(!e)return"—";let t=new Date(e);return Number.isNaN(t.getTime())?String(e):t.toLocaleString("ru-RU")}function Yv(e,t=nl(e)){let n=t.filter(a=>a.blocking),o=t.filter(a=>a.tone==="success").length,i=n.length>0&&n.every(a=>a.tone==="success"),r=Object.entries(e?.supportedModes||{}).filter(([,a])=>a&&a.supported===!1).map(([a,s])=>String(s.label||s.title||s.name||a).trim()).filter(Boolean);return{schema:"smart-column-commissioning-report-v1",createdAt:new Date().toISOString(),ready:i,completed:o,total:t.length,requiredCompleted:n.filter(a=>a.tone==="success").length,requiredTotal:n.length,manual:{...x.commissioning.manual},unsupportedModes:r,steps:t.map(a=>({id:a.id,title:a.title,tone:a.tone,blocking:!!a.blocking,label:a.label,description:a.description}))}}function qr(e=Ov()){let t=T("equipment-commissioning-snapshot");if(!t)return;if(!e){t.textContent="Снимок пусконаладки ещё не сохранён.";return}let n=Array.isArray(e.unsupportedModes)&&e.unsupportedModes.length?` | Ограничены режимы: ${e.unsupportedModes.join(", ")}`:"";t.textContent=`Последний снимок: ${Gv(e.createdAt)} | ${e.ready?"готово к запуску":"ещё есть незакрытые шаги"} | обязательные ${e.requiredCompleted}/${e.requiredTotal}${n}`}function Jv(e){let t=nl(e),n=Yv(e,t);Hv(n),qr(n);let o=new Blob([JSON.stringify(n,null,2)],{type:"application/json"}),i=URL.createObjectURL(o),r=document.createElement("a");r.href=i,r.download=`commissioning_${new Date().toISOString().slice(0,19).replace(/[:T]/g,"-")}.json`,document.body.appendChild(r),r.click(),document.body.removeChild(r),URL.revokeObjectURL(i),h("Снимок пусконаладки сохранён из сервисного workbench","success")}function Lr(e){let t=T("equipment-commissioning-steps"),n=T("equipment-commissioning-summary"),o=T("equipment-commissioning-next-step"),i=T("equipment-commissioning-overall-badge");if(!t||!n||!o||!i)return;qr();let r=nl(e),a=r.filter(u=>u.tone==="success").length,s=r.filter(u=>u.blocking),l=s.filter(u=>u.tone==="success").length,c=s.find(u=>u.tone!=="success")||null,d=r.find(u=>u.tone!=="success")||null,m=c||d,f=Fr().filter(u=>x.commissioning.manual[u.id]).length,b=s.length>0&&s.every(u=>u.tone==="success");he(i,b?"Готово":m?.tone==="danger"?"Есть блокеры":"Нужна проверка",b?"success":m?.tone==="danger"?"danger":"warning"),n.innerHTML=`
+        <div class="equipment-inline-stat"><span>Пройдено</span><strong>${a}/${r.length}</strong></div>
+        <div class="equipment-inline-stat"><span>Обязательные</span><strong>${l}/${s.length}</strong></div>
+        <div class="equipment-inline-stat"><span>Ручные узлы</span><strong>${f}/3</strong></div>
+    `,o.className=`equipment-test-alert${b?"":m?.tone==="danger"?" danger":" subtle"}`,o.textContent=b?"Базовая пусконаладка закрыта: можно двигаться дальше к профильным режимам и тонкой настройке.":`Следующий шаг: ${m?.title||"проверка оборудования"}. ${m?.description||""}`,t.innerHTML=r.map(u=>`
+        <div class="equipment-commissioning-step tone-${u.tone}">
+            <div class="equipment-commissioning-step-main">
+                <div class="equipment-commissioning-step-top">
+                    <strong>${u.title}</strong>
+                    <span class="equipment-status-badge ${u.tone}">${u.label}</span>
+                </div>
+                <div class="equipment-commissioning-step-text">${u.description}</div>
+            </div>
+            ${Array.isArray(u.actions)&&u.actions.length?`
+                <div class="equipment-commissioning-step-actions">
+                    ${u.actions.map(p=>{if(p.type==="open")return`<button type="button" class="btn btn-sm btn-secondary" data-commissioning-open="${p.section}:${p.cardId}">${p.label}</button>`;if(p.type==="pressure-toggle")return`<button type="button" class="btn btn-sm btn-secondary" data-commissioning-pressure-toggle="1">${p.label}</button>`;if(p.type==="toggle-manual")return`<button type="button" class="btn btn-sm ${x.commissioning.manual[p.target]?"btn-success":"btn-outline-secondary"}" data-commissioning-manual="${p.target}">${p.label}</button>`;if(p.type==="reset-manual")return`<button type="button" class="btn btn-sm btn-outline-secondary" ${Fr().every(v=>!x.commissioning.manual[v.id])?"disabled":""} data-commissioning-manual-reset="1">${p.label}</button>`;if(p.type==="open-missing-manual"){let g=Fr().find(C=>!x.commissioning.manual[C.id])?.id||"pump",v=g==="valves"?"valves":g==="heater"?"heater":"pump",w=Dv(v);return`<button type="button" class="btn btn-sm btn-secondary" data-commissioning-open="testing:${v}">${w?.shortTitle?`Открыть ${w.shortTitle.toLowerCase()}`:p.label}</button>`}return""}).join("")}
+                </div>
+            `:""}
+        </div>
+    `).join("")}function zm(e={}){return[e.bmp280Primary&&typeof e.bmp280Primary=="object"?e.bmp280Primary:{},e.bmp280Secondary&&typeof e.bmp280Secondary=="object"?e.bmp280Secondary:{},e.ads1115&&typeof e.ads1115=="object"?e.ads1115:{},e.ads1115Secondary&&typeof e.ads1115Secondary=="object"?e.ads1115Secondary:{},e.ds2482&&typeof e.ds2482=="object"?e.ds2482:{},e.mcp4725&&typeof e.mcp4725=="object"?e.mcp4725:{},e.pzem004t&&typeof e.pzem004t=="object"?e.pzem004t:{}]}function Zv(e={}){switch(String(e.status||"")){case"triggered":return{text:"Сработал",tone:"danger"};case"armed":return{text:"Охрана",tone:"success"};case"ready":return{text:"Чтение",tone:"success"};case"no_signal":return{text:"Нет сигнала",tone:"warning"};case"offline":return{text:"Офлайн",tone:"danger"};case"reserved":return{text:"Резерв",tone:"muted"};default:return{text:"Проверка",tone:"warning"}}}function Qv(e={}){let t=Zv(e),n=Number.isFinite(Number(e.voltage))?`${Number(e.voltage).toFixed(3)} V`:"",o=Number.isFinite(Number(e.adc))?`ADC ${Math.round(Number(e.adc))}`:"",i=Number.isFinite(Number(e.pin))?`GPIO${Number(e.pin)}`:"",r=Number.isFinite(Number(e.thresholdV))?`Порог ${Number(e.thresholdV).toFixed(3)} V`:"",a=e.enabled?e.triggerAbove?"Сработка выше порога":"Сработка ниже порога":"Мониторинг выключен",s=[n,o,i,r].filter(Boolean).map(l=>`<span>${l}</span>`).join("");return`
+        <div class="equipment-module-card">
+            <div class="equipment-module-card-head">
+                <strong>${e.label||"Канал"}</strong>
+                <span class="equipment-status-badge ${t.tone}">${t.text}</span>
+            </div>
+            <div class="equipment-module-card-meta">
+                <span>${e.bus||"?"}</span>
+                <span>${e.address||"?"}</span>
+                ${s}
+            </div>
+            <div class="equipment-module-card-role">${e.role||"?"}</div>
+            <div class="equipment-module-card-role">${a}</div>
+        </div>
+    `}function Xv(e={}){let t=!!e.available,n=e.expected!==!1;return t?{text:"Онлайн",tone:"success"}:n?{text:"Нет ответа",tone:"danger"}:{text:"Опция",tone:"muted"}}function e0(e={}){let t=Xv(e),n=Number.isFinite(Number(e.rxPin))&&Number.isFinite(Number(e.txPin))?`GPIO${Number(e.rxPin)} / GPIO${Number(e.txPin)}`:"",o=Number.isFinite(Number(e.baudRate))?`${Number(e.baudRate)} бод`:"",i=[n,o].filter(Boolean).map(r=>`<span>${r}</span>`).join("");return`
+        <div class="equipment-module-card">
+            <div class="equipment-module-card-head">
+                <strong>${e.label||"Модуль"}</strong>
+                <span class="equipment-status-badge ${t.tone}">${t.text}</span>
+            </div>
+            <div class="equipment-module-card-meta">
+                <span>${e.bus||"—"}</span>
+                <span>${e.address||"—"}</span>
+                ${i}
+            </div>
+            <div class="equipment-module-card-role">${e.role||"—"}</div>
+        </div>
+    `}function t0(e){let t=e?.modules||{},n=e?.safetyChannels||{},o=e?.heater||{},i=e?.power||{},r=e?.pressure||{},a=e?.health||{},s=Wm(e?.temperatures),l=Math.max(0,Number(a.tempSensorsOk||s||0)),c=Math.max(0,Number(a.tempSensorsTotal||e?.temperatures?.length||0)),d=!!t?.ads1115?.available,m=!!(t?.bmp280Primary?.available||t?.bmp280Secondary?.available),f=!!r?.ok,b=o?.backend==="triac",u=!!o?.zeroCrossSeen,p=!!i?.available,g=ho(n).filter(I=>{let R=String(I.status||"");return R==="ready"||R==="armed"}).length,v=ho(n).filter(I=>{let R=String(I.status||"");return R==="offline"||R==="no_signal"}).length,w=ho(n).filter(I=>String(I.status||"")==="triggered").length,C=[{key:"temps",label:"Термошина",tone:l>0?"success":"danger",value:c>0?`${l}/${c}`:"нет линии",detail:l>0?"DS18B20 отвечают":"нет подтверждённых термодатчиков",open:{section:"testing",cardId:"temps",label:"Термометры"}},{key:"ads",label:"ADS1115",tone:d?"success":"danger",value:d?"online":"offline",detail:d?"сервисный АЦП виден на шине":"ESP32 не видит сервисный АЦП",open:{section:"parameters",cardId:"hardware-status",label:"Шина и модули"}},{key:"bmp",label:"BMP280",tone:m?"success":"danger",value:m?"online":"offline",detail:m?"барометрический модуль отвечает":"нет ответа от барометрии",open:{section:"parameters",cardId:"hardware-status",label:"Шина и модули"}},{key:"pressure",label:"Манометр куба",tone:f?"success":"danger",value:f?D(r?.cubeMmHg,1," мм рт.ст."):"нет сигнала",detail:f?"кубовое давление считывается":"датчик давления не подтверждён",open:{section:"testing",cardId:"pressure",label:"Давление"}},{key:"zero-cross",label:"Zero-cross",tone:b?u?"success":"danger":"muted",value:b?u?"есть":"нет":o?.backend?o.backend:"не активен",detail:b?u?`${D(o?.zeroCrossCount,0)} переходов, ${D(o?.triacFireCount,0)} gate pulses`:"нет синхронизации с сетью для фазового управления":"контроль нуля нужен только для TRIAC backend",open:{section:"testing",cardId:"heater",label:"Нагрев"}},{key:"pzem",label:"PZEM-004T",tone:p?"success":"danger",value:p?D(i?.power,0," Вт"):"offline",detail:p?`${D(i?.voltage,1," В")} / ${D(i?.current,2," А")}`:"силовой монитор не подтверждён",open:{section:"testing",cardId:"heater",label:"Нагрев"}},{key:"safety",label:"Safety-каналы",tone:w>0?"danger":v>0?"warning":"success",value:w>0?`alarm ${w}`:g>0?`${g} online`:"резерв",detail:w>0?"Один из soft-safety каналов уже перешёл порог сработки.":v>0?"Резервные safety-каналы заведены, но часть live-статусов недоступна.":"A2/A3 опубликованы в диагностике; GPIO1/GPIO3 оставлены под будущие датчики.",open:{section:"parameters",cardId:"hardware-status",label:"Шина и модули"}}],P=C.filter(I=>I.tone==="danger").length,E=C.filter(I=>I.tone==="muted"||I.tone==="warning").length,M="success",A="Контур готов",$="Ключевые сервисные узлы подтверждены, можно переходить к ручным тестам и пусконаладке.";return P>0?(M="danger",A=`Есть блокеры: ${P}`,$="Часть сервисного контура не подтверждена. Сначала добей шину, датчики и силовой монитор, потом запускай ручные проверки."):E>0&&(M="warning",A="Контур частичный",$="Базовый сервисный контур жив, но часть узлов сейчас не обязательна или не активна в текущем backend."),{tone:M,label:A,hint:$,items:C}}function n0(e,t,n){let o=t.tone==="muted"?"info":t.tone,i=`${t.label}: обновление`,r=`Было: ${e.value}. Сейчас: ${t.value}. ${t.detail}`;e.tone==="danger"&&t.tone==="success"?i=`${t.label}: восстановлено`:e.tone==="success"&&t.tone==="danger"?i=`${t.label}: потеря`:e.tone!==t.tone?i=`${t.label}: смена статуса`:e.value!==t.value&&(i=`${t.label}: новое значение`),x.serviceContourHistory.unshift({timestampMs:n,tone:o,title:i,detail:r}),x.serviceContourHistory=x.serviceContourHistory.slice(0,12)}function o0(e){let t=Date.now(),n=x.serviceContourMemory&&typeof x.serviceContourMemory=="object"?x.serviceContourMemory:{},o={},i=e.items.map(r=>{let a=[r.tone,r.value,r.detail].join("::"),s=n[r.key],l=s&&s.signature===a?s.sinceMs:t;return s&&s.signature!==a&&n0(s,r,t),o[r.key]={key:r.key,label:r.label,tone:r.tone,value:r.value,detail:r.detail,signature:a,sinceMs:l},{...r,sinceMs:l,stabilityLabel:`Статус держится ${f0(t-l)}`}});return x.serviceContourMemory=o,{...e,items:i}}function i0(){let e=T("equipment-service-contour-history");if(e){if(!Array.isArray(x.serviceContourHistory)||!x.serviceContourHistory.length){e.innerHTML='<div class="equipment-test-journal-empty">История появится после первого изменения состояния контура.</div>';return}e.innerHTML=x.serviceContourHistory.map(t=>`
+        <div class="equipment-test-journal-item ${t.tone||"neutral"}">
+            <div class="equipment-test-journal-line">
+                <strong>${t.title||"Контур"}</strong>
+                <span>${Um(t.timestampMs)}</span>
+            </div>
+            <div class="equipment-test-journal-detail">${t.detail||""}</div>
+        </div>
+    `).join("")}}function r0(e){let t=T("equipment-service-contour-badge"),n=T("equipment-service-contour-hint"),o=T("equipment-service-contour-next"),i=T("equipment-service-contour-grid");if(!t||!n||!o||!i)return;let r=o0(t0(e)),a=r.items.find(s=>s.tone==="danger"&&s.open)||null;he(t,r.label,r.tone),n.textContent=r.hint,n.className=`equipment-test-alert${r.tone==="danger"?" danger":r.tone==="warning"?"":" subtle"}`,o.innerHTML=a?`
+            <div class="equipment-service-contour-next-card tone-${a.tone}">
+                <div class="equipment-service-contour-next-copy">
+                    <strong>Следующий шаг: ${a.label}</strong>
+                    <span>${a.detail}</span>
+                </div>
+                <button
+                    type="button"
+                    class="btn btn-sm btn-secondary"
+                    data-service-contour-open="${a.open.section}:${a.open.cardId}"
+                >Открыть ${a.open.label}</button>
+            </div>
+        `:`
+            <div class="equipment-service-contour-next-card tone-success">
+                <div class="equipment-service-contour-next-copy">
+                    <strong>Сервисный контур собран</strong>
+                    <span>Ключевые узлы подтверждены. Можно переходить к ручным тестам или пусконаладке.</span>
+                </div>
+            </div>
+        `,i.innerHTML=r.items.map(s=>`
+        <div class="equipment-service-contour-item tone-${s.tone}">
+            <div class="equipment-service-contour-line">
+                <strong>${s.label}</strong>
+                <span class="equipment-status-badge ${s.tone}">${s.value}</span>
+            </div>
+            <div class="equipment-service-contour-detail">${s.detail}</div>
+            <div class="equipment-service-contour-age">${s.stabilityLabel||""}</div>
+            ${s.open?`
+                <div class="equipment-service-contour-actions">
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-secondary"
+                        data-service-contour-open="${s.open.section}:${s.open.cardId}"
+                    >Открыть ${s.open.label}</button>
+                </div>
+            `:""}
+        </div>
+    `).join(""),i0()}function a0(e){let t=zm(e?.modules||{}),n=ho(e?.safetyChannels||{}),o=e?.health||{},i=Math.max(0,Number(o.tempSensorsOk||0)),r=Math.max(0,Number(o.tempSensorsTotal||0)),a=Math.max(0,Math.min(100,Number(o.overall||0))),l=t.filter(p=>p.expected!==!1).filter(p=>!p.available),c=Math.max(0,Number(o.pzemSpikes||0)),d=Math.max(0,Number(o.tempErrors||0)),m=o.rebootReasonStr||"—",f="success",b="Железо отвечает штатно",u=[`health ${a}%`,`термодатчики ${i}/${r}`,`reboot ${m}`];return l.length>0?(f="danger",b="Потеря обязательных модулей",u.push(`нет ответа: ${l.map(p=>p.label||"модуль").join(", ")}`)):i<=0?(f="danger",b="Нет подтверждённых термодатчиков"):(a<70||c>0||d>0)&&(f="warning",b="Есть деградация precheck",c>0&&u.push(`spikes ${c}`),d>0&&u.push(`temp errors ${d}`)),{tone:f,title:b,detail:u.join(" • "),signature:[f,a,i,r,m,c,d,l.map(p=>p.label||"module").join("|")].join("::")}}function s0(e){let t=a0(e),n=Date.now();(!x.selfCheckLastSignature||t.signature!==x.selfCheckLastSignature||n-x.selfCheckLastRecordedAt>=6e4)&&(x.selfCheckLastSignature=t.signature,x.selfCheckLastRecordedAt=n,x.selfCheckHistory.unshift({timestampMs:n,tone:t.tone,title:t.title,detail:t.detail}),x.selfCheckHistory=x.selfCheckHistory.slice(0,10))}function l0(){let e=T("equipment-selfcheck-history");if(e){if(!Array.isArray(x.selfCheckHistory)||!x.selfCheckHistory.length){e.innerHTML='<div class="equipment-test-journal-empty">История появится после первых изменений состояния.</div>';return}e.innerHTML=x.selfCheckHistory.map(t=>`
+        <div class="equipment-test-journal-item ${t.tone||"neutral"}">
+            <div class="equipment-test-journal-line">
+                <strong>${t.title||"Precheck"}</strong>
+                <span>${Um(t.timestampMs)}</span>
+            </div>
+            <div class="equipment-test-journal-detail">${t.detail||""}</div>
+        </div>
+    `).join("")}}function c0(e){let t=T("equipment-selfcheck-badge"),n=T("equipment-selfcheck-summary"),o=T("equipment-selfcheck-hint"),i=T("equipment-selfcheck-modules");if(!t||!n||!o||!i)return;let r=zm(e?.modules||{}),a=ho(e?.safetyChannels||{}),s=e?.health||{},l=r.filter(E=>!!E.available).length,c=r.filter(E=>E.expected!==!1),d=c.filter(E=>!!E.available).length,m=c.filter(E=>!E.available).length,f=Math.max(0,Number(s.tempSensorsOk||0)),b=Math.max(0,Number(s.tempSensorsTotal||0)),u=Math.max(0,Math.min(100,Number(s.overall||0))),p=Math.max(0,Number(s.pzemSpikes||0)),g=Math.max(0,Number(s.tempErrors||0)),v=s.rebootReasonStr||"—",w="success",C="Готово",P=`Обязательные модули в онлайне: ${d}/${c.length}.`;m>0||f<=0?(w="danger",C="Есть блокеры",P=m>0?`Нет ответа от обязательных модулей: ${m}/${c.length}. Сначала добейте шину и питание.`:"Температурная линия сейчас не подтверждена. Без термодатчиков нормальная пусконаладка бессмысленна."):(u<70||p>0||g>0)&&(w="warning",C="Нужна проверка",P=`Железо в целом отвечает, но есть инженерные маркеры для разбора: health ${u}%, spikes ${p}, temp errors ${g}.`),he(t,C,w),n.innerHTML=`
+        <div class="equipment-inline-stat"><span>Health</span><strong>${u}%</strong></div>
+        <div class="equipment-inline-stat"><span>Термодатчики</span><strong>${f}/${b}</strong></div>
+        <div class="equipment-inline-stat"><span>Модули online</span><strong>${l}/${r.length}</strong></div>
+        <div class="equipment-inline-stat"><span>Reboot</span><strong>${v}</strong></div>
+    `,o.textContent=P,i.innerHTML=[...r.map(E=>e0(E)),...a.map(E=>Qv(E))].join(""),l0()}function d0(e=[]){let t=T("equipment-testing-temps-list");if(t){t.innerHTML="";for(let n of e){let o=document.createElement("div");o.className=`equipment-test-sensor ${n.valid?"is-valid":"is-invalid"}`,o.innerHTML=`
+            <div class="equipment-test-sensor-name">${n.label}</div>
+            <div class="equipment-test-sensor-value">${bv(n)}</div>
+        `,t.appendChild(o)}}}function ol(e){let t=T("equipment-test-pressure-badge"),n=T("equipment-test-pressure-summary");if(!e){he(t,"Нет данных","danger"),U("equipment-test-pressure-value","-- мм рт.ст."),U("equipment-test-pressure-hint","Нет актуальных значений давления"),n&&(n.innerHTML="");return}if(he(t,e.ok?"Онлайн":"Нет сигнала",e.ok?"success":"danger"),U("equipment-test-pressure-value",D(e.cubeMmHg,1," мм рт.ст.")),!x.pressureTest.active){U("equipment-test-pressure-hint","Для теста нажмите кнопку ниже и слегка подуйте в датчик."),n&&(n.innerHTML=`
+                <div class="equipment-inline-stat"><span>Атмосфера</span><strong>${D(e.atmosphere,1," гПа")}</strong></div>
+                <div class="equipment-inline-stat"><span>Сигнал</span><strong>${tl(e.ok,"Есть","Нет")}</strong></div>
+            `);return}x.pressureTest.baseline===null&&Number.isFinite(Number(e.cubeMmHg))&&(x.pressureTest.baseline=Number(e.cubeMmHg),x.pressureTest.min=Number(e.cubeMmHg),x.pressureTest.max=Number(e.cubeMmHg));let o=Number(e.cubeMmHg);Number.isFinite(o)&&(x.pressureTest.min=x.pressureTest.min===null?o:Math.min(x.pressureTest.min,o),x.pressureTest.max=x.pressureTest.max===null?o:Math.max(x.pressureTest.max,o),x.pressureTest.baseline!==null&&Math.abs(o-x.pressureTest.baseline)>=lv&&(x.pressureTest.success=!0));let i=x.pressureTest.baseline===null||!Number.isFinite(o)?null:o-x.pressureTest.baseline;x.pressureTest.success?U("equipment-test-pressure-hint","Изменение давления обнаружено, датчик реагирует."):U("equipment-test-pressure-hint","Изменение пока не зафиксировано, повторите продувку чуть сильнее."),n&&(n.innerHTML=`
+            <div class="equipment-inline-stat"><span>База</span><strong>${D(x.pressureTest.baseline,1," мм")}</strong></div>
+            <div class="equipment-inline-stat"><span>Δ</span><strong>${i===null?"--":D(i,1," мм")}</strong></div>
+            <div class="equipment-inline-stat"><span>Диапазон</span><strong>${D(x.pressureTest.min,1,"")} .. ${D(x.pressureTest.max,1," мм")}</strong></div>
+        `)}function u0(e){he(T("equipment-test-hydrometer-badge"),e?.valid?"Есть данные":"Нет сигнала",e?.valid?"success":"muted"),U("equipment-test-hydrometer-pressure",D(e?.pressure,1,"")),U("equipment-test-hydrometer-density",D(e?.density,2,"")),U("equipment-test-hydrometer-abv",D(e?.abv,1," %"))}function m0(e=[]){let t=T("equipment-test-action-journal");if(t){if(!Array.isArray(e)||!e.length){t.innerHTML='<div class="equipment-test-journal-empty">Сервисных действий пока не было.</div>';return}t.innerHTML=e.map((n,o)=>`
+        <div class="equipment-test-journal-item ${n?.tone||"neutral"}">
+            <div class="equipment-test-journal-line">
+                <strong>${n?.title||"Сервисное действие"}</strong>
+                <span>${p0(n?.timestampMs,o)}</span>
+            </div>
+            <div class="equipment-test-journal-detail">${n?.detail||""}</div>
+        </div>
+    `).join("")}}function p0(e,t){let n=Number(e||0);if(!Number.isFinite(n)||n<=0)return t===0?"только что":`#${t+1}`;let o=Math.max(0,Math.floor(n/1e3)),i=Math.floor(o/60),r=o%60;return t===0?"только что":`T+${String(i).padStart(2,"0")}:${String(r).padStart(2,"0")}`}function Um(e){let t=new Date(Number(e||0));return Number.isNaN(t.getTime())?"—":t.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}function f0(e){let t=Math.max(0,Math.round(Number(e||0)/1e3));if(t<60)return`${t} с`;let n=Math.floor(t/60),o=t%60;if(n<60)return o>0?`${n}м ${o}с`:`${n}м`;let i=Math.floor(n/60),r=n%60;return r>0?`${i}ч ${r}м`:`${i}ч`}function g0(e,t,n){he(T("equipment-test-pump-badge"),e?.running?n?"Симуляция":"Работает":"Ожидание",e?.running?n?"warning":"success":"muted"),U("equipment-test-pump-target",D(e?.targetSpeedMlH,0," мл/ч")),U("equipment-test-pump-applied",D(e?.appliedSpeedMlH,0," мл/ч")),U("equipment-test-pump-volume",D(e?.totalVolumeMl,2," мл")),U("equipment-test-pump-loops",String(Math.round(Number(e?.taskLoopCount||0)))),U("equipment-test-pump-locks",String(Math.round(Number(e?.lockTimeoutCount||0)))),U("equipment-test-pump-task",tl(e?.taskAlive,"Жива","Нет"));let o=T("equipment-test-pump-toggle");o&&(o.textContent=e?.running?"Остановить насос":"Запустить насос",o.classList.toggle("btn-danger",!!e?.running),o.classList.toggle("btn-success",!e?.running),o.disabled=!t&&!e?.running)}function b0(e,t,n){let o=!!e?.available,i=e?.enabled!==!1,r=!!e?.running,a=!!e?.autoMode;he(T("equipment-test-stirrer-badge"),i?o?r?n?"Симуляция":a?"Авто":"Работает":"Готова":"Нет DAC":"Отключена",!i||!o?"danger":r?a||n?"warning":"success":"muted"),U("equipment-test-stirrer-speed-live",D(e?.speed??e?.speedPercent,0," %")),U("equipment-test-stirrer-mode",i?r?a?"Авто":"Ручной":"Ожидание":"Выкл"),U("equipment-test-stirrer-available",o?"MCP4725 OK":"Нет MCP4725");let s=T("equipment-test-stirrer-hint");s&&(i?o?r&&a?s.textContent="Скорость управляется автоматически из FSM.":r?s.textContent="Ручной тест мешалки активен.":s.textContent="Готова к запуску из сервисного экрана.":s.textContent="Контроллер MCP4725 недоступен на I2C.":s.textContent="Включите мешалку в параметрах оборудования.");let l=T("equipment-test-stirrer-speed");if(l&&!l.matches(":focus")&&x.pendingStirrerSpeed==null){let b=r?Me(e?.speed??e?.speedPercent,1,100,e?.defaultSpeedPercent||50):Me(e?.defaultSpeedPercent,1,100,50);l.value=String(b)}let c=t&&i&&o,d=T("equipment-test-stirrer-start");d&&(d.disabled=!c||r);let m=T("equipment-test-stirrer-apply");m&&(m.disabled=!c||!r);let f=T("equipment-test-stirrer-stop");f&&(f.disabled=!r)}function Ci(e,t,n,o,i,r,a=!0,s="Недоступно на этой плате"){let l=T(e),c=T(`${e}-badge`),d=T(e.replace("-toggle","-pulse")),m=T(`${e}-pulse-hint`);if(!a){he(c,"Нет канала","muted"),l&&(l.textContent=`Недоступно: ${n}`,l.dataset.nextOpen="false",l.disabled=!0),d&&(d.disabled=!0),m&&(m.textContent=s);return}let f=!!i?.active,b=Number(i?.remainingMs||0);he(c,f?"Импульс":t?"Открыт":"Закрыт",f?"warning":t?"success":"muted"),l&&(l.textContent=t?`Закрыть ${n}`:`Открыть ${n}`,l.dataset.nextOpen=t?"false":"true",l.disabled=!o&&!t),d&&(d.disabled=!o||f),m&&(f?m.textContent=`${r?"Симуляция":"Импульс"}: автозакрытие через ${D(b/1e3,1," с")}`:m.textContent="Импульсный тест готов.")}function h0(e,t,n,o){let i=T("equipment-test-start-stop-badge"),r=T("equipment-test-start-stop-duty"),a=T("equipment-test-start-stop-apply"),s=T("equipment-test-start-stop-startup"),l=T("equipment-test-start-stop-stop"),c=T("equipment-test-start-stop-hint"),d=!!t?.enabled,m=Me(t?.minDuty,0,255,0),f=Me(t?.maxDuty,m,255,255),b=Me(t?.startupDuty,m,f,m),u=Me(e?.startStopDuty,0,255,0),p=u>0;he(i,d?p?`${u}/255`:"Остановлен":"Отключен",d&&p?o?"warning":"success":"muted"),r&&!r.matches(":focus")&&(r.value=String(p?u:b)),c&&(c.textContent=d?`Рабочее окно ${m}-${f}/255, стартовая подача ${b}/255.`+(p?` Сейчас ${o?"симуляция":"подача"} ${u}/255.`:" Канал на нуле."):"PWM-канал охлаждения отключен в параметрах оборудования.");let g=n&&d;r&&(r.disabled=!g),a&&(a.disabled=!g),s&&(s.disabled=!g),l&&(l.disabled=!p)}function y0(e,t){he(T("equipment-test-servo-badge"),e?.enabled?e?.moving?"Движение":"Готов":"Отключен",e?.enabled?e?.moving?"warning":"success":"muted"),U("equipment-test-servo-fraction",e?.fractionLabel||"—"),U("equipment-test-servo-angle-live",D(e?.angle,0,"°")),U("equipment-test-servo-status",e?.available?"Сервопривод доступен":"Фракционник отключен в конфигурации"),Lt("[data-servo-preset]").forEach(r=>{let a=r.dataset.servoPreset,s=(e?.presets||[]).find(c=>c.token===a);r.disabled=!t||!e?.available||!s?.enabled,r.classList.toggle("is-active",e?.fraction===a);let l=r.querySelector(".equipment-preset-angle");l&&s&&(l.textContent=`${s.angle}°`)});let n=T("equipment-test-servo-angle"),o=T("equipment-test-servo-angle-apply");n&&(n.disabled=!t||!e?.available,n.matches(":focus")||(n.value=Number.isFinite(Number(e?.angle))?String(Math.round(Number(e.angle))):"0")),o&&(o.disabled=!t||!e?.available);for(let r of e?.presets||[]){let a=T(`equipment-servo-enabled-${r.index}`),s=T(`equipment-servo-angle-${r.index}`);a&&(a.checked=!!r.enabled),s&&!s.matches(":focus")&&(s.value=String(Math.round(Number(r.angle||0))))}let i=T("equipment-test-servo-save");i&&(i.disabled=!e?.enabled)}function v0(e,t,n,o){let i=$i(e);he(T("equipment-test-heater-badge"),e?.active?o?"Симуляция":"Вкл":"Выкл",e?.active?o?"warning":"danger":"muted"),U("equipment-test-heater-power",D(e?.actualPowerW??Sm(e?.powerPercent,e),0," Вт")),U("equipment-test-heater-setpoint",D(e?.powerSetW??Sm(e?.powerSetPercent,e),0," Вт")),U("equipment-test-heater-submerge",D(e?.minSubmergeLiters,1," л")),U("equipment-test-heater-main-power",D(e?.mainPowerW,0," Вт")),U("equipment-test-heater-booster-power",e?.boosterConfigured?D(e?.boosterPowerW,0," Вт"):"Отключен"),U("equipment-test-heater-booster-stop",e?.boosterConfigured?D(e?.boosterStopCubeTempC,1," °C"):"—"),U("equipment-test-heater-delay",e?.backend==="triac"?D(e?.triacDelayUs,0," мкс"):"—"),U("equipment-test-heater-zc-count",e?.backend==="triac"?D(e?.zeroCrossCount,0):"—"),U("equipment-test-heater-fire-count",e?.backend==="triac"?D(e?.triacFireCount,0):"—"),U("equipment-test-heater-real-power",t?.available?D(t?.power,0," Вт"):"PZEM offline"),U("equipment-test-heater-voltage",t?.available?D(t?.voltage,1," В"):"—"),U("equipment-test-heater-current",t?.available?D(t?.current,2," А"):"—"),U("equipment-test-heater-frequency",t?.available?D(t?.frequency,1," Гц"):"—"),U("equipment-test-heater-pf",t?.available?D(t?.powerFactor,2,""):"—");let r=T("equipment-test-heater-power-input");r&&!r.matches(":focus")&&(r.min="100",r.max=String(i),r.step="50",(!r.value||Number(r.value)>i)&&(r.value=String(Math.max(100,Math.round(i*.4/50)*50))));let a=e?.backend==="triac",s=!!e?.zeroCrossSeen;he(T("equipment-test-heater-backend"),a?"Основной: TRIAC":"Основной: SSR",a?"neutral":"warning"),he(T("equipment-test-heater-booster"),e?.boosterEnabled?"Booster SSR: вкл":"Booster SSR: выкл",e?.boosterEnabled?o?"warning":"danger":"muted"),he(T("equipment-test-heater-zc"),a?s?"Zero-cross: есть":"Zero-cross: нет":"Zero-cross: не нужен",a?s?"success":"danger":"muted"),he(T("equipment-test-heater-pzem"),t?.available?"PZEM: онлайн":"PZEM: offline",t?.available?"success":"danger");let l=T("equipment-test-heater-diag");if(l){let m="subtle",f="Ожидаем данные по контуру нагрева.";a?s?f=`ESP32 видит zero-cross. Симистор работает по фазовой задержке ${D(e?.triacDelayUs,0," мкс")}, зафиксировано ${D(e?.zeroCrossCount,0)} переходов и ${D(e?.triacFireCount,0)} gate pulses.`:(m="danger",f="ESP32 не видит zero-cross. Основной симисторный канал сейчас не подтверждает синхронизацию с сетью."):e?.backend&&(f="Основной нагрев сейчас работает не через симисторный backend. Для фазового управления нужен активный TRIAC backend."),t?.available?f+=` PZEM видит ${D(t?.power,0," Вт")} при сети ${D(t?.voltage,1," В")}.`:f+=" PZEM сейчас не подтверждает силовые измерения.",o&&(m="subtle",f="Демо-режим: статусы нагрева и zero-cross показываются как симуляция, без проверки реальной сети."),l.textContent=f,l.className=`equipment-test-alert${m==="subtle"?" subtle":m==="danger"?" danger":""}`}let c=T("equipment-test-heater-start"),d=T("equipment-test-heater-stop");c&&(c.disabled=!n||!!e?.active),d&&(d.disabled=!e?.active)}function w0(e){he(T("equipment-test-allow-badge"),e.testingAllowed?"Доступно":"Заблокировано",e.testingAllowed?"success":"danger"),he(T("equipment-test-demo-badge"),e.demoMode?"Симуляция":"Живой контур",e.demoMode?"warning":"success"),he(T("equipment-test-process-badge"),e.processActive?"Процесс активен":"Простой",e.processActive?"warning":"success"),he(T("equipment-test-alarm-badge"),e.alarmActive||e.safetyLatched?"Есть авария":"Чисто",e.alarmActive||e.safetyLatched?"danger":"success"),gv("equipment-test-active-summary",`
+            <div class="equipment-inline-stat"><span>Физическое управление</span><strong>${tl(e.physicalActuationAllowed,"Да","Нет")}</strong></div>
+            <div class="equipment-inline-stat"><span>Сейчас активны</span><strong>${zv(e.activeTests)}</strong></div>
+        `),U("equipment-test-availability-hint",e.testingAllowed?e.demoMode?"Демо-режим активен: тесты разрешены, но физическое железо не затрагивается.":"Сервисные тесты разрешены. Следи за блокировками и останавливай узлы после проверки.":e.availabilityReason||"Тестирование сейчас недоступно.")}function Pt(e){x.lastStatus=e,s0(e),w0(e),r0(e),Lr(e),c0(e),g0(e.pump,e.testingAllowed,e.demoMode),b0(e.stirrer,e.testingAllowed,e.demoMode),Ci("equipment-test-water-toggle",!!e.valves?.water,"воду",e.testingAllowed,e.valves?.waterPulse,e.demoMode),Ci("equipment-test-heads-toggle",!!e.valves?.heads,"головы",e.testingAllowed,e.valves?.headsPulse,e.demoMode),Ci("equipment-test-body-toggle",!!e.valves?.body,"тело",e.testingAllowed,e.valves?.bodyPulse,e.demoMode,!!e.valves?.bodyAvailable,"На текущей плате нет отдельного канала body."),Ci("equipment-test-tails-toggle",!!e.valves?.tails,"хвосты",e.testingAllowed,e.valves?.tailsPulse,e.demoMode,!!e.valves?.tailsAvailable,"На текущей плате нет отдельного канала tails."),Ci("equipment-test-uno-toggle",!!e.valves?.uno,"УНО",e.testingAllowed,e.valves?.unoPulse,e.demoMode),h0(e.valves,e.coolingSettings,e.testingAllowed,e.demoMode),y0(e.servo,e.testingAllowed),v0(e.heater,e.power,e.testingAllowed,e.demoMode),d0(e.temperatures),ol(e.pressure),u0(e.hydrometer),m0(e.recentActions);let t=T("equipment-test-stop-all");if(t){let o=Object.values(e.activeTests||{}).some(Boolean);t.disabled=!o}let n=T("equipment-test-valves-close-all");if(n){let o=!!e.valves?.water||!!e.valves?.heads||!!e.valves?.body||!!e.valves?.tails||!!e.valves?.uno||Number(e.valves?.startStopDuty||0)>0;n.disabled=!e.testingAllowed&&!o}}async function wt(e,t={}){let n=await fetch(e,t),o=await n.json().catch(()=>({}));if(!n.ok){let i=o?.message||o?.error||`HTTP ${n.status}`;throw new Error(i)}return o}async function Pi(e=!1){if(!x.pollingRequestInFlight)try{x.pollingRequestInFlight=!0;let t=await wt(av);Pt(t)}catch(t){e||h(`✗ Ошибка загрузки сервиса тестирования: ${t.message}`,"error"),he(T("equipment-test-allow-badge"),"Ошибка","danger"),U("equipment-test-availability-hint",`Не удалось загрузить статус тестирования: ${t.message}`)}finally{x.pollingRequestInFlight=!1}}function Mm(){x.pollingHandle&&(clearInterval(x.pollingHandle),x.pollingHandle=null)}function Mi(e=!1){if(!Em()||document.visibilityState==="hidden"){Mm();return}x.pollingHandle||(x.pollingHandle=window.setInterval(()=>{if(!Em()||document.visibilityState==="hidden"){Mm();return}Pi(!0)},sv)),e&&Pi(!0)}function S0(e){x.heaterPendingPowerW=e,U("equipment-test-heater-confirm-power",`${e} Вт`),T("equipment-heater-confirm-modal")?.classList.add("active")}function _r(){x.heaterPendingPowerW=0,T("equipment-heater-confirm-modal")?.classList.remove("active")}async function E0(){let e=!!x.lastStatus?.pump?.running,t=e?{action:"stop"}:{action:"start",speedMlH:Me(T("equipment-test-pump-speed")?.value,1,5e3,1200)},n=await wt("/api/testing/pump",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)});yo("pump",!0),Pt(n),h(e?"Остановлен тест насоса":`Запущен тест насоса: ${t.speedMlH} мл/ч`,"success")}async function Gs(e){let t=Me(x.pendingStirrerSpeed??T("equipment-test-stirrer-speed")?.value,1,100,Number(x.lastStatus?.stirrer?.defaultSpeedPercent||50)),n=e==="stop"?{action:e}:{action:e,speedPercent:t};e!=="stop"?x.pendingStirrerSpeed=t:x.pendingStirrerSpeed=null;let o=await wt("/api/testing/stirrer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(n)});x.pendingStirrerSpeed=null,Pt(o),e==="start"?h(`Запущен тест мешалки: ${t}%`,"success"):e==="set"?h(`Скорость мешалки изменена: ${t}%`,"info"):h("Мешалка остановлена из сервисного экрана","warning")}async function bo(e,t){let n=await wt("/api/testing/valves",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target:e,open:t})});(e==="water"||e==="heads"||e==="body"||e==="tails"||e==="uno"||e==="all")&&yo("valves",!0),Pt(n),h(`Клапан ${e} ${t?"открыт":"закрыт"} через тестовый экран`,"info")}async function xi(e){let t=Me(T("equipment-test-valve-pulse-duration")?.value,100,1e4,1200),n=await wt("/api/testing/valves",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target:e,action:"pulse",durationMs:t})});yo("valves",!0),Pt(n),h(`Импульс клапана ${e}: ${t} мс`,"info")}async function Ys(e){let t=Me(e,0,255,0),n=await wt("/api/testing/valves",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target:"startStop",duty:t})});Pt(n),h(`PWM-канал охлаждения установлен на ${t}/255`,t>0?"info":"warning")}async function C0(){let e=await wt("/api/testing/stop-all",{method:"POST"});return h("Все сервисные тесты остановлены","warning"),await Pi(!0),e}async function x0(e){let t=await wt("/api/testing/servo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"preset",preset:e})});Pt(t),h(`Сервопривод переведен в позицию ${e}`,"success")}async function M0(){let e=Me(T("equipment-test-servo-angle")?.value,0,180,0),t=await wt("/api/testing/servo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"angle",angle:e})});Pt(t),h(`Сервопривод переведен в ручной угол ${e}°`,"success")}async function T0(){let e=[],t=[];for(let o=0;o<5;o+=1)e.push(Me(T(`equipment-servo-angle-${o}`)?.value,0,180,0)),t.push(!!T(`equipment-servo-enabled-${o}`)?.checked);let n=await wt("/api/testing/servo",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"saveConfig",angles:e,enabled:t})});Pt(n),h("Позиции сервопривода сохранены","success")}async function $0(){let e=await wt("/api/testing/heater",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"start",powerW:x.heaterPendingPowerW,powerPercent:fv(x.heaterPendingPowerW,x.lastStatus?.heater),confirmed:!0})});_r(),yo("heater",!0),Pt(e),h(`Тест ТЭНа запущен на ${x.heaterPendingPowerW} Вт`,"warning")}async function P0(){let e=await wt("/api/testing/heater",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"stop"})});yo("heater",!0),Pt(e),h("ТЭН остановлен из тестового экрана","warning")}function Tm(){x.pressureTest={active:!0,baseline:null,min:null,max:null,success:!1};let e=T("equipment-test-pressure-start");e&&(e.textContent="Сбросить тест продувки"),ol(x.lastStatus?.pressure)}function $m(){x.pressureTest={active:!1,baseline:null,min:null,max:null,success:!1};let e=T("equipment-test-pressure-start");e&&(e.textContent="Начать тест продувки"),ol(x.lastStatus?.pressure)}function I0(){Lt("[data-equipment-section-btn]").forEach(e=>{e.addEventListener("click",()=>{let t=e.dataset.equipmentSectionBtn;bn(t)})})}function A0(){T("equipment-test-pump-toggle")?.addEventListener("click",()=>{E0().catch(e=>h(`✗ Насос: ${e.message}`,"error"))}),Lt("[data-pump-speed-preset]").forEach(e=>{e.addEventListener("click",()=>{let t=e.dataset.pumpSpeedPreset,n=T("equipment-test-pump-speed");n&&(n.value=String(t))})}),Lt("[data-stirrer-speed-preset]").forEach(e=>{e.addEventListener("click",()=>{let t=e.dataset.stirrerSpeedPreset,n=T("equipment-test-stirrer-speed");x.pendingStirrerSpeed=Me(t,1,100,50),n&&(n.value=String(x.pendingStirrerSpeed))})}),T("equipment-test-stirrer-speed")?.addEventListener("input",e=>{x.pendingStirrerSpeed=Me(e.currentTarget?.value,1,100,50)}),T("equipment-test-stirrer-start")?.addEventListener("click",()=>{Gs("start").catch(e=>h(`✗ Мешалка: ${e.message}`,"error"))}),T("equipment-test-stirrer-apply")?.addEventListener("click",()=>{Gs("set").catch(e=>h(`✗ Мешалка: ${e.message}`,"error"))}),T("equipment-test-stirrer-stop")?.addEventListener("click",()=>{Gs("stop").catch(e=>h(`✗ Мешалка: ${e.message}`,"error"))}),T("equipment-test-stop-all")?.addEventListener("click",()=>{C0().catch(e=>h(`✗ Остановка тестов: ${e.message}`,"error"))}),T("equipment-service-contour-grid")?.addEventListener("click",e=>{let t=e.target.closest("[data-service-contour-open]");if(!t)return;let[n,o]=String(t.dataset.serviceContourOpen||"").split(":");n&&xm(n,o||null)}),T("equipment-test-water-toggle")?.addEventListener("click",e=>{let t=e.currentTarget.dataset.nextOpen==="true";bo("water",t).catch(n=>h(`✗ Клапан воды: ${n.message}`,"error"))}),T("equipment-test-water-pulse")?.addEventListener("click",()=>{xi("water").catch(e=>h(`✗ Импульс воды: ${e.message}`,"error"))}),T("equipment-test-heads-toggle")?.addEventListener("click",e=>{let t=e.currentTarget.dataset.nextOpen==="true";bo("heads",t).catch(n=>h(`✗ Клапан голов: ${n.message}`,"error"))}),T("equipment-test-heads-pulse")?.addEventListener("click",()=>{xi("heads").catch(e=>h(`✗ Импульс голов: ${e.message}`,"error"))}),T("equipment-test-body-toggle")?.addEventListener("click",e=>{let t=e.currentTarget.dataset.nextOpen==="true";bo("body",t).catch(n=>h(`✗ Клапан тела: ${n.message}`,"error"))}),T("equipment-test-body-pulse")?.addEventListener("click",()=>{xi("body").catch(e=>h(`✗ Импульс тела: ${e.message}`,"error"))}),T("equipment-test-tails-toggle")?.addEventListener("click",e=>{let t=e.currentTarget.dataset.nextOpen==="true";bo("tails",t).catch(n=>h(`✗ Клапан хвостов: ${n.message}`,"error"))}),T("equipment-test-tails-pulse")?.addEventListener("click",()=>{xi("tails").catch(e=>h(`✗ Импульс хвостов: ${e.message}`,"error"))}),T("equipment-test-uno-toggle")?.addEventListener("click",e=>{let t=e.currentTarget.dataset.nextOpen==="true";bo("uno",t).catch(n=>h(`✗ Клапан УНО: ${n.message}`,"error"))}),T("equipment-test-uno-pulse")?.addEventListener("click",()=>{xi("uno").catch(e=>h(`✗ Импульс УНО: ${e.message}`,"error"))}),T("equipment-test-start-stop-apply")?.addEventListener("click",()=>{let e=Me(T("equipment-test-start-stop-duty")?.value,0,255,0);Ys(e).catch(t=>h(`✗ PWM охлаждения: ${t.message}`,"error"))}),T("equipment-test-start-stop-startup")?.addEventListener("click",()=>{let e=Me(x.lastStatus?.coolingSettings?.startupDuty,0,255,0);Ys(e).catch(t=>h(`✗ PWM охлаждения: ${t.message}`,"error"))}),T("equipment-test-start-stop-stop")?.addEventListener("click",()=>{Ys(0).catch(e=>h(`✗ PWM охлаждения: ${e.message}`,"error"))}),T("equipment-test-valves-close-all")?.addEventListener("click",()=>{bo("all",!1).catch(e=>h(`✗ Клапаны: ${e.message}`,"error"))}),Lt("[data-servo-preset]").forEach(e=>{e.addEventListener("click",()=>{x0(e.dataset.servoPreset).catch(t=>h(`✗ Сервопривод: ${t.message}`,"error"))})}),T("equipment-test-servo-angle-apply")?.addEventListener("click",()=>{M0().catch(e=>h(`✗ Сервопривод: ${e.message}`,"error"))}),T("equipment-test-servo-save")?.addEventListener("click",()=>{T0().catch(e=>h(`✗ Сохранение сервопривода: ${e.message}`,"error"))}),T("equipment-test-heater-start")?.addEventListener("click",()=>{let e=$i(x.lastStatus?.heater),t=Me(T("equipment-test-heater-power-input")?.value,100,e,Math.round(e*.4));S0(t)}),T("equipment-test-heater-stop")?.addEventListener("click",()=>{P0().catch(e=>h(`✗ ТЭН: ${e.message}`,"error"))}),T("equipment-test-heater-confirm")?.addEventListener("click",()=>{$0().catch(e=>h(`✗ ТЭН: ${e.message}`,"error"))}),T("equipment-test-heater-cancel")?.addEventListener("click",_r),T("equipment-test-heater-close")?.addEventListener("click",_r),T("equipment-heater-confirm-modal")?.addEventListener("click",e=>{e.target===e.currentTarget&&_r()}),T("equipment-test-temps-refresh")?.addEventListener("click",()=>{Pi().catch(()=>{})}),T("equipment-test-temps-open-calibration")?.addEventListener("click",()=>{bn("calibration"),qn("calibration","temp-calibration")}),T("equipment-test-pump-open-calibration")?.addEventListener("click",()=>{bn("calibration"),qn("calibration","pump-calibration")}),T("equipment-test-hydrometer-open-calibration")?.addEventListener("click",()=>{bn("calibration"),qn("calibration","hydrometer-calibration")}),T("equipment-selfcheck-open-modules")?.addEventListener("click",()=>{bn("parameters"),qn("parameters","hardware-status")}),T("equipment-selfcheck-open-temps")?.addEventListener("click",()=>{bn("testing"),Vm("temps")}),T("equipment-commissioning-save")?.addEventListener("click",()=>{x.lastStatus&&Jv(x.lastStatus)}),T("equipment-commissioning-reset")?.addEventListener("click",()=>{Cm(),Lr(x.lastStatus||{}),qr()}),T("equipment-test-pressure-start")?.addEventListener("click",()=>{x.pressureTest.active?$m():Tm()}),T("equipment-commissioning-steps")?.addEventListener("click",e=>{let t=e.target.closest("[data-commissioning-open]");if(t){let[r,a]=String(t.dataset.commissioningOpen||"").split(":");r&&a&&xm(r,a);return}if(e.target.closest("[data-commissioning-pressure-toggle]")){x.pressureTest.active?$m():Tm();return}let o=e.target.closest("[data-commissioning-manual]");if(o){let r=String(o.dataset.commissioningManual||"");r&&(yo(r,!x.commissioning.manual[r]),Lr(x.lastStatus||{}));return}e.target.closest("[data-commissioning-manual-reset]")&&(Cm(),Lr(x.lastStatus||{}))}),qr()}function Km(){let e=T("equipment");e&&(Iv(),Bv(),kv(),Nv(),Rv(),Tt(e),I0(),A0(),x.pollingListenersBound||(document.addEventListener("app-tab-changed",()=>Mi(!0)),document.addEventListener("visibilitychange",()=>Mi()),document.addEventListener("equipment-section-changed",()=>Mi(!0)),x.pollingListenersBound=!0),bn(Fv()),x.activeParameterCard=el(Am,Js,Js[0]?.id||"pump-settings"),x.activeCalibrationCard=el(Nm,Qs,Qs[0]?.id||"pump-calibration"),x.activeTestingCard=Hm(),Mi())}function Gm(){T("settings")&&(Av(),Wv(),jm(Vv()))}var dt={pressureMaxMmHg:50,tsaMaxC:55,waterOutMaxC:70,waterOutRiseRateCMin:8,pressureRiseRateMmHgMin:20,minHeaterSubmergeL:7.5};function Ym(e){return document.getElementById(e)}function N0(e,t=NaN){let n=String(e??"").trim().replace(",","."),o=Number(n);return Number.isFinite(o)?o:t}function On(e,t,n,o){let i=N0(e,o);return Number.isFinite(i)?i<t?t:i>n?n:i:o}function vo(e,t,n=1){let o=Ym(e);!o||!Number.isFinite(t)||(o.value=Number(t).toFixed(n))}function wo(e,t,n,o){return On(Ym(e)?.value,t,n,o)}function Jm(e){S.safetySettings={...S.safetySettings,pressureMaxMmHg:e.pressureMaxMmHg,tsaMaxC:e.tsaMaxC,waterOutMaxC:e.waterOutMaxC,waterOutRiseRateCMin:e.waterOutRiseRateCMin,pressureRiseRateMmHgMin:e.pressureRiseRateMmHgMin},S.equipment={...S.equipment,minHeaterSubmergeL:e.minHeaterSubmergeL}}async function il(){let e=fetch("/api/settings/safety").catch(()=>null),t=fetch("/api/settings/equipment").catch(()=>null),[n,o]=await Promise.all([e,t]),i={...dt};try{if(n&&n.ok){let r=await n.json();i.pressureMaxMmHg=On(r.pressureMaxMmHg,5,200,dt.pressureMaxMmHg),i.tsaMaxC=On(r.tsaMaxC,35,120,dt.tsaMaxC),i.waterOutMaxC=On(r.waterOutMaxC,30,120,dt.waterOutMaxC),i.waterOutRiseRateCMin=On(r.waterOutRiseRateCMin,.5,60,dt.waterOutRiseRateCMin),i.pressureRiseRateMmHgMin=On(r.pressureRiseRateMmHgMin,1,200,dt.pressureRiseRateMmHgMin)}if(o&&o.ok){let r=await o.json();i.minHeaterSubmergeL=On(r.minHeaterSubmergeL,.5,100,dt.minHeaterSubmergeL)}vo("safety-pressure-max",i.pressureMaxMmHg,1),vo("safety-tsa-max",i.tsaMaxC,1),vo("safety-water-out-max",i.waterOutMaxC,1),vo("safety-water-rise-rate",i.waterOutRiseRateCMin,1),vo("safety-pressure-rise-rate",i.pressureRiseRateMmHgMin,1),vo("safety-min-heater-submerge-l",i.minHeaterSubmergeL,1),Jm(i)}catch(r){h(`Ошибка загрузки настроек безопасности: ${r.message}`,"error")}}async function Zm(){let e={pressureMaxMmHg:wo("safety-pressure-max",5,200,dt.pressureMaxMmHg),tsaMaxC:wo("safety-tsa-max",35,120,dt.tsaMaxC),waterOutMaxC:wo("safety-water-out-max",30,120,dt.waterOutMaxC),waterOutRiseRateCMin:wo("safety-water-rise-rate",.5,60,dt.waterOutRiseRateCMin),pressureRiseRateMmHgMin:wo("safety-pressure-rise-rate",1,200,dt.pressureRiseRateMmHgMin)},t={minHeaterSubmergeL:wo("safety-min-heater-submerge-l",.5,100,dt.minHeaterSubmergeL)};try{let[n,o]=await Promise.all([fetch("/api/settings/safety",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)}),fetch("/api/settings/equipment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(t)})]);if(!n.ok||!o.ok){let i=n.ok?"":`safety=${n.status}`,r=o.ok?"":`equipment=${o.status}`;throw new Error([i,r].filter(Boolean).join(", "))}Jm({...e,...t}),h("Настройки аварийной безопасности сохранены","success")}catch(n){h(`Ошибка сохранения безопасности: ${n.message}`,"error")}}function Or(){let e=document.getElementById("mqtt-enabled"),t=document.getElementById("mqtt-fields");!e||!t||(t.style.display=e.checked?"block":"none")}function rl(){return{enabled:document.getElementById("mqtt-enabled"),server:document.getElementById("mqtt-server"),port:document.getElementById("mqtt-port"),username:document.getElementById("mqtt-username"),password:document.getElementById("mqtt-password"),baseTopic:document.getElementById("mqtt-base-topic"),discovery:document.getElementById("mqtt-discovery"),publishInterval:document.getElementById("mqtt-publish-interval"),state:document.getElementById("mqtt-config-state")}}async function al(){let e=rl();if(!(!e.enabled||!e.server||!e.port||!e.username||!e.password||!e.baseTopic||!e.publishInterval))try{let t=await fetch("/api/settings/mqtt");if(!t.ok){e.state&&(e.state.textContent="Статус: ошибка загрузки");return}let n=await t.json();if(e.enabled.checked=!!n.enabled,e.server.value=n.server||"",e.port.value=Number.isFinite(Number(n.port))?String(n.port):"1883",e.username.value=n.username||"",e.password.value=n.password||"",e.baseTopic.value=n.baseTopic||"smart-column",e.discovery&&(e.discovery.checked=n.discovery!==!1),e.publishInterval.value=Number.isFinite(Number(n.publishInterval))?String(n.publishInterval):"10000",Or(),e.state){let o=n.connected?"подключен":"не подключен";e.state.textContent=`Статус: ${o}`}}catch(t){e.state&&(e.state.textContent="Статус: ошибка сети"),console.error("MQTT settings load error:",t)}}async function Qm(){let e=rl();if(!e.enabled||!e.server||!e.port||!e.username||!e.password||!e.baseTopic||!e.publishInterval)return;let t=!!e.enabled.checked,n=(e.server.value||"").trim(),o=Number.parseInt(e.port.value,10)||1883,i=(e.username.value||"").trim(),r=e.password.value||"",a=(e.baseTopic.value||"").trim()||"smart-column",s=!!e.discovery?.checked,l=Number.parseInt(e.publishInterval.value,10)||1e4;if(t&&!n){alert("Укажите адрес MQTT сервера");return}try{let c=await fetch("/api/settings/mqtt",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:t,server:n,port:o,username:i,password:r,baseTopic:a,discovery:s,publishInterval:l})});if(!c.ok){let d=await c.text();e.state&&(e.state.textContent="Статус: ошибка сохранения"),h(`MQTT save failed: ${d}`,"error"),alert("Ошибка сохранения MQTT настроек");return}e.state&&(e.state.textContent="Статус: сохранено"),h("MQTT settings saved","success"),await al()}catch(c){e.state&&(e.state.textContent="Статус: ошибка сети"),h(`MQTT save network error: ${c.message}`,"error"),console.error("MQTT settings save error:",c)}}async function Xm(){let e=rl();try{let t=await fetch("/api/settings/mqtt/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:"Smart-Column S3: MQTT test from Web UI"})});if(!t.ok){let n=await t.text();e.state&&(e.state.textContent="Статус: тест не отправлен"),h(`MQTT test failed: ${n}`,"error"),alert("Не удалось отправить MQTT тест");return}e.state&&(e.state.textContent="Статус: тест отправлен"),h("MQTT test published","success")}catch(t){e.state&&(e.state.textContent="Статус: ошибка сети"),h(`MQTT test network error: ${t.message}`,"error"),console.error("MQTT test error:",t)}}async function sl(){try{let e=await fetch("/api/calibration");if(!e.ok)throw new Error("Failed to load calibration data");let t=await e.json(),n=document.getElementById("pump-ml-per-rev"),o=document.getElementById("pump-steps-per-rev");if(n&&t.pump&&t.pump.mlPerRev!==void 0&&t.pump.mlPerRev!==null?(n.value=t.pump.mlPerRev.toFixed(3),n.placeholder="Загрузка..."):n&&(n.value="",n.placeholder="Загрузка..."),o&&t.pump&&t.pump.stepsPerRev!==void 0&&t.pump.stepsPerRev!==null){let i=(t.pump.stepsPerRev||0)*(t.pump.microsteps||1);o.value=i,o.placeholder="Загрузка..."}else o&&(o.value="",o.placeholder="Загрузка...")}catch(e){console.error("Error loading pump info:",e);let t=document.getElementById("pump-ml-per-rev"),n=document.getElementById("pump-steps-per-rev");t&&(t.placeholder="Ошибка загрузки"),n&&(n.placeholder="Ошибка загрузки")}}async function ll(){try{let e=await fetch("/api/version");if(!e.ok)throw new Error("Failed to load version info");let t=await e.json(),n=(o,i)=>{let r=document.getElementById(o);r&&(r.textContent=i)};if(t.firmware){let o=t.firmware.version||"Unknown";n("firmware-version",o),n("firmware-build-date",t.firmware.buildDate||"Unknown"),n("firmware-build-time",t.firmware.buildTime||"Unknown"),n("sidebar-version",`v${o}`),n("footer-firmware-version",o)}if(t.board){let o=(t.board.flashSize/1048576).toFixed(0),i=(t.board.psramSize/(1024*1024)).toFixed(0);n("board-chip",`${t.board.chip} (Flash: ${o}MB, PSRAM: ${i}MB)`)}t.frontend&&(n("frontend-build-date",t.frontend.buildDate||t.frontend.note||"Unknown"),n("frontend-build-time",t.frontend.buildTime||"-")),addLog("✔ Информация о версиях обновлена","success")}catch(e){console.error("Error loading version info:",e);let t=(n,o)=>{let i=document.getElementById(n);i&&(i.textContent=o)};t("firmware-version","Ошибка загрузки"),t("frontend-build-date","Ошибка загрузки"),t("sidebar-version","v?"),t("footer-firmware-version","?"),addLog("✗ Ошибка загрузки версий","error")}}function cl(){return{authEnabled:document.getElementById("auth-enabled"),authFields:document.getElementById("auth-fields"),username:document.getElementById("web-username"),password:document.getElementById("web-password"),rateLimitEnabled:document.getElementById("rate-limit-enabled")}}function dl(){let e=cl();!e.authFields||!e.authEnabled||(e.authFields.style.display=e.authEnabled.checked?"block":"none")}async function ul(){let e=cl();if(!(!e.authEnabled||!e.username||!e.rateLimitEnabled))try{let t=await fetch("/api/settings/security");if(!t.ok)return;let n=await t.json();e.authEnabled.checked=!!n.authEnabled,e.rateLimitEnabled.checked=n.rateLimitEnabled!==!1,e.username.value=n.username||"admin",e.password&&(e.password.value="",e.password.dataset.passwordConfigured=n.passwordConfigured?"1":"0",e.password.placeholder=n.passwordConfigured?"оставьте пустым, чтобы не менять":"новый пароль"),dl()}catch(t){console.error("Security settings load error:",t)}}async function ep(){let e=cl();if(!e.authEnabled||!e.username||!e.rateLimitEnabled)return;let t=!!e.authEnabled.checked,n=(e.username.value||"").trim(),o=e.password?.value||"",i=e.password?.dataset.passwordConfigured==="1",r=!!e.rateLimitEnabled.checked;if(t&&(!n||!o&&!i)){alert("Укажите имя пользователя и пароль");return}let a={authEnabled:t,username:n,rateLimitEnabled:r};o&&(a.password=o);try{let s=await fetch("/api/settings/security",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(a)});if(!s.ok){let l=await s.text();h(`Security settings save failed: ${l}`,"error"),alert("Ошибка сохранения настроек безопасности");return}e.password&&(e.password.value=""),h("Security settings saved","success"),alert("Настройки безопасности сохранены"),await ul()}catch(s){h(`Security settings network error: ${s.message}`,"error"),console.error("Security settings save error:",s)}}var Ii=null,Hr="",ut=[],ml=new Map;function re(e){return document.getElementById(e)}function Be(e,t="info"){let n=re("wifi-inline-message");n&&(n.textContent=e||"",n.style.color=t==="error"?"var(--danger, #dc3545)":t==="success"?"var(--success, #28a745)":"var(--text-secondary)")}function B0(e){let t=Number(e);return Number.isFinite(t)?t>=-50?"▂▄▆█":t>=-60?"▂▄▆░":t>=-70?"▂▄░░":"▂░░░":"░░░░"}function Eo(e){return ut.find(t=>String(t?.ssid||"").trim()===e)||null}function k0(e,t){e&&(e.hidden=!!t)}function tp(){let e=String(re("wifi-inline-ssid")?.value||Ii||"").trim(),t=!!re("wifi-inline-static-enabled")?.checked;return{ssid:e,password:String(re("wifi-inline-password")?.value||""),makePreferred:!!re("wifi-inline-make-preferred")?.checked,useStaticIp:t,ip:t?String(re("wifi-inline-ip")?.value||"").trim():"",gateway:t?String(re("wifi-inline-gateway")?.value||"").trim():"",subnet:t?String(re("wifi-inline-subnet")?.value||"").trim():"",dns1:t?String(re("wifi-inline-dns1")?.value||"").trim():"",dns2:t?String(re("wifi-inline-dns2")?.value||"").trim():""}}function Ai(e=null){let t=re("wifi-inline-ssid"),n=re("wifi-inline-password"),o=re("wifi-inline-make-preferred"),i=re("wifi-inline-static-enabled"),r=re("wifi-inline-ip"),a=re("wifi-inline-gateway"),s=re("wifi-inline-subnet"),l=re("wifi-inline-dns1"),c=re("wifi-inline-dns2");t&&(t.value=e?.ssid||Ii||""),n&&(n.value=""),o&&(o.checked=!!e&&Number(e.priority)===1),i&&(i.checked=!!e?.useStaticIp),r&&(r.value=e?.ip||""),a&&(a.value=e?.gateway||""),s&&(s.value=e?.subnet||"255.255.255.0"),l&&(l.value=e?.dns1||""),c&&(c.value=e?.dns2||""),Vr()}function np(){Ii=null,Ai(null),Be("","info")}function So(){let e=re("wifi-saved-list");if(e){if(!ut.length){e.innerHTML='<p class="info-text">Сохраненных сетей пока нет</p>';return}e.innerHTML="",ut.forEach((t,n)=>{let o=document.createElement("div");o.className=`wifi-saved-item${t.connected?" is-connected":""}`;let i=document.createElement("div");i.className="wifi-item-top";let r=document.createElement("div"),a=document.createElement("h4");a.className="wifi-item-title",a.textContent=t.ssid||"(hidden)";let s=document.createElement("div");s.className="wifi-item-meta",s.textContent=t.useStaticIp?`Статический IP: ${t.ip||"не задан"}`:"DHCP",r.append(a,s);let l=document.createElement("div");l.className="wifi-item-badges";let c=document.createElement("span");if(c.className="wifi-badge is-priority",c.textContent=`Приоритет ${n+1}`,l.appendChild(c),t.connected){let g=document.createElement("span");g.className="wifi-badge is-connected",g.textContent="Подключено",l.appendChild(g)}i.append(r,l);let d=document.createElement("div");d.className="wifi-item-actions";let m=document.createElement("button");m.type="button",m.className="btn btn-sm",m.textContent="Изменить",m.onclick=()=>pl(t.ssid);let f=document.createElement("button");f.type="button",f.className="btn btn-sm btn-success",f.textContent="Подключить",f.onclick=()=>gl(t.ssid);let b=document.createElement("button");b.type="button",b.className="btn btn-sm",b.textContent="↑",b.disabled=n===0,b.onclick=()=>Dr(t.ssid,"up");let u=document.createElement("button");u.type="button",u.className="btn btn-sm",u.textContent="↓",u.disabled=n===ut.length-1,u.onclick=()=>Dr(t.ssid,"down");let p=document.createElement("button");p.type="button",p.className="btn btn-sm btn-danger",p.textContent="Удалить",p.onclick=()=>fl(t.ssid),d.append(m,f,b,u,p),o.append(i,d),e.appendChild(o)})}}function R0(e=[]){let t=re("wifi-inline-network-list");if(t){if(ml.clear(),!e.length){t.innerHTML='<p class="info-text">Сети не найдены</p>';return}t.innerHTML="",e.forEach(n=>{let o=document.createElement("button");o.type="button",o.className="wifi-scan-item";let i=String(n?.ssid||"").trim(),r=n?.encryption==="open"?"🔓":"🔒",a=Eo(i);ml.set(i,{encryption:n?.encryption||"secured"}),o.textContent=`${r} ${i||"(hidden)"}  ${B0(n?.rssi)}  (${n?.rssi??"--"} dBm)${a?" • сохранена":""}`,o.onclick=()=>{Ii=i,Ai(a);let s=re("wifi-inline-ssid");s&&(s.value=i),Be(`Выбрана сеть: ${i}`,"info")},t.appendChild(o)})}}async function hn(e,t){let n=await fetch(e,t),o=await n.json().catch(()=>({}));if(!n.ok)throw new Error(o?.error||o?.message||`HTTP ${n.status}`);return o}function Vr(){let e=!!re("wifi-inline-static-enabled")?.checked;k0(re("wifi-static-fields"),!e)}async function Ni(){try{let e=await hn("/api/wifi/profiles");ut=Array.isArray(e.profiles)?e.profiles:[],So()}catch(e){So(),h(`WiFi: ошибка загрузки профилей (${e.message})`,"error")}}async function Hn(){let e=re("wifi-inline-status");if(e)try{let t=await hn("/api/wifi/status");t.connected?(Hr=String(t.ssid||"").trim(),e.textContent=`Подключено: ${t.ssid} | IP: ${t.ip} | RSSI: ${t.rssi} dBm | Профилей: ${t.savedProfiles??ut.length}`,e.style.color="var(--success, #28a745)"):t.apMode?(Hr="",e.textContent=`Режим AP: ${t.apSSID} | IP: ${t.apIP} | Профилей: ${t.savedProfiles??ut.length}`,e.style.color="var(--warning, #ffc107)"):(Hr="",e.textContent=`WiFi не подключен | Профилей: ${t.savedProfiles??ut.length}`,e.style.color="var(--danger, #dc3545)"),So()}catch(t){e.textContent="Ошибка загрузки статуса WiFi",e.style.color="var(--danger, #dc3545)",h(`WiFi: ошибка загрузки статуса (${t.message})`,"error")}}async function op(){let e=re("wifi-inline-network-list");e&&(e.innerHTML='<p class="info-text">Сканирование...</p>');try{let t=await hn("/api/wifi/scan");R0(Array.isArray(t.networks)?t.networks:[]),h(`Сканирование WiFi: найдено ${Number(t.count)||0} сетей`,"info")}catch(t){e&&(e.innerHTML=`<p class="info-text" style="color:var(--danger,#dc3545)">Ошибка сканирования: ${t.message}</p>`),h(`Ошибка сканирования WiFi: ${t.message}`,"error")}}function ip(){np()}function pl(e){let t=Eo(String(e||"").trim());t&&(Ii=t.ssid,Ai(t),Be(`Редактирование профиля: ${t.ssid}`,"info"))}async function rp(){let e=tp();if(!e.ssid){Be("Укажите SSID сети","error");return}if(e.useStaticIp&&(!e.ip||!e.gateway||!e.subnet)){Be("Для фиксированного IP заполните IP, шлюз и маску","error");return}try{let t=await hn("/api/wifi/profile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)});ut=Array.isArray(t.profiles)?t.profiles:ut,So(),Be(`Профиль ${e.ssid} сохранен`,"success"),h(`WiFi: профиль ${e.ssid} сохранен`,"success"),await Hn(),Ai(Eo(e.ssid))}catch(t){Be(`Ошибка сохранения профиля: ${t.message}`,"error"),h(`WiFi: ошибка сохранения профиля (${t.message})`,"error")}}async function Dr(e,t){try{let n=await hn("/api/wifi/profile/reorder",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ssid:e,direction:t})});ut=Array.isArray(n.profiles)?n.profiles:ut,So(),Ai(Eo(e)),Be(`Приоритет сети ${e} обновлен`,"success"),h(`WiFi: изменен приоритет сети ${e}`,"info")}catch(n){Be(`Ошибка смены приоритета: ${n.message}`,"error"),h(`WiFi: ошибка смены приоритета (${n.message})`,"error")}}async function fl(e){if(window.confirm(`Удалить профиль WiFi "${e}"?`))try{let t=await hn("/api/wifi/profile/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ssid:e})});ut=Array.isArray(t.profiles)?t.profiles:[],So(),String(re("wifi-inline-ssid")?.value||"").trim()===e&&np(),Be(`Профиль ${e} удален`,"success"),h(`WiFi: профиль ${e} удален`,"info"),await Hn()}catch(t){Be(`Ошибка удаления профиля: ${t.message}`,"error"),h(`WiFi: ошибка удаления профиля (${t.message})`,"error")}}async function gl(e){let t=Eo(String(e||"").trim());if(t)try{await hn("/api/wifi/connect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ssid:t.ssid,saveProfile:!0})}),Be(`Подключение к ${t.ssid} запущено. Подождите 10 секунд.`,"success"),h(`WiFi: запущено подключение к ${t.ssid}`,"success"),setTimeout(()=>{Hn(),Ni()},1e4)}catch(n){Be(`Ошибка подключения: ${n.message}`,"error"),h(`WiFi: ошибка подключения (${n.message})`,"error")}}async function bl(){let e=tp();if(!e.ssid){Be("Укажите SSID сети","error");return}let t=ml.get(e.ssid),n=t&&t.encryption!=="open",i=!!Eo(e.ssid)?.hasPassword;if(n&&!e.password&&!i&&e.ssid!==Hr){Be("Для защищенной сети укажите пароль","error");return}if(e.useStaticIp&&(!e.ip||!e.gateway||!e.subnet)){Be("Для фиксированного IP заполните IP, шлюз и маску","error");return}try{await hn("/api/wifi/connect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...e,saveProfile:!0})}),Be(`Команда подключения к ${e.ssid} отправлена. Подождите 10 секунд.`,"success"),h(`WiFi: отправлена команда подключения к ${e.ssid}`,"success"),setTimeout(()=>{Hn(),Ni()},1e4)}catch(r){Be(`Ошибка подключения: ${r.message}`,"error"),h(`WiFi: ошибка подключения (${r.message})`,"error")}}function ap(){bl()}function sp(){re("wifi-inline-status")&&(Vr(),Hn(),Ni())}var $e="/api/calibration",up=5,wl=5,F0=1500,mp="equipment.calibration.snapshot.meta",Fe={running:!1,startTime:null,targetTime:0,targetVolume:0,speed:0,interval:null},Te=null,Bi=null,hl=!1,lp=!1;function B(e){return document.getElementById(e)}function yl(){let e=B("equipment")?.classList.contains("active"),t=document.querySelector('[data-equipment-section-pane="calibration"]')?.classList.contains("active");return document.visibilityState!=="hidden"&&e&&t&&!!B("pressureCurrent")}function Yt(e,t){let n=B(e);n&&(n.value=t==null?"":String(t))}function q(e,t,n="info"){let o=B(e);if(!o)return;let i=n==="error"?"var(--danger, #dc3545)":n==="success"?"var(--success, #28a745)":"var(--text-secondary)";o.style.color=i,o.textContent=t}function It(e){return String(e??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}function L0(e){if(!e||typeof e!="object")return"";let t=String(e?.assignedAddress||"").trim();return t||(String(e?.mappingMode||"").trim().toLowerCase()==="manual"?String(e?.address||"").trim():"")}function _0(e,t,n){let o=['<option value="">Авто по порядку шины (без жесткой привязки)</option>'],i=Array.isArray(n)?n:[],r=t?i.some(a=>String(a?.address||"")===t):!1;return t&&!r&&o.push(`<option value="${It(t)}">${It(t)} (сохранен, но сейчас не найден)</option>`),i.forEach(a=>{let s=String(a?.address||"").trim();if(!s)return;let l=Number(a?.mappedRole),c="";Number.isInteger(l)&&l>=0&&(l===e?c=" (уже привязан к этой роли)":c=` (сейчас у ${String(a?.mappedRoleName||`роль ${l}`)})`),o.push(`<option value="${It(s)}">${It(s)}${It(c)}</option>`)}),o.join("")}function q0(e,t){let n=[],o=new Set,i=r=>{let a=String(r?.address||"").trim();!a||o.has(a)||(o.add(a),n.push(r))};return(Array.isArray(e)?e:[]).forEach(r=>{i({...r,address:String(r?.address||"").trim()})}),(Array.isArray(t)?t:[]).forEach((r,a)=>{let s=String(r?.detectedAddress||"").trim();s&&i({index:a,address:s,mappedRole:Number.isFinite(Number(r?.index))?Number(r.index):a,mappedRoleName:String(r?.name||`Датчик ${a}`),fromRuntime:!0})}),n}function O0(e,t){let n=new Blob([JSON.stringify(e,null,2)],{type:"application/json"}),o=URL.createObjectURL(n),i=document.createElement("a");i.href=o,i.download=t,document.body.appendChild(i),i.click(),document.body.removeChild(i),URL.revokeObjectURL(o)}function H0(){try{let e=localStorage.getItem(mp);if(!e)return null;let t=JSON.parse(e);return t&&typeof t=="object"?t:null}catch{return null}}function Sl(e){try{localStorage.setItem(mp,JSON.stringify(e))}catch{}}function D0(e){if(!e)return"—";let t=new Date(e);return Number.isNaN(t.getTime())?String(e):t.toLocaleString("ru-RU")}function pp(e={}){let t=e?.pump||{},n=Array.isArray(e?.temperatures)?e.temperatures:[],o=e?.pressureSensor||{},i=e?.hydrometer||{},r=n.filter(l=>String(l?.mappingMode||"").trim().toLowerCase()==="manual").length,a=Array.isArray(o?.voltagePoints)?o.voltagePoints.length:Number(o?.pointCount||0),s=Array.isArray(i?.abvPoints)?i.abvPoints.length:Number(i?.pointCount||0);return[Number.isFinite(Number(t?.mlPerRev))?`Насос ${Number(t.mlPerRev).toFixed(3)} мл/об`:"Насос без калибровки",`Термодатчики: ${n.length} ролей, ручных bind ${r}`,`Манометр: ${a} точк., ноль ${Number(o?.zeroOffsetMmHg||0).toFixed(1)} мм`,`Ареометр: ${s} точк.`].join(" | ")}function Kr(){let e=B("calibration-last-snapshot-summary");if(!e)return;let t=H0();if(!t){e.textContent="История snapshot появится после первого экспорта или применения.";return}e.textContent=`Последний snapshot: ${t.action||"операция"} | ${D0(t.at)} | ${t.summary||"без сводки"}`}function Ur(e="Файл не выбран",t=!1){let n=B("calibration-import-preview");n&&(n.textContent=e);let o=B("calibration-import-apply-btn");o&&(o.disabled=!t)}function jr(e,t=3,n=""){return Number.isFinite(Number(e))?`${Number(e).toFixed(t)}${n}`:"—"}function Wr(e,t=3,n=""){return Number.isFinite(Number(e))?`${Number(e).toFixed(t)}${n}`:"--"}function fp(e={},t={}){let{syncTable:n=!0}=t,o=e.ads1115Available!==!1,i=String(e.source||"ADS1115 A1"),r=Number(e.currentVoltage),a=Number(e.currentAdc),s=Number(e.currentPressure),l=Number(e.pointCount||0),c=Number(e.zeroOffsetMmHg||0),d=Array.isArray(e.voltagePoints)?e.voltagePoints:[],m=Array.isArray(e.pressurePoints)?e.pressurePoints:[],f=B("pressure-current-status");f&&(o?(f.textContent=e.valid?"Сигнал OK":"Нет сигнала",f.className=`equipment-status-badge ${e.valid?"success":"muted"}`):(f.textContent="ADS1115 не найден",f.className="equipment-status-badge danger"));let b=B("pressure-current-source");b&&(b.textContent=o?i:`${i} офлайн`);let u=B("pressure-current-voltage");u&&(u.textContent=Wr(r,3," В"),u.dataset.value=Number.isFinite(r)?r.toFixed(4):"");let p=B("pressure-current-adc");p&&(p.textContent=Number.isFinite(a)?String(Math.round(a)):"--");let g=B("pressure-current-value");g&&(g.textContent=Wr(s,1," мм рт.ст."),g.dataset.value=Number.isFinite(s)?s.toFixed(3):"");let v=B("pressureCurrent");if(v){let E=l>=2?`Активная таблица: ${l} точек`:"Таблица калибровки пока не задана",M=l>=2?"давление в кубе берётся из сохранённой таблицы интерполяции":"прошивка использует резервную формулу",A=o?`${i} виден на шине I2C`:`${i} не виден на шине I2C`;v.textContent=`${A}. ${E}. ${M}. Нулевой сдвиг: ${Wr(c,1," мм рт.ст.")}.`}let w=B("pressure-zero-offset");if(w&&(w.textContent=Wr(c,1," мм рт.ст."),w.dataset.value=Number.isFinite(c)?c.toFixed(3):"0.000"),n)for(let E=0;E<wl;E+=1){let M=Number(d[E]),A=Number(m[E]);Yt(`pressure-voltage-${E}`,Number.isFinite(M)?M.toFixed(4):""),Yt(`pressure-mmhg-${E}`,Number.isFinite(A)?A.toFixed(1):"")}let C=B("pressure-points");C&&Tt(C);let P=B("pressure-reference-mmhg")?.closest(".equipment-card");P&&Tt(P)}function V0(){let e=[],t=[];for(let n=0;n<wl;n+=1){let o=String(B(`pressure-voltage-${n}`)?.value||"").trim().replace(",","."),i=String(B(`pressure-mmhg-${n}`)?.value||"").trim().replace(",",".");if(!o&&!i)continue;if(!o||!i)throw new Error(`Точка ${n+1}: заполните и напряжение, и давление`);let r=Number(o),a=Number(i);if(!Number.isFinite(r)||r<0||r>4.096)throw new Error(`Точка ${n+1}: напряжение должно быть в диапазоне 0.0000..4.0960 В`);if(!Number.isFinite(a)||a<0||a>75)throw new Error(`Точка ${n+1}: давление должно быть в диапазоне 0..75 мм рт.ст.`);e.push(r),t.push(a)}return{voltagePoints:e,pressurePoints:t}}function j0(){for(let e=0;e<wl;e+=1){let t=String(B(`pressure-voltage-${e}`)?.value||"").trim(),n=String(B(`pressure-mmhg-${e}`)?.value||"").trim();if(!t&&!n)return e}return-1}function W0(){let e=String(B("pressure-reference-mmhg")?.value||"").trim().replace(",","."),t=Number(e);if(!e||!Number.isFinite(t)||t<0||t>75)throw new Error("Значение эталонного манометра должно быть в диапазоне 0..75 мм рт.ст.");return t}function z0(e={}){let t=Number(e.currentPressure),n=Number(e.currentDensity),o=Number(e.currentABV),i=Number(e.pointCount||0),r=Array.isArray(e.abvPoints)?e.abvPoints:[],a=Array.isArray(e.pressurePoints)?e.pressurePoints:[],s=Number(e.densityOffset),l=B("hydrometer-current-status");l&&(l.textContent=e.valid?"Есть сигнал":"Нет сигнала",l.className=`equipment-status-badge ${e.valid?"success":"muted"}`);let c=B("hydrometer-current-pressure");c&&(c.textContent=jr(t,3," кПа"));let d=B("hydrometer-current-density");d&&(d.textContent=jr(n,4,""),d.dataset.value=Number.isFinite(n)?n.toFixed(4):"");let m=B("hydrometer-current-abv");m&&(m.textContent=jr(o,1," %"));let f=B("hydrometerCurrent");f&&(f.textContent=i>=2?`Активна таблица: ${i} точк. Смещение плотности ${jr(s,4)}`:"Таблица калибровки пока не задана. Будет использоваться грубая формула."),Yt("hydrometer-density-offset",Number.isFinite(s)?s.toFixed(4):"0.0000");for(let u=0;u<up;u+=1){let p=Number(r[u]),g=Number(a[u]);Yt(`hydrometer-abv-${u}`,Number.isFinite(p)?p.toFixed(1):""),Yt(`hydrometer-pressure-${u}`,Number.isFinite(g)?g.toFixed(4):"")}let b=B("hydrometer-points");b&&Tt(b)}function U0(){let e=[],t=[];for(let o=0;o<up;o+=1){let i=String(B(`hydrometer-abv-${o}`)?.value||"").trim().replace(",","."),r=String(B(`hydrometer-pressure-${o}`)?.value||"").trim().replace(",",".");if(!i&&!r)continue;if(!i||!r)throw new Error(`Точка ${o+1}: заполните и ABV, и сигнал/плотность`);let a=Number(i),s=Number(r);if(!Number.isFinite(a)||a<0||a>100)throw new Error(`Точка ${o+1}: ABV должен быть в диапазоне 0..100%`);if(!Number.isFinite(s)||s<.5||s>1.2)throw new Error(`Точка ${o+1}: сигнал/плотность должен быть в диапазоне 0.500..1.200`);e.push(a),t.push(s)}let n=Number(String(B("hydrometer-density-offset")?.value||"0").trim().replace(",","."));if(!Number.isFinite(n)||n<-.25||n>.25)throw new Error("Смещение плотности должно быть в диапазоне -0.250..0.250");return{densityOffset:n,abvPoints:e,pressurePoints:t}}function K0(e){let t=e?.calibration&&typeof e.calibration=="object"?e.calibration:e;if(!t||typeof t!="object")throw new Error("Неверный формат snapshot");let n=t.pump&&typeof t.pump=="object"?t.pump:{},o=Array.isArray(t.temperatures)?t.temperatures:[],i=t.pressureSensor&&typeof t.pressureSensor=="object"?t.pressureSensor:{},r=t.hydrometer&&typeof t.hydrometer=="object"?t.hydrometer:{},a={mlPerRev:Number(n.mlPerRev),stepsPerRev:Number(n.stepsPerRev),microsteps:Number(n.microsteps)},s=o.map(u=>({index:Number(u?.index),offset:Number(u?.offset),address:L0(u)})).filter(u=>Number.isInteger(u.index)&&Number.isFinite(u.offset)),l=Array.isArray(i.voltagePoints)?i.voltagePoints:[],c=Array.isArray(i.pressurePoints)?i.pressurePoints:[],d={zeroOffsetMmHg:Number(i.zeroOffsetMmHg),voltagePoints:l.map(u=>Number(u)).filter(u=>Number.isFinite(u)),pressurePoints:c.map(u=>Number(u)).filter(u=>Number.isFinite(u))};if(d.voltagePoints.length!==d.pressurePoints.length)throw new Error("В snapshot давления не совпадает количество точек напряжения и давления");if(d.voltagePoints.length===1)throw new Error("Snapshot давления содержит только 1 точку. Нужны 0 или минимум 2");Number.isFinite(d.zeroOffsetMmHg)||(d.zeroOffsetMmHg=0);let m=Array.isArray(r.abvPoints)?r.abvPoints:[],f=Array.isArray(r.pressurePoints)?r.pressurePoints:[],b={densityOffset:Number(r.densityOffset),abvPoints:m.map(u=>Number(u)).filter(u=>Number.isFinite(u)),pressurePoints:f.map(u=>Number(u)).filter(u=>Number.isFinite(u))};if(b.abvPoints.length!==b.pressurePoints.length)throw new Error("В snapshot ареометра не совпадает количество точек ABV и сигнала");if(b.abvPoints.length===1)throw new Error("Snapshot ареометра содержит только 1 точку. Нужны 0 или минимум 2");return{meta:e?.meta&&typeof e.meta=="object"?e.meta:{},pump:a,temperatures:s,pressureSensor:d,hydrometer:b}}function vl(e){let t=Number.isFinite(e.pump.mlPerRev)&&e.pump.mlPerRev>0?`${e.pump.mlPerRev.toFixed(3)} мл/об`:"нет калибровки насоса",n=`${e.temperatures.length} смещ.`,o=e.pressureSensor.voltagePoints.length,i=o>=2?`${o} точк. давления`:"без таблицы давления",r=e.hydrometer.abvPoints.length,a=r>=2?`${r} точк. ареометра`:"без таблицы ареометра",s=e.meta?.firmwareVersion?` | FW ${e.meta.firmwareVersion}`:"";return`Насос: ${t} | Термодатчики: ${n} | Давление: ${i} | Ареометр: ${a}${s}`}async function gp(){try{let[e,t]=await Promise.all([fetch($e),fetch("/api/version").catch(()=>null)]);if(!e.ok)throw new Error(`HTTP ${e.status}`);let n=await e.json(),o=t&&t.ok?await t.json():{},i={schema:"smart-column-calibration-snapshot-v1",exportedAt:new Date().toISOString(),meta:{firmwareVersion:o?.firmware?.version||"",board:o?.firmware?.name||"Smart-Column-S3"},calibration:n},r=new Date().toISOString().slice(0,10);O0(i,`calibration_snapshot_${r}.json`),Sl({action:"экспорт",at:i.exportedAt,summary:pp(n)}),Kr(),q("calibrationImportResult","Snapshot калибровок экспортирован","success")}catch(e){console.error("exportCalibrationSnapshot error:",e),q("calibrationImportResult",`Ошибка экспорта snapshot: ${e.message}`,"error")}}function bp(){B("calibration-import-file")?.click()}function hp(e){let t=e?.target?.files?.[0];if(Te=null,Ur("Файл не выбран",!1),!t)return;let n=new FileReader;n.onload=o=>{try{let i=JSON.parse(String(o?.target?.result||"{}"));Te=K0(i),Ur(vl(Te),!0),Sl({action:"предпросмотр",at:new Date().toISOString(),summary:vl(Te)}),Kr(),q("calibrationImportResult","Snapshot прочитан. Можно применять.","success")}catch(i){Te=null,Ur(`Ошибка файла: ${i.message}`,!1),q("calibrationImportResult",`Ошибка чтения snapshot: ${i.message}`,"error")}},n.readAsText(t)}async function yp(){if(!Te){q("calibrationImportResult","Сначала выберите корректный snapshot","error");return}try{let e={};if(Number.isFinite(Te.pump.mlPerRev)&&Te.pump.mlPerRev>0&&(e.mlPerRev=Te.pump.mlPerRev),Number.isFinite(Te.pump.stepsPerRev)&&Te.pump.stepsPerRev>0&&(e.stepsPerRev=Math.round(Te.pump.stepsPerRev)),Object.keys(e).length>0){let o=await fetch(`${$e}/pump`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)});if(!o.ok){let i=await o.json().catch(()=>({}));throw new Error(i?.error||`Pump import HTTP ${o.status}`)}}for(let o of Te.temperatures){let i=await fetch(`${$e}/temp`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({index:o.index,offset:o.offset})});if(!i.ok){let r=await i.json().catch(()=>({}));throw new Error(r?.error||`Temp[${o.index}] import HTTP ${i.status}`)}if(typeof o.address=="string"){let r=await fetch(`${$e}/temp`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({index:o.index,address:o.address.trim()})});if(!r.ok){let a=await r.json().catch(()=>({}));throw new Error(a?.error||`Temp[${o.index}] address import HTTP ${r.status}`)}}}let t=await fetch(`${$e}/pressure`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Te.pressureSensor)});if(!t.ok){let o=await t.json().catch(()=>({}));throw new Error(o?.error||`Pressure import HTTP ${t.status}`)}let n=await fetch(`${$e}/hydrometer`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Te.hydrometer)});if(!n.ok){let o=await n.json().catch(()=>({}));throw new Error(o?.error||`Hydrometer import HTTP ${n.status}`)}await Ke(),Sl({action:"применение",at:new Date().toISOString(),summary:vl(Te)}),Kr(),q("calibrationImportResult",`Snapshot применён: насос, ${Te.temperatures.length} смещ. термодатчиков, ${Te.pressureSensor.voltagePoints.length} точк. давления, ${Te.hydrometer.abvPoints.length} точк. ареометра`,"success"),h("Snapshot калибровок применён из Web UI","success")}catch(e){console.error("applyCalibrationSnapshot error:",e),q("calibrationImportResult",`Ошибка применения snapshot: ${e.message}`,"error")}}function vp(e){let t=Number(B("pressure-current-voltage")?.dataset?.value);if(!Number.isFinite(t)){q("pressureResult","Нет живого сигнала давления для копирования","error");return}Yt(`pressure-voltage-${e}`,t.toFixed(4)),B(`pressure-mmhg-${e}`)?.focus()}function wp(){let e=Number(B("pressure-current-voltage")?.dataset?.value);if(!Number.isFinite(e)){q("pressureResult","Нет живого сигнала давления для захвата","error");return}let t=j0();if(t<0){q("pressureResult","Все 5 точек уже заполнены. Сначала очистите строку или перезапишите существующую.","error");return}Yt(`pressure-voltage-${t}`,e.toFixed(4));let n=B(`pressure-mmhg-${t}`);try{let o=W0();Yt(`pressure-mmhg-${t}`,o.toFixed(1)),q("pressureResult",`Захвачена точка ${t+1}: ${e.toFixed(4)} В -> ${o.toFixed(1)} мм рт.ст.`,"success")}catch{n&&!String(n.value||"").trim()&&(n.focus(),n.select?.()),q("pressureResult",`Сигнал записан в точку ${t+1}: ${e.toFixed(4)} В. Введите реальное давление по манометру и затем сохраните таблицу.`,"success")}}async function cp(){if(!(!yl()||hl))try{hl=!0;let e=await fetch($e);if(!e.ok)return;let t=await e.json().catch(()=>null);if(!t||typeof t!="object")return;fp(t.pressureSensor||{},{syncTable:!1})}catch{}finally{hl=!1}}function dp(){Bi&&(clearInterval(Bi),Bi=null)}function zr(e=!1){if(!yl()){dp();return}Bi||(Bi=window.setInterval(()=>{if(!yl()){dp();return}cp()},F0)),e&&cp()}async function Sp(){let e=Number(B("pressure-current-value")?.dataset?.value);if(!Number.isFinite(e)){q("pressureResult","Нет текущего показания давления для установки нуля","error");return}try{let t=await fetch(`${$e}/pressure`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({zeroOffsetMmHg:e})}),n=await t.json().catch(()=>({}));if(!t.ok)throw new Error(n?.error||`HTTP ${t.status}`);q("pressureResult",`Нулевой сдвиг применён: ${Number(n.zeroOffsetMmHg||e).toFixed(1)} мм рт.ст.`,"success"),await Ke()}catch(t){q("pressureResult",`Ошибка сохранения нулевого сдвига: ${t.message}`,"error")}}async function Ep(){let e;try{e=V0()}catch(t){q("pressureResult",t.message,"error");return}if(e.voltagePoints.length===1){q("pressureResult","Для рабочей таблицы нужно минимум 2 точки","error");return}try{let t=await fetch(`${$e}/pressure`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)}),n=await t.json().catch(()=>({}));if(!t.ok)throw new Error(n?.error||`HTTP ${t.status}`);q("pressureResult",e.voltagePoints.length>=2?`Таблица давления сохранена: ${Number(n.pointCount||e.voltagePoints.length)} точек`:"Таблица давления очищена","success"),await Ke()}catch(t){q("pressureResult",`Ошибка сохранения таблицы давления: ${t.message}`,"error")}}async function Cp(){try{let e=await fetch(`${$e}/pressure`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({voltagePoints:[],pressurePoints:[]})}),t=await e.json().catch(()=>({}));if(!e.ok)throw new Error(t?.error||`HTTP ${e.status}`);q("pressureResult","Таблица давления очищена","success"),await Ke()}catch(e){q("pressureResult",`Ошибка очистки таблицы давления: ${e.message}`,"error")}}async function xp(){try{let e=await fetch(`${$e}/pressure`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({zeroOffsetMmHg:0})}),t=await e.json().catch(()=>({}));if(!e.ok)throw new Error(t?.error||`HTTP ${e.status}`);q("pressureResult","Нулевой сдвиг очищен","success"),await Ke()}catch(e){q("pressureResult",`Ошибка сброса нулевого сдвига: ${e.message}`,"error")}}function Mp(e){let t=Number(B("hydrometer-current-density")?.dataset?.value);if(!Number.isFinite(t)){q("hydrometerResult","Нет текущего сигнала ареометра для подстановки","error");return}Yt(`hydrometer-pressure-${e}`,t.toFixed(4))}async function Tp(){let e;try{e=U0()}catch(t){q("hydrometerResult",t.message,"error");return}if(e.abvPoints.length===1){q("hydrometerResult","Для рабочей таблицы нужны минимум 2 точки","error");return}try{let t=await fetch(`${$e}/hydrometer`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)}),n=await t.json().catch(()=>({}));if(!t.ok)throw new Error(n?.error||`HTTP ${t.status}`);q("hydrometerResult",e.abvPoints.length>=2?`Таблица ареометра сохранена: ${Number(n.pointCount||e.abvPoints.length)} точк.`:"Смещение ареометра сохранено, таблица очищена","success"),await Ke()}catch(t){q("hydrometerResult",`Ошибка сохранения ареометра: ${t.message}`,"error")}}async function $p(){try{let e=Number(String(B("hydrometer-density-offset")?.value||"0").trim().replace(",",".")),t=await fetch(`${$e}/hydrometer`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({densityOffset:Number.isFinite(e)?e:0,abvPoints:[],pressurePoints:[]})}),n=await t.json().catch(()=>({}));if(!t.ok)throw new Error(n?.error||`HTTP ${t.status}`);q("hydrometerResult","Таблица ареометра очищена","success"),await Ke()}catch(e){q("hydrometerResult",`Ошибка очистки ареометра: ${e.message}`,"error")}}function El(){Fe={running:!1,startTime:null,targetTime:0,targetVolume:0,speed:0,interval:null};let e=B("btn-start-cal"),t=B("btn-stop-cal"),n=B("btn-apply-cal"),o=B("btn-cancel-cal"),i=B("cal-progress-container"),r=B("cal-manual-volume"),a=B("cal-progress-bar"),s=B("actual-volume");e&&(e.style.display=""),t&&(t.style.display="none"),n&&(n.style.display="none"),o&&(o.style.display="none"),i&&(i.style.display="none"),r&&(r.style.display="none"),a&&(a.style.width="0%",a.textContent=""),s&&(s.value=""),q("pumpResult","","")}function Cl(){let e=Number(B("cal-speed")?.value),t=Number(B("cal-volume")?.value);if(!Number.isFinite(e)||e<=0||!Number.isFinite(t)||t<=0)return;let n=t/e*60,o=Math.floor(n),i=Math.round(n%1*60),r=B("cal-time");r&&(r.textContent=o>=1?`${o} мин ${i} сек`:`${Math.max(1,Math.round(n*60))} сек`)}async function Ke(){if(B("equipment"))try{let[t,n]=await Promise.all([fetch($e),fetch(`${$e}/scan`).catch(()=>null)]);if(!t.ok)throw new Error(`HTTP ${t.status}`);let o=await t.json(),i=Array.isArray(o?.temperatures)?o.temperatures:[],r=n&&n.ok?await n.json():{},a=q0(r?.sensors,i),s=o?.pump||{},l=o?.pressureSensor||{},c=o?.hydrometer||{},d=B("calibration-current-summary");d&&(d.textContent=pp(o)),Kr();let m=B("pumpCurrent");if(m){let p=Number(s.mlPerRev),g=Number(s.stepsPerRev),v=Number(s.microsteps||1);Number.isFinite(p)?m.textContent=`${p.toFixed(3)} мл/оборот (${g||0} шагов/об × ${v})`:m.textContent="Нет данных"}let f=B("pump-ml-per-rev");f&&Number.isFinite(Number(s.mlPerRev))&&(f.value=Number(s.mlPerRev).toFixed(3));let b=B("pump-steps-per-rev");if(b){let p=Number(s.stepsPerRev||0)*Number(s.microsteps||1);Number.isFinite(p)&&p>0&&(b.value=String(p))}let u=B("sensorList");u&&(u.innerHTML="",i.length?i.forEach(p=>{let g=Number(p?.index),v=String(p?.name||`Датчик ${g}`),w=Number(p.current),C=Number(p.offset),P=p.valid?"✓ OK":"✗ Нет данных",E=String(p?.assignedAddress||""),M=String(p?.detectedAddress||""),A=String(p?.address||M||E||""),$=String(p?.mappingMode||"auto")==="manual"?"Ручная привязка":"Авто по порядку",I=E?M?"Привязка активна, датчик найден":"Привязка сохранена, но датчик сейчас не найден":M?"Работает в авто-режиме по порядку шины":"Адрес не зафиксирован",R=_0(g,E,a),k=a.length?`На шине сейчас найдено: ${a.length}`:"На шине сейчас датчики не найдены",te=document.createElement("li");te.className="equipment-sensor-item",te.innerHTML=`
+                        <div class="equipment-sensor-head">
+                            <strong>${v}</strong>
+                            <span class="info-text">${P}</span>
+                        </div>
+                        <div class="equipment-sensor-meta">Текущий адрес: ${It(A||"—")} | Текущее: ${Number.isFinite(w)?w.toFixed(2):"--"} °C | Смещение: ${Number.isFinite(C)?C.toFixed(2):"0.00"} °C</div>
+                        <div class="equipment-sensor-meta">Режим: ${It($)} | Сохранённый адрес: ${It(E||"—")} | Обнаружен сейчас: ${It(M||"—")}</div>
+                        <div class="equipment-sensor-meta">${It(I)}. ${It(k)}</div>
+                        <div class="equipment-sensor-actions">
+                            <div class="form-group equipment-sensor-action">
+                                <label for="addr_${g}">Привязка адреса</label>
+                                <div class="equipment-sensor-action-row">
+                                    <select id="addr_${g}">${R}</select>
+                                    <button class="btn btn-sm" onclick="assignTempSensorAddress(${g})">Сохранить адрес</button>
+                                </div>
+                            </div>
+                            <div class="form-group equipment-sensor-action">
+                                <label for="offset_${g}">Смещение, °C</label>
+                                <div class="equipment-sensor-action-row">
+                                    <input type="number" id="offset_${g}" value="${Number.isFinite(C)?C.toFixed(2):"0.00"}" step="0.1" data-stepper-mode="pair" data-stepper-step="0.1">
+                                    <button class="btn btn-sm" onclick="calibrateTempOffset(${g})">Применить</button>
+                                </div>
+                            </div>
+                            <div class="form-group equipment-sensor-action">
+                                <label for="ref_${g}">Эталон, °C</label>
+                                <div class="equipment-sensor-action-row">
+                                    <input type="number" id="ref_${g}" step="0.1" placeholder="Эталон °C" data-stepper-mode="pair" data-stepper-step="0.1">
+                                    <button class="btn btn-sm btn-secondary" onclick="calibrateTempReference(${g})">По эталону</button>
+                                </div>
+                            </div>
+                        </div>
+                    `,u.appendChild(te),Tt(te);let V=B(`addr_${g}`);V&&(V.value=E)}):u.innerHTML='<li class="info-text">Датчики не найдены</li>'),fp(l),z0(c)}catch(t){console.error("loadCalibrationData error:",t),q("pressureResult","Ошибка загрузки калибровки давления","error"),q("tempResult","Ошибка загрузки данных калибровки","error"),q("hydrometerResult","Ошибка загрузки данных ареометра","error")}}async function Pp(){try{let e=await fetch(`${$e}/scan`),t=await e.json();if(!e.ok)throw new Error(t?.error||`HTTP ${e.status}`);let n=Array.isArray(t?.sensors)?t.sensors.filter(o=>Number.isInteger(Number(o?.mappedRole))&&Number(o?.mappedRole)>=0).length:0;q("tempResult",`Найдено датчиков: ${Number(t.count)||0}, привязано ролей: ${n}`,"success"),await Ke()}catch(e){q("tempResult",`Ошибка сканирования: ${e.message}`,"error")}}async function Ip(e){let t=String(B(`addr_${e}`)?.value||"").trim();try{let n=await fetch(`${$e}/temp`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({index:e,address:t})}),o=await n.json().catch(()=>({}));if(!n.ok)throw new Error(o?.error||`HTTP ${n.status}`);let i=o?.name||`датчик ${e}`,r=t?`${i}: адрес ${t} сохранён`:`${i}: возврат в авто-режим сохранён`;q("tempResult",r,"success"),await Ke()}catch(n){q("tempResult",`Ошибка привязки адреса: ${n.message}`,"error")}}async function Ap(e){let t=Number(B(`offset_${e}`)?.value);if(!Number.isFinite(t)){q("tempResult","Введите корректное смещение","error");return}try{let n=await fetch(`${$e}/temp`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({index:e,offset:t})});if(!n.ok)throw new Error(`HTTP ${n.status}`);q("tempResult",`Смещение датчика ${e} сохранено`,"success"),await Ke()}catch(n){q("tempResult",`Ошибка калибровки: ${n.message}`,"error")}}async function Np(e){let t=Number(B(`ref_${e}`)?.value);if(!Number.isFinite(t)){q("tempResult","Введите эталонную температуру","error");return}try{let n=await fetch(`${$e}/temp`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({index:e,reference:t})});if(!n.ok)throw new Error(`HTTP ${n.status}`);let o=await n.json();q("tempResult",`Датчик ${e}: смещение ${Number(o.offset||0).toFixed(2)} °C`,"success"),await Ke()}catch(n){q("tempResult",`Ошибка калибровки: ${n.message}`,"error")}}async function Bp(){let e=Number(B("cal-speed")?.value),t=Number(B("cal-volume")?.value);if(!Number.isFinite(e)||e<=0||!Number.isFinite(t)||t<=0){q("pumpResult","Проверьте скорость и объём калибровки","error");return}Fe={running:!0,startTime:Date.now(),targetTime:t/e*36e5,targetVolume:t,speed:e,interval:null};let n=B("btn-start-cal"),o=B("btn-stop-cal"),i=B("btn-apply-cal"),r=B("btn-cancel-cal"),a=B("cal-progress-container"),s=B("cal-total");n&&(n.style.display="none"),o&&(o.style.display=""),i&&(i.style.display="none"),r&&(r.style.display=""),a&&(a.style.display=""),s&&(s.textContent=`${Math.max(1,Math.floor(Fe.targetTime/6e4))} мин`);try{let l=await fetch(`/api/pump/calibrate/start?speed=${e}`,{method:"POST"});if(!l.ok){let c=await l.json().catch(()=>({}));throw new Error(c.message||`Старт сессии: HTTP ${l.status}`)}q("pumpResult",`Калибровка запущена: ${t} мл @ ${e} мл/ч`,"success"),h(`Калибровка насоса стартовала (${e} мл/ч)`,"info"),Fe.interval=setInterval(()=>{if(!Fe.running)return;let c=Date.now()-Fe.startTime,d=Math.min(100,c/Fe.targetTime*100),m=B("cal-progress-bar"),f=B("cal-elapsed");if(m&&(m.style.width=`${d.toFixed(0)}%`,m.textContent=`${d.toFixed(0)}%`),f){let b=Math.floor(c/1e3);f.textContent=`${Math.floor(b/60)} мин ${b%60} сек`}c>=Fe.targetTime&&xl(!0)},1e3)}catch(l){q("pumpResult",`Ошибка запуска калибровки: ${l.message}`,"error"),El()}}async function xl(e=!1){if(!Fe.running)return;Fe.running=!1,Fe.interval&&(clearInterval(Fe.interval),Fe.interval=null);try{await fetch("/api/pump/calibrate/stop",{method:"POST"})}catch{}try{await fetch("/api/pump/stop",{method:"POST"})}catch{}let t=B("btn-stop-cal"),n=B("btn-apply-cal"),o=B("cal-manual-volume"),i=B("actual-volume");t&&(t.style.display="none"),n&&(n.style.display=""),o&&(o.style.display=""),e?(i&&(i.value=String(Fe.targetVolume)),q("pumpResult","Калибровка завершена. Проверьте фактически налитый объём и нажмите «Применить».","success")):q("pumpResult","Калибровка остановлена. Укажите фактический объём и примените.","info")}async function kp(){let e=Number(B("actual-volume")?.value);if(!Number.isFinite(e)||e<=0){q("pumpResult","Введите фактически налитый объём","error");return}try{let t=await fetch("/api/pump/calibrate/finish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({volume:e})});if(!t.ok){let i=await t.json().catch(()=>({}));throw new Error(i.message||`HTTP ${t.status}`)}let n=await t.json(),o=Number(n?.mlPerRev);q("pumpResult",Number.isFinite(o)?`Калибровка применена: ${o.toFixed(3)} мл/оборот`:"Калибровка применена","success"),h("Калибровка насоса применена","success"),El(),await Ke()}catch(t){q("pumpResult",`Ошибка применения: ${t.message}`,"error")}}async function Rp(){try{await fetch("/api/pump/calibrate/cancel",{method:"POST"})}catch{}try{await fetch("/api/pump/stop",{method:"POST"})}catch{}Fe.interval&&(clearInterval(Fe.interval),Fe.interval=null),El(),q("pumpResult","Калибровка отменена","info")}function Fp(){B("equipment")&&(Tt(),Ur("Файл не выбран",!1),Cl(),Ke(),lp||(document.addEventListener("app-tab-changed",()=>zr(!0)),document.addEventListener("equipment-section-changed",()=>zr(!0)),document.addEventListener("visibilitychange",()=>zr()),lp=!0),zr())}var Wp=.647,G0=.63,Y0=.001163,Lp={spn:65,rpn:55,plates:80},_p={spn:1,rpn:.9,plates:1.15},qp={heads:{min:.04,max:.08},body:{min:.45,max:.75},tails:{min:.18,max:.4}},ki=[0,5,10,15,20,25,30,35,40],Gr=[0,10,20,30,40,50,60,70,80,90,100],J0=[.138,.225,.312,.398,.47,.535,.6,.665,.73,.79,.84],Z0=ki.map(e=>{let t=20-e;return J0.map(n=>t*n)}),Op={turbo:{label:"Турбо / спиртовые",pitchPerLiter:3.2,baseDays:4,idealTemp:28,minTemp:22,maxTemp:32},spirit:{label:"Спиртовые классические",pitchPerLiter:1.2,baseDays:6,idealTemp:26,minTemp:20,maxTemp:30},wine:{label:"Винные",pitchPerLiter:.35,baseDays:10,idealTemp:22,minTemp:17,maxTemp:28},beer:{label:"Пивные / эль",pitchPerLiter:.5,baseDays:12,idealTemp:20,minTemp:16,maxTemp:24}};function O(e){let t=document.getElementById(e)?.value??"",n=String(t).trim().replace(",","."),o=Number(n);return Number.isFinite(o)?o:NaN}function yn(e,t=""){let n=document.getElementById(e);return n?String(n.value||t):t}function _(e,t){let n=document.getElementById(e);n&&(n.textContent=t)}function St(e,t){let n=document.getElementById(e);n&&(n.hidden=t)}function Q0(e,t,n){return Math.min(n,Math.max(t,e))}function Et(e,t=2){return`${e.toFixed(t)} л`}function Hp(e,t=0){return`${e.toFixed(t)} мл`}function zp(e){return`${Math.round(e)} Вт`}function Dp(e){return`${e.toFixed(2)} кВт·ч`}function X0(e){return`${e.toFixed(2)}`}function Ri(e){let t=Math.max(0,Math.round(e*60)),n=Math.floor(t/60),o=t%60;return n>0?`${n} ч ${o} мин`:`${o} мин`}function ew(e){return`${e>=0?"+":""}${e.toFixed(2)} %`}function Yr(e){return 1+e/(258.6-e/258.2*227.1)}function tw(e){return((135.997*e-630.272)*e+1111.14)*e-616.868}function nw(e){return((135.997*e-630.272)*e+1111.14)*e-616.868}function ow(e){return 1+e/(258.6-e/258.2*227.1)}function iw(e){return(e-1)*1e3}function rw(e){return 1+e/1e3}function Up(e,t){return 1+(e-1)*(1-t/100)}function Kp(e,t){let n=t/e;return n<2.5?{ratioText:`1:${n.toFixed(1)}`,note:"Очень плотная брага. Нужны сильные дрожжи и хороший контроль брожения."}:n<3.2?{ratioText:`1:${n.toFixed(1)}`,note:"Плотная брага. Для современных турбо и спиртовых дрожжей обычно допустимо."}:n<=4.2?{ratioText:`1:${n.toFixed(1)}`,note:"Классическая пропорция. Обычно дает спокойное и стабильное брожение."}:{ratioText:`1:${n.toFixed(1)}`,note:"Жидкая брага. Брожение мягче, но перегонять придется больший объем."}}function aw(e,t,n){return!Number.isFinite(e)||e<=0?"Целевая скорость не задана":e<t*.85?"Слишком медленно. Режим будет стабильным, но неэффективным по времени.":e>n?"Выше расчетного диапазона. Есть риск смаза фракций и захлеба.":"Входит в расчетный диапазон."}function sw(e,t,n,o){let i=[];return e>t*1.05&&i.push("Поданная мощность выше грубой оценки предзахлебной зоны."),o==="body"&&n<1e3&&i.push("Для отбора тела царга низковата. Диапазон лучше держать ближе к нижней границе."),i.length===0?"Оценка выглядит рабочей. Диапазон все равно стоит проверять по давлению и поведению колонны.":i.join(" ")}function lw(){let e=[];for(let t=1;t<=4;t+=1){let n=O(`calc-blend-volume-${t}`),o=O(`calc-blend-abv-${t}`),i=Number.isFinite(n)&&n>0,r=Number.isFinite(o)&&o>0;if(!(!i&&!r)){if(!i||!r||o>100)throw new Error(`Проверьте строку смеси ${t}. Нужны объем и крепость.`);e.push({volumeMl:n,abv:o})}}return e}function Vp(e,t){if(t<=e[0])return{lowerIndex:0,upperIndex:0,ratio:0,clamped:!0};let n=e.length-1;if(t>=e[n])return{lowerIndex:n,upperIndex:n,ratio:0,clamped:!0};for(let o=0;o<n;o+=1){let i=e[o],r=e[o+1];if(t>=i&&t<=r){let a=r-i||1;return{lowerIndex:o,upperIndex:o+1,ratio:(t-i)/a,clamped:!1}}}return{lowerIndex:n,upperIndex:n,ratio:0,clamped:!0}}function cw(e,t,n,o,i){let r=Vp(e,o),a=Vp(t,i),s=n[r.lowerIndex][a.lowerIndex],l=n[r.lowerIndex][a.upperIndex],c=n[r.upperIndex][a.lowerIndex],d=n[r.upperIndex][a.upperIndex],m=s+(l-s)*a.ratio,f=c+(d-c)*a.ratio;return{value:m+(f-m)*r.ratio,clamped:r.clamped||a.clamped}}function dw(e,t){let n=e<ki[0]||e>ki[ki.length-1],o=t<Gr[0]||t>Gr[Gr.length-1];return!n&&!o?"Табличная интерполяция по крепости и температуре.":"Значение вышло за рабочий диапазон таблицы. Применена крайняя строка/столбец."}function uw(e,t){return!Number.isFinite(t)||t<0?NaN:e==="sg"?t:e==="brix"?Yr(t):e==="plato"?ow(t):e==="oechsle"?rw(t):NaN}function Ml(e,t,n,o){return`${e.toFixed(2)} л АС / ${t.toFixed(2)} л @ ${n.toFixed(1)}% / ${Ri(o)}`}function mw(){let e=yn("calc-ferment-yeast","spirit");return Op[e]||Op.spirit}function pw(e,t,n,o,i){let r=1;t<n?r+=(n-t)*.08:t>n+2&&(r+=(t-n-2)*.04),o>14?r+=.18:o>12&&(r+=.1),Number.isFinite(i)&&i<3&&(r+=.12);let a=e*r;return{minDays:Math.max(1,a*.85),maxDays:a*1.2}}function jp(e,t,n,o){let i=[];return(t<e.minTemp||t>e.maxTemp)&&i.push(`Температура вне комфортного диапазона для ${e.label.toLowerCase()}.`),Number.isFinite(n)&&n<3&&i.push("Брага плотная, нужна хорошая аэрация и контроль температуры."),o>15&&i.push("Потенциальная крепость высокая, брожение может замедлиться ближе к финишу."),i.length===0&&i.push("Режим выглядит рабочим. Контроль температуры и pH все равно остается обязательным."),i.join(" ")}function Tl(){let e=yn("calc-potential-source-type","sugar");St("calc-potential-sugar-group",e!=="sugar"),St("calc-potential-water-group",e!=="sugar"),St("calc-potential-brix-group",e!=="brix"),St("calc-potential-sg-group",e!=="sg"),St("calc-potential-efficiency-group",e!=="sugar"),St("calc-potential-attenuation-group",e==="sugar"),e==="sugar"?_("calc-potential-helper","Для сахарной браги считаются потенциал спирта, КПД брожения и соотношение сахар/вода."):e==="brix"?_("calc-potential-helper","Brix переводится в OG, затем крепость оценивается по выбранной степени сбраживания."):_("calc-potential-helper","Для сусла по SG расчет идет от начальной плотности к ожидаемому FG по степени сбраживания.")}function $l(){let e=yn("calc-ferment-basis","sugar");St("calc-ferment-sugar-group",e!=="sugar"),St("calc-ferment-water-group",e!=="sugar"),St("calc-ferment-brix-group",e!=="brix"),St("calc-ferment-sg-group",e!=="sg"),St("calc-ferment-efficiency-group",e!=="sugar"),St("calc-ferment-attenuation-group",e==="sugar"),e==="sugar"?_("calc-ferment-helper","Оценка OG/FG, крепости, гидромодуля, дозировки дрожжей и времени для сахарной браги."):e==="brix"?_("calc-ferment-helper","Расчет по начальному Brix: OG, ожидаемый FG, крепость, срок и риски брожения."):_("calc-ferment-helper","Расчет по SG: для зерновых и фруктовых заторов с учетом сбраживания и температуры.")}function Gp(){let e=document.getElementById("temp-reflux"),t=document.getElementById("calc-temp-raw");if(e&&t){let n=parseFloat(e.textContent);Number.isNaN(n)?h("Нет актуальных данных датчика для коррекции крепости","warning"):(t.value=n,h("Температура для коррекции крепости получена с датчика","info"))}}function Yp(){let e=O("calc-abv-raw"),t=O("calc-temp-raw");if(Number.isNaN(e)||Number.isNaN(t)){alert("Введите корректные значения.");return}if(e<0||e>100){alert("Показания спиртометра должны быть в диапазоне 0-100%.");return}let n=cw(ki,Gr,Z0,t,e),o=Q0(e+n.value,0,100);_("calc-abv-result",`${o.toFixed(2)} %`),_("calc-abv-correction",ew(n.value)),_("calc-abv-note",dw(t,e)),h(`Коррекция спиртометра: ${e.toFixed(1)}% при ${t.toFixed(1)}°C -> ${o.toFixed(2)}%`,"info")}function Jp(){let e=O("calc-dil-volume"),t=O("calc-dil-abv-src"),n=[O("calc-dil-stage-1"),O("calc-dil-stage-2"),O("calc-dil-stage-3")].filter(s=>Number.isFinite(s)&&s>0);if(!Number.isFinite(e)||!Number.isFinite(t)||e<=0||t<=0||t>100){alert("Проверьте исходный объем и крепость.");return}if(n.length===0){alert("Укажите хотя бы одну целевую крепость.");return}let o=e,i=t,r=0,a=[];for(let s of n){if(s<=0||s>=i){alert("Каждый следующий этап должен быть ниже предыдущей крепости.");return}let l=o*(i/s),c=l-o;r+=c,a.push(`до ${s.toFixed(1)}%: +${c.toFixed(0)} мл, итог ${l.toFixed(0)} мл`),o=l,i=s}_("calc-dil-stage-1-result",a[0]||"—"),_("calc-dil-stage-2-result",a[1]||"—"),_("calc-dil-stage-3-result",a[2]||"—"),_("calc-dil-water",Hp(r)),_("calc-dil-total",Hp(o)),h(`Разбавление по этапам: ${n.length} этап., итог ${o.toFixed(0)} мл @ ${i.toFixed(1)}%`,"info")}function Zp(){let e=O("calc-yield-volume-l"),t=O("calc-yield-abv"),n=O("calc-yield-heads-pct"),o=O("calc-yield-body-pct"),i=O("calc-yield-body-abv"),r=O("calc-yield-heads-abv"),a=O("calc-yield-tails-abv"),s=O("calc-yield-heads-rate"),l=O("calc-yield-body-rate"),c=O("calc-yield-tails-rate");if([e,t,n,o,i,r,a,s,l,c].some(M=>Number.isNaN(M))){alert("Введите корректные значения для расчета фракций.");return}if(e<=0||t<=0||t>100||i<=0||i>=100){alert("Проверьте объем и крепость. Крепость продукта должна быть в диапазоне 1-99%.");return}if(r<=0||r>=100||a<=0||a>=100){alert("Средняя крепость голов и хвостов должна быть в диапазоне 1-99%.");return}if(n<0||o<=0||n+o>100){alert("Сумма голов и тела не должна превышать 100% абсолютного спирта.");return}if(s<=0||l<=0||c<=0){alert("Скорость отбора для каждого этапа должна быть больше нуля.");return}let m=e*t/100,f=m*n/100,b=m*o/100,u=Math.max(0,m-f-b),p=f/(r/100),g=b/(i/100),v=u/(a/100),w=p*1e3/s,C=g*1e3/l,P=v*1e3/c,E=w+C+P;_("calc-yield-aa-total",Et(m,2)),_("calc-yield-heads-aa",Ml(f,p,r,w)),_("calc-yield-body-aa",Ml(b,g,i,C)),_("calc-yield-tails-aa",Ml(u,v,a,P)),_("calc-yield-total-time",Ri(E)),h(`Фракции: АС ${m.toFixed(2)} л, тело ${g.toFixed(2)} л за ${Ri(C)}`,"info")}function Qp(){let e=yn("calc-potential-source-type","sugar"),t=O("calc-potential-volume-l");if(!Number.isFinite(t)||t<=0){alert("Введите корректный объем браги или сусла.");return}let n,o,i,r,a="н/д",s;if(e==="sugar"){let c=O("calc-potential-sugar-kg"),d=O("calc-potential-water-l"),m=O("calc-potential-efficiency-pct");if(!Number.isFinite(c)||!Number.isFinite(d)||!Number.isFinite(m)||c<=0||d<=0||m<=0||m>100){alert("Для сахарной браги укажите сахар, воду и КПД брожения.");return}o=c*Wp*(m/100),n=o/t*100;let f=Kp(c,d),b=d+c*G0;i=`${c.toFixed(2)} кг сахара, ${d.toFixed(1)} л воды`,r=`КПД брожения: ${m.toFixed(0)}%, ожидаемый объем после растворения ~ ${b.toFixed(1)} л`,a=f.ratioText,s=f.note}else{let c=O("calc-potential-attenuation-pct");if(!Number.isFinite(c)||c<=0||c>100){alert("Для сусла укажите степень сбраживания.");return}let d;if(e==="brix"){let f=O("calc-potential-brix");if(!Number.isFinite(f)||f<=0||f>40){alert("Укажите корректное значение Brix.");return}d=Yr(f),i=`OG ≈ ${d.toFixed(3)} из ${f.toFixed(1)} Brix`}else{if(d=O("calc-potential-sg"),!Number.isFinite(d)||d<=1||d>1.2){alert("Укажите корректную начальную плотность SG.");return}i=`OG: ${d.toFixed(3)}`}let m=Up(d,c);n=Math.max(0,(d-m)*131.25),o=t*n/100,r=`FG ≈ ${m.toFixed(3)} при сбраживании ${c.toFixed(0)}%`,s="Соотношение сахар/вода не применяется для расчета по суслу."}let l=o/.4;_("calc-potential-abv",`${n.toFixed(1)} %`),_("calc-potential-aa",Et(o,2)),_("calc-potential-40",Et(l,2)),_("calc-potential-primary",i),_("calc-potential-secondary",r),_("calc-potential-ratio",a),_("calc-potential-note",s),h(`Потенциал спирта: ${n.toFixed(1)}%, АС ${o.toFixed(2)} л из ${t.toFixed(1)} л`,"info")}function Xp(){let e=yn("calc-density-scale","brix"),t=O("calc-density-value"),n=O("calc-density-fg"),o=uw(e,t);if(!Number.isFinite(o)||o<=.99||o>1.2){alert("Проверьте входное значение плотности.");return}let i=tw(o),r=nw(o),a=iw(o),s=Number.isFinite(n)&&n>.98&&n<o?n:1,l=Math.max(0,(o-s)*131.25);_("calc-density-sg",o.toFixed(3)),_("calc-density-brix",`${i.toFixed(1)} °Bx`),_("calc-density-plato",`${r.toFixed(1)} °P`),_("calc-density-oechsle",`${a.toFixed(0)} °Oe`),_("calc-density-potential",`${l.toFixed(1)} %`),_("calc-density-note",`Потенциал посчитан до FG ${s.toFixed(3)}.`),h(`Конвертер плотности: SG ${o.toFixed(3)}, Brix ${i.toFixed(1)}, потенциал ${l.toFixed(1)}%`,"info")}function ef(){let e=yn("calc-ferment-basis","sugar"),t=O("calc-ferment-volume-l"),n=O("calc-ferment-temp"),o=mw();if(!Number.isFinite(t)||!Number.isFinite(n)||t<=0){alert("Введите корректный объем партии и температуру брожения.");return}let i,r,a,s,l="н/д",c=NaN,d;if(e==="sugar"){let u=O("calc-ferment-sugar-kg"),p=O("calc-ferment-water-l"),g=O("calc-ferment-efficiency-pct");if(!Number.isFinite(u)||!Number.isFinite(p)||!Number.isFinite(g)||u<=0||p<=0||g<=0||g>100){alert("Для сахарной браги укажите сахар, воду и КПД брожения.");return}let v=u/(u+p)*100;i=Yr(v),s=u*Wp*(g/100),a=s/t*100,r=Math.max(.992,i-a/131.25);let w=Kp(u,p);l=w.ratioText,c=p/u,d=`${w.note} ${jp(o,n,c,a)}`}else{let u=O("calc-ferment-attenuation-pct");if(!Number.isFinite(u)||u<=0||u>100){alert("Укажите степень сбраживания.");return}if(e==="brix"){let p=O("calc-ferment-brix");if(!Number.isFinite(p)||p<=0||p>40){alert("Укажите корректный Brix.");return}i=Yr(p)}else if(i=O("calc-ferment-sg"),!Number.isFinite(i)||i<=1||i>1.2){alert("Укажите корректное SG.");return}r=Up(i,u),a=Math.max(0,(i-r)*131.25),s=t*a/100,d=jp(o,n,NaN,a)}let m=1+Math.max(0,(i-1.07)/.01)*.04,f=t*o.pitchPerLiter*m,b=pw(o.baseDays,n,o.idealTemp,a,c);_("calc-ferment-og",i.toFixed(3)),_("calc-ferment-fg",r.toFixed(3)),_("calc-ferment-abv",`${a.toFixed(1)} %`),_("calc-ferment-aa",Et(s,2)),_("calc-ferment-ratio",l),_("calc-ferment-yeast-dose",`${f.toFixed(0)} г сухих дрожжей`),_("calc-ferment-time",`${b.minDays.toFixed(0)}-${b.maxDays.toFixed(0)} суток`),_("calc-ferment-note",d),h(`Брожение: OG ${i.toFixed(3)}, FG ${r.toFixed(3)}, потенциал ${a.toFixed(1)}%`,"info")}function tf(){let e=O("calc-reverse-target-volume"),t=O("calc-reverse-target-abv"),n=O("calc-reverse-source-abv"),o=O("calc-reverse-neutral-abv");if(!Number.isFinite(e)||!Number.isFinite(t)||!Number.isFinite(n)||!Number.isFinite(o)||e<=0||t<=0||t>=100||n<=0||n>100||o<=t||o>100){alert("Проверьте объем и крепость для обратного расчета.");return}let i=e*t/100,r=n>=t,a=r?i/(n/100):NaN,s=r?Math.max(0,e-a):NaN,l=i/(o/100),c=Math.max(0,e-l);_("calc-reverse-aa",Et(i,2)),_("calc-reverse-source-volume",r?Et(a,2):"Нужен более крепкий исходник"),_("calc-reverse-source-water",r?Et(s,2):"--"),_("calc-reverse-neutral-volume",Et(l,2)),_("calc-reverse-neutral-water",Et(c,2)),h(`Обратный расчет партии: нужно ${i.toFixed(2)} л АС для ${e.toFixed(1)} л @ ${t.toFixed(1)}%`,"info")}function nf(){let e=O("calc-heat-volume"),t=O("calc-heat-start"),n=O("calc-heat-end"),o=O("calc-heat-power"),i=O("calc-heat-efficiency"),r=O("calc-heat-tariff");if(!Number.isFinite(e)||!Number.isFinite(t)||!Number.isFinite(n)||!Number.isFinite(o)||!Number.isFinite(i)||e<=0||o<=0||i<=0||i>100||n<=t){alert("Проверьте параметры нагрева.");return}let a=n-t,s=e*a*Y0,l=s/(i/100),c=l/(o/1e3),d=Number.isFinite(r)&&r>=0?l*r:0;_("calc-heat-ideal",Dp(s)),_("calc-heat-actual",Dp(l)),_("calc-heat-time",Ri(c)),_("calc-heat-cost",`${X0(d)} ₽`),_("calc-heat-note",`ΔT = ${a.toFixed(1)}°C, мощность ${zp(o)}`),h(`Нагрев: ${l.toFixed(2)} кВт·ч, ${Ri(c)}, стоимость ${d.toFixed(2)} ₽`,"info")}function of(){let e=O("calc-select-diameter"),t=O("calc-select-height"),n=O("calc-select-power"),o=O("calc-select-rate"),i=yn("calc-select-stage","body"),r=yn("calc-select-packing","spn");if(!Number.isFinite(e)||!Number.isFinite(t)||!Number.isFinite(n)||e<=0||t<=0||n<=0){alert("Проверьте геометрию колонны и мощность.");return}let a=Math.PI*(e/20)**2,s=Lp[r]||Lp.spn,l=_p[r]||_p.spn,c=qp[i]||qp.body,d=t<1e3?.9:t>1600?1.05:1,m=a*s*d,f=Math.min(n,m),b=f*c.min*l,u=f*c.max*l;_("calc-select-safe-power",zp(m)),_("calc-select-range",`${Math.round(b)}-${Math.round(u)} мл/ч`),_("calc-select-verdict",aw(o,b,u)),_("calc-select-note",sw(n,m,t,i)),h(`Режим отбора: расчетный диапазон ${Math.round(b)}-${Math.round(u)} мл/ч`,"info")}function rf(){let e;try{e=lw()}catch(a){alert(a.message);return}if(e.length===0){alert("Заполните хотя бы одну фракцию для купажа.");return}let t=O("calc-blend-target-abv"),n=e.reduce((a,s)=>a+s.volumeMl,0),o=e.reduce((a,s)=>a+s.volumeMl*s.abv/100,0),i=o/n*100,r="Целевая крепость не задана";if(Number.isFinite(t)&&t>0&&t<100)if(t<i){let a=o/(t/100);r=Et((a-n)/1e3,2)}else Math.abs(t-i)<.05?r="Вода не требуется":r="Водой крепость не повысить. Нужен более крепкий компонент.";_("calc-blend-volume-total",Et(n/1e3,2)),_("calc-blend-aa-total",Et(o/1e3,2)),_("calc-blend-abv-total",`${i.toFixed(1)} %`),_("calc-blend-dilution",r),h(`Купаж: ${e.length} фракц., итог ${i.toFixed(1)}% и ${(n/1e3).toFixed(2)} л`,"info")}var fw="(max-width: 900px)",af="tools-workbench-active-tool",sf=[{id:"spirit",label:"Спирт и продукт",tools:["yield","reverse","blend","abv","dilution"]},{id:"fermentation",label:"Брожение и сусло",tools:["potential","density","fermentation"]},{id:"process",label:"Энергия и колонна",tools:["heat","selection"]}],gw=[{id:"yield",selector:"#calc-yield-volume-l",group:"spirit",icon:"🥃",title:"AA / Фракции / Время",shortTitle:"AA и фракции",description:"Абсолютный спирт, фракции и ориентировочное время отбора."},{id:"reverse",selector:"#calc-reverse-target-volume",group:"spirit",icon:"📦",title:"Обратный расчет партии",shortTitle:"Обратный расчет",description:"Сколько нужно сырца или нейтрали под заданный объем продукта."},{id:"blend",selector:"#calc-blend-target-abv",group:"spirit",icon:"🥂",title:"Купаж фракций",shortTitle:"Купаж",description:"Сводит несколько фракций в одну смесь и считает итоговую крепость."},{id:"abv",selector:"#calc-abv-raw",group:"spirit",icon:"🌡️",title:"Коррекция спиртометра",shortTitle:"Спиртометр",description:"Поправка спиртометра на температуру с приведением к 20°C."},{id:"dilution",selector:"#calc-dil-volume",group:"spirit",icon:"💧",title:"Разбавление по этапам",shortTitle:"Разбавление",description:"Пошаговое разведение с расчетом воды и итогового объема."},{id:"potential",selector:"#calc-potential-source-type",group:"fermentation",icon:"🍯",title:"Сахар / Сусло → спирт",shortTitle:"Сахар -> спирт",description:"Потенциал браги, абсолютный спирт и ориентиры по сырью."},{id:"density",selector:"#calc-density-scale",group:"fermentation",icon:"📏",title:"Конвертер плотности",shortTitle:"Плотность",description:"Brix, Plato, SG и Oechsle в одном месте."},{id:"fermentation",selector:"#calc-ferment-basis",group:"fermentation",icon:"🫙",title:"Калькулятор брожения",shortTitle:"Брожение",description:"OG/FG, дозировки дрожжей, срок брожения и гидромодуль."},{id:"heat",selector:"#calc-heat-volume",group:"process",icon:"⚡",title:"Нагрев / энергия / стоимость",shortTitle:"Нагрев",description:"Время нагрева, расход энергии и стоимость по тарифу."},{id:"selection",selector:"#calc-select-diameter",group:"process",icon:"🧪",title:"Режим отбора",shortTitle:"Отбор",description:"Грубая оценка мощности и рабочего диапазона колонны."}];function bw(e){return sf.find(t=>t.id===e)?.label??"Инструменты"}function Ee(e,t,n){let o=document.createElement(e);return t&&(o.className=t),typeof n=="string"&&(o.textContent=n),o}function hw(e){let t=Ee("button","tools-card-mobile-toggle");t.type="button";let n=Ee("span","tools-card-mobile-icon",e.icon);n.setAttribute("aria-hidden","true");let o=Ee("span","tools-card-mobile-copy");o.append(Ee("span","tools-card-mobile-title",e.shortTitle),Ee("span","tools-card-mobile-description",e.description));let i=Ee("span","tools-card-mobile-chevron","▾");return i.setAttribute("aria-hidden","true"),t.append(n,o,i),t}function yw(e){let t=Ee("aside","tools-sidebar-nav workbench-local-nav");t.setAttribute("aria-label","Навигация по калькуляторам");let n=Ee("div","tools-sidebar-header");n.append(Ee("div","tools-sidebar-title","Инструменты"),Ee("div","tools-sidebar-subtitle","Открыт один рабочий калькулятор, остальные доступны через меню.")),t.appendChild(n);let o=new Map;for(let i of sf){let r=i.tools.map(a=>e.find(s=>s.meta.id===a)).filter(Boolean);if(r.length){t.appendChild(Ee("div","sidebar-section-title",i.label));for(let a of r){let s=Ee("button","equipment-local-nav-btn workbench-local-nav-btn tools-nav-item");s.type="button",s.dataset.toolId=a.meta.id,s.append(Ee("span","icon",a.meta.icon),Ee("span","label",a.meta.shortTitle)),t.appendChild(s),o.set(a.meta.id,s)}}}return{nav:t,buttonsById:o}}function vw(e,t){if(e.dataset.toolsEnhanced==="1")return{card:e,meta:t,body:e.querySelector(".tools-card-body"),toggle:e.querySelector(".tools-card-mobile-toggle")};e.dataset.toolsEnhanced="1",e.dataset.toolId=t.id,e.dataset.toolGroup=t.group;let n=[...e.childNodes],o=Ee("div","tools-card-body");for(let s of n)o.appendChild(s);let i=o.querySelector("h2");if(i){i.classList.add("tools-card-title"),i.textContent="";let s=Ee("span","tools-card-title-icon",t.icon);s.setAttribute("aria-hidden","true");let l=Ee("span","tools-card-title-text",t.title);i.append(s,l);let c=Ee("div","tools-card-group-badge",bw(t.group));i.before(c)}let r=o.querySelector(".tools-card-text");r&&(r.textContent=t.description);let a=hw(t);return e.textContent="",e.append(a,o),{card:e,meta:t,body:o,toggle:a}}function ww(e){let t=[],n=[];for(let o of gw){let i=e.find(r=>r.querySelector(o.selector));if(!i){n.push(o.id);continue}t.push(vw(i,o))}return n.length>0&&console.warn("Tools workbench: some calculators were not found",n),t}function lf(){let e=document.getElementById("tools"),t=e?.querySelector(".tools-cards");if(!e||!t||t.dataset.toolsWorkbench==="1")return;let n=[...t.querySelectorAll(".tools-card")],o=ww(n);if(!o.length)return;t.dataset.toolsWorkbench="1";let i=Ee("div","tools-shell workbench-shell"),r=Ee("div","tools-main"),{nav:a,buttonsById:s}=yw(o);t.parentNode.insertBefore(i,t),i.append(a,r),r.appendChild(t);let l=window.matchMedia(fw),c=localStorage.getItem(af),d=o.some(p=>p.meta.id===c)?c:o[0].meta.id,m=d;function f(p){let g=o.find(v=>v.meta.id===p);g&&requestAnimationFrame(()=>{g.toggle.scrollIntoView({block:"start",behavior:"smooth"})})}function b(){let p=l.matches;!p&&!m&&(m=d||o[0].meta.id),p&&!m&&(m=d||o[0].meta.id),e.dataset.toolsLayout=p?"mobile":"desktop",a.hidden=!1;for(let g of o){let v=g.meta.id===m;g.card.classList.toggle("is-active",v),g.toggle&&(g.toggle.classList.toggle("is-active",v),g.toggle.setAttribute("aria-expanded",String(v)),g.toggle.hidden=p),g.body.hidden=!1,g.card.hidden=!v;let w=s.get(g.meta.id);w&&(w.classList.toggle("active",v),w.setAttribute("aria-current",v?"true":"false"))}}function u(p){p!==null&&!o.some(g=>g.meta.id===p)||(m=p,p&&(d=p,localStorage.setItem(af,p)),b())}for(let p of o)p.toggle.addEventListener("click",()=>{let g=l.matches,v=m===p.meta.id;if(g&&v){u(null);return}u(p.meta.id),g&&f(p.meta.id)});for(let[p,g]of s.entries())g.addEventListener("click",()=>{u(p),r.scrollIntoView({block:"start",behavior:"smooth"})});typeof l.addEventListener=="function"?l.addEventListener("change",b):typeof l.addListener=="function"&&l.addListener(b),b()}function cf(){"serviceWorker"in navigator&&window.addEventListener("load",()=>{navigator.serviceWorker.register("/service-worker.js?v=2.4.53",{updateViaCache:"none"}).then(e=>{console.log("ServiceWorker registration successful with scope: ",e.scope),e.update().catch(()=>{})}).catch(e=>{console.log("ServiceWorker registration failed: ",e)})})}window.saveCloudConfig=Xd;window.generateCloudClaim=eu;window.loadESP32Devices=mn;window.loadESP32Device=Er;window.showAddDeviceForm=nu;window.loadESP32Config=ou;window.toggleESP32Fields=ci;window.saveESP32Device=gs;window.saveESP32Config=iu;window.activateESP32Device=ru;window.deleteESP32Device=au;window.testESP32Connection=su;window.claimDeviceToAccount=tu;window.toggleUserMenu=cu;window.logout=du;window.switchAccount=uu;window.addLog=h;window.clearLogs=Hl;window.downloadLogs=Dl;window.toggleMemoryStats=Ud;window.setTheme=mu;window.toggleTopMenu=tc;window.compareSelected=Nu;window.compareProcessWithBaseline=Bu;window.closeCompareModal=As;window.viewHistoryDetails=xu;window.closeHistoryModal=gi;window.exportHistory=Ir;window.exportHistoryAnonymized=Lu;window.exportHistoryCSV=Ru;window.exportHistoryJSON=Fu;window.loadHistoryList=kn;window.applyHistoryFilters=bs;window.clearHistory=bu;window.loadPublicDemoDataset=hu;window.clearPublicDemoDataset=yu;window.deleteHistoryItem=vu;window.toggleProcessSelection=fu;window.confirmModeSwitch=ft;window.startDistillation=tr;window.stopProcess=_u;window.pauseProcess=qu;window.resumeProcess=Ou;window.updateHeater=Hu;window.updatePump=Du;window.toggleValve=Vu;window.startMashing=or;window.startHold=ir;window.addMashStep=rn;window.addHoldStep=La;window.startRectification=Xi;window.startManual=er;window.selectControlMode=ti;window.startSelectedMode=md;window.confirmModeStart=ud;window.closeModeStartModal=ei;window.renderControlStartChecklist=Wa;window.renderControlStartState=Ae;window.saveManualRectSettings=Qa;window.loadManualRectSettings=Xa;window.updateManualHeadsMode=Ua;window.calcManualHeadsSpeed=ar;window.calcManualHeadsTime=za;window.updateManualBodyToTailsMode=Ka;window.updateManualTailsMode=Ga;window.updateManualTailsStopMode=Ya;window.updateManualTailsPwmMode=Ja;window.openRectificationStartModal=Oc;window.confirmStartRectification=Dc;window.closeRectificationStartModal=Zi;window.updateRectificationFractionsSum=ao;window.applyRectificationFeedstockDefaults=ka;window.showCreateProfileModal=Ju;window.showEditProfileModal=Os;window.showDuplicateProfileModal=qs;window.editCurrentProfile=em;window.duplicateCurrentProfile=tm;window.onProfileCategoryChange=_s;window.addProfileMashStep=Gu;window.copyCurrentMashingToProfileForm=Yu;window.closeProfileModal=Rr;window.saveProfile=Zu;window.viewProfile=Qu;window.closeProfileViewModal=vi;window.quickLoadProfile=Hs;window.loadProfileToSettings=nm;window.deleteProfile=Ds;window.deleteCurrentProfileFromModal=Xu;window.clearUserProfiles=om;window.exportProfile=cm;window.exportAllProfiles=dm;window.showImportModal=um;window.closeImportModal=zs;window.doImportProfiles=mm;window.loadProfilesList=Kt;window.renderAbvValue=Vt;window.openRuntimeEditModal=gm;window.closeRuntimeEditModal=Ks;window.submitRuntimeEditModal=hm;window.onRuntimeEditUnitToggle=bm;window.toggleDemoMode=ym;window.rebootController=wm;window.saveEquipment=Ad;window.saveStirrerSettings=Nd;window.loadEquipmentSettings=ss;window.loadSafetySettings=il;window.saveSafetySettings=Zm;window.addCubeExtenderVolume=Id;window.saveMqtt=Qm;window.sendMqttTest=Xm;window.toggleMqttFields=Or;window.loadPumpInfo=sl;window.loadVersionInfo=ll;window.saveSecurity=ep;window.toggleAuthFields=dl;window.saveWiFi=ap;window.loadWiFiStatus=Hn;window.loadWiFiProfiles=Ni;window.scanWiFiNetworks=op;window.saveWiFiProfile=rp;window.connectWiFiNetwork=bl;window.connectSavedWiFiProfile=gl;window.moveWiFiProfile=Dr;window.deleteWiFiProfile=fl;window.editWiFiProfile=pl;window.toggleWiFiStaticFields=Vr;window.cancelWiFiSelection=ip;window.loadCalibrationData=Ke;window.scanCalibrationSensors=Pp;window.assignTempSensorAddress=Ip;window.calibrateTempOffset=Ap;window.calibrateTempReference=Np;window.fillPressurePointFromCurrent=vp;window.addPressurePointFromCurrent=wp;window.applyPressureZeroTrim=Sp;window.savePressureCalibration=Ep;window.clearPressureCalibration=Cp;window.clearPressureZeroTrim=xp;window.fillHydrometerPointFromCurrent=Mp;window.saveHydrometerCalibration=Tp;window.clearHydrometerCalibration=$p;window.exportCalibrationSnapshot=gp;window.openCalibrationImportDialog=bp;window.onCalibrationSnapshotFileChange=hp;window.applyCalibrationSnapshot=yp;window.updateCalibrationTime=Cl;window.startCalibration=Bp;window.stopCalibration=xl;window.applyCalibration=kp;window.cancelCalibration=Rp;window.calculateAbvCorrection=Yp;window.calculateBlendFractions=rf;window.calculateDensityConverter=Xp;window.calculateDilution=Jp;window.calculateFermentation=ef;window.calculateHeatingCost=nf;window.calculatePotentialAlcohol=Qp;window.calculateReverseBatch=tf;window.calculateSelectionRate=of;window.calculateYieldFractions=Zp;window.fetchCurrentTempForCalc=Gp;window.updateFermentationMode=$l;window.updatePotentialAlcoholMode=Tl;window.toggleOperatorView=Ac;window.toggleBrowserNotifications=kc;window.testBrowserNotification=Rc;window.showNotification=Wt;window.zoomScheme=Mc;function Sw(){let e=document.getElementById("sidebar-collapse-btn"),t=document.getElementById("main-sidebar");if(!e||!t)return;localStorage.getItem("sidebar-collapsed")==="1"&&t.classList.add("collapsed"),e.addEventListener("click",()=>{t.classList.toggle("collapsed"),localStorage.setItem("sidebar-collapsed",t.classList.contains("collapsed")?"1":"0")})}function Ew(){let t=document.getElementById("abv")?.closest(".status-item");if(!t)return;let n=t.previousElementSibling;n?.classList?.contains("separator")&&n.remove(),t.remove()}document.addEventListener("DOMContentLoaded",async function(){oc(),nc(),Sw(),Nc(),bc(),Ew(),Ql(),Vt(),Uc(),Vc(),es(),await pd(),pu(),vm(),Ol(),jd(),zi(),window.addEventListener("resize",zi),Kd(),sl(),ll(),Tl(),$l(),lf(),Bd(),Km(),Gm(),ss(),il(),ul(),al(),Kt(),sp(),Fp(),Bc(),cf();let e=await Jd();Yd(e),Zd(e),e&&(lu(),mn(),Sr(),setInterval(Sr,3e4)),no(!0),e||ps()});})();

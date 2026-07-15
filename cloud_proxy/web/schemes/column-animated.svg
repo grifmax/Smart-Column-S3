@@ -1,150 +1,452 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1200" id="column-scheme">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -5 530 755" width="530" height="755" preserveAspectRatio="xMidYMid meet">
   <defs>
-    <!-- Градиенты для эффектов -->
-    <linearGradient id="heatGradient" x1="0%" y1="100%" x2="0%" y2="0%">
-      <stop offset="0%" style="stop-color:#ff0000;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#ff6600;stop-opacity:0.5" />
+    <!-- Градиент для серых индикаторов -->
+    <linearGradient id="grad-indicator" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f5f5f5;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#b3b3b3;stop-opacity:1"/>
     </linearGradient>
-
-    <linearGradient id="coolGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#00bfff;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0080ff;stop-opacity:0.5" />
+    <!-- Паттерн для насадки царги -->
+    <pattern id="dots-packing" patternUnits="userSpaceOnUse" width="11" height="11">
+      <circle cx="5.5" cy="5.5" r="2.75" fill="#647687"/>
+    </pattern>
+    <!-- Градиент для металла -->
+    <linearGradient id="grad-metal" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#bdc3c7;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#ecf0f1;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#bdc3c7;stop-opacity:1"/>
     </linearGradient>
-
-    <!-- Маска для жидкости в банках -->
-    <clipPath id="jarClip">
-      <rect x="0" y="0" width="80" height="120" rx="5" />
+    <!-- Анимационные градиенты царги и куба -->
+    <linearGradient id="grad-column-heat" x1="0" y1="743" x2="0" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" style="stop-color:#d94b2b;stop-opacity:0.65"/>
+      <stop offset="70%" style="stop-color:#d94b2b;stop-opacity:0.18"/>
+      <stop offset="100%" style="stop-color:#d94b2b;stop-opacity:0"/>
+    </linearGradient>
+    <linearGradient id="grad-column-reflux" x1="0" y1="38" x2="0" y2="743" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" style="stop-color:#1f84ff;stop-opacity:0.65"/>
+      <stop offset="70%" style="stop-color:#1f84ff;stop-opacity:0.18"/>
+      <stop offset="100%" style="stop-color:#1f84ff;stop-opacity:0"/>
+    </linearGradient>
+    <linearGradient id="grad-cube-liquid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8fd0ff;stop-opacity:0.55"/>
+      <stop offset="100%" style="stop-color:#3e8fd7;stop-opacity:0.35"/>
+    </linearGradient>
+    <clipPath id="clip-reflux-drops">
+      <rect x="146" y="38" width="50" height="206"/>
+    </clipPath>
+    <clipPath id="clip-cube-lid-trapezoid">
+      <path d="M76,553 L146,488 L196,488 L266,553 Z"/>
     </clipPath>
   </defs>
 
-  <!-- Куб (красный) -->
-  <g id="cube" class="cube">
-    <rect x="200" y="900" width="200" height="250" rx="10" fill="#dc3545" stroke="#004080" stroke-width="4"/>
-    <!-- Индикаторы нагрева -->
-    <line x1="220" y1="1120" x2="280" y2="1120" stroke="#fff" stroke-width="3" class="heat-indicator" opacity="0.7"/>
-    <line x1="220" y1="1140" x2="280" y2="1140" stroke="#fff" stroke-width="3" class="heat-indicator" opacity="0.7"/>
-    <line x1="320" y1="1120" x2="380" y2="1120" stroke="#fff" stroke-width="3" class="heat-indicator" opacity="0.7"/>
-    <line x1="320" y1="1140" x2="380" y2="1140" stroke="#fff" stroke-width="3" class="heat-indicator" opacity="0.7"/>
-  </g>
+  <style>
+    .indicator { fill: url(#grad-indicator); stroke: #666; stroke-width: 1; }
+    .indicator-text { font-family: 'Segoe UI', Helvetica, sans-serif; font-size: 14px; font-weight: bold; text-anchor: middle; dominant-baseline: central; fill: #333; }
+    .label-text { font-family: 'Segoe UI', Helvetica, sans-serif; font-size: 12px; text-anchor: middle; dominant-baseline: central; fill: #333; }
+    g[id^="ind-"] { transform-box: fill-box; transform-origin: center center; transform: scale(1.13); }
+    .struct { fill: #fff; stroke: #000; stroke-width: 1; }
+    .struct-line { fill: none; stroke: #000; stroke-width: 1; }
+    .pipe { fill: none; stroke: #000; stroke-width: 1; }
+    .pipe-water { fill: none; stroke: #001dbc; stroke-width: 1; }
+    .pipe-water.active {
+      stroke: #1a9cff;
+      stroke-width: 4;
+      stroke-linecap: round;
+      opacity: 0.95;
+      filter: drop-shadow(0 0 4px rgba(26, 156, 255, 0.85));
+      animation: water-pipe-pulse 1.2s ease-in-out infinite;
+    }
+    .valve { fill: #fff; stroke: #000; stroke-width: 1; }
+    .valve-open .valve { fill: #2ecc71; stroke: #27ae60; }
+    .valve-closed .valve { fill: #e74c3c; stroke: #c0392b; }
+    .jar { fill: #fff; stroke: #000; stroke-width: 2; }
+    .drop { fill: #3498db; opacity: 0; transition: opacity 0.5s; }
+    .condensing .drop { opacity: 0.7; }
+    .bubble { fill: #b8e7ff; opacity: 0; filter: drop-shadow(0 0 2px rgba(184, 231, 255, 0.7)); }
 
-  <!-- Царга (оранжевая колонна) -->
-  <g id="column">
-    <rect x="270" y="600" width="60" height="300" fill="#ff8c00" stroke="#004080" stroke-width="4"/>
-    <!-- Пар поднимается -->
-    <g class="vapor-particles">
-      <circle cx="285" cy="850" r="4" fill="#fff" opacity="0.6" class="vapor-bubble v1"/>
-      <circle cx="300" cy="820" r="5" fill="#fff" opacity="0.6" class="vapor-bubble v2"/>
-      <circle cx="315" cy="790" r="4" fill="#fff" opacity="0.6" class="vapor-bubble v3"/>
-      <circle cx="290" cy="760" r="5" fill="#fff" opacity="0.6" class="vapor-bubble v4"/>
-      <circle cx="305" cy="730" r="4" fill="#fff" opacity="0.6" class="vapor-bubble v5"/>
+    @keyframes water-pipe-pulse {
+      0%, 100% { opacity: 0.78; }
+      50% { opacity: 1; }
+    }
+  </style>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ДЕФЛЕГМАТОР (process shape, двойная стенка) y=38..158     -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="zone-reflux">
+    <rect x="136" y="38" width="70" height="120" class="struct"/>
+    <line x1="143" y1="38" x2="143" y2="158" class="struct-line"/>
+    <line x1="199" y1="38" x2="199" y2="158" class="struct-line"/>
+
+    <!-- Капли конденсата: старт сверху, падение в диоптр ниже дефлегматора -->
+    <g id="anim-reflux-drops" clip-path="url(#clip-reflux-drops)">
+      <circle cx="155" cy="54" r="2.4" class="drop"/>
+      <circle cx="163" cy="51" r="2.2" class="drop"/>
+      <circle cx="171" cy="56" r="2.5" class="drop"/>
+      <circle cx="179" cy="52" r="2.3" class="drop"/>
+      <circle cx="187" cy="55" r="2.4" class="drop"/>
     </g>
   </g>
 
-  <!-- Дефлегматор (желтый с синими кольцами) -->
-  <g id="reflux">
-    <rect x="260" y="400" width="80" height="200" fill="#ffd700" stroke="#004080" stroke-width="4"/>
-    <!-- Охлаждающие кольца -->
-    <ellipse cx="300" cy="450" rx="45" ry="12" fill="none" stroke="#007bff" stroke-width="8" class="cooling-ring r1"/>
-    <ellipse cx="300" cy="490" rx="45" ry="12" fill="none" stroke="#007bff" stroke-width="8" class="cooling-ring r2"/>
-    <ellipse cx="300" cy="530" rx="45" ry="12" fill="none" stroke="#007bff" stroke-width="8" class="cooling-ring r3"/>
-    <ellipse cx="300" cy="570" rx="45" ry="12" fill="none" stroke="#007bff" stroke-width="8" class="cooling-ring r4"/>
-
-    <!-- Капли конденсата -->
-    <circle cx="280" cy="580" r="3" fill="#00bfff" class="condensation-drop d1" opacity="0"/>
-    <circle cx="300" cy="560" r="3" fill="#00bfff" class="condensation-drop d2" opacity="0"/>
-    <circle cx="320" cy="540" r="3" fill="#00bfff" class="condensation-drop d3" opacity="0"/>
+  <!-- Трубки ТСА (вверх из дефлегматора) -->
+  <g id="zone-tsa">
+    <path d="M186.5,38 L186.67,28 M190.67,28 L190.5,38" class="pipe"/>
+    <path d="M151.5,38 L152,3 M156,3 L155.5,38" class="pipe"/>
   </g>
 
-  <!-- Кнопка Power -->
-  <g id="power-button" class="power-btn">
-    <circle cx="300" cy="330" r="30" fill="#6c757d" stroke="#333" stroke-width="3" class="power-circle"/>
-    <path d="M 300 310 L 300 330 M 295 315 A 15 15 0 1 1 305 315"
-          stroke="#ffd700" stroke-width="4" fill="none" stroke-linecap="round" class="power-icon"/>
+  <!-- Труба воды (вход/выход через дефлегматор → доохладитель) -->
+  <g id="zone-water">
+    <!-- Выход воды (вверх вправо) -->
+    <path d="M206,66 L236,66 M236,70 L206,70" class="pipe-water"/>
+    <!-- Вход воды: верх-право доохладителя (266,223) → вверх → вход деф справа снизу (206,126) -->
+    <path d="M266,223 L266,126 L206,126 M270,223 L270,130 L206,130" class="pipe-water"/>
+    <!-- Стрелка входа воды -->
+    <path d="M302.86,65.7 L302.82,63.5 L319.5,67.01 L302.96,71.11 L302.92,68.91 L292.53,69.1 L292.47,65.88 Z" fill="#0050ef" stroke="#001dbc" stroke-linejoin="round"/>
   </g>
 
-  <!-- Трубка к крану -->
-  <line x1="340" y1="450" x2="400" y2="450" stroke="#004080" stroke-width="6"/>
-  <line x1="400" y1="450" x2="400" y2="500" stroke="#004080" stroke-width="6"/>
+  <!-- ФЛАНЕЦ (соединение деф → узел отбора) y=158..176 -->
+  <rect x="146" y="158" width="50" height="18" class="struct"/>
 
-  <!-- Кран с цифрой -->
-  <g id="tap" class="tap">
-    <circle cx="400" cy="520" r="12" fill="#fff" stroke="#004080" stroke-width="3"/>
-    <rect x="388" y="530" width="24" height="30" rx="3" fill="#004080"/>
-    <!-- Капли из крана -->
-    <circle cx="400" cy="565" r="4" fill="#00bfff" class="tap-drop" opacity="0"/>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- УЗЕЛ ОТБОРА (process shape)  y=173..243                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="zone-node">
+    <rect x="136" y="173" width="70" height="70" class="struct"/>
+    <line x1="143" y1="173" x2="143" y2="243" class="struct-line"/>
+    <line x1="199" y1="173" x2="199" y2="243" class="struct-line"/>
+    <!-- Выход к доохладителю (вправо) -->
+    <path d="M205.93,200.89 L254,200.9 Q258,200.9 258,204.9 L258.01,233 M254.01,233 L254,204.9 L205.93,204.89" class="pipe"/>
   </g>
 
-  <!-- Цифра фракции -->
-  <g id="fraction-indicator">
-    <circle cx="450" cy="520" r="20" fill="#ffd700" stroke="#004080" stroke-width="3" class="fraction-badge"/>
-    <text x="450" y="528" text-anchor="middle" font-size="20" font-weight="bold" fill="#004080" class="fraction-number">1</text>
-    <path d="M 465 525 L 475 520 L 475 530 Z" fill="#004080" class="fraction-arrow"/>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ДООХЛАДИТЕЛЬ (вертикальный, process shape)  x=246..266     -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="zone-cooling">
+    <rect x="246" y="223" width="20" height="100" class="struct"/>
+    <line x1="248" y1="223" x2="248" y2="323" class="struct-line"/>
+    <line x1="264" y1="223" x2="264" y2="323" class="struct-line"/>
+    <!-- Труба от доохладителя к насосу -->
+    <path d="M254,346 L254,323 M258,323 L258,346" class="pipe"/>
+    <!-- Вход воды из сети (снизу) -->
+    <path d="M265.97,296 L286.69,295.72 M286.75,299.72 L266.03,300" class="pipe-water"/>
+    <!-- Выход воды сверху (к дефлегматору) -->
+    <path d="M306,295.76 L327,295.76 M327,299.76 L306,299.76" class="pipe-water"/>
   </g>
 
-  <!-- Помпа с колесом -->
-  <g id="pump" transform="translate(420, 600)">
-    <rect x="0" y="0" width="80" height="60" rx="8" fill="#28a745" stroke="#004080" stroke-width="3"/>
-    <!-- Вращающееся колесо -->
-    <g class="pump-wheel">
-      <circle cx="40" cy="30" r="20" fill="#fff" stroke="#004080" stroke-width="2"/>
-      <line x1="40" y1="10" x2="40" y2="50" stroke="#004080" stroke-width="2"/>
-      <line x1="20" y1="30" x2="60" y2="30" stroke="#004080" stroke-width="2"/>
-      <line x1="26" y1="16" x2="54" y2="44" stroke="#004080" stroke-width="2"/>
-      <line x1="54" y1="16" x2="26" y2="44" stroke="#004080" stroke-width="2"/>
-      <circle cx="40" cy="30" r="5" fill="#004080"/>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ЦАРГА (насадочная колонна с упаковкой)  y=244..488         -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="zone-column">
+    <rect id="column-shell" x="146" y="244" width="50" height="244" fill="url(#dots-packing)" stroke="#1f2d3b" stroke-width="2.6"/>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ГОРЛОВИНА КУБА (process shape)  y=436..478                 -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="zone-neck">
+    <rect x="136" y="436" width="70" height="42" class="struct"/>
+    <line x1="143" y1="436" x2="143" y2="478" class="struct-line"/>
+    <line x1="199" y1="436" x2="199" y2="478" class="struct-line"/>
+    <!-- Выход к клапану хвостов (влево) -->
+    <path d="M136.03,459 L122.77,459.2 M122.71,455.2 L135.97,455" class="pipe"/>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ТРАПЕЦИЯ (переход в куб)  y=488..553                       -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <path d="M76,553 L146,488 L196,488 L266,553 Z" class="struct" stroke-width="2.6"/>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- КУБ (бойлер)  y=553..743                                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="zone-cube">
+    <rect id="cube-shell" x="76" y="553" width="190" height="190" class="struct" stroke-width="2.6"/>
+  </g>
+
+  <!-- Анимационные слои тепла/рефлюкса: от верха дефлегматора до уровня жидкости -->
+  <rect id="anim-gradient-core-heat" x="150" y="38" width="42" height="0" fill="url(#grad-column-heat)" opacity="0" pointer-events="none"/>
+  <rect id="anim-gradient-core-reflux" x="150" y="38" width="42" height="0" fill="url(#grad-column-reflux)" opacity="0" pointer-events="none"/>
+  <rect id="anim-gradient-lid-heat" x="76" y="488" width="190" height="0" fill="url(#grad-column-heat)" opacity="0" pointer-events="none" clip-path="url(#clip-cube-lid-trapezoid)"/>
+  <rect id="anim-gradient-lid-reflux" x="76" y="488" width="190" height="0" fill="url(#grad-column-reflux)" opacity="0" pointer-events="none" clip-path="url(#clip-cube-lid-trapezoid)"/>
+  <rect id="anim-gradient-cube-heat" x="80" y="553" width="182" height="0" fill="url(#grad-column-heat)" opacity="0" pointer-events="none"/>
+  <rect id="anim-gradient-cube-reflux" x="80" y="553" width="182" height="0" fill="url(#grad-column-reflux)" opacity="0" pointer-events="none"/>
+
+  <!-- Уровень жидкости в кубе -->
+  <rect id="anim-liquid-level" x="76" y="743" width="190" height="0" fill="url(#grad-cube-liquid)" opacity="0.9" pointer-events="none"/>
+
+  <!-- Пузырьки кипения от ТЭНа к верхней границе уровня жидкости -->
+  <g id="anim-boil-bubbles" pointer-events="none" style="opacity:0">
+    <circle class="bubble" cx="114" cy="716" r="2.9"/>
+    <circle class="bubble" cx="132" cy="721" r="2.4"/>
+    <circle class="bubble" cx="151" cy="714" r="2.8"/>
+    <circle class="bubble" cx="171" cy="719" r="2.5"/>
+    <circle class="bubble" cx="190" cy="713" r="2.7"/>
+    <circle class="bubble" cx="210" cy="718" r="2.6"/>
+    <circle class="bubble" cx="228" cy="715" r="2.5"/>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ТЭН (внизу куба)                         -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="zone-heater">
+    <!-- Полоска ТЭНа — горизонтальный бар чуть выше дна куба -->
+    <rect id="heater-bar" x="82" y="730" width="180" height="5" rx="2.5" ry="2.5"
+          fill="#1a0500" stroke="none" opacity="1"/>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- КОЛЛЕКТОР: труба от насоса к клапанам                      -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Горизонтальная труба + ответвления к клапанам -->
+  <path id="collector-main-pipe" d="M398.8,374 L254,374 L254,346 M258,346 L258,370 L398.8,370" class="pipe"/>
+  <path id="collector-tails-pipe" d="M455.75,408 L455.8,374 L398.8,374 M398.8,370 L459.8,370 L459.75,408" class="pipe"/>
+  <!-- Вертикальные ответвления к клапанам -->
+  <path d="M331.75,408 L331.97,373.21 M335.97,373.24 L335.75,408" class="pipe"/>
+  <path d="M394.75,408 L394.83,373.3 M398.83,373.31 L398.75,408" class="pipe"/>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- НАСОС (поверх труб коллектора)                              -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="zone-pump">
+    <!-- Корпус насоса (белая заливка перекрывает трубки) -->
+    <circle cx="256" cy="371" r="22" fill="#fff" stroke="#000" stroke-width="1.5"/>
+    <!-- Крыльчатка (6 лопастей) -->
+    <g id="pump-impeller" fill="none" stroke="#555" stroke-width="2" stroke-linecap="round">
+      <line x1="256" y1="371" x2="256" y2="352"/>
+      <line x1="256" y1="371" x2="272.5" y2="380.5"/>
+      <line x1="256" y1="371" x2="239.5" y2="380.5"/>
+      <line x1="256" y1="371" x2="272.5" y2="361.5"/>
+      <line x1="256" y1="371" x2="239.5" y2="361.5"/>
+      <line x1="256" y1="371" x2="256" y2="390"/>
     </g>
-    <text x="40" y="75" text-anchor="middle" font-size="12" fill="#004080" font-weight="bold">PUMP</text>
+    <!-- Ось -->
+    <circle cx="256" cy="371" r="4" fill="#555" stroke="none"/>
+    <!-- Вход (сверху) -->
+    <rect x="252" y="346" width="8" height="3" fill="#fff" stroke="#000" stroke-width="1"/>
+    <!-- Выход (снизу) -->
+    <rect x="252" y="393" width="8" height="3" fill="#fff" stroke="#000" stroke-width="1"/>
   </g>
 
-  <!-- Трубка от крана к разветвлению -->
-  <line x1="400" y1="565" x2="400" y2="630" stroke="#004080" stroke-width="6" class="flow-pipe"/>
-  <line x1="400" y1="630" x2="420" y2="630" stroke="#004080" stroke-width="6" class="flow-pipe"/>
-
-  <!-- Трубка от помпы -->
-  <line x1="500" y1="630" x2="550" y2="630" stroke="#004080" stroke-width="6" class="flow-pipe"/>
-
-  <!-- Разветвление на 3 банки -->
-  <g id="splitter">
-    <circle cx="550" cy="630" r="10" fill="#004080"/>
-    <!-- Трубки к банкам -->
-    <line x1="550" y1="630" x2="550" y2="750" stroke="#004080" stroke-width="5" class="flow-pipe"/>
-    <line x1="550" y1="750" x2="520" y2="780" stroke="#004080" stroke-width="4" class="flow-pipe"/>
-    <line x1="550" y1="750" x2="550" y2="780" stroke="#004080" stroke-width="4" class="flow-pipe"/>
-    <line x1="550" y1="750" x2="580" y2="780" stroke="#004080" stroke-width="4" class="flow-pipe"/>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- КЛАПАН ВОДЫ (на выходе горловины, для хвостов)              -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="svg-valve-water" class="valve-closed" transform="translate(0,0)">
+    <path d="M104,447 L124,447 L114,457 Z" class="valve" transform="rotate(90,114,457)"/>
+    <path d="M104,467 L124,467 L114,457 Z" class="valve" transform="rotate(90,114,457)"/>
   </g>
 
-  <!-- Банка 1: Головы -->
-  <g id="jar-heads" transform="translate(430, 800)">
-    <rect x="0" y="0" width="80" height="120" rx="5" fill="none" stroke="#dc3545" stroke-width="3"/>
-    <rect x="0" y="120" width="80" height="20" rx="5" fill="#dc3545" stroke="#004080" stroke-width="2"/>
-    <!-- Жидкость внутри -->
-    <rect x="2" y="20" width="76" height="0" fill="#dc3545" opacity="0.7" class="jar-liquid" id="liquid-heads" clip-path="url(#jarClip)"/>
-    <text x="40" y="145" text-anchor="middle" font-size="14" font-weight="bold" fill="#dc3545">HEADS</text>
-    <text x="40" y="160" text-anchor="middle" font-size="12" fill="#666" class="jar-volume" id="vol-heads">0ml</text>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- КЛАПАН ГОЛОВ                                               -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="svg-valve-heads" class="valve-closed">
+    <path d="M286,288 L306,288 L296,298 Z" class="valve" transform="rotate(90,296,298)"/>
+    <path d="M286,308 L306,308 L296,298 Z" class="valve" transform="rotate(90,296,298)"/>
   </g>
 
-  <!-- Банка 2: Тело -->
-  <g id="jar-body" transform="translate(510, 800)">
-    <rect x="0" y="0" width="80" height="120" rx="5" fill="none" stroke="#28a745" stroke-width="3"/>
-    <rect x="0" y="120" width="80" height="20" rx="5" fill="#28a745" stroke="#004080" stroke-width="2"/>
-    <!-- Жидкость внутри -->
-    <rect x="2" y="20" width="76" height="0" fill="#28a745" opacity="0.7" class="jar-liquid" id="liquid-body" clip-path="url(#jarClip)"/>
-    <text x="40" y="145" text-anchor="middle" font-size="14" font-weight="bold" fill="#28a745">BODY</text>
-    <text x="40" y="160" text-anchor="middle" font-size="12" fill="#666" class="jar-volume" id="vol-body">0ml</text>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- КЛАПАН ТЕЛА                                                -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="svg-valve-uno" class="valve-closed">
+    <path d="M323.75,408 L343.75,408 L333.75,418 Z" class="valve" transform="rotate(180,333.75,418)"/>
+    <path d="M323.75,428 L343.75,428 L333.75,418 Z" class="valve" transform="rotate(180,333.75,418)"/>
   </g>
 
-  <!-- Банка 3: Хвосты -->
-  <g id="jar-tails" transform="translate(590, 800)">
-    <rect x="0" y="0" width="80" height="120" rx="5" fill="none" stroke="#ffc107" stroke-width="3"/>
-    <rect x="0" y="120" width="80" height="20" rx="5" fill="#ffc107" stroke="#004080" stroke-width="2"/>
-    <!-- Жидкость внутри -->
-    <rect x="2" y="20" width="76" height="0" fill="#ffc107" opacity="0.7" class="jar-liquid" id="liquid-tails" clip-path="url(#jarClip)"/>
-    <text x="40" y="145" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffc107">TAILS</text>
-    <text x="40" y="160" text-anchor="middle" font-size="12" fill="#666" class="jar-volume" id="vol-tails">0ml</text>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- КЛАПАН ТЕЛА 2 (средний)                                    -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="svg-valve-body" class="valve-closed">
+    <path d="M386.75,408 L406.75,408 L396.75,418 Z" class="valve" transform="rotate(180,396.75,418)"/>
+    <path d="M386.75,428 L406.75,428 L396.75,418 Z" class="valve" transform="rotate(180,396.75,418)"/>
   </g>
 
-  <!-- Подписи температур (опционально) -->
-  <text x="150" y="1050" font-size="14" fill="#666" class="temp-label">T: <tspan id="temp-cube">--°C</tspan></text>
-  <text x="150" y="750" font-size="14" fill="#666" class="temp-label">T: <tspan id="temp-column">--°C</tspan></text>
-  <text x="150" y="500" font-size="14" fill="#666" class="temp-label">T: <tspan id="temp-reflux">--°C</tspan></text>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- КЛАПАН ХВОСТОВ                                             -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="svg-valve-tails" class="valve-closed">
+    <path d="M447.75,408 L467.75,408 L457.75,418 Z" class="valve" transform="rotate(180,457.75,418)"/>
+    <path d="M447.75,428 L467.75,428 L457.75,418 Z" class="valve" transform="rotate(180,457.75,418)"/>
+  </g>
+
+  <!-- Трубы от клапанов к ёмкостям -->
+  <path id="pipe-heads-down" d="M335.75,428 L335.5,444 M331.5,444 L331.75,428" class="pipe"/>
+  <path id="pipe-body-down" d="M398.75,428 L398.75,547 M394.75,547 L394.75,428" class="pipe"/>
+  <path id="pipe-tails-down" d="M459.75,428 L459.75,468 M455.75,468 L455.75,428" class="pipe"/>
+  <g id="zone-tails-left-branch">
+    <!-- Труба от клапана воды к ёмкости хвостов (влево) -->
+    <path id="tails-left-pipe" d="M104,459 L34.5,459 L34.5,480 M30.5,480 L30.5,455 L104,455" class="pipe"/>
+    <!-- Ёмкость ХВОСТОВ левая -->
+    <g id="jar-tails-left">
+      <path d="M-15,501.25 C-15,498.35 -12.84,496 -10.17,496 L61.39,496 C72.73,501.64 80,513.95 80,527.5 C80,541.05 72.73,553.36 61.39,559 L-10.17,559 C-12.84,559 -15,556.65 -15,553.75 L-15,501.25 Z" class="jar" transform="rotate(270,32.5,527.5)"/>
+    </g>
+    <text id="label-tails-left" x="34" y="429" class="label-text">Хвосты</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ЁМКОСТИ ДЛЯ ФРАКЦИЙ                                       -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- Ёмкость ГОЛОВ (правая малая) -->
+  <g id="jar-heads">
+    <path d="M285.5,465.75 C285.5,464.36 286.01,463.02 286.93,462.04 C287.85,461.05 289.09,460.5 290.39,460.5 L362.69,460.5 C374.15,466.14 381.5,478.45 381.5,492 C381.5,505.55 374.15,517.86 362.69,523.5 L290.39,523.5 C289.09,523.5 287.85,522.95 286.93,521.96 C286.01,520.98 285.5,519.64 285.5,518.25 L285.5,465.75 Z" class="jar" transform="rotate(270,333.5,492)"/>
+  </g>
+
+  <!-- Ёмкость ТЕЛА (правая большая) -->
+  <g id="jar-body">
+    <path d="M338.25,566.33 C338.25,564.26 338.88,562.26 339.99,560.79 C341.11,559.33 342.63,558.5 344.2,558.5 L432.33,558.5 C446.3,566.92 455.25,585.28 455.25,605.5 C455.25,625.72 446.3,644.08 432.33,652.5 L344.2,652.5 C342.63,652.5 341.11,651.67 339.99,650.21 C338.88,648.74 338.25,646.74 338.25,644.67 L338.25,566.33 Z" class="jar" transform="rotate(270,396.75,605.5)"/>
+  </g>
+
+  <!-- Ёмкость ХВОСТОВ правая (малая) -->
+  <g id="jar-tails-right">
+    <path d="M410.25,467.25 C410.25,464.35 412.41,462 415.08,462 L486.64,462 C497.98,467.64 505.25,479.95 505.25,493.5 C505.25,507.05 497.98,519.36 486.64,525 L415.08,525 C412.41,525 410.25,522.65 410.25,519.75 L410.25,467.25 Z" class="jar" transform="rotate(270,457.75,493.5)"/>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ТЕКСТОВЫЕ МЕТКИ (Головы, Тело, Хвосты)                    -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <text x="332" y="358" class="label-text">Головы</text>
+  <text x="395" y="358" class="label-text">Тело</text>
+  <text id="label-tails-right" x="453" y="358" class="label-text">Хвосты</text>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- СЕРЫЕ ИНДИКАТОРЫ (привязка к данным)                       -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+
+  <!-- Температура ТСА (вверху) -->
+  <g id="ind-temp-tsa">
+    <rect x="163" y="4" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-temp-tsa" x="191" y="17" class="indicator-text">--.- °C</text>
+  </g>
+
+  <!-- Температура выхода воды -->
+  <g id="ind-temp-water-out">
+    <rect x="236" y="55" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-water-out" x="264" y="68" class="indicator-text">--.- °C</text>
+  </g>
+
+  <!-- Температура узла отбора -->
+  <g id="ind-temp-node">
+    <rect x="143" y="195.5" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-temp-node" x="171" y="208" class="indicator-text">--.- °C</text>
+  </g>
+
+  <!-- Температура входа воды -->
+  <g id="ind-temp-water-in">
+    <rect x="315" y="285.5" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-water-in" x="343" y="298" class="indicator-text">--.- °C</text>
+  </g>
+
+  <!-- Температура середины царги -->
+  <g id="ind-temp-col-mid">
+    <rect x="143" y="351" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-temp-col-mid" x="171" y="364" class="indicator-text">--.- °C</text>
+  </g>
+
+  <!-- Скорость насоса -->
+  <g id="ind-pump-speed">
+    <rect x="206" y="400" width="96" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-pump-speed" x="254" y="413" class="indicator-text">-- мл/ч</text>
+  </g>
+
+  <!-- Температура горловины -->
+  <g id="ind-temp-neck">
+    <rect x="143" y="444" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-temp-col-top" x="171" y="457" class="indicator-text">--.- °C</text>
+  </g>
+
+  <!-- Давление куба -->
+  <g id="ind-pressure-cube">
+    <rect x="130" y="510" width="94" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-pressure-cube" x="177" y="523" class="indicator-text">-- мм рт.ст.</text>
+  </g>
+
+  <!-- Температура куба -->
+  <g id="ind-temp-cube">
+    <rect x="146" y="575" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-temp-cube" x="174" y="588" class="indicator-text">--.- °C</text>
+  </g>
+
+  <!-- Объём куба -->
+  <g id="ind-volume-cube">
+    <rect x="145" y="619" width="64" height="35" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-volume-cube" x="177" y="630" class="indicator-text">-- L</text>
+    <text id="txt-aa-cube" x="177" y="642" class="indicator-text" style="font-size:10px;fill:#666">AA -- L</text>
+  </g>
+
+  <!-- Мощность ТЭНа (установленная / фактическая) -->
+  <g id="ind-power">
+    <rect x="120" y="660" width="109" height="36" rx="5.4" ry="5.4" class="indicator"/>
+    <text id="txt-power-set" x="166" y="676" class="indicator-text" style="text-anchor:end">--%</text>
+    <text x="172" y="676" class="indicator-text" style="fill:#666;font-size:10px">/</text>
+    <text id="txt-power-actual" x="178" y="676" class="indicator-text" style="text-anchor:start">-- &#1042;&#1090;</text>
+  </g>
+
+  <!-- Объём голов -->
+  <g id="ind-volume-heads">
+    <rect x="305.5" y="510" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-volume-heads" x="334" y="523" class="indicator-text">-- мл</text>
+  </g>
+
+  <!-- Объём тела (маленький правый) -->
+  <g id="ind-volume-body-small">
+    <rect x="429.75" y="510" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-volume-tails-right" x="458" y="523" class="indicator-text">-- мл</text>
+  </g>
+
+  <!-- Объём тела (большая ёмкость) -->
+  <g id="ind-volume-body">
+    <rect x="355" y="632" width="84" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-volume-body" x="397" y="645" class="indicator-text">-- мл</text>
+  </g>
+
+  <!-- Объём хвостов (левая ёмкость) -->
+  <g id="ind-volume-tails">
+    <rect x="4" y="543" width="56" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-volume-tails" x="32" y="556" class="indicator-text">-- мл</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- ИНДИКАТОР ФАЗЫ (справа внизу)                             -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <g id="ind-phase">
+    <rect x="336" y="690" width="120" height="30" rx="6" ry="6" fill="#fff" stroke="#ccc" stroke-width="1"/>
+    <text id="txt-phase" x="396" y="705" class="indicator-text" style="font-size:13px;fill:#7f8c8d">IDLE</text>
+  </g>
+
+  <!-- Индикатор ABV (крепость) -->
+  <g id="ind-abv">
+    <rect x="315" y="319" width="80" height="25" rx="3.75" ry="3.75" class="indicator"/>
+    <text id="txt-abv" x="355" y="332" class="indicator-text">--.- %</text>
+  </g>
+
+  <!-- Температура дефлегматора (reflux) — поверх дефлегматора -->
+  <g id="ind-temp-reflux">
+    <rect x="143" y="100" width="56" height="25" rx="3.75" ry="3.75" class="indicator" style="opacity:0.85"/>
+    <text id="txt-temp-reflux" x="171" y="113" class="indicator-text">--.- °C</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- АНИМАЦИИ (невидимые без состояния)                          -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+
+  <!-- ТЭН id для управления классом heater-on -->
+  <g id="svg-heater"/>
+
+  <!-- Анимация пара -->
+  <g id="anim-vapor"/>
+
+  <!-- Анимация потока воды -->
+  <g id="anim-water-flow"/>
+
+  <!-- Анимация конденсации -->
+  <g id="anim-condensate"/>
+
+  <!-- Капли отбора (анимированные) -->
+  <circle id="drop-heads" cx="334" cy="444" r="3" class="drop" style="opacity:0"/>
+  <circle id="drop-uno" cx="397" cy="444" r="3" class="drop" style="opacity:0"/>
+  <circle id="drop-tails" cx="458" cy="444" r="3" class="drop" style="opacity:0"/>
+
+  <!-- Уровни жидкости в банках -->
+  <rect id="anim-liquid-heads" x="286" y="0" width="96" height="0" fill="#e74c3c" opacity="0.2" pointer-events="none"/>
+  <rect id="anim-liquid-body" x="339" y="0" width="117" height="0" fill="#2ecc71" opacity="0.2" pointer-events="none"/>
+  <rect id="anim-liquid-tails" x="411" y="0" width="95" height="0" fill="#9b59b6" opacity="0.2" pointer-events="none"/>
+
 </svg>
+

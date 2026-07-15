@@ -1,4 +1,4 @@
-/* Charts page specific styles */
+﻿/* Charts page specific styles */
 
 .header-content {
     display: flex;
@@ -239,7 +239,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
-    background: var(--accent-hover);
+    background: var(--accent-hover, #0056b3);
 }
 
 input[type="range"]::-moz-range-thumb {
@@ -253,7 +253,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 input[type="range"]::-moz-range-thumb:hover {
-    background: var(--accent-hover);
+    background: var(--accent-hover, #0056b3);
 }
 
 /* Dark theme adjustments for charts */
@@ -324,7 +324,18 @@ input[type="range"]::-moz-range-thumb:hover {
 }
 
 @keyframes dots {
-    0%, 20% { content: '.'; }
-    40% { content: '..'; }
-    60%, 100% { content: '...'; }
+
+    0%,
+    20% {
+        content: '.';
+    }
+
+    40% {
+        content: '..';
+    }
+
+    60%,
+    100% {
+        content: '...';
+    }
 }

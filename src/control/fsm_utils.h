@@ -12,6 +12,18 @@ namespace FSM {
     float pressureAdjustedCubeTemp(float baseTempC, const SystemState& state);
     float estimateChargeAbvPercent(const SystemState& state);
     uint16_t getConfiguredHeaterPowerWatts(const Settings& settings);
+    float getConfiguredHeaterPowerKw(uint16_t heaterPowerW);
+    float getConfiguredHeaterPowerKw(const Settings& settings);
+    float getRectificationColumnCapacityFactor(uint16_t columnHeightMm, float packingCoeff);
+    float getRectificationColumnCapacityFactor(const Settings& settings);
+    float getRectificationTakeoffRateMlH(
+        uint16_t heaterPowerW,
+        uint16_t columnHeightMm,
+        float packingCoeff,
+        float speedMlHKw
+    );
+    float getRectificationTakeoffRateMlH(const Settings& settings, float speedMlHKw);
+    float getRectificationDirectTakeoffSpeedMlH(const Settings& settings, RectPhase phase);
     uint16_t applyFullHeatPower(const Settings& settings);
     uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent);
     uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent);

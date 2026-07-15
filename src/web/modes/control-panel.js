@@ -17,7 +17,7 @@ import { addLog } from '../core/logs.js';
 import { loadStatus } from '../core/status.js';
 import { getStartAvailabilityState, setPreflightState } from '../runtime/bars.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
-import { estimateRectTargets } from '../runtime/state.js';
+import { estimateRectTargets, getRectificationTakeoffRateMlH } from '../runtime/state.js';
 import {
     startRectification,
     loadRectificationStartSettings,
@@ -620,22 +620,22 @@ function renderModeStartAdvisor(snapshot = latestModePreflight) {
 
     const baro = advisor.baroCorrection || {};
     if (baro.enabled) {
-        let toneBaro = 'muted';
-        let detailBaro = baro.note || 'Барокоррекция профиля включена.';
         const effectiveTemps = baro.effectiveTemperatures || {};
-
-        if (baro.applicable && baro.applied) {
-            toneBaro = 'warn';
-            detailBaro =
+        const [toneBaro, detailBaro] = baro.applicable && baro.applied
+            ? [
+                'warn',
                 `Baseline ${Number(baro.baselinePressureMmHg || 0).toFixed(1)} мм рт.ст., сейчас ${Number(baro.currentPressureMmHg || 0).toFixed(1)} мм рт.ст., мягкий сдвиг ${formatSignedAdvisorNumber(baro.appliedShiftC, 2, '°C')}. ` +
-                `Пороги на этот запуск: головы до ${Number(effectiveTemps.headsEnd || 0).toFixed(2)}°C, тело ${Number(effectiveTemps.bodyStart || 0).toFixed(2)}-${Number(effectiveTemps.bodyEnd || 0).toFixed(2)}°C.`;
-        } else if (baro.applicable) {
-            toneBaro = 'good';
-            detailBaro = baro.note || 'Отклонение давления небольшое, заметный сдвиг порогов не требуется.';
-        } else {
-            toneBaro = 'warn';
-            detailBaro = baro.note || 'Для preview барокоррекции не хватает baseline профиля или текущего давления BMP280.';
-        }
+                `Пороги на этот запуск: головы до ${Number(effectiveTemps.headsEnd || 0).toFixed(2)}°C, тело ${Number(effectiveTemps.bodyStart || 0).toFixed(2)}-${Number(effectiveTemps.bodyEnd || 0).toFixed(2)}°C.`
+            ]
+            : (baro.applicable
+                ? [
+                    'good',
+                    baro.note || 'Отклонение давления небольшое, заметный сдвиг порогов не требуется.'
+                ]
+                : [
+                    'warn',
+                    baro.note || 'Для preview барокоррекции не хватает baseline профиля или текущего давления BMP280.'
+                ]);
 
         appendAdvisorMetaItem(
             metaEl,
@@ -737,6 +737,12 @@ function focusChecklistTarget(targetId) {
     closeModeStartModal();
 
     window.setTimeout(() => {
+        let detailsParent = target.closest('details');
+        while (detailsParent) {
+            detailsParent.open = true;
+            detailsParent = detailsParent.parentElement?.closest('details') || null;
+        }
+
         target.scrollIntoView({ block: 'center', behavior: 'smooth' });
         if (typeof target.focus === 'function') {
             target.focus({ preventScroll: true });
@@ -788,10 +794,12 @@ function buildControlModeSummary() {
             boosterStopCubeTempC: getNumberValue('rect-start-booster-stop-cube-temp', Number(runtimeMonitorState?.equipment?.boosterHeaterStopCubeTempC || 78))
         };
         const targets = estimateRectTargets(settings, effectiveAbv.value);
-        const heaterPowerW = Math.max(0, Number(runtimeMonitorState.equipment.heaterPowerW || maxHeaterPower) || 0);
-        const heaterKw = Math.max(0.1, heaterPowerW / 1000);
-        const headsSpeed = settings.headsSpeedMlHKw * heaterKw;
-        const bodySpeed = settings.bodySpeedMlHKw * heaterKw;
+        const effectiveEquipment = {
+            ...runtimeMonitorState.equipment,
+            heaterPowerW: Math.max(0, Number(runtimeMonitorState.equipment.heaterPowerW || maxHeaterPower) || 0)
+        };
+        const headsSpeed = getRectificationTakeoffRateMlH(settings.headsSpeedMlHKw, effectiveEquipment);
+        const bodySpeed = getRectificationTakeoffRateMlH(settings.bodySpeedMlHKw, effectiveEquipment);
         summary.title = 'Авто-ректификация';
         summary.text = `Будет рассчитан отбор фракций по ${effectiveAbv.source === 'sensor' ? 'данным ареометра' : 'плановой крепости'}, затем выполнены стабилизация и продувка перед телом.`;
         summary.metrics = [
@@ -1304,6 +1312,12 @@ function mapPreflightItemTarget(id) {
             if (selectedControlMode === 'distillation') return 'dist-start-power-percent';
             if (selectedControlMode === 'mashing') return 'mash-steps';
             return '';
+        case 'rect-takeoff':
+            return 'rect-start-takeoff-backend';
+        case 'manual-takeoff':
+            return 'rect-start-takeoff-backend';
+        case 'valves':
+            return 'monitor-diagnostics-panel';
         case 'baro':
             return selectedControlMode === 'rectification'
                 ? 'rect-start-baro-correction-enabled'

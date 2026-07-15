@@ -17,3 +17,6 @@ nul
 *.bak
 *.tmp
 src/secrets.h
+# Local deployment and verification artifacts
+/artifacts/
+/cloud_proxy/web/*.gz

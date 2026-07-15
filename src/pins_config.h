@@ -40,6 +40,8 @@
 #define PIN_PUMP_EN 15
 #define PIN_VALVE_WATER 16
 #define PIN_VALVE_HEADS 17
+#define PIN_VALVE_BODY -1
+#define PIN_VALVE_TAILS -1
 #define PIN_VALVE_UNO 18
 #define PIN_BUZZER 38
 #define PIN_TEMP_SENSORS 4
@@ -133,6 +135,12 @@
 #endif
 #ifndef PIN_VALVE_HEADS
 #error "BOARD_REV_CUSTOM requires PIN_VALVE_HEADS"
+#endif
+#ifndef PIN_VALVE_BODY
+#define PIN_VALVE_BODY -1
+#endif
+#ifndef PIN_VALVE_TAILS
+#define PIN_VALVE_TAILS -1
 #endif
 #ifndef PIN_VALVE_UNO
 #error "BOARD_REV_CUSTOM requires PIN_VALVE_UNO"
