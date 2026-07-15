@@ -70,6 +70,7 @@ struct DistillationParams {
     uint16_t targetVolume;
     uint16_t speed;
     float endTemp;
+    FractionProgram fractionProgram;
 };
 
 struct MashingStepParams {

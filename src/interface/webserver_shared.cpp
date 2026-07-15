@@ -2665,6 +2665,14 @@ void init() {
                       "{\"success\":true,\"message\":\"Process resumed\"}");
       });
 
+  server.on("/api/fraction-program/next", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              if (!FSM::Distillation::advanceFractionProgram(g_state, g_settings)) {
+                request->send(409, "application/json", "{\"success\":false,\"error\":\"Manual fraction advance is unavailable\"}");
+                return;
+              }
+              request->send(200, "application/json", "{\"success\":true,\"message\":\"Fraction advance requested\"}");
+            });
   server.on("/api/fraction-program/confirm", HTTP_POST,
             [](AsyncWebServerRequest *request) {
               if (!FSM::Distillation::confirmFractionProgram(g_state, g_settings)) {

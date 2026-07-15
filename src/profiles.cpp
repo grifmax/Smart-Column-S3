@@ -1504,6 +1504,7 @@ bool applyProfile(const String& id) {
         g_settings.distillationUi.targetVolumeMl = profile.parameters.distillation.targetVolume;
         g_settings.distillationUi.speedMlH = profile.parameters.distillation.speed;
         g_settings.distillationUi.endTempC = profile.parameters.distillation.endTemp;
+        g_settings.fractionProgram = profile.parameters.distillation.fractionProgram;
         
         // приблизительный процент мощности
         float powerPct = (float)profile.parameters.heater.maxPower / 3000.0f * 100.0f;
@@ -1701,6 +1702,7 @@ String createProfileFromSettings(const String& name, const String& description, 
         profile.parameters.distillation.targetVolume = (uint16_t)g_settings.distillationUi.targetVolumeMl;
         profile.parameters.distillation.speed = (uint16_t)g_settings.distillationUi.speedMlH;
         profile.parameters.distillation.endTemp = g_settings.distillationUi.endTempC;
+        profile.parameters.distillation.fractionProgram = g_settings.fractionProgram;
     } else if (category == "mashing") {
         fillDefaultMashingSteps(profile.parameters.mashing);
     }

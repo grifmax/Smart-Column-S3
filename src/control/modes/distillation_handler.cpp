@@ -49,7 +49,14 @@ const char* getBodyExitMessage(bool endByTemp, bool endByVolume) {
 } // namespace
 
 bool isFractionProgramEnabled(const Settings& settings) {
-    return settings.fractionProgram.enabled && settings.fractionProgram.stepCount > 0;
+    if (!settings.fractionProgram.enabled || settings.fractionProgram.stepCount == 0 ||
+        settings.fractionProgram.stepCount > FRACTION_PROGRAM_MAX_STEPS) return false;
+    for (uint8_t index = 0; index < settings.fractionProgram.stepCount; ++index) {
+        const FractionProgramStep& step = settings.fractionProgram.steps[index];
+        if (step.pumpRateMlH <= 0.0f || step.routeIndex >= 5) return false;
+        if (step.endConditions == FRACTION_PROGRAM_END_NONE && !step.allowManualAdvance) return false;
+    }
+    return true;
 }
 
 static void notifyFractionEvent(const char* message, const char* level) {
@@ -78,6 +85,15 @@ static float getTemperatureByIndex(const TemperatureData& temperatures, uint8_t 
         case TEMP_WATER_OUT: return temperatures.waterOut;
         default: return 0.0f;
     }
+}
+static FractionProgramEndReason getFractionEndReason(const SystemState& state, const Settings& settings,
+                                                      const FractionProgramStep& step, uint32_t now) {
+    const float collectedMl = state.pump.totalVolumeMl - state.fractionProgram.stepStartVolumeMl;
+    if ((step.endConditions & FRACTION_PROGRAM_END_VOLUME) != 0 && step.endVolumeMl > 0.0f && collectedMl >= step.endVolumeMl) return FRACTION_PROGRAM_REASON_VOLUME;
+    if ((step.endConditions & FRACTION_PROGRAM_END_TIME) != 0 && step.endDurationSec > 0 && now - state.fractionProgram.stepStartedAtMs >= step.endDurationSec * 1000UL) return FRACTION_PROGRAM_REASON_TIME;
+    if ((step.endConditions & FRACTION_PROGRAM_END_TEMPERATURE) != 0 && step.temperatureSensorIndex < TEMP_COUNT && step.endTemperatureC > 0.0f && state.temps.valid[step.temperatureSensorIndex] && getTemperatureByIndex(state.temps, step.temperatureSensorIndex) >= step.endTemperatureC) return FRACTION_PROGRAM_REASON_TEMPERATURE;
+    if ((step.endConditions & FRACTION_PROGRAM_END_LEVEL) != 0 && isBodyLevelReached(settings)) return FRACTION_PROGRAM_REASON_LEVEL;
+    return FRACTION_PROGRAM_REASON_NONE;
 }
 static bool isCurrentFractionFinished(const SystemState& state, const Settings& settings,
                                       const FractionProgramStep& step, uint32_t now) {
@@ -128,6 +144,15 @@ bool confirmFractionProgram(SystemState& state, const Settings& settings) {
     return false;
 }
 
+bool advanceFractionProgram(SystemState& state, const Settings& settings) {
+    if (state.mode != Mode::DISTILLATION || !state.fractionProgram.active ||
+        state.fractionProgram.waitingForConfirmation ||
+        state.fractionProgram.currentStep >= settings.fractionProgram.stepCount) return false;
+    const FractionProgramStep& step = settings.fractionProgram.steps[state.fractionProgram.currentStep];
+    if (!step.allowManualAdvance) return false;
+    state.fractionProgram.manualAdvanceRequested = true;
+    return true;
+}
 static void updateFractionProgram(SystemState& state, const Settings& settings, uint32_t now) {
     if (!state.fractionProgram.active) {
         state.fractionProgram.active = true;
@@ -216,10 +241,19 @@ void update(SystemState& state, const Settings& settings) {
     }
 
     switch (state.rectPhase) {
-        case RectPhase::HEATING:
+        case RectPhase::HEATING: {
             applyBoosterHeater(state, settings, true);
             applyFullHeatPower(settings);
-            if (state.temps.valid[TEMP_CUBE] && state.temps.cube >= 78.0f) {
+            const bool programHeating = isFractionProgramEnabled(settings);
+            const uint8_t heatingSensor = programHeating
+                ? settings.fractionProgram.heatingTemperatureSensorIndex
+                : TEMP_CUBE;
+            const float heatingTarget = programHeating
+                ? settings.fractionProgram.heatingTargetTemperatureC
+                : 78.0f;
+            if (heatingSensor < TEMP_COUNT && heatingTarget > 0.0f &&
+                state.temps.valid[heatingSensor] &&
+                getTemperatureByIndex(state.temps, heatingSensor) >= heatingTarget) {
                 setPhaseStartTime(now);
                 setPhaseStartVolumeMl(state.pump.totalVolumeMl);
                 if (g_params.headsVolumeMl > 0.0f) {
@@ -242,7 +276,7 @@ void update(SystemState& state, const Settings& settings) {
                 }
             }
             break;
-
+        }
         case RectPhase::HEADS: {
             applyBoosterHeater(state, settings, false);
             Heater::setPowerWatts(g_params.powerWatts);

@@ -370,6 +370,8 @@ struct FractionProgramRuntime {
   uint32_t stepStartedAtMs = 0;
   float stepStartVolumeMl = 0.0f;
   uint32_t routingStartedAtMs = 0;
+  bool manualAdvanceRequested = false;
+  uint8_t lastEndReason = 0;
   char confirmationPrompt[64] = {};
 };
 
@@ -505,6 +507,15 @@ struct FractionatorSettings {
 
 static constexpr uint8_t FRACTION_PROGRAM_MAX_STEPS = 8;
 
+enum FractionProgramEndReason : uint8_t {
+  FRACTION_PROGRAM_REASON_NONE = 0,
+  FRACTION_PROGRAM_REASON_VOLUME,
+  FRACTION_PROGRAM_REASON_TIME,
+  FRACTION_PROGRAM_REASON_TEMPERATURE,
+  FRACTION_PROGRAM_REASON_LEVEL,
+  FRACTION_PROGRAM_REASON_MANUAL
+};
+
 enum FractionProgramEndCondition : uint8_t {
   FRACTION_PROGRAM_END_NONE = 0,
   FRACTION_PROGRAM_END_VOLUME = 1 << 0,
@@ -525,12 +536,15 @@ struct FractionProgramStep {
   uint32_t endDurationSec = 0;
   uint8_t temperatureSensorIndex = 0;
   float endTemperatureC = 0.0f;
+  bool allowManualAdvance = false;
 };
 
 struct FractionProgram {
   uint8_t schemaVersion = 2;
   bool enabled = false;
   uint8_t stepCount = 0;
+  uint8_t heatingTemperatureSensorIndex = 0;
+  float heatingTargetTemperatureC = 78.0f;
   FractionProgramStep steps[FRACTION_PROGRAM_MAX_STEPS];
 };
 

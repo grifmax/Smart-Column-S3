@@ -58,6 +58,7 @@ namespace FSM {
     namespace Distillation {
         void update(SystemState& state, const Settings& settings);
         bool confirmFractionProgram(SystemState& state, const Settings& settings);
+        bool advanceFractionProgram(SystemState& state, const Settings& settings);
         void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC);
         void setPowerWatts(uint16_t powerWatts);
         void setPowerPercent(uint8_t powerPercent);

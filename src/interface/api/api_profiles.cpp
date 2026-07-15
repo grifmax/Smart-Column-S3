@@ -127,6 +127,20 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
               profile.parameters.distillation.targetVolume;
           distillation["speed"] = profile.parameters.distillation.speed;
           distillation["endTemp"] = profile.parameters.distillation.endTemp;
+          JsonObject fractionProgram = distillation["fractionProgram"].to<JsonObject>();
+          fractionProgram["schemaVersion"] = profile.parameters.distillation.fractionProgram.schemaVersion;
+          fractionProgram["enabled"] = profile.parameters.distillation.fractionProgram.enabled;
+          fractionProgram["stepCount"] = profile.parameters.distillation.fractionProgram.stepCount;
+          JsonArray fractionSteps = fractionProgram["steps"].to<JsonArray>();
+          for (uint8_t index = 0; index < profile.parameters.distillation.fractionProgram.stepCount; ++index) {
+            const FractionProgramStep &step = profile.parameters.distillation.fractionProgram.steps[index];
+            JsonObject item = fractionSteps.add<JsonObject>();
+            item["name"] = step.name; item["routeIndex"] = step.routeIndex;
+            item["pumpRateMlH"] = step.pumpRateMlH; item["heaterPowerW"] = step.heaterPowerW;
+            item["endConditions"] = step.endConditions; item["endVolumeMl"] = step.endVolumeMl;
+            item["endDurationSec"] = step.endDurationSec; item["temperatureSensorIndex"] = step.temperatureSensorIndex;
+            item["endTemperatureC"] = step.endTemperatureC; item["allowManualAdvance"] = step.allowManualAdvance;
+          }
 
           JsonObject mashing = parameters["mashing"].to<JsonObject>();
           JsonArray mashingSteps = mashing["steps"].to<JsonArray>();
@@ -505,6 +519,24 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
             if (!distillation["endTemp"].isNull())
               profile.parameters.distillation.endTemp = clampFloatRange(
                   distillation["endTemp"].as<float>(), 50.0f, 110.0f);
+            if (distillation["fractionProgram"].is<JsonObject>()) {
+              JsonObject programJson = distillation["fractionProgram"].as<JsonObject>();
+              FractionProgram program{};
+              program.enabled = programJson["enabled"] | false;
+              for (JsonObject item : programJson["steps"].as<JsonArray>()) {
+                if (program.stepCount >= FRACTION_PROGRAM_MAX_STEPS) break;
+                FractionProgramStep &step = program.steps[program.stepCount++];
+                step.routeIndex = clampU8Range(item["routeIndex"] | 0, 0, 4);
+                step.pumpRateMlH = clampFloatRange(item["pumpRateMlH"] | 0.0f, 0.0f, 65000.0f);
+                step.endConditions = static_cast<uint8_t>(item["endConditions"] | 0);
+                step.endVolumeMl = item["endVolumeMl"] | 0.0f;
+                step.endDurationSec = item["endDurationSec"] | 0UL;
+                step.temperatureSensorIndex = clampU8Range(item["temperatureSensorIndex"] | 0, 0, TEMP_COUNT - 1);
+                step.endTemperatureC = item["endTemperatureC"] | 0.0f;
+                step.allowManualAdvance = item["allowManualAdvance"] | false;
+              }
+              profile.parameters.distillation.fractionProgram = program;
+            }
           }
 
           JsonObject mashing = parameters["mashing"].is<JsonObject>()

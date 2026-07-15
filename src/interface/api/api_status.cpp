@@ -548,6 +548,7 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     fractionProgram["currentStep"] = g_state.fractionProgram.currentStep;
     fractionProgram["waitingForConfirmation"] = g_state.fractionProgram.waitingForConfirmation;
     fractionProgram["routing"] = g_state.fractionProgram.routing;
+    fractionProgram["lastEndReason"] = g_state.fractionProgram.lastEndReason;
     fractionProgram["confirmationPrompt"] = g_state.fractionProgram.confirmationPrompt;
     JsonObject hold = doc["hold"].to<JsonObject>();
     hold["active"] = g_state.hold.active;
