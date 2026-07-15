@@ -549,7 +549,33 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     fractionProgram["waitingForConfirmation"] = g_state.fractionProgram.waitingForConfirmation;
     fractionProgram["routing"] = g_state.fractionProgram.routing;
     fractionProgram["lastEndReason"] = g_state.fractionProgram.lastEndReason;
+    fractionProgram["requestedRoute"] = static_cast<uint8_t>(takeoffFeedback.requestedFraction);
+    fractionProgram["routedRoute"] = static_cast<uint8_t>(takeoffFeedback.routedFraction);
+    fractionProgram["actualRateMlH"] = takeoffFeedback.actualEquivalentRateMlH;
+    fractionProgram["collectedMl"] = g_state.pump.totalVolumeMl - g_state.fractionProgram.stepStartVolumeMl;
     fractionProgram["confirmationPrompt"] = g_state.fractionProgram.confirmationPrompt;
+    if (g_state.fractionProgram.currentStep < g_settings.fractionProgram.stepCount) {
+      const FractionProgramStep &step = g_settings.fractionProgram.steps[g_state.fractionProgram.currentStep];
+      fractionProgram["stepName"] = step.name;
+      fractionProgram["targetRoute"] = step.routeIndex;
+      fractionProgram["targetRateMlH"] = step.pumpRateMlH;
+      fractionProgram["allowManualAdvance"] = step.allowManualAdvance;
+      fractionProgram["endConditions"] = step.endConditions;
+      fractionProgram["endVolumeMl"] = step.endVolumeMl;
+      fractionProgram["endDurationSec"] = step.endDurationSec;
+      fractionProgram["temperatureSensorIndex"] = step.temperatureSensorIndex;
+      fractionProgram["endTemperatureC"] = step.endTemperatureC;
+    } else {
+      fractionProgram["stepName"] = "";
+      fractionProgram["targetRoute"] = 0;
+      fractionProgram["targetRateMlH"] = 0.0f;
+      fractionProgram["allowManualAdvance"] = false;
+      fractionProgram["endConditions"] = FRACTION_PROGRAM_END_NONE;
+      fractionProgram["endVolumeMl"] = 0.0f;
+      fractionProgram["endDurationSec"] = 0;
+      fractionProgram["temperatureSensorIndex"] = 0;
+      fractionProgram["endTemperatureC"] = 0.0f;
+    }
     JsonObject hold = doc["hold"].to<JsonObject>();
     hold["active"] = g_state.hold.active;
     hold["stepCount"] = g_state.hold.stepCount;

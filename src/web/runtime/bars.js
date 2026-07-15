@@ -4,6 +4,11 @@ import { clampPercent, runtimeEscapeHtml, toFinite, formatDurationSafe } from '.
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { estimateRectTargets, getRectificationTakeoffRateMlH } from '../runtime/state.js';
 
+const FRACTION_PROGRAM_END_VOLUME = 1 << 0;
+const FRACTION_PROGRAM_END_TIME = 1 << 1;
+const FRACTION_PROGRAM_END_TEMPERATURE = 1 << 2;
+const FRACTION_PROGRAM_END_LEVEL = 1 << 3;
+
 let missionBindingsReady = false;
 let diagnosticsPanelBindingsReady = false;
 let mobileDiagnosticsBindingsReady = false;
@@ -2442,11 +2447,68 @@ export function updateManualTiles() {
     if (tailsEl) tailsEl.textContent = `${toFinite(s.volumes.tails, 0).toFixed(0)} мл`;
 }
 
+function formatFractionProgramCriterion(fractionProgram = {}) {
+    const conditions = Math.round(toFinite(fractionProgram.endConditions, 0));
+    const parts = [];
+
+    if (conditions & FRACTION_PROGRAM_END_VOLUME) {
+        const volumeMl = Math.max(0, toFinite(fractionProgram.endVolumeMl, 0));
+        if (volumeMl > 0) parts.push(`до ${volumeMl.toFixed(0)} мл`);
+    }
+
+    if (conditions & FRACTION_PROGRAM_END_TIME) {
+        const durationSec = Math.max(0, toFinite(fractionProgram.endDurationSec, 0));
+        if (durationSec > 0) parts.push(`до ${formatDurationSafe(durationSec)}`);
+    }
+
+    if (conditions & FRACTION_PROGRAM_END_TEMPERATURE) {
+        const sensorIndex = Math.max(0, Math.round(toFinite(fractionProgram.temperatureSensorIndex, 0)));
+        const temperatureC = toFinite(fractionProgram.endTemperatureC, 0);
+        if (temperatureC > 0) parts.push(`до T${sensorIndex} ${temperatureC.toFixed(1)}°C`);
+    }
+
+    if (conditions & FRACTION_PROGRAM_END_LEVEL) {
+        parts.push('до уровня');
+    }
+
+    if (!parts.length && fractionProgram.allowManualAdvance) {
+        parts.push('ручной переход');
+    }
+
+    return parts.join(' • ');
+}
+
+function renderDistillationRuntimeActions(container, state, fractionProgram) {
+    if (!container) return;
+
+    const paused = Boolean(state.paused);
+    const idle = resolveMode(state.mode, state.modeStr) === MODE_IDLE;
+    const canAdvance = Boolean(fractionProgram?.active) &&
+        Boolean(fractionProgram?.allowManualAdvance) &&
+        !Boolean(fractionProgram?.waitingForConfirmation);
+
+    container.innerHTML = `
+        <button class="btn ${paused ? 'btn-success' : 'btn-warning'}" type="button" onclick="${paused ? 'resumeProcess()' : 'pauseProcess()'}" data-runtime-action="${paused ? 'resume' : 'pause'}" ${idle ? 'disabled' : ''}>
+            ${paused ? 'Продолжить' : 'Пауза'}
+        </button>
+        <button class="btn btn-secondary" type="button" onclick="requestFractionProgramNext()" data-runtime-action="next-fraction" ${canAdvance ? '' : 'disabled'}>
+            Следующая фракция
+        </button>
+        <button class="btn btn-danger" type="button" onclick="stopProcess()" data-runtime-action="stop" ${idle ? 'disabled' : ''}>
+            Остановить
+        </button>
+    `;
+    container.style.display = 'grid';
+}
+
 export function renderModeRuntimeCard() {
     const titleEl = document.getElementById('mode-runtime-title');
     const captionEl = document.getElementById('mode-runtime-caption');
     const manualEl = document.getElementById('mode-runtime-manual');
     if (!titleEl || !captionEl) return;
+    if (manualEl && !manualEl.dataset.manualTemplate) {
+        manualEl.dataset.manualTemplate = manualEl.innerHTML;
+    }
 
     const s = runtimeMonitorState;
     const mode = resolveMode(s.mode, s.modeStr);
@@ -2533,6 +2595,25 @@ export function renderModeRuntimeCard() {
         const target = Math.max(0, toFinite(s.distillation.targetVolumeMl, 0));
         const speed = Math.max(0, toFinite(s.distillation.speedMlH, 0));
         const total = Math.max(0, toFinite(s.pump.totalMl, 0));
+        const fractionProgram = s.fractionProgram && typeof s.fractionProgram === 'object' ? s.fractionProgram : null;
+        const fractionCollected = Math.max(0, toFinite(fractionProgram?.collectedMl, 0));
+        const fractionRate = Math.max(0, toFinite(fractionProgram?.actualRateMlH, 0));
+        const requestedRoute = Math.round(toFinite(fractionProgram?.requestedRoute, 0));
+        const routedRoute = Math.round(toFinite(fractionProgram?.routedRoute, 0));
+        if (fractionProgram) {
+            const fractionStep = Math.max(0, Math.round(toFinite(fractionProgram.currentStep, 0))) + 1;
+            const criterion = formatFractionProgramCriterion(fractionProgram);
+            const stepName = String(fractionProgram.stepName || '').trim();
+            const routeText = `Маршрут ${requestedRoute} → ${routedRoute}`;
+            items.push({
+                label: stepName ? `Фракция ${fractionStep}: ${stepName}` : `Фракция ${fractionStep}`,
+                percent: 0,
+                primary: criterion ? `${routeText} • ${criterion}` : routeText,
+                metaLeft: `${fractionCollected.toFixed(0)} мл`,
+                metaRight: fractionRate > 0 ? `${fractionRate.toFixed(0)} мл/ч` : 'ожидание',
+                stateClass: fractionProgram.waitingForConfirmation ? 'is-waiting' : ''
+            });
+        }
         const pct = target > 0 ? clampPercent((total / target) * 100) : clampPercent(s.progress.phasePercent);
         const remMl = Math.max(0, target - total);
         const remSec = (target > 0 && speed > 0) ? (remMl / speed) * 3600 : toFinite(s.progress.phaseRemainingSec, 0);
@@ -2666,13 +2747,29 @@ export function renderModeRuntimeCard() {
     );
     setPreflightState(preflight.title, preflight.detail, preflight.tone, preflight.checks);
     renderRuntimeBars(items);
+    if (manualEl && mode === MODE_MANUAL && manualEl.dataset.manualTemplate && manualEl.innerHTML !== manualEl.dataset.manualTemplate) {
+        manualEl.innerHTML = manualEl.dataset.manualTemplate;
+    }
     updateManualTiles();
     renderProcessIndicatorsPanel();
     syncOperatorQuietPanelsCompact(s, {
         hasRuntimeItems: items.length > 0
     });
     if (manualEl) {
-        manualEl.style.display = mode === MODE_MANUAL ? 'grid' : 'none';
+        if (mode === MODE_MANUAL) {
+            manualEl.style.display = 'grid';
+        } else if (mode === MODE_DIST) {
+            renderDistillationRuntimeActions(
+                manualEl,
+                s,
+                s.fractionProgram && typeof s.fractionProgram === 'object' ? s.fractionProgram : null
+            );
+        } else {
+            if (manualEl.dataset.manualTemplate && manualEl.innerHTML !== manualEl.dataset.manualTemplate) {
+                manualEl.innerHTML = manualEl.dataset.manualTemplate;
+            }
+            manualEl.style.display = 'none';
+        }
     }
     const rectEl = document.getElementById('mode-runtime-rect');
     if (rectEl) {

@@ -60,6 +60,7 @@ function normalizeStatusTemps(data = {}) {
 let statusRequestInFlight = false;
 let fractionConfirmationKey = '';
 let fractionConfirmationInFlight = false;
+let fractionNextInFlight = false;
 
 function handleFractionProgramConfirmation(data = {}) {
     const fractionProgram = data.fractionProgram && typeof data.fractionProgram === 'object'
@@ -97,6 +98,37 @@ function handleFractionProgramConfirmation(data = {}) {
         .finally(() => {
             fractionConfirmationInFlight = false;
         });
+}
+
+export async function requestFractionProgramNext() {
+    if (fractionNextInFlight) return;
+
+    try {
+        fractionNextInFlight = true;
+        const response = await fetch('/api/fraction-program/next', { method: 'POST' });
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+
+        addLog('Requested transition to the next fraction', 'success');
+        showNotification('Fraction program', {
+            body: 'Manual transition to the next fraction was requested.'
+        });
+        setTimeout(() => {
+            loadStatus();
+        }, 400);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        addLog(`Failed to request next fraction: ${message}`, 'error');
+        alert(`Не удалось перейти к следующей фракции: ${message}`);
+    } finally {
+        fractionNextInFlight = false;
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.requestFractionProgramNext = requestFractionProgramNext;
 }
 
 // ============================================================================

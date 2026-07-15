@@ -480,6 +480,17 @@ void stop() {
 }
 
 RectTakeoffFeedback getFeedback() { return g_feedback; }
+bool requestFractionRoute(uint8_t routeIndex) {
+  if (routeIndex >= 5 || !Valves::isFractionatorEnabled()) return false;
+  Valves::setFraction(static_cast<Fraction>(routeIndex));
+  return true;
+}
+
+bool isFractionRouteReady(uint8_t routeIndex) {
+  return routeIndex < 5 && Valves::isFractionatorEnabled() &&
+         !Valves::isServoMoving() &&
+         static_cast<uint8_t>(Valves::getCurrentFraction()) == routeIndex;
+}
 
 bool validateBackendConfiguration(RectTakeoffBackendType backendType,
                                   String* detail) {

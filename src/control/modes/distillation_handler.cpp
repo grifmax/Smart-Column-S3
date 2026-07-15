@@ -1,6 +1,7 @@
 #include "../fsm_utils.h"
 #include "../v2/reason_codes.h"
 #include "../v2/status_adapter.h"
+#include "../rect_takeoff.h"
 #include "../../drivers/heater.h"
 #include "../../drivers/buzzer.h"
 #include "../../drivers/pump.h"
@@ -59,6 +60,19 @@ bool isFractionProgramEnabled(const Settings& settings) {
     return true;
 }
 
+static void applyFractionPump(float rateMlH) {
+    RectTakeoffCommand command{};
+    command.backendType = RectTakeoffBackendType::PUMP;
+    command.fraction = RectTakeoffFraction::BODY;
+    command.equivalentRateMlH = rateMlH;
+    command.enabled = rateMlH > 0.0f;
+    command.fullReflux = !command.enabled;
+    RectTakeoff::apply(command);
+}
+
+static void stopFractionTakeoff() {
+    RectTakeoff::stop();
+}
 static void notifyFractionEvent(const char* message, const char* level) {
     Buzzer::beep(2, 120);
     MQTT::publishNotification("Fraction program", message, level);
@@ -184,7 +198,7 @@ static void updateFractionProgram(SystemState& state, const Settings& settings, 
 
     if (state.fractionProgram.routing) {
         Pump::stop();
-        if (Valves::isServoMoving() || now - state.fractionProgram.routingStartedAtMs < settings.rectParams.routingSettlingMs) return;
+        if (!RectTakeoff::isFractionRouteReady(step.routeIndex) || now - state.fractionProgram.routingStartedAtMs < settings.rectParams.routingSettlingMs) return;
         state.fractionProgram.routing = false;
     }
 
