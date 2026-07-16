@@ -1439,6 +1439,8 @@ static void handleHttpRequest(JsonDocument& req) {
             if (stepIndex >= 10) break;
 
             MashingStepParams stepData;
+            stepData.type = mashStepTypeFromString(
+                step["type"] | "heat_hold");
             stepData.temperature = clampFloatRange(
                 step["temperature"].as<float>(), 20.0f, 100.0f);
             stepData.duration =
@@ -2649,6 +2651,8 @@ static void handleHttpRequest(JsonDocument& req) {
           uint8_t count = 0;
           for (JsonObject step : steps) {
             if (count >= 10) break;
+            runtimeProfile.steps[count].type = mashStepTypeFromString(
+                step["type"] | "heat_hold");
             runtimeProfile.steps[count].temperature = step["temperature"] | 0.0f;
             runtimeProfile.steps[count].duration = step["duration"] | 0;
             const char* stepName = step["name"] | "";

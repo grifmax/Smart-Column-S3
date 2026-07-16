@@ -384,6 +384,17 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     rect["tailsPercent"] = g_settings.rectParams.tailsPercent;
     rect["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
     rect["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+    rect["bodyContainerCount"] = g_settings.rectParams.bodyContainerCount;
+    rect["activeBodyContainer"] = g_state.rectBodyContainerIndex + 1;
+    rect["activeBodyContainerVolumeMl"] = g_state.rectBodyContainerVolumeMl;
+    rect["activeBodyContainerStartVolumeMl"] =
+        g_state.rectBodyContainerStartVolumeMl;
+    rect["activeBodyContainerLevelEnabled"] =
+        g_settings.equipment.bodyLevelSensorEnabled;
+    rect["activeBodyContainerLevelReached"] =
+        g_state.rectBodyContainerLevelReached;
+    rect["headsContainerLevelReached"] =
+        g_state.rectHeadsContainerLevelReached;
     rect["takeoffBackendType"] =
         static_cast<uint8_t>(g_settings.rectParams.takeoffBackendType);
     rect["takeoffBackendActive"] = takeoffFeedback.backendActive;

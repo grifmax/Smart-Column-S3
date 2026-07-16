@@ -77,6 +77,7 @@ struct DistillationParams {
 };
 
 struct MashingStepParams {
+    MashStepType type = MashStepType::HEAT_AND_HOLD;
     float temperature = 0.0f;
     uint16_t duration = 0;
     String name;

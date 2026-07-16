@@ -461,6 +461,8 @@ bool loadSettings(Settings& settings) {
     settings.rectParams.routingRetargetMinMs =
         prefs.getUShort(NVS_KEY_RECT_ROUTE_RETARGET,
                         RECT_ROUTING_RETARGET_MIN_MS_DEFAULT);
+    settings.rectParams.bodyContainerCount =
+        prefs.getUChar(NVS_KEY_RECT_BODY_CONTAINERS, 1);
     settings.rectParams.valvePulsePeriodMs =
         prefs.getUShort(NVS_KEY_RECT_VALVE_PULSE_PERIOD,
                         RECT_VALVE_PULSE_PERIOD_MS_DEFAULT);
@@ -507,6 +509,8 @@ bool loadSettings(Settings& settings) {
         constrain(settings.rectParams.routingSettlingMs, 0, 10000);
     settings.rectParams.routingRetargetMinMs =
         constrain(settings.rectParams.routingRetargetMinMs, 0, 30000);
+    settings.rectParams.bodyContainerCount =
+        constrain(settings.rectParams.bodyContainerCount, 1, 8);
     settings.rectParams.valvePulsePeriodMs =
         constrain(settings.rectParams.valvePulsePeriodMs, 100, 5000);
     settings.rectParams.valvePulseMinOpenMs =
@@ -716,6 +720,8 @@ bool saveSettings(const Settings& settings) {
                     settings.rectParams.routingSettlingMs);
     prefs.putUShort(NVS_KEY_RECT_ROUTE_RETARGET,
                     settings.rectParams.routingRetargetMinMs);
+    prefs.putUChar(NVS_KEY_RECT_BODY_CONTAINERS,
+                   settings.rectParams.bodyContainerCount);
     prefs.putUShort(NVS_KEY_RECT_VALVE_PULSE_PERIOD,
                     settings.rectParams.valvePulsePeriodMs);
     prefs.putUShort(NVS_KEY_RECT_VALVE_PULSE_MIN_OPEN,

@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.57"
+#define FIRMWARE_VERSION "2.4.68"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -321,6 +321,10 @@
 #define RECT_TAKEOFF_BACKEND_DEFAULT 0
 #define RECT_USE_PB_MODE_DEFAULT 0
 #define RECT_TIMP_PB_MS_DEFAULT 15000UL
+#define MASH_BOIL_POWER_PERCENT_DEFAULT 100
+#define MASH_COOLING_ON_SEC_DEFAULT 30
+#define MASH_COOLING_OFF_SEC_DEFAULT 30
+#define MASH_STIRRER_SAFE_TEMP_C 85.0f
 #define RECT_VALVE_PULSE_PERIOD_MS_DEFAULT 1000UL
 #define RECT_VALVE_PULSE_MIN_OPEN_MS_DEFAULT 80UL
 #define RECT_VALVE_PULSE_MAX_OPEN_MS_DEFAULT 900UL
@@ -461,6 +465,7 @@
 #define NVS_KEY_RECT_VALVE_PULSE_MAX_OPEN "rect_vpma"
 #define NVS_KEY_RECT_ROUTE_SETTLE "rect_rset"
 #define NVS_KEY_RECT_ROUTE_RETARGET "rect_rrtg"
+#define NVS_KEY_RECT_BODY_CONTAINERS "rect_bcnt"
 #define NVS_KEY_DIST_SPEED "dist_spd"
 #define NVS_KEY_DIST_HEADS_VOL "dist_hvol"
 #define NVS_KEY_DIST_TARGET_VOL "dist_tvol"

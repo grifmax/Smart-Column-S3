@@ -242,6 +242,7 @@ export function collectRectificationModalSettings() {
         tailsPercent: clampRectInput(document.getElementById('rect-start-tails-percent')?.value, 0, 100, 8),
         headsSpeedMlHKw: clampRectInput(document.getElementById('rect-start-heads-speed')?.value, 10, 2000, 300),
         bodySpeedMlHKw: clampRectInput(document.getElementById('rect-start-body-speed')?.value, 50, 3000, 600),
+        bodyContainerCount: Math.round(clampRectInput(document.getElementById('rect-start-body-containers')?.value, 1, 8, 1)),
         takeoffBackendType: Math.round(clampRectInput(document.getElementById('rect-start-takeoff-backend')?.value, 0, 2, 0)),
         stabilizationMin: Math.round(clampRectInput(document.getElementById('rect-start-stabilization')?.value, 1, 180, 30)),
         purgeMin: Math.round(clampRectInput(document.getElementById('rect-start-purge')?.value, 1, 120, 5)),
@@ -295,6 +296,7 @@ function applyRectificationSettingsToInputs(params) {
     setValue('rect-start-tails-percent', params.tailsPercent ?? 8);
     setValue('rect-start-heads-speed', params.headsSpeedMlHKw ?? 300);
     setValue('rect-start-body-speed', params.bodySpeedMlHKw ?? 600);
+    setValue('rect-start-body-containers', params.bodyContainerCount ?? 1);
     setValue('rect-start-takeoff-backend', params.takeoffBackendType ?? 0);
     setValue('rect-start-stabilization', params.stabilizationMin ?? 30);
     setValue('rect-start-purge', params.purgeMin ?? 5);

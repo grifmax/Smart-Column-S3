@@ -210,6 +210,8 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
               uint8_t count = 0;
               for (JsonObject s : steps) {
                 if (count >= 10) break;
+                runtimeProfile.steps[count].type = mashStepTypeFromString(
+                    s["type"] | "heat_hold");
                 runtimeProfile.steps[count].temperature = s["temperature"] | 0.0f;
                 runtimeProfile.steps[count].duration = s["duration"] | 0;
                 const char *sName = s["name"] | "";

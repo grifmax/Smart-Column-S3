@@ -10,6 +10,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "types.h"
+#include "v2/reason_codes.h"
 
 namespace FSM {
     /**
@@ -45,7 +46,7 @@ namespace FSM {
     
     namespace Rectification {
         void update(SystemState& state, const Settings& settings);
-        void initSession(const SystemState& state, const Settings& settings);
+        void initSession(SystemState& state, const Settings& settings);
         void getTargets(float& heads, float& body, float& tails);
     }
     
@@ -70,7 +71,10 @@ namespace FSM {
     namespace Mashing {
         void update(SystemState& state, const Settings& settings);
         void setProfile(const MashProfile* profile);
-        void nextStep(SystemState& state);
+        void nextStep(SystemState& state,
+                      ControlV2::ReasonCodeV2 reason = ControlV2::ReasonCodeV2::RC_TEMP_STEP_HOLD_COMPLETE,
+                      const char* message = nullptr);
+        bool requestManualAdvance(SystemState& state);
         void start(SystemState& state, const MashProfile* profile);
     }
     

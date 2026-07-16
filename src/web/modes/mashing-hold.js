@@ -3,6 +3,32 @@ import { confirmModeSwitch } from './common.js';
 import { loadStatus } from '../core/status.js';
 import { addLog } from '../core/logs.js';
 
+export const MASH_TEMPLATES = Object.freeze({
+    malt: { name: 'Солодовый профиль', steps: [
+        { type: 'operator_wait', temperature: 0, duration: 0, name: 'Внести солод и подтвердить' },
+        { type: 'heat_hold', temperature: 52, duration: 20, name: 'Белковая пауза' },
+        { type: 'heat_hold', temperature: 64, duration: 40, name: 'Мальтозная пауза' },
+        { type: 'heat_hold', temperature: 72, duration: 20, name: 'Осахаривание' },
+        { type: 'heat_hold', temperature: 78, duration: 10, name: 'Мэш-аут' }
+    ]},
+    grain_boil: { name: 'Зерновой затор с развариванием', steps: [
+        { type: 'operator_wait', temperature: 0, duration: 0, name: 'Засыпь и подтвердить' },
+        { type: 'boil', temperature: 98, duration: 30, name: 'Разваривание' },
+        { type: 'cool', temperature: 65, duration: 0, name: 'Охладить до осахаривания' },
+        { type: 'heat_hold', temperature: 65, duration: 60, name: 'Осахаривание' }
+    ]},
+    flour: { name: 'Мучной затор без разваривания', steps: [
+        { type: 'operator_wait', temperature: 0, duration: 0, name: 'Засыпь и подтвердить' },
+        { type: 'heat_hold', temperature: 55, duration: 20, name: 'Подготовка ферментов' },
+        { type: 'heat_hold', temperature: 65, duration: 60, name: 'Осахаривание' }
+    ]},
+    ferment_cool: { name: 'Охлаждение перед брожением', steps: [
+        { type: 'cool', temperature: 28, duration: 0, name: 'Охладить перед брожением' },
+        { type: 'operator_wait', temperature: 0, duration: 0, name: 'Внести дрожжи и подтвердить' },
+        { type: 'finish', temperature: 0, duration: 0, name: 'Готово к брожению' }
+    ]}
+});
+
 // ============================================================================
 // Дополнительные режимы: Затирка / Hold
 // ============================================================================
@@ -76,9 +102,10 @@ export function initMashingHoldControls() {
     }
 }
 
-export function createStepRow({ mode, temperature, duration, name, useCooling }) {
+export function createStepRow({ mode, type = 'heat_hold', temperature, duration, name, useCooling }) {
     const row = document.createElement('div');
     row.dataset.stepRow = mode;
+    row.dataset.stepType = type;
     row.style.display = 'flex';
     row.style.gap = '10px';
     row.style.flexWrap = 'wrap';
@@ -97,7 +124,7 @@ export function createStepRow({ mode, temperature, duration, name, useCooling })
     const durInput = document.createElement('input');
     durInput.type = 'number';
     durInput.step = '1';
-    durInput.min = '1';
+    durInput.min = mode === 'mash' ? '0' : '1';
     durInput.placeholder = 'Мин';
     durInput.value = (duration ?? '') === '' ? '' : String(duration);
     durInput.dataset.field = 'duration';
@@ -152,10 +179,27 @@ export function addMashStep(step = {}) {
     if (!el) return;
     el.appendChild(createStepRow({
         mode: 'mash',
+        type: step.type,
         temperature: step.temperature,
         duration: step.duration,
         name: step.name
     }));
+}
+
+export function applyMashTemplate(templateId) {
+    const template = MASH_TEMPLATES[templateId];
+    if (!template) return;
+    setMashProfileUI(template.name, template.steps);
+}
+
+export async function requestMashingNext() {
+    const response = await fetch('/api/mashing/next', { method: 'POST' });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Переход к следующему шагу недоступен');
+    }
+    addLog('✓ Оператор подтвердил переход к следующему шагу затора', 'success');
+    setTimeout(loadStatus, 300);
 }
 
 export function setMashProfileUI(name = 'Mashing', steps = [], profileId = '') {
@@ -198,11 +242,19 @@ export function readStepsFromUI(containerId, mode) {
         const temperature = Number.parseFloat(tempStr);
         const duration = Number.parseInt(durStr, 10);
 
-        if (!Number.isFinite(duration) || duration <= 0) continue;
-        if (mode === 'mash' && (!Number.isFinite(temperature) || temperature <= 0)) continue;
+        const type = row.dataset.stepType || 'heat_hold';
+        const needsDuration = ['hold', 'boil', 'stir'].includes(type);
+        const needsTemperature = ['heat_hold', 'heat', 'hold', 'boil', 'cool'].includes(type);
+        if (needsDuration && (!Number.isFinite(duration) || duration <= 0)) continue;
+        if (needsTemperature && (!Number.isFinite(temperature) || temperature <= 0)) continue;
 
-        const step = { duration };
+        const step = { duration: Number.isFinite(duration) && duration > 0 ? duration : 0 };
         if (mode === 'mash') {
+            // A zero-duration legacy temperature step means an explicit
+            // operator checkpoint, never a skipped heating hold.
+            step.type = type === 'heat_hold' && step.duration === 0
+                ? 'operator_wait'
+                : type;
             step.temperature = temperature;
             const name = (row.querySelector('input[data-field="name"]')?.value ?? '').trim();
             if (name) step.name = name;

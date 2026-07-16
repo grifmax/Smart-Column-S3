@@ -16,7 +16,7 @@ import { clearHistory, clearPublicDemoDataset, deleteHistoryItem, loadPublicDemo
 import { confirmModeSwitch } from './modes/common.js';
 import { startDistillation } from './modes/distillation.js';
 import { stopProcess, pauseProcess, resumeProcess, updateHeater, updatePump, toggleValve } from './modes/manual.js';
-import { startMashing, startHold, addMashStep, addHoldStep } from './modes/mashing-hold.js';
+import { startMashing, startHold, addMashStep, addHoldStep, applyMashTemplate, requestMashingNext } from './modes/mashing-hold.js';
 import { startRectification, startManual, openRectificationStartModal, confirmStartRectification, closeRectificationStartModal, updateRectificationFractionsSum, applyRectificationFeedstockDefaults } from './modes/rectification.js';
 import {
     initControlModePanel,
@@ -183,6 +183,8 @@ window.toggleValve = toggleValve;
 window.startMashing = startMashing;
 window.startHold = startHold;
 window.addMashStep = addMashStep;
+window.applyMashTemplate = applyMashTemplate;
+window.requestMashingNext = requestMashingNext;
 window.addHoldStep = addHoldStep;
 window.startRectification = startRectification;
 window.startManual = startManual;

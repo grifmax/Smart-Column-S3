@@ -201,6 +201,62 @@ bool confirmBodyEndByPressure(const SystemState& state, const Settings& settings
            (now - bodyPressureConfirmStartMs) >= settings.rectParams.timpPbMs;
 }
 
+bool isActiveCollectionContainerLevelReached(const Settings& settings) {
+    if (!settings.equipment.bodyLevelSensorEnabled) {
+        return false;
+    }
+
+    int16_t adc = 0;
+    float voltage = 0.0f;
+    if (!Sensors::readAds1115Channel(ADS_CHANNEL_LEVEL_BODY, adc, voltage)) {
+        return false;
+    }
+
+    return settings.equipment.bodyLevelTriggerAbove
+        ? voltage >= settings.equipment.bodyLevelThresholdV
+        : voltage <= settings.equipment.bodyLevelThresholdV;
+}
+
+void pauseForActiveBodyContainerLevel(SystemState& state,
+                                      uint8_t containerCount,
+                                      float bodyCollectedMl) {
+    RectTakeoff::stop();
+    state.paused = true;
+    state.rectBodyContainerLevelReached = true;
+
+    const uint8_t activeContainer = state.rectBodyContainerIndex + 1;
+    const bool hasNextContainer = activeContainer < containerCount;
+    if (hasNextContainer) {
+        ++state.rectBodyContainerIndex;
+        state.rectBodyContainerVolumeMl = 0.0f;
+        state.rectBodyContainerStartVolumeMl = bodyCollectedMl;
+    }
+    const uint8_t targetContainer = state.rectBodyContainerIndex + 1;
+    const String message =
+        hasNextContainer
+            ? String("Датчик уровня сработал в ёмкости ") + activeContainer +
+                  " из " + containerCount + ". Установите ёмкость " +
+                  targetContainer + " и перенесите датчик; отбор продолжится после снятия сигнала"
+            : String("Датчик уровня сработал в последней ёмкости ") +
+                  activeContainer + " из " + containerCount +
+                  ". Смените тару/перенесите датчик и дождитесь снятия сигнала";
+    MQTT::publishNotification("Уровень активной ёмкости тела",
+                              message.c_str(), "warning");
+    LOG_W("Rectification BODY active container %u/%u level sensor reached; takeoff paused",
+          activeContainer, containerCount);
+}
+
+void pauseForHeadsContainerLevel(SystemState& state) {
+    RectTakeoff::stop();
+    state.paused = true;
+    state.rectHeadsContainerLevelReached = true;
+    MQTT::publishNotification(
+        "Уровень ёмкости голов",
+        "Датчик уровня сработал в текущей ёмкости голов. Смените тару/перенесите датчик и дождитесь снятия сигнала",
+        "warning");
+    LOG_W("Rectification HEADS active container level sensor reached; takeoff paused");
+}
+
 void calculateTargets(const SystemState& state, const Settings& settings) {
     float volumeL = settings.rectParams.feedVolumeL;
     if (volumeL <= 0.1f) {
@@ -236,13 +292,18 @@ void getTargets(float& heads, float& body, float& tails) {
     tails = tailsTargetMl;
 }
 
-void initSession(const SystemState& state, const Settings& settings) {
+void initSession(SystemState& state, const Settings& settings) {
     headsTargetMl = 0.0f;
     bodyTargetMl = 0.0f;
     tailsTargetMl = 0.0f;
     bodyReferenceReady = false;
     bodyBaseTempC = 0.0f;
     bodyPressureConfirmStartMs = 0;
+    state.rectBodyContainerIndex = 0;
+    state.rectBodyContainerVolumeMl = 0.0f;
+    state.rectBodyContainerStartVolumeMl = 0.0f;
+    state.rectBodyContainerLevelReached = false;
+    state.rectHeadsContainerLevelReached = false;
     calculateTargets(state, settings);
     RectTakeoff::beginSession(settings);
 }
@@ -314,6 +375,19 @@ void update(SystemState& state, const Settings& settings) {
             applyProcessHeaterPower(
                 state, settings,
                 getPhasePowerPercent(settings.rectParams, RectPhase::HEADS, 60));
+            const bool headsContainerLevelReached =
+                isActiveCollectionContainerLevelReached(settings);
+            if (state.rectHeadsContainerLevelReached) {
+                if (headsContainerLevelReached) {
+                    RectTakeoff::stop();
+                    break;
+                }
+                state.rectHeadsContainerLevelReached = false;
+            }
+            if (headsContainerLevelReached) {
+                pauseForHeadsContainerLevel(state);
+                break;
+            }
             const float headsSpeed = getDirectTakeoffSpeedMlH(settings, RectPhase::HEADS);
             RectTakeoff::apply(buildTakeoffCommand(
                 settings, RectTakeoffFraction::HEADS, headsSpeed, elapsed));
@@ -331,6 +405,7 @@ void update(SystemState& state, const Settings& settings) {
                     static_cast<uint16_t>(RectPhase::POST_HEADS_STABILIZATION),
                     ControlV2::ReasonCodeV2::RC_HEADS_VOLUME_REACHED);
                 state.rectPhase = RectPhase::POST_HEADS_STABILIZATION;
+                state.rectHeadsContainerLevelReached = false;
                 setPhaseStartTime(now);
                 RectTakeoff::stop();
                 MQTT::publishNotification(
@@ -404,18 +479,52 @@ void update(SystemState& state, const Settings& settings) {
                 }
             }
 
-            const float baseBodySpeed =
-                getDirectTakeoffSpeedMlH(settings, RectPhase::BODY);
-            const float requestedBodyRateMlH =
-                applyChimCompensation(baseBodySpeed, state, settings, elapsed);
-            RectTakeoff::apply(buildTakeoffCommand(
-                settings, RectTakeoffFraction::BODY, requestedBodyRateMlH,
-                elapsed));
-
             const float bodyCollected =
                 getCurrentTakeoffTotalVolumeMl(state, settings) -
                 getPhaseStartVolumeMl();
             state.stats.bodyVolume = bodyCollected;
+            const uint8_t containerCount =
+                constrain(settings.rectParams.bodyContainerCount, 1, 8);
+            const float perContainerTarget = bodyTargetMl /
+                static_cast<float>(containerCount);
+            state.rectBodyContainerVolumeMl = max(
+                0.0f, bodyCollected - state.rectBodyContainerStartVolumeMl);
+
+            const bool activeContainerLevelReached =
+                isActiveCollectionContainerLevelReached(settings);
+            if (state.rectBodyContainerLevelReached) {
+                // The signal belongs to the container currently installed by
+                // the operator. Do not restart takeoff until it is clear.
+                if (activeContainerLevelReached) {
+                    RectTakeoff::stop();
+                    break;
+                }
+                state.rectBodyContainerLevelReached = false;
+            }
+            if (activeContainerLevelReached) {
+                pauseForActiveBodyContainerLevel(state, containerCount,
+                                                 bodyCollected);
+                break;
+            }
+
+            if (containerCount > 1 &&
+                state.rectBodyContainerIndex + 1 < containerCount &&
+                state.rectBodyContainerVolumeMl >= perContainerTarget) {
+                RectTakeoff::stop();
+                ++state.rectBodyContainerIndex;
+                state.rectBodyContainerVolumeMl = 0.0f;
+                state.rectBodyContainerStartVolumeMl = bodyCollected;
+                state.paused = true;
+                const String containerMessage =
+                    String("Установите ёмкость ") +
+                    String(state.rectBodyContainerIndex + 1) + " из " +
+                    String(containerCount) + " и нажмите Продолжить";
+                MQTT::publishNotification("Смена ёмкости тела",
+                                          containerMessage.c_str(), "warning");
+                LOG_I("Rectification BODY container %u/%u completed; takeoff paused",
+                      state.rectBodyContainerIndex, containerCount);
+                break;
+            }
 
             ControlV2::ReasonCodeV2 bodyExitReason =
                 ControlV2::ReasonCodeV2::NONE;
@@ -455,6 +564,7 @@ void update(SystemState& state, const Settings& settings) {
 
             if (bodyExitReason != ControlV2::ReasonCodeV2::NONE) {
                 LOG_I("FSM: BODY -> TAILS");
+                RectTakeoff::stop();
                 ControlV2::notePhaseTransition(
                     Mode::RECTIFICATION, static_cast<uint16_t>(RectPhase::BODY),
                     static_cast<uint16_t>(RectPhase::TAILS), bodyExitReason);
@@ -463,7 +573,21 @@ void update(SystemState& state, const Settings& settings) {
                 setPhaseStartVolumeMl(
                     getCurrentTakeoffTotalVolumeMl(state, settings));
                 bodyPressureConfirmStartMs = 0;
+                break;
             }
+
+            // Priority while body is collected: safety/pause is enforced by
+            // the caller, then level and container switching above, then PB
+            // phase completion. Only a continuing BODY phase reaches CHIM;
+            // the reflux mode finally gates the corrected request in
+            // buildTakeoffCommand().
+            const float baseBodySpeed =
+                getDirectTakeoffSpeedMlH(settings, RectPhase::BODY);
+            const float requestedBodyRateMlH =
+                applyChimCompensation(baseBodySpeed, state, settings, elapsed);
+            RectTakeoff::apply(buildTakeoffCommand(
+                settings, RectTakeoffFraction::BODY, requestedBodyRateMlH,
+                elapsed));
             break;
         }
 

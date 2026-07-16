@@ -219,11 +219,42 @@ enum class MashPhase : uint8_t {
   FINISH
 };
 
+// Types of recipe actions. Legacy temperature rests map to HEAT_AND_HOLD.
+enum class MashStepType : uint8_t {
+  HEAT_AND_HOLD = 0, HEAT, HOLD, OPERATOR_WAIT, BOIL, COOL, STIR, FINISH
+};
+
+inline const char* mashStepTypeToString(MashStepType type) {
+  switch (type) {
+    case MashStepType::HEAT: return "heat";
+    case MashStepType::HOLD: return "hold";
+    case MashStepType::OPERATOR_WAIT: return "operator_wait";
+    case MashStepType::BOIL: return "boil";
+    case MashStepType::COOL: return "cool";
+    case MashStepType::STIR: return "stir";
+    case MashStepType::FINISH: return "finish";
+    default: return "heat_hold";
+  }
+}
+
+inline MashStepType mashStepTypeFromString(const char* value) {
+  if (value == nullptr) return MashStepType::HEAT_AND_HOLD;
+  if (strcmp(value, "heat") == 0) return MashStepType::HEAT;
+  if (strcmp(value, "hold") == 0) return MashStepType::HOLD;
+  if (strcmp(value, "operator_wait") == 0) return MashStepType::OPERATOR_WAIT;
+  if (strcmp(value, "boil") == 0) return MashStepType::BOIL;
+  if (strcmp(value, "cool") == 0) return MashStepType::COOL;
+  if (strcmp(value, "stir") == 0) return MashStepType::STIR;
+  if (strcmp(value, "finish") == 0) return MashStepType::FINISH;
+  return MashStepType::HEAT_AND_HOLD;
+}
+
 // Профиль затирания
 struct MashProfile {
   char name[32];
   uint8_t stepCount;
   struct {
+    MashStepType type = MashStepType::HEAT_AND_HOLD;
     float temperature;
     uint16_t duration; // минуты
     char name[32];     // название паузы
@@ -347,6 +378,9 @@ struct MashingState {
   // Таймер выдержки считаем только когда температура в допуске
   bool tempInRange = false;
   uint32_t inRangeStartTime = 0;
+  MashStepType stepType = MashStepType::HEAT_AND_HOLD;
+  bool waitingForOperator = false;
+  bool manualAdvanceRequested = false;
   float targetTemp = 0.0f;
   char stepName[32] = "";
   uint32_t stepDuration = 0; // секунды
@@ -385,6 +419,11 @@ struct SystemState {
   RectPhase rectPhase = RectPhase::IDLE;
   bool paused = false;
   bool safetyOk = true;
+  uint8_t rectBodyContainerIndex = 0;
+  float rectBodyContainerVolumeMl = 0.0f;
+  float rectBodyContainerStartVolumeMl = 0.0f;
+  bool rectBodyContainerLevelReached = false;
+  bool rectHeadsContainerLevelReached = false;
   uint32_t uptime = 0;
 
   TemperatureData temps;
@@ -597,6 +636,7 @@ struct RectParams {
   uint16_t valvePulseMaxOpenMs = 900;
   uint16_t routingSettlingMs = 1500;
   uint16_t routingRetargetMinMs = 3000;
+  uint8_t bodyContainerCount = 1;
 };
 
 struct DistillationUiSettings {

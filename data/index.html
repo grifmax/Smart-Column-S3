@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.57">
+    <link rel="stylesheet" href="style.css?v=2.4.68">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.57" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.68" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -739,6 +739,11 @@
                                                         <label for="rect-start-body-percent">Тело, %</label>
                                                         <input type="number" id="rect-start-body-percent" min="0"
                                                             max="100" step="0.1">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="rect-start-body-containers">Ёмкостей для тела</label>
+                                                        <input type="number" id="rect-start-body-containers" min="1" max="8" step="1" value="1">
+                                                        <div class="control-inline-hint">Отбор остановится для безопасной смены каждой тары. Включённый датчик уровня A2 относится к текущей приёмной ёмкости.</div>
                                                     </div>
                                                     <div class="form-group">
                                                         <label for="rect-start-tails-percent">Хвосты, %</label>
@@ -1268,13 +1273,14 @@
                                                 </div>
 
                                                 <div class="form-group">
-                                                    <label>Шаги затирки (температура °C, длительность мин)</label>
+                                                    <label>Шаги затирки (температура °C, длительность мин; 0 — подтверждение оператора)</label>
                                                     <div id="mash-steps"></div>
                                                 </div>
 
                                                 <div class="controls" style="flex-wrap: wrap;">
                                                     <button class="btn btn-sm" type="button" id="mash-add-step-button" onclick="addMashStep()">➕
                                                         Добавить шаг</button>
+                                                    <button class="btn btn-sm" type="button" onclick="requestMashingNext().catch(error => addLog(error.message, 'warning'))">⏭️ Подтвердить шаг</button>
                                                 </div>
                                             </div>
                                         </div>
@@ -2107,6 +2113,18 @@
                                                     <strong>Загрузка safety-каналов...</strong>
                                                     <span class="equipment-status-badge muted">Ожидание</span>
                                                 </div>
+                                                <div class="form-group">
+                                                    <label for="mash-template-select">Шаблон рецепта</label>
+                                                    <div class="controls" style="flex-wrap: wrap;">
+                                                        <select id="mash-template-select">
+                                                            <option value="malt">Солодовый профиль</option>
+                                                            <option value="grain_boil">Зерновой затор с развариванием</option>
+                                                            <option value="flour">Мучной затор без разваривания</option>
+                                                            <option value="ferment_cool">Охлаждение перед брожением</option>
+                                                        </select>
+                                                        <button class="btn btn-sm" type="button" onclick="applyMashTemplate(document.getElementById('mash-template-select').value)">Применить шаблон</button>
+                                                    </div>
+                                                </div>
                                                 <div class="equipment-module-card-role">Покажем A2/A3 для уровня и протечки, а также резерв GPIO1/GPIO3 под газовые датчики.</div>
                                             </div>
                                         </div>
@@ -2157,13 +2175,13 @@
                                         </div>
                                     </div>
                                     <div class="form-group control-checkbox-field equipment-checkbox-field">
-                                        <label for="body-level-enabled">Контроль уровня в теле на ADS1115 A2</label>
+                                        <label for="body-level-enabled">Контроль уровня активной приёмной ёмкости на ADS1115 A2</label>
                                         <input type="checkbox" id="body-level-enabled">
                                     </div>
                                     <div class="form-group">
                                         <label for="body-level-threshold-v">Порог A2, В</label>
                                         <input type="number" id="body-level-threshold-v" min="0" max="4.096" step="0.001" value="1.500" data-stepper-mode="pair" data-stepper-step="0.010">
-                                        <small class="equipment-hint">Мягкий порог для датчика уровня тела. Канал можно держать выключенным, пока датчик не установлен.</small>
+                                        <small class="equipment-hint">Порог датчика текущей ёмкости голов или тела. При смене тары перенесите датчик; до снятия сигнала отбор не возобновится.</small>
                                     </div>
                                     <div class="form-group control-checkbox-field equipment-checkbox-field">
                                         <label for="body-level-trigger-above">A2 срабатывает при напряжении выше порога</label>
@@ -3697,7 +3715,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.57"></script>
+    <script src="app.js?v=2.4.68"></script>
 </body>
 
 </html>

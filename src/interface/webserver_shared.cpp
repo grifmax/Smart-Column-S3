@@ -2788,6 +2788,8 @@ void init() {
               uint8_t count = 0;
               for (JsonObject s : steps) {
                 if (count >= 10) break;
+                runtimeProfile.steps[count].type = mashStepTypeFromString(
+                    s["type"] | "heat_hold");
                 runtimeProfile.steps[count].temperature = s["temperature"] | 0.0f;
                 runtimeProfile.steps[count].duration = s["duration"] | 0;
                 const char *sName = s["name"] | "";
@@ -2918,6 +2920,18 @@ void init() {
                 return;
               }
               request->send(200, "application/json", "{\"success\":true,\"message\":\"Fraction advance requested\"}");
+            });
+
+  server.on("/api/mashing/next", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              if (!FSM::Mashing::requestManualAdvance(g_state)) {
+                request->send(409, "application/json",
+                              "{\"success\":false,\"error\":\"Manual mashing advance is available only while waiting for operator confirmation\"}");
+                return;
+              }
+              FSM::resume(g_state);
+              ControlV2::updateRuntime(g_state, g_settings);
+              request->send(200, "application/json", "{\"success\":true}");
             });
   server.on("/api/fraction-program/confirm", HTTP_POST,
             [](AsyncWebServerRequest *request) {
@@ -3983,6 +3997,7 @@ void init() {
     doc["timpPbMs"] = params.timpPbMs;
     doc["routingSettlingMs"] = params.routingSettlingMs;
     doc["routingRetargetMinMs"] = params.routingRetargetMinMs;
+    doc["bodyContainerCount"] = params.bodyContainerCount;
     doc["valvePulsePeriodMs"] = params.valvePulsePeriodMs;
     doc["valvePulseMinOpenMs"] = params.valvePulseMinOpenMs;
     doc["valvePulseMaxOpenMs"] = params.valvePulseMaxOpenMs;
@@ -4068,6 +4083,10 @@ void init() {
         if (!params["bodySpeedMlHKw"].isNull()) {
           updated.bodySpeedMlHKw = clampFloatRange(
               params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
+        }
+        if (!params["bodyContainerCount"].isNull()) {
+          updated.bodyContainerCount = static_cast<uint8_t>(clampU16Range(
+              params["bodyContainerCount"].as<uint32_t>(), 1, 8));
         }
         if (!params["stabilizationMin"].isNull()) {
           updated.stabilizationMin = clampU16Range(
@@ -4193,6 +4212,7 @@ void init() {
         out["tailsPercent"] = g_settings.rectParams.tailsPercent;
         out["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
         out["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
+        out["bodyContainerCount"] = g_settings.rectParams.bodyContainerCount;
         out["stabilizationMin"] = g_settings.rectParams.stabilizationMin;
         out["purgeMin"] = g_settings.rectParams.purgeMin;
         out["baroCorrectionEnabled"] = g_settings.rectParams.baroCorrectionEnabled;

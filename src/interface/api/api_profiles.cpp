@@ -174,6 +174,7 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
           JsonArray mashingSteps = mashing["steps"].to<JsonArray>();
           for (const auto &stepData : profile.parameters.mashing.steps) {
             JsonObject step = mashingSteps.add<JsonObject>();
+            step["type"] = mashStepTypeToString(stepData.type);
             step["temperature"] = stepData.temperature;
             step["duration"] = stepData.duration;
             step["name"] = stepData.name;
@@ -637,6 +638,8 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
               }
 
               MashingStepParams stepData;
+              stepData.type = mashStepTypeFromString(
+                  step["type"] | "heat_hold");
               stepData.temperature = temperature;
               stepData.duration = duration;
               stepData.name = name;

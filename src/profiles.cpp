@@ -149,6 +149,7 @@ void appendMashingJson(JsonObject parameters, const MashingParams& mashing) {
          index++) {
         const auto& source = mashing.steps[index];
         JsonObject step = steps.add<JsonObject>();
+        step["type"] = mashStepTypeToString(source.type);
         step["temperature"] = source.temperature;
         step["duration"] = source.duration;
         step["name"] = source.name;
@@ -662,6 +663,7 @@ void loadMashingParamsFromJson(JsonVariantConst stepsVariant,
         }
 
         MashingStepParams item;
+        item.type = mashStepTypeFromString(step["type"] | "heat_hold");
         item.temperature = temperature;
         item.duration = duration;
         item.name = normalizeMashStepName(step["name"].as<String>(), index);
