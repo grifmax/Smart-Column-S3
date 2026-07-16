@@ -16,6 +16,7 @@ namespace Mashing {
 
 static const MashProfile* currentProfile = nullptr;
 static bool mashFoamAlarmActive = false;
+static uint8_t boilHopNotificationMask = 0;
 
 namespace {
 
@@ -54,6 +55,7 @@ void nextStep(SystemState& state,
     if (state.mashing.currentStep < currentProfile->stepCount) {
         state.mashing.targetTemp = currentProfile->steps[state.mashing.currentStep].temperature;
         state.mashing.stepType = currentProfile->steps[state.mashing.currentStep].type;
+        boilHopNotificationMask = 0;
         state.mashing.waitingForOperator = false;
         state.mashing.stepDuration = currentProfile->steps[state.mashing.currentStep].duration * 60;
         state.mashing.stepStartTime = millis();
@@ -114,6 +116,7 @@ void start(SystemState& state, const MashProfile* profile) {
     state.mashing.waitingForOperator = false;
     state.mashing.manualAdvanceRequested = false;
     mashFoamAlarmActive = false;
+    boilHopNotificationMask = 0;
     state.mashing.stepDuration = profile->steps[0].duration * 60;
     state.mashing.stepStartTime = millis();
     state.mashing.tempInRange = false;
@@ -251,7 +254,27 @@ void update(SystemState& state, const Settings& settings) {
             state.mashing.tempInRange = true;
             state.mashing.inRangeStartTime = now;
         }
-        if (now - state.mashing.inRangeStartTime >= holdMs) {
+        const uint32_t boilElapsedMs = now - state.mashing.inRangeStartTime;
+        const uint32_t hopMomentsMs[] = {
+            0,
+            holdMs / 2UL,
+            holdMs > 300000UL ? holdMs - 300000UL : holdMs
+        };
+        for (uint8_t index = 0; index < 3; ++index) {
+            const uint8_t flag = static_cast<uint8_t>(1U << index);
+            if ((boilHopNotificationMask & flag) == 0 &&
+                boilElapsedMs >= hopMomentsMs[index]) {
+                boilHopNotificationMask |= flag;
+                char message[96];
+                snprintf(message, sizeof(message),
+                         "Кипение идёт %lu мин. Внесение хмеля: этап %u из 3.",
+                         static_cast<unsigned long>(boilElapsedMs / 60000UL),
+                         index + 1);
+                MQTT::publishNotification("Затор: внесение хмеля", message,
+                                          "info");
+            }
+        }
+        if (boilElapsedMs >= holdMs) {
             nextStep(state);
         }
         return;
