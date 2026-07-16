@@ -545,6 +545,14 @@ bool loadSettings(Settings& settings) {
             (settings.distillationUi.powerPercent / 100.0f)
     );
     settings.distillationUi.tailsVolumeMl = prefs.getFloat(NVS_KEY_DIST_TAILS_VOL, 0.0f);
+    settings.distillationUi.takeoffBackendType = static_cast<RectTakeoffBackendType>(
+        prefs.getUChar(NVS_KEY_DIST_TAKEOFF_BACKEND, RECT_TAKEOFF_BACKEND_DEFAULT));
+    settings.distillationUi.valveSafeVentConfirmed =
+        prefs.getBool(NVS_KEY_DIST_SAFE_VENT, false);
+    if (static_cast<uint8_t>(settings.distillationUi.takeoffBackendType) >
+        static_cast<uint8_t>(RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)) {
+        settings.distillationUi.takeoffBackendType = RectTakeoffBackendType::PUMP;
+    }
 
     // Web security
     settings.security.authEnabled = prefs.getBool(NVS_KEY_WEB_AUTH_ENABLED, false);
@@ -723,6 +731,10 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_DIST_POWER_W, settings.distillationUi.powerW);
     prefs.putFloat(NVS_KEY_DIST_POWER_PCT, settings.distillationUi.powerPercent);
     prefs.putFloat(NVS_KEY_DIST_TAILS_VOL, settings.distillationUi.tailsVolumeMl);
+    prefs.putUChar(NVS_KEY_DIST_TAKEOFF_BACKEND,
+                   static_cast<uint8_t>(settings.distillationUi.takeoffBackendType));
+    prefs.putBool(NVS_KEY_DIST_SAFE_VENT,
+                  settings.distillationUi.valveSafeVentConfirmed);
 
     // Web security
     prefs.putBool(NVS_KEY_WEB_AUTH_ENABLED, settings.security.authEnabled);

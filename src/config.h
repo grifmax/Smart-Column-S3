@@ -468,6 +468,8 @@
 #define NVS_KEY_DIST_POWER_W "dist_pw"
 #define NVS_KEY_DIST_POWER_PCT "dist_ppct"
 #define NVS_KEY_DIST_TAILS_VOL "dist_xvol"
+#define NVS_KEY_DIST_TAKEOFF_BACKEND "dist_tbk"
+#define NVS_KEY_DIST_SAFE_VENT "dist_vent"
 #define NVS_KEY_WEB_AUTH_ENABLED "web_auth"
 #define NVS_KEY_WEB_RATE_LIMIT "web_rate"
 #define NVS_KEY_WEB_USERNAME "web_user"

@@ -11,8 +11,12 @@ void beginSession(const Settings& settings);
 void apply(const RectTakeoffCommand& command);
 void stop();
 RectTakeoffFeedback getFeedback();
-bool requestFractionRoute(uint8_t routeIndex);
-bool isFractionRouteReady(uint8_t routeIndex);
+bool requestFractionRoute(RectTakeoffBackendType backendType, uint8_t routeIndex,
+                          String* detail = nullptr);
+bool isFractionRouteReady(RectTakeoffBackendType backendType, uint8_t routeIndex);
+bool isFractionRouteSupported(RectTakeoffBackendType backendType, uint8_t routeIndex,
+                              String* detail = nullptr);
+bool requiresSafeVent(RectTakeoffBackendType backendType);
 bool validateBackendConfiguration(RectTakeoffBackendType backendType,
                                   String* detail = nullptr);
 

@@ -14,6 +14,7 @@
 #include "../drivers/valves.h"
 #include "../interface/mqtt.h"
 #include "../interface/localization.h"
+#include "fraction_program_logic.h"
 #include "../storage/logger.h"
 
 namespace FSM {
@@ -205,6 +206,7 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
             MQTT::publishNotification("Процесс запущен", "Начат процесс ректификации", "info");
             break;
         case Mode::DISTILLATION:
+            Distillation::initSession(state, settings);
             state.rectPhase = RectPhase::HEATING;
             ControlV2::notePhaseTransition(
                 Mode::DISTILLATION, static_cast<uint16_t>(RectPhase::IDLE),
@@ -308,6 +310,16 @@ void resume(SystemState& state) {
     if (pauseStartTime > 0) {
         uint32_t pausedMs = millis() - pauseStartTime;
         setPhaseStartTime(getPhaseStartTime() + pausedMs);
+        if (state.fractionProgram.active) {
+            state.fractionProgram.stepStartedAtMs =
+                FractionProgramLogic::advanceTimestampAfterPause(
+                    state.fractionProgram.stepStartedAtMs, pausedMs);
+            if (state.fractionProgram.routing) {
+                state.fractionProgram.routingStartedAtMs =
+                    FractionProgramLogic::advanceTimestampAfterPause(
+                        state.fractionProgram.routingStartedAtMs, pausedMs);
+            }
+        }
     }
     state.paused = false;
     pauseStartTime = 0;

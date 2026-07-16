@@ -635,6 +635,149 @@ uint16_t clampU16Range(uint32_t value, uint16_t minValue,
   return static_cast<uint16_t>(value);
 }
 
+RectTakeoffBackendType clampRectTakeoffBackendType(uint32_t rawValue) {
+  return static_cast<RectTakeoffBackendType>(clampU16Range(
+      rawValue, 0,
+      static_cast<uint16_t>(RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
+}
+
+FractionProgram parseFractionProgramJson(JsonObject json,
+                                         const FractionProgram &fallback) {
+  FractionProgram program = fallback;
+  if (json.isNull()) {
+    return program;
+  }
+
+  program.stepCount = 0;
+  program.schemaVersion = clampU8Range(json["schemaVersion"] | fallback.schemaVersion,
+                                       0, 255);
+  program.enabled = json["enabled"] | fallback.enabled;
+  program.heatingTemperatureSensorIndex = clampU8Range(
+      json["heatingTemperatureSensorIndex"] |
+          fallback.heatingTemperatureSensorIndex,
+      0, TEMP_COUNT - 1);
+  program.heatingTargetTemperatureC = clampFloatRange(
+      json["heatingTargetTemperatureC"] | fallback.heatingTargetTemperatureC,
+      0.0f, 110.0f);
+
+  JsonArray steps = json["steps"].as<JsonArray>();
+  if (steps.isNull()) {
+    return program;
+  }
+
+  for (JsonObject stepObj : steps) {
+    if (program.stepCount >= FRACTION_PROGRAM_MAX_STEPS) {
+      break;
+    }
+    FractionProgramStep &step = program.steps[program.stepCount++];
+    memset(&step, 0, sizeof(step));
+    strlcpy(step.name, stepObj["name"] | "", sizeof(step.name));
+    step.routeIndex = clampU8Range(stepObj["routeIndex"] | 0, 0, 4);
+    step.pumpRateMlH =
+        clampFloatRange(stepObj["pumpRateMlH"] | 0.0f, 0.0f, 65000.0f);
+    step.heaterPowerW = clampFloatRange(stepObj["heaterPowerW"] | 0.0f, 0.0f,
+                                        10000.0f);
+    step.requireOperatorConfirmation =
+        stepObj["requireOperatorConfirmation"] | false;
+    strlcpy(step.confirmationPrompt, stepObj["confirmationPrompt"] | "",
+            sizeof(step.confirmationPrompt));
+    step.endConditions =
+        clampU8Range(stepObj["endConditions"] | 0, 0, 255);
+    step.endVolumeMl =
+        clampFloatRange(stepObj["endVolumeMl"] | 0.0f, 0.0f, 50000.0f);
+    step.endDurationSec =
+        stepObj["endDurationSec"].isNull()
+            ? 0
+            : static_cast<uint32_t>(min<uint64_t>(
+                  stepObj["endDurationSec"].as<uint64_t>(), 864000ULL));
+    step.temperatureSensorIndex = clampU8Range(
+        stepObj["temperatureSensorIndex"] | TEMP_CUBE, 0, TEMP_COUNT - 1);
+    step.endTemperatureC =
+        clampFloatRange(stepObj["endTemperatureC"] | 0.0f, 0.0f, 110.0f);
+    step.allowManualAdvance = stepObj["allowManualAdvance"] | false;
+  }
+
+  return program;
+}
+
+void fillFractionProgramJson(JsonObject json, const FractionProgram &program) {
+  json["schemaVersion"] = program.schemaVersion;
+  json["enabled"] = program.enabled;
+  json["stepCount"] = program.stepCount;
+  json["heatingTemperatureSensorIndex"] =
+      program.heatingTemperatureSensorIndex;
+  json["heatingTargetTemperatureC"] = program.heatingTargetTemperatureC;
+
+  JsonArray steps = json["steps"].to<JsonArray>();
+  for (uint8_t i = 0; i < program.stepCount && i < FRACTION_PROGRAM_MAX_STEPS;
+       ++i) {
+    const FractionProgramStep &step = program.steps[i];
+    JsonObject stepJson = steps.add<JsonObject>();
+    stepJson["name"] = step.name;
+    stepJson["routeIndex"] = step.routeIndex;
+    stepJson["pumpRateMlH"] = step.pumpRateMlH;
+    stepJson["heaterPowerW"] = step.heaterPowerW;
+    stepJson["requireOperatorConfirmation"] =
+        step.requireOperatorConfirmation;
+    stepJson["confirmationPrompt"] = step.confirmationPrompt;
+    stepJson["endConditions"] = step.endConditions;
+    stepJson["endVolumeMl"] = step.endVolumeMl;
+    stepJson["endDurationSec"] = step.endDurationSec;
+    stepJson["temperatureSensorIndex"] = step.temperatureSensorIndex;
+    stepJson["endTemperatureC"] = step.endTemperatureC;
+    stepJson["allowManualAdvance"] = step.allowManualAdvance;
+  }
+}
+
+void fillFractionProgramRuntimeJson(
+    JsonObject json, const SystemState &state, const Settings &settings,
+    const RectTakeoffFeedback &takeoffFeedback) {
+  json["enabled"] = settings.fractionProgram.enabled;
+  json["active"] = state.fractionProgram.active;
+  json["currentStep"] = state.fractionProgram.currentStep;
+  json["waitingForConfirmation"] = state.fractionProgram.waitingForConfirmation;
+  json["routing"] = state.fractionProgram.routing;
+  json["lastEndReason"] = state.fractionProgram.lastEndReason;
+  json["requestedRoute"] = static_cast<uint8_t>(takeoffFeedback.requestedFraction);
+  json["routedRoute"] = static_cast<uint8_t>(takeoffFeedback.routedFraction);
+  json["actualRateMlH"] = takeoffFeedback.actualEquivalentRateMlH;
+
+  float collectedMl = settings.distillationUi.takeoffBackendType ==
+                              RectTakeoffBackendType::PUMP
+                          ? state.pump.totalVolumeMl -
+                                state.fractionProgram.stepStartVolumeMl
+                          : takeoffFeedback.sessionVolumeMl -
+                                state.fractionProgram.stepStartVolumeMl;
+  if (collectedMl < 0.0f) {
+    collectedMl = 0.0f;
+  }
+  json["collectedMl"] = collectedMl;
+  json["confirmationPrompt"] = state.fractionProgram.confirmationPrompt;
+
+  if (state.fractionProgram.currentStep < settings.fractionProgram.stepCount) {
+    const FractionProgramStep &step =
+        settings.fractionProgram.steps[state.fractionProgram.currentStep];
+    json["stepName"] = step.name;
+    json["targetRoute"] = step.routeIndex;
+    json["targetRateMlH"] = step.pumpRateMlH;
+    json["allowManualAdvance"] = step.allowManualAdvance;
+    json["endConditions"] = step.endConditions;
+    json["endVolumeMl"] = step.endVolumeMl;
+    json["endDurationSec"] = step.endDurationSec;
+    json["temperatureSensorIndex"] = step.temperatureSensorIndex;
+    json["endTemperatureC"] = step.endTemperatureC;
+  } else {
+    json["stepName"] = "";
+    json["targetRoute"] = 0;
+    json["targetRateMlH"] = 0.0f;
+    json["allowManualAdvance"] = false;
+    json["endConditions"] = FRACTION_PROGRAM_END_NONE;
+    json["endVolumeMl"] = 0.0f;
+    json["endDurationSec"] = 0;
+    json["temperatureSensorIndex"] = 0;
+    json["endTemperatureC"] = 0.0f;
+  }
+}
 bool parseRequestedMode(const char *modeStr, Mode &mode) {
   if (!modeStr) {
     return false;
@@ -1578,6 +1721,19 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
     const float endTemp =
         !params["endTemp"].isNull() ? clampFloatRange(params["endTemp"].as<float>(), 70.0f, 110.0f)
                                      : g_settings.distillationUi.endTempC;
+    const RectTakeoffBackendType backendType =
+        !params["takeoffBackendType"].isNull()
+            ? clampRectTakeoffBackendType(params["takeoffBackendType"].as<uint32_t>())
+            : g_settings.distillationUi.takeoffBackendType;
+    const bool valveSafeVentConfirmed =
+        !params["valveSafeVentConfirmed"].isNull()
+            ? params["valveSafeVentConfirmed"].as<bool>()
+            : g_settings.distillationUi.valveSafeVentConfirmed;
+    const FractionProgram fractionProgram =
+        !params["fractionProgram"].isNull()
+            ? parseFractionProgramJson(params["fractionProgram"].as<JsonObject>(),
+                                       g_settings.fractionProgram)
+            : g_settings.fractionProgram;
     const float heaterMaxW =
         g_settings.equipment.heaterPowerW > 0 ? g_settings.equipment.heaterPowerW
                                               : DEFAULT_HEATER_POWER_W;
@@ -1600,6 +1756,58 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
     } else {
       addItem("dist-profile", "good", "Параметры дистилляции",
               "Порог окончания и мощность дистилляции выглядят рабочими.", false);
+    }
+
+    String takeoffBackendDetail;
+    if (!RectTakeoff::validateBackendConfiguration(backendType, &takeoffBackendDetail)) {
+      addItem("dist-backend", "danger", "Takeoff backend",
+              String("Backend is not configured: ") + takeoffBackendDetail, true);
+    } else {
+      addItem("dist-backend", "good", "Takeoff backend",
+              String("Backend is configured: ") + takeoffBackendDetail, false);
+    }
+
+    if (RectTakeoff::requiresSafeVent(backendType)) {
+      if (!valveSafeVentConfirmed) {
+        addItem("dist-safe-vent", "danger", "Safe vent",
+                "Confirm a safe vent path before valve takeoff start.", true);
+      } else {
+        addItem("dist-safe-vent", "good", "Safe vent",
+                "Safe vent path is confirmed for valve takeoff.", false);
+      }
+    }
+
+    if (fractionProgram.enabled) {
+      bool fractionsValid = true;
+      const uint8_t count = fractionProgram.stepCount;
+      if (count == 0 || count > FRACTION_PROGRAM_MAX_STEPS) {
+        addItem("dist-fractions", "danger", "Fraction program",
+                "Fraction program step count is invalid.", true);
+        fractionsValid = false;
+      } else {
+        for (uint8_t i = 0; i < count; ++i) {
+          const FractionProgramStep &step = fractionProgram.steps[i];
+          if (step.pumpRateMlH <= 0.0f) {
+            addItem("dist-fractions", "danger", "Fraction program",
+                    String("Step ") + String(i + 1) + " has zero takeoff rate.", true);
+            fractionsValid = false;
+            break;
+          }
+
+          String routeDetail;
+          if (!RectTakeoff::isFractionRouteSupported(backendType, step.routeIndex, &routeDetail)) {
+            addItem("dist-fractions", "danger", "Fraction program",
+                    String("Step ") + String(i + 1) + " is not supported: " + routeDetail, true);
+            fractionsValid = false;
+            break;
+          }
+        }
+      }
+
+      if (fractionsValid) {
+        addItem("dist-fractions", "good", "Fraction program",
+                "Fraction routes and rates match the selected backend.", false);
+      }
     }
   } else if (mode == Mode::MASHING) {
     JsonArray steps = params["profile"]["steps"].as<JsonArray>();
@@ -2216,6 +2424,13 @@ void init() {
     distillation["targetVolumeMl"] = distTargetVolumeMl;
     distillation["endTempC"] = distEndTempC;
     distillation["powerW"] = distPowerWatts;
+    distillation["takeoffBackendType"] =
+        static_cast<uint8_t>(g_settings.distillationUi.takeoffBackendType);
+    distillation["valveSafeVentConfirmed"] =
+        g_settings.distillationUi.valveSafeVentConfirmed;
+    distillation["tailsVolumeMl"] = g_settings.distillationUi.tailsVolumeMl;
+    JsonObject fractionProgram = distillation["fractionProgram"].to<JsonObject>();
+    fillFractionProgramJson(fractionProgram, g_settings.fractionProgram);
     if (g_settings.equipment.heaterPowerW > 0) {
       distillation["powerPercent"] =
           static_cast<uint8_t>((static_cast<uint32_t>(distPowerWatts) * 100U +
@@ -2508,7 +2723,23 @@ void init() {
           float speed = params["speed"] | 500.0f;
           float headsVol = params["headsVolume"] | 0.0f;
           float targetVol = params["targetVolume"] | 0.0f;
+          float tailsVol = params["tailsVolume"] | 0.0f;
           float endTemp = params["endTemp"] | 96.0f;
+          RectTakeoffBackendType backendType =
+              !params["takeoffBackendType"].isNull()
+                  ? clampRectTakeoffBackendType(
+                        params["takeoffBackendType"].as<uint32_t>())
+                  : g_settings.distillationUi.takeoffBackendType;
+          bool valveSafeVentConfirmed =
+              !params["valveSafeVentConfirmed"].isNull()
+                  ? params["valveSafeVentConfirmed"].as<bool>()
+                  : g_settings.distillationUi.valveSafeVentConfirmed;
+          FractionProgram fractionProgram =
+              params["fractionProgram"].is<JsonObject>()
+                  ? parseFractionProgramJson(
+                        params["fractionProgram"].as<JsonObject>(),
+                        g_settings.fractionProgram)
+                  : g_settings.fractionProgram;
           const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
                                           ? g_settings.equipment.heaterPowerW
                                           : DEFAULT_HEATER_POWER_W;
@@ -2522,6 +2753,21 @@ void init() {
             powerWatts = static_cast<uint16_t>(
                 (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
           }
+          g_settings.distillationUi.speedMlH = speed;
+          g_settings.distillationUi.headsVolumeMl = headsVol;
+          g_settings.distillationUi.targetVolumeMl = targetVol;
+          g_settings.distillationUi.tailsVolumeMl = tailsVol;
+          g_settings.distillationUi.endTempC = endTemp;
+          g_settings.distillationUi.powerW = powerWatts;
+          g_settings.distillationUi.powerPercent =
+              heaterMaxW > 0
+                  ? (100.0f * static_cast<float>(powerWatts)) /
+                        static_cast<float>(heaterMaxW)
+                  : 0.0f;
+          g_settings.distillationUi.takeoffBackendType = backendType;
+          g_settings.distillationUi.valveSafeVentConfirmed =
+              valveSafeVentConfirmed;
+          g_settings.fractionProgram = fractionProgram;
           FSM::Distillation::setParams(speed, headsVol, targetVol, endTemp);
           FSM::Distillation::setPowerWatts(powerWatts);
           FSM::startMode(g_state, g_settings, mode);
@@ -4683,6 +4929,13 @@ void broadcastState(const SystemState &state) {
   distillation["targetVolumeMl"] = distTargetVolumeMl;
   distillation["endTempC"] = distEndTempC;
   distillation["powerW"] = distPowerWatts;
+  distillation["takeoffBackendType"] =
+      static_cast<uint8_t>(g_settings.distillationUi.takeoffBackendType);
+  distillation["valveSafeVentConfirmed"] =
+      g_settings.distillationUi.valveSafeVentConfirmed;
+  distillation["tailsVolumeMl"] = g_settings.distillationUi.tailsVolumeMl;
+  JsonObject fractionProgram = distillation["fractionProgram"].to<JsonObject>();
+  fillFractionProgramJson(fractionProgram, g_settings.fractionProgram);
   if (g_settings.equipment.heaterPowerW > 0) {
     distillation["powerPercent"] =
         static_cast<uint8_t>((static_cast<uint32_t>(distPowerWatts) * 100U +

@@ -321,7 +321,7 @@ void loadRectificationParamsFromJson(JsonVariantConst rectificationVariant,
     rectification.takeoffBackendType = static_cast<RectTakeoffBackendType>(
         clampProfileU8(
             rectificationJson["takeoffBackendType"] |
-                static_cast<uint8_t>(rectification.takeoffBackendType),
+                static_cast<uint8_t>(RectTakeoffBackendType::PUMP),
             0,
             static_cast<uint8_t>(
                 RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
@@ -366,6 +366,175 @@ void loadRectificationParamsFromJson(JsonVariantConst rectificationVariant,
                 ? rectification.autonomousCycleSec - 1
                 : 0;
     }
+}
+
+void appendDistillationJson(JsonObject parameters,
+                            const DistillationParams& distillation) {
+    JsonObject distillationJson = parameters["distillation"].to<JsonObject>();
+    distillationJson["headsVolume"] = distillation.headsVolume;
+    distillationJson["targetVolume"] = distillation.targetVolume;
+    distillationJson["tailsVolume"] = distillation.tailsVolume;
+    distillationJson["speed"] = distillation.speed;
+    distillationJson["endTemp"] = distillation.endTemp;
+    distillationJson["takeoffBackendType"] =
+        static_cast<uint8_t>(distillation.takeoffBackendType);
+    distillationJson["valveSafeVentConfirmed"] =
+        distillation.valveSafeVentConfirmed;
+
+    JsonObject fractionProgram =
+        distillationJson["fractionProgram"].to<JsonObject>();
+    fractionProgram["schemaVersion"] = distillation.fractionProgram.schemaVersion;
+    fractionProgram["enabled"] = distillation.fractionProgram.enabled;
+    fractionProgram["stepCount"] = distillation.fractionProgram.stepCount;
+    fractionProgram["heatingTemperatureSensorIndex"] =
+        distillation.fractionProgram.heatingTemperatureSensorIndex;
+    fractionProgram["heatingTargetTemperatureC"] =
+        distillation.fractionProgram.heatingTargetTemperatureC;
+
+    JsonArray fractionSteps = fractionProgram["steps"].to<JsonArray>();
+    for (uint8_t index = 0;
+         index < distillation.fractionProgram.stepCount &&
+         index < FRACTION_PROGRAM_MAX_STEPS;
+         ++index) {
+        const FractionProgramStep& source =
+            distillation.fractionProgram.steps[index];
+        JsonObject item = fractionSteps.add<JsonObject>();
+        item["name"] = source.name;
+        item["routeIndex"] = source.routeIndex;
+        item["pumpRateMlH"] = source.pumpRateMlH;
+        item["heaterPowerW"] = source.heaterPowerW;
+        item["requireOperatorConfirmation"] =
+            source.requireOperatorConfirmation;
+        item["confirmationPrompt"] = source.confirmationPrompt;
+        item["endConditions"] = source.endConditions;
+        item["endVolumeMl"] = source.endVolumeMl;
+        item["endDurationSec"] = source.endDurationSec;
+        item["temperatureSensorIndex"] = source.temperatureSensorIndex;
+        item["endTemperatureC"] = source.endTemperatureC;
+        item["allowManualAdvance"] = source.allowManualAdvance;
+    }
+}
+
+void loadDistillationParamsFromJson(JsonVariantConst distillationVariant,
+                                    DistillationParams& distillation) {
+    if (!distillationVariant.is<JsonObjectConst>()) {
+        return;
+    }
+
+    JsonObjectConst distillationJson =
+        distillationVariant.as<JsonObjectConst>();
+    distillation.headsVolume =
+        clampProfileU16(distillationJson["headsVolume"] |
+                            distillation.headsVolume,
+                        0,
+                        10000);
+    distillation.targetVolume =
+        clampProfileU16(distillationJson["targetVolume"] |
+                            distillation.targetVolume,
+                        1,
+                        50000);
+    distillation.tailsVolume =
+        clampProfileU16(distillationJson["tailsVolume"] |
+                            distillation.tailsVolume,
+                        0,
+                        50000);
+    distillation.speed = clampProfileU16(distillationJson["speed"] |
+                                             distillation.speed,
+                                         50,
+                                         65000);
+    distillation.endTemp = clampProfileFloat(distillationJson["endTemp"] |
+                                                 distillation.endTemp,
+                                             50.0f,
+                                             110.0f);
+    distillation.takeoffBackendType = static_cast<RectTakeoffBackendType>(
+        clampProfileU8(
+            distillationJson["takeoffBackendType"] |
+                static_cast<uint8_t>(RectTakeoffBackendType::PUMP),
+            0,
+            static_cast<uint8_t>(
+                RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
+    distillation.valveSafeVentConfirmed =
+        distillationJson["valveSafeVentConfirmed"] |
+        distillation.valveSafeVentConfirmed;
+
+    JsonVariantConst programVariant = distillationJson["fractionProgram"];
+    if (!programVariant.is<JsonObjectConst>()) {
+        return;
+    }
+
+    JsonObjectConst programJson = programVariant.as<JsonObjectConst>();
+    FractionProgram program = distillation.fractionProgram;
+    program.schemaVersion =
+        clampProfileU16(programJson["schemaVersion"] | program.schemaVersion,
+                        0,
+                        65535);
+    program.enabled = programJson["enabled"] | program.enabled;
+    program.heatingTemperatureSensorIndex = clampProfileU8(
+        programJson["heatingTemperatureSensorIndex"] |
+            program.heatingTemperatureSensorIndex,
+        0,
+        TEMP_COUNT - 1);
+    program.heatingTargetTemperatureC = clampProfileFloat(
+        programJson["heatingTargetTemperatureC"] |
+            program.heatingTargetTemperatureC,
+        0.0f,
+        110.0f);
+    program.stepCount = 0;
+
+    JsonVariantConst stepsVariant = programJson["steps"];
+    if (stepsVariant.is<JsonArrayConst>()) {
+        for (JsonObjectConst item : stepsVariant.as<JsonArrayConst>()) {
+            if (program.stepCount >= FRACTION_PROGRAM_MAX_STEPS) {
+                break;
+            }
+            FractionProgramStep& step = program.steps[program.stepCount++];
+            strlcpy(step.name,
+                    item["name"] | step.name,
+                    sizeof(step.name));
+            step.routeIndex =
+                clampProfileU8(item["routeIndex"] | step.routeIndex, 0, 4);
+            step.pumpRateMlH =
+                clampProfileFloat(item["pumpRateMlH"] | step.pumpRateMlH,
+                                  0.0f,
+                                  65000.0f);
+            step.heaterPowerW =
+                clampProfileU16(item["heaterPowerW"] | step.heaterPowerW,
+                                0,
+                                10000);
+            step.requireOperatorConfirmation =
+                item["requireOperatorConfirmation"] |
+                step.requireOperatorConfirmation;
+            strlcpy(step.confirmationPrompt,
+                    item["confirmationPrompt"] | step.confirmationPrompt,
+                    sizeof(step.confirmationPrompt));
+            step.endConditions =
+                clampProfileU8(item["endConditions"] | step.endConditions,
+                               0,
+                               255);
+            step.endVolumeMl =
+                clampProfileFloat(item["endVolumeMl"] | step.endVolumeMl,
+                                  0.0f,
+                                  50000.0f);
+            step.endDurationSec = std::min<uint32_t>(
+                864000UL, item["endDurationSec"] | step.endDurationSec);
+            step.temperatureSensorIndex = clampProfileU8(
+                item["temperatureSensorIndex"] | step.temperatureSensorIndex,
+                0,
+                TEMP_COUNT - 1);
+            step.endTemperatureC =
+                clampProfileFloat(item["endTemperatureC"] |
+                                      step.endTemperatureC,
+                                  0.0f,
+                                  110.0f);
+            step.allowManualAdvance =
+                item["allowManualAdvance"] | step.allowManualAdvance;
+        }
+    }
+    program.stepCount =
+        clampProfileU8(programJson["stepCount"] | program.stepCount,
+                       0,
+                       program.stepCount);
+    distillation.fractionProgram = program;
 }
 
 void applyRectificationSettings(const RectificationParams& rectification) {
@@ -438,6 +607,36 @@ void captureRectificationSettings(RectificationParams& rectification) {
         rectification.phasePowerPercent[index] =
             g_settings.rectParams.phasePowerPercent[index];
     }
+}
+
+void applyDistillationSettings(const DistillationParams& distillation) {
+    g_settings.distillationUi.headsVolumeMl = distillation.headsVolume;
+    g_settings.distillationUi.targetVolumeMl = distillation.targetVolume;
+    g_settings.distillationUi.tailsVolumeMl = distillation.tailsVolume;
+    g_settings.distillationUi.speedMlH = distillation.speed;
+    g_settings.distillationUi.endTempC = distillation.endTemp;
+    g_settings.distillationUi.takeoffBackendType =
+        distillation.takeoffBackendType;
+    g_settings.distillationUi.valveSafeVentConfirmed =
+        distillation.valveSafeVentConfirmed;
+    g_settings.fractionProgram = distillation.fractionProgram;
+}
+
+void captureDistillationSettings(DistillationParams& distillation) {
+    distillation.headsVolume =
+        static_cast<uint16_t>(g_settings.distillationUi.headsVolumeMl);
+    distillation.targetVolume =
+        static_cast<uint16_t>(g_settings.distillationUi.targetVolumeMl);
+    distillation.tailsVolume =
+        static_cast<uint16_t>(g_settings.distillationUi.tailsVolumeMl);
+    distillation.speed =
+        static_cast<uint16_t>(g_settings.distillationUi.speedMlH);
+    distillation.endTemp = g_settings.distillationUi.endTempC;
+    distillation.takeoffBackendType =
+        g_settings.distillationUi.takeoffBackendType;
+    distillation.valveSafeVentConfirmed =
+        g_settings.distillationUi.valveSafeVentConfirmed;
+    distillation.fractionProgram = g_settings.fractionProgram;
 }
 
 void loadMashingParamsFromJson(JsonVariantConst stepsVariant,
@@ -812,11 +1011,7 @@ bool saveProfile(const Profile& profile) {
     appendRectificationJson(parameters, profile.parameters.rectification);
 
     // Дистилляция
-    JsonObject distillation = parameters["distillation"].to<JsonObject>();
-    distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
-    distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
-    distillation["speed"] = profile.parameters.distillation.speed;
-    distillation["endTemp"] = profile.parameters.distillation.endTemp;
+    appendDistillationJson(parameters, profile.parameters.distillation);
     appendMashingJson(parameters, profile.parameters.mashing);
 
     // Температуры
@@ -932,10 +1127,8 @@ bool loadProfile(const String& id, Profile& profile) {
                                     profile.parameters.rectification);
 
     // Дистилляция
-    profile.parameters.distillation.headsVolume = doc["parameters"]["distillation"]["headsVolume"];
-    profile.parameters.distillation.targetVolume = doc["parameters"]["distillation"]["targetVolume"];
-    profile.parameters.distillation.speed = doc["parameters"]["distillation"]["speed"];
-    profile.parameters.distillation.endTemp = doc["parameters"]["distillation"]["endTemp"];
+    loadDistillationParamsFromJson(doc["parameters"]["distillation"],
+                                   profile.parameters.distillation);
     loadMashingParamsFromJson(doc["parameters"]["mashing"]["steps"],
                               profile.parameters.mashing);
 
@@ -1500,11 +1693,7 @@ bool applyProfile(const String& id) {
             g_settings.rectParams.tailsPercent = profile.parameters.rectification.tailsVolume * 100.0f / aaMl;
         }
     } else if (profile.metadata.category == "distillation" || profile.parameters.mode == "distillation") {
-        g_settings.distillationUi.headsVolumeMl = profile.parameters.distillation.headsVolume;
-        g_settings.distillationUi.targetVolumeMl = profile.parameters.distillation.targetVolume;
-        g_settings.distillationUi.speedMlH = profile.parameters.distillation.speed;
-        g_settings.distillationUi.endTempC = profile.parameters.distillation.endTemp;
-        g_settings.fractionProgram = profile.parameters.distillation.fractionProgram;
+        applyDistillationSettings(profile.parameters.distillation);
         
         // приблизительный процент мощности
         float powerPct = (float)profile.parameters.heater.maxPower / 3000.0f * 100.0f;
@@ -1698,11 +1887,7 @@ String createProfileFromSettings(const String& name, const String& description, 
         profile.parameters.rectification.bodyVolume = (uint16_t)(aaMl * g_settings.rectParams.bodyPercent / 100.0f);
         profile.parameters.rectification.tailsVolume = (uint16_t)(aaMl * g_settings.rectParams.tailsPercent / 100.0f);
     } else if (category == "distillation") {
-        profile.parameters.distillation.headsVolume = (uint16_t)g_settings.distillationUi.headsVolumeMl;
-        profile.parameters.distillation.targetVolume = (uint16_t)g_settings.distillationUi.targetVolumeMl;
-        profile.parameters.distillation.speed = (uint16_t)g_settings.distillationUi.speedMlH;
-        profile.parameters.distillation.endTemp = g_settings.distillationUi.endTempC;
-        profile.parameters.distillation.fractionProgram = g_settings.fractionProgram;
+        captureDistillationSettings(profile.parameters.distillation);
     } else if (category == "mashing") {
         fillDefaultMashingSteps(profile.parameters.mashing);
     }
@@ -1765,11 +1950,7 @@ String exportProfileToJSON(const String& id) {
 
     appendRectificationJson(parameters, profile.parameters.rectification);
 
-    JsonObject distillation = parameters["distillation"].to<JsonObject>();
-    distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
-    distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
-    distillation["speed"] = profile.parameters.distillation.speed;
-    distillation["endTemp"] = profile.parameters.distillation.endTemp;
+    appendDistillationJson(parameters, profile.parameters.distillation);
     appendMashingJson(parameters, profile.parameters.mashing);
 
     JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
@@ -1851,11 +2032,8 @@ String exportAllProfilesToJSON(bool includeBuiltin) {
 
             appendRectificationJson(parameters, profile.parameters.rectification);
 
-            JsonObject distillation = parameters["distillation"].to<JsonObject>();
-            distillation["headsVolume"] = profile.parameters.distillation.headsVolume;
-            distillation["targetVolume"] = profile.parameters.distillation.targetVolume;
-            distillation["speed"] = profile.parameters.distillation.speed;
-            distillation["endTemp"] = profile.parameters.distillation.endTemp;
+            appendDistillationJson(parameters,
+                                   profile.parameters.distillation);
             appendMashingJson(parameters, profile.parameters.mashing);
 
             JsonObject temperatures = parameters["temperatures"].to<JsonObject>();
@@ -1941,10 +2119,8 @@ String importProfileFromJSON(const String& jsonStr) {
     loadRectificationParamsFromJson(doc["parameters"]["rectification"],
                                     profile.parameters.rectification);
 
-    profile.parameters.distillation.headsVolume = doc["parameters"]["distillation"]["headsVolume"];
-    profile.parameters.distillation.targetVolume = doc["parameters"]["distillation"]["targetVolume"];
-    profile.parameters.distillation.speed = doc["parameters"]["distillation"]["speed"];
-    profile.parameters.distillation.endTemp = doc["parameters"]["distillation"]["endTemp"];
+    loadDistillationParamsFromJson(doc["parameters"]["distillation"],
+                                   profile.parameters.distillation);
     loadMashingParamsFromJson(doc["parameters"]["mashing"]["steps"],
                               profile.parameters.mashing);
 

@@ -1,7 +1,9 @@
 #include "../fsm_utils.h"
 #include "../rect_takeoff.h"
+#include "../rect_takeoff_logic.h"
 #include "../../drivers/heater.h"
 #include "../../drivers/valves.h"
+#include "../../drivers/pump.h"
 #include "../../drivers/sensors.h"
 #include "../watt_control.h"
 #include "../v2/reason_codes.h"
@@ -113,15 +115,25 @@ RectTakeoffCommand buildTakeoffCommand(const Settings& settings,
     RectTakeoffCommand command;
     command.backendType = settings.rectParams.takeoffBackendType;
     command.fraction = fraction;
-    command.equivalentRateMlH = equivalentRateMlH > 0.0f ? equivalentRateMlH : 0.0f;
+    command.requestedEquivalentRateMlH =
+        equivalentRateMlH > 0.0f ? equivalentRateMlH : 0.0f;
+    const float pumpMaxRateMlH = Pump::getMaxSpeedMlH();
+    command.rateLimited =
+        command.backendType == RectTakeoffBackendType::PUMP &&
+        command.requestedEquivalentRateMlH > pumpMaxRateMlH;
+    command.equivalentRateMlH = command.rateLimited
+        ? pumpMaxRateMlH
+        : command.requestedEquivalentRateMlH;
     command.enabled = command.equivalentRateMlH > 0.0f;
-    command.fullReflux = !command.enabled;
     command.periodicTakeoff =
         settings.rectParams.refluxMode != RectRefluxMode::ML_H;
     command.periodicTakeoffActive =
         !command.periodicTakeoff ||
         isTakeoffWindowOpen(settings.rectParams, elapsedMs, &command.periodicCycleMs,
                             &command.periodicOpenMs);
+    command.fullReflux = RectTakeoffLogic::shouldUseFullReflux(
+        command.enabled, command.periodicTakeoff,
+        command.periodicTakeoffActive);
     return command;
 }
 
@@ -394,10 +406,11 @@ void update(SystemState& state, const Settings& settings) {
 
             const float baseBodySpeed =
                 getDirectTakeoffSpeedMlH(settings, RectPhase::BODY);
-            const float bodySpeed =
+            const float requestedBodyRateMlH =
                 applyChimCompensation(baseBodySpeed, state, settings, elapsed);
             RectTakeoff::apply(buildTakeoffCommand(
-                settings, RectTakeoffFraction::BODY, bodySpeed, elapsed));
+                settings, RectTakeoffFraction::BODY, requestedBodyRateMlH,
+                elapsed));
 
             const float bodyCollected =
                 getCurrentTakeoffTotalVolumeMl(state, settings) -

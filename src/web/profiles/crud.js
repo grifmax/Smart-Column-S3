@@ -1,4 +1,4 @@
-﻿import { currentProfileId, setCurrentProfileId } from './state.js';
+import { currentProfileId, setCurrentProfileId } from './state.js';
 import { loadProfilesList } from './list.js';
 import {
     getProfileCompatibility,
@@ -12,6 +12,9 @@ import { addMashStep, createStepRow, readStepsFromUI, setMashProfileUI } from '.
 
 let currentProfileIsBuiltin = false;
 let profileFormLiveBindingsReady = false;
+const PROFILE_FRACTION_MAX_STEPS = 8;
+const PROFILE_ROUTE_MAX_INDEX = 4;
+const PROFILE_TEMP_SENSOR_MAX_INDEX = 6;
 
 function escapeHtml(value) {
 
@@ -74,8 +77,19 @@ const PROFILE_FORM_DEFAULTS = {
         distillation: {
             headsVolume: 150,
             targetVolume: 3000,
+            tailsVolume: 0,
             speed: 1200,
-            endTemp: 96.0
+            endTemp: 96.0,
+            takeoffBackendType: 0,
+            valveSafeVentConfirmed: false,
+            fractionProgram: {
+                schemaVersion: 2,
+                enabled: false,
+                stepCount: 0,
+                heatingTemperatureSensorIndex: 0,
+                heatingTargetTemperatureC: 78.0,
+                steps: []
+            }
         },
         mashing: {
             steps: [
@@ -153,6 +167,124 @@ function getCheckboxValue(id, fallback = false) {
 
     const element = document.getElementById(id);
     return element ? element.checked : fallback;
+
+}
+
+function getProfileModal() {
+
+    return document.getElementById('profile-modal');
+
+}
+
+function normalizeFractionProgram(program, fallback = PROFILE_FORM_DEFAULTS.parameters.distillation.fractionProgram) {
+
+    const base = fallback && typeof fallback === 'object'
+        ? cloneProfileDraft(fallback)
+        : cloneProfileDraft(PROFILE_FORM_DEFAULTS.parameters.distillation.fractionProgram);
+    const source = program && typeof program === 'object' ? program : {};
+    const rawSteps = Array.isArray(source.steps)
+        ? source.steps
+        : Array.isArray(base.steps)
+            ? base.steps
+            : [];
+    const steps = rawSteps
+        .slice(0, PROFILE_FRACTION_MAX_STEPS)
+        .map((step, index) => ({
+            name: String(step?.name || '').trim().slice(0, 23) || `Шаг ${index + 1}`,
+            routeIndex: clampNumber(step?.routeIndex, 0, PROFILE_ROUTE_MAX_INDEX, 0),
+            pumpRateMlH: clampNumber(step?.pumpRateMlH, 0, 65000, 0, 2),
+            heaterPowerW: clampNumber(step?.heaterPowerW, 0, 10000, 0, 2),
+            requireOperatorConfirmation: Boolean(step?.requireOperatorConfirmation),
+            confirmationPrompt: String(step?.confirmationPrompt || '').trim().slice(0, 63),
+            endConditions: clampNumber(step?.endConditions, 0, 255, 0),
+            endVolumeMl: clampNumber(step?.endVolumeMl, 0, 50000, 0, 2),
+            endDurationSec: clampNumber(step?.endDurationSec, 0, 864000, 0),
+            temperatureSensorIndex: clampNumber(
+                step?.temperatureSensorIndex,
+                0,
+                PROFILE_TEMP_SENSOR_MAX_INDEX,
+                0
+            ),
+            endTemperatureC: clampNumber(step?.endTemperatureC, 0, 110, 0, 2),
+            allowManualAdvance: Boolean(step?.allowManualAdvance)
+        }));
+
+    return {
+        schemaVersion: clampNumber(source.schemaVersion, 0, 65535, base.schemaVersion),
+        enabled: Boolean(source.enabled ?? base.enabled),
+        stepCount: steps.length,
+        heatingTemperatureSensorIndex: clampNumber(
+            source.heatingTemperatureSensorIndex,
+            0,
+            PROFILE_TEMP_SENSOR_MAX_INDEX,
+            base.heatingTemperatureSensorIndex
+        ),
+        heatingTargetTemperatureC: clampNumber(
+            source.heatingTargetTemperatureC,
+            0,
+            110,
+            base.heatingTargetTemperatureC,
+            1
+        ),
+        steps
+    };
+
+}
+
+function normalizeDistillationSettings(
+    distillation,
+    fallback = PROFILE_FORM_DEFAULTS.parameters.distillation
+) {
+
+    const base = fallback && typeof fallback === 'object'
+        ? cloneProfileDraft(fallback)
+        : cloneProfileDraft(PROFILE_FORM_DEFAULTS.parameters.distillation);
+    const source = distillation && typeof distillation === 'object' ? distillation : {};
+
+    return {
+        headsVolume: clampNumber(source.headsVolume, 0, 10000, base.headsVolume),
+        targetVolume: clampNumber(source.targetVolume, 1, 50000, base.targetVolume),
+        tailsVolume: clampNumber(source.tailsVolume, 0, 50000, base.tailsVolume),
+        speed: clampNumber(source.speed, 50, 65000, base.speed),
+        endTemp: clampNumber(source.endTemp, 50, 110, base.endTemp, 1),
+        takeoffBackendType: clampNumber(source.takeoffBackendType, 0, 2, 0),
+        valveSafeVentConfirmed: Boolean(
+            source.valveSafeVentConfirmed ?? base.valveSafeVentConfirmed
+        ),
+        fractionProgram: normalizeFractionProgram(
+            source.fractionProgram,
+            base.fractionProgram
+        )
+    };
+
+}
+
+function setProfileModalDistillationState(distillation) {
+
+    const modal = getProfileModal();
+    if (!modal) {
+        return;
+    }
+
+    modal.dataset.distillationState = JSON.stringify(
+        normalizeDistillationSettings(distillation)
+    );
+
+}
+
+function getProfileModalDistillationState() {
+
+    const modal = getProfileModal();
+    if (!modal || !modal.dataset.distillationState) {
+        return normalizeDistillationSettings(null);
+    }
+
+    try {
+        return normalizeDistillationSettings(JSON.parse(modal.dataset.distillationState));
+    } catch (error) {
+        console.warn('Не удалось восстановить состояние дистилляции из модалки:', error);
+        return normalizeDistillationSettings(null);
+    }
 
 }
 
@@ -279,7 +411,7 @@ function normalizeProfileDraft(profile = null) {
     draft.parameters.rectification.baroCorrectionEnabled = Boolean(
         rectificationProfile.baroCorrectionEnabled ?? draft.parameters.rectification.baroCorrectionEnabled
     );
-    draft.parameters.rectification.takeoffBackendType = clampNumber(rectificationProfile.takeoffBackendType, 0, 2, draft.parameters.rectification.takeoffBackendType);
+    draft.parameters.rectification.takeoffBackendType = clampNumber(rectificationProfile.takeoffBackendType, 0, 2, 0);
     draft.parameters.rectification.refluxMode = clampNumber(rectificationProfile.refluxMode, 0, 2, draft.parameters.rectification.refluxMode);
     draft.parameters.rectification.srTarget = clampNumber(
         rectificationProfile.srTarget ?? rectificationProfile.srRatio,
@@ -310,10 +442,10 @@ function normalizeProfileDraft(profile = null) {
         clampNumber(rectificationProfile.phasePowerBody ?? rectificationPhasePower[2], 1, 100, draft.parameters.rectification.phasePowerPercent[2]),
         clampNumber(rectificationProfile.phasePowerTails ?? rectificationPhasePower[3], 1, 100, draft.parameters.rectification.phasePowerPercent[3])
     ];
-    draft.parameters.distillation.headsVolume = clampNumber(profile?.parameters?.distillation?.headsVolume, 0, 10000, draft.parameters.distillation.headsVolume);
-    draft.parameters.distillation.targetVolume = clampNumber(profile?.parameters?.distillation?.targetVolume, 1, 50000, draft.parameters.distillation.targetVolume);
-    draft.parameters.distillation.speed = clampNumber(profile?.parameters?.distillation?.speed, 50, 120000, draft.parameters.distillation.speed);
-    draft.parameters.distillation.endTemp = clampNumber(profile?.parameters?.distillation?.endTemp, 50, 110, draft.parameters.distillation.endTemp, 1);
+    draft.parameters.distillation = normalizeDistillationSettings(
+        profile?.parameters?.distillation,
+        draft.parameters.distillation
+    );
     draft.parameters.mashing.steps = normalizeMashSteps(
         profile?.parameters?.mashing?.steps,
         draft.metadata.category === 'mashing' ? PROFILE_FORM_DEFAULTS.parameters.mashing.steps : []
@@ -410,10 +542,17 @@ async function buildProfileDraftFromSystem(category = 'rectification') {
         if (draft.parameters.rectification.autonomousPauseSec >= draft.parameters.rectification.autonomousCycleSec) {
             draft.parameters.rectification.autonomousPauseSec = Math.max(0, draft.parameters.rectification.autonomousCycleSec - 1);
         }
-        draft.parameters.distillation.headsVolume = clampNumber(distillation.headsVolumeMl, 0, 10000, draft.parameters.distillation.headsVolume);
-        draft.parameters.distillation.targetVolume = clampNumber(distillation.targetVolumeMl, 1, 50000, draft.parameters.distillation.targetVolume);
-        draft.parameters.distillation.speed = clampNumber(distillation.speedMlH, 50, 120000, draft.parameters.distillation.speed);
-        draft.parameters.distillation.endTemp = clampNumber(distillation.endTempC, 50, 110, draft.parameters.distillation.endTemp, 1);
+        draft.parameters.distillation = normalizeDistillationSettings({
+            ...draft.parameters.distillation,
+            headsVolume: distillation.headsVolumeMl,
+            targetVolume: distillation.targetVolumeMl,
+            tailsVolume: distillation.tailsVolumeMl,
+            speed: distillation.speedMlH,
+            endTemp: distillation.endTempC,
+            takeoffBackendType: distillation.takeoffBackendType,
+            valveSafeVentConfirmed: distillation.valveSafeVentConfirmed,
+            fractionProgram: distillation.fractionProgram
+        }, draft.parameters.distillation);
         draft.parameters.temperatures.maxCube = clampNumber(activeProfileTemps.maxCube, 50, 120, draft.parameters.temperatures.maxCube, 2);
         draft.parameters.temperatures.maxColumn = clampNumber(activeProfileTemps.maxColumn, 50, 110, draft.parameters.temperatures.maxColumn, 2);
         draft.parameters.temperatures.headsEnd = clampNumber(activeProfileTemps.headsEnd, 50, 110, draft.parameters.temperatures.headsEnd, 2);
@@ -431,6 +570,7 @@ async function buildProfileDraftFromSystem(category = 'rectification') {
 function populateProfileForm(profile) {
 
     const draft = normalizeProfileDraft(profile);
+    setProfileModalDistillationState(draft.parameters.distillation);
 
     setInputValue('profile-name', draft.metadata.name);
     setInputValue('profile-description', draft.metadata.description);
@@ -639,6 +779,7 @@ function syncProfileModalDeleteButton() {
       const valvePulsePeriodMs = clampNumber(getInputValue('profile-rect-valve-pulse-period-ms', 1000), 100, 5000, 1000);
       const valvePulseMinOpenMs = clampNumber(getInputValue('profile-rect-valve-pulse-min-open-ms', 80), 0, valvePulsePeriodMs, 80);
       const valvePulseMaxOpenMs = clampNumber(getInputValue('profile-rect-valve-pulse-max-open-ms', 900), valvePulseMinOpenMs, valvePulsePeriodMs, 900);
+      const distillationState = getProfileModalDistillationState();
 
     return normalizeProfileDraft({
         metadata: {
@@ -693,9 +834,10 @@ function syncProfileModalDeleteButton() {
                 ]
             },
             distillation: {
+                ...distillationState,
                 headsVolume: clampNumber(getInputValue('profile-dist-heads-volume', 150), 0, 10000, 150),
                 targetVolume: clampNumber(getInputValue('profile-dist-target-volume', 3000), 1, 50000, 3000),
-                speed: clampNumber(getInputValue('profile-dist-speed', 1200), 50, 120000, 1200),
+                speed: clampNumber(getInputValue('profile-dist-speed', 1200), 50, 65000, 1200),
                 endTemp: clampNumber(getInputValue('profile-dist-end-temp', 96), 50, 110, 96, 1)
             },
             mashing: {
@@ -808,7 +950,11 @@ export async function showDuplicateProfileModal(id) {
 
 export function closeProfileModal() {
 
-    document.getElementById('profile-modal').style.display = 'none';
+    const modal = getProfileModal();
+    if (modal) {
+        modal.style.display = 'none';
+        delete modal.dataset.distillationState;
+    }
     currentProfileIsBuiltin = false;
     setCurrentProfileId(null);
     syncProfileModalDeleteButton();

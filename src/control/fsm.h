@@ -56,6 +56,7 @@ namespace FSM {
     }
     
     namespace Distillation {
+        void initSession(SystemState& state, const Settings& settings);
         void update(SystemState& state, const Settings& settings);
         bool confirmFractionProgram(SystemState& state, const Settings& settings);
         bool advanceFractionProgram(SystemState& state, const Settings& settings);

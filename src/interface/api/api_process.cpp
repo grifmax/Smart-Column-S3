@@ -146,7 +146,23 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
           float speed = params["speed"] | 500.0f;
           float headsVol = params["headsVolume"] | 0.0f;
           float targetVol = params["targetVolume"] | 0.0f;
+          float tailsVol = params["tailsVolume"] | 0.0f;
           float endTemp = params["endTemp"] | 96.0f;
+          RectTakeoffBackendType backendType =
+              !params["takeoffBackendType"].isNull()
+                  ? clampRectTakeoffBackendType(
+                        params["takeoffBackendType"].as<uint32_t>())
+                  : g_settings.distillationUi.takeoffBackendType;
+          bool valveSafeVentConfirmed =
+              !params["valveSafeVentConfirmed"].isNull()
+                  ? params["valveSafeVentConfirmed"].as<bool>()
+                  : g_settings.distillationUi.valveSafeVentConfirmed;
+          FractionProgram fractionProgram =
+              params["fractionProgram"].is<JsonObject>()
+                  ? parseFractionProgramJson(
+                        params["fractionProgram"].as<JsonObject>(),
+                        g_settings.fractionProgram)
+                  : g_settings.fractionProgram;
           const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
                                           ? g_settings.equipment.heaterPowerW
                                           : DEFAULT_HEATER_POWER_W;
@@ -160,6 +176,21 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
             powerWatts = static_cast<uint16_t>(
                 (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
           }
+          g_settings.distillationUi.speedMlH = speed;
+          g_settings.distillationUi.headsVolumeMl = headsVol;
+          g_settings.distillationUi.targetVolumeMl = targetVol;
+          g_settings.distillationUi.tailsVolumeMl = tailsVol;
+          g_settings.distillationUi.endTempC = endTemp;
+          g_settings.distillationUi.powerW = powerWatts;
+          g_settings.distillationUi.powerPercent =
+              heaterMaxW > 0
+                  ? (100.0f * static_cast<float>(powerWatts)) /
+                        static_cast<float>(heaterMaxW)
+                  : 0.0f;
+          g_settings.distillationUi.takeoffBackendType = backendType;
+          g_settings.distillationUi.valveSafeVentConfirmed =
+              valveSafeVentConfirmed;
+          g_settings.fractionProgram = fractionProgram;
           FSM::Distillation::setParams(speed, headsVol, targetVol, endTemp);
           FSM::Distillation::setPowerWatts(powerWatts);
           FSM::startMode(g_state, g_settings, mode);

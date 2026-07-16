@@ -69,6 +69,13 @@ void fillSafetyChannelsJson(JsonObject channels);
 uint8_t clampU8Range(uint32_t value, uint8_t minValue, uint8_t maxValue);
 uint16_t clampU16Range(uint32_t value, uint16_t minValue, uint16_t maxValue);
 float clampFloatRange(float value, float minValue, float maxValue);
+RectTakeoffBackendType clampRectTakeoffBackendType(uint32_t rawValue);
+FractionProgram parseFractionProgramJson(JsonObject json,
+                                         const FractionProgram &fallback);
+void fillFractionProgramJson(JsonObject json, const FractionProgram &program);
+void fillFractionProgramRuntimeJson(JsonObject json, const SystemState &state,
+                                    const Settings &settings,
+                                    const RectTakeoffFeedback &takeoffFeedback);
 bool collectRequestBody(AsyncWebServerRequest *request, const uint8_t *data,
                         size_t len, size_t index, size_t total, String &body);
 bool deserializeRequestJsonBody(AsyncWebServerRequest *request,

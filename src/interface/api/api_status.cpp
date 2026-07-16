@@ -390,6 +390,9 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     rect["takeoffRoutingReady"] = takeoffFeedback.routingReady;
     rect["takeoffActualEquivalentRateMlH"] =
         takeoffFeedback.actualEquivalentRateMlH;
+    rect["takeoffRequestedEquivalentRateMlH"] =
+        takeoffFeedback.requestedEquivalentRateMlH;
+    rect["takeoffRateLimited"] = takeoffFeedback.rateLimited;
     rect["takeoffActualDuty"] = takeoffFeedback.actualDuty;
     rect["takeoffSessionVolumeMl"] = takeoffFeedback.sessionVolumeMl;
     rect["takeoffRequestedFraction"] =
@@ -444,6 +447,15 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     distillation["targetVolumeMl"] = distTargetVolumeMl;
     distillation["endTempC"] = distEndTempC;
     distillation["powerW"] = distPowerWatts;
+    distillation["takeoffBackendType"] =
+        static_cast<uint8_t>(g_settings.distillationUi.takeoffBackendType);
+    distillation["valveSafeVentConfirmed"] =
+        g_settings.distillationUi.valveSafeVentConfirmed;
+    distillation["tailsVolumeMl"] = g_settings.distillationUi.tailsVolumeMl;
+    JsonObject distillationFractionProgram =
+        distillation["fractionProgram"].to<JsonObject>();
+    fillFractionProgramJson(distillationFractionProgram,
+                            g_settings.fractionProgram);
     if (g_settings.equipment.heaterPowerW > 0) {
       distillation["powerPercent"] =
           static_cast<uint8_t>((static_cast<uint32_t>(distPowerWatts) * 100U +
@@ -543,39 +555,8 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
             : 0;
 
     JsonObject fractionProgram = doc["fractionProgram"].to<JsonObject>();
-    fractionProgram["enabled"] = g_settings.fractionProgram.enabled;
-    fractionProgram["active"] = g_state.fractionProgram.active;
-    fractionProgram["currentStep"] = g_state.fractionProgram.currentStep;
-    fractionProgram["waitingForConfirmation"] = g_state.fractionProgram.waitingForConfirmation;
-    fractionProgram["routing"] = g_state.fractionProgram.routing;
-    fractionProgram["lastEndReason"] = g_state.fractionProgram.lastEndReason;
-    fractionProgram["requestedRoute"] = static_cast<uint8_t>(takeoffFeedback.requestedFraction);
-    fractionProgram["routedRoute"] = static_cast<uint8_t>(takeoffFeedback.routedFraction);
-    fractionProgram["actualRateMlH"] = takeoffFeedback.actualEquivalentRateMlH;
-    fractionProgram["collectedMl"] = g_state.pump.totalVolumeMl - g_state.fractionProgram.stepStartVolumeMl;
-    fractionProgram["confirmationPrompt"] = g_state.fractionProgram.confirmationPrompt;
-    if (g_state.fractionProgram.currentStep < g_settings.fractionProgram.stepCount) {
-      const FractionProgramStep &step = g_settings.fractionProgram.steps[g_state.fractionProgram.currentStep];
-      fractionProgram["stepName"] = step.name;
-      fractionProgram["targetRoute"] = step.routeIndex;
-      fractionProgram["targetRateMlH"] = step.pumpRateMlH;
-      fractionProgram["allowManualAdvance"] = step.allowManualAdvance;
-      fractionProgram["endConditions"] = step.endConditions;
-      fractionProgram["endVolumeMl"] = step.endVolumeMl;
-      fractionProgram["endDurationSec"] = step.endDurationSec;
-      fractionProgram["temperatureSensorIndex"] = step.temperatureSensorIndex;
-      fractionProgram["endTemperatureC"] = step.endTemperatureC;
-    } else {
-      fractionProgram["stepName"] = "";
-      fractionProgram["targetRoute"] = 0;
-      fractionProgram["targetRateMlH"] = 0.0f;
-      fractionProgram["allowManualAdvance"] = false;
-      fractionProgram["endConditions"] = FRACTION_PROGRAM_END_NONE;
-      fractionProgram["endVolumeMl"] = 0.0f;
-      fractionProgram["endDurationSec"] = 0;
-      fractionProgram["temperatureSensorIndex"] = 0;
-      fractionProgram["endTemperatureC"] = 0.0f;
-    }
+    fillFractionProgramRuntimeJson(fractionProgram, g_state, g_settings,
+                                   takeoffFeedback);
     JsonObject hold = doc["hold"].to<JsonObject>();
     hold["active"] = g_state.hold.active;
     hold["stepCount"] = g_state.hold.stepCount;

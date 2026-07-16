@@ -56,7 +56,9 @@ enum class RectTakeoffFraction : uint8_t {
 struct RectTakeoffCommand {
   RectTakeoffBackendType backendType = RectTakeoffBackendType::PUMP;
   RectTakeoffFraction fraction = RectTakeoffFraction::NONE;
+  float requestedEquivalentRateMlH = 0.0f;
   float equivalentRateMlH = 0.0f;
+  bool rateLimited = false;
   bool enabled = false;
   bool fullReflux = true;
   bool periodicTakeoff = false;
@@ -69,7 +71,9 @@ struct RectTakeoffFeedback {
   RectTakeoffBackendType backendType = RectTakeoffBackendType::PUMP;
   bool backendActive = false;
   bool routingReady = true;
+  float requestedEquivalentRateMlH = 0.0f;
   float actualEquivalentRateMlH = 0.0f;
+  bool rateLimited = false;
   uint8_t actualDuty = 0;
   float sessionVolumeMl = 0.0f;
   RectTakeoffFraction requestedFraction = RectTakeoffFraction::NONE;
@@ -603,6 +607,8 @@ struct DistillationUiSettings {
   float powerW = 3000.0f;
   float powerPercent = 100.0f;
   float tailsVolumeMl = 0.0f;
+  RectTakeoffBackendType takeoffBackendType = RectTakeoffBackendType::PUMP;
+  bool valveSafeVentConfirmed = false;
 };
 
 struct SecuritySettings {

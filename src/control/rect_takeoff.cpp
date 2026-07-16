@@ -1,4 +1,5 @@
 #include "rect_takeoff.h"
+#include "rect_takeoff_logic.h"
 
 #include <Arduino.h>
 #include <math.h>
@@ -23,6 +24,8 @@ RectTakeoffFraction g_singleSwitchedBlockedFraction =
 constexpr uint32_t VALVE_PULSE_PERIOD_MIN_MS = 100UL;
 constexpr uint32_t VALVE_PULSE_PERIOD_MAX_MS = 5000UL;
 constexpr uint32_t VALVE_PULSE_MIN_OPEN_MAX_MS = 5000UL;
+
+const char* getBackendLabel(RectTakeoffBackendType backendType);
 
 uint32_t getSingleSwitchedSettlingMs() {
   return constrain(static_cast<uint32_t>(g_settings.rectParams.routingSettlingMs),
@@ -187,6 +190,71 @@ RectTakeoffFraction fromRoutingFraction(Fraction fraction) {
   }
 }
 
+bool isSupportedRouteIndex(uint8_t routeIndex) {
+  return routeIndex == static_cast<uint8_t>(Fraction::HEADS) ||
+         routeIndex == static_cast<uint8_t>(Fraction::BODY) ||
+         routeIndex == static_cast<uint8_t>(Fraction::TAILS);
+}
+
+RectTakeoffFraction routeIndexToTakeoffFraction(uint8_t routeIndex) {
+  switch (static_cast<Fraction>(routeIndex)) {
+  case Fraction::HEADS:
+    return RectTakeoffFraction::HEADS;
+  case Fraction::BODY:
+    return RectTakeoffFraction::BODY;
+  case Fraction::TAILS:
+    return RectTakeoffFraction::TAILS;
+  default:
+    return RectTakeoffFraction::NONE;
+  }
+}
+
+bool isRouteSupportedByBackend(RectTakeoffBackendType backendType,
+                               uint8_t routeIndex, String* detail) {
+  const RectTakeoffBackendType sanitizedBackend = sanitizeBackend(backendType);
+  const RectTakeoffFraction fraction = routeIndexToTakeoffFraction(routeIndex);
+  auto setDetail = [&](const String& message) {
+    if (detail != nullptr) {
+      *detail = message;
+    }
+  };
+
+  if (fraction == RectTakeoffFraction::NONE) {
+    setDetail("Fraction program route must target HEADS, BODY, or TAILS.");
+    return false;
+  }
+
+  switch (sanitizedBackend) {
+  case RectTakeoffBackendType::PUMP:
+    setDetail("Pump backend accepts HEADS, BODY, and TAILS routes.");
+    return true;
+  case RectTakeoffBackendType::VALVE_MULTI:
+    if (!Valves::isProductValveAvailable(fraction)) {
+      setDetail(String("Backend '") + getBackendLabel(sanitizedBackend) +
+                "' does not expose the requested route.");
+      return false;
+    }
+    setDetail("Dedicated product valve is available for the requested route.");
+    return true;
+  case RectTakeoffBackendType::VALVE_SINGLE_SWITCHED:
+    if (!Valves::isFractionatorEnabled()) {
+      setDetail(String("Backend '") + getBackendLabel(sanitizedBackend) +
+                "' requires an enabled fractionator.");
+      return false;
+    }
+    if (!Valves::hasHeadsValve()) {
+      setDetail(String("Backend '") + getBackendLabel(sanitizedBackend) +
+                "' requires the HEADS valve as the shared takeoff channel.");
+      return false;
+    }
+    setDetail("Shared takeoff valve and fractionator route are available.");
+    return true;
+  default:
+    setDetail("Unknown takeoff backend route.");
+    return false;
+  }
+}
+
 const char* getBackendLabel(RectTakeoffBackendType backendType) {
   switch (backendType) {
   case RectTakeoffBackendType::VALVE_MULTI:
@@ -208,8 +276,9 @@ void integrateSessionVolume() {
 
   const uint32_t elapsedMs = now - g_lastVolumeUpdateMs;
   g_lastVolumeUpdateMs = now;
-  if (!g_feedback.backendActive || g_feedback.actualEquivalentRateMlH <= 0.0f ||
-      elapsedMs == 0) {
+  if (!RectTakeoffLogic::shouldIntegrateVolume(
+          g_feedback.backendActive, g_feedback.actualEquivalentRateMlH,
+          elapsedMs)) {
     return;
   }
 
@@ -466,6 +535,10 @@ void apply(const RectTakeoffCommand& command) {
     applyValveSingleSwitchedBackend(command);
     break;
   }
+  g_feedback.requestedEquivalentRateMlH =
+      command.requestedEquivalentRateMlH;
+  g_feedback.rateLimited = command.rateLimited;
+  finalizeFeedback();
 }
 
 void stop() {
@@ -480,16 +553,46 @@ void stop() {
 }
 
 RectTakeoffFeedback getFeedback() { return g_feedback; }
-bool requestFractionRoute(uint8_t routeIndex) {
-  if (routeIndex >= 5 || !Valves::isFractionatorEnabled()) return false;
-  Valves::setFraction(static_cast<Fraction>(routeIndex));
+
+bool requestFractionRoute(RectTakeoffBackendType backendType, uint8_t routeIndex,
+                          String* detail) {
+  const RectTakeoffBackendType sanitizedBackend = sanitizeBackend(backendType);
+  if (!isRouteSupportedByBackend(sanitizedBackend, routeIndex, detail)) {
+    return false;
+  }
+
+  if (sanitizedBackend != RectTakeoffBackendType::VALVE_SINGLE_SWITCHED) {
+    return true;
+  }
+
+  Valves::setFraction(static_cast<Fraction>(routeIndex), true);
+  if (detail != nullptr) {
+    *detail = "Fractionator retarget requested.";
+  }
   return true;
 }
 
-bool isFractionRouteReady(uint8_t routeIndex) {
-  return routeIndex < 5 && Valves::isFractionatorEnabled() &&
-         !Valves::isServoMoving() &&
+bool isFractionRouteReady(RectTakeoffBackendType backendType, uint8_t routeIndex) {
+  const RectTakeoffBackendType sanitizedBackend = sanitizeBackend(backendType);
+  if (!isSupportedRouteIndex(routeIndex)) {
+    return false;
+  }
+  if (sanitizedBackend != RectTakeoffBackendType::VALVE_SINGLE_SWITCHED) {
+    return isRouteSupportedByBackend(sanitizedBackend, routeIndex, nullptr);
+  }
+  return Valves::isFractionatorEnabled() && !Valves::isServoMoving() &&
          static_cast<uint8_t>(Valves::getCurrentFraction()) == routeIndex;
+}
+
+bool isFractionRouteSupported(RectTakeoffBackendType backendType, uint8_t routeIndex,
+                              String* detail) {
+  return isRouteSupportedByBackend(backendType, routeIndex, detail);
+}
+
+bool requiresSafeVent(RectTakeoffBackendType backendType) {
+  const RectTakeoffBackendType sanitizedBackend = sanitizeBackend(backendType);
+  return sanitizedBackend == RectTakeoffBackendType::VALVE_MULTI ||
+         sanitizedBackend == RectTakeoffBackendType::VALVE_SINGLE_SWITCHED;
 }
 
 bool validateBackendConfiguration(RectTakeoffBackendType backendType,

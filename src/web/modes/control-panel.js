@@ -1496,9 +1496,6 @@ function normalizeControlPanelMarkup() {
     }
 
     document.querySelector('#control-panel-manual .controls button[onclick*="toggleValve"]')?.closest('.control-group')?.remove();
-    document.getElementById('dist-start-speed')?.closest('.form-group')?.remove();
-    document.getElementById('dist-start-heads-volume')?.closest('.form-group')?.remove();
-    document.getElementById('dist-start-target-volume')?.closest('.form-group')?.remove();
 
     const holdTitle = document.querySelector('#control-panel-hold .control-subsection-title');
     if (holdTitle) {

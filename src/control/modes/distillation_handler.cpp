@@ -1,4 +1,5 @@
 #include "../fsm_utils.h"
+#include "../fraction_program_logic.h"
 #include "../v2/reason_codes.h"
 #include "../v2/status_adapter.h"
 #include "../rect_takeoff.h"
@@ -46,28 +47,57 @@ const char* getBodyExitMessage(bool endByTemp, bool endByVolume) {
     return "Distillation body end detected";
 }
 
+RectTakeoffBackendType getCurrentTakeoffBackendType(const Settings& settings) {
+    return settings.distillationUi.takeoffBackendType;
+}
+
+float getCurrentTakeoffTotalVolumeMl(const SystemState& state, const Settings& settings) {
+    return getCurrentTakeoffBackendType(settings) == RectTakeoffBackendType::PUMP
+        ? state.pump.totalVolumeMl
+        : RectTakeoff::getFeedback().sessionVolumeMl;
+}
+
+float getCurrentFractionCollectedMl(const SystemState& state, const Settings& settings) {
+    const float collectedMl =
+        getCurrentTakeoffTotalVolumeMl(state, settings) - state.fractionProgram.stepStartVolumeMl;
+    return collectedMl > 0.0f ? collectedMl : 0.0f;
+}
+
+RectTakeoffFraction routeIndexToTakeoffFraction(uint8_t routeIndex) {
+    switch (routeIndex) {
+        case static_cast<uint8_t>(Fraction::HEADS):
+            return RectTakeoffFraction::HEADS;
+        case static_cast<uint8_t>(Fraction::TAILS):
+            return RectTakeoffFraction::TAILS;
+        case static_cast<uint8_t>(Fraction::BODY):
+        default:
+            return RectTakeoffFraction::BODY;
+    }
+}
+
+void applyFractionTakeoff(const Settings& settings, RectTakeoffFraction fraction, float rateMlH) {
+    RectTakeoffCommand command{};
+    command.backendType = getCurrentTakeoffBackendType(settings);
+    command.fraction = fraction;
+    command.equivalentRateMlH = rateMlH;
+    command.enabled = rateMlH > 0.0f;
+    command.fullReflux = !command.enabled;
+    RectTakeoff::apply(command);
+}
 
 } // namespace
 
 bool isFractionProgramEnabled(const Settings& settings) {
+    const RectTakeoffBackendType backendType = getCurrentTakeoffBackendType(settings);
     if (!settings.fractionProgram.enabled || settings.fractionProgram.stepCount == 0 ||
         settings.fractionProgram.stepCount > FRACTION_PROGRAM_MAX_STEPS) return false;
     for (uint8_t index = 0; index < settings.fractionProgram.stepCount; ++index) {
         const FractionProgramStep& step = settings.fractionProgram.steps[index];
         if (step.pumpRateMlH <= 0.0f || step.routeIndex >= 5) return false;
+        if (!RectTakeoff::isFractionRouteSupported(backendType, step.routeIndex, nullptr)) return false;
         if (step.endConditions == FRACTION_PROGRAM_END_NONE && !step.allowManualAdvance) return false;
     }
     return true;
-}
-
-static void applyFractionPump(float rateMlH) {
-    RectTakeoffCommand command{};
-    command.backendType = RectTakeoffBackendType::PUMP;
-    command.fraction = RectTakeoffFraction::BODY;
-    command.equivalentRateMlH = rateMlH;
-    command.enabled = rateMlH > 0.0f;
-    command.fullReflux = !command.enabled;
-    RectTakeoff::apply(command);
 }
 
 static void stopFractionTakeoff() {
@@ -101,45 +131,62 @@ static float getTemperatureByIndex(const TemperatureData& temperatures, uint8_t 
     }
 }
 static FractionProgramEndReason getFractionEndReason(const SystemState& state, const Settings& settings,
-                                                      const FractionProgramStep& step, uint32_t now) {
-    const float collectedMl = state.pump.totalVolumeMl - state.fractionProgram.stepStartVolumeMl;
-    if ((step.endConditions & FRACTION_PROGRAM_END_VOLUME) != 0 && step.endVolumeMl > 0.0f && collectedMl >= step.endVolumeMl) return FRACTION_PROGRAM_REASON_VOLUME;
-    if ((step.endConditions & FRACTION_PROGRAM_END_TIME) != 0 && step.endDurationSec > 0 && now - state.fractionProgram.stepStartedAtMs >= step.endDurationSec * 1000UL) return FRACTION_PROGRAM_REASON_TIME;
-    if ((step.endConditions & FRACTION_PROGRAM_END_TEMPERATURE) != 0 && step.temperatureSensorIndex < TEMP_COUNT && step.endTemperatureC > 0.0f && state.temps.valid[step.temperatureSensorIndex] && getTemperatureByIndex(state.temps, step.temperatureSensorIndex) >= step.endTemperatureC) return FRACTION_PROGRAM_REASON_TEMPERATURE;
-    if ((step.endConditions & FRACTION_PROGRAM_END_LEVEL) != 0 && isBodyLevelReached(settings)) return FRACTION_PROGRAM_REASON_LEVEL;
-    return FRACTION_PROGRAM_REASON_NONE;
-}
-static bool isCurrentFractionFinished(const SystemState& state, const Settings& settings,
-                                      const FractionProgramStep& step, uint32_t now) {
-    const float collectedMl = state.pump.totalVolumeMl - state.fractionProgram.stepStartVolumeMl;
-    const bool byVolume = (step.endConditions & FRACTION_PROGRAM_END_VOLUME) != 0 &&
-                          step.endVolumeMl > 0.0f && collectedMl >= step.endVolumeMl;
-    const bool byTime = (step.endConditions & FRACTION_PROGRAM_END_TIME) != 0 &&
-                        step.endDurationSec > 0 &&
-                        now - state.fractionProgram.stepStartedAtMs >= step.endDurationSec * 1000UL;
-    const bool byTemperature = (step.endConditions & FRACTION_PROGRAM_END_TEMPERATURE) != 0 &&
-                               step.temperatureSensorIndex < TEMP_COUNT &&
-                               step.endTemperatureC > 0.0f &&
-                               state.temps.valid[step.temperatureSensorIndex] &&
-                               getTemperatureByIndex(state.temps, step.temperatureSensorIndex) >= step.endTemperatureC;
-    const bool byLevel = (step.endConditions & FRACTION_PROGRAM_END_LEVEL) != 0 &&
-                         isBodyLevelReached(settings);
-    return byVolume || byTime || byTemperature || byLevel;
+ const FractionProgramStep& step, uint32_t now) {
+ const float collectedMl = getCurrentFractionCollectedMl(state, settings);
+ const bool byVolume = (step.endConditions & FRACTION_PROGRAM_END_VOLUME) != 0 &&
+ step.endVolumeMl > 0.0f && collectedMl >= step.endVolumeMl;
+ const bool byTime = (step.endConditions & FRACTION_PROGRAM_END_TIME) != 0 &&
+ step.endDurationSec > 0 &&
+ now - state.fractionProgram.stepStartedAtMs >= step.endDurationSec * 1000UL;
+ const bool byTemperature = (step.endConditions & FRACTION_PROGRAM_END_TEMPERATURE) != 0 &&
+ step.temperatureSensorIndex < TEMP_COUNT &&
+ step.endTemperatureC > 0.0f &&
+ state.temps.valid[step.temperatureSensorIndex] &&
+ getTemperatureByIndex(state.temps, step.temperatureSensorIndex) >= step.endTemperatureC;
+ const bool byLevel = (step.endConditions & FRACTION_PROGRAM_END_LEVEL) != 0 &&
+ isBodyLevelReached(settings);
+ return static_cast<FractionProgramEndReason>(
+ FractionProgramLogic::selectEndReason(false, byVolume, byTime, byTemperature, byLevel));
 }
 
 static void prepareCurrentFractionStep(SystemState& state, uint32_t now) {
     state.fractionProgram.stepStartedAtMs = now;
-    state.fractionProgram.stepStartVolumeMl = state.pump.totalVolumeMl;
     state.fractionProgram.routingStartedAtMs = 0;
     state.fractionProgram.routing = false;
     state.fractionProgram.waitingForConfirmation = false;
+    state.fractionProgram.manualAdvanceRequested = false;
     state.fractionProgram.confirmationPrompt[0] = '\0';
+}
+
+static void recordCompletedFractionVolume(SystemState& state, uint8_t routeIndex,
+                                          float collectedMl) {
+    if (collectedMl <= 0.0f) return;
+
+    switch (routeIndex) {
+        case static_cast<uint8_t>(Fraction::HEADS):
+        case static_cast<uint8_t>(Fraction::SUBHEADS):
+            state.stats.headsVolume += collectedMl;
+            break;
+        case static_cast<uint8_t>(Fraction::BODY):
+            state.stats.bodyVolume += collectedMl;
+            break;
+        case static_cast<uint8_t>(Fraction::PRETAILS):
+        case static_cast<uint8_t>(Fraction::TAILS):
+            state.stats.tailsVolume += collectedMl;
+            break;
+        default:
+            break;
+    }
 }
 
 static bool beginFractionRouting(SystemState& state, const Settings& settings, uint32_t now) {
     const FractionProgramStep& step = settings.fractionProgram.steps[state.fractionProgram.currentStep];
-    if (!settings.fractionator.enabled || !Valves::isFractionatorEnabled()) return false;
-    Valves::setFraction(static_cast<Fraction>(step.routeIndex));
+    String routingDetail;
+    if (!RectTakeoff::requestFractionRoute(
+            getCurrentTakeoffBackendType(settings), step.routeIndex, &routingDetail)) {
+        LOG_W("Distillation fraction routing rejected: %s", routingDetail.c_str());
+        return false;
+    }
     state.fractionProgram.routing = true;
     state.fractionProgram.routingStartedAtMs = now;
     return true;
@@ -151,7 +198,7 @@ bool confirmFractionProgram(SystemState& state, const Settings& settings) {
     state.fractionProgram.waitingForConfirmation = false;
     state.fractionProgram.confirmationPrompt[0] = '\0';
     if (beginFractionRouting(state, settings, millis())) return true;
-    Pump::stop();
+    stopFractionTakeoff();
     state.fractionProgram.active = false;
     state.rectPhase = RectPhase::FINISH;
     notifyFractionEvent("Fractionator unavailable; collection stopped", "error");
@@ -171,24 +218,26 @@ static void updateFractionProgram(SystemState& state, const Settings& settings, 
     if (!state.fractionProgram.active) {
         state.fractionProgram.active = true;
         state.fractionProgram.currentStep = 0;
+        state.fractionProgram.lastEndReason = FRACTION_PROGRAM_REASON_NONE;
         prepareCurrentFractionStep(state, now);
+        state.fractionProgram.stepStartVolumeMl = getCurrentTakeoffTotalVolumeMl(state, settings);
     }
 
     const FractionProgramStep& step = settings.fractionProgram.steps[state.fractionProgram.currentStep];
     Heater::setPowerWatts(step.heaterPowerW > 0 ? step.heaterPowerW : g_params.powerWatts);
-    if (state.fractionProgram.waitingForConfirmation) { Pump::stop(); return; }
+    if (state.fractionProgram.waitingForConfirmation) { stopFractionTakeoff(); return; }
 
     if (!state.fractionProgram.routing && state.fractionProgram.routingStartedAtMs == 0) {
         if (step.requireOperatorConfirmation) {
             snprintf(state.fractionProgram.confirmationPrompt, sizeof(state.fractionProgram.confirmationPrompt),
                      "%s", step.confirmationPrompt[0] ? step.confirmationPrompt : "Install the collection container and confirm");
             state.fractionProgram.waitingForConfirmation = true;
-            Pump::stop();
+            stopFractionTakeoff();
             notifyFractionEvent(state.fractionProgram.confirmationPrompt, "warning");
             return;
         }
         if (!beginFractionRouting(state, settings, now)) {
-            Pump::stop();
+            stopFractionTakeoff();
             state.fractionProgram.active = false;
             state.rectPhase = RectPhase::FINISH;
             notifyFractionEvent("Fractionator unavailable; collection stopped", "error");
@@ -197,21 +246,48 @@ static void updateFractionProgram(SystemState& state, const Settings& settings, 
     }
 
     if (state.fractionProgram.routing) {
-        Pump::stop();
-        if (!RectTakeoff::isFractionRouteReady(step.routeIndex) || now - state.fractionProgram.routingStartedAtMs < settings.rectParams.routingSettlingMs) return;
+        stopFractionTakeoff();
+        const bool routeReady = RectTakeoff::isFractionRouteReady(
+            getCurrentTakeoffBackendType(settings), step.routeIndex);
+        const uint32_t routingElapsedMs = now - state.fractionProgram.routingStartedAtMs;
+        if (FractionProgramLogic::hasRouteTimedOut(routeReady, routingElapsedMs)) {
+            stopFractionTakeoff();
+            state.fractionProgram.active = false;
+            state.fractionProgram.routing = false;
+            setPhaseStartTime(now);
+            state.rectPhase = RectPhase::FINISH;
+            notifyFractionEvent("Fractionator route timeout; collection stopped", "error");
+            return;
+        }
+        if (!FractionProgramLogic::isRouteSettled(
+                routeReady, routingElapsedMs, settings.rectParams.routingSettlingMs)) return;
         state.fractionProgram.routing = false;
     }
 
-    Pump::start(step.pumpRateMlH);
-    if (!isCurrentFractionFinished(state, settings, step, now)) return;
-    Pump::stop();
+    applyFractionTakeoff(settings, routeIndexToTakeoffFraction(step.routeIndex), step.pumpRateMlH);
+    const FractionProgramEndReason endReason = state.fractionProgram.manualAdvanceRequested
+        ? FRACTION_PROGRAM_REASON_MANUAL
+        : getFractionEndReason(state, settings, step, now);
+    if (endReason == FRACTION_PROGRAM_REASON_NONE) return;
+    stopFractionTakeoff();
+    recordCompletedFractionVolume(state, step.routeIndex,
+                                  getCurrentFractionCollectedMl(state, settings));
+    state.fractionProgram.lastEndReason = endReason;
+    state.fractionProgram.manualAdvanceRequested = false;
     notifyFractionEvent("Fraction completed", "info");
     if (++state.fractionProgram.currentStep >= settings.fractionProgram.stepCount) {
         state.fractionProgram.active = false;
+        setPhaseStartTime(now);
         state.rectPhase = RectPhase::FINISH;
         return;
     }
     prepareCurrentFractionStep(state, now);
+    state.fractionProgram.stepStartVolumeMl = getCurrentTakeoffTotalVolumeMl(state, settings);
+}
+
+void initSession(SystemState& state, const Settings& settings) {
+    RectTakeoff::beginSession(settings);
+    state.fractionProgram = FractionProgramRuntime{};
 }
 
 void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC) {
@@ -269,8 +345,10 @@ void update(SystemState& state, const Settings& settings) {
                 state.temps.valid[heatingSensor] &&
                 getTemperatureByIndex(state.temps, heatingSensor) >= heatingTarget) {
                 setPhaseStartTime(now);
-                setPhaseStartVolumeMl(state.pump.totalVolumeMl);
-                if (g_params.headsVolumeMl > 0.0f) {
+                setPhaseStartVolumeMl(getCurrentTakeoffTotalVolumeMl(state, settings));
+                if (programHeating) {
+                    state.rectPhase = RectPhase::BODY;
+                } else if (g_params.headsVolumeMl > 0.0f) {
                     ControlV2::notePhaseTransition(Mode::DISTILLATION,
                                                    static_cast<uint16_t>(RectPhase::HEATING),
                                                    static_cast<uint16_t>(RectPhase::HEADS),
@@ -294,14 +372,13 @@ void update(SystemState& state, const Settings& settings) {
         case RectPhase::HEADS: {
             applyBoosterHeater(state, settings, false);
             Heater::setPowerWatts(g_params.powerWatts);
-            Pump::start(g_params.speedMlH);
-            Valves::setHeads(true);
-            const float collected = state.pump.totalVolumeMl - getPhaseStartVolumeMl();
+            applyFractionTakeoff(settings, RectTakeoffFraction::HEADS, g_params.speedMlH);
+            const float collected = getCurrentTakeoffTotalVolumeMl(state, settings) - getPhaseStartVolumeMl();
             state.stats.headsVolume = collected;
             if (collected >= g_params.headsVolumeMl) {
-                Valves::setHeads(false);
+                stopFractionTakeoff();
                 setPhaseStartTime(now);
-                setPhaseStartVolumeMl(state.pump.totalVolumeMl);
+                setPhaseStartVolumeMl(getCurrentTakeoffTotalVolumeMl(state, settings));
                 ControlV2::notePhaseTransition(Mode::DISTILLATION,
                                                static_cast<uint16_t>(RectPhase::HEADS),
                                                static_cast<uint16_t>(RectPhase::BODY),
@@ -315,17 +392,26 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::BODY: {
             applyBoosterHeater(state, settings, false);
-            Heater::setPowerWatts(g_params.powerWatts);
-            Valves::setHeads(false);
-            Pump::start(g_params.speedMlH);
-            const float collectedBody = state.pump.totalVolumeMl - getPhaseStartVolumeMl();
+            const bool fractionProgramEnabled = isFractionProgramEnabled(settings);
+            if (fractionProgramEnabled) {
+                updateFractionProgram(state, settings, now);
+            } else {
+                state.fractionProgram = FractionProgramRuntime{};
+                Heater::setPowerWatts(g_params.powerWatts);
+                applyFractionTakeoff(settings, RectTakeoffFraction::BODY, g_params.speedMlH);
+            }
+            if (fractionProgramEnabled) break;
+
+            const float currentTakeoffVolumeMl = getCurrentTakeoffTotalVolumeMl(state, settings);
+            const float collectedBody = currentTakeoffVolumeMl - getPhaseStartVolumeMl();
             state.stats.bodyVolume = collectedBody;
             const bool endByTemp = (g_params.endTempC > 0.0f && state.temps.valid[TEMP_CUBE] && state.temps.cube >= g_params.endTempC);
-            const bool endByVolume = (g_params.targetVolumeMl > 0.0f && state.pump.totalVolumeMl >= g_params.targetVolumeMl);
+            const bool endByVolume = (g_params.targetVolumeMl > 0.0f && currentTakeoffVolumeMl >= g_params.targetVolumeMl);
             if (endByTemp || endByVolume) {
                 const ControlV2::ReasonCodeV2 finishReason =
                     getBodyExitReason(endByTemp, endByVolume);
                 setPhaseStartTime(now);
+                stopFractionTakeoff();
                 ControlV2::notePhaseTransition(
                     Mode::DISTILLATION,
                     static_cast<uint16_t>(RectPhase::BODY),
@@ -341,8 +427,7 @@ void update(SystemState& state, const Settings& settings) {
         case RectPhase::FINISH:
             applyBoosterHeater(state, settings, false);
             Heater::setPower(0);
-            Pump::stop();
-            Valves::setHeads(false);
+            stopFractionTakeoff();
             Valves::setWater(true);
             if (now - startTime > 5 * 60 * 1000UL) {
                 Valves::closeAll();
@@ -365,7 +450,7 @@ void update(SystemState& state, const Settings& settings) {
                 "Recovered distillation phase to body");
             state.rectPhase = RectPhase::BODY;
             setPhaseStartTime(now);
-            setPhaseStartVolumeMl(state.pump.totalVolumeMl);
+            setPhaseStartVolumeMl(getCurrentTakeoffTotalVolumeMl(state, settings));
             break;
     }
 }

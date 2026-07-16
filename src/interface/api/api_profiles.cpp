@@ -125,21 +125,49 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
               profile.parameters.distillation.headsVolume;
           distillation["targetVolume"] =
               profile.parameters.distillation.targetVolume;
+          distillation["tailsVolume"] =
+              profile.parameters.distillation.tailsVolume;
           distillation["speed"] = profile.parameters.distillation.speed;
           distillation["endTemp"] = profile.parameters.distillation.endTemp;
-          JsonObject fractionProgram = distillation["fractionProgram"].to<JsonObject>();
-          fractionProgram["schemaVersion"] = profile.parameters.distillation.fractionProgram.schemaVersion;
-          fractionProgram["enabled"] = profile.parameters.distillation.fractionProgram.enabled;
-          fractionProgram["stepCount"] = profile.parameters.distillation.fractionProgram.stepCount;
+          distillation["takeoffBackendType"] = static_cast<uint8_t>(
+              profile.parameters.distillation.takeoffBackendType);
+          distillation["valveSafeVentConfirmed"] =
+              profile.parameters.distillation.valveSafeVentConfirmed;
+          JsonObject fractionProgram =
+              distillation["fractionProgram"].to<JsonObject>();
+          fractionProgram["schemaVersion"] =
+              profile.parameters.distillation.fractionProgram.schemaVersion;
+          fractionProgram["enabled"] =
+              profile.parameters.distillation.fractionProgram.enabled;
+          fractionProgram["stepCount"] =
+              profile.parameters.distillation.fractionProgram.stepCount;
+          fractionProgram["heatingTemperatureSensorIndex"] =
+              profile.parameters.distillation.fractionProgram
+                  .heatingTemperatureSensorIndex;
+          fractionProgram["heatingTargetTemperatureC"] =
+              profile.parameters.distillation.fractionProgram
+                  .heatingTargetTemperatureC;
           JsonArray fractionSteps = fractionProgram["steps"].to<JsonArray>();
-          for (uint8_t index = 0; index < profile.parameters.distillation.fractionProgram.stepCount; ++index) {
-            const FractionProgramStep &step = profile.parameters.distillation.fractionProgram.steps[index];
+          for (uint8_t index = 0;
+               index < profile.parameters.distillation.fractionProgram.stepCount &&
+               index < FRACTION_PROGRAM_MAX_STEPS;
+               ++index) {
+            const FractionProgramStep &step =
+                profile.parameters.distillation.fractionProgram.steps[index];
             JsonObject item = fractionSteps.add<JsonObject>();
-            item["name"] = step.name; item["routeIndex"] = step.routeIndex;
-            item["pumpRateMlH"] = step.pumpRateMlH; item["heaterPowerW"] = step.heaterPowerW;
-            item["endConditions"] = step.endConditions; item["endVolumeMl"] = step.endVolumeMl;
-            item["endDurationSec"] = step.endDurationSec; item["temperatureSensorIndex"] = step.temperatureSensorIndex;
-            item["endTemperatureC"] = step.endTemperatureC; item["allowManualAdvance"] = step.allowManualAdvance;
+            item["name"] = step.name;
+            item["routeIndex"] = step.routeIndex;
+            item["pumpRateMlH"] = step.pumpRateMlH;
+            item["heaterPowerW"] = step.heaterPowerW;
+            item["requireOperatorConfirmation"] =
+                step.requireOperatorConfirmation;
+            item["confirmationPrompt"] = step.confirmationPrompt;
+            item["endConditions"] = step.endConditions;
+            item["endVolumeMl"] = step.endVolumeMl;
+            item["endDurationSec"] = step.endDurationSec;
+            item["temperatureSensorIndex"] = step.temperatureSensorIndex;
+            item["endTemperatureC"] = step.endTemperatureC;
+            item["allowManualAdvance"] = step.allowManualAdvance;
           }
 
           JsonObject mashing = parameters["mashing"].to<JsonObject>();
@@ -513,27 +541,75 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
             if (!distillation["targetVolume"].isNull())
               profile.parameters.distillation.targetVolume = clampU16Range(
                   distillation["targetVolume"].as<uint32_t>(), 1, 50000);
+            if (!distillation["tailsVolume"].isNull())
+              profile.parameters.distillation.tailsVolume = clampU16Range(
+                  distillation["tailsVolume"].as<uint32_t>(), 0, 50000);
             if (!distillation["speed"].isNull())
               profile.parameters.distillation.speed = clampU16Range(
                   distillation["speed"].as<uint32_t>(), 50, 65000);
             if (!distillation["endTemp"].isNull())
               profile.parameters.distillation.endTemp = clampFloatRange(
                   distillation["endTemp"].as<float>(), 50.0f, 110.0f);
+            if (!distillation["takeoffBackendType"].isNull())
+              profile.parameters.distillation.takeoffBackendType =
+                  static_cast<RectTakeoffBackendType>(clampU8Range(
+                      distillation["takeoffBackendType"].as<uint32_t>(), 0,
+                      static_cast<uint8_t>(
+                          RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
+            if (!distillation["valveSafeVentConfirmed"].isNull())
+              profile.parameters.distillation.valveSafeVentConfirmed =
+                  distillation["valveSafeVentConfirmed"].as<bool>();
             if (distillation["fractionProgram"].is<JsonObject>()) {
-              JsonObject programJson = distillation["fractionProgram"].as<JsonObject>();
-              FractionProgram program{};
-              program.enabled = programJson["enabled"] | false;
-              for (JsonObject item : programJson["steps"].as<JsonArray>()) {
-                if (program.stepCount >= FRACTION_PROGRAM_MAX_STEPS) break;
-                FractionProgramStep &step = program.steps[program.stepCount++];
-                step.routeIndex = clampU8Range(item["routeIndex"] | 0, 0, 4);
-                step.pumpRateMlH = clampFloatRange(item["pumpRateMlH"] | 0.0f, 0.0f, 65000.0f);
-                step.endConditions = static_cast<uint8_t>(item["endConditions"] | 0);
-                step.endVolumeMl = item["endVolumeMl"] | 0.0f;
-                step.endDurationSec = item["endDurationSec"] | 0UL;
-                step.temperatureSensorIndex = clampU8Range(item["temperatureSensorIndex"] | 0, 0, TEMP_COUNT - 1);
-                step.endTemperatureC = item["endTemperatureC"] | 0.0f;
-                step.allowManualAdvance = item["allowManualAdvance"] | false;
+              JsonObject programJson =
+                  distillation["fractionProgram"].as<JsonObject>();
+              FractionProgram program =
+                  profile.parameters.distillation.fractionProgram;
+              program.stepCount = 0;
+              program.schemaVersion = clampU16Range(
+                  programJson["schemaVersion"] | program.schemaVersion, 0,
+                  65535);
+              program.enabled = programJson["enabled"] | program.enabled;
+              program.heatingTemperatureSensorIndex = clampU8Range(
+                  programJson["heatingTemperatureSensorIndex"] |
+                      program.heatingTemperatureSensorIndex,
+                  0, TEMP_COUNT - 1);
+              program.heatingTargetTemperatureC = clampFloatRange(
+                  programJson["heatingTargetTemperatureC"] |
+                      program.heatingTargetTemperatureC,
+                  0.0f, 110.0f);
+              if (programJson["steps"].is<JsonArray>()) {
+                for (JsonObject item : programJson["steps"].as<JsonArray>()) {
+                  if (program.stepCount >= FRACTION_PROGRAM_MAX_STEPS)
+                    break;
+                  FractionProgramStep &step =
+                      program.steps[program.stepCount++];
+                  strlcpy(step.name, item["name"] | "", sizeof(step.name));
+                  step.routeIndex =
+                      clampU8Range(item["routeIndex"] | 0, 0, 4);
+                  step.pumpRateMlH = clampFloatRange(
+                      item["pumpRateMlH"] | 0.0f, 0.0f, 65000.0f);
+                  step.heaterPowerW = clampFloatRange(
+                      item["heaterPowerW"] | 0.0f, 0.0f, 10000.0f);
+                  step.requireOperatorConfirmation =
+                      item["requireOperatorConfirmation"] | false;
+                  strlcpy(step.confirmationPrompt,
+                          item["confirmationPrompt"] | "",
+                          sizeof(step.confirmationPrompt));
+                  step.endConditions =
+                      static_cast<uint8_t>(clampU8Range(
+                          item["endConditions"] | 0, 0, 255));
+                  step.endVolumeMl = clampFloatRange(
+                      item["endVolumeMl"] | 0.0f, 0.0f, 50000.0f);
+                  step.endDurationSec =
+                      static_cast<uint32_t>(min<uint64_t>(
+                          item["endDurationSec"] | 0ULL, 864000ULL));
+                  step.temperatureSensorIndex = clampU8Range(
+                      item["temperatureSensorIndex"] | 0, 0, TEMP_COUNT - 1);
+                  step.endTemperatureC = clampFloatRange(
+                      item["endTemperatureC"] | 0.0f, 0.0f, 110.0f);
+                  step.allowManualAdvance =
+                      item["allowManualAdvance"] | false;
+                }
               }
               profile.parameters.distillation.fractionProgram = program;
             }

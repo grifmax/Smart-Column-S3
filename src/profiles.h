@@ -68,8 +68,11 @@ struct RectificationParams {
 struct DistillationParams {
     uint16_t headsVolume;
     uint16_t targetVolume;
+    uint16_t tailsVolume = 0;
     uint16_t speed;
     float endTemp;
+    RectTakeoffBackendType takeoffBackendType = RectTakeoffBackendType::PUMP;
+    bool valveSafeVentConfirmed = false;
     FractionProgram fractionProgram;
 };
 

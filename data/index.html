@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 
 <head>
@@ -1122,9 +1122,50 @@
                                             <div class="control-subsection">
                                                 <div class="control-subsection-title">Параметры дистилляции</div>
                                                 <div class="control-form-grid">
-                                                      <div class="form-group">
-                                                         <label for="dist-start-end-temp">Температура окончания,
-                                                              °C</label>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-preset">Программа отбора</label>
+                                                        <select id="dist-start-preset">
+                                                            <option value="raw-spirit">Спирт-сырец</option>
+                                                            <option value="heads-body">Головы + тело</option>
+                                                            <option value="heads-body-tails">Головы + тело + хвосты</option>
+                                                            <option value="custom">Произвольные фракции</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-speed">Скорость отбора, мл/ч</label>
+                                                        <input type="number" id="dist-start-speed" min="0" max="65000"
+                                                            step="10" value="500">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-heads-volume">Головы, мл</label>
+                                                        <input type="number" id="dist-start-heads-volume" min="0" max="50000"
+                                                            step="10" value="0">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-target-volume">Тело, мл</label>
+                                                        <input type="number" id="dist-start-target-volume" min="0" max="50000"
+                                                            step="10" value="0">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-tails-volume">Хвосты, мл</label>
+                                                        <input type="number" id="dist-start-tails-volume" min="0" max="50000"
+                                                            step="10" value="0">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-takeoff-backend">Исполнитель отбора</label>
+                                                        <select id="dist-start-takeoff-backend">
+                                                            <option value="0">Насос</option>
+                                                            <option value="1">3 клапана по фракциям</option>
+                                                            <option value="2">1 клапан + переключение</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="form-group control-checkbox-field">
+                                                        <label for="dist-start-safe-vent-confirmed">Подтверждаю безопасный сброс в атмосферу</label>
+                                                        <input type="checkbox" id="dist-start-safe-vent-confirmed">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-end-temp">Температура окончания,
+                                                            °C</label>
                                                         <input type="number" id="dist-start-end-temp" min="70" max="110"
                                                             step="0.1" value="96">
                                                     </div>

@@ -172,6 +172,11 @@ function renderRectTakeoffDetails(container, rectification) {
     const activeValve = Math.round(toFinite(rectification?.takeoffActiveValve, 0));
     const actualDuty = Math.round(toFinite(rectification?.takeoffActualDuty, 0));
     const actualRate = Math.max(0, toFinite(rectification?.takeoffActualEquivalentRateMlH, 0));
+    const requestedRate = Math.max(0, toFinite(
+        rectification?.takeoffRequestedEquivalentRateMlH,
+        actualRate
+    ));
+    const rateLimited = Boolean(rectification?.takeoffRateLimited);
 
     const requestedLabel = getRectTakeoffFractionLabel(requestedFraction);
     const routedLabel = getRectTakeoffFractionLabel(
@@ -185,6 +190,9 @@ function renderRectTakeoffDetails(container, rectification) {
         : (routedFraction > 0 ? routedLabel : requestedLabel);
     const dutyLabel = getRectTakeoffDutyLabel(backendType, actualDuty, backendActive, requestedFraction);
     const equivalentRateLabel = `${actualRate.toFixed(0)} мл/ч`;
+    const requestedRateLabel = rateLimited
+        ? `${requestedRate.toFixed(0)} мл/ч → ограничено до ${actualRate.toFixed(0)} мл/ч`
+        : `${requestedRate.toFixed(0)} мл/ч`;
     const stateLabel = backendActive
         ? `отбор открыт${actualRate > 0 ? ` • ${actualRate.toFixed(0)} мл/ч` : ''}`
         : requestedFraction > 0
@@ -197,6 +205,7 @@ function renderRectTakeoffDetails(container, rectification) {
         { label: 'Маршрут', value: routeLabel },
         { label: 'Статус', value: stateLabel },
         { label: 'Duty / импульс', value: dutyLabel },
+        { label: 'Запрошенная скорость', value: requestedRateLabel },
         { label: 'Эквив. скорость', value: equivalentRateLabel },
         { label: 'Активная фракция', value: activeLabel },
         { label: 'Активный клапан', value: activeValveLabel },

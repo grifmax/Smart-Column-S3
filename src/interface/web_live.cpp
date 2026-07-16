@@ -186,6 +186,9 @@ void broadcastState(const SystemState &state) {
   fastRect["takeoffRoutingReady"] = fastTakeoffFeedback.routingReady;
   fastRect["takeoffActualEquivalentRateMlH"] =
       fastTakeoffFeedback.actualEquivalentRateMlH;
+  fastRect["takeoffRequestedEquivalentRateMlH"] =
+      fastTakeoffFeedback.requestedEquivalentRateMlH;
+  fastRect["takeoffRateLimited"] = fastTakeoffFeedback.rateLimited;
   fastRect["takeoffActualDuty"] = fastTakeoffFeedback.actualDuty;
   fastRect["takeoffSessionVolumeMl"] = fastTakeoffFeedback.sessionVolumeMl;
   fastRect["takeoffRequestedFraction"] =
@@ -354,6 +357,9 @@ void broadcastState(const SystemState &state) {
   rect["takeoffRoutingReady"] = takeoffFeedback.routingReady;
   rect["takeoffActualEquivalentRateMlH"] =
       takeoffFeedback.actualEquivalentRateMlH;
+  rect["takeoffRequestedEquivalentRateMlH"] =
+      takeoffFeedback.requestedEquivalentRateMlH;
+  rect["takeoffRateLimited"] = takeoffFeedback.rateLimited;
   rect["takeoffActualDuty"] = takeoffFeedback.actualDuty;
   rect["takeoffSessionVolumeMl"] = takeoffFeedback.sessionVolumeMl;
   rect["takeoffRequestedFraction"] =
@@ -408,6 +414,18 @@ void broadcastState(const SystemState &state) {
   distillation["targetVolumeMl"] = distTargetVolumeMl;
   distillation["endTempC"] = distEndTempC;
   distillation["powerW"] = distPowerWatts;
+  distillation["takeoffBackendType"] =
+      static_cast<uint8_t>(g_settings.distillationUi.takeoffBackendType);
+  distillation["valveSafeVentConfirmed"] =
+      g_settings.distillationUi.valveSafeVentConfirmed;
+  distillation["tailsVolumeMl"] = g_settings.distillationUi.tailsVolumeMl;
+  JsonObject distillationFractionProgram =
+      distillation["fractionProgram"].to<JsonObject>();
+  fillFractionProgramJson(distillationFractionProgram,
+                          g_settings.fractionProgram);
+  JsonObject fractionProgramRuntime = doc["fractionProgram"].to<JsonObject>();
+  fillFractionProgramRuntimeJson(fractionProgramRuntime, state, g_settings,
+                                 takeoffFeedback);
   if (g_settings.equipment.heaterPowerW > 0) {
     distillation["powerPercent"] =
         static_cast<uint8_t>((static_cast<uint32_t>(distPowerWatts) * 100U +
