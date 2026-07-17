@@ -116,7 +116,7 @@
 - [x] Поддержка lite-конфигураций датчиков как законченного пользовательского контура.
 - [x] Независимое аварийное реле нагрева: заложен опциональный compile-time канал и safety cut-off; GPIO и полярность задаются при подключении аппаратного реле.
 - [x] Опциональные датчики паров спирта и протечки: leak-контур ADS1115 A3 работает в safety runtime, vapor GPIO-каналы доступны как отключаемая compile-time опция.
-- [ ] Уровни автономности `manual` / `guided` / `adaptive` / `full-auto`.
+- [x] Уровни автономности `manual` / `guided` / `adaptive` / `full-auto`: enum/NVS/API/UI/preflight. `manual` и `guided` отключают adaptive corrections, `adaptive` и `full-auto` разрешают их только при штатных safety-выходах. Безопасность и preflight обязательны для всех уровней.
 
 ### Cloud / community
 

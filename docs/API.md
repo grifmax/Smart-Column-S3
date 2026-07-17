@@ -81,6 +81,8 @@
 Также возвращает topology-aware блоки для температурной комплектации:
 - `temperatureTopology.cube`, `columnBottom`, `columnTop`, `reflux`, `tsa`, `waterIn`, `waterOut`
 - `temperatureTopology.installedCount`
+- `autonomyLevel`: `manual`, `guided`, `adaptive` or `full-auto`
+- `autonomyLevelCode`: numeric enum value (`0`..`3`)
 - `supportedModes.rectification|manualRect|distillation|nbk|mashing|hold|fermentation`
 - для каждого `supportedModes.*`: `supported`, `reason`
 

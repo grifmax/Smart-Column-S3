@@ -197,6 +197,23 @@ function syncTemperatureTopologyUi(equipment = {}) {
     }
 }
 
+function syncAutonomyUi(equipment = {}) {
+    const select = document.getElementById('autonomy-level');
+    const level = ['manual', 'guided', 'adaptive', 'full-auto'].includes(String(equipment.autonomyLevel))
+        ? String(equipment.autonomyLevel)
+        : 'guided';
+    if (select) select.value = level;
+    const hint = document.getElementById('autonomy-level-hint');
+    if (hint) {
+        hint.textContent = {
+            manual: 'Adaptive-коррекция отключена: решения по процессу остаются у оператора.',
+            guided: 'Автоматика работает, но операторские подтверждения и ручные шаги сохраняются.',
+            adaptive: 'Разрешены Smart Decrement и автокоррекция при достаточной телеметрии.',
+            'full-auto': 'Разрешена максимальная автономность; safety и preflight остаются обязательными.'
+        }[level];
+    }
+}
+
 function syncTemperatureBusUi(equipment = {}) {
     const enabled = Boolean(equipment.useDs2482ForTemps);
     const address = clamp(equipment.ds2482Address, 24, 27, 24);
@@ -967,6 +984,7 @@ export async function loadEquipmentSettings() {
         setInputValue('booster-heater-stop-cube-temp', clamp(data.boosterHeaterStopCubeTempC, 20, 100, 78).toFixed(1));
         setCheckboxValue('temp-bus-use-ds2482', Boolean(data.useDs2482ForTemps));
         setInputValue('temp-bus-ds2482-address', String(clamp(data.ds2482Address, 24, 27, 24)));
+        syncAutonomyUi(data);
 
         runtimeMonitorState.equipment = {
             ...runtimeMonitorState.equipment,
@@ -999,6 +1017,9 @@ export async function loadEquipmentSettings() {
             leakSensorEnabled: Boolean(data.leakSensorEnabled),
             leakThresholdV: clamp(data.leakThresholdV, 0, 4.096, 1.5),
             leakTriggerAbove: data.leakTriggerAbove !== false,
+            autonomyLevel: ['manual', 'guided', 'adaptive', 'full-auto'].includes(String(data.autonomyLevel))
+                ? String(data.autonomyLevel)
+                : 'guided',
             pzem: data.pzem && typeof data.pzem === 'object'
                 ? { ...data.pzem }
                 : (runtimeMonitorState.equipment?.pzem || {}),
@@ -1075,6 +1096,9 @@ export async function saveEquipment() {
     const leakSensorEnabled = getCheckboxValue('leak-sensor-enabled', false);
     const leakThresholdV = clamp(getInputValue('leak-threshold-v', 1.5), 0, 4.096, 1.5);
     const leakTriggerAbove = getCheckboxValue('leak-trigger-above', true);
+    const autonomyLevel = ['manual', 'guided', 'adaptive', 'full-auto'].includes(
+        String(document.getElementById('autonomy-level')?.value)
+    ) ? String(document.getElementById('autonomy-level').value) : 'guided';
     const temperatureTopology = TEMPERATURE_TOPOLOGY_FIELDS.reduce((acc, field) => {
         acc[field.key] = getCheckboxValue(field.id, DEFAULT_TEMPERATURE_TOPOLOGY[field.key]);
         return acc;
@@ -1131,6 +1155,7 @@ export async function saveEquipment() {
                 leakSensorEnabled,
                 leakThresholdV,
                 leakTriggerAbove,
+                autonomyLevel,
                 temperatureTopology
             })
         });
@@ -1167,12 +1192,14 @@ export async function saveEquipment() {
             leakSensorEnabled,
             leakThresholdV,
             leakTriggerAbove,
+            autonomyLevel,
             temperatureTopology: normalizeTemperatureTopology(
                 result.temperatureTopology || temperatureTopology
             ),
             supportedModes: normalizeSupportedModes(result.supportedModes)
         };
         syncTemperatureTopologyUi(runtimeMonitorState.equipment);
+        syncAutonomyUi(runtimeMonitorState.equipment);
         syncTemperatureBusUi(runtimeMonitorState.equipment);
         window.renderControlStartState?.();
         window.loadProfilesList?.();

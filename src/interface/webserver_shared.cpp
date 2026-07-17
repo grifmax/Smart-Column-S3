@@ -1255,6 +1255,11 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
   setProcessPreflightCheck(checks, "alarm", alarmActive ? "Активна" : "Нет",
                            alarmActive ? "danger" : "good");
 
+  const char *autonomyLevel = autonomyLevelToString(g_settings.autonomyLevel);
+  setProcessPreflightCheck(
+      checks, "autonomy", autonomyLevel,
+      g_settings.autonomyLevel == AutonomyLevel::MANUAL ? "warn" : "good");
+
   setProcessPreflightCheck(
       checks, "profile",
       recipeProfileRelevant
@@ -1369,6 +1374,30 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
   } else {
     addItem("alarm", "good", "Активная авария",
             "Активных аварий сейчас нет.", false);
+  }
+
+  switch (g_settings.autonomyLevel) {
+    case AutonomyLevel::MANUAL:
+      addItem("autonomy", "warn", "Autonomy: manual",
+              "Adaptive corrections are disabled; the base process FSM and all safety cut-offs remain active.",
+              false);
+      break;
+    case AutonomyLevel::GUIDED:
+      addItem("autonomy", "good", "Autonomy: guided",
+              "Automation is available with operator confirmations; safety and preflight remain mandatory.",
+              false);
+      break;
+    case AutonomyLevel::ADAPTIVE:
+      addItem("autonomy", "good", "Autonomy: adaptive",
+              "Adaptive corrections are enabled when telemetry and decision trust pass their safety gates.",
+              false);
+      break;
+    case AutonomyLevel::FULL_AUTO:
+    default:
+      addItem("autonomy", "good", "Autonomy: full-auto",
+              "Maximum adaptive autonomy is enabled; safety, preflight and actuator guards remain mandatory.",
+              false);
+      break;
   }
 
   if (!loggingReady) {
@@ -1944,6 +1973,8 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
   const bool ready = blockingCount == 0;
   doc["success"] = true;
   doc["mode"] = modeStr;
+  doc["autonomyLevel"] = autonomyLevel;
+  doc["autonomyLevelCode"] = static_cast<uint8_t>(g_settings.autonomyLevel);
   doc["ready"] = ready;
   doc["blockingCount"] = blockingCount;
   doc["warningCount"] = warningCount;
@@ -3269,6 +3300,8 @@ void init() {
     doc["leakSensorEnabled"] = g_settings.equipment.leakSensorEnabled;
     doc["leakThresholdV"] = g_settings.equipment.leakThresholdV;
     doc["leakTriggerAbove"] = g_settings.equipment.leakTriggerAbove;
+    doc["autonomyLevel"] = autonomyLevelToString(g_settings.autonomyLevel);
+    doc["autonomyLevelCode"] = static_cast<uint8_t>(g_settings.autonomyLevel);
     JsonObject temperatureTopology = doc["temperatureTopology"].to<JsonObject>();
     fillTemperatureTopologyJson(temperatureTopology, g_settings.equipment);
     JsonObject supportedModes = doc["supportedModes"].to<JsonObject>();
@@ -3468,6 +3501,15 @@ void init() {
           g_settings.equipment.leakTriggerAbove =
               doc["leakTriggerAbove"].as<bool>();
         }
+        if (!doc["autonomyLevel"].isNull()) {
+          g_settings.autonomyLevel = autonomyLevelFromString(
+              doc["autonomyLevel"].as<const char*>());
+        } else if (!doc["autonomyLevelCode"].isNull()) {
+          g_settings.autonomyLevel = static_cast<AutonomyLevel>(constrain(
+              doc["autonomyLevelCode"].as<uint8_t>(),
+              static_cast<uint8_t>(AutonomyLevel::MANUAL),
+              static_cast<uint8_t>(AutonomyLevel::FULL_AUTO)));
+        }
         if (doc["temperatureTopology"].is<JsonObject>()) {
           JsonObject topology = doc["temperatureTopology"].as<JsonObject>();
           if (!topology["cube"].isNull()) {
@@ -3512,6 +3554,8 @@ void init() {
 
         JsonDocument resp;
         resp["success"] = true;
+        resp["autonomyLevel"] = autonomyLevelToString(g_settings.autonomyLevel);
+        resp["autonomyLevelCode"] = static_cast<uint8_t>(g_settings.autonomyLevel);
         resp["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
         resp["ds2482Address"] = g_settings.equipment.ds2482Address;
         JsonObject temperatureTopology = resp["temperatureTopology"].to<JsonObject>();

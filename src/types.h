@@ -738,6 +738,33 @@ enum class DisplayRefreshProfile : uint8_t {
   FAST = 2    // 500ms
 };
 
+enum class AutonomyLevel : uint8_t {
+  MANUAL = 0,
+  GUIDED = 1,
+  ADAPTIVE = 2,
+  FULL_AUTO = 3,
+};
+
+inline const char* autonomyLevelToString(AutonomyLevel level) {
+  switch (level) {
+    case AutonomyLevel::MANUAL: return "manual";
+    case AutonomyLevel::GUIDED: return "guided";
+    case AutonomyLevel::ADAPTIVE: return "adaptive";
+    case AutonomyLevel::FULL_AUTO: return "full-auto";
+    default: return "guided";
+  }
+}
+
+inline AutonomyLevel autonomyLevelFromString(const char* value) {
+  if (value == nullptr) return AutonomyLevel::GUIDED;
+  if (strcmp(value, "manual") == 0) return AutonomyLevel::MANUAL;
+  if (strcmp(value, "adaptive") == 0) return AutonomyLevel::ADAPTIVE;
+  if (strcmp(value, "full-auto") == 0 || strcmp(value, "full_auto") == 0) {
+    return AutonomyLevel::FULL_AUTO;
+  }
+  return AutonomyLevel::GUIDED;
+}
+
 // Настройки дисплея
 struct DisplaySettings {
   bool enabled = true;      // Включен ли дисплей
@@ -781,6 +808,7 @@ struct Settings {
   uint32_t rebootCountCrash = 0;
   uint32_t rebootCountUser = 0;
   bool demoMode = false; // Демо-режим (симуляция данных)
+  AutonomyLevel autonomyLevel = AutonomyLevel::GUIDED;
 };
 
 // Глобальные переменные

@@ -212,6 +212,11 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
             break;
     }
 
+    if (settings.autonomyLevel == AutonomyLevel::MANUAL ||
+        settings.autonomyLevel == AutonomyLevel::GUIDED) {
+        out.adaptiveControlAllowed = false;
+    }
+
     out.decisionTrust = clamp01(out.telemetryCoverage * freshnessConfidence);
     if ((state.mode == Mode::RECTIFICATION || state.mode == Mode::MANUAL_RECT) &&
         (!out.pressureSensorAvailable || !out.columnSensorsAvailable)) {

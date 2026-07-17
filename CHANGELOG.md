@@ -7,6 +7,11 @@
 
 ---
 
+## [2.4.85] - 2026-07-17
+
+### Added
+- Добавлены уровни автономности `manual`, `guided`, `adaptive` и `full-auto`: настройка хранится в NVS, доступна через equipment API/UI и отражается в process preflight. `manual`/`guided` отключают adaptive corrections, при этом базовая FSM-логика и safety cut-offs остаются активными. (codex)
+
 ## [2.4.80] - 2026-07-17
 
 ### Fixed

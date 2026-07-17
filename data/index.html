@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.84">
+    <link rel="stylesheet" href="style.css?v=2.4.85">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.84" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.85" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -2183,6 +2183,16 @@
                                         <label>Топология термодатчиков</label>
                                         <div class="info-display equipment-info-box" id="temp-topology-summary">Загрузка топологии...</div>
                                         <small id="temp-topology-hint" class="equipment-hint">Отметьте только реально установленные температурные роли.</small>
+                                        <div class="form-group" style="margin-top: 12px; max-width: 420px;">
+                                            <label for="autonomy-level">Уровень автономности</label>
+                                            <select id="autonomy-level">
+                                                <option value="manual">Manual — только ручные решения</option>
+                                                <option value="guided" selected>Guided — автоматика с подтверждениями</option>
+                                                <option value="adaptive">Adaptive — автокоррекция по indicators</option>
+                                                <option value="full-auto">Full-auto — максимальная автономность</option>
+                                            </select>
+                                            <small id="autonomy-level-hint" class="equipment-hint">По умолчанию автоматика работает с операторскими подтверждениями.</small>
+                                        </div>
                                         <div class="equipment-grid" style="margin-top: 12px;">
                                             <div class="form-group control-checkbox-field equipment-checkbox-field">
                                                 <label for="temp-topology-cube">Куб</label>
@@ -3764,7 +3774,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.84"></script>
+    <script src="app.js?v=2.4.85"></script>
 </body>
 
 </html>

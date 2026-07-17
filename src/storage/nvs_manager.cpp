@@ -659,6 +659,12 @@ bool loadSettings(Settings& settings) {
     settings.rebootCountWdt = prefs.getUInt(NVS_KEY_REBOOT_WDT, 0);
     settings.rebootCountCrash = prefs.getUInt(NVS_KEY_REBOOT_CRASH, 0);
     settings.rebootCountUser = prefs.getUInt(NVS_KEY_REBOOT_USER, 0);
+    settings.autonomyLevel = static_cast<AutonomyLevel>(
+        constrain(prefs.getUChar(
+                      NVS_KEY_AUTONOMY_LEVEL,
+                      static_cast<uint8_t>(AutonomyLevel::GUIDED)),
+                  static_cast<uint8_t>(AutonomyLevel::MANUAL),
+                  static_cast<uint8_t>(AutonomyLevel::FULL_AUTO)));
 
     prefs.end();
 
@@ -866,6 +872,8 @@ bool saveSettings(const Settings& settings) {
     prefs.putUInt(NVS_KEY_REBOOT_WDT, settings.rebootCountWdt);
     prefs.putUInt(NVS_KEY_REBOOT_CRASH, settings.rebootCountCrash);
     prefs.putUInt(NVS_KEY_REBOOT_USER, settings.rebootCountUser);
+    prefs.putUChar(NVS_KEY_AUTONOMY_LEVEL,
+                   static_cast<uint8_t>(settings.autonomyLevel));
 
     prefs.end();
     LOG_I("NVS: Settings saved");
