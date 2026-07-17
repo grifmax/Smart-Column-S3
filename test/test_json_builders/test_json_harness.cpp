@@ -3,6 +3,7 @@
 
 #include <string>
 #include <../../src/control/fraction_program_logic.h>
+#include <../../src/control/equipment_testing_logic.h>
 #include <../../src/control/rect_takeoff_logic.h>
 
 #include "../support/json_assertions.h"
@@ -42,6 +43,8 @@ void test_autonomous_pause_uses_full_reflux();
 void test_autonomous_pause_does_not_integrate_volume();
 void test_pump_backend_gate_handles_rate_and_periodic_pause();
 void test_valve_backend_gate_requires_route_and_safety_ready();
+void test_safety_proof_guard_blocks_unsafe_states();
+void test_safety_proof_guard_allows_only_idle_safe_hardware();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -59,6 +62,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_autonomous_pause_does_not_integrate_volume);
   RUN_TEST(test_pump_backend_gate_handles_rate_and_periodic_pause);
   RUN_TEST(test_valve_backend_gate_requires_route_and_safety_ready);
+  RUN_TEST(test_safety_proof_guard_blocks_unsafe_states);
+  RUN_TEST(test_safety_proof_guard_allows_only_idle_safe_hardware);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>
@@ -206,4 +211,37 @@ void test_valve_backend_gate_requires_route_and_safety_ready() {
   TEST_ASSERT_FALSE(RectTakeoffLogic::shouldRunBackend(false, true, 600.0f, false, true));
   TEST_ASSERT_TRUE(RectTakeoffLogic::shouldRunBackend(true, true, 600.0f, false, true));
   TEST_ASSERT_FALSE(RectTakeoffLogic::shouldRunBackend(true, false, 600.0f, true, true));
+}
+
+void test_safety_proof_guard_blocks_unsafe_states() {
+  using EquipmentTestingLogic::BlockReason;
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(BlockReason::PROCESS_ACTIVE),
+      static_cast<uint8_t>(EquipmentTestingLogic::evaluateGuard(
+          true, false, false, true, false)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(BlockReason::SAFETY_LATCHED),
+      static_cast<uint8_t>(EquipmentTestingLogic::evaluateGuard(
+          false, true, false, true, false)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(BlockReason::ALARM_ACTIVE),
+      static_cast<uint8_t>(EquipmentTestingLogic::evaluateGuard(
+          false, false, true, true, false)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(BlockReason::SAFETY_NOT_OK),
+      static_cast<uint8_t>(EquipmentTestingLogic::evaluateGuard(
+          false, false, false, false, false)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(BlockReason::DEMO_MODE),
+      static_cast<uint8_t>(EquipmentTestingLogic::evaluateGuard(
+          false, false, false, true, true)));
+}
+
+void test_safety_proof_guard_allows_only_idle_safe_hardware() {
+  TEST_ASSERT_FALSE(EquipmentTestingLogic::isBlocked(
+      false, false, false, true, false));
+  TEST_ASSERT_TRUE(EquipmentTestingLogic::isBlocked(
+      true, false, false, true, false));
+  TEST_ASSERT_TRUE(EquipmentTestingLogic::isBlocked(
+      false, false, false, true, true));
 }

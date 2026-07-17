@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "config.h"
+#include "control/equipment_testing_logic.h"
 #include "control/safety.h"
 #include "control/v2/reason_codes.h"
 #include "drivers/heater.h"
@@ -120,28 +121,38 @@ static void recordEquipmentTestingAction(const char *tone, const char *title,
 }
 
 static bool isEquipmentTestingBlocked(char *reason, size_t reasonSize) {
-  if (g_state.mode != Mode::IDLE) {
-    snprintf(reason, reasonSize, "Тестирование доступно только в режиме простоя");
-    return true;
+  const EquipmentTestingLogic::BlockReason blockReason =
+      EquipmentTestingLogic::evaluateGuard(
+          g_state.mode != Mode::IDLE, Safety::isLatched(g_state),
+          g_state.currentAlarm.type != AlarmType::NONE, g_state.safetyOk,
+          g_settings.demoMode);
+  switch (blockReason) {
+    case EquipmentTestingLogic::BlockReason::PROCESS_ACTIVE:
+      snprintf(reason, reasonSize,
+               "Тестирование доступно только в режиме простоя");
+      break;
+    case EquipmentTestingLogic::BlockReason::SAFETY_LATCHED:
+      snprintf(reason, reasonSize,
+               "Сначала снимите защелкнутую аварию безопасности");
+      break;
+    case EquipmentTestingLogic::BlockReason::ALARM_ACTIVE:
+      snprintf(reason, reasonSize, "Активна авария: %s",
+               g_state.currentAlarm.message);
+      break;
+    case EquipmentTestingLogic::BlockReason::SAFETY_NOT_OK:
+      snprintf(reason, reasonSize,
+               "Система находится в небезопасном состоянии");
+      break;
+    case EquipmentTestingLogic::BlockReason::DEMO_MODE:
+      snprintf(reason, reasonSize,
+               "Физические тесты недоступны в demo mode");
+      break;
+    case EquipmentTestingLogic::BlockReason::NONE:
+    default:
+      reason[0] = '\0';
+      return false;
   }
-
-  if (Safety::isLatched(g_state)) {
-    snprintf(reason, reasonSize, "Сначала снимите защелкнутую аварию безопасности");
-    return true;
-  }
-
-  if (g_state.currentAlarm.type != AlarmType::NONE) {
-    snprintf(reason, reasonSize, "Активна авария: %s", g_state.currentAlarm.message);
-    return true;
-  }
-
-  if (!g_state.safetyOk) {
-    snprintf(reason, reasonSize, "Система находится в небезопасном состоянии");
-    return true;
-  }
-
-  reason[0] = '\0';
-  return false;
+  return true;
 }
 
 void fillEquipmentModulesJson(JsonObject modules) {
