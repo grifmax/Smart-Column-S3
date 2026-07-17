@@ -157,6 +157,25 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
               !params["valveSafeVentConfirmed"].isNull()
                   ? params["valveSafeVentConfirmed"].as<bool>()
                   : g_settings.distillationUi.valveSafeVentConfirmed;
+          const bool vaporTempControlEnabled =
+              !params["vaporTempControlEnabled"].isNull()
+                  ? params["vaporTempControlEnabled"].as<bool>()
+                  : g_settings.distillationUi.vaporTempControlEnabled;
+          const float vaporTempTargetC = !params["vaporTempTargetC"].isNull()
+              ? clampFloatRange(params["vaporTempTargetC"].as<float>(), 20.0f, 110.0f)
+              : g_settings.distillationUi.vaporTempTargetC;
+          uint8_t vaporTempMinPowerPercent = !params["vaporTempMinPowerPercent"].isNull()
+              ? clampU8Range(params["vaporTempMinPowerPercent"].as<uint32_t>(), 0, 100)
+              : g_settings.distillationUi.vaporTempMinPowerPercent;
+          uint8_t vaporTempMaxPowerPercent = !params["vaporTempMaxPowerPercent"].isNull()
+              ? clampU8Range(params["vaporTempMaxPowerPercent"].as<uint32_t>(), vaporTempMinPowerPercent, 100)
+              : g_settings.distillationUi.vaporTempMaxPowerPercent;
+          if (vaporTempMaxPowerPercent < vaporTempMinPowerPercent) {
+            vaporTempMaxPowerPercent = vaporTempMinPowerPercent;
+          }
+          const uint16_t vaporTempTimeoutMin = !params["vaporTempTimeoutMin"].isNull()
+              ? clampU16Range(params["vaporTempTimeoutMin"].as<uint32_t>(), 0, 720)
+              : g_settings.distillationUi.vaporTempTimeoutMin;
           FractionProgram fractionProgram =
               params["fractionProgram"].is<JsonObject>()
                   ? parseFractionProgramJson(
@@ -190,6 +209,11 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
           g_settings.distillationUi.takeoffBackendType = backendType;
           g_settings.distillationUi.valveSafeVentConfirmed =
               valveSafeVentConfirmed;
+          g_settings.distillationUi.vaporTempControlEnabled = vaporTempControlEnabled;
+          g_settings.distillationUi.vaporTempTargetC = vaporTempTargetC;
+          g_settings.distillationUi.vaporTempMinPowerPercent = vaporTempMinPowerPercent;
+          g_settings.distillationUi.vaporTempMaxPowerPercent = vaporTempMaxPowerPercent;
+          g_settings.distillationUi.vaporTempTimeoutMin = vaporTempTimeoutMin;
           g_settings.fractionProgram = fractionProgram;
           FSM::Distillation::setParams(speed, headsVol, targetVol, endTemp);
           FSM::Distillation::setPowerWatts(powerWatts);

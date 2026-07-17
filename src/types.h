@@ -650,6 +650,10 @@ struct RectParams {
   uint16_t routingSettlingMs = 1500;
   uint16_t routingRetargetMinMs = 3000;
   uint8_t bodyContainerCount = 1;
+  // Optional pressure-based heater strategy for automatic rectification.
+  // It is disabled by default; the normal phase power profile remains active.
+  bool pressureControlEnabled = false;
+  uint8_t pressureMinPowerPercent = 30;
 };
 
 struct DistillationUiSettings {
@@ -662,6 +666,13 @@ struct DistillationUiSettings {
   float tailsVolumeMl = 0.0f;
   RectTakeoffBackendType takeoffBackendType = RectTakeoffBackendType::PUMP;
   bool valveSafeVentConfirmed = false;
+  // Optional closed loop for a reflux/deflegmator temperature sensor.
+  // Disabled by default so existing fixed-power distillation stays unchanged.
+  bool vaporTempControlEnabled = false;
+  float vaporTempTargetC = 78.0f;
+  uint8_t vaporTempMinPowerPercent = 30;
+  uint8_t vaporTempMaxPowerPercent = 100;
+  uint16_t vaporTempTimeoutMin = 0;
 };
 
 struct SecuritySettings {

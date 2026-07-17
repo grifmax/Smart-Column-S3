@@ -27,6 +27,113 @@ static ParamsRuntime g_params;
 
 namespace {
 
+constexpr float kVaporTempHysteresisC = 0.2f;
+constexpr uint8_t kVaporTempPowerStepPercent = 2;
+constexpr uint32_t kVaporTempControlIntervalMs = 10000UL;
+
+struct VaporTempControlRuntime {
+    uint32_t startedAtMs = 0;
+    uint32_t lastAdjustmentAtMs = 0;
+    uint8_t appliedPowerPercent = 0;
+    bool initialized = false;
+    bool sensorFallbackLogged = false;
+};
+
+VaporTempControlRuntime g_vaporTempControl;
+
+uint8_t clampPercent(uint8_t value, uint8_t minValue, uint8_t maxValue) {
+    if (maxValue < minValue) maxValue = minValue;
+    if (value < minValue) return minValue;
+    if (value > maxValue) return maxValue;
+    return value;
+}
+
+uint8_t wattsToPercent(uint16_t watts, const Settings& settings) {
+    const uint16_t heaterMaxW = getConfiguredHeaterPowerWatts(settings);
+    if (heaterMaxW == 0) return 0;
+    const uint32_t scaled =
+        (static_cast<uint32_t>(watts) * 100U + heaterMaxW / 2U) / heaterMaxW;
+    return static_cast<uint8_t>(scaled > 100U ? 100U : scaled);
+}
+
+uint16_t percentToWatts(uint8_t percent, const Settings& settings) {
+    const uint16_t heaterMaxW = getConfiguredHeaterPowerWatts(settings);
+    return static_cast<uint16_t>((static_cast<uint32_t>(heaterMaxW) * percent) / 100U);
+}
+
+uint16_t applyVaporTemperaturePower(const SystemState& state,
+                                    const Settings& settings,
+                                    uint16_t requestedWatts,
+                                    uint32_t now) {
+    const DistillationUiSettings& control = settings.distillationUi;
+    if (!control.vaporTempControlEnabled) {
+        return requestedWatts;
+    }
+
+    if (!state.temps.valid[TEMP_REFLUX]) {
+        if (!g_vaporTempControl.sensorFallbackLogged) {
+            LOG_W("Distillation vapor-temperature control: deflegmator sensor unavailable; using fixed requested power");
+            g_vaporTempControl.sensorFallbackLogged = true;
+        }
+        return requestedWatts;
+    }
+
+    const uint8_t minPower = control.vaporTempMinPowerPercent;
+    const uint8_t maxPower = control.vaporTempMaxPowerPercent < minPower
+        ? minPower
+        : control.vaporTempMaxPowerPercent;
+    if (!g_vaporTempControl.initialized) {
+        g_vaporTempControl.initialized = true;
+        g_vaporTempControl.startedAtMs = now;
+        g_vaporTempControl.lastAdjustmentAtMs = now;
+        g_vaporTempControl.appliedPowerPercent =
+            clampPercent(wattsToPercent(requestedWatts, settings), minPower, maxPower);
+    }
+
+    if (now - g_vaporTempControl.lastAdjustmentAtMs >= kVaporTempControlIntervalMs) {
+        const float currentTempC = state.temps.reflux;
+        if (currentTempC > control.vaporTempTargetC + kVaporTempHysteresisC) {
+            g_vaporTempControl.appliedPowerPercent =
+                g_vaporTempControl.appliedPowerPercent > kVaporTempPowerStepPercent
+                    ? g_vaporTempControl.appliedPowerPercent - kVaporTempPowerStepPercent
+                    : 0;
+        } else if (currentTempC < control.vaporTempTargetC - kVaporTempHysteresisC) {
+            const uint16_t raised = static_cast<uint16_t>(
+                g_vaporTempControl.appliedPowerPercent + kVaporTempPowerStepPercent);
+            g_vaporTempControl.appliedPowerPercent =
+                static_cast<uint8_t>(raised > 100U ? 100U : raised);
+        }
+        g_vaporTempControl.appliedPowerPercent =
+            clampPercent(g_vaporTempControl.appliedPowerPercent, minPower, maxPower);
+        g_vaporTempControl.lastAdjustmentAtMs = now;
+    }
+
+    return percentToWatts(g_vaporTempControl.appliedPowerPercent, settings);
+}
+
+bool isVaporTemperatureTimeoutReached(const Settings& settings, uint32_t now) {
+    const uint16_t timeoutMin = settings.distillationUi.vaporTempTimeoutMin;
+    return settings.distillationUi.vaporTempControlEnabled &&
+           timeoutMin > 0 && g_vaporTempControl.initialized &&
+           now - g_vaporTempControl.startedAtMs >=
+               static_cast<uint32_t>(timeoutMin) * 60UL * 1000UL;
+}
+
+bool finishForVaporTemperatureTimeout(SystemState& state, uint32_t now) {
+    if (!isVaporTemperatureTimeoutReached(g_settings, now)) return false;
+    const RectPhase previousPhase = state.rectPhase;
+    RectTakeoff::stop();
+    setPhaseStartTime(now);
+    ControlV2::notePhaseTransition(
+        Mode::DISTILLATION, static_cast<uint16_t>(previousPhase),
+        static_cast<uint16_t>(RectPhase::FINISH),
+        ControlV2::ReasonCodeV2::RC_TEMP_STEP_TIMEOUT,
+        "Distillation vapor-temperature control timeout reached");
+    state.rectPhase = RectPhase::FINISH;
+    LOG_W("Distillation: vapor-temperature control timeout -> FINISH");
+    return true;
+}
+
 ControlV2::ReasonCodeV2 getBodyExitReason(bool endByTemp, bool endByVolume) {
     if (endByTemp) {
         return ControlV2::ReasonCodeV2::RC_DISTILLATION_END_TEMP_REACHED;
@@ -224,7 +331,6 @@ static void updateFractionProgram(SystemState& state, const Settings& settings, 
     }
 
     const FractionProgramStep& step = settings.fractionProgram.steps[state.fractionProgram.currentStep];
-    Heater::setPowerWatts(step.heaterPowerW > 0 ? step.heaterPowerW : g_params.powerWatts);
     if (state.fractionProgram.waitingForConfirmation) { stopFractionTakeoff(); return; }
 
     if (!state.fractionProgram.routing && state.fractionProgram.routingStartedAtMs == 0) {
@@ -299,6 +405,7 @@ static void updateFractionProgram(SystemState& state, const Settings& settings, 
 void initSession(SystemState& state, const Settings& settings) {
     RectTakeoff::beginSession(settings);
     state.fractionProgram = FractionProgramRuntime{};
+    g_vaporTempControl = VaporTempControlRuntime{};
 }
 
 void setParams(float speedMlH, float headsVolumeMl, float targetVolumeMl, float endTempC) {
@@ -382,8 +489,10 @@ void update(SystemState& state, const Settings& settings) {
         }
         case RectPhase::HEADS: {
             applyBoosterHeater(state, settings, false);
-            Heater::setPowerWatts(g_params.powerWatts);
+            Heater::setPowerWatts(
+                applyVaporTemperaturePower(state, settings, g_params.powerWatts, now));
             applyFractionTakeoff(settings, RectTakeoffFraction::HEADS, g_params.speedMlH);
+            if (finishForVaporTemperatureTimeout(state, now)) break;
             const float collected = getCurrentTakeoffTotalVolumeMl(state, settings) - getPhaseStartVolumeMl();
             state.stats.headsVolume = collected;
             if (collected >= g_params.headsVolumeMl) {
@@ -408,9 +517,18 @@ void update(SystemState& state, const Settings& settings) {
                 updateFractionProgram(state, settings, now);
             } else {
                 state.fractionProgram = FractionProgramRuntime{};
-                Heater::setPowerWatts(g_params.powerWatts);
                 applyFractionTakeoff(settings, RectTakeoffFraction::BODY, g_params.speedMlH);
             }
+            uint16_t requestedPowerWatts = g_params.powerWatts;
+            if (fractionProgramEnabled && state.fractionProgram.currentStep <
+                    settings.fractionProgram.stepCount) {
+                const uint16_t stepPower =
+                    settings.fractionProgram.steps[state.fractionProgram.currentStep].heaterPowerW;
+                if (stepPower > 0) requestedPowerWatts = stepPower;
+            }
+            Heater::setPowerWatts(
+                applyVaporTemperaturePower(state, settings, requestedPowerWatts, now));
+            if (finishForVaporTemperatureTimeout(state, now)) break;
             if (fractionProgramEnabled) break;
 
             const float currentTakeoffVolumeMl = getCurrentTakeoffTotalVolumeMl(state, settings);

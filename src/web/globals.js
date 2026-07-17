@@ -357,6 +357,8 @@ export let runtimeMonitorState = {
         timpPbMs: 15000,
         routingSettlingMs: 1500,
         routingRetargetMinMs: 3000,
+        pressureControlEnabled: false,
+        pressureMinPowerPercent: 30,
         headsTargetMl: 0,
         bodyTargetMl: 0,
         tailsTargetMl: 0

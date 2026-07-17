@@ -14,6 +14,7 @@
 #include "control/fsm_utils.h"
 #include "control/rect_takeoff.h"
 #include "control/v2/reason_codes.h"
+#include "control/v2/safety_policy.h"
 #include "drivers/sensors.h"
 #include "drivers/stirrer.h"
 #include "drivers/valves.h"
@@ -1640,6 +1641,23 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
       }
     }
 
+    if (rect.pressureControlEnabled) {
+      if (!ControlV2::SafetyPolicyV2::isPressureCalibrationValid(
+              g_settings.pressureCal)) {
+        addItem("pressure-control", "warn", "Контур мощности по давлению",
+                "Калибровка давления не подтверждена (нужно минимум две монотонные точки). Контур запустится в безопасном fallback без автоматической коррекции.",
+                false);
+      } else if (!g_state.pressure.ok) {
+        addItem("pressure-control", "warn", "Контур мощности по давлению",
+                "Сигнал давления сейчас недоступен. До восстановления свежего устойчивого сигнала будет использована фиксированная мощность профиля.",
+                false);
+      } else {
+        addItem("pressure-control", "good", "Контур мощности по давлению",
+                "Контур включён; мощность плавно ограничивается выше рабочего коридора и отключается на safety-пороге.",
+                false);
+      }
+    }
+
     if (activeProfileLoaded && rectProfile) {
       baroEffectiveTemps = getEffectiveProfileTemperatures(
           activeProfile, &baroPreview, rect.baroCorrectionEnabled ? 1 : 0);
@@ -2402,6 +2420,10 @@ void init() {
     rect["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
     rect["routingRetargetMinMs"] =
         g_settings.rectParams.routingRetargetMinMs;
+    rect["pressureControlEnabled"] =
+        g_settings.rectParams.pressureControlEnabled;
+    rect["pressureMinPowerPercent"] =
+        g_settings.rectParams.pressureMinPowerPercent;
     rect["valvePulsePeriodMs"] = g_settings.rectParams.valvePulsePeriodMs;
     rect["valvePulseMinOpenMs"] = g_settings.rectParams.valvePulseMinOpenMs;
     rect["valvePulseMaxOpenMs"] = g_settings.rectParams.valvePulseMaxOpenMs;
@@ -4004,6 +4026,8 @@ void init() {
     doc["valvePulsePeriodMs"] = params.valvePulsePeriodMs;
     doc["valvePulseMinOpenMs"] = params.valvePulseMinOpenMs;
     doc["valvePulseMaxOpenMs"] = params.valvePulseMaxOpenMs;
+    doc["pressureControlEnabled"] = params.pressureControlEnabled;
+    doc["pressureMinPowerPercent"] = params.pressureMinPowerPercent;
     JsonArray phasePower = doc["phasePowerPercent"].to<JsonArray>();
     for (uint8_t i = 0; i < RECT_POWER_COUNT; ++i) {
       phasePower.add(params.phasePowerPercent[i]);
@@ -4101,6 +4125,13 @@ void init() {
         }
         if (!params["baroCorrectionEnabled"].isNull()) {
           updated.baroCorrectionEnabled = params["baroCorrectionEnabled"].as<bool>();
+        }
+        if (!params["pressureControlEnabled"].isNull()) {
+          updated.pressureControlEnabled = params["pressureControlEnabled"].as<bool>();
+        }
+        if (!params["pressureMinPowerPercent"].isNull()) {
+          updated.pressureMinPowerPercent = clampU8Range(
+              params["pressureMinPowerPercent"].as<uint32_t>(), 0, 100);
         }
         if (!params["refluxMode"].isNull()) {
           updated.refluxMode = static_cast<RectRefluxMode>(clampU16Range(
@@ -4238,6 +4269,9 @@ void init() {
         out["valvePulsePeriodMs"] = g_settings.rectParams.valvePulsePeriodMs;
         out["valvePulseMinOpenMs"] = g_settings.rectParams.valvePulseMinOpenMs;
         out["valvePulseMaxOpenMs"] = g_settings.rectParams.valvePulseMaxOpenMs;
+        out["pressureControlEnabled"] = g_settings.rectParams.pressureControlEnabled;
+        out["pressureMinPowerPercent"] =
+            g_settings.rectParams.pressureMinPowerPercent;
         JsonArray outPhasePower = out["phasePowerPercent"].to<JsonArray>();
         for (uint8_t i = 0; i < RECT_POWER_COUNT; ++i) {
           outPhasePower.add(g_settings.rectParams.phasePowerPercent[i]);
@@ -4927,6 +4961,10 @@ void broadcastState(const SystemState &state) {
   rect["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
   rect["routingRetargetMinMs"] =
       g_settings.rectParams.routingRetargetMinMs;
+  rect["pressureControlEnabled"] =
+      g_settings.rectParams.pressureControlEnabled;
+  rect["pressureMinPowerPercent"] =
+      g_settings.rectParams.pressureMinPowerPercent;
   rect["valvePulsePeriodMs"] = g_settings.rectParams.valvePulsePeriodMs;
   rect["valvePulseMinOpenMs"] = g_settings.rectParams.valvePulseMinOpenMs;
   rect["valvePulseMaxOpenMs"] = g_settings.rectParams.valvePulseMaxOpenMs;

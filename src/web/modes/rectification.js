@@ -232,6 +232,8 @@ export function collectRectificationModalSettings() {
     const phasePowerHeads = Math.round(clampRectInput(document.getElementById('rect-start-phase-power-heads')?.value, 1, 100, 60));
     const phasePowerBody = Math.round(clampRectInput(document.getElementById('rect-start-phase-power-body')?.value, 1, 100, 60));
     const phasePowerTails = Math.round(clampRectInput(document.getElementById('rect-start-phase-power-tails')?.value, 1, 100, 50));
+    const pressureControlEnabled = Boolean(document.getElementById('rect-start-pressure-control-enabled')?.checked);
+    const pressureMinPowerPercent = Math.round(clampRectInput(document.getElementById('rect-start-pressure-min-power')?.value, 0, 100, 30));
     const autoCorrectionPreset = buildRectificationAutoCorrectionPreset();
     const params = {
         feedstock: clampRectInput(document.getElementById('rect-start-feedstock')?.value, 0, 7, 0),
@@ -260,6 +262,8 @@ export function collectRectificationModalSettings() {
         phasePowerBody,
         phasePowerTails,
         phasePowerPercent: [phasePowerStabilization, phasePowerHeads, phasePowerBody, phasePowerTails],
+        pressureControlEnabled,
+        pressureMinPowerPercent,
         usePbMode: autoCorrectionPreset.usePbMode,
         timpPbMs: autoCorrectionPreset.timpPbMs,
         valvePulsePeriodMs: Math.round(clampRectInput(document.getElementById('rect-start-valve-pulse-period-ms')?.value, 100, 5000, 1000)),
@@ -312,6 +316,11 @@ function applyRectificationSettingsToInputs(params) {
     setValue('rect-start-phase-power-heads', params.phasePowerHeads ?? 60);
     setValue('rect-start-phase-power-body', params.phasePowerBody ?? 60);
     setValue('rect-start-phase-power-tails', params.phasePowerTails ?? 50);
+    setValue('rect-start-pressure-min-power', params.pressureMinPowerPercent ?? 30);
+    const pressureControlCheckbox = document.getElementById('rect-start-pressure-control-enabled');
+    if (pressureControlCheckbox) {
+        pressureControlCheckbox.checked = Boolean(params.pressureControlEnabled);
+    }
     setValue('rect-start-use-pb-mode', params.usePbMode ?? 0);
     setValue('rect-start-timp-pb-ms', params.timpPbMs ?? 15000);
     setValue('rect-start-valve-pulse-period-ms', params.valvePulsePeriodMs ?? 1000);

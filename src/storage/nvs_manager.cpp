@@ -463,6 +463,10 @@ bool loadSettings(Settings& settings) {
                         RECT_ROUTING_RETARGET_MIN_MS_DEFAULT);
     settings.rectParams.bodyContainerCount =
         prefs.getUChar(NVS_KEY_RECT_BODY_CONTAINERS, 1);
+    settings.rectParams.pressureControlEnabled =
+        prefs.getBool(NVS_KEY_RECT_PRESSURE_CTRL, false);
+    settings.rectParams.pressureMinPowerPercent =
+        prefs.getUChar(NVS_KEY_RECT_PRESSURE_MIN_PWR, 30);
     settings.rectParams.valvePulsePeriodMs =
         prefs.getUShort(NVS_KEY_RECT_VALVE_PULSE_PERIOD,
                         RECT_VALVE_PULSE_PERIOD_MS_DEFAULT);
@@ -511,6 +515,8 @@ bool loadSettings(Settings& settings) {
         constrain(settings.rectParams.routingRetargetMinMs, 0, 30000);
     settings.rectParams.bodyContainerCount =
         constrain(settings.rectParams.bodyContainerCount, 1, 8);
+    settings.rectParams.pressureMinPowerPercent =
+        constrain(settings.rectParams.pressureMinPowerPercent, 0, 100);
     settings.rectParams.valvePulsePeriodMs =
         constrain(settings.rectParams.valvePulsePeriodMs, 100, 5000);
     settings.rectParams.valvePulseMinOpenMs =
@@ -553,6 +559,23 @@ bool loadSettings(Settings& settings) {
         prefs.getUChar(NVS_KEY_DIST_TAKEOFF_BACKEND, RECT_TAKEOFF_BACKEND_DEFAULT));
     settings.distillationUi.valveSafeVentConfirmed =
         prefs.getBool(NVS_KEY_DIST_SAFE_VENT, false);
+    settings.distillationUi.vaporTempControlEnabled =
+        prefs.getBool(NVS_KEY_DIST_VAPOR_CTRL, false);
+    settings.distillationUi.vaporTempTargetC =
+        prefs.getFloat(NVS_KEY_DIST_VAPOR_TARGET, 78.0f);
+    settings.distillationUi.vaporTempMinPowerPercent =
+        prefs.getUChar(NVS_KEY_DIST_VAPOR_MIN_PWR, 30);
+    settings.distillationUi.vaporTempMaxPowerPercent =
+        prefs.getUChar(NVS_KEY_DIST_VAPOR_MAX_PWR, 100);
+    settings.distillationUi.vaporTempTimeoutMin =
+        prefs.getUShort(NVS_KEY_DIST_VAPOR_TIMEOUT, 0);
+    settings.distillationUi.vaporTempTargetC =
+        constrain(settings.distillationUi.vaporTempTargetC, 20.0f, 110.0f);
+    settings.distillationUi.vaporTempMinPowerPercent =
+        constrain(settings.distillationUi.vaporTempMinPowerPercent, 0, 100);
+    settings.distillationUi.vaporTempMaxPowerPercent =
+        constrain(settings.distillationUi.vaporTempMaxPowerPercent,
+                  settings.distillationUi.vaporTempMinPowerPercent, 100);
     if (static_cast<uint8_t>(settings.distillationUi.takeoffBackendType) >
         static_cast<uint8_t>(RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)) {
         settings.distillationUi.takeoffBackendType = RectTakeoffBackendType::PUMP;
@@ -725,6 +748,10 @@ bool saveSettings(const Settings& settings) {
                     settings.rectParams.routingRetargetMinMs);
     prefs.putUChar(NVS_KEY_RECT_BODY_CONTAINERS,
                    settings.rectParams.bodyContainerCount);
+    prefs.putBool(NVS_KEY_RECT_PRESSURE_CTRL,
+                  settings.rectParams.pressureControlEnabled);
+    prefs.putUChar(NVS_KEY_RECT_PRESSURE_MIN_PWR,
+                   settings.rectParams.pressureMinPowerPercent);
     prefs.putUShort(NVS_KEY_RECT_VALVE_PULSE_PERIOD,
                     settings.rectParams.valvePulsePeriodMs);
     prefs.putUShort(NVS_KEY_RECT_VALVE_PULSE_MIN_OPEN,
@@ -744,6 +771,16 @@ bool saveSettings(const Settings& settings) {
                    static_cast<uint8_t>(settings.distillationUi.takeoffBackendType));
     prefs.putBool(NVS_KEY_DIST_SAFE_VENT,
                   settings.distillationUi.valveSafeVentConfirmed);
+    prefs.putBool(NVS_KEY_DIST_VAPOR_CTRL,
+                  settings.distillationUi.vaporTempControlEnabled);
+    prefs.putFloat(NVS_KEY_DIST_VAPOR_TARGET,
+                   settings.distillationUi.vaporTempTargetC);
+    prefs.putUChar(NVS_KEY_DIST_VAPOR_MIN_PWR,
+                   settings.distillationUi.vaporTempMinPowerPercent);
+    prefs.putUChar(NVS_KEY_DIST_VAPOR_MAX_PWR,
+                   settings.distillationUi.vaporTempMaxPowerPercent);
+    prefs.putUShort(NVS_KEY_DIST_VAPOR_TIMEOUT,
+                    settings.distillationUi.vaporTempTimeoutMin);
 
     // Web security
     prefs.putBool(NVS_KEY_WEB_AUTH_ENABLED, settings.security.authEnabled);

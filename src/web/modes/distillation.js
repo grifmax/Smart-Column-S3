@@ -166,6 +166,11 @@ function collectBaseDistillationSettings() {
         endTemp: clampDistillationInput(document.getElementById('dist-start-end-temp')?.value, 70, 110, 96),
         takeoffBackendType: clampDistillationInput(document.getElementById('dist-start-takeoff-backend')?.value, 0, 2, 0),
         valveSafeVentConfirmed: Boolean(document.getElementById('dist-start-safe-vent-confirmed')?.checked),
+        vaporTempControlEnabled: Boolean(document.getElementById('dist-start-vapor-control-enabled')?.checked),
+        vaporTempTargetC: clampDistillationInput(document.getElementById('dist-start-vapor-target')?.value, 20, 110, 78),
+        vaporTempMinPowerPercent: clampDistillationInput(document.getElementById('dist-start-vapor-min-power')?.value, 0, 100, 30),
+        vaporTempMaxPowerPercent: clampDistillationInput(document.getElementById('dist-start-vapor-max-power')?.value, 0, 100, 100),
+        vaporTempTimeoutMin: clampDistillationInput(document.getElementById('dist-start-vapor-timeout')?.value, 0, 720, 0),
         powerW
     };
 }
@@ -191,6 +196,11 @@ export function collectDistillationSettings() {
         endTemp: settings.endTemp,
         takeoffBackendType: settings.takeoffBackendType,
         valveSafeVentConfirmed: settings.valveSafeVentConfirmed,
+        vaporTempControlEnabled: settings.vaporTempControlEnabled,
+        vaporTempTargetC: settings.vaporTempTargetC,
+        vaporTempMinPowerPercent: Math.min(settings.vaporTempMinPowerPercent, settings.vaporTempMaxPowerPercent),
+        vaporTempMaxPowerPercent: Math.max(settings.vaporTempMinPowerPercent, settings.vaporTempMaxPowerPercent),
+        vaporTempTimeoutMin: settings.vaporTempTimeoutMin,
         powerW: settings.powerW,
         powerPercent: Math.min(100, Math.max(0, Math.round((settings.powerW / settings.heaterMax) * 100))),
         fractionProgram,
@@ -216,6 +226,11 @@ export async function loadDistillationStartSettings() {
         setInputValue('dist-start-end-temp', clampDistillationInput(distillation.endTempC, 70, 110, 96));
         setInputValue('dist-start-takeoff-backend', clampDistillationInput(distillation.takeoffBackendType, 0, 2, 0));
         setCheckboxValue('dist-start-safe-vent-confirmed', distillation.valveSafeVentConfirmed);
+        setCheckboxValue('dist-start-vapor-control-enabled', distillation.vaporTempControlEnabled);
+        setInputValue('dist-start-vapor-target', clampDistillationInput(distillation.vaporTempTargetC, 20, 110, 78));
+        setInputValue('dist-start-vapor-min-power', clampDistillationInput(distillation.vaporTempMinPowerPercent, 0, 100, 30));
+        setInputValue('dist-start-vapor-max-power', clampDistillationInput(distillation.vaporTempMaxPowerPercent, 0, 100, 100));
+        setInputValue('dist-start-vapor-timeout', clampDistillationInput(distillation.vaporTempTimeoutMin, 0, 720, 0));
         setInputValue(
             'dist-start-power-percent',
             clampDistillationInput(

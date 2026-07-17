@@ -391,6 +391,10 @@ void broadcastState(const SystemState &state) {
   rect["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
   rect["routingRetargetMinMs"] =
       g_settings.rectParams.routingRetargetMinMs;
+  rect["pressureControlEnabled"] =
+      g_settings.rectParams.pressureControlEnabled;
+  rect["pressureMinPowerPercent"] =
+      g_settings.rectParams.pressureMinPowerPercent;
 
   float rectHeadsTargetMl = 0.0f;
   float rectBodyTargetMl = 0.0f;

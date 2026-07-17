@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.77"
+#define FIRMWARE_VERSION "2.4.79"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -466,10 +466,17 @@
 #define NVS_KEY_RECT_ROUTE_SETTLE "rect_rset"
 #define NVS_KEY_RECT_ROUTE_RETARGET "rect_rrtg"
 #define NVS_KEY_RECT_BODY_CONTAINERS "rect_bcnt"
+#define NVS_KEY_RECT_PRESSURE_CTRL "rect_pctl"
+#define NVS_KEY_RECT_PRESSURE_MIN_PWR "rect_pmin"
 #define NVS_KEY_DIST_SPEED "dist_spd"
 #define NVS_KEY_DIST_HEADS_VOL "dist_hvol"
 #define NVS_KEY_DIST_TARGET_VOL "dist_tvol"
 #define NVS_KEY_DIST_END_TEMP "dist_etmp"
+#define NVS_KEY_DIST_VAPOR_CTRL "dist_vctl"
+#define NVS_KEY_DIST_VAPOR_TARGET "dist_vtgt"
+#define NVS_KEY_DIST_VAPOR_MIN_PWR "dist_vmin"
+#define NVS_KEY_DIST_VAPOR_MAX_PWR "dist_vmax"
+#define NVS_KEY_DIST_VAPOR_TIMEOUT "dist_vtmo"
 #define NVS_KEY_DIST_POWER_W "dist_pw"
 #define NVS_KEY_DIST_POWER_PCT "dist_ppct"
 #define NVS_KEY_DIST_TAILS_VOL "dist_xvol"

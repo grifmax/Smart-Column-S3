@@ -7,6 +7,7 @@
 #include "../../drivers/sensors.h"
 #include "../watt_control.h"
 #include "../v2/reason_codes.h"
+#include "../v2/safety_policy.h"
 #include "../v2/safety_supervisor.h"
 #include "../v2/status_adapter.h"
 #include "../../interface/mqtt.h"
@@ -24,6 +25,8 @@ static float tailsTargetMl = 0.0f;
 static bool bodyReferenceReady = false;
 static float bodyBaseTempC = 0.0f;
 static uint32_t bodyPressureConfirmStartMs = 0;
+static ControlV2::RectificationPressureRuntimeV2 pressureControlRuntime;
+static bool pressureEmergencyStopActive = false;
 
 uint8_t getPhasePowerPercent(const RectParams& params, RectPhase phase,
                              uint8_t fallbackPercent) {
@@ -41,6 +44,71 @@ uint8_t getPhasePowerPercent(const RectParams& params, RectPhase phase,
         default:
             return fallbackPercent;
     }
+}
+
+uint16_t percentToWatts(uint8_t percent, const Settings& settings) {
+    const uint16_t heaterMaxW = getConfiguredHeaterPowerWatts(settings);
+    return static_cast<uint16_t>(
+        (static_cast<uint32_t>(heaterMaxW) * percent) / 100U);
+}
+
+uint16_t applyRectificationHeaterPower(const SystemState& state,
+                                       const Settings& settings,
+                                       RectPhase phase,
+                                       uint8_t fallbackPercent,
+                                       uint32_t now) {
+    if (!settings.rectParams.pressureControlEnabled) {
+        pressureControlRuntime = ControlV2::RectificationPressureRuntimeV2{};
+        pressureEmergencyStopActive = false;
+        return applyProcessHeaterPower(
+            state, settings,
+            getPhasePowerPercent(settings.rectParams, phase, fallbackPercent));
+    }
+
+    const bool wasFallback = pressureControlRuntime.fallbackActive;
+    const bool wasEmergency = pressureControlRuntime.emergencyReported;
+    uint8_t requestedPercent =
+        getPhasePowerPercent(settings.rectParams, phase, fallbackPercent);
+    if (WattControl::isOverrideActive()) {
+        requestedPercent = WattControl::update(state, settings);
+    }
+
+    const ControlV2::RectificationPressurePolicyV2 policy =
+        ControlV2::SafetyPolicyV2::evaluateRectificationPressurePower(
+            requestedPercent, state, settings, now, pressureControlRuntime);
+    pressureEmergencyStopActive = policy.emergencyStop;
+
+    if (policy.fallbackActive && !wasFallback) {
+        LOG_W("Rectification pressure control fallback: calibrated and stable pressure signal is required");
+    } else if (!policy.fallbackActive && wasFallback) {
+        LOG_I("Rectification pressure control resumed after stable calibrated signal");
+    }
+
+    if (policy.emergencyStop) {
+        Heater::setPowerWatts(0);
+        RectTakeoff::stop();
+        if (!wasEmergency) {
+            pressureControlRuntime.emergencyReported = true;
+            LOG_E("Rectification pressure safety limit reached: %.1f mmHg >= %.1f mmHg",
+                  policy.pressureMmHg, policy.safetyLimitMmHg);
+            MQTT::publishNotification(
+                "Pressure safety stop",
+                "Rectification heater disabled at the configured pressure safety limit",
+                "error");
+        }
+        return 0;
+    }
+
+    pressureControlRuntime.emergencyReported = false;
+    uint8_t appliedPercent = policy.appliedPowerPercent;
+    const ControlV2::ActiveLimitsV2& limits =
+        ControlV2::SafetySupervisorV2::getLiveLimits();
+    if (limits.powerCapped && limits.maxHeaterPowerPercent < appliedPercent) {
+        appliedPercent = limits.maxHeaterPowerPercent;
+    }
+    const uint16_t appliedWatts = percentToWatts(appliedPercent, settings);
+    Heater::setPowerWatts(appliedWatts);
+    return appliedWatts;
 }
 
 float getDirectTakeoffSpeedMlH(const Settings& settings, RectPhase phase) {
@@ -299,6 +367,8 @@ void initSession(SystemState& state, const Settings& settings) {
     bodyReferenceReady = false;
     bodyBaseTempC = 0.0f;
     bodyPressureConfirmStartMs = 0;
+    pressureControlRuntime = ControlV2::RectificationPressureRuntimeV2{};
+    pressureEmergencyStopActive = false;
     state.rectBodyContainerIndex = 0;
     state.rectBodyContainerVolumeMl = 0.0f;
     state.rectBodyContainerStartVolumeMl = 0.0f;
@@ -347,9 +417,9 @@ void update(SystemState& state, const Settings& settings) {
             applyBoosterHeater(state, settings, false);
             RectTakeoff::stop();
             Valves::setWater(true);
-            applyProcessHeaterPower(
-                state, settings,
-                getPhasePowerPercent(settings.rectParams, RectPhase::STABILIZATION, 70));
+            applyRectificationHeaterPower(
+                state, settings, RectPhase::STABILIZATION, 70, now);
+            if (pressureEmergencyStopActive) break;
             if (!liveLimits.phaseAdvanceBlocked &&
                 elapsed > settings.rectParams.stabilizationMin * 60 * 1000UL) {
                 LOG_I("FSM: STABILIZATION -> HEADS");
@@ -372,9 +442,8 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::HEADS: {
             applyBoosterHeater(state, settings, false);
-            applyProcessHeaterPower(
-                state, settings,
-                getPhasePowerPercent(settings.rectParams, RectPhase::HEADS, 60));
+            applyRectificationHeaterPower(state, settings, RectPhase::HEADS, 60, now);
+            if (pressureEmergencyStopActive) break;
             const bool headsContainerLevelReached =
                 isActiveCollectionContainerLevelReached(settings);
             if (state.rectHeadsContainerLevelReached) {
@@ -420,9 +489,9 @@ void update(SystemState& state, const Settings& settings) {
             applyBoosterHeater(state, settings, false);
             RectTakeoff::stop();
             Valves::setWater(true);
-            applyProcessHeaterPower(
-                state, settings,
-                getPhasePowerPercent(settings.rectParams, RectPhase::STABILIZATION, 65));
+            applyRectificationHeaterPower(
+                state, settings, RectPhase::STABILIZATION, 65, now);
+            if (pressureEmergencyStopActive) break;
             if (!liveLimits.phaseAdvanceBlocked && elapsed > 5 * 60 * 1000UL) {
                 LOG_I("FSM: POST_HEADS_STABILIZATION -> PURGE");
                 ControlV2::notePhaseTransition(
@@ -440,9 +509,9 @@ void update(SystemState& state, const Settings& settings) {
             RectTakeoff::stop();
             Valves::closeAll();
             Valves::setWater(true);
-            applyProcessHeaterPower(
-                state, settings,
-                getPhasePowerPercent(settings.rectParams, RectPhase::STABILIZATION, 65));
+            applyRectificationHeaterPower(
+                state, settings, RectPhase::STABILIZATION, 65, now);
+            if (pressureEmergencyStopActive) break;
             if (!liveLimits.phaseAdvanceBlocked &&
                 elapsed > settings.rectParams.purgeMin * 60 * 1000UL) {
                 LOG_I("FSM: PURGE -> BODY");
@@ -467,9 +536,8 @@ void update(SystemState& state, const Settings& settings) {
         case RectPhase::BODY: {
             applyBoosterHeater(state, settings, false);
             Valves::setWater(true);
-            applyProcessHeaterPower(
-                state, settings,
-                getPhasePowerPercent(settings.rectParams, RectPhase::BODY, 60));
+            applyRectificationHeaterPower(state, settings, RectPhase::BODY, 60, now);
+            if (pressureEmergencyStopActive) break;
 
             if (!bodyReferenceReady && state.temps.valid[TEMP_COLUMN_TOP]) {
                 bodyBaseTempC = state.temps.columnTop;
@@ -593,9 +661,8 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::TAILS: {
             applyBoosterHeater(state, settings, false);
-            applyProcessHeaterPower(
-                state, settings,
-                getPhasePowerPercent(settings.rectParams, RectPhase::TAILS, 50));
+            applyRectificationHeaterPower(state, settings, RectPhase::TAILS, 50, now);
+            if (pressureEmergencyStopActive) break;
             const float tailsSpeed =
                 getDirectTakeoffSpeedMlH(settings, RectPhase::TAILS);
             RectTakeoff::apply(buildTakeoffCommand(

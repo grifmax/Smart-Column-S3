@@ -1994,6 +1994,8 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["routingRetargetMinMs"] = params.routingRetargetMinMs;
     doc["valvePulsePeriodMs"] = params.valvePulsePeriodMs;
     doc["valvePulseMinOpenMs"] = params.valvePulseMinOpenMs;
+    doc["pressureControlEnabled"] = params.pressureControlEnabled;
+    doc["pressureMinPowerPercent"] = params.pressureMinPowerPercent;
     doc["valvePulseMaxOpenMs"] = params.valvePulseMaxOpenMs;
     String out;
     serializeJson(doc, out);
@@ -2070,6 +2072,13 @@ static void handleHttpRequest(JsonDocument& req) {
       updated.routingRetargetMinMs = clampU16Range(
           params["routingRetargetMinMs"].as<uint32_t>(), 0, 30000);
     }
+    if (!params["pressureControlEnabled"].isNull()) {
+      updated.pressureControlEnabled = params["pressureControlEnabled"].as<bool>();
+    }
+    if (!params["pressureMinPowerPercent"].isNull()) {
+      updated.pressureMinPowerPercent = clampU8Range(
+          params["pressureMinPowerPercent"].as<uint32_t>(), 0, 100);
+    }
     if (!params["valvePulsePeriodMs"].isNull()) {
       updated.valvePulsePeriodMs = clampU16Range(
           params["valvePulsePeriodMs"].as<uint32_t>(), 100, 5000);
@@ -2115,6 +2124,10 @@ static void handleHttpRequest(JsonDocument& req) {
         g_settings.rectParams.routingRetargetMinMs;
     doc["valvePulsePeriodMs"] = g_settings.rectParams.valvePulsePeriodMs;
     doc["valvePulseMinOpenMs"] = g_settings.rectParams.valvePulseMinOpenMs;
+    doc["pressureControlEnabled"] =
+        g_settings.rectParams.pressureControlEnabled;
+    doc["pressureMinPowerPercent"] =
+        g_settings.rectParams.pressureMinPowerPercent;
     doc["valvePulseMaxOpenMs"] = g_settings.rectParams.valvePulseMaxOpenMs;
     String out;
     serializeJson(doc, out);

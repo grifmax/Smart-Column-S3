@@ -435,6 +435,10 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     rect["routingSettlingMs"] = g_settings.rectParams.routingSettlingMs;
     rect["routingRetargetMinMs"] =
         g_settings.rectParams.routingRetargetMinMs;
+    rect["pressureControlEnabled"] =
+        g_settings.rectParams.pressureControlEnabled;
+    rect["pressureMinPowerPercent"] =
+        g_settings.rectParams.pressureMinPowerPercent;
 
     float rectHeadsTargetMl = 0.0f;
     float rectBodyTargetMl = 0.0f;
@@ -463,6 +467,15 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     distillation["valveSafeVentConfirmed"] =
         g_settings.distillationUi.valveSafeVentConfirmed;
     distillation["tailsVolumeMl"] = g_settings.distillationUi.tailsVolumeMl;
+    distillation["vaporTempControlEnabled"] =
+        g_settings.distillationUi.vaporTempControlEnabled;
+    distillation["vaporTempTargetC"] = g_settings.distillationUi.vaporTempTargetC;
+    distillation["vaporTempMinPowerPercent"] =
+        g_settings.distillationUi.vaporTempMinPowerPercent;
+    distillation["vaporTempMaxPowerPercent"] =
+        g_settings.distillationUi.vaporTempMaxPowerPercent;
+    distillation["vaporTempTimeoutMin"] =
+        g_settings.distillationUi.vaporTempTimeoutMin;
     JsonObject distillationFractionProgram =
         distillation["fractionProgram"].to<JsonObject>();
     fillFractionProgramJson(distillationFractionProgram,

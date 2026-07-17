@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.77">
+    <link rel="stylesheet" href="style.css?v=2.4.79">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.77" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.79" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -937,6 +937,21 @@
                                             </div>
 
                                             <div class="control-subsection">
+                                                <div class="control-subsection-title">Опциональный контур по давлению</div>
+                                                <div class="control-form-grid">
+                                                    <div class="form-group control-checkbox-field">
+                                                        <label for="rect-start-pressure-control-enabled">Плавно ограничивать мощность по давлению</label>
+                                                        <input type="checkbox" id="rect-start-pressure-control-enabled">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="rect-start-pressure-min-power">Минимум мощности при росте давления, %</label>
+                                                        <input type="number" id="rect-start-pressure-min-power" min="0" max="100" step="1" value="30">
+                                                        <div class="control-inline-hint">Рабочий коридор рассчитывается по высоте/насадке. На safety-пороге нагрев отключается; при невалидной калибровке контур не вмешивается.</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="control-subsection">
                                                 <div class="control-subsection-title">Разгонный ТЭН (SSR)</div>
                                                 <div class="control-form-grid">
                                                     <div class="form-group control-checkbox-field">
@@ -1185,6 +1200,26 @@
                                                             Вт</label>
                                                         <input type="text" id="dist-start-power-fact" value="0"
                                                             readonly>
+                                                    </div>
+                                                    <div class="form-group control-checkbox-field">
+                                                        <label for="dist-start-vapor-control-enabled">Удерживать температуру дефлегматора мощностью</label>
+                                                        <input type="checkbox" id="dist-start-vapor-control-enabled">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-vapor-target">Цель дефлегматора, °C</label>
+                                                        <input type="number" id="dist-start-vapor-target" min="20" max="110" step="0.1" value="78">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-vapor-min-power">Минимум мощности, %</label>
+                                                        <input type="number" id="dist-start-vapor-min-power" min="0" max="100" step="1" value="30">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-vapor-max-power">Максимум мощности, %</label>
+                                                        <input type="number" id="dist-start-vapor-max-power" min="0" max="100" step="1" value="100">
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="dist-start-vapor-timeout">Тайм-аут контура, мин (0 — без тайм-аута)</label>
+                                                        <input type="number" id="dist-start-vapor-timeout" min="0" max="720" step="1" value="0">
                                                     </div>
                                                     <div class="form-group control-checkbox-field">
                                                         <label for="dist-start-booster-enabled">Использовать booster SSR</label>
@@ -3729,7 +3764,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.77"></script>
+    <script src="app.js?v=2.4.79"></script>
 </body>
 
 </html>
