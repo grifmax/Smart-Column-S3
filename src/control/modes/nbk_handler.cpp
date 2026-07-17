@@ -13,6 +13,29 @@
 namespace FSM {
 namespace Nbk {
 
+namespace {
+float topTempFeedCorrection = 1.0f;
+uint32_t lastTopTempCorrectionMs = 0;
+
+float getCorrectedFeedRate(float baseRate, const SystemState& state,
+                           const Settings& settings, uint32_t now) {
+    if (!settings.nbk.topTempCorrectionEnabled ||
+        !state.temps.valid[TEMP_COLUMN_TOP]) {
+        topTempFeedCorrection = 1.0f;
+        return baseRate;
+    }
+    // The correction moves only once every 30 seconds and by no more than
+    // 5% per pass. A hotter top reduces feed, a colder top raises it.
+    if (now - lastTopTempCorrectionMs >= 30000UL) {
+        const float error = state.temps.columnTop - settings.nbk.columnTopTargetTempC;
+        const float step = constrain(-error * 0.02f, -0.05f, 0.05f);
+        topTempFeedCorrection = constrain(topTempFeedCorrection + step, 0.85f, 1.15f);
+        lastTopTempCorrectionMs = now;
+    }
+    return baseRate * topTempFeedCorrection;
+}
+}
+
 void update(SystemState& state, const Settings& settings) {
     uint32_t now = millis();
     uint32_t startTime = getPhaseStartTime();
@@ -22,6 +45,8 @@ void update(SystemState& state, const Settings& settings) {
 
     switch (state.nbkPhase) {
         case NbkPhase::HEATING:
+            topTempFeedCorrection = 1.0f;
+            lastTopTempCorrectionMs = now;
             applyBoosterHeater(state, settings, true);
             applyFullHeatPower(settings);
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
@@ -80,7 +105,8 @@ void update(SystemState& state, const Settings& settings) {
             
         case NbkPhase::WORKING: {
             applyBoosterHeater(state, settings, false);
-            float targetSpeed = settings.nbk.pumpSpeedMlH;
+            float targetSpeed = getCorrectedFeedRate(settings.nbk.pumpSpeedMlH,
+                                                      state, settings, now);
             if (liveLimits.pumpCapped) {
                 if (liveLimits.maxPumpSpeedMlH > 0.0f &&
                     targetSpeed > liveLimits.maxPumpSpeedMlH) {

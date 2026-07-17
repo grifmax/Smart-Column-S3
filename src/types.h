@@ -674,6 +674,10 @@ struct NbkSettings {
   float powerW = 2500.0f;
   float pumpSpeedMlH = 20000.0f; // 20 л/ч
   float columnBottomTempThresholdC = 95.0f;
+  // The current calibrated peristaltic pump is NBK's feed backend. A future
+  // external pump can be added without changing the process state machine.
+  bool topTempCorrectionEnabled = false;
+  float columnTopTargetTempC = 78.0f;
   float targetVolumeMl = 0.0f;   // #4 fix: целевой объём (0 = неизвестно, прогресс без него — 0%)
 };
 

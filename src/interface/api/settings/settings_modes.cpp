@@ -83,6 +83,11 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
               doc["pumpSpeedMlH"] = g_settings.nbk.pumpSpeedMlH;
               doc["columnBottomTempThresholdC"] =
                   g_settings.nbk.columnBottomTempThresholdC;
+              doc["feedBackend"] = "peristaltic_internal";
+              doc["topTempCorrectionEnabled"] =
+                  g_settings.nbk.topTempCorrectionEnabled;
+              doc["columnTopTargetTempC"] =
+                  g_settings.nbk.columnTopTargetTempC;
 
               String json;
               serializeJson(doc, json);
@@ -112,6 +117,14 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
         if (!doc["columnBottomTempThresholdC"].isNull()) {
           g_settings.nbk.columnBottomTempThresholdC = clampFloatRange(
               doc["columnBottomTempThresholdC"].as<float>(), 50.0f, 110.0f);
+        }
+        if (!doc["topTempCorrectionEnabled"].isNull()) {
+          g_settings.nbk.topTempCorrectionEnabled =
+              doc["topTempCorrectionEnabled"].as<bool>();
+        }
+        if (!doc["columnTopTargetTempC"].isNull()) {
+          g_settings.nbk.columnTopTargetTempC = clampFloatRange(
+              doc["columnTopTargetTempC"].as<float>(), 50.0f, 110.0f);
         }
 
         if (!NVSManager::saveSettings(g_settings)) {

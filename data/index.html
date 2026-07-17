@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.72">
+    <link rel="stylesheet" href="style.css?v=2.4.73">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.72" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.73" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1215,8 +1215,17 @@
                                                         <label for="nbk-pump-speed">Подача браги, мл/ч</label>
                                                         <input type="number" id="nbk-pump-speed" min="100" max="120000"
                                                             step="100" value="20000">
-                                                        <div class="control-inline-hint">Насос включается на рабочей фазе после стабилизации колонны.</div>
-                                                    </div>
+                                                          <div class="control-inline-hint">Текущий перистальтический насос — backend подачи НБК; фракционник голов в этом режиме не используется.</div>
+                                                      </div>
+                                                      <div class="form-group control-checkbox-field">
+                                                          <label for="nbk-top-temp-correction">Медленная коррекция подачи по верху колонны</label>
+                                                          <input type="checkbox" id="nbk-top-temp-correction">
+                                                      </div>
+                                                      <div class="form-group">
+                                                          <label for="nbk-column-top-target">Цель верха колонны, °C</label>
+                                                          <input type="number" id="nbk-column-top-target" min="50" max="110" step="0.1" value="78">
+                                                          <div class="control-inline-hint">Коррекция отключена по умолчанию; меняет расход раз в 30 с в пределах ±15% от калиброванного.</div>
+                                                      </div>
                                                     <div class="form-group">
                                                         <label for="nbk-column-bottom-threshold">Мин. температура низа колонны, °C</label>
                                                         <input type="number" id="nbk-column-bottom-threshold" min="50" max="110"
@@ -3715,7 +3724,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.72"></script>
+    <script src="app.js?v=2.4.73"></script>
 </body>
 
 </html>

@@ -10,7 +10,9 @@ import { addLog } from '../core/logs.js';
 const NBK_DEFAULTS = {
     powerW: 2500,
     pumpSpeedMlH: 20000,
-    columnBottomTempThresholdC: 95
+    columnBottomTempThresholdC: 95,
+    topTempCorrectionEnabled: false,
+    columnTopTargetTempC: 78
 };
 
 const FERMENTATION_DEFAULTS = {
@@ -58,6 +60,11 @@ export function collectNbkSettings() {
             110,
             NBK_DEFAULTS.columnBottomTempThresholdC
         ),
+        topTempCorrectionEnabled: Boolean(byId('nbk-top-temp-correction')?.checked),
+        columnTopTargetTempC: clampNumber(
+            byId('nbk-column-top-target')?.value, 50, 110,
+            NBK_DEFAULTS.columnTopTargetTempC
+        ),
         ...readBoosterStartSettings(NBK_BOOSTER_FIELD_IDS)
     };
 }
@@ -87,17 +94,26 @@ export async function loadNbkSettings() {
                 50,
                 110,
                 NBK_DEFAULTS.columnBottomTempThresholdC
+            ),
+            topTempCorrectionEnabled: Boolean(data.topTempCorrectionEnabled),
+            columnTopTargetTempC: clampNumber(
+                data.columnTopTargetTempC, 50, 110,
+                NBK_DEFAULTS.columnTopTargetTempC
             )
         };
         setInputValue('nbk-power-w', settings.powerW);
         setInputValue('nbk-pump-speed', settings.pumpSpeedMlH);
         setInputValue('nbk-column-bottom-threshold', settings.columnBottomTempThresholdC);
+        setInputValue('nbk-top-temp-correction', settings.topTempCorrectionEnabled);
+        setInputValue('nbk-column-top-target', settings.columnTopTargetTempC);
         loaded = true;
     } catch (error) {
         addLog(`Ошибка загрузки настроек НБК: ${error.message}`, 'warning');
         setInputValue('nbk-power-w', NBK_DEFAULTS.powerW);
         setInputValue('nbk-pump-speed', NBK_DEFAULTS.pumpSpeedMlH);
         setInputValue('nbk-column-bottom-threshold', NBK_DEFAULTS.columnBottomTempThresholdC);
+        setInputValue('nbk-top-temp-correction', NBK_DEFAULTS.topTempCorrectionEnabled);
+        setInputValue('nbk-column-top-target', NBK_DEFAULTS.columnTopTargetTempC);
     }
 
     try {

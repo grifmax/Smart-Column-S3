@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.72"
+#define FIRMWARE_VERSION "2.4.73"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -482,6 +482,8 @@
 #define NVS_KEY_NBK_POWER "nbk_pwr"
 #define NVS_KEY_NBK_PUMP_SPEED "nbk_spd"
 #define NVS_KEY_NBK_BOTTOM_TEMP "nbk_btm"
+#define NVS_KEY_NBK_TOP_CORR "nbk_tcor"
+#define NVS_KEY_NBK_TOP_TARGET "nbk_ttop"
 #define NVS_KEY_FERM_TARGET_TEMP "ferm_tgt"
 #define NVS_KEY_FERM_HYSTERESIS "ferm_hyst"
 #define NVS_KEY_FERM_USE_HEATER "ferm_heat"
