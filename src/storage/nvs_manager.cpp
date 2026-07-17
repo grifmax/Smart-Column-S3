@@ -248,6 +248,27 @@ void savePressureCalibrationToNvs(const PressureSensorCalibration& cal) {
     prefs.putString(NVS_KEY_PRESSURE_POINTS, json);
 }
 
+void migrateSettingsSchema(Settings& settings, uint16_t storedVersion) {
+    if (storedVersion >= NVS_SETTINGS_SCHEMA_VERSION) {
+        return;
+    }
+
+    // Versions before the explicit schema key relied on struct defaults. The
+    // fields were already loaded with per-key defaults above; migration only
+    // re-applies their safety bounds and never overwrites an existing opt-in.
+    if (storedVersion < 3) {
+        settings.rectParams.pressureMinPowerPercent =
+            constrain(settings.rectParams.pressureMinPowerPercent, 0, 100);
+        settings.distillationUi.vaporTempTargetC =
+            constrain(settings.distillationUi.vaporTempTargetC, 20.0f, 110.0f);
+        settings.distillationUi.vaporTempMinPowerPercent =
+            constrain(settings.distillationUi.vaporTempMinPowerPercent, 0, 100);
+        settings.distillationUi.vaporTempMaxPowerPercent =
+            constrain(settings.distillationUi.vaporTempMaxPowerPercent,
+                      settings.distillationUi.vaporTempMinPowerPercent, 100);
+    }
+}
+
 } // namespace
 
 namespace NVSManager {
@@ -262,6 +283,8 @@ bool loadSettings(Settings& settings) {
     LOG_I("NVS: Loading settings...");
 
     prefs.begin(NVS_NAMESPACE, true); // Read-only
+    const uint16_t storedSchemaVersion =
+        prefs.getUShort(NVS_KEY_SETTINGS_SCHEMA, 0);
 
     // WiFi
     prefs.getString(NVS_KEY_WIFI_SSID, settings.wifi.ssid, sizeof(settings.wifi.ssid));
@@ -638,6 +661,16 @@ bool loadSettings(Settings& settings) {
     settings.rebootCountUser = prefs.getUInt(NVS_KEY_REBOOT_USER, 0);
 
     prefs.end();
+
+    if (storedSchemaVersion < NVS_SETTINGS_SCHEMA_VERSION) {
+        migrateSettingsSchema(settings, storedSchemaVersion);
+        LOG_I("NVS: Migrating settings schema %u -> %u",
+              storedSchemaVersion, NVS_SETTINGS_SCHEMA_VERSION);
+        if (!saveSettings(settings)) {
+            LOG_E("NVS: Settings schema migration failed");
+            return false;
+        }
+    }
     LOG_I("NVS: Settings loaded");
     return true;
 }
@@ -646,6 +679,7 @@ bool saveSettings(const Settings& settings) {
     LOG_I("NVS: Saving settings...");
 
     prefs.begin(NVS_NAMESPACE, false); // Read-write
+    prefs.putUShort(NVS_KEY_SETTINGS_SCHEMA, NVS_SETTINGS_SCHEMA_VERSION);
 
     // WiFi
     prefs.putString(NVS_KEY_WIFI_SSID, settings.wifi.ssid);

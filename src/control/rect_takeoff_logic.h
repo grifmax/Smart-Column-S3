@@ -15,4 +15,11 @@ inline bool shouldIntegrateVolume(bool backendActive,
   return backendActive && actualEquivalentRateMlH > 0.0f && elapsedMs > 0;
 }
 
+inline bool shouldRunBackend(bool phaseTakeoffEnabled, bool routeReady,
+                             float equivalentRateMlH, bool periodicTakeoff,
+                             bool periodicTakeoffActive) {
+  return phaseTakeoffEnabled && routeReady && equivalentRateMlH > 0.0f &&
+         (!periodicTakeoff || periodicTakeoffActive);
+}
+
 } // namespace RectTakeoffLogic

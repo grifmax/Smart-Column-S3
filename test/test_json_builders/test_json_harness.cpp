@@ -40,6 +40,8 @@ void test_fraction_program_collection_gate_covers_route_level_emergency_and_resu
 void test_fraction_program_json_contract_round_trip();
 void test_autonomous_pause_uses_full_reflux();
 void test_autonomous_pause_does_not_integrate_volume();
+void test_pump_backend_gate_handles_rate_and_periodic_pause();
+void test_valve_backend_gate_requires_route_and_safety_ready();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -55,6 +57,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_fraction_program_json_contract_round_trip);
   RUN_TEST(test_autonomous_pause_uses_full_reflux);
   RUN_TEST(test_autonomous_pause_does_not_integrate_volume);
+  RUN_TEST(test_pump_backend_gate_handles_rate_and_periodic_pause);
+  RUN_TEST(test_valve_backend_gate_requires_route_and_safety_ready);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>
@@ -188,4 +192,18 @@ void test_autonomous_pause_does_not_integrate_volume() {
   TEST_ASSERT_FALSE(RectTakeoffLogic::shouldIntegrateVolume(false, 600.0f, 1000));
   TEST_ASSERT_FALSE(RectTakeoffLogic::shouldIntegrateVolume(true, 0.0f, 1000));
   TEST_ASSERT_FALSE(RectTakeoffLogic::shouldIntegrateVolume(true, 600.0f, 0));
+}
+
+void test_pump_backend_gate_handles_rate_and_periodic_pause() {
+  TEST_ASSERT_TRUE(RectTakeoffLogic::shouldRunBackend(true, true, 600.0f, false, false));
+  TEST_ASSERT_FALSE(RectTakeoffLogic::shouldRunBackend(true, true, 600.0f, true, false));
+  TEST_ASSERT_TRUE(RectTakeoffLogic::shouldRunBackend(true, true, 600.0f, true, true));
+  TEST_ASSERT_FALSE(RectTakeoffLogic::shouldRunBackend(true, true, 0.0f, false, true));
+}
+
+void test_valve_backend_gate_requires_route_and_safety_ready() {
+  TEST_ASSERT_FALSE(RectTakeoffLogic::shouldRunBackend(true, false, 600.0f, false, true));
+  TEST_ASSERT_FALSE(RectTakeoffLogic::shouldRunBackend(false, true, 600.0f, false, true));
+  TEST_ASSERT_TRUE(RectTakeoffLogic::shouldRunBackend(true, true, 600.0f, false, true));
+  TEST_ASSERT_FALSE(RectTakeoffLogic::shouldRunBackend(true, false, 600.0f, true, true));
 }

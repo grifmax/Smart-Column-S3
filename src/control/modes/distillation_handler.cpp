@@ -134,6 +134,39 @@ bool finishForVaporTemperatureTimeout(SystemState& state, uint32_t now) {
     return true;
 }
 
+void finishFractionProgram(SystemState& state, uint32_t now,
+                           ControlV2::ReasonCodeV2 reason,
+                           const char* message) {
+    const RectPhase previousPhase = state.rectPhase;
+    setPhaseStartTime(now);
+    ControlV2::notePhaseTransition(
+        Mode::DISTILLATION, static_cast<uint16_t>(previousPhase),
+        static_cast<uint16_t>(RectPhase::FINISH), reason, message);
+    state.rectPhase = RectPhase::FINISH;
+}
+
+ControlV2::ReasonCodeV2 getFractionCompletionReason(FractionProgramEndReason reason) {
+    switch (reason) {
+        case FRACTION_PROGRAM_REASON_VOLUME:
+            return ControlV2::ReasonCodeV2::RC_DISTILLATION_TARGET_VOLUME_REACHED;
+        case FRACTION_PROGRAM_REASON_TEMPERATURE:
+            return ControlV2::ReasonCodeV2::RC_DISTILLATION_END_TEMP_REACHED;
+        default:
+            return ControlV2::ReasonCodeV2::RC_PHASE_TRANSITION_INFERRED;
+    }
+}
+
+const char* getFractionCompletionMessage(FractionProgramEndReason reason) {
+    switch (reason) {
+        case FRACTION_PROGRAM_REASON_VOLUME: return "Fraction program target volume reached";
+        case FRACTION_PROGRAM_REASON_TIME: return "Fraction program step duration completed";
+        case FRACTION_PROGRAM_REASON_TEMPERATURE: return "Fraction program end temperature reached";
+        case FRACTION_PROGRAM_REASON_LEVEL: return "Fraction program body level reached";
+        case FRACTION_PROGRAM_REASON_MANUAL: return "Fraction program completed by operator";
+        default: return "Fraction program completed";
+    }
+}
+
 ControlV2::ReasonCodeV2 getBodyExitReason(bool endByTemp, bool endByVolume) {
     if (endByTemp) {
         return ControlV2::ReasonCodeV2::RC_DISTILLATION_END_TEMP_REACHED;
@@ -304,10 +337,13 @@ bool confirmFractionProgram(SystemState& state, const Settings& settings) {
         !state.fractionProgram.waitingForConfirmation) return false;
     state.fractionProgram.waitingForConfirmation = false;
     state.fractionProgram.confirmationPrompt[0] = '\0';
-    if (beginFractionRouting(state, settings, millis())) return true;
+    const uint32_t now = millis();
+    if (beginFractionRouting(state, settings, now)) return true;
     stopFractionTakeoff();
     state.fractionProgram.active = false;
-    state.rectPhase = RectPhase::FINISH;
+    finishFractionProgram(state, now,
+                          ControlV2::ReasonCodeV2::RC_SAFETY_LIMIT_TAKEOFF,
+                          "Fractionator unavailable; collection stopped");
     notifyFractionEvent("Fractionator unavailable; collection stopped", "error");
     return false;
 }
@@ -345,7 +381,9 @@ static void updateFractionProgram(SystemState& state, const Settings& settings, 
         if (!beginFractionRouting(state, settings, now)) {
             stopFractionTakeoff();
             state.fractionProgram.active = false;
-            state.rectPhase = RectPhase::FINISH;
+            finishFractionProgram(state, now,
+                                  ControlV2::ReasonCodeV2::RC_SAFETY_LIMIT_TAKEOFF,
+                                  "Fractionator unavailable; collection stopped");
             notifyFractionEvent("Fractionator unavailable; collection stopped", "error");
         }
         return;
@@ -360,8 +398,9 @@ static void updateFractionProgram(SystemState& state, const Settings& settings, 
             stopFractionTakeoff();
             state.fractionProgram.active = false;
             state.fractionProgram.routing = false;
-            setPhaseStartTime(now);
-            state.rectPhase = RectPhase::FINISH;
+            finishFractionProgram(state, now,
+                                  ControlV2::ReasonCodeV2::RC_SAFETY_LIMIT_TAKEOFF,
+                                  "Fractionator route timeout; collection stopped");
             notifyFractionEvent("Fractionator route timeout; collection stopped", "error");
             return;
         }
@@ -394,8 +433,8 @@ static void updateFractionProgram(SystemState& state, const Settings& settings, 
     notifyFractionEvent("Fraction completed", "info");
     if (++state.fractionProgram.currentStep >= settings.fractionProgram.stepCount) {
         state.fractionProgram.active = false;
-        setPhaseStartTime(now);
-        state.rectPhase = RectPhase::FINISH;
+        finishFractionProgram(state, now, getFractionCompletionReason(endReason),
+                              getFractionCompletionMessage(endReason));
         return;
     }
     prepareCurrentFractionStep(state, now);

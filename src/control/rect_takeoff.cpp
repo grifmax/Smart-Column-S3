@@ -80,10 +80,10 @@ ValvePulseState buildValvePulseState(const RectTakeoffCommand &command,
                                      RectTakeoffFraction fraction,
                                      bool phaseTakeoffEnabled) {
   ValvePulseState state;
-  if (!phaseTakeoffEnabled || fraction == RectTakeoffFraction::NONE) {
-    return state;
-  }
-  if (command.periodicTakeoff && !command.periodicTakeoffActive) {
+  if (fraction == RectTakeoffFraction::NONE ||
+      !RectTakeoffLogic::shouldRunBackend(
+          phaseTakeoffEnabled, true, command.equivalentRateMlH,
+          command.periodicTakeoff, command.periodicTakeoffActive)) {
     return state;
   }
 
@@ -363,9 +363,9 @@ void applyPumpBackend(const RectTakeoffCommand &command) {
   const bool phaseTakeoffEnabled = command.enabled && !command.fullReflux;
   const bool headsValveOpen =
       phaseTakeoffEnabled && requestedFraction == RectTakeoffFraction::HEADS;
-  const bool shouldPumpRun =
-      phaseTakeoffEnabled && command.equivalentRateMlH > 0.0f &&
-      (!command.periodicTakeoff || command.periodicTakeoffActive);
+  const bool shouldPumpRun = RectTakeoffLogic::shouldRunBackend(
+      phaseTakeoffEnabled, true, command.equivalentRateMlH,
+      command.periodicTakeoff, command.periodicTakeoffActive);
 
   Valves::setProductValve(requestedFraction, headsValveOpen);
 

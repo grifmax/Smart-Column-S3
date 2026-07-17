@@ -46,6 +46,8 @@ struct RectificationParams {
     uint16_t tailsSpeed = 360;
     uint16_t purgeMin = 5;
     bool baroCorrectionEnabled = true;
+    bool pressureControlEnabled = false;
+    uint8_t pressureMinPowerPercent = 30;
     RectTakeoffBackendType takeoffBackendType = RectTakeoffBackendType::PUMP;
     RectRefluxMode refluxMode = RectRefluxMode::ML_H;
     float srTarget = 0.0f;
@@ -73,6 +75,11 @@ struct DistillationParams {
     float endTemp;
     RectTakeoffBackendType takeoffBackendType = RectTakeoffBackendType::PUMP;
     bool valveSafeVentConfirmed = false;
+    bool vaporTempControlEnabled = false;
+    float vaporTempTargetC = 78.0f;
+    uint8_t vaporTempMinPowerPercent = 30;
+    uint8_t vaporTempMaxPowerPercent = 100;
+    uint16_t vaporTempTimeoutMin = 0;
     FractionProgram fractionProgram;
 };
 

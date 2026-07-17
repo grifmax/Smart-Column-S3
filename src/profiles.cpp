@@ -169,6 +169,10 @@ void appendRectificationJson(JsonObject parameters,
     rectificationJson["purgeMin"] = rectification.purgeMin;
     rectificationJson["baroCorrectionEnabled"] =
         rectification.baroCorrectionEnabled;
+    rectificationJson["pressureControlEnabled"] =
+        rectification.pressureControlEnabled;
+    rectificationJson["pressureMinPowerPercent"] =
+        rectification.pressureMinPowerPercent;
     rectificationJson["takeoffBackendType"] =
         static_cast<uint8_t>(rectification.takeoffBackendType);
     rectificationJson["refluxMode"] =
@@ -239,6 +243,13 @@ void loadRectificationParamsFromJson(JsonVariantConst rectificationVariant,
     rectification.baroCorrectionEnabled =
         rectificationJson["baroCorrectionEnabled"] |
         rectification.baroCorrectionEnabled;
+    rectification.pressureControlEnabled =
+        rectificationJson["pressureControlEnabled"] |
+        rectification.pressureControlEnabled;
+    rectification.pressureMinPowerPercent = clampProfileU8(
+        rectificationJson["pressureMinPowerPercent"] |
+            rectification.pressureMinPowerPercent,
+        0, 100);
     rectification.refluxMode = static_cast<RectRefluxMode>(
         clampProfileU8(
             rectificationJson["refluxMode"] |
@@ -381,6 +392,14 @@ void appendDistillationJson(JsonObject parameters,
         static_cast<uint8_t>(distillation.takeoffBackendType);
     distillationJson["valveSafeVentConfirmed"] =
         distillation.valveSafeVentConfirmed;
+    distillationJson["vaporTempControlEnabled"] =
+        distillation.vaporTempControlEnabled;
+    distillationJson["vaporTempTargetC"] = distillation.vaporTempTargetC;
+    distillationJson["vaporTempMinPowerPercent"] =
+        distillation.vaporTempMinPowerPercent;
+    distillationJson["vaporTempMaxPowerPercent"] =
+        distillation.vaporTempMaxPowerPercent;
+    distillationJson["vaporTempTimeoutMin"] = distillation.vaporTempTimeoutMin;
 
     JsonObject fractionProgram =
         distillationJson["fractionProgram"].to<JsonObject>();
@@ -457,6 +476,23 @@ void loadDistillationParamsFromJson(JsonVariantConst distillationVariant,
     distillation.valveSafeVentConfirmed =
         distillationJson["valveSafeVentConfirmed"] |
         distillation.valveSafeVentConfirmed;
+    distillation.vaporTempControlEnabled =
+        distillationJson["vaporTempControlEnabled"] |
+        distillation.vaporTempControlEnabled;
+    distillation.vaporTempTargetC = clampProfileFloat(
+        distillationJson["vaporTempTargetC"] | distillation.vaporTempTargetC,
+        20.0f, 110.0f);
+    distillation.vaporTempMinPowerPercent = clampProfileU8(
+        distillationJson["vaporTempMinPowerPercent"] |
+            distillation.vaporTempMinPowerPercent,
+        0, 100);
+    distillation.vaporTempMaxPowerPercent = clampProfileU8(
+        distillationJson["vaporTempMaxPowerPercent"] |
+            distillation.vaporTempMaxPowerPercent,
+        distillation.vaporTempMinPowerPercent, 100);
+    distillation.vaporTempTimeoutMin = clampProfileU16(
+        distillationJson["vaporTempTimeoutMin"] | distillation.vaporTempTimeoutMin,
+        0, 720);
 
     JsonVariantConst programVariant = distillationJson["fractionProgram"];
     if (!programVariant.is<JsonObjectConst>()) {
@@ -545,6 +581,10 @@ void applyRectificationSettings(const RectificationParams& rectification) {
     g_settings.rectParams.bodySpeedMlHKw = rectification.bodySpeed;
     g_settings.rectParams.baroCorrectionEnabled =
         rectification.baroCorrectionEnabled;
+    g_settings.rectParams.pressureControlEnabled =
+        rectification.pressureControlEnabled;
+    g_settings.rectParams.pressureMinPowerPercent =
+        rectification.pressureMinPowerPercent;
     g_settings.rectParams.takeoffBackendType = rectification.takeoffBackendType;
     g_settings.rectParams.refluxMode = rectification.refluxMode;
     g_settings.rectParams.srRatio = rectification.srTarget;
@@ -581,6 +621,10 @@ void captureRectificationSettings(RectificationParams& rectification) {
     rectification.bodySpeed = g_settings.rectParams.bodySpeedMlHKw;
     rectification.baroCorrectionEnabled =
         g_settings.rectParams.baroCorrectionEnabled;
+    rectification.pressureControlEnabled =
+        g_settings.rectParams.pressureControlEnabled;
+    rectification.pressureMinPowerPercent =
+        g_settings.rectParams.pressureMinPowerPercent;
     rectification.takeoffBackendType = g_settings.rectParams.takeoffBackendType;
     rectification.refluxMode = g_settings.rectParams.refluxMode;
     rectification.srTarget = g_settings.rectParams.srRatio;
@@ -620,6 +664,15 @@ void applyDistillationSettings(const DistillationParams& distillation) {
         distillation.takeoffBackendType;
     g_settings.distillationUi.valveSafeVentConfirmed =
         distillation.valveSafeVentConfirmed;
+    g_settings.distillationUi.vaporTempControlEnabled =
+        distillation.vaporTempControlEnabled;
+    g_settings.distillationUi.vaporTempTargetC = distillation.vaporTempTargetC;
+    g_settings.distillationUi.vaporTempMinPowerPercent =
+        distillation.vaporTempMinPowerPercent;
+    g_settings.distillationUi.vaporTempMaxPowerPercent =
+        distillation.vaporTempMaxPowerPercent;
+    g_settings.distillationUi.vaporTempTimeoutMin =
+        distillation.vaporTempTimeoutMin;
     g_settings.fractionProgram = distillation.fractionProgram;
 }
 
@@ -637,6 +690,15 @@ void captureDistillationSettings(DistillationParams& distillation) {
         g_settings.distillationUi.takeoffBackendType;
     distillation.valveSafeVentConfirmed =
         g_settings.distillationUi.valveSafeVentConfirmed;
+    distillation.vaporTempControlEnabled =
+        g_settings.distillationUi.vaporTempControlEnabled;
+    distillation.vaporTempTargetC = g_settings.distillationUi.vaporTempTargetC;
+    distillation.vaporTempMinPowerPercent =
+        g_settings.distillationUi.vaporTempMinPowerPercent;
+    distillation.vaporTempMaxPowerPercent =
+        g_settings.distillationUi.vaporTempMaxPowerPercent;
+    distillation.vaporTempTimeoutMin =
+        g_settings.distillationUi.vaporTempTimeoutMin;
     distillation.fractionProgram = g_settings.fractionProgram;
 }
 
