@@ -228,6 +228,24 @@ enum class MashStepType : uint8_t {
   HEAT_AND_HOLD = 0, HEAT, HOLD, OPERATOR_WAIT, BOIL, COOL, STIR, FINISH
 };
 
+// Optional analog leak detector on ADS1115 A3.
+struct LeakSensorData {
+  int16_t adc = 0;
+  float voltage = 0.0f;
+  bool valid = false;
+  bool triggered = false;
+  uint32_t lastUpdate = 0;
+};
+
+// Optional GPIO ADC vapor/gas channels. Disabled until dedicated pins are wired.
+struct VaporSensorData {
+  int16_t adc = 0;
+  float voltage = 0.0f;
+  bool valid = false;
+  bool triggered = false;
+  uint32_t lastUpdate = 0;
+};
+
 inline const char* mashStepTypeToString(MashStepType type) {
   switch (type) {
     case MashStepType::HEAT: return "heat";
@@ -441,6 +459,9 @@ struct SystemState {
   TemperatureData temps;
   PressureData pressure;
   HydrometerData hydrometer;
+  LeakSensorData leak;
+  VaporSensorData vaporPrimary;
+  VaporSensorData vaporSecondary;
   PowerData power;
 
   SystemHealth health;

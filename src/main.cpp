@@ -560,6 +560,8 @@ void loop() {
     if (now - g_lastPressureRead >= INTERVAL_PRESSURE_READ) {
       g_lastPressureRead = now;
       Sensors::readPressure(g_state.pressure);
+      Sensors::readLeakSensor(g_state.leak, g_settings.equipment);
+      Sensors::readVaporSensors(g_state.vaporPrimary, g_state.vaporSecondary);
       Sensors::readHydrometer(g_state.hydrometer, g_state.temps.columnTop,
                               g_settings.hydroCal);
     }

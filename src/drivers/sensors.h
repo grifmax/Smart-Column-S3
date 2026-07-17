@@ -29,6 +29,8 @@ namespace Sensors {
      * @param pressure Структура для записи результатов
      */
     void readPressure(Pressure& pressure);
+    void readLeakSensor(LeakSensorData& leak, const EquipmentSettings& equipment);
+    void readVaporSensors(VaporSensorData& primary, VaporSensorData& secondary);
     
     /**
      * Расчёт показаний ареометра

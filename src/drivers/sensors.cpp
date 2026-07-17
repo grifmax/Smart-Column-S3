@@ -1331,6 +1331,53 @@ bool readAds1115Channel(uint8_t channel, int16_t& adc, float& voltage) {
     return true;
 }
 
+void readLeakSensor(LeakSensorData& leak,
+                    const EquipmentSettings& equipment) {
+    leak.lastUpdate = millis();
+    leak.triggered = false;
+    if (!equipment.leakSensorEnabled) {
+        leak.valid = false;
+        leak.adc = 0;
+        leak.voltage = 0.0f;
+        return;
+    }
+
+    leak.valid = readAds1115Channel(ADS_CHANNEL_LEAK, leak.adc, leak.voltage);
+    if (!leak.valid) {
+        leak.adc = 0;
+        leak.voltage = 0.0f;
+        return;
+    }
+    leak.triggered = equipment.leakTriggerAbove
+        ? leak.voltage >= equipment.leakThresholdV
+        : leak.voltage <= equipment.leakThresholdV;
+}
+
+void readVaporSensors(VaporSensorData& primary, VaporSensorData& secondary) {
+    primary.lastUpdate = millis();
+    secondary.lastUpdate = primary.lastUpdate;
+    primary.valid = false;
+    secondary.valid = false;
+    primary.triggered = false;
+    secondary.triggered = false;
+#if VAPOR_SENSOR_ENABLED
+    const auto readChannel = [](VaporSensorData& sensor, int pin) {
+        if (pin < 0) return;
+        sensor.adc = analogRead(pin);
+        sensor.voltage = (static_cast<float>(sensor.adc) / 4095.0f) * 3.3f;
+        sensor.valid = true;
+        sensor.triggered = VAPOR_SENSOR_TRIGGER_ABOVE
+            ? sensor.voltage * 1000.0f >= VAPOR_SENSOR_THRESHOLD_MV
+            : sensor.voltage * 1000.0f <= VAPOR_SENSOR_THRESHOLD_MV;
+    };
+    readChannel(primary, PIN_VAPOR_SENSOR_ADC_1);
+    readChannel(secondary, PIN_VAPOR_SENSOR_ADC_2);
+#else
+    (void)primary;
+    (void)secondary;
+#endif
+}
+
 void updateHealth(SystemHealth& health) {
     // Подсчёт работающих датчиков температуры
     health.tempSensorsTotal = 0;

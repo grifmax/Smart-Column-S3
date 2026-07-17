@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.83"
+#define FIRMWARE_VERSION "2.4.84"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -117,6 +117,9 @@
 // Резерв под аналоговый датчик паров/газа на встроенном ADC ESP32-S3
 #define PIN_VAPOR_SENSOR_ADC_1 1
 #define PIN_VAPOR_SENSOR_ADC_2 3
+#define VAPOR_SENSOR_ENABLED 0
+#define VAPOR_SENSOR_THRESHOLD_MV 1500
+#define VAPOR_SENSOR_TRIGGER_ABOVE 1
 
 // =============================================================================
 // ТЕРМОМЕТРЫ DS18B20 (7 датчиков)

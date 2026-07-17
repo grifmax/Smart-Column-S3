@@ -334,6 +334,8 @@
 - `leakSensorEnabled`
 - `leakThresholdV`
 - `leakTriggerAbove`
+- `leak.enabled`, `leak.valid`, `leak.triggered`, `leak.voltage`, `leak.lastUpdate`
+- `vaporSensors.enabled`, `vaporSensors.primaryValid`, `vaporSensors.primaryTriggered`, `vaporSensors.secondaryValid`, `vaporSensors.secondaryTriggered`
 - `pzem.*`
 - `modules.*`
 

@@ -519,6 +519,45 @@ void check(SystemState& state, const Settings& settings) {
         snprintf(alarmMessage, sizeof(alarmMessage), "Pressure exceeded safe limit: %.1f mmHg", state.pressure.cube);
     }
 
+    if (!emergencyStop && settings.equipment.leakSensorEnabled &&
+        state.leak.lastUpdate > 0 && !state.leak.valid) {
+        emergencyStop = true;
+        alarmType = AlarmType::SENSOR_FAILURE;
+        alarmLevel = AlarmLevel::CRITICAL;
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Optional leak sensor is unavailable");
+    }
+
+    if (!emergencyStop && settings.equipment.leakSensorEnabled &&
+        state.leak.valid && state.leak.triggered) {
+        emergencyStop = true;
+        alarmType = AlarmType::EMERGENCY_STOP;
+        alarmLevel = AlarmLevel::CRITICAL;
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Leak sensor triggered: %.3f V", state.leak.voltage);
+    }
+
+#if VAPOR_SENSOR_ENABLED
+    if (!emergencyStop &&
+        ((!state.vaporPrimary.valid && state.vaporPrimary.lastUpdate > 0) ||
+         (!state.vaporSecondary.valid && state.vaporSecondary.lastUpdate > 0))) {
+        emergencyStop = true;
+        alarmType = AlarmType::SENSOR_FAILURE;
+        alarmLevel = AlarmLevel::CRITICAL;
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Optional vapor sensor is unavailable");
+    }
+    if (!emergencyStop &&
+        ((state.vaporPrimary.valid && state.vaporPrimary.triggered) ||
+         (state.vaporSecondary.valid && state.vaporSecondary.triggered))) {
+        emergencyStop = true;
+        alarmType = AlarmType::EMERGENCY_STOP;
+        alarmLevel = AlarmLevel::CRITICAL;
+        snprintf(alarmMessage, sizeof(alarmMessage),
+                 "Optional vapor sensor triggered");
+    }
+#endif
+
     if (!emergencyStop && !settings.demoMode && required.waterOutTemp &&
         waterOutRateValid && state.temps.waterOut > 30.0f &&
         waterOutRiseRate > waterOutRiseRateCMin) {

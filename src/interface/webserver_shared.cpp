@@ -2291,6 +2291,26 @@ void init() {
     pressure["atm"] = g_state.pressure.atmosphere;
     pressure["kpa"] = g_state.pressure.pressure;
 
+    JsonObject leak = doc["leak"].to<JsonObject>();
+    leak["enabled"] = g_settings.equipment.leakSensorEnabled;
+    leak["valid"] = g_state.leak.valid;
+    leak["triggered"] = g_state.leak.triggered;
+    leak["adc"] = g_state.leak.adc;
+    leak["voltage"] = g_state.leak.voltage;
+    leak["thresholdV"] = g_settings.equipment.leakThresholdV;
+    leak["triggerAbove"] = g_settings.equipment.leakTriggerAbove;
+    leak["lastUpdate"] = g_state.leak.lastUpdate;
+    JsonObject vapor = doc["vaporSensors"].to<JsonObject>();
+    vapor["enabled"] = VAPOR_SENSOR_ENABLED != 0;
+    vapor["thresholdMv"] = VAPOR_SENSOR_THRESHOLD_MV;
+    vapor["triggerAbove"] = VAPOR_SENSOR_TRIGGER_ABOVE != 0;
+    vapor["primaryValid"] = g_state.vaporPrimary.valid;
+    vapor["primaryTriggered"] = g_state.vaporPrimary.triggered;
+    vapor["primaryVoltage"] = g_state.vaporPrimary.voltage;
+    vapor["secondaryValid"] = g_state.vaporSecondary.valid;
+    vapor["secondaryTriggered"] = g_state.vaporSecondary.triggered;
+    vapor["secondaryVoltage"] = g_state.vaporSecondary.voltage;
+
     // Мощность (PZEM-004T)
     JsonObject power = doc["power"].to<JsonObject>();
     const Heater::Diagnostics heaterDiag = Heater::getDiagnostics();

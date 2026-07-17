@@ -237,15 +237,10 @@ void fillSafetyChannelsJson(JsonObject channels) {
            ? (bodyLevelVoltage >= g_settings.equipment.bodyLevelThresholdV)
            : (bodyLevelVoltage <= g_settings.equipment.bodyLevelThresholdV));
 
-  int16_t leakAdc = 0;
-  float leakVoltage = 0.0f;
-  const bool leakReadable =
-      Sensors::readAds1115Channel(ADS_CHANNEL_LEAK, leakAdc, leakVoltage);
-  const bool leakTriggered =
-      g_settings.equipment.leakSensorEnabled && leakReadable &&
-      (g_settings.equipment.leakTriggerAbove
-           ? (leakVoltage >= g_settings.equipment.leakThresholdV)
-           : (leakVoltage <= g_settings.equipment.leakThresholdV));
+  const int16_t leakAdc = g_state.leak.adc;
+  const float leakVoltage = g_state.leak.voltage;
+  const bool leakReadable = g_state.leak.valid;
+  const bool leakTriggered = g_state.leak.triggered;
 
   JsonObject bodyLevel = channels["bodyLevel"].to<JsonObject>();
   bodyLevel["label"] = "Уровень банки тела";
@@ -307,11 +302,15 @@ void fillSafetyChannelsJson(JsonObject channels) {
 
   JsonObject vaporPrimary = channels["vaporPrimary"].to<JsonObject>();
   vaporPrimary["label"] = "Газ / пар #1";
-  vaporPrimary["status"] = "reserved";
-  vaporPrimary["available"] = false;
+  vaporPrimary["status"] = VAPOR_SENSOR_ENABLED
+      ? (g_state.vaporPrimary.valid
+             ? (g_state.vaporPrimary.triggered ? "triggered" : "armed")
+             : "no_signal")
+      : "reserved";
+  vaporPrimary["available"] = VAPOR_SENSOR_ENABLED != 0;
   vaporPrimary["expected"] = false;
   vaporPrimary["planned"] = true;
-  vaporPrimary["liveReadable"] = false;
+  vaporPrimary["liveReadable"] = g_state.vaporPrimary.valid;
   vaporPrimary["bus"] = "ESP32 ADC";
   vaporPrimary["address"] = "GPIO1";
   vaporPrimary["role"] =
@@ -323,11 +322,15 @@ void fillSafetyChannelsJson(JsonObject channels) {
 
   JsonObject vaporSecondary = channels["vaporSecondary"].to<JsonObject>();
   vaporSecondary["label"] = "Газ / пар #2";
-  vaporSecondary["status"] = "reserved";
-  vaporSecondary["available"] = false;
+  vaporSecondary["status"] = VAPOR_SENSOR_ENABLED
+      ? (g_state.vaporSecondary.valid
+             ? (g_state.vaporSecondary.triggered ? "triggered" : "armed")
+             : "no_signal")
+      : "reserved";
+  vaporSecondary["available"] = VAPOR_SENSOR_ENABLED != 0;
   vaporSecondary["expected"] = false;
   vaporSecondary["planned"] = true;
-  vaporSecondary["liveReadable"] = false;
+  vaporSecondary["liveReadable"] = g_state.vaporSecondary.valid;
   vaporSecondary["bus"] = "ESP32 ADC";
   vaporSecondary["address"] = "GPIO3";
   vaporSecondary["role"] =
