@@ -570,6 +570,7 @@ bool loadSettings(Settings& settings) {
     settings.nbk.columnBottomTempThresholdC = prefs.getFloat(NVS_KEY_NBK_BOTTOM_TEMP, 95.0f);
     settings.nbk.topTempCorrectionEnabled = prefs.getBool(NVS_KEY_NBK_TOP_CORR, false);
     settings.nbk.columnTopTargetTempC = prefs.getFloat(NVS_KEY_NBK_TOP_TARGET, 78.0f);
+    settings.nbk.targetVolumeMl = prefs.getFloat(NVS_KEY_NBK_TARGET_VOLUME, 0.0f);
     settings.fermentation.targetTempC = prefs.getFloat(NVS_KEY_FERM_TARGET_TEMP, 28.0f);
     settings.fermentation.hysteresisC = prefs.getFloat(NVS_KEY_FERM_HYSTERESIS, 0.5f);
     settings.fermentation.useHeater = prefs.getBool(NVS_KEY_FERM_USE_HEATER, true);
@@ -756,6 +757,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_NBK_BOTTOM_TEMP, settings.nbk.columnBottomTempThresholdC);
     prefs.putBool(NVS_KEY_NBK_TOP_CORR, settings.nbk.topTempCorrectionEnabled);
     prefs.putFloat(NVS_KEY_NBK_TOP_TARGET, settings.nbk.columnTopTargetTempC);
+    prefs.putFloat(NVS_KEY_NBK_TARGET_VOLUME, settings.nbk.targetVolumeMl);
     prefs.putFloat(NVS_KEY_FERM_TARGET_TEMP, settings.fermentation.targetTempC);
     prefs.putFloat(NVS_KEY_FERM_HYSTERESIS, settings.fermentation.hysteresisC);
     prefs.putBool(NVS_KEY_FERM_USE_HEATER, settings.fermentation.useHeater);

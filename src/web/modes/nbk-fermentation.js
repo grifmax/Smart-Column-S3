@@ -12,7 +12,8 @@ const NBK_DEFAULTS = {
     pumpSpeedMlH: 20000,
     columnBottomTempThresholdC: 95,
     topTempCorrectionEnabled: false,
-    columnTopTargetTempC: 78
+    columnTopTargetTempC: 78,
+    targetVolumeMl: 0
 };
 
 const FERMENTATION_DEFAULTS = {
@@ -65,6 +66,7 @@ export function collectNbkSettings() {
             byId('nbk-column-top-target')?.value, 50, 110,
             NBK_DEFAULTS.columnTopTargetTempC
         ),
+        targetVolumeMl: clampNumber(byId('nbk-target-volume')?.value, 0, 500000, NBK_DEFAULTS.targetVolumeMl),
         ...readBoosterStartSettings(NBK_BOOSTER_FIELD_IDS)
     };
 }
@@ -99,13 +101,15 @@ export async function loadNbkSettings() {
             columnTopTargetTempC: clampNumber(
                 data.columnTopTargetTempC, 50, 110,
                 NBK_DEFAULTS.columnTopTargetTempC
-            )
+            ),
+            targetVolumeMl: clampNumber(data.targetVolumeMl, 0, 500000, NBK_DEFAULTS.targetVolumeMl)
         };
         setInputValue('nbk-power-w', settings.powerW);
         setInputValue('nbk-pump-speed', settings.pumpSpeedMlH);
         setInputValue('nbk-column-bottom-threshold', settings.columnBottomTempThresholdC);
         setInputValue('nbk-top-temp-correction', settings.topTempCorrectionEnabled);
         setInputValue('nbk-column-top-target', settings.columnTopTargetTempC);
+        setInputValue('nbk-target-volume', settings.targetVolumeMl);
         loaded = true;
     } catch (error) {
         addLog(`Ошибка загрузки настроек НБК: ${error.message}`, 'warning');
@@ -114,6 +118,7 @@ export async function loadNbkSettings() {
         setInputValue('nbk-column-bottom-threshold', NBK_DEFAULTS.columnBottomTempThresholdC);
         setInputValue('nbk-top-temp-correction', NBK_DEFAULTS.topTempCorrectionEnabled);
         setInputValue('nbk-column-top-target', NBK_DEFAULTS.columnTopTargetTempC);
+        setInputValue('nbk-target-volume', NBK_DEFAULTS.targetVolumeMl);
     }
 
     try {

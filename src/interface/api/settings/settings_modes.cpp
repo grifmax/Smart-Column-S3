@@ -88,6 +88,7 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
                   g_settings.nbk.topTempCorrectionEnabled;
               doc["columnTopTargetTempC"] =
                   g_settings.nbk.columnTopTargetTempC;
+              doc["targetVolumeMl"] = g_settings.nbk.targetVolumeMl;
 
               String json;
               serializeJson(doc, json);
@@ -125,6 +126,10 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
         if (!doc["columnTopTargetTempC"].isNull()) {
           g_settings.nbk.columnTopTargetTempC = clampFloatRange(
               doc["columnTopTargetTempC"].as<float>(), 50.0f, 110.0f);
+        }
+        if (!doc["targetVolumeMl"].isNull()) {
+          g_settings.nbk.targetVolumeMl = clampFloatRange(
+              doc["targetVolumeMl"].as<float>(), 0.0f, 500000.0f);
         }
 
         if (!NVSManager::saveSettings(g_settings)) {

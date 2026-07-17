@@ -16,6 +16,8 @@ namespace Nbk {
 namespace {
 float topTempFeedCorrection = 1.0f;
 uint32_t lastTopTempCorrectionMs = 0;
+uint32_t feedStableSinceMs = 0;
+bool feedPausedByProtection = false;
 
 float getCorrectedFeedRate(float baseRate, const SystemState& state,
                            const Settings& settings, uint32_t now) {
@@ -34,6 +36,38 @@ float getCorrectedFeedRate(float baseRate, const SystemState& state,
     }
     return baseRate * topTempFeedCorrection;
 }
+
+bool feedRecoveryReady(const SystemState& state, const Settings& settings,
+                       const ControlV2::ActiveLimitsV2& limits, uint32_t now) {
+    const bool conditionsStable = !limits.pumpCapped &&
+        !limits.antiOscillationActive && state.temps.valid[TEMP_COLUMN_BOTTOM] &&
+        state.pressure.ok &&
+        state.temps.columnBottom > settings.nbk.columnBottomTempThresholdC + 0.5f &&
+        state.pressure.cube < settings.safety.pressureMaxMmHg * 0.85f;
+    if (!conditionsStable) {
+        feedStableSinceMs = 0;
+        if (!feedPausedByProtection) {
+            feedPausedByProtection = true;
+            MQTT::publishNotification(
+                "НБК: подача остановлена защитой",
+                "Подача возобновится только после 30 секунд устойчивых температуры и давления.",
+                "warning");
+        }
+        return false;
+    }
+    if (feedStableSinceMs == 0) {
+        feedStableSinceMs = now;
+        return false;
+    }
+    if (now - feedStableSinceMs < 30000UL) return false;
+    if (feedPausedByProtection) {
+        feedPausedByProtection = false;
+        MQTT::publishNotification("НБК: подача разрешена",
+                                  "Условия устойчивы 30 секунд, возобновляем подачу браги.",
+                                  "info");
+    }
+    return true;
+}
 }
 
 void update(SystemState& state, const Settings& settings) {
@@ -47,6 +81,8 @@ void update(SystemState& state, const Settings& settings) {
         case NbkPhase::HEATING:
             topTempFeedCorrection = 1.0f;
             lastTopTempCorrectionMs = now;
+            feedStableSinceMs = 0;
+            feedPausedByProtection = false;
             applyBoosterHeater(state, settings, true);
             applyFullHeatPower(settings);
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
@@ -83,9 +119,7 @@ void update(SystemState& state, const Settings& settings) {
             applyBoosterHeater(state, settings, false);
             const float rampRatio = min(1.0f, elapsed / 60000.0f);
             const float feedRate = settings.nbk.pumpSpeedMlH * rampRatio;
-            if (!liveLimits.pumpCapped && !liveLimits.antiOscillationActive &&
-                state.temps.valid[TEMP_COLUMN_BOTTOM] &&
-                state.temps.columnBottom > settings.nbk.columnBottomTempThresholdC) {
+            if (feedRecoveryReady(state, settings, liveLimits, now)) {
                 Pump::start(feedRate);
             } else {
                 Pump::stop();
@@ -105,6 +139,21 @@ void update(SystemState& state, const Settings& settings) {
             
         case NbkPhase::WORKING: {
             applyBoosterHeater(state, settings, false);
+            if (settings.nbk.targetVolumeMl > 0.0f &&
+                state.pump.totalVolumeMl >= settings.nbk.targetVolumeMl) {
+                Pump::stop();
+                ControlV2::notePhaseTransition(
+                    Mode::NBK, static_cast<uint16_t>(NbkPhase::WORKING),
+                    static_cast<uint16_t>(NbkPhase::FINISH),
+                    ControlV2::ReasonCodeV2::RC_NBK_FINISH_LIKELY,
+                    "Достигнут заданный объём поданной браги");
+                state.nbkPhase = NbkPhase::FINISH;
+                setPhaseStartTime(now);
+                MQTT::publishNotification("НБК: подача завершена",
+                                          "Достигнут заданный объём браги, начинается охлаждение.",
+                                          "info");
+                break;
+            }
             float targetSpeed = getCorrectedFeedRate(settings.nbk.pumpSpeedMlH,
                                                       state, settings, now);
             if (liveLimits.pumpCapped) {
@@ -116,15 +165,8 @@ void update(SystemState& state, const Settings& settings) {
                 }
             }
 
-            if (liveLimits.pumpCapped || liveLimits.antiOscillationActive) {
-                Pump::stop();
-            } else if (state.temps.valid[TEMP_COLUMN_BOTTOM]) {
-                if (state.temps.columnBottom < settings.nbk.columnBottomTempThresholdC) {
-                    Pump::stop();
-                    LOG_W("NBK: Temp %.1f < %.1f. Pump stopped.", state.temps.columnBottom, settings.nbk.columnBottomTempThresholdC);
-                } else if (state.temps.columnBottom > settings.nbk.columnBottomTempThresholdC + 0.5f) {
-                    Pump::start(targetSpeed);
-                }
+            if (feedRecoveryReady(state, settings, liveLimits, now)) {
+                Pump::start(targetSpeed);
             } else {
                 Pump::stop();
             }
