@@ -19,6 +19,18 @@ uint32_t lastTopTempCorrectionMs = 0;
 uint32_t feedStableSinceMs = 0;
 bool feedPausedByProtection = false;
 
+void setFeedRuntime(SystemState& state, float requested, float corrected,
+                    const char* limitingFactor) {
+    state.nbk.requestedFeedMlH = requested;
+    state.nbk.correctedFeedMlH = corrected;
+    state.nbk.feedCorrectionPercent = requested > 0.0f
+        ? ((corrected / requested) - 1.0f) * 100.0f
+        : 0.0f;
+    strncpy(state.nbk.limitingFactor, limitingFactor,
+            sizeof(state.nbk.limitingFactor) - 1);
+    state.nbk.limitingFactor[sizeof(state.nbk.limitingFactor) - 1] = '\0';
+}
+
 float getCorrectedFeedRate(float baseRate, const SystemState& state,
                            const Settings& settings, uint32_t now) {
     if (!settings.nbk.topTempCorrectionEnabled ||
@@ -83,6 +95,7 @@ void update(SystemState& state, const Settings& settings) {
             lastTopTempCorrectionMs = now;
             feedStableSinceMs = 0;
             feedPausedByProtection = false;
+            setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "heating");
             applyBoosterHeater(state, settings, true);
             applyFullHeatPower(settings);
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
@@ -103,6 +116,7 @@ void update(SystemState& state, const Settings& settings) {
         case NbkPhase::STABILIZATION:
             applyBoosterHeater(state, settings, false);
             applyProcessHeaterPower(state, settings, 70);
+            setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "stabilization");
             if (!liveLimits.phaseAdvanceBlocked && elapsed > 5 * 60 * 1000UL) {
                 LOG_I("NBK: STABILIZATION -> FEED_RAMP");
                 ControlV2::notePhaseTransition(Mode::NBK,
@@ -121,8 +135,10 @@ void update(SystemState& state, const Settings& settings) {
             const float feedRate = settings.nbk.pumpSpeedMlH * rampRatio;
             if (feedRecoveryReady(state, settings, liveLimits, now)) {
                 Pump::start(feedRate);
+                setFeedRuntime(state, settings.nbk.pumpSpeedMlH, feedRate, "feed ramp");
             } else {
                 Pump::stop();
+                setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "safety recovery");
             }
             if (rampRatio >= 1.0f) {
                 Pump::stop();
@@ -142,6 +158,7 @@ void update(SystemState& state, const Settings& settings) {
             if (settings.nbk.targetVolumeMl > 0.0f &&
                 state.pump.totalVolumeMl >= settings.nbk.targetVolumeMl) {
                 Pump::stop();
+                setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "target volume");
                 ControlV2::notePhaseTransition(
                     Mode::NBK, static_cast<uint16_t>(NbkPhase::WORKING),
                     static_cast<uint16_t>(NbkPhase::FINISH),
@@ -167,8 +184,11 @@ void update(SystemState& state, const Settings& settings) {
 
             if (feedRecoveryReady(state, settings, liveLimits, now)) {
                 Pump::start(targetSpeed);
+                setFeedRuntime(state, settings.nbk.pumpSpeedMlH, targetSpeed,
+                    settings.nbk.topTempCorrectionEnabled ? "top temperature correction" : "none");
             } else {
                 Pump::stop();
+                setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "safety recovery");
             }
 
             // Защита по давлению (интеллектуальное снижение мощности)
@@ -195,6 +215,7 @@ void update(SystemState& state, const Settings& settings) {
         case NbkPhase::FINISH:
             applyBoosterHeater(state, settings, false);
             Pump::stop();
+            setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "finish cooldown");
             Heater::setPower(0);
             if (elapsed > 5 * 60 * 1000UL) {
                 Valves::setWater(false);

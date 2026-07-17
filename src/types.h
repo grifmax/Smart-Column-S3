@@ -391,6 +391,13 @@ struct MashingState {
   bool active = false;
 };
 
+struct NbkRuntimeState {
+  float requestedFeedMlH = 0.0f;
+  float correctedFeedMlH = 0.0f;
+  float feedCorrectionPercent = 0.0f;
+  char limitingFactor[48] = "idle";
+};
+
 // Состояние Hold режима
 struct HoldState {
   uint8_t currentStep = 0;
@@ -444,6 +451,7 @@ struct SystemState {
   // Состояния режимов
   MashingState mashing;
   HoldState hold;
+  NbkRuntimeState nbk;
   NbkPhase nbkPhase = NbkPhase::IDLE;
   FermentationPhase fermPhase = FermentationPhase::IDLE;
   FractionProgramRuntime fractionProgram;

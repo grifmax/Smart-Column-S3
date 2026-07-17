@@ -1523,7 +1523,12 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
         goal = 'Вести ручной отбор и корректировать мощность, воду и насос по месту';
     } else if (mode === MODE_NBK) {
         title = 'НБК под контролем';
-        detail = `Фаза: ${state.nbk?.phaseStr || state.phaseStr || 'idle'}. Подача ${toFinite(state.pump.speedMlH, 0).toFixed(0)} мл/ч, мощность ${toFinite(state.nbk?.powerW, 0).toFixed(0)} Вт.`;
+        const requestedFeed = toFinite(state.nbk?.requestedFeedMlH, 0);
+        const correctedFeed = toFinite(state.nbk?.correctedFeedMlH, 0);
+        const actualFeed = toFinite(state.nbk?.actualFeedMlH, state.pump.speedMlH);
+        const feedVolume = toFinite(state.nbk?.feedVolumeMl, state.pump.totalMl);
+        const factor = String(state.nbk?.limitingFactor || 'none');
+        detail = `Фаза: ${state.nbk?.phaseStr || state.phaseStr || 'idle'}. Подача: задано ${requestedFeed.toFixed(0)}, скорр. ${correctedFeed.toFixed(0)}, факт ${actualFeed.toFixed(0)} мл/ч; брага ${feedVolume.toFixed(0)} мл; фактор: ${factor}.`;
         if (!indicators.steamReady) goal = 'Разогреть НБК до готовности пара';
         else if (!indicators.nbkFeedAllowed) goal = 'Дождаться разрешения подачи браги';
         else goal = 'Вести стабильную подачу браги без провала по пару и давлению';

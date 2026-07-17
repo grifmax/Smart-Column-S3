@@ -376,6 +376,13 @@ export let runtimeMonitorState = {
         powerW: 2500,
         pumpSpeedMlH: 20000,
         columnBottomTempThresholdC: 95,
+        feedBackend: 'peristaltic_internal',
+        requestedFeedMlH: 0,
+        correctedFeedMlH: 0,
+        actualFeedMlH: 0,
+        feedVolumeMl: 0,
+        feedCorrectionPercent: 0,
+        limitingFactor: 'idle',
         phase: 0,
         phaseStr: 'idle'
     },

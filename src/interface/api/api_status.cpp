@@ -479,6 +479,13 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     nbk["pumpSpeedMlH"] = g_settings.nbk.pumpSpeedMlH;
     nbk["columnBottomTempThresholdC"] =
         g_settings.nbk.columnBottomTempThresholdC;
+    nbk["feedBackend"] = "peristaltic_internal";
+    nbk["requestedFeedMlH"] = g_state.nbk.requestedFeedMlH;
+    nbk["correctedFeedMlH"] = g_state.nbk.correctedFeedMlH;
+    nbk["actualFeedMlH"] = g_state.pump.speedMlPerHour;
+    nbk["feedVolumeMl"] = g_state.pump.totalVolumeMl;
+    nbk["feedCorrectionPercent"] = g_state.nbk.feedCorrectionPercent;
+    nbk["limitingFactor"] = g_state.nbk.limitingFactor;
     nbk["phase"] = static_cast<int>(g_state.nbkPhase);
     nbk["phaseStr"] = getNbkPhaseString(g_state.nbkPhase);
 
