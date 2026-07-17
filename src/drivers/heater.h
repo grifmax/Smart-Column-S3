@@ -22,6 +22,8 @@ namespace Heater {
         float powerErrorWatts = 0.0f;
         bool closedLoopActive = false;
         bool boosterEnabled = false;
+        bool safetyRelayAvailable = false;
+        bool safetyRelayEnergized = false;
         bool zeroCrossSeen = false;
         uint32_t zeroCrossCount = 0;
         uint32_t triacFireCount = 0;
@@ -59,6 +61,10 @@ namespace Heater {
 
     void setBoosterEnabled(bool enabled);
     bool isBoosterEnabled();
+
+    // Optional independent cutoff relay status. Disabled when its pin is -1.
+    bool isSafetyRelayAvailable();
+    bool isSafetyRelayEnergized();
     Diagnostics getDiagnostics();
 
     /**

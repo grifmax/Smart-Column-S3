@@ -35,6 +35,14 @@
 
 // --- Основные исполнительные пины ---
 #define PIN_HEATER 5
+// Optional independent heater safety relay. Keep disabled until the board
+// wiring assigns a dedicated GPIO; this must not reuse the heater/SSR pin.
+#ifndef PIN_HEATER_SAFETY_RELAY
+#define PIN_HEATER_SAFETY_RELAY -1
+#endif
+#ifndef HEATER_SAFETY_RELAY_ACTIVE_LEVEL
+#define HEATER_SAFETY_RELAY_ACTIVE_LEVEL 1
+#endif
 #define PIN_PUMP_STEP 6
 #define PIN_PUMP_DIR 7
 #define PIN_PUMP_EN 15
@@ -114,6 +122,13 @@
 
 #ifndef BOARD_HAS_STARTSTOP_PWM
 #define BOARD_HAS_STARTSTOP_PWM 1
+#endif
+
+#ifndef PIN_HEATER_SAFETY_RELAY
+#define PIN_HEATER_SAFETY_RELAY -1
+#endif
+#ifndef HEATER_SAFETY_RELAY_ACTIVE_LEVEL
+#define HEATER_SAFETY_RELAY_ACTIVE_LEVEL 1
 #endif
 
 // Для CUSTOM-профиля все используемые пины должны быть переданы через build_flags

@@ -278,6 +278,8 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     power["errorW"] = heaterDiag.powerErrorWatts;
     power["backend"] = heaterDiag.triacMode ? "triac" : "ssr";
     power["boosterEnabled"] = heaterDiag.boosterEnabled;
+    power["safetyRelayAvailable"] = heaterDiag.safetyRelayAvailable;
+    power["safetyRelayEnergized"] = heaterDiag.safetyRelayEnergized;
     power["closedLoopActive"] = heaterDiag.closedLoopActive;
     power["zeroCrossSeen"] = heaterDiag.zeroCrossSeen;
     power["zeroCrossCount"] = heaterDiag.zeroCrossCount;

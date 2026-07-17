@@ -36,6 +36,7 @@
 - `v2.indicators.telemetryCoverage`, `decisionTrust`, `degradedModeActive`, `adaptiveControlAllowed`
 - `activeProfile` — активный профиль процесса, его validation context и preview адаптации рецепта под текущее атмосферное давление
 - `power.backend`, `power.boosterEnabled`, `power.zeroCrossSeen`, `power.zeroCrossCount`, `power.triacFireCount`, `power.triacDelayUs` — live-диагностика схемы нагрева `TRIAC main + SSR booster`
+- `power.safetyRelayAvailable` / `power.safetyRelayEnergized` — состояние опционального независимого cutoff-реле нагрева; по умолчанию канал отключён до назначения отдельного GPIO в pin-профиле
 
 Это главный endpoint для web UI и fallback для внешних клиентов.
 

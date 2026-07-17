@@ -57,6 +57,19 @@ void writeBooster(bool enabled) {
     digitalWrite(PIN_SSR_HEATER, enabled ? HIGH : LOW);
 }
 
+#if PIN_HEATER_SAFETY_RELAY >= 0
+static bool safetyRelayEnergized = false;
+
+void writeSafetyRelay(bool energized) {
+    const uint8_t level = energized ? HEATER_SAFETY_RELAY_ACTIVE_LEVEL
+                                    : (HEATER_SAFETY_RELAY_ACTIVE_LEVEL ? LOW : HIGH);
+    digitalWrite(PIN_HEATER_SAFETY_RELAY, level);
+    safetyRelayEnergized = energized;
+}
+#else
+void writeSafetyRelay(bool) {}
+#endif
+
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
 inline void IRAM_ATTR fireTriacPulse() {
     triac_fire_count++;
@@ -218,6 +231,10 @@ void init() {
     pinMode(PIN_SSR_HEATER, OUTPUT);
     writeBooster(false);
     boosterEnabled = false;
+#if PIN_HEATER_SAFETY_RELAY >= 0
+    pinMode(PIN_HEATER_SAFETY_RELAY, OUTPUT);
+    writeSafetyRelay(false);
+#endif
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     LOG_I("Heater: Mode = TRIAC (Phase Control)");
@@ -282,8 +299,11 @@ void setPowerWatts(uint16_t watts) {
     syncPercentFromTargetWatts();
     ramping = false;
     if (isDemoHardwareSuppressed()) {
+        writeSafetyRelay(false);
         return;
     }
+
+    writeSafetyRelay(targetPowerWatts > 0);
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
@@ -331,13 +351,31 @@ uint16_t getTargetPowerWatts() {
 void setBoosterEnabled(bool enabled) {
     boosterEnabled = enabled;
     if (isDemoHardwareSuppressed()) {
+        writeSafetyRelay(false);
         return;
     }
+    writeSafetyRelay(enabled || targetPowerWatts > 0);
     writeBooster(enabled);
 }
 
 bool isBoosterEnabled() {
     return boosterEnabled;
+}
+
+bool isSafetyRelayAvailable() {
+#if PIN_HEATER_SAFETY_RELAY >= 0
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool isSafetyRelayEnergized() {
+#if PIN_HEATER_SAFETY_RELAY >= 0
+    return safetyRelayEnergized;
+#else
+    return false;
+#endif
 }
 
 Diagnostics getDiagnostics() {
@@ -348,6 +386,8 @@ Diagnostics getDiagnostics() {
     diag.actualPowerWatts = g_state.power.power;
     diag.powerErrorWatts = targetPowerWatts > 0 ? (static_cast<float>(targetPowerWatts) - g_state.power.power) : 0.0f;
     diag.boosterEnabled = boosterEnabled;
+    diag.safetyRelayAvailable = isSafetyRelayAvailable();
+    diag.safetyRelayEnergized = isSafetyRelayEnergized();
     diag.active = targetPowerWatts > 0 || boosterEnabled;
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     diag.closedLoopActive = closed_loop_active;
@@ -362,6 +402,7 @@ Diagnostics getDiagnostics() {
 void emergencyStop() {
     LOG_I("Heater: EMERGENCY STOP!");
     if (isDemoHardwareSuppressed()) {
+        writeSafetyRelay(false);
         currentPower = 0;
         targetPowerWatts = 0;
         targetPower = 0;
@@ -380,6 +421,7 @@ void emergencyStop() {
 #else
     ledcWrite(LEDC_CHANNEL_HEATER, 0);
 #endif
+    writeSafetyRelay(false);
     writeBooster(false);
     boosterEnabled = false;
     currentPower = 0;
