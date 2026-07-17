@@ -117,6 +117,9 @@ function escapeHtml(value) {
 }
 
 function normalizeTemperatureTopology(topology = {}) {
+    const installedCount = Number.isFinite(Number(topology?.installedCount))
+        ? Math.max(0, Number(topology.installedCount))
+        : TEMPERATURE_TOPOLOGY_FIELDS.reduce((count, field) => count + ((topology?.[field.key] !== false) ? 1 : 0), 0);
     return {
         cube: topology?.cube !== false,
         columnBottom: topology?.columnBottom !== false,
@@ -125,9 +128,11 @@ function normalizeTemperatureTopology(topology = {}) {
         tsa: topology?.tsa !== false,
         waterIn: topology?.waterIn !== false,
         waterOut: topology?.waterOut !== false,
-        installedCount: Number.isFinite(Number(topology?.installedCount))
-            ? Math.max(0, Number(topology.installedCount))
-            : TEMPERATURE_TOPOLOGY_FIELDS.reduce((count, field) => count + ((topology?.[field.key] !== false) ? 1 : 0), 0)
+        installedCount,
+        configurationTier: topology?.configurationTier === 'full' ? 'full' : 'lite',
+        isLite: topology?.isLite !== undefined
+            ? Boolean(topology.isLite)
+            : installedCount < TEMPERATURE_TOPOLOGY_FIELDS.length
     };
 }
 
@@ -160,7 +165,7 @@ function syncTemperatureTopologyUi(equipment = {}) {
             .filter((field) => topology[field.key])
             .map((field) => field.label);
         summaryEl.textContent = selectedLabels.length
-            ? `Установлено ролей: ${topology.installedCount}. ${selectedLabels.join(', ')}.`
+            ? `${topology.isLite ? 'Lite-комплектация' : 'Полная комплектация'} • установлено ролей: ${topology.installedCount}. ${selectedLabels.join(', ')}.`
             : 'Пока не отмечен ни один установленный термодатчик.';
     }
 

@@ -10,6 +10,7 @@
  */
 
 #include "sensors.h"
+#include "control/safety.h"
 #include "ds2482_100.h"
 #include <freertos/semphr.h>
 #include <OneWire.h>
@@ -831,7 +832,9 @@ void readTemperatures(Temperatures& temps) {
                 temps.valid[i] = false;
                 values[i] = 0;
                 // Инкремент счетчика ошибок конкретного датчика
-                if (i < 7) g_state.health.tempErrors[i]++;
+                if (i < 7 && Safety::isTempSensorInstalled(g_settings.equipment, i)) {
+                    g_state.health.tempErrors[i]++;
+                }
             } else {
                 temps.valid[i] = true;
                 values[i] = raw + tempCal.offsets[i];
@@ -841,7 +844,9 @@ void readTemperatures(Temperatures& temps) {
             temps.valid[i] = false;
             values[i] = 0;
             // Датчик не найден - тоже считаем ошибкой если он должен быть включен
-            if (i < 7) g_state.health.tempErrors[i]++;
+            if (i < 7 && Safety::isTempSensorInstalled(g_settings.equipment, i)) {
+                g_state.health.tempErrors[i]++;
+            }
         }
     }
 

@@ -107,7 +107,11 @@ void fillTemperatureTopologyJson(JsonObject topology,
   topology["waterIn"] = Safety::isTempSensorInstalled(equipment, TEMP_WATER_IN);
   topology["waterOut"] =
       Safety::isTempSensorInstalled(equipment, TEMP_WATER_OUT);
-  topology["installedCount"] = Safety::getInstalledTempSensorCount(equipment);
+  const uint8_t installedCount = Safety::getInstalledTempSensorCount(equipment);
+  topology["installedCount"] = installedCount;
+  topology["configurationTier"] =
+      installedCount < TEMP_COUNT ? "lite" : "full";
+  topology["isLite"] = installedCount < TEMP_COUNT;
 }
 
 void fillTemperatureModeSupportJson(JsonObject modes,

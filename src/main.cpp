@@ -403,7 +403,8 @@ static void performSystemHealthCheck(uint32_t now) {
   // 2. Проверка датчиков температуры на стабильность
   bool sensorsStable = true;
   for (int i = 0; i < 7; i++) {
-    if (g_state.health.tempErrors[i] > 50) {
+    if (Safety::isTempSensorInstalled(g_settings.equipment, i) &&
+        g_state.health.tempErrors[i] > 50) {
       sensorsStable = false;
       LOG_W("Health Check: Sensor %d unstable (%u errors)", i,
             g_state.health.tempErrors[i]);
@@ -413,8 +414,21 @@ static void performSystemHealthCheck(uint32_t now) {
   // 3. Проверка критических систем
   bool wifiOk = (WiFi.status() == WL_CONNECTED);
   int32_t wifiRssi = wifiOk ? WiFi.RSSI() : 0;
-  bool criticalSensorsOk =
-      g_state.health.tempSensorsOk >= 2; // Минимум куб и царга низ
+  bool criticalSensorsOk = true;
+  uint8_t configuredSensors = 0;
+  uint8_t healthyConfiguredSensors = 0;
+  for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+    if (!Safety::isTempSensorInstalled(g_settings.equipment, i)) {
+      continue;
+    }
+    ++configuredSensors;
+    if (g_state.temps.valid[i]) {
+      ++healthyConfiguredSensors;
+    }
+  }
+  if (configuredSensors > 0) {
+    criticalSensorsOk = healthyConfiguredSensors == configuredSensors;
+  }
 
   // 4. Формирование расширенного сообщения для логов
   char logMsg[256];
@@ -487,7 +501,8 @@ static void performSystemHealthCheck(uint32_t now) {
   // Проверка на нестабильные датчики
   bool hasUnstableSensors = false;
   for (int i = 0; i < 7; i++) {
-    if (g_state.health.tempErrors[i] > 50) {
+    if (Safety::isTempSensorInstalled(g_settings.equipment, i) &&
+        g_state.health.tempErrors[i] > 50) {
       hasUnstableSensors = true;
       break;
     }
