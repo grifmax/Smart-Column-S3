@@ -366,6 +366,7 @@ const char* getNbkPhaseName(NbkPhase phase) {
         case NbkPhase::IDLE: return "Ожидание";
         case NbkPhase::HEATING: return "Разогрев";
         case NbkPhase::STABILIZATION: return "Старт";
+        case NbkPhase::FEED_RAMP: return "Плавная подача";
         case NbkPhase::WORKING: return "Работа";
         case NbkPhase::FINISH: return "Финиш";
         default: return "???";

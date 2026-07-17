@@ -106,6 +106,7 @@ const char *getNbkPhaseString(NbkPhase phase) {
     return "heating";
   case NbkPhase::STABILIZATION:
     return "stabilization";
+  case NbkPhase::FEED_RAMP: return "feed_ramp";
   case NbkPhase::WORKING:
     return "working";
   case NbkPhase::FINISH:

@@ -43,24 +43,44 @@ void update(SystemState& state, const Settings& settings) {
             applyBoosterHeater(state, settings, false);
             applyProcessHeaterPower(state, settings, 70);
             if (!liveLimits.phaseAdvanceBlocked && elapsed > 5 * 60 * 1000UL) {
-                LOG_I("NBK: STABILIZATION -> WORKING");
+                LOG_I("NBK: STABILIZATION -> FEED_RAMP");
                 ControlV2::notePhaseTransition(Mode::NBK,
                                                static_cast<uint16_t>(NbkPhase::STABILIZATION),
-                                               static_cast<uint16_t>(NbkPhase::WORKING),
+                                               static_cast<uint16_t>(NbkPhase::FEED_RAMP),
                                                ControlV2::ReasonCodeV2::RC_NBK_STABILIZATION_COMPLETE);
-                state.nbkPhase = NbkPhase::WORKING;
+                state.nbkPhase = NbkPhase::FEED_RAMP;
                 setPhaseStartTime(now);
-                MQTT::publishNotification("НБК: Работа", "Подача браги включена", "info");
+                MQTT::publishNotification("НБК: Плавный запуск", "Начат плавный разгон подачи браги", "info");
             }
             break;
+
+        case NbkPhase::FEED_RAMP: {
+            applyBoosterHeater(state, settings, false);
+            const float rampRatio = min(1.0f, elapsed / 60000.0f);
+            const float feedRate = settings.nbk.pumpSpeedMlH * rampRatio;
+            if (!liveLimits.pumpCapped && !liveLimits.antiOscillationActive &&
+                state.temps.valid[TEMP_COLUMN_BOTTOM] &&
+                state.temps.columnBottom > settings.nbk.columnBottomTempThresholdC) {
+                Pump::start(feedRate);
+            } else {
+                Pump::stop();
+            }
+            if (rampRatio >= 1.0f) {
+                Pump::stop();
+                ControlV2::notePhaseTransition(Mode::NBK,
+                    static_cast<uint16_t>(NbkPhase::FEED_RAMP),
+                    static_cast<uint16_t>(NbkPhase::WORKING),
+                    ControlV2::ReasonCodeV2::RC_NBK_FEED_ENABLED,
+                    "Подача браги вышла на рабочий расход");
+                state.nbkPhase = NbkPhase::WORKING;
+                setPhaseStartTime(now);
+            }
+            break;
+        }
             
         case NbkPhase::WORKING: {
             applyBoosterHeater(state, settings, false);
-            // Плавный разгон насоса (Ramp-up) в течение 60 секунд
             float targetSpeed = settings.nbk.pumpSpeedMlH;
-            if (elapsed < 60000UL) {
-                targetSpeed *= (elapsed / 60000.0f);
-            }
             if (liveLimits.pumpCapped) {
                 if (liveLimits.maxPumpSpeedMlH > 0.0f &&
                     targetSpeed > liveLimits.maxPumpSpeedMlH) {

@@ -2282,6 +2282,8 @@ static const char *getDisplayNbkPhaseName(NbkPhase phase) {
     return ru ? "Нагрев" : "Heating";
   case NbkPhase::STABILIZATION:
     return ru ? "Старт" : "Start";
+  case NbkPhase::FEED_RAMP:
+    return ru ? "Подача" : "Feed ramp";
   case NbkPhase::WORKING:
     return ru ? "Работа" : "Run";
   case NbkPhase::FINISH:

@@ -95,6 +95,7 @@ enum class NbkPhase : uint8_t {
   IDLE = 0,
   HEATING,
   STABILIZATION,
+  FEED_RAMP,
   WORKING,
   FINISH,
   COMPLETED

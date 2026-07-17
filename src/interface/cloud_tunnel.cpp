@@ -155,6 +155,7 @@ static const char* getNbkPhaseToken(NbkPhase phase) {
     case NbkPhase::IDLE: return "idle";
     case NbkPhase::HEATING: return "heating";
     case NbkPhase::STABILIZATION: return "stabilization";
+    case NbkPhase::FEED_RAMP: return "feed_ramp";
     case NbkPhase::WORKING: return "working";
     case NbkPhase::FINISH: return "finish";
     case NbkPhase::COMPLETED: return "completed";
