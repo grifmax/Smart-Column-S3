@@ -560,6 +560,9 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     mashing["stepDurationSec"] = g_state.mashing.stepDuration;
     mashing["tempInRange"] = g_state.mashing.tempInRange;
     mashing["stepName"] = g_state.mashing.stepName;
+    mashing["stepType"] = mashStepTypeToString(g_state.mashing.stepType);
+    mashing["currentTemp"] = g_state.temps.cube;
+    mashing["operatorAction"] = g_state.mashing.operatorAction;
 
     uint32_t mashElapsedSec = 0;
     if (g_state.mashing.tempInRange && g_state.mashing.inRangeStartTime > 0 &&

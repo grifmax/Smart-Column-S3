@@ -38,6 +38,36 @@ const char* getStepAdvanceMessage(uint8_t completedStep, uint8_t totalSteps) {
     return message;
 }
 
+void updateOperatorAction(MashingState& mashing) {
+    const char* action = "Контролировать температуру";
+    switch (mashing.stepType) {
+        case MashStepType::HEAT:
+            action = "Дождаться достижения температуры";
+            break;
+        case MashStepType::HOLD:
+        case MashStepType::HEAT_AND_HOLD:
+            action = "Дождаться температуры и выдержки";
+            break;
+        case MashStepType::OPERATOR_WAIT:
+            action = "Выполнить действие и подтвердить шаг";
+            break;
+        case MashStepType::BOIL:
+            action = "Следить за кипением и внесением хмеля";
+            break;
+        case MashStepType::COOL:
+            action = "Дождаться охлаждения до цели";
+            break;
+        case MashStepType::STIR:
+            action = "Контролировать перемешивание";
+            break;
+        case MashStepType::FINISH:
+            action = "Подтвердить завершение процесса";
+            break;
+    }
+    strncpy(mashing.operatorAction, action, sizeof(mashing.operatorAction) - 1);
+    mashing.operatorAction[sizeof(mashing.operatorAction) - 1] = '\0';
+}
+
 } // namespace
 
 void setProfile(const MashProfile* profile) {
@@ -55,6 +85,7 @@ void nextStep(SystemState& state,
     if (state.mashing.currentStep < currentProfile->stepCount) {
         state.mashing.targetTemp = currentProfile->steps[state.mashing.currentStep].temperature;
         state.mashing.stepType = currentProfile->steps[state.mashing.currentStep].type;
+        updateOperatorAction(state.mashing);
         boilHopNotificationMask = 0;
         state.mashing.waitingForOperator = false;
         state.mashing.stepDuration = currentProfile->steps[state.mashing.currentStep].duration * 60;
@@ -113,6 +144,7 @@ void start(SystemState& state, const MashProfile* profile) {
     state.mashing.currentStep = 0;
     state.mashing.targetTemp = profile->steps[0].temperature;
     state.mashing.stepType = profile->steps[0].type;
+    updateOperatorAction(state.mashing);
     state.mashing.waitingForOperator = false;
     state.mashing.manualAdvanceRequested = false;
     mashFoamAlarmActive = false;

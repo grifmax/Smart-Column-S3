@@ -387,6 +387,7 @@ struct MashingState {
   bool manualAdvanceRequested = false;
   float targetTemp = 0.0f;
   char stepName[32] = "";
+  char operatorAction[64] = "";
   uint32_t stepDuration = 0; // секунды
   bool active = false;
 };

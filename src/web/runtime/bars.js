@@ -1499,9 +1499,12 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
         const currentStep = Math.max(0, Math.round(toFinite(state.mashing.currentStep, 0)));
         const stepIndex = totalSteps > 0 ? Math.min(currentStep + 1, totalSteps) : 0;
         const stepName = String(state.mashing.stepName || '').trim();
+        const targetTemp = toFinite(state.mashing.targetTemp, 0);
+        const currentTemp = toFinite(state.mashing.currentTemp, state.temperatures?.cube);
+        const action = String(state.mashing.operatorAction || 'Контролировать шаг').trim();
         title = 'Заторный профиль выполняется';
         detail = totalSteps > 0
-            ? `Активен шаг ${stepIndex} из ${totalSteps}, до конца текущего шага около ${formatDurationSafe(state.mashing.remainingSec)}.`
+            ? `Шаг ${stepIndex} из ${totalSteps}: цель ${targetTemp > 0 ? `${targetTemp.toFixed(1)}°C` : 'без температуры'}, сейчас ${Number.isFinite(currentTemp) ? `${currentTemp.toFixed(1)}°C` : 'нет данных'}, осталось ${formatDurationSafe(state.mashing.remainingSec)}. Действие: ${action}.`
             : 'Профиль затирки ещё не загружен или ждёт запуска.';
         goal = totalSteps > 0
             ? `Шаг ${stepIndex} из ${totalSteps}${stepName ? `: ${stepName}` : ''}`
@@ -2649,8 +2652,11 @@ export function renderModeRuntimeCard() {
         const elapsed = Math.max(0, toFinite(s.mashing.elapsedSec, 0));
         const duration = Math.max(0, toFinite(s.mashing.stepDurationSec, 0));
         const currentPct = duration > 0 ? clampPercent((elapsed / duration) * 100) : 0;
+        const targetTemp = toFinite(s.mashing.targetTemp, 0);
+        const currentTemp = toFinite(s.mashing.currentTemp, s.temperatures?.cube);
+        const action = String(s.mashing.operatorAction || 'Контролировать шаг').trim();
         captionEl.textContent = totalSteps > 0
-            ? `Шаг ${Math.min(currentStep + 1, totalSteps)} из ${totalSteps}`
+            ? `Шаг ${Math.min(currentStep + 1, totalSteps)} из ${totalSteps} • цель ${targetTemp > 0 ? `${targetTemp.toFixed(1)}°C` : '—'} • сейчас ${Number.isFinite(currentTemp) ? `${currentTemp.toFixed(1)}°C` : '—'} • ${formatDurationSafe(s.mashing.remainingSec)} • ${action}`
             : 'Ожидание профиля затирки';
 
         for (let i = 0; i < totalSteps; i += 1) {
@@ -2664,7 +2670,7 @@ export function renderModeRuntimeCard() {
                 stateClass = '';
             } else if (i === currentStep) {
                 pct = currentPct;
-                primary = `${(100 - pct).toFixed(0)}% осталось`;
+                primary = action;
                 metaRight = `~${formatDurationSafe(s.mashing.remainingSec)}`;
                 stateClass = '';
             }
@@ -2673,7 +2679,9 @@ export function renderModeRuntimeCard() {
                 label: i === currentStep && s.mashing.stepName ? s.mashing.stepName : `Шаг ${i + 1}`,
                 percent: pct,
                 primary,
-                metaLeft: i === currentStep ? `${elapsed.toFixed(0)} / ${duration.toFixed(0)} с` : '',
+                metaLeft: i === currentStep
+                    ? `${targetTemp > 0 ? `${Number.isFinite(currentTemp) ? currentTemp.toFixed(1) : '—'} / ${targetTemp.toFixed(1)}°C • ` : ''}${elapsed.toFixed(0)} / ${duration.toFixed(0)} с`
+                    : '',
                 metaRight,
                 stateClass
             });

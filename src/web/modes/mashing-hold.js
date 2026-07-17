@@ -3,6 +3,8 @@ import { confirmModeSwitch } from './common.js';
 import { loadStatus } from '../core/status.js';
 import { addLog } from '../core/logs.js';
 
+// Grain, flour and beer recipes only differ by typed steps below. They all
+// enter the same MASHING FSM and never select a separate process mode.
 export const MASH_TEMPLATES = Object.freeze({
     malt: { name: 'Солодовый профиль', steps: [
         { type: 'operator_wait', temperature: 0, duration: 0, name: 'Внести солод и подтвердить' },

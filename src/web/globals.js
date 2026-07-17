@@ -407,7 +407,11 @@ export let runtimeMonitorState = {
         stepDurationSec: 0,
         elapsedSec: 0,
         remainingSec: 0,
-        stepName: ''
+        stepName: '',
+        stepType: 'heat_hold',
+        currentTemp: 0,
+        targetTemp: 0,
+        operatorAction: ''
     },
     hold: {
         active: false,
