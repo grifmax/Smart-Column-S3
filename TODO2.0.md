@@ -120,7 +120,7 @@
 
 ### Cloud / community
 
-- [ ] Импорт профилей сообщества.
+- [ ] Импорт профилей сообщества: локальный snapshot-import уже поддерживает preview совместимости, перенос validation baseline и безопасные уникальные ID; остаётся каталог/remote sync сообщества.
 - [ ] Cloud backup профилей и истории.
 - [ ] Remote expert mode.
 

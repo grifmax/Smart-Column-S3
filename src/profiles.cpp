@@ -1904,8 +1904,21 @@ String getActiveProfileName() {
 String createProfileFromSettings(const String& name, const String& description, const String& category) {
     Profile profile;
 
-    uint32_t now = millis() / 1000;
-    profile.id = String(now);
+    // Generate an installation-local ID and avoid overwriting profiles when a
+    // batch import contains several entries in the same second.
+    const uint32_t now = millis() / 1000;
+    const String baseId = String(now);
+    String candidateId = baseId;
+    uint16_t suffix = 0;
+    while (LittleFS.exists(String(PROFILES_DIR) + "/profile_" + candidateId + ".json") &&
+           suffix < 1000) {
+        candidateId = baseId + "_" + String(++suffix);
+    }
+    if (suffix >= 1000) {
+        Serial.println("Profile import rejected: unable to allocate a unique ID");
+        return "";
+    }
+    profile.id = candidateId;
 
     profile.metadata.name = name;
     profile.metadata.description = description;
@@ -2206,6 +2219,35 @@ String importProfileFromJSON(const String& jsonStr) {
     profile.statistics.successRate = 0;
     profile.learning = ProfileLearningSnapshot();
     profile.validation = ProfileValidationSnapshot();
+
+    // Keep the exported validation baseline so a community profile remains
+    // auditable after import. Runtime usage statistics are intentionally reset.
+    JsonObject validation = doc["validation"].as<JsonObject>();
+    if (!validation.isNull()) {
+        profile.validation.validatedAt = validation["validatedAt"] | 0;
+        profile.validation.sourceProcessId = validation["sourceProcessId"].as<String>();
+        profile.validation.atmosphereHpa = validation["atmosphereHpa"] | 0.0f;
+        profile.validation.atmosphereMmHg = validation["atmosphereMmHg"] | 0.0f;
+        profile.validation.columnHeightMm = validation["columnHeightMm"] | 0;
+        profile.validation.packingType = validation["packingType"].as<String>();
+        profile.validation.packingCoeff = validation["packingCoeff"] | 0.0f;
+        profile.validation.heaterPowerW = validation["heaterPowerW"] | 0;
+        profile.validation.targetPowerW = validation["targetPowerW"] | 0;
+        profile.validation.feedVolumeL = validation["feedVolumeL"] | 0.0f;
+        profile.validation.feedAbvPercent = validation["feedAbvPercent"] | 0.0f;
+        profile.validation.cubeChargePercent = validation["cubeChargePercent"] | 0.0f;
+        profile.validation.headsActualMl = validation["headsActualMl"] | 0;
+        profile.validation.bodyActualMl = validation["bodyActualMl"] | 0;
+        profile.validation.tailsActualMl = validation["tailsActualMl"] | 0;
+        profile.validation.headsCutColumnTopC = validation["headsCutColumnTopC"] | 0.0f;
+        profile.validation.bodyCutColumnTopC = validation["bodyCutColumnTopC"] | 0.0f;
+        profile.validation.tailsCutColumnTopC = validation["tailsCutColumnTopC"] | 0.0f;
+        profile.validation.cubeFinalC = validation["cubeFinalC"] | 0.0f;
+        profile.validation.columnTopFinalC = validation["columnTopFinalC"] | 0.0f;
+        profile.validation.avgStabilityIndex = validation["avgStabilityIndex"] | 0.0f;
+        profile.validation.avgProcessHealth = validation["avgProcessHealth"] | 0.0f;
+        profile.validation.equipmentSnapshotJson = validation["equipmentSnapshotJson"] | "";
+    }
 
     if (saveProfile(profile)) {
         Serial.printf("Профиль импортирован: %s (новый ID: %s)\n",
