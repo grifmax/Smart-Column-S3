@@ -7,6 +7,11 @@
 
 ---
 
+## [2.4.77] - 2026-07-17
+
+### Fixed
+- Cloud API профилей теперь обновляет `fractionProgram` через общий parser, а cloud status публикует тот же profile/runtime контракт программы фракций, что и local API. (codex)
+
 ## [2.4.76] - 2026-07-17
 
 ### Changed

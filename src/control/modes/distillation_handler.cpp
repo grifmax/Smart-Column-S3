@@ -264,6 +264,17 @@ static void updateFractionProgram(SystemState& state, const Settings& settings, 
         state.fractionProgram.routing = false;
     }
 
+    const bool routeReady = RectTakeoff::isFractionRouteReady(
+        getCurrentTakeoffBackendType(settings), step.routeIndex);
+    const uint32_t routeElapsedMs = state.fractionProgram.routingStartedAtMs > 0
+        ? now - state.fractionProgram.routingStartedAtMs
+        : settings.rectParams.routingSettlingMs;
+    if (!FractionProgramLogic::mayStartCollection(
+            state.safetyOk, state.paused, routeReady, routeElapsedMs,
+            settings.rectParams.routingSettlingMs)) {
+        stopFractionTakeoff();
+        return;
+    }
     applyFractionTakeoff(settings, routeIndexToTakeoffFraction(step.routeIndex), step.pumpRateMlH);
     const FractionProgramEndReason endReason = state.fractionProgram.manualAdvanceRequested
         ? FRACTION_PROGRAM_REASON_MANUAL

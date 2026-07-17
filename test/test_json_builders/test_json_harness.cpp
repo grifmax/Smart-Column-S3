@@ -35,6 +35,7 @@ void test_fraction_program_route_gate_requires_ready_route_and_settle_delay();
 void test_fraction_program_pause_shifts_step_timer();
 
 void test_fraction_program_route_timeout_requires_missing_route();
+void test_fraction_program_collection_gate_covers_route_level_emergency_and_resume();
 
 void test_fraction_program_json_contract_round_trip();
 void test_autonomous_pause_uses_full_reflux();
@@ -50,6 +51,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_fraction_program_route_gate_requires_ready_route_and_settle_delay);
   RUN_TEST(test_fraction_program_pause_shifts_step_timer);
   RUN_TEST(test_fraction_program_route_timeout_requires_missing_route);
+  RUN_TEST(test_fraction_program_collection_gate_covers_route_level_emergency_and_resume);
   RUN_TEST(test_fraction_program_json_contract_round_trip);
   RUN_TEST(test_autonomous_pause_uses_full_reflux);
   RUN_TEST(test_autonomous_pause_does_not_integrate_volume);
@@ -115,6 +117,21 @@ void test_fraction_program_route_timeout_requires_missing_route() {
   TEST_ASSERT_TRUE(FractionProgramLogic::hasRouteTimedOut(false, 30000));
   TEST_ASSERT_TRUE(FractionProgramLogic::hasRouteTimedOut(false, 40000));
   TEST_ASSERT_FALSE(FractionProgramLogic::hasRouteTimedOut(true, 40000));
+}
+void test_fraction_program_collection_gate_covers_route_level_emergency_and_resume() {
+  // Missing/failing route: never reopen the pump after the timeout path.
+  TEST_ASSERT_FALSE(FractionProgramLogic::mayStartCollection(
+      true, false, false, 30000, 1500));
+  // Level pause and emergency stop both use the same paused/safety gates.
+  TEST_ASSERT_FALSE(FractionProgramLogic::mayStartCollection(
+      true, true, true, 5000, 1500));
+  TEST_ASSERT_FALSE(FractionProgramLogic::mayStartCollection(
+      false, false, true, 5000, 1500));
+  // Resume is safe only after the route remains ready for the settle delay.
+  TEST_ASSERT_FALSE(FractionProgramLogic::mayStartCollection(
+      true, false, true, 1499, 1500));
+  TEST_ASSERT_TRUE(FractionProgramLogic::mayStartCollection(
+      true, false, true, 1500, 1500));
 }
 void test_fraction_program_json_contract_round_trip() {
   JsonDocument source;

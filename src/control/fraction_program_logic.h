@@ -45,4 +45,14 @@ inline bool isRouteSettled(bool routeReady, uint32_t routingElapsedMs,
                            uint32_t settlingMs) {
   return routeReady && routingElapsedMs >= settlingMs;
 }
+
+// The coordinator may start collection only after every independent safety
+// gate agrees. This keeps route failures, level/emergency pauses and normal
+// operator pauses on the same safe path: pump off / full reflux.
+inline bool mayStartCollection(bool safetyOk, bool paused, bool routeReady,
+                               uint32_t routingElapsedMs,
+                               uint32_t settlingMs) {
+  return safetyOk && !paused &&
+         isRouteSettled(routeReady, routingElapsedMs, settlingMs);
+}
 } // namespace FractionProgramLogic

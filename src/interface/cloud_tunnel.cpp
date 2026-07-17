@@ -22,6 +22,7 @@
 #include "../profiles.h"
 #include "../types.h"
 #include "../control/fsm.h"
+#include "../control/rect_takeoff.h"
 #include "../control/safety.h"
 #include "../control/v2/status_adapter.h"
 #include "../control/watt_control.h"
@@ -683,6 +684,22 @@ static void handleHttpRequest(JsonDocument& req) {
     JsonObject pump = doc["pump"].to<JsonObject>();
     pump["speedMlH"] = g_state.pump.speedMlPerHour;
     pump["totalMl"] = g_state.pump.totalVolumeMl;
+
+    const RectTakeoffFeedback takeoffFeedback = RectTakeoff::getFeedback();
+    JsonObject distillation = doc["distillation"].to<JsonObject>();
+    distillation["speedMlH"] = g_settings.distillationUi.speedMlH;
+    distillation["headsVolumeMl"] = g_settings.distillationUi.headsVolumeMl;
+    distillation["targetVolumeMl"] = g_settings.distillationUi.targetVolumeMl;
+    distillation["tailsVolumeMl"] = g_settings.distillationUi.tailsVolumeMl;
+    distillation["endTempC"] = g_settings.distillationUi.endTempC;
+    distillation["takeoffBackendType"] =
+        static_cast<uint8_t>(g_settings.distillationUi.takeoffBackendType);
+    fillFractionProgramJson(
+        distillation["fractionProgram"].to<JsonObject>(),
+        g_settings.fractionProgram);
+    fillFractionProgramRuntimeJson(
+        doc["fractionProgram"].to<JsonObject>(), g_state, g_settings,
+        takeoffFeedback);
 
     JsonObject volumes = doc["volumes"].to<JsonObject>();
     volumes["heads"] = g_state.stats.headsVolume;
@@ -1430,6 +1447,12 @@ static void handleHttpRequest(JsonDocument& req) {
           if (!distillation["endTemp"].isNull()) {
             profile.parameters.distillation.endTemp = clampFloatRange(
                 distillation["endTemp"].as<float>(), 50.0f, 110.0f);
+          }
+          if (distillation["fractionProgram"].is<JsonObject>()) {
+            profile.parameters.distillation.fractionProgram =
+                parseFractionProgramJson(
+                    distillation["fractionProgram"].as<JsonObject>(),
+                    profile.parameters.distillation.fractionProgram);
           }
         }
 

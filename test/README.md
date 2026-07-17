@@ -14,6 +14,8 @@ Use this harness for:
 - contract checks for JSON payload builders after they are split from hardware code
 - stable assertions on required keys, booleans, numbers, and strings
 - regression tests for serialization shape without flashing the device
+- fraction-program safety gates: route timeout, route settling, level/emergency
+  pause and safe resume before collection can restart
 
 Avoid using this harness for:
 
