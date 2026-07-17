@@ -2297,7 +2297,7 @@ static const char *getDisplayNbkPhaseName(NbkPhase phase) {
 static const char *getDisplayFermPhaseName(FermentationPhase phase) {
   const bool ru = (g_settings.language == 0);
   switch (phase) {
-  case FermentationPhase::RUNNING:
+  case FermentationPhase::FERMENTATION:
     return ru ? "Работа" : "Run";
   case FermentationPhase::COMPLETED:
     return ru ? "Готово" : "Done";

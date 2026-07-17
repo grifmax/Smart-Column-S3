@@ -103,7 +103,10 @@ enum class NbkPhase : uint8_t {
 // Фазы Ферментации
 enum class FermentationPhase : uint8_t {
   IDLE = 0,
-  RUNNING,
+  PREPARE,
+  HEATING,
+  COOLING,
+  FERMENTATION,
   COMPLETED
 };
 
@@ -677,6 +680,9 @@ struct FermentationSettings {
   float targetTempC = 28.0f;
   float hysteresisC = 0.5f;
   bool useHeater = true;
+  bool useCooling = true;
+  uint16_t coolingMinOnSec = 60;
+  uint16_t coolingMinOffSec = 60;
   uint16_t durationHours = 0;    // #4 fix: плановая длительность (0 = неизвестно, прогресс без неё — 0%)
 };
 

@@ -848,7 +848,10 @@ const char* getPhaseToken(Mode mode, uint16_t phaseId) {
         case Mode::FERMENTATION: {
             switch (static_cast<FermentationPhase>(phaseId)) {
                 case FermentationPhase::IDLE: return "idle";
-                case FermentationPhase::RUNNING: return "running";
+                case FermentationPhase::PREPARE: return "prepare";
+                case FermentationPhase::HEATING: return "heating";
+                case FermentationPhase::COOLING: return "cooling";
+                case FermentationPhase::FERMENTATION: return "fermentation";
                 case FermentationPhase::COMPLETED: return "completed";
                 default: return "unknown";
             }

@@ -165,7 +165,10 @@ static const char* getNbkPhaseToken(NbkPhase phase) {
 static const char* getFermPhaseToken(FermentationPhase phase) {
   switch (phase) {
     case FermentationPhase::IDLE: return "idle";
-    case FermentationPhase::RUNNING: return "running";
+    case FermentationPhase::PREPARE: return "prepare";
+    case FermentationPhase::HEATING: return "heating";
+    case FermentationPhase::COOLING: return "cooling";
+    case FermentationPhase::FERMENTATION: return "fermentation";
     case FermentationPhase::COMPLETED: return "completed";
     default: return "unknown";
   }

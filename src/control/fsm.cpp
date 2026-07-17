@@ -244,11 +244,11 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
             }
             break;
         case Mode::FERMENTATION:
-            state.fermPhase = FermentationPhase::RUNNING;
+            state.fermPhase = FermentationPhase::PREPARE;
             ControlV2::notePhaseTransition(
                 Mode::FERMENTATION,
                 static_cast<uint16_t>(FermentationPhase::IDLE),
-                static_cast<uint16_t>(FermentationPhase::RUNNING),
+                static_cast<uint16_t>(FermentationPhase::PREPARE),
                 ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
                 "Fermentation started");
             // Авто-запуск мешалки при ферментации
@@ -373,7 +373,14 @@ const char* getNbkPhaseName(NbkPhase phase) {
 }
 
 const char* getFermPhaseName(FermentationPhase phase) {
-    return phase == FermentationPhase::RUNNING ? "Работа" : "Ожидание";
+    switch (phase) {
+        case FermentationPhase::PREPARE: return "Подготовка";
+        case FermentationPhase::HEATING: return "Нагрев";
+        case FermentationPhase::COOLING: return "Охлаждение";
+        case FermentationPhase::FERMENTATION: return "Брожение";
+        case FermentationPhase::COMPLETED: return "Завершено";
+        default: return "Ожидание";
+    }
 }
 
 void getRectTargetsMl(float& headsMl, float& bodyMl, float& tailsMl) {
