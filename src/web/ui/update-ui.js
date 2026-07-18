@@ -54,7 +54,7 @@ export function updateUI(data) {
 
     if (data.phase !== undefined) {
 
-        const phaseNames = ['IDLE', 'HEATING', 'STABIL', 'HEADS', 'PURGE', 'BODY', 'TAILS', 'FINISH', 'ERROR'];
+        const phaseNames = ['Ожидание', 'Нагрев', 'Стабилизация', 'Отбор голов', 'Продувка', 'Отбор тела', 'Отбор хвостов', 'Завершение', 'Ошибка'];
 
         phaseText = phaseNames[data.phase] || '-';
         document.getElementById('phase').textContent = phaseText;

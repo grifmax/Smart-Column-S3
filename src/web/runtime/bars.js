@@ -3,6 +3,7 @@ import { activateTabById } from '../core/tabs.js';
 import { clampPercent, runtimeEscapeHtml, toFinite, formatDurationSafe } from '../runtime/helpers.js';
 import { getEffectiveAbvForCalculations } from '../runtime/abv.js';
 import { estimateRectTargets, getRectificationTakeoffRateMlH } from '../runtime/state.js';
+import { formatProcessPhase } from '../core/utils.js';
 
 const FRACTION_PROGRAM_END_VOLUME = 1 << 0;
 const FRACTION_PROGRAM_END_TIME = 1 << 1;
@@ -903,12 +904,12 @@ function getReasonCodeLabel(code) {
         RC_MODE_STOP_REQUEST: 'Останов режима',
         RC_PRECHECK_OK: 'Проверки пройдены',
         RC_PRECHECK_FAIL_SENSOR: 'Проблема с датчиками',
-        RC_PRECHECK_FAIL_SAFETY_LATCH: 'Активен safety latch',
+        RC_PRECHECK_FAIL_SAFETY_LATCH: 'Активна защёлкнутая авария защиты',
         RC_HEATING_COMPLETE: 'Разгон завершён',
         RC_STABILIZATION_TIMER_OK: 'Стабилизация по таймеру',
         RC_STABILITY_WINDOW_REACHED: 'Окно стабильности достигнуто',
         RC_HEADS_VOLUME_REACHED: 'Головы по объёму завершены',
-        RC_HEADS_SCORE_REACHED: 'Головы завершены по score',
+        RC_HEADS_SCORE_REACHED: 'Головы завершены по оценке',
         RC_POST_HEADS_STABILIZATION_COMPLETE: 'Постстабилизация завершена',
         RC_PURGE_COMPLETE: 'Продувка завершена',
         RC_BODY_TARGET_VOLUME_REACHED: 'Тело по объёму завершено',
@@ -929,13 +930,13 @@ function getReasonCodeLabel(code) {
         RC_SAFETY_LIMIT_POWER: 'Ограничение мощности',
         RC_SAFETY_LIMIT_TAKEOFF: 'Ограничение отбора',
         RC_SAFETY_PHASE_BLOCKED: 'Переход фазы заблокирован',
-        RC_SAFETY_RECOVERY_ENTERED: 'Вход в recovery',
-        RC_SAFETY_RECOVERY_EXITED: 'Выход из recovery',
+        RC_SAFETY_RECOVERY_ENTERED: 'Переход в восстановление',
+        RC_SAFETY_RECOVERY_EXITED: 'Выход из восстановления',
         RC_SAFETY_TRIP_PRESSURE: 'Авария по давлению',
         RC_SAFETY_TRIP_SENSOR: 'Авария по датчикам',
         RC_SAFETY_TRIP_OVERHEAT: 'Авария по перегреву',
         RC_SAFETY_TRIP_POWER: 'Авария по питанию',
-        RC_SAFETY_TRIP_GENERIC: 'Общая авария safety',
+        RC_SAFETY_TRIP_GENERIC: 'Общая авария защиты',
         RC_SAFETY_ACKNOWLEDGED: 'Авария подтверждена',
         RC_SAFETY_RESET_COMPLETED: 'Safety reset выполнен',
         RC_OPERATOR_SERVICE_ACTION: 'Сервисное действие оператора',
@@ -989,7 +990,7 @@ function getReasonCodeInsight(code, operatorMessage = '') {
             return {
                 tone: 'good',
                 title: label,
-                detail: 'Предпусковые условия были валидны: датчики, safety и базовая телеметрия выглядели рабочими.',
+                detail: 'Предпусковые условия были валидны: датчики, защита и базовая телеметрия выглядели рабочими.',
                 action: 'Можно использовать это как ориентир для следующего старта аналогичного режима.'
             };
         case 'RC_PRECHECK_FAIL_SENSOR':
@@ -1004,14 +1005,14 @@ function getReasonCodeInsight(code, operatorMessage = '') {
             return {
                 tone: 'danger',
                 title: label,
-                detail: 'Перед запуском уже был активен safety latch, поэтому старт заблокирован на стороне контроллера.',
+                detail: 'Перед запуском уже была активна защёлкнутая авария защиты, поэтому старт заблокирован контроллером.',
                 action: 'Сначала разберите причину trip, затем подтвердите или сбросьте аварийное состояние.'
             };
         case 'RC_SAFETY_LIMIT_POWER':
             return {
                 tone: 'warn',
                 title: label,
-                detail: 'Safety supervisor уже принудительно ограничивает нагрев из-за риска по процессу.',
+                detail: 'Защитный контур уже принудительно ограничивает нагрев из-за риска по процессу.',
                 action: 'Проверьте охлаждение, давление, TSA и не наращивайте мощность, пока ограничение не исчезнет.'
             };
         case 'RC_SAFETY_LIMIT_TAKEOFF':
@@ -1019,7 +1020,7 @@ function getReasonCodeInsight(code, operatorMessage = '') {
                 tone: 'warn',
                 title: label,
                 detail: 'Автоматика временно запрещает или душит отбор, потому что колонна не выглядит достаточно стабильной.',
-                action: 'Дождитесь рабочего окна по stability, pressure и cooling margin, не открывайте отбор вручную.'
+                action: 'Дождитесь рабочего окна по устойчивости, давлению и запасу охлаждения, не открывайте отбор вручную.'
             };
         case 'RC_SAFETY_PHASE_BLOCKED':
             return {
@@ -1033,7 +1034,7 @@ function getReasonCodeInsight(code, operatorMessage = '') {
             return {
                 tone: 'warn',
                 title: label,
-                detail: 'Система вошла в recovery или восстановила фазу после нестабильного участка процесса.',
+                detail: 'Система вошла в восстановление или вернула фазу после нестабильного участка процесса.',
                 action: 'Дайте колонне заново стабилизироваться и не делайте резких изменений нагрева, воды и отбора.'
             };
         case 'RC_SAFETY_RECOVERY_EXITED':
@@ -1068,7 +1069,7 @@ function getReasonCodeInsight(code, operatorMessage = '') {
             return {
                 tone: 'danger',
                 title: label,
-                detail: 'Сработала общая safety-авария без более узкой классификации.',
+                detail: 'Сработала общая авария защиты без более узкой классификации.',
                 action: 'Сверьте журнал, alarm и последние transition-события, прежде чем возвращать процесс в работу.'
             };
         case 'RC_HEADS_VOLUME_REACHED':
@@ -1085,7 +1086,7 @@ function getReasonCodeInsight(code, operatorMessage = '') {
                 tone: 'warn',
                 title: label,
                 detail: 'Автоматика считает, что основной отбор тела закончен по цели или признакам завершения.',
-                action: 'Сверьте продукт, верха колонны и body score, чтобы подтвердить корректность перехода.'
+                action: 'Сверьте продукт, верха колонны и оценку завершения отбора тела, чтобы подтвердить корректность перехода.'
             };
         case 'RC_TAILS_TARGET_REACHED':
         case 'RC_FINISH_COOLDOWN_COMPLETE':
@@ -1432,9 +1433,9 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
         return {
             tone: 'muted',
             title: 'Ждём телеметрию автоматики',
-            detail: 'После первого полного статуса indicators v2 здесь появится короткая диспетчерская сводка по текущему сценарию.',
+            detail: 'После первого полного статуса автоматики здесь появится короткая диспетчерская сводка по текущему сценарию.',
             goal: 'Подготовить режим и проверить стартовые параметры',
-            risk: 'Нет свежего статуса safety и датчиков',
+            risk: 'Нет свежего статуса защиты и датчиков',
             action: 'Дождаться первого полного пакета или перейти во вкладку режимов'
         };
     }
@@ -1442,7 +1443,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
     if (state?.currentAlarm?.active || state?.v2?.safetyLatched || lifecycle === 'faulted') {
         return {
             tone: 'danger',
-            title: 'Процесс удержан safety',
+            title: 'Процесс удержан защитой',
             detail: operatorMessage || `Автоматика остановила сценарий. Последняя причина: ${getReasonCodeLabel(lastReasonCode)}.`,
             goal: 'Удержать установку в безопасном состоянии',
             risk: getReasonCodeLabel(lastReasonCode),
@@ -1456,7 +1457,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
             title: 'Нет доверия к телеметрии',
             detail: 'Данные датчиков устарели, поэтому автоматика и веб-панель не могут уверенно вести процесс.',
             goal: 'Вернуть свежие показания всех ключевых датчиков',
-            risk: 'Старые данные по температуре, давлению или safety',
+            risk: 'Старые данные по температуре, давлению или защите',
             action: 'Проверить соединение датчиков и дождаться обновления телеметрии'
         };
     }
@@ -1476,7 +1477,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
         const tailsRemaining = Math.max(0, targetTails - toFinite(state.volumes.tails, 0));
 
         title = lifecycle === 'starting' ? 'Колонна выходит на рабочее окно' : 'Ректификация под контролем';
-        detail = `Фаза: ${state.phaseStr || phase || '-'}. Автоматика ведёт профиль отбора и следит за стабильностью колонны.`;
+        detail = `Фаза: ${formatProcessPhase(state.phaseStr || phase)}. Автоматика ведёт профиль отбора и следит за стабильностью колонны.`;
         if (phase < PHASE_HEADS) goal = 'Вывести колонну в рабочее окно перед отбором голов';
         else if (phase === PHASE_HEADS) goal = `Добрать головы, осталось около ${formatMissionVolumeMl(headsRemaining)}`;
         else if (phase === PHASE_POST_HEADS_STAB) goal = 'Дождаться постстабилизации перед переходом на тело';
@@ -1490,7 +1491,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
         title = 'Перегон под контролем';
         detail = target > 0
             ? `Собрано ${formatMissionVolumeMl(total)} из ${formatMissionVolumeMl(target)} при скорости около ${speed.toFixed(0)} мл/ч.`
-            : `Фаза: ${state.phaseStr || phase || '-'}. Процесс идёт без жёстко заданного целевого объёма.`;
+            : `Фаза: ${formatProcessPhase(state.phaseStr || phase)}. Процесс идёт без жёстко заданного целевого объёма.`;
         goal = target > 0
             ? `Добрать перегон, осталось около ${formatMissionVolumeMl(remaining)}`
             : 'Вести перегон до стоп-температуры или технологического сигнала завершения';
@@ -1531,7 +1532,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
         const actualFeed = toFinite(state.nbk?.actualFeedMlH, state.pump.speedMlH);
         const feedVolume = toFinite(state.nbk?.feedVolumeMl, state.pump.totalMl);
         const factor = String(state.nbk?.limitingFactor || 'none');
-        detail = `Фаза: ${state.nbk?.phaseStr || state.phaseStr || 'idle'}. Подача: задано ${requestedFeed.toFixed(0)}, скорр. ${correctedFeed.toFixed(0)}, факт ${actualFeed.toFixed(0)} мл/ч; брага ${feedVolume.toFixed(0)} мл; фактор: ${factor}.`;
+        detail = `Фаза: ${formatProcessPhase(state.nbk?.phaseStr || state.phaseStr || 'idle')}. Подача: задано ${requestedFeed.toFixed(0)}, скорр. ${correctedFeed.toFixed(0)}, факт ${actualFeed.toFixed(0)} мл/ч; брага ${feedVolume.toFixed(0)} мл; фактор: ${factor}.`;
         if (!indicators.steamReady) goal = 'Разогреть НБК до готовности пара';
         else if (!indicators.nbkFeedAllowed) goal = 'Дождаться разрешения подачи браги';
         else goal = 'Вести стабильную подачу браги без провала по пару и давлению';
@@ -1564,7 +1565,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
             title,
             detail,
             goal,
-            risk: 'Система в recovery и ждёт повторной стабилизации',
+            risk: 'Система в режиме восстановления и ждёт повторной стабилизации',
             action: 'Не форсировать процесс, дождаться ровного окна по температуре, давлению и охлаждению'
         };
     }
@@ -1587,7 +1588,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
             detail,
             goal,
             risk: 'Охлаждение на пределе, запас исчерпан',
-            action: 'Добавить воду или снизить нагрузку, пока не вернётся положительный cooling margin'
+            action: 'Добавить воду или снизить нагрузку, пока не вернётся положительный запас охлаждения'
         };
     }
 
@@ -1653,7 +1654,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
             detail,
             goal,
             risk: 'Отбор пока не разрешён автоматикой',
-            action: 'Дождаться устойчивого окна по stability, cooling margin и состоянию датчиков'
+            action: 'Дождаться устойчивого окна по устойчивости, запасу охлаждения и состоянию датчиков'
         };
     }
 
@@ -1685,7 +1686,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
             title,
             detail,
             goal,
-            risk: 'Тело близко к завершению по body score',
+            risk: 'Тело близко к завершению по оценке окончания отбора',
             action: 'Подготовить переход по профилю и внимательнее контролировать качество продукта'
         };
     }
@@ -1729,7 +1730,7 @@ function buildMissionSnapshot(state, indicators, activeLimits) {
             title,
             detail,
             goal,
-            risk: 'Критичных рисков по indicators v2 сейчас не видно',
+            risk: 'Критичных рисков по показателям автоматики сейчас не видно',
             action: operatorMessage
         };
     }
@@ -1787,7 +1788,7 @@ export function getRuntimePreflightState(state = runtimeMonitorState) {
         return {
             tone: 'muted',
             title: 'Ждём статус автоматики',
-            detail: 'Контур indicators v2 ещё не прислал полный пакет. Перед запуском дождитесь первого осмысленного статуса.',
+            detail: 'Контур автоматики ещё не прислал полный пакет. Перед запуском дождитесь первого осмысленного статуса.',
             checks
         };
     }
@@ -1796,7 +1797,7 @@ export function getRuntimePreflightState(state = runtimeMonitorState) {
         return {
             tone: 'danger',
             title: 'Запуск заблокирован',
-            detail: operatorMessage || 'Есть активная авария или safety latch. Сначала снимите блокировку и проверьте причину последнего trip.',
+            detail: operatorMessage || 'Есть активная авария или защёлкнутая блокировка защиты. Сначала снимите блокировку и проверьте причину последней аварии.',
             checks
         };
     }
@@ -1915,7 +1916,7 @@ function buildGuidance(state, indicators, activeLimits) {
     if (!state?.v2?.available) {
         return {
             tone: 'muted',
-            title: 'Ожидание indicators v2',
+            title: 'Ожидание статуса автоматики',
             detail: 'Ждём первый полный статус автоматики, чтобы показать осмысленную подсказку.'
         };
     }
@@ -1939,7 +1940,7 @@ function buildGuidance(state, indicators, activeLimits) {
     if (indicators.recoveryActive) {
         return {
             tone: 'warn',
-            title: 'Идёт recovery',
+            title: 'Идёт восстановление устойчивости',
             detail: operatorMessage || 'Система уже ограничивала процесс и сейчас ждёт повторной стабилизации перед нормальной работой.'
         };
     }
@@ -1964,7 +1965,7 @@ function buildGuidance(state, indicators, activeLimits) {
         return {
             tone: 'warn',
             title: 'Отбор пока заблокирован',
-            detail: operatorMessage || 'Ждём безопасное окно по stability, cooling margin и состоянию датчиков.'
+            detail: operatorMessage || 'Ждём безопасное окно по устойчивости, запасу охлаждения и состоянию датчиков.'
         };
     }
 
@@ -2012,7 +2013,7 @@ function buildGuidance(state, indicators, activeLimits) {
         return {
             tone: 'good',
             title: 'Процесс устойчив',
-            detail: 'Стабильность высокая, отбор разрешён, активных ограничений safety сейчас нет.'
+            detail: 'Стабильность высокая, отбор разрешён, активных ограничений защиты сейчас нет.'
         };
     }
 
@@ -2546,7 +2547,7 @@ export function renderModeRuntimeCard() {
             activeFraction || requestedFraction,
             'отбор закрыт'
         );
-        captionEl.textContent = `Фаза: ${s.phaseStr || phase || '-'} • крепость расчета ${effectiveAbv.value.toFixed(1)}% (${abvSourceText}) • ${backendLabel} • ${routingReady ? 'маршрут готов' : 'маршрут переключается'} • ${activeFractionLabel}${actualRate > 0 ? ` • ${actualRate.toFixed(0)} мл/ч` : ''}`;
+        captionEl.textContent = `Фаза: ${formatProcessPhase(s.phaseStr || phase)} • крепость расчета ${effectiveAbv.value.toFixed(1)}% (${abvSourceText}) • ${backendLabel} • ${routingReady ? 'маршрут готов' : 'маршрут переключается'} • ${activeFractionLabel}${actualRate > 0 ? ` • ${actualRate.toFixed(0)} мл/ч` : ''}`;
 
         const est = estimateRectTargets(s.rectification, effectiveAbv.value);
         const effectiveEquipment = {
@@ -2636,7 +2637,7 @@ export function renderModeRuntimeCard() {
         const remSec = (target > 0 && speed > 0) ? (remMl / speed) * 3600 : toFinite(s.progress.phaseRemainingSec, 0);
         captionEl.textContent = target > 0
             ? `Цель ${target.toFixed(0)} мл, скорость ${speed.toFixed(0)} мл/ч`
-            : `Фаза: ${s.phaseStr || phase || '-'}`;
+            : `Фаза: ${formatProcessPhase(s.phaseStr || phase)}`;
         items.push({
             label: 'Перегон',
             percent: pct,

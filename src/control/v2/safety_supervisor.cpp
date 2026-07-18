@@ -314,8 +314,8 @@ SafetyDecisionV2 SafetySupervisorV2::evaluateDecision(const SystemState& state,
         decision.requiresAcknowledge = !state.currentAlarm.acknowledged;
         if (recoveryReady) {
             const char* message = state.currentAlarm.acknowledged
-                                      ? "Safety conditions recovered, reset is available"
-                                      : "Safety conditions recovered, acknowledge and reset are available";
+                                      ? "Условия защиты восстановлены, доступен сброс"
+                                      : "Условия защиты восстановлены, доступны подтверждение и сброс";
             strncpy(decision.message, message, sizeof(decision.message) - 1);
             decision.message[sizeof(decision.message) - 1] = '\0';
         } else {
@@ -332,7 +332,7 @@ SafetyDecisionV2 SafetySupervisorV2::evaluateDecision(const SystemState& state,
         decision.primaryEvent = SafetyEventTypeV2::ANTI_OSCILLATION_GUARD;
         decision.reasonCode = ReasonCodeV2::RC_SAFETY_ANTI_OSCILLATION_GUARD;
         strncpy(decision.message,
-                "Anti-oscillation guard is holding power, pump or phase changes until indicators stabilize",
+                "Защита от колебаний удерживает мощность, насос или смену фазы до стабилизации показателей",
                 sizeof(decision.message) - 1);
         decision.message[sizeof(decision.message) - 1] = '\0';
         return decision;
@@ -347,9 +347,9 @@ SafetyDecisionV2 SafetySupervisorV2::evaluateDecision(const SystemState& state,
                                                  : (limits.takeoffBlocked ? ReasonCodeV2::RC_SAFETY_LIMIT_TAKEOFF
                                                                           : ReasonCodeV2::RC_SAFETY_PHASE_BLOCKED);
         const char* message = limits.powerCapped
-                                  ? "Power is capped by safety margin"
-                                  : (limits.takeoffBlocked ? "Takeoff is blocked by process limits"
-                                                           : "Phase advance is blocked by sensor or flood constraints");
+                                  ? "Мощность ограничена запасом безопасности"
+                                  : (limits.takeoffBlocked ? "Отбор заблокирован ограничениями процесса"
+                                                           : "Переход фазы заблокирован датчиками или риском захлёба");
         strncpy(decision.message, message, sizeof(decision.message) - 1);
         decision.message[sizeof(decision.message) - 1] = '\0';
         return decision;
@@ -359,7 +359,7 @@ SafetyDecisionV2 SafetySupervisorV2::evaluateDecision(const SystemState& state,
         decision.severity = SafetySeverityV2::WARNING;
         decision.primaryEvent = SafetyEventTypeV2::SENSOR_STALE;
         decision.reasonCode = ReasonCodeV2::RC_PRECHECK_FAIL_SENSOR;
-        strncpy(decision.message, "Sensor data is stale", sizeof(decision.message) - 1);
+        strncpy(decision.message, "Данные датчиков устарели", sizeof(decision.message) - 1);
         decision.message[sizeof(decision.message) - 1] = '\0';
     }
 

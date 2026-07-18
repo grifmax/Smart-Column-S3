@@ -46,16 +46,16 @@ ControlV2::ReasonCodeV2 getSafetyAbortReason(const SystemState& state) {
 
 const char* getOperatorStopMessage(Mode mode) {
     switch (mode) {
-        case Mode::RECTIFICATION: return "Rectification stopped by operator";
-        case Mode::DISTILLATION: return "Distillation stopped by operator";
-        case Mode::MANUAL_RECT: return "Manual rectification stopped by operator";
-        case Mode::MASHING: return "Mashing stopped by operator";
-        case Mode::HOLD: return "Hold program stopped by operator";
-        case Mode::NBK: return "NBK stopped by operator";
-        case Mode::FERMENTATION: return "Fermentation stopped by operator";
+        case Mode::RECTIFICATION: return "Ректификация остановлена оператором";
+        case Mode::DISTILLATION: return "Перегон остановлен оператором";
+        case Mode::MANUAL_RECT: return "Ручная ректификация остановлена оператором";
+        case Mode::MASHING: return "Затирание остановлено оператором";
+        case Mode::HOLD: return "Программа выдержки остановлена оператором";
+        case Mode::NBK: return "НБК остановлена оператором";
+        case Mode::FERMENTATION: return "Брожение остановлено оператором";
         case Mode::IDLE:
         default:
-            return "Process stopped by operator";
+            return "Процесс остановлен оператором";
     }
 }
 
@@ -202,7 +202,7 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
                 Mode::RECTIFICATION, static_cast<uint16_t>(RectPhase::IDLE),
                 static_cast<uint16_t>(RectPhase::HEATING),
                 ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
-                "Rectification started");
+                "Ректификация запущена");
             MQTT::publishNotification("Процесс запущен", "Начат процесс ректификации", "info");
             break;
         case Mode::DISTILLATION:
@@ -212,7 +212,7 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
                 Mode::DISTILLATION, static_cast<uint16_t>(RectPhase::IDLE),
                 static_cast<uint16_t>(RectPhase::HEATING),
                 ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
-                "Distillation started");
+                "Перегон запущен");
             break;
         case Mode::MANUAL_RECT:
             Rectification::initSession(state, settings);
@@ -236,7 +236,7 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
                 Mode::NBK, static_cast<uint16_t>(NbkPhase::IDLE),
                 static_cast<uint16_t>(NbkPhase::HEATING),
                 ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
-                "NBK started");
+                "НБК запущена");
             // Авто-запуск мешалки при НБК
             if (settings.stirrer.enabled && settings.stirrer.autoNbk) {
                 state.stirrer.autoMode = true;
@@ -250,7 +250,7 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
                 static_cast<uint16_t>(FermentationPhase::IDLE),
                 static_cast<uint16_t>(FermentationPhase::PREPARE),
                 ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
-                "Fermentation started");
+                "Брожение запущено");
             // Авто-запуск мешалки при ферментации
             if (settings.stirrer.enabled && settings.stirrer.autoFermentation) {
                 state.stirrer.autoMode = true;

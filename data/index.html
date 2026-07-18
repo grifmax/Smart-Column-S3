@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.85">
+    <link rel="stylesheet" href="style.css?v=2.4.87">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -240,7 +240,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.85" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.87" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -288,7 +288,7 @@
                                                 <strong id="operator-guidance-title">Ожидание статуса</strong>
                                             </div>
                                             <p id="operator-guidance-text" class="operator-guidance-text">
-                                                Подсказка появится после первого обновления indicators v2.
+                                                Подсказка появится после первого обновления автоматики.
                                             </p>
                                         </div>
                                     </div>
@@ -460,7 +460,7 @@
                                                                 id="indicator-heads-score" class="operator-indicator-value">--</strong></div>
                                                         <div id="operator-diag-body-score-row" class="operator-list-row"><span>Вероятность конца тела</span><strong
                                                                 id="indicator-body-score" class="operator-indicator-value">--</strong></div>
-                                                        <div id="operator-diag-power-limit-row" class="operator-list-row"><span>Ограничения safety</span><strong
+                                                        <div id="operator-diag-power-limit-row" class="operator-list-row"><span>Ограничения защиты</span><strong
                                                                 id="indicator-power-limit" class="operator-indicator-value">--</strong></div>
                                                         <div id="operator-diag-confidence-takeoff-row" class="operator-list-row"><span>Уверенность старта отбора</span><strong
                                                                 id="indicator-confidence-takeoff" class="operator-indicator-value">--</strong></div>
@@ -946,7 +946,7 @@
                                                     <div class="form-group">
                                                         <label for="rect-start-pressure-min-power">Минимум мощности при росте давления, %</label>
                                                         <input type="number" id="rect-start-pressure-min-power" min="0" max="100" step="1" value="30">
-                                                        <div class="control-inline-hint">Рабочий коридор рассчитывается по высоте/насадке. На safety-пороге нагрев отключается; при невалидной калибровке контур не вмешивается.</div>
+                                                        <div class="control-inline-hint">Рабочий коридор рассчитывается по высоте/насадке. На защитном пороге нагрев отключается; при невалидной калибровке контур не вмешивается.</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1390,7 +1390,7 @@
                                         <strong id="runtime-preflight-title">Ожидание статуса</strong>
                                     </div>
                                     <div id="runtime-preflight-text" class="operator-preflight-text">
-                                        Проверим автоматику, датчики и safety перед стартом процесса.
+                                        Проверим автоматику, датчики и защиту перед стартом процесса.
                                     </div>
                                     <div class="operator-preflight-grid">
                                         <div class="operator-preflight-item">
@@ -2159,7 +2159,7 @@
                                         <div class="equipment-module-list" id="safety-channels-list">
                                             <div class="equipment-module-card">
                                                 <div class="equipment-module-card-head">
-                                                    <strong>Загрузка safety-каналов...</strong>
+                                                    <strong>Загрузка защитных каналов...</strong>
                                                     <span class="equipment-status-badge muted">Ожидание</span>
                                                 </div>
                                                 <div class="form-group">
@@ -2177,7 +2177,7 @@
                                                 <div class="equipment-module-card-role">Покажем A2/A3 для уровня и протечки, а также резерв GPIO1/GPIO3 под газовые датчики.</div>
                                             </div>
                                         </div>
-                                        <small id="safety-channels-hint" class="equipment-hint">Здесь видны live-состояние и конфигурация мягких safety-каналов.</small>
+                                        <small id="safety-channels-hint" class="equipment-hint">Здесь видны текущее состояние и конфигурация мягких защитных каналов.</small>
                                     </div>
                                     <div class="form-group" style="grid-column: 1 / -1;">
                                         <label>Топология термодатчиков</label>
@@ -2253,7 +2253,7 @@
                                     <div class="form-group">
                                         <label for="leak-threshold-v">Порог A3, В</label>
                                         <input type="number" id="leak-threshold-v" min="0" max="4.096" step="0.001" value="1.500" data-stepper-mode="pair" data-stepper-step="0.010">
-                                        <small class="equipment-hint">Можно использовать под протечку, поплавок или другой дискретный soft-safety датчик через АЦП.</small>
+                                        <small class="equipment-hint">Можно использовать под протечку, поплавок или другой дискретный защитный датчик через АЦП.</small>
                                     </div>
                                     <div class="form-group control-checkbox-field equipment-checkbox-field">
                                         <label for="leak-trigger-above">A3 срабатывает при напряжении выше порога</label>
@@ -3495,7 +3495,7 @@
                     </p>
                     <div style="background: var(--bg-primary); padding: 10px; border-radius: 4px; font-size: 0.9em;">
                         ℹ️ Здесь можно задать ключевые уставки профиля: нагрев, объёмы, скорости отбора, температурные
-                        пороги и safety-ограничения.
+                        пороги и защитные ограничения.
                     </div>
                 </div>
 
@@ -3643,7 +3643,7 @@
                 <div class="modal-section">
                     <div class="modal-section-title">🛡️ Safety</div>
                     <div class="modal-info-grid">
-                        <div><label style="display:block; margin-bottom:5px; font-weight:500;">Макс. runtime, мин</label><input type="number" id="profile-safety-max-runtime" min="10" max="5000" step="1" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-secondary); color:var(--text-primary);"></div>
+                        <div><label style="display:block; margin-bottom:5px; font-weight:500;">Макс. длительность, мин</label><input type="number" id="profile-safety-max-runtime" min="10" max="5000" step="1" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-secondary); color:var(--text-primary);"></div>
                         <div><label style="display:block; margin-bottom:5px; font-weight:500;">Мин. поток воды</label><input type="number" id="profile-safety-water-flow-min" min="0" max="20" step="0.1" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-secondary); color:var(--text-primary);"></div>
                         <div><label style="display:block; margin-bottom:5px; font-weight:500;">Макс. давление, мм рт.ст.</label><input type="number" id="profile-safety-pressure-max" min="5" max="200" step="1" style="width:100%; padding:8px; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-secondary); color:var(--text-primary);"></div>
                     </div>
@@ -3774,7 +3774,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.85"></script>
+    <script src="app.js?v=2.4.87"></script>
 </body>
 
 </html>

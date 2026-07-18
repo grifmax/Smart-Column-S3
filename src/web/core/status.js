@@ -26,7 +26,7 @@ import { updateInteractiveScheme } from '../ui/scheme.js';
 import { updateLandingUi } from '../ui/landing.js';
 import { syncOperatorViewAuto } from '../ui/operator-view.js';
 import { updateCloudUiFromStatus } from '../cloud/cloud-config.js';
-import { formatUptime } from './utils.js';
+import { formatProcessPhase, formatUptime } from './utils.js';
 import { addLog } from './logs.js';
 import { updateProcessNotifications } from '../runtime/process-notifications.js';
 import { showNotification } from './notifications.js';
@@ -256,7 +256,7 @@ export function updateUIFromStatus(data) {
 
         if (phaseEl) {
 
-            phaseText = data.phaseStr.toUpperCase() || '-';
+            phaseText = formatProcessPhase(data.phaseStr, '-');
             phaseEl.textContent = phaseText;
 
         }

@@ -7,31 +7,31 @@ const PROFILE_CATEGORY_MODE_KEYS = Object.freeze({
 });
 
 const PROFILE_CATEGORY_LABELS = Object.freeze({
-    rectification: 'Р РµРєС‚РёС„РёРєР°С†РёСЏ',
-    distillation: 'Р”РёСЃС‚РёР»Р»СЏС†РёСЏ',
-    mashing: 'Р—Р°С‚РёСЂРєР°'
+    rectification: 'Ректификация',
+    distillation: 'Дистилляция',
+    mashing: 'Затирка'
 });
 
 const TOPOLOGY_LABELS = Object.freeze({
-    cube: 'РєСѓР±',
-    columnBottom: 'РЅРёР· С†Р°СЂРіРё',
-    columnTop: 'РІРµСЂС… С†Р°СЂРіРё',
-    reflux: 'РґРµС„Р»РµРіРјР°С‚РѕСЂ',
-    waterIn: 'РІРѕРґР° РІС…РѕРґ',
-    waterOut: 'РІРѕРґР° РІС‹С…РѕРґ',
-    tsa: 'Р¦Рџ'
+    cube: 'куб',
+    columnBottom: 'низ царги',
+    columnTop: 'верх царги',
+    reflux: 'дефлегматор',
+    waterIn: 'вода вход',
+    waterOut: 'вода выход',
+    tsa: 'ЦП'
 });
 
 const HARDWARE_FLAG_LABELS = Object.freeze({
-    boosterHeaterEnabled: 'СЂР°Р·РіРѕРЅРЅС‹Р№ РўР­Рќ',
-    coolingPwmEnabled: 'PWM РѕС…Р»Р°Р¶РґРµРЅРёСЏ',
-    bodyLevelSensorEnabled: 'РєРѕРЅС‚СЂРѕР»СЊ СѓСЂРѕРІРЅСЏ С‚РµР»Р°',
-    leakSensorEnabled: 'РєРѕРЅС‚СЂРѕР»СЊ РїСЂРѕС‚РµС‡РєРё'
+    boosterHeaterEnabled: 'разгонный ТЭН',
+    coolingPwmEnabled: 'PWM охлаждения',
+    bodyLevelSensorEnabled: 'контроль уровня тела',
+    leakSensorEnabled: 'контроль протечки'
 });
 
 const SAFETY_CHANNEL_LABELS = Object.freeze({
-    bodyLevel: 'РєР°РЅР°Р» СѓСЂРѕРІРЅСЏ С‚РµР»Р°',
-    leak: 'РєР°РЅР°Р» РїСЂРѕС‚РµС‡РєРё'
+    bodyLevel: 'канал уровня тела',
+    leak: 'канал протечки'
 });
 
 function asObject(value) {
@@ -63,12 +63,12 @@ function formatBusSource(equipment = {}) {
 }
 
 function formatBooleanState(value) {
-    return asBoolean(value) ? 'РІРєР».' : 'РІС‹РєР».';
+    return asBoolean(value) ? 'вкл.' : 'выкл.';
 }
 
 function formatModuleState(module = {}, fallbackLabel = '') {
     const label = String(module?.label || fallbackLabel || '').trim();
-    const state = asBoolean(module?.available) ? 'РґРѕСЃС‚СѓРїРµРЅ' : 'РЅРµРґРѕСЃС‚СѓРїРµРЅ';
+    const state = asBoolean(module?.available) ? 'доступен' : 'недоступен';
     return label ? `${label} ${state}` : state;
 }
 
@@ -81,7 +81,7 @@ function parseProfileEquipmentSnapshot(profile = {}) {
     try {
         return asObject(JSON.parse(raw));
     } catch (error) {
-        console.warn('РќРµ СѓРґР°Р»РѕСЃСЊ СЂР°Р·РѕР±СЂР°С‚СЊ equipmentSnapshotJson:', error);
+        console.warn('Не удалось разобрать equipmentSnapshotJson:', error);
         return null;
     }
 }
@@ -93,7 +93,7 @@ export function getProfileCategory(profile = {}) {
 export function getProfileCompatibility(profile = {}, state = runtimeMonitorState) {
     const category = getProfileCategory(profile);
     const modeKey = PROFILE_CATEGORY_MODE_KEYS[category];
-    const categoryLabel = PROFILE_CATEGORY_LABELS[category] || category || 'РџСЂРѕС„РёР»СЊ';
+    const categoryLabel = PROFILE_CATEGORY_LABELS[category] || category || 'Профиль';
 
     if (!modeKey) {
         return {
@@ -134,7 +134,7 @@ export function getProfileCompatibilityBadge(profile = {}, state = runtimeMonito
     if (!compatibility.known) {
         return {
             tone: 'muted',
-            label: 'РљРѕРјРїР»РµРєС‚Р°С†РёСЏ РЅРµ РїСЂРѕРІРµСЂРµРЅР°',
+            label: 'Комплектация не проверена',
             detail: ''
         };
     }
@@ -142,15 +142,15 @@ export function getProfileCompatibilityBadge(profile = {}, state = runtimeMonito
     if (compatibility.supported) {
         return {
             tone: 'good',
-            label: 'РЎРѕРІРјРµСЃС‚РёРј СЃ С‚РµРєСѓС‰РёРј Р¶РµР»РµР·РѕРј',
+            label: 'Совместим с текущим железом',
             detail: ''
         };
     }
 
     return {
         tone: 'warn',
-        label: 'РќСѓР¶РЅР° РґСЂСѓРіР°СЏ РєРѕРјРїР»РµРєС‚Р°С†РёСЏ',
-        detail: compatibility.reason || 'Р”Р»СЏ СЌС‚РѕРіРѕ РїСЂРѕС„РёР»СЏ РЅРµ С…РІР°С‚Р°РµС‚ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹С… РґР°С‚С‡РёРєРѕРІ.'
+        label: 'Нужна другая комплектация',
+        detail: compatibility.reason || 'Для этого профиля не хватает обязательных датчиков.'
     };
 }
 
@@ -176,7 +176,7 @@ export function getProfileEquipmentMismatch(profile = {}, state = runtimeMonitor
         const isSupported = asBoolean(currentSupport.supported);
         if (wasSupported !== isSupported) {
             messages.push(
-                `РїРѕРґРґРµСЂР¶РєР° СЂРµР¶РёРјР° "${compatibility.categoryLabel}" РёР·РјРµРЅРёР»Р°СЃСЊ: Р±С‹Р»Рѕ ${wasSupported ? 'РґРѕСЃС‚СѓРїРЅРѕ' : 'РЅРµРґРѕСЃС‚СѓРїРЅРѕ'}, СЃРµР№С‡Р°СЃ ${isSupported ? 'РґРѕСЃС‚СѓРїРЅРѕ' : 'РЅРµРґРѕСЃС‚СѓРїРЅРѕ'}${currentSupport.reason ? ` (${currentSupport.reason})` : ''}`
+                `поддержка режима "${compatibility.categoryLabel}" изменилась: было ${wasSupported ? 'доступно' : 'недоступно'}, сейчас ${isSupported ? 'доступно' : 'недоступно'}${currentSupport.reason ? ` (${currentSupport.reason})` : ''}`
             );
         }
     }
@@ -196,16 +196,16 @@ export function getProfileEquipmentMismatch(profile = {}, state = runtimeMonitor
             }
         });
         if (missingSensors.length) {
-            messages.push(`РЅРµС‚ РґР°С‚С‡РёРєРѕРІ, РєРѕС‚РѕСЂС‹Рµ Р±С‹Р»Рё РїСЂРё РІР°Р»РёРґР°С†РёРё: ${missingSensors.join(', ')}`);
+            messages.push(`нет датчиков, которые были при валидации: ${missingSensors.join(', ')}`);
         }
         if (addedSensors.length) {
-            messages.push(`РїРѕСЏРІРёР»РёСЃСЊ РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Рµ РґР°С‚С‡РёРєРё: ${addedSensors.join(', ')}`);
+            messages.push(`появились дополнительные датчики: ${addedSensors.join(', ')}`);
         }
     }
 
     if (formatBusSource(snapshot) !== formatBusSource(currentEquipment)) {
         messages.push(
-            `РёР·РјРµРЅРёР»Р°СЃСЊ 1-Wire С€РёРЅР°: Р±С‹Р»Рѕ ${formatBusSource(snapshot)}, СЃРµР№С‡Р°СЃ ${formatBusSource(currentEquipment)}`
+            `изменилась 1-Wire шина: было ${formatBusSource(snapshot)}, сейчас ${formatBusSource(currentEquipment)}`
         );
     }
 
@@ -213,25 +213,25 @@ export function getProfileEquipmentMismatch(profile = {}, state = runtimeMonitor
         const snapshotValue = asBoolean(snapshot?.[key]);
         const currentValue = asBoolean(currentEquipment?.[key]);
         if (snapshotValue !== currentValue) {
-            messages.push(`${label}: Р±С‹Р»Рѕ ${formatBooleanState(snapshotValue)}, СЃРµР№С‡Р°СЃ ${formatBooleanState(currentValue)}`);
+            messages.push(`${label}: было ${formatBooleanState(snapshotValue)}, сейчас ${formatBooleanState(currentValue)}`);
         }
     });
 
     if (Number(snapshot?.heaterPowerW || 0) !== Number(currentEquipment?.heaterPowerW || 0)) {
         messages.push(
-            `РѕСЃРЅРѕРІРЅР°СЏ РјРѕС‰РЅРѕСЃС‚СЊ РЅР°РіСЂРµРІР°: Р±С‹Р»Рѕ ${Number(snapshot?.heaterPowerW || 0)} Р’С‚, СЃРµР№С‡Р°СЃ ${Number(currentEquipment?.heaterPowerW || 0)} Р’С‚`
+            `основная мощность нагрева: было ${Number(snapshot?.heaterPowerW || 0)} Вт, сейчас ${Number(currentEquipment?.heaterPowerW || 0)} Вт`
         );
     }
 
     if (Number(snapshot?.columnHeightMm || 0) !== Number(currentEquipment?.columnHeightMm || 0)) {
         messages.push(
-            `РІС‹СЃРѕС‚Р° С†Р°СЂРіРё: Р±С‹Р»Рѕ ${Number(snapshot?.columnHeightMm || 0)} РјРј, СЃРµР№С‡Р°СЃ ${Number(currentEquipment?.columnHeightMm || 0)} РјРј`
+            `высота царги: было ${Number(snapshot?.columnHeightMm || 0)} мм, сейчас ${Number(currentEquipment?.columnHeightMm || 0)} мм`
         );
     }
 
     if (String(snapshot?.packingType || '').trim() !== String(currentEquipment?.packingType || '').trim()) {
         messages.push(
-            `РЅР°СЃР°РґРєР°: Р±С‹Р»Рѕ ${String(snapshot?.packingType || '-')}, СЃРµР№С‡Р°СЃ ${String(currentEquipment?.packingType || '-')}`
+            `насадка: было ${String(snapshot?.packingType || '-')}, сейчас ${String(currentEquipment?.packingType || '-')}`
         );
     }
 
@@ -252,7 +252,7 @@ export function getProfileEquipmentMismatch(profile = {}, state = runtimeMonitor
             }
         });
         if (moduleChanges.length) {
-            messages.push(`РїРѕ РјРѕРґСѓР»СЏРј РµСЃС‚СЊ РѕС‚Р»РёС‡РёСЏ: ${moduleChanges.slice(0, 4).join('; ')}`);
+            messages.push(`по модулям есть отличия: ${moduleChanges.slice(0, 4).join('; ')}`);
         }
     }
 
@@ -268,23 +268,23 @@ export function getProfileEquipmentMismatch(profile = {}, state = runtimeMonitor
             }
             if (asBoolean(savedChannel.enabled) !== asBoolean(currentChannel.enabled)) {
                 safetyChanges.push(
-                    `${label}: Р±С‹Р»Рѕ ${formatBooleanState(savedChannel.enabled)}, СЃРµР№С‡Р°СЃ ${formatBooleanState(currentChannel.enabled)}`
+                    `${label}: было ${formatBooleanState(savedChannel.enabled)}, сейчас ${formatBooleanState(currentChannel.enabled)}`
                 );
             } else if (asBoolean(savedChannel.available) !== asBoolean(currentChannel.available)) {
                 safetyChanges.push(
-                    `${label}: Р±С‹Р»Рѕ ${asBoolean(savedChannel.available) ? 'РґРѕСЃС‚СѓРїРЅРѕ' : 'РЅРµРґРѕСЃС‚СѓРїРЅРѕ'}, СЃРµР№С‡Р°СЃ ${asBoolean(currentChannel.available) ? 'РґРѕСЃС‚СѓРїРЅРѕ' : 'РЅРµРґРѕСЃС‚СѓРїРЅРѕ'}`
+                    `${label}: было ${asBoolean(savedChannel.available) ? 'доступно' : 'недоступно'}, сейчас ${asBoolean(currentChannel.available) ? 'доступно' : 'недоступно'}`
                 );
             }
         });
         if (safetyChanges.length) {
-            messages.push(`РїРѕ safety-РєР°РЅР°Р»Р°Рј РµСЃС‚СЊ РѕС‚Р»РёС‡РёСЏ: ${safetyChanges.join('; ')}`);
+            messages.push(`по safety-каналам есть отличия: ${safetyChanges.join('; ')}`);
         }
     }
 
     return {
         known: true,
         changed: messages.length > 0,
-        summary: messages.length ? 'РџСЂРѕС„РёР»СЊ РІР°Р»РёРґРёСЂРѕРІР°Р»СЃСЏ РЅР° РґСЂСѓРіРѕР№ РєРѕРЅС„РёРіСѓСЂР°С†РёРё Р¶РµР»РµР·Р°.' : '',
+        summary: messages.length ? 'Профиль валидировался на другой конфигурации железа.' : '',
         messages
     };
 }

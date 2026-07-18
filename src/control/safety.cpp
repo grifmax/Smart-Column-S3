@@ -255,7 +255,7 @@ void latchAlarm(SystemState& state, AlarmType type, AlarmLevel level,
                 const char* message, uint32_t now) {
     // Пишем в лог только если это новая авария или изменился тип
     if (state.currentAlarm.type != type) {
-        Logger::logf(2, "Safety alarm latched: %s", message ? message : "Safety alarm");
+        Logger::logf(2, "Авария защиты зафиксирована: %s", message ? message : "Авария защиты");
         // Форсированная запись лога при аварии
         Logger::writeData(state);
     }
@@ -268,7 +268,7 @@ void latchAlarm(SystemState& state, AlarmType type, AlarmLevel level,
     state.currentAlarm.timestamp = now;
     state.currentAlarm.acknowledged = false;
     snprintf(state.currentAlarm.message, sizeof(state.currentAlarm.message), "%s",
-             message ? message : "Safety alarm");
+             message ? message : "Авария защиты");
 
     if (state.mode != Mode::IDLE) {
         FSM::abortMode(state);
@@ -302,7 +302,7 @@ bool canResetAlarm(const SystemState& state, const Settings& settings, uint32_t 
 
     if (state.temps.valid[TEMP_WATER_OUT] && state.temps.waterOut > waterOutMaxC) {
         char buffer[96];
-        snprintf(buffer, sizeof(buffer), "Cooling water outlet is still too hot: %.1fC", state.temps.waterOut);
+        snprintf(buffer, sizeof(buffer), "Выход охлаждающей воды всё ещё слишком горячий: %.1f °C", state.temps.waterOut);
         writeReason(reason, reasonSize, buffer);
         return false;
     }
@@ -500,7 +500,7 @@ void check(SystemState& state, const Settings& settings) {
         emergencyStop = true;
         alarmType = AlarmType::VAPOR_BREAKTHROUGH;
         alarmLevel = AlarmLevel::CRITICAL;
-        snprintf(alarmMessage, sizeof(alarmMessage), "Vapor breakthrough detected at TSA: %.1fC", state.temps.tsa);
+        snprintf(alarmMessage, sizeof(alarmMessage), "Прорыв паров обнаружен на ТСА: %.1f °C", state.temps.tsa);
     }
 
     if (!emergencyStop && required.waterOutTemp &&
@@ -508,7 +508,7 @@ void check(SystemState& state, const Settings& settings) {
         emergencyStop = true;
         alarmType = AlarmType::WATER_OVERHEAT;
         alarmLevel = AlarmLevel::CRITICAL;
-        snprintf(alarmMessage, sizeof(alarmMessage), "Cooling water overheat: %.1fC", state.temps.waterOut);
+        snprintf(alarmMessage, sizeof(alarmMessage), "Перегрев воды охлаждения: %.1f °C", state.temps.waterOut);
     }
 
     if (!emergencyStop && required.pressure &&
@@ -516,7 +516,7 @@ void check(SystemState& state, const Settings& settings) {
         emergencyStop = true;
         alarmType = AlarmType::COLUMN_FLOOD;
         alarmLevel = AlarmLevel::CRITICAL;
-        snprintf(alarmMessage, sizeof(alarmMessage), "Pressure exceeded safe limit: %.1f mmHg", state.pressure.cube);
+        snprintf(alarmMessage, sizeof(alarmMessage), "Давление превысило безопасный предел: %.1f мм рт. ст.", state.pressure.cube);
     }
 
     if (!emergencyStop && settings.equipment.leakSensorEnabled &&
@@ -525,7 +525,7 @@ void check(SystemState& state, const Settings& settings) {
         alarmType = AlarmType::SENSOR_FAILURE;
         alarmLevel = AlarmLevel::CRITICAL;
         snprintf(alarmMessage, sizeof(alarmMessage),
-                 "Optional leak sensor is unavailable");
+                 "Опциональный датчик протечки недоступен");
     }
 
     if (!emergencyStop && settings.equipment.leakSensorEnabled &&
@@ -534,7 +534,7 @@ void check(SystemState& state, const Settings& settings) {
         alarmType = AlarmType::EMERGENCY_STOP;
         alarmLevel = AlarmLevel::CRITICAL;
         snprintf(alarmMessage, sizeof(alarmMessage),
-                 "Leak sensor triggered: %.3f V", state.leak.voltage);
+                 "Сработал датчик протечки: %.3f В", state.leak.voltage);
     }
 
 #if VAPOR_SENSOR_ENABLED
@@ -545,7 +545,7 @@ void check(SystemState& state, const Settings& settings) {
         alarmType = AlarmType::SENSOR_FAILURE;
         alarmLevel = AlarmLevel::CRITICAL;
         snprintf(alarmMessage, sizeof(alarmMessage),
-                 "Optional vapor sensor is unavailable");
+                 "Опциональный датчик паров недоступен");
     }
     if (!emergencyStop &&
         ((state.vaporPrimary.valid && state.vaporPrimary.triggered) ||
@@ -554,7 +554,7 @@ void check(SystemState& state, const Settings& settings) {
         alarmType = AlarmType::EMERGENCY_STOP;
         alarmLevel = AlarmLevel::CRITICAL;
         snprintf(alarmMessage, sizeof(alarmMessage),
-                 "Optional vapor sensor triggered");
+                 "Сработал опциональный датчик паров");
     }
 #endif
 
@@ -564,7 +564,7 @@ void check(SystemState& state, const Settings& settings) {
         emergencyStop = true;
         alarmType = AlarmType::WATER_RISE_RATE;
         alarmLevel = AlarmLevel::CRITICAL;
-        snprintf(alarmMessage, sizeof(alarmMessage), "Water temp rises too fast: %.1f C/min", waterOutRiseRate);
+        snprintf(alarmMessage, sizeof(alarmMessage), "Температура воды растёт слишком быстро: %.1f °C/мин", waterOutRiseRate);
     }
 
     if (!emergencyStop && !settings.demoMode && required.pressure &&
@@ -573,7 +573,7 @@ void check(SystemState& state, const Settings& settings) {
         emergencyStop = true;
         alarmType = AlarmType::PRESSURE_RISE_RATE;
         alarmLevel = AlarmLevel::CRITICAL;
-        snprintf(alarmMessage, sizeof(alarmMessage), "Pressure rises too fast: %.1f mmHg/min", pressureRiseRate);
+        snprintf(alarmMessage, sizeof(alarmMessage), "Давление растёт слишком быстро: %.1f мм рт. ст./мин", pressureRiseRate);
     }
 
     // 6. Проверка обязательных датчиков по режиму
@@ -584,12 +584,12 @@ void check(SystemState& state, const Settings& settings) {
         if (!areRequiredSensorsAvailable(state, blockingSensorFailure)) {
             alarmType = AlarmType::SENSOR_FAILURE;
             alarmLevel = AlarmLevel::CRITICAL;
-            snprintf(alarmMessage, sizeof(alarmMessage), "CRITICAL sensor failure: %s",
-                     missingSensors[0] != '\0' ? missingSensors : "REQUIRED");
+            snprintf(alarmMessage, sizeof(alarmMessage), "Критическая ошибка датчиков: %s",
+                     missingSensors[0] != '\0' ? missingSensors : "обязательные датчики");
              
             if (state.mode == Mode::IDLE) {
                 if (!sensorAlarmLogged) {
-                    Logger::logf(2, "Safety: %s (Suppressed in IDLE)", alarmMessage);
+                    Logger::logf(2, "Защита: %s (подавлено в ожидании)", alarmMessage);
                     sensorAlarmLogged = true;
                 }
                 // В IDLE не переходим в состояние emergencyStop, чтобы не блокировать UI
@@ -601,7 +601,7 @@ void check(SystemState& state, const Settings& settings) {
 
     if (emergencyStop) {
         latchAlarm(state, alarmType, alarmLevel, alarmMessage, now);
-        MQTT::publishNotification("CRITICAL", alarmMessage, "error");
+        MQTT::publishNotification("Критическая авария", alarmMessage, "error");
     } else {
         // Если мы не в аварии, но были ошибки (которые мы подавили в IDLE), 
         // state.safetyOk все равно должен быть true для IDLE.
@@ -617,10 +617,10 @@ void acknowledge(SystemState& state) {
     }
     if (state.currentAlarm.type != AlarmType::NONE && !state.currentAlarm.acknowledged) {
         state.currentAlarm.acknowledged = true;
-        Logger::logf(0, "Safety alarm acknowledged: %s", getAlarmTypeToken(state.currentAlarm.type));
+        Logger::logf(0, "Авария защиты подтверждена: %s", getAlarmTypeToken(state.currentAlarm.type));
         ControlV2::noteSafetyOperatorAction(
             ControlV2::ReasonCodeV2::RC_SAFETY_ACKNOWLEDGED,
-            "Safety alarm acknowledged by operator",
+            "Авария защиты подтверждена оператором",
             state.currentAlarm.message);
     }
     xSemaphoreGive(g_safetyMutex);
@@ -652,10 +652,10 @@ bool reset(SystemState& state, const Settings& settings, char* reason, size_t re
              state.currentAlarm.message);
     clearCurrentAlarm(state);
     state.safetyOk = true;
-    Logger::logf(0, "Safety alarm cleared");
+    Logger::logf(0, "Авария защиты сброшена");
     ControlV2::noteSafetyOperatorAction(
         ControlV2::ReasonCodeV2::RC_SAFETY_RESET_COMPLETED,
-        "Safety alarm reset by operator", previousAlarmMessage);
+        "Авария защиты сброшена оператором", previousAlarmMessage);
     xSemaphoreGive(g_safetyMutex);
     return true;
 }
