@@ -537,8 +537,14 @@ void loop() {
 
   // OTA Updates
   OTA::handle();
-  if (OTA::isUpdating())
+  if (OTA::isUpdating()) {
+    // ArduinoOTA receives a filesystem image for longer than the normal
+    // 60-second task watchdog window. Keep the main task alive while the OTA
+    // handler processes the incoming stream.
+    esp_task_wdt_reset();
+    yield();
     return;
+  }
 
   // Демо-симулятор
   if (g_settings.demoMode) {
