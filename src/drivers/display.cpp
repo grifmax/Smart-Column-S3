@@ -222,7 +222,8 @@ enum UiScreen : uint8_t {
   UI_ALL_TEMPS,
   UI_MODE_PICKER,
   UI_MODE_SETUP,
-  UI_PREFLIGHT
+  UI_PREFLIGHT,
+  UI_PROFILE_PICKER
 };
 
 enum class UiRootTab : uint8_t {
@@ -280,7 +281,9 @@ static constexpr UiScreenPolicy kUiScreenPolicies[] = {
     {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
      false}, // UI_MODE_SETUP
     {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false} // UI_PREFLIGHT
+     false}, // UI_PREFLIGHT
+    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
+     false} // UI_PROFILE_PICKER
 };
 
 enum class DisplayRedrawReason : uint8_t {
@@ -304,6 +307,7 @@ struct ModeSetupDraft {
   bool profileCompatible = false;
   char profileId[48] = {0};
   char profileName[64] = {0};
+  char profilePreview[112] = {0};
 };
 
 struct TftPreflightSnapshot {
@@ -316,6 +320,13 @@ struct TftPreflightSnapshot {
   char detail[144] = {0};
   char itemTitle[4][64] = {{0}};
   char itemTone[4][12] = {{0}};
+};
+
+struct TftProfileOption {
+  char id[48] = {0};
+  char name[64] = {0};
+  uint16_t useCount = 0;
+  bool builtin = false;
 };
 
 struct UiState {
@@ -353,12 +364,16 @@ struct UiState {
   Mode selectedMode = Mode::IDLE;
   char selectedProfileId[48] = {0};
   ModeSetupDraft setupDraft;
+  uint8_t profilePickerPage = 0;
   uint8_t processMenuPage = 0;
   bool serviceSession = false;
 };
 
 static UiState ui;
 static TftPreflightSnapshot g_tftPreflight;
+static TftProfileOption g_tftProfileOptions[MAX_PROFILES];
+static uint8_t g_tftProfileOptionCount = 0;
+static constexpr uint8_t TFT_PROFILE_ROWS_PER_PAGE = 4;
 static SparklineBuffer<30> cubeTempHistory;
 static SparklineBuffer<30> topTempHistory;
 static uint32_t lastSparklineUpdateMs = 0;
@@ -1283,6 +1298,187 @@ static bool isSetupProfileCompatible(const Profile &profile, Mode mode) {
 
 static void clearTftPreflight() { g_tftPreflight = TftPreflightSnapshot{}; }
 
+static void buildSetupProfilePreview(const Profile &profile, Mode mode,
+                                     char *out, size_t outSize) {
+  if (out == nullptr || outSize == 0) {
+    return;
+  }
+  const bool ru = (g_settings.language == 0);
+  switch (mode) {
+  case Mode::RECTIFICATION:
+  case Mode::MANUAL_RECT:
+    snprintf(out, outSize, "%u W | %u %s | %u ml",
+             profile.parameters.heater.maxPower,
+             profile.parameters.rectification.stabilizationMin,
+             ru ? "мин стаб." : "min stab.",
+             profile.parameters.rectification.bodyVolume);
+    break;
+  case Mode::DISTILLATION:
+    snprintf(out, outSize, "%u W | %u ml/h | %.1f C",
+             profile.parameters.heater.maxPower,
+             profile.parameters.distillation.speed,
+             profile.parameters.distillation.endTemp);
+    break;
+  case Mode::MASHING: {
+    const size_t steps = profile.parameters.mashing.steps.size();
+    const float firstTemp = steps > 0
+                                ? profile.parameters.mashing.steps[0].temperature
+                                : 0.0f;
+    snprintf(out, outSize, "%u %s | %.1f C",
+             static_cast<unsigned>(steps), ru ? "шаг(ов)" : "step(s)",
+             firstTemp);
+    break;
+  }
+  default:
+    snprintf(out, outSize, "%s",
+             ru ? "Профиль не меняет уставки этого режима"
+                : "Profile does not change this mode settings");
+    break;
+  }
+}
+
+static void setSetupDraftProfile(const Profile &profile, Mode mode) {
+  strncpy(ui.selectedProfileId, profile.id.c_str(),
+          sizeof(ui.selectedProfileId) - 1);
+  ui.selectedProfileId[sizeof(ui.selectedProfileId) - 1] = '\0';
+  strncpy(ui.setupDraft.profileId, profile.id.c_str(),
+          sizeof(ui.setupDraft.profileId) - 1);
+  ui.setupDraft.profileId[sizeof(ui.setupDraft.profileId) - 1] = '\0';
+  strncpy(ui.setupDraft.profileName, profile.metadata.name.c_str(),
+          sizeof(ui.setupDraft.profileName) - 1);
+  ui.setupDraft.profileName[sizeof(ui.setupDraft.profileName) - 1] = '\0';
+  ui.setupDraft.profileCompatible = isSetupProfileCompatible(profile, mode);
+  buildSetupProfilePreview(profile, mode, ui.setupDraft.profilePreview,
+                           sizeof(ui.setupDraft.profilePreview));
+}
+
+static uint8_t getTftProfilePageCount() {
+  return g_tftProfileOptionCount == 0
+             ? 1
+             : (g_tftProfileOptionCount + TFT_PROFILE_ROWS_PER_PAGE - 1) /
+                   TFT_PROFILE_ROWS_PER_PAGE;
+}
+
+static void loadTftProfileOptions(Mode mode) {
+  g_tftProfileOptionCount = 0;
+  memset(g_tftProfileOptions, 0, sizeof(g_tftProfileOptions));
+  if (!isSetupProfileRelevant(mode)) {
+    return;
+  }
+
+  const std::vector<ProfileListItem> profiles = getProfileList();
+  for (const ProfileListItem &item : profiles) {
+    if (g_tftProfileOptionCount >= MAX_PROFILES) {
+      break;
+    }
+    Profile profile;
+    if (!loadProfile(item.id, profile) ||
+        !isSetupProfileCompatible(profile, mode)) {
+      continue;
+    }
+    TftProfileOption &option =
+        g_tftProfileOptions[g_tftProfileOptionCount++];
+    strncpy(option.id, profile.id.c_str(), sizeof(option.id) - 1);
+    option.id[sizeof(option.id) - 1] = '\0';
+    strncpy(option.name, profile.metadata.name.c_str(),
+            sizeof(option.name) - 1);
+    option.name[sizeof(option.name) - 1] = '\0';
+    option.useCount = item.useCount;
+    option.builtin = item.isBuiltin;
+  }
+  ui.profilePickerPage = 0;
+}
+
+static bool selectSetupProfile(uint8_t index) {
+  if (index >= g_tftProfileOptionCount || !ui.setupDraft.valid) {
+    return false;
+  }
+  Profile profile;
+  if (!loadProfile(g_tftProfileOptions[index].id, profile) ||
+      !isSetupProfileCompatible(profile, ui.setupDraft.mode)) {
+    return false;
+  }
+  setSetupDraftProfile(profile, ui.setupDraft.mode);
+  ui.setupDraft.dirtyMask |= 0x01;
+  clearTftPreflight();
+  return true;
+}
+
+static void openSetupProfilePicker() {
+  if (!ui.setupDraft.valid || !ui.setupDraft.profileRelevant ||
+      g_state.mode != Mode::IDLE) {
+    return;
+  }
+  loadTftProfileOptions(ui.setupDraft.mode);
+  pushScreen(UI_PROFILE_PICKER);
+}
+
+static bool applySetupDraftProfileForStart(char *reason, size_t reasonSize) {
+  if (reason == nullptr || reasonSize == 0) {
+    return false;
+  }
+  reason[0] = '\0';
+  if (!ui.setupDraft.profileRelevant || ui.setupDraft.profileId[0] == '\0') {
+    return true;
+  }
+
+  Profile profile;
+  if (!loadProfile(ui.setupDraft.profileId, profile) ||
+      !isSetupProfileCompatible(profile, ui.setupDraft.mode)) {
+    snprintf(reason, reasonSize, "%s",
+             (g_settings.language == 0)
+                 ? "Выбранный профиль больше не совместим с режимом."
+                 : "Selected profile is no longer compatible with this mode.");
+    return false;
+  }
+
+  if (ui.setupDraft.mode == Mode::MASHING) {
+    const size_t steps = profile.parameters.mashing.steps.size();
+    if (steps == 0) {
+      snprintf(reason, reasonSize, "%s",
+               (g_settings.language == 0)
+                   ? "В профиле затирания нет шагов."
+                   : "The mashing profile has no steps.");
+      return false;
+    }
+    memset(&mashProfileDefault, 0, sizeof(mashProfileDefault));
+    strncpy(mashProfileDefault.name, profile.metadata.name.c_str(),
+            sizeof(mashProfileDefault.name) - 1);
+    mashProfileDefault.name[sizeof(mashProfileDefault.name) - 1] = '\0';
+    mashProfileDefault.stepCount =
+        static_cast<uint8_t>(steps > 10 ? 10 : steps);
+    for (uint8_t i = 0; i < mashProfileDefault.stepCount; ++i) {
+      const MashingStepParams &source = profile.parameters.mashing.steps[i];
+      mashProfileDefault.steps[i].type = source.type;
+      mashProfileDefault.steps[i].temperature = source.temperature;
+      mashProfileDefault.steps[i].duration = source.duration;
+      strncpy(mashProfileDefault.steps[i].name, source.name.c_str(),
+              sizeof(mashProfileDefault.steps[i].name) - 1);
+      mashProfileDefault.steps[i]
+          .name[sizeof(mashProfileDefault.steps[i].name) - 1] = '\0';
+    }
+    setActiveProfile(profile.id, profile.metadata.name);
+    return true;
+  }
+
+  if (!applyProfile(profile.id)) {
+    snprintf(reason, reasonSize, "%s",
+             (g_settings.language == 0) ? "Не удалось применить профиль."
+                                        : "Failed to apply profile.");
+    return false;
+  }
+
+  if (ui.setupDraft.mode == Mode::DISTILLATION) {
+    distUi.speedMlH = g_settings.distillationUi.speedMlH;
+    distUi.headsVolumeMl = g_settings.distillationUi.headsVolumeMl;
+    distUi.targetVolumeMl = g_settings.distillationUi.targetVolumeMl;
+    distUi.endTempC = g_settings.distillationUi.endTempC;
+    distUi.powerPercent = g_settings.distillationUi.powerPercent;
+    distUi.tailsVolumeMl = g_settings.distillationUi.tailsVolumeMl;
+  }
+  return true;
+}
+
 static void beginModeSetup(Mode mode) {
   if (g_state.mode != Mode::IDLE || mode == Mode::IDLE) {
     return;
@@ -1313,6 +1509,9 @@ static void beginModeSetup(Mode mode) {
   ui.setupDraft.profileCompatible =
       !ui.setupDraft.profileRelevant ||
       (profileLoaded && isSetupProfileCompatible(activeProfile, mode));
+  if (profileLoaded && ui.setupDraft.profileCompatible) {
+    setSetupDraftProfile(activeProfile, mode);
+  }
   pushScreen(UI_MODE_SETUP);
 }
 
@@ -1336,6 +1535,9 @@ static bool refreshTftPreflight() {
   // presenter snapshot, so normal redraws do not fragment the heap.
   JsonDocument doc;
   JsonObject params = doc.to<JsonObject>();
+  if (ui.setupDraft.profileId[0] != '\0') {
+    params["profileId"] = ui.setupDraft.profileId;
+  }
   if (!buildProcessPreflight(doc, ui.setupDraft.mode,
                              getModeString(ui.setupDraft.mode), params)) {
     snprintf(g_tftPreflight.title, sizeof(g_tftPreflight.title), "%s",
@@ -1423,6 +1625,12 @@ static void formatSetupRequiredSensors(const SystemState &state, Mode mode,
 
 static void formatSetupParameters(Mode mode, char *out, size_t outSize) {
   if (out == nullptr || outSize == 0) {
+    return;
+  }
+  if (ui.setupDraft.profilePreview[0] != '\0' &&
+      ui.setupDraft.profileCompatible) {
+    strncpy(out, ui.setupDraft.profilePreview, outSize - 1);
+    out[outSize - 1] = '\0';
     return;
   }
   const bool ru = (g_settings.language == 0);
@@ -1957,6 +2165,11 @@ static bool handleModeSetupScreenTap(int16_t tx, int16_t ty,
   if (!isScreenEditable(UI_MODE_SETUP, state) || !ui.setupDraft.valid) {
     return true;
   }
+  if (hit(tx, ty, 10, UI_HEADER_H + 38, TFT_WIDTH - 20, 34) &&
+      ui.setupDraft.profileRelevant) {
+    openSetupProfilePicker();
+    return true;
+  }
   if (hit(tx, ty, 10, TFT_HEIGHT - UI_FOOTER_H - 36, TFT_WIDTH - 20, 32)) {
     refreshTftPreflight();
     pushScreen(UI_PREFLIGHT);
@@ -1984,9 +2197,63 @@ static bool handlePreflightScreenTap(int16_t tx, int16_t ty,
     if (!g_tftPreflight.ready || state.mode != Mode::IDLE) {
       return true;
     }
+    char profileReason[144];
+    if (!applySetupDraftProfileForStart(profileReason,
+                                        sizeof(profileReason))) {
+      clearTftPreflight();
+      g_tftPreflight.attempted = true;
+      snprintf(g_tftPreflight.title, sizeof(g_tftPreflight.title), "%s",
+               (g_settings.language == 0) ? "Профиль не применён"
+                                          : "Profile was not applied");
+      strncpy(g_tftPreflight.detail, profileReason,
+              sizeof(g_tftPreflight.detail) - 1);
+      g_tftPreflight.detail[sizeof(g_tftPreflight.detail) - 1] = '\0';
+      return true;
+    }
+    // A selected profile may change persisted parameters. Run the exact same
+    // backend check once more on the settings that are about to reach FSM.
+    refreshTftPreflight();
+    if (!g_tftPreflight.ready) {
+      return true;
+    }
     startModeFromControl(ui.setupDraft.mode);
     ui.setupDraft.dirtyMask = 0;
     switchRoot(UI_MODE_MONITOR);
+    return true;
+  }
+  return false;
+}
+
+static bool handleProfilePickerScreenTap(int16_t tx, int16_t ty,
+                                         const SystemState &state) {
+  if (!isScreenEditable(UI_PROFILE_PICKER, state) || !ui.setupDraft.valid) {
+    return true;
+  }
+  const int16_t firstRowY = UI_HEADER_H + 38;
+  const int16_t rowH = 34;
+  const int16_t rowPitch = 39;
+  for (uint8_t row = 0; row < TFT_PROFILE_ROWS_PER_PAGE; ++row) {
+    const uint8_t index = ui.profilePickerPage * TFT_PROFILE_ROWS_PER_PAGE + row;
+    if (index >= g_tftProfileOptionCount) {
+      break;
+    }
+    if (hit(tx, ty, 10, firstRowY + row * rowPitch, TFT_WIDTH - 20, rowH)) {
+      if (selectSetupProfile(index)) {
+        popScreen();
+      }
+      return true;
+    }
+  }
+
+  const int16_t pagerY = TFT_HEIGHT - UI_FOOTER_H - 36;
+  const uint8_t pageCount = getTftProfilePageCount();
+  if (hit(tx, ty, 10, pagerY, 132, 32) && ui.profilePickerPage > 0) {
+    ui.profilePickerPage--;
+    return true;
+  }
+  if (hit(tx, ty, TFT_WIDTH - 142, pagerY, 132, 32) &&
+      ui.profilePickerPage + 1 < pageCount) {
+    ui.profilePickerPage++;
     return true;
   }
   return false;
@@ -2336,7 +2603,8 @@ static constexpr UiTapHandler kUiTapDispatch[] = {
     handleNoopScreenTap,        // UI_ALL_TEMPS
     handleModePickerScreenTap,  // UI_MODE_PICKER
     handleModeSetupScreenTap,   // UI_MODE_SETUP
-    handlePreflightScreenTap    // UI_PREFLIGHT
+    handlePreflightScreenTap,   // UI_PREFLIGHT
+    handleProfilePickerScreenTap // UI_PROFILE_PICKER
 };
 
 static UiTapHandler getUiTapHandler(UiScreen screen) {
@@ -2825,7 +3093,7 @@ static void drawTabs(UiScreen current) {
   const int16_t bh = UI_FOOTER_H - 12;
   const bool modeSetupRoute =
       current == UI_MODE_PICKER || current == UI_MODE_SETUP ||
-      current == UI_PREFLIGHT;
+      current == UI_PREFLIGHT || current == UI_PROFILE_PICKER;
 
   tft.fillRect(0, navY, TFT_WIDTH, UI_FOOTER_H, colorNavBg());
   tft.drawFastHLine(0, navY, TFT_WIDTH, colorBorder());
@@ -6477,7 +6745,10 @@ static void renderRootFooter(
                                 drawCard(cardX, UI_HEADER_H + 38, cardW, 34,
                                          colorCard());
                                 drawPanelHeader(cardX, UI_HEADER_H + 38, cardW,
-                                                ru ? "ПРОФИЛЬ" : "PROFILE",
+                                                ui.setupDraft.profileRelevant
+                                                    ? (ru ? "ПРОФИЛЬ · ВЫБРАТЬ"
+                                                          : "PROFILE · SELECT")
+                                                    : (ru ? "ПРОФИЛЬ" : "PROFILE"),
                                                 profileTone);
                                 tft.setTextColor(profileTone);
                                 tft.setTextSize(1);
@@ -6536,6 +6807,122 @@ static void renderRootFooter(
                                         : (ru ? "ПРОВЕРИТЬ ПЕРЕД ЗАПУСКОМ"
                                               : "CHECK BEFORE START"),
                                     preflightTone, TFT_WHITE);
+                              }
+
+                              static void renderProfilePicker(
+                                  const SystemState &, bool full) {
+                                const bool ru = (g_settings.language == 0);
+                                const int16_t cardX = 10;
+                                const int16_t cardW = TFT_WIDTH - 20;
+                                const int16_t firstRowY = UI_HEADER_H + 38;
+                                const int16_t rowH = 34;
+                                const int16_t rowPitch = 39;
+                                const int16_t pagerY = TFT_HEIGHT - UI_FOOTER_H - 36;
+                                const uint8_t pageCount = getTftProfilePageCount();
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(ru ? "ВЫБОР ПРОФИЛЯ"
+                                                : "SELECT PROFILE",
+                                             true);
+                                  drawTabs(UI_PROFILE_PICKER);
+                                }
+
+                                drawCard(cardX, UI_HEADER_H + 4, cardW, 30,
+                                         colorCard());
+                                char title[96];
+                                snprintf(title, sizeof(title), "%u %s",
+                                         static_cast<unsigned>(
+                                             g_tftProfileOptionCount),
+                                         ru ? "совместимых профилей"
+                                            : "compatible profiles");
+                                drawPanelHeader(cardX, UI_HEADER_H + 4, cardW,
+                                                title, colorAccent());
+
+                                for (uint8_t row = 0;
+                                     row < TFT_PROFILE_ROWS_PER_PAGE; ++row) {
+                                  const uint8_t index =
+                                      ui.profilePickerPage *
+                                          TFT_PROFILE_ROWS_PER_PAGE +
+                                      row;
+                                  const int16_t rowY = firstRowY + row * rowPitch;
+                                  if (index >= g_tftProfileOptionCount) {
+                                    tft.fillRect(cardX, rowY, cardW, rowH,
+                                                 colorBg());
+                                    continue;
+                                  }
+                                  const TftProfileOption &option =
+                                      g_tftProfileOptions[index];
+                                  const bool selected =
+                                      strcmp(option.id,
+                                             ui.setupDraft.profileId) == 0;
+                                  const uint16_t tone = selected
+                                                            ? COLOR_SUCCESS
+                                                            : colorAccent();
+                                  drawCard(cardX, rowY, cardW, rowH,
+                                           selected ? colorButtonBody()
+                                                    : colorCard());
+                                  tft.fillRect(cardX + 2, rowY + 2, 7,
+                                               rowH - 4, tone);
+                                  tft.setTextColor(colorFg());
+                                  tft.setTextSize(1);
+                                  tft.setTextDatum(middle_left);
+                                  char name[64];
+                                  copyFittedText(option.name, cardW - 138, name,
+                                                 sizeof(name));
+                                  drawDisplayString(name, cardX + 16,
+                                                    rowY + rowH / 2);
+                                  char meta[40];
+                                  snprintf(meta, sizeof(meta), "%s · %u",
+                                           option.builtin
+                                               ? (ru ? "встр." : "built-in")
+                                               : (ru ? "польз." : "user"),
+                                           static_cast<unsigned>(option.useCount));
+                                  tft.setTextColor(selected ? COLOR_SUCCESS
+                                                            : colorMuted());
+                                  tft.setTextDatum(middle_right);
+                                  drawDisplayString(meta, cardX + cardW - 9,
+                                                    rowY + rowH / 2);
+                                }
+                                tft.setTextDatum(top_left);
+
+                                drawButton(10, pagerY, 132, 32,
+                                           ru ? "НАЗАД" : "PREV",
+                                           ui.profilePickerPage > 0
+                                               ? COLOR_INFO
+                                               : dimmedButtonColor(),
+                                           TFT_WHITE);
+                                drawCard(148, pagerY, TFT_WIDTH - 296, 32,
+                                         colorCard());
+                                tft.setTextColor(colorMuted());
+                                tft.setTextSize(1);
+                                tft.setTextDatum(middle_center);
+                                char page[20];
+                                snprintf(page, sizeof(page), "%u / %u",
+                                         static_cast<unsigned>(
+                                             ui.profilePickerPage + 1),
+                                         static_cast<unsigned>(pageCount));
+                                drawDisplayString(page, TFT_WIDTH / 2,
+                                                  pagerY + 16);
+                                tft.setTextDatum(top_left);
+                                drawButton(TFT_WIDTH - 142, pagerY, 132, 32,
+                                           ru ? "ДАЛЕЕ" : "NEXT",
+                                           ui.profilePickerPage + 1 < pageCount
+                                               ? COLOR_INFO
+                                               : dimmedButtonColor(),
+                                           TFT_WHITE);
+
+                                if (g_tftProfileOptionCount == 0) {
+                                  drawCard(cardX, firstRowY, cardW,
+                                           rowH * 2 + 5, colorCard());
+                                  tft.setTextColor(colorMuted());
+                                  tft.setTextSize(1);
+                                  tft.setTextDatum(middle_center);
+                                  drawDisplayString(
+                                      ru ? "Нет сохранённых совместимых профилей"
+                                         : "No compatible saved profiles",
+                                      TFT_WIDTH / 2, firstRowY + rowH);
+                                  tft.setTextDatum(top_left);
+                                }
                               }
 
                               static void renderPreflight(const SystemState &,
@@ -7706,7 +8093,8 @@ static void renderRootFooter(
                                       renderAllTemps,          // UI_ALL_TEMPS
                                       renderModePicker,        // UI_MODE_PICKER
                                       renderModeSetup,         // UI_MODE_SETUP
-                                      renderPreflight          // UI_PREFLIGHT
+                                      renderPreflight,         // UI_PREFLIGHT
+                                      renderProfilePicker      // UI_PROFILE_PICKER
                                   };
 
                               static UiRenderHandler

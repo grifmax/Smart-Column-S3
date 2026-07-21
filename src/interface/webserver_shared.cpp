@@ -1202,7 +1202,10 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
   const float minSubmergeL = g_settings.equipment.minHeaterSubmergeL;
   const float absCubePressure =
       g_state.pressure.cube < 0.0f ? -g_state.pressure.cube : g_state.pressure.cube;
-  const String activeProfileId = getActiveProfileId();
+  const String requestedProfileId = params["profileId"] | "";
+  const String activeProfileId = requestedProfileId.isEmpty()
+                                     ? getActiveProfileId()
+                                     : requestedProfileId;
   Profile activeProfile;
   const bool activeProfileLoaded =
       !activeProfileId.isEmpty() && loadProfile(activeProfileId, activeProfile);
