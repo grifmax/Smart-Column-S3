@@ -513,13 +513,12 @@ actualVolumeMl, startedAt, finishedAt, finishReason
   Реализован как `PROFILE_PICKER`: поддерживает до 100 сохранённых профилей,
   страницы по четыре строки, категориальный filter и preview выбранных
   эффективных уставок без записи в NVS во время навигации.
-- [~] [D-040] Сделать TFT-presenter для существующего backend `Pre-flight`:
+- [x] [D-040] Сделать TFT-presenter для существующего backend `Pre-flight`:
   показать `good/warn/danger`, обязательные датчики, hardware-модули и точный
   blocking reason без дублирования расчёта в display layer.
-  Первый presenter готов: summary и первые четыре backend-checklist пункта
-  используют результат `buildProcessPreflight()` без локального пересчёта;
-  развёрнутые hardware-модули и полный список причин будут добавлены в
-  следующем slice.
+  `PREFLIGHT` кеширует до 24 backend-пунктов и показывает их постранично по
+  три строки с названием, тоном и исходным `detail`. Summary сохраняет первый
+  blocking reason; TFT не пересчитывает состояние датчиков или модулей.
 - [ ] [D-041] Добавить единый fullscreen overlay для подтверждений,
   `operator_wait`, alarm acknowledge и смены тары; повторные тапы должны быть
   идемпотентны и не отправлять две команды.

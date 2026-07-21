@@ -17,6 +17,8 @@
 > переведена на три context actions. Запуск теперь имеет единственный маршрут
 > `MODE_PICKER → MODE_SETUP → PREFLIGHT`: выбор режима не вызывает FSM,
 > а кнопка `Старт` повторно вызывает backend `buildProcessPreflight()`.
+> `PREFLIGHT` показывает все возвращённые backend-пункты по три на странице:
+> название, уровень `good/warn/danger` и точную detail-причину.
 > В подготовке доступен локальный selector совместимых сохранённых профилей:
 > выбор остаётся черновиком до явного `Старт`, показывает preview уставок и
 > перед запуском повторно проверяется backend-ом на фактически применённых
@@ -30,7 +32,7 @@
 | `MODE_PICKER` | Только в `IDLE` | Семь поддерживаемых режимов; касание только выбирает сценарий |
 | `MODE_SETUP` | Только в `IDLE` | Карточка выбранного режима: активный профиль, краткие параметры и обязательные датчики |
 | `PROFILE_PICKER` | Только из `MODE_SETUP` и в `IDLE` | Страницы совместимых сохранённых профилей выбранного режима |
-| `PREFLIGHT` | Только из `MODE_SETUP` и в `IDLE` | Сводка того же backend `buildProcessPreflight()`, обновление и защищённый старт |
+| `PREFLIGHT` | Только из `MODE_SETUP` и в `IDLE` | Полный checklist того же backend `buildProcessPreflight()`, обновление и защищённый старт |
 | `MODE_MONITOR` | Когда активен любой процесс | Runtime-экран текущего режима |
 | `CONTROL` | Из action bar во время процесса | Пауза/продолжение и стоп через штатные условия FSM |
 | `SETTINGS` | Из Home | Разделы настроек и быстрые системные переключатели |
@@ -120,7 +122,9 @@ effective settings. Само касание не пишет NVS: профиль 
 - `PREFLIGHT`:
   `Обновить` повторяет backend-проверку с draft `profileId`; `Старт` сначала
   применяет выбранный профиль, затем всегда обновляет проверку ещё раз и
-  вызывает FSM только при `ready=true` и текущем `IDLE`.
+  вызывает FSM только при `ready=true` и текущем `IDLE`. `<` и `>` листают
+  все backend-пункты по три строки; каждая содержит точную причину из
+  `detail`, а не пересчитанный TFT-эквивалент.
 - `MODE_MONITOR`:
   правая зона с метриками ведёт в `ALL_TEMPS`
   левая зона без срабатывания runtime-edit логики ведёт в `CONTROL`
@@ -176,7 +180,7 @@ effective settings. Само касание не пишет NVS: профиль 
 | `MODE_PICKER` | Полный redraw | Вход на экран | Статичный выбор семи режимов |
 | `MODE_SETUP` | `full-once + partial` | Вход на экран, recovery | только карточки подготовленного режима и pre-flight-индикатор |
 | `PROFILE_PICKER` | `full-once + partial` | Вход на экран, recovery | строки текущей страницы, выделение выбора и pager |
-| `PREFLIGHT` | `full-once + partial` | Вход на экран, recovery | сводка и четыре строки проверки после явного `Обновить`/`Старт` |
+| `PREFLIGHT` | `full-once + partial` | Вход на экран, recovery | сводка, три detail-строки текущей страницы и pager после явного `Обновить`/`Старт` |
 | `MODE_MONITOR` | `full-once + partial` | Вход на экран, смена layout режима, recovery | status bar, runtime tiles, footer, summary-панели |
 | `CONTROL` | Полный redraw | Каждый redraw этого экрана | В текущей реализации partial policy не зафиксирован |
 | `SETTINGS` | `full-once + partial` | Вход на экран, смена `theme`, смена `language`, recovery | карточки разделов, быстрые toggles, footer |

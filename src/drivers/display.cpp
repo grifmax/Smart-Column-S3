@@ -310,16 +310,21 @@ struct ModeSetupDraft {
   char profilePreview[112] = {0};
 };
 
+static constexpr uint8_t TFT_PREFLIGHT_MAX_ITEMS = 24;
+static constexpr uint8_t TFT_PREFLIGHT_ROWS_PER_PAGE = 3;
+
 struct TftPreflightSnapshot {
   bool attempted = false;
   bool ready = false;
   uint8_t blockingCount = 0;
   uint8_t warningCount = 0;
+  uint8_t itemCount = 0;
   uint32_t checkedAtMs = 0;
   char title[64] = {0};
   char detail[144] = {0};
-  char itemTitle[4][64] = {{0}};
-  char itemTone[4][12] = {{0}};
+  char itemTitle[TFT_PREFLIGHT_MAX_ITEMS][64] = {{0}};
+  char itemDetail[TFT_PREFLIGHT_MAX_ITEMS][144] = {{0}};
+  char itemTone[TFT_PREFLIGHT_MAX_ITEMS][12] = {{0}};
 };
 
 struct TftProfileOption {
@@ -365,6 +370,7 @@ struct UiState {
   char selectedProfileId[48] = {0};
   ModeSetupDraft setupDraft;
   uint8_t profilePickerPage = 0;
+  uint8_t preflightPage = 0;
   uint8_t processMenuPage = 0;
   bool serviceSession = false;
 };
@@ -1296,7 +1302,17 @@ static bool isSetupProfileCompatible(const Profile &profile, Mode mode) {
          (mode == Mode::MASHING && mashProfile);
 }
 
-static void clearTftPreflight() { g_tftPreflight = TftPreflightSnapshot{}; }
+static void clearTftPreflight() {
+  g_tftPreflight = TftPreflightSnapshot{};
+  ui.preflightPage = 0;
+}
+
+static uint8_t getTftPreflightPageCount() {
+  return g_tftPreflight.itemCount == 0
+             ? 1
+             : (g_tftPreflight.itemCount + TFT_PREFLIGHT_ROWS_PER_PAGE - 1) /
+                   TFT_PREFLIGHT_ROWS_PER_PAGE;
+}
 
 static void buildSetupProfilePreview(const Profile &profile, Mode mode,
                                      char *out, size_t outSize) {
@@ -1563,21 +1579,27 @@ static bool refreshTftPreflight() {
   JsonArray items = doc["items"].as<JsonArray>();
   uint8_t index = 0;
   for (JsonObject item : items) {
-    if (index >= 4) {
+    if (index >= TFT_PREFLIGHT_MAX_ITEMS) {
       break;
     }
     const char *itemTitle = item["title"] | "";
+    const char *itemDetail = item["detail"] | "";
     const char *itemTone = item["tone"] | "muted";
     strncpy(g_tftPreflight.itemTitle[index], itemTitle,
             sizeof(g_tftPreflight.itemTitle[index]) - 1);
     g_tftPreflight.itemTitle[index]
         [sizeof(g_tftPreflight.itemTitle[index]) - 1] = '\0';
+    strncpy(g_tftPreflight.itemDetail[index], itemDetail,
+            sizeof(g_tftPreflight.itemDetail[index]) - 1);
+    g_tftPreflight.itemDetail[index]
+        [sizeof(g_tftPreflight.itemDetail[index]) - 1] = '\0';
     strncpy(g_tftPreflight.itemTone[index], itemTone,
             sizeof(g_tftPreflight.itemTone[index]) - 1);
     g_tftPreflight.itemTone[index]
         [sizeof(g_tftPreflight.itemTone[index]) - 1] = '\0';
     index++;
   }
+  g_tftPreflight.itemCount = index;
   return true;
 }
 
@@ -2185,12 +2207,28 @@ static bool handlePreflightScreenTap(int16_t tx, int16_t ty,
   }
 
   const int16_t buttonY = TFT_HEIGHT - UI_FOOTER_H - 36;
-  const int16_t buttonW = (TFT_WIDTH - 23) / 2;
-  if (hit(tx, ty, 10, buttonY, buttonW, 32)) {
+  const int16_t refreshW = 112;
+  const int16_t pagerButtonW = 42;
+  const int16_t pageX = 10 + refreshW + 6 + pagerButtonW + 4;
+  const int16_t pageW = 44;
+  const int16_t nextX = pageX + pageW + 4;
+  const int16_t startX = nextX + pagerButtonW + 6;
+  const uint8_t pageCount = getTftPreflightPageCount();
+  if (hit(tx, ty, 10, buttonY, refreshW, 32)) {
     refreshTftPreflight();
     return true;
   }
-  if (hit(tx, ty, 13 + buttonW, buttonY, buttonW, 32)) {
+  if (hit(tx, ty, 10 + refreshW + 6, buttonY, pagerButtonW, 32) &&
+      ui.preflightPage > 0) {
+    ui.preflightPage--;
+    return true;
+  }
+  if (hit(tx, ty, nextX, buttonY, pagerButtonW, 32) &&
+      ui.preflightPage + 1 < pageCount) {
+    ui.preflightPage++;
+    return true;
+  }
+  if (hit(tx, ty, startX, buttonY, TFT_WIDTH - startX - 10, 32)) {
     // Refresh immediately before start: a cached green result must never
     // bypass a newly appeared alarm or missing required sensor.
     refreshTftPreflight();
@@ -6931,7 +6969,13 @@ static void renderRootFooter(
                                 const int16_t cardX = 10;
                                 const int16_t cardW = TFT_WIDTH - 20;
                                 const int16_t buttonY = TFT_HEIGHT - UI_FOOTER_H - 36;
-                                const int16_t buttonW = (TFT_WIDTH - 23) / 2;
+                                const int16_t refreshW = 112;
+                                const int16_t pagerButtonW = 42;
+                                const int16_t prevX = 10 + refreshW + 6;
+                                const int16_t pageX = prevX + pagerButtonW + 4;
+                                const int16_t pageW = 44;
+                                const int16_t nextX = pageX + pageW + 4;
+                                const int16_t startX = nextX + pagerButtonW + 6;
                                 if (full) {
                                   tft.fillScreen(colorBg());
                                   drawHeader(ru ? "PREFLIGHT" : "PREFLIGHT", true);
@@ -6946,14 +6990,24 @@ static void renderRootFooter(
                                                       ? COLOR_WARNING
                                                       : COLOR_SUCCESS)
                                                : COLOR_DANGER);
-                                drawCard(cardX, UI_HEADER_H + 4, cardW, 46,
-                                         colorCard());
-                                drawPanelHeader(
-                                    cardX, UI_HEADER_H + 4, cardW,
+                                const uint8_t pageCount =
+                                    getTftPreflightPageCount();
+                                if (ui.preflightPage >= pageCount) {
+                                  ui.preflightPage = pageCount - 1;
+                                }
+                                char summaryTitle[96];
+                                snprintf(
+                                    summaryTitle, sizeof(summaryTitle), "%s · %u/%u",
                                     g_tftPreflight.attempted
                                         ? g_tftPreflight.title
                                         : (ru ? "ПРОВЕРКА НЕ ВЫПОЛНЕНА"
                                               : "CHECK NOT RUN"),
+                                    static_cast<unsigned>(ui.preflightPage + 1),
+                                    static_cast<unsigned>(pageCount));
+                                drawCard(cardX, UI_HEADER_H + 4, cardW, 46,
+                                         colorCard());
+                                drawPanelHeader(
+                                    cardX, UI_HEADER_H + 4, cardW, summaryTitle,
                                     summaryTone);
                                 tft.setTextColor(colorFg());
                                 tft.setTextSize(1);
@@ -6968,36 +7022,78 @@ static void renderRootFooter(
                                 drawDisplayString(summary, cardX + 10,
                                                   UI_HEADER_H + 37);
 
-                                for (uint8_t i = 0; i < 4; ++i) {
-                                  const int16_t rowY = UI_HEADER_H + 54 + i * 29;
-                                  drawCard(cardX, rowY, cardW, 25, colorCard());
+                                for (uint8_t row = 0;
+                                     row < TFT_PREFLIGHT_ROWS_PER_PAGE; ++row) {
+                                  const uint8_t index =
+                                      ui.preflightPage *
+                                          TFT_PREFLIGHT_ROWS_PER_PAGE +
+                                      row;
+                                  const int16_t rowY = UI_HEADER_H + 54 + row * 39;
+                                  const int16_t rowH = 36;
+                                  drawCard(cardX, rowY, cardW, rowH, colorCard());
                                   const bool hasItem =
-                                      g_tftPreflight.itemTitle[i][0] != '\0';
+                                      index < g_tftPreflight.itemCount;
                                   const uint16_t tone =
                                       hasItem ? preflightToneColor(
-                                                    g_tftPreflight.itemTone[i])
+                                                    g_tftPreflight.itemTone[index])
                                               : colorNavInactive();
-                                  tft.fillRect(cardX + 2, rowY + 2, 6, 21, tone);
+                                  tft.fillRect(cardX + 2, rowY + 2, 6, rowH - 4,
+                                               tone);
                                   tft.setTextColor(hasItem ? colorFg() : colorMuted());
                                   tft.setTextSize(1);
+                                  tft.setTextDatum(top_left);
                                   char itemText[64];
                                   copyFittedText(
-                                      hasItem ? g_tftPreflight.itemTitle[i]
-                                              : (i == 0
+                                      hasItem ? g_tftPreflight.itemTitle[index]
+                                              : (row == 0
                                                      ? (ru ? "Список появится после проверки"
                                                            : "Checklist appears after refresh")
                                                      : ""),
-                                      cardW - 22, itemText, sizeof(itemText));
+                                      cardW - 22, itemText, sizeof(itemText),
+                                      "...");
                                   drawDisplayString(itemText, cardX + 15,
-                                                    rowY + 8);
+                                                    rowY + 4);
+                                  if (hasItem) {
+                                    tft.setTextColor(colorMuted());
+                                    char detail[144];
+                                    copyFittedText(
+                                        g_tftPreflight.itemDetail[index],
+                                        cardW - 22, detail, sizeof(detail), "...");
+                                    drawDisplayString(detail, cardX + 15,
+                                                      rowY + 19);
+                                  }
                                 }
                                 tft.setTextDatum(top_left);
 
-                                drawButton(10, buttonY, buttonW, 32,
+                                drawButton(10, buttonY, refreshW, 32,
                                            ru ? "ОБНОВИТЬ" : "REFRESH",
                                            COLOR_INFO, TFT_WHITE);
+                                drawButton(prevX, buttonY, pagerButtonW, 32,
+                                           "<",
+                                           ui.preflightPage > 0
+                                               ? COLOR_INFO
+                                               : dimmedButtonColor(),
+                                           TFT_WHITE);
+                                drawCard(pageX, buttonY, pageW, 32, colorCard());
+                                tft.setTextColor(colorMuted());
+                                tft.setTextSize(1);
+                                tft.setTextDatum(middle_center);
+                                char page[20];
+                                snprintf(page, sizeof(page), "%u/%u",
+                                         static_cast<unsigned>(
+                                             ui.preflightPage + 1),
+                                         static_cast<unsigned>(pageCount));
+                                drawDisplayString(page, pageX + pageW / 2,
+                                                  buttonY + 16);
+                                tft.setTextDatum(top_left);
+                                drawButton(nextX, buttonY, pagerButtonW, 32,
+                                           ">",
+                                           ui.preflightPage + 1 < pageCount
+                                               ? COLOR_INFO
+                                               : dimmedButtonColor(),
+                                           TFT_WHITE);
                                 drawButton(
-                                    13 + buttonW, buttonY, buttonW, 32,
+                                    startX, buttonY, TFT_WIDTH - startX - 10, 32,
                                     ru ? "СТАРТ" : "START",
                                     (g_tftPreflight.attempted &&
                                      g_tftPreflight.ready)
