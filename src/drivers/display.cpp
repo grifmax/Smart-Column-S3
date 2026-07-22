@@ -226,7 +226,8 @@ enum UiScreen : uint8_t {
   UI_PREFLIGHT,
   UI_PROFILE_PICKER,
   UI_SAFETY_VIEW,
-  UI_PROCESS_EVENTS
+  UI_PROCESS_EVENTS,
+  UI_PROCESS_PARAMS
 };
 
 enum class UiRootTab : uint8_t {
@@ -290,7 +291,9 @@ static constexpr UiScreenPolicy kUiScreenPolicies[] = {
     {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false, true,
      false}, // UI_SAFETY_VIEW
     {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false, false,
-     false} // UI_PROCESS_EVENTS
+     false}, // UI_PROCESS_EVENTS
+    {UiRootTab::CONTROL, UiEditPolicy::MODE_MONITOR_RUNTIME, false, false,
+     true, false} // UI_PROCESS_PARAMS
 };
 
 enum class DisplayRedrawReason : uint8_t {
@@ -578,13 +581,15 @@ struct ValueEditState {
   char unit[16];
   uint8_t decimals;
   bool returnToModeMonitor = false;
+  bool returnToProcessParams = false;
 };
 static ValueEditState edit;
 
 static void openValueEdit(const char *label, float val, float min, float max,
                           float step, float fastStep, ValueSaveCallback cb,
                           const char *unit = "", uint8_t decimals = 1,
-                          bool returnToModeMonitor = false) {
+                          bool returnToModeMonitor = false,
+                          bool returnToProcessParams = false) {
   strncpy(edit.label, label, sizeof(edit.label) - 1);
   edit.label[sizeof(edit.label) - 1] = '\0';
   edit.value = val;
@@ -597,6 +602,7 @@ static void openValueEdit(const char *label, float val, float min, float max,
   edit.unit[sizeof(edit.unit) - 1] = '\0';
   edit.decimals = decimals;
   edit.returnToModeMonitor = returnToModeMonitor;
+  edit.returnToProcessParams = returnToProcessParams;
   pushScreen(UI_VALUE_EDIT);
 }
 
@@ -2203,8 +2209,7 @@ static bool handleControlScreenTap(int16_t tx, int16_t ty,
   }
   if (hit(tx, ty, PROCESS_MENU_X2, PROCESS_MENU_Y1, PROCESS_MENU_W,
           PROCESS_MENU_H)) {
-    // Runtime editing remains guarded by the allowlist in MODE_MONITOR.
-    switchRoot(UI_MODE_MONITOR);
+    pushScreen(UI_PROCESS_PARAMS);
     return true;
   }
   if (hit(tx, ty, PROCESS_MENU_X3, PROCESS_MENU_Y1, PROCESS_MENU_W,
@@ -2428,6 +2433,113 @@ static bool handleProfilePickerScreenTap(int16_t tx, int16_t ty,
   return false;
 }
 
+static bool handleProcessParamsScreenTap(int16_t tx, int16_t ty,
+                                         const SystemState &state) {
+  if (state.mode == Mode::IDLE) {
+    return true;
+  }
+  if (!isScreenEditable(UI_PROCESS_PARAMS, state)) {
+    return true;
+  }
+
+  const bool ru = (g_settings.language == 0);
+  const int16_t y = UI_HEADER_H + 86;
+  const int16_t x1 = 10;
+  const int16_t x2 = 245;
+  const int16_t w2 = 225;
+  if (state.mode == Mode::DISTILLATION) {
+    if (hit(tx, ty, x1, y, w2, 62)) {
+      openValueEdit(ru ? "Мощность дист." : "Dist power",
+                    distUi.powerPercent, 0, 100, 1, 10, saveDistPower, "%",
+                    0, false, true);
+      return true;
+    }
+    if (hit(tx, ty, x2, y, w2, 62)) {
+      openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1f, 1.0f,
+                    saveDistEndTemp, "C", 1, false, true);
+      return true;
+    }
+    return false;
+  }
+
+  if (state.mode == Mode::MANUAL_RECT) {
+    if (hit(tx, ty, x1, y, w2, 36)) {
+      openValueEdit(ru ? "Скорость отбора" : "Takeoff speed",
+                    manualRectUi.speedMlH, 0, 5000, 10, 100,
+                    saveManualRectSpeed, "ml/h", 0, false, true);
+      return true;
+    }
+    if (hit(tx, ty, x2, y, w2, 36)) {
+      openValueEdit(ru ? "Мощность руч." : "Manual power",
+                    manualRectUi.powerPercent, 0, 100, 1, 10,
+                    saveManualRectPower, "%", 0, false, true);
+      return true;
+    }
+    if (hit(tx, ty, x1, y + 40, w2, 36)) {
+      openValueEdit(ru ? "Головы цель" : "Heads target",
+                    manualRectUi.headsTargetMl, 0, 10000, 10, 100,
+                    saveManualRectHeadsTarget, "ml", 0, false, true);
+      return true;
+    }
+    if (hit(tx, ty, x2, y + 40, w2, 36)) {
+      openValueEdit(ru ? "Тело цель" : "Body target",
+                    manualRectUi.bodyTargetMl, 0, 50000, 100, 1000,
+                    saveManualRectBodyTarget, "ml", 0, false, true);
+      return true;
+    }
+    if (hit(tx, ty, x1, y + 80, TFT_WIDTH - 20, 36)) {
+      openValueEdit(ru ? "Хвосты цель" : "Tails target",
+                    manualRectUi.tailsTargetMl, 0, 50000, 100, 1000,
+                    saveManualRectTailsTarget, "ml", 0, false, true);
+      return true;
+    }
+    return false;
+  }
+
+  if (state.mode == Mode::MASHING) {
+    const uint8_t step = state.mashing.currentStep;
+    if (step >= mashProfileDefault.stepCount) {
+      return true;
+    }
+    g_editMashStepIdx = step;
+    if (hit(tx, ty, x1, y, w2, 62)) {
+      openValueEdit(ru ? "Температура шага" : "Step temperature",
+                    mashProfileDefault.steps[step].temperature, 30, 90, 0.1f,
+                    1.0f, saveMashStepTemp, "C", 1, false, true);
+      return true;
+    }
+    if (hit(tx, ty, x2, y, w2, 62)) {
+      openValueEdit(ru ? "Длительность шага" : "Step duration",
+                    mashProfileDefault.steps[step].duration, 1, 240, 1, 10,
+                    saveMashStepDuration, "min", 0, false, true);
+      return true;
+    }
+    return false;
+  }
+
+  if (state.mode == Mode::HOLD) {
+    const uint8_t step = state.hold.currentStep;
+    if (step >= holdStepsCount) {
+      return true;
+    }
+    g_editHoldStepIdx = step;
+    if (hit(tx, ty, x1, y, w2, 62)) {
+      openValueEdit(ru ? "Температура удерж." : "Hold temperature",
+                    holdStepsDefault[step].temperature, 30, 95, 0.1f, 1.0f,
+                    saveHoldStepTemp, "C", 1, false, true);
+      return true;
+    }
+    if (hit(tx, ty, x2, y, w2, 62)) {
+      openValueEdit(ru ? "Время удерж." : "Hold duration",
+                    holdStepsDefault[step].duration, 1, 720, 1, 15,
+                    saveHoldStepDuration, "min", 0, false, true);
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
 static bool handleValueEditScreenTap(int16_t tx, int16_t ty,
                                      const SystemState &) {
   if (hit(tx, ty, VALUE_EDIT_BTN_X1, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
@@ -2461,7 +2573,9 @@ static bool handleValueEditScreenTap(int16_t tx, int16_t ty,
   if (hit(tx, ty, 10, 202, TFT_WIDTH - 20, 44)) {
     if (edit.onSave)
       edit.onSave(edit.value);
-    if (edit.returnToModeMonitor && isModeRunning(g_state)) {
+    if (edit.returnToProcessParams && isModeRunning(g_state)) {
+      popScreen();
+    } else if (edit.returnToModeMonitor && isModeRunning(g_state)) {
       switchRoot(getMonitorRootScreenForState(g_state));
     } else {
       popScreen();
@@ -2775,7 +2889,8 @@ static constexpr UiTapHandler kUiTapDispatch[] = {
     handlePreflightScreenTap,   // UI_PREFLIGHT
     handleProfilePickerScreenTap, // UI_PROFILE_PICKER
     handleSafetyViewScreenTap,    // UI_SAFETY_VIEW
-    handleProcessEventsScreenTap  // UI_PROCESS_EVENTS
+    handleProcessEventsScreenTap, // UI_PROCESS_EVENTS
+    handleProcessParamsScreenTap  // UI_PROCESS_PARAMS
 };
 
 static UiTapHandler getUiTapHandler(UiScreen screen) {
@@ -3265,6 +3380,9 @@ static void drawTabs(UiScreen current) {
   const bool modeSetupRoute =
       current == UI_MODE_PICKER || current == UI_MODE_SETUP ||
       current == UI_PREFLIGHT || current == UI_PROFILE_PICKER;
+  const bool processControlRoute =
+      current == UI_CONTROL || current == UI_SAFETY_VIEW ||
+      current == UI_PROCESS_EVENTS || current == UI_PROCESS_PARAMS;
 
   tft.fillRect(0, navY, TFT_WIDTH, UI_FOOTER_H, colorNavBg());
   tft.drawFastHLine(0, navY, TFT_WIDTH, colorBorder());
@@ -3275,7 +3393,8 @@ static void drawTabs(UiScreen current) {
     const int16_t y = navY + 6;
     const bool active =
         (i == 0 && current == (processActive ? UI_MODE_MONITOR : UI_DASHBOARD)) ||
-        (i == 1 && (processActive ? current == UI_CONTROL : modeSetupRoute)) ||
+        (i == 1 &&
+         (processActive ? processControlRoute : modeSetupRoute)) ||
         (i == 2 && current == UI_SERVICE);
     const uint16_t bg = active ? colorButtonBody() : colorNavInactive();
     const uint16_t fg = active ? TFT_WHITE : colorFg();
@@ -7341,6 +7460,156 @@ static void renderRootFooter(
                                            COLOR_INFO, TFT_WHITE);
                               }
 
+                              static void renderProcessParams(
+                                  const SystemState &state, bool full) {
+                                const bool ru = (g_settings.language == 0);
+                                const int16_t cardX = 10;
+                                const int16_t cardW = TFT_WIDTH - 20;
+                                const int16_t y = UI_HEADER_H + 86;
+                                const bool editable =
+                                    isScreenEditable(UI_PROCESS_PARAMS, state);
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(ru ? "ПАРАМЕТРЫ ПРОЦЕССА"
+                                                : "PROCESS PARAMETERS",
+                                             true);
+                                  drawTabs(UI_PROCESS_PARAMS);
+                                }
+
+                                drawCard(cardX, UI_HEADER_H + 4, cardW, 34,
+                                         colorCard());
+                                drawPanelHeader(
+                                    cardX, UI_HEADER_H + 4, cardW,
+                                    getDisplayModeName(state.mode),
+                                    editable ? COLOR_SUCCESS : COLOR_INFO);
+                                tft.setTextColor(colorFg());
+                                tft.setTextSize(1);
+                                tft.setTextDatum(middle_left);
+                                char phase[96];
+                                snprintf(phase, sizeof(phase), "%s / %s",
+                                         getDisplayPhaseName(state),
+                                         state.paused
+                                             ? (ru ? "ПАУЗА" : "PAUSED")
+                                             : (ru ? "РАБОТА" : "RUNNING"));
+                                drawDisplayString(phase, cardX + 10,
+                                                  UI_HEADER_H + 29);
+
+                                drawCard(cardX, UI_HEADER_H + 42, cardW, 38,
+                                         colorCard());
+                                drawPanelHeader(
+                                    cardX, UI_HEADER_H + 42, cardW,
+                                    editable
+                                        ? (ru ? "РАЗРЕШЕНО НА ХОДУ"
+                                              : "RUNTIME ALLOWLIST")
+                                        : (ru ? "ТОЛЬКО ПРОСМОТР"
+                                              : "VIEW ONLY"),
+                                    editable ? COLOR_SUCCESS
+                                             : dimmedButtonColor());
+                                tft.setTextColor(colorFg());
+                                char policy[128];
+                                copyFittedText(getModeMonitorAccessHint(state.mode),
+                                               cardW - 24, policy,
+                                               sizeof(policy));
+                                drawDisplayString(policy, cardX + 10,
+                                                  UI_HEADER_H + 71);
+                                tft.setTextDatum(top_left);
+
+                                if (!editable) {
+                                  drawCard(cardX, y, cardW, 64, colorCard());
+                                  tft.setTextColor(colorMuted());
+                                  tft.setTextSize(1);
+                                  tft.setTextDatum(middle_center);
+                                  drawDisplayString(
+                                      ru ? "Уставки этого режима не меняются во время процесса"
+                                         : "This mode settings cannot change while running",
+                                      TFT_WIDTH / 2, y + 32);
+                                  tft.setTextDatum(top_left);
+                                  return;
+                                }
+
+                                if (state.mode == Mode::DISTILLATION) {
+                                  char power[48], endTemp[48];
+                                  snprintf(power, sizeof(power), "%s %.0f%% / %.0f W",
+                                           ru ? "МОЩН." : "POWER",
+                                           distUi.powerPercent, state.power.power);
+                                  snprintf(endTemp, sizeof(endTemp), "%s %.1f C",
+                                           ru ? "КОНЕЦ" : "END",
+                                           distUi.endTempC);
+                                  drawButton(10, y, 225, 62, power, COLOR_WARNING,
+                                             TFT_WHITE);
+                                  drawButton(245, y, 225, 62, endTemp, COLOR_INFO,
+                                             TFT_WHITE);
+                                } else if (state.mode == Mode::MANUAL_RECT) {
+                                  char speed[40], power[40], heads[40], body[40],
+                                      tails[40];
+                                  snprintf(speed, sizeof(speed), "%s %.0f ml/h",
+                                           ru ? "ОТБОР" : "TAKEOFF",
+                                           manualRectUi.speedMlH);
+                                  snprintf(power, sizeof(power), "%s %.0f%%",
+                                           ru ? "МОЩН." : "POWER",
+                                           manualRectUi.powerPercent);
+                                  snprintf(heads, sizeof(heads), "%s %.0f ml",
+                                           ru ? "ГОЛОВЫ" : "HEADS",
+                                           manualRectUi.headsTargetMl);
+                                  snprintf(body, sizeof(body), "%s %.0f ml",
+                                           ru ? "ТЕЛО" : "BODY",
+                                           manualRectUi.bodyTargetMl);
+                                  snprintf(tails, sizeof(tails), "%s %.0f ml",
+                                           ru ? "ХВОСТЫ" : "TAILS",
+                                           manualRectUi.tailsTargetMl);
+                                  drawButton(10, y, 225, 36, speed, COLOR_SUCCESS,
+                                             TFT_WHITE);
+                                  drawButton(245, y, 225, 36, power, COLOR_WARNING,
+                                             TFT_WHITE);
+                                  drawButton(10, y + 40, 225, 36, heads, COLOR_INFO,
+                                             TFT_WHITE);
+                                  drawButton(245, y + 40, 225, 36, body, COLOR_INFO,
+                                             TFT_WHITE);
+                                  drawButton(10, y + 80, TFT_WIDTH - 20, 36, tails,
+                                             COLOR_INFO, TFT_WHITE);
+                                } else if (state.mode == Mode::MASHING) {
+                                  const uint8_t step = state.mashing.currentStep;
+                                  char temp[48], duration[48];
+                                  snprintf(temp, sizeof(temp), "%s %u: %.1f C",
+                                           ru ? "ШАГ" : "STEP",
+                                           static_cast<unsigned>(step + 1),
+                                           step < mashProfileDefault.stepCount
+                                               ? mashProfileDefault.steps[step]
+                                                     .temperature
+                                               : 0.0f);
+                                  snprintf(duration, sizeof(duration), "%s %u min",
+                                           ru ? "ВРЕМЯ" : "TIME",
+                                           step < mashProfileDefault.stepCount
+                                               ? static_cast<unsigned>(
+                                                     mashProfileDefault.steps[step]
+                                                         .duration)
+                                               : 0);
+                                  drawButton(10, y, 225, 62, temp, COLOR_SUCCESS,
+                                             TFT_WHITE);
+                                  drawButton(245, y, 225, 62, duration, COLOR_INFO,
+                                             TFT_WHITE);
+                                } else if (state.mode == Mode::HOLD) {
+                                  const uint8_t step = state.hold.currentStep;
+                                  char temp[48], duration[48];
+                                  snprintf(temp, sizeof(temp), "%s %u: %.1f C",
+                                           ru ? "ШАГ" : "STEP",
+                                           static_cast<unsigned>(step + 1),
+                                           step < holdStepsCount
+                                               ? holdStepsDefault[step].temperature
+                                               : 0.0f);
+                                  snprintf(duration, sizeof(duration), "%s %u min",
+                                           ru ? "ВРЕМЯ" : "TIME",
+                                           step < holdStepsCount
+                                               ? static_cast<unsigned>(
+                                                     holdStepsDefault[step].duration)
+                                               : 0);
+                                  drawButton(10, y, 225, 62, temp, COLOR_SUCCESS,
+                                             TFT_WHITE);
+                                  drawButton(245, y, 225, 62, duration, COLOR_INFO,
+                                             TFT_WHITE);
+                                }
+                              }
+
                               static void renderPreflight(const SystemState &,
                                                           bool full) {
                                 const bool ru = (g_settings.language == 0);
@@ -8570,7 +8839,8 @@ static void renderRootFooter(
                                       renderPreflight,         // UI_PREFLIGHT
                                       renderProfilePicker,     // UI_PROFILE_PICKER
                                       renderSafetyView,        // UI_SAFETY_VIEW
-                                      renderProcessEvents      // UI_PROCESS_EVENTS
+                                      renderProcessEvents,     // UI_PROCESS_EVENTS
+                                      renderProcessParams      // UI_PROCESS_PARAMS
                                   };
 
                               static UiRenderHandler

@@ -56,6 +56,7 @@
 | `ALL_TEMPS` | `HOME`, `MODE_MONITOR`, `SERVICE` | Просмотр всех температур |
 | `SAFETY_VIEW` | `HOME`, `CONTROL` | Live-статус safety, обязательные датчики, пороги и действия acknowledge/reset |
 | `PROCESS_EVENTS` | `CONTROL` | Снимок последних событий штатного `Logger` ring-buffer |
+| `PROCESS_PARAMS` | `CONTROL` | Разрешённые runtime-уставки активного режима; неподдерживаемые режимы остаются только для просмотра |
 
 `MODE_SETUP` хранит выбранный режим, профиль и черновик отдельно от
 `g_settings`. `PROFILE_PICKER` фильтрует профиль по категории режима
@@ -77,6 +78,7 @@ effective settings. Само касание не пишет NVS: профиль 
 | `CONTROL` | Перенаправляет в `MODE_PICKER` | Нет | Да | Только pause/resume/stop | Новый запуск из него исключён; другие карточки только навигационные |
 | `SAFETY_VIEW` | Да | Только safety actions | Да | Только safety actions | Acknowledge/reset вызывают существующую `Safety` policy |
 | `PROCESS_EVENTS` | Нет | Нет | Да | `Обновить` | Read-only snapshot журналов без очистки |
+| `PROCESS_PARAMS` | Нет | Нет | Да | Только allowlist режима | Использует существующие setters; неподдерживаемые режимы показывают причину read-only |
 | `SETTINGS` | Да | Да | Да | Да | Быстрые toggles внизу доступны всегда |
 | `SERVICE` | Да | Нет | Да | Нет | Только просмотр |
 | `EQUIPMENT` | Да | Да | Да | Нет | Во время процесса только просмотр |
@@ -87,16 +89,18 @@ effective settings. Само касание не пишет NVS: профиль 
 | `VALUE_EDIT` | Да | Да | Да | Да | Транзитный экран, сам по себе policy не задаёт |
 | `ALL_TEMPS` | Да | Нет | Да | Нет | Только просмотр |
 
-## 4. Правила для MODE_MONITOR
+## 4. Правила runtime-параметров
 
-Редактирование на runtime-экране разрешено только для следующих режимов:
+`PROCESS_PARAMS` — выделенный экран runtime-параметров из `CONTROL`. Он
+использует только уже существующие setters; редактирование на `MODE_MONITOR`
+сохраняет тот же allowlist. Разрешены только следующие режимы:
 
 | Режим | Редактирование | Что именно редактируется |
 | --- | --- | --- |
 | `DISTILLATION` | Да | Мощность и конечная температура |
 | `MANUAL_RECT` | Да | Скорость, мощность, цели по фракциям |
-| `MASHING` | Да | Температура и длительность шагов |
-| `HOLD` | Да | Температура и длительность шагов |
+| `MASHING` | Да | Температура и длительность только текущего шага |
+| `HOLD` | Да | Температура и длительность только текущего шага |
 | `RECTIFICATION` | Нет | Только просмотр |
 | `NBK` | Нет | Только просмотр |
 | `FERMENTATION` | Нет | Только просмотр |
@@ -137,7 +141,13 @@ effective settings. Само касание не пишет NVS: профиль 
   верхняя строка показывает фазу, а guidance/операторское сообщение —
   требуемое действие. Карточки `Монитор`, `Параметры`, `Safety`, `События`,
   `Пауза/Продолжить`, `Стоп` образуют единственный context menu процесса.
-  `Параметры` открывают `MODE_MONITOR`, где действует runtime allowlist.
+  `Параметры` открывают `PROCESS_PARAMS`; после сохранения редактор
+  возвращается к этому экрану. Здесь действует runtime allowlist.
+- `PROCESS_PARAMS`:
+  дистилляция даёт мощность и конечную температуру; ручная ректификация —
+  скорость, мощность и цели фракций; затирание/Hold — только температуру и
+  длительность текущего шага. Ректификация, НБК и брожение получают только
+  объяснение, почему изменения на ходу запрещены.
 - `SAFETY_VIEW`:
   показывает latch/alarm, обязательные датчики, pressure/TSA/water/leak
   channels. `Acknowledge` и `Reset` не имеют локальной логики: вызывают
@@ -169,8 +179,9 @@ effective settings. Само касание не пишет NVS: профиль 
 
 - Подэкраны настроек во время активного автопроцесса работают в режиме
   только просмотра.
-- Runtime-редактирование на `MODE_MONITOR` не является общим правилом для
-  всех режимов и разрешено только для явно перечисленных режимов.
+- Runtime-редактирование на `PROCESS_PARAMS` и `MODE_MONITOR` не является
+  общим правилом для всех режимов и разрешено только для явно перечисленных
+  режимов.
 - `MANUAL` не считается обычным runtime-экраном и живёт по отдельной
   политике доступа.
 
@@ -202,6 +213,7 @@ effective settings. Само касание не пишет NVS: профиль 
 | `CONTROL` | `full-once + partial` | Вход на экран, recovery | guidance, context-карточки, pause/resume/stop state |
 | `SAFETY_VIEW` | `full-once + partial` | Вход на экран, recovery | alarm/sensors/thresholds/action result |
 | `PROCESS_EVENTS` | `full-once + partial` | Вход на экран, recovery | фиксированный snapshot событий после явного refresh |
+| `PROCESS_PARAMS` | `full-once + partial` | Вход на экран, recovery | фаза, policy и значения разрешённых tiles |
 | `SETTINGS` | `full-once + partial` | Вход на экран, смена `theme`, смена `language`, recovery | карточки разделов, быстрые toggles, footer |
 | `EQUIPMENT` | `full-once + partial` | Вход на экран, recovery | value tiles, footer |
 | `RECT_PARAMS` | `full-once + partial` | Вход на экран, смена страницы `feed/cuts <-> flow/temp`, recovery | page button, value tiles, footer |
