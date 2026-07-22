@@ -17,6 +17,7 @@
 #include "interface/localization.h"
 #include "interface/webserver_shared.h"
 #include "profiles.h"
+#include "storage/logger.h"
 #include "storage/nvs_manager.h"
 #include <LovyanGFX.hpp>
 #include <SPI.h>
@@ -223,7 +224,9 @@ enum UiScreen : uint8_t {
   UI_MODE_PICKER,
   UI_MODE_SETUP,
   UI_PREFLIGHT,
-  UI_PROFILE_PICKER
+  UI_PROFILE_PICKER,
+  UI_SAFETY_VIEW,
+  UI_PROCESS_EVENTS
 };
 
 enum class UiRootTab : uint8_t {
@@ -283,7 +286,11 @@ static constexpr UiScreenPolicy kUiScreenPolicies[] = {
     {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
      false}, // UI_PREFLIGHT
     {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false} // UI_PROFILE_PICKER
+     false}, // UI_PROFILE_PICKER
+    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false, true,
+     false}, // UI_SAFETY_VIEW
+    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false, false,
+     false} // UI_PROCESS_EVENTS
 };
 
 enum class DisplayRedrawReason : uint8_t {
@@ -334,6 +341,14 @@ struct TftProfileOption {
   bool builtin = false;
 };
 
+static constexpr uint8_t TFT_EVENT_CACHE_SIZE = 6;
+struct TftEventCache {
+  uint8_t count = 0;
+  uint8_t level[TFT_EVENT_CACHE_SIZE] = {0};
+  uint32_t timestamp[TFT_EVENT_CACHE_SIZE] = {0};
+  char message[TFT_EVENT_CACHE_SIZE][128] = {{0}};
+};
+
 struct UiState {
   UiScreen currentScreen = UI_DASHBOARD;
   UiScreen rootScreen = UI_DASHBOARD;
@@ -373,6 +388,7 @@ struct UiState {
   uint8_t preflightPage = 0;
   uint8_t processMenuPage = 0;
   bool serviceSession = false;
+  char safetyActionMessage[144] = {0};
 };
 
 static UiState ui;
@@ -380,6 +396,7 @@ static TftPreflightSnapshot g_tftPreflight;
 static TftProfileOption g_tftProfileOptions[MAX_PROFILES];
 static uint8_t g_tftProfileOptionCount = 0;
 static constexpr uint8_t TFT_PROFILE_ROWS_PER_PAGE = 4;
+static TftEventCache g_tftEvents;
 static SparklineBuffer<30> cubeTempHistory;
 static SparklineBuffer<30> topTempHistory;
 static uint32_t lastSparklineUpdateMs = 0;
@@ -968,6 +985,18 @@ static const int16_t CTRL_Y1 = UI_GLOBAL_STATUS_H + 38;
 static const int16_t CTRL_Y2 = CTRL_Y1 + CTRL_BH + TFT_BUTTON_GAP;
 static const int16_t CTRL_Y3 = CTRL_Y2 + CTRL_BH + TFT_BUTTON_GAP;
 static const int16_t CTRL_Y4 = CTRL_Y3 + CTRL_BH + TFT_BUTTON_GAP;
+static const int16_t PROCESS_MENU_X1 = 10;
+static const int16_t PROCESS_MENU_GAP = TFT_BUTTON_GAP;
+static const int16_t PROCESS_MENU_W =
+    (TFT_WIDTH - PROCESS_MENU_X1 * 2 - PROCESS_MENU_GAP * 2) / 3;
+static const int16_t PROCESS_MENU_X2 = PROCESS_MENU_X1 + PROCESS_MENU_W +
+                                       PROCESS_MENU_GAP;
+static const int16_t PROCESS_MENU_X3 = PROCESS_MENU_X2 + PROCESS_MENU_W +
+                                       PROCESS_MENU_GAP;
+static const int16_t PROCESS_MENU_H = 44;
+static const int16_t PROCESS_MENU_Y1 = UI_GLOBAL_STATUS_H + 78;
+static const int16_t PROCESS_MENU_Y2 =
+    PROCESS_MENU_Y1 + PROCESS_MENU_H + PROCESS_MENU_GAP;
 static const int16_t SETTINGS_CARD_X1 = TFT_BUTTON_MARGIN_X;
 static const int16_t SETTINGS_CARD_W = 232;
 static const int16_t SETTINGS_CARD_X2 =
@@ -1312,6 +1341,36 @@ static uint8_t getTftPreflightPageCount() {
              ? 1
              : (g_tftPreflight.itemCount + TFT_PREFLIGHT_ROWS_PER_PAGE - 1) /
                    TFT_PREFLIGHT_ROWS_PER_PAGE;
+}
+
+static void loadTftRecentEvents() {
+  g_tftEvents = TftEventCache{};
+  // Logger already owns the authoritative recent-event ring. Read it only
+  // when entering or explicitly refreshing this screen, then retain a small
+  // fixed TFT snapshot instead of allocating during live redraws.
+  const String json = Logger::getRecentEventsJson(TFT_EVENT_CACHE_SIZE);
+  JsonDocument doc;
+  if (deserializeJson(doc, json)) {
+    return;
+  }
+  JsonArray events = doc["events"].as<JsonArray>();
+  for (int32_t source = static_cast<int32_t>(events.size()) - 1;
+       source >= 0 && g_tftEvents.count < TFT_EVENT_CACHE_SIZE; --source) {
+    JsonObject event = events[static_cast<size_t>(source)].as<JsonObject>();
+    const uint8_t index = g_tftEvents.count++;
+    g_tftEvents.level[index] = event["level"] | 0;
+    g_tftEvents.timestamp[index] = event["timestamp"] | 0;
+    const char *message = event["message"] | "";
+    strncpy(g_tftEvents.message[index], message,
+            sizeof(g_tftEvents.message[index]) - 1);
+    g_tftEvents.message[index][sizeof(g_tftEvents.message[index]) - 1] =
+        '\0';
+  }
+}
+
+static void openProcessEvents() {
+  loadTftRecentEvents();
+  pushScreen(UI_PROCESS_EVENTS);
 }
 
 static void buildSetupProfilePreview(const Profile &profile, Mode mode,
@@ -2127,19 +2186,81 @@ static bool handleControlScreenTap(int16_t tx, int16_t ty,
     return true;
   }
 
-  const int16_t stopX = TFT_WIDTH - CTRL_ACTION_BW - 10;
-  const int16_t pauseX = stopX - CTRL_ACTION_BW - CTRL_ACTION_GAP;
-  if (hit(tx, ty, pauseX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH)) {
-    if (state.mode != Mode::IDLE) {
-      if (state.paused)
-        FSM::resume(g_state);
-      else
-        FSM::pause(g_state);
+  if (hit(tx, ty, PROCESS_MENU_X1, PROCESS_MENU_Y1, PROCESS_MENU_W,
+          PROCESS_MENU_H)) {
+    switchRoot(UI_MODE_MONITOR);
+    return true;
+  }
+  if (hit(tx, ty, PROCESS_MENU_X2, PROCESS_MENU_Y1, PROCESS_MENU_W,
+          PROCESS_MENU_H)) {
+    // Runtime editing remains guarded by the allowlist in MODE_MONITOR.
+    switchRoot(UI_MODE_MONITOR);
+    return true;
+  }
+  if (hit(tx, ty, PROCESS_MENU_X3, PROCESS_MENU_Y1, PROCESS_MENU_W,
+          PROCESS_MENU_H)) {
+    ui.safetyActionMessage[0] = '\0';
+    pushScreen(UI_SAFETY_VIEW);
+    return true;
+  }
+  if (hit(tx, ty, PROCESS_MENU_X1, PROCESS_MENU_Y2, PROCESS_MENU_W,
+          PROCESS_MENU_H)) {
+    openProcessEvents();
+    return true;
+  }
+  if (hit(tx, ty, PROCESS_MENU_X2, PROCESS_MENU_Y2, PROCESS_MENU_W,
+          PROCESS_MENU_H)) {
+    if (state.paused)
+      FSM::resume(g_state);
+    else
+      FSM::pause(g_state);
+    return true;
+  }
+  if (hit(tx, ty, PROCESS_MENU_X3, PROCESS_MENU_Y2, PROCESS_MENU_W,
+          PROCESS_MENU_H)) {
+    FSM::stopMode(g_state);
+    return true;
+  }
+  return false;
+}
+
+static bool handleSafetyViewScreenTap(int16_t tx, int16_t ty,
+                                      const SystemState &state) {
+  const int16_t actionY = TFT_HEIGHT - UI_FOOTER_H - 36;
+  const int16_t actionW = (TFT_WIDTH - 23) / 2;
+  if (hit(tx, ty, 10, actionY, actionW, 32)) {
+    if (state.currentAlarm.type != AlarmType::NONE &&
+        !state.currentAlarm.acknowledged) {
+      Safety::acknowledge(g_state);
+      snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
+               (g_settings.language == 0) ? "Авария подтверждена оператором."
+                                          : "Alarm acknowledged by operator.");
     }
     return true;
   }
-  if (hit(tx, ty, stopX, CTRL_ACTION_Y, CTRL_ACTION_BW, CTRL_ACTION_BH)) {
-    FSM::stopMode(g_state);
+  if (hit(tx, ty, 13 + actionW, actionY, actionW, 32)) {
+    char reason[128] = "";
+    if (Safety::reset(g_state, g_settings, reason, sizeof(reason))) {
+      snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
+               (g_settings.language == 0) ? "Safety-состояние сброшено."
+                                          : "Safety state has been reset.");
+    } else {
+      snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
+               reason[0] != '\0'
+                   ? reason
+                   : ((g_settings.language == 0)
+                          ? "Сброс пока запрещён политикой safety."
+                          : "Safety policy does not allow reset yet."));
+    }
+    return true;
+  }
+  return false;
+}
+
+static bool handleProcessEventsScreenTap(int16_t tx, int16_t ty,
+                                         const SystemState &) {
+  if (hit(tx, ty, 10, TFT_HEIGHT - UI_FOOTER_H - 36, TFT_WIDTH - 20, 32)) {
+    loadTftRecentEvents();
     return true;
   }
   return false;
@@ -2642,7 +2763,9 @@ static constexpr UiTapHandler kUiTapDispatch[] = {
     handleModePickerScreenTap,  // UI_MODE_PICKER
     handleModeSetupScreenTap,   // UI_MODE_SETUP
     handlePreflightScreenTap,   // UI_PREFLIGHT
-    handleProfilePickerScreenTap // UI_PROFILE_PICKER
+    handleProfilePickerScreenTap, // UI_PROFILE_PICKER
+    handleSafetyViewScreenTap,    // UI_SAFETY_VIEW
+    handleProcessEventsScreenTap  // UI_PROCESS_EVENTS
 };
 
 static UiTapHandler getUiTapHandler(UiScreen screen) {
@@ -6581,10 +6704,6 @@ static void renderRootFooter(
                                   drawTabs(UI_CONTROL);
                                 }
                                 const bool ru = (g_settings.language == 0);
-                                const int16_t stopX =
-                                    TFT_WIDTH - CTRL_ACTION_BW - 10;
-                                const int16_t pauseX =
-                                    stopX - CTRL_ACTION_BW - CTRL_ACTION_GAP;
 
                                 if (state.mode == Mode::IDLE) {
                                   drawCard(10, UI_GLOBAL_STATUS_H + 12,
@@ -6631,40 +6750,77 @@ static void renderRootFooter(
                                                CTRL_STATUS_Y +
                                                    CTRL_STATUS_H / 2);
                                 tft.setTextDatum(top_left);
-                                drawButton(pauseX, CTRL_ACTION_Y,
-                                           CTRL_ACTION_BW, CTRL_ACTION_BH,
+                                const ControlV2::ModeStatusV2 &modeStatus =
+                                    ControlV2::getLatestModeStatus();
+                                const char *guidance =
+                                    modeStatus.operatorMessage[0] != '\0'
+                                        ? modeStatus.operatorMessage
+                                        : (modeStatus.guidance.action[0] != '\0'
+                                               ? modeStatus.guidance.action
+                                               : getModeMonitorAccessHint(
+                                                     state.mode));
+                                drawCard(10, UI_GLOBAL_STATUS_H + 37,
+                                         TFT_WIDTH - 20, 36, colorCard());
+                                drawPanelHeader(
+                                    10, UI_GLOBAL_STATUS_H + 37,
+                                    TFT_WIDTH - 20,
+                                    modeStatus.guidance.title[0] != '\0'
+                                        ? modeStatus.guidance.title
+                                        : (ru ? "ДЕЙСТВИЕ ОПЕРАТОРА"
+                                              : "OPERATOR ACTION"),
+                                    modeTone);
+                                tft.setTextColor(colorFg());
+                                tft.setTextSize(1);
+                                tft.setTextDatum(middle_left);
+                                char guidanceBuf[128];
+                                copyFittedText(guidance, TFT_WIDTH - 44,
+                                               guidanceBuf,
+                                               sizeof(guidanceBuf));
+                                drawDisplayString(guidanceBuf, 18,
+                                                  UI_GLOBAL_STATUS_H + 63);
+                                tft.setTextDatum(top_left);
+
+                                const bool runtimeEdit =
+                                    isModeMonitorEditAllowed(state.mode);
+                                const bool safetyAlert =
+                                    !state.safetyOk || Safety::isLatched(state);
+                                drawButton(PROCESS_MENU_X1, PROCESS_MENU_Y1,
+                                           PROCESS_MENU_W, PROCESS_MENU_H,
+                                           ru ? "МОНИТОР" : "MONITOR",
+                                           colorAccent(), TFT_WHITE);
+                                drawButton(PROCESS_MENU_X2, PROCESS_MENU_Y1,
+                                           PROCESS_MENU_W, PROCESS_MENU_H,
+                                           ru ? "ПАРАМЕТРЫ" : "PARAMS",
+                                           runtimeEdit ? COLOR_INFO
+                                                       : dimmedButtonColor(),
+                                           TFT_WHITE);
+                                drawButton(PROCESS_MENU_X3, PROCESS_MENU_Y1,
+                                           PROCESS_MENU_W, PROCESS_MENU_H,
+                                           ru ? "SAFETY" : "SAFETY",
+                                           safetyAlert ? COLOR_DANGER
+                                                       : COLOR_WARNING,
+                                           TFT_WHITE);
+                                drawButton(PROCESS_MENU_X1, PROCESS_MENU_Y2,
+                                           PROCESS_MENU_W, PROCESS_MENU_H,
+                                           ru ? "СОБЫТИЯ" : "EVENTS",
+                                           COLOR_DARK_GREY, TFT_WHITE);
+                                drawButton(PROCESS_MENU_X2, PROCESS_MENU_Y2,
+                                           PROCESS_MENU_W, PROCESS_MENU_H,
                                            state.paused ? msg(Msg::RESUME)
                                                         : msg(Msg::PAUSE),
-                                           COLOR_WARNING,
+                                           state.paused ? COLOR_SUCCESS
+                                                        : COLOR_WARNING,
                                            TFT_WHITE);
-                                drawButton(stopX, CTRL_ACTION_Y, CTRL_ACTION_BW,
-                                           CTRL_ACTION_BH, msg(Msg::STOP),
-                                           COLOR_DANGER,
+                                drawButton(PROCESS_MENU_X3, PROCESS_MENU_Y2,
+                                           PROCESS_MENU_W, PROCESS_MENU_H,
+                                           msg(Msg::STOP), COLOR_DANGER,
                                            TFT_WHITE);
-                                drawCard(10, CTRL_Y1, TFT_WIDTH - 20, 126,
-                                         colorCard());
-                                drawPanelHeader(10, CTRL_Y1, TFT_WIDTH - 20,
-                                                ru ? "ДЕЙСТВИЯ ПРОЦЕССА"
-                                                   : "PROCESS ACTIONS",
-                                                modeTone);
-                                drawCompactKeyValueRow(
-                                    18, CTRL_Y1 + 38, TFT_WIDTH - 36,
-                                    ru ? "РЕЖИМ" : "MODE",
-                                    getDisplayModeName(state.mode), modeTone);
-                                drawCompactKeyValueRow(
-                                    18, CTRL_Y1 + 60, TFT_WIDTH - 36,
-                                    ru ? "ФАЗА" : "PHASE",
-                                    getDisplayPhaseName(state), colorAccent());
-                                char powerBuf[24];
-                                snprintf(powerBuf, sizeof(powerBuf), "%.0f W",
-                                         state.power.power);
-                                drawCompactKeyValueRow(
-                                    18, CTRL_Y1 + 82, TFT_WIDTH - 36,
-                                    ru ? "НАГРЕВ" : "HEATER", powerBuf,
-                                    COLOR_WARNING);
                                 drawFooterHint(
-                                    ru ? "Пауза и стоп применяют штатные условия FSM"
-                                       : "Pause and stop use normal FSM rules",
+                                    runtimeEdit
+                                        ? (ru ? "Параметры этого режима можно менять в Мониторе"
+                                              : "This mode allows runtime edits in Monitor")
+                                        : (ru ? "Параметры режима сейчас только для просмотра"
+                                              : "This mode parameters are view-only"),
                                     modeTone);
                               }
 
@@ -6961,6 +7117,205 @@ static void renderRootFooter(
                                       TFT_WIDTH / 2, firstRowY + rowH);
                                   tft.setTextDatum(top_left);
                                 }
+                              }
+
+                              static void renderSafetyView(
+                                  const SystemState &state, bool full) {
+                                const bool ru = (g_settings.language == 0);
+                                const int16_t cardX = 10;
+                                const int16_t cardW = TFT_WIDTH - 20;
+                                const int16_t actionY =
+                                    TFT_HEIGHT - UI_FOOTER_H - 36;
+                                const int16_t actionW = (TFT_WIDTH - 23) / 2;
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(ru ? "SAFETY" : "SAFETY", true);
+                                  drawTabs(UI_SAFETY_VIEW);
+                                }
+
+                                const bool alarmActive =
+                                    state.currentAlarm.type != AlarmType::NONE;
+                                const bool latched = Safety::isLatched(state);
+                                char resetReason[128] = "";
+                                const bool resetAvailable =
+                                    !latched || Safety::canResetNow(
+                                                    state, g_settings,
+                                                    resetReason,
+                                                    sizeof(resetReason));
+                                const uint16_t alarmTone =
+                                    latched ? COLOR_DANGER
+                                            : (alarmActive ? COLOR_WARNING
+                                                           : COLOR_SUCCESS);
+                                const char *alarmTitle =
+                                    latched ? (ru ? "ЗАЩЁЛКНУТАЯ АВАРИЯ"
+                                                  : "LATCHED ALARM")
+                                            : (alarmActive
+                                                   ? (ru ? "АКТИВНАЯ АВАРИЯ"
+                                                         : "ACTIVE ALARM")
+                                                   : (ru ? "SAFETY: НОРМА"
+                                                         : "SAFETY: NORMAL"));
+                                const char *alarmDetail =
+                                    alarmActive && state.currentAlarm.message[0] != '\0'
+                                        ? state.currentAlarm.message
+                                        : (ui.safetyActionMessage[0] != '\0'
+                                               ? ui.safetyActionMessage
+                                               : (latched
+                                                      ? resetReason
+                                                      : (ru ? "Критичных условий нет."
+                                                            : "No critical conditions.")));
+                                drawCard(cardX, UI_HEADER_H + 4, cardW, 44,
+                                         colorCard());
+                                drawPanelHeader(cardX, UI_HEADER_H + 4, cardW,
+                                                alarmTitle, alarmTone);
+                                tft.setTextColor(colorFg());
+                                tft.setTextSize(1);
+                                tft.setTextDatum(middle_left);
+                                char alarmText[144];
+                                copyFittedText(alarmDetail, cardW - 24,
+                                               alarmText, sizeof(alarmText));
+                                drawDisplayString(alarmText, cardX + 10,
+                                                  UI_HEADER_H + 36);
+
+                                char requiredSensors[144];
+                                formatSetupRequiredSensors(state, state.mode,
+                                                           requiredSensors,
+                                                           sizeof(requiredSensors));
+                                drawCard(cardX, UI_HEADER_H + 52, cardW, 36,
+                                         colorCard());
+                                drawPanelHeader(cardX, UI_HEADER_H + 52, cardW,
+                                                ru ? "ОБЯЗАТЕЛЬНЫЕ ДАТЧИКИ"
+                                                   : "REQUIRED SENSORS",
+                                                state.safetyOk ? COLOR_SUCCESS
+                                                               : COLOR_DANGER);
+                                tft.setTextColor(colorFg());
+                                char sensorText[144];
+                                copyFittedText(requiredSensors, cardW - 24,
+                                               sensorText, sizeof(sensorText));
+                                drawDisplayString(sensorText, cardX + 10,
+                                                  UI_HEADER_H + 79);
+
+                                drawCard(cardX, UI_HEADER_H + 92, cardW, 76,
+                                         colorCard());
+                                drawPanelHeader(cardX, UI_HEADER_H + 92, cardW,
+                                                ru ? "ПОРОГИ И КОНТУРЫ"
+                                                   : "LIMITS AND CHANNELS",
+                                                COLOR_INFO);
+                                char pressure[32], tsa[32], water[48], leak[64];
+                                snprintf(pressure, sizeof(pressure), "%.0f / %.0f mm",
+                                         state.pressure.cube,
+                                         g_settings.safety.pressureMaxMmHg);
+                                snprintf(tsa, sizeof(tsa), "%.1f / %.1f C",
+                                         state.temps.tsa,
+                                         g_settings.safety.tsaMaxC);
+                                snprintf(water, sizeof(water), "%.1f / %.0f C | in %.1f",
+                                         state.temps.waterOut,
+                                         g_settings.safety.waterOutMaxC,
+                                         state.temps.waterIn);
+                                if (g_settings.equipment.leakSensorEnabled) {
+                                  snprintf(leak, sizeof(leak), "%.2f / %.2f V%s",
+                                           state.leak.voltage,
+                                           g_settings.equipment.leakThresholdV,
+                                           state.leak.triggered
+                                               ? (ru ? " · ТРЕВОГА" : " · ALARM")
+                                               : "");
+                                } else {
+                                  snprintf(leak, sizeof(leak), "%s",
+                                           ru ? "не установлен" : "not installed");
+                                }
+                                drawCompactKeyValueRow(
+                                    cardX + 8, UI_HEADER_H + 123, cardW - 16,
+                                    ru ? "ДАВЛ." : "PRESS.", pressure,
+                                    COLOR_INFO);
+                                drawCompactKeyValueRow(
+                                    cardX + 8, UI_HEADER_H + 138, cardW - 16,
+                                    "TSA", tsa, COLOR_WARNING);
+                                drawCompactKeyValueRow(
+                                    cardX + 8, UI_HEADER_H + 153, cardW - 16,
+                                    ru ? "ВОДА" : "WATER", water, COLOR_INFO);
+                                drawCompactKeyValueRow(
+                                    cardX + 8, UI_HEADER_H + 168, cardW - 16,
+                                    ru ? "ПРОТЕЧКА" : "LEAK", leak,
+                                    state.leak.triggered ? COLOR_DANGER
+                                                         : COLOR_SUCCESS);
+                                tft.setTextDatum(top_left);
+
+                                drawButton(
+                                    10, actionY, actionW, 32,
+                                    ru ? "ПОДТВЕРДИТЬ" : "ACKNOWLEDGE",
+                                    alarmActive && !state.currentAlarm.acknowledged
+                                        ? COLOR_WARNING
+                                        : dimmedButtonColor(),
+                                    TFT_WHITE);
+                                drawButton(
+                                    13 + actionW, actionY, actionW, 32,
+                                    ru ? "СБРОСИТЬ" : "RESET",
+                                    resetAvailable && alarmActive
+                                        ? COLOR_SUCCESS
+                                        : dimmedButtonColor(),
+                                    TFT_WHITE);
+                              }
+
+                              static uint16_t eventLevelColor(uint8_t level) {
+                                return level >= 2 ? COLOR_DANGER
+                                                  : (level == 1 ? COLOR_WARNING
+                                                                : COLOR_INFO);
+                              }
+
+                              static void renderProcessEvents(
+                                  const SystemState &, bool full) {
+                                const bool ru = (g_settings.language == 0);
+                                const int16_t cardX = 10;
+                                const int16_t cardW = TFT_WIDTH - 20;
+                                const int16_t firstRowY = UI_HEADER_H + 38;
+                                const int16_t rowH = 29;
+                                const int16_t rowPitch = 33;
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(ru ? "СОБЫТИЯ" : "EVENTS", true);
+                                  drawTabs(UI_PROCESS_EVENTS);
+                                }
+
+                                char title[64];
+                                snprintf(title, sizeof(title), "%u %s",
+                                         static_cast<unsigned>(g_tftEvents.count),
+                                         ru ? "последних событий"
+                                            : "recent events");
+                                drawCard(cardX, UI_HEADER_H + 4, cardW, 30,
+                                         colorCard());
+                                drawPanelHeader(cardX, UI_HEADER_H + 4, cardW,
+                                                title, COLOR_INFO);
+                                for (uint8_t i = 0; i < 4; ++i) {
+                                  const int16_t rowY = firstRowY + i * rowPitch;
+                                  const bool present = i < g_tftEvents.count;
+                                  drawCard(cardX, rowY, cardW, rowH, colorCard());
+                                  const uint16_t tone = present
+                                                            ? eventLevelColor(
+                                                                  g_tftEvents.level[i])
+                                                            : colorNavInactive();
+                                  tft.fillRect(cardX + 2, rowY + 2, 6,
+                                               rowH - 4, tone);
+                                  tft.setTextColor(present ? colorFg()
+                                                           : colorMuted());
+                                  tft.setTextSize(1);
+                                  tft.setTextDatum(middle_left);
+                                  char eventText[128];
+                                  copyFittedText(
+                                      present ? g_tftEvents.message[i]
+                                              : (i == 0
+                                                     ? (ru ? "Событий пока нет"
+                                                           : "No events yet")
+                                                     : ""),
+                                      cardW - 24, eventText,
+                                      sizeof(eventText));
+                                  drawDisplayString(eventText, cardX + 15,
+                                                    rowY + rowH / 2);
+                                }
+                                tft.setTextDatum(top_left);
+                                drawButton(10, TFT_HEIGHT - UI_FOOTER_H - 36,
+                                           TFT_WIDTH - 20, 32,
+                                           ru ? "ОБНОВИТЬ СОБЫТИЯ"
+                                              : "REFRESH EVENTS",
+                                           COLOR_INFO, TFT_WHITE);
                               }
 
                               static void renderPreflight(const SystemState &,
@@ -8190,7 +8545,9 @@ static void renderRootFooter(
                                       renderModePicker,        // UI_MODE_PICKER
                                       renderModeSetup,         // UI_MODE_SETUP
                                       renderPreflight,         // UI_PREFLIGHT
-                                      renderProfilePicker      // UI_PROFILE_PICKER
+                                      renderProfilePicker,     // UI_PROFILE_PICKER
+                                      renderSafetyView,        // UI_SAFETY_VIEW
+                                      renderProcessEvents      // UI_PROCESS_EVENTS
                                   };
 
                               static UiRenderHandler

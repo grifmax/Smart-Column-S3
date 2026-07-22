@@ -34,7 +34,7 @@
 | `PROFILE_PICKER` | Только из `MODE_SETUP` и в `IDLE` | Страницы совместимых сохранённых профилей выбранного режима |
 | `PREFLIGHT` | Только из `MODE_SETUP` и в `IDLE` | Полный checklist того же backend `buildProcessPreflight()`, обновление и защищённый старт |
 | `MODE_MONITOR` | Когда активен любой процесс | Runtime-экран текущего режима |
-| `CONTROL` | Из action bar во время процесса | Пауза/продолжение и стоп через штатные условия FSM |
+| `CONTROL` | Из action bar во время процесса | Контекстное меню: монитор, параметры, Safety, события, пауза/продолжение, стоп |
 | `SETTINGS` | Из Home | Разделы настроек и быстрые системные переключатели |
 | `SERVICE` | Из Home или нижнего action bar | Диагностика и сервисные данные |
 
@@ -54,6 +54,8 @@
 | `MANUAL` | `CONTROL` | Ручное управление узлами |
 | `VALUE_EDIT` | Из редактируемых экранов | Универсальный редактор одного значения |
 | `ALL_TEMPS` | `HOME`, `MODE_MONITOR`, `SERVICE` | Просмотр всех температур |
+| `SAFETY_VIEW` | `CONTROL` | Live-статус safety, обязательные датчики, пороги и действия acknowledge/reset |
+| `PROCESS_EVENTS` | `CONTROL` | Снимок последних событий штатного `Logger` ring-buffer |
 
 `MODE_SETUP` хранит выбранный режим, профиль и черновик отдельно от
 `g_settings`. `PROFILE_PICKER` фильтрует профиль по категории режима
@@ -72,7 +74,9 @@ effective settings. Само касание не пишет NVS: профиль 
 | `PROFILE_PICKER` | Да | Выбор черновика | Нет | Нет | Только совместимые сохранённые профили; по 4 на страницу |
 | `PREFLIGHT` | Да | `Обновить` / `Старт` | Нет | Нет | `Старт` доступен после повторной готовой backend-проверки |
 | `MODE_MONITOR` | Нет | Нет | Да | Зависит от режима | См. раздел 4 |
-| `CONTROL` | Перенаправляет в `MODE_PICKER` | Нет | Да | Только пауза/стоп | Новый запуск из него исключён |
+| `CONTROL` | Перенаправляет в `MODE_PICKER` | Нет | Да | Только pause/resume/stop | Новый запуск из него исключён; другие карточки только навигационные |
+| `SAFETY_VIEW` | Нет, отдельный idle-вход ещё не добавлен | Нет | Да | Только safety actions | Acknowledge/reset вызывают существующую `Safety` policy |
+| `PROCESS_EVENTS` | Нет | Нет | Да | `Обновить` | Read-only snapshot журналов без очистки |
 | `SETTINGS` | Да | Да | Да | Да | Быстрые toggles внизу доступны всегда |
 | `SERVICE` | Да | Нет | Да | Нет | Только просмотр |
 | `EQUIPMENT` | Да | Да | Да | Нет | Во время процесса только просмотр |
@@ -128,6 +132,18 @@ effective settings. Само касание не пишет NVS: профиль 
 - `MODE_MONITOR`:
   правая зона с метриками ведёт в `ALL_TEMPS`
   левая зона без срабатывания runtime-edit логики ведёт в `CONTROL`
+- `CONTROL` (активный процесс):
+  верхняя строка показывает фазу, а guidance/операторское сообщение —
+  требуемое действие. Карточки `Монитор`, `Параметры`, `Safety`, `События`,
+  `Пауза/Продолжить`, `Стоп` образуют единственный context menu процесса.
+  `Параметры` открывают `MODE_MONITOR`, где действует runtime allowlist.
+- `SAFETY_VIEW`:
+  показывает latch/alarm, обязательные датчики, pressure/TSA/water/leak
+  channels. `Acknowledge` и `Reset` не имеют локальной логики: вызывают
+  только `Safety::acknowledge()` и `Safety::reset()`.
+- `PROCESS_EVENTS`:
+  читает ограниченный snapshot последних событий через штатный Logger API;
+  кнопка refresh не очищает журнал.
 - `SETTINGS`:
   карточки открывают разделы
   нижняя строка управляет быстрыми системными toggle-параметрами
@@ -182,7 +198,9 @@ effective settings. Само касание не пишет NVS: профиль 
 | `PROFILE_PICKER` | `full-once + partial` | Вход на экран, recovery | строки текущей страницы, выделение выбора и pager |
 | `PREFLIGHT` | `full-once + partial` | Вход на экран, recovery | сводка, три detail-строки текущей страницы и pager после явного `Обновить`/`Старт` |
 | `MODE_MONITOR` | `full-once + partial` | Вход на экран, смена layout режима, recovery | status bar, runtime tiles, footer, summary-панели |
-| `CONTROL` | Полный redraw | Каждый redraw этого экрана | В текущей реализации partial policy не зафиксирован |
+| `CONTROL` | `full-once + partial` | Вход на экран, recovery | guidance, context-карточки, pause/resume/stop state |
+| `SAFETY_VIEW` | `full-once + partial` | Вход на экран, recovery | alarm/sensors/thresholds/action result |
+| `PROCESS_EVENTS` | `full-once + partial` | Вход на экран, recovery | фиксированный snapshot событий после явного refresh |
 | `SETTINGS` | `full-once + partial` | Вход на экран, смена `theme`, смена `language`, recovery | карточки разделов, быстрые toggles, footer |
 | `EQUIPMENT` | `full-once + partial` | Вход на экран, recovery | value tiles, footer |
 | `RECT_PARAMS` | `full-once + partial` | Вход на экран, смена страницы `feed/cuts <-> flow/temp`, recovery | page button, value tiles, footer |

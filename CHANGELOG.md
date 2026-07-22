@@ -7,6 +7,14 @@
 
 ---
 
+## [2.4.92] - 2026-07-22
+
+### Added
+- В активном процессе TFT `CONTROL` стал context menu с `Монитор`, `Параметры`, `Safety`, `События`, `Пауза/Продолжить`, `Стоп`; он показывает guidance автоматики вместо только сырых значений. (codex)
+- Добавлены экраны `SAFETY_VIEW` и `PROCESS_EVENTS`: Safety показывает alarm/latch, обязательные датчики и pressure/TSA/water/leak; acknowledge/reset используют существующую safety policy, а события читаются из штатного Logger ring-buffer. (codex)
+
+---
+
 ## [2.4.91] - 2026-07-21
 
 ### Changed
