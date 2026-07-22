@@ -1068,6 +1068,10 @@ static const int16_t HOME_TILE_Y1 = UI_GLOBAL_STATUS_H + 52;
 static const int16_t HOME_TILE_Y2 = HOME_TILE_Y1 + HOME_TILE_H + HOME_TILE_GAP;
 static const int16_t HOME_TILE_X1 = HOME_TILE_MARGIN_X;
 static const int16_t HOME_TILE_X2 = HOME_TILE_X1 + HOME_TILE_W + HOME_TILE_GAP;
+static const int16_t HOME_SAFETY_W = 116;
+static const int16_t HOME_SAFETY_H = 24;
+static const int16_t HOME_SAFETY_X = TFT_WIDTH - HOME_TILE_MARGIN_X - HOME_SAFETY_W;
+static const int16_t HOME_SAFETY_Y = UI_GLOBAL_STATUS_H + 13;
 
 static bool hit(int16_t x, int16_t y, int16_t rx, int16_t ry, int16_t rw,
                 int16_t rh) {
@@ -2139,6 +2143,12 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
 
 static bool handleDashboardScreenTap(int16_t tx, int16_t ty,
                                      const SystemState &) {
+  if (hit(tx, ty, HOME_SAFETY_X, HOME_SAFETY_Y, HOME_SAFETY_W,
+          HOME_SAFETY_H)) {
+    ui.safetyActionMessage[0] = '\0';
+    pushScreen(UI_SAFETY_VIEW);
+    return true;
+  }
   if (hit(tx, ty, HOME_TILE_X1, HOME_TILE_Y1, HOME_TILE_W, HOME_TILE_H)) {
     switchRoot(UI_MODE_PICKER);
     return true;
@@ -4121,7 +4131,8 @@ static void renderRootFooter(
                           // The idle root is intentionally a menu, not a
                           // second monitor. Runtime telemetry belongs to
                           // UI_MODE_MONITOR after a process starts.
-                          static void renderHome(const SystemState &, bool full) {
+                          static void renderHome(const SystemState &state,
+                                                 bool full) {
                             if (!full) {
                               return;
                             }
@@ -4143,12 +4154,24 @@ static void renderRootFooter(
                                               HOME_TILE_MARGIN_X + 12,
                                               UI_GLOBAL_STATUS_H + 19);
                             tft.setTextColor(colorMuted());
-                            tft.setTextDatum(middle_right);
+                            tft.setTextDatum(middle_left);
                             drawDisplayString(
                                 ru ? "Локальная панель" : "Local HMI",
-                                TFT_WIDTH - HOME_TILE_MARGIN_X - 12,
+                                HOME_TILE_MARGIN_X + 174,
                                 UI_GLOBAL_STATUS_H + 19);
                             tft.setTextDatum(top_left);
+
+                            drawButton(
+                                HOME_SAFETY_X, HOME_SAFETY_Y, HOME_SAFETY_W,
+                                HOME_SAFETY_H,
+                                state.safetyOk && !Safety::isLatched(state)
+                                    ? (ru ? "SAFETY: OK" : "SAFETY: OK")
+                                    : (ru ? "SAFETY: ТРЕВОГА"
+                                          : "SAFETY: ALARM"),
+                                state.safetyOk && !Safety::isLatched(state)
+                                    ? COLOR_SUCCESS
+                                    : COLOR_DANGER,
+                                TFT_WHITE);
 
                             drawButton(HOME_TILE_X1, HOME_TILE_Y1, HOME_TILE_W,
                                        HOME_TILE_H,
