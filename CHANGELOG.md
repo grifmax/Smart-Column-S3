@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.104] - 2026-07-24
+
+### Added
+- В чистую `TftHmiPolicyLogic` вынесен и host-side проверен start gate: запуск с TFT возможен только из `IDLE`, после разрешения черновика и готового backend pre-flight. (codex)
+
+### Changed
+- D-009 синхронизирован с реализованной D-042 policy: `MODE_PARAMETERS` относится к статическим event-driven экранам, поэтому live-обновления не вызывают повторный `fillScreen()`. (codex)
+
+---
+
 ## [2.4.103] - 2026-07-24
 
 ### Added

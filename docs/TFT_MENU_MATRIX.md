@@ -146,7 +146,7 @@ mode-specific policy FSM (например, охлаждение горячег�
 | `SERVICE` | температуры, power, uptime |
 | `MANUAL`, `SAFETY_VIEW`, `PROCESS_PARAMS` | только относящиеся к экрану температуры/power; у `PROCESS_PARAMS` также process state |
 | `ALL_TEMPS` | температуры и progress |
-| Setup/settings/pickers/preflight/events/value editor | нет: только tap или явное backend-событие |
+| Setup/settings/pickers/preflight/events/value editor, `MODE_PARAMETERS` | нет: только tap или явное backend-событие |
 
 Полный кадр обязателен при входе на экран, открытии или закрытии fullscreen
 overlay, смене theme/language, изменении layout и recovery. Если layout

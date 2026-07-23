@@ -101,6 +101,19 @@ inline bool shouldBlockDraftNavigation(const DraftState &state,
   return hasUnsavedDraft(state) && targetModeDiffers;
 }
 
+// A TFT start is legal only at the end of the explicit setup route. Keep this
+// gate independent from the renderer so native tests can protect it from a
+// future shortcut that bypasses draft resolution or backend pre-flight.
+struct StartRouteState {
+  bool idle = false;
+  bool draftResolved = false;
+  bool preflightReady = false;
+};
+
+inline bool mayStartFromTft(const StartRouteState &state) {
+  return state.idle && state.draftResolved && state.preflightReady;
+}
+
 enum class ServiceSessionEvent : uint8_t {
   EnterServiceRoot = 0,
   LeaveServiceRoot,

@@ -53,6 +53,7 @@ void test_power_command_captures_owner_reason_timestamp_and_safe_stop();
 void test_operator_overlay_claims_an_action_only_once_per_open();
 void test_tft_access_policy_respects_runtime_mode();
 void test_tft_draft_save_discard_and_navigation_policy();
+void test_tft_start_route_requires_idle_saved_draft_and_ready_preflight();
 void test_tft_field_visibility_is_explicit();
 void test_tft_service_session_closes_after_emergency();
 void test_tft_post_alarm_action_never_resumes_process();
@@ -81,6 +82,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_operator_overlay_claims_an_action_only_once_per_open);
   RUN_TEST(test_tft_access_policy_respects_runtime_mode);
   RUN_TEST(test_tft_draft_save_discard_and_navigation_policy);
+  RUN_TEST(test_tft_start_route_requires_idle_saved_draft_and_ready_preflight);
   RUN_TEST(test_tft_field_visibility_is_explicit);
   RUN_TEST(test_tft_service_session_closes_after_emergency);
   RUN_TEST(test_tft_post_alarm_action_never_resumes_process);
@@ -195,6 +197,19 @@ void test_tft_draft_save_discard_and_navigation_policy() {
   draft.profileSelected = true;
   draft.profileCompatible = false;
   TEST_ASSERT_FALSE(maySaveDraft(draft));
+}
+
+void test_tft_start_route_requires_idle_saved_draft_and_ready_preflight() {
+  using TftHmiPolicyLogic::StartRouteState;
+
+  TEST_ASSERT_TRUE(
+      TftHmiPolicyLogic::mayStartFromTft({true, true, true}));
+  TEST_ASSERT_FALSE(
+      TftHmiPolicyLogic::mayStartFromTft({false, true, true}));
+  TEST_ASSERT_FALSE(
+      TftHmiPolicyLogic::mayStartFromTft({true, false, true}));
+  TEST_ASSERT_FALSE(
+      TftHmiPolicyLogic::mayStartFromTft({true, true, false}));
 }
 
 void test_tft_field_visibility_is_explicit() {

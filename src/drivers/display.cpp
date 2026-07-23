@@ -3064,7 +3064,11 @@ static bool handlePreflightScreenTap(int16_t tx, int16_t ty,
     // Refresh immediately before start: a cached green result must never
     // bypass a newly appeared alarm or missing required sensor.
     refreshTftPreflight();
-    if (!g_tftPreflight.ready || state.mode != Mode::IDLE) {
+    TftHmiPolicyLogic::StartRouteState startRoute;
+    startRoute.idle = state.mode == Mode::IDLE;
+    startRoute.draftResolved = !hasUnsavedModeSetupDraft();
+    startRoute.preflightReady = g_tftPreflight.ready;
+    if (!TftHmiPolicyLogic::mayStartFromTft(startRoute)) {
       return true;
     }
     startModeFromControl(ui.setupDraft.mode);
