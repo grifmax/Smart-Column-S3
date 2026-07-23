@@ -3585,6 +3585,11 @@ static bool handleModeParametersScreenTap(int16_t tx, int16_t ty,
     if (!getModeParameterField(mode, ui.modeParametersPage, slot, field)) {
       return true;
     }
+    // Mashing and Hold steps belong to the selected saved profile. The TFT
+    // shows them in setup but does not make an unsaved RAM-only profile edit.
+    if (mode == Mode::MASHING || mode == Mode::HOLD) {
+      return true;
+    }
     ValueSaveCallback callback = getModeParameterSaveCallback(field);
     if (callback == nullptr) {
       return true;
@@ -8101,6 +8106,8 @@ static void renderRootFooter(
                                   const SystemState &state, bool full) {
                                 const bool ru = (g_settings.language == 0);
                                 const Mode mode = ui.modeParametersMode;
+                                const bool profileControlled =
+                                    mode == Mode::MASHING || mode == Mode::HOLD;
                                 const uint8_t pageCount =
                                     getModeParametersPageCount(mode);
                                 const uint8_t page =
@@ -8182,7 +8189,9 @@ static void renderRootFooter(
                                   drawValueTile(
                                       x, y, 225, 50,
                                       EditableFields::label(field, ru), valueText,
-                                      descriptor.unit, tones[slot]);
+                                      descriptor.unit,
+                                      profileControlled ? colorMuted()
+                                                        : tones[slot]);
                                 }
 
                                 if (!hasField) {
@@ -8271,7 +8280,10 @@ static void renderRootFooter(
                                              TFT_WHITE);
                                 }
                                 drawFooterHint(
-                                    isScreenEditable(UI_MODE_PARAMETERS, state)
+                                    profileControlled
+                                        ? (ru ? "Шаги меняются в сохранённом профиле"
+                                              : "Steps are edited in the saved profile")
+                                        : isScreenEditable(UI_MODE_PARAMETERS, state)
                                         ? (ru ? "Коснитесь значения для редактирования"
                                               : "Tap a value to edit")
                                         : (ru ? "Редактирование доступно только в ожидании"

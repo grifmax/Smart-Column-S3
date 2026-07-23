@@ -420,6 +420,13 @@
 границы. `coolingPwmStartupDuty` дополнительно ограничивается текущим
 интервалом minimum–maximum.
 
+`POST /api/process/start` для `distillation` нормализует `speed`,
+`headsVolume`, `targetVolume`, `tailsVolume`, `endTemp` и `powerPercent` теми
+же `EditableFields`, что TFT, затем сохраняет применённые параметры в NVS до
+старта FSM. Runtime-endpoint `POST /api/manual/pump` ограничивает `speed`
+контрактом ручного TFT-насоса, а `POST /api/manual/heater` нормализует поле
+`power` как проценты мощности TFT.
+
 ---
 
 ## Исполнительные механизмы и сервис

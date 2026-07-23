@@ -10,6 +10,7 @@
 #include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
 #include "storage/logger.h"
+#include "storage/nvs_manager.h"
 
 void registerProcessApiRoutes(AsyncWebServer &server) {
   server.on(
@@ -153,7 +154,9 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
           const float targetVol = EditableFields::normalize(
               EditableFields::Id::DIST_TARGET_VOLUME_ML,
               params["targetVolume"] | 0.0f);
-          float tailsVol = params["tailsVolume"] | 0.0f;
+          const float tailsVol = EditableFields::normalize(
+              EditableFields::Id::DIST_TAILS_VOLUME_ML,
+              params["tailsVolume"] | 0.0f);
           const float endTemp = EditableFields::normalize(
               EditableFields::Id::DIST_END_TEMPERATURE_C,
               params["endTemp"] | 96.0f);
@@ -226,6 +229,11 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
           g_settings.distillationUi.vaporTempMaxPowerPercent = vaporTempMaxPowerPercent;
           g_settings.distillationUi.vaporTempTimeoutMin = vaporTempTimeoutMin;
           g_settings.fractionProgram = fractionProgram;
+          if (!NVSManager::saveSettings(g_settings)) {
+            request->send(500, "application/json",
+                          "{\"success\":false,\"message\":\"Failed to save settings\"}");
+            return;
+          }
           FSM::Distillation::setParams(speed, headsVol, targetVol, endTemp);
           FSM::Distillation::setPowerWatts(powerWatts);
           FSM::startMode(g_state, g_settings, mode);

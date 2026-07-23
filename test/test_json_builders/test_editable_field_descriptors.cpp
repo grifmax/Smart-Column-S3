@@ -42,4 +42,10 @@ void test_editable_field_normalization_clamps_and_snaps_to_step() {
       EditableFields::normalize(Id::FERM_HYSTERESIS_C, 0.01f));
   TEST_ASSERT_EQUAL_UINT16(
       255, EditableFields::normalizeU16(Id::COOLING_PWM_MAX_DUTY, 999));
+  TEST_ASSERT_FLOAT_WITHIN(
+      0.001f, 50000.0f,
+      EditableFields::normalize(Id::DIST_TAILS_VOLUME_ML, 999999.0f));
+  TEST_ASSERT_FLOAT_WITHIN(
+      0.001f, 5000.0f,
+      EditableFields::normalize(Id::MANUAL_PUMP_SPEED_ML_H, 99999.0f));
 }

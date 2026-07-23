@@ -7,6 +7,7 @@
 #include "drivers/heater.h"
 #include "drivers/pump.h"
 #include "drivers/valves.h"
+#include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
 
 void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
@@ -29,13 +30,10 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
           powerWatts =
               clampU16Range(doc["powerW"].as<uint32_t>(), 0, heaterMaxW);
         } else {
-          int powerPercent = doc["power"] | 0;
-          if (powerPercent < 0) {
-            powerPercent = 0;
-          }
-          if (powerPercent > 100) {
-            powerPercent = 100;
-          }
+          const float normalizedPower = EditableFields::normalize(
+              EditableFields::Id::MANUAL_HEATER_POWER_PERCENT,
+              doc["power"] | 0.0f);
+          const uint8_t powerPercent = static_cast<uint8_t>(normalizedPower);
           powerWatts = static_cast<uint16_t>(
               (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
         }
@@ -109,7 +107,9 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        const float speed = doc["speed"] | 0.0f;
+        const float speed = EditableFields::normalize(
+            EditableFields::Id::MANUAL_PUMP_SPEED_ML_H,
+            doc["speed"] | 0.0f);
         if (g_state.mode == Mode::MANUAL_RECT) {
           FSM::ManualRect::setTakeoffRateMlH(speed);
           char resp[128];
