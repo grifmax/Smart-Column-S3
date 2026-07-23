@@ -8,6 +8,7 @@
 #include "display.h"
 #include "control/v2/status_adapter.h"
 #include "control/fsm.h"
+#include "control/power_command_gateway.h"
 #include "drivers/heater.h"
 #include "drivers/hmi_widgets.h"
 #include "drivers/pump.h"
@@ -1981,6 +1982,9 @@ static void applyDistUiRuntime() {
 static void saveDistSpeed(float val) {
   distUi.speedMlH = EditableFields::normalize(EditableFields::Id::DIST_SPEED_ML_H,
                                                val);
+  PowerCommandGateway::noteFsmSetpoint(
+      PowerCommandGateway::Target::PUMP,
+      PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT, distUi.speedMlH);
   applyDistUiRuntime();
   persistDistUi();
 }
@@ -2005,6 +2009,10 @@ static void saveDistEndTemp(float val) {
 static void saveDistPower(float val) {
   distUi.powerPercent = EditableFields::normalize(
       EditableFields::Id::DIST_POWER_PERCENT, val);
+  PowerCommandGateway::noteFsmSetpoint(
+      PowerCommandGateway::Target::HEATER,
+      PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT,
+      distUi.powerPercent);
   applyDistUiRuntime();
   persistDistUi();
 }
@@ -2018,10 +2026,9 @@ static void saveManualRectSpeed(float val) {
                                   val);
   manualRectUi.speedMlH = val;
   if (g_state.mode == Mode::MANUAL_RECT) {
-    if (val <= 0.0f)
-      Pump::stop();
-    else
-      Pump::start(val);
+    PowerCommandGateway::setPumpSpeed(
+        PowerCommandGateway::Owner::MANUAL,
+        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, val);
   }
 }
 static void saveManualRectPower(float val) {
@@ -2029,7 +2036,10 @@ static void saveManualRectPower(float val) {
       EditableFields::Id::MANUAL_RECT_POWER_PERCENT, val);
   manualRectUi.powerPercent = val;
   if (g_state.mode == Mode::MANUAL_RECT) {
-    Heater::setPower(static_cast<uint8_t>(val));
+    PowerCommandGateway::setHeaterPower(
+        PowerCommandGateway::Owner::MANUAL,
+        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+        static_cast<uint8_t>(val));
   }
 }
 static void saveManualRectHeadsTarget(float val) {
@@ -2103,16 +2113,18 @@ static void savePumpCal(float val) {
   Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
 }
 static void saveManualHeater(float val) {
-  Heater::setPower(static_cast<uint8_t>(EditableFields::normalize(
-      EditableFields::Id::MANUAL_HEATER_POWER_PERCENT, val)));
+  PowerCommandGateway::setHeaterPower(
+      PowerCommandGateway::Owner::MANUAL,
+      PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+      static_cast<uint8_t>(EditableFields::normalize(
+          EditableFields::Id::MANUAL_HEATER_POWER_PERCENT, val)));
 }
 static void saveManualPump(float val) {
   val = EditableFields::normalize(EditableFields::Id::MANUAL_PUMP_SPEED_ML_H,
                                   val);
-  if (val <= 0)
-    Pump::stop();
-  else
-    Pump::start(val);
+  PowerCommandGateway::setPumpSpeed(
+      PowerCommandGateway::Owner::MANUAL,
+      PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, val);
 }
 
 static bool handleNavigationTap(int16_t tx, int16_t ty,
@@ -2374,14 +2386,23 @@ static bool handleControlScreenTap(int16_t tx, int16_t ty,
   }
   if (hit(tx, ty, PROCESS_MENU_X2, PROCESS_MENU_Y2, PROCESS_MENU_W,
           PROCESS_MENU_H)) {
-    if (state.paused)
+    if (state.paused) {
+      PowerCommandGateway::noteFsmSetpoint(
+          PowerCommandGateway::Target::ALL_OUTPUTS,
+          PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT, 1.0f);
       FSM::resume(g_state);
-    else
+    } else {
+      PowerCommandGateway::noteFsmSafeStop(
+          PowerCommandGateway::Reason::TFT_PROCESS_PAUSE);
       FSM::pause(g_state);
+    }
     return true;
   }
   if (hit(tx, ty, PROCESS_MENU_X3, PROCESS_MENU_Y2, PROCESS_MENU_W,
           PROCESS_MENU_H)) {
+    PowerCommandGateway::safeStopAll(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::TFT_PROCESS_STOP);
     FSM::stopMode(g_state);
     return true;
   }
@@ -2824,7 +2845,9 @@ static bool handleSettingsScreenTap(int16_t tx, int16_t ty,
     g_settings.stirrer.enabled = !g_settings.stirrer.enabled;
     if (!g_settings.stirrer.enabled) {
       g_state.stirrer.autoMode = false;
-      Stirrer::stop();
+      PowerCommandGateway::stopStirrer(
+          PowerCommandGateway::Owner::SERVICE,
+          PowerCommandGateway::Reason::TFT_SERVICE_SETTING);
     }
     NVSManager::saveSettings(g_settings);
     return true;
@@ -3006,17 +3029,26 @@ static bool handleManualScreenTap(int16_t tx, int16_t ty,
   if (ty >= MANUAL_VALVE_Y && ty < (MANUAL_VALVE_Y + MANUAL_VALVE_H)) {
     if (hit(tx, ty, MANUAL_VALVE_X1, MANUAL_VALVE_Y, MANUAL_VALVE_W,
             MANUAL_VALVE_H)) {
-      Valves::setWater(!Valves::getWater());
+      PowerCommandGateway::setValve(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+          PowerCommandGateway::Valve::WATER, !Valves::getWater());
       return true;
     }
     if (hit(tx, ty, MANUAL_VALVE_X2, MANUAL_VALVE_Y, MANUAL_VALVE_W,
             MANUAL_VALVE_H)) {
-      Valves::setHeads(!Valves::getHeads());
+      PowerCommandGateway::setValve(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+          PowerCommandGateway::Valve::HEADS, !Valves::getHeads());
       return true;
     }
     if (hit(tx, ty, MANUAL_VALVE_X3, MANUAL_VALVE_Y, MANUAL_VALVE_W,
             MANUAL_VALVE_H)) {
-      Valves::setUno(!Valves::getUno());
+      PowerCommandGateway::setValve(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+          PowerCommandGateway::Valve::UNO, !Valves::getUno());
       return true;
     }
   }

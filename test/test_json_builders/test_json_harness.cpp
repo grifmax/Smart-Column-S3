@@ -47,6 +47,7 @@ void test_safety_proof_guard_blocks_unsafe_states();
 void test_safety_proof_guard_allows_only_idle_safe_hardware();
 void test_editable_field_descriptor_exposes_canonical_tft_metadata();
 void test_editable_field_normalization_clamps_and_snaps_to_step();
+void test_power_command_captures_owner_reason_timestamp_and_safe_stop();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -68,6 +69,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_safety_proof_guard_allows_only_idle_safe_hardware);
   RUN_TEST(test_editable_field_descriptor_exposes_canonical_tft_metadata);
   RUN_TEST(test_editable_field_normalization_clamps_and_snaps_to_step);
+  RUN_TEST(test_power_command_captures_owner_reason_timestamp_and_safe_stop);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>

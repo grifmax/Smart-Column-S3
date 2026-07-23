@@ -523,9 +523,11 @@ actualVolumeMl, startedAt, finishedAt, finishReason
   backend-валидацией. `EditableFields` содержит presentation и validation
   metadata для всех scalar-редакторов TFT; `VALUE_EDIT`, актуальные REST/cloud
   маршруты и калибровка нормализуют значения через него.
-- [ ] [D-038] Ввести единый gateway силовых команд для TFT: команда имеет
+- [x] [D-038] Ввести единый gateway силовых команд для TFT: команда имеет
   владельца (`FSM`, `SERVICE`, `MANUAL`), причину, timestamp и обязательный
-  safe-stop; прямые вызовы драйвера из рендера запрещены.
+  safe-stop; прямые вызовы драйвера из рендера запрещены. `PowerCommandGateway`
+  выполняет ручные TFT-команды, фиксирует metadata и safe-stop status; Stop
+  использует полный safe-stop перед переходом FSM в `IDLE`.
 - [x] [D-039] Добавить локальный selector профилей с пагинацией, фильтром по
   категории режима и read-only summary compatibility/validation context.
   Реализован как `PROFILE_PICKER`: поддерживает до 100 сохранённых профилей,
