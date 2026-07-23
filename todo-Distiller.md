@@ -552,9 +552,10 @@ actualVolumeMl, startedAt, finishedAt, finishReason
   fullscreen overlay, theme/language, layout и recovery требуют full redraw.
   Статический budget presenter-кэшей — до 24 KiB, partial frame: target 80 ms,
   warning 120 ms, hard limit 250 ms.
-- [ ] [D-043] Дополнить host-side тесты чистой логики: access policy, draft
+- [x] [D-043] Дополнить host-side тесты чистой логики: access policy, draft
   save/discard, видимость полей, сервисная сессия и выбор безопасного действия
-  после аварии.
+  после аварии. Добавлена platform-independent `TftHmiPolicyLogic`; native
+  suite проверяет пять указанных сценариев и использует ту же policy, что и TFT.
 - [ ] [D-044] Дополнить `tools/ui-smoke` сценариями: все уровни нового меню,
   запрет опасного действия, режим без нужного датчика, сервис из паузы,
   возврат из калибровки и RU/EN.

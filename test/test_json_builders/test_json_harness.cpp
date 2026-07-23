@@ -5,6 +5,7 @@
 #include <../../src/control/fraction_program_logic.h>
 #include <../../src/control/equipment_testing_logic.h>
 #include <../../src/control/rect_takeoff_logic.h>
+#include <../../src/interface/tft_hmi_policy_logic.h>
 #include <../../src/interface/tft_operator_overlay_logic.h>
 
 #include "../support/json_assertions.h"
@@ -50,6 +51,11 @@ void test_editable_field_descriptor_exposes_canonical_tft_metadata();
 void test_editable_field_normalization_clamps_and_snaps_to_step();
 void test_power_command_captures_owner_reason_timestamp_and_safe_stop();
 void test_operator_overlay_claims_an_action_only_once_per_open();
+void test_tft_access_policy_respects_runtime_mode();
+void test_tft_draft_save_discard_and_navigation_policy();
+void test_tft_field_visibility_is_explicit();
+void test_tft_service_session_closes_after_emergency();
+void test_tft_post_alarm_action_never_resumes_process();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -73,6 +79,11 @@ int main(int argc, char **argv) {
   RUN_TEST(test_editable_field_normalization_clamps_and_snaps_to_step);
   RUN_TEST(test_power_command_captures_owner_reason_timestamp_and_safe_stop);
   RUN_TEST(test_operator_overlay_claims_an_action_only_once_per_open);
+  RUN_TEST(test_tft_access_policy_respects_runtime_mode);
+  RUN_TEST(test_tft_draft_save_discard_and_navigation_policy);
+  RUN_TEST(test_tft_field_visibility_is_explicit);
+  RUN_TEST(test_tft_service_session_closes_after_emergency);
+  RUN_TEST(test_tft_post_alarm_action_never_resumes_process);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>
@@ -144,6 +155,98 @@ void test_operator_overlay_claims_an_action_only_once_per_open() {
   TftOperatorOverlayLogic::close(overlay);
   TEST_ASSERT_FALSE(TftOperatorOverlayLogic::isActive(overlay));
   TEST_ASSERT_FALSE(TftOperatorOverlayLogic::mayDispatch(overlay));
+}
+
+void test_tft_access_policy_respects_runtime_mode() {
+  using namespace TftHmiPolicyLogic;
+  TEST_ASSERT_TRUE(isModeMonitorEditable(RuntimeMode::Distillation));
+  TEST_ASSERT_TRUE(isModeMonitorEditable(RuntimeMode::ManualRectification));
+  TEST_ASSERT_TRUE(isModeMonitorEditable(RuntimeMode::Mashing));
+  TEST_ASSERT_TRUE(isModeMonitorEditable(RuntimeMode::Hold));
+  TEST_ASSERT_FALSE(isModeMonitorEditable(RuntimeMode::Rectification));
+  TEST_ASSERT_FALSE(isModeMonitorEditable(RuntimeMode::Nbk));
+}
+
+void test_tft_draft_save_discard_and_navigation_policy() {
+  using namespace TftHmiPolicyLogic;
+  DraftState draft;
+  draft.valid = true;
+  draft.profileRelevant = true;
+  draft.profileSelected = true;
+  draft.profileCompatible = true;
+  draft.profileChanged = true;
+  refreshProfileDirty(draft);
+
+  TEST_ASSERT_TRUE(hasUnsavedDraft(draft));
+  TEST_ASSERT_TRUE(maySaveDraft(draft));
+  TEST_ASSERT_TRUE(shouldBlockDraftNavigation(draft, true));
+  TEST_ASSERT_FALSE(shouldBlockDraftNavigation(draft, false));
+
+  markDraftSaved(draft);
+  TEST_ASSERT_FALSE(hasUnsavedDraft(draft));
+  TEST_ASSERT_FALSE(draft.profileChanged);
+
+  draft.profileChanged = true;
+  refreshProfileDirty(draft);
+  markDraftDiscarded(draft);
+  TEST_ASSERT_FALSE(hasUnsavedDraft(draft));
+  TEST_ASSERT_FALSE(draft.profileChanged);
+
+  draft.profileSelected = true;
+  draft.profileCompatible = false;
+  TEST_ASSERT_FALSE(maySaveDraft(draft));
+}
+
+void test_tft_field_visibility_is_explicit() {
+  using namespace TftHmiPolicyLogic;
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(FieldVisibility::Editable),
+      static_cast<uint8_t>(resolveFieldVisibility(
+          EditPolicy::IdleOnly, false, RuntimeMode::Idle)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(FieldVisibility::ReadOnly),
+      static_cast<uint8_t>(resolveFieldVisibility(
+          EditPolicy::IdleOnly, true, RuntimeMode::Distillation)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(FieldVisibility::Editable),
+      static_cast<uint8_t>(resolveFieldVisibility(
+          EditPolicy::ManualOnly, true, RuntimeMode::ManualRectification)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(FieldVisibility::ReadOnly),
+      static_cast<uint8_t>(resolveFieldVisibility(
+          EditPolicy::ModeMonitorRuntime, true, RuntimeMode::Rectification)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(FieldVisibility::ReadOnly),
+      static_cast<uint8_t>(resolveFieldVisibility(
+          EditPolicy::ViewOnly, false, RuntimeMode::Idle)));
+}
+
+void test_tft_service_session_closes_after_emergency() {
+  using namespace TftHmiPolicyLogic;
+  bool active = transitionServiceSession(
+      false, ServiceSessionEvent::EnterServiceRoot);
+  TEST_ASSERT_TRUE(active);
+  active = transitionServiceSession(active, ServiceSessionEvent::SafetyEmergency);
+  TEST_ASSERT_FALSE(active);
+  active = transitionServiceSession(active, ServiceSessionEvent::EnterServiceRoot);
+  active = transitionServiceSession(active, ServiceSessionEvent::LeaveServiceRoot);
+  TEST_ASSERT_FALSE(active);
+}
+
+void test_tft_post_alarm_action_never_resumes_process() {
+  using namespace TftHmiPolicyLogic;
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(PostAlarmAction::Acknowledge),
+      static_cast<uint8_t>(selectPostAlarmAction(true, false, true)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(PostAlarmAction::None),
+      static_cast<uint8_t>(selectPostAlarmAction(true, true, false)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(PostAlarmAction::Reset),
+      static_cast<uint8_t>(selectPostAlarmAction(true, true, true)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(PostAlarmAction::None),
+      static_cast<uint8_t>(selectPostAlarmAction(false, false, true)));
 }
 void test_fraction_program_route_timeout_requires_missing_route() {
   TEST_ASSERT_FALSE(FractionProgramLogic::hasRouteTimedOut(false, 29999));

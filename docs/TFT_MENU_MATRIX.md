@@ -146,6 +146,13 @@ compile-time budget 24 KiB; целевой partial frame — до 80 ms, пре�
 120 ms, hard limit — 250 ms. Эти значения контролируются runtime telemetry
 `display.lastMs`, `display.maxMs`, `display.slowFrames` и recovery counters.
 
+### Host-side HMI contract
+
+Чистая `TftHmiPolicyLogic` используется и TFT, и native tests. Тесты закрепляют
+access policy runtime-режимов, lifecycle черновика save/discard, видимость
+полей, завершение service session при аварии и порядок safe recovery:
+сначала acknowledge, затем только разрешённый safety reset, без resume.
+
 `PROCESS_PARAMS` — выделенный экран runtime-параметров из `CONTROL`. Он
 использует только уже существующие setters; редактирование на `MODE_MONITOR`
 сохраняет тот же allowlist. Разрешены только следующие режимы:

@@ -17,6 +17,7 @@
 #include "drivers/valves.h"
 #include "interface/editable_field_descriptors.h"
 #include "interface/localization.h"
+#include "interface/tft_hmi_policy_logic.h"
 #include "interface/tft_operator_overlay_logic.h"
 #include "interface/webserver_shared.h"
 #include "profiles.h"
@@ -242,13 +243,7 @@ enum class UiRootTab : uint8_t {
   NONE
 };
 
-enum class UiEditPolicy : uint8_t {
-  VIEW_ONLY = 0,
-  ALWAYS,
-  IDLE_ONLY,
-  MANUAL_ONLY,
-  MODE_MONITOR_RUNTIME
-};
+using UiEditPolicy = TftHmiPolicyLogic::EditPolicy;
 
 // Fields that a page is allowed to refresh incrementally. The global
 // mode/safety/network line is handled separately on every page; this mask
@@ -275,45 +270,45 @@ struct UiScreenPolicy {
 };
 
 static constexpr UiScreenPolicy kUiScreenPolicies[] = {
-    {UiRootTab::MONITOR, UiEditPolicy::VIEW_ONLY, true, true,
+    {UiRootTab::MONITOR, UiEditPolicy::ViewOnly, true, true,
      UI_LIVE_MONITOR_FIELDS}, // UI_DASHBOARD
-    {UiRootTab::CONTROL, UiEditPolicy::ALWAYS, true, false,
+    {UiRootTab::CONTROL, UiEditPolicy::Always, true, false,
      UI_LIVE_PROCESS}, // UI_CONTROL
-    {UiRootTab::SETTINGS, UiEditPolicy::ALWAYS, true, false,
+    {UiRootTab::SETTINGS, UiEditPolicy::Always, true, false,
      UI_LIVE_NONE}, // UI_SETTINGS
-    {UiRootTab::SERVICE, UiEditPolicy::VIEW_ONLY, true, false,
+    {UiRootTab::SERVICE, UiEditPolicy::ViewOnly, true, false,
      UI_LIVE_TEMPERATURES | UI_LIVE_POWER | UI_LIVE_UPTIME}, // UI_SERVICE
-    {UiRootTab::MONITOR, UiEditPolicy::MODE_MONITOR_RUNTIME, true, true,
+    {UiRootTab::MONITOR, UiEditPolicy::ModeMonitorRuntime, true, true,
      UI_LIVE_MONITOR_FIELDS}, // UI_MODE_MONITOR
-    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false,
+    {UiRootTab::SETTINGS, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE}, // UI_EQUIPMENT
-    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false,
+    {UiRootTab::SETTINGS, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE}, // UI_RECT_PARAMS
-    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false,
+    {UiRootTab::SETTINGS, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE}, // UI_DIST_PARAMS
-    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false,
+    {UiRootTab::SETTINGS, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE}, // UI_CALIBRATION
-    {UiRootTab::CONTROL, UiEditPolicy::MANUAL_ONLY, false, false,
+    {UiRootTab::CONTROL, UiEditPolicy::ManualOnly, false, false,
      UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_MANUAL
-    {UiRootTab::NONE, UiEditPolicy::ALWAYS, false, false,
+    {UiRootTab::NONE, UiEditPolicy::Always, false, false,
      UI_LIVE_NONE}, // UI_VALUE_EDIT
-    {UiRootTab::MONITOR, UiEditPolicy::VIEW_ONLY, false, false,
+    {UiRootTab::MONITOR, UiEditPolicy::ViewOnly, false, false,
      UI_LIVE_TEMPERATURES | UI_LIVE_PROGRESS}, // UI_ALL_TEMPS
-    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, true, false,
+    {UiRootTab::CONTROL, UiEditPolicy::ViewOnly, true, false,
      UI_LIVE_NONE}, // UI_MODE_PICKER
-    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false,
+    {UiRootTab::CONTROL, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE}, // UI_MODE_SETUP
-    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false,
+    {UiRootTab::CONTROL, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE}, // UI_PREFLIGHT
-    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false,
+    {UiRootTab::CONTROL, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE}, // UI_PROFILE_PICKER
-    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false,
+    {UiRootTab::CONTROL, UiEditPolicy::ViewOnly, false, false,
      UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_SAFETY_VIEW
-    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false,
+    {UiRootTab::CONTROL, UiEditPolicy::ViewOnly, false, false,
      UI_LIVE_NONE}, // UI_PROCESS_EVENTS
-    {UiRootTab::CONTROL, UiEditPolicy::MODE_MONITOR_RUNTIME, false, false,
+    {UiRootTab::CONTROL, UiEditPolicy::ModeMonitorRuntime, false, false,
      UI_LIVE_PROCESS | UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_PROCESS_PARAMS
-    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false,
+    {UiRootTab::CONTROL, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE} // UI_MODE_CONFIG
 };
 
@@ -345,11 +340,6 @@ struct ModeSetupDraft {
   char profileId[48] = {0};
   char profileName[64] = {0};
   char profilePreview[112] = {0};
-};
-
-enum ModeSetupDraftDirty : uint32_t {
-  MODE_SETUP_DIRTY_NONE = 0,
-  MODE_SETUP_DIRTY_PROFILE = 1u << 0,
 };
 
 static constexpr uint8_t TFT_PREFLIGHT_MAX_ITEMS = 24;
@@ -631,6 +621,11 @@ static void switchRoot(UiScreen screen) {
   ui.currentScreen = screen;
   ui.returnScreen = screen;
   ui.stackDepth = 0;
+  ui.serviceSession = TftHmiPolicyLogic::transitionServiceSession(
+      ui.serviceSession,
+      screen == UI_SERVICE
+          ? TftHmiPolicyLogic::ServiceSessionEvent::EnterServiceRoot
+          : TftHmiPolicyLogic::ServiceSessionEvent::LeaveServiceRoot);
   if (changed) {
     requestRedraw(DisplayRedrawReason::SCREEN_ENTER);
     armScreenSwitchGuard();
@@ -1228,40 +1223,46 @@ static void requestFullScreenRedraw() {
 
 static bool isScreenEditable(UiScreen screen, const SystemState &state);
 
-static bool isModeMonitorEditAllowed(Mode mode) {
+static TftHmiPolicyLogic::RuntimeMode getTftHmiRuntimeMode(Mode mode) {
+  using RuntimeMode = TftHmiPolicyLogic::RuntimeMode;
   switch (mode) {
-  case Mode::DISTILLATION:
+  case Mode::RECTIFICATION:
+    return RuntimeMode::Rectification;
   case Mode::MANUAL_RECT:
+    return RuntimeMode::ManualRectification;
+  case Mode::DISTILLATION:
+    return RuntimeMode::Distillation;
   case Mode::MASHING:
+    return RuntimeMode::Mashing;
   case Mode::HOLD:
-    return true;
+    return RuntimeMode::Hold;
+  case Mode::NBK:
+    return RuntimeMode::Nbk;
+  case Mode::FERMENTATION:
+    return RuntimeMode::Fermentation;
+  case Mode::IDLE:
   default:
-    return false;
+    return RuntimeMode::Idle;
   }
+}
+
+static bool isModeMonitorEditAllowed(Mode mode) {
+  return TftHmiPolicyLogic::isModeMonitorEditable(
+      getTftHmiRuntimeMode(mode));
 }
 
 static bool isScreenEditable(UiScreen screen, const SystemState &state) {
-  switch (getUiScreenPolicy(screen).editPolicy) {
-  case UiEditPolicy::ALWAYS:
-    return true;
-  case UiEditPolicy::IDLE_ONLY:
-    return !isModeRunning(state);
-  case UiEditPolicy::MANUAL_ONLY:
-    return (state.mode == Mode::IDLE || state.mode == Mode::MANUAL_RECT);
-  case UiEditPolicy::MODE_MONITOR_RUNTIME:
-    return isModeMonitorEditAllowed(state.mode);
-  case UiEditPolicy::VIEW_ONLY:
-  default:
-    return false;
-  }
+  return TftHmiPolicyLogic::resolveFieldVisibility(
+             getUiScreenPolicy(screen).editPolicy, isModeRunning(state),
+             getTftHmiRuntimeMode(state.mode)) ==
+         TftHmiPolicyLogic::FieldVisibility::Editable;
 }
 
 static bool isScreenReadOnly(UiScreen screen, const SystemState &state) {
-  const UiEditPolicy policy = getUiScreenPolicy(screen).editPolicy;
-  if (policy == UiEditPolicy::VIEW_ONLY) {
-    return true;
-  }
-  return !isScreenEditable(screen, state);
+  return TftHmiPolicyLogic::resolveFieldVisibility(
+             getUiScreenPolicy(screen).editPolicy, isModeRunning(state),
+             getTftHmiRuntimeMode(state.mode)) !=
+         TftHmiPolicyLogic::FieldVisibility::Editable;
 }
 
 static const char *getModeMonitorAccessHint(Mode mode) {
@@ -1450,9 +1451,25 @@ static bool isSetupProfileCompatible(const Profile &profile, Mode mode) {
          (mode == Mode::MASHING && mashProfile);
 }
 
+static TftHmiPolicyLogic::DraftState getModeSetupDraftPolicyState() {
+  TftHmiPolicyLogic::DraftState policy;
+  policy.valid = ui.setupDraft.valid;
+  policy.profileRelevant = ui.setupDraft.profileRelevant;
+  policy.profileSelected = ui.setupDraft.profileId[0] != '\0';
+  policy.profileCompatible = ui.setupDraft.profileCompatible;
+  policy.profileChanged =
+      strcmp(ui.setupDraft.profileId, ui.setupDraft.loadedProfileId) != 0;
+  policy.dirtyMask = ui.setupDraft.dirtyMask;
+  return policy;
+}
+
+static void applyModeSetupDraftPolicyState(
+    const TftHmiPolicyLogic::DraftState &policy) {
+  ui.setupDraft.dirtyMask = policy.dirtyMask;
+}
+
 static bool hasUnsavedModeSetupDraft() {
-  return ui.setupDraft.valid &&
-         ui.setupDraft.dirtyMask != MODE_SETUP_DIRTY_NONE;
+  return TftHmiPolicyLogic::hasUnsavedDraft(getModeSetupDraftPolicyState());
 }
 
 static void setModeSetupDraftMessage(const char *message) {
@@ -1561,11 +1578,9 @@ static void setSetupDraftProfile(const Profile &profile, Mode mode) {
 }
 
 static void updateModeSetupDraftDirtyState() {
-  if (strcmp(ui.setupDraft.profileId, ui.setupDraft.loadedProfileId) == 0) {
-    ui.setupDraft.dirtyMask &= ~MODE_SETUP_DIRTY_PROFILE;
-  } else {
-    ui.setupDraft.dirtyMask |= MODE_SETUP_DIRTY_PROFILE;
-  }
+  TftHmiPolicyLogic::DraftState policy = getModeSetupDraftPolicyState();
+  TftHmiPolicyLogic::refreshProfileDirty(policy);
+  applyModeSetupDraftPolicyState(policy);
 }
 
 static uint8_t getTftProfilePageCount() {
@@ -1643,6 +1658,13 @@ static bool validateModeSetupDraft(char *reason, size_t reasonSize) {
                                         : "Mode is not selected.");
     return false;
   }
+  if (!TftHmiPolicyLogic::maySaveDraft(getModeSetupDraftPolicyState())) {
+    snprintf(reason, reasonSize, "%s",
+             (g_settings.language == 0)
+                 ? "Выбранный профиль не совместим с режимом."
+                 : "Selected profile is not compatible with this mode.");
+    return false;
+  }
   if (!ui.setupDraft.profileRelevant || ui.setupDraft.profileId[0] == '\0') {
     return true;
   }
@@ -1681,7 +1703,9 @@ static bool saveModeSetupDraft(char *reason, size_t reasonSize) {
     return true;
   }
   if (!ui.setupDraft.profileRelevant || ui.setupDraft.profileId[0] == '\0') {
-    ui.setupDraft.dirtyMask = MODE_SETUP_DIRTY_NONE;
+    TftHmiPolicyLogic::DraftState policy = getModeSetupDraftPolicyState();
+    TftHmiPolicyLogic::markDraftSaved(policy);
+    applyModeSetupDraftPolicyState(policy);
     clearTftPreflight();
     return true;
   }
@@ -1736,7 +1760,9 @@ static bool saveModeSetupDraft(char *reason, size_t reasonSize) {
           sizeof(ui.setupDraft.loadedProfileName) - 1);
   ui.setupDraft.loadedProfileName
       [sizeof(ui.setupDraft.loadedProfileName) - 1] = '\0';
-  ui.setupDraft.dirtyMask = MODE_SETUP_DIRTY_NONE;
+  TftHmiPolicyLogic::DraftState policy = getModeSetupDraftPolicyState();
+  TftHmiPolicyLogic::markDraftSaved(policy);
+  applyModeSetupDraftPolicyState(policy);
   clearTftPreflight();
   return true;
 }
@@ -1792,6 +1818,9 @@ static void discardModeSetupDraft() {
   }
   const Mode mode = ui.setupDraft.mode;
   loadModeSetupDraft(mode);
+  TftHmiPolicyLogic::DraftState policy = getModeSetupDraftPolicyState();
+  TftHmiPolicyLogic::markDraftDiscarded(policy);
+  applyModeSetupDraftPolicyState(policy);
   setModeSetupDraftMessage(
       (g_settings.language == 0) ? "Черновик отброшен."
                                  : "Draft discarded.");
@@ -1804,7 +1833,8 @@ static void beginModeSetup(Mode mode) {
   // Navigation routes unsaved drafts to UI_MODE_CONFIG first. This is a
   // defensive second guard for any future caller that attempts a direct mode
   // switch from a dirty setup.
-  if (hasUnsavedModeSetupDraft() && ui.setupDraft.mode != mode) {
+  if (TftHmiPolicyLogic::shouldBlockDraftNavigation(
+          getModeSetupDraftPolicyState(), ui.setupDraft.mode != mode)) {
     setModeSetupDraftMessage(
         (g_settings.language == 0)
             ? "Сначала сохраните или отбросьте текущий черновик."
@@ -2528,14 +2558,30 @@ static bool handleSafetyViewScreenTap(int16_t tx, int16_t ty,
                                       const SystemState &state) {
   const int16_t actionY = TFT_HEIGHT - UI_FOOTER_H - 36;
   const int16_t actionW = (TFT_WIDTH - 23) / 2;
+  char resetReason[128] = "";
+  const bool resetAvailable =
+      state.currentAlarm.type != AlarmType::NONE &&
+      Safety::canResetNow(state, g_settings, resetReason, sizeof(resetReason));
+  const TftHmiPolicyLogic::PostAlarmAction safeAction =
+      TftHmiPolicyLogic::selectPostAlarmAction(
+          state.currentAlarm.type != AlarmType::NONE,
+          state.currentAlarm.acknowledged, resetAvailable);
   if (hit(tx, ty, 10, actionY, actionW, 32)) {
-    if (state.currentAlarm.type != AlarmType::NONE &&
-        !state.currentAlarm.acknowledged) {
+    if (safeAction == TftHmiPolicyLogic::PostAlarmAction::Acknowledge) {
       openOperatorOverlay(TftOperatorOverlayLogic::Action::AlarmAcknowledge);
     }
     return true;
   }
   if (hit(tx, ty, 13 + actionW, actionY, actionW, 32)) {
+    if (safeAction != TftHmiPolicyLogic::PostAlarmAction::Reset) {
+      snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
+               resetReason[0] != '\0'
+                   ? resetReason
+                   : ((g_settings.language == 0)
+                          ? "Сначала подтвердите тревогу; сброс пока запрещён."
+                          : "Acknowledge the alarm first; reset is blocked."));
+      return true;
+    }
     char reason[128] = "";
     if (Safety::reset(g_state, g_settings, reason, sizeof(reason))) {
       snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
@@ -4065,14 +4111,14 @@ static void drawFooterHint(const char *text, uint16_t tone = COLOR_INFO) {
 static const char *getScreenReadOnlyHint(UiScreen screen,
                                          const SystemState &state) {
   switch (getUiScreenPolicy(screen).editPolicy) {
-  case UiEditPolicy::IDLE_ONLY:
+  case UiEditPolicy::IdleOnly:
     return tftText(TftTextId::SettingsReadOnlyHint);
-  case UiEditPolicy::MANUAL_ONLY:
+  case UiEditPolicy::ManualOnly:
     return tftText(TftTextId::ManualOnlyHint);
-  case UiEditPolicy::MODE_MONITOR_RUNTIME:
+  case UiEditPolicy::ModeMonitorRuntime:
     return getModeMonitorAccessHint(state.mode);
-  case UiEditPolicy::VIEW_ONLY:
-  case UiEditPolicy::ALWAYS:
+  case UiEditPolicy::ViewOnly:
+  case UiEditPolicy::Always:
   default:
     return tftText(TftTextId::ViewOnlyHint);
   }
@@ -4080,12 +4126,12 @@ static const char *getScreenReadOnlyHint(UiScreen screen,
 
 static uint16_t getScreenReadOnlyTone(UiScreen screen) {
   switch (getUiScreenPolicy(screen).editPolicy) {
-  case UiEditPolicy::VIEW_ONLY:
+  case UiEditPolicy::ViewOnly:
     return COLOR_INFO;
-  case UiEditPolicy::IDLE_ONLY:
-  case UiEditPolicy::MANUAL_ONLY:
-  case UiEditPolicy::MODE_MONITOR_RUNTIME:
-  case UiEditPolicy::ALWAYS:
+  case UiEditPolicy::IdleOnly:
+  case UiEditPolicy::ManualOnly:
+  case UiEditPolicy::ModeMonitorRuntime:
+  case UiEditPolicy::Always:
   default:
     return COLOR_WARNING;
   }
@@ -4239,6 +4285,11 @@ static void closeOperatorOverlay() {
 }
 
 static bool syncOperatorOverlay(const SystemState &state) {
+  if (!state.safetyOk && state.currentAlarm.type != AlarmType::NONE) {
+    ui.serviceSession = TftHmiPolicyLogic::transitionServiceSession(
+        ui.serviceSession,
+        TftHmiPolicyLogic::ServiceSessionEvent::SafetyEmergency);
+  }
   const TftOperatorOverlayLogic::Action required =
       getRequiredOperatorOverlay(state);
   if (required != TftOperatorOverlayLogic::Action::None) {
@@ -7950,6 +8001,12 @@ static void renderRootFooter(
                                                     state, g_settings,
                                                     resetReason,
                                                     sizeof(resetReason));
+                                const TftHmiPolicyLogic::PostAlarmAction
+                                    safeAction =
+                                        TftHmiPolicyLogic::selectPostAlarmAction(
+                                            alarmActive,
+                                            state.currentAlarm.acknowledged,
+                                            resetAvailable);
                                 const uint16_t alarmTone =
                                     latched ? COLOR_DANGER
                                             : (alarmActive ? COLOR_WARNING
@@ -8050,14 +8107,14 @@ static void renderRootFooter(
                                 drawButton(
                                     10, actionY, actionW, 32,
                                     ru ? "ПОДТВЕРДИТЬ" : "ACKNOWLEDGE",
-                                    alarmActive && !state.currentAlarm.acknowledged
+                                    safeAction == TftHmiPolicyLogic::PostAlarmAction::Acknowledge
                                         ? COLOR_WARNING
                                         : dimmedButtonColor(),
                                     TFT_WHITE);
                                 drawButton(
                                     13 + actionW, actionY, actionW, 32,
                                     ru ? "СБРОСИТЬ" : "RESET",
-                                    resetAvailable && alarmActive
+                                    safeAction == TftHmiPolicyLogic::PostAlarmAction::Reset
                                         ? COLOR_SUCCESS
                                         : dimmedButtonColor(),
                                     TFT_WHITE);

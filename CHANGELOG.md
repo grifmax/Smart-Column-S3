@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.100] - 2026-07-24
+
+### Added
+- Host-side suite дополнена пятью проверками чистой `TftHmiPolicyLogic`: access policy runtime-режимов, draft save/discard и блокировка навигации, visibility полей, завершение service session при аварии и безопасный порядок acknowledge/reset. (codex)
+
+### Changed
+- TFT использует ту же независимую policy-логику для editability, dirty-state черновика, service session и safety-действия. После аварии UI предлагает только acknowledge, затем разрешённый safety reset; resume не является вариантом recovery. (codex)
+
+---
+
 ## [2.4.99] - 2026-07-24
 
 ### Added
