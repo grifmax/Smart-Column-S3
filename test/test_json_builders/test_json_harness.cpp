@@ -54,6 +54,7 @@ void test_operator_overlay_claims_an_action_only_once_per_open();
 void test_tft_access_policy_respects_runtime_mode();
 void test_tft_draft_save_discard_and_navigation_policy();
 void test_tft_start_route_requires_idle_saved_draft_and_ready_preflight();
+void test_tft_active_control_actions_require_running_mode();
 void test_tft_field_visibility_is_explicit();
 void test_tft_service_session_closes_after_emergency();
 void test_tft_post_alarm_action_never_resumes_process();
@@ -83,6 +84,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_tft_access_policy_respects_runtime_mode);
   RUN_TEST(test_tft_draft_save_discard_and_navigation_policy);
   RUN_TEST(test_tft_start_route_requires_idle_saved_draft_and_ready_preflight);
+  RUN_TEST(test_tft_active_control_actions_require_running_mode);
   RUN_TEST(test_tft_field_visibility_is_explicit);
   RUN_TEST(test_tft_service_session_closes_after_emergency);
   RUN_TEST(test_tft_post_alarm_action_never_resumes_process);
@@ -210,6 +212,21 @@ void test_tft_start_route_requires_idle_saved_draft_and_ready_preflight() {
       TftHmiPolicyLogic::mayStartFromTft({true, false, true}));
   TEST_ASSERT_FALSE(
       TftHmiPolicyLogic::mayStartFromTft({true, true, false}));
+}
+
+void test_tft_active_control_actions_require_running_mode() {
+  using TftHmiPolicyLogic::ActiveControlAction;
+
+  const ActiveControlAction actions[] = {
+      ActiveControlAction::Monitor, ActiveControlAction::ProcessParameters,
+      ActiveControlAction::Safety, ActiveControlAction::Events,
+      ActiveControlAction::PauseResume, ActiveControlAction::Stop};
+  for (const ActiveControlAction action : actions) {
+    TEST_ASSERT_TRUE(
+        TftHmiPolicyLogic::mayUseActiveControlAction(true, action));
+    TEST_ASSERT_FALSE(
+        TftHmiPolicyLogic::mayUseActiveControlAction(false, action));
+  }
 }
 
 void test_tft_field_visibility_is_explicit() {

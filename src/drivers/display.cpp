@@ -2825,7 +2825,9 @@ static bool handleControlScreenTap(int16_t tx, int16_t ty,
                                    const SystemState &state) {
   // UI_CONTROL is the active-process action panel. A new run may only begin
   // through MODE_PICKER -> MODE_SETUP -> PREFLIGHT.
-  if (state.mode == Mode::IDLE) {
+  if (!TftHmiPolicyLogic::mayUseActiveControlAction(
+          state.mode != Mode::IDLE,
+          TftHmiPolicyLogic::ActiveControlAction::Monitor)) {
     switchRoot(UI_MODE_PICKER);
     return true;
   }

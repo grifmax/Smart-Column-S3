@@ -114,6 +114,20 @@ inline bool mayStartFromTft(const StartRouteState &state) {
   return state.idle && state.draftResolved && state.preflightReady;
 }
 
+enum class ActiveControlAction : uint8_t {
+  Monitor = 0,
+  ProcessParameters,
+  Safety,
+  Events,
+  PauseResume,
+  Stop,
+};
+
+inline bool mayUseActiveControlAction(bool modeRunning,
+                                      ActiveControlAction) {
+  return modeRunning;
+}
+
 enum class ServiceSessionEvent : uint8_t {
   EnterServiceRoot = 0,
   LeaveServiceRoot,

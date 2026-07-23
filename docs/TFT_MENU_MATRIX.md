@@ -108,6 +108,10 @@ Hold — температура и длительность выбранного
 | `VALUE_EDIT` | Да | Да | Да | Да | Транзитный экран, сам по себе policy не задаёт |
 | `ALL_TEMPS` | Да | Нет | Да | Нет | Только просмотр |
 
+Действия active-control (`Monitor`, `ProcessParameters`, `Safety`, `Events`,
+`PauseResume`, `Stop`) отделены от маршрута запуска и допускаются policy только
+при уже активном режиме. В `IDLE` `CONTROL` перенаправляет в `MODE_PICKER`.
+
 ## 4. Правила runtime-параметров
 
 ### Силовые команды TFT
