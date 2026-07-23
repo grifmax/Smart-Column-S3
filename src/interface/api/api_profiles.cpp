@@ -2,6 +2,7 @@
 
 #include "../../history.h"
 #include "../../profiles.h"
+#include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
 #include "storage/logger.h"
 
@@ -396,8 +397,10 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
                                          : JsonObject();
           if (!rectification.isNull()) {
             if (!rectification["stabilizationMin"].isNull())
-              profile.parameters.rectification.stabilizationMin = clampU16Range(
-                  rectification["stabilizationMin"].as<uint32_t>(), 1, 180);
+              profile.parameters.rectification.stabilizationMin =
+                  EditableFields::normalizeU16(
+                      EditableFields::Id::RECT_STABILIZATION_MIN,
+                      rectification["stabilizationMin"].as<uint32_t>());
             if (!rectification["headsVolume"].isNull())
               profile.parameters.rectification.headsVolume = clampU16Range(
                   rectification["headsVolume"].as<uint32_t>(), 1, 10000);
@@ -408,17 +411,23 @@ void registerProfilesApiRoutes(AsyncWebServer &server) {
               profile.parameters.rectification.tailsVolume = clampU16Range(
                   rectification["tailsVolume"].as<uint32_t>(), 0, 20000);
             if (!rectification["headsSpeed"].isNull())
-              profile.parameters.rectification.headsSpeed = clampU16Range(
-                  rectification["headsSpeed"].as<uint32_t>(), 10, 2000);
+              profile.parameters.rectification.headsSpeed =
+                  EditableFields::normalizeU16(
+                      EditableFields::Id::RECT_HEADS_SPEED_ML_H_KW_FIELD,
+                      rectification["headsSpeed"].as<uint32_t>());
             if (!rectification["bodySpeed"].isNull())
-              profile.parameters.rectification.bodySpeed = clampU16Range(
-                  rectification["bodySpeed"].as<uint32_t>(), 50, 3000);
+              profile.parameters.rectification.bodySpeed =
+                  EditableFields::normalizeU16(
+                      EditableFields::Id::RECT_BODY_SPEED_ML_H_KW,
+                      rectification["bodySpeed"].as<uint32_t>());
             if (!rectification["tailsSpeed"].isNull())
               profile.parameters.rectification.tailsSpeed = clampU16Range(
                   rectification["tailsSpeed"].as<uint32_t>(), 0, 3000);
             if (!rectification["purgeMin"].isNull())
-              profile.parameters.rectification.purgeMin = clampU16Range(
-                  rectification["purgeMin"].as<uint32_t>(), 1, 120);
+              profile.parameters.rectification.purgeMin =
+                  EditableFields::normalizeU16(
+                      EditableFields::Id::RECT_PURGE_MIN,
+                      rectification["purgeMin"].as<uint32_t>());
             if (!rectification["baroCorrectionEnabled"].isNull())
               profile.parameters.rectification.baroCorrectionEnabled =
                   rectification["baroCorrectionEnabled"].as<bool>();

@@ -7,6 +7,7 @@
 #include "control/safety.h"
 #include "control/v2/status_adapter.h"
 #include "drivers/stirrer.h"
+#include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
 #include "storage/logger.h"
 
@@ -143,11 +144,19 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
         }
 
         if (mode == Mode::DISTILLATION) {
-          float speed = params["speed"] | 500.0f;
-          float headsVol = params["headsVolume"] | 0.0f;
-          float targetVol = params["targetVolume"] | 0.0f;
+          const float speed = EditableFields::normalize(
+              EditableFields::Id::DIST_SPEED_ML_H,
+              params["speed"] | 500.0f);
+          const float headsVol = EditableFields::normalize(
+              EditableFields::Id::DIST_HEADS_VOLUME_ML,
+              params["headsVolume"] | 0.0f);
+          const float targetVol = EditableFields::normalize(
+              EditableFields::Id::DIST_TARGET_VOLUME_ML,
+              params["targetVolume"] | 0.0f);
           float tailsVol = params["tailsVolume"] | 0.0f;
-          float endTemp = params["endTemp"] | 96.0f;
+          const float endTemp = EditableFields::normalize(
+              EditableFields::Id::DIST_END_TEMPERATURE_C,
+              params["endTemp"] | 96.0f);
           RectTakeoffBackendType backendType =
               !params["takeoffBackendType"].isNull()
                   ? clampRectTakeoffBackendType(
@@ -190,8 +199,10 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
             powerWatts =
                 clampU16Range(params["powerW"].as<uint32_t>(), 0, heaterMaxW);
           } else {
-            uint8_t powerPercent = params["powerPercent"] | 60;
-            if (powerPercent > 100) powerPercent = 100;
+            const uint8_t powerPercent = static_cast<uint8_t>(
+                EditableFields::normalize(
+                    EditableFields::Id::DIST_POWER_PERCENT,
+                    params["powerPercent"] | 60.0f));
             powerWatts = static_cast<uint16_t>(
                 (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
           }

@@ -31,6 +31,7 @@
 #include "../drivers/sensors.h"
 #include "../drivers/stirrer.h"
 #include "../drivers/valves.h"
+#include "editable_field_descriptors.h"
 #include "../storage/logger.h"
 #include "../storage/nvs_manager.h"
 #include "mqtt.h"
@@ -384,9 +385,12 @@ static bool ensureStirrerReady(const char* requestId) {
 }
 
 static void normalizeRectFractions(RectParams& params) {
-  params.headsPercent = clampFloatRange(params.headsPercent, 0.0f, 40.0f);
-  params.bodyPercent = clampFloatRange(params.bodyPercent, 0.0f, 100.0f);
-  params.tailsPercent = clampFloatRange(params.tailsPercent, 0.0f, 100.0f);
+  params.headsPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_HEADS_PERCENT, params.headsPercent);
+  params.bodyPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_BODY_PERCENT, params.bodyPercent);
+  params.tailsPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_TAILS_PERCENT, params.tailsPercent);
 
   const float sum = params.headsPercent + params.bodyPercent + params.tailsPercent;
   if (sum <= 100.0f) return;
@@ -399,7 +403,8 @@ static void normalizeRectFractions(RectParams& params) {
 
   excess -= params.tailsPercent;
   params.tailsPercent = 0.0f;
-  params.bodyPercent = clampFloatRange(params.bodyPercent - excess, 0.0f, 100.0f);
+  params.bodyPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_BODY_PERCENT, params.bodyPercent - excess);
 }
 
 static void fillCloudStatusJson(JsonObject cloud) {
@@ -1583,12 +1588,14 @@ static void handleHttpRequest(JsonDocument& req) {
     if (!decodeBody(body)) return;
 
     if (!body["heaterPowerW"].isNull()) {
-      g_settings.equipment.heaterPowerW =
-          clampU16Range(body["heaterPowerW"].as<uint32_t>(), 1000, 10000);
+      g_settings.equipment.heaterPowerW = EditableFields::normalizeU16(
+          EditableFields::Id::EQUIPMENT_HEATER_POWER_W,
+          body["heaterPowerW"].as<uint32_t>());
     }
     if (!body["cubeVolumeL"].isNull()) {
-      g_settings.equipment.cubeVolumeL =
-          clampFloatRange(body["cubeVolumeL"].as<float>(), 5.0f, 250.0f);
+      g_settings.equipment.cubeVolumeL = EditableFields::normalize(
+          EditableFields::Id::EQUIPMENT_CUBE_VOLUME_L,
+          body["cubeVolumeL"].as<float>());
     }
     if (!body["minHeaterSubmergeL"].isNull()) {
       g_settings.equipment.minHeaterSubmergeL =
@@ -2017,35 +2024,42 @@ static void handleHttpRequest(JsonDocument& req) {
           static_cast<uint8_t>(clampU16Range(params["feedstock"].as<uint32_t>(), 0, 7));
     }
     if (!params["feedVolumeL"].isNull()) {
-      updated.feedVolumeL =
-          clampFloatRange(params["feedVolumeL"].as<float>(), 1.0f, 250.0f);
+      updated.feedVolumeL = EditableFields::normalize(
+          EditableFields::Id::RECT_FEED_VOLUME_L,
+          params["feedVolumeL"].as<float>());
     }
     if (!params["feedAbvPercent"].isNull()) {
-      updated.feedAbvPercent =
-          clampFloatRange(params["feedAbvPercent"].as<float>(), 1.0f, 96.0f);
+      updated.feedAbvPercent = EditableFields::normalize(
+          EditableFields::Id::RECT_FEED_ABV_PERCENT,
+          params["feedAbvPercent"].as<float>());
     }
     if (!params["headsPercent"].isNull()) {
-      updated.headsPercent =
-          clampFloatRange(params["headsPercent"].as<float>(), 0.0f, 40.0f);
+      updated.headsPercent = EditableFields::normalize(
+          EditableFields::Id::RECT_HEADS_PERCENT,
+          params["headsPercent"].as<float>());
       fractionsUpdated = true;
     }
     if (!params["bodyPercent"].isNull()) {
-      updated.bodyPercent =
-          clampFloatRange(params["bodyPercent"].as<float>(), 0.0f, 100.0f);
+      updated.bodyPercent = EditableFields::normalize(
+          EditableFields::Id::RECT_BODY_PERCENT,
+          params["bodyPercent"].as<float>());
       fractionsUpdated = true;
     }
     if (!params["tailsPercent"].isNull()) {
-      updated.tailsPercent =
-          clampFloatRange(params["tailsPercent"].as<float>(), 0.0f, 100.0f);
+      updated.tailsPercent = EditableFields::normalize(
+          EditableFields::Id::RECT_TAILS_PERCENT,
+          params["tailsPercent"].as<float>());
       fractionsUpdated = true;
     }
     if (!params["headsSpeedMlHKw"].isNull()) {
-      updated.headsSpeedMlHKw =
-          clampFloatRange(params["headsSpeedMlHKw"].as<float>(), 10.0f, 2000.0f);
+      updated.headsSpeedMlHKw = EditableFields::normalize(
+          EditableFields::Id::RECT_HEADS_SPEED_ML_H_KW_FIELD,
+          params["headsSpeedMlHKw"].as<float>());
     }
     if (!params["bodySpeedMlHKw"].isNull()) {
-      updated.bodySpeedMlHKw =
-          clampFloatRange(params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
+      updated.bodySpeedMlHKw = EditableFields::normalize(
+          EditableFields::Id::RECT_BODY_SPEED_ML_H_KW,
+          params["bodySpeedMlHKw"].as<float>());
     }
     if (!params["takeoffBackendType"].isNull()) {
       updated.takeoffBackendType =
@@ -2055,11 +2069,14 @@ static void handleHttpRequest(JsonDocument& req) {
                   RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
     }
     if (!params["stabilizationMin"].isNull()) {
-      updated.stabilizationMin =
-          clampU16Range(params["stabilizationMin"].as<uint32_t>(), 1, 180);
+      updated.stabilizationMin = EditableFields::normalizeU16(
+          EditableFields::Id::RECT_STABILIZATION_MIN,
+          params["stabilizationMin"].as<uint32_t>());
     }
     if (!params["purgeMin"].isNull()) {
-      updated.purgeMin = clampU16Range(params["purgeMin"].as<uint32_t>(), 1, 120);
+      updated.purgeMin = EditableFields::normalizeU16(
+          EditableFields::Id::RECT_PURGE_MIN,
+          params["purgeMin"].as<uint32_t>());
     }
     if (!params["baroCorrectionEnabled"].isNull()) {
       updated.baroCorrectionEnabled = params["baroCorrectionEnabled"].as<bool>();
@@ -2223,7 +2240,10 @@ static void handleHttpRequest(JsonDocument& req) {
 
     if (!body["mlPerRev"].isNull() || !body["stepsPerRev"].isNull()) {
       if (!body["mlPerRev"].isNull()) {
-        g_settings.pumpCal.mlPerRevolution = body["mlPerRev"].as<float>();
+        g_settings.pumpCal.mlPerRevolution = EditableFields::normalize(
+            EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
+            body["mlPerRev"].as<float>());
+        Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
       }
       if (!body["stepsPerRev"].isNull()) {
         g_settings.pumpCal.stepsPerRevolution = body["stepsPerRev"].as<uint16_t>();
@@ -2248,7 +2268,10 @@ static void handleHttpRequest(JsonDocument& req) {
           stepsPerRev > 0 ? static_cast<float>(steps) / stepsPerRev : 0.0f;
 
       if (revolutions > 0.0f) {
-        g_settings.pumpCal.mlPerRevolution = knownVolume / revolutions;
+        g_settings.pumpCal.mlPerRevolution = EditableFields::normalize(
+            EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
+            knownVolume / revolutions);
+        Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
         if (!NVSManager::saveSettings(g_settings)) {
           sendHttpResponse(requestId, 500, "", "save_failed");
           return;
@@ -2370,12 +2393,14 @@ static void handleHttpRequest(JsonDocument& req) {
     }
 
     const float revolutions = static_cast<float>(steps) / static_cast<float>(stepsPerRev);
-    const float mlPerRev = volume / revolutions;
-    if (mlPerRev <= 0.0f) {
+    const float rawMlPerRev = volume / revolutions;
+    if (rawMlPerRev <= 0.0f) {
       sendHttpResponse(requestId, 400, "", "invalid_calibration_result");
       return;
     }
 
+    const float mlPerRev = EditableFields::normalize(
+        EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV, rawMlPerRev);
     g_settings.pumpCal.mlPerRevolution = mlPerRev;
     if (!NVSManager::saveSettings(g_settings)) {
       sendHttpResponse(requestId, 500, "", "save_failed");
@@ -2585,32 +2610,39 @@ static void handleHttpRequest(JsonDocument& req) {
               clampU16Range(params["feedstock"].as<uint32_t>(), 0, 7));
         }
         if (!params["feedVolumeL"].isNull()) {
-          g_settings.rectParams.feedVolumeL =
-              clampFloatRange(params["feedVolumeL"].as<float>(), 1.0f, 250.0f);
+          g_settings.rectParams.feedVolumeL = EditableFields::normalize(
+              EditableFields::Id::RECT_FEED_VOLUME_L,
+              params["feedVolumeL"].as<float>());
         }
         if (!params["feedAbvPercent"].isNull()) {
-          g_settings.rectParams.feedAbvPercent = clampFloatRange(
-              params["feedAbvPercent"].as<float>(), 1.0f, 96.0f);
+          g_settings.rectParams.feedAbvPercent = EditableFields::normalize(
+              EditableFields::Id::RECT_FEED_ABV_PERCENT,
+              params["feedAbvPercent"].as<float>());
         }
         if (!params["headsPercent"].isNull()) {
-          g_settings.rectParams.headsPercent =
-              clampFloatRange(params["headsPercent"].as<float>(), 0.0f, 40.0f);
+          g_settings.rectParams.headsPercent = EditableFields::normalize(
+              EditableFields::Id::RECT_HEADS_PERCENT,
+              params["headsPercent"].as<float>());
         }
         if (!params["bodyPercent"].isNull()) {
-          g_settings.rectParams.bodyPercent =
-              clampFloatRange(params["bodyPercent"].as<float>(), 0.0f, 100.0f);
+          g_settings.rectParams.bodyPercent = EditableFields::normalize(
+              EditableFields::Id::RECT_BODY_PERCENT,
+              params["bodyPercent"].as<float>());
         }
         if (!params["tailsPercent"].isNull()) {
-          g_settings.rectParams.tailsPercent =
-              clampFloatRange(params["tailsPercent"].as<float>(), 0.0f, 100.0f);
+          g_settings.rectParams.tailsPercent = EditableFields::normalize(
+              EditableFields::Id::RECT_TAILS_PERCENT,
+              params["tailsPercent"].as<float>());
         }
         if (!params["headsSpeedMlHKw"].isNull()) {
-          g_settings.rectParams.headsSpeedMlHKw = clampFloatRange(
-              params["headsSpeedMlHKw"].as<float>(), 10.0f, 2000.0f);
+          g_settings.rectParams.headsSpeedMlHKw = EditableFields::normalize(
+              EditableFields::Id::RECT_HEADS_SPEED_ML_H_KW_FIELD,
+              params["headsSpeedMlHKw"].as<float>());
         }
         if (!params["bodySpeedMlHKw"].isNull()) {
-          g_settings.rectParams.bodySpeedMlHKw = clampFloatRange(
-              params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
+          g_settings.rectParams.bodySpeedMlHKw = EditableFields::normalize(
+              EditableFields::Id::RECT_BODY_SPEED_ML_H_KW,
+              params["bodySpeedMlHKw"].as<float>());
         }
         if (!params["takeoffBackendType"].isNull()) {
           g_settings.rectParams.takeoffBackendType =
@@ -2620,12 +2652,14 @@ static void handleHttpRequest(JsonDocument& req) {
                       RectTakeoffBackendType::VALVE_SINGLE_SWITCHED)));
         }
         if (!params["stabilizationMin"].isNull()) {
-          g_settings.rectParams.stabilizationMin =
-              clampU16Range(params["stabilizationMin"].as<uint32_t>(), 1, 180);
+          g_settings.rectParams.stabilizationMin = EditableFields::normalizeU16(
+              EditableFields::Id::RECT_STABILIZATION_MIN,
+              params["stabilizationMin"].as<uint32_t>());
         }
         if (!params["purgeMin"].isNull()) {
-          g_settings.rectParams.purgeMin =
-              clampU16Range(params["purgeMin"].as<uint32_t>(), 1, 120);
+          g_settings.rectParams.purgeMin = EditableFields::normalizeU16(
+              EditableFields::Id::RECT_PURGE_MIN,
+              params["purgeMin"].as<uint32_t>());
         }
         if (!params["baroCorrectionEnabled"].isNull()) {
           g_settings.rectParams.baroCorrectionEnabled =
@@ -2658,10 +2692,17 @@ static void handleHttpRequest(JsonDocument& req) {
       }
       FSM::startMode(g_state, g_settings, mode);
     } else if (mode == Mode::DISTILLATION) {
-      const float speed = params["speed"] | 500.0f;
-      const float headsVol = params["headsVolume"] | 0.0f;
-      const float targetVol = params["targetVolume"] | 0.0f;
-      const float endTemp = params["endTemp"] | 96.0f;
+      const float speed = EditableFields::normalize(
+          EditableFields::Id::DIST_SPEED_ML_H, params["speed"] | 500.0f);
+      const float headsVol = EditableFields::normalize(
+          EditableFields::Id::DIST_HEADS_VOLUME_ML,
+          params["headsVolume"] | 0.0f);
+      const float targetVol = EditableFields::normalize(
+          EditableFields::Id::DIST_TARGET_VOLUME_ML,
+          params["targetVolume"] | 0.0f);
+      const float endTemp = EditableFields::normalize(
+          EditableFields::Id::DIST_END_TEMPERATURE_C,
+          params["endTemp"] | 96.0f);
       const uint16_t heaterMaxW = g_settings.equipment.heaterPowerW > 0
                                       ? g_settings.equipment.heaterPowerW
                                       : DEFAULT_HEATER_POWER_W;
@@ -2669,8 +2710,9 @@ static void handleHttpRequest(JsonDocument& req) {
       if (!params["powerW"].isNull()) {
         powerWatts = clampU16Range(params["powerW"].as<uint32_t>(), 0, heaterMaxW);
       } else {
-        uint8_t powerPercent = params["powerPercent"] | 60;
-        if (powerPercent > 100) powerPercent = 100;
+        const uint8_t powerPercent = static_cast<uint8_t>(
+            EditableFields::normalize(EditableFields::Id::DIST_POWER_PERCENT,
+                                      params["powerPercent"] | 60.0f));
         powerWatts = static_cast<uint16_t>(
             (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
       }

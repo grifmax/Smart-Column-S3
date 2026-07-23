@@ -14,6 +14,7 @@
 #include "drivers/sensors.h"
 #include "drivers/stirrer.h"
 #include "drivers/valves.h"
+#include "interface/editable_field_descriptors.h"
 #include "interface/localization.h"
 #include "interface/webserver_shared.h"
 #include "profiles.h"
@@ -586,36 +587,21 @@ static void switchRoot(UiScreen screen) {
 
 typedef void (*ValueSaveCallback)(float);
 struct ValueEditState {
-  char label[32];
+  const EditableFields::Descriptor *descriptor = nullptr;
   float value;
-  float min;
-  float max;
-  float step;
-  float fastStep;
   ValueSaveCallback onSave;
-  char unit[16];
-  uint8_t decimals;
   bool returnToModeMonitor = false;
   bool returnToProcessParams = false;
 };
 static ValueEditState edit;
 
-static void openValueEdit(const char *label, float val, float min, float max,
-                          float step, float fastStep, ValueSaveCallback cb,
-                          const char *unit = "", uint8_t decimals = 1,
+static void openValueEdit(EditableFields::Id field, float val,
+                          ValueSaveCallback cb,
                           bool returnToModeMonitor = false,
                           bool returnToProcessParams = false) {
-  strncpy(edit.label, label, sizeof(edit.label) - 1);
-  edit.label[sizeof(edit.label) - 1] = '\0';
-  edit.value = val;
-  edit.min = min;
-  edit.max = max;
-  edit.step = step;
-  edit.fastStep = fastStep;
+  edit.descriptor = &EditableFields::get(field);
+  edit.value = EditableFields::normalize(field, val);
   edit.onSave = cb;
-  strncpy(edit.unit, unit, sizeof(edit.unit) - 1);
-  edit.unit[sizeof(edit.unit) - 1] = '\0';
-  edit.decimals = decimals;
   edit.returnToModeMonitor = returnToModeMonitor;
   edit.returnToProcessParams = returnToProcessParams;
   pushScreen(UI_VALUE_EDIT);
@@ -644,14 +630,6 @@ static ManualRectUiParams manualRectUi;
 static uint8_t rectParamsPage = 0; // 0 = профиль СС/фракции, 1 = техпараметры
 static uint8_t g_editMashStepIdx = 0;
 static uint8_t g_editHoldStepIdx = 0;
-
-static float clampUiFloat(float v, float vmin, float vmax) {
-  if (v < vmin)
-    return vmin;
-  if (v > vmax)
-    return vmax;
-  return v;
-}
 
 static const char *rectFeedstockName(uint8_t feedstock, bool ru) {
   switch (feedstock) {
@@ -722,11 +700,14 @@ static void rectFeedstockDefaults(uint8_t feedstock, float &headsPct,
 
 static void normalizeRectFractions() {
   g_settings.rectParams.headsPercent =
-      clampUiFloat(g_settings.rectParams.headsPercent, 0.0f, 40.0f);
+      EditableFields::normalize(EditableFields::Id::RECT_HEADS_PERCENT,
+                                g_settings.rectParams.headsPercent);
   g_settings.rectParams.bodyPercent =
-      clampUiFloat(g_settings.rectParams.bodyPercent, 0.0f, 100.0f);
+      EditableFields::normalize(EditableFields::Id::RECT_BODY_PERCENT,
+                                g_settings.rectParams.bodyPercent);
   g_settings.rectParams.tailsPercent =
-      clampUiFloat(g_settings.rectParams.tailsPercent, 0.0f, 100.0f);
+      EditableFields::normalize(EditableFields::Id::RECT_TAILS_PERCENT,
+                                g_settings.rectParams.tailsPercent);
 
   float sum = g_settings.rectParams.headsPercent +
               g_settings.rectParams.bodyPercent +
@@ -1905,59 +1886,79 @@ static void formatSetupParameters(Mode mode, char *out, size_t outSize) {
 // Settings Callbacks
 // =============================================================================
 static void saveHeaterPower(float val) {
-  g_settings.equipment.heaterPowerW = (uint16_t)val;
+  g_settings.equipment.heaterPowerW = static_cast<uint16_t>(
+      EditableFields::normalize(EditableFields::Id::EQUIPMENT_HEATER_POWER_W,
+                                val) +
+      0.5f);
   NVSManager::saveSettings(g_settings);
 }
 static void saveColumnHeight(float val) {
-  g_settings.equipment.columnHeightMm = (uint16_t)val;
+  g_settings.equipment.columnHeightMm = static_cast<uint16_t>(
+      EditableFields::normalize(EditableFields::Id::EQUIPMENT_COLUMN_HEIGHT_MM,
+                                val) +
+      0.5f);
   NVSManager::saveSettings(g_settings);
 }
 static void saveCubeVolume(float val) {
-  g_settings.equipment.cubeVolumeL = val;
+  g_settings.equipment.cubeVolumeL = EditableFields::normalize(
+      EditableFields::Id::EQUIPMENT_CUBE_VOLUME_L, val);
   NVSManager::saveSettings(g_settings);
 }
 static void savePackingCoeff(float val) {
-  g_settings.equipment.packingCoeff = val;
+  g_settings.equipment.packingCoeff = EditableFields::normalize(
+      EditableFields::Id::EQUIPMENT_PACKING_COEFFICIENT, val);
   NVSManager::saveSettings(g_settings);
 }
 
 static void saveHeadsPercent(float val) {
-  g_settings.rectParams.headsPercent = val;
+  g_settings.rectParams.headsPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_HEADS_PERCENT, val);
   normalizeRectFractions();
   NVSManager::saveSettings(g_settings);
 }
 static void saveBodyPercent(float val) {
-  g_settings.rectParams.bodyPercent = val;
+  g_settings.rectParams.bodyPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_BODY_PERCENT, val);
   normalizeRectFractions();
   NVSManager::saveSettings(g_settings);
 }
 static void saveTailsPercent(float val) {
-  g_settings.rectParams.tailsPercent = val;
+  g_settings.rectParams.tailsPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_TAILS_PERCENT, val);
   normalizeRectFractions();
   NVSManager::saveSettings(g_settings);
 }
 static void saveFeedVolume(float val) {
-  g_settings.rectParams.feedVolumeL = clampUiFloat(val, 1.0f, 250.0f);
+  g_settings.rectParams.feedVolumeL = EditableFields::normalize(
+      EditableFields::Id::RECT_FEED_VOLUME_L, val);
   NVSManager::saveSettings(g_settings);
 }
 static void saveFeedAbv(float val) {
-  g_settings.rectParams.feedAbvPercent = clampUiFloat(val, 1.0f, 96.0f);
+  g_settings.rectParams.feedAbvPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_FEED_ABV_PERCENT, val);
   NVSManager::saveSettings(g_settings);
 }
 static void saveHeadsSpeed(float val) {
-  g_settings.rectParams.headsSpeedMlHKw = val;
+  g_settings.rectParams.headsSpeedMlHKw = EditableFields::normalize(
+      EditableFields::Id::RECT_HEADS_SPEED_ML_H_KW_FIELD, val);
   NVSManager::saveSettings(g_settings);
 }
 static void saveBodySpeed(float val) {
-  g_settings.rectParams.bodySpeedMlHKw = val;
+  g_settings.rectParams.bodySpeedMlHKw = EditableFields::normalize(
+      EditableFields::Id::RECT_BODY_SPEED_ML_H_KW, val);
   NVSManager::saveSettings(g_settings);
 }
 static void saveStabMin(float val) {
-  g_settings.rectParams.stabilizationMin = (uint16_t)val;
+  g_settings.rectParams.stabilizationMin = static_cast<uint16_t>(
+      EditableFields::normalize(EditableFields::Id::RECT_STABILIZATION_MIN,
+                                val) +
+      0.5f);
   NVSManager::saveSettings(g_settings);
 }
 static void savePurgeMin(float val) {
-  g_settings.rectParams.purgeMin = (uint16_t)val;
+  g_settings.rectParams.purgeMin = static_cast<uint16_t>(
+      EditableFields::normalize(EditableFields::Id::RECT_PURGE_MIN, val) +
+      0.5f);
   NVSManager::saveSettings(g_settings);
 }
 
@@ -1978,31 +1979,32 @@ static void applyDistUiRuntime() {
 }
 
 static void saveDistSpeed(float val) {
-  distUi.speedMlH = val;
+  distUi.speedMlH = EditableFields::normalize(EditableFields::Id::DIST_SPEED_ML_H,
+                                               val);
   applyDistUiRuntime();
   persistDistUi();
 }
 static void saveDistHeads(float val) {
-  distUi.headsVolumeMl = val;
+  distUi.headsVolumeMl = EditableFields::normalize(
+      EditableFields::Id::DIST_HEADS_VOLUME_ML, val);
   applyDistUiRuntime();
   persistDistUi();
 }
 static void saveDistTarget(float val) {
-  distUi.targetVolumeMl = val;
+  distUi.targetVolumeMl = EditableFields::normalize(
+      EditableFields::Id::DIST_TARGET_VOLUME_ML, val);
   applyDistUiRuntime();
   persistDistUi();
 }
 static void saveDistEndTemp(float val) {
-  distUi.endTempC = val;
+  distUi.endTempC = EditableFields::normalize(
+      EditableFields::Id::DIST_END_TEMPERATURE_C, val);
   applyDistUiRuntime();
   persistDistUi();
 }
 static void saveDistPower(float val) {
-  if (val < 0.0f)
-    val = 0.0f;
-  if (val > 100.0f)
-    val = 100.0f;
-  distUi.powerPercent = val;
+  distUi.powerPercent = EditableFields::normalize(
+      EditableFields::Id::DIST_POWER_PERCENT, val);
   applyDistUiRuntime();
   persistDistUi();
 }
@@ -2012,8 +2014,8 @@ static void saveDistTails(float val) {
 }
 
 static void saveManualRectSpeed(float val) {
-  if (val < 0.0f)
-    val = 0.0f;
+  val = EditableFields::normalize(EditableFields::Id::MANUAL_RECT_SPEED_ML_H,
+                                  val);
   manualRectUi.speedMlH = val;
   if (g_state.mode == Mode::MANUAL_RECT) {
     if (val <= 0.0f)
@@ -2023,34 +2025,31 @@ static void saveManualRectSpeed(float val) {
   }
 }
 static void saveManualRectPower(float val) {
-  if (val < 0.0f)
-    val = 0.0f;
-  if (val > 100.0f)
-    val = 100.0f;
+  val = EditableFields::normalize(
+      EditableFields::Id::MANUAL_RECT_POWER_PERCENT, val);
   manualRectUi.powerPercent = val;
   if (g_state.mode == Mode::MANUAL_RECT) {
     Heater::setPower(static_cast<uint8_t>(val));
   }
 }
 static void saveManualRectHeadsTarget(float val) {
-  if (val < 0.0f)
-    val = 0.0f;
-  manualRectUi.headsTargetMl = val;
+  manualRectUi.headsTargetMl = EditableFields::normalize(
+      EditableFields::Id::MANUAL_RECT_HEADS_TARGET_ML, val);
 }
 static void saveManualRectBodyTarget(float val) {
-  if (val < 0.0f)
-    val = 0.0f;
-  manualRectUi.bodyTargetMl = val;
+  manualRectUi.bodyTargetMl = EditableFields::normalize(
+      EditableFields::Id::MANUAL_RECT_BODY_TARGET_ML, val);
 }
 static void saveManualRectTailsTarget(float val) {
-  if (val < 0.0f)
-    val = 0.0f;
-  manualRectUi.tailsTargetMl = val;
+  manualRectUi.tailsTargetMl = EditableFields::normalize(
+      EditableFields::Id::MANUAL_RECT_TAILS_TARGET_ML, val);
 }
 
 static void saveMashStepTemp(float val) {
   if (g_editMashStepIdx >= mashProfileDefault.stepCount)
     return;
+  val = EditableFields::normalize(EditableFields::Id::MASH_STEP_TEMPERATURE_C,
+                                  val);
   mashProfileDefault.steps[g_editMashStepIdx].temperature = val;
   if (g_state.mode == Mode::MASHING &&
       g_state.mashing.currentStep == g_editMashStepIdx) {
@@ -2060,8 +2059,8 @@ static void saveMashStepTemp(float val) {
 static void saveMashStepDuration(float val) {
   if (g_editMashStepIdx >= mashProfileDefault.stepCount)
     return;
-  if (val < 1.0f)
-    val = 1.0f;
+  val = EditableFields::normalize(EditableFields::Id::MASH_STEP_DURATION_MIN,
+                                  val);
   mashProfileDefault.steps[g_editMashStepIdx].duration =
       static_cast<uint16_t>(val);
   if (g_state.mode == Mode::MASHING &&
@@ -2075,6 +2074,8 @@ static void saveMashStepDuration(float val) {
 static void saveHoldStepTemp(float val) {
   if (g_editHoldStepIdx >= holdStepsCount)
     return;
+  val = EditableFields::normalize(EditableFields::Id::HOLD_STEP_TEMPERATURE_C,
+                                  val);
   holdStepsDefault[g_editHoldStepIdx].temperature = val;
   if (g_state.mode == Mode::HOLD &&
       g_state.hold.currentStep == g_editHoldStepIdx) {
@@ -2084,8 +2085,8 @@ static void saveHoldStepTemp(float val) {
 static void saveHoldStepDuration(float val) {
   if (g_editHoldStepIdx >= holdStepsCount)
     return;
-  if (val < 1.0f)
-    val = 1.0f;
+  val = EditableFields::normalize(EditableFields::Id::HOLD_STEP_DURATION_MIN,
+                                  val);
   holdStepsDefault[g_editHoldStepIdx].duration = static_cast<uint16_t>(val);
   if (g_state.mode == Mode::HOLD &&
       g_state.hold.currentStep == g_editHoldStepIdx) {
@@ -2096,12 +2097,18 @@ static void saveHoldStepDuration(float val) {
 }
 
 static void savePumpCal(float val) {
-  g_settings.pumpCal.mlPerRevolution = val;
+  g_settings.pumpCal.mlPerRevolution = EditableFields::normalize(
+      EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV, val);
   NVSManager::saveSettings(g_settings);
-  Pump::setCalibration(val);
+  Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
 }
-static void saveManualHeater(float val) { Heater::setPower((uint8_t)val); }
+static void saveManualHeater(float val) {
+  Heater::setPower(static_cast<uint8_t>(EditableFields::normalize(
+      EditableFields::Id::MANUAL_HEATER_POWER_PERCENT, val)));
+}
 static void saveManualPump(float val) {
+  val = EditableFields::normalize(EditableFields::Id::MANUAL_PUMP_SPEED_ML_H,
+                                  val);
   if (val <= 0)
     Pump::stop();
   else
@@ -2154,7 +2161,6 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
 
 static bool handleModeMonitorTap(int16_t tx, int16_t ty,
                                  const SystemState &state) {
-  const bool ru = (g_settings.language == 0);
   const int16_t y0 = ROOT_PANEL_Y;
   const int16_t hTile = 48;
   const int16_t g = TFT_BUTTON_GAP;
@@ -2175,13 +2181,13 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
     const int16_t x2d = x1 + w2 + g2;
     const int16_t y1d = y0 + 74 + g2;
     if (hit(tx, ty, x2d, y0, w2, 74)) {
-      openValueEdit(ru ? "Мощность дист." : "Dist power", distUi.powerPercent,
-                    0, 100, 1, 10, saveDistPower, "%", 0, true);
+      openValueEdit(EditableFields::Id::DIST_POWER_PERCENT,
+                    distUi.powerPercent, saveDistPower, true);
       return true;
     }
     if (hit(tx, ty, x2d, y1d, w2, 74)) {
-      openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1f, 1.0f,
-                    saveDistEndTemp, "C", 1, true);
+      openValueEdit(EditableFields::Id::DIST_END_TEMPERATURE_C,
+                    distUi.endTempC, saveDistEndTemp, true);
       return true;
     }
     return false;
@@ -2198,29 +2204,27 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
         continue;
       switch (i) {
       case 0:
-        openValueEdit(ru ? "Скорость отбора" : "Takeoff speed",
-                      manualRectUi.speedMlH, 0, 5000, 10, 100,
-                      saveManualRectSpeed, "ml/h", 0, true);
+        openValueEdit(EditableFields::Id::MANUAL_RECT_SPEED_ML_H,
+                      manualRectUi.speedMlH, saveManualRectSpeed, true);
         return true;
       case 1:
-        openValueEdit(ru ? "Мощность руч." : "Manual power",
-                      manualRectUi.powerPercent, 0, 100, 1, 10,
-                      saveManualRectPower, "%", 0, true);
+        openValueEdit(EditableFields::Id::MANUAL_RECT_POWER_PERCENT,
+                      manualRectUi.powerPercent, saveManualRectPower, true);
         return true;
       case 2:
-        openValueEdit(ru ? "Головы цель" : "Heads target",
-                      manualRectUi.headsTargetMl, 0, 10000, 10, 100,
-                      saveManualRectHeadsTarget, "ml", 0, true);
+        openValueEdit(EditableFields::Id::MANUAL_RECT_HEADS_TARGET_ML,
+                      manualRectUi.headsTargetMl, saveManualRectHeadsTarget,
+                      true);
         return true;
       case 3:
-        openValueEdit(ru ? "Тело цель" : "Body target",
-                      manualRectUi.bodyTargetMl, 0, 50000, 100, 1000,
-                      saveManualRectBodyTarget, "ml", 0, true);
+        openValueEdit(EditableFields::Id::MANUAL_RECT_BODY_TARGET_ML,
+                      manualRectUi.bodyTargetMl, saveManualRectBodyTarget,
+                      true);
         return true;
       case 4:
-        openValueEdit(ru ? "Хвосты цель" : "Tails target",
-                      manualRectUi.tailsTargetMl, 0, 50000, 100, 1000,
-                      saveManualRectTailsTarget, "ml", 0, true);
+        openValueEdit(EditableFields::Id::MANUAL_RECT_TAILS_TARGET_ML,
+                      manualRectUi.tailsTargetMl, saveManualRectTailsTarget,
+                      true);
         return true;
       default:
         break;
@@ -2246,13 +2250,13 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
         continue;
       g_editMashStepIdx = i;
       if (tx < (listX + listW / 2)) {
-        openValueEdit(ru ? "Температура шага" : "Step temperature",
-                      mashProfileDefault.steps[i].temperature, 30, 90, 0.1f,
-                      1.0f, saveMashStepTemp, "C", 1, true);
+        openValueEdit(EditableFields::Id::MASH_STEP_TEMPERATURE_C,
+                      mashProfileDefault.steps[i].temperature,
+                      saveMashStepTemp, true);
       } else {
-        openValueEdit(ru ? "Длительность шага" : "Step duration",
-                      mashProfileDefault.steps[i].duration, 1, 240, 1, 10,
-                      saveMashStepDuration, "min", 0, true);
+        openValueEdit(EditableFields::Id::MASH_STEP_DURATION_MIN,
+                      mashProfileDefault.steps[i].duration,
+                      saveMashStepDuration, true);
       }
       return true;
     }
@@ -2276,13 +2280,13 @@ static bool handleModeMonitorTap(int16_t tx, int16_t ty,
         continue;
       g_editHoldStepIdx = i;
       if (tx < (listX + listW / 2)) {
-        openValueEdit(ru ? "Температура удерж." : "Hold temperature",
-                      holdStepsDefault[i].temperature, 30, 95, 0.1f, 1.0f,
-                      saveHoldStepTemp, "C", 1, true);
+        openValueEdit(EditableFields::Id::HOLD_STEP_TEMPERATURE_C,
+                      holdStepsDefault[i].temperature, saveHoldStepTemp,
+                      true);
       } else {
-        openValueEdit(ru ? "Время удерж." : "Hold duration",
-                      holdStepsDefault[i].duration, 1, 720, 1, 15,
-                      saveHoldStepDuration, "min", 0, true);
+        openValueEdit(EditableFields::Id::HOLD_STEP_DURATION_MIN,
+                      holdStepsDefault[i].duration, saveHoldStepDuration,
+                      true);
       }
       return true;
     }
@@ -2616,21 +2620,19 @@ static bool handleProcessParamsScreenTap(int16_t tx, int16_t ty,
     return true;
   }
 
-  const bool ru = (g_settings.language == 0);
   const int16_t y = UI_HEADER_H + 86;
   const int16_t x1 = 10;
   const int16_t x2 = 245;
   const int16_t w2 = 225;
   if (state.mode == Mode::DISTILLATION) {
     if (hit(tx, ty, x1, y, w2, 62)) {
-      openValueEdit(ru ? "Мощность дист." : "Dist power",
-                    distUi.powerPercent, 0, 100, 1, 10, saveDistPower, "%",
-                    0, false, true);
+      openValueEdit(EditableFields::Id::DIST_POWER_PERCENT,
+                    distUi.powerPercent, saveDistPower, false, true);
       return true;
     }
     if (hit(tx, ty, x2, y, w2, 62)) {
-      openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1f, 1.0f,
-                    saveDistEndTemp, "C", 1, false, true);
+      openValueEdit(EditableFields::Id::DIST_END_TEMPERATURE_C,
+                    distUi.endTempC, saveDistEndTemp, false, true);
       return true;
     }
     return false;
@@ -2638,33 +2640,32 @@ static bool handleProcessParamsScreenTap(int16_t tx, int16_t ty,
 
   if (state.mode == Mode::MANUAL_RECT) {
     if (hit(tx, ty, x1, y, w2, 36)) {
-      openValueEdit(ru ? "Скорость отбора" : "Takeoff speed",
-                    manualRectUi.speedMlH, 0, 5000, 10, 100,
-                    saveManualRectSpeed, "ml/h", 0, false, true);
+      openValueEdit(EditableFields::Id::MANUAL_RECT_SPEED_ML_H,
+                    manualRectUi.speedMlH, saveManualRectSpeed, false, true);
       return true;
     }
     if (hit(tx, ty, x2, y, w2, 36)) {
-      openValueEdit(ru ? "Мощность руч." : "Manual power",
-                    manualRectUi.powerPercent, 0, 100, 1, 10,
-                    saveManualRectPower, "%", 0, false, true);
+      openValueEdit(EditableFields::Id::MANUAL_RECT_POWER_PERCENT,
+                    manualRectUi.powerPercent, saveManualRectPower, false,
+                    true);
       return true;
     }
     if (hit(tx, ty, x1, y + 40, w2, 36)) {
-      openValueEdit(ru ? "Головы цель" : "Heads target",
-                    manualRectUi.headsTargetMl, 0, 10000, 10, 100,
-                    saveManualRectHeadsTarget, "ml", 0, false, true);
+      openValueEdit(EditableFields::Id::MANUAL_RECT_HEADS_TARGET_ML,
+                    manualRectUi.headsTargetMl, saveManualRectHeadsTarget,
+                    false, true);
       return true;
     }
     if (hit(tx, ty, x2, y + 40, w2, 36)) {
-      openValueEdit(ru ? "Тело цель" : "Body target",
-                    manualRectUi.bodyTargetMl, 0, 50000, 100, 1000,
-                    saveManualRectBodyTarget, "ml", 0, false, true);
+      openValueEdit(EditableFields::Id::MANUAL_RECT_BODY_TARGET_ML,
+                    manualRectUi.bodyTargetMl, saveManualRectBodyTarget,
+                    false, true);
       return true;
     }
     if (hit(tx, ty, x1, y + 80, TFT_WIDTH - 20, 36)) {
-      openValueEdit(ru ? "Хвосты цель" : "Tails target",
-                    manualRectUi.tailsTargetMl, 0, 50000, 100, 1000,
-                    saveManualRectTailsTarget, "ml", 0, false, true);
+      openValueEdit(EditableFields::Id::MANUAL_RECT_TAILS_TARGET_ML,
+                    manualRectUi.tailsTargetMl, saveManualRectTailsTarget,
+                    false, true);
       return true;
     }
     return false;
@@ -2677,15 +2678,15 @@ static bool handleProcessParamsScreenTap(int16_t tx, int16_t ty,
     }
     g_editMashStepIdx = step;
     if (hit(tx, ty, x1, y, w2, 62)) {
-      openValueEdit(ru ? "Температура шага" : "Step temperature",
-                    mashProfileDefault.steps[step].temperature, 30, 90, 0.1f,
-                    1.0f, saveMashStepTemp, "C", 1, false, true);
+      openValueEdit(EditableFields::Id::MASH_STEP_TEMPERATURE_C,
+                    mashProfileDefault.steps[step].temperature,
+                    saveMashStepTemp, false, true);
       return true;
     }
     if (hit(tx, ty, x2, y, w2, 62)) {
-      openValueEdit(ru ? "Длительность шага" : "Step duration",
-                    mashProfileDefault.steps[step].duration, 1, 240, 1, 10,
-                    saveMashStepDuration, "min", 0, false, true);
+      openValueEdit(EditableFields::Id::MASH_STEP_DURATION_MIN,
+                    mashProfileDefault.steps[step].duration,
+                    saveMashStepDuration, false, true);
       return true;
     }
     return false;
@@ -2698,15 +2699,15 @@ static bool handleProcessParamsScreenTap(int16_t tx, int16_t ty,
     }
     g_editHoldStepIdx = step;
     if (hit(tx, ty, x1, y, w2, 62)) {
-      openValueEdit(ru ? "Температура удерж." : "Hold temperature",
-                    holdStepsDefault[step].temperature, 30, 95, 0.1f, 1.0f,
-                    saveHoldStepTemp, "C", 1, false, true);
+      openValueEdit(EditableFields::Id::HOLD_STEP_TEMPERATURE_C,
+                    holdStepsDefault[step].temperature, saveHoldStepTemp,
+                    false, true);
       return true;
     }
     if (hit(tx, ty, x2, y, w2, 62)) {
-      openValueEdit(ru ? "Время удерж." : "Hold duration",
-                    holdStepsDefault[step].duration, 1, 720, 1, 15,
-                    saveHoldStepDuration, "min", 0, false, true);
+      openValueEdit(EditableFields::Id::HOLD_STEP_DURATION_MIN,
+                    holdStepsDefault[step].duration, saveHoldStepDuration,
+                    false, true);
       return true;
     }
     return false;
@@ -2716,37 +2717,37 @@ static bool handleProcessParamsScreenTap(int16_t tx, int16_t ty,
 
 static bool handleValueEditScreenTap(int16_t tx, int16_t ty,
                                      const SystemState &) {
+  if (edit.descriptor == nullptr) {
+    return true;
+  }
+  const EditableFields::Id field = edit.descriptor->id;
   if (hit(tx, ty, VALUE_EDIT_BTN_X1, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
           VALUE_EDIT_BTN_H)) {
-    edit.value -= edit.fastStep;
-    if (edit.value < edit.min)
-      edit.value = edit.min;
+    edit.value = EditableFields::normalize(field,
+                                           edit.value - edit.descriptor->fastStep);
     return true;
   }
   if (hit(tx, ty, VALUE_EDIT_BTN_X2, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
           VALUE_EDIT_BTN_H)) {
-    edit.value -= edit.step;
-    if (edit.value < edit.min)
-      edit.value = edit.min;
+    edit.value = EditableFields::normalize(field,
+                                           edit.value - edit.descriptor->step);
     return true;
   }
   if (hit(tx, ty, VALUE_EDIT_BTN_X3, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
           VALUE_EDIT_BTN_H)) {
-    edit.value += edit.step;
-    if (edit.value > edit.max)
-      edit.value = edit.max;
+    edit.value = EditableFields::normalize(field,
+                                           edit.value + edit.descriptor->step);
     return true;
   }
   if (hit(tx, ty, VALUE_EDIT_BTN_X4, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
           VALUE_EDIT_BTN_H)) {
-    edit.value += edit.fastStep;
-    if (edit.value > edit.max)
-      edit.value = edit.max;
+    edit.value = EditableFields::normalize(field,
+                                           edit.value + edit.descriptor->fastStep);
     return true;
   }
   if (hit(tx, ty, 10, 202, TFT_WIDTH - 20, 44)) {
     if (edit.onSave)
-      edit.onSave(edit.value);
+      edit.onSave(EditableFields::normalize(field, edit.value));
     if (edit.returnToProcessParams && isModeRunning(g_state)) {
       popScreen();
     } else if (edit.returnToModeMonitor && isModeRunning(g_state)) {
@@ -2837,24 +2838,23 @@ static bool handleEquipmentScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   if (hit(tx, ty, 10, 48, 225, 78)) {
-    openValueEdit(msg(Msg::HEATER_POWER), g_settings.equipment.heaterPowerW,
-                  1000, 10000, 100, 500, saveHeaterPower, "W", 0);
+    openValueEdit(EditableFields::Id::EQUIPMENT_HEATER_POWER_W,
+                  g_settings.equipment.heaterPowerW, saveHeaterPower);
     return true;
   }
   if (hit(tx, ty, 245, 48, 225, 78)) {
-    openValueEdit(msg(Msg::COLUMN_HEIGHT),
-                  g_settings.equipment.columnHeightMm, 500, 3000, 50, 200,
-                  saveColumnHeight, "mm", 0);
+    openValueEdit(EditableFields::Id::EQUIPMENT_COLUMN_HEIGHT_MM,
+                  g_settings.equipment.columnHeightMm, saveColumnHeight);
     return true;
   }
   if (hit(tx, ty, 10, 138, 225, 78)) {
-    openValueEdit(msg(Msg::CUBE_VOLUME), g_settings.equipment.cubeVolumeL, 5,
-                  200, 1, 10, saveCubeVolume, "L", 1);
+    openValueEdit(EditableFields::Id::EQUIPMENT_CUBE_VOLUME_L,
+                  g_settings.equipment.cubeVolumeL, saveCubeVolume);
     return true;
   }
   if (hit(tx, ty, 245, 138, 225, 78)) {
-    openValueEdit(msg(Msg::PACKING_COEFF), g_settings.equipment.packingCoeff, 1,
-                  15, 0.1, 1, savePackingCoeff, "", 2);
+    openValueEdit(EditableFields::Id::EQUIPMENT_PACKING_COEFFICIENT,
+                  g_settings.equipment.packingCoeff, savePackingCoeff);
     return true;
   }
   return false;
@@ -2889,7 +2889,6 @@ static bool handleRectParamsScreenTap(int16_t tx, int16_t ty,
     return false;
   }
 
-  const bool ru = (g_settings.language == 0);
   const int itemIndex = (row * 2) + col;
   if (rectParamsPage == 0) {
     switch (itemIndex) {
@@ -2898,28 +2897,24 @@ static bool handleRectParamsScreenTap(int16_t tx, int16_t ty,
           (g_settings.rectParams.feedstock + 1) % 8);
       return true;
     case 1:
-      openValueEdit(ru ? "Объем СС" : "Feed volume",
-                    g_settings.rectParams.feedVolumeL, 1.0f, 250.0f, 0.5f,
-                    5.0f, saveFeedVolume, "L", 1);
+      openValueEdit(EditableFields::Id::RECT_FEED_VOLUME_L,
+                    g_settings.rectParams.feedVolumeL, saveFeedVolume);
       return true;
     case 2:
-      openValueEdit(ru ? "Крепость СС" : "Feed ABV",
-                    g_settings.rectParams.feedAbvPercent, 1.0f, 96.0f, 0.5f,
-                    2.0f, saveFeedAbv, "%", 1);
+      openValueEdit(EditableFields::Id::RECT_FEED_ABV_PERCENT,
+                    g_settings.rectParams.feedAbvPercent, saveFeedAbv);
       return true;
     case 3:
-      openValueEdit(msg(Msg::HEADS_PERCENT), g_settings.rectParams.headsPercent,
-                    0, 25, 0.5f, 2.0f, saveHeadsPercent, "%", 1);
+      openValueEdit(EditableFields::Id::RECT_HEADS_PERCENT,
+                    g_settings.rectParams.headsPercent, saveHeadsPercent);
       return true;
     case 4:
-      openValueEdit(ru ? "Тело %" : "Body %",
-                    g_settings.rectParams.bodyPercent, 40, 98, 0.5f, 2.0f,
-                    saveBodyPercent, "%", 1);
+      openValueEdit(EditableFields::Id::RECT_BODY_PERCENT,
+                    g_settings.rectParams.bodyPercent, saveBodyPercent);
       return true;
     case 5:
-      openValueEdit(ru ? "Хвосты %" : "Tails %",
-                    g_settings.rectParams.tailsPercent, 0, 40, 0.5f, 2.0f,
-                    saveTailsPercent, "%", 1);
+      openValueEdit(EditableFields::Id::RECT_TAILS_PERCENT,
+                    g_settings.rectParams.tailsPercent, saveTailsPercent);
       return true;
     default:
       return false;
@@ -2928,21 +2923,20 @@ static bool handleRectParamsScreenTap(int16_t tx, int16_t ty,
 
   switch (itemIndex) {
   case 0:
-    openValueEdit(msg(Msg::HEADS_SPEED), g_settings.rectParams.headsSpeedMlHKw,
-                  10, 1000, 10, 100, saveHeadsSpeed, "ml/h/k", 0);
+    openValueEdit(EditableFields::Id::RECT_HEADS_SPEED_ML_H_KW_FIELD,
+                  g_settings.rectParams.headsSpeedMlHKw, saveHeadsSpeed);
     return true;
   case 1:
-    openValueEdit(msg(Msg::BODY_SPEED), g_settings.rectParams.bodySpeedMlHKw,
-                  50, 3000, 50, 200, saveBodySpeed, "ml/h/k", 0);
+    openValueEdit(EditableFields::Id::RECT_BODY_SPEED_ML_H_KW,
+                  g_settings.rectParams.bodySpeedMlHKw, saveBodySpeed);
     return true;
   case 2:
-    openValueEdit(msg(Msg::STABILIZATION),
-                  g_settings.rectParams.stabilizationMin, 1, 120, 1, 10,
-                  saveStabMin, "min", 0);
+    openValueEdit(EditableFields::Id::RECT_STABILIZATION_MIN,
+                  g_settings.rectParams.stabilizationMin, saveStabMin);
     return true;
   case 3:
-    openValueEdit(msg(Msg::PURGE_TIME), g_settings.rectParams.purgeMin, 1, 60,
-                  1, 5, savePurgeMin, "min", 0);
+    openValueEdit(EditableFields::Id::RECT_PURGE_MIN,
+                  g_settings.rectParams.purgeMin, savePurgeMin);
     return true;
   default:
     return false;
@@ -2955,23 +2949,23 @@ static bool handleDistParamsScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   if (hit(tx, ty, 10, 48, 225, 78)) {
-    openValueEdit(msg(Msg::DIST_SPEED), distUi.speedMlH, 50, 5000, 50, 500,
-                  saveDistSpeed, "ml/h", 0);
+    openValueEdit(EditableFields::Id::DIST_SPEED_ML_H, distUi.speedMlH,
+                  saveDistSpeed);
     return true;
   }
   if (hit(tx, ty, 245, 48, 225, 78)) {
-    openValueEdit(msg(Msg::HEADS_VOLUME), distUi.headsVolumeMl, 0, 5000, 10,
-                  100, saveDistHeads, "ml", 0);
+    openValueEdit(EditableFields::Id::DIST_HEADS_VOLUME_ML,
+                  distUi.headsVolumeMl, saveDistHeads);
     return true;
   }
   if (hit(tx, ty, 10, 138, 225, 78)) {
-    openValueEdit(msg(Msg::TARGET_VOLUME), distUi.targetVolumeMl, 0, 50000,
-                  100, 1000, saveDistTarget, "ml", 0);
+    openValueEdit(EditableFields::Id::DIST_TARGET_VOLUME_ML,
+                  distUi.targetVolumeMl, saveDistTarget);
     return true;
   }
   if (hit(tx, ty, 245, 138, 225, 78)) {
-    openValueEdit(msg(Msg::END_TEMP), distUi.endTempC, 80, 100, 0.1, 1,
-                  saveDistEndTemp, "C", 1);
+    openValueEdit(EditableFields::Id::DIST_END_TEMPERATURE_C,
+                  distUi.endTempC, saveDistEndTemp);
     return true;
   }
   return false;
@@ -2983,9 +2977,8 @@ static bool handleCalibrationScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   if (hit(tx, ty, 10, 52, 225, 86)) {
-    openValueEdit(msg(Msg::PUMP_CALIBRATION),
-                  g_settings.pumpCal.mlPerRevolution, 0.001, 5.0, 0.001, 0.05,
-                  savePumpCal, "ml/r", 3);
+    openValueEdit(EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
+                  g_settings.pumpCal.mlPerRevolution, savePumpCal);
     return true;
   }
   if (hit(tx, ty, 245, 52, 225, 86)) {
@@ -3001,13 +2994,13 @@ static bool handleManualScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   if (hit(tx, ty, 10, 48, 225, 86)) {
-    openValueEdit(msg(Msg::HEATER_POWER), Heater::getPower(), 0, 100, 1, 10,
-                  saveManualHeater, "%", 0);
+    openValueEdit(EditableFields::Id::MANUAL_HEATER_POWER_PERCENT,
+                  Heater::getPower(), saveManualHeater);
     return true;
   }
   if (hit(tx, ty, 245, 48, 225, 86)) {
-    openValueEdit(msg(Msg::PUMP), state.pump.speedMlPerHour, 0, 5000, 10, 100,
-                  saveManualPump, "ml/h", 0);
+    openValueEdit(EditableFields::Id::MANUAL_PUMP_SPEED_ML_H,
+                  state.pump.speedMlPerHour, saveManualPump);
     return true;
   }
   if (ty >= MANUAL_VALVE_Y && ty < (MANUAL_VALVE_Y + MANUAL_VALVE_H)) {
@@ -8559,13 +8552,21 @@ static void renderRootFooter(
                               }
 
                               static void renderValueEdit() {
+                                if (edit.descriptor == nullptr) {
+                                  return;
+                                }
+                                const EditableFields::Descriptor &descriptor =
+                                    *edit.descriptor;
                                 tft.fillScreen(colorBg());
-                                drawHeader(edit.label, true);
+                                drawHeader(EditableFields::label(
+                                               descriptor.id,
+                                               g_settings.language == 0),
+                                           true);
                                 char buf[32];
-                                if (edit.decimals == 0)
+                                if (descriptor.decimals == 0)
                                   snprintf(buf, sizeof(buf), "%.0f",
                                            edit.value);
-                                else if (edit.decimals == 1)
+                                else if (descriptor.decimals == 1)
                                   snprintf(buf, sizeof(buf), "%.1f",
                                            edit.value);
                                 else
@@ -8573,7 +8574,8 @@ static void renderRootFooter(
                                            edit.value);
                                 drawValueTile(10, 48, TFT_WIDTH - 20, 78,
                                               tftText(TftTextId::ValueTitle),
-                                              buf, edit.unit, COLOR_PRIMARY);
+                                              buf, descriptor.unit,
+                                              COLOR_PRIMARY);
 
                                 drawButton(VALUE_EDIT_BTN_X1, VALUE_EDIT_BTN_Y,
                                            VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H,

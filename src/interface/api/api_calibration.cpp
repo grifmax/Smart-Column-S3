@@ -3,7 +3,9 @@
 #include <math.h>
 #include <string.h>
 
+#include "drivers/pump.h"
 #include "drivers/sensors.h"
+#include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
 #include "storage/nvs_manager.h"
 
@@ -134,7 +136,10 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
 
         if (!doc["mlPerRev"].isNull() || !doc["stepsPerRev"].isNull()) {
           if (!doc["mlPerRev"].isNull()) {
-            g_settings.pumpCal.mlPerRevolution = doc["mlPerRev"].as<float>();
+            g_settings.pumpCal.mlPerRevolution = EditableFields::normalize(
+                EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
+                doc["mlPerRev"].as<float>());
+            Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
             LOG_I("Pump mlPerRev: %.3f", g_settings.pumpCal.mlPerRevolution);
           }
           if (!doc["stepsPerRev"].isNull()) {
@@ -158,7 +163,10 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
           float revolutions = static_cast<float>(steps) / stepsPerRev;
 
           if (revolutions > 0) {
-            g_settings.pumpCal.mlPerRevolution = knownVolume / revolutions;
+            g_settings.pumpCal.mlPerRevolution = EditableFields::normalize(
+                EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
+                knownVolume / revolutions);
+            Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
             NVSManager::saveSettings(g_settings);
 
             LOG_I("Pump calibrated: %.3f ml/rev (from %.1f ml in %u steps)",

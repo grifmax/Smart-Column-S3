@@ -518,9 +518,11 @@ actualVolumeMl, startedAt, finishedAt, finishReason
   только по `Сохранить`, а `Отбросить` восстанавливает состояние на входе.
   Переход на Home, Service или другой режим при dirty-черновике сначала ведёт
   к явному save/discard и не теряет изменения.
-- [ ] [D-037] Вынести метаданные редактируемых TFT-полей в единый descriptor
+- [x] [D-037] Вынести метаданные редактируемых TFT-полей в единый descriptor
   layer и убрать дубли min/max/step между тач-обработчиками, рендером и
-  backend-валидацией.
+  backend-валидацией. `EditableFields` содержит presentation и validation
+  metadata для всех scalar-редакторов TFT; `VALUE_EDIT`, актуальные REST/cloud
+  маршруты и калибровка нормализуют значения через него.
 - [ ] [D-038] Ввести единый gateway силовых команд для TFT: команда имеет
   владельца (`FSM`, `SERVICE`, `MANUAL`), причину, timestamp и обязательный
   safe-stop; прямые вызовы драйвера из рендера запрещены.

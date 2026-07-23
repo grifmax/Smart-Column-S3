@@ -6,6 +6,7 @@
 #include "drivers/sensors.h"
 #include "drivers/stirrer.h"
 #include "drivers/valves.h"
+#include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
 #include "storage/nvs_manager.h"
 
@@ -201,11 +202,15 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
 
         if (!doc["heaterPowerW"].isNull()) {
           g_settings.equipment.heaterPowerW =
-              clampU16Range(doc["heaterPowerW"].as<uint32_t>(), 1000, 10000);
+              EditableFields::normalizeU16(
+                  EditableFields::Id::EQUIPMENT_HEATER_POWER_W,
+                  doc["heaterPowerW"].as<uint32_t>());
         }
         if (!doc["columnHeightMm"].isNull()) {
           g_settings.equipment.columnHeightMm =
-              clampU16Range(doc["columnHeightMm"].as<uint32_t>(), 500, 3000);
+              EditableFields::normalizeU16(
+                  EditableFields::Id::EQUIPMENT_COLUMN_HEIGHT_MM,
+                  doc["columnHeightMm"].as<uint32_t>());
         }
         if (!doc["packingType"].isNull()) {
           g_settings.equipment.packingType = parsePackingTypeKey(
@@ -214,11 +219,15 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
         }
         if (!doc["packingCoeff"].isNull()) {
           g_settings.equipment.packingCoeff =
-              clampFloatRange(doc["packingCoeff"].as<float>(), 1.0f, 15.0f);
+              EditableFields::normalize(
+                  EditableFields::Id::EQUIPMENT_PACKING_COEFFICIENT,
+                  doc["packingCoeff"].as<float>());
         }
         if (!doc["cubeVolumeL"].isNull()) {
           g_settings.equipment.cubeVolumeL =
-              clampFloatRange(doc["cubeVolumeL"].as<float>(), 5.0f, 250.0f);
+              EditableFields::normalize(
+                  EditableFields::Id::EQUIPMENT_CUBE_VOLUME_L,
+                  doc["cubeVolumeL"].as<float>());
         }
         if (!doc["minHeaterSubmergeL"].isNull()) {
           g_settings.equipment.minHeaterSubmergeL = clampFloatRange(

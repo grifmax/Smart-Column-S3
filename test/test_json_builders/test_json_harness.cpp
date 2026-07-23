@@ -45,6 +45,8 @@ void test_pump_backend_gate_handles_rate_and_periodic_pause();
 void test_valve_backend_gate_requires_route_and_safety_ready();
 void test_safety_proof_guard_blocks_unsafe_states();
 void test_safety_proof_guard_allows_only_idle_safe_hardware();
+void test_editable_field_descriptor_exposes_canonical_tft_metadata();
+void test_editable_field_normalization_clamps_and_snaps_to_step();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -64,6 +66,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_valve_backend_gate_requires_route_and_safety_ready);
   RUN_TEST(test_safety_proof_guard_blocks_unsafe_states);
   RUN_TEST(test_safety_proof_guard_allows_only_idle_safe_hardware);
+  RUN_TEST(test_editable_field_descriptor_exposes_canonical_tft_metadata);
+  RUN_TEST(test_editable_field_normalization_clamps_and_snaps_to_step);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>

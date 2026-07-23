@@ -1,5 +1,6 @@
 #include "settings_modules.h"
 
+#include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
 #include "storage/nvs_manager.h"
 
@@ -52,9 +53,12 @@ void getRectFeedstockDefaults(uint8_t feedstock, float &headsPct,
 }
 
 void normalizeRectFractions(RectParams &params) {
-  params.headsPercent = clampFloatRange(params.headsPercent, 0.0f, 40.0f);
-  params.bodyPercent = clampFloatRange(params.bodyPercent, 0.0f, 100.0f);
-  params.tailsPercent = clampFloatRange(params.tailsPercent, 0.0f, 100.0f);
+  params.headsPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_HEADS_PERCENT, params.headsPercent);
+  params.bodyPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_BODY_PERCENT, params.bodyPercent);
+  params.tailsPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_TAILS_PERCENT, params.tailsPercent);
 
   float sum = params.headsPercent + params.bodyPercent + params.tailsPercent;
   if (sum <= 100.0f) {
@@ -69,8 +73,8 @@ void normalizeRectFractions(RectParams &params) {
 
   excess -= params.tailsPercent;
   params.tailsPercent = 0.0f;
-  params.bodyPercent =
-      clampFloatRange(params.bodyPercent - excess, 0.0f, 100.0f);
+  params.bodyPercent = EditableFields::normalize(
+      EditableFields::Id::RECT_BODY_PERCENT, params.bodyPercent - excess);
 }
 
 } // namespace
@@ -275,43 +279,52 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
         }
 
         if (!params["feedVolumeL"].isNull()) {
-          updated.feedVolumeL = clampFloatRange(
-              params["feedVolumeL"].as<float>(), 1.0f, 250.0f);
+          updated.feedVolumeL = EditableFields::normalize(
+              EditableFields::Id::RECT_FEED_VOLUME_L,
+              params["feedVolumeL"].as<float>());
         }
         if (!params["feedAbvPercent"].isNull()) {
-          updated.feedAbvPercent = clampFloatRange(
-              params["feedAbvPercent"].as<float>(), 1.0f, 96.0f);
+          updated.feedAbvPercent = EditableFields::normalize(
+              EditableFields::Id::RECT_FEED_ABV_PERCENT,
+              params["feedAbvPercent"].as<float>());
         }
         if (!params["headsPercent"].isNull()) {
-          updated.headsPercent = clampFloatRange(
-              params["headsPercent"].as<float>(), 0.0f, 40.0f);
+          updated.headsPercent = EditableFields::normalize(
+              EditableFields::Id::RECT_HEADS_PERCENT,
+              params["headsPercent"].as<float>());
           fractionsUpdated = true;
         }
         if (!params["bodyPercent"].isNull()) {
-          updated.bodyPercent = clampFloatRange(
-              params["bodyPercent"].as<float>(), 0.0f, 100.0f);
+          updated.bodyPercent = EditableFields::normalize(
+              EditableFields::Id::RECT_BODY_PERCENT,
+              params["bodyPercent"].as<float>());
           fractionsUpdated = true;
         }
         if (!params["tailsPercent"].isNull()) {
-          updated.tailsPercent = clampFloatRange(
-              params["tailsPercent"].as<float>(), 0.0f, 100.0f);
+          updated.tailsPercent = EditableFields::normalize(
+              EditableFields::Id::RECT_TAILS_PERCENT,
+              params["tailsPercent"].as<float>());
           fractionsUpdated = true;
         }
         if (!params["headsSpeedMlHKw"].isNull()) {
-          updated.headsSpeedMlHKw = clampFloatRange(
-              params["headsSpeedMlHKw"].as<float>(), 10.0f, 2000.0f);
+          updated.headsSpeedMlHKw = EditableFields::normalize(
+              EditableFields::Id::RECT_HEADS_SPEED_ML_H_KW_FIELD,
+              params["headsSpeedMlHKw"].as<float>());
         }
         if (!params["bodySpeedMlHKw"].isNull()) {
-          updated.bodySpeedMlHKw = clampFloatRange(
-              params["bodySpeedMlHKw"].as<float>(), 50.0f, 3000.0f);
+          updated.bodySpeedMlHKw = EditableFields::normalize(
+              EditableFields::Id::RECT_BODY_SPEED_ML_H_KW,
+              params["bodySpeedMlHKw"].as<float>());
         }
         if (!params["stabilizationMin"].isNull()) {
-          updated.stabilizationMin =
-              clampU16Range(params["stabilizationMin"].as<uint32_t>(), 1, 180);
+          updated.stabilizationMin = EditableFields::normalizeU16(
+              EditableFields::Id::RECT_STABILIZATION_MIN,
+              params["stabilizationMin"].as<uint32_t>());
         }
         if (!params["purgeMin"].isNull()) {
-          updated.purgeMin =
-              clampU16Range(params["purgeMin"].as<uint32_t>(), 1, 120);
+          updated.purgeMin = EditableFields::normalizeU16(
+              EditableFields::Id::RECT_PURGE_MIN,
+              params["purgeMin"].as<uint32_t>());
         }
         if (!params["baroCorrectionEnabled"].isNull()) {
           updated.baroCorrectionEnabled =
