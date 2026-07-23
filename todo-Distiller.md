@@ -564,7 +564,7 @@ actualVolumeMl, startedAt, finishedAt, finishReason
 - [ ] [D-045] Выполнить стендовую приёмку на железе: touch-границы, отсутствие
   дублированных команд, фактическое отключение выходов, recovery display
   watchdog и сохранение параметров после reboot.
-- [ ] [D-046] После каждого завершённого vertical slice обновлять
+- [x] [D-046] После каждого завершённого vertical slice обновлять
   `docs/TFT_MENU_MATRIX.md`, `docs/API.md` (если менялась семантика),
   `CHANGELOG.md` и соответствующие smoke/host тесты.
 
