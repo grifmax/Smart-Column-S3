@@ -112,28 +112,32 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
         }
 
         if (!doc["powerW"].isNull()) {
-          g_settings.nbk.powerW =
-              clampFloatRange(doc["powerW"].as<float>(), 500.0f, 5500.0f);
+          g_settings.nbk.powerW = EditableFields::normalize(
+              EditableFields::Id::NBK_POWER_W, doc["powerW"].as<float>());
         }
         if (!doc["pumpSpeedMlH"].isNull()) {
-          g_settings.nbk.pumpSpeedMlH = clampFloatRange(
-              doc["pumpSpeedMlH"].as<float>(), 100.0f, 120000.0f);
+          g_settings.nbk.pumpSpeedMlH = EditableFields::normalize(
+              EditableFields::Id::NBK_PUMP_SPEED_ML_H,
+              doc["pumpSpeedMlH"].as<float>());
         }
         if (!doc["columnBottomTempThresholdC"].isNull()) {
-          g_settings.nbk.columnBottomTempThresholdC = clampFloatRange(
-              doc["columnBottomTempThresholdC"].as<float>(), 50.0f, 110.0f);
+          g_settings.nbk.columnBottomTempThresholdC = EditableFields::normalize(
+              EditableFields::Id::NBK_BOTTOM_TEMP_C,
+              doc["columnBottomTempThresholdC"].as<float>());
         }
         if (!doc["topTempCorrectionEnabled"].isNull()) {
           g_settings.nbk.topTempCorrectionEnabled =
               doc["topTempCorrectionEnabled"].as<bool>();
         }
         if (!doc["columnTopTargetTempC"].isNull()) {
-          g_settings.nbk.columnTopTargetTempC = clampFloatRange(
-              doc["columnTopTargetTempC"].as<float>(), 50.0f, 110.0f);
+          g_settings.nbk.columnTopTargetTempC = EditableFields::normalize(
+              EditableFields::Id::NBK_TOP_TARGET_TEMP_C,
+              doc["columnTopTargetTempC"].as<float>());
         }
         if (!doc["targetVolumeMl"].isNull()) {
-          g_settings.nbk.targetVolumeMl = clampFloatRange(
-              doc["targetVolumeMl"].as<float>(), 0.0f, 500000.0f);
+          g_settings.nbk.targetVolumeMl = EditableFields::normalize(
+              EditableFields::Id::NBK_TARGET_VOLUME_ML,
+              doc["targetVolumeMl"].as<float>());
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
@@ -150,6 +154,10 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
               doc["targetTempC"] = g_settings.fermentation.targetTempC;
               doc["hysteresisC"] = g_settings.fermentation.hysteresisC;
               doc["useHeater"] = g_settings.fermentation.useHeater;
+              doc["useCooling"] = g_settings.fermentation.useCooling;
+              doc["coolingMinOnSec"] = g_settings.fermentation.coolingMinOnSec;
+              doc["coolingMinOffSec"] = g_settings.fermentation.coolingMinOffSec;
+              doc["durationHours"] = g_settings.fermentation.durationHours;
 
               String json;
               serializeJson(doc, json);
@@ -169,15 +177,37 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
         }
 
         if (!doc["targetTempC"].isNull()) {
-          g_settings.fermentation.targetTempC = clampFloatRange(
-              doc["targetTempC"].as<float>(), 5.0f, 45.0f);
+          g_settings.fermentation.targetTempC = EditableFields::normalize(
+              EditableFields::Id::FERM_TARGET_TEMP_C,
+              doc["targetTempC"].as<float>());
         }
         if (!doc["hysteresisC"].isNull()) {
-          g_settings.fermentation.hysteresisC = clampFloatRange(
-              doc["hysteresisC"].as<float>(), 0.1f, 10.0f);
+          g_settings.fermentation.hysteresisC = EditableFields::normalize(
+              EditableFields::Id::FERM_HYSTERESIS_C,
+              doc["hysteresisC"].as<float>());
         }
         if (!doc["useHeater"].isNull()) {
           g_settings.fermentation.useHeater = doc["useHeater"].as<bool>();
+        }
+        if (!doc["useCooling"].isNull()) {
+          g_settings.fermentation.useCooling = doc["useCooling"].as<bool>();
+        }
+        if (!doc["coolingMinOnSec"].isNull()) {
+          g_settings.fermentation.coolingMinOnSec =
+              EditableFields::normalizeU16(
+                  EditableFields::Id::FERM_COOLING_MIN_ON_SEC,
+                  doc["coolingMinOnSec"].as<uint32_t>());
+        }
+        if (!doc["coolingMinOffSec"].isNull()) {
+          g_settings.fermentation.coolingMinOffSec =
+              EditableFields::normalizeU16(
+                  EditableFields::Id::FERM_COOLING_MIN_OFF_SEC,
+                  doc["coolingMinOffSec"].as<uint32_t>());
+        }
+        if (!doc["durationHours"].isNull()) {
+          g_settings.fermentation.durationHours = EditableFields::normalizeU16(
+              EditableFields::Id::FERM_DURATION_HOURS,
+              doc["durationHours"].as<uint32_t>());
         }
 
         if (!NVSManager::saveSettings(g_settings)) {

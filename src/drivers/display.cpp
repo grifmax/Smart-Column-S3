@@ -232,7 +232,8 @@ enum UiScreen : uint8_t {
   UI_SAFETY_VIEW,
   UI_PROCESS_EVENTS,
   UI_PROCESS_PARAMS,
-  UI_MODE_CONFIG
+  UI_MODE_CONFIG,
+  UI_MODE_PARAMETERS
 };
 
 enum class UiRootTab : uint8_t {
@@ -309,7 +310,9 @@ static constexpr UiScreenPolicy kUiScreenPolicies[] = {
     {UiRootTab::CONTROL, UiEditPolicy::ModeMonitorRuntime, false, false,
      UI_LIVE_PROCESS | UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_PROCESS_PARAMS
     {UiRootTab::CONTROL, UiEditPolicy::IdleOnly, false, false,
-     UI_LIVE_NONE} // UI_MODE_CONFIG
+     UI_LIVE_NONE}, // UI_MODE_CONFIG
+    {UiRootTab::CONTROL, UiEditPolicy::IdleOnly, false, false,
+     UI_LIVE_NONE} // UI_MODE_PARAMETERS
 };
 
 enum class DisplayRedrawReason : uint8_t {
@@ -414,6 +417,9 @@ struct UiState {
   uint8_t profilePickerPage = 0;
   uint8_t preflightPage = 0;
   uint8_t modeConfigPage = 0;
+  Mode modeParametersMode = Mode::IDLE;
+  uint8_t modeParametersPage = 0;
+  uint8_t modeParametersStep = 0;
   uint8_t processMenuPage = 0;
   bool serviceSession = false;
   char safetyActionMessage[144] = {0};
@@ -675,6 +681,7 @@ struct ManualRectUiParams {
 
 static ManualRectUiParams manualRectUi;
 static uint8_t rectParamsPage = 0; // 0 = профиль СС/фракции, 1 = техпараметры
+static uint8_t distParamsPage = 0; // 0 = отбор, 1 = программа фракций
 static uint8_t g_editMashStepIdx = 0;
 static uint8_t g_editHoldStepIdx = 0;
 
@@ -1847,7 +1854,7 @@ static void beginModeSetup(Mode mode) {
 
 static bool isModeSetupDraftScreen(UiScreen screen) {
   return screen == UI_MODE_SETUP || screen == UI_PROFILE_PICKER ||
-         screen == UI_MODE_CONFIG;
+         screen == UI_MODE_CONFIG || screen == UI_MODE_PARAMETERS;
 }
 
 static bool requireModeSetupDraftResolution() {
@@ -2159,8 +2166,15 @@ static void saveDistPower(float val) {
   persistDistUi();
 }
 static void saveDistTails(float val) {
-  distUi.tailsVolumeMl = val;
+  distUi.tailsVolumeMl = EditableFields::normalize(
+      EditableFields::Id::DIST_TAILS_VOLUME_ML, val);
   persistDistUi();
+}
+static void saveFractionProgramHeatingTarget(float val) {
+  g_settings.fractionProgram.heatingTargetTemperatureC =
+      EditableFields::normalize(
+          EditableFields::Id::FRACTION_PROGRAM_HEATING_TARGET_C, val);
+  NVSManager::saveSettings(g_settings);
 }
 
 static void saveManualRectSpeed(float val) {
@@ -2269,6 +2283,311 @@ static void saveManualPump(float val) {
       PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, val);
 }
 
+static void saveNbkPower(float val) {
+  g_settings.nbk.powerW =
+      EditableFields::normalize(EditableFields::Id::NBK_POWER_W, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveNbkPumpSpeed(float val) {
+  g_settings.nbk.pumpSpeedMlH =
+      EditableFields::normalize(EditableFields::Id::NBK_PUMP_SPEED_ML_H, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveNbkBottomTemp(float val) {
+  g_settings.nbk.columnBottomTempThresholdC =
+      EditableFields::normalize(EditableFields::Id::NBK_BOTTOM_TEMP_C, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveNbkTopTargetTemp(float val) {
+  g_settings.nbk.columnTopTargetTempC = EditableFields::normalize(
+      EditableFields::Id::NBK_TOP_TARGET_TEMP_C, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveNbkTargetVolume(float val) {
+  g_settings.nbk.targetVolumeMl =
+      EditableFields::normalize(EditableFields::Id::NBK_TARGET_VOLUME_ML, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveFermentationTargetTemp(float val) {
+  g_settings.fermentation.targetTempC =
+      EditableFields::normalize(EditableFields::Id::FERM_TARGET_TEMP_C, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveFermentationHysteresis(float val) {
+  g_settings.fermentation.hysteresisC =
+      EditableFields::normalize(EditableFields::Id::FERM_HYSTERESIS_C, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveFermentationCoolingMinOn(float val) {
+  g_settings.fermentation.coolingMinOnSec = static_cast<uint16_t>(
+      EditableFields::normalize(EditableFields::Id::FERM_COOLING_MIN_ON_SEC,
+                                val));
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveFermentationCoolingMinOff(float val) {
+  g_settings.fermentation.coolingMinOffSec = static_cast<uint16_t>(
+      EditableFields::normalize(EditableFields::Id::FERM_COOLING_MIN_OFF_SEC,
+                                val));
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveFermentationDuration(float val) {
+  g_settings.fermentation.durationHours = static_cast<uint16_t>(
+      EditableFields::normalize(EditableFields::Id::FERM_DURATION_HOURS,
+                                val));
+  NVSManager::saveSettings(g_settings);
+}
+
+static void normalizeCoolingPwmSettings() {
+  if (g_settings.equipment.coolingPwmMinDuty >
+      g_settings.equipment.coolingPwmMaxDuty) {
+    g_settings.equipment.coolingPwmMinDuty =
+        g_settings.equipment.coolingPwmMaxDuty;
+  }
+  g_settings.equipment.coolingPwmStartupDuty = constrain(
+      g_settings.equipment.coolingPwmStartupDuty,
+      g_settings.equipment.coolingPwmMinDuty,
+      g_settings.equipment.coolingPwmMaxDuty);
+}
+
+static void saveStirrerDefaultSpeed(float val) {
+  g_settings.stirrer.defaultSpeedPercent = static_cast<uint8_t>(
+      EditableFields::normalize(EditableFields::Id::STIRRER_DEFAULT_SPEED_PERCENT,
+                                val));
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveCoolingPwmMinDuty(float val) {
+  g_settings.equipment.coolingPwmMinDuty = static_cast<uint8_t>(
+      EditableFields::normalize(EditableFields::Id::COOLING_PWM_MIN_DUTY,
+                                val));
+  normalizeCoolingPwmSettings();
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveCoolingPwmMaxDuty(float val) {
+  g_settings.equipment.coolingPwmMaxDuty = static_cast<uint8_t>(
+      EditableFields::normalize(EditableFields::Id::COOLING_PWM_MAX_DUTY,
+                                val));
+  normalizeCoolingPwmSettings();
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveCoolingPwmStartupDuty(float val) {
+  g_settings.equipment.coolingPwmStartupDuty = static_cast<uint8_t>(
+      EditableFields::normalize(EditableFields::Id::COOLING_PWM_STARTUP_DUTY,
+                                val));
+  normalizeCoolingPwmSettings();
+  NVSManager::saveSettings(g_settings);
+}
+
+static void setFractionProgramEnabled(bool enabled) {
+  g_settings.fractionProgram.enabled = enabled;
+  NVSManager::saveSettings(g_settings);
+}
+
+static uint8_t getModeParametersPageCount(Mode mode) {
+  switch (mode) {
+  case Mode::NBK:
+  case Mode::FERMENTATION:
+    return 2;
+  default:
+    return 1;
+  }
+}
+
+static bool getModeParameterField(Mode mode, uint8_t page, uint8_t slot,
+                                  EditableFields::Id &field) {
+  using Id = EditableFields::Id;
+  switch (mode) {
+  case Mode::NBK:
+    if (page == 0) {
+      static constexpr Id kFields[] = {Id::NBK_POWER_W,
+                                       Id::NBK_PUMP_SPEED_ML_H,
+                                       Id::NBK_BOTTOM_TEMP_C,
+                                       Id::NBK_TOP_TARGET_TEMP_C};
+      if (slot < sizeof(kFields) / sizeof(kFields[0])) {
+        field = kFields[slot];
+        return true;
+      }
+    } else if (page == 1 && slot == 0) {
+      field = Id::NBK_TARGET_VOLUME_ML;
+      return true;
+    }
+    return false;
+  case Mode::FERMENTATION:
+    if (page == 0) {
+      static constexpr Id kFields[] = {
+          Id::FERM_TARGET_TEMP_C, Id::FERM_HYSTERESIS_C,
+          Id::FERM_COOLING_MIN_ON_SEC, Id::FERM_COOLING_MIN_OFF_SEC};
+      if (slot < sizeof(kFields) / sizeof(kFields[0])) {
+        field = kFields[slot];
+        return true;
+      }
+    } else if (page == 1 && slot == 0) {
+      field = Id::FERM_DURATION_HOURS;
+      return true;
+    }
+    return false;
+  case Mode::MASHING:
+    if (ui.modeParametersStep >= mashProfileDefault.stepCount || slot > 1) {
+      return false;
+    }
+    field = slot == 0 ? Id::MASH_STEP_TEMPERATURE_C
+                      : Id::MASH_STEP_DURATION_MIN;
+    return true;
+  case Mode::HOLD:
+    if (ui.modeParametersStep >= holdStepsCount || slot > 1) {
+      return false;
+    }
+    field = slot == 0 ? Id::HOLD_STEP_TEMPERATURE_C
+                      : Id::HOLD_STEP_DURATION_MIN;
+    return true;
+  case Mode::IDLE:
+    if (page == 0) {
+      static constexpr Id kFields[] = {
+          Id::STIRRER_DEFAULT_SPEED_PERCENT, Id::COOLING_PWM_MIN_DUTY,
+          Id::COOLING_PWM_MAX_DUTY, Id::COOLING_PWM_STARTUP_DUTY};
+      if (slot < sizeof(kFields) / sizeof(kFields[0])) {
+        field = kFields[slot];
+        return true;
+      }
+    }
+    return false;
+  default:
+    return false;
+  }
+}
+
+static float getModeParameterFieldValue(EditableFields::Id field) {
+  using Id = EditableFields::Id;
+  switch (field) {
+  case Id::NBK_POWER_W:
+    return g_settings.nbk.powerW;
+  case Id::NBK_PUMP_SPEED_ML_H:
+    return g_settings.nbk.pumpSpeedMlH;
+  case Id::NBK_BOTTOM_TEMP_C:
+    return g_settings.nbk.columnBottomTempThresholdC;
+  case Id::NBK_TOP_TARGET_TEMP_C:
+    return g_settings.nbk.columnTopTargetTempC;
+  case Id::NBK_TARGET_VOLUME_ML:
+    return g_settings.nbk.targetVolumeMl;
+  case Id::FERM_TARGET_TEMP_C:
+    return g_settings.fermentation.targetTempC;
+  case Id::FERM_HYSTERESIS_C:
+    return g_settings.fermentation.hysteresisC;
+  case Id::FERM_COOLING_MIN_ON_SEC:
+    return g_settings.fermentation.coolingMinOnSec;
+  case Id::FERM_COOLING_MIN_OFF_SEC:
+    return g_settings.fermentation.coolingMinOffSec;
+  case Id::FERM_DURATION_HOURS:
+    return g_settings.fermentation.durationHours;
+  case Id::STIRRER_DEFAULT_SPEED_PERCENT:
+    return g_settings.stirrer.defaultSpeedPercent;
+  case Id::COOLING_PWM_MIN_DUTY:
+    return g_settings.equipment.coolingPwmMinDuty;
+  case Id::COOLING_PWM_MAX_DUTY:
+    return g_settings.equipment.coolingPwmMaxDuty;
+  case Id::COOLING_PWM_STARTUP_DUTY:
+    return g_settings.equipment.coolingPwmStartupDuty;
+  case Id::MASH_STEP_TEMPERATURE_C:
+    return ui.modeParametersStep < mashProfileDefault.stepCount
+               ? mashProfileDefault.steps[ui.modeParametersStep].temperature
+               : 0.0f;
+  case Id::MASH_STEP_DURATION_MIN:
+    return ui.modeParametersStep < mashProfileDefault.stepCount
+               ? mashProfileDefault.steps[ui.modeParametersStep].duration
+               : 0.0f;
+  case Id::HOLD_STEP_TEMPERATURE_C:
+    return ui.modeParametersStep < holdStepsCount
+               ? holdStepsDefault[ui.modeParametersStep].temperature
+               : 0.0f;
+  case Id::HOLD_STEP_DURATION_MIN:
+    return ui.modeParametersStep < holdStepsCount
+               ? holdStepsDefault[ui.modeParametersStep].duration
+               : 0.0f;
+  default:
+    return 0.0f;
+  }
+}
+
+static ValueSaveCallback getModeParameterSaveCallback(EditableFields::Id field) {
+  using Id = EditableFields::Id;
+  switch (field) {
+  case Id::NBK_POWER_W:
+    return saveNbkPower;
+  case Id::NBK_PUMP_SPEED_ML_H:
+    return saveNbkPumpSpeed;
+  case Id::NBK_BOTTOM_TEMP_C:
+    return saveNbkBottomTemp;
+  case Id::NBK_TOP_TARGET_TEMP_C:
+    return saveNbkTopTargetTemp;
+  case Id::NBK_TARGET_VOLUME_ML:
+    return saveNbkTargetVolume;
+  case Id::FERM_TARGET_TEMP_C:
+    return saveFermentationTargetTemp;
+  case Id::FERM_HYSTERESIS_C:
+    return saveFermentationHysteresis;
+  case Id::FERM_COOLING_MIN_ON_SEC:
+    return saveFermentationCoolingMinOn;
+  case Id::FERM_COOLING_MIN_OFF_SEC:
+    return saveFermentationCoolingMinOff;
+  case Id::FERM_DURATION_HOURS:
+    return saveFermentationDuration;
+  case Id::STIRRER_DEFAULT_SPEED_PERCENT:
+    return saveStirrerDefaultSpeed;
+  case Id::COOLING_PWM_MIN_DUTY:
+    return saveCoolingPwmMinDuty;
+  case Id::COOLING_PWM_MAX_DUTY:
+    return saveCoolingPwmMaxDuty;
+  case Id::COOLING_PWM_STARTUP_DUTY:
+    return saveCoolingPwmStartupDuty;
+  case Id::MASH_STEP_TEMPERATURE_C:
+    g_editMashStepIdx = ui.modeParametersStep;
+    return saveMashStepTemp;
+  case Id::MASH_STEP_DURATION_MIN:
+    g_editMashStepIdx = ui.modeParametersStep;
+    return saveMashStepDuration;
+  case Id::HOLD_STEP_TEMPERATURE_C:
+    g_editHoldStepIdx = ui.modeParametersStep;
+    return saveHoldStepTemp;
+  case Id::HOLD_STEP_DURATION_MIN:
+    g_editHoldStepIdx = ui.modeParametersStep;
+    return saveHoldStepDuration;
+  default:
+    return nullptr;
+  }
+}
+
+static void openModeParameters(Mode mode) {
+  if (mode == Mode::RECTIFICATION) {
+    rectParamsPage = 0;
+    pushScreen(UI_RECT_PARAMS);
+    return;
+  }
+  if (mode == Mode::DISTILLATION) {
+    distParamsPage = 0;
+    pushScreen(UI_DIST_PARAMS);
+    return;
+  }
+  if (mode == Mode::MANUAL_RECT) {
+    pushScreen(UI_MANUAL);
+    return;
+  }
+  ui.modeParametersMode = mode;
+  ui.modeParametersPage = 0;
+  ui.modeParametersStep = 0;
+  pushScreen(UI_MODE_PARAMETERS);
+}
+
 static bool handleNavigationTap(int16_t tx, int16_t ty,
                                 const SystemState &state) {
   // A fullscreen operator overlay is modal: consume every touch before the
@@ -2288,7 +2607,7 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
   const bool isRoot = isRootNavigationScreen(ui.currentScreen);
 
   if (!isRoot && hit(tx, ty, TFT_WIDTH - 110, 0, 110, 50)) {
-    if (ui.currentScreen == UI_MODE_SETUP &&
+    if (isModeSetupDraftScreen(ui.currentScreen) &&
         requireModeSetupDraftResolution()) {
       return true;
     }
@@ -2657,7 +2976,7 @@ static bool handleModeSetupScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   if (hit(tx, ty, 10, UI_HEADER_H + 76, TFT_WIDTH - 20, 44)) {
-    pushScreen(UI_MODE_CONFIG);
+    openModeParameters(ui.setupDraft.mode);
     return true;
   }
   if (hit(tx, ty, 10, TFT_HEIGHT - UI_FOOTER_H - 36, TFT_WIDTH - 20, 32)) {
@@ -3000,14 +3319,7 @@ static bool handleSettingsScreenTap(int16_t tx, int16_t ty,
   }
   if (hit(tx, ty, SETTINGS_STIRRER_X, SETTINGS_STIRRER_Y, SETTINGS_STIRRER_W,
           SETTINGS_STIRRER_H)) {
-    g_settings.stirrer.enabled = !g_settings.stirrer.enabled;
-    if (!g_settings.stirrer.enabled) {
-      g_state.stirrer.autoMode = false;
-      PowerCommandGateway::stopStirrer(
-          PowerCommandGateway::Owner::SERVICE,
-          PowerCommandGateway::Reason::TFT_SERVICE_SETTING);
-    }
-    NVSManager::saveSettings(g_settings);
+    openModeParameters(Mode::IDLE);
     return true;
   }
   return false;
@@ -3119,6 +3431,11 @@ static bool handleRectParamsScreenTap(int16_t tx, int16_t ty,
     openValueEdit(EditableFields::Id::RECT_PURGE_MIN,
                   g_settings.rectParams.purgeMin, savePurgeMin);
     return true;
+  case 4:
+    g_settings.rectParams.baroCorrectionEnabled =
+        !g_settings.rectParams.baroCorrectionEnabled;
+    NVSManager::saveSettings(g_settings);
+    return true;
   default:
     return false;
   }
@@ -3126,27 +3443,49 @@ static bool handleRectParamsScreenTap(int16_t tx, int16_t ty,
 
 static bool handleDistParamsScreenTap(int16_t tx, int16_t ty,
                                       const SystemState &state) {
+  if (hit(tx, ty, 10, 48, 460, 26)) {
+    distParamsPage = (distParamsPage == 0) ? 1 : 0;
+    return true;
+  }
   if (!isScreenEditable(UI_DIST_PARAMS, state)) {
     return true;
   }
-  if (hit(tx, ty, 10, 48, 225, 78)) {
+  if (distParamsPage == 1) {
+    if (hit(tx, ty, 10, 82, 225, 62)) {
+      openValueEdit(EditableFields::Id::FRACTION_PROGRAM_HEATING_TARGET_C,
+                    g_settings.fractionProgram.heatingTargetTemperatureC,
+                    saveFractionProgramHeatingTarget);
+      return true;
+    }
+    if (hit(tx, ty, 245, 82, 225, 62)) {
+      setFractionProgramEnabled(!g_settings.fractionProgram.enabled);
+      return true;
+    }
+    return true;
+  }
+  if (hit(tx, ty, 10, 82, 225, 50)) {
     openValueEdit(EditableFields::Id::DIST_SPEED_ML_H, distUi.speedMlH,
                   saveDistSpeed);
     return true;
   }
-  if (hit(tx, ty, 245, 48, 225, 78)) {
+  if (hit(tx, ty, 245, 82, 225, 50)) {
     openValueEdit(EditableFields::Id::DIST_HEADS_VOLUME_ML,
                   distUi.headsVolumeMl, saveDistHeads);
     return true;
   }
-  if (hit(tx, ty, 10, 138, 225, 78)) {
+  if (hit(tx, ty, 10, 138, 225, 50)) {
     openValueEdit(EditableFields::Id::DIST_TARGET_VOLUME_ML,
                   distUi.targetVolumeMl, saveDistTarget);
     return true;
   }
-  if (hit(tx, ty, 245, 138, 225, 78)) {
+  if (hit(tx, ty, 245, 138, 225, 50)) {
     openValueEdit(EditableFields::Id::DIST_END_TEMPERATURE_C,
                   distUi.endTempC, saveDistEndTemp);
+    return true;
+  }
+  if (hit(tx, ty, 10, 194, TFT_WIDTH - 20, 32)) {
+    openValueEdit(EditableFields::Id::DIST_TAILS_VOLUME_ML,
+                  distUi.tailsVolumeMl, saveDistTails);
     return true;
   }
   return false;
@@ -3213,6 +3552,107 @@ static bool handleManualScreenTap(int16_t tx, int16_t ty,
   return false;
 }
 
+static bool handleModeParametersScreenTap(int16_t tx, int16_t ty,
+                                          const SystemState &state) {
+  if (!isScreenEditable(UI_MODE_PARAMETERS, state)) {
+    return true;
+  }
+
+  const Mode mode = ui.modeParametersMode;
+  if (hit(tx, ty, 10, 48, TFT_WIDTH - 20, 26) &&
+      getModeParametersPageCount(mode) > 1) {
+    ui.modeParametersPage =
+        (ui.modeParametersPage + 1) % getModeParametersPageCount(mode);
+    return true;
+  }
+
+  const int16_t row = ty >= 136 && ty < 186 ? 1 : 0;
+  if (ty >= 80 && ty < 130 || ty >= 136 && ty < 186) {
+    const int16_t col = tx >= 245 ? 1 : 0;
+    const int16_t x = col == 0 ? 10 : 245;
+    const int16_t y = row == 0 ? 80 : 136;
+    if (!hit(tx, ty, x, y, 225, 50)) {
+      return false;
+    }
+    EditableFields::Id field;
+    const uint8_t slot = static_cast<uint8_t>(row * 2 + col);
+    if (!getModeParameterField(mode, ui.modeParametersPage, slot, field)) {
+      return true;
+    }
+    ValueSaveCallback callback = getModeParameterSaveCallback(field);
+    if (callback == nullptr) {
+      return true;
+    }
+    openValueEdit(field, getModeParameterFieldValue(field), callback);
+    return true;
+  }
+
+  if (ty < 200 || ty >= 232) {
+    return false;
+  }
+
+  if (mode == Mode::MASHING || mode == Mode::HOLD) {
+    const uint8_t stepCount = mode == Mode::MASHING
+                                  ? mashProfileDefault.stepCount
+                                  : holdStepsCount;
+    if (stepCount == 0) {
+      return true;
+    }
+    if (hit(tx, ty, 10, 200, 225, 32) && ui.modeParametersStep > 0) {
+      --ui.modeParametersStep;
+      return true;
+    }
+    if (hit(tx, ty, 245, 200, 225, 32) &&
+        ui.modeParametersStep + 1 < stepCount) {
+      ++ui.modeParametersStep;
+      return true;
+    }
+    return true;
+  }
+
+  if (mode == Mode::NBK && hit(tx, ty, 10, 200, TFT_WIDTH - 20, 32)) {
+    g_settings.nbk.topTempCorrectionEnabled =
+        !g_settings.nbk.topTempCorrectionEnabled;
+    NVSManager::saveSettings(g_settings);
+    return true;
+  }
+  if (mode == Mode::FERMENTATION) {
+    if (hit(tx, ty, 10, 200, 225, 32)) {
+      g_settings.fermentation.useHeater = !g_settings.fermentation.useHeater;
+      NVSManager::saveSettings(g_settings);
+      return true;
+    }
+    if (hit(tx, ty, 245, 200, 225, 32)) {
+      g_settings.fermentation.useCooling =
+          !g_settings.fermentation.useCooling;
+      NVSManager::saveSettings(g_settings);
+      return true;
+    }
+    return true;
+  }
+  if (mode == Mode::IDLE) {
+    if (hit(tx, ty, 10, 200, 225, 32)) {
+      g_settings.stirrer.enabled = !g_settings.stirrer.enabled;
+      if (!g_settings.stirrer.enabled) {
+        g_state.stirrer.autoMode = false;
+        PowerCommandGateway::stopStirrer(
+            PowerCommandGateway::Owner::SERVICE,
+            PowerCommandGateway::Reason::TFT_SERVICE_SETTING);
+      }
+      NVSManager::saveSettings(g_settings);
+      return true;
+    }
+    if (hit(tx, ty, 245, 200, 225, 32)) {
+      g_settings.equipment.coolingPwmEnabled =
+          !g_settings.equipment.coolingPwmEnabled;
+      NVSManager::saveSettings(g_settings);
+      return true;
+    }
+    return true;
+  }
+  return false;
+}
+
 static bool handleServiceScreenTap(int16_t tx, int16_t ty,
                                    const SystemState &) {
   if (isServiceTempsTap(tx, ty)) {
@@ -3248,7 +3688,8 @@ static constexpr UiTapHandler kUiTapDispatch[] = {
     handleSafetyViewScreenTap,    // UI_SAFETY_VIEW
     handleProcessEventsScreenTap, // UI_PROCESS_EVENTS
     handleProcessParamsScreenTap, // UI_PROCESS_PARAMS
-    handleModeConfigScreenTap     // UI_MODE_CONFIG
+    handleModeConfigScreenTap,    // UI_MODE_CONFIG
+    handleModeParametersScreenTap // UI_MODE_PARAMETERS
 };
 
 static UiTapHandler getUiTapHandler(UiScreen screen) {
@@ -3738,7 +4179,7 @@ static void drawTabs(UiScreen current) {
   const bool modeSetupRoute =
       current == UI_MODE_PICKER || current == UI_MODE_SETUP ||
       current == UI_PREFLIGHT || current == UI_PROFILE_PICKER ||
-      current == UI_MODE_CONFIG;
+      current == UI_MODE_CONFIG || current == UI_MODE_PARAMETERS;
   const bool processControlRoute =
       current == UI_CONTROL || current == UI_SAFETY_VIEW ||
       current == UI_PROCESS_EVENTS || current == UI_PROCESS_PARAMS;
@@ -7650,6 +8091,188 @@ static void renderRootFooter(
                                 return COLOR_INFO;
                               }
 
+                              static void renderModeParameters(
+                                  const SystemState &state, bool full) {
+                                const bool ru = (g_settings.language == 0);
+                                const Mode mode = ui.modeParametersMode;
+                                const uint8_t pageCount =
+                                    getModeParametersPageCount(mode);
+                                const uint8_t page =
+                                    min(ui.modeParametersPage,
+                                        static_cast<uint8_t>(pageCount - 1));
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(ru ? "ПАРАМЕТРЫ РЕЖИМА"
+                                                : "MODE PARAMETERS",
+                                             true);
+                                  drawTabs(UI_MODE_PARAMETERS);
+                                }
+
+                                char pageLabel[96];
+                                if (mode == Mode::MASHING || mode == Mode::HOLD) {
+                                  const uint8_t stepCount =
+                                      mode == Mode::MASHING
+                                          ? mashProfileDefault.stepCount
+                                          : holdStepsCount;
+                                  snprintf(pageLabel, sizeof(pageLabel),
+                                           "%s · %s %u/%u", getDisplayModeName(mode),
+                                           ru ? "ШАГ" : "STEP",
+                                           static_cast<unsigned>(
+                                               min<uint8_t>(
+                                                   static_cast<uint8_t>(
+                                                       ui.modeParametersStep + 1),
+                                                   stepCount)),
+                                           static_cast<unsigned>(stepCount));
+                                } else if (pageCount > 1) {
+                                  snprintf(pageLabel, sizeof(pageLabel),
+                                           "%s · %u/%u · %s",
+                                           getDisplayModeName(mode),
+                                           static_cast<unsigned>(page + 1),
+                                           static_cast<unsigned>(pageCount),
+                                           ru ? "НАЖМИТЕ ДЛЯ СТРАНИЦЫ"
+                                              : "TAP FOR PAGE");
+                                } else {
+                                  snprintf(pageLabel, sizeof(pageLabel), "%s",
+                                           mode == Mode::IDLE
+                                               ? (ru ? "АКСЕССУАРЫ"
+                                                     : "ACCESSORIES")
+                                               : getDisplayModeName(mode));
+                                }
+                                drawButton(10, 48, TFT_WIDTH - 20, 26, pageLabel,
+                                           pageCount > 1 ? COLOR_INFO
+                                                         : colorAccent(),
+                                           TFT_WHITE);
+
+                                bool hasField = false;
+                                const uint16_t tones[] = {COLOR_INFO,
+                                                          COLOR_SUCCESS,
+                                                          COLOR_WARNING,
+                                                          colorAccent()};
+                                for (uint8_t slot = 0; slot < 4; ++slot) {
+                                  EditableFields::Id field;
+                                  const int16_t x = (slot % 2 == 0) ? 10 : 245;
+                                  const int16_t y = slot < 2 ? 80 : 136;
+                                  if (!getModeParameterField(mode, page, slot,
+                                                             field)) {
+                                    drawCard(x, y, 225, 50, colorCard());
+                                    continue;
+                                  }
+                                  hasField = true;
+                                  const EditableFields::Descriptor &descriptor =
+                                      EditableFields::get(field);
+                                  const float value =
+                                      getModeParameterFieldValue(field);
+                                  char valueText[32];
+                                  if (descriptor.decimals == 0) {
+                                    snprintf(valueText, sizeof(valueText), "%.0f",
+                                             value);
+                                  } else if (descriptor.decimals == 1) {
+                                    snprintf(valueText, sizeof(valueText), "%.1f",
+                                             value);
+                                  } else {
+                                    snprintf(valueText, sizeof(valueText), "%.3f",
+                                             value);
+                                  }
+                                  drawValueTile(
+                                      x, y, 225, 50,
+                                      EditableFields::label(field, ru), valueText,
+                                      descriptor.unit, tones[slot]);
+                                }
+
+                                if (!hasField) {
+                                  drawCard(10, 80, TFT_WIDTH - 20, 106,
+                                           colorCard());
+                                  tft.setTextColor(colorMuted());
+                                  tft.setTextSize(1);
+                                  tft.setTextDatum(middle_center);
+                                  drawDisplayString(
+                                      ru ? "Выберите совместимый профиль с шагами"
+                                         : "Choose a compatible profile with steps",
+                                      TFT_WIDTH / 2, 133);
+                                  tft.setTextDatum(top_left);
+                                }
+
+                                if (mode == Mode::MASHING || mode == Mode::HOLD) {
+                                  const uint8_t stepCount =
+                                      mode == Mode::MASHING
+                                          ? mashProfileDefault.stepCount
+                                          : holdStepsCount;
+                                  drawButton(10, 200, 225, 32,
+                                             ru ? "< ПРЕДЫДУЩИЙ" : "< PREVIOUS",
+                                             ui.modeParametersStep > 0
+                                                 ? COLOR_INFO
+                                                 : dimmedButtonColor(),
+                                             TFT_WHITE);
+                                  drawButton(245, 200, 225, 32,
+                                             ru ? "СЛЕДУЮЩИЙ >" : "NEXT >",
+                                             ui.modeParametersStep + 1 < stepCount
+                                                 ? COLOR_INFO
+                                                 : dimmedButtonColor(),
+                                             TFT_WHITE);
+                                } else if (mode == Mode::NBK) {
+                                  char label[96];
+                                  snprintf(label, sizeof(label), "%s: %s",
+                                           ru ? "КОРРЕКЦИЯ ВЕРХА"
+                                              : "TOP CORRECTION",
+                                           g_settings.nbk.topTempCorrectionEnabled
+                                               ? (ru ? "ВКЛ" : "ON")
+                                               : (ru ? "ВЫКЛ" : "OFF"));
+                                  drawButton(
+                                      10, 200, TFT_WIDTH - 20, 32, label,
+                                      g_settings.nbk.topTempCorrectionEnabled
+                                          ? COLOR_SUCCESS
+                                          : dimmedButtonColor(),
+                                      TFT_WHITE);
+                                } else if (mode == Mode::FERMENTATION) {
+                                  drawButton(10, 200, 225, 32,
+                                             g_settings.fermentation.useHeater
+                                                 ? (ru ? "НАГРЕВ: ВКЛ"
+                                                       : "HEATER: ON")
+                                                 : (ru ? "НАГРЕВ: ВЫКЛ"
+                                                       : "HEATER: OFF"),
+                                             g_settings.fermentation.useHeater
+                                                 ? COLOR_WARNING
+                                                 : dimmedButtonColor(),
+                                             TFT_WHITE);
+                                  drawButton(245, 200, 225, 32,
+                                             g_settings.fermentation.useCooling
+                                                 ? (ru ? "ОХЛАЖД.: ВКЛ"
+                                                       : "COOLING: ON")
+                                                 : (ru ? "ОХЛАЖД.: ВЫКЛ"
+                                                       : "COOLING: OFF"),
+                                             g_settings.fermentation.useCooling
+                                                 ? COLOR_SUCCESS
+                                                 : dimmedButtonColor(),
+                                             TFT_WHITE);
+                                } else if (mode == Mode::IDLE) {
+                                  drawButton(10, 200, 225, 32,
+                                             g_settings.stirrer.enabled
+                                                 ? (ru ? "МЕШАЛКА: ВКЛ"
+                                                       : "STIRRER: ON")
+                                                 : (ru ? "МЕШАЛКА: ВЫКЛ"
+                                                       : "STIRRER: OFF"),
+                                             g_settings.stirrer.enabled
+                                                 ? COLOR_SUCCESS
+                                                 : dimmedButtonColor(),
+                                             TFT_WHITE);
+                                  drawButton(245, 200, 225, 32,
+                                             g_settings.equipment.coolingPwmEnabled
+                                                 ? (ru ? "PWM: ВКЛ" : "PWM: ON")
+                                                 : (ru ? "PWM: ВЫКЛ" : "PWM: OFF"),
+                                             g_settings.equipment.coolingPwmEnabled
+                                                 ? COLOR_INFO
+                                                 : dimmedButtonColor(),
+                                             TFT_WHITE);
+                                }
+                                drawFooterHint(
+                                    isScreenEditable(UI_MODE_PARAMETERS, state)
+                                        ? (ru ? "Коснитесь значения для редактирования"
+                                              : "Tap a value to edit")
+                                        : (ru ? "Редактирование доступно только в ожидании"
+                                              : "Editing is available only while idle"),
+                                    colorAccent());
+                              }
+
                               static void renderModeSetup(const SystemState &state,
                                                           bool full) {
                                 const bool ru = (g_settings.language == 0);
@@ -8664,14 +9287,12 @@ static void renderRootFooter(
                                 {
                                   char stirrerLabel[24];
                                   snprintf(stirrerLabel, sizeof(stirrerLabel),
-                                           "%s:%s",
-                                           ru ? "Меш" : "Stir",
-                                           getStirrerEnabledCompactName());
+                                           "%s / PWM", ru ? "УЗЛЫ" : "AUX");
                                   drawButton(SETTINGS_STIRRER_X,
                                              SETTINGS_STIRRER_Y,
                                              SETTINGS_STIRRER_W,
                                              SETTINGS_STIRRER_H, stirrerLabel,
-                                             getStirrerEnabledColor(),
+                                             colorAccent(),
                                              TFT_WHITE);
                                 }
 
@@ -8841,11 +9462,16 @@ static void renderRootFooter(
                                     (atmHpaComp - RECT_PRESSURE_STD_HPA) *
                                         RECT_TEMP_COMP_C_PER_HPA;
 
-                                snprintf(tileBuf, sizeof(tileBuf), "%.1f",
-                                         bodyToTailsComp);
-                                drawValueTile(x1, y3, tileW, tileH,
-                                              msg(Msg::BODY_TO_TAILS), tileBuf,
-                                              "C", colorMuted());
+                                snprintf(tileBuf, sizeof(tileBuf), "%s",
+                                         g_settings.rectParams.baroCorrectionEnabled
+                                             ? (ru ? "БАРО: ВКЛ" : "BARO: ON")
+                                             : (ru ? "БАРО: ВЫКЛ" : "BARO: OFF"));
+                                drawButton(x1, y3, tileW, tileH, tileBuf,
+                                           g_settings.rectParams
+                                                   .baroCorrectionEnabled
+                                               ? COLOR_SUCCESS
+                                               : dimmedButtonColor(),
+                                           TFT_WHITE);
 
                                 snprintf(tileBuf, sizeof(tileBuf), "%.1f",
                                          finishComp);
@@ -8868,12 +9494,73 @@ static void renderRootFooter(
                                    drawHeader(tftText(TftTextId::DistTitle), true);
                                    drawTabs(UI_SETTINGS);
                                  }
+                                 const bool ru = (g_settings.language == 0);
+                                 drawButton(
+                                     10, 48, 460, 26,
+                                     distParamsPage == 0
+                                         ? (ru ? "ОТБОР / ОБЪЁМЫ"
+                                               : "TAKEOFF / VOLUMES")
+                                         : (ru ? "ПРОГРАММА ФРАКЦИЙ"
+                                               : "FRACTION PROGRAM"),
+                                     distParamsPage == 0 ? COLOR_INFO
+                                                         : colorAccent(),
+                                     TFT_WHITE);
+                                 if (distParamsPage == 1) {
+                                   char target[32];
+                                   snprintf(
+                                       target, sizeof(target), "%.1f",
+                                       g_settings.fractionProgram
+                                           .heatingTargetTemperatureC);
+                                   drawValueTile(
+                                       10, 82, 225, 62,
+                                       ru ? "НАГРЕВ ПРОГРАММЫ"
+                                          : "PROGRAM HEATING",
+                                       target, "C", COLOR_WARNING);
+                                   char enabled[64];
+                                   snprintf(enabled, sizeof(enabled), "%s",
+                                            g_settings.fractionProgram.enabled
+                                                ? (ru ? "ПРОГРАММА: ВКЛ"
+                                                      : "PROGRAM: ON")
+                                                : (ru ? "ПРОГРАММА: ВЫКЛ"
+                                                      : "PROGRAM: OFF"));
+                                   drawButton(
+                                       245, 82, 225, 62, enabled,
+                                       g_settings.fractionProgram.enabled
+                                           ? COLOR_SUCCESS
+                                           : dimmedButtonColor(),
+                                       TFT_WHITE);
+                                   char summary[96];
+                                   snprintf(
+                                       summary, sizeof(summary), "%s: %u",
+                                       ru ? "ШАГОВ В ПРОФИЛЕ"
+                                          : "PROFILE STEPS",
+                                       static_cast<unsigned>(
+                                           g_settings.fractionProgram.stepCount));
+                                   drawCard(10, 150, TFT_WIDTH - 20, 48,
+                                            colorCard());
+                                   drawPanelHeader(10, 150, TFT_WIDTH - 20,
+                                                   summary, COLOR_INFO);
+                                   tft.setTextColor(colorMuted());
+                                   tft.setTextSize(1);
+                                   tft.setTextDatum(middle_left);
+                                   drawDisplayString(
+                                       ru ? "Состав шагов изменяется в сохранённом профиле"
+                                          : "Step composition is edited in the saved profile",
+                                       20, 184);
+                                   tft.setTextDatum(top_left);
+                                   drawScreenAccessFooterHint(
+                                       UI_DIST_PARAMS, g_state,
+                                       ru ? "Коснитесь уставки или переключателя"
+                                          : "Tap the setting or toggle",
+                                       COLOR_INFO);
+                                   return;
+                                 }
                                  const int16_t x1 = 10;
                                  const int16_t x2 = 245;
-                                const int16_t y1 = 48;
+                                const int16_t y1 = 82;
                                 const int16_t y2 = 138;
                                 const int16_t tileW = 225;
-                                const int16_t tileH = 78;
+                                const int16_t tileH = 50;
                                 char tileBufDist[32];
 
                                 snprintf(tileBufDist, sizeof(tileBufDist),
@@ -8900,6 +9587,11 @@ static void renderRootFooter(
                                  drawValueTile(x2, y2, tileW, tileH,
                                                msg(Msg::END_TEMP), tileBufDist,
                                                "C", COLOR_WARNING);
+                                snprintf(tileBufDist, sizeof(tileBufDist),
+                                         "%.0f", distUi.tailsVolumeMl);
+                                drawValueTile(10, 194, TFT_WIDTH - 20, 32,
+                                              ru ? "ОБЪЁМ ХВОСТОВ" : "TAILS VOLUME",
+                                              tileBufDist, "ml", colorMuted());
                                  drawScreenAccessFooterHint(
                                      UI_DIST_PARAMS, g_state,
                                      msg(Msg::TAP_TO_EDIT), colorAccent());
@@ -9573,7 +10265,8 @@ static void renderRootFooter(
                                       renderSafetyView,        // UI_SAFETY_VIEW
                                       renderProcessEvents,     // UI_PROCESS_EVENTS
                                       renderProcessParams,     // UI_PROCESS_PARAMS
-                                      renderModeConfig         // UI_MODE_CONFIG
+                                      renderModeConfig,        // UI_MODE_CONFIG
+                                      renderModeParameters     // UI_MODE_PARAMETERS
                                   };
 
                               static UiRenderHandler

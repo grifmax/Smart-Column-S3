@@ -254,12 +254,16 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
               doc["coolingPwmEnabled"].as<bool>();
         }
         if (!doc["coolingPwmMinDuty"].isNull()) {
-          g_settings.equipment.coolingPwmMinDuty =
-              clampU8Range(doc["coolingPwmMinDuty"].as<uint32_t>(), 0, 255);
+          g_settings.equipment.coolingPwmMinDuty = static_cast<uint8_t>(
+              EditableFields::normalize(
+                  EditableFields::Id::COOLING_PWM_MIN_DUTY,
+                  doc["coolingPwmMinDuty"].as<float>()));
         }
         if (!doc["coolingPwmMaxDuty"].isNull()) {
-          g_settings.equipment.coolingPwmMaxDuty =
-              clampU8Range(doc["coolingPwmMaxDuty"].as<uint32_t>(), 0, 255);
+          g_settings.equipment.coolingPwmMaxDuty = static_cast<uint8_t>(
+              EditableFields::normalize(
+                  EditableFields::Id::COOLING_PWM_MAX_DUTY,
+                  doc["coolingPwmMaxDuty"].as<float>()));
         }
         if (g_settings.equipment.coolingPwmMinDuty >
             g_settings.equipment.coolingPwmMaxDuty) {
@@ -267,8 +271,12 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
               g_settings.equipment.coolingPwmMaxDuty;
         }
         if (!doc["coolingPwmStartupDuty"].isNull()) {
+          g_settings.equipment.coolingPwmStartupDuty = static_cast<uint8_t>(
+              EditableFields::normalize(
+                  EditableFields::Id::COOLING_PWM_STARTUP_DUTY,
+                  doc["coolingPwmStartupDuty"].as<float>()));
           g_settings.equipment.coolingPwmStartupDuty = clampU8Range(
-              doc["coolingPwmStartupDuty"].as<uint32_t>(),
+              g_settings.equipment.coolingPwmStartupDuty,
               g_settings.equipment.coolingPwmMinDuty,
               g_settings.equipment.coolingPwmMaxDuty);
         } else {
@@ -420,8 +428,10 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
           g_settings.stirrer.enabled = doc["enabled"].as<bool>();
         }
         if (!doc["defaultSpeedPercent"].isNull()) {
-          g_settings.stirrer.defaultSpeedPercent = clampU8Range(
-              doc["defaultSpeedPercent"].as<uint32_t>(), 1, 100);
+          g_settings.stirrer.defaultSpeedPercent = static_cast<uint8_t>(
+              EditableFields::normalize(
+                  EditableFields::Id::STIRRER_DEFAULT_SPEED_PERCENT,
+                  doc["defaultSpeedPercent"].as<float>()));
         }
         if (!doc["autoMashing"].isNull()) {
           g_settings.stirrer.autoMashing = doc["autoMashing"].as<bool>();

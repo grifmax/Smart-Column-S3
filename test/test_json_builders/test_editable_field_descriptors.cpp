@@ -34,4 +34,12 @@ void test_editable_field_normalization_clamps_and_snaps_to_step() {
       EditableFields::normalize(Id::PUMP_CALIBRATION_ML_PER_REV, NAN));
   TEST_ASSERT_EQUAL_UINT16(
       180, EditableFields::normalizeU16(Id::RECT_STABILIZATION_MIN, 999));
+  TEST_ASSERT_FLOAT_WITHIN(
+      0.001f, 5500.0f,
+      EditableFields::normalize(Id::NBK_POWER_W, 9999.0f));
+  TEST_ASSERT_FLOAT_WITHIN(
+      0.001f, 0.1f,
+      EditableFields::normalize(Id::FERM_HYSTERESIS_C, 0.01f));
+  TEST_ASSERT_EQUAL_UINT16(
+      255, EditableFields::normalizeU16(Id::COOLING_PWM_MAX_DUTY, 999));
 }

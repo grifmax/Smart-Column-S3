@@ -405,6 +405,21 @@
 
 - `baroCorrectionEnabled` — включает или отключает мягкую барокоррекцию температурных порогов профиля.
 
+`GET/POST /api/settings/nbk` использует `powerW`, `pumpSpeedMlH`,
+`columnBottomTempThresholdC`, `topTempCorrectionEnabled`,
+`columnTopTargetTempC` и `targetVolumeMl`.
+
+`GET/POST /api/settings/fermentation` возвращает и принимает `targetTempC`,
+`hysteresisC`, `useHeater`, `useCooling`, `coolingMinOnSec`,
+`coolingMinOffSec` и `durationHours`. Значения нормализуются по тому же
+контракту `EditableFields`, что и на TFT.
+
+Поля `coolingPwmMinDuty`, `coolingPwmMaxDuty`,
+`coolingPwmStartupDuty` в `/api/settings/equipment`, а также
+`defaultSpeedPercent` в `/api/settings/stirrer` используют те же TFT/API
+границы. `coolingPwmStartupDuty` дополнительно ограничивается текущим
+интервалом minimum–maximum.
+
 ---
 
 ## Исполнительные механизмы и сервис
