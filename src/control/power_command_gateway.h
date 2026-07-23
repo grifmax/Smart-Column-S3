@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+enum class Fraction : uint8_t;
+
 // The TFT must not call power drivers directly. This gateway is its single
 // command boundary and leaves an auditable record of who requested an output,
 // why, when, and whether the required safe-stop has happened.
@@ -19,13 +21,19 @@ enum class Target : uint8_t {
   STIRRER,
   WATER_VALVE,
   HEADS_VALVE,
+  BODY_VALVE,
+  TAILS_VALVE,
   UNO_VALVE,
+  START_STOP_PWM,
+  FRACTIONATOR,
   ALL_OUTPUTS,
 };
 
 enum class Valve : uint8_t {
   WATER = 0,
   HEADS,
+  BODY,
+  TAILS,
   UNO,
 };
 
@@ -33,6 +41,7 @@ enum class Reason : uint8_t {
   TFT_RUNTIME_SETPOINT = 0,
   TFT_MANUAL_OUTPUT,
   TFT_SERVICE_SETTING,
+  TFT_SERVICE_TEST,
   TFT_PROCESS_PAUSE,
   TFT_PROCESS_STOP,
 };
@@ -81,8 +90,13 @@ void noteFsmSafeStop(Reason reason);
 
 void setHeaterPower(Owner owner, Reason reason, uint8_t percent);
 void setPumpSpeed(Owner owner, Reason reason, float mlPerHour);
+void setStirrerSpeed(Owner owner, Reason reason, uint8_t percent);
 void stopStirrer(Owner owner, Reason reason);
 void setValve(Owner owner, Reason reason, Valve valve, bool open);
+void pulseValve(Owner owner, Reason reason, Valve valve, uint32_t durationMs);
+void setCoolingPwm(Owner owner, Reason reason, uint8_t duty);
+void setFraction(Owner owner, Reason reason, Fraction fraction,
+                 bool smooth = true);
 
 // Full fail-safe output state for a future TFT emergency action. Existing
 // safety logic remains authoritative and may invoke the same hardware state.

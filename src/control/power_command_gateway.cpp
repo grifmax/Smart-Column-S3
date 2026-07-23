@@ -20,6 +20,10 @@ Target targetForValve(Valve valve) {
     return Target::WATER_VALVE;
   case Valve::HEADS:
     return Target::HEADS_VALVE;
+  case Valve::BODY:
+    return Target::BODY_VALVE;
+  case Valve::TAILS:
+    return Target::TAILS_VALVE;
   case Valve::UNO:
     return Target::UNO_VALVE;
   default:
@@ -75,9 +79,19 @@ void setPumpSpeed(Owner owner, Reason reason, float mlPerHour) {
   }
 }
 
+void setStirrerSpeed(Owner owner, Reason reason, uint8_t percent) {
+  const bool safeStop = percent == 0;
+  record(owner, Target::STIRRER, reason, static_cast<float>(percent),
+         safeStop);
+  if (safeStop) {
+    Stirrer::stop();
+  } else {
+    Stirrer::start(percent);
+  }
+}
+
 void stopStirrer(Owner owner, Reason reason) {
-  record(owner, Target::STIRRER, reason, 0.0f, true);
-  Stirrer::stop();
+  setStirrerSpeed(owner, reason, 0);
 }
 
 void setValve(Owner owner, Reason reason, Valve valve, bool open) {
@@ -89,10 +103,50 @@ void setValve(Owner owner, Reason reason, Valve valve, bool open) {
   case Valve::HEADS:
     Valves::setHeads(open);
     break;
+  case Valve::BODY:
+    Valves::setBody(open);
+    break;
+  case Valve::TAILS:
+    Valves::setTails(open);
+    break;
   case Valve::UNO:
     Valves::setUno(open);
     break;
   }
+}
+
+void pulseValve(Owner owner, Reason reason, Valve valve, uint32_t durationMs) {
+  record(owner, targetForValve(valve), reason, static_cast<float>(durationMs),
+         false);
+  switch (valve) {
+  case Valve::WATER:
+    Valves::pulse(Valves::ValveId::WATER, durationMs);
+    break;
+  case Valve::HEADS:
+    Valves::pulse(Valves::ValveId::HEADS, durationMs);
+    break;
+  case Valve::BODY:
+    Valves::pulse(Valves::ValveId::BODY, durationMs);
+    break;
+  case Valve::TAILS:
+    Valves::pulse(Valves::ValveId::TAILS, durationMs);
+    break;
+  case Valve::UNO:
+    Valves::pulse(Valves::ValveId::UNO, durationMs);
+    break;
+  }
+}
+
+void setCoolingPwm(Owner owner, Reason reason, uint8_t duty) {
+  record(owner, Target::START_STOP_PWM, reason, static_cast<float>(duty),
+         duty == 0);
+  Valves::setStartStop(duty);
+}
+
+void setFraction(Owner owner, Reason reason, Fraction fraction, bool smooth) {
+  record(owner, Target::FRACTIONATOR, reason,
+         static_cast<float>(static_cast<uint8_t>(fraction)), false);
+  Valves::setFraction(fraction, smooth);
 }
 
 void safeStopAll(Owner owner, Reason reason) {

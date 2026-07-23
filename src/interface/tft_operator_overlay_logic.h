@@ -14,6 +14,7 @@ enum class Action : uint8_t {
   MashOperatorWait,
   FractionConfirmation,
   ContainerChange,
+  ServiceHeaterStart,
 };
 
 struct State {

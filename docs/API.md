@@ -458,9 +458,14 @@
 
 Для `POST /api/testing/valves` доступны:
 
-- `target: "water" | "heads" | "uno"` + `open`
-- `target: "water" | "heads" | "uno"` + `action: "pulse"` + `durationMs`
+- `target: "water" | "heads" | "body" | "tails" | "uno"` + `open`
+- `target: "water" | "heads" | "body" | "tails" | "uno"` + `action: "pulse"` + `durationMs`
 - `target: "startStop"` + `duty` — сервисная установка PWM-канала охлаждения
+
+`body` и `tails` возвращают `409`, если соответствующего клапана нет в
+фактическом профиле платы. Локальный TFT `SERVICE_TEST` использует тот же
+guard (`IDLE`, safety без latch/alarm, не demo) и показывает только доступные
+в конфигурации приводы; это не запускает сервисную паузу активного FSM (D-016).
 
 `GET /api/testing/status` дополнительно возвращает:
 

@@ -6,6 +6,7 @@
  */
 
 #include "display.h"
+#include "control/equipment_testing_logic.h"
 #include "control/v2/status_adapter.h"
 #include "control/fsm.h"
 #include "control/power_command_gateway.h"
@@ -19,6 +20,7 @@
 #include "interface/localization.h"
 #include "interface/tft_hmi_policy_logic.h"
 #include "interface/tft_operator_overlay_logic.h"
+#include "interface/tft_service_test_logic.h"
 #include "interface/webserver_shared.h"
 #include "profiles.h"
 #include "storage/logger.h"
@@ -233,7 +235,8 @@ enum UiScreen : uint8_t {
   UI_PROCESS_EVENTS,
   UI_PROCESS_PARAMS,
   UI_MODE_CONFIG,
-  UI_MODE_PARAMETERS
+  UI_MODE_PARAMETERS,
+  UI_SERVICE_TEST
 };
 
 enum class UiRootTab : uint8_t {
@@ -312,7 +315,9 @@ static constexpr UiScreenPolicy kUiScreenPolicies[] = {
     {UiRootTab::CONTROL, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE}, // UI_MODE_CONFIG
     {UiRootTab::CONTROL, UiEditPolicy::IdleOnly, false, false,
-     UI_LIVE_NONE} // UI_MODE_PARAMETERS
+     UI_LIVE_NONE}, // UI_MODE_PARAMETERS
+    {UiRootTab::SERVICE, UiEditPolicy::ViewOnly, false, false,
+     UI_LIVE_TEMPERATURES | UI_LIVE_POWER} // UI_SERVICE_TEST
 };
 
 enum class DisplayRedrawReason : uint8_t {
@@ -422,6 +427,9 @@ struct UiState {
   uint8_t modeParametersStep = 0;
   uint8_t processMenuPage = 0;
   bool serviceSession = false;
+  uint8_t serviceTestPage = 0;
+  bool serviceTestOutputActive = false;
+  char serviceTestMessage[144] = {0};
   char safetyActionMessage[144] = {0};
   char setupDraftMessage[144] = {0};
   TftOperatorOverlayLogic::State operatorOverlay;
@@ -435,6 +443,7 @@ static bool syncOperatorOverlay(const SystemState &state);
 static void openOperatorOverlay(TftOperatorOverlayLogic::Action action);
 static void closeOperatorOverlay();
 static void drawOperatorOverlay(const SystemState &state);
+static void stopServiceTestOutputs(const char *message);
 static TftPreflightSnapshot g_tftPreflight;
 static TftProfileOption g_tftProfileOptions[MAX_PROFILES];
 static uint8_t g_tftProfileOptionCount = 0;
@@ -1221,7 +1230,11 @@ static bool isRootControlTap(int16_t tx, int16_t ty) {
 }
 
 static bool isServiceTempsTap(int16_t tx, int16_t ty) {
-  return hit(tx, ty, 10, 180, TFT_WIDTH - 20, 80);
+  return hit(tx, ty, 10, 162, 225, 64);
+}
+
+static bool isServiceTestTap(int16_t tx, int16_t ty) {
+  return hit(tx, ty, 245, 162, 225, 64);
 }
 
 static void requestFullScreenRedraw() {
@@ -2613,6 +2626,11 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
         requireModeSetupDraftResolution()) {
       return true;
     }
+    if (ui.currentScreen == UI_SERVICE_TEST) {
+      stopServiceTestOutputs(
+          (g_settings.language == 0) ? "Сервисный тест остановлен при выходе."
+                                     : "Service test stopped on exit.");
+    }
     popScreen();
     return true;
   }
@@ -2625,6 +2643,11 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
         isModeSetupDraftScreen(ui.currentScreen) &&
         requireModeSetupDraftResolution()) {
       return true;
+    }
+    if (ui.currentScreen == UI_SERVICE_TEST) {
+      stopServiceTestOutputs(
+          (g_settings.language == 0) ? "Сервисный тест остановлен при выходе."
+                                     : "Service test stopped on exit.");
     }
     const int action = tx / (TFT_WIDTH / 3);
     if (action == 0) {
@@ -3666,10 +3689,304 @@ static bool handleModeParametersScreenTap(int16_t tx, int16_t ty,
   return false;
 }
 
+static void setServiceTestMessage(const char *message) {
+  if (message == nullptr) {
+    ui.serviceTestMessage[0] = '\0';
+    return;
+  }
+  snprintf(ui.serviceTestMessage, sizeof(ui.serviceTestMessage), "%s", message);
+}
+
+static bool serviceTestAllowed(const SystemState &state, char *reason,
+                               size_t reasonSize) {
+  const EquipmentTestingLogic::BlockReason block =
+      EquipmentTestingLogic::evaluateGuard(
+          state.mode != Mode::IDLE, Safety::isLatched(state),
+          state.currentAlarm.type != AlarmType::NONE, state.safetyOk,
+          g_settings.demoMode);
+  if (block == EquipmentTestingLogic::BlockReason::NONE) {
+    if (reason != nullptr && reasonSize > 0) reason[0] = '\0';
+    return true;
+  }
+
+  const bool ru = g_settings.language == 0;
+  const char *message = ru ? "Проверка оборудования недоступна."
+                           : "Equipment testing is unavailable.";
+  switch (block) {
+  case EquipmentTestingLogic::BlockReason::PROCESS_ACTIVE:
+    message = ru ? "Сначала завершите активный процесс."
+                 : "Finish the active process first.";
+    break;
+  case EquipmentTestingLogic::BlockReason::SAFETY_LATCHED:
+    message = ru ? "Сначала сбросьте защёлкнутую защиту."
+                 : "Reset the latched safety protection first.";
+    break;
+  case EquipmentTestingLogic::BlockReason::ALARM_ACTIVE:
+    message = ru ? "Сначала обработайте активную тревогу."
+                 : "Handle the active alarm first.";
+    break;
+  case EquipmentTestingLogic::BlockReason::SAFETY_NOT_OK:
+    message = ru ? "Safety не готов: тест блокирован."
+                 : "Safety is not ready: test is blocked.";
+    break;
+  case EquipmentTestingLogic::BlockReason::DEMO_MODE:
+    message = ru ? "В demo-режиме физические тесты запрещены."
+                 : "Physical tests are disabled in demo mode.";
+    break;
+  case EquipmentTestingLogic::BlockReason::NONE:
+    break;
+  }
+  if (reason != nullptr && reasonSize > 0) {
+    snprintf(reason, reasonSize, "%s", message);
+  }
+  return false;
+}
+
+static TftServiceTestLogic::Availability
+getServiceTestAvailability(const SystemState &state) {
+  TftServiceTestLogic::Availability availability;
+  availability.heater = PIN_HEATER >= 0;
+  availability.pump = PIN_PUMP_STEP >= 0 && PIN_PUMP_DIR >= 0;
+  availability.stirrer =
+      g_settings.stirrer.enabled && Stirrer::isAvailable();
+  availability.waterValve = PIN_VALVE_WATER >= 0;
+  availability.headsValve = Valves::hasHeadsValve();
+  availability.bodyValve = Valves::hasBodyValve();
+  availability.tailsValve = Valves::hasTailsValve();
+  availability.unoValve = Valves::hasUnoValve();
+  availability.coolingPwm =
+      BOARD_HAS_STARTSTOP_PWM && g_settings.equipment.coolingPwmEnabled;
+  availability.fractionator =
+      BOARD_HAS_FRACTIONATOR_SERVO && g_settings.fractionator.enabled &&
+      Valves::isFractionatorEnabled();
+  availability.sensors = countExpectedTempSensors() > 0 ||
+                         state.health.bmp280Ok || state.health.ads1115Ok ||
+                         state.health.pzemOk;
+  return availability;
+}
+
+static bool beginServiceTestOutput(const SystemState &state) {
+  char reason[144] = "";
+  if (!serviceTestAllowed(state, reason, sizeof(reason))) {
+    setServiceTestMessage(reason);
+    return false;
+  }
+  PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::SERVICE,
+                                   PowerCommandGateway::Reason::TFT_SERVICE_TEST);
+  ui.serviceTestOutputActive = true;
+  return true;
+}
+
+static void stopServiceTestOutputs(const char *message) {
+  if (ui.serviceTestOutputActive) {
+    PowerCommandGateway::safeStopAll(
+        PowerCommandGateway::Owner::SERVICE,
+        PowerCommandGateway::Reason::TFT_SERVICE_TEST);
+    ui.serviceTestOutputActive = false;
+  }
+  setServiceTestMessage(message);
+}
+
+static void runServiceValvePulse(const SystemState &state,
+                                 PowerCommandGateway::Valve valve,
+                                 const char *message) {
+  if (!beginServiceTestOutput(state)) return;
+  PowerCommandGateway::pulseValve(PowerCommandGateway::Owner::SERVICE,
+                                  PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                                  valve, 1000);
+  setServiceTestMessage(message);
+}
+
 static bool handleServiceScreenTap(int16_t tx, int16_t ty,
                                    const SystemState &) {
   if (isServiceTempsTap(tx, ty)) {
     pushScreen(UI_ALL_TEMPS);
+    return true;
+  }
+  if (isServiceTestTap(tx, ty)) {
+    ui.serviceTestPage = 0;
+    ui.serviceTestOutputActive = false;
+    setServiceTestMessage(nullptr);
+    pushScreen(UI_SERVICE_TEST);
+    return true;
+  }
+  return false;
+}
+
+static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
+                                       const SystemState &state) {
+  const int16_t pageY = UI_HEADER_H + 4;
+  const int16_t firstRowY = pageY + 38;
+  const int16_t rowH = 42;
+  const int16_t rowGap = 8;
+  const int16_t x1 = 10;
+  const int16_t x2 = 245;
+  const int16_t w = 225;
+  const auto availability = getServiceTestAvailability(state);
+
+  if (hit(tx, ty, x1, pageY, 96, 28) && ui.serviceTestPage > 0) {
+    --ui.serviceTestPage;
+    return true;
+  }
+  if (hit(tx, ty, TFT_WIDTH - 106, pageY, 96, 28) &&
+      ui.serviceTestPage < 2) {
+    ++ui.serviceTestPage;
+    return true;
+  }
+
+  if (ui.serviceTestPage == 0) {
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::Pump, availability) &&
+        hit(tx, ty, x1, firstRowY, w, rowH)) {
+      if (Pump::isRunning()) {
+        stopServiceTestOutputs((g_settings.language == 0)
+                                   ? "Сервисный тест насоса остановлен."
+                                   : "Pump service test stopped.");
+        return true;
+      }
+      if (!beginServiceTestOutput(state)) return true;
+      PowerCommandGateway::setPumpSpeed(
+          PowerCommandGateway::Owner::SERVICE,
+          PowerCommandGateway::Reason::TFT_SERVICE_TEST, 300.0f);
+      setServiceTestMessage((g_settings.language == 0)
+                                ? "Насос запущен на 300 мл/ч."
+                                : "Pump started at 300 ml/h.");
+      return true;
+    }
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::Stirrer, availability) &&
+        hit(tx, ty, x2, firstRowY, w, rowH)) {
+      if (Stirrer::isRunning()) {
+        stopServiceTestOutputs((g_settings.language == 0)
+                                   ? "Сервисный тест мешалки остановлен."
+                                   : "Stirrer service test stopped.");
+        return true;
+      }
+      if (!beginServiceTestOutput(state)) return true;
+      const uint8_t speed = g_settings.stirrer.defaultSpeedPercent > 0
+                                ? g_settings.stirrer.defaultSpeedPercent
+                                : 30;
+      PowerCommandGateway::setStirrerSpeed(
+          PowerCommandGateway::Owner::SERVICE,
+          PowerCommandGateway::Reason::TFT_SERVICE_TEST, speed);
+      setServiceTestMessage((g_settings.language == 0)
+                                ? "Мешалка запущена на сервисной скорости."
+                                : "Stirrer started at service speed.");
+      return true;
+    }
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::Heater, availability) &&
+        hit(tx, ty, x1, firstRowY + rowH + rowGap, w, rowH)) {
+      if (Heater::getDiagnostics().active) {
+        stopServiceTestOutputs((g_settings.language == 0)
+                                   ? "Сервисный тест ТЭНа остановлен."
+                                   : "Heater service test stopped.");
+        return true;
+      }
+      char reason[144] = "";
+      if (!serviceTestAllowed(state, reason, sizeof(reason))) {
+        setServiceTestMessage(reason);
+        return true;
+      }
+      openOperatorOverlay(TftOperatorOverlayLogic::Action::ServiceHeaterStart);
+      return true;
+    }
+    if (hit(tx, ty, x2, firstRowY + rowH + rowGap, w, rowH)) {
+      stopServiceTestOutputs((g_settings.language == 0)
+                                 ? "Все сервисные выходы остановлены."
+                                 : "All service outputs have been stopped.");
+      return true;
+    }
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::Sensors, availability) &&
+        hit(tx, ty, 10, firstRowY + (rowH + rowGap) * 2, TFT_WIDTH - 20,
+            rowH)) {
+      pushScreen(UI_ALL_TEMPS);
+      return true;
+    }
+    return false;
+  }
+
+  if (ui.serviceTestPage == 1) {
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::WaterValve, availability) &&
+        hit(tx, ty, x1, firstRowY, w, rowH)) {
+      runServiceValvePulse(state, PowerCommandGateway::Valve::WATER,
+                           (g_settings.language == 0)
+                               ? "Клапан воды: импульс 1 с."
+                               : "Water valve: 1 second pulse.");
+      return true;
+    }
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::HeadsValve, availability) &&
+        hit(tx, ty, x2, firstRowY, w, rowH)) {
+      runServiceValvePulse(state, PowerCommandGateway::Valve::HEADS,
+                           (g_settings.language == 0)
+                               ? "Клапан голов: импульс 1 с."
+                               : "Heads valve: 1 second pulse.");
+      return true;
+    }
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::BodyValve, availability) &&
+        hit(tx, ty, x1, firstRowY + rowH + rowGap, w, rowH)) {
+      runServiceValvePulse(state, PowerCommandGateway::Valve::BODY,
+                           (g_settings.language == 0)
+                               ? "Клапан тела: импульс 1 с."
+                               : "Body valve: 1 second pulse.");
+      return true;
+    }
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::TailsValve, availability) &&
+        hit(tx, ty, x2, firstRowY + rowH + rowGap, w, rowH)) {
+      runServiceValvePulse(state, PowerCommandGateway::Valve::TAILS,
+                           (g_settings.language == 0)
+                               ? "Клапан хвостов: импульс 1 с."
+                               : "Tails valve: 1 second pulse.");
+      return true;
+    }
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::UnoValve, availability) &&
+        hit(tx, ty, x1, firstRowY + (rowH + rowGap) * 2, w, rowH)) {
+      runServiceValvePulse(state, PowerCommandGateway::Valve::UNO,
+                           (g_settings.language == 0)
+                               ? "Клапан УНО: импульс 1 с."
+                               : "UNO valve: 1 second pulse.");
+      return true;
+    }
+    if (TftServiceTestLogic::isAvailable(
+            TftServiceTestLogic::Device::CoolingPwm, availability) &&
+        hit(tx, ty, x2, firstRowY + (rowH + rowGap) * 2, w, rowH)) {
+      if (Valves::getStartStop() > 0) {
+        stopServiceTestOutputs((g_settings.language == 0)
+                                   ? "Сервисный тест PWM остановлен."
+                                   : "PWM service test stopped.");
+        return true;
+      }
+      if (!beginServiceTestOutput(state)) return true;
+      uint8_t duty = g_settings.equipment.coolingPwmStartupDuty;
+      if (duty == 0) duty = 96;
+      PowerCommandGateway::setCoolingPwm(
+          PowerCommandGateway::Owner::SERVICE,
+          PowerCommandGateway::Reason::TFT_SERVICE_TEST, duty);
+      setServiceTestMessage((g_settings.language == 0)
+                                ? "PWM охлаждения включён на сервисном уровне."
+                                : "Cooling PWM enabled at service level.");
+      return true;
+    }
+    return false;
+  }
+
+  if (TftServiceTestLogic::isAvailable(
+          TftServiceTestLogic::Device::Fractionator, availability) &&
+      hit(tx, ty, 10, firstRowY, TFT_WIDTH - 20, rowH)) {
+    if (!beginServiceTestOutput(state)) return true;
+    const Fraction next = Valves::getNextEnabledFraction(g_settings.fractionator);
+    PowerCommandGateway::setFraction(PowerCommandGateway::Owner::SERVICE,
+                                     PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                                     next, true);
+    setServiceTestMessage((g_settings.language == 0)
+                              ? "Фракционник переведён в следующую позицию."
+                              : "Fractionator moved to the next position.");
     return true;
   }
   return false;
@@ -3702,7 +4019,8 @@ static constexpr UiTapHandler kUiTapDispatch[] = {
     handleProcessEventsScreenTap, // UI_PROCESS_EVENTS
     handleProcessParamsScreenTap, // UI_PROCESS_PARAMS
     handleModeConfigScreenTap,    // UI_MODE_CONFIG
-    handleModeParametersScreenTap // UI_MODE_PARAMETERS
+    handleModeParametersScreenTap, // UI_MODE_PARAMETERS
+    handleServiceTestScreenTap     // UI_SERVICE_TEST
 };
 
 static UiTapHandler getUiTapHandler(UiScreen screen) {
@@ -4208,7 +4526,8 @@ static void drawTabs(UiScreen current) {
         (i == 0 && current == (processActive ? UI_MODE_MONITOR : UI_DASHBOARD)) ||
         (i == 1 &&
          (processActive ? processControlRoute : modeSetupRoute)) ||
-        (i == 2 && current == UI_SERVICE);
+        (i == 2 &&
+         (current == UI_SERVICE || current == UI_SERVICE_TEST));
     const uint16_t bg = active ? colorButtonBody() : colorNavInactive();
     const uint16_t fg = active ? TFT_WHITE : colorFg();
 
@@ -4830,6 +5149,15 @@ static void drawOperatorOverlay(const SystemState &state) {
     confirm = ru ? "ПРОДОЛЖИТЬ" : "CONTINUE";
     tone = COLOR_WARNING;
     break;
+  case Action::ServiceHeaterStart:
+    title = ru ? "ТЕСТ ТЭНА" : "HEATER TEST";
+    message = ru ? "ТЭН будет включён на 10%. Убедитесь, что он погружён "
+                   "в жидкость и зона безопасна."
+                 : "The heater will start at 10%. Make sure it is submerged "
+                   "and the area is safe.";
+    confirm = ru ? "ВКЛЮЧИТЬ 10%" : "START 10%";
+    tone = COLOR_DANGER;
+    break;
   case Action::None:
   default:
     return;
@@ -4946,6 +5274,28 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
     }
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
       resumeProcessFromOperatorOverlay();
+      closeOperatorOverlay();
+    }
+    break;
+  case Action::ServiceHeaterStart:
+    if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
+      char reason[144] = "";
+      if (!serviceTestAllowed(state, reason, sizeof(reason))) {
+        setServiceTestMessage(reason);
+        closeOperatorOverlay();
+        break;
+      }
+      PowerCommandGateway::safeStopAll(
+          PowerCommandGateway::Owner::SERVICE,
+          PowerCommandGateway::Reason::TFT_SERVICE_TEST);
+      PowerCommandGateway::setHeaterPower(
+          PowerCommandGateway::Owner::SERVICE,
+          PowerCommandGateway::Reason::TFT_SERVICE_TEST, 10);
+      ui.serviceTestOutputActive = true;
+      snprintf(ui.serviceTestMessage, sizeof(ui.serviceTestMessage), "%s",
+               (g_settings.language == 0)
+                   ? "ТЭН включён на 10%; остановите тест после проверки."
+                   : "Heater started at 10%; stop the test after checking.");
       closeOperatorOverlay();
     }
     break;
@@ -9787,14 +10137,16 @@ static void renderRootFooter(
                                                      msg(Msg::UPTIME));
                                   drawValueTileShell(x1, y2, tileW, tileH,
                                                      msg(Msg::FREE_HEAP));
-                                  drawValueTileShell(
+                                  drawButton(
                                       x2, y2, tileW, tileH,
-                                      tftText(TftTextId::ServiceFrame));
+                                      g_settings.language == 0
+                                          ? "ПРОВЕРКА ОБОРУДОВАНИЯ"
+                                          : "EQUIPMENT TEST",
+                                      COLOR_WARNING, TFT_WHITE);
                                 }
 
-                                char buf[48];
+                                char buf[64];
                                 char uptimeBuf[16];
-                                char frameBuf[24];
                                 char ipBuf[32];
 
                                 getServiceIpSummary(ipBuf, sizeof(ipBuf));
@@ -9819,14 +10171,10 @@ static void renderRootFooter(
                                 drawValueTileValue(x1, y2, tileW, tileH, buf,
                                                    "KB", COLOR_SUCCESS);
 
-                                snprintf(frameBuf, sizeof(frameBuf), "%u/%u",
-                                         g_displayStats.lastFrameMs,
-                                         g_displayStats.maxFrameMs);
-                                drawValueTileValue(x2, y2, tileW, tileH,
-                                                   frameBuf, "ms", COLOR_INFO);
-
                                 snprintf(
-                                    buf, sizeof(buf), "S%lu R%lu H%lu G%u",
+                                    buf, sizeof(buf), "F%u/%u S%lu R%lu H%lu G%u",
+                                    g_displayStats.lastFrameMs,
+                                    g_displayStats.maxFrameMs,
                                     (unsigned long)g_displayStats.slowFrames,
                                     (unsigned long)
                                         g_displayStats.watchdogRecoveries,
@@ -9854,6 +10202,212 @@ static void renderRootFooter(
                                       tftText(TftTextId::ServiceHintSlow);
                                 }
                                 drawFooterHint(hintText, hintTone);
+                              }
+
+                              static void renderServiceTest(
+                                  const SystemState &state, bool full) {
+                                const bool ru = (g_settings.language == 0);
+                                const int16_t pageY = UI_HEADER_H + 4;
+                                const int16_t firstRowY = pageY + 38;
+                                const int16_t rowH = 42;
+                                const int16_t rowGap = 8;
+                                const int16_t x1 = 10;
+                                const int16_t x2 = 245;
+                                const int16_t w = 225;
+                                const auto availability =
+                                    getServiceTestAvailability(state);
+                                char guardReason[144] = "";
+                                const bool allowed = serviceTestAllowed(
+                                    state, guardReason, sizeof(guardReason));
+
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(ru ? "ПРОВЕРКА ОБОРУДОВАНИЯ"
+                                                : "EQUIPMENT TEST",
+                                             true);
+                                  drawTabs(UI_SERVICE_TEST);
+                                }
+
+                                const uint16_t statusTone =
+                                    allowed ? COLOR_SUCCESS : COLOR_DANGER;
+                                drawButton(x1, pageY, 96, 28,
+                                           ru ? "< НАЗАД" : "< PREV",
+                                           ui.serviceTestPage > 0 ? COLOR_INFO
+                                                                  : COLOR_DARK_GREY,
+                                           TFT_WHITE);
+                                drawButton(TFT_WIDTH - 106, pageY, 96, 28,
+                                           ru ? "ДАЛЕЕ >" : "NEXT >",
+                                           ui.serviceTestPage < 2 ? COLOR_INFO
+                                                                  : COLOR_DARK_GREY,
+                                           TFT_WHITE);
+                                drawCard(116, pageY, TFT_WIDTH - 232, 28,
+                                         colorCard());
+                                tft.setTextColor(statusTone);
+                                tft.setTextSize(1);
+                                tft.setTextDatum(middle_center);
+                                char pageText[64];
+                                snprintf(pageText, sizeof(pageText), "%s %u/3",
+                                         allowed ? (ru ? "ГОТОВО" : "READY")
+                                                 : (ru ? "БЛОКИРОВАНО" : "BLOCKED"),
+                                         static_cast<unsigned>(ui.serviceTestPage + 1));
+                                drawDisplayString(pageText, TFT_WIDTH / 2,
+                                                  pageY + 15);
+                                tft.setTextDatum(top_left);
+
+                                if (ui.serviceTestPage == 0) {
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::Pump,
+                                          availability)) {
+                                    drawButton(
+                                        x1, firstRowY, w, rowH,
+                                        Pump::isRunning()
+                                            ? (ru ? "НАСОС: СТОП" : "PUMP: STOP")
+                                            : (ru ? "НАСОС 300 мл/ч"
+                                                  : "PUMP 300 ml/h"),
+                                        Pump::isRunning() ? COLOR_WARNING
+                                                          : COLOR_INFO,
+                                        TFT_WHITE);
+                                  }
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::Stirrer,
+                                          availability)) {
+                                    drawButton(
+                                        x2, firstRowY, w, rowH,
+                                        Stirrer::isRunning()
+                                            ? (ru ? "МЕШАЛКА: СТОП"
+                                                  : "STIRRER: STOP")
+                                            : (ru ? "МЕШАЛКА" : "STIRRER"),
+                                        Stirrer::isRunning() ? COLOR_WARNING
+                                                             : COLOR_INFO,
+                                        TFT_WHITE);
+                                  }
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::Heater,
+                                          availability)) {
+                                    const bool heaterActive =
+                                        Heater::getDiagnostics().active;
+                                    drawButton(
+                                        x1, firstRowY + rowH + rowGap, w, rowH,
+                                        heaterActive
+                                            ? (ru ? "ТЭН: СТОП" : "HEATER: STOP")
+                                            : (ru ? "ТЭН: ПОДТВЕРДИТЬ 10%"
+                                                  : "HEATER: CONFIRM 10%"),
+                                        heaterActive ? COLOR_DANGER
+                                                     : COLOR_WARNING,
+                                        TFT_WHITE);
+                                  }
+                                  drawButton(
+                                      x2, firstRowY + rowH + rowGap, w, rowH,
+                                      ru ? "СТОП ВСЕ ВЫХОДЫ" : "STOP ALL OUTPUTS",
+                                      COLOR_DANGER, TFT_WHITE);
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::Sensors,
+                                          availability)) {
+                                    char sensors[96];
+                                    snprintf(
+                                        sensors, sizeof(sensors),
+                                        ru ? "ДАТЧИКИ: T %u/%u  B:%c A:%c P:%c"
+                                           : "SENSORS: T %u/%u  B:%c A:%c P:%c",
+                                        static_cast<unsigned>(state.health.tempSensorsOk),
+                                        static_cast<unsigned>(
+                                            state.health.tempSensorsTotal),
+                                        state.health.bmp280Ok ? '+' : '-',
+                                        state.health.ads1115Ok ? '+' : '-',
+                                        state.health.pzemOk ? '+' : '-');
+                                    drawButton(
+                                        10, firstRowY + (rowH + rowGap) * 2,
+                                        TFT_WIDTH - 20, rowH, sensors,
+                                        COLOR_INFO, TFT_WHITE);
+                                  }
+                                } else if (ui.serviceTestPage == 1) {
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::WaterValve,
+                                          availability)) {
+                                    drawButton(x1, firstRowY, w, rowH,
+                                               ru ? "ВОДА: ИМПУЛЬС 1 с"
+                                                  : "WATER: 1 s PULSE",
+                                               COLOR_INFO, TFT_WHITE);
+                                  }
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::HeadsValve,
+                                          availability)) {
+                                    drawButton(x2, firstRowY, w, rowH,
+                                               ru ? "ГОЛОВЫ: ИМПУЛЬС 1 с"
+                                                  : "HEADS: 1 s PULSE",
+                                               COLOR_INFO, TFT_WHITE);
+                                  }
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::BodyValve,
+                                          availability)) {
+                                    drawButton(x1, firstRowY + rowH + rowGap,
+                                               w, rowH,
+                                               ru ? "ТЕЛО: ИМПУЛЬС 1 с"
+                                                  : "BODY: 1 s PULSE",
+                                               COLOR_INFO, TFT_WHITE);
+                                  }
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::TailsValve,
+                                          availability)) {
+                                    drawButton(x2, firstRowY + rowH + rowGap,
+                                               w, rowH,
+                                               ru ? "ХВОСТЫ: ИМПУЛЬС 1 с"
+                                                  : "TAILS: 1 s PULSE",
+                                               COLOR_INFO, TFT_WHITE);
+                                  }
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::UnoValve,
+                                          availability)) {
+                                    drawButton(x1,
+                                               firstRowY + (rowH + rowGap) * 2,
+                                               w, rowH,
+                                               ru ? "УНО: ИМПУЛЬС 1 с"
+                                                  : "UNO: 1 s PULSE",
+                                               COLOR_INFO, TFT_WHITE);
+                                  }
+                                  if (TftServiceTestLogic::isAvailable(
+                                          TftServiceTestLogic::Device::CoolingPwm,
+                                          availability)) {
+                                    drawButton(x2,
+                                               firstRowY + (rowH + rowGap) * 2,
+                                               w, rowH,
+                                               Valves::getStartStop() > 0
+                                                   ? (ru ? "PWM: СТОП"
+                                                         : "PWM: STOP")
+                                                   : (ru ? "PWM ОХЛАЖДЕНИЯ"
+                                                         : "COOLING PWM"),
+                                               Valves::getStartStop() > 0
+                                                   ? COLOR_WARNING
+                                                   : COLOR_INFO,
+                                               TFT_WHITE);
+                                  }
+                                } else if (TftServiceTestLogic::isAvailable(
+                                               TftServiceTestLogic::Device::Fractionator,
+                                               availability)) {
+                                  drawButton(10, firstRowY, TFT_WIDTH - 20,
+                                             rowH,
+                                             ru ? "ФРАКЦИОННИК: СЛЕДУЮЩАЯ ПОЗИЦИЯ"
+                                                : "FRACTIONATOR: NEXT POSITION",
+                                             COLOR_INFO, TFT_WHITE);
+                                } else {
+                                  drawCard(10, firstRowY, TFT_WIDTH - 20, rowH,
+                                           colorCard());
+                                  tft.setTextColor(colorMuted());
+                                  tft.setTextDatum(middle_center);
+                                  drawDisplayString(
+                                      ru ? "Фракционник отсутствует в конфигурации"
+                                         : "Fractionator is absent from configuration",
+                                      TFT_WIDTH / 2, firstRowY + rowH / 2);
+                                  tft.setTextDatum(top_left);
+                                }
+
+                                const char *hint = ui.serviceTestMessage[0] != '\0'
+                                                       ? ui.serviceTestMessage
+                                                       : (allowed
+                                                              ? (ru ? "Запускайте только один тест; при выходе всё отключается."
+                                                                    : "Run one test only; exit stops all outputs.")
+                                                              : guardReason);
+                                drawFooterHint(hint, allowed ? COLOR_INFO
+                                                              : COLOR_DANGER);
                               }
 
                               static void renderAllTemps(
@@ -10286,7 +10840,8 @@ static void renderRootFooter(
                                       renderProcessEvents,     // UI_PROCESS_EVENTS
                                       renderProcessParams,     // UI_PROCESS_PARAMS
                                       renderModeConfig,        // UI_MODE_CONFIG
-                                      renderModeParameters     // UI_MODE_PARAMETERS
+                                      renderModeParameters,    // UI_MODE_PARAMETERS
+                                      renderServiceTest        // UI_SERVICE_TEST
                                   };
 
                               static UiRenderHandler

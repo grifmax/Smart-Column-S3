@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <../../src/control/power_command_gateway.h>
+#include <../../src/interface/tft_service_test_logic.h>
 
 void test_power_command_captures_owner_reason_timestamp_and_safe_stop() {
   using namespace PowerCommandGateway;
@@ -21,4 +22,25 @@ void test_power_command_captures_owner_reason_timestamp_and_safe_stop() {
 
   markSafeStopApplied(command);
   TEST_ASSERT_TRUE(command.safeStopApplied);
+}
+
+void test_tft_service_test_hides_unavailable_hardware() {
+  using namespace TftServiceTestLogic;
+
+  Availability board;
+  board.heater = true;
+  board.pump = true;
+  board.waterValve = true;
+  board.headsValve = true;
+  board.sensors = true;
+
+  TEST_ASSERT_TRUE(isAvailable(Device::Heater, board));
+  TEST_ASSERT_TRUE(isAvailable(Device::Pump, board));
+  TEST_ASSERT_TRUE(isAvailable(Device::WaterValve, board));
+  TEST_ASSERT_TRUE(isAvailable(Device::Sensors, board));
+  TEST_ASSERT_FALSE(isAvailable(Device::Stirrer, board));
+  TEST_ASSERT_FALSE(isAvailable(Device::BodyValve, board));
+  TEST_ASSERT_FALSE(isAvailable(Device::TailsValve, board));
+  TEST_ASSERT_FALSE(isAvailable(Device::CoolingPwm, board));
+  TEST_ASSERT_FALSE(isAvailable(Device::Fractionator, board));
 }
