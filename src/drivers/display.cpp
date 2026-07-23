@@ -227,7 +227,8 @@ enum UiScreen : uint8_t {
   UI_PROFILE_PICKER,
   UI_SAFETY_VIEW,
   UI_PROCESS_EVENTS,
-  UI_PROCESS_PARAMS
+  UI_PROCESS_PARAMS,
+  UI_MODE_CONFIG
 };
 
 enum class UiRootTab : uint8_t {
@@ -293,7 +294,9 @@ static constexpr UiScreenPolicy kUiScreenPolicies[] = {
     {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false, false,
      false}, // UI_PROCESS_EVENTS
     {UiRootTab::CONTROL, UiEditPolicy::MODE_MONITOR_RUNTIME, false, false,
-     true, false} // UI_PROCESS_PARAMS
+     true, false}, // UI_PROCESS_PARAMS
+    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
+     false} // UI_MODE_CONFIG
 };
 
 enum class DisplayRedrawReason : uint8_t {
@@ -315,9 +318,19 @@ struct ModeSetupDraft {
   uint32_t dirtyMask = 0;
   bool profileRelevant = false;
   bool profileCompatible = false;
+  // The loaded profile is retained separately from the editable selection.
+  // It makes discard deterministic and lets navigation refuse to throw away a
+  // profile choice implicitly.
+  char loadedProfileId[48] = {0};
+  char loadedProfileName[64] = {0};
   char profileId[48] = {0};
   char profileName[64] = {0};
   char profilePreview[112] = {0};
+};
+
+enum ModeSetupDraftDirty : uint32_t {
+  MODE_SETUP_DIRTY_NONE = 0,
+  MODE_SETUP_DIRTY_PROFILE = 1u << 0,
 };
 
 static constexpr uint8_t TFT_PREFLIGHT_MAX_ITEMS = 24;
@@ -389,9 +402,11 @@ struct UiState {
   ModeSetupDraft setupDraft;
   uint8_t profilePickerPage = 0;
   uint8_t preflightPage = 0;
+  uint8_t modeConfigPage = 0;
   uint8_t processMenuPage = 0;
   bool serviceSession = false;
   char safetyActionMessage[144] = {0};
+  char setupDraftMessage[144] = {0};
 };
 
 static UiState ui;
@@ -1341,6 +1356,20 @@ static bool isSetupProfileCompatible(const Profile &profile, Mode mode) {
          (mode == Mode::MASHING && mashProfile);
 }
 
+static bool hasUnsavedModeSetupDraft() {
+  return ui.setupDraft.valid &&
+         ui.setupDraft.dirtyMask != MODE_SETUP_DIRTY_NONE;
+}
+
+static void setModeSetupDraftMessage(const char *message) {
+  if (message == nullptr) {
+    ui.setupDraftMessage[0] = '\0';
+    return;
+  }
+  strncpy(ui.setupDraftMessage, message, sizeof(ui.setupDraftMessage) - 1);
+  ui.setupDraftMessage[sizeof(ui.setupDraftMessage) - 1] = '\0';
+}
+
 static void clearTftPreflight() {
   g_tftPreflight = TftPreflightSnapshot{};
   ui.preflightPage = 0;
@@ -1437,6 +1466,14 @@ static void setSetupDraftProfile(const Profile &profile, Mode mode) {
                            sizeof(ui.setupDraft.profilePreview));
 }
 
+static void updateModeSetupDraftDirtyState() {
+  if (strcmp(ui.setupDraft.profileId, ui.setupDraft.loadedProfileId) == 0) {
+    ui.setupDraft.dirtyMask &= ~MODE_SETUP_DIRTY_PROFILE;
+  } else {
+    ui.setupDraft.dirtyMask |= MODE_SETUP_DIRTY_PROFILE;
+  }
+}
+
 static uint8_t getTftProfilePageCount() {
   return g_tftProfileOptionCount == 0
              ? 1
@@ -1484,7 +1521,10 @@ static bool selectSetupProfile(uint8_t index) {
     return false;
   }
   setSetupDraftProfile(profile, ui.setupDraft.mode);
-  ui.setupDraft.dirtyMask |= 0x01;
+  updateModeSetupDraftDirtyState();
+  setModeSetupDraftMessage(
+      (g_settings.language == 0) ? "Профиль выбран как черновик."
+                                 : "Profile selected as a draft.");
   clearTftPreflight();
   return true;
 }
@@ -1498,11 +1538,17 @@ static void openSetupProfilePicker() {
   pushScreen(UI_PROFILE_PICKER);
 }
 
-static bool applySetupDraftProfileForStart(char *reason, size_t reasonSize) {
+static bool validateModeSetupDraft(char *reason, size_t reasonSize) {
   if (reason == nullptr || reasonSize == 0) {
     return false;
   }
   reason[0] = '\0';
+  if (!ui.setupDraft.valid || ui.setupDraft.mode == Mode::IDLE) {
+    snprintf(reason, reasonSize, "%s",
+             (g_settings.language == 0) ? "Режим не выбран."
+                                        : "Mode is not selected.");
+    return false;
+  }
   if (!ui.setupDraft.profileRelevant || ui.setupDraft.profileId[0] == '\0') {
     return true;
   }
@@ -1526,6 +1572,36 @@ static bool applySetupDraftProfileForStart(char *reason, size_t reasonSize) {
                    : "The mashing profile has no steps.");
       return false;
     }
+  }
+  return true;
+}
+
+static bool saveModeSetupDraft(char *reason, size_t reasonSize) {
+  if (!validateModeSetupDraft(reason, reasonSize)) {
+    return false;
+  }
+  if (!hasUnsavedModeSetupDraft()) {
+    snprintf(reason, reasonSize, "%s",
+             (g_settings.language == 0) ? "Черновик уже сохранён."
+                                        : "Draft is already saved.");
+    return true;
+  }
+  if (!ui.setupDraft.profileRelevant || ui.setupDraft.profileId[0] == '\0') {
+    ui.setupDraft.dirtyMask = MODE_SETUP_DIRTY_NONE;
+    clearTftPreflight();
+    return true;
+  }
+
+  Profile profile;
+  if (!loadProfile(ui.setupDraft.profileId, profile)) {
+    snprintf(reason, reasonSize, "%s",
+             (g_settings.language == 0) ? "Не удалось загрузить профиль."
+                                        : "Failed to load profile.");
+    return false;
+  }
+
+  if (ui.setupDraft.mode == Mode::MASHING) {
+    const size_t steps = profile.parameters.mashing.steps.size();
     memset(&mashProfileDefault, 0, sizeof(mashProfileDefault));
     strncpy(mashProfileDefault.name, profile.metadata.name.c_str(),
             sizeof(mashProfileDefault.name) - 1);
@@ -1543,10 +1619,7 @@ static bool applySetupDraftProfileForStart(char *reason, size_t reasonSize) {
           .name[sizeof(mashProfileDefault.steps[i].name) - 1] = '\0';
     }
     setActiveProfile(profile.id, profile.metadata.name);
-    return true;
-  }
-
-  if (!applyProfile(profile.id)) {
+  } else if (!applyProfile(profile.id)) {
     snprintf(reason, reasonSize, "%s",
              (g_settings.language == 0) ? "Не удалось применить профиль."
                                         : "Failed to apply profile.");
@@ -1561,11 +1634,21 @@ static bool applySetupDraftProfileForStart(char *reason, size_t reasonSize) {
     distUi.powerPercent = g_settings.distillationUi.powerPercent;
     distUi.tailsVolumeMl = g_settings.distillationUi.tailsVolumeMl;
   }
+  strncpy(ui.setupDraft.loadedProfileId, ui.setupDraft.profileId,
+          sizeof(ui.setupDraft.loadedProfileId) - 1);
+  ui.setupDraft.loadedProfileId[sizeof(ui.setupDraft.loadedProfileId) - 1] =
+      '\0';
+  strncpy(ui.setupDraft.loadedProfileName, ui.setupDraft.profileName,
+          sizeof(ui.setupDraft.loadedProfileName) - 1);
+  ui.setupDraft.loadedProfileName
+      [sizeof(ui.setupDraft.loadedProfileName) - 1] = '\0';
+  ui.setupDraft.dirtyMask = MODE_SETUP_DIRTY_NONE;
+  clearTftPreflight();
   return true;
 }
 
-static void beginModeSetup(Mode mode) {
-  if (g_state.mode != Mode::IDLE || mode == Mode::IDLE) {
+static void loadModeSetupDraft(Mode mode) {
+  if (mode == Mode::IDLE) {
     return;
   }
 
@@ -1575,6 +1658,8 @@ static void beginModeSetup(Mode mode) {
   ui.setupDraft.valid = true;
   ui.setupDraft.mode = mode;
   ui.setupDraft.profileRelevant = isSetupProfileRelevant(mode);
+  ui.modeConfigPage = 0;
+  setModeSetupDraftMessage(nullptr);
 
   const String activeProfileId = getActiveProfileId();
   const String activeProfileName = getActiveProfileName();
@@ -1597,7 +1682,58 @@ static void beginModeSetup(Mode mode) {
   if (profileLoaded && ui.setupDraft.profileCompatible) {
     setSetupDraftProfile(activeProfile, mode);
   }
+  strncpy(ui.setupDraft.loadedProfileId, ui.setupDraft.profileId,
+          sizeof(ui.setupDraft.loadedProfileId) - 1);
+  ui.setupDraft.loadedProfileId[sizeof(ui.setupDraft.loadedProfileId) - 1] =
+      '\0';
+  strncpy(ui.setupDraft.loadedProfileName, ui.setupDraft.profileName,
+          sizeof(ui.setupDraft.loadedProfileName) - 1);
+  ui.setupDraft.loadedProfileName
+      [sizeof(ui.setupDraft.loadedProfileName) - 1] = '\0';
+}
+
+static void discardModeSetupDraft() {
+  if (!ui.setupDraft.valid) {
+    return;
+  }
+  const Mode mode = ui.setupDraft.mode;
+  loadModeSetupDraft(mode);
+  setModeSetupDraftMessage(
+      (g_settings.language == 0) ? "Черновик отброшен."
+                                 : "Draft discarded.");
+}
+
+static void beginModeSetup(Mode mode) {
+  if (g_state.mode != Mode::IDLE || mode == Mode::IDLE) {
+    return;
+  }
+  // Navigation routes unsaved drafts to UI_MODE_CONFIG first. This is a
+  // defensive second guard for any future caller that attempts a direct mode
+  // switch from a dirty setup.
+  if (hasUnsavedModeSetupDraft() && ui.setupDraft.mode != mode) {
+    setModeSetupDraftMessage(
+        (g_settings.language == 0)
+            ? "Сначала сохраните или отбросьте текущий черновик."
+            : "Save or discard the current draft first.");
+    return;
+  }
+  loadModeSetupDraft(mode);
   pushScreen(UI_MODE_SETUP);
+}
+
+static bool isModeSetupDraftScreen(UiScreen screen) {
+  return screen == UI_MODE_SETUP || screen == UI_PROFILE_PICKER ||
+         screen == UI_MODE_CONFIG;
+}
+
+static bool requireModeSetupDraftResolution() {
+  if (!hasUnsavedModeSetupDraft()) {
+    return false;
+  }
+  if (ui.currentScreen != UI_MODE_CONFIG) {
+    pushScreen(UI_MODE_CONFIG);
+  }
+  return true;
 }
 
 static bool refreshTftPreflight() {
@@ -1985,6 +2121,10 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
   const bool isRoot = isRootNavigationScreen(ui.currentScreen);
 
   if (!isRoot && hit(tx, ty, TFT_WIDTH - 110, 0, 110, 50)) {
+    if (ui.currentScreen == UI_MODE_SETUP &&
+        requireModeSetupDraftResolution()) {
+      return true;
+    }
     popScreen();
     return true;
   }
@@ -1993,6 +2133,11 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
   // workspace; the footer deliberately keeps only the three high-frequency
   // destinations instead of the old four permanent tabs.
   if (ty >= (TFT_HEIGHT - UI_FOOTER_H)) {
+    if (state.mode == Mode::IDLE &&
+        isModeSetupDraftScreen(ui.currentScreen) &&
+        requireModeSetupDraftResolution()) {
+      return true;
+    }
     const int action = tx / (TFT_WIDTH / 3);
     if (action == 0) {
       switchRoot(isModeRunning(state) ? UI_MODE_MONITOR : UI_DASHBOARD);
@@ -2328,9 +2473,46 @@ static bool handleModeSetupScreenTap(int16_t tx, int16_t ty,
     openSetupProfilePicker();
     return true;
   }
+  if (hit(tx, ty, 10, UI_HEADER_H + 76, TFT_WIDTH - 20, 44)) {
+    pushScreen(UI_MODE_CONFIG);
+    return true;
+  }
   if (hit(tx, ty, 10, TFT_HEIGHT - UI_FOOTER_H - 36, TFT_WIDTH - 20, 32)) {
+    if (requireModeSetupDraftResolution()) {
+      return true;
+    }
     refreshTftPreflight();
     pushScreen(UI_PREFLIGHT);
+    return true;
+  }
+  return false;
+}
+
+static bool handleModeConfigScreenTap(int16_t tx, int16_t ty,
+                                      const SystemState &state) {
+  if (!isScreenEditable(UI_MODE_CONFIG, state) || !ui.setupDraft.valid) {
+    return true;
+  }
+
+  const int16_t buttonY = TFT_HEIGHT - UI_FOOTER_H - 36;
+  const int16_t buttonW = (TFT_WIDTH - 23) / 2;
+  if (hit(tx, ty, 10, buttonY, buttonW, 32)) {
+    discardModeSetupDraft();
+    popScreen();
+    return true;
+  }
+  if (hit(tx, ty, 13 + buttonW, buttonY, buttonW, 32)) {
+    char reason[144] = "";
+    if (saveModeSetupDraft(reason, sizeof(reason))) {
+      setModeSetupDraftMessage(
+          hasUnsavedModeSetupDraft()
+              ? reason
+              : ((g_settings.language == 0) ? "Черновик сохранён."
+                                             : "Draft saved."));
+      popScreen();
+    } else {
+      setModeSetupDraftMessage(reason);
+    }
     return true;
   }
   return false;
@@ -2365,33 +2547,25 @@ static bool handlePreflightScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   if (hit(tx, ty, startX, buttonY, TFT_WIDTH - startX - 10, 32)) {
+    if (hasUnsavedModeSetupDraft()) {
+      snprintf(g_tftPreflight.title, sizeof(g_tftPreflight.title), "%s",
+               (g_settings.language == 0) ? "Черновик не сохранён"
+                                          : "Draft is not saved");
+      snprintf(g_tftPreflight.detail, sizeof(g_tftPreflight.detail), "%s",
+               (g_settings.language == 0)
+                   ? "Вернитесь в подготовку и сохраните изменения."
+                   : "Return to setup and save the changes.");
+      g_tftPreflight.attempted = true;
+      g_tftPreflight.ready = false;
+      return true;
+    }
     // Refresh immediately before start: a cached green result must never
     // bypass a newly appeared alarm or missing required sensor.
     refreshTftPreflight();
     if (!g_tftPreflight.ready || state.mode != Mode::IDLE) {
       return true;
     }
-    char profileReason[144];
-    if (!applySetupDraftProfileForStart(profileReason,
-                                        sizeof(profileReason))) {
-      clearTftPreflight();
-      g_tftPreflight.attempted = true;
-      snprintf(g_tftPreflight.title, sizeof(g_tftPreflight.title), "%s",
-               (g_settings.language == 0) ? "Профиль не применён"
-                                          : "Profile was not applied");
-      strncpy(g_tftPreflight.detail, profileReason,
-              sizeof(g_tftPreflight.detail) - 1);
-      g_tftPreflight.detail[sizeof(g_tftPreflight.detail) - 1] = '\0';
-      return true;
-    }
-    // A selected profile may change persisted parameters. Run the exact same
-    // backend check once more on the settings that are about to reach FSM.
-    refreshTftPreflight();
-    if (!g_tftPreflight.ready) {
-      return true;
-    }
     startModeFromControl(ui.setupDraft.mode);
-    ui.setupDraft.dirtyMask = 0;
     switchRoot(UI_MODE_MONITOR);
     return true;
   }
@@ -2890,7 +3064,8 @@ static constexpr UiTapHandler kUiTapDispatch[] = {
     handleProfilePickerScreenTap, // UI_PROFILE_PICKER
     handleSafetyViewScreenTap,    // UI_SAFETY_VIEW
     handleProcessEventsScreenTap, // UI_PROCESS_EVENTS
-    handleProcessParamsScreenTap  // UI_PROCESS_PARAMS
+    handleProcessParamsScreenTap, // UI_PROCESS_PARAMS
+    handleModeConfigScreenTap     // UI_MODE_CONFIG
 };
 
 static UiTapHandler getUiTapHandler(UiScreen screen) {
@@ -3379,7 +3554,8 @@ static void drawTabs(UiScreen current) {
   const int16_t bh = UI_FOOTER_H - 12;
   const bool modeSetupRoute =
       current == UI_MODE_PICKER || current == UI_MODE_SETUP ||
-      current == UI_PREFLIGHT || current == UI_PROFILE_PICKER;
+      current == UI_PREFLIGHT || current == UI_PROFILE_PICKER ||
+      current == UI_MODE_CONFIG;
   const bool processControlRoute =
       current == UI_CONTROL || current == UI_SAFETY_VIEW ||
       current == UI_PROCESS_EVENTS || current == UI_PROCESS_PARAMS;
@@ -7145,6 +7321,108 @@ static void renderRootFooter(
                                     preflightTone, TFT_WHITE);
                               }
 
+                              static void renderModeConfig(const SystemState &,
+                                                           bool full) {
+                                const bool ru = (g_settings.language == 0);
+                                const int16_t cardX = 10;
+                                const int16_t cardW = TFT_WIDTH - 20;
+                                const int16_t buttonY =
+                                    TFT_HEIGHT - UI_FOOTER_H - 36;
+                                const int16_t buttonW = (TFT_WIDTH - 23) / 2;
+                                const bool dirty = hasUnsavedModeSetupDraft();
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(ru ? "ЧЕРНОВИК НАСТРОЙКИ"
+                                                : "SETUP DRAFT",
+                                             true);
+                                  drawTabs(UI_MODE_CONFIG);
+                                }
+
+                                drawCard(cardX, UI_HEADER_H + 4, cardW, 30,
+                                         colorCard());
+                                drawPanelHeader(
+                                    cardX, UI_HEADER_H + 4, cardW,
+                                    ui.setupDraft.valid
+                                        ? getDisplayModeName(ui.setupDraft.mode)
+                                        : (ru ? "РЕЖИМ НЕ ВЫБРАН"
+                                              : "MODE NOT SELECTED"),
+                                    dirty ? COLOR_WARNING : COLOR_SUCCESS);
+
+                                char profileLine[112];
+                                if (!ui.setupDraft.profileRelevant) {
+                                  snprintf(profileLine, sizeof(profileLine), "%s",
+                                           ru ? "Для этого режима профиль необязателен"
+                                              : "A profile is optional for this mode");
+                                } else if (ui.setupDraft.profileName[0] == '\0') {
+                                  snprintf(profileLine, sizeof(profileLine), "%s",
+                                           ru ? "Профиль не выбран"
+                                              : "No profile selected");
+                                } else {
+                                  snprintf(profileLine, sizeof(profileLine), "%s%s",
+                                           ui.setupDraft.profileName,
+                                           dirty ? (ru ? " · НЕ СОХРАНЁН"
+                                                       : " · UNSAVED")
+                                                 : "");
+                                }
+                                drawCard(cardX, UI_HEADER_H + 38, cardW, 44,
+                                         colorCard());
+                                drawPanelHeader(cardX, UI_HEADER_H + 38, cardW,
+                                                ru ? "ВЫБРАННЫЙ ПРОФИЛЬ"
+                                                   : "SELECTED PROFILE",
+                                                dirty ? COLOR_WARNING
+                                                      : COLOR_SUCCESS);
+                                tft.setTextColor(colorFg());
+                                tft.setTextSize(1);
+                                tft.setTextDatum(middle_left);
+                                char fittedProfile[112];
+                                copyFittedText(profileLine, cardW - 24,
+                                               fittedProfile,
+                                               sizeof(fittedProfile));
+                                drawDisplayString(fittedProfile, cardX + 10,
+                                                  UI_HEADER_H + 70);
+
+                                char statusLine[144];
+                                if (ui.setupDraftMessage[0] != '\0') {
+                                  strncpy(statusLine, ui.setupDraftMessage,
+                                          sizeof(statusLine) - 1);
+                                  statusLine[sizeof(statusLine) - 1] = '\0';
+                                } else if (dirty) {
+                                  snprintf(statusLine, sizeof(statusLine), "%s",
+                                           ru ? "Проверьте профиль и выберите: сохранить или отбросить."
+                                              : "Review the profile, then save or discard it.");
+                                } else {
+                                  snprintf(statusLine, sizeof(statusLine), "%s",
+                                           ru ? "Нет несохранённых изменений."
+                                              : "There are no unsaved changes.");
+                                }
+                                drawCard(cardX, UI_HEADER_H + 88, cardW, 50,
+                                         colorCard());
+                                drawPanelHeader(cardX, UI_HEADER_H + 88, cardW,
+                                                ru ? "СТАТУС ЧЕРНОВИКА"
+                                                   : "DRAFT STATUS",
+                                                dirty ? COLOR_WARNING : COLOR_INFO);
+                                tft.setTextColor(colorFg());
+                                tft.setTextDatum(middle_left);
+                                char fittedStatus[144];
+                                copyFittedText(statusLine, cardW - 24,
+                                               fittedStatus,
+                                               sizeof(fittedStatus));
+                                drawDisplayString(fittedStatus, cardX + 10,
+                                                  UI_HEADER_H + 122);
+                                tft.setTextDatum(top_left);
+
+                                drawButton(10, buttonY, buttonW, 32,
+                                           ru ? "ОТБРОСИТЬ" : "DISCARD",
+                                           dirty ? COLOR_WARNING
+                                                 : dimmedButtonColor(),
+                                           TFT_WHITE);
+                                drawButton(13 + buttonW, buttonY, buttonW, 32,
+                                           ru ? "СОХРАНИТЬ" : "SAVE",
+                                           dirty ? COLOR_SUCCESS
+                                                 : dimmedButtonColor(),
+                                           TFT_WHITE);
+                              }
+
                               static void renderProfilePicker(
                                   const SystemState &, bool full) {
                                 const bool ru = (g_settings.language == 0);
@@ -8840,7 +9118,8 @@ static void renderRootFooter(
                                       renderProfilePicker,     // UI_PROFILE_PICKER
                                       renderSafetyView,        // UI_SAFETY_VIEW
                                       renderProcessEvents,     // UI_PROCESS_EVENTS
-                                      renderProcessParams      // UI_PROCESS_PARAMS
+                                      renderProcessParams,     // UI_PROCESS_PARAMS
+                                      renderModeConfig         // UI_MODE_CONFIG
                                   };
 
                               static UiRenderHandler
