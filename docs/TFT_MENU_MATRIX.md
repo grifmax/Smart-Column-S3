@@ -121,6 +121,31 @@ mode-specific policy FSM (например, охлаждение горячег�
 ректификации `Rectification::confirmContainerChange()` разрешает resume только
 после снятия сигнала датчика уровня.
 
+### Page/cache policy ILI9488
+
+`UiScreenPolicy` задаёт поля рабочей области, разрешённые для частичного
+обновления. Верхняя глобальная строка режима, safety и сети остаётся live на
+любом экране и обновляется отдельно от рабочей области.
+
+| Класс экрана | Частично обновляемые поля |
+| --- | --- |
+| `HOME`, `MODE_MONITOR` | process state, температуры, power, progress |
+| `CONTROL` | process state |
+| `SERVICE` | температуры, power, uptime |
+| `MANUAL`, `SAFETY_VIEW`, `PROCESS_PARAMS` | только относящиеся к экрану температуры/power; у `PROCESS_PARAMS` также process state |
+| `ALL_TEMPS` | температуры и progress |
+| Setup/settings/pickers/preflight/events/value editor | нет: только tap или явное backend-событие |
+
+Полный кадр обязателен при входе на экран, открытии или закрытии fullscreen
+overlay, смене theme/language, изменении layout и recovery. Если layout
+обнаружен во время частичного кадра, запрос сохраняется и следующий кадр
+обязательно будет полным.
+
+ILI9488 работает без полного framebuffer. Статические presenter-кэши ограничены
+compile-time budget 24 KiB; целевой partial frame — до 80 ms, предупреждение —
+120 ms, hard limit — 250 ms. Эти значения контролируются runtime telemetry
+`display.lastMs`, `display.maxMs`, `display.slowFrames` и recovery counters.
+
 `PROCESS_PARAMS` — выделенный экран runtime-параметров из `CONTROL`. Он
 использует только уже существующие setters; редактирование на `MODE_MONITOR`
 сохраняет тот же allowlist. Разрешены только следующие режимы:

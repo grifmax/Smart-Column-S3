@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.99] - 2026-07-24
+
+### Added
+- Зафиксирована page/cache policy ILI9488: `UiScreenPolicy` объявляет набор полей, которые экран может обновлять частично (`process`, температуры, power, uptime, progress), а статические экраны остаются event-driven. Введён compile-time budget статических TFT-кэшей 24 KiB без framebuffer. (codex)
+
+### Changed
+- Полный redraw теперь централизован для enter, fullscreen operator overlay, theme/language, layout и recovery. Запрос redraw из текущего рендера сохраняется на следующий кадр; закрытие overlay всегда восстанавливает скрытую страницу полным кадром. Частичный кадр имеет target 80 ms, warning limit 120 ms и hard limit 250 ms. (codex)
+
+---
+
 ## [2.4.98] - 2026-07-24
 
 ### Added

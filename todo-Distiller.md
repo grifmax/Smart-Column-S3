@@ -545,9 +545,13 @@ actualVolumeMl, startedAt, finishedAt, finishReason
   перехватывает touch до навигации, а `claimAction()` разрешает только одну
   команду за открытие overlay. Подтверждение смены тары в ректификации
   дополнительно проверяет снятие level-сигнала перед `FSM::resume()`.
-- [ ] [D-042] Подготовить page/cache policy новых экранов: какие поля
+- [x] [D-042] Подготовить page/cache policy новых экранов: какие поля
   обновляются частично, какой event делает полный redraw и какой лимит
-  времени/памяти допустим на ILI9488.
+  времени/памяти допустим на ILI9488. `UiScreenPolicy` задаёт маску
+  `process/temperatures/power/uptime/progress` для каждого экрана; enter,
+  fullscreen overlay, theme/language, layout и recovery требуют full redraw.
+  Статический budget presenter-кэшей — до 24 KiB, partial frame: target 80 ms,
+  warning 120 ms, hard limit 250 ms.
 - [ ] [D-043] Дополнить host-side тесты чистой логики: access policy, draft
   save/discard, видимость полей, сервисная сессия и выбор безопасного действия
   после аварии.

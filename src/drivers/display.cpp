@@ -250,61 +250,77 @@ enum class UiEditPolicy : uint8_t {
   MODE_MONITOR_RUNTIME
 };
 
+// Fields that a page is allowed to refresh incrementally. The global
+// mode/safety/network line is handled separately on every page; this mask
+// covers only the page workspace below it.
+enum UiLiveFieldMask : uint8_t {
+  UI_LIVE_NONE = 0,
+  UI_LIVE_PROCESS = 1U << 0,
+  UI_LIVE_TEMPERATURES = 1U << 1,
+  UI_LIVE_POWER = 1U << 2,
+  UI_LIVE_UPTIME = 1U << 3,
+  UI_LIVE_PROGRESS = 1U << 4,
+};
+
+static constexpr uint8_t UI_LIVE_MONITOR_FIELDS =
+    UI_LIVE_PROCESS | UI_LIVE_TEMPERATURES | UI_LIVE_POWER |
+    UI_LIVE_PROGRESS;
+
 struct UiScreenPolicy {
   UiRootTab rootTab;
   UiEditPolicy editPolicy;
   bool rootLike;
   bool autoMonitorRoot;
-  bool supportsLiveRefresh;
-  bool needsProgressTicker;
+  uint8_t partialRefreshFields;
 };
 
 static constexpr UiScreenPolicy kUiScreenPolicies[] = {
-    {UiRootTab::MONITOR, UiEditPolicy::VIEW_ONLY, true, true, true,
-     true}, // UI_DASHBOARD
-    {UiRootTab::CONTROL, UiEditPolicy::ALWAYS, true, false, true,
-     false}, // UI_CONTROL
-    {UiRootTab::SETTINGS, UiEditPolicy::ALWAYS, true, false, false,
-     false}, // UI_SETTINGS
-    {UiRootTab::SERVICE, UiEditPolicy::VIEW_ONLY, true, false, true,
-     false}, // UI_SERVICE
-    {UiRootTab::MONITOR, UiEditPolicy::MODE_MONITOR_RUNTIME, true, true, true,
-     true}, // UI_MODE_MONITOR
-    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false}, // UI_EQUIPMENT
-    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false}, // UI_RECT_PARAMS
-    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false}, // UI_DIST_PARAMS
-    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false}, // UI_CALIBRATION
-    {UiRootTab::CONTROL, UiEditPolicy::MANUAL_ONLY, false, false, true,
-     false}, // UI_MANUAL
-    {UiRootTab::NONE, UiEditPolicy::ALWAYS, false, false, false,
-     false}, // UI_VALUE_EDIT
-    {UiRootTab::MONITOR, UiEditPolicy::VIEW_ONLY, false, false, true,
-     true}, // UI_ALL_TEMPS
-    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, true, false, false,
-     false}, // UI_MODE_PICKER
-    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false}, // UI_MODE_SETUP
-    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false}, // UI_PREFLIGHT
-    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false}, // UI_PROFILE_PICKER
-    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false, true,
-     false}, // UI_SAFETY_VIEW
-    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false, false,
-     false}, // UI_PROCESS_EVENTS
+    {UiRootTab::MONITOR, UiEditPolicy::VIEW_ONLY, true, true,
+     UI_LIVE_MONITOR_FIELDS}, // UI_DASHBOARD
+    {UiRootTab::CONTROL, UiEditPolicy::ALWAYS, true, false,
+     UI_LIVE_PROCESS}, // UI_CONTROL
+    {UiRootTab::SETTINGS, UiEditPolicy::ALWAYS, true, false,
+     UI_LIVE_NONE}, // UI_SETTINGS
+    {UiRootTab::SERVICE, UiEditPolicy::VIEW_ONLY, true, false,
+     UI_LIVE_TEMPERATURES | UI_LIVE_POWER | UI_LIVE_UPTIME}, // UI_SERVICE
+    {UiRootTab::MONITOR, UiEditPolicy::MODE_MONITOR_RUNTIME, true, true,
+     UI_LIVE_MONITOR_FIELDS}, // UI_MODE_MONITOR
+    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false,
+     UI_LIVE_NONE}, // UI_EQUIPMENT
+    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false,
+     UI_LIVE_NONE}, // UI_RECT_PARAMS
+    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false,
+     UI_LIVE_NONE}, // UI_DIST_PARAMS
+    {UiRootTab::SETTINGS, UiEditPolicy::IDLE_ONLY, false, false,
+     UI_LIVE_NONE}, // UI_CALIBRATION
+    {UiRootTab::CONTROL, UiEditPolicy::MANUAL_ONLY, false, false,
+     UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_MANUAL
+    {UiRootTab::NONE, UiEditPolicy::ALWAYS, false, false,
+     UI_LIVE_NONE}, // UI_VALUE_EDIT
+    {UiRootTab::MONITOR, UiEditPolicy::VIEW_ONLY, false, false,
+     UI_LIVE_TEMPERATURES | UI_LIVE_PROGRESS}, // UI_ALL_TEMPS
+    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, true, false,
+     UI_LIVE_NONE}, // UI_MODE_PICKER
+    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false,
+     UI_LIVE_NONE}, // UI_MODE_SETUP
+    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false,
+     UI_LIVE_NONE}, // UI_PREFLIGHT
+    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false,
+     UI_LIVE_NONE}, // UI_PROFILE_PICKER
+    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false,
+     UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_SAFETY_VIEW
+    {UiRootTab::CONTROL, UiEditPolicy::VIEW_ONLY, false, false,
+     UI_LIVE_NONE}, // UI_PROCESS_EVENTS
     {UiRootTab::CONTROL, UiEditPolicy::MODE_MONITOR_RUNTIME, false, false,
-     true, false}, // UI_PROCESS_PARAMS
-    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false, false,
-     false} // UI_MODE_CONFIG
+     UI_LIVE_PROCESS | UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_PROCESS_PARAMS
+    {UiRootTab::CONTROL, UiEditPolicy::IDLE_ONLY, false, false,
+     UI_LIVE_NONE} // UI_MODE_CONFIG
 };
 
 enum class DisplayRedrawReason : uint8_t {
   NONE = 0,
   SCREEN_ENTER,
+  OPERATOR_OVERLAY,
   TAP_ACTION,
   LIVE_DATA_CHANGED,
   TIMER_KEEPALIVE,
@@ -377,6 +393,8 @@ struct UiState {
   bool needsRedraw = true;
   UiScreen lastRenderedScreen = UI_DASHBOARD;
   DisplayRedrawReason pendingRedrawReason = DisplayRedrawReason::SCREEN_ENTER;
+  bool forceFullRedraw = true;
+  uint32_t redrawGeneration = 0;
 
   bool touchPressed = false;
   uint32_t lastTapMs = 0;
@@ -419,6 +437,7 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
                                      const SystemState &state);
 static bool syncOperatorOverlay(const SystemState &state);
 static void openOperatorOverlay(TftOperatorOverlayLogic::Action action);
+static void closeOperatorOverlay();
 static void drawOperatorOverlay(const SystemState &state);
 static TftPreflightSnapshot g_tftPreflight;
 static TftProfileOption g_tftProfileOptions[MAX_PROFILES];
@@ -497,6 +516,8 @@ static const char *getDisplayRedrawReasonKey(DisplayRedrawReason reason) {
   switch (reason) {
   case DisplayRedrawReason::SCREEN_ENTER:
     return "screen_enter";
+  case DisplayRedrawReason::OPERATOR_OVERLAY:
+    return "operator_overlay";
   case DisplayRedrawReason::TAP_ACTION:
     return "tap_action";
   case DisplayRedrawReason::LIVE_DATA_CHANGED:
@@ -526,6 +547,8 @@ static uint8_t getDisplayRedrawReasonPriority(DisplayRedrawReason reason) {
   case DisplayRedrawReason::THEME_CHANGED:
   case DisplayRedrawReason::LANGUAGE_CHANGED:
     return 80;
+  case DisplayRedrawReason::OPERATOR_OVERLAY:
+    return 75;
   case DisplayRedrawReason::SCREEN_ENTER:
   case DisplayRedrawReason::LAYOUT_CHANGED:
     return 70;
@@ -543,6 +566,25 @@ static uint8_t getDisplayRedrawReasonPriority(DisplayRedrawReason reason) {
   }
 }
 
+static bool redrawRequiresFullFrame(DisplayRedrawReason reason) {
+  switch (reason) {
+  case DisplayRedrawReason::SCREEN_ENTER:
+  case DisplayRedrawReason::OPERATOR_OVERLAY:
+  case DisplayRedrawReason::THEME_CHANGED:
+  case DisplayRedrawReason::LANGUAGE_CHANGED:
+  case DisplayRedrawReason::LAYOUT_CHANGED:
+  case DisplayRedrawReason::RECOVERY_REDRAW:
+    return true;
+  case DisplayRedrawReason::NONE:
+  case DisplayRedrawReason::TAP_ACTION:
+  case DisplayRedrawReason::LIVE_DATA_CHANGED:
+  case DisplayRedrawReason::TIMER_KEEPALIVE:
+  case DisplayRedrawReason::SPARKLINE_REFRESH:
+  default:
+    return false;
+  }
+}
+
 static void requestRedraw(DisplayRedrawReason reason, bool forceFull = false) {
   if (!ui.needsRedraw ||
       getDisplayRedrawReasonPriority(reason) >=
@@ -550,8 +592,9 @@ static void requestRedraw(DisplayRedrawReason reason, bool forceFull = false) {
     ui.pendingRedrawReason = reason;
   }
   ui.needsRedraw = true;
-  if (forceFull) {
-    ui.lastRenderedScreen = static_cast<UiScreen>(255);
+  ui.redrawGeneration++;
+  if (forceFull || redrawRequiresFullFrame(reason)) {
+    ui.forceFullRedraw = true;
   }
 }
 
@@ -812,6 +855,19 @@ static char g_allTempsSummaryCache[96] = {0};
 static Mode g_modeRuntimeMode = Mode::IDLE;
 static uint32_t g_modeRuntimeStartUptime = 0;
 
+// ILI9488 is updated directly over SPI: keep static presenter snapshots well
+// below internal RAM pressure and never allocate a full framebuffer.
+static constexpr size_t ILI9488_UI_CACHE_BUDGET_BYTES = 24U * 1024U;
+static_assert(sizeof(UiState) + sizeof(TftPreflightSnapshot) +
+                  sizeof(g_tftProfileOptions) + sizeof(TftEventCache) +
+                  sizeof(UiLiveCache) + sizeof(DashboardRenderCache) +
+                  sizeof(GlobalStatusRenderCache) + sizeof(g_modeTileCache) +
+                  sizeof(g_allTempsValueCache) +
+                  sizeof(g_allTempsStatusCache) +
+                  sizeof(g_allTempsSummaryCache) <=
+              ILI9488_UI_CACHE_BUDGET_BYTES,
+              "TFT presenter cache exceeds the ILI9488 RAM budget");
+
 static void resetAllTempsCache() {
   memset(g_allTempsValueCache, 0, sizeof(g_allTempsValueCache));
   memset(g_allTempsStatusCache, 0, sizeof(g_allTempsStatusCache));
@@ -964,15 +1020,63 @@ static bool isRootNavigationScreen(UiScreen screen) {
 }
 
 static bool screenSupportsLiveRefresh(UiScreen screen) {
-  return getUiScreenPolicy(screen).supportsLiveRefresh;
+  return getUiScreenPolicy(screen).partialRefreshFields != UI_LIVE_NONE;
 }
 
-static bool screenNeedsProgressTicker(UiScreen screen) {
-  return getUiScreenPolicy(screen).needsProgressTicker;
+static bool hasProcessStateChanged(const SystemState &state) {
+  return uiLive.mode != state.mode || uiLive.phase != state.rectPhase ||
+         uiLive.paused != state.paused;
 }
 
-static const uint16_t DISPLAY_SLOW_FRAME_MS = 120;
-static const uint16_t DISPLAY_HARD_FRAME_MS = 250;
+static bool hasTemperatureDataChanged(const SystemState &state) {
+  return uiLive.tempValidMask != getUiTempValidMask(state) ||
+         uiLive.tempsLastUpdate != state.temps.lastUpdate ||
+         fabsf(uiLive.tCube - state.temps.cube) > 0.1f ||
+         fabsf(uiLive.tTop - state.temps.columnTop) > 0.1f ||
+         fabsf(uiLive.tReflux - state.temps.reflux) > 0.1f ||
+         fabsf(uiLive.tTsa - state.temps.tsa) > 0.1f ||
+         fabsf(uiLive.tWaterIn - state.temps.waterIn) > 0.1f ||
+         fabsf(uiLive.tWaterOut - state.temps.waterOut) > 0.1f;
+}
+
+static bool hasPowerDataChanged(const SystemState &state) {
+  return fabsf(uiLive.power - state.power.power) > 1.0f ||
+         fabsf(uiLive.pumpSpeed - state.pump.speedMlPerHour) > 1.0f ||
+         fabsf(uiLive.voltage - state.power.voltage) > 1.0f ||
+         fabsf(uiLive.pressure - state.pressure.cube) > 1.0f;
+}
+
+static bool hasPageLiveDataChanged(UiScreen screen, const SystemState &state,
+                                   uint32_t now) {
+  const uint8_t fields = getUiScreenPolicy(screen).partialRefreshFields;
+  if ((fields & UI_LIVE_PROCESS) != 0 && hasProcessStateChanged(state)) {
+    return true;
+  }
+  if ((fields & UI_LIVE_TEMPERATURES) != 0 &&
+      hasTemperatureDataChanged(state)) {
+    return true;
+  }
+  if ((fields & UI_LIVE_POWER) != 0 && hasPowerDataChanged(state)) {
+    return true;
+  }
+  if ((fields & UI_LIVE_UPTIME) != 0 && state.uptime != uiLive.uptime &&
+      (now - uiLive.lastUpdateMs) > 1000) {
+    return true;
+  }
+  return (fields & UI_LIVE_PROGRESS) != 0 &&
+         (now - uiLive.lastUpdateMs) > getProgressRefreshIntervalMs();
+}
+
+static constexpr uint16_t ILI9488_PARTIAL_FRAME_TARGET_MS = 80;
+static constexpr uint16_t ILI9488_PARTIAL_FRAME_LIMIT_MS = 120;
+static constexpr uint16_t ILI9488_FULL_FRAME_LIMIT_MS = 250;
+static_assert(ILI9488_PARTIAL_FRAME_TARGET_MS <
+                  ILI9488_PARTIAL_FRAME_LIMIT_MS &&
+                  ILI9488_PARTIAL_FRAME_LIMIT_MS <
+                      ILI9488_FULL_FRAME_LIMIT_MS,
+              "Invalid ILI9488 frame budget ordering");
+static const uint16_t DISPLAY_SLOW_FRAME_MS = ILI9488_PARTIAL_FRAME_LIMIT_MS;
+static const uint16_t DISPLAY_HARD_FRAME_MS = ILI9488_FULL_FRAME_LIMIT_MS;
 static const uint8_t DISPLAY_SOFT_WD_THRESHOLD = 3;
 static const uint8_t DISPLAY_HARD_FRAME_BURST_THRESHOLD = 6;
 static const uint8_t DISPLAY_SOFT_WD_BURST_FOR_HARD = 3;
@@ -4123,6 +4227,15 @@ getRequiredOperatorOverlay(const SystemState &state) {
 static void openOperatorOverlay(TftOperatorOverlayLogic::Action action) {
   TftOperatorOverlayLogic::open(ui.operatorOverlay, action);
   ui.operatorOverlayMessage[0] = '\0';
+  requestRedraw(DisplayRedrawReason::OPERATOR_OVERLAY);
+}
+
+static void closeOperatorOverlay() {
+  TftOperatorOverlayLogic::close(ui.operatorOverlay);
+  ui.operatorOverlayMessage[0] = '\0';
+  // The overlay covered the entire framebuffer; restore the hidden page from
+  // its cache contract instead of relying on individual tiles to change.
+  requestRedraw(DisplayRedrawReason::OPERATOR_OVERLAY);
 }
 
 static bool syncOperatorOverlay(const SystemState &state) {
@@ -4137,8 +4250,7 @@ static bool syncOperatorOverlay(const SystemState &state) {
   }
 
   if (TftOperatorOverlayLogic::isAutomatic(ui.operatorOverlay.action)) {
-    TftOperatorOverlayLogic::close(ui.operatorOverlay);
-    ui.operatorOverlayMessage[0] = '\0';
+    closeOperatorOverlay();
     return true;
   }
   return false;
@@ -4258,8 +4370,7 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
     const int16_t buttonW = (TFT_WIDTH - 80 - gap) / 2;
     if (hit(tx, ty, 40, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
             OPERATOR_OVERLAY_BUTTON_H)) {
-      TftOperatorOverlayLogic::close(ui.operatorOverlay);
-      ui.operatorOverlayMessage[0] = '\0';
+      closeOperatorOverlay();
       return true;
     }
     if (!hit(tx, ty, 40 + buttonW + gap, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
@@ -4284,13 +4395,13 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
           PowerCommandGateway::Owner::FSM,
           PowerCommandGateway::Reason::TFT_PROCESS_STOP);
       FSM::stopMode(g_state);
-      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+      closeOperatorOverlay();
     }
     break;
   case Action::AlarmAcknowledge:
     if (state.currentAlarm.type == AlarmType::NONE ||
         state.currentAlarm.acknowledged) {
-      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+      closeOperatorOverlay();
       break;
     }
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
@@ -4298,7 +4409,7 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
       snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
                (g_settings.language == 0) ? "Авария подтверждена оператором."
                                           : "Alarm acknowledged by operator.");
-      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+      closeOperatorOverlay();
     }
     break;
   case Action::MashOperatorWait:
@@ -4311,13 +4422,13 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
     }
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
       resumeProcessFromOperatorOverlay();
-      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+      closeOperatorOverlay();
     }
     break;
   case Action::FractionConfirmation:
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
       (void)FSM::Distillation::confirmFractionProgram(g_state, g_settings);
-      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+      closeOperatorOverlay();
     }
     break;
   case Action::ContainerChange:
@@ -4330,7 +4441,7 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
     }
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
       resumeProcessFromOperatorOverlay();
-      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+      closeOperatorOverlay();
     }
     break;
   case Action::None:
@@ -9767,10 +9878,7 @@ static void renderRootFooter(
                                   }
                                 }
 
-                                if (syncOperatorOverlay(state)) {
-                                  requestRedraw(
-                                      DisplayRedrawReason::LIVE_DATA_CHANGED);
-                                }
+                                syncOperatorOverlay(state);
 
                                 if (!ui.needsRedraw &&
                                     g_displayStats.lastFrameAtMs > 0 &&
@@ -9784,65 +9892,19 @@ static void renderRootFooter(
                                   bool changed = false;
                                   const HmiNetworkStatus networkStatus =
                                       getHmiNetworkStatus();
+                                  // The global status line is intentionally
+                                  // live on every page. Workspace refreshes
+                                  // below are restricted by UiScreenPolicy.
                                   if (uiLive.safetyOk != state.safetyOk ||
                                       strcmp(uiLive.networkStatus,
                                              networkStatus.summary) != 0) {
                                     changed = true;
                                   }
                                   if (screenSupportsLiveRefresh(
-                                          ui.currentScreen)) {
-                                    if (uiLive.mode != state.mode ||
-                                        uiLive.phase != state.rectPhase ||
-                                        uiLive.paused != state.paused) {
-                                      changed = true;
-                                    }
-                                    if (ui.currentScreen != UI_CONTROL) {
-                                      if (uiLive.tempValidMask !=
-                                              getUiTempValidMask(state) ||
-                                          uiLive.tempsLastUpdate !=
-                                              state.temps.lastUpdate) {
-                                        changed = true;
-                                      }
-                                      if (fabsf(uiLive.tCube -
-                                                state.temps.cube) > 0.1f ||
-                                          fabsf(uiLive.tTop -
-                                                state.temps.columnTop) > 0.1f ||
-                                          fabsf(uiLive.tReflux -
-                                                state.temps.reflux) > 0.1f ||
-                                          fabsf(uiLive.tTsa - state.temps.tsa) >
-                                              0.1f ||
-                                          fabsf(uiLive.tWaterIn -
-                                                state.temps.waterIn) > 0.1f ||
-                                          fabsf(uiLive.tWaterOut -
-                                                state.temps.waterOut) > 0.1f) {
-                                        changed = true;
-                                      }
-                                      if (fabsf(uiLive.power -
-                                                state.power.power) > 1.0f ||
-                                          fabsf(uiLive.pumpSpeed -
-                                                state.pump.speedMlPerHour) >
-                                              1.0f ||
-                                          fabsf(uiLive.voltage -
-                                                state.power.voltage) > 1.0f ||
-                                          fabsf(uiLive.pressure -
-                                                state.pressure.cube) > 1.0f) {
-                                        changed = true;
-                                      }
-                                      if (ui.currentScreen == UI_SERVICE &&
-                                          state.uptime != uiLive.uptime &&
-                                          (now - uiLive.lastUpdateMs) > 1000) {
-                                        changed = true;
-                                      }
-                                    }
-                                    if (screenNeedsProgressTicker(
-                                            ui.currentScreen) &&
-                                        (now - uiLive.lastUpdateMs) >
-                                            getProgressRefreshIntervalMs()) {
-                                      // Keep phase timer/progress and service
-                                      // values moving even when temperatures
-                                      // are stable.
-                                      changed = true;
-                                    }
+                                          ui.currentScreen) &&
+                                      hasPageLiveDataChanged(ui.currentScreen,
+                                                             state, now)) {
+                                    changed = true;
                                   }
                                   if (changed &&
                                       (now - uiLive.lastUpdateMs) >
@@ -9870,6 +9932,21 @@ static void renderRootFooter(
 
                                 if (ui.needsRedraw) {
                                   const uint32_t frameStartMs = millis();
+                                  const uint32_t renderGeneration =
+                                      ui.redrawGeneration;
+                                  const DisplayRedrawReason redrawReason =
+                                      ui.pendingRedrawReason;
+                                  const bool full = ui.forceFullRedraw ||
+                                                    (ui.currentScreen !=
+                                                     ui.lastRenderedScreen);
+                                  // A renderer may request a second frame
+                                  // (for example after a layout key changes).
+                                  // Clear the current request first so that
+                                  // the next request survives this frame.
+                                  ui.needsRedraw = false;
+                                  ui.pendingRedrawReason =
+                                      DisplayRedrawReason::NONE;
+                                  ui.forceFullRedraw = false;
                                   uiLive.mode = state.mode;
                                   uiLive.phase = state.rectPhase;
                                   uiLive.paused = state.paused;
@@ -9898,8 +9975,6 @@ static void renderRootFooter(
                                       [sizeof(uiLive.networkStatus) - 1] =
                                       '\0';
                                   uiLive.lastUpdateMs = now;
-                                  const bool full = (ui.currentScreen !=
-                                                     ui.lastRenderedScreen);
                                   UiRenderHandler renderHandler =
                                       getUiRenderHandler(ui.currentScreen);
                                   tft.startWrite();
@@ -9913,8 +9988,6 @@ static void renderRootFooter(
 
                                   const uint32_t frameTime =
                                       millis() - frameStartMs;
-                                  const DisplayRedrawReason redrawReason =
-                                      ui.pendingRedrawReason;
                                   bool scheduleRecoveryRedraw = false;
                                   bool requestHardRecovery = false;
                                   g_displayStats.framesRendered++;
@@ -9928,6 +10001,8 @@ static void renderRootFooter(
                                   switch (redrawReason) {
                                   case DisplayRedrawReason::SCREEN_ENTER:
                                     g_displayStats.redrawReasonScreenEnter++;
+                                    break;
+                                  case DisplayRedrawReason::OPERATOR_OVERLAY:
                                     break;
                                   case DisplayRedrawReason::TAP_ACTION:
                                     g_displayStats.redrawReasonTapAction++;
@@ -9993,8 +10068,6 @@ static void renderRootFooter(
                                     // instead of running with a stale frame.
                                     g_displayStats.watchdogRecoveries++;
                                     g_displayStats.consecutiveSlowFrames = 0;
-                                    ui.lastRenderedScreen =
-                                        static_cast<UiScreen>(255);
                                     scheduleRecoveryRedraw = true;
 
                                     if (g_displayStats
@@ -10037,14 +10110,20 @@ static void renderRootFooter(
                                     return;
                                   }
 
-                                  ui.needsRedraw = scheduleRecoveryRedraw;
-                                  ui.pendingRedrawReason =
-                                      scheduleRecoveryRedraw
-                                          ? DisplayRedrawReason::RECOVERY_REDRAW
-                                          : DisplayRedrawReason::NONE;
-                                  if (!scheduleRecoveryRedraw) {
-                                    ui.lastRenderedScreen = ui.currentScreen;
+                                  const bool redrawQueuedDuringRender =
+                                      ui.redrawGeneration != renderGeneration;
+                                  if (scheduleRecoveryRedraw) {
+                                    ui.needsRedraw = true;
+                                    ui.pendingRedrawReason =
+                                        DisplayRedrawReason::RECOVERY_REDRAW;
+                                    ui.forceFullRedraw = true;
+                                  } else if (!redrawQueuedDuringRender) {
+                                    ui.needsRedraw = false;
+                                    ui.pendingRedrawReason =
+                                        DisplayRedrawReason::NONE;
+                                    ui.forceFullRedraw = false;
                                   }
+                                  ui.lastRenderedScreen = ui.currentScreen;
                                 }
 #endif
                               }
