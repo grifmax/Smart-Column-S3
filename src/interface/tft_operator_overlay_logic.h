@@ -15,6 +15,7 @@ enum class Action : uint8_t {
   FractionConfirmation,
   ContainerChange,
   ServiceHeaterStart,
+  ServicePauseForTest,
 };
 
 struct State {

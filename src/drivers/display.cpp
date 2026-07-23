@@ -7,6 +7,7 @@
 
 #include "display.h"
 #include "control/equipment_testing_logic.h"
+#include "control/service_test_session.h"
 #include "control/v2/status_adapter.h"
 #include "control/fsm.h"
 #include "control/power_command_gateway.h"
@@ -429,6 +430,10 @@ struct UiState {
   bool serviceSession = false;
   uint8_t serviceTestPage = 0;
   bool serviceTestOutputActive = false;
+  uint32_t serviceTestDeadlineMs = 0;
+  ServiceTestSession::Target serviceTestActiveTarget =
+      ServiceTestSession::Target::NONE;
+  float serviceTestPumpStartVolumeMl = 0.0f;
   char serviceTestMessage[144] = {0};
   char safetyActionMessage[144] = {0};
   char setupDraftMessage[144] = {0};
@@ -443,6 +448,7 @@ static bool syncOperatorOverlay(const SystemState &state);
 static void openOperatorOverlay(TftOperatorOverlayLogic::Action action);
 static void closeOperatorOverlay();
 static void drawOperatorOverlay(const SystemState &state);
+static void setServiceTestMessage(const char *message);
 static void stopServiceTestOutputs(const char *message);
 static TftPreflightSnapshot g_tftPreflight;
 static TftProfileOption g_tftProfileOptions[MAX_PROFILES];
@@ -2627,6 +2633,23 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
       return true;
     }
     if (ui.currentScreen == UI_SERVICE_TEST) {
+      const ServiceTestSession::Snapshot session =
+          ServiceTestSession::getSnapshot();
+      if (session.phase != ServiceTestSession::Phase::CLOSED) {
+        if (session.phase == ServiceTestSession::Phase::SAFE_PAUSED ||
+            session.phase == ServiceTestSession::Phase::TEST_ACTIVE) {
+          stopServiceTestOutputs(
+              (g_settings.language == 0)
+                  ? "Сначала подтвердите остановку и возврат процесса."
+                  : "Confirm stop and process restore first.");
+        } else {
+          setServiceTestMessage(
+              (g_settings.language == 0)
+                  ? "Сервисная сессия требует завершения на этом экране."
+                  : "Finish the service session on this screen first.");
+        }
+        return true;
+      }
       stopServiceTestOutputs(
           (g_settings.language == 0) ? "Сервисный тест остановлен при выходе."
                                      : "Service test stopped on exit.");
@@ -2645,6 +2668,23 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
       return true;
     }
     if (ui.currentScreen == UI_SERVICE_TEST) {
+      const ServiceTestSession::Snapshot session =
+          ServiceTestSession::getSnapshot();
+      if (session.phase != ServiceTestSession::Phase::CLOSED) {
+        if (session.phase == ServiceTestSession::Phase::SAFE_PAUSED ||
+            session.phase == ServiceTestSession::Phase::TEST_ACTIVE) {
+          stopServiceTestOutputs(
+              (g_settings.language == 0)
+                  ? "Сначала подтвердите остановку и возврат процесса."
+                  : "Confirm stop and process restore first.");
+        } else {
+          setServiceTestMessage(
+              (g_settings.language == 0)
+                  ? "Сервисная сессия требует завершения на этом экране."
+                  : "Finish the service session on this screen first.");
+        }
+        return true;
+      }
       stopServiceTestOutputs(
           (g_settings.language == 0) ? "Сервисный тест остановлен при выходе."
                                      : "Service test stopped on exit.");
@@ -2881,6 +2921,13 @@ static bool handleControlScreenTap(int16_t tx, int16_t ty,
   if (hit(tx, ty, PROCESS_MENU_X2, PROCESS_MENU_Y2, PROCESS_MENU_W,
           PROCESS_MENU_H)) {
     if (state.paused) {
+      if (ServiceTestSession::blocksProcessResume()) {
+        snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
+                 (g_settings.language == 0)
+                     ? "Возврат процесса выполняется только через сервисную сессию."
+                     : "Process restore is available only through the service session.");
+        return true;
+      }
       PowerCommandGateway::noteFsmSetpoint(
           PowerCommandGateway::Target::ALL_OUTPUTS,
           PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT, 1.0f);
@@ -3697,11 +3744,94 @@ static void setServiceTestMessage(const char *message) {
   snprintf(ui.serviceTestMessage, sizeof(ui.serviceTestMessage), "%s", message);
 }
 
+static const char *getServiceTestTargetLabel(ServiceTestSession::Target target,
+                                             bool ru) {
+  switch (target) {
+  case ServiceTestSession::Target::HEATER:
+    return ru ? "ТЭН" : "heater";
+  case ServiceTestSession::Target::PUMP:
+    return ru ? "насос" : "pump";
+  case ServiceTestSession::Target::STIRRER:
+    return ru ? "мешалка" : "stirrer";
+  case ServiceTestSession::Target::WATER_VALVE:
+    return ru ? "клапан воды" : "water valve";
+  case ServiceTestSession::Target::HEADS_VALVE:
+    return ru ? "клапан голов" : "heads valve";
+  case ServiceTestSession::Target::BODY_VALVE:
+    return ru ? "клапан тела" : "body valve";
+  case ServiceTestSession::Target::TAILS_VALVE:
+    return ru ? "клапан хвостов" : "tails valve";
+  case ServiceTestSession::Target::UNO_VALVE:
+    return ru ? "клапан УНО" : "UNO valve";
+  case ServiceTestSession::Target::COOLING_PWM:
+    return ru ? "PWM охлаждения" : "cooling PWM";
+  case ServiceTestSession::Target::FRACTIONATOR:
+    return ru ? "фракционник" : "fractionator";
+  case ServiceTestSession::Target::NONE:
+  default:
+    return ru ? "оборудование" : "equipment";
+  }
+}
+
+static bool areServiceTestOutputsSafe() {
+  const Heater::Diagnostics heater = Heater::getDiagnostics();
+  return !heater.active && !Pump::isRunning() && !Stirrer::isRunning() &&
+         !Valves::getWater() && !Valves::getHeads() && !Valves::getBody() &&
+         !Valves::getTails() && !Valves::getUno() &&
+         Valves::getStartStop() == 0 && !Valves::isServoMoving();
+}
+
+static void settleServiceTestStopping() {
+  const ServiceTestSession::Snapshot session =
+      ServiceTestSession::getSnapshot();
+  if (session.phase != ServiceTestSession::Phase::STOPPING) return;
+  if (!areServiceTestOutputsSafe()) return;
+  if (ServiceTestSession::markRestoreReady()) {
+    setServiceTestMessage(
+        session.resumeProcess
+            ? ((g_settings.language == 0)
+                   ? "Тест остановлен. Подтвердите возврат процесса."
+                   : "Test stopped. Confirm process restore.")
+            : ((g_settings.language == 0)
+                   ? "Тест остановлен. Исходный процесс останется на паузе."
+                   : "Test stopped. The original process stays paused."));
+  }
+}
+
 static bool serviceTestAllowed(const SystemState &state, char *reason,
                                size_t reasonSize) {
+  const ServiceTestSession::Snapshot session =
+      ServiceTestSession::getSnapshot();
+  const bool ownsPausedProcess =
+      ServiceTestSession::mayUsePausedProcess(
+          static_cast<uint8_t>(state.mode), state.paused);
+  if (state.mode != Mode::IDLE && !ownsPausedProcess) {
+    const bool ru = g_settings.language == 0;
+    const char *message = ru ? "Сначала запросите сервисную паузу процесса."
+                             : "Request a service pause first.";
+    if (session.phase == ServiceTestSession::Phase::REQUESTED) {
+      message = ru ? "Подтвердите сервисную паузу для выбранного теста."
+                   : "Confirm the service pause for the selected test.";
+    } else if (session.phase == ServiceTestSession::Phase::STOPPING) {
+      message = ru ? "Ожидание подтверждения безопасной остановки."
+                   : "Waiting for safe-stop readback.";
+    } else if (session.phase == ServiceTestSession::Phase::RESTORE_READY) {
+      message = ru ? "Сначала завершите или верните сервисную сессию."
+                   : "Finish or restore the service session first.";
+    } else if (session.phase == ServiceTestSession::Phase::FAULTED) {
+      message = ru ? "Сервис заблокирован safety до acknowledge/reset."
+                   : "Service is safety-blocked until acknowledge/reset.";
+    }
+    if (reason != nullptr && reasonSize > 0) {
+      snprintf(reason, reasonSize, "%s", message);
+    }
+    return false;
+  }
+
   const EquipmentTestingLogic::BlockReason block =
       EquipmentTestingLogic::evaluateGuard(
-          state.mode != Mode::IDLE, Safety::isLatched(state),
+          state.mode != Mode::IDLE && !ownsPausedProcess,
+          Safety::isLatched(state),
           state.currentAlarm.type != AlarmType::NONE, state.safetyOk,
           g_settings.demoMode);
   if (block == EquipmentTestingLogic::BlockReason::NONE) {
@@ -3742,6 +3872,130 @@ static bool serviceTestAllowed(const SystemState &state, char *reason,
   return false;
 }
 
+static bool requestServicePauseIfNeeded(
+    const SystemState &state, ServiceTestSession::Target target) {
+  if (state.mode == Mode::IDLE) return false;
+
+  const ServiceTestSession::Snapshot session =
+      ServiceTestSession::getSnapshot();
+  if (session.phase != ServiceTestSession::Phase::CLOSED) {
+    if (session.phase == ServiceTestSession::Phase::TEST_ACTIVE) {
+      setServiceTestMessage(
+          (g_settings.language == 0)
+              ? "Сначала остановите активный сервисный тест."
+              : "Stop the active service test first.");
+      return true;
+    }
+    if (ServiceTestSession::mayUsePausedProcess(
+            static_cast<uint8_t>(state.mode), state.paused)) {
+      return false;
+    }
+    char reason[144] = "";
+    (void)serviceTestAllowed(state, reason, sizeof(reason));
+    setServiceTestMessage(reason);
+    return true;
+  }
+
+  const EquipmentTestingLogic::BlockReason safetyBlock =
+      EquipmentTestingLogic::evaluateGuard(
+          false, Safety::isLatched(state),
+          state.currentAlarm.type != AlarmType::NONE, state.safetyOk,
+          g_settings.demoMode);
+  if (safetyBlock != EquipmentTestingLogic::BlockReason::NONE) {
+    char reason[144] = "";
+    (void)serviceTestAllowed(state, reason, sizeof(reason));
+    setServiceTestMessage(reason);
+    return true;
+  }
+  // FSM::pause intentionally keeps water open for a hot cube. A full service
+  // stop would then defeat that cooling policy, so do not take ownership until
+  // the cube is known cold.
+  if (!state.temps.valid[TEMP_CUBE] || state.temps.cube >= 45.0f) {
+    setServiceTestMessage(
+        (g_settings.language == 0)
+            ? "Сервисная пауза запрещена: температура куба не подтверждена ниже 45°C."
+            : "Service pause is blocked until cube temperature is confirmed below 45C.");
+    return true;
+  }
+  if (!ServiceTestSession::request(static_cast<uint8_t>(state.mode), true,
+                                   state.paused, target)) {
+    setServiceTestMessage((g_settings.language == 0)
+                              ? "Не удалось зарезервировать сервисную сессию."
+                              : "Could not reserve the service session.");
+    return true;
+  }
+  setServiceTestMessage((g_settings.language == 0)
+                            ? "Подтвердите паузу процесса для сервисного теста."
+                            : "Confirm process pause for the service test.");
+  openOperatorOverlay(TftOperatorOverlayLogic::Action::ServicePauseForTest);
+  return true;
+}
+
+static ServiceTestSession::Target getServiceTestTargetForTap(
+    int16_t tx, int16_t ty, uint8_t page,
+    const TftServiceTestLogic::Availability &availability) {
+  const int16_t pageY = UI_HEADER_H + 4;
+  const int16_t firstRowY = pageY + 38;
+  const int16_t rowH = 42;
+  const int16_t rowGap = 8;
+  const int16_t x1 = 10;
+  const int16_t x2 = 245;
+  const int16_t w = 225;
+  if (page == 0) {
+    if (TftServiceTestLogic::isAvailable(TftServiceTestLogic::Device::Pump,
+                                         availability) &&
+        hit(tx, ty, x1, firstRowY, w, rowH)) {
+      return ServiceTestSession::Target::PUMP;
+    }
+    if (TftServiceTestLogic::isAvailable(TftServiceTestLogic::Device::Stirrer,
+                                         availability) &&
+        hit(tx, ty, x2, firstRowY, w, rowH)) {
+      return ServiceTestSession::Target::STIRRER;
+    }
+    if (TftServiceTestLogic::isAvailable(TftServiceTestLogic::Device::Heater,
+                                         availability) &&
+        hit(tx, ty, x1, firstRowY + rowH + rowGap, w, rowH)) {
+      return ServiceTestSession::Target::HEATER;
+    }
+  } else if (page == 1) {
+    if (TftServiceTestLogic::isAvailable(TftServiceTestLogic::Device::WaterValve,
+                                         availability) &&
+        hit(tx, ty, x1, firstRowY, w, rowH)) {
+      return ServiceTestSession::Target::WATER_VALVE;
+    }
+    if (TftServiceTestLogic::isAvailable(TftServiceTestLogic::Device::HeadsValve,
+                                         availability) &&
+        hit(tx, ty, x2, firstRowY, w, rowH)) {
+      return ServiceTestSession::Target::HEADS_VALVE;
+    }
+    if (TftServiceTestLogic::isAvailable(TftServiceTestLogic::Device::BodyValve,
+                                         availability) &&
+        hit(tx, ty, x1, firstRowY + rowH + rowGap, w, rowH)) {
+      return ServiceTestSession::Target::BODY_VALVE;
+    }
+    if (TftServiceTestLogic::isAvailable(TftServiceTestLogic::Device::TailsValve,
+                                         availability) &&
+        hit(tx, ty, x2, firstRowY + rowH + rowGap, w, rowH)) {
+      return ServiceTestSession::Target::TAILS_VALVE;
+    }
+    if (TftServiceTestLogic::isAvailable(TftServiceTestLogic::Device::UnoValve,
+                                         availability) &&
+        hit(tx, ty, x1, firstRowY + (rowH + rowGap) * 2, w, rowH)) {
+      return ServiceTestSession::Target::UNO_VALVE;
+    }
+    if (TftServiceTestLogic::isAvailable(TftServiceTestLogic::Device::CoolingPwm,
+                                         availability) &&
+        hit(tx, ty, x2, firstRowY + (rowH + rowGap) * 2, w, rowH)) {
+      return ServiceTestSession::Target::COOLING_PWM;
+    }
+  } else if (TftServiceTestLogic::isAvailable(
+                 TftServiceTestLogic::Device::Fractionator, availability) &&
+             hit(tx, ty, 10, firstRowY, TFT_WIDTH - 20, rowH)) {
+    return ServiceTestSession::Target::FRACTIONATOR;
+  }
+  return ServiceTestSession::Target::NONE;
+}
+
 static TftServiceTestLogic::Availability
 getServiceTestAvailability(const SystemState &state) {
   TftServiceTestLogic::Availability availability;
@@ -3765,7 +4019,19 @@ getServiceTestAvailability(const SystemState &state) {
   return availability;
 }
 
-static bool beginServiceTestOutput(const SystemState &state) {
+static bool beginServiceTestOutput(const SystemState &state,
+                                   ServiceTestSession::Target target,
+                                   uint32_t timeoutMs) {
+  if (requestServicePauseIfNeeded(state, target)) return false;
+  if (target == ServiceTestSession::Target::STIRRER &&
+      (!state.temps.valid[TEMP_CUBE] ||
+       state.temps.cube > BOARD_SERVICE_TEST_STIRRER_MAX_C)) {
+    setServiceTestMessage(
+        (g_settings.language == 0)
+            ? "Тест мешалки требует подтверждённой безопасной температуры куба."
+            : "Stirrer test requires a confirmed safe cube temperature.");
+    return false;
+  }
   char reason[144] = "";
   if (!serviceTestAllowed(state, reason, sizeof(reason))) {
     setServiceTestMessage(reason);
@@ -3774,27 +4040,113 @@ static bool beginServiceTestOutput(const SystemState &state) {
   PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::SERVICE,
                                    PowerCommandGateway::Reason::TFT_SERVICE_TEST);
   ui.serviceTestOutputActive = true;
-  return true;
-}
-
-static void stopServiceTestOutputs(const char *message) {
-  if (ui.serviceTestOutputActive) {
+  ui.serviceTestDeadlineMs = millis() + timeoutMs;
+  ui.serviceTestActiveTarget = target;
+  ui.serviceTestPumpStartVolumeMl =
+      target == ServiceTestSession::Target::PUMP ? Pump::getTotalVolume() : 0.0f;
+  if (state.mode != Mode::IDLE && !ServiceTestSession::startTest(target)) {
     PowerCommandGateway::safeStopAll(
         PowerCommandGateway::Owner::SERVICE,
         PowerCommandGateway::Reason::TFT_SERVICE_TEST);
     ui.serviceTestOutputActive = false;
+    ui.serviceTestDeadlineMs = 0;
+    ui.serviceTestActiveTarget = ServiceTestSession::Target::NONE;
+    setServiceTestMessage((g_settings.language == 0)
+                              ? "Сервисная сессия не перешла к тесту."
+                              : "Service session could not enter test mode.");
+    return false;
   }
-  setServiceTestMessage(message);
+  return true;
+}
+
+static void stopServiceTestOutputs(const char *message) {
+  if (ui.serviceTestOutputActive ||
+      ServiceTestSession::getSnapshot().phase ==
+          ServiceTestSession::Phase::SAFE_PAUSED ||
+      ServiceTestSession::getSnapshot().phase ==
+          ServiceTestSession::Phase::TEST_ACTIVE) {
+    PowerCommandGateway::safeStopAll(
+        PowerCommandGateway::Owner::SERVICE,
+        PowerCommandGateway::Reason::TFT_SERVICE_TEST);
+    ui.serviceTestOutputActive = false;
+    ui.serviceTestDeadlineMs = 0;
+    ui.serviceTestActiveTarget = ServiceTestSession::Target::NONE;
+    (void)ServiceTestSession::beginStopping();
+    settleServiceTestStopping();
+  }
+  if (ServiceTestSession::getSnapshot().phase !=
+      ServiceTestSession::Phase::RESTORE_READY) {
+    setServiceTestMessage(message);
+  }
 }
 
 static void runServiceValvePulse(const SystemState &state,
                                  PowerCommandGateway::Valve valve,
+                                 ServiceTestSession::Target target,
                                  const char *message) {
-  if (!beginServiceTestOutput(state)) return;
+  if (!beginServiceTestOutput(state, target,
+                              BOARD_SERVICE_TEST_VALVE_PULSE_MS)) {
+    return;
+  }
   PowerCommandGateway::pulseValve(PowerCommandGateway::Owner::SERVICE,
                                   PowerCommandGateway::Reason::TFT_SERVICE_TEST,
-                                  valve, 1000);
+                                  valve, BOARD_SERVICE_TEST_VALVE_PULSE_MS);
   setServiceTestMessage(message);
+}
+
+static void updateServiceTestLifecycle(const SystemState &state) {
+  const uint32_t now = millis();
+  const ServiceTestSession::Snapshot session =
+      ServiceTestSession::getSnapshot();
+
+  if (ui.serviceTestDeadlineMs != 0 &&
+      static_cast<int32_t>(now - ui.serviceTestDeadlineMs) >= 0) {
+    stopServiceTestOutputs(
+        (g_settings.language == 0)
+            ? "Лимит времени сервисного теста достигнут: выходы отключены."
+            : "Service-test time limit reached: outputs stopped.");
+  }
+
+  if (ui.serviceTestOutputActive &&
+      ui.serviceTestActiveTarget == ServiceTestSession::Target::PUMP &&
+      (Pump::getTotalVolume() - ui.serviceTestPumpStartVolumeMl) >=
+          BOARD_SERVICE_TEST_PUMP_MAX_VOLUME_ML) {
+    stopServiceTestOutputs(
+        (g_settings.language == 0)
+            ? "Достигнут лимит сервисного объёма насоса: выходы отключены."
+            : "Service pump volume limit reached: outputs stopped.");
+  }
+
+  if (session.phase == ServiceTestSession::Phase::CLOSED) return;
+
+  const bool safetyReady = state.safetyOk && !Safety::isLatched(state) &&
+                           state.currentAlarm.type == AlarmType::NONE &&
+                           !g_settings.demoMode;
+  const bool mustRemainPaused =
+      session.phase == ServiceTestSession::Phase::SAFE_PAUSED ||
+      session.phase == ServiceTestSession::Phase::TEST_ACTIVE ||
+      session.phase == ServiceTestSession::Phase::STOPPING ||
+      session.phase == ServiceTestSession::Phase::RESTORE_READY;
+  const bool lifecycleMatches =
+      state.mode != Mode::IDLE &&
+      session.originalMode == static_cast<uint8_t>(state.mode) &&
+      (!mustRemainPaused || state.paused);
+  if (!safetyReady || !lifecycleMatches) {
+    PowerCommandGateway::safeStopAll(
+        PowerCommandGateway::Owner::SERVICE,
+        PowerCommandGateway::Reason::TFT_SERVICE_TEST);
+    ui.serviceTestOutputActive = false;
+    ui.serviceTestDeadlineMs = 0;
+    ui.serviceTestActiveTarget = ServiceTestSession::Target::NONE;
+    (void)ServiceTestSession::fault();
+    setServiceTestMessage(
+        (g_settings.language == 0)
+            ? "Сервисная сессия аварийно остановлена; возврат процесса запрещён."
+            : "Service session faulted; process restore is prohibited.");
+    return;
+  }
+
+  settleServiceTestStopping();
 }
 
 static bool handleServiceScreenTap(int16_t tx, int16_t ty,
@@ -3804,9 +4156,14 @@ static bool handleServiceScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   if (isServiceTestTap(tx, ty)) {
-    ui.serviceTestPage = 0;
-    ui.serviceTestOutputActive = false;
-    setServiceTestMessage(nullptr);
+    if (ServiceTestSession::getSnapshot().phase ==
+        ServiceTestSession::Phase::CLOSED) {
+      ui.serviceTestPage = 0;
+      ui.serviceTestOutputActive = false;
+      ui.serviceTestDeadlineMs = 0;
+      ui.serviceTestActiveTarget = ServiceTestSession::Target::NONE;
+      setServiceTestMessage(nullptr);
+    }
     pushScreen(UI_SERVICE_TEST);
     return true;
   }
@@ -3834,6 +4191,13 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
     return true;
   }
 
+  const ServiceTestSession::Target requestedTarget =
+      getServiceTestTargetForTap(tx, ty, ui.serviceTestPage, availability);
+  if (requestedTarget != ServiceTestSession::Target::NONE &&
+      requestServicePauseIfNeeded(state, requestedTarget)) {
+    return true;
+  }
+
   if (ui.serviceTestPage == 0) {
     if (TftServiceTestLogic::isAvailable(
             TftServiceTestLogic::Device::Pump, availability) &&
@@ -3844,13 +4208,17 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
                                    : "Pump service test stopped.");
         return true;
       }
-      if (!beginServiceTestOutput(state)) return true;
+      if (!beginServiceTestOutput(state, ServiceTestSession::Target::PUMP,
+                                  BOARD_SERVICE_TEST_PUMP_TIMEOUT_MS)) {
+        return true;
+      }
       PowerCommandGateway::setPumpSpeed(
           PowerCommandGateway::Owner::SERVICE,
-          PowerCommandGateway::Reason::TFT_SERVICE_TEST, 300.0f);
+          PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+          BOARD_SERVICE_TEST_PUMP_SPEED_ML_H);
       setServiceTestMessage((g_settings.language == 0)
-                                ? "Насос запущен на 300 мл/ч."
-                                : "Pump started at 300 ml/h.");
+                                ? "Насос запущен на сервисной скорости."
+                                : "Pump started at service speed.");
       return true;
     }
     if (TftServiceTestLogic::isAvailable(
@@ -3862,7 +4230,11 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
                                    : "Stirrer service test stopped.");
         return true;
       }
-      if (!beginServiceTestOutput(state)) return true;
+      if (!beginServiceTestOutput(state,
+                                  ServiceTestSession::Target::STIRRER,
+                                  BOARD_SERVICE_TEST_STIRRER_TIMEOUT_MS)) {
+        return true;
+      }
       const uint8_t speed = g_settings.stirrer.defaultSpeedPercent > 0
                                 ? g_settings.stirrer.defaultSpeedPercent
                                 : 30;
@@ -3892,6 +4264,54 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
       return true;
     }
     if (hit(tx, ty, x2, firstRowY + rowH + rowGap, w, rowH)) {
+      const ServiceTestSession::Snapshot session =
+          ServiceTestSession::getSnapshot();
+      if (session.phase == ServiceTestSession::Phase::RESTORE_READY) {
+        if (session.resumeProcess) {
+          if (!state.safetyOk || Safety::isLatched(state) ||
+              state.currentAlarm.type != AlarmType::NONE ||
+              !ServiceTestSession::claimProcessResume()) {
+            setServiceTestMessage(
+                (g_settings.language == 0)
+                    ? "Возврат процесса заблокирован safety."
+                    : "Process restore is safety-blocked.");
+            return true;
+          }
+          PowerCommandGateway::noteFsmSetpoint(
+              PowerCommandGateway::Target::ALL_OUTPUTS,
+              PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT, 1.0f);
+          FSM::resume(g_state);
+          ControlV2::updateRuntime(g_state, g_settings);
+          setServiceTestMessage(
+              (g_settings.language == 0)
+                  ? "Процесс возвращён из сервисной паузы."
+                  : "Process restored from service pause.");
+          return true;
+        }
+        if (ServiceTestSession::closeWithoutResume()) {
+          setServiceTestMessage(
+              (g_settings.language == 0)
+                  ? "Сервис завершён; исходная пауза процесса сохранена."
+                  : "Service closed; the original process pause is retained.");
+        }
+        return true;
+      }
+      if (session.phase == ServiceTestSession::Phase::FAULTED) {
+        if (state.safetyOk && !Safety::isLatched(state) &&
+            state.currentAlarm.type == AlarmType::NONE) {
+          ServiceTestSession::cancel();
+          setServiceTestMessage(
+              (g_settings.language == 0)
+                  ? "Сервис закрыт после safety; процесс остаётся на паузе."
+                  : "Service closed after safety; process stays paused.");
+        } else {
+          setServiceTestMessage(
+              (g_settings.language == 0)
+                  ? "Сначала выполните acknowledge/reset safety."
+                  : "Acknowledge/reset safety first.");
+        }
+        return true;
+      }
       stopServiceTestOutputs((g_settings.language == 0)
                                  ? "Все сервисные выходы остановлены."
                                  : "All service outputs have been stopped.");
@@ -3901,6 +4321,14 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
             TftServiceTestLogic::Device::Sensors, availability) &&
         hit(tx, ty, 10, firstRowY + (rowH + rowGap) * 2, TFT_WIDTH - 20,
             rowH)) {
+      if (ServiceTestSession::getSnapshot().phase !=
+          ServiceTestSession::Phase::CLOSED) {
+        setServiceTestMessage(
+            (g_settings.language == 0)
+                ? "Сначала завершите сервисную сессию и верните процесс."
+                : "Finish the service session and restore the process first.");
+        return true;
+      }
       pushScreen(UI_ALL_TEMPS);
       return true;
     }
@@ -3912,6 +4340,7 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
             TftServiceTestLogic::Device::WaterValve, availability) &&
         hit(tx, ty, x1, firstRowY, w, rowH)) {
       runServiceValvePulse(state, PowerCommandGateway::Valve::WATER,
+                           ServiceTestSession::Target::WATER_VALVE,
                            (g_settings.language == 0)
                                ? "Клапан воды: импульс 1 с."
                                : "Water valve: 1 second pulse.");
@@ -3921,6 +4350,7 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
             TftServiceTestLogic::Device::HeadsValve, availability) &&
         hit(tx, ty, x2, firstRowY, w, rowH)) {
       runServiceValvePulse(state, PowerCommandGateway::Valve::HEADS,
+                           ServiceTestSession::Target::HEADS_VALVE,
                            (g_settings.language == 0)
                                ? "Клапан голов: импульс 1 с."
                                : "Heads valve: 1 second pulse.");
@@ -3930,6 +4360,7 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
             TftServiceTestLogic::Device::BodyValve, availability) &&
         hit(tx, ty, x1, firstRowY + rowH + rowGap, w, rowH)) {
       runServiceValvePulse(state, PowerCommandGateway::Valve::BODY,
+                           ServiceTestSession::Target::BODY_VALVE,
                            (g_settings.language == 0)
                                ? "Клапан тела: импульс 1 с."
                                : "Body valve: 1 second pulse.");
@@ -3939,6 +4370,7 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
             TftServiceTestLogic::Device::TailsValve, availability) &&
         hit(tx, ty, x2, firstRowY + rowH + rowGap, w, rowH)) {
       runServiceValvePulse(state, PowerCommandGateway::Valve::TAILS,
+                           ServiceTestSession::Target::TAILS_VALVE,
                            (g_settings.language == 0)
                                ? "Клапан хвостов: импульс 1 с."
                                : "Tails valve: 1 second pulse.");
@@ -3948,6 +4380,7 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
             TftServiceTestLogic::Device::UnoValve, availability) &&
         hit(tx, ty, x1, firstRowY + (rowH + rowGap) * 2, w, rowH)) {
       runServiceValvePulse(state, PowerCommandGateway::Valve::UNO,
+                           ServiceTestSession::Target::UNO_VALVE,
                            (g_settings.language == 0)
                                ? "Клапан УНО: импульс 1 с."
                                : "UNO valve: 1 second pulse.");
@@ -3962,9 +4395,12 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
                                    : "PWM service test stopped.");
         return true;
       }
-      if (!beginServiceTestOutput(state)) return true;
-      uint8_t duty = g_settings.equipment.coolingPwmStartupDuty;
-      if (duty == 0) duty = 96;
+      if (!beginServiceTestOutput(state,
+                                  ServiceTestSession::Target::COOLING_PWM,
+                                  BOARD_SERVICE_TEST_PWM_TIMEOUT_MS)) {
+        return true;
+      }
+      const uint8_t duty = BOARD_SERVICE_TEST_PWM_DUTY;
       PowerCommandGateway::setCoolingPwm(
           PowerCommandGateway::Owner::SERVICE,
           PowerCommandGateway::Reason::TFT_SERVICE_TEST, duty);
@@ -3979,7 +4415,11 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
   if (TftServiceTestLogic::isAvailable(
           TftServiceTestLogic::Device::Fractionator, availability) &&
       hit(tx, ty, 10, firstRowY, TFT_WIDTH - 20, rowH)) {
-    if (!beginServiceTestOutput(state)) return true;
+    if (!beginServiceTestOutput(state,
+                                ServiceTestSession::Target::FRACTIONATOR,
+                                BOARD_SERVICE_TEST_FRACTIONATOR_TIMEOUT_MS)) {
+      return true;
+    }
     const Fraction next = Valves::getNextEnabledFraction(g_settings.fractionator);
     PowerCommandGateway::setFraction(PowerCommandGateway::Owner::SERVICE,
                                      PowerCommandGateway::Reason::TFT_SERVICE_TEST,
@@ -5151,13 +5591,28 @@ static void drawOperatorOverlay(const SystemState &state) {
     break;
   case Action::ServiceHeaterStart:
     title = ru ? "ТЕСТ ТЭНА" : "HEATER TEST";
-    message = ru ? "ТЭН будет включён на 10%. Убедитесь, что он погружён "
+    message = ru ? "ТЭН будет включён на сервисном лимите. Убедитесь, что он погружён "
                    "в жидкость и зона безопасна."
-                 : "The heater will start at 10%. Make sure it is submerged "
+                 : "The heater will start at the service limit. Make sure it is submerged "
                    "and the area is safe.";
-    confirm = ru ? "ВКЛЮЧИТЬ 10%" : "START 10%";
+    confirm = ru ? "ВКЛЮЧИТЬ" : "START";
     tone = COLOR_DANGER;
     break;
+  case Action::ServicePauseForTest: {
+    const ServiceTestSession::Snapshot session =
+        ServiceTestSession::getSnapshot();
+    title = ru ? "СЕРВИСНАЯ ПАУЗА" : "SERVICE PAUSE";
+    snprintf(dynamicMessage, sizeof(dynamicMessage),
+             ru ? "Для теста «%s» процесс будет поставлен на паузу, а выходы "
+                  "перейдут в безопасное состояние. Продолжить?"
+                : "For the %s test, the process will pause and outputs will "
+                  "move to a safe state. Continue?",
+             getServiceTestTargetLabel(session.requestedTarget, ru));
+    message = dynamicMessage;
+    confirm = ru ? "ПАУЗА И ТЕСТ" : "PAUSE AND TEST";
+    tone = COLOR_WARNING;
+    break;
+  }
   case Action::None:
   default:
     return;
@@ -5169,14 +5624,16 @@ static void drawOperatorOverlay(const SystemState &state) {
                                  : "A repeated tap cannot send a second command.");
   drawFullscreenOverlay(title, message, tone, footer, 1);
 
-  if (action == Action::ProcessStop) {
+  if (action == Action::ProcessStop ||
+      action == Action::ServicePauseForTest) {
     const int16_t gap = 12;
     const int16_t buttonW = (TFT_WIDTH - 80 - gap) / 2;
     drawButton(40, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
                OPERATOR_OVERLAY_BUTTON_H, ru ? "ОТМЕНА" : "CANCEL",
                COLOR_DARK_GREY, TFT_WHITE);
     drawButton(40 + buttonW + gap, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
-               OPERATOR_OVERLAY_BUTTON_H, confirm, COLOR_DANGER, TFT_WHITE);
+               OPERATOR_OVERLAY_BUTTON_H, confirm,
+               action == Action::ProcessStop ? COLOR_DANGER : tone, TFT_WHITE);
   } else {
     drawButton(120, OPERATOR_OVERLAY_BUTTON_Y, TFT_WIDTH - 240,
                OPERATOR_OVERLAY_BUTTON_H, confirm, tone, TFT_WHITE);
@@ -5198,11 +5655,18 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
     return false;
   }
 
-  if (action == Action::ProcessStop) {
+  if (action == Action::ProcessStop ||
+      action == Action::ServicePauseForTest) {
     const int16_t gap = 12;
     const int16_t buttonW = (TFT_WIDTH - 80 - gap) / 2;
     if (hit(tx, ty, 40, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
             OPERATOR_OVERLAY_BUTTON_H)) {
+      if (action == Action::ServicePauseForTest) {
+        ServiceTestSession::cancel();
+        setServiceTestMessage((g_settings.language == 0)
+                                  ? "Сервисная пауза отменена оператором."
+                                  : "Service pause cancelled by operator.");
+      }
       closeOperatorOverlay();
       return true;
     }
@@ -5279,23 +5743,70 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
     break;
   case Action::ServiceHeaterStart:
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
-      char reason[144] = "";
-      if (!serviceTestAllowed(state, reason, sizeof(reason))) {
-        setServiceTestMessage(reason);
+      if (!beginServiceTestOutput(
+              state, ServiceTestSession::Target::HEATER,
+              BOARD_SERVICE_TEST_HEATER_TIMEOUT_MS)) {
         closeOperatorOverlay();
         break;
+      }
+      PowerCommandGateway::setHeaterPower(
+          PowerCommandGateway::Owner::SERVICE,
+          PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+          BOARD_SERVICE_TEST_HEATER_PERCENT);
+      snprintf(ui.serviceTestMessage, sizeof(ui.serviceTestMessage), "%s",
+               (g_settings.language == 0)
+                   ? "ТЭН включён в пределах сервисного лимита; остановите тест после проверки."
+                   : "Heater started within the service limit; stop after checking.");
+      closeOperatorOverlay();
+    }
+    break;
+  case Action::ServicePauseForTest:
+    if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
+      const ServiceTestSession::Snapshot session =
+          ServiceTestSession::getSnapshot();
+      const bool sessionMatches =
+          session.phase == ServiceTestSession::Phase::REQUESTED &&
+          state.mode != Mode::IDLE &&
+          session.originalMode == static_cast<uint8_t>(state.mode);
+      const bool coldCube = state.temps.valid[TEMP_CUBE] &&
+                            state.temps.cube < 45.0f;
+      const bool safetyReady = state.safetyOk && !Safety::isLatched(state) &&
+                               state.currentAlarm.type == AlarmType::NONE &&
+                               !g_settings.demoMode;
+      if (!sessionMatches || !coldCube || !safetyReady) {
+        PowerCommandGateway::safeStopAll(
+            PowerCommandGateway::Owner::SERVICE,
+            PowerCommandGateway::Reason::TFT_SERVICE_TEST);
+        ServiceTestSession::fault();
+        ui.serviceTestOutputActive = false;
+        ui.serviceTestDeadlineMs = 0;
+        setServiceTestMessage(
+            (g_settings.language == 0)
+                ? "Сервисная пауза не подтверждена безопасно; возврат заблокирован."
+                : "Service pause was not safely confirmed; restore is blocked.");
+        closeOperatorOverlay();
+        break;
+      }
+      if (!state.paused) {
+        PowerCommandGateway::noteFsmSafeStop(
+            PowerCommandGateway::Reason::TFT_PROCESS_PAUSE);
+        FSM::pause(g_state);
       }
       PowerCommandGateway::safeStopAll(
           PowerCommandGateway::Owner::SERVICE,
           PowerCommandGateway::Reason::TFT_SERVICE_TEST);
-      PowerCommandGateway::setHeaterPower(
-          PowerCommandGateway::Owner::SERVICE,
-          PowerCommandGateway::Reason::TFT_SERVICE_TEST, 10);
-      ui.serviceTestOutputActive = true;
-      snprintf(ui.serviceTestMessage, sizeof(ui.serviceTestMessage), "%s",
-               (g_settings.language == 0)
-                   ? "ТЭН включён на 10%; остановите тест после проверки."
-                   : "Heater started at 10%; stop the test after checking.");
+      if (!areServiceTestOutputsSafe() || !ServiceTestSession::markSafePaused()) {
+        ServiceTestSession::fault();
+        setServiceTestMessage(
+            (g_settings.language == 0)
+                ? "Не удалось подтвердить безопасную остановку выходов."
+                : "Could not confirm safe output stop.");
+      } else {
+        setServiceTestMessage(
+            (g_settings.language == 0)
+                ? "Процесс на сервисной паузе. Повторите выбранный тест."
+                : "Process is in service pause. Repeat the selected test.");
+      }
       closeOperatorOverlay();
     }
     break;
@@ -10219,6 +10730,8 @@ static void renderRootFooter(
                                 char guardReason[144] = "";
                                 const bool allowed = serviceTestAllowed(
                                     state, guardReason, sizeof(guardReason));
+                                const ServiceTestSession::Snapshot session =
+                                    ServiceTestSession::getSnapshot();
 
                                 if (full) {
                                   tft.fillScreen(colorBg());
@@ -10228,8 +10741,40 @@ static void renderRootFooter(
                                   drawTabs(UI_SERVICE_TEST);
                                 }
 
-                                const uint16_t statusTone =
+                                uint16_t statusTone =
                                     allowed ? COLOR_SUCCESS : COLOR_DANGER;
+                                const char *status =
+                                    allowed ? (ru ? "ГОТОВО" : "READY")
+                                            : (ru ? "БЛОКИРОВАНО" : "BLOCKED");
+                                switch (session.phase) {
+                                case ServiceTestSession::Phase::REQUESTED:
+                                  status = ru ? "ПОДТВЕРДИТЕ ПАУЗУ" : "CONFIRM PAUSE";
+                                  statusTone = COLOR_WARNING;
+                                  break;
+                                case ServiceTestSession::Phase::SAFE_PAUSED:
+                                  status = ru ? "СЕРВИСНАЯ ПАУЗА" : "SERVICE PAUSE";
+                                  statusTone = COLOR_WARNING;
+                                  break;
+                                case ServiceTestSession::Phase::TEST_ACTIVE:
+                                  status = ru ? "ТЕСТ АКТИВЕН" : "TEST ACTIVE";
+                                  statusTone = COLOR_INFO;
+                                  break;
+                                case ServiceTestSession::Phase::STOPPING:
+                                  status = ru ? "ОЖИДАНИЕ STOP" : "WAITING STOP";
+                                  statusTone = COLOR_WARNING;
+                                  break;
+                                case ServiceTestSession::Phase::RESTORE_READY:
+                                  status = ru ? "ВОЗВРАТ ГОТОВ" : "RESTORE READY";
+                                  statusTone = COLOR_SUCCESS;
+                                  break;
+                                case ServiceTestSession::Phase::FAULTED:
+                                  status = ru ? "SAFETY БЛОК" : "SAFETY BLOCK";
+                                  statusTone = COLOR_DANGER;
+                                  break;
+                                case ServiceTestSession::Phase::CLOSED:
+                                default:
+                                  break;
+                                }
                                 drawButton(x1, pageY, 96, 28,
                                            ru ? "< НАЗАД" : "< PREV",
                                            ui.serviceTestPage > 0 ? COLOR_INFO
@@ -10246,9 +10791,7 @@ static void renderRootFooter(
                                 tft.setTextSize(1);
                                 tft.setTextDatum(middle_center);
                                 char pageText[64];
-                                snprintf(pageText, sizeof(pageText), "%s %u/3",
-                                         allowed ? (ru ? "ГОТОВО" : "READY")
-                                                 : (ru ? "БЛОКИРОВАНО" : "BLOCKED"),
+                                snprintf(pageText, sizeof(pageText), "%s %u/3", status,
                                          static_cast<unsigned>(ui.serviceTestPage + 1));
                                 drawDisplayString(pageText, TFT_WIDTH / 2,
                                                   pageY + 15);
@@ -10262,8 +10805,8 @@ static void renderRootFooter(
                                         x1, firstRowY, w, rowH,
                                         Pump::isRunning()
                                             ? (ru ? "НАСОС: СТОП" : "PUMP: STOP")
-                                            : (ru ? "НАСОС 300 мл/ч"
-                                                  : "PUMP 300 ml/h"),
+                                            : (ru ? "НАСОС: ТЕСТ"
+                                                  : "PUMP: TEST"),
                                         Pump::isRunning() ? COLOR_WARNING
                                                           : COLOR_INFO,
                                         TFT_WHITE);
@@ -10290,16 +10833,31 @@ static void renderRootFooter(
                                         x1, firstRowY + rowH + rowGap, w, rowH,
                                         heaterActive
                                             ? (ru ? "ТЭН: СТОП" : "HEATER: STOP")
-                                            : (ru ? "ТЭН: ПОДТВЕРДИТЬ 10%"
-                                                  : "HEATER: CONFIRM 10%"),
+                                            : (ru ? "ТЭН: ПОДТВЕРДИТЬ"
+                                                  : "HEATER: CONFIRM"),
                                         heaterActive ? COLOR_DANGER
                                                      : COLOR_WARNING,
                                         TFT_WHITE);
                                   }
-                                  drawButton(
-                                      x2, firstRowY + rowH + rowGap, w, rowH,
-                                      ru ? "СТОП ВСЕ ВЫХОДЫ" : "STOP ALL OUTPUTS",
-                                      COLOR_DANGER, TFT_WHITE);
+                                  const char *sessionAction =
+                                      ru ? "СТОП ВСЕ ВЫХОДЫ" : "STOP ALL OUTPUTS";
+                                  uint16_t sessionActionTone = COLOR_DANGER;
+                                  if (session.phase ==
+                                      ServiceTestSession::Phase::RESTORE_READY) {
+                                    sessionAction = session.resumeProcess
+                                                        ? (ru ? "ВЕРНУТЬ ПРОЦЕСС"
+                                                              : "RESTORE PROCESS")
+                                                        : (ru ? "ЗАВЕРШИТЬ СЕРВИС"
+                                                              : "CLOSE SERVICE");
+                                    sessionActionTone = COLOR_SUCCESS;
+                                  } else if (session.phase ==
+                                             ServiceTestSession::Phase::FAULTED) {
+                                    sessionAction = ru ? "ЗАКРЫТЬ ПОСЛЕ SAFETY"
+                                                       : "CLOSE AFTER SAFETY";
+                                  }
+                                  drawButton(x2, firstRowY + rowH + rowGap, w,
+                                             rowH, sessionAction,
+                                             sessionActionTone, TFT_WHITE);
                                   if (TftServiceTestLogic::isAvailable(
                                           TftServiceTestLogic::Device::Sensors,
                                           availability)) {
@@ -10324,16 +10882,16 @@ static void renderRootFooter(
                                           TftServiceTestLogic::Device::WaterValve,
                                           availability)) {
                                     drawButton(x1, firstRowY, w, rowH,
-                                               ru ? "ВОДА: ИМПУЛЬС 1 с"
-                                                  : "WATER: 1 s PULSE",
+                                               ru ? "ВОДА: ИМПУЛЬС"
+                                                  : "WATER: PULSE",
                                                COLOR_INFO, TFT_WHITE);
                                   }
                                   if (TftServiceTestLogic::isAvailable(
                                           TftServiceTestLogic::Device::HeadsValve,
                                           availability)) {
                                     drawButton(x2, firstRowY, w, rowH,
-                                               ru ? "ГОЛОВЫ: ИМПУЛЬС 1 с"
-                                                  : "HEADS: 1 s PULSE",
+                                               ru ? "ГОЛОВЫ: ИМПУЛЬС"
+                                                  : "HEADS: PULSE",
                                                COLOR_INFO, TFT_WHITE);
                                   }
                                   if (TftServiceTestLogic::isAvailable(
@@ -10341,8 +10899,8 @@ static void renderRootFooter(
                                           availability)) {
                                     drawButton(x1, firstRowY + rowH + rowGap,
                                                w, rowH,
-                                               ru ? "ТЕЛО: ИМПУЛЬС 1 с"
-                                                  : "BODY: 1 s PULSE",
+                                               ru ? "ТЕЛО: ИМПУЛЬС"
+                                                  : "BODY: PULSE",
                                                COLOR_INFO, TFT_WHITE);
                                   }
                                   if (TftServiceTestLogic::isAvailable(
@@ -10350,8 +10908,8 @@ static void renderRootFooter(
                                           availability)) {
                                     drawButton(x2, firstRowY + rowH + rowGap,
                                                w, rowH,
-                                               ru ? "ХВОСТЫ: ИМПУЛЬС 1 с"
-                                                  : "TAILS: 1 s PULSE",
+                                               ru ? "ХВОСТЫ: ИМПУЛЬС"
+                                                  : "TAILS: PULSE",
                                                COLOR_INFO, TFT_WHITE);
                                   }
                                   if (TftServiceTestLogic::isAvailable(
@@ -10360,8 +10918,8 @@ static void renderRootFooter(
                                     drawButton(x1,
                                                firstRowY + (rowH + rowGap) * 2,
                                                w, rowH,
-                                               ru ? "УНО: ИМПУЛЬС 1 с"
-                                                  : "UNO: 1 s PULSE",
+                                               ru ? "УНО: ИМПУЛЬС"
+                                                  : "UNO: PULSE",
                                                COLOR_INFO, TFT_WHITE);
                                   }
                                   if (TftServiceTestLogic::isAvailable(
@@ -10403,8 +10961,8 @@ static void renderRootFooter(
                                 const char *hint = ui.serviceTestMessage[0] != '\0'
                                                        ? ui.serviceTestMessage
                                                        : (allowed
-                                                              ? (ru ? "Запускайте только один тест; при выходе всё отключается."
-                                                                    : "Run one test only; exit stops all outputs.")
+                                                              ? (ru ? "Ограничения теста задаёт профиль платы; выходы отключаются."
+                                                                    : "Board profile limits tests; outputs are stopped safely.")
                                                               : guardReason);
                                 drawFooterHint(hint, allowed ? COLOR_INFO
                                                               : COLOR_DANGER);
@@ -11105,6 +11663,8 @@ static void renderRootFooter(
                                   }
                                 }
                                 g_displayStats.lastUpdateCallAtMs = now;
+
+                                updateServiceTestLifecycle(state);
 
                                 if (!tft_ok) {
                                   attemptHardRecovery(now);

@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "control/fsm.h"
+#include "control/service_test_session.h"
 #include "control/safety.h"
 #include "control/v2/status_adapter.h"
 #include "drivers/stirrer.h"
@@ -363,6 +364,12 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
 
   server.on(
       "/api/process/resume", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (ServiceTestSession::blocksProcessResume()) {
+          request->send(
+              409, "application/json",
+              "{\"success\":false,\"message\":\"Service test session must be closed before resume\"}");
+          return;
+        }
         FSM::resume(g_state);
         ControlV2::updateRuntime(g_state, g_settings);
         LOG_I("Process resumed via API");

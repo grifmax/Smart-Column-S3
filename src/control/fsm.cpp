@@ -15,6 +15,7 @@
 #include "../interface/mqtt.h"
 #include "../interface/localization.h"
 #include "fraction_program_logic.h"
+#include "service_test_session.h"
 #include "../storage/logger.h"
 
 namespace FSM {
@@ -278,6 +279,7 @@ void stopMode(SystemState& state) {
     }
 
     finalizeModeStop(state);
+    ServiceTestSession::cancelForProcessStop();
 
     MQTT::publishNotification("Процесс остановлен", "Процесс остановлен пользователем", "warning");
     Logger::logf(0, "Mode stopped by user");
@@ -288,6 +290,7 @@ void abortMode(SystemState& state) {
     noteModeExitTransition(state, getSafetyAbortReason(state),
                            state.currentAlarm.message);
     finalizeModeStop(state);
+    ServiceTestSession::cancelForProcessStop();
     Logger::logf(2, "Mode aborted by safety");
 }
 
@@ -307,6 +310,10 @@ void pause(SystemState& state) {
 
 void resume(SystemState& state) {
     if (!state.paused) return;
+    if (ServiceTestSession::blocksProcessResume()) {
+        LOG_W("FSM: Resume rejected while service test session owns outputs");
+        return;
+    }
     if (pauseStartTime > 0) {
         uint32_t pausedMs = millis() - pauseStartTime;
         setPhaseStartTime(getPhaseStartTime() + pausedMs);

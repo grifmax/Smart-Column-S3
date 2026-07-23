@@ -8,6 +8,7 @@
 #include <../../src/interface/tft_hmi_policy_logic.h>
 #include <../../src/interface/tft_operator_overlay_logic.h>
 #include <../../src/interface/tft_service_test_logic.h>
+#include <../../src/control/service_test_session_logic.h>
 
 #include "../support/json_assertions.h"
 
@@ -60,6 +61,7 @@ void test_tft_field_visibility_is_explicit();
 void test_tft_service_session_closes_after_emergency();
 void test_tft_post_alarm_action_never_resumes_process();
 void test_tft_service_test_hides_unavailable_hardware();
+void test_service_test_session_requires_safe_pause_and_explicit_restore();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -91,6 +93,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_tft_service_session_closes_after_emergency);
   RUN_TEST(test_tft_post_alarm_action_never_resumes_process);
   RUN_TEST(test_tft_service_test_hides_unavailable_hardware);
+  RUN_TEST(test_service_test_session_requires_safe_pause_and_explicit_restore);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>

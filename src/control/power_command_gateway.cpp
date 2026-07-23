@@ -155,6 +155,11 @@ void safeStopAll(Owner owner, Reason reason) {
   Pump::stop();
   Stirrer::stop();
   Valves::closeAll();
+  // closeAll() does not cancel an already interpolated servo move. Holding its
+  // actual angle makes safe-stop observable before a paused FSM may resume.
+  if (Valves::isFractionatorEnabled() && Valves::isServoMoving()) {
+    Valves::setFractionAngle(Valves::getFractionAngle());
+  }
   LOG_W("Power gateway: safe-stop applied");
 }
 
