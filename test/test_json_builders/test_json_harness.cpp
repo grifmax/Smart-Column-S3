@@ -185,6 +185,12 @@ void test_tft_draft_save_discard_and_navigation_policy() {
   TEST_ASSERT_TRUE(maySaveDraft(draft));
   TEST_ASSERT_TRUE(shouldBlockDraftNavigation(draft, true));
   TEST_ASSERT_FALSE(shouldBlockDraftNavigation(draft, false));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(DraftNavigationResult::ResolveDraft),
+      static_cast<uint8_t>(resolveDraftNavigation(draft, true)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(DraftNavigationResult::Allow),
+      static_cast<uint8_t>(resolveDraftNavigation(draft, false)));
 
   markDraftSaved(draft);
   TEST_ASSERT_FALSE(hasUnsavedDraft(draft));

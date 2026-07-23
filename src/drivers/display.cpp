@@ -1840,12 +1840,14 @@ static void beginModeSetup(Mode mode) {
   // Navigation routes unsaved drafts to UI_MODE_CONFIG first. This is a
   // defensive second guard for any future caller that attempts a direct mode
   // switch from a dirty setup.
-  if (TftHmiPolicyLogic::shouldBlockDraftNavigation(
-          getModeSetupDraftPolicyState(), ui.setupDraft.mode != mode)) {
+  if (TftHmiPolicyLogic::resolveDraftNavigation(
+          getModeSetupDraftPolicyState(), ui.setupDraft.mode != mode) ==
+      TftHmiPolicyLogic::DraftNavigationResult::ResolveDraft) {
     setModeSetupDraftMessage(
         (g_settings.language == 0)
             ? "Сначала сохраните или отбросьте текущий черновик."
             : "Save or discard the current draft first.");
+    pushScreen(UI_MODE_CONFIG);
     return;
   }
   loadModeSetupDraft(mode);

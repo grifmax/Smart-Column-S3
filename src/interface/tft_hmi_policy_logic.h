@@ -101,6 +101,15 @@ inline bool shouldBlockDraftNavigation(const DraftState &state,
   return hasUnsavedDraft(state) && targetModeDiffers;
 }
 
+enum class DraftNavigationResult : uint8_t { Allow = 0, ResolveDraft };
+
+inline DraftNavigationResult resolveDraftNavigation(
+    const DraftState &state, bool targetModeDiffers) {
+  return shouldBlockDraftNavigation(state, targetModeDiffers)
+             ? DraftNavigationResult::ResolveDraft
+             : DraftNavigationResult::Allow;
+}
+
 // A TFT start is legal only at the end of the explicit setup route. Keep this
 // gate independent from the renderer so native tests can protect it from a
 // future shortcut that bypasses draft resolution or backend pre-flight.
