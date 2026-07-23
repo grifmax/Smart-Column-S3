@@ -396,6 +396,7 @@ export async function installCommonApiMocks(page, options = {}) {
     historyDetailRequests: [],
     historyListRequests: 0,
     logQueries: [],
+    processActions: [],
     processStarts: [],
     statusRequests: 0,
     stirrerActions: [],
@@ -413,6 +414,7 @@ export async function installCommonApiMocks(page, options = {}) {
   const historyDetailsPayloads = options.historyDetailsPayloads || {};
   const logEvents = options.logEvents || [];
   const processStartResponse = options.processStartResponse || { success: true };
+  const processActionResponse = options.processActionResponse || { success: true };
   const calibrationPayload = options.calibrationPayload || {
     pump: {
       mlPerRev: 0.12,
@@ -723,6 +725,26 @@ export async function installCommonApiMocks(page, options = {}) {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(processStartResponse),
+      });
+      return;
+    }
+
+    if (pathname.startsWith('/api/process/') && method === 'POST') {
+      let postData = null;
+      try {
+        postData = request.postDataJSON();
+      } catch {
+        postData = request.postData() || null;
+      }
+
+      requests.processActions.push({ pathname, body: postData });
+      const payload = typeof processActionResponse === 'function'
+        ? processActionResponse({ pathname, searchParams, method, requests, postData })
+        : processActionResponse;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(payload),
       });
       return;
     }

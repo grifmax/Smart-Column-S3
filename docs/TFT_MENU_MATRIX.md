@@ -153,6 +153,15 @@ access policy runtime-режимов, lifecycle черновика save/discard,
 полей, завершение service session при аварии и порядок safe recovery:
 сначала acknowledge, затем только разрешённый safety reset, без resume.
 
+### UI smoke regression
+
+`tools/ui-smoke/tests/tft-hmi-regression.smoke.spec.js` проверяет browser-side
+эквиваленты HMI-маршрутов на статическом Web UI с API-mocks: переходы menu,
+RU/EN document locale, блокировку опасного start до HTTP, обязательный датчик,
+доступ к service из паузы без resume и переход testing → calibration → testing.
+Это не заменяет D-045 на реальном TFT, но фиксирует контракты навигации и
+безопасных действий без подключения контроллера.
+
 `PROCESS_PARAMS` — выделенный экран runtime-параметров из `CONTROL`. Он
 использует только уже существующие setters; редактирование на `MODE_MONITOR`
 сохраняет тот же allowlist. Разрешены только следующие режимы:

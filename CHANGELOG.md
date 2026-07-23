@@ -7,6 +7,16 @@
 
 ---
 
+## [2.4.101] - 2026-07-24
+
+### Added
+- В `tools/ui-smoke` добавлен Playwright spec HMI-regression: проход всех уровней меню при `ru`/`en` document locale, запрет старта до API при safety alarm или отсутствии обязательного датчика, сервис из паузы без resume и возврат из калибровки в service workspace. (codex)
+
+### Changed
+- Общий API-mock smoke-набора теперь фиксирует non-start process actions, поэтому сценарии могут доказывать отсутствие недопустимой команды, а не только состояние кнопки. (codex)
+
+---
+
 ## [2.4.100] - 2026-07-24
 
 ### Added
