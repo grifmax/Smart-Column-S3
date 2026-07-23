@@ -374,8 +374,33 @@ void initSession(SystemState& state, const Settings& settings) {
     state.rectBodyContainerStartVolumeMl = 0.0f;
     state.rectBodyContainerLevelReached = false;
     state.rectHeadsContainerLevelReached = false;
+    state.rectBodyContainerChangePending = false;
     calculateTargets(state, settings);
     RectTakeoff::beginSession(settings);
+}
+
+bool confirmContainerChange(SystemState& state, const Settings& settings) {
+    if (state.mode != Mode::RECTIFICATION || !state.paused) {
+        return false;
+    }
+
+    const bool levelLatchActive = state.rectBodyContainerLevelReached ||
+                                  state.rectHeadsContainerLevelReached;
+    if (!levelLatchActive && !state.rectBodyContainerChangePending) {
+        return false;
+    }
+
+    // The same sensor is moved to the newly installed collection container.
+    // Continuing while it is still asserted would immediately reopen takeoff
+    // against a full container, so leave the pause and the overlay in place.
+    if (levelLatchActive && isActiveCollectionContainerLevelReached(settings)) {
+        return false;
+    }
+
+    state.rectBodyContainerLevelReached = false;
+    state.rectHeadsContainerLevelReached = false;
+    state.rectBodyContainerChangePending = false;
+    return true;
 }
 
 void update(SystemState& state, const Settings& settings) {
@@ -583,6 +608,7 @@ void update(SystemState& state, const Settings& settings) {
                 state.rectBodyContainerVolumeMl = 0.0f;
                 state.rectBodyContainerStartVolumeMl = bodyCollected;
                 state.paused = true;
+                state.rectBodyContainerChangePending = true;
                 const String containerMessage =
                     String("Установите ёмкость ") +
                     String(state.rectBodyContainerIndex + 1) + " из " +

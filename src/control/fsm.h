@@ -48,6 +48,9 @@ namespace FSM {
         void update(SystemState& state, const Settings& settings);
         void initSession(SystemState& state, const Settings& settings);
         void getTargets(float& heads, float& body, float& tails);
+        // Clears a confirmed collection-container pause only when its level
+        // signal is no longer active. The caller resumes the FSM afterwards.
+        bool confirmContainerChange(SystemState& state, const Settings& settings);
     }
     
     namespace ManualRect {

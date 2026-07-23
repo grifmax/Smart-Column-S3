@@ -454,6 +454,9 @@ struct SystemState {
   float rectBodyContainerStartVolumeMl = 0.0f;
   bool rectBodyContainerLevelReached = false;
   bool rectHeadsContainerLevelReached = false;
+  // A planned body-container rotation has no level-sensor latch of its own.
+  // It stays set while the process is paused and awaits TFT/Web confirmation.
+  bool rectBodyContainerChangePending = false;
   uint32_t uptime = 0;
 
   TemperatureData temps;

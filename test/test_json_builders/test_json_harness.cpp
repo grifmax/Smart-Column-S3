@@ -5,6 +5,7 @@
 #include <../../src/control/fraction_program_logic.h>
 #include <../../src/control/equipment_testing_logic.h>
 #include <../../src/control/rect_takeoff_logic.h>
+#include <../../src/interface/tft_operator_overlay_logic.h>
 
 #include "../support/json_assertions.h"
 
@@ -48,6 +49,7 @@ void test_safety_proof_guard_allows_only_idle_safe_hardware();
 void test_editable_field_descriptor_exposes_canonical_tft_metadata();
 void test_editable_field_normalization_clamps_and_snaps_to_step();
 void test_power_command_captures_owner_reason_timestamp_and_safe_stop();
+void test_operator_overlay_claims_an_action_only_once_per_open();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -70,6 +72,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_editable_field_descriptor_exposes_canonical_tft_metadata);
   RUN_TEST(test_editable_field_normalization_clamps_and_snaps_to_step);
   RUN_TEST(test_power_command_captures_owner_reason_timestamp_and_safe_stop);
+  RUN_TEST(test_operator_overlay_claims_an_action_only_once_per_open);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>
@@ -126,6 +129,21 @@ void test_fraction_program_route_gate_requires_ready_route_and_settle_delay() {
 void test_fraction_program_pause_shifts_step_timer() {
   TEST_ASSERT_EQUAL_UINT32(
       12500, FractionProgramLogic::advanceTimestampAfterPause(10000, 2500));
+}
+
+void test_operator_overlay_claims_an_action_only_once_per_open() {
+  TftOperatorOverlayLogic::State overlay;
+  TftOperatorOverlayLogic::open(
+      overlay, TftOperatorOverlayLogic::Action::ProcessStop);
+
+  TEST_ASSERT_TRUE(TftOperatorOverlayLogic::mayDispatch(overlay));
+  TEST_ASSERT_TRUE(TftOperatorOverlayLogic::claimAction(overlay));
+  TEST_ASSERT_FALSE(TftOperatorOverlayLogic::mayDispatch(overlay));
+  TEST_ASSERT_FALSE(TftOperatorOverlayLogic::claimAction(overlay));
+
+  TftOperatorOverlayLogic::close(overlay);
+  TEST_ASSERT_FALSE(TftOperatorOverlayLogic::isActive(overlay));
+  TEST_ASSERT_FALSE(TftOperatorOverlayLogic::mayDispatch(overlay));
 }
 void test_fraction_program_route_timeout_requires_missing_route() {
   TEST_ASSERT_FALSE(FractionProgramLogic::hasRouteTimedOut(false, 29999));

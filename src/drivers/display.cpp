@@ -17,6 +17,7 @@
 #include "drivers/valves.h"
 #include "interface/editable_field_descriptors.h"
 #include "interface/localization.h"
+#include "interface/tft_operator_overlay_logic.h"
 #include "interface/webserver_shared.h"
 #include "profiles.h"
 #include "storage/logger.h"
@@ -409,9 +410,16 @@ struct UiState {
   bool serviceSession = false;
   char safetyActionMessage[144] = {0};
   char setupDraftMessage[144] = {0};
+  TftOperatorOverlayLogic::State operatorOverlay;
+  char operatorOverlayMessage[96] = {0};
 };
 
 static UiState ui;
+static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
+                                     const SystemState &state);
+static bool syncOperatorOverlay(const SystemState &state);
+static void openOperatorOverlay(TftOperatorOverlayLogic::Action action);
+static void drawOperatorOverlay(const SystemState &state);
 static TftPreflightSnapshot g_tftPreflight;
 static TftProfileOption g_tftProfileOptions[MAX_PROFILES];
 static uint8_t g_tftProfileOptionCount = 0;
@@ -2129,6 +2137,12 @@ static void saveManualPump(float val) {
 
 static bool handleNavigationTap(int16_t tx, int16_t ty,
                                 const SystemState &state) {
+  // A fullscreen operator overlay is modal: consume every touch before the
+  // normal Back/footer navigation gets a chance to act on the obscured screen.
+  if (TftOperatorOverlayLogic::isActive(ui.operatorOverlay)) {
+    return handleOperatorOverlayTap(tx, ty, state);
+  }
+
   // Value edit uses the full bottom area for the Save action.
   // Do not let tab navigation intercept taps there.
   if (ui.currentScreen == UI_VALUE_EDIT) {
@@ -2400,10 +2414,7 @@ static bool handleControlScreenTap(int16_t tx, int16_t ty,
   }
   if (hit(tx, ty, PROCESS_MENU_X3, PROCESS_MENU_Y2, PROCESS_MENU_W,
           PROCESS_MENU_H)) {
-    PowerCommandGateway::safeStopAll(
-        PowerCommandGateway::Owner::FSM,
-        PowerCommandGateway::Reason::TFT_PROCESS_STOP);
-    FSM::stopMode(g_state);
+    openOperatorOverlay(TftOperatorOverlayLogic::Action::ProcessStop);
     return true;
   }
   return false;
@@ -2416,10 +2427,7 @@ static bool handleSafetyViewScreenTap(int16_t tx, int16_t ty,
   if (hit(tx, ty, 10, actionY, actionW, 32)) {
     if (state.currentAlarm.type != AlarmType::NONE &&
         !state.currentAlarm.acknowledged) {
-      Safety::acknowledge(g_state);
-      snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
-               (g_settings.language == 0) ? "Авария подтверждена оператором."
-                                          : "Alarm acknowledged by operator.");
+      openOperatorOverlay(TftOperatorOverlayLogic::Action::AlarmAcknowledge);
     }
     return true;
   }
@@ -4086,6 +4094,250 @@ static void drawFullscreenOverlay(const char *title, const char *message,
     drawWrappedTextBlock(bodyX + 28, footerY, bodyW - 56, footer, colorMuted(),
                          1, 3, 3);
   }
+}
+
+static constexpr int16_t OPERATOR_OVERLAY_BUTTON_Y = TFT_HEIGHT - 82;
+static constexpr int16_t OPERATOR_OVERLAY_BUTTON_H = 34;
+
+static TftOperatorOverlayLogic::Action
+getRequiredOperatorOverlay(const SystemState &state) {
+  using Action = TftOperatorOverlayLogic::Action;
+  if (state.mode == Mode::MASHING && state.paused &&
+      state.mashing.waitingForOperator &&
+      state.mashing.stepType == MashStepType::OPERATOR_WAIT) {
+    return Action::MashOperatorWait;
+  }
+  if (state.mode == Mode::DISTILLATION && state.fractionProgram.active &&
+      state.fractionProgram.waitingForConfirmation) {
+    return Action::FractionConfirmation;
+  }
+  if (state.mode == Mode::RECTIFICATION && state.paused &&
+      (state.rectBodyContainerLevelReached ||
+       state.rectHeadsContainerLevelReached ||
+       state.rectBodyContainerChangePending)) {
+    return Action::ContainerChange;
+  }
+  return Action::None;
+}
+
+static void openOperatorOverlay(TftOperatorOverlayLogic::Action action) {
+  TftOperatorOverlayLogic::open(ui.operatorOverlay, action);
+  ui.operatorOverlayMessage[0] = '\0';
+}
+
+static bool syncOperatorOverlay(const SystemState &state) {
+  const TftOperatorOverlayLogic::Action required =
+      getRequiredOperatorOverlay(state);
+  if (required != TftOperatorOverlayLogic::Action::None) {
+    if (ui.operatorOverlay.action != required) {
+      openOperatorOverlay(required);
+      return true;
+    }
+    return false;
+  }
+
+  if (TftOperatorOverlayLogic::isAutomatic(ui.operatorOverlay.action)) {
+    TftOperatorOverlayLogic::close(ui.operatorOverlay);
+    ui.operatorOverlayMessage[0] = '\0';
+    return true;
+  }
+  return false;
+}
+
+static void drawOperatorOverlay(const SystemState &state) {
+  using Action = TftOperatorOverlayLogic::Action;
+  const bool ru = g_settings.language == 0;
+  const Action action = ui.operatorOverlay.action;
+  const char *title = ru ? "ПОДТВЕРЖДЕНИЕ" : "CONFIRMATION";
+  const char *message = "";
+  const char *confirm = ru ? "ПОДТВЕРДИТЬ" : "CONFIRM";
+  uint16_t tone = COLOR_WARNING;
+  char dynamicMessage[192] = {0};
+
+  switch (action) {
+  case Action::ProcessStop:
+    title = ru ? "ОСТАНОВКА ПРОЦЕССА" : "STOP PROCESS";
+    message = ru ? "Нагрев, насос и клапаны будут безопасно отключены. "
+                   "Остановить текущий процесс?"
+                 : "Heater, pump and valves will be stopped safely. "
+                   "Stop the current process?";
+    confirm = ru ? "СТОП" : "STOP";
+    tone = COLOR_DANGER;
+    break;
+  case Action::AlarmAcknowledge:
+    title = ru ? "ПОДТВЕРЖДЕНИЕ ТРЕВОГИ" : "ACKNOWLEDGE ALARM";
+    message = ru ? "Подтвердите, что тревога замечена. Это не сбрасывает "
+                   "защиту и не возобновляет процесс."
+                 : "Confirm that the alarm was noticed. This does not reset "
+                   "safety or resume the process.";
+    confirm = ru ? "ПОДТВЕРДИТЬ" : "ACKNOWLEDGE";
+    tone = COLOR_DANGER;
+    break;
+  case Action::MashOperatorWait:
+    title = ru ? "ДЕЙСТВИЕ ОПЕРАТОРА" : "OPERATOR ACTION";
+    message = state.mashing.operatorAction[0] != '\0'
+                  ? state.mashing.operatorAction
+                  : (ru ? "Подтвердите переход к следующему шагу затора."
+                        : "Confirm transition to the next mash step.");
+    confirm = ru ? "ПРОДОЛЖИТЬ" : "CONTINUE";
+    break;
+  case Action::FractionConfirmation:
+    title = ru ? "ПОДТВЕРДИТЕ ТАРУ" : "CONFIRM CONTAINER";
+    message = state.fractionProgram.confirmationPrompt[0] != '\0'
+                  ? state.fractionProgram.confirmationPrompt
+                  : (ru ? "Установите тару для отбора и подтвердите запуск."
+                        : "Install the collection container and confirm start.");
+    confirm = ru ? "НАЧАТЬ ОТБОР" : "START TAKEOFF";
+    tone = COLOR_INFO;
+    break;
+  case Action::ContainerChange:
+    title = ru ? "СМЕНА ТАРЫ" : "CHANGE CONTAINER";
+    if (state.rectHeadsContainerLevelReached) {
+      message = ru ? "Смените тару голов, перенесите датчик и дождитесь "
+                     "снятия его сигнала."
+                   : "Change the heads container, move the sensor and wait "
+                     "until its signal clears.";
+    } else if (state.rectBodyContainerLevelReached) {
+      message = ru ? "Смените тару тела, перенесите датчик и дождитесь "
+                     "снятия его сигнала."
+                   : "Change the body container, move the sensor and wait "
+                     "until its signal clears.";
+    } else {
+      snprintf(dynamicMessage, sizeof(dynamicMessage),
+               ru ? "Установите ёмкость %u для тела и подтвердите "
+                    "продолжение отбора."
+                  : "Install body container %u and confirm takeoff resume.",
+               static_cast<unsigned>(state.rectBodyContainerIndex + 1));
+      message = dynamicMessage;
+    }
+    confirm = ru ? "ПРОДОЛЖИТЬ" : "CONTINUE";
+    tone = COLOR_WARNING;
+    break;
+  case Action::None:
+  default:
+    return;
+  }
+
+  const char *footer = ui.operatorOverlayMessage[0] != '\0'
+                           ? ui.operatorOverlayMessage
+                           : (ru ? "Повторный тап не отправит вторую команду."
+                                 : "A repeated tap cannot send a second command.");
+  drawFullscreenOverlay(title, message, tone, footer, 1);
+
+  if (action == Action::ProcessStop) {
+    const int16_t gap = 12;
+    const int16_t buttonW = (TFT_WIDTH - 80 - gap) / 2;
+    drawButton(40, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
+               OPERATOR_OVERLAY_BUTTON_H, ru ? "ОТМЕНА" : "CANCEL",
+               COLOR_DARK_GREY, TFT_WHITE);
+    drawButton(40 + buttonW + gap, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
+               OPERATOR_OVERLAY_BUTTON_H, confirm, COLOR_DANGER, TFT_WHITE);
+  } else {
+    drawButton(120, OPERATOR_OVERLAY_BUTTON_Y, TFT_WIDTH - 240,
+               OPERATOR_OVERLAY_BUTTON_H, confirm, tone, TFT_WHITE);
+  }
+}
+
+static void resumeProcessFromOperatorOverlay() {
+  PowerCommandGateway::noteFsmSetpoint(
+      PowerCommandGateway::Target::ALL_OUTPUTS,
+      PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT, 1.0f);
+  FSM::resume(g_state);
+}
+
+static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
+                                     const SystemState &state) {
+  using Action = TftOperatorOverlayLogic::Action;
+  const Action action = ui.operatorOverlay.action;
+  if (action == Action::None) {
+    return false;
+  }
+
+  if (action == Action::ProcessStop) {
+    const int16_t gap = 12;
+    const int16_t buttonW = (TFT_WIDTH - 80 - gap) / 2;
+    if (hit(tx, ty, 40, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
+            OPERATOR_OVERLAY_BUTTON_H)) {
+      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+      ui.operatorOverlayMessage[0] = '\0';
+      return true;
+    }
+    if (!hit(tx, ty, 40 + buttonW + gap, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
+             OPERATOR_OVERLAY_BUTTON_H)) {
+      return true;
+    }
+  } else if (!hit(tx, ty, 120, OPERATOR_OVERLAY_BUTTON_Y, TFT_WIDTH - 240,
+                  OPERATOR_OVERLAY_BUTTON_H)) {
+    return true;
+  }
+
+  // A stale second tap is intentionally consumed without touching the FSM,
+  // safety policy or command gateway again.
+  if (!TftOperatorOverlayLogic::mayDispatch(ui.operatorOverlay)) {
+    return true;
+  }
+
+  switch (action) {
+  case Action::ProcessStop:
+    if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
+      PowerCommandGateway::safeStopAll(
+          PowerCommandGateway::Owner::FSM,
+          PowerCommandGateway::Reason::TFT_PROCESS_STOP);
+      FSM::stopMode(g_state);
+      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+    }
+    break;
+  case Action::AlarmAcknowledge:
+    if (state.currentAlarm.type == AlarmType::NONE ||
+        state.currentAlarm.acknowledged) {
+      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+      break;
+    }
+    if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
+      Safety::acknowledge(g_state);
+      snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
+               (g_settings.language == 0) ? "Авария подтверждена оператором."
+                                          : "Alarm acknowledged by operator.");
+      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+    }
+    break;
+  case Action::MashOperatorWait:
+    if (!FSM::Mashing::requestManualAdvance(g_state)) {
+      snprintf(ui.operatorOverlayMessage, sizeof(ui.operatorOverlayMessage),
+               "%s", g_settings.language == 0
+                         ? "Ожидание оператора уже не активно."
+                         : "Operator wait is no longer active.");
+      break;
+    }
+    if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
+      resumeProcessFromOperatorOverlay();
+      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+    }
+    break;
+  case Action::FractionConfirmation:
+    if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
+      (void)FSM::Distillation::confirmFractionProgram(g_state, g_settings);
+      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+    }
+    break;
+  case Action::ContainerChange:
+    if (!FSM::Rectification::confirmContainerChange(g_state, g_settings)) {
+      snprintf(ui.operatorOverlayMessage, sizeof(ui.operatorOverlayMessage),
+               "%s", g_settings.language == 0
+                         ? "Датчик уровня всё ещё активен: продолжение запрещено."
+                         : "Level sensor is still active: resume is blocked.");
+      break;
+    }
+    if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
+      resumeProcessFromOperatorOverlay();
+      TftOperatorOverlayLogic::close(ui.operatorOverlay);
+    }
+    break;
+  case Action::None:
+  default:
+    break;
+  }
+  return true;
 }
 
 static void drawValueTileValueStyled(int16_t x, int16_t y, int16_t w, int16_t h,
@@ -9515,6 +9767,11 @@ static void renderRootFooter(
                                   }
                                 }
 
+                                if (syncOperatorOverlay(state)) {
+                                  requestRedraw(
+                                      DisplayRedrawReason::LIVE_DATA_CHANGED);
+                                }
+
                                 if (!ui.needsRedraw &&
                                     g_displayStats.lastFrameAtMs > 0 &&
                                     (now - g_displayStats.lastFrameAtMs) >
@@ -9648,6 +9905,10 @@ static void renderRootFooter(
                                   tft.startWrite();
                                   renderHandler(state, full);
                                   drawGlobalStatusBar(state, false);
+                                  if (TftOperatorOverlayLogic::isActive(
+                                          ui.operatorOverlay)) {
+                                    drawOperatorOverlay(state);
+                                  }
                                   tft.endWrite();
 
                                   const uint32_t frameTime =
