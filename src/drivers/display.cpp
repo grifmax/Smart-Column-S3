@@ -7,6 +7,7 @@
 
 #include "display.h"
 #include "control/equipment_testing_logic.h"
+#include "control/pump_calibration.h"
 #include "control/service_test_session.h"
 #include "control/v2/status_adapter.h"
 #include "control/fsm.h"
@@ -237,7 +238,8 @@ enum UiScreen : uint8_t {
   UI_PROCESS_PARAMS,
   UI_MODE_CONFIG,
   UI_MODE_PARAMETERS,
-  UI_SERVICE_TEST
+  UI_SERVICE_TEST,
+  UI_PUMP_CALIBRATION
 };
 
 enum class UiRootTab : uint8_t {
@@ -318,7 +320,9 @@ static constexpr UiScreenPolicy kUiScreenPolicies[] = {
     {UiRootTab::CONTROL, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_NONE}, // UI_MODE_PARAMETERS
     {UiRootTab::SERVICE, UiEditPolicy::ViewOnly, false, false,
-     UI_LIVE_TEMPERATURES | UI_LIVE_POWER} // UI_SERVICE_TEST
+     UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_SERVICE_TEST
+    {UiRootTab::SETTINGS, UiEditPolicy::IdleOnly, false, false,
+     UI_LIVE_POWER} // UI_PUMP_CALIBRATION
 };
 
 enum class DisplayRedrawReason : uint8_t {
@@ -435,6 +439,7 @@ struct UiState {
       ServiceTestSession::Target::NONE;
   float serviceTestPumpStartVolumeMl = 0.0f;
   char serviceTestMessage[144] = {0};
+  char pumpCalibrationMessage[144] = {0};
   char safetyActionMessage[144] = {0};
   char setupDraftMessage[144] = {0};
   TftOperatorOverlayLogic::State operatorOverlay;
@@ -450,6 +455,7 @@ static void closeOperatorOverlay();
 static void drawOperatorOverlay(const SystemState &state);
 static void setServiceTestMessage(const char *message);
 static void stopServiceTestOutputs(const char *message);
+static void cancelPumpCalibration(const char *message);
 static TftPreflightSnapshot g_tftPreflight;
 static TftProfileOption g_tftProfileOptions[MAX_PROFILES];
 static uint8_t g_tftProfileOptionCount = 0;
@@ -2289,6 +2295,47 @@ static void savePumpCal(float val) {
   NVSManager::saveSettings(g_settings);
   Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
 }
+
+static void setPumpCalibrationMessage(const char *message) {
+  snprintf(ui.pumpCalibrationMessage, sizeof(ui.pumpCalibrationMessage), "%s",
+           message != nullptr ? message : "");
+}
+
+static void savePumpMeasuredVolume(float volumeMl) {
+  const float normalized = EditableFields::normalize(
+      EditableFields::Id::PUMP_CALIBRATION_MEASURED_VOLUME_ML, volumeMl);
+  if (!PumpCalibrationSession::enterMeasuredVolume(normalized)) {
+    setPumpCalibrationMessage(
+        (g_settings.language == 0)
+            ? "Не удалось рассчитать калибровку: проверьте измерение."
+            : "Could not calculate calibration: check the measurement.");
+    return;
+  }
+  setPumpCalibrationMessage(
+      (g_settings.language == 0)
+          ? "Результат рассчитан. Проверьте ошибку и сохраните или повторите."
+          : "Result calculated. Review the error, then save or retry.");
+}
+
+static void cancelPumpCalibration(const char *message) {
+  PumpCalibrationSession::cancel();
+  setPumpCalibrationMessage(message);
+}
+
+static bool commitPumpCalibration() {
+  if (!PumpCalibrationSession::mayCommit()) return false;
+  const float candidate = EditableFields::normalize(
+      EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
+      PumpCalibrationSession::getCandidateMlPerRev());
+  g_settings.pumpCal.mlPerRevolution = candidate;
+  if (!NVSManager::saveSettings(g_settings)) return false;
+  Pump::setCalibration(candidate);
+  PumpCalibrationSession::complete();
+  setPumpCalibrationMessage(
+      (g_settings.language == 0) ? "Калибровка сохранена в NVS."
+                                 : "Calibration saved to NVS.");
+  return true;
+}
 static void saveManualHeater(float val) {
   PowerCommandGateway::setHeaterPower(
       PowerCommandGateway::Owner::MANUAL,
@@ -2654,6 +2701,12 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
           (g_settings.language == 0) ? "Сервисный тест остановлен при выходе."
                                      : "Service test stopped on exit.");
     }
+    if (ui.currentScreen == UI_PUMP_CALIBRATION) {
+      cancelPumpCalibration(
+          (g_settings.language == 0)
+              ? "Калибровка отменена; прежнее значение сохранено."
+              : "Calibration cancelled; the previous value is retained.");
+    }
     popScreen();
     return true;
   }
@@ -2688,6 +2741,12 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
       stopServiceTestOutputs(
           (g_settings.language == 0) ? "Сервисный тест остановлен при выходе."
                                      : "Service test stopped on exit.");
+    }
+    if (ui.currentScreen == UI_PUMP_CALIBRATION) {
+      cancelPumpCalibration(
+          (g_settings.language == 0)
+              ? "Калибровка отменена; прежнее значение сохранено."
+              : "Calibration cancelled; the previous value is retained.");
     }
     const int action = tx / (TFT_WIDTH / 3);
     if (action == 0) {
@@ -3575,13 +3634,88 @@ static bool handleCalibrationScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   if (hit(tx, ty, 10, 52, 225, 86)) {
-    openValueEdit(EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
-                  g_settings.pumpCal.mlPerRevolution, savePumpCal);
+    ui.pumpCalibrationMessage[0] = '\0';
+    pushScreen(UI_PUMP_CALIBRATION);
     return true;
   }
   if (hit(tx, ty, 245, 52, 225, 86)) {
     Display::startTouchCalibration();
     return true;
+  }
+  return false;
+}
+
+static bool handlePumpCalibrationScreenTap(int16_t tx, int16_t ty,
+                                           const SystemState &state) {
+  if (state.mode != Mode::IDLE) return true;
+  const PumpCalibrationSession::Snapshot calibration =
+      PumpCalibrationSession::getSnapshot();
+  const int16_t actionY = 178;
+  if (calibration.phase == PumpCalibrationSession::Phase::IDLE &&
+      hit(tx, ty, 10, actionY, TFT_WIDTH - 20, 38)) {
+    if (PumpCalibrationSession::beginPriming(BOARD_PUMP_CALIBRATION_SPEED_ML_H)) {
+      setPumpCalibrationMessage(
+          (g_settings.language == 0)
+              ? "Прокачка линии запущена. Остановите, когда линия заполнена."
+              : "Line priming started. Stop when the line is filled.");
+    }
+    return true;
+  }
+  if (calibration.phase == PumpCalibrationSession::Phase::PRIMING &&
+      hit(tx, ty, 10, actionY, TFT_WIDTH - 20, 38)) {
+    if (PumpCalibrationSession::finishPriming()) {
+      setPumpCalibrationMessage(
+          (g_settings.language == 0)
+              ? "Линия заполнена. Установите мерную ёмкость и начните измерение."
+              : "Line filled. Place a measuring vessel and start measurement.");
+    }
+    return true;
+  }
+  if (calibration.phase == PumpCalibrationSession::Phase::READY_TO_MEASURE &&
+      hit(tx, ty, 10, actionY, TFT_WIDTH - 20, 38)) {
+    if (PumpCalibrationSession::beginMeasurement(BOARD_PUMP_CALIBRATION_SPEED_ML_H)) {
+      setPumpCalibrationMessage(
+          (g_settings.language == 0)
+              ? "Измерение запущено. Остановите после нужного объёма."
+              : "Measurement started. Stop after the desired volume.");
+    }
+    return true;
+  }
+  if (calibration.phase == PumpCalibrationSession::Phase::MEASURING &&
+      hit(tx, ty, 10, actionY, TFT_WIDTH - 20, 38)) {
+    if (PumpCalibrationSession::stopMeasurement()) {
+      setPumpCalibrationMessage(
+          (g_settings.language == 0)
+              ? "Введите фактический объём в мерной ёмкости."
+              : "Enter the actual measured volume.");
+    }
+    return true;
+  }
+  if (calibration.phase == PumpCalibrationSession::Phase::READY_TO_REVIEW &&
+      hit(tx, ty, 10, actionY, TFT_WIDTH - 20, 38)) {
+    openValueEdit(EditableFields::Id::PUMP_CALIBRATION_MEASURED_VOLUME_ML,
+                  10.0f, savePumpMeasuredVolume);
+    return true;
+  }
+  if (calibration.phase == PumpCalibrationSession::Phase::REVIEW) {
+    const int16_t buttonW = (TFT_WIDTH - 23) / 2;
+    if (hit(tx, ty, 10, actionY, buttonW, 38)) {
+      if (!commitPumpCalibration()) {
+        setPumpCalibrationMessage(
+            (g_settings.language == 0) ? "Не удалось сохранить калибровку."
+                                       : "Could not save calibration.");
+      }
+      return true;
+    }
+    if (hit(tx, ty, 13 + buttonW, actionY, buttonW, 38)) {
+      if (PumpCalibrationSession::retry()) {
+        setPumpCalibrationMessage(
+            (g_settings.language == 0)
+                ? "Повторите измерение; прежняя калибровка не менялась."
+                : "Repeat measurement; previous calibration is unchanged.");
+      }
+      return true;
+    }
   }
   return false;
 }
@@ -4149,6 +4283,24 @@ static void updateServiceTestLifecycle(const SystemState &state) {
   settleServiceTestStopping();
 }
 
+static void updatePumpCalibrationLifecycle(const SystemState &state) {
+  if (!PumpCalibrationSession::outputActive()) return;
+  const bool safe = state.mode == Mode::IDLE && state.safetyOk &&
+                    !Safety::isLatched(state) &&
+                    state.currentAlarm.type == AlarmType::NONE &&
+                    !g_settings.demoMode;
+  if (!safe || PumpCalibrationSession::hasTimedOut(
+                   millis(), BOARD_PUMP_CALIBRATION_TIMEOUT_MS)) {
+    cancelPumpCalibration(
+        safe ? ((g_settings.language == 0)
+                    ? "Калибровка остановлена по лимиту времени."
+                    : "Calibration stopped by time limit.")
+             : ((g_settings.language == 0)
+                    ? "Калибровка отменена safety; прежнее значение сохранено."
+                    : "Calibration cancelled by safety; previous value retained."));
+  }
+}
+
 static bool handleServiceScreenTap(int16_t tx, int16_t ty,
                                    const SystemState &) {
   if (isServiceTempsTap(tx, ty)) {
@@ -4460,7 +4612,8 @@ static constexpr UiTapHandler kUiTapDispatch[] = {
     handleProcessParamsScreenTap, // UI_PROCESS_PARAMS
     handleModeConfigScreenTap,    // UI_MODE_CONFIG
     handleModeParametersScreenTap, // UI_MODE_PARAMETERS
-    handleServiceTestScreenTap     // UI_SERVICE_TEST
+    handleServiceTestScreenTap,    // UI_SERVICE_TEST
+    handlePumpCalibrationScreenTap // UI_PUMP_CALIBRATION
 };
 
 static UiTapHandler getUiTapHandler(UiScreen screen) {
@@ -10505,6 +10658,144 @@ static void renderRootFooter(
                                      COLOR_WARNING);
                                }
 
+                               static void renderPumpCalibration(
+                                   const SystemState &state, bool full) {
+                                 const bool ru = g_settings.language == 0;
+                                 const PumpCalibrationSession::Snapshot calibration =
+                                     PumpCalibrationSession::getSnapshot();
+                                 const int16_t cardX = 10;
+                                 const int16_t cardW = TFT_WIDTH - 20;
+                                 const int16_t actionY = 178;
+                                 if (full) {
+                                   tft.fillScreen(colorBg());
+                                   drawHeader(ru ? "КАЛИБРОВКА НАСОСА"
+                                                 : "PUMP CALIBRATION",
+                                              true);
+                                   drawTabs(UI_PUMP_CALIBRATION);
+                                 }
+
+                                 const char *step = ru ? "1. ПРОКАЧАЙТЕ ЛИНИЮ"
+                                                       : "1. PRIME THE LINE";
+                                 const char *detail =
+                                     ru ? "Запуск не изменяет сохранённую калибровку."
+                                        : "Starting does not change saved calibration.";
+                                 const char *action = ru ? "НАЧАТЬ ПРОКАЧКУ"
+                                                         : "START PRIMING";
+                                 uint16_t tone = COLOR_INFO;
+                                 switch (calibration.phase) {
+                                 case PumpCalibrationSession::Phase::PRIMING:
+                                   step = ru ? "1. ЛИНИЯ ЗАПОЛНЯЕТСЯ"
+                                             : "1. LINE IS PRIMING";
+                                   detail = ru ? "Остановите, когда жидкость выйдет без воздуха."
+                                               : "Stop when liquid exits without air.";
+                                   action = ru ? "ОСТАНОВИТЬ ПРОКАЧКУ"
+                                               : "STOP PRIMING";
+                                   tone = COLOR_WARNING;
+                                   break;
+                                 case PumpCalibrationSession::Phase::READY_TO_MEASURE:
+                                   step = ru ? "2. ИЗМЕРИТЕЛЬНАЯ ПРОКАЧКА"
+                                             : "2. MEASUREMENT RUN";
+                                   detail = ru ? "Поставьте мерную ёмкость и начните прокачку."
+                                               : "Place a measuring vessel, then start the run.";
+                                   action = ru ? "НАЧАТЬ ИЗМЕРЕНИЕ" : "START MEASUREMENT";
+                                   break;
+                                 case PumpCalibrationSession::Phase::MEASURING:
+                                   step = ru ? "2. ИЗМЕРЕНИЕ ИДЁТ"
+                                             : "2. MEASURING";
+                                   detail = ru ? "Остановите после достаточного объёма."
+                                               : "Stop after a sufficient volume.";
+                                   action = ru ? "ОСТАНОВИТЬ ИЗМЕРЕНИЕ"
+                                               : "STOP MEASUREMENT";
+                                   tone = COLOR_WARNING;
+                                   break;
+                                 case PumpCalibrationSession::Phase::READY_TO_REVIEW:
+                                   step = ru ? "3. ВВЕДИТЕ ФАКТИЧЕСКИЙ ОБЪЁМ"
+                                             : "3. ENTER ACTUAL VOLUME";
+                                   detail = ru ? "Запишите объём из мерной ёмкости."
+                                               : "Enter the volume from the measuring vessel.";
+                                   action = ru ? "ВВЕСТИ ОБЪЁМ" : "ENTER VOLUME";
+                                   tone = COLOR_INFO;
+                                   break;
+                                 case PumpCalibrationSession::Phase::REVIEW:
+                                   step = ru ? "4. ПРОВЕРЬТЕ РЕЗУЛЬТАТ"
+                                             : "4. REVIEW RESULT";
+                                   detail = ru ? "Сохранение запишет значение в NVS; повтор не меняет его."
+                                               : "Save writes NVS; retry leaves it unchanged.";
+                                   action = ru ? "СОХРАНИТЬ" : "SAVE";
+                                   tone = COLOR_SUCCESS;
+                                   break;
+                                 case PumpCalibrationSession::Phase::IDLE:
+                                 default:
+                                   break;
+                                 }
+
+                                 drawCard(cardX, UI_HEADER_H + 4, cardW, 112,
+                                          colorCard());
+                                 drawPanelHeader(cardX, UI_HEADER_H + 4, cardW,
+                                                 step, tone);
+                                 tft.setTextColor(colorFg());
+                                 tft.setTextDatum(middle_left);
+                                 char detailFitted[120];
+                                 copyFittedText(detail, cardW - 24, detailFitted,
+                                                sizeof(detailFitted));
+                                 drawDisplayString(detailFitted, cardX + 10,
+                                                   UI_HEADER_H + 48);
+                                 char values[112];
+                                 if (calibration.phase ==
+                                     PumpCalibrationSession::Phase::REVIEW) {
+                                   const float previous =
+                                       g_settings.pumpCal.mlPerRevolution;
+                                   const float error = previous > 0.0f
+                                                           ? ((calibration.candidateMlPerRev -
+                                                               previous) /
+                                                              previous) *
+                                                                 100.0f
+                                                           : 0.0f;
+                                   snprintf(values, sizeof(values),
+                                            ru ? "Новый %.3f мл/об, ошибка %+0.1f%%"
+                                               : "New %.3f ml/rev, delta %+0.1f%%",
+                                            calibration.candidateMlPerRev, error);
+                                 } else if (calibration.phase ==
+                                                PumpCalibrationSession::Phase::MEASURING ||
+                                            calibration.phase ==
+                                                PumpCalibrationSession::Phase::READY_TO_REVIEW) {
+                                   snprintf(values, sizeof(values),
+                                            ru ? "Шагов: %lu" : "Steps: %lu",
+                                            static_cast<unsigned long>(
+                                                Pump::getTotalSteps()));
+                                 } else {
+                                   snprintf(values, sizeof(values),
+                                            ru ? "Текущее: %.3f мл/об"
+                                               : "Current: %.3f ml/rev",
+                                            g_settings.pumpCal.mlPerRevolution);
+                                 }
+                                 char valuesFitted[120];
+                                 copyFittedText(values, cardW - 24, valuesFitted,
+                                                sizeof(valuesFitted));
+                                 drawDisplayString(valuesFitted, cardX + 10,
+                                                   UI_HEADER_H + 82);
+                                 tft.setTextDatum(top_left);
+
+                                 if (calibration.phase ==
+                                     PumpCalibrationSession::Phase::REVIEW) {
+                                   const int16_t buttonW = (TFT_WIDTH - 23) / 2;
+                                   drawButton(10, actionY, buttonW, 38, action,
+                                              tone, TFT_WHITE);
+                                   drawButton(13 + buttonW, actionY, buttonW, 38,
+                                              ru ? "ПОВТОРИТЬ" : "RETRY",
+                                              COLOR_WARNING, TFT_WHITE);
+                                 } else {
+                                   drawButton(10, actionY, TFT_WIDTH - 20, 38,
+                                              action, tone, TFT_WHITE);
+                                 }
+                                 const char *hint =
+                                     ui.pumpCalibrationMessage[0] != '\0'
+                                         ? ui.pumpCalibrationMessage
+                                         : (ru ? "Выход или авария отменяет сессию без записи NVS."
+                                               : "Exit or alarm cancels the session without writing NVS.");
+                                 drawFooterHint(hint, tone);
+                               }
+
                               static void renderManual(
                                   const SystemState &state) {
                                 tft.fillScreen(colorBg());
@@ -11366,6 +11657,11 @@ static void renderRootFooter(
                                 renderCalibration(full);
                               }
 
+                              static void renderPumpCalibrationScreen(
+                                  const SystemState &state, bool full) {
+                                renderPumpCalibration(state, full);
+                              }
+
                               static void renderManualScreen(
                                   const SystemState &state, bool) {
                                 renderManual(state);
@@ -11399,7 +11695,8 @@ static void renderRootFooter(
                                       renderProcessParams,     // UI_PROCESS_PARAMS
                                       renderModeConfig,        // UI_MODE_CONFIG
                                       renderModeParameters,    // UI_MODE_PARAMETERS
-                                      renderServiceTest        // UI_SERVICE_TEST
+                                      renderServiceTest,       // UI_SERVICE_TEST
+                                      renderPumpCalibrationScreen // UI_PUMP_CALIBRATION
                                   };
 
                               static UiRenderHandler
@@ -11665,6 +11962,7 @@ static void renderRootFooter(
                                 g_displayStats.lastUpdateCallAtMs = now;
 
                                 updateServiceTestLifecycle(state);
+                                updatePumpCalibrationLifecycle(state);
 
                                 if (!tft_ok) {
                                   attemptHardRecovery(now);

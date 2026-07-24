@@ -442,9 +442,17 @@
 - `POST /api/pump/calibrate/start`
 - `POST /api/pump/calibrate/stop`
 - `POST /api/pump/calibrate/cancel`
+- `POST /api/pump/calibrate/prime/start`
+- `POST /api/pump/calibrate/prime/stop`
+- `POST /api/pump/calibrate/finish`
 - `POST /api/pump/stop`
 - `GET /api/pump/status`
 - `GET /api/pump/diag`
+
+Калибровка насоса — общая state machine TFT/Web: `prime → ready → measuring →
+review`. `finish` принимает `{ "volume": ... }`, рассчитывает кандидат
+`mlPerRev` и только затем записывает его в NVS. Обычный `/api/pump/start`
+возвращает `409`, пока сессия калибровки не закрыта.
 
 ### Клапаны и сервисный тест
 

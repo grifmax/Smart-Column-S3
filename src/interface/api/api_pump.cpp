@@ -1,19 +1,10 @@
 #include "api_routes.h"
 
 #include "config.h"
+#include "control/pump_calibration.h"
 #include "drivers/pump.h"
 #include "interface/webserver_shared.h"
 #include "storage/nvs_manager.h"
-
-struct PumpCalibrationSession {
-  bool active = false;
-  uint32_t startSteps = 0;
-  uint32_t stopSteps = 0;
-  uint32_t startMs = 0;
-  uint32_t stopMs = 0;
-};
-
-static PumpCalibrationSession g_pumpCalSession;
 
 void registerPumpApiRoutes(AsyncWebServer &server) {
   server.on("/api/pump/calibrate/start", HTTP_POST,
@@ -24,20 +15,6 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
                     "{\"success\":false,\"message\":\"Process is running\"}");
                 return;
               }
-              if (g_pumpCalSession.active) {
-                request->send(
-                    409, "application/json",
-                    "{\"success\":false,\"message\":\"Calibration already active\"}");
-                return;
-              }
-
-              Pump::resetVolume();
-              g_pumpCalSession.active = true;
-              g_pumpCalSession.startSteps = Pump::getTotalSteps();
-              g_pumpCalSession.stopSteps = 0;
-              g_pumpCalSession.startMs = millis();
-              g_pumpCalSession.stopMs = 0;
-
               float speed = Pump::getMaxSpeedMlH();
               if (request->hasParam("speed")) {
                 float reqSpeed = request->getParam("speed")->value().toFloat();
@@ -45,7 +22,12 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
                   speed = reqSpeed;
                 }
               }
-              Pump::start(speed);
+              if (!PumpCalibrationSession::beginMeasurement(speed, true)) {
+                request->send(
+                    409, "application/json",
+                    "{\"success\":false,\"message\":\"Calibration already active\"}");
+                return;
+              }
               LOG_I("Pump calibration started at %.1f ml/h", speed);
 
               request->send(200, "application/json",
@@ -54,17 +36,14 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
 
   server.on("/api/pump/calibrate/stop", HTTP_POST,
             [](AsyncWebServerRequest *request) {
-              if (!g_pumpCalSession.active) {
+              if (!PumpCalibrationSession::stopMeasurement()) {
                 request->send(
                     409, "application/json",
                     "{\"success\":false,\"message\":\"Calibration not active\"}");
                 return;
               }
 
-              Pump::stop();
-              g_pumpCalSession.stopSteps = Pump::getTotalSteps();
-              g_pumpCalSession.stopMs = millis();
-              LOG_I("Pump calibration stopped: %u", g_pumpCalSession.stopSteps);
+              LOG_I("Pump calibration measurement stopped");
 
               request->send(200, "application/json",
                             "{\"success\":true,\"running\":false}");
@@ -72,8 +51,7 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
 
   server.on("/api/pump/calibrate/cancel", HTTP_POST,
             [](AsyncWebServerRequest *request) {
-              Pump::stop();
-              g_pumpCalSession.active = false;
+              PumpCalibrationSession::cancel();
               LOG_I("Pump calibration cancelled and reset");
 
               request->send(200, "application/json",
@@ -92,13 +70,6 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        if (!g_pumpCalSession.active) {
-          request->send(
-              409, "application/json",
-              "{\"success\":false,\"message\":\"Calibration not active\"}");
-          return;
-        }
-
         float volume = doc["volume"] | 0.0f;
         if (volume <= 0.0f) {
           request->send(
@@ -107,51 +78,33 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        if (Pump::isRunning()) {
-          Pump::stop();
+        if (PumpCalibrationSession::outputActive()) {
+          (void)PumpCalibrationSession::stopMeasurement();
         }
-        if (g_pumpCalSession.stopSteps == 0) {
-          g_pumpCalSession.stopSteps = Pump::getTotalSteps();
-          g_pumpCalSession.stopMs = millis();
-        }
-
-        const uint32_t steps =
-            g_pumpCalSession.stopSteps - g_pumpCalSession.startSteps;
-        const uint32_t stepsPerRev =
-            static_cast<uint32_t>(PUMP_STEPS_PER_REV) *
-            static_cast<uint32_t>(PUMP_MICROSTEPS);
-
-        if (steps == 0 || stepsPerRev == 0) {
+        if (!PumpCalibrationSession::enterMeasuredVolume(volume) ||
+            !PumpCalibrationSession::mayCommit()) {
           request->send(
               400, "application/json",
-              "{\"success\":false,\"message\":\"No steps captured\"}");
+              "{\"success\":false,\"message\":\"No valid measurement captured\"}");
           return;
         }
 
-        const float revolutions = static_cast<float>(steps) /
-                                  static_cast<float>(stepsPerRev);
-        const float mlPerRev = volume / revolutions;
-
-        if (mlPerRev <= 0.0f) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"message\":\"Invalid calibration result\"}");
-          return;
-        }
+        const float mlPerRev = PumpCalibrationSession::getCandidateMlPerRev();
 
         g_settings.pumpCal.mlPerRevolution = mlPerRev;
         NVSManager::saveSettings(g_settings);
         Pump::setCalibration(mlPerRev);
-
+        const PumpCalibrationSession::Snapshot snapshot =
+            PumpCalibrationSession::getSnapshot();
         const uint32_t elapsedMs =
-            (g_pumpCalSession.stopMs > g_pumpCalSession.startMs)
-                ? (g_pumpCalSession.stopMs - g_pumpCalSession.startMs)
-                : 30000;
+            (snapshot.stoppedAtMs > snapshot.startedAtMs)
+                ? (snapshot.stoppedAtMs - snapshot.startedAtMs)
+                : 0;
         const float elapsedSec = elapsedMs / 1000.0f;
         const float calibrationFactor =
             (elapsedSec > 0.0f) ? (volume / elapsedSec) : 0.0f;
 
-        g_pumpCalSession.active = false;
+        PumpCalibrationSession::complete();
 
         char response[160];
         snprintf(response, sizeof(response),
@@ -159,6 +112,38 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
                  mlPerRev, calibrationFactor);
         request->send(200, "application/json", response);
       });
+
+  server.on("/api/pump/calibrate/prime/start", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              if (g_state.mode != Mode::IDLE) {
+                request->send(409, "application/json",
+                              "{\"success\":false,\"message\":\"Process is running\"}");
+                return;
+              }
+              float speed = Pump::getMaxSpeedMlH();
+              if (request->hasParam("speed")) {
+                const float requested = request->getParam("speed")->value().toFloat();
+                if (requested > 0.0f) speed = requested;
+              }
+              if (!PumpCalibrationSession::beginPriming(speed)) {
+                request->send(409, "application/json",
+                              "{\"success\":false,\"message\":\"Calibration is not idle\"}");
+                return;
+              }
+              request->send(200, "application/json",
+                            "{\"success\":true,\"phase\":\"priming\"}");
+            });
+
+  server.on("/api/pump/calibrate/prime/stop", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              if (!PumpCalibrationSession::finishPriming()) {
+                request->send(409, "application/json",
+                              "{\"success\":false,\"message\":\"Priming is not active\"}");
+                return;
+              }
+              request->send(200, "application/json",
+                            "{\"success\":true,\"phase\":\"ready\"}");
+            });
 
   server.on(
       "/api/pump/start", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
@@ -177,6 +162,13 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
                         "{\"success\":false,\"error\":\"Speed must be > 0\"}");
           return;
         }
+        if (PumpCalibrationSession::getSnapshot().phase !=
+            PumpCalibrationSession::Phase::IDLE) {
+          request->send(
+              409, "application/json",
+              "{\"success\":false,\"error\":\"Pump calibration session is active\"}");
+          return;
+        }
 
         Pump::start(speed);
         LOG_I("Pump started via API at %.1f ml/h", speed);
@@ -188,7 +180,12 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
       });
 
   server.on("/api/pump/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
-    Pump::stop();
+    if (PumpCalibrationSession::getSnapshot().phase !=
+        PumpCalibrationSession::Phase::IDLE) {
+      PumpCalibrationSession::cancel();
+    } else {
+      Pump::stop();
+    }
     LOG_I("Pump stopped via API");
     request->send(200, "application/json",
                   "{\"success\":true,\"message\":\"Pump stopped\"}");
@@ -196,9 +193,13 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
 
   server.on("/api/pump/status", HTTP_GET, [](AsyncWebServerRequest *request) {
     JsonDocument doc;
+    const PumpCalibrationSession::Snapshot calibration =
+        PumpCalibrationSession::getSnapshot();
     doc["running"] = Pump::isRunning();
     doc["speed"] = Pump::getSpeed();
     doc["totalVolume"] = Pump::getTotalVolume();
+    doc["calibrationPhase"] = static_cast<uint8_t>(calibration.phase);
+    doc["calibrationCandidateMlPerRev"] = calibration.candidateMlPerRev;
 
     String json;
     serializeJson(doc, json);

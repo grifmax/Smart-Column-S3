@@ -9,6 +9,7 @@
 #include <../../src/interface/tft_operator_overlay_logic.h>
 #include <../../src/interface/tft_service_test_logic.h>
 #include <../../src/control/service_test_session_logic.h>
+#include <../../src/control/pump_calibration_logic.h>
 
 #include "../support/json_assertions.h"
 
@@ -62,6 +63,7 @@ void test_tft_service_session_closes_after_emergency();
 void test_tft_post_alarm_action_never_resumes_process();
 void test_tft_service_test_hides_unavailable_hardware();
 void test_service_test_session_requires_safe_pause_and_explicit_restore();
+void test_pump_calibration_requires_prime_measure_review_and_commit();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -94,6 +96,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_tft_post_alarm_action_never_resumes_process);
   RUN_TEST(test_tft_service_test_hides_unavailable_hardware);
   RUN_TEST(test_service_test_session_requires_safe_pause_and_explicit_restore);
+  RUN_TEST(test_pump_calibration_requires_prime_measure_review_and_commit);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>
