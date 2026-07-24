@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Smart Column S3 — TFT Emulator</title>
+  <link rel="stylesheet" href="emulator.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="intro">
+      <p class="eyebrow">SMART COLUMN S3 · LOCAL HMI</p>
+      <h1>Эмулятор TFT 3.5″</h1>
+      <p>Кликабельный стенд для локального дисплея ILI9488, 480×320. Работает без прошивки, сети и подключения к оборудованию.</p>
+    </section>
+
+    <section class="emulator-layout" aria-label="Эмулятор экрана Smart Column S3">
+      <div class="device">
+        <div class="device-top">SMART COLUMN S3 <span>3.5″ TFT · 480 × 320</span></div>
+        <div id="tft-viewport" class="tft-viewport">
+          <div id="tft" class="tft" aria-live="polite"></div>
+        </div>
+        <div class="device-bottom"><span class="led"></span> LOCAL OPERATOR PANEL</div>
+      </div>
+
+      <aside class="scenario-panel">
+        <h2>Сценарий</h2>
+        <p id="scenario-status" class="scenario-status"></p>
+        <div class="scenario-actions">
+          <button data-action="scenario-idle">IDLE</button>
+          <button data-action="scenario-run">RUN</button>
+          <button data-action="scenario-alarm" class="danger">ALARM</button>
+        </div>
+        <div class="scenario-actions two">
+          <button data-action="home">⌂ На главный</button>
+          <button data-action="reset">↺ Сбросить демо</button>
+        </div>
+        <hr>
+        <h2>Масштаб дисплея</h2>
+        <div class="zoom-controls">
+          <button data-action="zoom-out" aria-label="Уменьшить масштаб">−</button>
+          <output id="zoom-value" for="zoom-range">100%</output>
+          <button data-action="zoom-in" aria-label="Увеличить масштаб">+</button>
+          <button data-action="zoom-actual">1:1</button>
+        </div>
+        <label class="zoom-range" for="zoom-range">50% <input id="zoom-range" type="range" min="50" max="200" step="25" value="100"> 200%</label>
+        <p class="quiet">В масштабе 100% область экрана строго 480×320 CSS‑пикселей. При увеличении используется nearest‑neighbor без сглаживания.</p>
+        <hr>
+        <h2>Как пользоваться</h2>
+        <p>Все элементы внутри экрана кликабельны. Нижняя панель открывает основные разделы. Для проверки полного маршрута: <em>Режимы → Ректификация → Предпуск → Обновить → Старт</em>.</p>
+        <p class="quiet">Это макет поведения HMI: он не обращается к API, GPIO и реальным устройствам.</p>
+      </aside>
+    </section>
+  </main>
+  <script src="emulator.js"></script>
+</body>
+</html>
