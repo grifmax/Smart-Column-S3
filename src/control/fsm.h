@@ -94,6 +94,11 @@ namespace FSM {
         void update(SystemState& state, const Settings& settings);
     }
 
+    namespace Autoclave {
+        void start(SystemState& state, const Settings& settings);
+        void update(SystemState& state, const Settings& settings);
+    }
+
     // =========================================================================
     // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
     // =========================================================================
@@ -102,6 +107,7 @@ namespace FSM {
     const char* getPhaseName(RectPhase phase);
     const char* getNbkPhaseName(NbkPhase phase);
     const char* getFermPhaseName(FermentationPhase phase);
+    const char* getAutoclavePhaseName(AutoclavePhase phase);
 
     uint32_t getPhaseElapsedSec();
     uint32_t getPhaseTargetSec(const SystemState& state, const Settings& settings);

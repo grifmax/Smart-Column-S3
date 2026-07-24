@@ -267,6 +267,12 @@ void migrateSettingsSchema(Settings& settings, uint16_t storedVersion) {
             constrain(settings.distillationUi.vaporTempMaxPowerPercent,
                       settings.distillationUi.vaporTempMinPowerPercent, 100);
     }
+    if (storedVersion < 4) {
+        // Autoclave settings did not exist in older installations. The board
+        // profile remains the separate opt-in gate, so migration can only
+        // create safe defaults and must not activate a physical output.
+        settings.autoclave = AutoclaveSettings{};
+    }
 }
 
 } // namespace
@@ -620,6 +626,46 @@ bool loadSettings(Settings& settings) {
     settings.fermentation.targetTempC = prefs.getFloat(NVS_KEY_FERM_TARGET_TEMP, 28.0f);
     settings.fermentation.hysteresisC = prefs.getFloat(NVS_KEY_FERM_HYSTERESIS, 0.5f);
     settings.fermentation.useHeater = prefs.getBool(NVS_KEY_FERM_USE_HEATER, true);
+    settings.autoclave.schemaVersion = 1;
+    settings.autoclave.medium = static_cast<AutoclaveMedium>(
+        prefs.getUChar(NVS_KEY_AUTOCLAVE_MEDIUM,
+                       static_cast<uint8_t>(AutoclaveMedium::STEAM)));
+    settings.autoclave.sterilizationTempC =
+        prefs.getFloat(NVS_KEY_AUTOCLAVE_TEMP, 121.0f);
+    settings.autoclave.temperatureBandC =
+        prefs.getFloat(NVS_KEY_AUTOCLAVE_BAND, 1.0f);
+    settings.autoclave.sterilizationDurationMin =
+        prefs.getUShort(NVS_KEY_AUTOCLAVE_DURATION, 15);
+    settings.autoclave.heatPowerLimitW =
+        prefs.getUShort(NVS_KEY_AUTOCLAVE_HEAT_POWER, 0);
+    settings.autoclave.heatRampTargetC =
+        prefs.getFloat(NVS_KEY_AUTOCLAVE_RAMP_TEMP, 0.0f);
+    settings.autoclave.heatTimeoutMin =
+        prefs.getUShort(NVS_KEY_AUTOCLAVE_HEAT_TIMEOUT, 0);
+    settings.autoclave.coolingEnabled =
+        prefs.getBool(NVS_KEY_AUTOCLAVE_COOLING, false);
+    settings.autoclave.coolingStopTempC =
+        prefs.getFloat(NVS_KEY_AUTOCLAVE_COOL_STOP, 0.0f);
+    settings.autoclave.circulationEnabled =
+        prefs.getBool(NVS_KEY_AUTOCLAVE_CIRCULATION, false);
+    settings.autoclave.drainEnabled =
+        prefs.getBool(NVS_KEY_AUTOCLAVE_DRAIN, false);
+    settings.autoclave.drainDurationSec =
+        prefs.getUShort(NVS_KEY_AUTOCLAVE_DRAIN_DURATION, 0);
+    settings.autoclave.pressureMaxMmHg =
+        prefs.getFloat(NVS_KEY_AUTOCLAVE_PRESSURE_MAX, 0.0f);
+    settings.autoclave.pressureRiseRateMaxMmHgMin =
+        prefs.getFloat(NVS_KEY_AUTOCLAVE_PRESSURE_RISE, 0.0f);
+    if (static_cast<uint8_t>(settings.autoclave.medium) >
+        static_cast<uint8_t>(AutoclaveMedium::WATER)) {
+        settings.autoclave.medium = AutoclaveMedium::STEAM;
+    }
+    settings.autoclave.sterilizationTempC =
+        constrain(settings.autoclave.sterilizationTempC, 100.0f, 140.0f);
+    settings.autoclave.temperatureBandC =
+        constrain(settings.autoclave.temperatureBandC, 0.1f, 10.0f);
+    settings.autoclave.sterilizationDurationMin =
+        constrain(settings.autoclave.sterilizationDurationMin, 1, 360);
 
     // Мешалка
     settings.stirrer.enabled = prefs.getBool(NVS_KEY_STIRRER_ENABLED, settings.stirrer.enabled);
@@ -838,6 +884,34 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_FERM_TARGET_TEMP, settings.fermentation.targetTempC);
     prefs.putFloat(NVS_KEY_FERM_HYSTERESIS, settings.fermentation.hysteresisC);
     prefs.putBool(NVS_KEY_FERM_USE_HEATER, settings.fermentation.useHeater);
+    prefs.putUChar(NVS_KEY_AUTOCLAVE_MEDIUM,
+                   static_cast<uint8_t>(settings.autoclave.medium));
+    prefs.putFloat(NVS_KEY_AUTOCLAVE_TEMP,
+                   settings.autoclave.sterilizationTempC);
+    prefs.putFloat(NVS_KEY_AUTOCLAVE_BAND,
+                   settings.autoclave.temperatureBandC);
+    prefs.putUShort(NVS_KEY_AUTOCLAVE_DURATION,
+                    settings.autoclave.sterilizationDurationMin);
+    prefs.putUShort(NVS_KEY_AUTOCLAVE_HEAT_POWER,
+                    settings.autoclave.heatPowerLimitW);
+    prefs.putFloat(NVS_KEY_AUTOCLAVE_RAMP_TEMP,
+                   settings.autoclave.heatRampTargetC);
+    prefs.putUShort(NVS_KEY_AUTOCLAVE_HEAT_TIMEOUT,
+                    settings.autoclave.heatTimeoutMin);
+    prefs.putBool(NVS_KEY_AUTOCLAVE_COOLING,
+                  settings.autoclave.coolingEnabled);
+    prefs.putFloat(NVS_KEY_AUTOCLAVE_COOL_STOP,
+                   settings.autoclave.coolingStopTempC);
+    prefs.putBool(NVS_KEY_AUTOCLAVE_CIRCULATION,
+                  settings.autoclave.circulationEnabled);
+    prefs.putBool(NVS_KEY_AUTOCLAVE_DRAIN,
+                  settings.autoclave.drainEnabled);
+    prefs.putUShort(NVS_KEY_AUTOCLAVE_DRAIN_DURATION,
+                    settings.autoclave.drainDurationSec);
+    prefs.putFloat(NVS_KEY_AUTOCLAVE_PRESSURE_MAX,
+                   settings.autoclave.pressureMaxMmHg);
+    prefs.putFloat(NVS_KEY_AUTOCLAVE_PRESSURE_RISE,
+                   settings.autoclave.pressureRiseRateMaxMmHgMin);
 
     // Мешалка
     prefs.putBool(NVS_KEY_STIRRER_ENABLED, settings.stirrer.enabled);

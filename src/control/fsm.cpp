@@ -7,6 +7,7 @@
 #include "fsm.h"
 #include "fsm_utils.h"
 #include "rect_takeoff.h"
+#include "power_command_gateway.h"
 #include "v2/status_adapter.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
@@ -15,6 +16,7 @@
 #include "../interface/mqtt.h"
 #include "../interface/localization.h"
 #include "fraction_program_logic.h"
+#include "autoclave_hardware_profile.h"
 #include "service_test_session.h"
 #include "../storage/logger.h"
 
@@ -54,6 +56,7 @@ const char* getOperatorStopMessage(Mode mode) {
         case Mode::HOLD: return "Программа выдержки остановлена оператором";
         case Mode::NBK: return "НБК остановлена оператором";
         case Mode::FERMENTATION: return "Брожение остановлено оператором";
+        case Mode::AUTOCLAVE: return "Автоклав остановлен оператором";
         case Mode::IDLE:
         default:
             return "Процесс остановлен оператором";
@@ -119,6 +122,15 @@ void noteModeExitTransition(const SystemState& state,
                     operatorMessage);
             }
             break;
+        case Mode::AUTOCLAVE:
+            if (state.autoclave.phase != AutoclavePhase::IDLE) {
+                ControlV2::notePhaseTransition(
+                    Mode::AUTOCLAVE,
+                    static_cast<uint16_t>(state.autoclave.phase),
+                    static_cast<uint16_t>(AutoclavePhase::IDLE), reasonCode,
+                    operatorMessage);
+            }
+            break;
         case Mode::IDLE:
         default:
             break;
@@ -136,6 +148,7 @@ void finalizeModeStop(SystemState& state) {
     state.rectPhase = RectPhase::IDLE;
     state.nbkPhase = NbkPhase::IDLE;
     state.fermPhase = FermentationPhase::IDLE;
+    state.autoclave = AutoclaveRuntimeState{};
     state.mashing.active = false;
     state.hold.active = false;
     state.paused = false;
@@ -170,6 +183,9 @@ void update(SystemState& state, const Settings& settings) {
             case Mode::FERMENTATION:
                 Fermentation::update(state, settings);
                 break;
+            case Mode::AUTOCLAVE:
+                Autoclave::update(state, settings);
+                break;
             default:
                 break;
         }
@@ -179,6 +195,18 @@ void update(SystemState& state, const Settings& settings) {
 
 void startMode(SystemState& state, const Settings& settings, Mode mode) {
     LOG_I("FSM: Starting mode %s", getModeName(mode));
+
+    if (mode == Mode::AUTOCLAVE &&
+        !AutoclaveHardwareProfile::isSteamAvailable()) {
+        PowerCommandGateway::safeStopAll(
+            PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_AUTOCLAVE);
+        const char* detail = AutoclaveHardwareProfileLogic::validationToken(
+            AutoclaveHardwareProfile::validate());
+        Logger::logf(1, "autoclave event=start_rejected detail=%s", detail);
+        LOG_W("FSM: Autoclave start rejected: %s", detail);
+        return;
+    }
     
     // Сброс предыдущего состояния
     Heater::setPower(0);
@@ -257,6 +285,9 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
                 state.stirrer.autoMode = true;
                 Stirrer::start(settings.stirrer.defaultSpeedPercent);
             }
+            break;
+        case Mode::AUTOCLAVE:
+            Autoclave::start(state, settings);
             break;
         default: break;
     }
@@ -351,6 +382,7 @@ const char* getModeName(Mode mode) {
         case Mode::HOLD: return msg(Msg::MODE_HOLD);
         case Mode::NBK: return "НБК";
         case Mode::FERMENTATION: return "Ферментация";
+        case Mode::AUTOCLAVE: return "Автоклав";
         default: return "???";
     }
 }
@@ -387,6 +419,20 @@ const char* getFermPhaseName(FermentationPhase phase) {
         case FermentationPhase::COOLING: return "Охлаждение";
         case FermentationPhase::FERMENTATION: return "Брожение";
         case FermentationPhase::COMPLETED: return "Завершено";
+        default: return "Ожидание";
+    }
+}
+
+const char* getAutoclavePhaseName(AutoclavePhase phase) {
+    switch (phase) {
+        case AutoclavePhase::PRECHECK: return "Проверка";
+        case AutoclavePhase::HEATING: return "Разогрев";
+        case AutoclavePhase::STERILIZING: return "Стерилизация";
+        case AutoclavePhase::COOLING: return "Охлаждение";
+        case AutoclavePhase::READY: return "Готово к выемке";
+        case AutoclavePhase::FINISH: return "Завершено";
+        case AutoclavePhase::FAULT: return "Авария";
+        case AutoclavePhase::IDLE:
         default: return "Ожидание";
     }
 }

@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.114"
+#define FIRMWARE_VERSION "2.4.115"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -473,7 +473,7 @@
 #define NVS_KEY_RECT_PRESSURE_MIN_PWR "rect_pmin"
 #define NVS_KEY_SETTINGS_SCHEMA "nvs_schema"
 #define NVS_KEY_AUTONOMY_LEVEL "autonomy"
-#define NVS_SETTINGS_SCHEMA_VERSION 3
+#define NVS_SETTINGS_SCHEMA_VERSION 4
 #define NVS_KEY_DIST_SPEED "dist_spd"
 #define NVS_KEY_DIST_HEADS_VOL "dist_hvol"
 #define NVS_KEY_DIST_TARGET_VOL "dist_tvol"
@@ -501,6 +501,20 @@
 #define NVS_KEY_FERM_TARGET_TEMP "ferm_tgt"
 #define NVS_KEY_FERM_HYSTERESIS "ferm_hyst"
 #define NVS_KEY_FERM_USE_HEATER "ferm_heat"
+#define NVS_KEY_AUTOCLAVE_MEDIUM "acl_med"
+#define NVS_KEY_AUTOCLAVE_TEMP "acl_temp"
+#define NVS_KEY_AUTOCLAVE_BAND "acl_band"
+#define NVS_KEY_AUTOCLAVE_DURATION "acl_dur"
+#define NVS_KEY_AUTOCLAVE_HEAT_POWER "acl_pwr"
+#define NVS_KEY_AUTOCLAVE_RAMP_TEMP "acl_ramp"
+#define NVS_KEY_AUTOCLAVE_HEAT_TIMEOUT "acl_htmo"
+#define NVS_KEY_AUTOCLAVE_COOLING "acl_cool"
+#define NVS_KEY_AUTOCLAVE_COOL_STOP "acl_cstop"
+#define NVS_KEY_AUTOCLAVE_CIRCULATION "acl_circ"
+#define NVS_KEY_AUTOCLAVE_DRAIN "acl_drain"
+#define NVS_KEY_AUTOCLAVE_DRAIN_DURATION "acl_ddur"
+#define NVS_KEY_AUTOCLAVE_PRESSURE_MAX "acl_pmax"
+#define NVS_KEY_AUTOCLAVE_PRESSURE_RISE "acl_prate"
 #define NVS_KEY_SAFETY_PRESSURE_MAX "safe_pmax"
 #define NVS_KEY_SAFETY_TSA_MAX "safe_tsa"
 #define NVS_KEY_SAFETY_WATER_OUT_MAX "safe_wout"

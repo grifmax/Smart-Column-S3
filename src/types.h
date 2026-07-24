@@ -17,7 +17,8 @@ enum class Mode : uint8_t {
   MASHING,    // Затирка солода
   HOLD,       // Температурные ступени (Hold режим)
   NBK,        // Непрерывная бражная колонна
-  FERMENTATION// Ферментация (брожение)
+  FERMENTATION, // Ферментация (брожение)
+  AUTOCLAVE
 };
 
 // Фазы ректификации
@@ -109,6 +110,22 @@ enum class FermentationPhase : uint8_t {
   COOLING,
   FERMENTATION,
   COMPLETED
+};
+
+enum class AutoclaveMedium : uint8_t {
+  STEAM = 0,
+  WATER,
+};
+
+enum class AutoclavePhase : uint8_t {
+  IDLE = 0,
+  PRECHECK,
+  HEATING,
+  STERILIZING,
+  COOLING,
+  READY,
+  FINISH,
+  FAULT,
 };
 
 // Типы насадки
@@ -443,6 +460,15 @@ struct FractionProgramRuntime {
   char confirmationPrompt[64] = {};
 };
 
+struct AutoclaveRuntimeState {
+  AutoclavePhase phase = AutoclavePhase::IDLE;
+  bool operatorReadyConfirmed = false;
+  uint32_t sterilizationAccumulatedMs = 0;
+  uint32_t phaseStartedAtMs = 0;
+  uint32_t lastInBandAtMs = 0;
+  char faultReason[96] = {};
+};
+
 // Состояние системы (полная версия)
 struct SystemState {
   Mode mode = Mode::IDLE;
@@ -479,6 +505,7 @@ struct SystemState {
   NbkRuntimeState nbk;
   NbkPhase nbkPhase = NbkPhase::IDLE;
   FermentationPhase fermPhase = FermentationPhase::IDLE;
+  AutoclaveRuntimeState autoclave;
   FractionProgramRuntime fractionProgram;
 };
 
@@ -735,6 +762,24 @@ struct FermentationSettings {
   uint16_t durationHours = 0;    // #4 fix: плановая длительность (0 = неизвестно, прогресс без неё — 0%)
 };
 
+struct AutoclaveSettings {
+  uint8_t schemaVersion = 1;
+  AutoclaveMedium medium = AutoclaveMedium::STEAM;
+  float sterilizationTempC = 121.0f;
+  float temperatureBandC = 1.0f;
+  uint16_t sterilizationDurationMin = 15;
+  uint16_t heatPowerLimitW = 0;
+  float heatRampTargetC = 0.0f;
+  uint16_t heatTimeoutMin = 0;
+  bool coolingEnabled = false;
+  float coolingStopTempC = 0.0f;
+  bool circulationEnabled = false;
+  bool drainEnabled = false;
+  uint16_t drainDurationSec = 0;
+  float pressureMaxMmHg = 0.0f;
+  float pressureRiseRateMaxMmHgMin = 0.0f;
+};
+
 enum class DisplayRefreshProfile : uint8_t {
   NORMAL = 0, // 1000ms
   SAFE = 1,   // 5000ms
@@ -800,6 +845,7 @@ struct Settings {
   SafetySettings safety;
   NbkSettings nbk;
   FermentationSettings fermentation;
+  AutoclaveSettings autoclave;
   StirrerSettings stirrer;
 
   uint8_t language = 0; // 0=RU, 1=EN

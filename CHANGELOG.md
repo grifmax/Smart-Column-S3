@@ -7,6 +7,20 @@
 
 ---
 
+## [2.4.115] - 2026-07-24
+
+### Added
+- Отдельный `Mode::AUTOCLAVE` с собственными `AutoclavePhase`, runtime state,
+  `AutoclaveSettings` и NVS schema v4. Миграция старых settings создаёт только
+  безопасные default-значения и не активирует новый процесс. (codex)
+
+### Changed
+- Автоклавный handler и FSM отклоняют старт при невалидном hardware profile с
+  полным safe-stop и structured log. До D‑026 режим не опубликован в TFT/Web
+  UI, поэтому V2.0 не получает новый путь к нагреву. (codex)
+
+---
+
 ## [2.4.114] - 2026-07-24
 
 ### Added

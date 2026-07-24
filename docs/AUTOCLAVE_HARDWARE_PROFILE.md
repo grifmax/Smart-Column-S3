@@ -33,6 +33,14 @@ mechanical safety review, power/pressure limits. Для `water` дополнит
 Таким образом, реализуемый first-release путь — только `steam` после approval;
 `water` не может быть включён одной настройкой или fallback-выходом.
 
+## Hidden firmware foundation
+
+Firmware уже хранит независимые `AutoclaveSettings` и состояние
+`Mode::AUTOCLAVE`; это не вариант `HOLD` и не скрытый путь к existing outputs.
+Старая NVS мигрирует в safe defaults. Пока validator не одобрит steam profile,
+`FSM::startMode(AUTOCLAVE)` записывает отказ, применяет full safe-stop и не
+меняет активный режим. Экран, Web API и menu появятся только после D-023–D-026.
+
 ## Данные для утверждения D-020
 
 Заполнить и утвердить для каждого физического выхода. `Нет` — допустимое
