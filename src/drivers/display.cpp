@@ -8,6 +8,7 @@
 #include "display.h"
 #include "control/equipment_testing_logic.h"
 #include "control/pump_calibration.h"
+#include "control/sensor_calibration_logic.h"
 #include "control/service_test_session.h"
 #include "control/v2/status_adapter.h"
 #include "control/fsm.h"
@@ -239,7 +240,8 @@ enum UiScreen : uint8_t {
   UI_MODE_CONFIG,
   UI_MODE_PARAMETERS,
   UI_SERVICE_TEST,
-  UI_PUMP_CALIBRATION
+  UI_PUMP_CALIBRATION,
+  UI_SENSOR_CALIBRATION
 };
 
 enum class UiRootTab : uint8_t {
@@ -322,7 +324,9 @@ static constexpr UiScreenPolicy kUiScreenPolicies[] = {
     {UiRootTab::SERVICE, UiEditPolicy::ViewOnly, false, false,
      UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_SERVICE_TEST
     {UiRootTab::SETTINGS, UiEditPolicy::IdleOnly, false, false,
-     UI_LIVE_POWER} // UI_PUMP_CALIBRATION
+     UI_LIVE_POWER}, // UI_PUMP_CALIBRATION
+    {UiRootTab::SETTINGS, UiEditPolicy::IdleOnly, false, false,
+     UI_LIVE_TEMPERATURES} // UI_SENSOR_CALIBRATION
 };
 
 enum class DisplayRedrawReason : uint8_t {
@@ -440,6 +444,12 @@ struct UiState {
   float serviceTestPumpStartVolumeMl = 0.0f;
   char serviceTestMessage[144] = {0};
   char pumpCalibrationMessage[144] = {0};
+  uint8_t sensorCalibrationPage = 0;
+  uint8_t sensorCalibrationTempRole = 0;
+  uint8_t sensorCalibrationScanCount = 0;
+  uint8_t sensorCalibrationScanIndex = 0;
+  uint8_t sensorCalibrationAddresses[TEMP_COUNT][8] = {};
+  char sensorCalibrationMessage[144] = {0};
   char safetyActionMessage[144] = {0};
   char setupDraftMessage[144] = {0};
   TftOperatorOverlayLogic::State operatorOverlay;
@@ -456,6 +466,7 @@ static void drawOperatorOverlay(const SystemState &state);
 static void setServiceTestMessage(const char *message);
 static void stopServiceTestOutputs(const char *message);
 static void cancelPumpCalibration(const char *message);
+static void setSensorCalibrationMessage(const char *message);
 static TftPreflightSnapshot g_tftPreflight;
 static TftProfileOption g_tftProfileOptions[MAX_PROFILES];
 static uint8_t g_tftProfileOptionCount = 0;
@@ -2336,6 +2347,201 @@ static bool commitPumpCalibration() {
                                  : "Calibration saved to NVS.");
   return true;
 }
+
+static void setSensorCalibrationMessage(const char *message) {
+  snprintf(ui.sensorCalibrationMessage, sizeof(ui.sensorCalibrationMessage),
+           "%s", message != nullptr ? message : "");
+}
+
+static float getSensorTemperatureValue(uint8_t role,
+                                       const SystemState &state) {
+  switch (role) {
+  case TEMP_CUBE:
+    return state.temps.cube;
+  case TEMP_COLUMN_BOTTOM:
+    return state.temps.columnBottom;
+  case TEMP_COLUMN_TOP:
+    return state.temps.columnTop;
+  case TEMP_REFLUX:
+    return state.temps.reflux;
+  case TEMP_TSA:
+    return state.temps.tsa;
+  case TEMP_WATER_IN:
+    return state.temps.waterIn;
+  case TEMP_WATER_OUT:
+    return state.temps.waterOut;
+  default:
+    return 0.0f;
+  }
+}
+
+static void saveSensorTemperatureOffset(float value) {
+  const uint8_t role = ui.sensorCalibrationTempRole < TEMP_COUNT
+                           ? ui.sensorCalibrationTempRole
+                           : TEMP_CUBE;
+  const TempCalibration previous = g_settings.tempCal;
+  g_settings.tempCal.offsets[role] = EditableFields::normalize(
+      EditableFields::Id::SENSOR_TEMPERATURE_OFFSET_C, value);
+  if (!NVSManager::saveSettings(g_settings)) {
+    g_settings.tempCal = previous;
+    setSensorCalibrationMessage(
+        (g_settings.language == 0) ? "Не удалось сохранить поправку DS18."
+                                   : "Could not save the DS18 offset.");
+    return;
+  }
+  Sensors::applyCalibration(g_settings.tempCal);
+  setSensorCalibrationMessage(
+      (g_settings.language == 0) ? "Поправка DS18 сохранена в NVS."
+                                 : "DS18 offset saved to NVS.");
+}
+
+static void saveSensorPressureOffset(float value) {
+  const float previous = g_settings.pressureCal.zeroOffsetMmHg;
+  g_settings.pressureCal.zeroOffsetMmHg = EditableFields::normalize(
+      EditableFields::Id::SENSOR_PRESSURE_ZERO_OFFSET_MMHG, value);
+  if (!NVSManager::saveSettings(g_settings)) {
+    g_settings.pressureCal.zeroOffsetMmHg = previous;
+    setSensorCalibrationMessage(
+        (g_settings.language == 0) ? "Не удалось сохранить ноль давления."
+                                   : "Could not save pressure zero.");
+    return;
+  }
+  setSensorCalibrationMessage(
+      (g_settings.language == 0) ? "Ноль давления сохранён в NVS."
+                                 : "Pressure zero saved to NVS.");
+}
+
+static void saveSensorHydrometerOffset(float value) {
+  const float previous = g_settings.hydroCal.densityOffset;
+  g_settings.hydroCal.densityOffset = EditableFields::normalize(
+      EditableFields::Id::SENSOR_HYDROMETER_DENSITY_OFFSET, value);
+  if (!NVSManager::saveSettings(g_settings)) {
+    g_settings.hydroCal.densityOffset = previous;
+    setSensorCalibrationMessage(
+        (g_settings.language == 0) ? "Не удалось сохранить поправку ареометра."
+                                   : "Could not save hydrometer offset.");
+    return;
+  }
+  setSensorCalibrationMessage(
+      (g_settings.language == 0) ? "Поправка ареометра сохранена в NVS."
+                                 : "Hydrometer offset saved to NVS.");
+}
+
+static void saveSensorHydrometerReference(float referenceDensity) {
+  const float rawDensity =
+      g_state.hydrometer.density - g_settings.hydroCal.densityOffset;
+  saveSensorHydrometerOffset(EditableFields::normalize(
+      EditableFields::Id::SENSOR_HYDROMETER_DENSITY_OFFSET,
+      referenceDensity - rawDensity));
+}
+
+static void saveSensorBodyLevelThreshold(float value) {
+  const float previous = g_settings.equipment.bodyLevelThresholdV;
+  g_settings.equipment.bodyLevelThresholdV = EditableFields::normalize(
+      EditableFields::Id::SENSOR_BODY_LEVEL_THRESHOLD_V, value);
+  if (!NVSManager::saveSettings(g_settings)) {
+    g_settings.equipment.bodyLevelThresholdV = previous;
+    setSensorCalibrationMessage(
+        (g_settings.language == 0) ? "Не удалось сохранить порог уровня."
+                                   : "Could not save level threshold.");
+    return;
+  }
+  setSensorCalibrationMessage(
+      (g_settings.language == 0) ? "Порог уровня сохранён в NVS."
+                                 : "Level threshold saved to NVS.");
+}
+
+static void saveSensorLeakThreshold(float value) {
+  const float previous = g_settings.equipment.leakThresholdV;
+  g_settings.equipment.leakThresholdV = EditableFields::normalize(
+      EditableFields::Id::SENSOR_LEAK_THRESHOLD_V, value);
+  if (!NVSManager::saveSettings(g_settings)) {
+    g_settings.equipment.leakThresholdV = previous;
+    setSensorCalibrationMessage(
+        (g_settings.language == 0) ? "Не удалось сохранить порог протечки."
+                                   : "Could not save leak threshold.");
+    return;
+  }
+  setSensorCalibrationMessage(
+      (g_settings.language == 0) ? "Порог протечки сохранён в NVS."
+                                 : "Leak threshold saved to NVS.");
+}
+
+static void scanSensorCalibrationDs18() {
+  memset(ui.sensorCalibrationAddresses, 0,
+         sizeof(ui.sensorCalibrationAddresses));
+  ui.sensorCalibrationScanCount =
+      Sensors::scanDS18B20(ui.sensorCalibrationAddresses);
+  ui.sensorCalibrationScanIndex = 0;
+  snprintf(ui.sensorCalibrationMessage, sizeof(ui.sensorCalibrationMessage),
+           (g_settings.language == 0) ? "Сканирование: найдено DS18B20: %u."
+                                      : "Scan complete: DS18B20 found: %u.",
+           ui.sensorCalibrationScanCount);
+}
+
+static bool saveSensorTemperatureMap() {
+  const uint8_t role = ui.sensorCalibrationTempRole < TEMP_COUNT
+                           ? ui.sensorCalibrationTempRole
+                           : TEMP_CUBE;
+  const TempCalibration previous = g_settings.tempCal;
+  if (ui.sensorCalibrationScanIndex >= ui.sensorCalibrationScanCount ||
+      !SensorCalibrationLogic::assignAddress(
+          g_settings.tempCal.addresses, role,
+          ui.sensorCalibrationAddresses[ui.sensorCalibrationScanIndex])) {
+    setSensorCalibrationMessage(
+        (g_settings.language == 0) ? "Сначала выберите найденный адрес DS18."
+                                   : "Select a discovered DS18 address first.");
+    return false;
+  }
+  if (!NVSManager::saveSettings(g_settings)) {
+    g_settings.tempCal = previous;
+    setSensorCalibrationMessage(
+        (g_settings.language == 0) ? "Не удалось сохранить назначение DS18."
+                                   : "Could not save DS18 assignment.");
+    return false;
+  }
+  Sensors::applyCalibration(g_settings.tempCal);
+  Sensors::refreshTemperatureInventory();
+  setSensorCalibrationMessage(
+      (g_settings.language == 0) ? "Адрес DS18 назначен и сохранён в NVS."
+                                 : "DS18 address assigned and saved to NVS.");
+  return true;
+}
+
+static bool clearSensorTemperatureMap() {
+  const uint8_t role = ui.sensorCalibrationTempRole < TEMP_COUNT
+                           ? ui.sensorCalibrationTempRole
+                           : TEMP_CUBE;
+  const TempCalibration previous = g_settings.tempCal;
+  if (!SensorCalibrationLogic::clearAddress(g_settings.tempCal.addresses,
+                                            role)) {
+    return false;
+  }
+  if (!NVSManager::saveSettings(g_settings)) {
+    g_settings.tempCal = previous;
+    setSensorCalibrationMessage(
+        (g_settings.language == 0) ? "Не удалось включить автоназначение."
+                                   : "Could not enable automatic mapping.");
+    return false;
+  }
+  Sensors::applyCalibration(g_settings.tempCal);
+  Sensors::refreshTemperatureInventory();
+  setSensorCalibrationMessage(
+      (g_settings.language == 0) ? "Для роли включено автоназначение DS18."
+                                 : "Automatic DS18 mapping enabled for role.");
+  return true;
+}
+
+static void zeroSensorPressureAtCurrentValue(const SystemState &state) {
+  if (!state.pressure.ok) {
+    setSensorCalibrationMessage(
+        (g_settings.language == 0) ? "Нет валидного сигнала давления."
+                                   : "Pressure signal is not valid.");
+    return;
+  }
+  saveSensorPressureOffset(g_settings.pressureCal.zeroOffsetMmHg +
+                           state.pressure.cube);
+}
 static void saveManualHeater(float val) {
   PowerCommandGateway::setHeaterPower(
       PowerCommandGateway::Owner::MANUAL,
@@ -3642,6 +3848,14 @@ static bool handleCalibrationScreenTap(int16_t tx, int16_t ty,
     Display::startTouchCalibration();
     return true;
   }
+  if (hit(tx, ty, 10, 148, TFT_WIDTH - 20, 64)) {
+    ui.sensorCalibrationPage = 0;
+    ui.sensorCalibrationTempRole = 0;
+    ui.sensorCalibrationMessage[0] = '\0';
+    scanSensorCalibrationDs18();
+    pushScreen(UI_SENSOR_CALIBRATION);
+    return true;
+  }
   return false;
 }
 
@@ -3716,6 +3930,148 @@ static bool handlePumpCalibrationScreenTap(int16_t tx, int16_t ty,
       }
       return true;
     }
+  }
+  return false;
+}
+
+static bool handleSensorCalibrationScreenTap(int16_t tx, int16_t ty,
+                                             const SystemState &state) {
+  if (state.mode != Mode::IDLE) return true;
+
+  static constexpr int16_t kTabY = 52;
+  static constexpr int16_t kTabH = 28;
+  static constexpr int16_t kTabW = 112;
+  static constexpr int16_t kTabGap = 4;
+  for (uint8_t page = 0; page < 4; ++page) {
+    const int16_t x = 10 + page * (kTabW + kTabGap);
+    if (hit(tx, ty, x, kTabY, kTabW, kTabH)) {
+      ui.sensorCalibrationPage = page;
+      return true;
+    }
+  }
+
+  switch (ui.sensorCalibrationPage) {
+  case 0: // DS18B20 mapping and offset
+    if (hit(tx, ty, 10, 166, 100, 38)) {
+      ui.sensorCalibrationTempRole =
+          (ui.sensorCalibrationTempRole + TEMP_COUNT - 1) % TEMP_COUNT;
+      return true;
+    }
+    if (hit(tx, ty, 115, 166, 100, 38)) {
+      ui.sensorCalibrationTempRole =
+          (ui.sensorCalibrationTempRole + 1) % TEMP_COUNT;
+      return true;
+    }
+    if (hit(tx, ty, 220, 166, 250, 38)) {
+      const uint8_t role = ui.sensorCalibrationTempRole < TEMP_COUNT
+                               ? ui.sensorCalibrationTempRole
+                               : TEMP_CUBE;
+      openValueEdit(EditableFields::Id::SENSOR_TEMPERATURE_OFFSET_C,
+                    g_settings.tempCal.offsets[role],
+                    saveSensorTemperatureOffset);
+      return true;
+    }
+    if (ui.sensorCalibrationScanCount > 0 &&
+        hit(tx, ty, 10, 210, 90, 38)) {
+      ui.sensorCalibrationScanIndex =
+          (ui.sensorCalibrationScanIndex + ui.sensorCalibrationScanCount - 1) %
+          ui.sensorCalibrationScanCount;
+      return true;
+    }
+    if (ui.sensorCalibrationScanCount > 0 &&
+        hit(tx, ty, 105, 210, 90, 38)) {
+      ui.sensorCalibrationScanIndex =
+          (ui.sensorCalibrationScanIndex + 1) % ui.sensorCalibrationScanCount;
+      return true;
+    }
+    if (hit(tx, ty, 200, 210, 170, 38)) {
+      saveSensorTemperatureMap();
+      return true;
+    }
+    if (hit(tx, ty, 375, 210, 95, 38)) {
+      clearSensorTemperatureMap();
+      return true;
+    }
+    break;
+  case 1: // Pressure
+    if (hit(tx, ty, 10, 194, 225, 38)) {
+      zeroSensorPressureAtCurrentValue(state);
+      return true;
+    }
+    if (hit(tx, ty, 245, 194, 225, 38)) {
+      openValueEdit(EditableFields::Id::SENSOR_PRESSURE_ZERO_OFFSET_MMHG,
+                    g_settings.pressureCal.zeroOffsetMmHg,
+                    saveSensorPressureOffset);
+      return true;
+    }
+    break;
+  case 2: // Hydrometer
+    if (hit(tx, ty, 10, 194, 225, 38)) {
+      if (!g_state.hydrometer.valid) {
+        setSensorCalibrationMessage(
+            (g_settings.language == 0) ? "Нет валидного сигнала ареометра."
+                                       : "Hydrometer signal is not valid.");
+        return true;
+      }
+      openValueEdit(EditableFields::Id::SENSOR_HYDROMETER_REFERENCE_DENSITY,
+                    g_state.hydrometer.density,
+                    saveSensorHydrometerReference);
+      return true;
+    }
+    if (hit(tx, ty, 245, 194, 225, 38)) {
+      openValueEdit(EditableFields::Id::SENSOR_HYDROMETER_DENSITY_OFFSET,
+                    g_settings.hydroCal.densityOffset,
+                    saveSensorHydrometerOffset);
+      return true;
+    }
+    break;
+  case 3: { // Level and leak thresholds
+    if (hit(tx, ty, 355, 90, 115, 52)) {
+      const bool previous = g_settings.equipment.bodyLevelTriggerAbove;
+      g_settings.equipment.bodyLevelTriggerAbove = !previous;
+      if (!NVSManager::saveSettings(g_settings)) {
+        g_settings.equipment.bodyLevelTriggerAbove = previous;
+        setSensorCalibrationMessage(
+            (g_settings.language == 0) ? "Не удалось сохранить полярность уровня."
+                                       : "Could not save level polarity.");
+      } else {
+        setSensorCalibrationMessage(
+            (g_settings.language == 0) ? "Полярность уровня сохранена в NVS."
+                                       : "Level polarity saved to NVS.");
+      }
+      return true;
+    }
+    if (hit(tx, ty, 355, 148, 115, 52)) {
+      const bool previous = g_settings.equipment.leakTriggerAbove;
+      g_settings.equipment.leakTriggerAbove = !previous;
+      if (!NVSManager::saveSettings(g_settings)) {
+        g_settings.equipment.leakTriggerAbove = previous;
+        setSensorCalibrationMessage(
+            (g_settings.language == 0) ? "Не удалось сохранить полярность протечки."
+                                       : "Could not save leak polarity.");
+      } else {
+        setSensorCalibrationMessage(
+            (g_settings.language == 0) ? "Полярность протечки сохранена в NVS."
+                                       : "Leak polarity saved to NVS.");
+      }
+      return true;
+    }
+    if (hit(tx, ty, 10, 210, 225, 38)) {
+      openValueEdit(EditableFields::Id::SENSOR_BODY_LEVEL_THRESHOLD_V,
+                    g_settings.equipment.bodyLevelThresholdV,
+                    saveSensorBodyLevelThreshold);
+      return true;
+    }
+    if (hit(tx, ty, 245, 210, 225, 38)) {
+      openValueEdit(EditableFields::Id::SENSOR_LEAK_THRESHOLD_V,
+                    g_settings.equipment.leakThresholdV,
+                    saveSensorLeakThreshold);
+      return true;
+    }
+    break;
+  }
+  default:
+    break;
   }
   return false;
 }
@@ -4613,7 +4969,8 @@ static constexpr UiTapHandler kUiTapDispatch[] = {
     handleModeConfigScreenTap,    // UI_MODE_CONFIG
     handleModeParametersScreenTap, // UI_MODE_PARAMETERS
     handleServiceTestScreenTap,    // UI_SERVICE_TEST
-    handlePumpCalibrationScreenTap // UI_PUMP_CALIBRATION
+    handlePumpCalibrationScreenTap, // UI_PUMP_CALIBRATION
+    handleSensorCalibrationScreenTap // UI_SENSOR_CALIBRATION
 };
 
 static UiTapHandler getUiTapHandler(UiScreen screen) {
@@ -10652,6 +11009,11 @@ static void renderRootFooter(
                                  drawButton(245, tileY, tileW, tileH,
                                             msg(Msg::TOUCH_CALIBRATION),
                                             COLOR_WARNING, TFT_WHITE);
+                                 drawButton(10, 148, TFT_WIDTH - 20, 64,
+                                            (g_settings.language == 0)
+                                                ? "ДАТЧИКИ / КАЛИБРОВКА"
+                                                : "SENSORS / CALIBRATION",
+                                            COLOR_PRIMARY, TFT_WHITE);
                                  drawScreenAccessFooterHint(
                                      UI_CALIBRATION, g_state,
                                      tftText(TftTextId::CalibrationHint),
@@ -10795,6 +11157,284 @@ static void renderRootFooter(
                                                : "Exit or alarm cancels the session without writing NVS.");
                                  drawFooterHint(hint, tone);
                                }
+
+                              static void renderSensorCalibration(
+                                  const SystemState &state, bool full) {
+                                const bool ru = g_settings.language == 0;
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(ru ? "ДАТЧИКИ / КАЛИБРОВКА"
+                                                : "SENSORS / CALIBRATION",
+                                             true);
+                                  drawTabs(UI_SENSOR_CALIBRATION);
+                                } else {
+                                  tft.fillRect(0, UI_HEADER_H, TFT_WIDTH,
+                                               TFT_HEIGHT - UI_HEADER_H,
+                                               colorBg());
+                                }
+
+                                static constexpr int16_t kTabY = 52;
+                                static constexpr int16_t kTabH = 28;
+                                static constexpr int16_t kTabW = 112;
+                                static constexpr int16_t kTabGap = 4;
+                                const char *tabLabels[4] = {
+                                    ru ? "DS18" : "DS18", ru ? "ДАВЛ" : "PRESS",
+                                    ru ? "АРЕО" : "HYDRO", ru ? "УРОВЕНЬ" : "LEVEL"};
+                                for (uint8_t tab = 0; tab < 4; ++tab) {
+                                  drawButton(10 + tab * (kTabW + kTabGap),
+                                             kTabY, kTabW, kTabH, tabLabels[tab],
+                                             ui.sensorCalibrationPage == tab
+                                                 ? COLOR_PRIMARY
+                                                 : colorMuted(),
+                                             TFT_WHITE);
+                                }
+
+                                const char *defaultHint =
+                                    ru ? "Сложные таблицы и экспорт: Web UI → Калибровка."
+                                       : "Complex tables and export: Web UI → Calibration.";
+                                uint16_t hintTone = COLOR_INFO;
+
+                                switch (ui.sensorCalibrationPage) {
+                                case 0: {
+                                  const uint8_t role =
+                                      ui.sensorCalibrationTempRole < TEMP_COUNT
+                                          ? ui.sensorCalibrationTempRole
+                                          : TEMP_CUBE;
+                                  char title[96];
+                                  char reading[128];
+                                  char mapping[128];
+                                  char assigned[32] = {0};
+                                  char scanned[32] = {0};
+                                  formatTempAddress(g_settings.tempCal.addresses[role],
+                                                    assigned, sizeof(assigned));
+                                  if (ui.sensorCalibrationScanCount > 0 &&
+                                      ui.sensorCalibrationScanIndex <
+                                          ui.sensorCalibrationScanCount) {
+                                    formatTempAddress(
+                                        ui.sensorCalibrationAddresses
+                                            [ui.sensorCalibrationScanIndex],
+                                        scanned, sizeof(scanned));
+                                  }
+                                  snprintf(title, sizeof(title), "DS18B20: %s",
+                                           getTempSensorLabel(role));
+                                  snprintf(
+                                      reading, sizeof(reading),
+                                      ru ? "%s  %.2f C | offset %+0.1f C"
+                                         : "%s  %.2f C | offset %+0.1f C",
+                                      state.temps.valid[role] ? "OK" : "--",
+                                      getSensorTemperatureValue(role, state),
+                                      g_settings.tempCal.offsets[role]);
+                                  snprintf(
+                                      mapping, sizeof(mapping),
+                                      ru ? "Карта: %s | найден: %s (%u/%u)"
+                                         : "Map: %s | found: %s (%u/%u)",
+                                      assigned[0] != '\0' ? assigned : "AUTO",
+                                      scanned[0] != '\0' ? scanned : "--",
+                                      ui.sensorCalibrationScanCount == 0
+                                          ? 0
+                                          : ui.sensorCalibrationScanIndex + 1,
+                                      ui.sensorCalibrationScanCount);
+                                  drawCard(10, 86, TFT_WIDTH - 20, 72, colorCard());
+                                  drawPanelHeader(10, 86, TFT_WIDTH - 20, title,
+                                                  state.temps.valid[role]
+                                                      ? COLOR_SUCCESS
+                                                      : COLOR_WARNING);
+                                  tft.setTextColor(colorFg());
+                                  tft.setTextDatum(top_left);
+                                  drawDisplayString(reading, 20, 120);
+                                  char mappingFitted[128];
+                                  copyFittedText(mapping, TFT_WIDTH - 40,
+                                                 mappingFitted,
+                                                 sizeof(mappingFitted));
+                                  drawDisplayString(mappingFitted, 20, 141);
+                                  drawButton(10, 166, 100, 38,
+                                             ru ? "РОЛЬ <" : "ROLE <",
+                                             colorMuted(), TFT_WHITE);
+                                  drawButton(115, 166, 100, 38,
+                                             ru ? "РОЛЬ >" : "ROLE >",
+                                             colorMuted(), TFT_WHITE);
+                                  drawButton(220, 166, 250, 38,
+                                             ru ? "ПОПРАВКА" : "OFFSET",
+                                             COLOR_INFO, TFT_WHITE);
+                                  drawButton(10, 210, 90, 38,
+                                             ru ? "АДР <" : "ADDR <",
+                                             colorMuted(), TFT_WHITE);
+                                  drawButton(105, 210, 90, 38,
+                                             ru ? "АДР >" : "ADDR >",
+                                             colorMuted(), TFT_WHITE);
+                                  drawButton(200, 210, 170, 38,
+                                             ru ? "НАЗНАЧИТЬ" : "ASSIGN",
+                                             COLOR_SUCCESS, TFT_WHITE);
+                                  drawButton(375, 210, 95, 38,
+                                             ru ? "АВТО" : "AUTO", COLOR_WARNING,
+                                             TFT_WHITE);
+                                  defaultHint =
+                                      ru ? "Назначение берёт адрес из сканирования; АВТО возвращает поиск по порядку."
+                                         : "Assign uses scanned address; AUTO restores order-based discovery.";
+                                  break;
+                                }
+                                case 1: {
+                                  char signal[128];
+                                  char saved[128];
+                                  snprintf(signal, sizeof(signal),
+                                           ru ? "%s  %.2f mmHg | %.3f V"
+                                              : "%s  %.2f mmHg | %.3f V",
+                                           state.pressure.ok ? "OK" : "--",
+                                           state.pressure.cube,
+                                           state.pressure.sensorVoltage);
+                                  snprintf(saved, sizeof(saved),
+                                           ru ? "Сохранённый ноль: %+0.1f mmHg | точек: %u"
+                                              : "Saved zero: %+0.1f mmHg | points: %u",
+                                           g_settings.pressureCal.zeroOffsetMmHg,
+                                           g_settings.pressureCal.pointCount);
+                                  drawCard(10, 86, TFT_WIDTH - 20, 100, colorCard());
+                                  drawPanelHeader(10, 86, TFT_WIDTH - 20,
+                                                  ru ? "ДАВЛЕНИЕ · ADS1115 A1"
+                                                     : "PRESSURE · ADS1115 A1",
+                                                  state.pressure.ok ? COLOR_SUCCESS
+                                                                    : COLOR_WARNING);
+                                  tft.setTextColor(colorFg());
+                                  tft.setTextDatum(top_left);
+                                  drawDisplayString(signal, 20, 124);
+                                  drawDisplayString(saved, 20, 150);
+                                  drawButton(10, 194, 225, 38,
+                                             ru ? "ТЕКУЩЕЕ = 0" : "SET CURRENT = 0",
+                                             COLOR_SUCCESS, TFT_WHITE);
+                                  drawButton(245, 194, 225, 38,
+                                             ru ? "ИЗМЕНИТЬ НОЛЬ" : "EDIT ZERO",
+                                             COLOR_INFO, TFT_WHITE);
+                                  defaultHint =
+                                      ru ? "Устанавливайте ноль только при безопасном атмосферном давлении."
+                                         : "Set zero only at safe atmospheric pressure.";
+                                  hintTone = COLOR_WARNING;
+                                  break;
+                                }
+                                case 2: {
+                                  char signal[128];
+                                  char saved[128];
+                                  snprintf(signal, sizeof(signal),
+                                           ru ? "%s  %.3f kg/L | %.1f %% ABV"
+                                              : "%s  %.3f kg/L | %.1f %% ABV",
+                                           state.hydrometer.valid ? "OK" : "--",
+                                           state.hydrometer.density,
+                                           state.hydrometer.abv);
+                                  snprintf(saved, sizeof(saved),
+                                           ru ? "Сохранённый offset: %+0.3f | точек: %u"
+                                              : "Saved offset: %+0.3f | points: %u",
+                                           g_settings.hydroCal.densityOffset,
+                                           g_settings.hydroCal.pointCount);
+                                  drawCard(10, 86, TFT_WIDTH - 20, 100, colorCard());
+                                  drawPanelHeader(10, 86, TFT_WIDTH - 20,
+                                                  ru ? "АРЕОМЕТР · ADS1115 A0"
+                                                     : "HYDROMETER · ADS1115 A0",
+                                                  state.hydrometer.valid
+                                                      ? COLOR_SUCCESS
+                                                      : COLOR_WARNING);
+                                  tft.setTextColor(colorFg());
+                                  tft.setTextDatum(top_left);
+                                  drawDisplayString(signal, 20, 124);
+                                  drawDisplayString(saved, 20, 150);
+                                  drawButton(10, 194, 225, 38,
+                                             ru ? "ПО ЭТАЛОНУ" : "BY REFERENCE",
+                                             COLOR_SUCCESS, TFT_WHITE);
+                                  drawButton(245, 194, 225, 38,
+                                             ru ? "ИЗМЕНИТЬ OFFSET" : "EDIT OFFSET",
+                                             COLOR_INFO, TFT_WHITE);
+                                  defaultHint =
+                                      ru ? "Эталон рассчитывает offset по текущему валидному сигналу."
+                                         : "Reference calculates offset from the current valid signal.";
+                                  break;
+                                }
+                                case 3: {
+                                  int16_t bodyAdc = 0;
+                                  float bodyVoltage = 0.0f;
+                                  const bool bodyValid = Sensors::readAds1115Channel(
+                                      ADS_CHANNEL_LEVEL_BODY, bodyAdc, bodyVoltage);
+                                  const bool bodyTriggered =
+                                      g_settings.equipment.bodyLevelSensorEnabled &&
+                                      bodyValid &&
+                                      (g_settings.equipment.bodyLevelTriggerAbove
+                                           ? bodyVoltage >= g_settings.equipment.bodyLevelThresholdV
+                                           : bodyVoltage <= g_settings.equipment.bodyLevelThresholdV);
+                                  const char *bodyStatus =
+                                      !g_settings.equipment.bodyLevelSensorEnabled
+                                          ? "OFF"
+                                          : (bodyValid
+                                                 ? (bodyTriggered ? "ALARM" : "OK")
+                                                 : "--");
+                                  const char *leakStatus =
+                                      !g_settings.equipment.leakSensorEnabled
+                                          ? "OFF"
+                                          : (g_state.leak.valid
+                                                 ? (g_state.leak.triggered ? "ALARM" : "OK")
+                                                 : "--");
+                                  char bodyLine[120];
+                                  char leakLine[120];
+                                  snprintf(
+                                      bodyLine, sizeof(bodyLine),
+                                      ru ? "%s %.2f V / %.2f V"
+                                         : "%s %.2f V / %.2f V",
+                                      bodyStatus,
+                                      bodyVoltage,
+                                      g_settings.equipment.bodyLevelThresholdV);
+                                  snprintf(
+                                      leakLine, sizeof(leakLine),
+                                      ru ? "%s %.2f V / %.2f V"
+                                         : "%s %.2f V / %.2f V",
+                                      leakStatus,
+                                      g_state.leak.voltage,
+                                      g_settings.equipment.leakThresholdV);
+                                  drawCard(10, 86, TFT_WIDTH - 20, 56, colorCard());
+                                  drawPanelHeader(
+                                      10, 86, TFT_WIDTH - 20,
+                                      ru ? "УРОВЕНЬ ТЕЛА · ADS1115 A2"
+                                         : "BODY LEVEL · ADS1115 A2",
+                                      bodyTriggered ? COLOR_DANGER : COLOR_INFO);
+                                  drawCard(10, 144, TFT_WIDTH - 20, 56, colorCard());
+                                  drawPanelHeader(10, 144, TFT_WIDTH - 20,
+                                                  ru ? "ПРОТЕЧКА · ADS1115 A3"
+                                                     : "LEAK · ADS1115 A3",
+                                                  g_state.leak.triggered
+                                                      ? COLOR_DANGER
+                                                      : COLOR_INFO);
+                                  tft.setTextColor(colorFg());
+                                  tft.setTextDatum(top_left);
+                                  drawDisplayString(bodyLine, 20, 119);
+                                  drawDisplayString(leakLine, 20, 177);
+                                  drawButton(355, 90, 115, 48,
+                                             g_settings.equipment.bodyLevelTriggerAbove
+                                                 ? ">= ПОРОГ"
+                                                 : "<= ПОРОГ",
+                                             colorMuted(), TFT_WHITE);
+                                  drawButton(355, 148, 115, 48,
+                                             g_settings.equipment.leakTriggerAbove
+                                                 ? ">= ПОРОГ"
+                                                 : "<= ПОРОГ",
+                                             colorMuted(), TFT_WHITE);
+                                  drawButton(10, 210, 225, 38,
+                                             ru ? "ПОРОГ УРОВНЯ" : "LEVEL THRESHOLD",
+                                             COLOR_INFO, TFT_WHITE);
+                                  drawButton(245, 210, 225, 38,
+                                             ru ? "ПОРОГ ПРОТЕЧКИ" : "LEAK THRESHOLD",
+                                             COLOR_INFO, TFT_WHITE);
+                                  defaultHint =
+                                      ru ? "Коснитесь >=/<=, чтобы сменить полярность; порог меняется отдельно."
+                                         : "Tap >=/<= to change polarity; edit threshold separately.";
+                                  hintTone = COLOR_WARNING;
+                                  break;
+                                }
+                                default:
+                                  ui.sensorCalibrationPage = 0;
+                                  break;
+                                }
+
+                                drawScreenAccessFooterHint(
+                                    UI_SENSOR_CALIBRATION, state,
+                                    ui.sensorCalibrationMessage[0] != '\0'
+                                        ? ui.sensorCalibrationMessage
+                                        : defaultHint,
+                                    hintTone);
+                              }
 
                               static void renderManual(
                                   const SystemState &state) {
@@ -11662,6 +12302,11 @@ static void renderRootFooter(
                                 renderPumpCalibration(state, full);
                               }
 
+                              static void renderSensorCalibrationScreen(
+                                  const SystemState &state, bool full) {
+                                renderSensorCalibration(state, full);
+                              }
+
                               static void renderManualScreen(
                                   const SystemState &state, bool) {
                                 renderManual(state);
@@ -11696,7 +12341,8 @@ static void renderRootFooter(
                                       renderModeConfig,        // UI_MODE_CONFIG
                                       renderModeParameters,    // UI_MODE_PARAMETERS
                                       renderServiceTest,       // UI_SERVICE_TEST
-                                      renderPumpCalibrationScreen // UI_PUMP_CALIBRATION
+                                      renderPumpCalibrationScreen, // UI_PUMP_CALIBRATION
+                                      renderSensorCalibrationScreen // UI_SENSOR_CALIBRATION
                                   };
 
                               static UiRenderHandler

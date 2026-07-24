@@ -309,8 +309,9 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
               doc["bodyLevelSensorEnabled"].as<bool>();
         }
         if (!doc["bodyLevelThresholdV"].isNull()) {
-          g_settings.equipment.bodyLevelThresholdV = clampFloatRange(
-              doc["bodyLevelThresholdV"].as<float>(), 0.0f, 4.096f);
+          g_settings.equipment.bodyLevelThresholdV = EditableFields::normalize(
+              EditableFields::Id::SENSOR_BODY_LEVEL_THRESHOLD_V,
+              doc["bodyLevelThresholdV"].as<float>());
         }
         if (!doc["bodyLevelTriggerAbove"].isNull()) {
           g_settings.equipment.bodyLevelTriggerAbove =
@@ -321,8 +322,9 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
               doc["leakSensorEnabled"].as<bool>();
         }
         if (!doc["leakThresholdV"].isNull()) {
-          g_settings.equipment.leakThresholdV = clampFloatRange(
-              doc["leakThresholdV"].as<float>(), 0.0f, 4.096f);
+          g_settings.equipment.leakThresholdV = EditableFields::normalize(
+              EditableFields::Id::SENSOR_LEAK_THRESHOLD_V,
+              doc["leakThresholdV"].as<float>());
         }
         if (!doc["leakTriggerAbove"].isNull()) {
           g_settings.equipment.leakTriggerAbove =

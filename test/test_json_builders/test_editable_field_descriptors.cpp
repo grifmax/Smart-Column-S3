@@ -15,6 +15,12 @@ void test_editable_field_descriptor_exposes_canonical_tft_metadata() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, descriptor.step);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 10.0f, descriptor.fastStep);
   TEST_ASSERT_EQUAL_UINT8(0, descriptor.decimals);
+
+  const EditableFields::Descriptor &pressure = EditableFields::get(
+      EditableFields::Id::SENSOR_PRESSURE_ZERO_OFFSET_MMHG);
+  TEST_ASSERT_EQUAL_STRING("pressureZeroOffsetMmHg", pressure.key);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -75.0f, pressure.minValue);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 75.0f, pressure.maxValue);
 }
 
 void test_editable_field_normalization_clamps_and_snaps_to_step() {
@@ -48,4 +54,7 @@ void test_editable_field_normalization_clamps_and_snaps_to_step() {
   TEST_ASSERT_FLOAT_WITHIN(
       0.001f, 5000.0f,
       EditableFields::normalize(Id::MANUAL_PUMP_SPEED_ML_H, 99999.0f));
+  TEST_ASSERT_FLOAT_WITHIN(
+      0.001f, -75.0f,
+      EditableFields::normalize(Id::SENSOR_PRESSURE_ZERO_OFFSET_MMHG, -99.0f));
 }

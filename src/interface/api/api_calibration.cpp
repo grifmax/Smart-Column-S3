@@ -255,7 +255,9 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
         }
 
         if (!doc["offset"].isNull()) {
-          g_settings.tempCal.offsets[sensorIndex] = doc["offset"].as<float>();
+          g_settings.tempCal.offsets[sensorIndex] = EditableFields::normalize(
+              EditableFields::Id::SENSOR_TEMPERATURE_OFFSET_C,
+              doc["offset"].as<float>());
 
           Sensors::applyCalibration(g_settings.tempCal);
           NVSManager::saveSettings(g_settings);
@@ -297,7 +299,9 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
           }
 
           float rawTemp = currentTemp - g_settings.tempCal.offsets[sensorIndex];
-          g_settings.tempCal.offsets[sensorIndex] = reference - rawTemp;
+          g_settings.tempCal.offsets[sensorIndex] = EditableFields::normalize(
+              EditableFields::Id::SENSOR_TEMPERATURE_OFFSET_C,
+              reference - rawTemp);
 
           Sensors::applyCalibration(g_settings.tempCal);
           NVSManager::saveSettings(g_settings);
@@ -416,8 +420,9 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
         }
 
         if (hasZeroOffset) {
-          g_settings.pressureCal.zeroOffsetMmHg = clampFloatRange(
-              doc["zeroOffsetMmHg"].as<float>(), -75.0f, 75.0f);
+          g_settings.pressureCal.zeroOffsetMmHg = EditableFields::normalize(
+              EditableFields::Id::SENSOR_PRESSURE_ZERO_OFFSET_MMHG,
+              doc["zeroOffsetMmHg"].as<float>());
         }
 
         NVSManager::saveSettings(g_settings);
@@ -452,8 +457,9 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
         }
 
         if (!doc["densityOffset"].isNull()) {
-          g_settings.hydroCal.densityOffset = clampFloatRange(
-              doc["densityOffset"].as<float>(), -0.250f, 0.250f);
+          g_settings.hydroCal.densityOffset = EditableFields::normalize(
+              EditableFields::Id::SENSOR_HYDROMETER_DENSITY_OFFSET,
+              doc["densityOffset"].as<float>());
         }
 
         const bool hasAbvPoints = !doc["abvPoints"].isNull();

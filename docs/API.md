@@ -420,6 +420,12 @@
 границы. `coolingPwmStartupDuty` дополнительно ограничивается текущим
 интервалом minimum–maximum.
 
+Калибровочные scalar-поля `offset` DS18B20, `zeroOffsetMmHg`,
+`densityOffset`, `bodyLevelThresholdV` и `leakThresholdV` нормализуются
+общими диапазонами `EditableFields`, поэтому Web UI и TFT сохраняют одинаковые
+значения. Многоточечные массивы pressure/ареометра остаются экспертской
+операцией Web API.
+
 `POST /api/process/start` для `distillation` нормализует `speed`,
 `headsVolume`, `targetVolume`, `tailsVolume`, `endTemp` и `powerPercent` теми
 же `EditableFields`, что TFT, затем сохраняет применённые параметры в NVS до

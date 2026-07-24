@@ -2,6 +2,7 @@
 
 #include <../../src/control/power_command_gateway.h>
 #include <../../src/control/pump_calibration_logic.h>
+#include <../../src/control/sensor_calibration_logic.h>
 #include <../../src/control/service_test_session_logic.h>
 #include <../../src/interface/tft_service_test_logic.h>
 
@@ -99,4 +100,23 @@ void test_pump_calibration_requires_prime_measure_review_and_commit() {
   TEST_ASSERT_TRUE(retry(calibration));
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::READY_TO_MEASURE),
                           static_cast<uint8_t>(calibration.phase));
+}
+
+void test_sensor_calibration_keeps_ds18_mapping_unique() {
+  using namespace SensorCalibrationLogic;
+
+  uint8_t assigned[3][8] = {};
+  const uint8_t first[8] = {0x28, 1, 2, 3, 4, 5, 6, 7};
+  const uint8_t second[8] = {0x28, 7, 6, 5, 4, 3, 2, 1};
+  const uint8_t empty[8] = {};
+
+  TEST_ASSERT_TRUE(assignAddress(assigned, 0, first));
+  TEST_ASSERT_TRUE(assignAddress(assigned, 1, second));
+  TEST_ASSERT_TRUE(assignAddress(assigned, 2, first));
+  TEST_ASSERT_TRUE(isZeroAddress(assigned[0]));
+  TEST_ASSERT_TRUE(addressesEqual(assigned[1], second));
+  TEST_ASSERT_TRUE(addressesEqual(assigned[2], first));
+  TEST_ASSERT_TRUE(clearAddress(assigned, 2));
+  TEST_ASSERT_TRUE(isZeroAddress(assigned[2]));
+  TEST_ASSERT_FALSE(assignAddress(assigned, 1, empty));
 }
