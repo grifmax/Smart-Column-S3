@@ -248,6 +248,62 @@ void savePressureCalibrationToNvs(const PressureSensorCalibration& cal) {
     prefs.putString(NVS_KEY_PRESSURE_POINTS, json);
 }
 
+bool hasValidFermentationZoneShape(const FermentationZonesSettings& zones) {
+    return zones.schemaVersion == 1 && zones.zoneCount >= 1 &&
+           zones.zoneCount <= FERMENTATION_ZONE_COUNT;
+}
+
+void copyLegacyFermentationToPrimaryZone(
+    const FermentationSettings& legacy, FermentationZonesSettings& zones) {
+    if (!hasValidFermentationZoneShape(zones)) {
+        zones = FermentationZonesSettings{};
+    }
+    zones.schemaVersion = 1;
+    if (zones.zoneCount < 1) {
+        zones.zoneCount = 1;
+    }
+    FermentationZoneSettings& primary = zones.zones[0];
+    primary.enabled = true;
+    primary.temperatureSensorSlot = 0;
+    primary.targetTempC = legacy.targetTempC;
+    primary.hysteresisC = legacy.hysteresisC;
+    primary.useHeater = legacy.useHeater;
+    primary.useCooling = legacy.useCooling;
+    primary.coolingMinOnSec = legacy.coolingMinOnSec;
+    primary.coolingMinOffSec = legacy.coolingMinOffSec;
+    primary.durationHours = legacy.durationHours;
+}
+
+void copyPrimaryZoneToLegacyFermentation(
+    const FermentationZonesSettings& zones, FermentationSettings& legacy) {
+    const FermentationZoneSettings& primary = zones.zones[0];
+    legacy.targetTempC = primary.targetTempC;
+    legacy.hysteresisC = primary.hysteresisC;
+    legacy.useHeater = primary.useHeater;
+    legacy.useCooling = primary.useCooling;
+    legacy.coolingMinOnSec = primary.coolingMinOnSec;
+    legacy.coolingMinOffSec = primary.coolingMinOffSec;
+    legacy.durationHours = primary.durationHours;
+}
+
+void loadFermentationZonesFromNvs(Settings& settings,
+                                  uint16_t storedSchemaVersion) {
+    const size_t storedBytes = prefs.getBytesLength(NVS_KEY_FERM_ZONES);
+    if (storedSchemaVersion >= 5 &&
+        storedBytes == sizeof(settings.fermentationZones)) {
+        prefs.getBytes(NVS_KEY_FERM_ZONES, &settings.fermentationZones,
+                       sizeof(settings.fermentationZones));
+        if (hasValidFermentationZoneShape(settings.fermentationZones)) {
+            copyPrimaryZoneToLegacyFermentation(settings.fermentationZones,
+                                                 settings.fermentation);
+            return;
+        }
+    }
+    settings.fermentationZones = FermentationZonesSettings{};
+    copyLegacyFermentationToPrimaryZone(settings.fermentation,
+                                        settings.fermentationZones);
+}
+
 void migrateSettingsSchema(Settings& settings, uint16_t storedVersion) {
     if (storedVersion >= NVS_SETTINGS_SCHEMA_VERSION) {
         return;
@@ -272,6 +328,13 @@ void migrateSettingsSchema(Settings& settings, uint16_t storedVersion) {
         // profile remains the separate opt-in gate, so migration can only
         // create safe defaults and must not activate a physical output.
         settings.autoclave = AutoclaveSettings{};
+    }
+    if (storedVersion < 5) {
+        // Legacy installations only had settings.fermentation. Promote it to
+        // zone 1, leave zone 2 disabled and never infer a second-zone output.
+        settings.fermentationZones = FermentationZonesSettings{};
+        copyLegacyFermentationToPrimaryZone(settings.fermentation,
+                                            settings.fermentationZones);
     }
 }
 
@@ -626,6 +689,7 @@ bool loadSettings(Settings& settings) {
     settings.fermentation.targetTempC = prefs.getFloat(NVS_KEY_FERM_TARGET_TEMP, 28.0f);
     settings.fermentation.hysteresisC = prefs.getFloat(NVS_KEY_FERM_HYSTERESIS, 0.5f);
     settings.fermentation.useHeater = prefs.getBool(NVS_KEY_FERM_USE_HEATER, true);
+    loadFermentationZonesFromNvs(settings, storedSchemaVersion);
     settings.autoclave.schemaVersion = 1;
     settings.autoclave.medium = static_cast<AutoclaveMedium>(
         prefs.getUChar(NVS_KEY_AUTOCLAVE_MEDIUM,
@@ -884,6 +948,11 @@ bool saveSettings(const Settings& settings) {
     prefs.putFloat(NVS_KEY_FERM_TARGET_TEMP, settings.fermentation.targetTempC);
     prefs.putFloat(NVS_KEY_FERM_HYSTERESIS, settings.fermentation.hysteresisC);
     prefs.putBool(NVS_KEY_FERM_USE_HEATER, settings.fermentation.useHeater);
+    FermentationZonesSettings fermentationZones = settings.fermentationZones;
+    copyLegacyFermentationToPrimaryZone(settings.fermentation,
+                                        fermentationZones);
+    prefs.putBytes(NVS_KEY_FERM_ZONES, &fermentationZones,
+                   sizeof(fermentationZones));
     prefs.putUChar(NVS_KEY_AUTOCLAVE_MEDIUM,
                    static_cast<uint8_t>(settings.autoclave.medium));
     prefs.putFloat(NVS_KEY_AUTOCLAVE_TEMP,

@@ -765,6 +765,37 @@ struct FermentationSettings {
   uint16_t durationHours = 0;    // #4 fix: плановая длительность (0 = неизвестно, прогресс без неё — 0%)
 };
 
+static constexpr uint8_t FERMENTATION_ZONE_COUNT = 2;
+
+// D-028 keeps the historical FermentationSettings as a zone-1 compatibility
+// view while introducing a complete per-zone configuration for the future
+// independent handler. Zone 2 starts disabled and cannot acquire a fallback
+// output from the legacy process.
+struct FermentationZoneSettings {
+  bool enabled = false;
+  uint8_t temperatureSensorSlot = 0;
+  float targetTempC = 28.0f;
+  float hysteresisC = 0.5f;
+  bool useHeater = true;
+  bool useCooling = true;
+  uint16_t coolingMinOnSec = 60;
+  uint16_t coolingMinOffSec = 60;
+  uint16_t durationHours = 0;
+};
+
+struct FermentationZonesSettings {
+  uint8_t schemaVersion = 1;
+  uint8_t zoneCount = 1;
+  FermentationZoneSettings zones[FERMENTATION_ZONE_COUNT];
+
+  FermentationZonesSettings() {
+    zones[0].enabled = true;
+    zones[0].temperatureSensorSlot = 0;
+    zones[1].enabled = false;
+    zones[1].temperatureSensorSlot = 1;
+  }
+};
+
 struct AutoclaveSettings {
   uint8_t schemaVersion = 1;
   AutoclaveMedium medium = AutoclaveMedium::STEAM;
@@ -847,7 +878,8 @@ struct Settings {
   SecuritySettings security;
   SafetySettings safety;
   NbkSettings nbk;
-  FermentationSettings fermentation;
+  FermentationSettings fermentation; // Legacy-compatible primary-zone view.
+  FermentationZonesSettings fermentationZones;
   AutoclaveSettings autoclave;
   StirrerSettings stirrer;
 

@@ -449,8 +449,10 @@ pressureMaxMmHg, pressureRiseRateMaxMmHgMin
   heater и cooling outputs; повтор датчика/выхода отклоняется. V2.0 зафиксирован
   как `zoneCount = 1` без fallback на его существующие выходы. Закрытие ожидает
   expansion-board review и подтверждённые fail-safe состояния каждого выхода.
-- [ ] [D-028] Заменить единичные настройки на `FermentationZone[2]`, сохранив полную
-  обратную совместимость текущего первого контура и его NVS-профилей.
+- [x] [D-028] Добавлена `FermentationZonesSettings.zones[2]` и NVS schema v5:
+  прежний профиль мигрирует в zone 1, а zone 2 остаётся disabled. Исторический
+  `settings.fermentation` сохранён как совместимый primary-zone view, поэтому
+  текущие TFT/Web API и NVS-профили первого контура не меняют поведения до D-029.
 - [ ] [D-029] Для каждой зоны реализовать независимые фазы, hysteresis, minimum
   on/off охлаждения, расписание мешалки, длительность, локальные аварии и
   отдельные записи в status/history.

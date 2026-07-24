@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.118"
+#define FIRMWARE_VERSION "2.4.119"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -473,7 +473,7 @@
 #define NVS_KEY_RECT_PRESSURE_MIN_PWR "rect_pmin"
 #define NVS_KEY_SETTINGS_SCHEMA "nvs_schema"
 #define NVS_KEY_AUTONOMY_LEVEL "autonomy"
-#define NVS_SETTINGS_SCHEMA_VERSION 4
+#define NVS_SETTINGS_SCHEMA_VERSION 5
 #define NVS_KEY_DIST_SPEED "dist_spd"
 #define NVS_KEY_DIST_HEADS_VOL "dist_hvol"
 #define NVS_KEY_DIST_TARGET_VOL "dist_tvol"
@@ -501,6 +501,7 @@
 #define NVS_KEY_FERM_TARGET_TEMP "ferm_tgt"
 #define NVS_KEY_FERM_HYSTERESIS "ferm_hyst"
 #define NVS_KEY_FERM_USE_HEATER "ferm_heat"
+#define NVS_KEY_FERM_ZONES "ferm_zones"
 #define NVS_KEY_AUTOCLAVE_MEDIUM "acl_med"
 #define NVS_KEY_AUTOCLAVE_TEMP "acl_temp"
 #define NVS_KEY_AUTOCLAVE_BAND "acl_band"
