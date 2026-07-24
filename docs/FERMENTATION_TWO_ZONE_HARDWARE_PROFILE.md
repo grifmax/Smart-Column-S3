@@ -55,3 +55,7 @@ logical requests `heater`, `cooling`, `stirrer` по hysteresis, minimum on/off,
 Эта модель ещё не dispatch'ит GPIO, не публикует второй status/history и не
 может обходить profile validator. Такая привязка появится лишь после review
 платы и утверждения D-027.
+
+Host-тест D-031 отдельно проверяет, что local fault temperature sensor одной
+зоны обнуляет только её logical requests и не меняет фазу здоровой зоны. Это не
+заменяет испытание параллельных реальных реле, охлаждения и датчиков.

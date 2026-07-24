@@ -7,6 +7,19 @@
 
 ---
 
+## [2.4.121] - 2026-07-24
+
+### Added
+- Host-тест D-031 подтверждает local-fault contract: отказ temperature sensor
+  второй зоны снимает только её logical requests, а здоровая зона продолжает
+  независимую фазу нагрева без конфликтующего состояния. (codex)
+
+### Changed
+- Аппаратный параллельный прогон не заявляется до появления expansion board;
+  тест проверяет только hardware-independent state machine. (codex)
+
+---
+
 ## [2.4.120] - 2026-07-24
 
 ### Added

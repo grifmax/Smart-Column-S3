@@ -334,6 +334,22 @@ void test_fermentation_zone_logic_isolated_hysteresis_schedule_and_faults() {
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Fault::TEMPERATURE_SENSOR),
                           static_cast<uint8_t>(heatingZone.fault));
 
+  Runtime healthyZone;
+  Runtime failedZone;
+  start(healthyZone, 0);
+  start(failedZone, 0);
+  Result healthy = update(healthyZone, config, true, 26.0f, 0);
+  Result failed = update(failedZone, config, false, 0.0f, 0);
+  TEST_ASSERT_TRUE(healthy.outputs.heater);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::HEATING),
+                          static_cast<uint8_t>(healthyZone.phase));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::FAULT),
+                          static_cast<uint8_t>(failedZone.phase));
+  TEST_ASSERT_FALSE(failed.outputs.heater);
+  TEST_ASSERT_FALSE(failed.outputs.cooling);
+  healthy = update(healthyZone, config, true, 26.0f, 300);
+  TEST_ASSERT_TRUE(healthy.outputs.heater);
+
   config.durationMs = 500;
   Runtime completedZone;
   start(completedZone, 0);
