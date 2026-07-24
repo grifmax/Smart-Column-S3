@@ -22,6 +22,17 @@
 выключенным. В частности, firmware **не** переиспользует насос отбора, клапан
 воды или продуктовые клапаны как циркуляцию, слив либо сброс давления.
 
+## Firmware gate
+
+`AutoclaveHardwareProfile` читает только явные `BOARD_AUTOCLAVE_*` значения,
+не выводя capability из существующих GPIO. Его validator отклоняет профиль,
+пока не подтверждены approval, нагрев, температура, pressure sensor,
+mechanical safety review, power/pressure limits. Для `water` дополнительно
+обязательны отдельные `circulationPumpAssigned` и `coolingAssigned`.
+
+Таким образом, реализуемый first-release путь — только `steam` после approval;
+`water` не может быть включён одной настройкой или fallback-выходом.
+
 ## Данные для утверждения D-020
 
 Заполнить и утвердить для каждого физического выхода. `Нет` — допустимое

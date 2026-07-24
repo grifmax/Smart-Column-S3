@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <../../src/control/power_command_gateway.h>
+#include <../../src/control/autoclave_hardware_profile_logic.h>
 #include <../../src/control/dosing_session_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
@@ -162,4 +163,34 @@ void test_dosing_session_requires_prime_then_tracks_only_target_volume() {
   TEST_ASSERT_TRUE(finish(dosing, FinishReason::SAFETY, 55));
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::FAULTED),
                           static_cast<uint8_t>(dosing.phase));
+}
+
+void test_autoclave_profile_requires_explicit_hardware_and_safety_approval() {
+  using namespace AutoclaveHardwareProfileLogic;
+
+  Profile profile;
+  TEST_ASSERT_EQUAL_STRING("not_approved", validationToken(validate(profile)));
+
+  profile.approved = true;
+  profile.steamEnabled = true;
+  profile.heaterAssigned = true;
+  profile.cubeTemperatureAssigned = true;
+  profile.pressureSensorAssigned = true;
+  profile.heatPowerLimitW = 2000.0f;
+  profile.pressureMaxMmHg = 30.0f;
+  profile.pressureRiseRateMaxMmHgMin = 5.0f;
+  TEST_ASSERT_EQUAL_STRING("mechanical_safety_unreviewed",
+                           validationToken(validate(profile)));
+  profile.mechanicalSafetyReviewed = true;
+  TEST_ASSERT_TRUE(mayOfferSteam(profile));
+  TEST_ASSERT_FALSE(mayOfferWater(profile));
+
+  profile.waterEnabled = true;
+  TEST_ASSERT_EQUAL_STRING("water_circulation_unassigned",
+                           validationToken(validate(profile)));
+  profile.circulationPumpAssigned = true;
+  TEST_ASSERT_EQUAL_STRING("water_cooling_unassigned",
+                           validationToken(validate(profile)));
+  profile.coolingAssigned = true;
+  TEST_ASSERT_TRUE(mayOfferWater(profile));
 }
