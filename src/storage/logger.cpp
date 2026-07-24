@@ -41,6 +41,14 @@ struct ParsedEquipmentTestEvent {
   char detail[96] = "";
 };
 
+struct ParsedServiceTestEvent {
+  bool matched = false;
+  char event[20] = "";
+  char target[32] = "";
+  char tone[16] = "";
+  char detail[96] = "";
+};
+
 bool hasValidRtc(time_t now, const tm& timeinfo) {
   return now >= 1704067200 && timeinfo.tm_year >= (2024 - 1900);
 }
@@ -261,6 +269,42 @@ ParsedEquipmentTestEvent parseEquipmentTestEvent(const char* message) {
     }
   }
 
+  return parsed;
+}
+
+ParsedServiceTestEvent parseServiceTestEvent(const char* message) {
+  ParsedServiceTestEvent parsed;
+  if (!message) {
+    return parsed;
+  }
+
+  constexpr const char* kPrefix = "service_test";
+  constexpr size_t kPrefixLength = 12;
+  if (strncmp(message, kPrefix, kPrefixLength) != 0) {
+    return parsed;
+  }
+
+  parsed.matched = true;
+  const char* cursor = message + kPrefixLength;
+  char key[24] = "";
+  char value[128] = "";
+  while (*cursor != '\0') {
+    key[0] = '\0';
+    value[0] = '\0';
+    if (!parseNextTransitionField(cursor, key, sizeof(key), value,
+                                  sizeof(value))) {
+      continue;
+    }
+    if (strcmp(key, "event") == 0) {
+      copyToken(parsed.event, sizeof(parsed.event), value, strlen(value));
+    } else if (strcmp(key, "target") == 0) {
+      copyToken(parsed.target, sizeof(parsed.target), value, strlen(value));
+    } else if (strcmp(key, "tone") == 0) {
+      copyToken(parsed.tone, sizeof(parsed.tone), value, strlen(value));
+    } else if (strcmp(key, "detail") == 0) {
+      copyToken(parsed.detail, sizeof(parsed.detail), value, strlen(value));
+    }
+  }
   return parsed;
 }
 
@@ -519,9 +563,12 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
         parsePhaseTransitionEvent(event->message);
     const ParsedEquipmentTestEvent equipment =
         parseEquipmentTestEvent(event->message);
+    const ParsedServiceTestEvent service = parseServiceTestEvent(event->message);
     item["kind"] = parsed.matched
                        ? "phase_transition"
-                       : (equipment.matched ? "equipment_test" : "log");
+                       : (service.matched ? "service_test"
+                                          : (equipment.matched ? "equipment_test"
+                                                               : "log"));
     if (parsed.matched) {
       if (parsed.mode[0] != '\0') {
         item["mode"] = parsed.mode;
@@ -537,6 +584,19 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
       }
       if (parsed.operatorMessage[0] != '\0') {
         item["operatorMessage"] = parsed.operatorMessage;
+      }
+    } else if (service.matched) {
+      if (service.event[0] != '\0') {
+        item["serviceEvent"] = service.event;
+      }
+      if (service.target[0] != '\0') {
+        item["serviceTarget"] = service.target;
+      }
+      if (service.tone[0] != '\0') {
+        item["tone"] = service.tone;
+      }
+      if (service.detail[0] != '\0') {
+        item["detail"] = service.detail;
       }
     } else if (equipment.matched) {
       if (equipment.tone[0] != '\0') {
@@ -563,7 +623,7 @@ String exportRecentEventsCsv(uint16_t limit) {
   String csv =
       "sequence,timestamp_ms,level,message,kind,mode,from_phase,to_phase,"
       "reason_code,operator_message,equipment_tone,equipment_title,"
-      "equipment_detail\n";
+      "equipment_detail,service_event,service_target,service_tone,service_detail\n";
   const size_t effectiveLimit =
       limit == 0 ? recentEventCount
                  : (recentEventCount < static_cast<size_t>(limit)
@@ -582,9 +642,12 @@ String exportRecentEventsCsv(uint16_t limit) {
         parsePhaseTransitionEvent(event->message);
     const ParsedEquipmentTestEvent equipment =
         parseEquipmentTestEvent(event->message);
+    const ParsedServiceTestEvent service = parseServiceTestEvent(event->message);
     const String kind = parsed.matched
                             ? "phase_transition"
-                            : (equipment.matched ? "equipment_test" : "log");
+                            : (service.matched ? "service_test"
+                                               : (equipment.matched ? "equipment_test"
+                                                                    : "log"));
     const String mode = escapeCsvField(parsed.mode);
     const String fromPhase = escapeCsvField(parsed.fromPhase);
     const String toPhase = escapeCsvField(parsed.toPhase);
@@ -593,6 +656,10 @@ String exportRecentEventsCsv(uint16_t limit) {
     const String equipmentTone = escapeCsvField(equipment.tone);
     const String equipmentTitle = escapeCsvField(equipment.title);
     const String equipmentDetail = escapeCsvField(equipment.detail);
+    const String serviceEvent = escapeCsvField(service.event);
+    const String serviceTarget = escapeCsvField(service.target);
+    const String serviceTone = escapeCsvField(service.tone);
+    const String serviceDetail = escapeCsvField(service.detail);
     const String message = escapeCsvField(event->message);
 
     csv += String(event->sequence);
@@ -621,6 +688,14 @@ String exportRecentEventsCsv(uint16_t limit) {
     csv += equipmentTitle;
     csv += "\",\"";
     csv += equipmentDetail;
+    csv += "\",\"";
+    csv += serviceEvent;
+    csv += "\",\"";
+    csv += serviceTarget;
+    csv += "\",\"";
+    csv += serviceTone;
+    csv += "\",\"";
+    csv += serviceDetail;
     csv += "\"\n";
   }
 

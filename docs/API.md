@@ -592,6 +592,11 @@ Testing/service pressure status also includes:
 - `GET /api/logs/events`
 - `POST /api/logs/events/clear`
 
+`GET /api/logs/events` и CSV-экспорт возвращают сервисные сессии с
+`kind: "service_test"`, полями `serviceEvent`, `serviceTarget`, `tone` и
+`detail`. При сервисной паузе работающего процесса те же действия находятся в
+`GET /api/history/{id}` как события с `reasonCode: "operator_service_action"`.
+
 ---
 
 ## WebSocket `/ws`

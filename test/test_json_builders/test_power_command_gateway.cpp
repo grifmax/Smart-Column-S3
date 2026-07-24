@@ -4,6 +4,7 @@
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
 #include <../../src/control/service_test_session_logic.h>
+#include <../../src/control/service_test_audit_logic.h>
 #include <../../src/interface/tft_service_test_logic.h>
 
 void test_power_command_captures_owner_reason_timestamp_and_safe_stop() {
@@ -119,4 +120,15 @@ void test_sensor_calibration_keeps_ds18_mapping_unique() {
   TEST_ASSERT_TRUE(clearAddress(assigned, 2));
   TEST_ASSERT_TRUE(isZeroAddress(assigned[2]));
   TEST_ASSERT_FALSE(assignAddress(assigned, 1, empty));
+}
+
+void test_service_test_audit_uses_stable_lifecycle_tokens() {
+  using namespace ServiceTestAuditLogic;
+
+  TEST_ASSERT_EQUAL_STRING("requested", eventToken(Event::REQUESTED));
+  TEST_ASSERT_EQUAL_STRING("changed", eventToken(Event::CHANGED));
+  TEST_ASSERT_EQUAL_STRING("faulted", eventToken(Event::FAULTED));
+  TEST_ASSERT_TRUE(isTerminal(Event::RESULT));
+  TEST_ASSERT_TRUE(isTerminal(Event::RESTORED));
+  TEST_ASSERT_FALSE(isTerminal(Event::PAUSED));
 }

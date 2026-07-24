@@ -8,6 +8,7 @@
 #include "display.h"
 #include "control/equipment_testing_logic.h"
 #include "control/pump_calibration.h"
+#include "control/service_test_audit.h"
 #include "control/sensor_calibration_logic.h"
 #include "control/service_test_session.h"
 #include "control/v2/status_adapter.h"
@@ -4263,6 +4264,49 @@ static const char *getServiceTestTargetLabel(ServiceTestSession::Target target,
   }
 }
 
+static const char *getServiceTestTargetToken(
+    ServiceTestSession::Target target) {
+  switch (target) {
+  case ServiceTestSession::Target::HEATER:
+    return "heater";
+  case ServiceTestSession::Target::PUMP:
+    return "pump";
+  case ServiceTestSession::Target::STIRRER:
+    return "stirrer";
+  case ServiceTestSession::Target::WATER_VALVE:
+    return "water_valve";
+  case ServiceTestSession::Target::HEADS_VALVE:
+    return "heads_valve";
+  case ServiceTestSession::Target::BODY_VALVE:
+    return "body_valve";
+  case ServiceTestSession::Target::TAILS_VALVE:
+    return "tails_valve";
+  case ServiceTestSession::Target::UNO_VALVE:
+    return "uno_valve";
+  case ServiceTestSession::Target::COOLING_PWM:
+    return "cooling_pwm";
+  case ServiceTestSession::Target::FRACTIONATOR:
+    return "fractionator";
+  case ServiceTestSession::Target::NONE:
+  default:
+    return "equipment";
+  }
+}
+
+static void auditServiceTest(ServiceTestAudit::Event event,
+                             ServiceTestSession::Target target,
+                             const char *detail, const char *tone = "info") {
+  ServiceTestAudit::record(event, getServiceTestTargetToken(target), detail,
+                           tone);
+}
+
+static ServiceTestSession::Target getServiceTestAuditTarget(
+    const ServiceTestSession::Snapshot &session) {
+  return session.activeTarget != ServiceTestSession::Target::NONE
+             ? session.activeTarget
+             : session.requestedTarget;
+}
+
 static bool areServiceTestOutputsSafe() {
   const Heater::Diagnostics heater = Heater::getDiagnostics();
   return !heater.active && !Pump::isRunning() && !Stirrer::isRunning() &&
@@ -4277,6 +4321,9 @@ static void settleServiceTestStopping() {
   if (session.phase != ServiceTestSession::Phase::STOPPING) return;
   if (!areServiceTestOutputsSafe()) return;
   if (ServiceTestSession::markRestoreReady()) {
+    auditServiceTest(
+        ServiceTestAudit::Event::RESULT, getServiceTestAuditTarget(session),
+        "Safe-stop readback passed; service test result is ready.", "success");
     setServiceTestMessage(
         session.resumeProcess
             ? ((g_settings.language == 0)
@@ -4414,6 +4461,8 @@ static bool requestServicePauseIfNeeded(
                               : "Could not reserve the service session.");
     return true;
   }
+  auditServiceTest(ServiceTestAudit::Event::REQUESTED, target,
+                   "Operator confirmation requested for a safe process pause.");
   setServiceTestMessage((g_settings.language == 0)
                             ? "Подтвердите паузу процесса для сервисного теста."
                             : "Confirm process pause for the service test.");
@@ -4516,6 +4565,9 @@ static bool beginServiceTestOutput(const SystemState &state,
   if (target == ServiceTestSession::Target::STIRRER &&
       (!state.temps.valid[TEMP_CUBE] ||
        state.temps.cube > BOARD_SERVICE_TEST_STIRRER_MAX_C)) {
+    auditServiceTest(ServiceTestAudit::Event::REJECTED, target,
+                     "Stirrer test rejected because cube temperature is unsafe.",
+                     "warning");
     setServiceTestMessage(
         (g_settings.language == 0)
             ? "Тест мешалки требует подтверждённой безопасной температуры куба."
@@ -4524,11 +4576,20 @@ static bool beginServiceTestOutput(const SystemState &state,
   }
   char reason[144] = "";
   if (!serviceTestAllowed(state, reason, sizeof(reason))) {
+    auditServiceTest(ServiceTestAudit::Event::REJECTED, target, reason,
+                     "warning");
     setServiceTestMessage(reason);
     return false;
   }
+  const ServiceTestSession::Target previousTarget = ui.serviceTestActiveTarget;
   PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::SERVICE,
                                    PowerCommandGateway::Reason::TFT_SERVICE_TEST);
+  if (ui.serviceTestOutputActive &&
+      previousTarget != ServiceTestSession::Target::NONE &&
+      previousTarget != target) {
+    auditServiceTest(ServiceTestAudit::Event::CHANGED, previousTarget,
+                     "Service output changed to a different target.", "warning");
+  }
   ui.serviceTestOutputActive = true;
   ui.serviceTestDeadlineMs = millis() + timeoutMs;
   ui.serviceTestActiveTarget = target;
@@ -4541,20 +4602,29 @@ static bool beginServiceTestOutput(const SystemState &state,
     ui.serviceTestOutputActive = false;
     ui.serviceTestDeadlineMs = 0;
     ui.serviceTestActiveTarget = ServiceTestSession::Target::NONE;
+    auditServiceTest(ServiceTestAudit::Event::REJECTED, target,
+                     "Service session could not enter the test state.",
+                     "danger");
     setServiceTestMessage((g_settings.language == 0)
                               ? "Сервисная сессия не перешла к тесту."
                               : "Service session could not enter test mode.");
     return false;
   }
+  auditServiceTest(ServiceTestAudit::Event::STARTED, target,
+                   "Service output test started under the configured limit.",
+                   "success");
   return true;
 }
 
 static void stopServiceTestOutputs(const char *message) {
-  if (ui.serviceTestOutputActive ||
-      ServiceTestSession::getSnapshot().phase ==
+  const ServiceTestSession::Snapshot session = ServiceTestSession::getSnapshot();
+  const ServiceTestSession::Target target =
+      ui.serviceTestActiveTarget != ServiceTestSession::Target::NONE
+          ? ui.serviceTestActiveTarget
+          : getServiceTestAuditTarget(session);
+  if (ui.serviceTestOutputActive || session.phase ==
           ServiceTestSession::Phase::SAFE_PAUSED ||
-      ServiceTestSession::getSnapshot().phase ==
-          ServiceTestSession::Phase::TEST_ACTIVE) {
+      session.phase == ServiceTestSession::Phase::TEST_ACTIVE) {
     PowerCommandGateway::safeStopAll(
         PowerCommandGateway::Owner::SERVICE,
         PowerCommandGateway::Reason::TFT_SERVICE_TEST);
@@ -4562,6 +4632,15 @@ static void stopServiceTestOutputs(const char *message) {
     ui.serviceTestDeadlineMs = 0;
     ui.serviceTestActiveTarget = ServiceTestSession::Target::NONE;
     (void)ServiceTestSession::beginStopping();
+    auditServiceTest(ServiceTestAudit::Event::STOPPED, target,
+                     message != nullptr ? message : "Service outputs stopped.",
+                     "warning");
+    if (session.phase == ServiceTestSession::Phase::CLOSED &&
+        areServiceTestOutputsSafe()) {
+      auditServiceTest(ServiceTestAudit::Event::RESULT, target,
+                       "Idle service test completed with safe output readback.",
+                       "success");
+    }
     settleServiceTestStopping();
   }
   if (ServiceTestSession::getSnapshot().phase !=
@@ -4581,6 +4660,8 @@ static void runServiceValvePulse(const SystemState &state,
   PowerCommandGateway::pulseValve(PowerCommandGateway::Owner::SERVICE,
                                   PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                                   valve, BOARD_SERVICE_TEST_VALVE_PULSE_MS);
+  auditServiceTest(ServiceTestAudit::Event::CHANGED, target,
+                   "Valve pulse command applied.");
   setServiceTestMessage(message);
 }
 
@@ -4628,7 +4709,12 @@ static void updateServiceTestLifecycle(const SystemState &state) {
     ui.serviceTestOutputActive = false;
     ui.serviceTestDeadlineMs = 0;
     ui.serviceTestActiveTarget = ServiceTestSession::Target::NONE;
-    (void)ServiceTestSession::fault();
+    if (ServiceTestSession::fault()) {
+      auditServiceTest(
+          ServiceTestAudit::Event::FAULTED, getServiceTestAuditTarget(session),
+          "Safety or FSM lifecycle changed; process restore is prohibited.",
+          "danger");
+    }
     setServiceTestMessage(
         (g_settings.language == 0)
             ? "Сервисная сессия аварийно остановлена; возврат процесса запрещён."
@@ -4779,6 +4865,10 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
           if (!state.safetyOk || Safety::isLatched(state) ||
               state.currentAlarm.type != AlarmType::NONE ||
               !ServiceTestSession::claimProcessResume()) {
+            auditServiceTest(
+                ServiceTestAudit::Event::REJECTED, getServiceTestAuditTarget(session),
+                "Process restore rejected by safety or service-session state.",
+                "danger");
             setServiceTestMessage(
                 (g_settings.language == 0)
                     ? "Возврат процесса заблокирован safety."
@@ -4790,6 +4880,9 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
               PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT, 1.0f);
           FSM::resume(g_state);
           ControlV2::updateRuntime(g_state, g_settings);
+          auditServiceTest(ServiceTestAudit::Event::RESTORED, getServiceTestAuditTarget(session),
+                           "Only the original permitted FSM process was resumed.",
+                           "success");
           setServiceTestMessage(
               (g_settings.language == 0)
                   ? "Процесс возвращён из сервисной паузы."
@@ -4797,6 +4890,10 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
           return true;
         }
         if (ServiceTestSession::closeWithoutResume()) {
+          auditServiceTest(
+              ServiceTestAudit::Event::RESULT, getServiceTestAuditTarget(session),
+              "Service closed; the process remains in its original paused state.",
+              "success");
           setServiceTestMessage(
               (g_settings.language == 0)
                   ? "Сервис завершён; исходная пауза процесса сохранена."
@@ -4808,6 +4905,9 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
         if (state.safetyOk && !Safety::isLatched(state) &&
             state.currentAlarm.type == AlarmType::NONE) {
           ServiceTestSession::cancel();
+          auditServiceTest(
+              ServiceTestAudit::Event::CANCELLED, getServiceTestAuditTarget(session),
+              "Faulted service session closed; process remains paused.", "warning");
           setServiceTestMessage(
               (g_settings.language == 0)
                   ? "Сервис закрыт после safety; процесс остаётся на паузе."
@@ -6172,7 +6272,12 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
     if (hit(tx, ty, 40, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
             OPERATOR_OVERLAY_BUTTON_H)) {
       if (action == Action::ServicePauseForTest) {
+        const ServiceTestSession::Snapshot session =
+            ServiceTestSession::getSnapshot();
         ServiceTestSession::cancel();
+        auditServiceTest(ServiceTestAudit::Event::CANCELLED, getServiceTestAuditTarget(session),
+                         "Operator cancelled the pending service pause.",
+                         "warning");
         setServiceTestMessage((g_settings.language == 0)
                                   ? "Сервисная пауза отменена оператором."
                                   : "Service pause cancelled by operator.");
@@ -6287,7 +6392,12 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
         PowerCommandGateway::safeStopAll(
             PowerCommandGateway::Owner::SERVICE,
             PowerCommandGateway::Reason::TFT_SERVICE_TEST);
-        ServiceTestSession::fault();
+        if (ServiceTestSession::fault()) {
+          auditServiceTest(
+              ServiceTestAudit::Event::FAULTED, getServiceTestAuditTarget(session),
+              "Safe service pause confirmation failed; restore is blocked.",
+              "danger");
+        }
         ui.serviceTestOutputActive = false;
         ui.serviceTestDeadlineMs = 0;
         setServiceTestMessage(
@@ -6306,12 +6416,20 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
           PowerCommandGateway::Owner::SERVICE,
           PowerCommandGateway::Reason::TFT_SERVICE_TEST);
       if (!areServiceTestOutputsSafe() || !ServiceTestSession::markSafePaused()) {
-        ServiceTestSession::fault();
+        if (ServiceTestSession::fault()) {
+          auditServiceTest(
+              ServiceTestAudit::Event::FAULTED, getServiceTestAuditTarget(session),
+              "Safe-stop readback failed while entering service pause.",
+              "danger");
+        }
         setServiceTestMessage(
             (g_settings.language == 0)
                 ? "Не удалось подтвердить безопасную остановку выходов."
                 : "Could not confirm safe output stop.");
       } else {
+        auditServiceTest(
+            ServiceTestAudit::Event::PAUSED, getServiceTestAuditTarget(session),
+            "FSM paused and conflicting outputs are safely stopped.", "success");
         setServiceTestMessage(
             (g_settings.language == 0)
                 ? "Процесс на сервисной паузе. Повторите выбранный тест."
