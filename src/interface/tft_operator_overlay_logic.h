@@ -16,6 +16,8 @@ enum class Action : uint8_t {
   ContainerChange,
   ServiceHeaterStart,
   ServicePauseForTest,
+  DosingPrimeStart,
+  DosingStart,
 };
 
 struct State {

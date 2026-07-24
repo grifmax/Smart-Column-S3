@@ -31,6 +31,20 @@ Target targetForValve(Valve valve) {
   }
 }
 
+Target targetForProductFraction(RectTakeoffFraction fraction) {
+  switch (fraction) {
+  case RectTakeoffFraction::HEADS:
+    return Target::HEADS_VALVE;
+  case RectTakeoffFraction::BODY:
+    return Target::BODY_VALVE;
+  case RectTakeoffFraction::TAILS:
+    return Target::TAILS_VALVE;
+  case RectTakeoffFraction::NONE:
+  default:
+    return Target::ALL_OUTPUTS;
+  }
+}
+
 void record(Owner owner, Target target, Reason reason, float requestedValue,
             bool safeStopApplied) {
   const Command command = makeCommand(owner, target, reason, millis(),
@@ -113,6 +127,13 @@ void setValve(Owner owner, Reason reason, Valve valve, bool open) {
     Valves::setUno(open);
     break;
   }
+}
+
+void setProductRoute(Owner owner, Reason reason, RectTakeoffFraction fraction,
+                     bool open) {
+  record(owner, targetForProductFraction(fraction), reason, open ? 1.0f : 0.0f,
+         !open);
+  Valves::setProductValve(fraction, open);
 }
 
 void pulseValve(Owner owner, Reason reason, Valve valve, uint32_t durationMs) {

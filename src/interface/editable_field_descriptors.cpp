@@ -122,6 +122,10 @@ constexpr Descriptor kDescriptors[] = {
      "PWM maximum", "", 0.0f, 255.0f, 1.0f, 16.0f, 0},
     {Id::COOLING_PWM_STARTUP_DUTY, "coolingPwmStartupDuty", "PWM старт",
      "PWM startup", "", 0.0f, 255.0f, 1.0f, 16.0f, 0},
+    {Id::DOSING_TARGET_VOLUME_ML, "dosingTargetVolumeMl", "Объём дозы",
+     "Dose volume", "ml", 1.0f, 5000.0f, 1.0f, 25.0f, 0},
+    {Id::DOSING_RATE_ML_H, "dosingRateMlH", "Скорость дозирования",
+     "Dosing rate", "ml/h", 50.0f, 3000.0f, 10.0f, 100.0f, 0},
 };
 
 static_assert(sizeof(kDescriptors) / sizeof(kDescriptors[0]) ==

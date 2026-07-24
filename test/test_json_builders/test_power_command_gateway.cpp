@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <../../src/control/power_command_gateway.h>
+#include <../../src/control/dosing_session_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
 #include <../../src/control/service_test_session_logic.h>
@@ -131,4 +132,34 @@ void test_service_test_audit_uses_stable_lifecycle_tokens() {
   TEST_ASSERT_TRUE(isTerminal(Event::RESULT));
   TEST_ASSERT_TRUE(isTerminal(Event::RESTORED));
   TEST_ASSERT_FALSE(isTerminal(Event::PAUSED));
+}
+
+void test_dosing_session_requires_prime_then_tracks_only_target_volume() {
+  using namespace DosingSessionLogic;
+
+  State dosing;
+  TEST_ASSERT_FALSE(configure(dosing, Route::NONE, 120.0f, 300.0f));
+  TEST_ASSERT_TRUE(configure(dosing, Route::HEADS, 120.0f, 300.0f));
+  TEST_ASSERT_FALSE(beginDispensing(dosing, 0.5f, 10.0f, 1));
+  TEST_ASSERT_TRUE(beginPriming(dosing, 0.5f, 10));
+  TEST_ASSERT_TRUE(isOutputActive(dosing));
+  TEST_ASSERT_TRUE(finishPriming(dosing));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::READY),
+                          static_cast<uint8_t>(dosing.phase));
+  TEST_ASSERT_TRUE(beginDispensing(dosing, 0.5f, 42.0f, 20));
+  updateActualVolume(dosing, 119.0f);
+  TEST_ASSERT_FALSE(targetReached(dosing));
+  updateActualVolume(dosing, 120.0f);
+  TEST_ASSERT_TRUE(targetReached(dosing));
+  TEST_ASSERT_TRUE(finish(dosing, FinishReason::TARGET_REACHED, 40));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::COMPLETED),
+                          static_cast<uint8_t>(dosing.phase));
+  TEST_ASSERT_EQUAL_STRING("target_reached",
+                           finishReasonToken(dosing.finishReason));
+
+  TEST_ASSERT_TRUE(configure(dosing, Route::TAILS, 30.0f, 200.0f));
+  TEST_ASSERT_TRUE(beginPriming(dosing, 0.5f, 50));
+  TEST_ASSERT_TRUE(finish(dosing, FinishReason::SAFETY, 55));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::FAULTED),
+                          static_cast<uint8_t>(dosing.phase));
 }

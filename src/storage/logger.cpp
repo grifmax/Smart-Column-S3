@@ -7,6 +7,7 @@
 #include "../fs_compat.h"
 #include <ArduinoJson.h>
 #include <cstring>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <time.h>
 #include <algorithm>
@@ -47,6 +48,19 @@ struct ParsedServiceTestEvent {
   char target[32] = "";
   char tone[16] = "";
   char detail[96] = "";
+};
+
+struct ParsedDosingEvent {
+  bool matched = false;
+  char event[20] = "";
+  char route[16] = "";
+  float requestedVolumeMl = 0.0f;
+  float requestedRateMlH = 0.0f;
+  float calibrationAtStart = 0.0f;
+  float actualVolumeMl = 0.0f;
+  uint32_t startedAtMs = 0;
+  uint32_t finishedAtMs = 0;
+  char finishReason[24] = "";
 };
 
 bool hasValidRtc(time_t now, const tm& timeinfo) {
@@ -308,6 +322,53 @@ ParsedServiceTestEvent parseServiceTestEvent(const char* message) {
   return parsed;
 }
 
+ParsedDosingEvent parseDosingEvent(const char* message) {
+  ParsedDosingEvent parsed;
+  if (!message) {
+    return parsed;
+  }
+
+  constexpr const char* kPrefix = "dosing";
+  constexpr size_t kPrefixLength = 6;
+  if (strncmp(message, kPrefix, kPrefixLength) != 0) {
+    return parsed;
+  }
+
+  parsed.matched = true;
+  const char* cursor = message + kPrefixLength;
+  char key[24] = "";
+  char value[128] = "";
+  while (*cursor != '\0') {
+    key[0] = '\0';
+    value[0] = '\0';
+    if (!parseNextTransitionField(cursor, key, sizeof(key), value,
+                                  sizeof(value))) {
+      continue;
+    }
+    if (strcmp(key, "e") == 0) {
+      copyToken(parsed.event, sizeof(parsed.event), value, strlen(value));
+    } else if (strcmp(key, "r") == 0) {
+      copyToken(parsed.route, sizeof(parsed.route), value, strlen(value));
+    } else if (strcmp(key, "v") == 0) {
+      parsed.requestedVolumeMl = strtof(value, nullptr);
+    } else if (strcmp(key, "q") == 0) {
+      parsed.requestedRateMlH = strtof(value, nullptr);
+    } else if (strcmp(key, "c") == 0) {
+      parsed.calibrationAtStart = strtof(value, nullptr);
+    } else if (strcmp(key, "a") == 0) {
+      parsed.actualVolumeMl = strtof(value, nullptr);
+    } else if (strcmp(key, "s") == 0) {
+      parsed.startedAtMs = static_cast<uint32_t>(strtoul(value, nullptr, 10));
+    } else if (strcmp(key, "f") == 0) {
+      parsed.finishedAtMs = static_cast<uint32_t>(strtoul(value, nullptr, 10));
+    } else if (strcmp(key, "x") == 0) {
+      copyToken(parsed.finishReason, sizeof(parsed.finishReason), value,
+                strlen(value));
+    }
+  }
+  return parsed;
+}
+
 String escapeCsvField(const char* value) {
   String escaped = value ? String(value) : String();
   escaped.replace("\"", "\"\"");
@@ -564,11 +625,14 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
     const ParsedEquipmentTestEvent equipment =
         parseEquipmentTestEvent(event->message);
     const ParsedServiceTestEvent service = parseServiceTestEvent(event->message);
+    const ParsedDosingEvent dosing = parseDosingEvent(event->message);
     item["kind"] = parsed.matched
                        ? "phase_transition"
                        : (service.matched ? "service_test"
-                                          : (equipment.matched ? "equipment_test"
-                                                               : "log"));
+                                          : (dosing.matched ? "dosing"
+                                                           : (equipment.matched
+                                                                  ? "equipment_test"
+                                                                  : "log")));
     if (parsed.matched) {
       if (parsed.mode[0] != '\0') {
         item["mode"] = parsed.mode;
@@ -598,6 +662,16 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
       if (service.detail[0] != '\0') {
         item["detail"] = service.detail;
       }
+    } else if (dosing.matched) {
+      item["dosingEvent"] = dosing.event;
+      item["dosingRoute"] = dosing.route;
+      item["requestedVolumeMl"] = dosing.requestedVolumeMl;
+      item["requestedRateMlH"] = dosing.requestedRateMlH;
+      item["calibrationAtStart"] = dosing.calibrationAtStart;
+      item["actualVolumeMl"] = dosing.actualVolumeMl;
+      item["startedAt"] = dosing.startedAtMs;
+      item["finishedAt"] = dosing.finishedAtMs;
+      item["finishReason"] = dosing.finishReason;
     } else if (equipment.matched) {
       if (equipment.tone[0] != '\0') {
         item["tone"] = equipment.tone;
@@ -623,7 +697,11 @@ String exportRecentEventsCsv(uint16_t limit) {
   String csv =
       "sequence,timestamp_ms,level,message,kind,mode,from_phase,to_phase,"
       "reason_code,operator_message,equipment_tone,equipment_title,"
-      "equipment_detail,service_event,service_target,service_tone,service_detail\n";
+      "equipment_detail,service_event,service_target,service_tone,service_detail,"
+      "dosing_event,dosing_route,dosing_requested_volume_ml,"
+      "dosing_requested_rate_ml_h,dosing_calibration_at_start,"
+      "dosing_actual_volume_ml,dosing_started_at_ms,dosing_finished_at_ms,"
+      "dosing_finish_reason\n";
   const size_t effectiveLimit =
       limit == 0 ? recentEventCount
                  : (recentEventCount < static_cast<size_t>(limit)
@@ -643,11 +721,14 @@ String exportRecentEventsCsv(uint16_t limit) {
     const ParsedEquipmentTestEvent equipment =
         parseEquipmentTestEvent(event->message);
     const ParsedServiceTestEvent service = parseServiceTestEvent(event->message);
+    const ParsedDosingEvent dosing = parseDosingEvent(event->message);
     const String kind = parsed.matched
                             ? "phase_transition"
                             : (service.matched ? "service_test"
-                                               : (equipment.matched ? "equipment_test"
-                                                                    : "log"));
+                                               : (dosing.matched ? "dosing"
+                                                                : (equipment.matched
+                                                                       ? "equipment_test"
+                                                                       : "log")));
     const String mode = escapeCsvField(parsed.mode);
     const String fromPhase = escapeCsvField(parsed.fromPhase);
     const String toPhase = escapeCsvField(parsed.toPhase);
@@ -660,6 +741,9 @@ String exportRecentEventsCsv(uint16_t limit) {
     const String serviceTarget = escapeCsvField(service.target);
     const String serviceTone = escapeCsvField(service.tone);
     const String serviceDetail = escapeCsvField(service.detail);
+    const String dosingEvent = escapeCsvField(dosing.event);
+    const String dosingRoute = escapeCsvField(dosing.route);
+    const String dosingReason = escapeCsvField(dosing.finishReason);
     const String message = escapeCsvField(event->message);
 
     csv += String(event->sequence);
@@ -696,6 +780,24 @@ String exportRecentEventsCsv(uint16_t limit) {
     csv += serviceTone;
     csv += "\",\"";
     csv += serviceDetail;
+    csv += "\",\"";
+    csv += dosingEvent;
+    csv += "\",\"";
+    csv += dosingRoute;
+    csv += "\",";
+    csv += String(dosing.requestedVolumeMl, 1);
+    csv += ",";
+    csv += String(dosing.requestedRateMlH, 1);
+    csv += ",";
+    csv += String(dosing.calibrationAtStart, 3);
+    csv += ",";
+    csv += String(dosing.actualVolumeMl, 1);
+    csv += ",";
+    csv += String(dosing.startedAtMs);
+    csv += ",";
+    csv += String(dosing.finishedAtMs);
+    csv += ",\"";
+    csv += dosingReason;
     csv += "\"\n";
   }
 

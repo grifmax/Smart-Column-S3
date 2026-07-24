@@ -18,6 +18,14 @@
 #define BOARD_REV BOARD_REV_V2_0
 #endif
 
+// Service dosing must opt in to a physically assigned route. These numeric
+// constants are configuration data, not a fallback selector: the stock board
+// leaves BOARD_DOSING_ROUTE disabled until its plumbing is explicitly known.
+#define BOARD_DOSING_ROUTE_NONE 0
+#define BOARD_DOSING_ROUTE_HEADS 1
+#define BOARD_DOSING_ROUTE_BODY 2
+#define BOARD_DOSING_ROUTE_TAILS 3
+
 // =============================================================================
 // PROFILE: BOARD_REV_V2_0
 // =============================================================================
@@ -48,6 +56,9 @@
 #define BOARD_SERVICE_TEST_FRACTIONATOR_TIMEOUT_MS 5000UL
 #define BOARD_PUMP_CALIBRATION_SPEED_ML_H 1200.0f
 #define BOARD_PUMP_CALIBRATION_TIMEOUT_MS 180000UL
+#define BOARD_DOSING_ROUTE BOARD_DOSING_ROUTE_NONE
+#define BOARD_DOSING_MAX_RATE_ML_H 3000.0f
+#define BOARD_DOSING_MAX_DURATION_MS 1800000UL
 
 // --- Основные исполнительные пины ---
 #define PIN_HEATER 5
@@ -178,6 +189,15 @@
 #endif
 #ifndef BOARD_PUMP_CALIBRATION_TIMEOUT_MS
 #define BOARD_PUMP_CALIBRATION_TIMEOUT_MS 180000UL
+#endif
+#ifndef BOARD_DOSING_ROUTE
+#define BOARD_DOSING_ROUTE BOARD_DOSING_ROUTE_NONE
+#endif
+#ifndef BOARD_DOSING_MAX_RATE_ML_H
+#define BOARD_DOSING_MAX_RATE_ML_H 3000.0f
+#endif
+#ifndef BOARD_DOSING_MAX_DURATION_MS
+#define BOARD_DOSING_MAX_DURATION_MS 1800000UL
 #endif
 
 #ifndef PIN_HEATER_SAFETY_RELAY

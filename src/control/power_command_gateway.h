@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 enum class Fraction : uint8_t;
+enum class RectTakeoffFraction : uint8_t;
 
 // The TFT must not call power drivers directly. This gateway is its single
 // command boundary and leaves an auditable record of who requested an output,
@@ -43,6 +44,7 @@ enum class Reason : uint8_t {
   TFT_SERVICE_SETTING,
   TFT_SERVICE_TEST,
   TFT_CALIBRATION,
+  TFT_DOSING,
   TFT_PROCESS_PAUSE,
   TFT_PROCESS_STOP,
 };
@@ -94,6 +96,8 @@ void setPumpSpeed(Owner owner, Reason reason, float mlPerHour);
 void setStirrerSpeed(Owner owner, Reason reason, uint8_t percent);
 void stopStirrer(Owner owner, Reason reason);
 void setValve(Owner owner, Reason reason, Valve valve, bool open);
+void setProductRoute(Owner owner, Reason reason, RectTakeoffFraction fraction,
+                     bool open);
 void pulseValve(Owner owner, Reason reason, Valve valve, uint32_t durationMs);
 void setCoolingPwm(Owner owner, Reason reason, uint8_t duty);
 void setFraction(Owner owner, Reason reason, Fraction fraction,

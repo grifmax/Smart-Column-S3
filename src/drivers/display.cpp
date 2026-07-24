@@ -7,6 +7,7 @@
 
 #include "display.h"
 #include "control/equipment_testing_logic.h"
+#include "control/dosing_session.h"
 #include "control/pump_calibration.h"
 #include "control/service_test_audit.h"
 #include "control/sensor_calibration_logic.h"
@@ -241,6 +242,7 @@ enum UiScreen : uint8_t {
   UI_MODE_CONFIG,
   UI_MODE_PARAMETERS,
   UI_SERVICE_TEST,
+  UI_DOSING,
   UI_PUMP_CALIBRATION,
   UI_SENSOR_CALIBRATION
 };
@@ -324,6 +326,8 @@ static constexpr UiScreenPolicy kUiScreenPolicies[] = {
      UI_LIVE_NONE}, // UI_MODE_PARAMETERS
     {UiRootTab::SERVICE, UiEditPolicy::ViewOnly, false, false,
      UI_LIVE_TEMPERATURES | UI_LIVE_POWER}, // UI_SERVICE_TEST
+    {UiRootTab::SERVICE, UiEditPolicy::IdleOnly, false, false,
+     UI_LIVE_POWER}, // UI_DOSING
     {UiRootTab::SETTINGS, UiEditPolicy::IdleOnly, false, false,
      UI_LIVE_POWER}, // UI_PUMP_CALIBRATION
     {UiRootTab::SETTINGS, UiEditPolicy::IdleOnly, false, false,
@@ -444,6 +448,9 @@ struct UiState {
       ServiceTestSession::Target::NONE;
   float serviceTestPumpStartVolumeMl = 0.0f;
   char serviceTestMessage[144] = {0};
+  float dosingTargetVolumeMl = 100.0f;
+  float dosingRateMlH = 300.0f;
+  char dosingMessage[144] = {0};
   char pumpCalibrationMessage[144] = {0};
   uint8_t sensorCalibrationPage = 0;
   uint8_t sensorCalibrationTempRole = 0;
@@ -466,6 +473,8 @@ static void closeOperatorOverlay();
 static void drawOperatorOverlay(const SystemState &state);
 static void setServiceTestMessage(const char *message);
 static void stopServiceTestOutputs(const char *message);
+static void setDosingMessage(const char *message);
+static const char *getDosingRouteLabel(DosingSession::Route route, bool ru);
 static void cancelPumpCalibration(const char *message);
 static void setSensorCalibrationMessage(const char *message);
 static TftPreflightSnapshot g_tftPreflight;
@@ -1259,6 +1268,10 @@ static bool isServiceTempsTap(int16_t tx, int16_t ty) {
 
 static bool isServiceTestTap(int16_t tx, int16_t ty) {
   return hit(tx, ty, 245, 162, 225, 64);
+}
+
+static bool isServiceDosingTap(int16_t tx, int16_t ty) {
+  return hit(tx, ty, 10, 232, TFT_WIDTH - 20, 32);
 }
 
 static void requestFullScreenRedraw() {
@@ -2914,6 +2927,9 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
               ? "Калибровка отменена; прежнее значение сохранено."
               : "Calibration cancelled; the previous value is retained.");
     }
+    if (ui.currentScreen == UI_DOSING) {
+      (void)DosingSession::stop(DosingSession::FinishReason::PAGE_EXIT);
+    }
     popScreen();
     return true;
   }
@@ -2954,6 +2970,9 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
           (g_settings.language == 0)
               ? "Калибровка отменена; прежнее значение сохранено."
               : "Calibration cancelled; the previous value is retained.");
+    }
+    if (ui.currentScreen == UI_DOSING) {
+      (void)DosingSession::stop(DosingSession::FinishReason::PAGE_EXIT);
     }
     const int action = tx / (TFT_WIDTH / 3);
     if (action == 0) {
@@ -4235,6 +4254,75 @@ static void setServiceTestMessage(const char *message) {
   snprintf(ui.serviceTestMessage, sizeof(ui.serviceTestMessage), "%s", message);
 }
 
+static void setDosingMessage(const char *message) {
+  snprintf(ui.dosingMessage, sizeof(ui.dosingMessage), "%s",
+           message != nullptr ? message : "");
+}
+
+static const char *getDosingRouteLabel(DosingSession::Route route, bool ru) {
+  switch (route) {
+  case DosingSession::Route::HEADS:
+    return ru ? "тракт голов" : "heads route";
+  case DosingSession::Route::BODY:
+    return ru ? "тракт тела" : "body route";
+  case DosingSession::Route::TAILS:
+    return ru ? "тракт хвостов" : "tails route";
+  case DosingSession::Route::NONE:
+  default:
+    return ru ? "не назначен" : "not assigned";
+  }
+}
+
+static const char *getDosingGuardMessage(DosingSession::Guard guard, bool ru) {
+  switch (guard) {
+  case DosingSession::Guard::ROUTE_UNAVAILABLE:
+    return ru ? "В hardware profile не назначен отдельный маршрут дозирования."
+              : "No dedicated dosing route is assigned in the hardware profile.";
+  case DosingSession::Guard::MODE_NOT_IDLE:
+    return ru ? "Дозирование разрешено только в IDLE."
+              : "Dosing is available only in IDLE.";
+  case DosingSession::Guard::SAFETY_BLOCKED:
+    return ru ? "Safety не готова: дозирование заблокировано."
+              : "Safety is not ready: dosing is blocked.";
+  case DosingSession::Guard::CALIBRATION_INVALID:
+    return ru ? "Сначала подтвердите корректную калибровку насоса."
+              : "Confirm a valid pump calibration first.";
+  case DosingSession::Guard::CALIBRATION_ACTIVE:
+    return ru ? "Сначала завершите или отмените калибровку насоса."
+              : "Finish or cancel pump calibration first.";
+  case DosingSession::Guard::SERVICE_SESSION_ACTIVE:
+    return ru ? "Сначала завершите сервисный тест."
+              : "Finish the equipment service test first.";
+  case DosingSession::Guard::PUMP_BUSY:
+    return ru ? "Насос уже занят другой операцией."
+              : "The pump is busy with another operation.";
+  case DosingSession::Guard::CONFIG_INVALID:
+    return ru ? "Проверьте объём, скорость и лимит hardware profile."
+              : "Check volume, rate, and the hardware-profile limit.";
+  case DosingSession::Guard::OK:
+  default:
+    return ru ? "Готово к дозированию." : "Ready for dosing.";
+  }
+}
+
+static void saveDosingTargetVolume(float volumeMl) {
+  ui.dosingTargetVolumeMl = EditableFields::normalize(
+      EditableFields::Id::DOSING_TARGET_VOLUME_ML, volumeMl);
+  if (!DosingSession::configure(ui.dosingTargetVolumeMl, ui.dosingRateMlH)) {
+    setDosingMessage(getDosingGuardMessage(
+        DosingSession::evaluateGuard(g_state), g_settings.language == 0));
+  }
+}
+
+static void saveDosingRate(float rateMlH) {
+  ui.dosingRateMlH = EditableFields::normalize(EditableFields::Id::DOSING_RATE_ML_H,
+                                                rateMlH);
+  if (!DosingSession::configure(ui.dosingTargetVolumeMl, ui.dosingRateMlH)) {
+    setDosingMessage(getDosingGuardMessage(
+        DosingSession::evaluateGuard(g_state), g_settings.language == 0));
+  }
+}
+
 static const char *getServiceTestTargetLabel(ServiceTestSession::Target target,
                                              bool ru) {
   switch (target) {
@@ -4743,6 +4831,24 @@ static void updatePumpCalibrationLifecycle(const SystemState &state) {
   }
 }
 
+static void updateDosingLifecycle(const SystemState &state) {
+  const DosingSession::Snapshot before = DosingSession::getSnapshot();
+  DosingSession::update(state);
+  const DosingSession::Snapshot after = DosingSession::getSnapshot();
+  if (!DosingSessionLogic::isOutputActive(before) ||
+      DosingSessionLogic::isOutputActive(after)) {
+    return;
+  }
+  const bool ru = g_settings.language == 0;
+  if (after.phase == DosingSession::Phase::COMPLETED) {
+    setDosingMessage(ru ? "Целевой объём достигнут; насос и клапаны закрыты."
+                        : "Target volume reached; pump and valves are closed.");
+  } else if (after.phase == DosingSession::Phase::FAULTED) {
+    setDosingMessage(ru ? "Дозирование аварийно остановлено; выходы закрыты."
+                        : "Dosing faulted; outputs are closed.");
+  }
+}
+
 static bool handleServiceScreenTap(int16_t tx, int16_t ty,
                                    const SystemState &) {
   if (isServiceTempsTap(tx, ty)) {
@@ -4759,6 +4865,15 @@ static bool handleServiceScreenTap(int16_t tx, int16_t ty,
       setServiceTestMessage(nullptr);
     }
     pushScreen(UI_SERVICE_TEST);
+    return true;
+  }
+  if (isServiceDosingTap(tx, ty)) {
+    if (!DosingSession::outputActive()) {
+      (void)DosingSession::configure(ui.dosingTargetVolumeMl,
+                                     ui.dosingRateMlH);
+      ui.dosingMessage[0] = '\0';
+    }
+    pushScreen(UI_DOSING);
     return true;
   }
   return false;
@@ -5040,6 +5155,85 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
   return false;
 }
 
+static bool handleDosingScreenTap(int16_t tx, int16_t ty,
+                                  const SystemState &state) {
+  const bool ru = g_settings.language == 0;
+  const DosingSession::Snapshot dosing = DosingSession::getSnapshot();
+  static constexpr int16_t kFieldsY = 144;
+  static constexpr int16_t kFieldW = 225;
+  static constexpr int16_t kActionY = 194;
+
+  if (dosing.phase == DosingSession::Phase::IDLE ||
+      dosing.phase == DosingSession::Phase::COMPLETED ||
+      dosing.phase == DosingSession::Phase::CANCELLED ||
+      dosing.phase == DosingSession::Phase::FAULTED) {
+    if (hit(tx, ty, 10, kFieldsY, kFieldW, 42)) {
+      openValueEdit(EditableFields::Id::DOSING_TARGET_VOLUME_ML,
+                    ui.dosingTargetVolumeMl, saveDosingTargetVolume);
+      return true;
+    }
+    if (hit(tx, ty, 245, kFieldsY, kFieldW, 42)) {
+      openValueEdit(EditableFields::Id::DOSING_RATE_ML_H, ui.dosingRateMlH,
+                    saveDosingRate);
+      return true;
+    }
+  }
+
+  if (!hit(tx, ty, 10, kActionY, TFT_WIDTH - 20, 38)) return false;
+
+  switch (dosing.phase) {
+  case DosingSession::Phase::IDLE: {
+    if (!DosingSession::configure(ui.dosingTargetVolumeMl,
+                                  ui.dosingRateMlH)) {
+      setDosingMessage(getDosingGuardMessage(
+          DosingSession::evaluateGuard(state), ru));
+      return true;
+    }
+    const DosingSession::Guard guard = DosingSession::evaluateGuard(state);
+    if (guard != DosingSession::Guard::OK) {
+      setDosingMessage(getDosingGuardMessage(guard, ru));
+      return true;
+    }
+    openOperatorOverlay(TftOperatorOverlayLogic::Action::DosingPrimeStart);
+    return true;
+  }
+  case DosingSession::Phase::PRIME:
+    if (DosingSession::finishPriming()) {
+      setDosingMessage(ru ? "Прокачка завершена. Проверьте тару и запустите дозу."
+                          : "Priming finished. Check the vessel and start dosing.");
+    }
+    return true;
+  case DosingSession::Phase::READY: {
+    const DosingSession::Guard guard = DosingSession::evaluateGuard(state);
+    if (guard != DosingSession::Guard::OK) {
+      setDosingMessage(getDosingGuardMessage(guard, ru));
+      return true;
+    }
+    openOperatorOverlay(TftOperatorOverlayLogic::Action::DosingStart);
+    return true;
+  }
+  case DosingSession::Phase::DISPENSING:
+    if (DosingSession::stop(DosingSession::FinishReason::OPERATOR_STOP)) {
+      setDosingMessage(ru ? "Дозирование остановлено оператором."
+                          : "Dosing stopped by operator.");
+    }
+    return true;
+  case DosingSession::Phase::COMPLETED:
+  case DosingSession::Phase::CANCELLED:
+  case DosingSession::Phase::FAULTED:
+    if (DosingSession::configure(ui.dosingTargetVolumeMl,
+                                 ui.dosingRateMlH)) {
+      setDosingMessage(ru ? "Новая операция настроена. Подтвердите прокачку."
+                          : "A new operation is configured. Confirm priming.");
+    } else {
+      setDosingMessage(getDosingGuardMessage(
+          DosingSession::evaluateGuard(state), ru));
+    }
+    return true;
+  }
+  return true;
+}
+
 static bool handleNoopScreenTap(int16_t, int16_t, const SystemState &) {
   return false;
 }
@@ -5069,6 +5263,7 @@ static constexpr UiTapHandler kUiTapDispatch[] = {
     handleModeConfigScreenTap,    // UI_MODE_CONFIG
     handleModeParametersScreenTap, // UI_MODE_PARAMETERS
     handleServiceTestScreenTap,    // UI_SERVICE_TEST
+    handleDosingScreenTap,         // UI_DOSING
     handlePumpCalibrationScreenTap, // UI_PUMP_CALIBRATION
     handleSensorCalibrationScreenTap // UI_SENSOR_CALIBRATION
 };
@@ -6223,6 +6418,33 @@ static void drawOperatorOverlay(const SystemState &state) {
     tone = COLOR_WARNING;
     break;
   }
+  case Action::DosingPrimeStart: {
+    const DosingSession::Snapshot dosing = DosingSession::getSnapshot();
+    title = ru ? "ПРОКАЧКА ДОЗАТОРА" : "PRIME DOSING LINE";
+    snprintf(dynamicMessage, sizeof(dynamicMessage),
+             ru ? "Жидкость будет направлена в %s. Прокачка не войдёт в цель %.0f ml. Подтвердить?"
+                : "Liquid will flow through the %s. Priming is excluded from the %.0f ml target. Confirm?",
+             getDosingRouteLabel(dosing.route, ru),
+             static_cast<double>(dosing.requestedVolumeMl));
+    message = dynamicMessage;
+    confirm = ru ? "ПРОКАЧАТЬ" : "PRIME";
+    tone = COLOR_WARNING;
+    break;
+  }
+  case Action::DosingStart: {
+    const DosingSession::Snapshot dosing = DosingSession::getSnapshot();
+    title = ru ? "ЗАПУСК ДОЗИРОВАНИЯ" : "START DOSING";
+    snprintf(dynamicMessage, sizeof(dynamicMessage),
+             ru ? "Подать %.0f ml со скоростью %.0f ml/h через %s?"
+                : "Dispense %.0f ml at %.0f ml/h through the %s?",
+             static_cast<double>(dosing.requestedVolumeMl),
+             static_cast<double>(dosing.requestedRateMlH),
+             getDosingRouteLabel(dosing.route, ru));
+    message = dynamicMessage;
+    confirm = ru ? "НАЧАТЬ" : "START";
+    tone = COLOR_WARNING;
+    break;
+  }
   case Action::None:
   default:
     return;
@@ -6235,7 +6457,8 @@ static void drawOperatorOverlay(const SystemState &state) {
   drawFullscreenOverlay(title, message, tone, footer, 1);
 
   if (action == Action::ProcessStop ||
-      action == Action::ServicePauseForTest) {
+      action == Action::ServicePauseForTest ||
+      action == Action::DosingPrimeStart || action == Action::DosingStart) {
     const int16_t gap = 12;
     const int16_t buttonW = (TFT_WIDTH - 80 - gap) / 2;
     drawButton(40, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
@@ -6266,7 +6489,8 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
   }
 
   if (action == Action::ProcessStop ||
-      action == Action::ServicePauseForTest) {
+      action == Action::ServicePauseForTest ||
+      action == Action::DosingPrimeStart || action == Action::DosingStart) {
     const int16_t gap = 12;
     const int16_t buttonW = (TFT_WIDTH - 80 - gap) / 2;
     if (hit(tx, ty, 40, OPERATOR_OVERLAY_BUTTON_Y, buttonW,
@@ -6281,6 +6505,11 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
         setServiceTestMessage((g_settings.language == 0)
                                   ? "Сервисная пауза отменена оператором."
                                   : "Service pause cancelled by operator.");
+      } else if (action == Action::DosingPrimeStart ||
+                 action == Action::DosingStart) {
+        setDosingMessage((g_settings.language == 0)
+                             ? "Запуск дозирования отменён оператором."
+                             : "Dosing start cancelled by operator.");
       }
       closeOperatorOverlay();
       return true;
@@ -6434,6 +6663,34 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
             (g_settings.language == 0)
                 ? "Процесс на сервисной паузе. Повторите выбранный тест."
                 : "Process is in service pause. Repeat the selected test.");
+      }
+      closeOperatorOverlay();
+    }
+    break;
+  case Action::DosingPrimeStart:
+    if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
+      if (DosingSession::beginPriming(state)) {
+        setDosingMessage(
+            (g_settings.language == 0)
+                ? "Прокачка запущена. Остановите после заполнения линии."
+                : "Priming started. Stop after the line is filled.");
+      } else {
+        setDosingMessage(getDosingGuardMessage(
+            DosingSession::evaluateGuard(state), g_settings.language == 0));
+      }
+      closeOperatorOverlay();
+    }
+    break;
+  case Action::DosingStart:
+    if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
+      if (DosingSession::beginDispensing(state)) {
+        setDosingMessage(
+            (g_settings.language == 0)
+                ? "Дозирование начато; изменить маршрут, скорость или цель нельзя."
+                : "Dosing started; route, rate, and target are locked.");
+      } else {
+        setDosingMessage(getDosingGuardMessage(
+            DosingSession::evaluateGuard(state), g_settings.language == 0));
       }
       closeOperatorOverlay();
     }
@@ -11685,7 +11942,7 @@ static void renderRootFooter(
                                 const int16_t ipRowY = 63;
                                 const int16_t y1 = 92;
                                 const int16_t y2 = 162;
-                                const int16_t diagY = 242;
+                                const int16_t dosingY = 232;
 
                                 if (full) {
                                   tft.fillScreen(colorBg());
@@ -11695,14 +11952,25 @@ static void renderRootFooter(
                                                      msg(Msg::VERSION));
                                   drawValueTileShell(x2, y1, tileW, tileH,
                                                      msg(Msg::UPTIME));
-                                  drawValueTileShell(x1, y2, tileW, tileH,
-                                                     msg(Msg::FREE_HEAP));
+                                  drawButton(x1, y2, tileW, tileH,
+                                             g_settings.language == 0
+                                                 ? "ДАТЧИКИ ТЕМПЕРАТУРЫ"
+                                                 : "TEMPERATURE SENSORS",
+                                             COLOR_INFO, TFT_WHITE);
                                   drawButton(
                                       x2, y2, tileW, tileH,
                                       g_settings.language == 0
                                           ? "ПРОВЕРКА ОБОРУДОВАНИЯ"
                                           : "EQUIPMENT TEST",
                                       COLOR_WARNING, TFT_WHITE);
+                                  drawButton(10, dosingY, TFT_WIDTH - 20, 32,
+                                             g_settings.language == 0
+                                                 ? "ДОЗИРОВАНИЕ"
+                                                 : "DOSING",
+                                             DosingSession::getRouteInfo().available
+                                                 ? COLOR_PRIMARY
+                                                 : COLOR_DARK_GREY,
+                                             TFT_WHITE);
                                 }
 
                                 char buf[64];
@@ -11726,13 +11994,9 @@ static void renderRootFooter(
                                                    uptimeBuf, "",
                                                    colorAccent());
 
-                                snprintf(buf, sizeof(buf), "%u",
-                                         ESP.getFreeHeap() / 1024);
-                                drawValueTileValue(x1, y2, tileW, tileH, buf,
-                                                   "KB", COLOR_SUCCESS);
-
                                 snprintf(
-                                    buf, sizeof(buf), "F%u/%u S%lu R%lu H%lu G%u",
+                                    buf, sizeof(buf), "H%u F%u/%u S%lu R%lu G%u",
+                                    ESP.getFreeHeap() / 1024,
                                     g_displayStats.lastFrameMs,
                                     g_displayStats.maxFrameMs,
                                     (unsigned long)g_displayStats.slowFrames,
@@ -11742,7 +12006,7 @@ static void renderRootFooter(
                                         g_displayStats.hardWatchdogRecoveries,
                                     (unsigned int)
                                         g_displayStats.lastUpdateGapMs);
-                                drawValueRow(diagY,
+                                drawValueRow(dosingY + 38,
                                              tftText(TftTextId::ServiceDiag),
                                              buf);
                                 uint16_t hintTone = COLOR_INFO;
@@ -12015,6 +12279,128 @@ static void renderRootFooter(
                                                               : guardReason);
                                 drawFooterHint(hint, allowed ? COLOR_INFO
                                                               : COLOR_DANGER);
+                              }
+
+                              static void renderDosing(const SystemState &state,
+                                                       bool full) {
+                                const bool ru = g_settings.language == 0;
+                                const DosingSession::Snapshot dosing =
+                                    DosingSession::getSnapshot();
+                                const DosingSession::RouteInfo route =
+                                    DosingSession::getRouteInfo();
+                                const DosingSession::Guard guard =
+                                    DosingSession::evaluateGuard(
+                                        state, DosingSession::outputActive());
+                                if (full) {
+                                  tft.fillScreen(colorBg());
+                                  drawHeader(ru ? "ДОЗИРОВАНИЕ" : "DOSING", true);
+                                  drawTabs(UI_DOSING);
+                                } else {
+                                  tft.fillRect(0, UI_HEADER_H, TFT_WIDTH,
+                                               TFT_HEIGHT - UI_HEADER_H,
+                                               colorBg());
+                                }
+
+                                const bool routeReady = route.available;
+                                const uint16_t routeTone = routeReady
+                                                               ? COLOR_SUCCESS
+                                                               : COLOR_DANGER;
+                                char routeDetail[144];
+                                snprintf(
+                                    routeDetail, sizeof(routeDetail),
+                                    routeReady
+                                        ? (ru ? "Маршрут: %s. Клапаны вне маршрута будут закрыты."
+                                              : "Route: %s. Valves outside the route will close.")
+                                        : (ru ? "Маршрут не назначен. V2.0 не использует насос отбора как дозатор."
+                                              : "No route assigned. V2.0 does not use the takeoff pump as a doser."),
+                                    getDosingRouteLabel(route.route, ru));
+                                drawCard(10, 52, TFT_WIDTH - 20, 80, colorCard());
+                                drawPanelHeader(10, 52, TFT_WIDTH - 20,
+                                                ru ? "СЕРВИСНЫЙ МАРШРУТ"
+                                                   : "SERVICE ROUTE",
+                                                routeTone);
+                                char routeFitted[144];
+                                copyFittedText(routeDetail, TFT_WIDTH - 40,
+                                               routeFitted, sizeof(routeFitted));
+                                tft.setTextColor(colorFg());
+                                tft.setTextDatum(top_left);
+                                drawDisplayString(routeFitted, 20, 86);
+                                tft.setTextColor(colorMuted());
+                                drawDisplayString(
+                                    ru ? "Прокачка не входит в целевой объём."
+                                       : "Priming is excluded from the target volume.",
+                                    20, 108);
+
+                                char target[32];
+                                char rate[32];
+                                snprintf(target, sizeof(target), "%.0f",
+                                         ui.dosingTargetVolumeMl);
+                                snprintf(rate, sizeof(rate), "%.0f",
+                                         ui.dosingRateMlH);
+                                const bool mayEdit = dosing.phase == DosingSession::Phase::IDLE ||
+                                                     dosing.phase == DosingSession::Phase::COMPLETED ||
+                                                     dosing.phase == DosingSession::Phase::CANCELLED ||
+                                                     dosing.phase == DosingSession::Phase::FAULTED;
+                                drawValueTile(10, 144, 225, 42,
+                                              ru ? "ЦЕЛЕВОЙ ОБЪЁМ" : "TARGET VOLUME",
+                                              target, "ml",
+                                              mayEdit ? COLOR_INFO : colorMuted());
+                                drawValueTile(245, 144, 225, 42,
+                                              ru ? "СКОРОСТЬ" : "RATE", rate,
+                                              "ml/h",
+                                              mayEdit ? COLOR_INFO : colorMuted());
+
+                                const char *action = ru ? "ПРОВЕРИТЬ УСЛОВИЯ"
+                                                        : "CHECK CONDITIONS";
+                                uint16_t actionTone = routeReady ? COLOR_PRIMARY
+                                                                 : COLOR_DANGER;
+                                switch (dosing.phase) {
+                                case DosingSession::Phase::PRIME:
+                                  action = ru ? "ОСТАНОВИТЬ ПРОКАЧКУ" : "STOP PRIMING";
+                                  actionTone = COLOR_WARNING;
+                                  break;
+                                case DosingSession::Phase::READY:
+                                  action = ru ? "ПОДТВЕРДИТЬ ДОЗИРОВАНИЕ"
+                                              : "CONFIRM DOSING";
+                                  actionTone = COLOR_PRIMARY;
+                                  break;
+                                case DosingSession::Phase::DISPENSING:
+                                  action = ru ? "СТОП ДОЗИРОВАНИЕ" : "STOP DOSING";
+                                  actionTone = COLOR_DANGER;
+                                  break;
+                                case DosingSession::Phase::COMPLETED:
+                                case DosingSession::Phase::CANCELLED:
+                                case DosingSession::Phase::FAULTED:
+                                  action = ru ? "НОВАЯ ОПЕРАЦИЯ" : "NEW OPERATION";
+                                  actionTone = COLOR_INFO;
+                                  break;
+                                case DosingSession::Phase::IDLE:
+                                default:
+                                  action = ru ? "ПОДТВЕРДИТЬ ПРОКАЧКУ"
+                                              : "CONFIRM PRIMING";
+                                  break;
+                                }
+                                drawButton(10, 194, TFT_WIDTH - 20, 38, action,
+                                           actionTone, TFT_WHITE);
+
+                                char actual[96];
+                                snprintf(actual, sizeof(actual),
+                                         ru ? "%s | Факт %.1f ml | причина %s"
+                                            : "%s | Actual %.1f ml | reason %s",
+                                         DosingSessionLogic::phaseToken(dosing.phase),
+                                         dosing.actualVolumeMl,
+                                         DosingSessionLogic::finishReasonToken(
+                                             dosing.finishReason));
+                                drawValueRow(242, ru ? "СЕССИЯ" : "SESSION",
+                                             actual);
+                                const char *hint = ui.dosingMessage[0] != '\0'
+                                                       ? ui.dosingMessage
+                                                       : getDosingGuardMessage(guard, ru);
+                                drawFooterHint(
+                                    hint,
+                                    guard == DosingSession::Guard::OK
+                                        ? (routeReady ? COLOR_INFO : COLOR_DANGER)
+                                        : COLOR_WARNING);
                               }
 
                               static void renderAllTemps(
@@ -12425,6 +12811,11 @@ static void renderRootFooter(
                                 renderSensorCalibration(state, full);
                               }
 
+                              static void renderDosingScreen(
+                                  const SystemState &state, bool full) {
+                                renderDosing(state, full);
+                              }
+
                               static void renderManualScreen(
                                   const SystemState &state, bool) {
                                 renderManual(state);
@@ -12459,6 +12850,7 @@ static void renderRootFooter(
                                       renderModeConfig,        // UI_MODE_CONFIG
                                       renderModeParameters,    // UI_MODE_PARAMETERS
                                       renderServiceTest,       // UI_SERVICE_TEST
+                                      renderDosingScreen,      // UI_DOSING
                                       renderPumpCalibrationScreen, // UI_PUMP_CALIBRATION
                                       renderSensorCalibrationScreen // UI_SENSOR_CALIBRATION
                                   };
@@ -12727,6 +13119,7 @@ static void renderRootFooter(
 
                                 updateServiceTestLifecycle(state);
                                 updatePumpCalibrationLifecycle(state);
+                                updateDosingLifecycle(state);
 
                                 if (!tft_ok) {
                                   attemptHardRecovery(now);

@@ -597,6 +597,13 @@ Testing/service pressure status also includes:
 `detail`. При сервисной паузе работающего процесса те же действия находятся в
 `GET /api/history/{id}` как события с `reasonCode: "operator_service_action"`.
 
+Сессии локального TFT-дозирования возвращаются с `kind: "dosing"` и полями
+`dosingEvent`, `dosingRoute`, `requestedVolumeMl`, `requestedRateMlH`,
+`calibrationAtStart`, `actualVolumeMl`, `startedAt`, `finishedAt` и
+`finishReason`. CSV содержит те же значения в колонках `dosing_*`. Запуск
+возможен только через явно назначенный hardware-profile маршрут; V2.0 по
+умолчанию его не назначает.
+
 ---
 
 ## WebSocket `/ws`
