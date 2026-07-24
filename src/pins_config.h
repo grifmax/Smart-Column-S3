@@ -384,6 +384,40 @@
 #endif
 
 // =============================================================================
+// Fermentation-zone profile
+// =============================================================================
+// The legacy board has one declared fermentation zone. A second zone is opt-in
+// and must name its own sensor and physical outputs; no existing heater or
+// cooling valve becomes a second-zone output by implication.
+#ifndef BOARD_FERMENTATION_ZONE_COUNT
+#define BOARD_FERMENTATION_ZONE_COUNT 1
+#endif
+#ifndef BOARD_FERMENTATION_ZONE1_TEMP_SENSOR_SLOT
+#define BOARD_FERMENTATION_ZONE1_TEMP_SENSOR_SLOT 0
+#endif
+#ifndef BOARD_FERMENTATION_ZONE1_HEATER_OUTPUT_ID
+#define BOARD_FERMENTATION_ZONE1_HEATER_OUTPUT_ID PIN_HEATER
+#endif
+#ifndef BOARD_FERMENTATION_ZONE1_COOLING_OUTPUT_ID
+#define BOARD_FERMENTATION_ZONE1_COOLING_OUTPUT_ID PIN_VALVE_WATER
+#endif
+#ifndef BOARD_FERMENTATION_ZONE1_STIRRER_OUTPUT_ID
+#define BOARD_FERMENTATION_ZONE1_STIRRER_OUTPUT_ID -1
+#endif
+#ifndef BOARD_FERMENTATION_ZONE2_TEMP_SENSOR_SLOT
+#define BOARD_FERMENTATION_ZONE2_TEMP_SENSOR_SLOT -1
+#endif
+#ifndef BOARD_FERMENTATION_ZONE2_HEATER_OUTPUT_ID
+#define BOARD_FERMENTATION_ZONE2_HEATER_OUTPUT_ID -1
+#endif
+#ifndef BOARD_FERMENTATION_ZONE2_COOLING_OUTPUT_ID
+#define BOARD_FERMENTATION_ZONE2_COOLING_OUTPUT_ID -1
+#endif
+#ifndef BOARD_FERMENTATION_ZONE2_STIRRER_OUTPUT_ID
+#define BOARD_FERMENTATION_ZONE2_STIRRER_OUTPUT_ID -1
+#endif
+
+// =============================================================================
 // Common validation
 // =============================================================================
 

@@ -444,9 +444,11 @@ pressureMaxMmHg, pressureRiseRateMaxMmHgMin
 исполнительных выходов. Это ценный новый функционал, но не firmware-only
 задача.
 
-- [ ] [D-027] Сначала утвердить expansion-board/profile: два датчика температуры,
-  два независимых выхода нагрева, два охлаждения и, при необходимости, два
-  канала мешалки. Описать failsafe-состояние каждого выхода.
+- [~] [D-027] Подготовлен [`hardware-profile двух зон брожения`](docs/FERMENTATION_TWO_ZONE_HARDWARE_PROFILE.md)
+  и validator: для `zoneCount = 2` обязательны раздельные temperature sensor,
+  heater и cooling outputs; повтор датчика/выхода отклоняется. V2.0 зафиксирован
+  как `zoneCount = 1` без fallback на его существующие выходы. Закрытие ожидает
+  expansion-board review и подтверждённые fail-safe состояния каждого выхода.
 - [ ] [D-028] Заменить единичные настройки на `FermentationZone[2]`, сохранив полную
   обратную совместимость текущего первого контура и его NVS-профилей.
 - [ ] [D-029] Для каждой зоны реализовать независимые фазы, hysteresis, minimum

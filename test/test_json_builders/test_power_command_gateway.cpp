@@ -4,6 +4,7 @@
 #include <../../src/control/autoclave_hardware_profile_logic.h>
 #include <../../src/control/autoclave_session_logic.h>
 #include <../../src/control/autoclave_safety_logic.h>
+#include <../../src/control/fermentation_hardware_profile_logic.h>
 #include <../../src/control/dosing_session_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
@@ -256,4 +257,34 @@ void test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout()
   TEST_ASSERT_EQUAL_STRING("pressure_limit", faultToken(evaluate(
                                                highPressureSafety, config, phase,
                                                0, true, true, 51.0f, 10)));
+}
+
+void test_fermentation_profile_requires_two_unique_complete_zones() {
+  using namespace FermentationHardwareProfileLogic;
+
+  Profile profile;
+  profile.zoneCount = 1;
+  profile.zones[0] = {0, 10, 11, kUnassigned};
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Validation::OK),
+                          static_cast<uint8_t>(validate(profile)));
+  TEST_ASSERT_FALSE(isSecondZoneAvailable(profile));
+
+  profile.zoneCount = 2;
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(Validation::ZONE2_TEMPERATURE_UNASSIGNED),
+      static_cast<uint8_t>(validate(profile)));
+
+  profile.zones[1] = {0, 12, 13, kUnassigned};
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(Validation::TEMPERATURE_SENSOR_REUSED),
+      static_cast<uint8_t>(validate(profile)));
+
+  profile.zones[1] = {1, 10, 13, kUnassigned};
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Validation::OUTPUT_ID_REUSED),
+                          static_cast<uint8_t>(validate(profile)));
+
+  profile.zones[1] = {1, 12, 13, 14};
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Validation::OK),
+                          static_cast<uint8_t>(validate(profile)));
+  TEST_ASSERT_TRUE(isSecondZoneAvailable(profile));
 }

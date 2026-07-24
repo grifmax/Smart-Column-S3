@@ -14,6 +14,7 @@
 #include <../../src/control/autoclave_hardware_profile_logic.h>
 #include <../../src/control/autoclave_session_logic.h>
 #include <../../src/control/autoclave_safety_logic.h>
+#include <../../src/control/fermentation_hardware_profile_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
 
@@ -76,6 +77,7 @@ void test_dosing_session_requires_prime_then_tracks_only_target_volume();
 void test_autoclave_profile_requires_explicit_hardware_and_safety_approval();
 void test_autoclave_sterilization_timer_only_counts_in_temperature_band();
 void test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout();
+void test_fermentation_profile_requires_two_unique_complete_zones();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -115,6 +117,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_autoclave_profile_requires_explicit_hardware_and_safety_approval);
   RUN_TEST(test_autoclave_sterilization_timer_only_counts_in_temperature_band);
   RUN_TEST(test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout);
+  RUN_TEST(test_fermentation_profile_requires_two_unique_complete_zones);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>
