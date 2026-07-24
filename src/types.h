@@ -466,6 +466,9 @@ struct AutoclaveRuntimeState {
   uint32_t sterilizationAccumulatedMs = 0;
   uint32_t phaseStartedAtMs = 0;
   uint32_t lastInBandAtMs = 0;
+  bool pressureBaselineValid = false;
+  float lastPressureMmHg = 0.0f;
+  uint32_t lastPressureAtMs = 0;
   char faultReason[96] = {};
 };
 

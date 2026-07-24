@@ -3,6 +3,7 @@
 #include <../../src/control/power_command_gateway.h>
 #include <../../src/control/autoclave_hardware_profile_logic.h>
 #include <../../src/control/autoclave_session_logic.h>
+#include <../../src/control/autoclave_safety_logic.h>
 #include <../../src/control/dosing_session_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
@@ -223,4 +224,36 @@ void test_autoclave_sterilization_timer_only_counts_in_temperature_band() {
   TEST_ASSERT_TRUE(update(session, config, true, 40.0f, 3000));
   TEST_ASSERT_TRUE(finish(session, 3010));
   TEST_ASSERT_TRUE(isTerminal(session.phase));
+}
+
+void test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout() {
+  using namespace AutoclaveSafetyLogic;
+
+  Config config;
+  config.pressureMaxMmHg = 50.0f;
+  config.pressureRiseRateMaxMmHgMin = 10.0f;
+  config.heatingTimeoutMs = 1000;
+  State safety;
+  const auto phase = AutoclaveSessionLogic::Phase::HEATING;
+  TEST_ASSERT_EQUAL_STRING("temperature_sensor",
+                           faultToken(evaluate(safety, config, phase, 0,
+                                               false, true, 0.0f, 10)));
+  TEST_ASSERT_EQUAL_STRING("pressure_sensor",
+                           faultToken(evaluate(safety, config, phase, 0,
+                                               true, false, 0.0f, 20)));
+  TEST_ASSERT_EQUAL_STRING("none", faultToken(evaluate(
+                                       safety, config, phase, 0, true, true,
+                                       10.0f, 100)));
+  TEST_ASSERT_EQUAL_STRING("pressure_rise_rate", faultToken(evaluate(
+                                                   safety, config, phase, 0,
+                                                   true, true, 20.0f, 10100)));
+
+  State timeoutSafety;
+  TEST_ASSERT_EQUAL_STRING("heating_timeout", faultToken(evaluate(
+                                               timeoutSafety, config, phase,
+                                               0, true, true, 10.0f, 1000)));
+  State highPressureSafety;
+  TEST_ASSERT_EQUAL_STRING("pressure_limit", faultToken(evaluate(
+                                               highPressureSafety, config, phase,
+                                               0, true, true, 51.0f, 10)));
 }

@@ -117,4 +117,10 @@ inline bool finish(State &state, uint32_t nowMs) {
   return true;
 }
 
+inline bool fault(State &state, uint32_t nowMs) {
+  if (state.phase == Phase::IDLE || isTerminal(state.phase)) return false;
+  enter(state, Phase::FAULT, nowMs);
+  return true;
+}
+
 } // namespace AutoclaveSessionLogic

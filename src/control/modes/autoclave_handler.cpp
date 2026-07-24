@@ -1,5 +1,6 @@
 #include "../autoclave_hardware_profile.h"
 #include "../autoclave_session_logic.h"
+#include "../autoclave_safety_logic.h"
 #include "../fsm_utils.h"
 #include "../power_command_gateway.h"
 #include "../v2/reason_codes.h"
@@ -30,6 +31,43 @@ AutoclaveSessionLogic::Config readConfig(const Settings &settings) {
       static_cast<uint32_t>(settings.autoclave.sterilizationDurationMin) *
       60UL * 1000UL;
   config.coolingStopTempC = settings.autoclave.coolingStopTempC;
+  return config;
+}
+
+AutoclaveSafetyLogic::State readSafety(const SystemState &state) {
+  AutoclaveSafetyLogic::State safety;
+  safety.pressureBaselineValid = state.autoclave.pressureBaselineValid;
+  safety.lastPressureMmHg = state.autoclave.lastPressureMmHg;
+  safety.lastPressureAtMs = state.autoclave.lastPressureAtMs;
+  return safety;
+}
+
+void writeSafety(SystemState &state, const AutoclaveSafetyLogic::State &safety) {
+  state.autoclave.pressureBaselineValid = safety.pressureBaselineValid;
+  state.autoclave.lastPressureMmHg = safety.lastPressureMmHg;
+  state.autoclave.lastPressureAtMs = safety.lastPressureAtMs;
+}
+
+AutoclaveSafetyLogic::Config readSafetyConfig(const Settings &settings) {
+  AutoclaveSafetyLogic::Config config;
+  const AutoclaveHardwareProfile::Profile profile =
+      AutoclaveHardwareProfile::get();
+  config.pressureMaxMmHg = settings.autoclave.pressureMaxMmHg;
+  config.pressureRiseRateMaxMmHgMin =
+      settings.autoclave.pressureRiseRateMaxMmHgMin;
+  config.heatingTimeoutMs =
+      static_cast<uint32_t>(settings.autoclave.heatTimeoutMin) *
+      60UL * 1000UL;
+  // Operator settings may narrow profile limits but can never widen them.
+  if (profile.pressureMaxMmHg <= 0.0f ||
+      config.pressureMaxMmHg > profile.pressureMaxMmHg) {
+    config.pressureMaxMmHg = 0.0f;
+  }
+  if (profile.pressureRiseRateMaxMmHgMin <= 0.0f ||
+      config.pressureRiseRateMaxMmHgMin >
+          profile.pressureRiseRateMaxMmHgMin) {
+    config.pressureRiseRateMaxMmHgMin = 0.0f;
+  }
   return config;
 }
 
@@ -102,6 +140,27 @@ void writeSession(SystemState &state,
   state.autoclave.lastInBandAtMs = session.lastInBandAtMs;
 }
 
+void applySafetyFault(SystemState &state,
+                      AutoclaveSessionLogic::State &session,
+                      AutoclaveSafetyLogic::Fault fault) {
+  if (!AutoclaveSessionLogic::fault(session, millis())) return;
+  const char *detail = AutoclaveSafetyLogic::faultToken(fault);
+  if (state.autoclave.phase != AutoclavePhase::FAULT) {
+    enterPhase(state, AutoclavePhase::FAULT,
+               fault == AutoclaveSafetyLogic::Fault::PRESSURE_LIMIT ||
+                       fault == AutoclaveSafetyLogic::Fault::PRESSURE_RISE_RATE
+                   ? ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_PRESSURE
+                   : ControlV2::ReasonCodeV2::RC_SAFETY_TRIP_SENSOR,
+               detail);
+  }
+  writeSession(state, session);
+  strlcpy(state.autoclave.faultReason, detail,
+          sizeof(state.autoclave.faultReason));
+  PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::FSM,
+                                   PowerCommandGateway::Reason::FSM_AUTOCLAVE);
+  Logger::logf(2, "autoclave event=safety_fault detail=%s", detail);
+}
+
 } // namespace
 
 void start(SystemState &state, const Settings &) {
@@ -151,16 +210,26 @@ void update(SystemState &state, const Settings &settings) {
   }
 
   AutoclaveSessionLogic::State session = readSession(state);
+  AutoclaveSafetyLogic::State safety = readSafety(state);
+  const AutoclaveSafetyLogic::Fault safetyFault =
+      AutoclaveSafetyLogic::evaluate(
+          safety, readSafetyConfig(settings), session.phase,
+          session.phaseStartedAtMs, state.temps.valid[TEMP_CUBE],
+          state.pressure.ok, state.pressure.cube, millis());
+  writeSafety(state, safety);
+  if (safetyFault != AutoclaveSafetyLogic::Fault::NONE) {
+    applySafetyFault(state, session, safetyFault);
+    return;
+  }
   const bool changed = AutoclaveSessionLogic::update(
       session, readConfig(settings), state.temps.valid[TEMP_CUBE],
       state.temps.cube, millis());
   if (!changed) return;
   writeSession(state, session);
   if (state.autoclave.phase == AutoclavePhase::FAULT) {
-    PowerCommandGateway::safeStopAll(
-        PowerCommandGateway::Owner::FSM,
-        PowerCommandGateway::Reason::FSM_AUTOCLAVE);
-    strlcpy(state.autoclave.faultReason, "sensor_or_settings_invalid",
+    PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::FSM,
+                                     PowerCommandGateway::Reason::FSM_AUTOCLAVE);
+    strlcpy(state.autoclave.faultReason, "temperature_or_settings_invalid",
             sizeof(state.autoclave.faultReason));
     Logger::logf(2, "autoclave event=phase_fault detail=%s",
                  state.autoclave.faultReason);
