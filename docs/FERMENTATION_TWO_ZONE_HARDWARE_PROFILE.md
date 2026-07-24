@@ -44,3 +44,14 @@ Validator отклоняет `zoneCount` вне диапазона 1–2, отс
 Физические fail-safe состояния, тип реле, питание и независимая термозащита
 должны быть заполнены в expansion-board review до включения второй зоны. Этот
 документ и валидатор не заменяют проверку проводки и испытание реальных выходов.
+
+## Software foundation D-029
+
+Firmware содержит отдельную чистую state machine для каждой зоны: она выдаёт
+logical requests `heater`, `cooling`, `stirrer` по hysteresis, minimum on/off,
+расписанию мешалки и длительности. Потеря её temperature sensor либо невалидные
+настройки переводят только эту машину в `FAULT` и снимают все её requests.
+
+Эта модель ещё не dispatch'ит GPIO, не публикует второй status/history и не
+может обходить profile validator. Такая привязка появится лишь после review
+платы и утверждения D-027.

@@ -5,6 +5,7 @@
 #include <../../src/control/autoclave_session_logic.h>
 #include <../../src/control/autoclave_safety_logic.h>
 #include <../../src/control/fermentation_hardware_profile_logic.h>
+#include <../../src/control/fermentation_zone_logic.h>
 #include <../../src/control/dosing_session_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
@@ -287,4 +288,57 @@ void test_fermentation_profile_requires_two_unique_complete_zones() {
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Validation::OK),
                           static_cast<uint8_t>(validate(profile)));
   TEST_ASSERT_TRUE(isSecondZoneAvailable(profile));
+}
+
+void test_fermentation_zone_logic_isolated_hysteresis_schedule_and_faults() {
+  using namespace FermentationZoneLogic;
+
+  Config config;
+  config.enabled = true;
+  config.stirrerEnabled = true;
+  config.stirrerPeriodMs = 1000;
+  config.stirrerOnMs = 250;
+  config.coolingMinOnMs = 1000;
+  config.coolingMinOffMs = 1000;
+
+  Runtime heatingZone;
+  Runtime coolingZone;
+  start(heatingZone, 100);
+  start(coolingZone, 100);
+
+  Result heating = update(heatingZone, config, true, 26.0f, 100);
+  TEST_ASSERT_TRUE(heating.outputs.heater);
+  TEST_ASSERT_FALSE(heating.outputs.cooling);
+  TEST_ASSERT_TRUE(heating.outputs.stirrer);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::HEATING),
+                          static_cast<uint8_t>(heatingZone.phase));
+
+  Result cooling = update(coolingZone, config, true, 30.0f, 100);
+  TEST_ASSERT_FALSE(cooling.outputs.heater);
+  TEST_ASSERT_TRUE(cooling.outputs.cooling);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::COOLING),
+                          static_cast<uint8_t>(coolingZone.phase));
+
+  cooling = update(coolingZone, config, true, 28.0f, 500);
+  TEST_ASSERT_TRUE(cooling.outputs.cooling);
+  cooling = update(coolingZone, config, true, 28.0f, 1100);
+  TEST_ASSERT_FALSE(cooling.outputs.cooling);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::FERMENTING),
+                          static_cast<uint8_t>(coolingZone.phase));
+  TEST_ASSERT_TRUE(heatingZone.phase == Phase::HEATING);
+
+  heating = update(heatingZone, config, false, 0.0f, 1200);
+  TEST_ASSERT_FALSE(heating.outputs.heater);
+  TEST_ASSERT_FALSE(heating.outputs.cooling);
+  TEST_ASSERT_FALSE(heating.outputs.stirrer);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Fault::TEMPERATURE_SENSOR),
+                          static_cast<uint8_t>(heatingZone.fault));
+
+  config.durationMs = 500;
+  Runtime completedZone;
+  start(completedZone, 0);
+  Result completed = update(completedZone, config, true, 28.0f, 500);
+  TEST_ASSERT_FALSE(completed.outputs.heater);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::COMPLETED),
+                          static_cast<uint8_t>(completedZone.phase));
 }
