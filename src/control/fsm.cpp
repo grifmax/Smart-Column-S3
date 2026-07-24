@@ -470,6 +470,11 @@ uint32_t getPhaseTargetSec(const SystemState& state, const Settings& settings) {
     if (state.mode == Mode::FERMENTATION && settings.fermentation.durationHours > 0) {
         return (uint32_t)settings.fermentation.durationHours * 3600UL;
     }
+    if (state.mode == Mode::AUTOCLAVE &&
+        state.autoclave.phase == AutoclavePhase::STERILIZING) {
+        return static_cast<uint32_t>(settings.autoclave.sterilizationDurationMin) *
+               60UL;
+    }
     return 0;
 }
 
@@ -589,6 +594,17 @@ uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settin
         uint32_t elapsed = millis() - getPhaseStartTime();
         if (elapsed >= totalMs) return 100;
         return (uint8_t)(elapsed * 100UL / totalMs);
+    }
+
+    if (state.mode == Mode::AUTOCLAVE &&
+        state.autoclave.phase == AutoclavePhase::STERILIZING) {
+        const uint32_t targetMs =
+            static_cast<uint32_t>(settings.autoclave.sterilizationDurationMin) *
+            60UL * 1000UL;
+        if (targetMs == 0) return 0;
+        const uint32_t elapsed = state.autoclave.sterilizationAccumulatedMs;
+        return elapsed >= targetMs ? 100
+                                   : static_cast<uint8_t>(elapsed * 100UL / targetMs);
     }
 
     return 0;

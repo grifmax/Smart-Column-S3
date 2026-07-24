@@ -7,6 +7,21 @@
 
 ---
 
+## [2.4.116] - 2026-07-24
+
+### Added
+- Чистая state machine фаз автоклава: `PRECHECK → HEATING → STERILIZING →
+  COOLING → READY → FINISH`, включая `FAULT`. Precheck принимает только
+  явное подтверждение при доступных temp/pressure sensors. (codex)
+
+### Changed
+- Таймер стерилизации накапливает время только внутри `temperatureBandC`;
+  выход из коридора не засчитывается. Потеря температуры или невалидные
+  settings переводят state machine в safe fault. Выходы по-прежнему не
+  управляются до D‑024. (codex)
+
+---
+
 ## [2.4.115] - 2026-07-24
 
 ### Added

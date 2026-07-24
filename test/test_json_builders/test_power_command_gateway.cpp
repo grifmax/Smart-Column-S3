@@ -2,6 +2,7 @@
 
 #include <../../src/control/power_command_gateway.h>
 #include <../../src/control/autoclave_hardware_profile_logic.h>
+#include <../../src/control/autoclave_session_logic.h>
 #include <../../src/control/dosing_session_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
@@ -193,4 +194,33 @@ void test_autoclave_profile_requires_explicit_hardware_and_safety_approval() {
                            validationToken(validate(profile)));
   profile.coolingAssigned = true;
   TEST_ASSERT_TRUE(mayOfferWater(profile));
+}
+
+void test_autoclave_sterilization_timer_only_counts_in_temperature_band() {
+  using namespace AutoclaveSessionLogic;
+
+  Config config;
+  config.sterilizationTempC = 121.0f;
+  config.temperatureBandC = 1.0f;
+  config.sterilizationDurationMs = 1000;
+  config.coolingStopTempC = 40.0f;
+  State session;
+  TEST_ASSERT_TRUE(start(session, 10));
+  TEST_ASSERT_FALSE(confirmPrecheck(session, false, 20));
+  TEST_ASSERT_TRUE(confirmPrecheck(session, true, 20));
+  TEST_ASSERT_TRUE(update(session, config, true, 120.0f, 30));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::STERILIZING),
+                          static_cast<uint8_t>(session.phase));
+  TEST_ASSERT_FALSE(update(session, config, true, 120.0f, 130));
+  TEST_ASSERT_FALSE(update(session, config, true, 118.0f, 1130));
+  TEST_ASSERT_EQUAL_UINT32(0, session.sterilizationAccumulatedMs);
+  TEST_ASSERT_FALSE(update(session, config, true, 121.0f, 1230));
+  TEST_ASSERT_FALSE(update(session, config, true, 121.0f, 1730));
+  TEST_ASSERT_EQUAL_UINT32(500, session.sterilizationAccumulatedMs);
+  TEST_ASSERT_TRUE(update(session, config, true, 121.0f, 2230));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::COOLING),
+                          static_cast<uint8_t>(session.phase));
+  TEST_ASSERT_TRUE(update(session, config, true, 40.0f, 3000));
+  TEST_ASSERT_TRUE(finish(session, 3010));
+  TEST_ASSERT_TRUE(isTerminal(session.phase));
 }

@@ -97,6 +97,8 @@ namespace FSM {
     namespace Autoclave {
         void start(SystemState& state, const Settings& settings);
         void update(SystemState& state, const Settings& settings);
+        bool confirmReadiness(SystemState& state, const Settings& settings);
+        bool finish(SystemState& state);
     }
 
     // =========================================================================
