@@ -6,6 +6,7 @@
 #include "../../interface/mqtt.h"
 #include "../../storage/logger.h"
 #include "../rect_takeoff.h"
+#include "../power_command_gateway.h"
 #include "../v2/reason_codes.h"
 #include "../v2/safety_policy.h"
 #include "../v2/status_adapter.h"
@@ -174,11 +175,15 @@ const char* getPhaseTransitionMessage(RectPhase fromPhase, RectPhase toPhase) {
 } // namespace
 
 void update(SystemState& state, const Settings& settings) {
-    Heater::setBoosterEnabled(false);
+    PowerCommandGateway::setHeaterBoosterEnabled(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, false);
     if (state.temps.valid[TEMP_CUBE] &&
         state.temps.cube >= getWaterAutoStartTempC(settings) &&
         !Valves::getWater()) {
-        Valves::setWater(true);
+        PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL,
+            PowerCommandGateway::Valve::WATER, true);
     }
 
     const uint32_t now = millis();
@@ -188,7 +193,10 @@ void update(SystemState& state, const Settings& settings) {
 
     if (floodPolicy.stepdownRecommended) {
         lastFloodTime = now;
-        Heater::setPower(floodPolicy.appliedPowerPercent);
+        PowerCommandGateway::setHeaterPower(
+            PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL,
+            floodPolicy.appliedPowerPercent);
         MQTT::publishNotification(
             "Р—Р°С…Р»С‘Р±!",
             "Р”Р°РІР»РµРЅРёРµ РєСЂРёС‚РёС‡РµСЃРєРѕРµ! РњРѕС‰РЅРѕСЃС‚СЊ РўР­РќР° СЃРЅРёР¶РµРЅР°.",

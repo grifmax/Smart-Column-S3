@@ -373,6 +373,8 @@ test('equipment testing workspace renders and sends service actions', async ({ p
     ),
   ).toBeTruthy();
 
+  await page.locator('.equipment-testing-nav-item[data-testing-card-id="service-overview"]').click();
+  await expect(page.locator('#equipment-test-stop-all')).toBeVisible();
   await page.locator('#equipment-test-stop-all').click();
   await expect(page.locator('#equipment-test-pump-badge')).toContainText('Ожидание');
   await expect(page.locator('#equipment-test-active-summary')).toContainText('Ничего не включено');

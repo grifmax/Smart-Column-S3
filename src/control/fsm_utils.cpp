@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <math.h>
 #include "../drivers/heater.h"
+#include "power_command_gateway.h"
 #include "watt_control.h"
 #include "v2/safety_supervisor.h"
 
@@ -113,7 +114,9 @@ float getRectificationDirectTakeoffSpeedMlH(const Settings& settings, RectPhase 
 
 uint16_t applyFullHeatPower(const Settings& settings) {
     const uint16_t targetWatts = getConfiguredHeaterPowerWatts(settings);
-    Heater::setPowerWatts(targetWatts);
+    PowerCommandGateway::setHeaterPowerWatts(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, targetWatts);
     return targetWatts;
 }
 
@@ -135,7 +138,9 @@ uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& setti
     if (WattControl::hasOverrideWatts()) {
         const int16_t overrideWatts = WattControl::getOverrideWatts();
         const uint16_t targetWatts = overrideWatts > 0 ? static_cast<uint16_t>(overrideWatts) : 0;
-        Heater::setPowerWatts(targetWatts);
+        PowerCommandGateway::setHeaterPowerWatts(
+            PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, targetWatts);
         return targetWatts;
     }
 
@@ -144,7 +149,9 @@ uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& setti
     const uint16_t targetWatts = static_cast<uint16_t>(
         (static_cast<uint32_t>(heaterMaxW) * requestedPercent) / 100U
     );
-    Heater::setPowerWatts(targetWatts);
+    PowerCommandGateway::setHeaterPowerWatts(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, targetWatts);
     return targetWatts;
 }
 
@@ -162,7 +169,10 @@ bool shouldRunBoosterHeater(const SystemState& state, const Settings& settings, 
 }
 
 void applyBoosterHeater(const SystemState& state, const Settings& settings, bool heatingPhase) {
-    Heater::setBoosterEnabled(shouldRunBoosterHeater(state, settings, heatingPhase));
+    PowerCommandGateway::setHeaterBoosterEnabled(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL,
+        shouldRunBoosterHeater(state, settings, heatingPhase));
 }
 
 uint32_t getPhaseStartTime() { return phaseStartTime; }

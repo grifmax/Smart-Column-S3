@@ -188,8 +188,21 @@ async function loadSystemLogs() {
 }
 
 function isLogsTabVisible() {
-    return document.visibilityState !== 'hidden'
-        && document.getElementById('logs')?.classList.contains('active');
+    if (document.visibilityState === 'hidden') {
+        return false;
+    }
+
+    const logsSection = document.getElementById('logs');
+    if (!logsSection) {
+        return false;
+    }
+
+    if (logsSection.classList.contains('active')) {
+        return true;
+    }
+
+    const pathname = String(window.location?.pathname || '');
+    return pathname.endsWith('/logs.html') || pathname.endsWith('logs.html');
 }
 
 function stopSystemLogPolling() {

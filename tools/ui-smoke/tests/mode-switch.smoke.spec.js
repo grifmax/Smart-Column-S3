@@ -45,7 +45,7 @@ test('mode buttons reflect active mode and pause/resume state', async ({ page })
   await expect(btnManual).toBeDisabled();
   await expect(btnMash).toBeDisabled();
   await expect(btnHold).toBeDisabled();
-  await expect(startButton).toBeEnabled();
+  await expect(startButton).toBeDisabled();
   await expect(startButton).toHaveAttribute('data-mode', '2');
   await expect(pauseResumeBtn).toBeEnabled();
   await expect(pauseResumeBtn).toHaveAttribute('data-runtime-action', 'pause');
@@ -54,10 +54,10 @@ test('mode buttons reflect active mode and pause/resume state', async ({ page })
   await expect(pauseResumeBtn).toHaveAttribute('data-runtime-action', 'resume');
 });
 
-test('switch confirmation blocks request and same-mode restart is ignored', async ({ page }) => {
+test('busy runtime blocks both switching and same-mode restart until idle', async ({ page }) => {
   const switchAttempt = await page.evaluate(async () => {
     let confirmCalls = 0;
-    let fetchCalls = 0;
+    const processUrls = [];
 
     const originalConfirm = window.confirm;
     const originalFetch = window.fetch;
@@ -67,7 +67,10 @@ test('switch confirmation blocks request and same-mode restart is ignored', asyn
       return false;
     };
     window.fetch = async (...args) => {
-      fetchCalls += 1;
+      const url = String(args[0]);
+      if (url.includes('/api/process/')) {
+        processUrls.push(url);
+      }
       return originalFetch(...args);
     };
 
@@ -77,15 +80,15 @@ test('switch confirmation blocks request and same-mode restart is ignored', asyn
 
     window.confirm = originalConfirm;
     window.fetch = originalFetch;
-    return { confirmCalls, fetchCalls };
+    return { confirmCalls, processUrls };
   });
 
-  expect(switchAttempt.confirmCalls).toBe(1);
-  expect(switchAttempt.fetchCalls).toBe(0);
+  expect(switchAttempt.confirmCalls).toBe(0);
+  expect(switchAttempt.processUrls).toEqual([]);
 
   const sameModeAttempt = await page.evaluate(async () => {
     let confirmCalls = 0;
-    let fetchCalls = 0;
+    const processUrls = [];
 
     const originalConfirm = window.confirm;
     const originalFetch = window.fetch;
@@ -95,7 +98,10 @@ test('switch confirmation blocks request and same-mode restart is ignored', asyn
       return true;
     };
     window.fetch = async (...args) => {
-      fetchCalls += 1;
+      const url = String(args[0]);
+      if (url.includes('/api/process/')) {
+        processUrls.push(url);
+      }
       return originalFetch(...args);
     };
 
@@ -105,9 +111,9 @@ test('switch confirmation blocks request and same-mode restart is ignored', asyn
 
     window.confirm = originalConfirm;
     window.fetch = originalFetch;
-    return { confirmCalls, fetchCalls };
+    return { confirmCalls, processUrls };
   });
 
   expect(sameModeAttempt.confirmCalls).toBe(0);
-  expect(sameModeAttempt.fetchCalls).toBe(0);
+  expect(sameModeAttempt.processUrls).toEqual([]);
 });

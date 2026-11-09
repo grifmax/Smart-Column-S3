@@ -7,6 +7,7 @@
 #include <freertos/semphr.h>
 
 #include "fsm.h"
+#include "power_command_gateway.h"
 #include "v2/status_adapter.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
@@ -43,10 +44,8 @@ void writeReason(char* reason, size_t reasonSize, const char* message) {
 }
 
 void forceSafeOutputs() {
-    Heater::emergencyStop();
-    Pump::stop();
-    Stirrer::stop(); // аварийная остановка мешалки
-    Valves::closeAll();
+    PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::FSM,
+                                     PowerCommandGateway::Reason::FSM_CONTROL);
 }
 
 const char* getTopologyRoleLabel(uint8_t index) {

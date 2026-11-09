@@ -1,6 +1,7 @@
 #include "../fsm_utils.h"
 #include "../rect_takeoff.h"
 #include "../rect_takeoff_logic.h"
+#include "../power_command_gateway.h"
 #include "../../drivers/heater.h"
 #include "../../drivers/valves.h"
 #include "../../drivers/pump.h"
@@ -85,7 +86,9 @@ uint16_t applyRectificationHeaterPower(const SystemState& state,
     }
 
     if (policy.emergencyStop) {
-        Heater::setPowerWatts(0);
+        PowerCommandGateway::setHeaterPowerWatts(
+            PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0);
         RectTakeoff::stop();
         if (!wasEmergency) {
             pressureControlRuntime.emergencyReported = true;
@@ -107,7 +110,9 @@ uint16_t applyRectificationHeaterPower(const SystemState& state,
         appliedPercent = limits.maxHeaterPowerPercent;
     }
     const uint16_t appliedWatts = percentToWatts(appliedPercent, settings);
-    Heater::setPowerWatts(appliedWatts);
+    PowerCommandGateway::setHeaterPowerWatts(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, appliedWatts);
     return appliedWatts;
 }
 
@@ -415,7 +420,9 @@ void update(SystemState& state, const Settings& settings) {
             applyBoosterHeater(state, settings, true);
             applyFullHeatPower(settings);
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
-                Valves::setWater(true);
+                PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    PowerCommandGateway::Valve::WATER, true);
             }
             if (state.temps.valid[TEMP_COLUMN_BOTTOM] &&
                 state.temps.columnBottom > 78.0f) {
@@ -441,7 +448,9 @@ void update(SystemState& state, const Settings& settings) {
         case RectPhase::STABILIZATION:
             applyBoosterHeater(state, settings, false);
             RectTakeoff::stop();
-            Valves::setWater(true);
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, true);
             applyRectificationHeaterPower(
                 state, settings, RectPhase::STABILIZATION, 70, now);
             if (pressureEmergencyStopActive) break;
@@ -485,7 +494,9 @@ void update(SystemState& state, const Settings& settings) {
             const float headsSpeed = getDirectTakeoffSpeedMlH(settings, RectPhase::HEADS);
             RectTakeoff::apply(buildTakeoffCommand(
                 settings, RectTakeoffFraction::HEADS, headsSpeed, elapsed));
-            Valves::setWater(true);
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, true);
             const float headsCollected =
                 getCurrentTakeoffTotalVolumeMl(state, settings) -
                 getPhaseStartVolumeMl();
@@ -513,7 +524,9 @@ void update(SystemState& state, const Settings& settings) {
         case RectPhase::POST_HEADS_STABILIZATION:
             applyBoosterHeater(state, settings, false);
             RectTakeoff::stop();
-            Valves::setWater(true);
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, true);
             applyRectificationHeaterPower(
                 state, settings, RectPhase::STABILIZATION, 65, now);
             if (pressureEmergencyStopActive) break;
@@ -532,8 +545,12 @@ void update(SystemState& state, const Settings& settings) {
         case RectPhase::PURGE:
             applyBoosterHeater(state, settings, false);
             RectTakeoff::stop();
-            Valves::closeAll();
-            Valves::setWater(true);
+            PowerCommandGateway::closeAllValves(
+                PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL);
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, true);
             applyRectificationHeaterPower(
                 state, settings, RectPhase::STABILIZATION, 65, now);
             if (pressureEmergencyStopActive) break;
@@ -560,7 +577,9 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::BODY: {
             applyBoosterHeater(state, settings, false);
-            Valves::setWater(true);
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, true);
             applyRectificationHeaterPower(state, settings, RectPhase::BODY, 60, now);
             if (pressureEmergencyStopActive) break;
 
@@ -722,11 +741,17 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::FINISH:
             applyBoosterHeater(state, settings, false);
-            Heater::setPower(0);
+            PowerCommandGateway::setHeaterPower(
+                PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL, 0);
             RectTakeoff::stop();
-            Valves::setWater(true);
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, true);
             if (elapsed > 5 * 60 * 1000UL) {
-                Valves::closeAll();
+                PowerCommandGateway::closeAllValves(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL);
                 ControlV2::notePhaseTransition(
                     Mode::RECTIFICATION,
                     static_cast<uint16_t>(RectPhase::FINISH),

@@ -1,4 +1,5 @@
 #include "../fsm_utils.h"
+#include "../power_command_gateway.h"
 #include "../v2/reason_codes.h"
 #include "../v2/status_adapter.h"
 #include "../../drivers/heater.h"
@@ -136,8 +137,10 @@ bool requestManualAdvance(SystemState& state) {
 
 void start(SystemState& state, const MashProfile* profile) {
     if (!profile || profile->stepCount == 0) return;
-    Pump::stop();
-    Valves::closeAll();
+    PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
+    PowerCommandGateway::closeAllValves(PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL);
     setProfile(profile);
     state.mashing.active = true;
     state.mashing.stepCount = profile->stepCount;
@@ -170,19 +173,28 @@ void update(SystemState& state, const Settings& settings) {
     if (!state.mashing.active || !currentProfile) return;
     uint32_t now = millis();
     float currentTemp = state.temps.cube;
-    Pump::stop();
-    Valves::setHeads(false);
+    PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
+    PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL,
+        PowerCommandGateway::Valve::HEADS, false);
     float targetTemp = state.mashing.targetTemp;
     const MashStepType stepType = state.mashing.stepType;
 
     const bool foamLevelReached = isMashFoamLevelReached(settings);
     if (foamLevelReached) {
-        Heater::setPower(0);
-        Valves::setWater(true);
+        PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0);
+        PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL,
+            PowerCommandGateway::Valve::WATER, true);
         if (settings.stirrer.enabled && currentTemp <= MASH_STIRRER_SAFE_TEMP_C) {
-            Stirrer::start(settings.stirrer.defaultSpeedPercent);
+            PowerCommandGateway::setStirrerSpeed(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                settings.stirrer.defaultSpeedPercent);
         } else {
-            Stirrer::stop();
+            PowerCommandGateway::stopStirrer(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL);
         }
         if (!mashFoamAlarmActive) {
             mashFoamAlarmActive = true;
@@ -196,14 +208,19 @@ void update(SystemState& state, const Settings& settings) {
     mashFoamAlarmActive = false;
 
     if (stepType != MashStepType::STIR && stepType != MashStepType::COOL) {
-        Stirrer::stop();
+        PowerCommandGateway::stopStirrer(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL);
     }
     if (stepType == MashStepType::STIR) {
-        Heater::setPower(0);
+        PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0);
         if (settings.stirrer.enabled && currentTemp <= MASH_STIRRER_SAFE_TEMP_C) {
-            Stirrer::start(settings.stirrer.defaultSpeedPercent);
+            PowerCommandGateway::setStirrerSpeed(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                settings.stirrer.defaultSpeedPercent);
         } else {
-            Stirrer::stop();
+            PowerCommandGateway::stopStirrer(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL);
         }
     }
 
@@ -218,8 +235,11 @@ void update(SystemState& state, const Settings& settings) {
     if (stepType == MashStepType::FINISH) {
         state.mashing.currentStep = currentProfile->stepCount;
     } else if (stepType == MashStepType::OPERATOR_WAIT) {
-        Heater::setPower(0);
-        Valves::setWater(false);
+        PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0);
+        PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL,
+            PowerCommandGateway::Valve::WATER, false);
         if (!state.mashing.waitingForOperator) {
             state.mashing.waitingForOperator = true;
             state.paused = true;
@@ -230,21 +250,30 @@ void update(SystemState& state, const Settings& settings) {
         }
         return;
     } else if (stepType == MashStepType::COOL) {
-        Heater::setPower(0);
+        PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0);
         const uint32_t coolingCycleSec =
             MASH_COOLING_ON_SEC_DEFAULT + MASH_COOLING_OFF_SEC_DEFAULT;
         const bool coolingPulseOn = coolingCycleSec == 0 ||
             ((now - state.mashing.stepStartTime) / 1000UL) % coolingCycleSec <
                 MASH_COOLING_ON_SEC_DEFAULT;
-        Valves::setWater(coolingPulseOn);
+        PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL,
+            PowerCommandGateway::Valve::WATER, coolingPulseOn);
         if (settings.stirrer.enabled && coolingPulseOn) {
-            Stirrer::start(settings.stirrer.defaultSpeedPercent);
+            PowerCommandGateway::setStirrerSpeed(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                settings.stirrer.defaultSpeedPercent);
         } else if (!coolingPulseOn) {
-            Stirrer::stop();
+            PowerCommandGateway::stopStirrer(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL);
         }
         if (currentTemp <= targetTemp) {
-            Valves::setWater(false);
-            Stirrer::stop();
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, false);
+            PowerCommandGateway::stopStirrer(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL);
             if (state.mashing.currentStep + 1 >= currentProfile->stepCount) {
                 MQTT::publishNotification(
                     "Затор охлаждён",
@@ -262,7 +291,9 @@ void update(SystemState& state, const Settings& settings) {
         return;
     }
     if (stepType == MashStepType::BOIL) {
-        Heater::setPower(MASH_BOIL_POWER_PERCENT_DEFAULT);
+        PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL,
+            MASH_BOIL_POWER_PERCENT_DEFAULT);
         const bool vaporValid = state.temps.valid[TEMP_TSA];
         const bool vaporBoiling = vaporValid && state.temps.tsa >= targetTemp;
         const bool fallbackBoiling = currentTemp >= targetTemp;
@@ -271,7 +302,8 @@ void update(SystemState& state, const Settings& settings) {
         const uint32_t timeoutMs = holdMs * 3UL;
         if (!boilingReached) {
             if (holdMs > 0 && now - state.mashing.stepStartTime >= timeoutMs) {
-                Heater::setPower(0);
+                PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL, 0);
                 state.paused = true;
                 MQTT::publishNotification(
                     "Затор: кипение не подтверждено",
@@ -318,7 +350,9 @@ void update(SystemState& state, const Settings& settings) {
     int newPower = (int)(currentPower + powerDelta);
     if (newPower > 100) newPower = 100;
     if (newPower < 0) newPower = 0;
-    Heater::setPower((uint8_t)newPower);
+    PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL,
+        static_cast<uint8_t>(newPower));
     
     if (state.mashing.currentStep < currentProfile->stepCount) {
         const bool tempReached = fabs(currentTemp - targetTemp) < 1.0f;
@@ -348,7 +382,8 @@ void update(SystemState& state, const Settings& settings) {
             "Mashing program completed");
         state.mashing.active = false;
         state.mode = Mode::IDLE;
-        Heater::setPower(0);
+        PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0);
         LOG_I("Mashing: Process complete!");
         MQTT::publishNotification("Затирка завершена", "Все температурные паузы завершены", "success");
     }

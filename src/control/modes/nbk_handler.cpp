@@ -1,4 +1,5 @@
 #include "../fsm_utils.h"
+#include "../power_command_gateway.h"
 #include "../v2/reason_codes.h"
 #include "../v2/safety_policy.h"
 #include "../v2/safety_supervisor.h"
@@ -99,7 +100,9 @@ void update(SystemState& state, const Settings& settings) {
             applyBoosterHeater(state, settings, true);
             applyFullHeatPower(settings);
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
-                Valves::setWater(true);
+                PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    PowerCommandGateway::Valve::WATER, true);
             }
             if (state.temps.valid[TEMP_CUBE] && state.temps.cube > 98.0f) {
                 LOG_I("NBK: HEATING -> STABILIZATION");
@@ -134,14 +137,20 @@ void update(SystemState& state, const Settings& settings) {
             const float rampRatio = min(1.0f, elapsed / 60000.0f);
             const float feedRate = settings.nbk.pumpSpeedMlH * rampRatio;
             if (feedRecoveryReady(state, settings, liveLimits, now)) {
-                Pump::start(feedRate);
+                PowerCommandGateway::setPumpSpeed(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL, feedRate);
                 setFeedRuntime(state, settings.nbk.pumpSpeedMlH, feedRate, "feed ramp");
             } else {
-                Pump::stop();
+                PowerCommandGateway::setPumpSpeed(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
                 setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "safety recovery");
             }
             if (rampRatio >= 1.0f) {
-                Pump::stop();
+                PowerCommandGateway::setPumpSpeed(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
                 ControlV2::notePhaseTransition(Mode::NBK,
                     static_cast<uint16_t>(NbkPhase::FEED_RAMP),
                     static_cast<uint16_t>(NbkPhase::WORKING),
@@ -157,7 +166,9 @@ void update(SystemState& state, const Settings& settings) {
             applyBoosterHeater(state, settings, false);
             if (settings.nbk.targetVolumeMl > 0.0f &&
                 state.pump.totalVolumeMl >= settings.nbk.targetVolumeMl) {
-                Pump::stop();
+                PowerCommandGateway::setPumpSpeed(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
                 setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "target volume");
                 ControlV2::notePhaseTransition(
                     Mode::NBK, static_cast<uint16_t>(NbkPhase::WORKING),
@@ -183,11 +194,15 @@ void update(SystemState& state, const Settings& settings) {
             }
 
             if (feedRecoveryReady(state, settings, liveLimits, now)) {
-                Pump::start(targetSpeed);
+                PowerCommandGateway::setPumpSpeed(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL, targetSpeed);
                 setFeedRuntime(state, settings.nbk.pumpSpeedMlH, targetSpeed,
                     settings.nbk.topTempCorrectionEnabled ? "top temperature correction" : "none");
             } else {
-                Pump::stop();
+                PowerCommandGateway::setPumpSpeed(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
                 setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "safety recovery");
             }
 
@@ -208,17 +223,25 @@ void update(SystemState& state, const Settings& settings) {
                 liveLimits.maxHeaterPowerPercent < appliedPower) {
                 appliedPower = liveLimits.maxHeaterPowerPercent;
             }
-            Heater::setPower(appliedPower);
+            PowerCommandGateway::setHeaterPower(
+                PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL, appliedPower);
             break;
         }
             
         case NbkPhase::FINISH:
             applyBoosterHeater(state, settings, false);
-            Pump::stop();
+            PowerCommandGateway::setPumpSpeed(
+                PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
             setFeedRuntime(state, settings.nbk.pumpSpeedMlH, 0.0f, "finish cooldown");
-            Heater::setPower(0);
+            PowerCommandGateway::setHeaterPower(
+                PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL, 0);
             if (elapsed > 5 * 60 * 1000UL) {
-                Valves::setWater(false);
+                PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    PowerCommandGateway::Valve::WATER, false);
                 ControlV2::notePhaseTransition(Mode::NBK,
                                                static_cast<uint16_t>(NbkPhase::FINISH),
                                                static_cast<uint16_t>(NbkPhase::COMPLETED),

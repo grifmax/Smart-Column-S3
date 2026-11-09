@@ -74,17 +74,40 @@ void noteFsmSetpoint(Target target, Reason reason, float requestedValue) {
 }
 
 void noteFsmSafeStop(Reason reason) {
-  record(Owner::FSM, Target::ALL_OUTPUTS, reason, 0.0f, true);
+  record(Owner::FSM, Target::ALL_OUTPUTS, reason, 0.0f,
+         safeStopAppliedForRequest(Target::ALL_OUTPUTS, 0.0f));
 }
 
 void setHeaterPower(Owner owner, Reason reason, uint8_t percent) {
-  const bool safeStop = percent == 0;
-  record(owner, Target::HEATER, reason, static_cast<float>(percent), safeStop);
+  const float requestedValue = static_cast<float>(percent);
+  const bool safeStop =
+      safeStopAppliedForRequest(Target::HEATER, requestedValue);
+  record(owner, Target::HEATER, reason, requestedValue, safeStop);
   Heater::setPower(percent);
 }
 
+void setHeaterPowerWatts(Owner owner, Reason reason, uint16_t watts) {
+  const float requestedValue = static_cast<float>(watts);
+  const bool safeStop =
+      safeStopAppliedForRequest(Target::HEATER, requestedValue);
+  record(owner, Target::HEATER, reason, requestedValue, safeStop);
+  Heater::setPowerWatts(watts);
+}
+
+void setHeaterBoosterEnabled(Owner owner, Reason reason, bool enabled) {
+  const float requestedValue = enabled ? 1.0f : 0.0f;
+  // The booster relay is an auxiliary heater channel, not a full heater stop.
+  record(owner, Target::HEATER, reason, requestedValue, false);
+  Heater::setBoosterEnabled(enabled);
+}
+
+void setHeaterTriacDelay(Owner owner, Reason reason, uint16_t delayUs) {
+  record(owner, Target::HEATER, reason, static_cast<float>(delayUs), false);
+  Heater::setTriacDelay(delayUs);
+}
+
 void setPumpSpeed(Owner owner, Reason reason, float mlPerHour) {
-  const bool safeStop = mlPerHour <= 0.0f;
+  const bool safeStop = safeStopAppliedForRequest(Target::PUMP, mlPerHour);
   record(owner, Target::PUMP, reason, mlPerHour, safeStop);
   if (safeStop) {
     Pump::stop();
@@ -94,9 +117,10 @@ void setPumpSpeed(Owner owner, Reason reason, float mlPerHour) {
 }
 
 void setStirrerSpeed(Owner owner, Reason reason, uint8_t percent) {
-  const bool safeStop = percent == 0;
-  record(owner, Target::STIRRER, reason, static_cast<float>(percent),
-         safeStop);
+  const float requestedValue = static_cast<float>(percent);
+  const bool safeStop =
+      safeStopAppliedForRequest(Target::STIRRER, requestedValue);
+  record(owner, Target::STIRRER, reason, requestedValue, safeStop);
   if (safeStop) {
     Stirrer::stop();
   } else {
@@ -109,7 +133,10 @@ void stopStirrer(Owner owner, Reason reason) {
 }
 
 void setValve(Owner owner, Reason reason, Valve valve, bool open) {
-  record(owner, targetForValve(valve), reason, open ? 1.0f : 0.0f, !open);
+  const Target target = targetForValve(valve);
+  const float requestedValue = open ? 1.0f : 0.0f;
+  record(owner, target, reason, requestedValue,
+         safeStopAppliedForRequest(target, requestedValue));
   switch (valve) {
   case Valve::WATER:
     Valves::setWater(open);
@@ -131,14 +158,30 @@ void setValve(Owner owner, Reason reason, Valve valve, bool open) {
 
 void setProductRoute(Owner owner, Reason reason, RectTakeoffFraction fraction,
                      bool open) {
-  record(owner, targetForProductFraction(fraction), reason, open ? 1.0f : 0.0f,
-         !open);
+  const Target target = targetForProductFraction(fraction);
+  const float requestedValue = open ? 1.0f : 0.0f;
+  record(owner, target, reason, requestedValue,
+         safeStopAppliedForRequest(target, requestedValue));
   Valves::setProductValve(fraction, open);
 }
 
+void closeProductRoutes(Owner owner, Reason reason) {
+  record(owner, Target::PRODUCT_ROUTE, reason, 0.0f,
+         safeStopAppliedForRequest(Target::PRODUCT_ROUTE, 0.0f));
+  Valves::closeProductValves();
+}
+
+void closeAllValves(Owner owner, Reason reason) {
+  record(owner, Target::ALL_VALVES, reason, 0.0f,
+         safeStopAppliedForRequest(Target::ALL_VALVES, 0.0f));
+  Valves::closeAll();
+}
+
 void pulseValve(Owner owner, Reason reason, Valve valve, uint32_t durationMs) {
-  record(owner, targetForValve(valve), reason, static_cast<float>(durationMs),
-         false);
+  const Target target = targetForValve(valve);
+  // Pulse requests carry their own driver-level stop condition.
+  record(owner, target, reason, static_cast<float>(durationMs),
+         safeStopAppliedForPulse(target));
   switch (valve) {
   case Valve::WATER:
     Valves::pulse(Valves::ValveId::WATER, durationMs);
@@ -159,8 +202,9 @@ void pulseValve(Owner owner, Reason reason, Valve valve, uint32_t durationMs) {
 }
 
 void setCoolingPwm(Owner owner, Reason reason, uint8_t duty) {
-  record(owner, Target::START_STOP_PWM, reason, static_cast<float>(duty),
-         duty == 0);
+  const float requestedValue = static_cast<float>(duty);
+  record(owner, Target::START_STOP_PWM, reason, requestedValue,
+         safeStopAppliedForRequest(Target::START_STOP_PWM, requestedValue));
   Valves::setStartStop(duty);
 }
 
@@ -170,15 +214,22 @@ void setFraction(Owner owner, Reason reason, Fraction fraction, bool smooth) {
   Valves::setFraction(fraction, smooth);
 }
 
+void setFractionAngle(Owner owner, Reason reason, uint8_t angle) {
+  record(owner, Target::FRACTIONATOR, reason, static_cast<float>(angle), false);
+  Valves::setFractionAngle(angle);
+}
+
 void safeStopAll(Owner owner, Reason reason) {
-  record(owner, Target::ALL_OUTPUTS, reason, 0.0f, true);
+  record(owner, Target::ALL_OUTPUTS, reason, 0.0f,
+         safeStopAppliedForRequest(Target::ALL_OUTPUTS, 0.0f));
   Heater::emergencyStop();
   Pump::stop();
   Stirrer::stop();
   Valves::closeAll();
-  // closeAll() does not cancel an already interpolated servo move. Holding its
-  // actual angle makes safe-stop observable before a paused FSM may resume.
-  if (Valves::isFractionatorEnabled() && Valves::isServoMoving()) {
+  // closeAll() does not reassert the fractionator hold position on its own.
+  // Reapplying the current angle keeps service safe-stop behavior stable and
+  // makes the held position observable before a paused FSM may resume.
+  if (Valves::isFractionatorEnabled()) {
     Valves::setFractionAngle(Valves::getFractionAngle());
   }
   LOG_W("Power gateway: safe-stop applied");

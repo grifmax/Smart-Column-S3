@@ -25,6 +25,8 @@ enum class Target : uint8_t {
   BODY_VALVE,
   TAILS_VALVE,
   UNO_VALVE,
+  PRODUCT_ROUTE,
+  ALL_VALVES,
   START_STOP_PWM,
   FRACTIONATOR,
   ALL_OUTPUTS,
@@ -45,6 +47,7 @@ enum class Reason : uint8_t {
   TFT_SERVICE_TEST,
   TFT_CALIBRATION,
   TFT_DOSING,
+  FSM_CONTROL,
   FSM_AUTOCLAVE,
   TFT_PROCESS_PAUSE,
   TFT_PROCESS_STOP,
@@ -61,6 +64,42 @@ struct Command {
 };
 
 constexpr bool requiresSafeStop(Target) { return true; }
+
+inline bool safeStopAppliedForRequest(Target target, float requestedValue) {
+  switch (target) {
+  case Target::HEATER:
+  case Target::PUMP:
+  case Target::STIRRER:
+  case Target::WATER_VALVE:
+  case Target::HEADS_VALVE:
+  case Target::BODY_VALVE:
+  case Target::TAILS_VALVE:
+  case Target::UNO_VALVE:
+  case Target::PRODUCT_ROUTE:
+  case Target::ALL_VALVES:
+  case Target::START_STOP_PWM:
+    return requestedValue <= 0.0f;
+  case Target::FRACTIONATOR:
+    return false;
+  case Target::ALL_OUTPUTS:
+    return true;
+  default:
+    return false;
+  }
+}
+
+inline bool safeStopAppliedForPulse(Target target) {
+  switch (target) {
+  case Target::WATER_VALVE:
+  case Target::HEADS_VALVE:
+  case Target::BODY_VALVE:
+  case Target::TAILS_VALVE:
+  case Target::UNO_VALVE:
+    return true;
+  default:
+    return false;
+  }
+}
 
 inline Command makeCommand(Owner owner, Target target, Reason reason,
                            uint32_t timestampMs, float requestedValue,
@@ -93,16 +132,22 @@ void noteFsmSetpoint(Target target, Reason reason, float requestedValue);
 void noteFsmSafeStop(Reason reason);
 
 void setHeaterPower(Owner owner, Reason reason, uint8_t percent);
+void setHeaterPowerWatts(Owner owner, Reason reason, uint16_t watts);
+void setHeaterBoosterEnabled(Owner owner, Reason reason, bool enabled);
+void setHeaterTriacDelay(Owner owner, Reason reason, uint16_t delayUs);
 void setPumpSpeed(Owner owner, Reason reason, float mlPerHour);
 void setStirrerSpeed(Owner owner, Reason reason, uint8_t percent);
 void stopStirrer(Owner owner, Reason reason);
 void setValve(Owner owner, Reason reason, Valve valve, bool open);
 void setProductRoute(Owner owner, Reason reason, RectTakeoffFraction fraction,
                      bool open);
+void closeProductRoutes(Owner owner, Reason reason);
+void closeAllValves(Owner owner, Reason reason);
 void pulseValve(Owner owner, Reason reason, Valve valve, uint32_t durationMs);
 void setCoolingPwm(Owner owner, Reason reason, uint8_t duty);
 void setFraction(Owner owner, Reason reason, Fraction fraction,
                  bool smooth = true);
+void setFractionAngle(Owner owner, Reason reason, uint8_t angle);
 
 // Full fail-safe output state for a future TFT emergency action. Existing
 // safety logic remains authoritative and may invoke the same hardware state.

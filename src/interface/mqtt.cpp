@@ -10,13 +10,12 @@
 #include <ArduinoJson.h>
 #include <limits.h>
 #include "config.h"
+#include "control/power_command_gateway.h"
 #include "storage/logger.h"
 
 // Для управления железом
 #include "control/fsm.h"
 #include "control/watt_control.h"
-#include "drivers/heater.h"
-#include "drivers/pump.h"
 #include "drivers/valves.h"
 
 extern SystemState g_state;
@@ -121,30 +120,75 @@ void init(const char* server, uint16_t port, const char* username, const char* p
                 int overridePwr = payloadStr.toInt();
                 WattControl::setOverride(overridePwr);
             } else {
-                Heater::setPower((uint8_t)pwr);
+                PowerCommandGateway::setHeaterPower(
+                    PowerCommandGateway::Owner::MANUAL,
+                    PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                    static_cast<uint8_t>(pwr));
             }
         }
         // Насос
         else if (cmd == "pump") {
             float speed = payloadStr.toFloat();
             if (speed <= 0.0f) {
-                Pump::stop();
+                PowerCommandGateway::setPumpSpeed(
+                    PowerCommandGateway::Owner::MANUAL,
+                    PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0.0f);
             } else {
-                Pump::start(speed);
+                PowerCommandGateway::setPumpSpeed(
+                    PowerCommandGateway::Owner::MANUAL,
+                    PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
             }
         }
         // Клапаны
         else if (cmd == "valves/water") {
-            Valves::setWater(payloadStr == "1" || payloadStr == "true" || payloadStr == "on");
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::MANUAL,
+                PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                PowerCommandGateway::Valve::WATER,
+                payloadStr == "1" || payloadStr == "true" || payloadStr == "on");
         }
         else if (cmd == "valves/heads") {
-            Valves::setHeads(payloadStr == "1" || payloadStr == "true" || payloadStr == "on");
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::MANUAL,
+                PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                PowerCommandGateway::Valve::HEADS,
+                payloadStr == "1" || payloadStr == "true" || payloadStr == "on");
         }
         else if (cmd == "valves/uno") {
-            Valves::setUno(payloadStr == "1" || payloadStr == "true" || payloadStr == "on");
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::MANUAL,
+                PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                PowerCommandGateway::Valve::UNO,
+                payloadStr == "1" || payloadStr == "true" || payloadStr == "on");
         }
         else if (cmd == "valves/closeAll" || cmd == "valves/stop") {
-            Valves::closeAll();
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::MANUAL,
+                PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                PowerCommandGateway::Valve::WATER, false);
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::MANUAL,
+                PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                PowerCommandGateway::Valve::HEADS, false);
+            if (Valves::hasBodyValve()) {
+                PowerCommandGateway::setValve(
+                    PowerCommandGateway::Owner::MANUAL,
+                    PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                    PowerCommandGateway::Valve::BODY, false);
+            }
+            if (Valves::hasTailsValve()) {
+                PowerCommandGateway::setValve(
+                    PowerCommandGateway::Owner::MANUAL,
+                    PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                    PowerCommandGateway::Valve::TAILS, false);
+            }
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::MANUAL,
+                PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                PowerCommandGateway::Valve::UNO, false);
+            PowerCommandGateway::setCoolingPwm(
+                PowerCommandGateway::Owner::MANUAL,
+                PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0);
         }
         else {
             LOG_W("MQTT: Unknown command: %s", cmd.c_str());

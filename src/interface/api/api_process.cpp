@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "control/fsm.h"
+#include "control/power_command_gateway.h"
 #include "control/service_test_session.h"
 #include "control/safety.h"
 #include "control/v2/status_adapter.h"
@@ -390,7 +391,9 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
 
         const uint8_t speed = g_settings.stirrer.defaultSpeedPercent;
         g_state.stirrer.autoMode = false;
-        Stirrer::start(speed);
+        PowerCommandGateway::setStirrerSpeed(
+            PowerCommandGateway::Owner::MANUAL,
+            PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
         LOG_I("Stirrer started via API at %u%%", speed);
         sendStirrerStateResponse(request, 200, true, "Stirrer started");
       },
@@ -423,7 +426,9 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
         }
 
         g_state.stirrer.autoMode = false;
-        Stirrer::start(speed);
+        PowerCommandGateway::setStirrerSpeed(
+            PowerCommandGateway::Owner::MANUAL,
+            PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
         LOG_I("Stirrer started via API at %u%%", speed);
         sendStirrerStateResponse(request, 200, true, "Stirrer started");
       });
@@ -433,7 +438,9 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
       return;
     }
     g_state.stirrer.autoMode = false;
-    Stirrer::stop();
+    PowerCommandGateway::stopStirrer(
+        PowerCommandGateway::Owner::MANUAL,
+        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
     LOG_I("Stirrer stopped via API");
     sendStirrerStateResponse(request, 200, true, "Stirrer stopped");
   });
@@ -482,7 +489,10 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
         }
 
         g_state.stirrer.autoMode = false;
-        Stirrer::setSpeed(static_cast<uint8_t>(requestedSpeed));
+        PowerCommandGateway::setStirrerSpeed(
+            PowerCommandGateway::Owner::MANUAL,
+            PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+            static_cast<uint8_t>(requestedSpeed));
         LOG_I("Stirrer speed changed via API to %d%%", requestedSpeed);
         sendStirrerStateResponse(request, 200, true, "Stirrer speed updated");
       });

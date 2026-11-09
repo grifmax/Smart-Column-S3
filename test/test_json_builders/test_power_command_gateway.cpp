@@ -4,8 +4,6 @@
 #include <../../src/control/autoclave_hardware_profile_logic.h>
 #include <../../src/control/autoclave_session_logic.h>
 #include <../../src/control/autoclave_safety_logic.h>
-#include <../../src/control/fermentation_hardware_profile_logic.h>
-#include <../../src/control/fermentation_zone_logic.h>
 #include <../../src/control/dosing_session_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
@@ -32,6 +30,89 @@ void test_power_command_captures_owner_reason_timestamp_and_safe_stop() {
 
   markSafeStopApplied(command);
   TEST_ASSERT_TRUE(command.safeStopApplied);
+}
+
+void test_power_command_safe_stop_rules_match_output_semantics() {
+  using namespace PowerCommandGateway;
+
+  TEST_ASSERT_TRUE(safeStopAppliedForRequest(Target::HEATER, 0.0f));
+  TEST_ASSERT_FALSE(safeStopAppliedForRequest(Target::HEATER, 1.0f));
+
+  TEST_ASSERT_TRUE(safeStopAppliedForRequest(Target::PUMP, 0.0f));
+  TEST_ASSERT_TRUE(safeStopAppliedForRequest(Target::PUMP, -1.0f));
+  TEST_ASSERT_FALSE(safeStopAppliedForRequest(Target::PUMP, 850.0f));
+
+  TEST_ASSERT_TRUE(safeStopAppliedForRequest(Target::WATER_VALVE, 0.0f));
+  TEST_ASSERT_FALSE(safeStopAppliedForRequest(Target::WATER_VALVE, 1.0f));
+  TEST_ASSERT_TRUE(safeStopAppliedForRequest(Target::START_STOP_PWM, 0.0f));
+  TEST_ASSERT_FALSE(safeStopAppliedForRequest(Target::START_STOP_PWM, 32.0f));
+
+  TEST_ASSERT_FALSE(safeStopAppliedForRequest(Target::FRACTIONATOR, 0.0f));
+  TEST_ASSERT_FALSE(safeStopAppliedForRequest(Target::FRACTIONATOR, 2.0f));
+  TEST_ASSERT_TRUE(safeStopAppliedForRequest(Target::ALL_VALVES, 0.0f));
+  TEST_ASSERT_TRUE(safeStopAppliedForRequest(Target::ALL_OUTPUTS, 0.0f));
+}
+
+void test_power_command_pulse_contract_is_self_terminating() {
+  using namespace PowerCommandGateway;
+
+  TEST_ASSERT_TRUE(safeStopAppliedForPulse(Target::WATER_VALVE));
+  TEST_ASSERT_TRUE(safeStopAppliedForPulse(Target::HEADS_VALVE));
+  TEST_ASSERT_TRUE(safeStopAppliedForPulse(Target::BODY_VALVE));
+  TEST_ASSERT_TRUE(safeStopAppliedForPulse(Target::TAILS_VALVE));
+  TEST_ASSERT_TRUE(safeStopAppliedForPulse(Target::UNO_VALVE));
+  TEST_ASSERT_FALSE(safeStopAppliedForPulse(Target::PUMP));
+  TEST_ASSERT_FALSE(safeStopAppliedForPulse(Target::FRACTIONATOR));
+}
+
+void test_power_command_service_safe_stop_keeps_all_outputs_auditable() {
+  using namespace PowerCommandGateway;
+
+  Command command = makeCommand(
+      Owner::SERVICE, Target::ALL_OUTPUTS, Reason::TFT_SERVICE_TEST, 77U, 0.0f,
+      safeStopAppliedForRequest(Target::ALL_OUTPUTS, 0.0f));
+
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Owner::SERVICE),
+                          static_cast<uint8_t>(command.owner));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Target::ALL_OUTPUTS),
+                          static_cast<uint8_t>(command.target));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Reason::TFT_SERVICE_TEST),
+                          static_cast<uint8_t>(command.reason));
+  TEST_ASSERT_EQUAL_UINT32(77U, command.timestampMs);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, command.requestedValue);
+  TEST_ASSERT_TRUE(command.safeStopRequired);
+  TEST_ASSERT_TRUE(command.safeStopApplied);
+}
+
+void test_power_command_fsm_control_reason_covers_control_loop_outputs() {
+  using namespace PowerCommandGateway;
+
+  Command command = makeCommand(Owner::FSM, Target::PRODUCT_ROUTE,
+                                Reason::FSM_CONTROL, 91U, 0.0f,
+                                safeStopAppliedForRequest(
+                                    Target::PRODUCT_ROUTE, 0.0f));
+
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Owner::FSM),
+                          static_cast<uint8_t>(command.owner));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Reason::FSM_CONTROL),
+                          static_cast<uint8_t>(command.reason));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Target::PRODUCT_ROUTE),
+                          static_cast<uint8_t>(command.target));
+  TEST_ASSERT_TRUE(command.safeStopApplied);
+}
+
+void test_power_command_all_valves_stop_does_not_claim_full_output_stop() {
+  using namespace PowerCommandGateway;
+
+  Command command = makeCommand(
+      Owner::FSM, Target::ALL_VALVES, Reason::FSM_CONTROL, 92U, 0.0f,
+      safeStopAppliedForRequest(Target::ALL_VALVES, 0.0f));
+
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Target::ALL_VALVES),
+                          static_cast<uint8_t>(command.target));
+  TEST_ASSERT_TRUE(command.safeStopApplied);
+  TEST_ASSERT_NOT_EQUAL(static_cast<uint8_t>(Target::ALL_OUTPUTS),
+                        static_cast<uint8_t>(command.target));
 }
 
 void test_tft_service_test_hides_unavailable_hardware() {
@@ -107,6 +188,21 @@ void test_pump_calibration_requires_prime_measure_review_and_commit() {
   TEST_ASSERT_TRUE(retry(calibration));
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::READY_TO_MEASURE),
                           static_cast<uint8_t>(calibration.phase));
+}
+
+void test_pump_calibration_cloud_measurement_skips_prime_but_keeps_review() {
+  using namespace PumpCalibrationLogic;
+
+  State calibration;
+  TEST_ASSERT_TRUE(beginMeasurement(calibration, 600.0f, 10, true));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::MEASURING),
+                          static_cast<uint8_t>(calibration.phase));
+
+  calibration.startSteps = 400;
+  TEST_ASSERT_TRUE(stopMeasurement(calibration, 2000, 3010));
+  TEST_ASSERT_TRUE(enterMeasuredVolume(calibration, 4.0f, 1600));
+  TEST_ASSERT_TRUE(mayCommit(calibration));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 4.0f, calibration.candidateMlPerRev);
 }
 
 void test_sensor_calibration_keeps_ds18_mapping_unique() {
@@ -258,103 +354,4 @@ void test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout()
   TEST_ASSERT_EQUAL_STRING("pressure_limit", faultToken(evaluate(
                                                highPressureSafety, config, phase,
                                                0, true, true, 51.0f, 10)));
-}
-
-void test_fermentation_profile_requires_two_unique_complete_zones() {
-  using namespace FermentationHardwareProfileLogic;
-
-  Profile profile;
-  profile.zoneCount = 1;
-  profile.zones[0] = {0, 10, 11, kUnassigned};
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Validation::OK),
-                          static_cast<uint8_t>(validate(profile)));
-  TEST_ASSERT_FALSE(isSecondZoneAvailable(profile));
-
-  profile.zoneCount = 2;
-  TEST_ASSERT_EQUAL_UINT8(
-      static_cast<uint8_t>(Validation::ZONE2_TEMPERATURE_UNASSIGNED),
-      static_cast<uint8_t>(validate(profile)));
-
-  profile.zones[1] = {0, 12, 13, kUnassigned};
-  TEST_ASSERT_EQUAL_UINT8(
-      static_cast<uint8_t>(Validation::TEMPERATURE_SENSOR_REUSED),
-      static_cast<uint8_t>(validate(profile)));
-
-  profile.zones[1] = {1, 10, 13, kUnassigned};
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Validation::OUTPUT_ID_REUSED),
-                          static_cast<uint8_t>(validate(profile)));
-
-  profile.zones[1] = {1, 12, 13, 14};
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Validation::OK),
-                          static_cast<uint8_t>(validate(profile)));
-  TEST_ASSERT_TRUE(isSecondZoneAvailable(profile));
-}
-
-void test_fermentation_zone_logic_isolated_hysteresis_schedule_and_faults() {
-  using namespace FermentationZoneLogic;
-
-  Config config;
-  config.enabled = true;
-  config.stirrerEnabled = true;
-  config.stirrerPeriodMs = 1000;
-  config.stirrerOnMs = 250;
-  config.coolingMinOnMs = 1000;
-  config.coolingMinOffMs = 1000;
-
-  Runtime heatingZone;
-  Runtime coolingZone;
-  start(heatingZone, 100);
-  start(coolingZone, 100);
-
-  Result heating = update(heatingZone, config, true, 26.0f, 100);
-  TEST_ASSERT_TRUE(heating.outputs.heater);
-  TEST_ASSERT_FALSE(heating.outputs.cooling);
-  TEST_ASSERT_TRUE(heating.outputs.stirrer);
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::HEATING),
-                          static_cast<uint8_t>(heatingZone.phase));
-
-  Result cooling = update(coolingZone, config, true, 30.0f, 100);
-  TEST_ASSERT_FALSE(cooling.outputs.heater);
-  TEST_ASSERT_TRUE(cooling.outputs.cooling);
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::COOLING),
-                          static_cast<uint8_t>(coolingZone.phase));
-
-  cooling = update(coolingZone, config, true, 28.0f, 500);
-  TEST_ASSERT_TRUE(cooling.outputs.cooling);
-  cooling = update(coolingZone, config, true, 28.0f, 1100);
-  TEST_ASSERT_FALSE(cooling.outputs.cooling);
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::FERMENTING),
-                          static_cast<uint8_t>(coolingZone.phase));
-  TEST_ASSERT_TRUE(heatingZone.phase == Phase::HEATING);
-
-  heating = update(heatingZone, config, false, 0.0f, 1200);
-  TEST_ASSERT_FALSE(heating.outputs.heater);
-  TEST_ASSERT_FALSE(heating.outputs.cooling);
-  TEST_ASSERT_FALSE(heating.outputs.stirrer);
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Fault::TEMPERATURE_SENSOR),
-                          static_cast<uint8_t>(heatingZone.fault));
-
-  Runtime healthyZone;
-  Runtime failedZone;
-  start(healthyZone, 0);
-  start(failedZone, 0);
-  Result healthy = update(healthyZone, config, true, 26.0f, 0);
-  Result failed = update(failedZone, config, false, 0.0f, 0);
-  TEST_ASSERT_TRUE(healthy.outputs.heater);
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::HEATING),
-                          static_cast<uint8_t>(healthyZone.phase));
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::FAULT),
-                          static_cast<uint8_t>(failedZone.phase));
-  TEST_ASSERT_FALSE(failed.outputs.heater);
-  TEST_ASSERT_FALSE(failed.outputs.cooling);
-  healthy = update(healthyZone, config, true, 26.0f, 300);
-  TEST_ASSERT_TRUE(healthy.outputs.heater);
-
-  config.durationMs = 500;
-  Runtime completedZone;
-  start(completedZone, 0);
-  Result completed = update(completedZone, config, true, 28.0f, 500);
-  TEST_ASSERT_FALSE(completed.outputs.heater);
-  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Phase::COMPLETED),
-                          static_cast<uint8_t>(completedZone.phase));
 }

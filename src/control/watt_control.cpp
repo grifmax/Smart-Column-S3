@@ -10,6 +10,7 @@
 
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
+#include "power_command_gateway.h"
 #include "v2/process_indicators.h"
 
 #include <math.h>
@@ -112,7 +113,9 @@ uint8_t update(const SystemState& state, const Settings& settings) {
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     const float currentVolt = state.power.voltage > 0 ? state.power.voltage : 230.0f;
     const uint16_t delayUs = calculateTriacDelay(recommended, currentVolt);
-    Heater::setTriacDelay(delayUs);
+    PowerCommandGateway::setHeaterTriacDelay(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, delayUs);
 #endif
 
     (void)settings;
@@ -210,7 +213,9 @@ void handleFlood() {
     uint8_t newPower = static_cast<uint8_t>(currentPower * 0.85f);
     if (newPower < 30) newPower = 30;
 
-    Heater::setPower(newPower);
+    PowerCommandGateway::setHeaterPower(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, newPower);
     powerReduction += 15;
     if (powerReduction > 50) powerReduction = 50;
 
@@ -378,7 +383,9 @@ bool update(SystemState& sysState, const Settings& settings) {
               currentTemp, triggerDelta, indicators.stabilityIndex,
               indicators.floodRisk, indicators.coolingMarginC);
 
-        Pump::stop();
+        PowerCommandGateway::setPumpSpeed(
+            PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
         state.active = true;
         state.waitStart = millis();
         return false;
@@ -421,7 +428,9 @@ bool update(SystemState& sysState, const Settings& settings) {
         return true;
     }
 
-    Pump::start(newSpeed);
+    PowerCommandGateway::setPumpSpeed(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, newSpeed);
     state.active = false;
     state.decrementCount++;
     sysState.stats.decrementCount = state.decrementCount;

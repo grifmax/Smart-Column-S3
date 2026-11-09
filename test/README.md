@@ -9,6 +9,16 @@ Run it with:
 rtk pio test -e native_json_tests
 ```
 
+Audit direct actuator ownership with:
+
+```powershell
+rtk python scripts/direct_output_audit.py
+```
+
+The firmware build runs this audit automatically. Direct output writes are
+limited to the explicit authoritative control allowlist in the script; API,
+Cloud Tunnel, MQTT and TFT/service paths must use `PowerCommandGateway`.
+
 Use this harness for:
 
 - contract checks for JSON payload builders after they are split from hardware code

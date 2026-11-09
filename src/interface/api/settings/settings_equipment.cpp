@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "config.h"
+#include "control/power_command_gateway.h"
 #include "drivers/sensors.h"
 #include "drivers/stirrer.h"
 #include "drivers/valves.h"
@@ -448,7 +449,9 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
 
         if (!g_settings.stirrer.enabled) {
           g_state.stirrer.autoMode = false;
-          Stirrer::stop();
+          PowerCommandGateway::stopStirrer(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
         }
 
         if (!NVSManager::saveSettings(g_settings)) {

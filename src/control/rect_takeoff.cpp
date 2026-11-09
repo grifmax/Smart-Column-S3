@@ -1,5 +1,6 @@
 #include "rect_takeoff.h"
 #include "rect_takeoff_logic.h"
+#include "power_command_gateway.h"
 
 #include <Arduino.h>
 #include <math.h>
@@ -306,18 +307,30 @@ void resetFeedback(RectTakeoffBackendType backendType) {
 }
 
 void stopPumpBackend() {
-  Pump::stop();
-  Valves::closeProductValves();
+  PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::FSM,
+                                    PowerCommandGateway::Reason::FSM_CONTROL,
+                                    0.0f);
+  PowerCommandGateway::closeProductRoutes(
+      PowerCommandGateway::Owner::FSM,
+      PowerCommandGateway::Reason::FSM_CONTROL);
 }
 
 void stopValveMultiBackend() {
-  Pump::stop();
-  Valves::closeProductValves();
+  PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::FSM,
+                                    PowerCommandGateway::Reason::FSM_CONTROL,
+                                    0.0f);
+  PowerCommandGateway::closeProductRoutes(
+      PowerCommandGateway::Owner::FSM,
+      PowerCommandGateway::Reason::FSM_CONTROL);
 }
 
 void stopValveSingleSwitchedBackend() {
-  Pump::stop();
-  Valves::setHeads(false);
+  PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::FSM,
+                                    PowerCommandGateway::Reason::FSM_CONTROL,
+                                    0.0f);
+  PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                                PowerCommandGateway::Reason::FSM_CONTROL,
+                                PowerCommandGateway::Valve::HEADS, false);
 }
 
 bool requestSingleSwitchedRouting(RectTakeoffFraction fraction) {
@@ -353,7 +366,10 @@ bool requestSingleSwitchedRouting(RectTakeoffFraction fraction) {
   g_singleSwitchedBlockedFraction = RectTakeoffFraction::NONE;
   g_singleSwitchedLastRetargetAtMs = now;
   g_singleSwitchedRouteChangedAtMs = now;
-  Valves::setFraction(toRoutingFraction(sanitizedFraction), true);
+  PowerCommandGateway::setFraction(
+      PowerCommandGateway::Owner::FSM,
+      PowerCommandGateway::Reason::FSM_CONTROL,
+      toRoutingFraction(sanitizedFraction), true);
   return true;
 }
 
@@ -367,12 +383,20 @@ void applyPumpBackend(const RectTakeoffCommand &command) {
       phaseTakeoffEnabled, true, command.equivalentRateMlH,
       command.periodicTakeoff, command.periodicTakeoffActive);
 
-  Valves::setProductValve(requestedFraction, headsValveOpen);
+  PowerCommandGateway::setProductRoute(
+      PowerCommandGateway::Owner::FSM,
+      PowerCommandGateway::Reason::FSM_CONTROL, requestedFraction,
+      headsValveOpen);
 
   if (shouldPumpRun) {
-    Pump::start(command.equivalentRateMlH);
+    PowerCommandGateway::setPumpSpeed(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL,
+        command.equivalentRateMlH);
   } else {
-    Pump::stop();
+    PowerCommandGateway::setPumpSpeed(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
   }
 
   resetFeedback(RectTakeoffBackendType::PUMP);
@@ -415,8 +439,13 @@ void applyValveMultiBackend(const RectTakeoffCommand &command) {
   const ValvePulseState pulseState =
       buildValvePulseState(command, requestedFraction, phaseTakeoffEnabled);
 
-  Pump::stop();
-  Valves::setProductValve(requestedFraction, pulseState.valveOpenNow);
+  PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::FSM,
+                                    PowerCommandGateway::Reason::FSM_CONTROL,
+                                    0.0f);
+  PowerCommandGateway::setProductRoute(
+      PowerCommandGateway::Owner::FSM,
+      PowerCommandGateway::Reason::FSM_CONTROL, requestedFraction,
+      pulseState.valveOpenNow);
 
   resetFeedback(RectTakeoffBackendType::VALVE_MULTI);
   g_feedback.backendActive = pulseState.backendActive;
@@ -491,8 +520,13 @@ void applyValveSingleSwitchedBackend(const RectTakeoffCommand &command) {
   const ValvePulseState pulseState =
       buildValvePulseState(command, requestedFraction, phaseTakeoffEnabled);
 
-  Pump::stop();
-  Valves::setHeads(pulseState.valveOpenNow);
+  PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::FSM,
+                                    PowerCommandGateway::Reason::FSM_CONTROL,
+                                    0.0f);
+  PowerCommandGateway::setValve(
+      PowerCommandGateway::Owner::FSM,
+      PowerCommandGateway::Reason::FSM_CONTROL,
+      PowerCommandGateway::Valve::HEADS, pulseState.valveOpenNow);
 
   g_feedback.backendActive = pulseState.backendActive;
   g_feedback.routingReady = true;
@@ -565,7 +599,10 @@ bool requestFractionRoute(RectTakeoffBackendType backendType, uint8_t routeIndex
     return true;
   }
 
-  Valves::setFraction(static_cast<Fraction>(routeIndex), true);
+  PowerCommandGateway::setFraction(
+      PowerCommandGateway::Owner::FSM,
+      PowerCommandGateway::Reason::FSM_CONTROL,
+      static_cast<Fraction>(routeIndex), true);
   if (detail != nullptr) {
     *detail = "Fractionator retarget requested.";
   }

@@ -114,7 +114,7 @@ test('history tab renders v2 safety summary and details modal', async ({ page })
   await expect(historyItem).toBeVisible();
   await expect(historyItem).toContainText('Safety ACK + RESET');
   await expect(historyItem).toContainText('SAFETY STOP');
-  await expect(historyItem).toContainText('Отбор тела: Тело завершено по температуре');
+  await expect(historyItem).toContainText('SAFETY STOP • Отбор тела: Авария сброшена оператором');
   await expect.poll(() => requests.historyListRequests).toBe(1);
 
   await historyItem.getByRole('button', { name: /Подробно/i }).click();

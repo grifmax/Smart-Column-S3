@@ -1,4 +1,5 @@
 #include "../fsm_utils.h"
+#include "../power_command_gateway.h"
 #include "../v2/reason_codes.h"
 #include "../v2/status_adapter.h"
 #include "../../drivers/heater.h"
@@ -27,16 +28,22 @@ void update(SystemState& state, const Settings& settings) {
     if (!state.hold.active || state.hold.stepCount == 0) return;
     uint32_t now = millis();
     float currentTemp = state.temps.cube;
-    Pump::stop();
-    Valves::setHeads(false);
+    PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
+    PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL,
+        PowerCommandGateway::Valve::HEADS, false);
     
     if (state.hold.currentStep < state.hold.stepCount) {
         const TempStep& step = state.hold.steps[state.hold.currentStep];
         const bool isPauseStep = step.temperature <= 0.0f;
 
         if (isPauseStep) {
-            Heater::setPower(0);
-            Valves::setWater(false);
+            PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL, 0);
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, false);
             if (state.hold.stepStartTime == 0) {
                 state.hold.stepStartTime = now;
             }
@@ -49,10 +56,15 @@ void update(SystemState& state, const Settings& settings) {
                 targetTemp < state.hold.steps[state.hold.currentStep - 1].temperature;
 
             if (coolingRequested && currentTemp > targetTemp + 0.5f) {
-                Heater::setPower(0);
-                Valves::setWater(true);
+                PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL, 0);
+                PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    PowerCommandGateway::Valve::WATER, true);
             } else {
-                Valves::setWater(false);
+                PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    PowerCommandGateway::Valve::WATER, false);
                 float error = targetTemp - currentTemp;
                 float Kp = 2.0f;
                 int powerDelta = (int)(error * Kp);
@@ -60,7 +72,9 @@ void update(SystemState& state, const Settings& settings) {
                 int newPower = (int)(currentPower + powerDelta);
                 if (newPower > 100) newPower = 100;
                 if (newPower < 0) newPower = 0;
-                Heater::setPower((uint8_t)newPower);
+                PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    static_cast<uint8_t>(newPower));
             }
         }
 
@@ -100,8 +114,11 @@ void update(SystemState& state, const Settings& settings) {
                     "Hold program completed");
                 state.hold.active = false;
                 state.mode = Mode::IDLE;
-                Heater::setPower(0);
-                Valves::setWater(false);
+                PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL, 0);
+                PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    PowerCommandGateway::Valve::WATER, false);
                 LOG_I("Hold: Process complete!");
                 MQTT::publishNotification("Hold режим завершён", "Все температурные ступени завершены", "success");
             }
@@ -111,8 +128,10 @@ void update(SystemState& state, const Settings& settings) {
 
 void start(SystemState& state, const TempStep* steps, uint8_t count) {
     if (!steps || count == 0 || count > 10) return;
-    Pump::stop();
-    Valves::closeAll();
+    PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, 0.0f);
+    PowerCommandGateway::closeAllValves(PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL);
     for (uint8_t i = 0; i < count; i++) state.hold.steps[i] = steps[i];
     state.hold.stepCount = count;
     state.hold.currentStep = 0;

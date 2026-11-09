@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "control/equipment_testing_logic.h"
+#include "control/power_command_gateway.h"
 #include "control/safety.h"
 #include "control/v2/reason_codes.h"
 #include "drivers/heater.h"
@@ -618,14 +619,10 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
 
   server.on("/api/testing/stop-all", HTTP_POST,
             [](AsyncWebServerRequest *request) {
-              Pump::stop();
               g_state.stirrer.autoMode = false;
-              Stirrer::stop();
-              Heater::setPower(0);
-              Valves::closeAll();
-              if (Valves::isFractionatorEnabled()) {
-                Valves::setFractionAngle(Valves::getFractionAngle());
-              }
+              PowerCommandGateway::safeStopAll(
+                  PowerCommandGateway::Owner::SERVICE,
+                  PowerCommandGateway::Reason::TFT_SERVICE_TEST);
               recordEquipmentTestingAction(
                   "warning", "Остановить все тесты",
                   "Все ручные сервисные воздействия остановлены одной командой.");
@@ -672,13 +669,17 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
             return;
           }
 
-          Pump::start(speed);
+          PowerCommandGateway::setPumpSpeed(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST, speed);
           char detail[128];
           snprintf(detail, sizeof(detail),
                    "Насос запущен вручную со скоростью %.1f мл/ч.", speed);
           recordEquipmentTestingAction("success", "Тест насоса", detail);
         } else {
-          Pump::stop();
+          PowerCommandGateway::setPumpSpeed(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST, 0.0f);
           recordEquipmentTestingAction("warning", "Тест насоса",
                                        "Насос остановлен из сервисного экрана.");
         }
@@ -746,7 +747,10 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           }
           speedPercent = clampU8Range(speedPercent, 1, 100);
           g_state.stirrer.autoMode = false;
-          Stirrer::start(static_cast<uint8_t>(speedPercent));
+          PowerCommandGateway::setStirrerSpeed(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+              static_cast<uint8_t>(speedPercent));
 
           char detail[128];
           snprintf(detail, sizeof(detail),
@@ -774,7 +778,10 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           }
 
           g_state.stirrer.autoMode = false;
-          Stirrer::setSpeed(static_cast<uint8_t>(speedPercent));
+          PowerCommandGateway::setStirrerSpeed(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+              static_cast<uint8_t>(speedPercent));
 
           char detail[128];
           snprintf(detail, sizeof(detail),
@@ -782,7 +789,9 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           recordEquipmentTestingAction("info", "Тест мешалки", detail);
         } else {
           g_state.stirrer.autoMode = false;
-          Stirrer::stop();
+          PowerCommandGateway::stopStirrer(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST);
           recordEquipmentTestingAction(
               "warning", "Тест мешалки",
               "Мешалка остановлена из сервисного экрана.");
@@ -848,15 +857,19 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
             powerWatts = static_cast<uint16_t>(
                 (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
           }
-          Heater::setPowerWatts(powerWatts);
+          PowerCommandGateway::setHeaterPowerWatts(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST, powerWatts);
           const unsigned power = powerWatts;
           char detail[128];
           snprintf(detail, sizeof(detail),
-                   "ТЭН включен вручную на %d%% мощности после подтверждения.",
+                   "ТЭН включен вручную на %u Вт после подтверждения.",
                    power);
           recordEquipmentTestingAction("danger", "Тест ТЭНа", detail);
         } else {
-          Heater::setPower(0);
+          PowerCommandGateway::setHeaterPowerWatts(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST, 0);
           recordEquipmentTestingAction("warning", "Тест ТЭНа",
                                        "ТЭН выключен из сервисного экрана.");
         }
@@ -898,20 +911,52 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
         const uint8_t duty = clampU8Range(doc["duty"] | 0, 0, 255);
 
         if (target == "all") {
-          Valves::closeAll();
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+              PowerCommandGateway::Valve::WATER, false);
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+              PowerCommandGateway::Valve::HEADS, false);
+          if (Valves::hasBodyValve()) {
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::BODY, false);
+          }
+          if (Valves::hasTailsValve()) {
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::TAILS, false);
+          }
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+              PowerCommandGateway::Valve::UNO, false);
+          PowerCommandGateway::setCoolingPwm(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST, 0);
           recordEquipmentTestingAction("warning", "Клапаны",
                                        "Все клапаны закрыты одной сервисной командой.");
         } else if (target == "water") {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            Valves::pulse(Valves::ValveId::WATER, durationMs);
+            PowerCommandGateway::pulseValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::WATER, durationMs);
             char detail[128];
             snprintf(detail, sizeof(detail), "Клапан воды дал импульс %lu мс.",
                      (unsigned long)durationMs);
             recordEquipmentTestingAction("info", "Клапан воды", detail);
           } else {
-            Valves::setWater(open);
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::WATER, open);
             recordEquipmentTestingAction("info", "Клапан воды",
                                          open ? "Клапан воды открыт вручную."
                                               : "Клапан воды закрыт вручную.");
@@ -920,13 +965,19 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            Valves::pulse(Valves::ValveId::HEADS, durationMs);
+            PowerCommandGateway::pulseValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::HEADS, durationMs);
             char detail[128];
             snprintf(detail, sizeof(detail), "Клапан голов дал импульс %lu мс.",
                      (unsigned long)durationMs);
             recordEquipmentTestingAction("info", "Клапан голов", detail);
           } else {
-            Valves::setHeads(open);
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::HEADS, open);
             recordEquipmentTestingAction("info", "Клапан голов",
                                          open ? "Клапан голов открыт вручную."
                                               : "Клапан голов закрыт вручную.");
@@ -941,11 +992,17 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            Valves::pulse(Valves::ValveId::BODY, durationMs);
+            PowerCommandGateway::pulseValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::BODY, durationMs);
             recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С‚РµР»Р°",
                                          "РљР»Р°РїР°РЅ С‚РµР»Р° РїРѕР»СѓС‡РёР» СЃРµСЂРІРёСЃРЅС‹Р№ РёРјРїСѓР»СЊСЃ.");
           } else {
-            Valves::setBody(open);
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::BODY, open);
             recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С‚РµР»Р°",
                                          open ? "РљР»Р°РїР°РЅ С‚РµР»Р° РѕС‚РєСЂС‹С‚ РІСЂСѓС‡РЅСѓСЋ."
                                               : "РљР»Р°РїР°РЅ С‚РµР»Р° Р·Р°РєСЂС‹С‚ РІСЂСѓС‡РЅСѓСЋ.");
@@ -960,11 +1017,17 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            Valves::pulse(Valves::ValveId::TAILS, durationMs);
+            PowerCommandGateway::pulseValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::TAILS, durationMs);
             recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ",
                                          "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ РїРѕР»СѓС‡РёР» СЃРµСЂРІРёСЃРЅС‹Р№ РёРјРїСѓР»СЊСЃ.");
           } else {
-            Valves::setTails(open);
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::TAILS, open);
             recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ",
                                          open ? "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ РѕС‚РєСЂС‹С‚ РІСЂСѓС‡РЅСѓСЋ."
                                               : "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ Р·Р°РєСЂС‹С‚ РІСЂСѓС‡РЅСѓСЋ.");
@@ -973,19 +1036,27 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            Valves::pulse(Valves::ValveId::UNO, durationMs);
+            PowerCommandGateway::pulseValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::UNO, durationMs);
             char detail[128];
             snprintf(detail, sizeof(detail), "УНО дало импульс %lu мс.",
                      (unsigned long)durationMs);
             recordEquipmentTestingAction("info", "УНО", detail);
           } else {
-            Valves::setUno(open);
+            PowerCommandGateway::setValve(
+                PowerCommandGateway::Owner::SERVICE,
+                PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+                PowerCommandGateway::Valve::UNO, open);
             recordEquipmentTestingAction("info", "УНО",
                                          open ? "УНО открыто вручную."
                                               : "УНО закрыто вручную.");
           }
         } else if (target == "startStop") {
-          Valves::setStartStop(duty);
+          PowerCommandGateway::setCoolingPwm(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST, duty);
           char detail[160];
           snprintf(detail, sizeof(detail),
                    "PWM-канал охлаждения установлен на %u/255 (%u%%).",
@@ -1086,7 +1157,9 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
                 "{\"success\":false,\"message\":\"Unknown servo preset\"}");
             return;
           }
-          Valves::setFraction(fraction, true);
+          PowerCommandGateway::setFraction(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST, fraction, true);
           char detail[128];
           snprintf(detail, sizeof(detail), "Сервопривод переведён в позицию %s.",
                    getFractionLabel(fraction));
@@ -1095,7 +1168,10 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           int angle = doc["angle"] | 0;
           if (angle < 0) angle = 0;
           if (angle > 180) angle = 180;
-          Valves::setFractionAngle(static_cast<uint8_t>(angle));
+          PowerCommandGateway::setFractionAngle(
+              PowerCommandGateway::Owner::SERVICE,
+              PowerCommandGateway::Reason::TFT_SERVICE_TEST,
+              static_cast<uint8_t>(angle));
           char detail[128];
           snprintf(detail, sizeof(detail),
                    "Сервопривод переведён в ручной угол %d°.", angle);

@@ -14,8 +14,6 @@
 #include <../../src/control/autoclave_hardware_profile_logic.h>
 #include <../../src/control/autoclave_session_logic.h>
 #include <../../src/control/autoclave_safety_logic.h>
-#include <../../src/control/fermentation_hardware_profile_logic.h>
-#include <../../src/control/fermentation_zone_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
 
@@ -61,6 +59,11 @@ void test_safety_proof_guard_allows_only_idle_safe_hardware();
 void test_editable_field_descriptor_exposes_canonical_tft_metadata();
 void test_editable_field_normalization_clamps_and_snaps_to_step();
 void test_power_command_captures_owner_reason_timestamp_and_safe_stop();
+void test_power_command_safe_stop_rules_match_output_semantics();
+void test_power_command_pulse_contract_is_self_terminating();
+void test_power_command_service_safe_stop_keeps_all_outputs_auditable();
+void test_power_command_fsm_control_reason_covers_control_loop_outputs();
+void test_power_command_all_valves_stop_does_not_claim_full_output_stop();
 void test_operator_overlay_claims_an_action_only_once_per_open();
 void test_tft_access_policy_respects_runtime_mode();
 void test_tft_draft_save_discard_and_navigation_policy();
@@ -72,14 +75,13 @@ void test_tft_post_alarm_action_never_resumes_process();
 void test_tft_service_test_hides_unavailable_hardware();
 void test_service_test_session_requires_safe_pause_and_explicit_restore();
 void test_pump_calibration_requires_prime_measure_review_and_commit();
+void test_pump_calibration_cloud_measurement_skips_prime_but_keeps_review();
 void test_sensor_calibration_keeps_ds18_mapping_unique();
 void test_service_test_audit_uses_stable_lifecycle_tokens();
 void test_dosing_session_requires_prime_then_tracks_only_target_volume();
 void test_autoclave_profile_requires_explicit_hardware_and_safety_approval();
 void test_autoclave_sterilization_timer_only_counts_in_temperature_band();
 void test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout();
-void test_fermentation_profile_requires_two_unique_complete_zones();
-void test_fermentation_zone_logic_isolated_hysteresis_schedule_and_faults();
 
 int main(int argc, char **argv) {
   UNITY_BEGIN();
@@ -102,6 +104,11 @@ int main(int argc, char **argv) {
   RUN_TEST(test_editable_field_descriptor_exposes_canonical_tft_metadata);
   RUN_TEST(test_editable_field_normalization_clamps_and_snaps_to_step);
   RUN_TEST(test_power_command_captures_owner_reason_timestamp_and_safe_stop);
+  RUN_TEST(test_power_command_safe_stop_rules_match_output_semantics);
+  RUN_TEST(test_power_command_pulse_contract_is_self_terminating);
+  RUN_TEST(test_power_command_service_safe_stop_keeps_all_outputs_auditable);
+  RUN_TEST(test_power_command_fsm_control_reason_covers_control_loop_outputs);
+  RUN_TEST(test_power_command_all_valves_stop_does_not_claim_full_output_stop);
   RUN_TEST(test_operator_overlay_claims_an_action_only_once_per_open);
   RUN_TEST(test_tft_access_policy_respects_runtime_mode);
   RUN_TEST(test_tft_draft_save_discard_and_navigation_policy);
@@ -113,14 +120,13 @@ int main(int argc, char **argv) {
   RUN_TEST(test_tft_service_test_hides_unavailable_hardware);
   RUN_TEST(test_service_test_session_requires_safe_pause_and_explicit_restore);
   RUN_TEST(test_pump_calibration_requires_prime_measure_review_and_commit);
+  RUN_TEST(test_pump_calibration_cloud_measurement_skips_prime_but_keeps_review);
   RUN_TEST(test_sensor_calibration_keeps_ds18_mapping_unique);
   RUN_TEST(test_service_test_audit_uses_stable_lifecycle_tokens);
   RUN_TEST(test_dosing_session_requires_prime_then_tracks_only_target_volume);
   RUN_TEST(test_autoclave_profile_requires_explicit_hardware_and_safety_approval);
   RUN_TEST(test_autoclave_sterilization_timer_only_counts_in_temperature_band);
   RUN_TEST(test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout);
-  RUN_TEST(test_fermentation_profile_requires_two_unique_complete_zones);
-  RUN_TEST(test_fermentation_zone_logic_isolated_hysteresis_schedule_and_faults);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>

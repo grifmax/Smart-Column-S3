@@ -233,6 +233,15 @@ try {
             response.body.profiles.every((item) => item.name !== testName)
     );
 
+    const initialHistory = await api('/api/history');
+    if (!initialHistory.ok || !Array.isArray(initialHistory.body?.processes)) {
+        throw new Error(`Initial history snapshot failed: ${JSON.stringify(initialHistory.body)}`);
+    }
+    const baselineHistoryIds = new Set(
+        initialHistory.body.processes.map((item) => String(item.id))
+    );
+    const baselineHistoryTotal = Number(initialHistory.body.total || 0);
+
     const seededHistory = await api('/api/history/demo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -292,7 +301,13 @@ try {
     const finalHistory = await poll(
         'history cleanup',
         () => api('/api/history'),
-        (response) => Number(response.body?.total || 0) === 0
+        (response) => {
+            const processes = Array.isArray(response.body?.processes) ? response.body.processes : [];
+            const currentIds = new Set(processes.map((item) => String(item.id)));
+            return Number(response.body?.total || 0) === baselineHistoryTotal &&
+                currentIds.size === baselineHistoryIds.size &&
+                Array.from(baselineHistoryIds).every((id) => currentIds.has(id));
+        }
     );
 
     const alerts = await page.evaluate(() => Array.isArray(window.__alerts) ? window.__alerts.slice() : []);
@@ -304,6 +319,7 @@ try {
         importedIds,
         historyId,
         updatedDescription: updatedProfile.body?.metadata?.description || '',
+        baselineHistoryTotal,
         finalHistoryTotal: finalHistory.body?.total || 0,
         alerts,
         consoleIssues,

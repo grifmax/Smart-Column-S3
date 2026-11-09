@@ -3,6 +3,7 @@
 #include "../v2/reason_codes.h"
 #include "../v2/status_adapter.h"
 #include "../rect_takeoff.h"
+#include "../power_command_gateway.h"
 #include "../../drivers/heater.h"
 #include "../../drivers/buzzer.h"
 #include "../../drivers/pump.h"
@@ -484,7 +485,9 @@ void update(SystemState& state, const Settings& settings) {
     uint32_t startTime = getPhaseStartTime();
 
     if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
-        Valves::setWater(true);
+        PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL,
+            PowerCommandGateway::Valve::WATER, true);
     }
 
     switch (state.rectPhase) {
@@ -528,7 +531,9 @@ void update(SystemState& state, const Settings& settings) {
         }
         case RectPhase::HEADS: {
             applyBoosterHeater(state, settings, false);
-            Heater::setPowerWatts(
+            PowerCommandGateway::setHeaterPowerWatts(
+                PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
                 applyVaporTemperaturePower(state, settings, g_params.powerWatts, now));
             applyFractionTakeoff(settings, RectTakeoffFraction::HEADS, g_params.speedMlH);
             if (finishForVaporTemperatureTimeout(state, now)) break;
@@ -565,7 +570,9 @@ void update(SystemState& state, const Settings& settings) {
                     settings.fractionProgram.steps[state.fractionProgram.currentStep].heaterPowerW;
                 if (stepPower > 0) requestedPowerWatts = stepPower;
             }
-            Heater::setPowerWatts(
+            PowerCommandGateway::setHeaterPowerWatts(
+                PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
                 applyVaporTemperaturePower(state, settings, requestedPowerWatts, now));
             if (finishForVaporTemperatureTimeout(state, now)) break;
             if (fractionProgramEnabled) break;
@@ -594,11 +601,17 @@ void update(SystemState& state, const Settings& settings) {
 
         case RectPhase::FINISH:
             applyBoosterHeater(state, settings, false);
-            Heater::setPower(0);
+            PowerCommandGateway::setHeaterPower(
+                PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL, 0);
             stopFractionTakeoff();
-            Valves::setWater(true);
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, true);
             if (now - startTime > 5 * 60 * 1000UL) {
-                Valves::closeAll();
+                PowerCommandGateway::closeAllValves(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL);
                 ControlV2::notePhaseTransition(Mode::DISTILLATION,
                                                static_cast<uint16_t>(RectPhase::FINISH),
                                                static_cast<uint16_t>(RectPhase::IDLE),

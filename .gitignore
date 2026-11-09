@@ -20,3 +20,8 @@ src/secrets.h
 # Local deployment and verification artifacts
 /artifacts/
 /cloud_proxy/web/*.gz
+# Local test/QA artifacts
+/test-results/
+__pycache__/
+*.pyc
+/Manual_Distiller6_r1.pdf

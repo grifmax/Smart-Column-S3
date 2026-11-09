@@ -12,6 +12,7 @@
 
 #include "control/fsm.h"
 #include "control/fsm_utils.h"
+#include "control/power_command_gateway.h"
 #include "control/rect_takeoff.h"
 #include "control/v2/reason_codes.h"
 #include "control/v2/safety_policy.h"
@@ -3037,7 +3038,9 @@ void init() {
 
         const uint8_t speed = g_settings.stirrer.defaultSpeedPercent;
         g_state.stirrer.autoMode = false;
-        Stirrer::start(speed);
+        PowerCommandGateway::setStirrerSpeed(
+            PowerCommandGateway::Owner::MANUAL,
+            PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
         LOG_I("Stirrer started via API at %u%%", speed);
         sendStirrerStateResponse(request, 200, true, "Stirrer started");
       },
@@ -3076,7 +3079,9 @@ void init() {
         }
 
         g_state.stirrer.autoMode = false;
-        Stirrer::start(speed);
+        PowerCommandGateway::setStirrerSpeed(
+            PowerCommandGateway::Owner::MANUAL,
+            PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
         LOG_I("Stirrer started via API at %u%%", speed);
         sendStirrerStateResponse(request, 200, true, "Stirrer started");
       });
@@ -3087,7 +3092,9 @@ void init() {
       return;
     }
     g_state.stirrer.autoMode = false;
-    Stirrer::stop();
+    PowerCommandGateway::stopStirrer(
+        PowerCommandGateway::Owner::MANUAL,
+        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
     LOG_I("Stirrer stopped via API");
     sendStirrerStateResponse(request, 200, true, "Stirrer stopped");
   });
@@ -3141,7 +3148,10 @@ void init() {
         }
 
         g_state.stirrer.autoMode = false;
-        Stirrer::setSpeed(static_cast<uint8_t>(requestedSpeed));
+        PowerCommandGateway::setStirrerSpeed(
+            PowerCommandGateway::Owner::MANUAL,
+            PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+            static_cast<uint8_t>(requestedSpeed));
         LOG_I("Stirrer speed changed via API to %d%%", requestedSpeed);
         sendStirrerStateResponse(request, 200, true, "Stirrer speed updated");
       });
@@ -3873,7 +3883,9 @@ void init() {
 
         if (!g_settings.stirrer.enabled) {
           g_state.stirrer.autoMode = false;
-          Stirrer::stop();
+          PowerCommandGateway::stopStirrer(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
         }
 
         if (!NVSManager::saveSettings(g_settings)) {
@@ -4390,7 +4402,9 @@ void init() {
           powerWatts = static_cast<uint16_t>(
               (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
         }
-        Heater::setPowerWatts(powerWatts);
+        PowerCommandGateway::setHeaterPowerWatts(
+            PowerCommandGateway::Owner::MANUAL,
+            PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, powerWatts);
 
         const uint8_t powerPercent = heaterMaxW > 0
                                          ? static_cast<uint8_t>(
@@ -4462,13 +4476,17 @@ void init() {
 
         float speed = doc["speed"] | 0.0f;
         if (speed <= 0.0f) {
-          Pump::stop();
+          PowerCommandGateway::setPumpSpeed(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0.0f);
           request->send(200, "application/json",
                         "{\"success\":true,\"running\":false}");
           return;
         }
 
-        Pump::start(speed);
+        PowerCommandGateway::setPumpSpeed(
+            PowerCommandGateway::Owner::MANUAL,
+            PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
         char resp[128];
         snprintf(resp, sizeof(resp),
                  "{\"success\":true,\"running\":true,\"speed\":%.1f}", speed);
@@ -4493,30 +4511,69 @@ void init() {
 
         bool allOff = doc["allOff"] | false;
         if (allOff) {
-          Valves::closeAll();
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::WATER, false);
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::HEADS, false);
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::BODY, false);
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::TAILS, false);
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::UNO, false);
+          PowerCommandGateway::setCoolingPwm(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0);
           request->send(200, "application/json", "{\"success\":true}");
           return;
         }
 
         if (!doc["water"].isNull()) {
-          Valves::setWater(doc["water"].as<bool>());
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::WATER, doc["water"].as<bool>());
         }
         if (!doc["heads"].isNull()) {
-          Valves::setHeads(doc["heads"].as<bool>());
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::HEADS, doc["heads"].as<bool>());
         }
         if (!doc["body"].isNull()) {
-          Valves::setBody(doc["body"].as<bool>());
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::BODY, doc["body"].as<bool>());
         }
         if (!doc["tails"].isNull()) {
-          Valves::setTails(doc["tails"].as<bool>());
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::TAILS, doc["tails"].as<bool>());
         }
         if (!doc["uno"].isNull()) {
-          Valves::setUno(doc["uno"].as<bool>());
+          PowerCommandGateway::setValve(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+              PowerCommandGateway::Valve::UNO, doc["uno"].as<bool>());
         }
         if (!doc["startStopDuty"].isNull()) {
           const uint8_t duty =
               clampU8Range(doc["startStopDuty"].as<uint32_t>(), 0, 255);
-          Valves::setStartStop(duty);
+          PowerCommandGateway::setCoolingPwm(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, duty);
         }
 
         request->send(200, "application/json", "{\"success\":true}");

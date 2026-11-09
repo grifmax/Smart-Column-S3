@@ -81,7 +81,9 @@ test('stirrer widget and equipment settings stay in sync', async ({ page }) => {
   await expect(page.locator('#monitor-stirrer-badge')).toContainText('Готова');
   await expect(page.locator('#monitor-stirrer-availability')).toContainText('MCP4725 OK');
 
-  await page.getByRole('button', { name: '75%' }).click();
+  await page.getByRole('tab', { name: 'Мешалка' }).click();
+  await expect(page.locator('#monitor-stirrer-speed-input')).toBeVisible();
+  await page.locator('#monitor-stirrer-card [data-stirrer-speed-preset="75"]').click();
   await expect(page.locator('#monitor-stirrer-speed-input')).toHaveValue('75');
   await page.locator('#monitor-stirrer-start').click();
 

@@ -22,6 +22,8 @@
 #include "../profiles.h"
 #include "../types.h"
 #include "../control/fsm.h"
+#include "../control/pump_calibration.h"
+#include "../control/power_command_gateway.h"
 #include "../control/rect_takeoff.h"
 #include "../control/safety.h"
 #include "../control/v2/status_adapter.h"
@@ -59,16 +61,6 @@ static uint32_t lastHelloAt = 0;
 static uint32_t lastHeartbeatAt = 0;
 
 static Preferences prefsCloud;
-
-struct PumpCalibrationSessionCloud {
-  bool active = false;
-  uint32_t startSteps = 0;
-  uint32_t stopSteps = 0;
-  uint32_t startMs = 0;
-  uint32_t stopMs = 0;
-};
-
-static PumpCalibrationSessionCloud pumpCalSession;
 
 static void sendHttpResponse(const char* requestId, int status,
                              const String& bodyJson,
@@ -1904,7 +1896,9 @@ static void handleHttpRequest(JsonDocument& req) {
 
     if (!g_settings.stirrer.enabled) {
       g_state.stirrer.autoMode = false;
-      Stirrer::stop();
+      PowerCommandGateway::stopStirrer(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
     }
 
     if (!NVSManager::saveSettings(g_settings)) {
@@ -1942,7 +1936,9 @@ static void handleHttpRequest(JsonDocument& req) {
     }
 
     g_state.stirrer.autoMode = false;
-    Stirrer::start(speed);
+    PowerCommandGateway::setStirrerSpeed(
+        PowerCommandGateway::Owner::MANUAL,
+        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
     sendStirrerHttpResponse(requestId, 200, true, "Stirrer started");
     return;
   }
@@ -1950,7 +1946,9 @@ static void handleHttpRequest(JsonDocument& req) {
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/stirrer/stop") == 0) {
     if (!ensureStirrerReady(requestId)) return;
     g_state.stirrer.autoMode = false;
-    Stirrer::stop();
+    PowerCommandGateway::stopStirrer(
+        PowerCommandGateway::Owner::MANUAL,
+        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
     sendStirrerHttpResponse(requestId, 200, true, "Stirrer stopped");
     return;
   }
@@ -1976,7 +1974,10 @@ static void handleHttpRequest(JsonDocument& req) {
     }
 
     g_state.stirrer.autoMode = false;
-    Stirrer::setSpeed(static_cast<uint8_t>(requestedSpeed));
+    PowerCommandGateway::setStirrerSpeed(
+        PowerCommandGateway::Owner::MANUAL,
+        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+        static_cast<uint8_t>(requestedSpeed));
     sendStirrerHttpResponse(requestId, 200, true, "Stirrer speed updated");
     return;
   }
@@ -2298,7 +2299,8 @@ static void handleHttpRequest(JsonDocument& req) {
                        "process_is_running");
       return;
     }
-    if (pumpCalSession.active) {
+    if (PumpCalibrationSession::getSnapshot().phase !=
+        PumpCalibrationSession::Phase::IDLE) {
       sendHttpResponse(requestId, 409, "",
                        "calibration_already_active");
       return;
@@ -2320,28 +2322,25 @@ static void handleHttpRequest(JsonDocument& req) {
       }
     }
 
-    Pump::resetVolume();
-    pumpCalSession.active = true;
-    pumpCalSession.startSteps = Pump::getTotalSteps();
-    pumpCalSession.stopSteps = 0;
-    pumpCalSession.startMs = millis();
-    pumpCalSession.stopMs = 0;
-
-    Pump::start(speed);
+    if (!PumpCalibrationSession::beginMeasurement(speed, true)) {
+      sendHttpResponse(requestId, 409, "", "calibration_already_active");
+      return;
+    }
     sendHttpResponse(requestId, 200,
                      "{\"success\":true,\"running\":true}");
     return;
   }
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/pump/calibrate/stop") == 0) {
-    if (!pumpCalSession.active) {
+    if (PumpCalibrationSession::getSnapshot().phase !=
+        PumpCalibrationSession::Phase::MEASURING) {
       sendHttpResponse(requestId, 409, "", "calibration_not_active");
       return;
     }
 
-    Pump::stop();
-    pumpCalSession.stopSteps = Pump::getTotalSteps();
-    pumpCalSession.stopMs = millis();
+    // Keep the Cloud API response stable even when no steps were captured;
+    // finish then reports the invalid measurement to the caller.
+    (void)PumpCalibrationSession::stopMeasurement();
 
     sendHttpResponse(requestId, 200,
                      "{\"success\":true,\"running\":false}");
@@ -2349,12 +2348,7 @@ static void handleHttpRequest(JsonDocument& req) {
   }
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/pump/calibrate/cancel") == 0) {
-    Pump::stop();
-    pumpCalSession.active = false;
-    pumpCalSession.startSteps = 0;
-    pumpCalSession.stopSteps = 0;
-    pumpCalSession.startMs = 0;
-    pumpCalSession.stopMs = 0;
+    PumpCalibrationSession::cancel();
     sendHttpResponse(requestId, 200,
                      "{\"success\":true,\"active\":false}");
     return;
@@ -2364,7 +2358,10 @@ static void handleHttpRequest(JsonDocument& req) {
     JsonDocument body;
     if (!decodeBody(body)) return;
 
-    if (!pumpCalSession.active) {
+    PumpCalibrationSession::Snapshot snapshot =
+        PumpCalibrationSession::getSnapshot();
+    if (snapshot.phase != PumpCalibrationSession::Phase::MEASURING &&
+        snapshot.phase != PumpCalibrationSession::Phase::READY_TO_REVIEW) {
       sendHttpResponse(requestId, 409, "", "calibration_not_active");
       return;
     }
@@ -2375,32 +2372,23 @@ static void handleHttpRequest(JsonDocument& req) {
       return;
     }
 
-    if (Pump::isRunning()) {
-      Pump::stop();
+    if (snapshot.phase == PumpCalibrationSession::Phase::MEASURING) {
+      (void)PumpCalibrationSession::stopMeasurement();
+      snapshot = PumpCalibrationSession::getSnapshot();
     }
-    if (pumpCalSession.stopSteps == 0) {
-      pumpCalSession.stopSteps = Pump::getTotalSteps();
-      pumpCalSession.stopMs = millis();
-    }
-
-    const uint32_t steps = pumpCalSession.stopSteps - pumpCalSession.startSteps;
-    const uint32_t stepsPerRev =
-        static_cast<uint32_t>(PUMP_STEPS_PER_REV) *
-        static_cast<uint32_t>(PUMP_MICROSTEPS);
-    if (steps == 0 || stepsPerRev == 0) {
+    if (snapshot.stopSteps <= snapshot.startSteps) {
       sendHttpResponse(requestId, 400, "", "no_steps_captured");
       return;
     }
-
-    const float revolutions = static_cast<float>(steps) / static_cast<float>(stepsPerRev);
-    const float rawMlPerRev = volume / revolutions;
-    if (rawMlPerRev <= 0.0f) {
+    if (!PumpCalibrationSession::enterMeasuredVolume(volume) ||
+        !PumpCalibrationSession::mayCommit()) {
       sendHttpResponse(requestId, 400, "", "invalid_calibration_result");
       return;
     }
 
     const float mlPerRev = EditableFields::normalize(
-        EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV, rawMlPerRev);
+        EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
+        PumpCalibrationSession::getCandidateMlPerRev());
     g_settings.pumpCal.mlPerRevolution = mlPerRev;
     if (!NVSManager::saveSettings(g_settings)) {
       sendHttpResponse(requestId, 500, "", "save_failed");
@@ -2409,14 +2397,14 @@ static void handleHttpRequest(JsonDocument& req) {
     Pump::setCalibration(mlPerRev);
 
     const uint32_t elapsedMs =
-        (pumpCalSession.stopMs > pumpCalSession.startMs)
-            ? (pumpCalSession.stopMs - pumpCalSession.startMs)
+        (snapshot.stoppedAtMs > snapshot.startedAtMs)
+            ? (snapshot.stoppedAtMs - snapshot.startedAtMs)
             : 30000;
     const float elapsedSec = elapsedMs / 1000.0f;
     const float calibrationFactor =
         elapsedSec > 0.0f ? (volume / elapsedSec) : 0.0f;
 
-    pumpCalSession.active = false;
+    PumpCalibrationSession::complete();
 
     JsonDocument doc;
     doc["success"] = true;
@@ -2429,7 +2417,14 @@ static void handleHttpRequest(JsonDocument& req) {
   }
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/pump/stop") == 0) {
-    Pump::stop();
+    if (PumpCalibrationSession::getSnapshot().phase !=
+        PumpCalibrationSession::Phase::IDLE) {
+      PumpCalibrationSession::cancel();
+    } else {
+      PowerCommandGateway::setPumpSpeed(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0.0f);
+    }
     JsonDocument doc;
     doc["success"] = true;
     doc["running"] = Pump::isRunning();
@@ -2853,7 +2848,9 @@ static void handleHttpRequest(JsonDocument& req) {
       powerWatts = static_cast<uint16_t>(
           (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
     }
-    Heater::setPowerWatts(powerWatts);
+    PowerCommandGateway::setHeaterPowerWatts(
+        PowerCommandGateway::Owner::MANUAL,
+        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, powerWatts);
 
     JsonDocument doc;
     doc["success"] = true;
@@ -2909,12 +2906,16 @@ static void handleHttpRequest(JsonDocument& req) {
 
     const float speed = body["speed"] | 0.0f;
     if (speed <= 0.0f) {
-      Pump::stop();
+      PowerCommandGateway::setPumpSpeed(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0.0f);
       sendHttpResponse(requestId, 200, "{\"success\":true,\"running\":false}");
       return;
     }
 
-    Pump::start(speed);
+    PowerCommandGateway::setPumpSpeed(
+        PowerCommandGateway::Owner::MANUAL,
+        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
     JsonDocument doc;
     doc["success"] = true;
     doc["running"] = true;
@@ -2930,21 +2931,46 @@ static void handleHttpRequest(JsonDocument& req) {
     if (!decodeBody(body)) return;
 
     if (body["allOff"] | false) {
-      Valves::closeAll();
+      PowerCommandGateway::setValve(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+          PowerCommandGateway::Valve::WATER, false);
+      PowerCommandGateway::setValve(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+          PowerCommandGateway::Valve::HEADS, false);
+      PowerCommandGateway::setValve(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+          PowerCommandGateway::Valve::UNO, false);
+      PowerCommandGateway::setCoolingPwm(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0);
       sendHttpResponse(requestId, 200, "{\"success\":true}");
       return;
     }
     if (!body["water"].isNull()) {
-      Valves::setWater(body["water"].as<bool>());
+      PowerCommandGateway::setValve(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+          PowerCommandGateway::Valve::WATER, body["water"].as<bool>());
     }
     if (!body["heads"].isNull()) {
-      Valves::setHeads(body["heads"].as<bool>());
+      PowerCommandGateway::setValve(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+          PowerCommandGateway::Valve::HEADS, body["heads"].as<bool>());
     }
     if (!body["uno"].isNull()) {
-      Valves::setUno(body["uno"].as<bool>());
+      PowerCommandGateway::setValve(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+          PowerCommandGateway::Valve::UNO, body["uno"].as<bool>());
     }
     if (!body["startStopDuty"].isNull()) {
-      Valves::setStartStop(
+      PowerCommandGateway::setCoolingPwm(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
           clampU8Range(body["startStopDuty"].as<uint32_t>(), 0, 255));
     }
     sendHttpResponse(requestId, 200, "{\"success\":true}");

@@ -304,12 +304,9 @@ export function initToolsWorkbench() {
         if (!isMobile && !activeToolId) {
             activeToolId = lastSelectedToolId || tools[0].meta.id;
         }
-        if (isMobile && !activeToolId) {
-            activeToolId = lastSelectedToolId || tools[0].meta.id;
-        }
 
         toolsRoot.dataset.toolsLayout = isMobile ? 'mobile' : 'desktop';
-        nav.hidden = false;
+        nav.hidden = isMobile;
 
         for (const tool of tools) {
             const isActive = tool.meta.id === activeToolId;
@@ -317,10 +314,10 @@ export function initToolsWorkbench() {
             if (tool.toggle) {
                 tool.toggle.classList.toggle('is-active', isActive);
                 tool.toggle.setAttribute('aria-expanded', String(isActive));
-                tool.toggle.hidden = isMobile;
+                tool.toggle.hidden = !isMobile;
             }
-            tool.body.hidden = false;
-            tool.card.hidden = !isActive;
+            tool.body.hidden = isMobile ? !isActive : false;
+            tool.card.hidden = isMobile ? false : !isActive;
 
             const navButton = buttonsById.get(tool.meta.id);
             if (navButton) {

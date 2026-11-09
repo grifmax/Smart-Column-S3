@@ -1,4 +1,5 @@
 #include "../fsm_utils.h"
+#include "../power_command_gateway.h"
 #include "../v2/reason_codes.h"
 #include "../v2/status_adapter.h"
 #include "../../drivers/heater.h"
@@ -38,15 +39,31 @@ void setPhase(SystemState& state, FermentationPhase next,
 void update(SystemState& state, const Settings& settings) {
     const uint32_t now = millis();
 
-    if (!state.temps.valid[TEMP_CUBE]) { Heater::setPower(0); Valves::setWater(false); return; }
+    if (!state.temps.valid[TEMP_CUBE]) {
+        PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0);
+        PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL,
+            PowerCommandGateway::Valve::WATER, false);
+        return;
+    }
     const float currentTemp = state.temps.cube;
     const float target = settings.fermentation.targetTempC;
     const float band = settings.fermentation.hysteresisC;
     const bool foam = foamDetected(settings);
     if (foam) {
-        Heater::setPower(0);
-        if (settings.fermentation.useCooling) Valves::setWater(true);
-        if (settings.stirrer.enabled && currentTemp <= MASH_STIRRER_SAFE_TEMP_C) Stirrer::start(settings.stirrer.defaultSpeedPercent);
+        PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0);
+        if (settings.fermentation.useCooling) {
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, true);
+        }
+        if (settings.stirrer.enabled && currentTemp <= MASH_STIRRER_SAFE_TEMP_C) {
+            PowerCommandGateway::setStirrerSpeed(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                settings.stirrer.defaultSpeedPercent);
+        }
         MQTT::publishNotification("Брожение: пена", "Нагрев отключён, включена защита от пены", "warning");
         return;
     }
@@ -56,19 +73,29 @@ void update(SystemState& state, const Settings& settings) {
 
     switch (state.fermPhase) {
         case FermentationPhase::HEATING:
-            Valves::setWater(false); coolingActive = false;
-            Heater::setPower(settings.fermentation.useHeater ? 10 : 0);
+            PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                PowerCommandGateway::Valve::WATER, false); coolingActive = false;
+            PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL,
+                settings.fermentation.useHeater ? 10 : 0);
             break;
         case FermentationPhase::COOLING:
-            Heater::setPower(0);
+            PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL, 0);
             if (!coolingActive || now - coolingChangedAtMs >= settings.fermentation.coolingMinOffSec * 1000UL) {
-                Valves::setWater(true); coolingActive = true; coolingChangedAtMs = now;
+                PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    PowerCommandGateway::Valve::WATER, true); coolingActive = true; coolingChangedAtMs = now;
             }
             break;
         case FermentationPhase::FERMENTATION:
-            Heater::setPower(0);
+            PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+                PowerCommandGateway::Reason::FSM_CONTROL, 0);
             if (coolingActive && now - coolingChangedAtMs >= settings.fermentation.coolingMinOnSec * 1000UL) {
-                Valves::setWater(false); coolingActive = false; coolingChangedAtMs = now;
+                PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    PowerCommandGateway::Valve::WATER, false); coolingActive = false; coolingChangedAtMs = now;
             }
             if (settings.fermentation.durationHours > 0) {
                 const uint32_t durationSec =
@@ -79,7 +106,8 @@ void update(SystemState& state, const Settings& settings) {
                         ? (now - getPhaseStartTime()) / 1000UL
                         : 0;
                 if (elapsedSec >= durationSec) {
-                    Heater::setPower(0);
+                    PowerCommandGateway::setHeaterPower(PowerCommandGateway::Owner::FSM,
+                        PowerCommandGateway::Reason::FSM_CONTROL, 0);
                     ControlV2::notePhaseTransition(
                         Mode::FERMENTATION,
                         static_cast<uint16_t>(FermentationPhase::FERMENTATION),

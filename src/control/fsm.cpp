@@ -138,11 +138,18 @@ void noteModeExitTransition(const SystemState& state,
 }
 
 void finalizeModeStop(SystemState& state) {
-    Heater::setPower(0);
-    Heater::setBoosterEnabled(false);
+    PowerCommandGateway::setHeaterPower(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, 0);
+    PowerCommandGateway::setHeaterBoosterEnabled(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, false);
     RectTakeoff::stop();
-    Stirrer::stop(); // остановить мешалку при выходе из любого режима
-    Valves::closeAll();
+    PowerCommandGateway::stopStirrer(PowerCommandGateway::Owner::FSM,
+                                     PowerCommandGateway::Reason::FSM_CONTROL);
+    PowerCommandGateway::closeAllValves(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL);
 
     state.mode = Mode::IDLE;
     state.rectPhase = RectPhase::IDLE;
@@ -209,10 +216,16 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
     }
     
     // Сброс предыдущего состояния
-    Heater::setPower(0);
-    Heater::setBoosterEnabled(false);
+    PowerCommandGateway::setHeaterPower(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, 0);
+    PowerCommandGateway::setHeaterBoosterEnabled(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, false);
     RectTakeoff::stop();
-    Valves::closeAll();
+    PowerCommandGateway::closeAllValves(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL);
     
     state.mode = mode;
     state.paused = false;
@@ -252,7 +265,10 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
             // Авто-запуск мешалки при затирании
             if (settings.stirrer.enabled && settings.stirrer.autoMashing) {
                 state.stirrer.autoMode = true;
-                Stirrer::start(settings.stirrer.defaultSpeedPercent);
+                PowerCommandGateway::setStirrerSpeed(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    settings.stirrer.defaultSpeedPercent);
                 LOG_I("FSM: Stirrer auto-start for MASHING at %u%%", settings.stirrer.defaultSpeedPercent);
             }
             break;
@@ -269,7 +285,10 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
             // Авто-запуск мешалки при НБК
             if (settings.stirrer.enabled && settings.stirrer.autoNbk) {
                 state.stirrer.autoMode = true;
-                Stirrer::start(settings.stirrer.defaultSpeedPercent);
+                PowerCommandGateway::setStirrerSpeed(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    settings.stirrer.defaultSpeedPercent);
             }
             break;
         case Mode::FERMENTATION:
@@ -283,7 +302,10 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
             // Авто-запуск мешалки при ферментации
             if (settings.stirrer.enabled && settings.stirrer.autoFermentation) {
                 state.stirrer.autoMode = true;
-                Stirrer::start(settings.stirrer.defaultSpeedPercent);
+                PowerCommandGateway::setStirrerSpeed(
+                    PowerCommandGateway::Owner::FSM,
+                    PowerCommandGateway::Reason::FSM_CONTROL,
+                    settings.stirrer.defaultSpeedPercent);
             }
             break;
         case Mode::AUTOCLAVE:
@@ -330,11 +352,20 @@ void pause(SystemState& state) {
     state.paused = true;
     pauseStartTime = millis();
 
-    Heater::setPower(0);
-    Heater::setBoosterEnabled(false);
+    PowerCommandGateway::setHeaterPower(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, 0);
+    PowerCommandGateway::setHeaterBoosterEnabled(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, false);
     RectTakeoff::stop();
     // Охлаждение оставляем если куб горячий
-    if (state.temps.cube < 45.0f) Valves::setWater(false);
+    if (state.temps.cube < 45.0f) {
+        PowerCommandGateway::setValve(
+            PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL,
+            PowerCommandGateway::Valve::WATER, false);
+    }
 
     LOG_I("FSM: Paused");
 }

@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "control/pump_calibration.h"
+#include "control/power_command_gateway.h"
 #include "drivers/pump.h"
 #include "interface/webserver_shared.h"
 #include "storage/nvs_manager.h"
@@ -170,7 +171,9 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        Pump::start(speed);
+        PowerCommandGateway::setPumpSpeed(
+            PowerCommandGateway::Owner::MANUAL,
+            PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
         LOG_I("Pump started via API at %.1f ml/h", speed);
 
         char response[128];
@@ -184,7 +187,9 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
         PumpCalibrationSession::Phase::IDLE) {
       PumpCalibrationSession::cancel();
     } else {
-      Pump::stop();
+      PowerCommandGateway::setPumpSpeed(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0.0f);
     }
     LOG_I("Pump stopped via API");
     request->send(200, "application/json",
