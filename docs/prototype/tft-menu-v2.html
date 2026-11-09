@@ -34,6 +34,12 @@
   .lamp{width:46px;height:46px;border-radius:50%;border:2px solid #4a5a67;position:relative;cursor:pointer}
   .lamp:before{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--amber)}
   .work{position:relative;flex:1;min-height:0;display:flex}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .pin{display:none;flex:0 0 92px;padding:8px 12px;background:#1b0f0d;border-bottom:2px solid #4d1c16}
+  .pin.on{display:flex}
+  .pin button{flex:1;border:0;border-radius:8px;background:var(--red);color:#fff;
+              font-size:36px;font-weight:800;letter-spacing:.5px;cursor:pointer}
+  .pin button:active{filter:brightness(1.2)}
   .rows{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
   .row{height:96px;flex:0 0 96px;display:flex;align-items:center;gap:12px;
        padding:0 10px 0 18px;border-bottom:1px solid var(--line);background:var(--panel)}
@@ -116,7 +122,10 @@
       <div class="lamp" id="lamp" title="Яркость"></div>
     </div>
     <div class="work">
-      <div class="rows" id="rows"></div>
+      <div class="main">
+        <div class="pin" id="pin"></div>
+        <div class="rows" id="rows"></div>
+      </div>
       <div class="rail" id="rail">
         <button id="up" aria-label="Вверх">▲</button>
         <div class="track"><div class="thumb" id="thumb"></div></div>
@@ -135,7 +144,7 @@
 <div class="caption">▦ табло · ‹ › разделы · ▲ ▼ прокрутка · касание строки — правка</div>
 
 <script>
-const VISIBLE = 5;
+const BASE_VISIBLE = 5;
 const state = {
   screen: 0, scroll: 0, stack: [], dirty: false, running: false,
   demo: false, brightness: 70, mqtt: true,
@@ -233,7 +242,7 @@ function rowsFor(index) {
       boolRow('Демо-режим', () => state.demo, v => state.demo = v),
       boolRow('MQTT', () => state.mqtt, v => state.mqtt = v),
       linkRow('Сброс настроек', 'reset', 'СБРОС', {danger:true}),
-      valueRow('Версия ПО', () => 2.4127, null, {decimals:4, editor:false})
+      {type:'read', label:'Версия ПО', value:'2.4.128', sub:'сборка 09.11.2026'}
     ];
     case 5: return [
       valueRow('Давление макс.', () => state.safety.pressure, v => state.safety.pressure = v, {step:1, unit:'мм рт.ст.'}),
@@ -249,9 +258,10 @@ function rowsFor(index) {
       linkRow('Проверка оборуд.', 'equipment', 'ОТКРЫТЬ'),
       linkRow('Дозирование', 'dosing', 'ОТКРЫТЬ'),
       linkRow('Журнал', 'journal', 'ОТКРЫТЬ'),
+      linkRow('Калибровка тача', 'touchCal', 'ОТКРЫТЬ'),
       valueRow('Свободная RAM', () => 139, null, {unit:'КБ', editor:false}),
       valueRow('RSSI', () => -77, null, {unit:'дБм', editor:false}),
-      valueRow('Версия ПО', () => 2.4127, null, {decimals:4, editor:false})
+      {type:'read', label:'Версия ПО', value:'2.4.128', sub:'сборка 09.11.2026'}
     ];
     case 7: return [
       valueRow('Режим / фаза', () => null, null, {sub:'Ректификация / ОТБОР ТЕЛА', editor:false}),
@@ -347,6 +357,15 @@ function rowsFor(index) {
      step:5, unit:'%', active:()=>state.runPwm, toggle:()=>state.runPwm=!state.runPwm},
     {type:'read', label:'ПЗЭМ', value:'0 В · 0 А · 0 Вт'}
   ];
+  if (index === 117) return [ // калибровка тача
+    noticeRow('Нажимайте на перекрестия по углам экрана'),
+    {type:'read', label:'Точка 1', value:'X 412 · Y 231'},
+    {type:'read', label:'Точка 2', value:'X 3988 · Y 244'},
+    {type:'read', label:'Точка 3', value:'X 4051 · Y 3810'},
+    {type:'read', label:'Точка 4', value:'X 366 · Y 3792'},
+    linkRow('Сброс калибровки', 'touchReset', 'СБРОС', {danger:true}),
+    {type:'action', text:'НАЧАТЬ КАЛИБРОВКУ', id:'touchStart'}
+  ];
   if (index === 114) return [ // калибровка насоса
     valueRow('Калибровка', () => 0.42, () => {}, {step:0.001, decimals:3, unit:'мл/об'}),
     noticeRow('Прокачайте линию, затем введите фактический объём'),
@@ -412,6 +431,7 @@ const SUBS = {
   processParams:   {title:'ПАРАМЕТРЫ ПРОЦЕССА', parent:7, id:115},
   dosing:          {title:'ДОЗИРОВАНИЕ', parent:6, id:205},
   pumpCal:         {title:'КАЛИБР. НАСОСА', parent:3, id:114},
+  touchCal:        {title:'КАЛИБРОВКА ТАЧА', parent:6, id:117},
   prime:           {title:'ПРОКАЧКА', parent:3, id:206},
   scan:            {title:'СКАН ШИНЫ', parent:3, id:207},
   reset:           {title:'СБРОС НАСТРОЕК', parent:4, id:208},
@@ -539,6 +559,26 @@ function handleKey(k) {
 }
 
 /* ---------- render ---------- */
+function anyTestActive() {
+  return state.runHeater || state.runPump || state.runStirrer || state.runPwm ||
+         state.valveWater || state.valveHeads || state.valveBody;
+}
+function pinActive() { return state.running || anyTestActive(); }
+function visibleRows() { return pinActive() ? BASE_VISIBLE - 1 : BASE_VISIBLE; }
+
+function renderPin() {
+  const pin = document.getElementById('pin');
+  if (!pinActive()) { pin.classList.remove('on'); pin.innerHTML = ''; return; }
+  pin.classList.add('on');
+  pin.innerHTML = '<button id="pinStop">СТОП ВСЁ</button>';
+  pin.querySelector('#pinStop').onclick = () => {
+    state.running = false;
+    state.runHeater = state.runPump = state.runStirrer = state.runPwm = false;
+    state.valveWater = state.valveHeads = state.valveBody = false;
+    state.dirty = true; render(); toast('Все выходы сняты');
+  };
+}
+
 function render() {
   const s = currentScreen();
   const def = currentDef();
@@ -552,29 +592,31 @@ function render() {
     renderKeyboard();
   } else {
     const rows = currentRows();
-    const maxScroll = Math.max(0, rows.length - VISIBLE);
+    const visible = visibleRows();
+    const maxScroll = Math.max(0, rows.length - visible);
     state.scroll = Math.max(0, Math.min(state.scroll, maxScroll));
     const host = document.getElementById('rows');
     host.innerHTML = '';
-    rows.slice(state.scroll, state.scroll + VISIBLE).forEach(row => host.appendChild(renderRow(row)));
-    while (host.children.length < VISIBLE) {
+    rows.slice(state.scroll, state.scroll + visible).forEach(row => host.appendChild(renderRow(row)));
+    while (host.children.length < visible) {
       const filler = document.createElement('div');
       filler.className = 'row';
       host.appendChild(filler);
     }
     const rail = document.getElementById('rail');
-    rail.style.display = rows.length > VISIBLE ? 'flex' : 'none';
+    rail.style.display = rows.length > visible ? 'flex' : 'none';
     document.getElementById('up').disabled = state.scroll <= 0;
     document.getElementById('down').disabled = state.scroll >= maxScroll;
-    const visibleCount = Math.min(VISIBLE, rows.length);
+    const visibleCount = Math.min(visible, rows.length);
     document.getElementById('counter').textContent = `${state.scroll + 1}–${state.scroll + visibleCount}/${rows.length}`;
     const trackH = document.querySelector('.track').clientHeight - 12;
     const thumb = document.getElementById('thumb');
-    thumb.style.height = Math.max(26, Math.round(trackH * (VISIBLE / Math.max(VISIBLE, rows.length)))) + 'px';
+    thumb.style.height = Math.max(26, Math.round(trackH * (visible / Math.max(visible, rows.length)))) + 'px';
     const pos = maxScroll ? state.scroll / maxScroll : 0;
     thumb.style.top = Math.round((trackH - parseFloat(thumb.style.height)) * pos) + 'px';
   }
   if (isInfo || (def && def.keyboard)) document.getElementById('rail').style.display = 'none';
+  renderPin();
   document.getElementById('clock').textContent = state.time;
   renderFooter();
 }
@@ -807,15 +849,17 @@ function openEditor(row) {
     sheet.innerHTML = `
       <div style="font-size:30px;font-weight:700">${row.label}</div>
       <div class="val" style="font-size:96px">${fmt(draft, row.decimals || 0)}<span class="unit" style="font-size:28px">${row.unit || ''}</span></div>
-      <div class="krow" style="gap:18px">
-        <button class="step" data-d="-1" style="width:120px;height:84px;font-size:46px">−</button>
-        <button class="step" data-d="1" style="width:120px;height:84px;font-size:46px">+</button>
+      <div class="krow" style="gap:10px;width:100%">
+        <button class="step" data-m="-10" style="width:118px;height:82px;font-size:40px">−−</button>
+        <button class="step" data-m="-1" style="width:118px;height:82px;font-size:44px">−</button>
+        <button class="step" data-m="1" style="width:118px;height:82px;font-size:44px">+</button>
+        <button class="step" data-m="10" style="width:118px;height:82px;font-size:40px">++</button>
       </div>
-      <div class="krow" style="gap:16px">
-        <button class="key fn" data-x="1" style="height:76px;font-size:26px">ОТМЕНА</button>
-        <button class="key" data-x="0" style="height:76px;font-size:26px;background:#1d7a41">СОХРАНИТЬ</button>
+      <div class="krow" style="gap:12px;width:100%">
+        <button class="key fn" data-x="1" style="height:82px;font-size:30px;flex:1">ОТМЕНА</button>
+        <button class="key" data-x="0" style="height:82px;font-size:30px;flex:1;background:#1d7a41">СОХРАНИТЬ</button>
       </div>`;
-    sheet.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { draft += Number(b.dataset.d) * row.step; paint(); });
+    sheet.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { draft += Number(b.dataset.m) * row.step; paint(); });
     sheet.querySelectorAll('[data-x]').forEach(b => b.onclick = () => {
       if (b.dataset.x === '0') { row.set(draft); state.dirty = true; }
       render();
