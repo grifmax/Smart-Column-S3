@@ -177,7 +177,9 @@ const state = {
     {addr:'28-41-77', temp:24.9}, {addr:'28-42-05', temp:25.1},
     {addr:'28-43-1B', temp:26.3}, {addr:'28-44-90', temp:27.0}
   ],
-  wifiList: ['Dom-5G','Dom-2.4','KubanWiFi','TP-LINK_4C21']
+  wifiList: ['Dom-5G','Dom-2.4','KubanWiFi','TP-LINK_4C21'],
+  dosingTargetMl: 500,
+  dosingRateMlH: 1200
 };
 
 const fmt = (v,d=0) => (v===null||v===undefined||Number.isNaN(Number(v))) ? '—' : Number(v).toFixed(d).replace('.', ',');
@@ -225,8 +227,8 @@ function rowsFor(index) {
       boolRow('Датчик уровня тела', () => state.bodyLevel, v => state.bodyLevel = v),
       boolRow('Датчик протечки', () => state.leak, v => state.leak = v),
       boolRow('DS2482 для температур', () => state.ds2482, v => state.ds2482 = v),
-      linkRow('Назначение датчиков', 'sensorAssign', 'ОТКРЫТЬ'),
-      linkRow('Калибр. датчиков', 'sensorCal', 'ОТКРЫТЬ'),
+      linkRow('Назначение датчиков темп.', 'sensorAssign', 'ОТКРЫТЬ'),
+      linkRow('Калибр. датчиков темп.', 'sensorCal', 'ОТКРЫТЬ'),
       linkRow('Калибр. насоса', 'pumpCal', 'ОТКРЫТЬ'),
       boolRow('PWM охлаждения', () => state.pwm, v => state.pwm = v),
       valueRow('Период цикла', () => state.pwmPeriod, v => state.pwmPeriod = Math.max(1, Math.min(60, v)), {step:1, unit:'с'}),
@@ -356,6 +358,15 @@ function rowsFor(index) {
      step:5, unit:'%', active:()=>state.runPwm, toggle:()=>state.runPwm=!state.runPwm},
     {type:'read', label:'ПЗЭМ', value:'0 В · 0 А · 0 Вт'}
   ];
+  if (index === 205) return [ // дозирование
+    valueRow('Целевой объём', () => state.dosingTargetMl, v => state.dosingTargetMl = v, {unit:'мл', step:10}),
+    valueRow('Скорость', () => state.dosingRateMlH, v => state.dosingRateMlH = v, {unit:'мл/ч', step:100}),
+    noticeRow('Прокачка не входит в целевой объём'),
+    {type:'read', label:'Маршрут', value:'отбор · клапаны вне маршрута закрыты'},
+    {type:'read', label:'Сессия', value:'ожидание · факт 0,0 мл'},
+    actionRow('ПОДТВЕРДИТЬ ПРОКАЧКУ', 'dosingStart')
+  ];
+
   if (index === 117) return [ // калибровка тача
     {type:'action', text:'НАЧАТЬ КАЛИБРОВКУ', id:'touchStart'},
     noticeRow('Нажимайте на перекрестия по углам экрана'),
@@ -873,20 +884,35 @@ function openEditor(row) {
 }
 function openTouchCal() {
   state.touchPoint = 1;
+  // Мишени по углам рабочей области, как в прошивке: ЛВ, ПВ, ПН, ЛН
+  const spots = [
+    {x: 14, y: 20, name: 'левый верх'},
+    {x: 86, y: 20, name: 'правый верх'},
+    {x: 86, y: 80, name: 'правый низ'},
+    {x: 14, y: 80, name: 'левый низ'}
+  ];
   const paint = () => {
     const host = document.getElementById('rows');
     const done = state.touchPoint > 4;
+    const spot = spots[Math.min(state.touchPoint, 4) - 1];
     host.innerHTML = `
       <div class="kbd" style="align-items:center;justify-content:center;gap:10px">
         <div style="font-size:28px;font-weight:700">КАЛИБРОВКА ТАЧА</div>
-        <div style="font-size:24px;color:#a9b8c4">${done ? 'Готово' : 'Точка ' + state.touchPoint + ' из 4'}</div>
-        <div id="cross" style="width:320px;height:150px;border:2px solid #33424d;border-radius:10px;
-             display:flex;align-items:center;justify-content:center;position:relative;background:#0a1218">
-          <div style="position:absolute;left:50%;top:0;bottom:0;width:2px;background:#35b6c9"></div>
-          <div style="position:absolute;top:50%;left:0;right:0;height:2px;background:#35b6c9"></div>
-          <div style="width:26px;height:26px;border:3px solid #f2c14e;border-radius:50%;z-index:2"></div>
+        <div style="font-size:24px;color:#a9b8c4">${done ? 'Готово' : 'Точка ' + state.touchPoint + ' из 4 · ' + spot.name}</div>
+        <div id="cross" style="width:400px;height:190px;border:2px solid #33424d;border-radius:10px;
+             position:relative;background:#0a1218">
+          ${done ? '' : `
+          <div style="position:absolute;left:${spot.x}%;top:${spot.y}%;transform:translate(-50%,-50%);
+               width:64px;height:64px;border:2px solid #35b6c9;border-radius:6px;display:flex;
+               align-items:center;justify-content:center">
+            <div style="width:26px;height:26px;border:3px solid #f2c14e;border-radius:50%"></div>
+          </div>
+          <div style="position:absolute;left:${spot.x}%;top:${spot.y}%;transform:translate(-50%,-50%);
+               width:96px;height:2px;background:#35b6c9"></div>
+          <div style="position:absolute;left:${spot.x}%;top:${spot.y}%;transform:translate(-50%,-50%);
+               width:2px;height:96px;background:#35b6c9"></div>`}
         </div>
-        <div style="font-size:22px;color:#7f8f9c">${done ? 'координаты сохранены' : 'нажмите в центр перекрестия'}</div>
+        <div style="font-size:22px;color:#7f8f9c">${done ? 'координаты сохранены' : 'нажмите в центр мишени, палец отпускайте'}</div>
         <button class="key fn" style="height:70px;font-size:26px;width:320px" id="calCancel">ОТМЕНА</button>
       </div>`;
     host.querySelector('#calCancel').onclick = () => render();
