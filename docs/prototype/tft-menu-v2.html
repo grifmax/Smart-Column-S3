@@ -357,13 +357,13 @@ function rowsFor(index) {
     {type:'read', label:'ПЗЭМ', value:'0 В · 0 А · 0 Вт'}
   ];
   if (index === 117) return [ // калибровка тача
+    {type:'action', text:'НАЧАТЬ КАЛИБРОВКУ', id:'touchStart'},
     noticeRow('Нажимайте на перекрестия по углам экрана'),
     {type:'read', label:'Точка 1', value:'X 412 · Y 231'},
     {type:'read', label:'Точка 2', value:'X 3988 · Y 244'},
     {type:'read', label:'Точка 3', value:'X 4051 · Y 3810'},
     {type:'read', label:'Точка 4', value:'X 366 · Y 3792'},
-    linkRow('Сброс калибровки', 'touchReset', 'СБРОС', {danger:true}),
-    {type:'action', text:'НАЧАТЬ КАЛИБРОВКУ', id:'touchStart'}
+    linkRow('Сброс калибровки', 'touchReset', 'СБРОС', {danger:true})
   ];
   if (index === 114) return [ // калибровка насоса
     valueRow('Калибровка', () => 0.42, () => {}, {step:0.001, decimals:3, unit:'мл/об'}),
@@ -692,6 +692,8 @@ function renderRow(row) {
     const btn = document.createElement('button');
     btn.className = 'startbtn'; btn.textContent = row.text; btn.disabled = row.enabled === false;
     btn.onclick = () => {
+      if (row.id === 'touchStart') { openTouchCal(); return; }
+      if (row.id === 'savePump') { toast('Калибровка насоса сохранена'); return; }
       if (row.id === 'stopAll') {
         state.runHeater = state.runPump = state.runStirrer = state.runPwm = false;
         state.valveWater = state.valveHeads = state.valveBody = false;
@@ -869,6 +871,31 @@ function openEditor(row) {
   host.innerHTML = ''; host.appendChild(sheet);
   document.getElementById('rail').style.display = 'none';
 }
+function openTouchCal() {
+  state.touchPoint = 1;
+  const paint = () => {
+    const host = document.getElementById('rows');
+    const done = state.touchPoint > 4;
+    host.innerHTML = `
+      <div class="kbd" style="align-items:center;justify-content:center;gap:10px">
+        <div style="font-size:28px;font-weight:700">КАЛИБРОВКА ТАЧА</div>
+        <div style="font-size:24px;color:#a9b8c4">${done ? 'Готово' : 'Точка ' + state.touchPoint + ' из 4'}</div>
+        <div id="cross" style="width:320px;height:150px;border:2px solid #33424d;border-radius:10px;
+             display:flex;align-items:center;justify-content:center;position:relative;background:#0a1218">
+          <div style="position:absolute;left:50%;top:0;bottom:0;width:2px;background:#35b6c9"></div>
+          <div style="position:absolute;top:50%;left:0;right:0;height:2px;background:#35b6c9"></div>
+          <div style="width:26px;height:26px;border:3px solid #f2c14e;border-radius:50%;z-index:2"></div>
+        </div>
+        <div style="font-size:22px;color:#7f8f9c">${done ? 'координаты сохранены' : 'нажмите в центр перекрестия'}</div>
+        <button class="key fn" style="height:70px;font-size:26px;width:320px" id="calCancel">ОТМЕНА</button>
+      </div>`;
+    host.querySelector('#calCancel').onclick = () => render();
+    if (!done) host.querySelector('#cross').onclick = () => { state.touchPoint++; paint(); };
+  };
+  paint();
+  document.getElementById('rail').style.display = 'none';
+}
+
 function openStart() {
   const host = document.getElementById('rows');
   host.innerHTML = `
