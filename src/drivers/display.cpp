@@ -7082,15 +7082,15 @@ static void renderRootFooter(
                           // second monitor. Runtime telemetry belongs to
                           // UI_MODE_MONITOR after a process starts.
                           // ============================================================================
-// HMI v2 — каркас главного экрана для проверки вёрстки на железе.
-// Шапка 28 px, строка 48 px, нижняя панель 44 px: 28 + 5x48 + 44 = 312 из 320.
-// Остальные экраны пока остаются старыми: цель — оценить размеры строк.
+// HMI v2 — каркас главного экрана, геометрия «B» (согласована по макету):
+// шапка 32 px + 4 строки x 60 px + нижняя панель 48 px = 320 px ровно.
+// Остальные экраны пока остаются старыми.
 // ============================================================================
-static constexpr int16_t HMI2_HEADER_H = 28;
-static constexpr int16_t HMI2_ROW_H = 48;
-static constexpr int16_t HMI2_ROW_GAP = 2;
-static constexpr int16_t HMI2_FOOTER_H = 44;
-static constexpr uint8_t HMI2_VISIBLE_ROWS = 5;
+static constexpr int16_t HMI2_HEADER_H = 32;
+static constexpr int16_t HMI2_ROW_H = 60;
+static constexpr int16_t HMI2_ROW_GAP = 3;
+static constexpr int16_t HMI2_FOOTER_H = 48;
+static constexpr uint8_t HMI2_VISIBLE_ROWS = 4;
 static constexpr int16_t HMI2_MARGIN_X = 8;
 static constexpr int16_t HMI2_RAIL_W = 18;
 
@@ -7109,6 +7109,7 @@ struct Hmi2Row {
   Hmi2RowType type;
   const char *label;
   char value[24];
+  char unit[10];
   const char *linkText;
   uint16_t tone;
 };
@@ -7117,7 +7118,7 @@ static Hmi2Row g_hmi2Rows[8];
 static uint8_t g_hmi2RowCount = 0;
 
 static void hmi2Add(Hmi2RowType type, const char *label, const char *value,
-                    const char *linkText, uint16_t tone) {
+                    const char *unit, const char *linkText, uint16_t tone) {
   if (g_hmi2RowCount >= (sizeof(g_hmi2Rows) / sizeof(g_hmi2Rows[0]))) {
     return;
   }
@@ -7127,9 +7128,14 @@ static void hmi2Add(Hmi2RowType type, const char *label, const char *value,
   row.linkText = linkText;
   row.tone = tone;
   row.value[0] = '\0';
+  row.unit[0] = '\0';
   if (value != nullptr) {
     strncpy(row.value, value, sizeof(row.value) - 1);
     row.value[sizeof(row.value) - 1] = '\0';
+  }
+  if (unit != nullptr) {
+    strncpy(row.unit, unit, sizeof(row.unit) - 1);
+    row.unit[sizeof(row.unit) - 1] = '\0';
   }
 }
 
@@ -7148,24 +7154,26 @@ static uint8_t hmi2BuildRows() {
   char buf[24];
   if (hmi2Section == 0) {
     hmi2Add(Hmi2RowType::Link, "Режим", getDisplayModeName(g_state.mode),
-            "ВЫБРАТЬ", COLOR_PRIMARY);
-    snprintf(buf, sizeof(buf), "%.1f °C", g_state.temps.cube);
-    hmi2Add(Hmi2RowType::Value, "Куб", buf, nullptr, COLOR_INFO);
-    snprintf(buf, sizeof(buf), "%u Вт",
+            nullptr, "ВЫБРАТЬ", COLOR_PRIMARY);
+    snprintf(buf, sizeof(buf), "%.1f", g_state.temps.cube);
+    hmi2Add(Hmi2RowType::Value, "Куб", buf, "°C", nullptr, COLOR_INFO);
+    snprintf(buf, sizeof(buf), "%u",
              static_cast<unsigned>(g_state.power.power));
-    hmi2Add(Hmi2RowType::Value, "Мощность", buf, nullptr, COLOR_INFO);
-    snprintf(buf, sizeof(buf), "%u мл/ч",
+    hmi2Add(Hmi2RowType::Value, "Мощность", buf, "Вт", nullptr, COLOR_INFO);
+    snprintf(buf, sizeof(buf), "%u",
              static_cast<unsigned>(g_state.pump.speedMlPerHour));
-    hmi2Add(Hmi2RowType::Value, "Отбор", buf, nullptr, COLOR_INFO);
+    hmi2Add(Hmi2RowType::Value, "Отбор", buf, "мл/ч", nullptr, COLOR_INFO);
     const bool alarm = Safety::isLatched(g_state);
     hmi2Add(Hmi2RowType::Link, "Безопасность", alarm ? "АВАРИЯ" : "НОРМА",
-            "ОТКРЫТЬ", alarm ? COLOR_DANGER : COLOR_SUCCESS);
-    hmi2Add(Hmi2RowType::Link, "Сервис", "", "ОТКРЫТЬ", COLOR_PRIMARY);
+            nullptr, "ОТКРЫТЬ", alarm ? COLOR_DANGER : COLOR_SUCCESS);
+    hmi2Add(Hmi2RowType::Link, "Сервис", "", nullptr, "ОТКРЫТЬ",
+            COLOR_PRIMARY);
   } else {
     hmi2Add(Hmi2RowType::Notice, "Раздел в разработке",
-            "строки появятся после переноса", nullptr, COLOR_WARNING);
-    hmi2Add(Hmi2RowType::Notice, "Макет", "проверяем размеры строк",
-            nullptr, COLOR_INFO);
+            "строки появятся после переноса", nullptr, nullptr,
+            COLOR_WARNING);
+    hmi2Add(Hmi2RowType::Notice, "Макет",
+            "проверяем размеры строк", nullptr, nullptr, COLOR_INFO);
   }
   return g_hmi2RowCount;
 }
@@ -7175,21 +7183,21 @@ static void hmi2DrawHeader() {
   tft.drawFastHLine(0, HMI2_HEADER_H - 1, TFT_WIDTH, colorBorder());
 
   const uint16_t accent = colorAccent();
-  tft.drawRect(4, 6, 16, 16, accent);
-  tft.fillRect(7, 9, 4, 4, accent);
-  tft.fillRect(13, 9, 4, 4, accent);
-  tft.fillRect(7, 15, 4, 4, accent);
-  tft.fillRect(13, 15, 4, 4, accent);
+  tft.drawRect(6, 8, 16, 16, accent);
+  tft.fillRect(9, 11, 4, 4, accent);
+  tft.fillRect(15, 11, 4, 4, accent);
+  tft.fillRect(9, 17, 4, 4, accent);
+  tft.fillRect(15, 17, 4, 4, accent);
 
   char title[24];
-  copyFittedText(kHmi2Sections[hmi2Section], 148, title, sizeof(title));
+  copyFittedText(kHmi2Sections[hmi2Section], 150, title, sizeof(title));
   tft.setTextSize(2);
   tft.setTextColor(colorFg());
   tft.setTextDatum(middle_left);
-  drawDisplayString(title, 26, HMI2_HEADER_H / 2);
+  drawDisplayString(title, 28, HMI2_HEADER_H / 2);
 
-  drawButton(198, 3, 34, 22, "<", colorButtonBody(), colorFg());
-  drawButton(236, 3, 34, 22, ">", colorButtonBody(), colorFg());
+  drawButton(200, 4, 34, 24, "<", colorButtonBody(), colorFg());
+  drawButton(238, 4, 34, 24, ">", colorButtonBody(), colorFg());
 
   char clock[8];
   hmi2FormatClock(clock, sizeof(clock));
@@ -7200,54 +7208,79 @@ static void hmi2DrawHeader() {
   tft.setTextDatum(top_left);
 }
 
-static void hmi2DrawRow(int16_t y, const Hmi2Row &row) {
+static void hmi2DrawRow(int16_t y, uint8_t index, const Hmi2Row &row) {
   const int16_t x = HMI2_MARGIN_X;
   const int16_t w = TFT_WIDTH - 2 * HMI2_MARGIN_X - HMI2_RAIL_W;
   const int16_t h = HMI2_ROW_H - HMI2_ROW_GAP;
 
-  tft.fillRect(x, y, w, h, colorCard());
-  tft.drawFastHLine(x, y + h - 1, w, colorBorder());
+  // Чередование фона — как в макете, чтобы строки читались по отдельности.
+  tft.fillRoundRect(x, y, w, h, 5, (index & 1) ? colorCard() : colorNavBg());
+  tft.drawRoundRect(x, y, w, h, 5, colorBorder());
 
-  char label[24];
-  copyFittedText(row.label, w - 130, label, sizeof(label));
-  tft.setTextSize(2);
-  tft.setTextColor(colorFg());
-  tft.setTextDatum(middle_left);
-  drawDisplayString(label, x + 8, y + h / 2);
-
-  switch (row.type) {
-  case Hmi2RowType::Link: {
-    if (row.linkText != nullptr) {
-      drawButton(x + w - 96, y + 8, 88, h - 16, row.linkText, row.tone,
-                 TFT_WHITE);
-    }
-    break;
-  }
-  case Hmi2RowType::Value: {
+  if (row.type == Hmi2RowType::Notice) {
     tft.setTextSize(2);
     tft.setTextColor(row.tone);
-    tft.setTextDatum(middle_right);
-    drawDisplayString(row.value, x + w - 84, y + h / 2);
-    drawButton(x + w - 76, y + 8, 34, h - 16, "-", colorButtonBody(),
-               colorFg());
-    drawButton(x + w - 38, y + 8, 34, h - 16, "+", colorButtonBody(),
-               colorFg());
-    break;
-  }
-  case Hmi2RowType::Bool: {
-    const int16_t bx = x + w - 36;
-    tft.drawRect(bx, y + h / 2 - 12, 24, 24, colorBorder());
-    tft.fillRect(bx + 4, y + h / 2 - 8, 16, 16, row.tone);
-    break;
-  }
-  case Hmi2RowType::Notice: {
+    tft.setTextDatum(middle_left);
+    drawDisplayString("!", x + 10, y + 20);
+    tft.setTextColor(colorFg());
+    drawDisplayString(row.label, x + 28, y + 20);
     tft.setTextSize(1);
-    tft.setTextColor(row.tone);
+    tft.setTextColor(colorMuted());
+    drawDisplayString(row.value, x + 28, y + 42);
+    tft.setTextDatum(top_left);
+    return;
+  }
+
+  int16_t rightEdge = x + w - 10;
+  if (row.type == Hmi2RowType::Link && row.linkText != nullptr) {
+    const int16_t bw = 104;
+    const int16_t bh = 40;
+    drawButton(rightEdge - bw, y + (h - bh) / 2, bw, bh, row.linkText, row.tone,
+               TFT_WHITE);
+    rightEdge -= (bw + 8);
+  } else if (row.type == Hmi2RowType::Bool) {
+    const int16_t bs = 30;
+    const int16_t bx = rightEdge - bs;
+    const int16_t by = y + (h - bs) / 2;
+    tft.drawRoundRect(bx, by, bs, bs, 5, colorBorder());
+    if (row.value[0] == '1') {
+      tft.fillRoundRect(bx + 5, by + 5, bs - 10, bs - 10, 3, row.tone);
+    }
+    rightEdge -= (bs + 8);
+  }
+
+  if (row.type == Hmi2RowType::Value) {
+    const int16_t stepW = 44;
+    const int16_t stepH = 40;
+    const int16_t stepY = y + (h - stepH) / 2;
+    drawButton(rightEdge - stepW, stepY, stepW, stepH, "+", colorButtonBody(),
+               colorFg());
+    drawButton(rightEdge - 2 * stepW - 4, stepY, stepW, stepH, "-",
+               colorButtonBody(), colorFg());
+
+    char unitBuf[16];
+    snprintf(unitBuf, sizeof(unitBuf), "%s", row.unit);
+    tft.setTextSize(2);
+    tft.setTextColor(colorMuted());
     tft.setTextDatum(middle_right);
-    drawDisplayString("!", x + w - 10, y + h / 2);
-    break;
+    const int16_t unitW = row.unit[0] != '\0' ? 46 : 0;
+    if (unitW > 0) {
+      drawDisplayString(unitBuf, rightEdge - 2 * stepW - 12, y + h / 2);
+    }
+    tft.setTextSize(3);
+    tft.setTextColor(row.tone);
+    drawDisplayString(row.value, rightEdge - 2 * stepW - 18 - unitW,
+                      y + h / 2);
+    rightEdge -= (2 * stepW + 8);
+    tft.setTextDatum(top_left);
   }
-  }
+
+  char label[24];
+  copyFittedText(row.label, rightEdge - x - 16, label, sizeof(label));
+  tft.setTextSize(3);
+  tft.setTextColor(colorFg());
+  tft.setTextDatum(middle_left);
+  drawDisplayString(label, x + 10, y + h / 2);
   tft.setTextDatum(top_left);
 }
 
@@ -7272,11 +7305,11 @@ static void hmi2DrawFooter() {
   const int16_t y = TFT_HEIGHT - HMI2_FOOTER_H;
   tft.fillRect(0, y, TFT_WIDTH, HMI2_FOOTER_H, colorNavBg());
   tft.drawFastHLine(0, y, TFT_WIDTH, colorBorder());
-  const int16_t bh = 32;
+  const int16_t bh = 38;
   const int16_t by = y + (HMI2_FOOTER_H - bh) / 2;
-  drawButton(6, by, 150, bh, "НАЗАД", colorButtonBody(), colorFg());
-  drawButton(165, by, 150, bh, "ВЫХОД", colorButtonBody(), colorFg());
-  drawButton(324, by, 150, bh, "СОХРАНИТЬ", COLOR_DARK_GREY, colorMuted());
+  drawButton(6, by, 152, bh, "НАЗАД", colorButtonBody(), colorFg());
+  drawButton(164, by, 152, bh, "ВЫХОД", colorButtonBody(), colorFg());
+  drawButton(322, by, 152, bh, "СОХРАНИТЬ", COLOR_DARK_GREY, colorMuted());
 }
 
 static void hmi2RenderHome(bool full) {
@@ -7296,10 +7329,7 @@ static void hmi2RenderHome(bool full) {
     const int16_t y = HMI2_HEADER_H + i * HMI2_ROW_H;
     const uint8_t index = static_cast<uint8_t>(hmi2Scroll + i);
     if (index < total) {
-      hmi2DrawRow(y, g_hmi2Rows[index]);
-    } else {
-      tft.fillRect(HMI2_MARGIN_X, y, TFT_WIDTH - 2 * HMI2_MARGIN_X,
-                   HMI2_ROW_H - HMI2_ROW_GAP, colorBg());
+      hmi2DrawRow(y, index, g_hmi2Rows[index]);
     }
   }
   hmi2DrawRail(total);
@@ -7309,22 +7339,24 @@ static void hmi2RenderHome(bool full) {
 static bool hmi2HandleHomeTap(int16_t tx, int16_t ty,
                               const SystemState &state) {
   (void)state;
-  if (hit(tx, ty, 198, 3, 34, 22)) {
+  if (hit(tx, ty, 200, 4, 34, 24)) {
     hmi2Section = static_cast<uint8_t>(
         (hmi2Section + kHmi2SectionCount - 1) % kHmi2SectionCount);
     hmi2Scroll = 0;
     requestFullScreenRedraw();
     return true;
   }
-  if (hit(tx, ty, 236, 3, 34, 22)) {
+  if (hit(tx, ty, 238, 4, 34, 24)) {
     hmi2Section = static_cast<uint8_t>((hmi2Section + 1) % kHmi2SectionCount);
     hmi2Scroll = 0;
     requestFullScreenRedraw();
     return true;
   }
   const uint8_t total = hmi2BuildRows();
-  if (ty >= HMI2_HEADER_H && ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H) {
-    const uint8_t row = static_cast<uint8_t>((ty - HMI2_HEADER_H) / HMI2_ROW_H);
+  if (ty >= HMI2_HEADER_H &&
+      ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H) {
+    const uint8_t row =
+        static_cast<uint8_t>((ty - HMI2_HEADER_H) / HMI2_ROW_H);
     const uint8_t index = static_cast<uint8_t>(hmi2Scroll + row);
     if (index < total) {
       const Hmi2Row &entry = g_hmi2Rows[index];
@@ -7351,24 +7383,25 @@ static bool hmi2HandleHomeTap(int16_t tx, int16_t ty,
             ? static_cast<uint8_t>(total - HMI2_VISIBLE_ROWS)
             : static_cast<uint8_t>(0);
     if (ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H / 2) {
-      hmi2Scroll = (hmi2Scroll > 0) ? static_cast<uint8_t>(hmi2Scroll - 1) : 0;
-    } else {
       hmi2Scroll =
-          (hmi2Scroll < maxFirst) ? static_cast<uint8_t>(hmi2Scroll + 1)
-                                  : maxFirst;
+          (hmi2Scroll > 0) ? static_cast<uint8_t>(hmi2Scroll - 1) : 0;
+    } else {
+      hmi2Scroll = (hmi2Scroll < maxFirst)
+                       ? static_cast<uint8_t>(hmi2Scroll + 1)
+                       : maxFirst;
     }
     requestFullScreenRedraw();
     return true;
   }
   if (ty >= TFT_HEIGHT - HMI2_FOOTER_H) {
-    if (hit(tx, ty, 6, TFT_HEIGHT - HMI2_FOOTER_H + 6, 150, 32)) {
+    if (hit(tx, ty, 6, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
       hmi2Section = static_cast<uint8_t>(
           (hmi2Section + kHmi2SectionCount - 1) % kHmi2SectionCount);
       hmi2Scroll = 0;
       requestFullScreenRedraw();
       return true;
     }
-    if (hit(tx, ty, 165, TFT_HEIGHT - HMI2_FOOTER_H + 6, 150, 32)) {
+    if (hit(tx, ty, 164, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
       hmi2Section = 0;
       hmi2Scroll = 0;
       requestFullScreenRedraw();
