@@ -1289,8 +1289,34 @@ export async function startCalibration() {
         setMessage('pumpResult', `Калибровка запущена: ${volume} мл @ ${speed} мл/ч`, 'success');
         addLog(`Калибровка насоса стартовала (${speed} мл/ч)`, 'info');
 
-        calibrationState.interval = setInterval(() => {
+        calibrationState.statusTicks = 0;
+        calibrationState.interval = setInterval(async () => {
             if (!calibrationState.running) return;
+            // Сервер мог остановить замер сам (safety или лимит времени):
+            // не показываем «идущее» время, если калибровка уже не идёт.
+            calibrationState.statusTicks += 1;
+            if (calibrationState.statusTicks % 5 === 0) {
+                try {
+                    const st = await fetch('/api/pump/status', { cache: 'no-store' });
+                    const js = await st.json();
+                    const phase = Number(js && js.calibrationPhase);
+                    if (!Number.isNaN(phase) && phase !== 3) {
+                        calibrationState.running = false;
+                        if (calibrationState.interval) {
+                            clearInterval(calibrationState.interval);
+                            calibrationState.interval = null;
+                        }
+                        setMessage(
+                            'pumpResult',
+                            'Замер остановлен прибором. Введите фактический объём и примените.',
+                            'warning'
+                        );
+                        return;
+                    }
+                } catch {
+                    // сеть недоступна — просто продолжаем показывать время
+                }
+            }
             const elapsed = Date.now() - calibrationState.startTime;
             const progress = Math.min(100, (elapsed / calibrationState.targetTime) * 100);
 

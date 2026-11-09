@@ -4831,15 +4831,27 @@ static void updatePumpCalibrationLifecycle(const SystemState &state) {
                     !Safety::isLatched(state) &&
                     state.currentAlarm.type == AlarmType::NONE &&
                     !g_settings.demoMode;
-  if (!safe || PumpCalibrationSession::hasTimedOut(
-                   millis(), BOARD_PUMP_CALIBRATION_TIMEOUT_MS)) {
+  if (!safe) {
     cancelPumpCalibration(
-        safe ? ((g_settings.language == 0)
-                    ? "Калибровка остановлена по лимиту времени."
-                    : "Calibration stopped by time limit.")
-             : ((g_settings.language == 0)
-                    ? "Калибровка отменена safety; прежнее значение сохранено."
-                    : "Calibration cancelled by safety; previous value retained."));
+        (g_settings.language == 0)
+            ? "Калибровка отменена safety; прежнее значение сохранено."
+            : "Calibration cancelled by safety; previous value retained.");
+    return;
+  }
+  if (PumpCalibrationSession::hasTimedOut(
+          millis(), BOARD_PUMP_CALIBRATION_TIMEOUT_MS)) {
+    // Лимит времени — только защита от «забыл остановить». Замер не теряем:
+    // глушим насос и оставляем фазу READY_TO_REVIEW, чтобы объём можно было
+    // ввести и сохранить.
+    const bool captured = PumpCalibrationSession::stopMeasurement();
+    setPumpCalibrationMessage(
+        (g_settings.language == 0)
+            ? (captured ? "Остановлено по лимиту времени. Введите фактический "
+                          "объём и сохраните."
+                        : "Насос не сдвинулся: замер пуст, повторите калибровку.")
+            : (captured ? "Stopped by time limit. Enter the measured volume and "
+                          "save."
+                        : "Pump did not move: empty measurement, retry."));
   }
 }
 
