@@ -294,6 +294,7 @@ export let runtimeMonitorState = {
         boosterHeaterPowerW: 3000,
         boosterHeaterStopCubeTempC: 78,
         coolingPwmEnabled: false,
+        coolingPwmPeriodSec: 5,
         coolingPwmMinDuty: 0,
         coolingPwmMaxDuty: 255,
         coolingPwmStartupDuty: 96,

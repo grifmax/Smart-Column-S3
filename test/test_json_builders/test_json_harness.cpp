@@ -20,6 +20,7 @@
 #include <../../src/control/pzem_sample_policy.h>
 #include <../../src/control/slow_pwm_policy.h>
 #include <../../src/ui/hmi_page_model.h>
+#include <../../src/fw_build_date.h>
 #include <../../src/interface/editable_field_descriptors.h>
 
 #include "../support/json_assertions.h"
@@ -62,6 +63,7 @@ void test_slow_pwm_clamps_period_and_duty();
 void test_slow_pwm_survives_millis_overflow();
 void test_slow_pwm_converts_raw_duty_to_percent();
 void test_cooling_pwm_period_descriptor_clamps();
+void test_fw_build_date_is_valid();
 void test_fraction_program_manual_advance_has_priority();
 void test_fraction_program_route_gate_requires_ready_route_and_settle_delay();
 
@@ -127,6 +129,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_slow_pwm_survives_millis_overflow);
   RUN_TEST(test_slow_pwm_converts_raw_duty_to_percent);
   RUN_TEST(test_cooling_pwm_period_descriptor_clamps);
+  RUN_TEST(test_fw_build_date_is_valid);
   RUN_TEST(test_fraction_program_route_gate_requires_ready_route_and_settle_delay);
   RUN_TEST(test_fraction_program_pause_shifts_step_timer);
   RUN_TEST(test_fraction_program_route_timeout_requires_missing_route);
@@ -359,6 +362,17 @@ void test_cooling_pwm_period_descriptor_clamps() {
   TEST_ASSERT_EQUAL_FLOAT(1.0f, normalize(Id::COOLING_PWM_PERIOD_SEC, 0.0f));
   TEST_ASSERT_EQUAL_FLOAT(600.0f, normalize(Id::COOLING_PWM_PERIOD_SEC, 1000.0f));
   TEST_ASSERT_EQUAL_FLOAT(5.0f, normalize(Id::COOLING_PWM_PERIOD_SEC, 5.0f));
+}
+
+void test_fw_build_date_is_valid() {
+  TEST_ASSERT_TRUE(FwBuildInfo::kDay >= 1 && FwBuildInfo::kDay <= 31);
+  TEST_ASSERT_TRUE(FwBuildInfo::kMonth >= 1 && FwBuildInfo::kMonth <= 12);
+  TEST_ASSERT_TRUE(FwBuildInfo::kYear >= 2024 && FwBuildInfo::kYear <= 2099);
+  char buf[16];
+  FwBuildInfo::format(buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_CHAR('.', buf[2]);
+  TEST_ASSERT_EQUAL_CHAR('.', buf[5]);
+  TEST_ASSERT_EQUAL_UINT8(10, static_cast<uint8_t>(strlen(buf)));
 }
 
 void test_fraction_program_end_reason_returns_none_without_conditions() {

@@ -11,6 +11,7 @@
 #include "control/pump_calibration.h"
 #include "control/service_test_audit.h"
 #include "control/sensor_calibration_logic.h"
+#include "fw_build_date.h"
 #include "control/service_test_session.h"
 #include "control/v2/status_adapter.h"
 #include "control/fsm.h"
@@ -1271,7 +1272,11 @@ static bool isServiceTestTap(int16_t tx, int16_t ty) {
 }
 
 static bool isServiceDosingTap(int16_t tx, int16_t ty) {
-  return hit(tx, ty, 10, 232, TFT_WIDTH - 20, 32);
+  return hit(tx, ty, 10, 232, 225, 32);
+}
+
+static bool isServiceTouchCalTap(int16_t tx, int16_t ty) {
+  return hit(tx, ty, 245, 232, 225, 32);
 }
 
 static void requestFullScreenRedraw() {
@@ -4865,6 +4870,10 @@ static bool handleServiceScreenTap(int16_t tx, int16_t ty,
       setServiceTestMessage(nullptr);
     }
     pushScreen(UI_SERVICE_TEST);
+    return true;
+  }
+  if (isServiceTouchCalTap(tx, ty)) {
+    Display::startTouchCalibration();
     return true;
   }
   if (isServiceDosingTap(tx, ty)) {
@@ -11963,7 +11972,7 @@ static void renderRootFooter(
                                           ? "ПРОВЕРКА ОБОРУДОВАНИЯ"
                                           : "EQUIPMENT TEST",
                                       COLOR_WARNING, TFT_WHITE);
-                                  drawButton(10, dosingY, TFT_WIDTH - 20, 32,
+                                  drawButton(10, dosingY, 225, 32,
                                              g_settings.language == 0
                                                  ? "ДОЗИРОВАНИЕ"
                                                  : "DOSING",
@@ -11971,6 +11980,11 @@ static void renderRootFooter(
                                                  ? COLOR_PRIMARY
                                                  : COLOR_DARK_GREY,
                                              TFT_WHITE);
+                                  drawButton(245, dosingY, 225, 32,
+                                             g_settings.language == 0
+                                                 ? "КАЛИБР. ТАЧА"
+                                                 : "TOUCH CAL",
+                                             COLOR_WARNING, TFT_WHITE);
                                 }
 
                                 char buf[64];
@@ -11984,9 +11998,12 @@ static void renderRootFooter(
                                                              : "Wi-Fi IP",
                                     ipBuf, false);
 
+                                char buildDate[16];
+                                FwBuildInfo::format(buildDate,
+                                                    sizeof(buildDate));
                                 snprintf(buf, sizeof(buf), "%s", FW_VERSION);
                                 drawValueTileValue(x1, y1, tileW, tileH, buf,
-                                                   "", COLOR_PRIMARY);
+                                                   buildDate, COLOR_PRIMARY);
 
                                 formatUptimeCompact(state.uptime, uptimeBuf,
                                                     sizeof(uptimeBuf));
