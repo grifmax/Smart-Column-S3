@@ -45,6 +45,14 @@ inline uint8_t clampDutyPercent(uint32_t percent) {
 }
 
 /** Длительность цикла в миллисекундах. */
+/**
+ * Пересчёт «сырой» скважности 0..255 (как её отдаёт gateway и API) в проценты.
+ * Округление к ближайшему, чтобы 127 не превращалось в 49 %.
+ */
+inline uint8_t dutyPercentFromRaw(uint8_t raw) {
+  return static_cast<uint8_t>((static_cast<uint16_t>(raw) * 100U + 127U) / 255U);
+}
+
 inline uint32_t periodMs(uint16_t periodSec) {
   return static_cast<uint32_t>(clampPeriodSec(periodSec)) * 1000UL;
 }

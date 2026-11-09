@@ -336,6 +336,8 @@ bool loadSettings(Settings& settings) {
         prefs.getUShort(NVS_KEY_BOOSTER_HEATER_POWER, DEFAULT_BOOSTER_HEATER_POWER_W);
     settings.equipment.boosterHeaterStopCubeTempC =
         prefs.getFloat(NVS_KEY_BOOSTER_STOP_TEMP, DEFAULT_BOOSTER_HEATER_STOP_CUBE_TEMP_C);
+    settings.equipment.coolingPwmPeriodSec = prefs.getUShort(
+        NVS_KEY_COOLING_PWM_PERIOD, DEFAULT_COOLING_PWM_PERIOD_SEC);
     settings.equipment.coolingPwmEnabled =
         prefs.getBool(NVS_KEY_COOLING_PWM_ENABLED, DEFAULT_COOLING_PWM_ENABLED != 0);
     settings.equipment.coolingPwmMinDuty =
@@ -767,6 +769,7 @@ bool saveSettings(const Settings& settings) {
     prefs.putUShort(NVS_KEY_BOOSTER_HEATER_POWER, settings.equipment.boosterHeaterPowerW);
     prefs.putFloat(NVS_KEY_BOOSTER_STOP_TEMP, settings.equipment.boosterHeaterStopCubeTempC);
     prefs.putBool(NVS_KEY_COOLING_PWM_ENABLED, settings.equipment.coolingPwmEnabled);
+    prefs.putUShort(NVS_KEY_COOLING_PWM_PERIOD, settings.equipment.coolingPwmPeriodSec);
     prefs.putUChar(NVS_KEY_COOLING_PWM_MIN_DUTY, settings.equipment.coolingPwmMinDuty);
     prefs.putUChar(NVS_KEY_COOLING_PWM_MAX_DUTY, settings.equipment.coolingPwmMaxDuty);
     prefs.putUChar(NVS_KEY_COOLING_PWM_STARTUP, settings.equipment.coolingPwmStartupDuty);

@@ -116,6 +116,8 @@ constexpr Descriptor kDescriptors[] = {
     {Id::STIRRER_DEFAULT_SPEED_PERCENT, "stirrerDefaultSpeedPercent",
      "Скорость мешалки", "Stirrer speed", "%", 1.0f, 100.0f, 1.0f, 10.0f,
      0},
+    {Id::COOLING_PWM_PERIOD_SEC, "coolingPwmPeriodSec",
+     "Период PWM", "PWM period", "s", 1.0f, 600.0f, 1.0f, 5.0f, 0},
     {Id::COOLING_PWM_MIN_DUTY, "coolingPwmMinDuty", "PWM минимум",
      "PWM minimum", "", 0.0f, 255.0f, 1.0f, 16.0f, 0},
     {Id::COOLING_PWM_MAX_DUTY, "coolingPwmMaxDuty", "PWM максимум",

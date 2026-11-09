@@ -595,6 +595,10 @@ struct EquipmentSettings {
   uint16_t boosterHeaterPowerW = 3000;
   float boosterHeaterStopCubeTempC = 78.0f;
   bool coolingPwmEnabled = false;
+  // Период медленного цикла клапана охлаждения. Скважность задаётся
+  // min/max/startup duty в 0..255, а период — здесь, в секундах: соленоид
+  // нельзя держать под быстрым PWM, катушка греется.
+  uint16_t coolingPwmPeriodSec = 5;
   uint8_t coolingPwmMinDuty = 0;
   uint8_t coolingPwmMaxDuty = 255;
   uint8_t coolingPwmStartupDuty = 96;

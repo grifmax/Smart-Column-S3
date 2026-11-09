@@ -7,6 +7,7 @@
  */
 
 #include "valves.h"
+#include "control/slow_pwm_policy.h"
 #include <ESP32Servo.h>
 
 // =============================================================================
@@ -26,6 +27,20 @@ static bool valveBody = false;
 static bool valveTails = false;
 static bool valveUno = false;
 static uint8_t valveStartStopDuty = 0;
+static uint32_t valveStartStopCycleMs = 0;
+static bool valveStartStopOutput = false;
+
+static bool isDemoHardwareSuppressed();
+
+static void applyStartStopOutput(bool on) {
+    valveStartStopOutput = on;
+    if (isDemoHardwareSuppressed()) {
+        return;
+    }
+    // Клапан либо полностью открыт, либо полностью закрыт: промежуточных
+    // уровней у соленоида нет, скважность задаётся временем цикла.
+    ledcWrite(LEDC_CHANNEL_VALVE, on ? 255 : 0);
+}
 
 struct ValvePulseState {
     bool active = false;
@@ -377,12 +392,28 @@ uint32_t getPulseRemainingMs(ValveId valve) {
 }
 
 void setStartStop(uint8_t duty) {
+    if (duty != valveStartStopDuty) {
+        // Новый уровень скважности начинает цикл заново, иначе клапан может
+        // «зависнуть» в закрытой части старого цикла.
+        valveStartStopCycleMs = millis();
+    }
     valveStartStopDuty = duty;
-    if (isDemoHardwareSuppressed()) {
+
+    if (duty == 0 || duty == 255) {
+        applyStartStopOutput(duty != 0);
+        LOG_D("Valves: StartStop %s", duty == 0 ? "closed" : "open");
         return;
     }
-    ledcWrite(LEDC_CHANNEL_VALVE, duty);
-    LOG_D("Valves: StartStop PWM=%d", duty);
+    LOG_D("Valves: StartStop duty=%u (slow PWM)", duty);
+}
+
+void setStartStopPeriod(uint16_t seconds) {
+    g_settings.equipment.coolingPwmPeriodSec = SlowPwm::clampPeriodSec(seconds);
+    valveStartStopCycleMs = millis();
+}
+
+uint16_t getStartStopPeriod() {
+    return g_settings.equipment.coolingPwmPeriodSec;
 }
 
 uint8_t getStartStop() {
@@ -567,6 +598,16 @@ void updateUno(UnoParams& params) {
 
 // ARCH-3 fix: \u043d\u0435\u0431\u043b\u043e\u043a\u0438\u0440\u0443\u044e\u0449\u0435\u0435 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0441\u0435\u0440\u0432\u043e\u043f\u0440\u0438\u0432\u043e\u0434\u0430 (\u0432\u044b\u0437\u044b\u0432\u0430\u0442\u044c \u0438\u0437 loop \u043a\u0430\u0436\u0434\u0443\u044e \u0438\u0442\u0435\u0440\u0430\u0446\u0438\u044e)
 void update() {
+    if (valveStartStopDuty != 0 && valveStartStopDuty != 255) {
+        const uint8_t percent = SlowPwm::dutyPercentFromRaw(valveStartStopDuty);
+        const bool desired = SlowPwm::isOn(
+            millis(), valveStartStopCycleMs,
+            g_settings.equipment.coolingPwmPeriodSec, percent);
+        if (desired != valveStartStopOutput) {
+            applyStartStopOutput(desired);
+        }
+    }
+
     for (size_t index = 0;
          index < (sizeof(g_valvePulses) / sizeof(g_valvePulses[0]));
          ++index) {

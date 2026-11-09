@@ -106,6 +106,9 @@ namespace Valves {
      * @param duty ШИМ 0-255 (0=закрыт, 255=полностью открыт)
      */
     void setStartStop(uint8_t duty);
+    /** Период медленного цикла клапана охлаждения, секунды (1..600). */
+    void setStartStopPeriod(uint16_t seconds);
+    uint16_t getStartStopPeriod();
     uint8_t getStartStop();
     
     /**

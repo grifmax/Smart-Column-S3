@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.129"
+#define FIRMWARE_VERSION "2.4.130"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -254,6 +254,7 @@
 #define DEFAULT_BOOSTER_HEATER_ENABLED 0
 #define DEFAULT_BOOSTER_HEATER_POWER_W 3000
 #define DEFAULT_BOOSTER_HEATER_STOP_CUBE_TEMP_C 78.0f
+#define DEFAULT_COOLING_PWM_PERIOD_SEC 5
 #define DEFAULT_COOLING_PWM_ENABLED 0
 #define DEFAULT_COOLING_PWM_MIN_DUTY 0
 #define DEFAULT_COOLING_PWM_MAX_DUTY 255
@@ -422,6 +423,7 @@
 #define NVS_KEY_BOOSTER_HEATER_ENABLED "boost_en"
 #define NVS_KEY_BOOSTER_HEATER_POWER "boost_pwr"
 #define NVS_KEY_BOOSTER_STOP_TEMP "boost_stop"
+#define NVS_KEY_COOLING_PWM_PERIOD "cool_pwm_per"
 #define NVS_KEY_COOLING_PWM_ENABLED "cool_pwm_en"
 #define NVS_KEY_COOLING_PWM_MIN_DUTY "cool_pwm_min"
 #define NVS_KEY_COOLING_PWM_MAX_DUTY "cool_pwm_max"
