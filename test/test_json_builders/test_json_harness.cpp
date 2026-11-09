@@ -18,6 +18,7 @@
 #include <../../src/control/sensor_calibration_logic.h>
 #include <../../src/control/pzem_read_policy.h>
 #include <../../src/control/pzem_sample_policy.h>
+#include <../../src/control/slow_pwm_policy.h>
 #include <../../src/ui/hmi_page_model.h>
 
 #include "../support/json_assertions.h"
@@ -54,6 +55,10 @@ void test_hmi_rail_hidden_when_page_fits();
 void test_hmi_thumb_scales_with_scroll();
 void test_hmi_footer_variants();
 void test_hmi_table_font_shrinks_with_rows();
+void test_slow_pwm_splits_period_by_duty();
+void test_slow_pwm_is_on_respects_phase();
+void test_slow_pwm_clamps_period_and_duty();
+void test_slow_pwm_survives_millis_overflow();
 void test_fraction_program_manual_advance_has_priority();
 void test_fraction_program_route_gate_requires_ready_route_and_settle_delay();
 
@@ -113,6 +118,10 @@ int main(int argc, char **argv) {
   RUN_TEST(test_hmi_thumb_scales_with_scroll);
   RUN_TEST(test_hmi_footer_variants);
   RUN_TEST(test_hmi_table_font_shrinks_with_rows);
+  RUN_TEST(test_slow_pwm_splits_period_by_duty);
+  RUN_TEST(test_slow_pwm_is_on_respects_phase);
+  RUN_TEST(test_slow_pwm_clamps_period_and_duty);
+  RUN_TEST(test_slow_pwm_survives_millis_overflow);
   RUN_TEST(test_fraction_program_route_gate_requires_ready_route_and_settle_delay);
   RUN_TEST(test_fraction_program_pause_shifts_step_timer);
   RUN_TEST(test_fraction_program_route_timeout_requires_missing_route);
@@ -278,6 +287,57 @@ void test_hmi_table_font_shrinks_with_rows() {
   TEST_ASSERT_EQUAL_UINT8(10, fontForRows(30, 248, 10, 17));
   TEST_ASSERT_EQUAL_UINT8(6, rowsPerColumn(11, 2));
   TEST_ASSERT_EQUAL_UINT8(4, rowsPerColumn(7, 2));
+}
+
+void test_slow_pwm_splits_period_by_duty() {
+  using namespace SlowPwm;
+  TEST_ASSERT_EQUAL_UINT32(5000, periodMs(5));
+  TEST_ASSERT_EQUAL_UINT32(2500, onTimeMs(5, 50));
+  TEST_ASSERT_EQUAL_UINT32(2500, offTimeMs(5, 50));
+  TEST_ASSERT_EQUAL_UINT32(0, onTimeMs(5, 0));
+  TEST_ASSERT_EQUAL_UINT32(5000, offTimeMs(5, 0));
+  TEST_ASSERT_EQUAL_UINT32(5000, onTimeMs(5, 100));
+  TEST_ASSERT_EQUAL_UINT32(0, offTimeMs(5, 100));
+  // 30 % от 10 с = 3 с открыт, 7 с закрыт
+  TEST_ASSERT_EQUAL_UINT32(3000, onTimeMs(10, 30));
+  TEST_ASSERT_EQUAL_UINT32(7000, offTimeMs(10, 30));
+}
+
+void test_slow_pwm_is_on_respects_phase() {
+  using namespace SlowPwm;
+  // цикл 5 с, 50 %: открыт [0..2500), закрыт [2500..5000)
+  TEST_ASSERT_TRUE(isOn(0, 0, 5, 50));
+  TEST_ASSERT_TRUE(isOn(2499, 0, 5, 50));
+  TEST_ASSERT_FALSE(isOn(2500, 0, 5, 50));
+  TEST_ASSERT_FALSE(isOn(4999, 0, 5, 50));
+  TEST_ASSERT_TRUE(isOn(5000, 0, 5, 50));   // второй цикл, начало открытой части
+  TEST_ASSERT_TRUE(isOn(5001, 0, 5, 50));
+  TEST_ASSERT_FALSE(isOn(7500, 0, 5, 50));  // второй цикл, начало закрытой части
+
+  // скважность 0 и 100 — всегда закрыт / всегда открыт
+  TEST_ASSERT_FALSE(isOn(100, 0, 5, 0));
+  TEST_ASSERT_TRUE(isOn(100, 0, 5, 100));
+  TEST_ASSERT_TRUE(isOn(999999, 0, 5, 100));
+}
+
+void test_slow_pwm_clamps_period_and_duty() {
+  using namespace SlowPwm;
+  TEST_ASSERT_EQUAL_UINT16(kMinPeriodSec, clampPeriodSec(0));
+  TEST_ASSERT_EQUAL_UINT16(kMaxPeriodSec, clampPeriodSec(1000));
+  TEST_ASSERT_EQUAL_UINT16(5, clampPeriodSec(5));
+  TEST_ASSERT_EQUAL_UINT8(100, clampDutyPercent(250));
+  TEST_ASSERT_EQUAL_UINT8(0, clampDutyPercent(0));
+  TEST_ASSERT_EQUAL_UINT8(37, clampDutyPercent(37));
+}
+
+void test_slow_pwm_survives_millis_overflow() {
+  using namespace SlowPwm;
+  // старт незадолго до переполнения millis(): 512 мс внутри цикла
+  const uint32_t start = 0xFFFFFF00u;
+  const uint32_t now = start + 512u;  // переполнение
+  TEST_ASSERT_EQUAL_UINT32(512, phaseMs(now, start, 5));
+  TEST_ASSERT_TRUE(isOn(now, start, 5, 50));
+  TEST_ASSERT_FALSE(isOn(start + 3000u, start, 5, 50));
 }
 
 void test_fraction_program_end_reason_returns_none_without_conditions() {
