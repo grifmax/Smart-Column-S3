@@ -343,7 +343,6 @@ function rowsFor(index) {
     {type:'log', time:'T+00:25:00', level:'info', text:'Температура стабилизирована'}
   ];
   if (index === 113) return [ // проверка оборудования
-    {type:'action', text:'СТОП ВСЁ', id:'stopAll'},
     {type:'test', label:'ТЭН', get:()=>state.testHeater, set:v=>state.testHeater=v,
      step:50, unit:'Вт', active:()=>state.runHeater, toggle:()=>state.runHeater=!state.runHeater},
     {type:'test', label:'Насос', get:()=>state.testPump, set:v=>state.testPump=v,
