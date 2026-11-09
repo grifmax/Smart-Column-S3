@@ -178,6 +178,8 @@ const state = {
     {addr:'28-43-1B', temp:26.3}, {addr:'28-44-90', temp:27.0}
   ],
   wifiList: ['Dom-5G','Dom-2.4','KubanWiFi','TP-LINK_4C21'],
+  pwmPullMs: 300,
+  pwmHold: 38,
   dosingTargetMl: 500,
   dosingRateMlH: 1200
 };
@@ -224,17 +226,17 @@ function rowsFor(index) {
       valueRow('Booster', () => state.booster, v => state.booster = v, {step:100, unit:'Вт'})
     ];
     case 3: return [
-      boolRow('Датчик уровня тела', () => state.bodyLevel, v => state.bodyLevel = v),
-      boolRow('Датчик протечки', () => state.leak, v => state.leak = v),
-      boolRow('DS2482 для температур', () => state.ds2482, v => state.ds2482 = v),
       linkRow('Назначение датчиков темп.', 'sensorAssign', 'ОТКРЫТЬ'),
       linkRow('Калибр. датчиков темп.', 'sensorCal', 'ОТКРЫТЬ'),
       linkRow('Калибр. насоса', 'pumpCal', 'ОТКРЫТЬ'),
-      boolRow('PWM охлаждения', () => state.pwm, v => state.pwm = v),
-      valueRow('Период цикла', () => state.pwmPeriod, v => state.pwmPeriod = Math.max(1, Math.min(60, v)), {step:1, unit:'с'}),
-      valueRow('Скважность', () => state.pwmDuty, v => state.pwmDuty = Math.max(0, Math.min(100, v)), {step:5, unit:'%'}),
-      valueRow('Старт', () => state.pwmStart, v => state.pwmStart = Math.max(0, Math.min(100, v)), {step:5, unit:'%'}),
-      valueRow('Открыт / закрыт', () => null, null, {sub: `открыт ${fmt(state.pwmPeriod*state.pwmDuty/100,1)} с · закрыт ${fmt(state.pwmPeriod*(100-state.pwmDuty)/100,1)} с`, editor:false})
+      boolRow('Датчик уровня тела', () => state.bodyLevel, v => state.bodyLevel = v),
+      boolRow('Датчик протечки', () => state.leak, v => state.leak = v),
+      boolRow('DS2482 для температур', () => state.ds2482, v => state.ds2482 = v),
+      boolRow('Клапан охлаждения', () => state.pwm, v => state.pwm = v, 'открыт / закрыт'),
+      valueRow('Втягивание', () => state.pwmPullMs, v => state.pwmPullMs = Math.max(50, Math.min(2000, v)), {step:50, unit:'мс'}),
+      valueRow('Удержание', () => state.pwmHold, v => state.pwmHold = Math.max(5, Math.min(100, v)), {step:5, unit:'%'}),
+      valueRow('Ток удержания', () => null, null, {editor:false,
+        sub: `втягивание ${fmt(state.pwmPullMs,0)} мс на 100 % → удержание ${fmt(state.pwmHold,0)} % (${Math.round(state.pwmHold*255/100)}/255), 20 кГц`})
     ];
     case 4: return [
       linkRow('Wi-Fi', 'wifi', 'НАСТРОИТЬ', {sub:`${state.wifiSsid} · ${state.wifiIp}`}),
