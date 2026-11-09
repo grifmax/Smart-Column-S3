@@ -10,6 +10,7 @@
  */
 
 #include "sensors.h"
+#include "control/pzem_sample_policy.h"
 #include "control/safety.h"
 #include "ds2482_100.h"
 #include <freertos/semphr.h>
@@ -59,17 +60,6 @@ static uint8_t pzemConsecutiveReadFailures = 0;
 static float lastEnergyReading = 0.0f;
 static float energyOffset = 0.0f;        // Накопленная энергия от предыдущих сбросов
 static bool energyInitialized = false;
-
-// Фильтрация выбросов PZEM (spike rejection)
-static float lastValidVoltage = 0.0f;
-static float lastValidCurrent = 0.0f;
-static float lastValidPower = 0.0f;
-static bool pzemDataInitialized = false;
-
-// Пороги для определения выбросов (допустимое изменение за одно чтение)
-#define PZEM_VOLTAGE_MAX_DELTA    30.0f   // ±30V за раз
-#define PZEM_CURRENT_MAX_DELTA    5.0f    // ±5A за раз
-#define PZEM_POWER_MAX_DELTA      1000.0f // ±1000W за раз
 
 // Счётчики для мониторинга здоровья
 static const uint32_t PZEM_RETRY_INTERVAL_MS = 5000UL;
@@ -316,19 +306,6 @@ void IRAM_ATTR flowPulseISR() {
 // =============================================================================
 // ВНУТРЕННИЕ ФУНКЦИИ
 // =============================================================================
-
-/**
- * Фильтрация выброса (spike rejection)
- * Возвращает true если значение адекватное, false если выброс
- */
-static bool validateReading(float newValue, float lastValue, float maxDelta, bool initialized) {
-    if (!initialized) {
-        return true; // Первое чтение - принимаем
-    }
-
-    float delta = fabs(newValue - lastValue);
-    return (delta <= maxDelta);
-}
 
 /**
  * Интерполяция крепости по таблице калибровки
@@ -981,77 +958,52 @@ void readPower(Power& power) {
         power.energy = 0;
         power.frequency = 0;
         power.powerFactor = 0;
-        power.lastUpdate = millis();
+        power.ok = false;
         return;
     }
 
-    // Читаем все параметры с PZEM-004T
-    float rawVoltage = pzem.voltage();
-    float rawCurrent = pzem.current();
-    float rawPower = pzem.power();
-    float rawEnergy = pzem.energy();
-    float rawFrequency = pzem.frequency();
-    float rawPF = pzem.pf();
-
-    const bool noResponse = isnan(rawVoltage) && isnan(rawCurrent) &&
-                            isnan(rawPower) && isnan(rawEnergy) &&
-                            isnan(rawFrequency) && isnan(rawPF);
-    if (noResponse) {
+    auto rejectPzemFrame = [&]() {
+        pzemSpikeCounter++;
         if (++pzemConsecutiveReadFailures >= PZEM_READ_FAIL_LIMIT) {
             pzem_ok = false;
             pzemConsecutiveReadFailures = 0;
             lastPzemProbeMs = 0;
             LOG_WARN("Sensors: PZEM-004T lost during runtime, switching to auto-retry");
         }
-        power.voltage = 0;
-        power.current = 0;
-        power.power = 0;
-        power.energy = 0;
-        power.frequency = 0;
-        power.powerFactor = 0;
-        power.lastUpdate = millis();
+        // Не затираем последний валидный снимок и не двигаем lastUpdate:
+        // битый/неполный кадр не должен попасть в closed-loop как свежая телеметрия.
+        power.ok = false;
+    };
+
+    // Первый getter инициирует общий Modbus-кадр библиотеки PZEM. Если он не
+    // удался, остальные getter'ы могут вернуть старый кэш, поэтому такой кадр
+    // нельзя собирать частично.
+    float rawVoltage = pzem.voltage();
+    if (isnan(rawVoltage)) {
+        rejectPzemFrame();
+        return;
+    }
+
+    float rawCurrent = pzem.current();
+    float rawPower = pzem.power();
+    float rawEnergy = pzem.energy();
+    float rawFrequency = pzem.frequency();
+    float rawPF = pzem.pf();
+
+    // Все поля должны относиться к одному успешно прочитанному снимку.
+    if (isnan(rawEnergy) || isnan(rawFrequency) || isnan(rawPF) ||
+        !PzemSamplePolicy::isPlausibleSnapshot(rawVoltage, rawCurrent, rawPower,
+                                               PZEM_CURRENT_MAX) ||
+        rawFrequency < 45.0f || rawFrequency > 65.0f || rawPF < 0.0f ||
+        rawPF > 1.0f) {
+        rejectPzemFrame();
         return;
     }
     pzemConsecutiveReadFailures = 0;
 
-    // Проверка на NaN и базовые диапазоны
-    if (isnan(rawVoltage) || rawVoltage < 0 || rawVoltage > 300) {
-        rawVoltage = lastValidVoltage;
-    }
-    if (isnan(rawCurrent) || rawCurrent < 0 || rawCurrent > PZEM_CURRENT_MAX) {
-        rawCurrent = lastValidCurrent;
-    }
-    if (isnan(rawPower) || rawPower < 0 || rawPower > 10000) {
-        rawPower = lastValidPower;
-    }
-
-    // Фильтрация выбросов (spike rejection)
-    if (validateReading(rawVoltage, lastValidVoltage, PZEM_VOLTAGE_MAX_DELTA, pzemDataInitialized)) {
-        power.voltage = rawVoltage;
-        lastValidVoltage = rawVoltage;
-    } else {
-        power.voltage = lastValidVoltage; // Отбросить выброс
-        pzemSpikeCounter++;
-        LOG_WARN("PZEM: Voltage spike rejected (%.1fV -> %.1fV)", lastValidVoltage, rawVoltage);
-    }
-
-    if (validateReading(rawCurrent, lastValidCurrent, PZEM_CURRENT_MAX_DELTA, pzemDataInitialized)) {
-        power.current = rawCurrent;
-        lastValidCurrent = rawCurrent;
-    } else {
-        power.current = lastValidCurrent; // Отбросить выброс
-        pzemSpikeCounter++;
-        LOG_WARN("PZEM: Current spike rejected (%.2fA -> %.2fA)", lastValidCurrent, rawCurrent);
-    }
-
-    if (validateReading(rawPower, lastValidPower, PZEM_POWER_MAX_DELTA, pzemDataInitialized)) {
-        power.power = rawPower;
-        lastValidPower = rawPower;
-    } else {
-        power.power = lastValidPower; // Отбросить выброс
-        pzemSpikeCounter++;
-        LOG_WARN("PZEM: Power spike rejected (%.1fW -> %.1fW)", lastValidPower, rawPower);
-    }
+    power.voltage = rawVoltage;
+    power.current = rawCurrent;
+    power.power = rawPower;
 
     // Частота и PF (без фильтрации, но с валидацией)
     if (isnan(rawFrequency) || rawFrequency < 45 || rawFrequency > 65) {
@@ -1065,9 +1017,6 @@ void readPower(Power& power) {
     } else {
         power.powerFactor = rawPF;
     }
-
-    // Отметить как инициализированные
-    pzemDataInitialized = true;
 
     // Обработка energy с защитой от переполнения/сброса
     if (isnan(rawEnergy) || rawEnergy < 0) {
@@ -1091,7 +1040,7 @@ void readPower(Power& power) {
 
     // Итоговая энергия = offset + текущее показание
     power.energy = energyOffset + rawEnergy;
-
+    power.ok = true;
     power.lastUpdate = millis();
 }
 

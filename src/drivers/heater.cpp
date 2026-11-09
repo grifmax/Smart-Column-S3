@@ -6,6 +6,7 @@
  */
 
 #include "heater.h"
+#include "control/pzem_read_policy.h"
 
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
 #include "driver/gpio.h"
@@ -52,6 +53,28 @@ constexpr float TRIAC_FEEDBACK_SAMPLE_MAX_AGE_MS = 2500.0f;
 constexpr float TRIAC_FEEDBACK_KP_US_PER_W = 0.9f;
 constexpr int32_t TRIAC_FEEDBACK_MAX_STEP_US = 220;
 constexpr int32_t TRIAC_FEEDBACK_TRIM_LIMIT_US = 2800;
+constexpr uint32_t TRIAC_FEEDBACK_STALE_SAMPLE_MS = 3500UL;
+
+uint32_t lastPzemUpdateMs = 0;
+uint32_t pzemSampleUnchangedSinceMs = 0;
+bool pzemSampleInitialized = false;
+bool pzemStaleLogged = false;
+
+bool updatePzemSampleWatchdog(uint32_t nowMs, const PowerData &power) {
+    const bool changed = !pzemSampleInitialized ||
+        power.lastUpdate != lastPzemUpdateMs;
+
+    if (changed) {
+        lastPzemUpdateMs = power.lastUpdate;
+        pzemSampleUnchangedSinceMs = nowMs;
+        pzemSampleInitialized = true;
+        pzemStaleLogged = false;
+    }
+
+    return PzemReadPolicy::isStaleSample(
+        changed, nowMs, pzemSampleUnchangedSinceMs,
+        TRIAC_FEEDBACK_STALE_SAMPLE_MS);
+}
 
 void writeBooster(bool enabled) {
     digitalWrite(PIN_SSR_HEATER, enabled ? HIGH : LOW);
@@ -501,12 +524,30 @@ void update() {
         return;
     }
 
-    const bool pzemFresh = g_state.health.pzemOk &&
-        g_state.power.lastUpdate > 0 &&
-        (millis() - g_state.power.lastUpdate) <= TRIAC_FEEDBACK_SAMPLE_MAX_AGE_MS;
+    const uint32_t nowMs = millis();
+    const bool pzemSampleStale = updatePzemSampleWatchdog(nowMs, g_state.power);
+    const bool pzemFresh = !pzemSampleStale &&
+        PzemReadPolicy::isFreshSample(
+            g_state.health.pzemOk && g_state.power.ok,
+            g_state.power.ok,
+            nowMs,
+            g_state.power.lastUpdate,
+            static_cast<uint32_t>(TRIAC_FEEDBACK_SAMPLE_MAX_AGE_MS));
+
+    if (pzemSampleStale && !pzemStaleLogged && targetPowerWatts > 0 &&
+        fabsf(static_cast<float>(targetPowerWatts) - g_state.power.power) >
+            fmaxf(TRIAC_FEEDBACK_TOLERANCE_W,
+                  static_cast<float>(targetPowerWatts) * TRIAC_FEEDBACK_TOLERANCE_PCT)) {
+        LOG_W("Heater: stale PZEM sample detected at %.0fW, disabling closed-loop",
+              g_state.power.power);
+        pzemStaleLogged = true;
+    }
 
     if (!pzemFresh) {
         closed_loop_active = false;
+        if (pzemSampleStale) {
+            resetFeedbackState();
+        }
         applyTriacTarget();
         return;
     }

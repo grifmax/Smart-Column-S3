@@ -16,6 +16,8 @@
 #include <../../src/control/autoclave_safety_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
+#include <../../src/control/pzem_read_policy.h>
+#include <../../src/control/pzem_sample_policy.h>
 
 #include "../support/json_assertions.h"
 
@@ -41,6 +43,11 @@ void test_json_harness_parses_and_asserts_contract_fields() {
 void test_fraction_program_end_reason_returns_none_without_conditions();
 void test_fraction_program_end_reason_detects_each_automatic_condition();
 void test_fraction_program_end_reason_uses_documented_or_priority();
+void test_pzem_fresh_sample_requires_valid_snapshot();
+void test_pzem_fresh_sample_rejects_stale_timestamp();
+void test_pzem_stale_sample_requires_unchanged_window();
+void test_pzem_sample_policy_accepts_load_step_without_delta_gate();
+void test_pzem_sample_policy_rejects_physical_violations();
 void test_fraction_program_manual_advance_has_priority();
 void test_fraction_program_route_gate_requires_ready_route_and_settle_delay();
 
@@ -90,6 +97,11 @@ int main(int argc, char **argv) {
   RUN_TEST(test_fraction_program_end_reason_detects_each_automatic_condition);
   RUN_TEST(test_fraction_program_end_reason_uses_documented_or_priority);
   RUN_TEST(test_fraction_program_manual_advance_has_priority);
+  RUN_TEST(test_pzem_fresh_sample_requires_valid_snapshot);
+  RUN_TEST(test_pzem_fresh_sample_rejects_stale_timestamp);
+  RUN_TEST(test_pzem_stale_sample_requires_unchanged_window);
+  RUN_TEST(test_pzem_sample_policy_accepts_load_step_without_delta_gate);
+  RUN_TEST(test_pzem_sample_policy_rejects_physical_violations);
   RUN_TEST(test_fraction_program_route_gate_requires_ready_route_and_settle_delay);
   RUN_TEST(test_fraction_program_pause_shifts_step_timer);
   RUN_TEST(test_fraction_program_route_timeout_requires_missing_route);
@@ -130,6 +142,40 @@ int main(int argc, char **argv) {
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>
+
+void test_pzem_fresh_sample_requires_valid_snapshot() {
+  TEST_ASSERT_TRUE(PzemReadPolicy::isFreshSample(true, true, 5000, 4500, 2500));
+  TEST_ASSERT_FALSE(PzemReadPolicy::isFreshSample(true, false, 5000, 4500, 2500));
+  TEST_ASSERT_FALSE(PzemReadPolicy::isFreshSample(false, true, 5000, 4500, 2500));
+}
+
+void test_pzem_fresh_sample_rejects_stale_timestamp() {
+  TEST_ASSERT_FALSE(PzemReadPolicy::isFreshSample(true, true, 8001, 5000, 2500));
+}
+
+void test_pzem_stale_sample_requires_unchanged_window() {
+  TEST_ASSERT_FALSE(PzemReadPolicy::isStaleSample(true, 6000, 1000, 5000));
+  TEST_ASSERT_FALSE(PzemReadPolicy::isStaleSample(false, 5999, 1000, 5000));
+  TEST_ASSERT_TRUE(PzemReadPolicy::isStaleSample(false, 6000, 1000, 5000));
+}
+
+void test_pzem_sample_policy_accepts_load_step_without_delta_gate() {
+  // Реальный скачок нагрузки не должен считаться выбросом: 0 -> 9 A,
+  // 0 -> 2000 Вт, 230 -> 205 В (просадка под ТЭНом).
+  TEST_ASSERT_TRUE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, 9.0f, 2000.0f, 30.0f));
+  TEST_ASSERT_TRUE(PzemSamplePolicy::isPlausibleSnapshot(205.0f, 9.7f, 1990.0f, 30.0f));
+  TEST_ASSERT_TRUE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, 0.0f, 0.0f, 30.0f));
+}
+
+void test_pzem_sample_policy_rejects_physical_violations() {
+  TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(NAN, 9.0f, 2000.0f, 30.0f));
+  TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, NAN, 2000.0f, 30.0f));
+  TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, 9.0f, NAN, 30.0f));
+  TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(301.0f, 9.0f, 2000.0f, 30.0f));
+  TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, 31.0f, 2000.0f, 30.0f));
+  TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, 9.0f, 12000.0f, 30.0f));
+  TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, -1.0f, 2000.0f, 30.0f));
+}
 
 void test_fraction_program_end_reason_returns_none_without_conditions() {
   const auto reason = FractionProgramLogic::selectEndReason(false, false, false,
