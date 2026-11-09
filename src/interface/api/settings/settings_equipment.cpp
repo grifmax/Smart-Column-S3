@@ -273,14 +273,6 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
           g_settings.equipment.coolingPwmMinDuty =
               g_settings.equipment.coolingPwmMaxDuty;
         }
-        if (!doc["coolingPwmPeriodSec"].isNull()) {
-          g_settings.equipment.coolingPwmPeriodSec =
-              EditableFields::normalizeU16(
-                  EditableFields::Id::COOLING_PWM_PERIOD_SEC,
-                  doc["coolingPwmPeriodSec"].as<uint32_t>());
-          Valves::setStartStopPeriod(
-              g_settings.equipment.coolingPwmPeriodSec);
-        }
         if (!doc["coolingPwmStartupDuty"].isNull()) {
           g_settings.equipment.coolingPwmStartupDuty = static_cast<uint8_t>(
               EditableFields::normalize(

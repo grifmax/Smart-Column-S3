@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.131"
+#define FIRMWARE_VERSION "2.4.132"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -176,7 +176,10 @@
 #define HEATER_CONTROL_MODE HEATER_MODE_TRIAC
 
 #define PWM_FREQ_HEATER 1    // Гц (медленный для SSR)
-#define PWM_FREQ_VALVE 1000  // Гц
+// Соленоид нельзя держать на 1 кГц — гудит и щёлкает. 20 кГц за пределами слуха,
+// катушка получает тот же ток удержания без акустического шума.
+#define PWM_FREQ_VALVE 20000  // Гц
+#define COOLING_PWM_PULL_MS 300UL  // 100 % на втягивание якоря, затем удержание
 #define PWM_RESOLUTION 8     // бит (0-255)
 
 // Настройки Phase Control (симистор)

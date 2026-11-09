@@ -616,20 +616,18 @@ function setBadgeState(id, text, tone) {
 function syncCoolingActuatorUi() {
     const equipment = runtimeMonitorState.equipment || {};
     const enabled = Boolean(equipment.coolingPwmEnabled);
-    const periodSec = clamp(equipment.coolingPwmPeriodSec, 1, 600, 5);
     const minDuty = clamp(equipment.coolingPwmMinDuty, 0, 255, 0);
     const maxDuty = clamp(equipment.coolingPwmMaxDuty, minDuty, 255, 255);
     const startupDuty = clamp(equipment.coolingPwmStartupDuty, minDuty, maxDuty, minDuty);
     const currentDuty = clamp(equipment.coolingPwmCurrentDuty, 0, 255, 0);
 
     setCheckboxValue('cooling-pwm-enabled', enabled);
-    setInputValue('cooling-pwm-period-sec', periodSec);
     setInputValue('cooling-pwm-min-duty', minDuty);
     setInputValue('cooling-pwm-max-duty', maxDuty);
     setInputValue('cooling-pwm-startup-duty', startupDuty);
     setTextValue(
         'cooling-actuator-state',
-        `${enabled ? 'Автоконтур включён' : 'Автоконтур выключен'} • окно ${minDuty}-${maxDuty}/255 • сейчас ${currentDuty}/255 • период ${periodSec} с`
+        `${enabled ? 'Автоконтур включён' : 'Автоконтур выключен'} • окно ${minDuty}-${maxDuty}/255 • сейчас ${currentDuty}/255`
     );
     setTextValue(
         'cooling-actuator-hint',
@@ -1001,7 +999,6 @@ export async function loadEquipmentSettings() {
             boosterHeaterPowerW: clamp(data.boosterHeaterPowerW, 1000, 10000, 3000),
             boosterHeaterStopCubeTempC: clamp(data.boosterHeaterStopCubeTempC, 20, 100, 78),
             coolingPwmEnabled: Boolean(data.coolingPwmEnabled),
-            coolingPwmPeriodSec: clamp(data.coolingPwmPeriodSec, 1, 600, 5),
             coolingPwmMinDuty: clamp(data.coolingPwmMinDuty, 0, 255, 0),
             coolingPwmMaxDuty: clamp(data.coolingPwmMaxDuty, 0, 255, 255),
             coolingPwmStartupDuty: clamp(data.coolingPwmStartupDuty, 0, 255, 96),
@@ -1083,7 +1080,6 @@ export async function saveEquipment() {
     const boosterHeaterPowerW = clamp(getInputValue('booster-heater-power-w', 3000), 1000, 10000, 3000);
     const boosterHeaterStopCubeTempC = clamp(getInputValue('booster-heater-stop-cube-temp', 78), 20, 100, 78);
     const coolingPwmEnabled = getCheckboxValue('cooling-pwm-enabled', false);
-    const coolingPwmPeriodSec = clamp(getInputValue('cooling-pwm-period-sec', 5), 1, 600, 5);
     const coolingPwmMinDuty = clamp(getInputValue('cooling-pwm-min-duty', 0), 0, 255, 0);
     const coolingPwmMaxDuty = clamp(getInputValue('cooling-pwm-max-duty', 255), coolingPwmMinDuty, 255, 255);
     const coolingPwmStartupDuty = clamp(
@@ -1148,7 +1144,6 @@ export async function saveEquipment() {
                 boosterHeaterPowerW: Math.round(boosterHeaterPowerW),
                 boosterHeaterStopCubeTempC,
                 coolingPwmEnabled,
-                coolingPwmPeriodSec: Math.round(coolingPwmPeriodSec),
                 coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
                 coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
                 coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty),
@@ -1184,7 +1179,6 @@ export async function saveEquipment() {
             boosterHeaterPowerW: Math.round(boosterHeaterPowerW),
             boosterHeaterStopCubeTempC,
             coolingPwmEnabled,
-            coolingPwmPeriodSec: Math.round(coolingPwmPeriodSec),
             coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
             coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
             coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty),

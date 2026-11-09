@@ -168,7 +168,6 @@ function mergeEquipmentState(s, data) {
         'boosterHeaterStopCubeTempC',
         'booster_heater_stop_cube_temp_c'
     ]);
-    assign('coolingPwmPeriodSec', ['coolingPwmPeriodSec', 'cooling_pwm_period_sec']);
     assign('coolingPwmMinDuty', ['coolingPwmMinDuty', 'cooling_pwm_min_duty']);
     assign('coolingPwmMaxDuty', ['coolingPwmMaxDuty', 'cooling_pwm_max_duty']);
     assign('coolingPwmStartupDuty', ['coolingPwmStartupDuty', 'cooling_pwm_startup_duty']);
