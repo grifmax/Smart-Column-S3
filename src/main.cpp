@@ -38,6 +38,7 @@
 #include "control/fsm.h"
 #include "control/rect_takeoff.h"
 #include "control/safety.h"
+#include "control/state_snapshot.h"
 #include "control/v2/status_adapter.h"
 #include "control/watt_control.h"
 
@@ -82,6 +83,7 @@ uint32_t g_lastPressureRead = 0;
 uint32_t g_lastPowerRead = 0;
 uint32_t g_lastDisplayUpdate = 0;
 uint32_t g_lastWebBroadcast = 0;
+uint32_t g_lastStateSnapshot = 0;
 uint32_t g_lastLogWrite = 0;
 uint32_t g_lastSafetyCheck = 0;
 uint32_t g_lastSelfCheck = 0; // #14: self-check лог каждые 30 мин
@@ -586,17 +588,29 @@ void loop() {
   }
 
   // Интерфейсы
-  if (now - g_lastDisplayUpdate >= INTERVAL_DISPLAY_UPDATE) {
-    g_lastDisplayUpdate = now;
-    Display::update(g_state);
-  }
+    if (now - g_lastDisplayUpdate >= INTERVAL_DISPLAY_UPDATE) {
+      g_lastDisplayUpdate = now;
+      Display::update(g_state);
+    }
 
-#if WEB_SERVER_ENABLED
-  if (now - g_lastWebBroadcast >= INTERVAL_WEB_BROADCAST) {
-    g_lastWebBroadcast = now;
-    WebServer::broadcastState(g_state);
-  }
-#endif
+    // Публикация согласованного снимка для HTTP/WebSocket-задач: они живут на
+    // другом ядре и не должны читать g_state, пока цикл его обновляет.
+    if (now - g_lastStateSnapshot >= STATE_SNAPSHOT_INTERVAL_MS) {
+      g_lastStateSnapshot = now;
+      StateSnapshot::publish(g_state);
+    }
+
+  #if WEB_SERVER_ENABLED
+    if (now - g_lastWebBroadcast >= INTERVAL_WEB_BROADCAST) {
+      g_lastWebBroadcast = now;
+      SystemState webSnapshot;
+      if (StateSnapshot::read(webSnapshot)) {
+        WebServer::broadcastState(webSnapshot);
+      } else {
+        WebServer::broadcastState(g_state);
+      }
+    }
+  #endif
 
   CloudTunnel::loop();
 

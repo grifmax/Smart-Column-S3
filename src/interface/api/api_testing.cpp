@@ -13,6 +13,7 @@
 #include "drivers/stirrer.h"
 #include "drivers/valves.h"
 #include "history.h"
+#include "control/state_snapshot.h"
 #include "interface/webserver_shared.h"
 #include "storage/logger.h"
 #include "storage/nvs_manager.h"
@@ -361,11 +362,16 @@ static void fillEquipmentTestingHealthJson(JsonObject health) {
 }
 
 static void fillEquipmentTestingStatus(JsonDocument &doc) {
+  // Снимок состояния: главный цикл пишет g_state на другом ядре.
+  SystemState snapshot;
+  StateSnapshot::readOrLive(snapshot);
+  const SystemState &st = snapshot;
+
   char reason[160] = "";
   const bool blocked = isEquipmentTestingBlocked(reason, sizeof(reason));
-  const bool processActive = g_state.mode != Mode::IDLE;
-  const bool latched = Safety::isLatched(g_state);
-  const bool alarmActive = (g_state.currentAlarm.type != AlarmType::NONE);
+  const bool processActive = st.mode != Mode::IDLE;
+  const bool latched = Safety::isLatched(st);
+  const bool alarmActive = (st.currentAlarm.type != AlarmType::NONE);
   const Heater::Diagnostics heaterDiag = Heater::getDiagnostics();
   const bool heaterActive = heaterDiag.active;
   const bool servoAvailable =
@@ -375,20 +381,20 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   syncStirrerState();
 
   doc["success"] = true;
-  doc["mode"] = getModeString(g_state.mode);
+  doc["mode"] = getModeString(st.mode);
   doc["processActive"] = processActive;
   doc["testingAllowed"] = !blocked;
   doc["availabilityReason"] = blocked ? reason : "";
   doc["demoMode"] = g_settings.demoMode;
   doc["physicalActuationAllowed"] = !blocked && !g_settings.demoMode;
   doc["alarmActive"] = alarmActive;
-  doc["alarmMessage"] = alarmActive ? g_state.currentAlarm.message : "";
-  doc["safetyOk"] = g_state.safetyOk;
+  doc["alarmMessage"] = alarmActive ? st.currentAlarm.message : "";
+  doc["safetyOk"] = st.safetyOk;
   doc["safetyLatched"] = latched;
 
   JsonObject activeTests = doc["activeTests"].to<JsonObject>();
   activeTests["pump"] = Pump::isRunning();
-  activeTests["stirrer"] = g_state.stirrer.running;
+  activeTests["stirrer"] = st.stirrer.running;
   activeTests["heater"] = heaterActive;
   activeTests["waterValve"] = Valves::getWater();
   activeTests["headsValve"] = Valves::getHeads();
@@ -497,28 +503,28 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
     temp["label"] = getTempSensorLabel(i);
     appendTempSensorMeta(temp, i);
     temp["installed"] = Safety::isTempSensorInstalled(g_settings.equipment, i);
-    temp["valid"] = g_state.temps.valid[i];
+    temp["valid"] = st.temps.valid[i];
     switch (i) {
     case TEMP_CUBE:
-      temp["value"] = g_state.temps.cube;
+      temp["value"] = st.temps.cube;
       break;
     case TEMP_COLUMN_BOTTOM:
-      temp["value"] = g_state.temps.columnBottom;
+      temp["value"] = st.temps.columnBottom;
       break;
     case TEMP_COLUMN_TOP:
-      temp["value"] = g_state.temps.columnTop;
+      temp["value"] = st.temps.columnTop;
       break;
     case TEMP_REFLUX:
-      temp["value"] = g_state.temps.reflux;
+      temp["value"] = st.temps.reflux;
       break;
     case TEMP_TSA:
-      temp["value"] = g_state.temps.tsa;
+      temp["value"] = st.temps.tsa;
       break;
     case TEMP_WATER_IN:
-      temp["value"] = g_state.temps.waterIn;
+      temp["value"] = st.temps.waterIn;
       break;
     case TEMP_WATER_OUT:
-      temp["value"] = g_state.temps.waterOut;
+      temp["value"] = st.temps.waterOut;
       break;
     default:
       temp["value"] = 0.0f;
@@ -532,32 +538,32 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   fillTemperatureModeSupportJson(supportedModes, g_settings);
 
   JsonObject pressure = doc["pressure"].to<JsonObject>();
-  pressure["cubeMmHg"] = g_state.pressure.cube;
-  pressure["atmosphere"] = g_state.pressure.atmosphere;
-  pressure["ok"] = g_state.pressure.ok;
-  pressure["ads1115Available"] = g_state.health.ads1115Ok;
-  pressure["sensorVoltage"] = g_state.pressure.sensorVoltage;
-  pressure["sensorAdc"] = g_state.pressure.sensorAdc;
+  pressure["cubeMmHg"] = st.pressure.cube;
+  pressure["atmosphere"] = st.pressure.atmosphere;
+  pressure["ok"] = st.pressure.ok;
+  pressure["ads1115Available"] = st.health.ads1115Ok;
+  pressure["sensorVoltage"] = st.pressure.sensorVoltage;
+  pressure["sensorAdc"] = st.pressure.sensorAdc;
   pressure["source"] = "ADS1115 A1";
-  pressure["lastUpdate"] = g_state.pressure.lastUpdate;
+  pressure["lastUpdate"] = st.pressure.lastUpdate;
 
   JsonObject hydrometer = doc["hydrometer"].to<JsonObject>();
-  hydrometer["pressure"] = g_state.hydrometer.pressure;
-  hydrometer["density"] = g_state.hydrometer.density;
-  hydrometer["abv"] = g_state.hydrometer.abv;
-  hydrometer["temperature"] = g_state.hydrometer.temperature;
-  hydrometer["valid"] = g_state.hydrometer.valid;
-  hydrometer["ok"] = g_state.hydrometer.ok;
-  hydrometer["lastUpdate"] = g_state.hydrometer.lastUpdate;
+  hydrometer["pressure"] = st.hydrometer.pressure;
+  hydrometer["density"] = st.hydrometer.density;
+  hydrometer["abv"] = st.hydrometer.abv;
+  hydrometer["temperature"] = st.hydrometer.temperature;
+  hydrometer["valid"] = st.hydrometer.valid;
+  hydrometer["ok"] = st.hydrometer.ok;
+  hydrometer["lastUpdate"] = st.hydrometer.lastUpdate;
 
   JsonObject power = doc["power"].to<JsonObject>();
-  power["available"] = g_state.health.pzemOk;
-  power["voltage"] = g_state.power.voltage;
-  power["current"] = g_state.power.current;
-  power["power"] = g_state.power.power;
-  power["energy"] = g_state.power.energy;
-  power["frequency"] = g_state.power.frequency;
-  power["powerFactor"] = g_state.power.powerFactor;
+  power["available"] = st.health.pzemOk;
+  power["voltage"] = st.power.voltage;
+  power["current"] = st.power.current;
+  power["power"] = st.power.power;
+  power["energy"] = st.power.energy;
+  power["frequency"] = st.power.frequency;
+  power["powerFactor"] = st.power.powerFactor;
 
   JsonObject modules = doc["modules"].to<JsonObject>();
   fillEquipmentModulesJson(modules);

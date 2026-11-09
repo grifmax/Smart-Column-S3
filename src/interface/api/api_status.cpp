@@ -8,6 +8,7 @@
 #include "drivers/sensors.h"
 #include "drivers/valves.h"
 #include "interface/cloud_tunnel.h"
+#include "control/state_snapshot.h"
 #include "interface/webserver_shared.h"
 #include "profiles.h"
 
@@ -142,7 +143,13 @@ void fillTemperatureModeSupportJson(JsonObject modes,
 
 void registerStatusApiRoutes(AsyncWebServer &server) {
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    ControlV2::updateRuntime(g_state, g_settings);
+    // Снимок состояния: g_state обновляет главный цикл на другом ядре,
+    // поэтому сетевой обработчик читает согласованную копию.
+    SystemState snapshot;
+    StateSnapshot::readOrLive(snapshot);
+    const SystemState &st = snapshot;
+
+    ControlV2::updateRuntime(st, g_settings);
     syncStirrerState();
 
     JsonDocument doc;
@@ -151,29 +158,29 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     const bool activeProfileLoaded =
         !activeProfileId.isEmpty() && loadProfile(activeProfileId, activeProfile);
 
-    doc["mode"] = static_cast<int>(g_state.mode);
-    doc["modeStr"] = getModeString(g_state.mode);
-    int activePhase = static_cast<int>(g_state.rectPhase);
-    const char *activePhaseStr = getPhaseString(g_state.rectPhase);
-    if (g_state.mode == Mode::NBK) {
-      activePhase = static_cast<int>(g_state.nbkPhase);
-      activePhaseStr = getNbkPhaseString(g_state.nbkPhase);
-    } else if (g_state.mode == Mode::FERMENTATION) {
-      activePhase = static_cast<int>(g_state.fermPhase);
-      activePhaseStr = getFermPhaseString(g_state.fermPhase);
+    doc["mode"] = static_cast<int>(st.mode);
+    doc["modeStr"] = getModeString(st.mode);
+    int activePhase = static_cast<int>(st.rectPhase);
+    const char *activePhaseStr = getPhaseString(st.rectPhase);
+    if (st.mode == Mode::NBK) {
+      activePhase = static_cast<int>(st.nbkPhase);
+      activePhaseStr = getNbkPhaseString(st.nbkPhase);
+    } else if (st.mode == Mode::FERMENTATION) {
+      activePhase = static_cast<int>(st.fermPhase);
+      activePhaseStr = getFermPhaseString(st.fermPhase);
     }
     doc["phase"] = activePhase;
     doc["phaseStr"] = activePhaseStr;
-    doc["nbkPhase"] = static_cast<int>(g_state.nbkPhase);
-    doc["nbkPhaseStr"] = getNbkPhaseString(g_state.nbkPhase);
-    doc["fermPhase"] = static_cast<int>(g_state.fermPhase);
-    doc["fermPhaseStr"] = getFermPhaseString(g_state.fermPhase);
-    doc["paused"] = g_state.paused;
-    doc["safetyOk"] = g_state.safetyOk;
-    doc["uptime"] = g_state.uptime;
+    doc["nbkPhase"] = static_cast<int>(st.nbkPhase);
+    doc["nbkPhaseStr"] = getNbkPhaseString(st.nbkPhase);
+    doc["fermPhase"] = static_cast<int>(st.fermPhase);
+    doc["fermPhaseStr"] = getFermPhaseString(st.fermPhase);
+    doc["paused"] = st.paused;
+    doc["safetyOk"] = st.safetyOk;
+    doc["uptime"] = st.uptime;
     doc["deviceId"] = CloudTunnel::getDeviceId();
     JsonObject alarm = doc["alarm"].to<JsonObject>();
-    fillAlarmJson(alarm, g_state, g_settings);
+    fillAlarmJson(alarm, st, g_settings);
     JsonObject activeProfileJson = doc["activeProfile"].to<JsonObject>();
     activeProfileJson["id"] =
         activeProfileLoaded ? activeProfile.id : activeProfileId;
@@ -251,48 +258,48 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     }
 
     JsonObject temps = doc["temps"].to<JsonObject>();
-    temps["cube"] = g_state.temps.cube;
-    temps["columnBottom"] = g_state.temps.columnBottom;
-    temps["columnMiddle"] = g_state.temps.columnMiddle;
-    temps["columnTop"] = g_state.temps.columnTop;
-    temps["reflux"] = g_state.temps.reflux;
-    temps["deflegmator"] = g_state.temps.deflegmator;
-    temps["product"] = g_state.temps.product;
-    temps["tsa"] = g_state.temps.tsa;
-    temps["waterIn"] = g_state.temps.waterIn;
-    temps["waterOut"] = g_state.temps.waterOut;
+    temps["cube"] = st.temps.cube;
+    temps["columnBottom"] = st.temps.columnBottom;
+    temps["columnMiddle"] = st.temps.columnMiddle;
+    temps["columnTop"] = st.temps.columnTop;
+    temps["reflux"] = st.temps.reflux;
+    temps["deflegmator"] = st.temps.deflegmator;
+    temps["product"] = st.temps.product;
+    temps["tsa"] = st.temps.tsa;
+    temps["waterIn"] = st.temps.waterIn;
+    temps["waterOut"] = st.temps.waterOut;
 
     JsonObject pressure = doc["pressure"].to<JsonObject>();
-    pressure["cube"] = g_state.pressure.cube;
-    pressure["atm"] = g_state.pressure.atmosphere;
-    pressure["kpa"] = g_state.pressure.pressure;
+    pressure["cube"] = st.pressure.cube;
+    pressure["atm"] = st.pressure.atmosphere;
+    pressure["kpa"] = st.pressure.pressure;
 
     JsonObject leak = doc["leak"].to<JsonObject>();
     leak["enabled"] = g_settings.equipment.leakSensorEnabled;
-    leak["valid"] = g_state.leak.valid;
-    leak["triggered"] = g_state.leak.triggered;
-    leak["adc"] = g_state.leak.adc;
-    leak["voltage"] = g_state.leak.voltage;
+    leak["valid"] = st.leak.valid;
+    leak["triggered"] = st.leak.triggered;
+    leak["adc"] = st.leak.adc;
+    leak["voltage"] = st.leak.voltage;
     leak["thresholdV"] = g_settings.equipment.leakThresholdV;
     leak["triggerAbove"] = g_settings.equipment.leakTriggerAbove;
-    leak["lastUpdate"] = g_state.leak.lastUpdate;
+    leak["lastUpdate"] = st.leak.lastUpdate;
     JsonObject vapor = doc["vaporSensors"].to<JsonObject>();
     vapor["enabled"] = VAPOR_SENSOR_ENABLED != 0;
     vapor["thresholdMv"] = VAPOR_SENSOR_THRESHOLD_MV;
     vapor["triggerAbove"] = VAPOR_SENSOR_TRIGGER_ABOVE != 0;
-    vapor["primaryValid"] = g_state.vaporPrimary.valid;
-    vapor["primaryTriggered"] = g_state.vaporPrimary.triggered;
-    vapor["primaryVoltage"] = g_state.vaporPrimary.voltage;
-    vapor["secondaryValid"] = g_state.vaporSecondary.valid;
-    vapor["secondaryTriggered"] = g_state.vaporSecondary.triggered;
-    vapor["secondaryVoltage"] = g_state.vaporSecondary.voltage;
+    vapor["primaryValid"] = st.vaporPrimary.valid;
+    vapor["primaryTriggered"] = st.vaporPrimary.triggered;
+    vapor["primaryVoltage"] = st.vaporPrimary.voltage;
+    vapor["secondaryValid"] = st.vaporSecondary.valid;
+    vapor["secondaryTriggered"] = st.vaporSecondary.triggered;
+    vapor["secondaryVoltage"] = st.vaporSecondary.voltage;
 
     JsonObject power = doc["power"].to<JsonObject>();
     const Heater::Diagnostics heaterDiag = Heater::getDiagnostics();
-    power["voltage"] = g_state.power.voltage;
-    power["current"] = g_state.power.current;
-    power["power"] = g_state.power.power;
-    power["available"] = g_state.health.pzemOk;
+    power["voltage"] = st.power.voltage;
+    power["current"] = st.power.current;
+    power["power"] = st.power.power;
+    power["available"] = st.health.pzemOk;
     power["setPercent"] = heaterDiag.powerSetPercent;
     power["setW"] = heaterDiag.targetPowerWatts;
     power["errorW"] = heaterDiag.powerErrorWatts;
@@ -305,17 +312,17 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     power["zeroCrossCount"] = heaterDiag.zeroCrossCount;
     power["triacFireCount"] = heaterDiag.triacFireCount;
     power["triacDelayUs"] = heaterDiag.triacDelayUs;
-    power["energy"] = g_state.power.energy;
-    power["frequency"] = g_state.power.frequency;
-    power["pf"] = g_state.power.powerFactor;
+    power["energy"] = st.power.energy;
+    power["frequency"] = st.power.frequency;
+    power["pf"] = st.power.powerFactor;
 
     JsonObject pump = doc["pump"].to<JsonObject>();
-    pump["speedMlH"] = g_state.pump.speedMlPerHour;
-    pump["totalMl"] = g_state.pump.totalVolumeMl;
-    pump["running"] = g_state.pump.running;
+    pump["speedMlH"] = st.pump.speedMlPerHour;
+    pump["totalMl"] = st.pump.totalVolumeMl;
+    pump["running"] = st.pump.running;
 
     JsonObject stirrer = doc["stirrer"].to<JsonObject>();
-    fillStirrerJson(stirrer, g_state);
+    fillStirrerJson(stirrer, st);
 
     JsonObject valves = doc["valves"].to<JsonObject>();
     valves["water"] = Valves::getWater();
@@ -328,14 +335,14 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     valves["tails"] = Valves::getTails();
 
     JsonObject hydro = doc["hydrometer"].to<JsonObject>();
-    hydro["abv"] = g_state.hydrometer.abv;
-    hydro["pressure"] = g_state.hydrometer.pressure;
-    hydro["valid"] = g_state.hydrometer.valid;
+    hydro["abv"] = st.hydrometer.abv;
+    hydro["pressure"] = st.hydrometer.pressure;
+    hydro["valid"] = st.hydrometer.valid;
 
     JsonObject volumes = doc["volumes"].to<JsonObject>();
-    volumes["heads"] = g_state.stats.headsVolume;
-    volumes["body"] = g_state.stats.bodyVolume;
-    volumes["tails"] = g_state.stats.tailsVolume;
+    volumes["heads"] = st.stats.headsVolume;
+    volumes["body"] = st.stats.bodyVolume;
+    volumes["tails"] = st.stats.tailsVolume;
 
     JsonObject equipment = doc["equipment"].to<JsonObject>();
     equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
@@ -411,16 +418,16 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     rect["headsSpeedMlHKw"] = g_settings.rectParams.headsSpeedMlHKw;
     rect["bodySpeedMlHKw"] = g_settings.rectParams.bodySpeedMlHKw;
     rect["bodyContainerCount"] = g_settings.rectParams.bodyContainerCount;
-    rect["activeBodyContainer"] = g_state.rectBodyContainerIndex + 1;
-    rect["activeBodyContainerVolumeMl"] = g_state.rectBodyContainerVolumeMl;
+    rect["activeBodyContainer"] = st.rectBodyContainerIndex + 1;
+    rect["activeBodyContainerVolumeMl"] = st.rectBodyContainerVolumeMl;
     rect["activeBodyContainerStartVolumeMl"] =
-        g_state.rectBodyContainerStartVolumeMl;
+        st.rectBodyContainerStartVolumeMl;
     rect["activeBodyContainerLevelEnabled"] =
         g_settings.equipment.bodyLevelSensorEnabled;
     rect["activeBodyContainerLevelReached"] =
-        g_state.rectBodyContainerLevelReached;
+        st.rectBodyContainerLevelReached;
     rect["headsContainerLevelReached"] =
-        g_state.rectHeadsContainerLevelReached;
+        st.rectHeadsContainerLevelReached;
     rect["takeoffBackendType"] =
         static_cast<uint8_t>(g_settings.rectParams.takeoffBackendType);
     rect["takeoffBackendActive"] = takeoffFeedback.backendActive;
@@ -519,31 +526,31 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     nbk["columnBottomTempThresholdC"] =
         g_settings.nbk.columnBottomTempThresholdC;
     nbk["feedBackend"] = "peristaltic_internal";
-    nbk["requestedFeedMlH"] = g_state.nbk.requestedFeedMlH;
-    nbk["correctedFeedMlH"] = g_state.nbk.correctedFeedMlH;
-    nbk["actualFeedMlH"] = g_state.pump.speedMlPerHour;
-    nbk["feedVolumeMl"] = g_state.pump.totalVolumeMl;
-    nbk["feedCorrectionPercent"] = g_state.nbk.feedCorrectionPercent;
-    nbk["limitingFactor"] = g_state.nbk.limitingFactor;
-    nbk["phase"] = static_cast<int>(g_state.nbkPhase);
-    nbk["phaseStr"] = getNbkPhaseString(g_state.nbkPhase);
+    nbk["requestedFeedMlH"] = st.nbk.requestedFeedMlH;
+    nbk["correctedFeedMlH"] = st.nbk.correctedFeedMlH;
+    nbk["actualFeedMlH"] = st.pump.speedMlPerHour;
+    nbk["feedVolumeMl"] = st.pump.totalVolumeMl;
+    nbk["feedCorrectionPercent"] = st.nbk.feedCorrectionPercent;
+    nbk["limitingFactor"] = st.nbk.limitingFactor;
+    nbk["phase"] = static_cast<int>(st.nbkPhase);
+    nbk["phaseStr"] = getNbkPhaseString(st.nbkPhase);
 
     JsonObject fermentation = doc["fermentation"].to<JsonObject>();
     fermentation["targetTempC"] = g_settings.fermentation.targetTempC;
     fermentation["hysteresisC"] = g_settings.fermentation.hysteresisC;
     fermentation["useHeater"] = g_settings.fermentation.useHeater;
-    fermentation["phase"] = static_cast<int>(g_state.fermPhase);
-    fermentation["phaseStr"] = getFermPhaseString(g_state.fermPhase);
+    fermentation["phase"] = static_cast<int>(st.fermPhase);
+    fermentation["phaseStr"] = getFermPhaseString(st.fermPhase);
 
     JsonObject progress = doc["progress"].to<JsonObject>();
     const uint32_t phaseElapsedSec = FSM::getPhaseElapsedSec();
-    const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(g_state, g_settings);
+    const uint32_t phaseTargetSec = FSM::getPhaseTargetSec(st, g_settings);
     progress["phaseElapsedSec"] = phaseElapsedSec;
     progress["phaseTargetSec"] = phaseTargetSec;
     progress["phaseRemainingSec"] =
         (phaseTargetSec > phaseElapsedSec) ? (phaseTargetSec - phaseElapsedSec)
                                            : 0;
-    progress["phasePercent"] = FSM::getPhaseProgressPercent(g_state, g_settings);
+    progress["phasePercent"] = FSM::getPhaseProgressPercent(st, g_settings);
 
     JsonObject v2 = doc["v2"].to<JsonObject>();
     fillV2StatusJson(v2, ControlV2::getLatestModeStatus(),
@@ -590,54 +597,54 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     const uint32_t now = millis();
 
     JsonObject mashing = doc["mashing"].to<JsonObject>();
-    mashing["active"] = g_state.mashing.active;
-    mashing["phase"] = static_cast<int>(g_state.mashing.phase);
-    mashing["phaseStr"] = getMashPhaseString(g_state.mashing.phase);
-    mashing["stepCount"] = g_state.mashing.stepCount;
-    mashing["currentStep"] = g_state.mashing.currentStep;
-    mashing["targetTemp"] = g_state.mashing.targetTemp;
-    mashing["stepDurationSec"] = g_state.mashing.stepDuration;
-    mashing["tempInRange"] = g_state.mashing.tempInRange;
-    mashing["stepName"] = g_state.mashing.stepName;
-    mashing["stepType"] = mashStepTypeToString(g_state.mashing.stepType);
-    mashing["currentTemp"] = g_state.temps.cube;
-    mashing["operatorAction"] = g_state.mashing.operatorAction;
+    mashing["active"] = st.mashing.active;
+    mashing["phase"] = static_cast<int>(st.mashing.phase);
+    mashing["phaseStr"] = getMashPhaseString(st.mashing.phase);
+    mashing["stepCount"] = st.mashing.stepCount;
+    mashing["currentStep"] = st.mashing.currentStep;
+    mashing["targetTemp"] = st.mashing.targetTemp;
+    mashing["stepDurationSec"] = st.mashing.stepDuration;
+    mashing["tempInRange"] = st.mashing.tempInRange;
+    mashing["stepName"] = st.mashing.stepName;
+    mashing["stepType"] = mashStepTypeToString(st.mashing.stepType);
+    mashing["currentTemp"] = st.temps.cube;
+    mashing["operatorAction"] = st.mashing.operatorAction;
 
     uint32_t mashElapsedSec = 0;
-    if (g_state.mashing.tempInRange && g_state.mashing.inRangeStartTime > 0 &&
-        now >= g_state.mashing.inRangeStartTime) {
-      mashElapsedSec = (now - g_state.mashing.inRangeStartTime) / 1000UL;
+    if (st.mashing.tempInRange && st.mashing.inRangeStartTime > 0 &&
+        now >= st.mashing.inRangeStartTime) {
+      mashElapsedSec = (now - st.mashing.inRangeStartTime) / 1000UL;
     }
     mashing["elapsedSec"] = mashElapsedSec;
     mashing["remainingSec"] =
-        (g_state.mashing.stepDuration > mashElapsedSec)
-            ? (g_state.mashing.stepDuration - mashElapsedSec)
+        (st.mashing.stepDuration > mashElapsedSec)
+            ? (st.mashing.stepDuration - mashElapsedSec)
             : 0;
 
     JsonObject fractionProgram = doc["fractionProgram"].to<JsonObject>();
-    fillFractionProgramRuntimeJson(fractionProgram, g_state, g_settings,
+    fillFractionProgramRuntimeJson(fractionProgram, st, g_settings,
                                    takeoffFeedback);
     JsonObject hold = doc["hold"].to<JsonObject>();
-    hold["active"] = g_state.hold.active;
-    hold["stepCount"] = g_state.hold.stepCount;
-    hold["currentStep"] = g_state.hold.currentStep;
-    hold["targetTemp"] = g_state.hold.targetTemp;
-    hold["tempInRange"] = g_state.hold.tempInRange;
+    hold["active"] = st.hold.active;
+    hold["stepCount"] = st.hold.stepCount;
+    hold["currentStep"] = st.hold.currentStep;
+    hold["targetTemp"] = st.hold.targetTemp;
+    hold["tempInRange"] = st.hold.tempInRange;
 
     uint32_t holdStepDurationSec = 0;
-    if (g_state.hold.stepCount > 0 &&
-        g_state.hold.currentStep < g_state.hold.stepCount) {
+    if (st.hold.stepCount > 0 &&
+        st.hold.currentStep < st.hold.stepCount) {
       holdStepDurationSec =
           static_cast<uint32_t>(
-              g_state.hold.steps[g_state.hold.currentStep].duration) *
+              st.hold.steps[st.hold.currentStep].duration) *
           60UL;
     }
     hold["stepDurationSec"] = holdStepDurationSec;
 
     uint32_t holdElapsedSec = 0;
-    if (g_state.hold.tempInRange && g_state.hold.inRangeStartTime > 0 &&
-        now >= g_state.hold.inRangeStartTime) {
-      holdElapsedSec = (now - g_state.hold.inRangeStartTime) / 1000UL;
+    if (st.hold.tempInRange && st.hold.inRangeStartTime > 0 &&
+        now >= st.hold.inRangeStartTime) {
+      holdElapsedSec = (now - st.hold.inRangeStartTime) / 1000UL;
     }
     hold["elapsedSec"] = holdElapsedSec;
     hold["remainingSec"] =

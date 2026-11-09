@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.126"
+#define FIRMWARE_VERSION "2.4.127"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -228,6 +228,10 @@
 #define INTERVAL_WEB_BROADCAST 2000 // Отправка данных по WebSocket
 #define INTERVAL_WEB_BROADCAST_FULL 10000 // Полный пакет данных
 #define INTERVAL_LOG_WRITE 60000    // Запись в лог (1 мин)
+// Публикация согласованного снимка состояния для сетевых задач. Снимок
+// дешевле публиковать реже, чем итерация loop(): 100 мс незаметны для UI,
+// но снимают гонку между писателем g_state и HTTP/WebSocket-читателями.
+#define STATE_SNAPSHOT_INTERVAL_MS 100
 
 // Anti-oscillation guard for v2 indicators/safety
 #define V2_ANTI_OSC_GUARD_WINDOW_MS 15000UL

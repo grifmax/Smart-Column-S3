@@ -4,40 +4,45 @@
 #include "../../fs_compat.h"
 #include <WiFi.h>
 
+#include "control/state_snapshot.h"
 #include "interface/webserver_shared.h"
 
 void registerHealthApiRoutes(AsyncWebServer &server) {
   server.on("/api/health", HTTP_GET, [](AsyncWebServerRequest *request) {
+    SystemState snapshot;
+    StateSnapshot::readOrLive(snapshot);
+    const SystemState &st = snapshot;
+
     JsonDocument doc;
 
     JsonObject temps = doc["temperatures"].to<JsonObject>();
-    temps["ok"] = g_state.health.tempSensorsOk;
-    temps["total"] = g_state.health.tempSensorsTotal;
+    temps["ok"] = st.health.tempSensorsOk;
+    temps["total"] = st.health.tempSensorsTotal;
 
     JsonObject sensors = doc["sensors"].to<JsonObject>();
-    sensors["bmp280"] = g_state.health.bmp280Ok;
-    sensors["ads1115"] = g_state.health.ads1115Ok;
-    sensors["pzem"] = g_state.health.pzemOk;
+    sensors["bmp280"] = st.health.bmp280Ok;
+    sensors["ads1115"] = st.health.ads1115Ok;
+    sensors["pzem"] = st.health.pzemOk;
 
     JsonObject wifi = doc["wifi"].to<JsonObject>();
-    wifi["connected"] = g_state.health.wifiConnected;
-    wifi["rssi"] = g_state.health.wifiRSSI;
+    wifi["connected"] = st.health.wifiConnected;
+    wifi["rssi"] = st.health.wifiRSSI;
 
     JsonObject system = doc["system"].to<JsonObject>();
-    system["uptime"] = g_state.health.uptime;
-    system["freeHeap"] = g_state.health.freeHeap;
-    system["cpuTemp"] = g_state.health.cpuTemp;
+    system["uptime"] = st.health.uptime;
+    system["freeHeap"] = st.health.freeHeap;
+    system["cpuTemp"] = st.health.cpuTemp;
 
     JsonObject errors = doc["errors"].to<JsonObject>();
-    errors["pzemSpikes"] = g_state.health.pzemSpikeCount;
-    errors["tempErrors"] = g_state.health.tempReadErrors;
+    errors["pzemSpikes"] = st.health.pzemSpikeCount;
+    errors["tempErrors"] = st.health.tempReadErrors;
 
-    doc["overallHealth"] = g_state.health.overallHealth;
-    doc["lastUpdate"] = g_state.health.lastUpdate;
+    doc["overallHealth"] = st.health.overallHealth;
+    doc["lastUpdate"] = st.health.lastUpdate;
 
     JsonArray scores = doc["healthScores"].to<JsonArray>();
     for (int i = 0; i < 6; i++) {
-      scores.add(g_state.health.healthScores[i]);
+      scores.add(st.health.healthScores[i]);
     }
 
     JsonObject reboot = doc["reboot"].to<JsonObject>();
