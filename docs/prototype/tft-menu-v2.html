@@ -140,7 +140,10 @@ const state = {
   screen: 0, scroll: 0, stack: [], dirty: false, running: false,
   demo: false, brightness: 70, mqtt: true,
   heater: 2000, booster: 3000, cube: 37, column: 1000, rpn: 3.5, submerge: 7.5,
-  pwm: false, pwmMin: 0, pwmMax: 255, pwmStart: 96,
+  pwm: false, pwmPeriod: 5, pwmDuty: 50, pwmStart: 40,
+  testHeater: 200, testPump: 0, testStirrer: 0, testPwm: 0,
+  runHeater: false, runPump: false, runStirrer: false, runPwm: false,
+  valveWater: false, valveHeads: false, valveBody: false,
   bodyLevel: true, leak: false, ds2482: false,
   clockH: 12, clockM: 0,
   wifiOn: true, wifiSsid: 'Dom-5G', wifiPassword: 'kuban2024', wifiIp: '192.168.3.166',
@@ -217,9 +220,10 @@ function rowsFor(index) {
       linkRow('Калибр. датчиков', 'sensorCal', 'ОТКРЫТЬ'),
       linkRow('Калибр. насоса', 'pumpCal', 'ОТКРЫТЬ'),
       boolRow('PWM охлаждения', () => state.pwm, v => state.pwm = v),
-      valueRow('PWM минимум', () => state.pwmMin, v => state.pwmMin = v),
-      valueRow('PWM максимум', () => state.pwmMax, v => state.pwmMax = v),
-      valueRow('PWM старт', () => state.pwmStart, v => state.pwmStart = v)
+      valueRow('Период цикла', () => state.pwmPeriod, v => state.pwmPeriod = Math.max(1, Math.min(60, v)), {step:1, unit:'с'}),
+      valueRow('Скважность', () => state.pwmDuty, v => state.pwmDuty = Math.max(0, Math.min(100, v)), {step:5, unit:'%'}),
+      valueRow('Старт', () => state.pwmStart, v => state.pwmStart = Math.max(0, Math.min(100, v)), {step:5, unit:'%'}),
+      valueRow('Открыт / закрыт', () => null, null, {sub: `открыт ${fmt(state.pwmPeriod*state.pwmDuty/100,1)} с · закрыт ${fmt(state.pwmPeriod*(100-state.pwmDuty)/100,1)} с`, editor:false})
     ];
     case 4: return [
       linkRow('Wi-Fi', 'wifi', 'НАСТРОИТЬ', {sub:`${state.wifiSsid} · ${state.wifiIp}`}),
@@ -329,10 +333,19 @@ function rowsFor(index) {
     {type:'log', time:'T+00:25:00', level:'info', text:'Температура стабилизирована'}
   ];
   if (index === 113) return [ // проверка оборудования
-    {type:'test', label:'ТЭН', value:'0 Вт'}, {type:'test', label:'Насос', value:'стоп'},
-    {type:'test', label:'Мешалка', value:'стоп'}, {type:'test', label:'Клапан воды', value:'закрыт'},
-    {type:'test', label:'Клапан голов', value:'закрыт'}, {type:'test', label:'Клапан тела', value:'закрыт'},
-    {type:'test', label:'PWM охлаждения', value:'0'}, {type:'test', label:'ПЗЭМ', value:'0 В · 0 А · 0 Вт'}
+    {type:'action', text:'СТОП ВСЁ', id:'stopAll'},
+    {type:'test', label:'ТЭН', get:()=>state.testHeater, set:v=>state.testHeater=v,
+     step:50, unit:'Вт', active:()=>state.runHeater, toggle:()=>state.runHeater=!state.runHeater},
+    {type:'test', label:'Насос', get:()=>state.testPump, set:v=>state.testPump=v,
+     step:100, unit:'мл/ч', active:()=>state.runPump, toggle:()=>state.runPump=!state.runPump},
+    {type:'test', label:'Мешалка', get:()=>state.testStirrer, set:v=>state.testStirrer=v,
+     step:5, unit:'%', active:()=>state.runStirrer, toggle:()=>state.runStirrer=!state.runStirrer},
+    {type:'valve', label:'Клапан воды', get:()=>state.valveWater, set:v=>state.valveWater=v},
+    {type:'valve', label:'Клапан голов', get:()=>state.valveHeads, set:v=>state.valveHeads=v},
+    {type:'valve', label:'Клапан тела', get:()=>state.valveBody, set:v=>state.valveBody=v},
+    {type:'test', label:'PWM охлаждения', get:()=>state.testPwm, set:v=>state.testPwm=v,
+     step:5, unit:'%', active:()=>state.runPwm, toggle:()=>state.runPwm=!state.runPwm},
+    {type:'read', label:'ПЗЭМ', value:'0 В · 0 А · 0 Вт'}
   ];
   if (index === 114) return [ // калибровка насоса
     valueRow('Калибровка', () => 0.42, () => {}, {step:0.001, decimals:3, unit:'мл/об'}),
@@ -637,7 +650,15 @@ function renderRow(row) {
   if (row.type === 'action') {
     const btn = document.createElement('button');
     btn.className = 'startbtn'; btn.textContent = row.text; btn.disabled = row.enabled === false;
-    btn.onclick = () => openStart();
+    btn.onclick = () => {
+      if (row.id === 'stopAll') {
+        state.runHeater = state.runPump = state.runStirrer = state.runPwm = false;
+        state.valveWater = state.valveHeads = state.valveBody = false;
+        state.dirty = true; render(); toast('Все выходы сняты');
+        return;
+      }
+      openStart();
+    };
     el.appendChild(btn);
     return el;
   }
@@ -674,11 +695,50 @@ function renderRow(row) {
     return el;
   }
   if (row.type === 'test') {
+    const active = row.active ? row.active() : false;
     const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
-    const val = document.createElement('div'); val.className = 'val'; val.style.fontSize = '23px'; val.textContent = row.value;
-    const btn = document.createElement('button'); btn.className = 'link'; btn.textContent = 'ТЕСТ';
-    btn.onclick = (e) => { e.stopPropagation(); toast('Тест: ' + row.label); };
+    const stepper = document.createElement('div'); stepper.className = 'stepper';
+    const minus = document.createElement('button'); minus.className = 'step'; minus.textContent = '−';
+    const val = document.createElement('button'); val.className = 'valbtn val';
+    val.innerHTML = `${fmt(row.get(), 0)}<span class="unit">${row.unit || ''}</span>`;
+    const plus = document.createElement('button'); plus.className = 'step'; plus.textContent = '+';
+    const apply = (dir) => {
+      if (active) { toast('Сначала остановите ' + row.label); return; }
+      row.set(Math.max(0, Number(row.get()) + dir * row.step)); state.dirty = true; render();
+    };
+    minus.onclick = (e) => { e.stopPropagation(); apply(-1); };
+    plus.onclick = (e) => { e.stopPropagation(); apply(1); };
+    minus.disabled = active; plus.disabled = active;
+    if (active) { minus.style.opacity = '.35'; plus.style.opacity = '.35'; }
+    stepper.append(minus, val, plus);
+    const btn = document.createElement('button');
+    btn.className = 'link ' + (active ? 'dangerlink' : '');
+    btn.textContent = active ? 'СТОП' : 'ПУСК';
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      if (row.toggle) row.toggle();
+      state.dirty = true; render();
+      toast(active ? `${row.label}: остановлен` : `${row.label}: ${fmt(row.get(),0)} ${row.unit||''}`);
+    };
+    el.append(lbl, stepper, btn);
+    return el;
+  }
+  if (row.type === 'valve') {
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
+    const val = document.createElement('div'); val.className = 'val'; val.style.fontSize = '26px';
+    val.textContent = row.get() ? 'открыт' : 'закрыт';
+    val.style.color = row.get() ? 'var(--green)' : 'var(--muted)';
+    const btn = document.createElement('button');
+    btn.className = 'link ' + (row.get() ? 'dangerlink' : '');
+    btn.textContent = row.get() ? 'ЗАКРЫТЬ' : 'ОТКРЫТЬ';
+    btn.onclick = (e) => { e.stopPropagation(); row.set(!row.get()); state.dirty = true; render(); };
     el.append(lbl, val, btn);
+    return el;
+  }
+  if (row.type === 'read') {
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
+    const val = document.createElement('div'); val.className = 'val'; val.style.fontSize = '24px'; val.textContent = row.value;
+    el.append(lbl, val);
     return el;
   }
   if (row.type === 'log') {
