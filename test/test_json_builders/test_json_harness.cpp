@@ -18,6 +18,7 @@
 #include <../../src/control/sensor_calibration_logic.h>
 #include <../../src/control/pzem_read_policy.h>
 #include <../../src/control/pzem_sample_policy.h>
+#include <../../src/ui/hmi_page_model.h>
 
 #include "../support/json_assertions.h"
 
@@ -48,6 +49,11 @@ void test_pzem_fresh_sample_rejects_stale_timestamp();
 void test_pzem_stale_sample_requires_unchanged_window();
 void test_pzem_sample_policy_accepts_load_step_without_delta_gate();
 void test_pzem_sample_policy_rejects_physical_violations();
+void test_hmi_window_clamps_scroll_and_reports_count();
+void test_hmi_rail_hidden_when_page_fits();
+void test_hmi_thumb_scales_with_scroll();
+void test_hmi_footer_variants();
+void test_hmi_table_font_shrinks_with_rows();
 void test_fraction_program_manual_advance_has_priority();
 void test_fraction_program_route_gate_requires_ready_route_and_settle_delay();
 
@@ -102,6 +108,11 @@ int main(int argc, char **argv) {
   RUN_TEST(test_pzem_stale_sample_requires_unchanged_window);
   RUN_TEST(test_pzem_sample_policy_accepts_load_step_without_delta_gate);
   RUN_TEST(test_pzem_sample_policy_rejects_physical_violations);
+  RUN_TEST(test_hmi_window_clamps_scroll_and_reports_count);
+  RUN_TEST(test_hmi_rail_hidden_when_page_fits);
+  RUN_TEST(test_hmi_thumb_scales_with_scroll);
+  RUN_TEST(test_hmi_footer_variants);
+  RUN_TEST(test_hmi_table_font_shrinks_with_rows);
   RUN_TEST(test_fraction_program_route_gate_requires_ready_route_and_settle_delay);
   RUN_TEST(test_fraction_program_pause_shifts_step_timer);
   RUN_TEST(test_fraction_program_route_timeout_requires_missing_route);
@@ -175,6 +186,98 @@ void test_pzem_sample_policy_rejects_physical_violations() {
   TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, 31.0f, 2000.0f, 30.0f));
   TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, 9.0f, 12000.0f, 30.0f));
   TEST_ASSERT_FALSE(PzemSamplePolicy::isPlausibleSnapshot(230.0f, -1.0f, 2000.0f, 30.0f));
+}
+
+void test_hmi_window_clamps_scroll_and_reports_count() {
+  using namespace HmiPage;
+  TEST_ASSERT_EQUAL_UINT16(0, maxScroll(4, kVisibleRows));
+  TEST_ASSERT_EQUAL_UINT16(5, maxScroll(10, kVisibleRows));
+  TEST_ASSERT_EQUAL_UINT16(5, clampScroll(99, 10, kVisibleRows));
+  TEST_ASSERT_EQUAL_UINT16(0, clampScroll(0, 10, kVisibleRows));
+
+  const Window full = windowFor(0, 4, kVisibleRows);
+  TEST_ASSERT_EQUAL_UINT16(0, full.first);
+  TEST_ASSERT_EQUAL_UINT8(4, full.count);
+  TEST_ASSERT_EQUAL_UINT16(4, full.total);
+
+  const Window last = windowFor(99, 10, kVisibleRows);
+  TEST_ASSERT_EQUAL_UINT16(5, last.first);
+  TEST_ASSERT_EQUAL_UINT8(5, last.count);
+}
+
+void test_hmi_rail_hidden_when_page_fits() {
+  using namespace HmiPage;
+  TEST_ASSERT_FALSE(railVisible(5, kVisibleRows));
+  TEST_ASSERT_TRUE(railVisible(6, kVisibleRows));
+  TEST_ASSERT_FALSE(railVisible(0, kVisibleRows));
+}
+
+void test_hmi_thumb_scales_with_scroll() {
+  using namespace HmiPage;
+  const Thumb top = thumbFor(200, 10, kVisibleRows, 0);
+  TEST_ASSERT_EQUAL_UINT16(0, top.top);
+  TEST_ASSERT_EQUAL_UINT16(100, top.height);
+
+  const Thumb bottom = thumbFor(200, 10, kVisibleRows, 5);
+  TEST_ASSERT_EQUAL_UINT16(100, bottom.top);
+  TEST_ASSERT_EQUAL_UINT16(100, bottom.height);
+
+  // Одна страница: ползунок занимает всю дорожку.
+  const Thumb single = thumbFor(200, 3, kVisibleRows, 0);
+  TEST_ASSERT_EQUAL_UINT16(0, single.top);
+  TEST_ASSERT_EQUAL_UINT16(200, single.height);
+
+  // Минимальная высота ползунка не даёт ему исчезнуть на длинном списке.
+  const Thumb longList = thumbFor(200, 200, kVisibleRows, 0);
+  TEST_ASSERT_EQUAL_UINT16(kMinThumbPx, longList.height);
+}
+
+void test_hmi_footer_variants() {
+  using namespace HmiPage;
+
+  const Footer idleRoot = footerFor(false, false, false, false, false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Action::Back),
+                          static_cast<uint8_t>(idleRoot.left));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Action::Exit),
+                          static_cast<uint8_t>(idleRoot.middle));
+  TEST_ASSERT_FALSE(idleRoot.leftEnabled);
+  TEST_ASSERT_FALSE(idleRoot.rightEnabled);
+
+  const Footer dirtySub = footerFor(false, true, false, false, true);
+  TEST_ASSERT_TRUE(dirtySub.rightEnabled);
+
+  const Footer running = footerFor(true, false, false, false, false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Action::Pause),
+                          static_cast<uint8_t>(running.left));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Action::Stop),
+                          static_cast<uint8_t>(running.middle));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Action::Service),
+                          static_cast<uint8_t>(running.right));
+
+  const Footer infoIdle = footerFor(false, false, true, false, false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Action::None),
+                          static_cast<uint8_t>(infoIdle.middle));
+  TEST_ASSERT_FALSE(infoIdle.rightEnabled);
+
+  const Footer infoRunning = footerFor(true, false, true, false, false);
+  TEST_ASSERT_TRUE(infoRunning.rightEnabled);
+
+  const Footer keyboard = footerFor(false, true, false, true, true);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Action::Cancel),
+                          static_cast<uint8_t>(keyboard.left));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(Action::Done),
+                          static_cast<uint8_t>(keyboard.right));
+}
+
+void test_hmi_table_font_shrinks_with_rows() {
+  using namespace HmiPage;
+  const uint8_t sixRows = fontForRows(6, 248, 10, 17);
+  const uint8_t elevenRows = fontForRows(11, 248, 10, 17);
+  TEST_ASSERT_TRUE(sixRows > elevenRows);
+  TEST_ASSERT_EQUAL_UINT8(17, fontForRows(2, 248, 10, 17));
+  TEST_ASSERT_EQUAL_UINT8(10, fontForRows(30, 248, 10, 17));
+  TEST_ASSERT_EQUAL_UINT8(6, rowsPerColumn(11, 2));
+  TEST_ASSERT_EQUAL_UINT8(4, rowsPerColumn(7, 2));
 }
 
 void test_fraction_program_end_reason_returns_none_without_conditions() {
