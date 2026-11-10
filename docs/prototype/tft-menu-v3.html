@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>TFT 480×320 — прототип меню</title>
+<style>
+  *{box-sizing:border-box}
+  :root{
+    --bg:#070a0d; --panel:#0f161c; --panel2:#0b1116; --line:#1e2a33;
+    --fg:#e7eef4; --muted:#8ea1b0; --dim:#5b6b78;
+    --green:#35c46a; --green-d:#1d7a41; --red:#e2483d; --red-d:#8f2822;
+    --blue:#2f7de1; --blue-d:#1b4c8c; --amber:#f2c14e; --cyan:#35b6c9;
+  }
+  html,body{margin:0;padding:0;background:#151a1f;font-family:"Segoe UI",Roboto,Arial,sans-serif}
+  body{display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 0 26px}
+  .caption{color:#9aa8b4;font:500 16px/1.4 "Segoe UI",Roboto,Arial,sans-serif}
+  .bezel{background:#050708;border:2px solid #2a343d;border-radius:18px;padding:14px;
+         box-shadow:0 18px 50px rgba(0,0,0,.55), inset 0 0 0 2px #000}
+  .device{position:relative;width:960px;height:640px;background:var(--bg);color:var(--fg);
+          overflow:hidden;display:flex;flex-direction:column;user-select:none}
+  .hdr{height:64px;flex:0 0 64px;display:flex;align-items:center;gap:10px;
+       padding:0 14px 0 12px;background:linear-gradient(#121a21,#0d1419);
+       border-bottom:2px solid var(--line)}
+  .infobtn{width:76px;height:52px;font-size:28px;border:0;border-radius:7px;background:#243038;color:#cfe0ea;
+           font-size:24px;font-weight:700;cursor:pointer;flex:0 0 66px}
+  .infobtn:active{background:#31414c}
+  .title{font-size:38px;font-weight:700;letter-spacing:.4px;white-space:nowrap;
+         overflow:hidden;text-overflow:ellipsis;flex:1}
+  .pager{display:flex;gap:6px}
+  .navbtn{width:104px;height:54px;border:0;border-radius:8px;background:var(--red-d);
+          color:#fff;font-size:44px;font-weight:700;line-height:1;cursor:pointer}
+  .navbtn:disabled{background:#2a3238;color:#79868f;cursor:default}
+  .clock{font-size:34px;color:#b9c6d1;font-variant-numeric:tabular-nums;min-width:120px;text-align:center}
+  .lamp{width:46px;height:46px;border-radius:50%;border:2px solid #4a5a67;position:relative;cursor:pointer}
+  .lamp:before{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--amber)}
+  .work{position:relative;flex:1;min-height:0;display:flex}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .pin{display:none;flex:0 0 92px;padding:8px 12px;background:#1b0f0d;border-bottom:2px solid #4d1c16}
+  .pin.on{display:flex}
+  .pin button{flex:1;border:0;border-radius:8px;background:var(--red);color:#fff;
+              font-size:36px;font-weight:800;letter-spacing:.5px;cursor:pointer}
+  .pin button:active{filter:brightness(1.2)}
+  .rows{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .row{height:120px;flex:0 0 120px;display:flex;align-items:center;gap:12px;
+       padding:0 10px 0 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .row:nth-child(even){background:var(--panel2)}
+  .row.notice{background:#231d0c;border-bottom-color:#3d3214}
+  .row.action{background:transparent;border-bottom:0;justify-content:center}
+  .box{width:56px;height:56px;flex:0 0 56px;font-size:40px;border:2px solid #4c5d69;border-radius:5px;
+       display:flex;align-items:center;justify-content:center;font-size:34px;color:#0a0f13;background:#0a0f13}
+  .box.on{background:var(--green);border-color:var(--green)}
+  .lbl{flex:1;min-width:0;font-size:40px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub{display:block;font-size:25px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .val{font-size:46px;font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .unit{font-size:30px;color:var(--muted);font-weight:500;margin-left:5px}
+  .stepper{display:flex;align-items:center;gap:8px}
+  .step{width:92px;height:82px;font-size:46px;border:0;border-radius:7px;background:#2a343d;color:#dfe8ef;
+        font-size:40px;font-weight:700;cursor:pointer;line-height:1}
+  .valbtn{background:transparent;border:0;color:inherit;cursor:pointer;padding:0}
+  .link{height:82px;min-width:220px;font-size:32px;padding:0 20px;border:0;border-radius:7px;
+        background:var(--green-d);color:#fff;font-size:29px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .dangerlink{background:var(--red-d)}
+  .startbtn{height:96px;width:740px;font-size:36px;border:0;border-radius:10px;background:var(--green);
+            color:#04180c;font-size:36px;font-weight:800;letter-spacing:1px;cursor:pointer}
+  .startbtn[disabled]{background:#2a343d;color:#79868f;cursor:default}
+  .notice-txt{flex:1;font-size:28px;color:#f6d78a;line-height:1.2}
+  .warn{width:50px;height:50px;flex:0 0 50px;border-radius:50%;background:var(--amber);color:#20180a;
+        display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800}
+  .rail{width:96px;flex:0 0 96px;display:flex;flex-direction:column;align-items:center;
+        background:#0a1015;border-left:2px solid var(--line);padding:6px 0}
+  .rail button{width:84px;height:74px;border:0;border-radius:8px;background:#26313a;color:#e7eef4;
+               font-size:38px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .rail button:active{background:#3a4a56}
+  .rail button:disabled{opacity:.25;cursor:default}
+  .track{position:relative;flex:1;width:14px;margin:8px 0;background:#1b242b;border-radius:7px}
+  .thumb{position:absolute;left:0;width:14px;background:var(--cyan);border-radius:7px;transition:top .12s}
+  .counter{font-size:22px;color:#c3d0dc;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+  .ftr{height:96px;flex:0 0 96px;display:flex;gap:12px;padding:10px 14px;background:#0d1419;border-top:2px solid var(--line)}
+  .fb{flex:1;border:0;border-radius:10px;font-size:36px;font-weight:800;letter-spacing:.5px;color:#fff;cursor:pointer}
+  .fb.back{background:var(--blue-d)}
+  .fb.exit{background:var(--red-d)}
+  .fb.save{background:var(--green-d)}
+  .fb.stop{background:var(--red)}
+  .fb:disabled{background:#222a30;color:#79868f;cursor:default}
+  .fb:active:not(:disabled){filter:brightness(1.25)}
+  /* info table */
+  .table{flex:1;display:grid;grid-template-columns:1fr 1fr;column-gap:16px;
+         padding:8px 12px;align-content:start}
+  .cell{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+        border-bottom:1px solid var(--line);padding:0 6px;min-height:0}
+  .cell .k{color:#c8d6e0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cell .v{color:var(--amber);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .cell.off .k{color:#63727e}
+  .cell.off .v{color:#63727e}
+  /* keyboard */
+  .kbd{flex:1;display:flex;flex-direction:column;gap:10px;padding:8px 12px}
+  .pwd{height:70px;border:2px solid #33424d;border-radius:8px;background:#0a1218;
+       display:flex;align-items:center;padding:0 16px;font-size:30px;letter-spacing:4px;color:var(--amber)}
+  .pwd .hint{color:#6d7c88;font-size:24px;letter-spacing:0}
+  .krow{display:flex;gap:6px;justify-content:center}
+  .key{height:82px;min-width:78px;flex:1;border:0;border-radius:7px;background:#26313a;color:#e7eef4;
+       font-size:30px;font-weight:600;cursor:pointer}
+  .key:active{background:#3a4a56}
+  .key.wide{flex:2}
+  .key.fn{background:#33424d;font-size:22px}
+  .toast{position:absolute;left:50%;bottom:104px;transform:translateX(-50%) translateY(20px);
+         background:#13361f;border:2px solid var(--green);color:#c9f5d8;padding:12px 22px;border-radius:8px;
+         font-size:27px;font-weight:700;opacity:0;pointer-events:none;transition:.2s;z-index:10}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="bezel">
+  <div class="device" id="device">
+    <div class="hdr">
+      <button class="infobtn" id="infobtn" title="Табло датчиков">▦</button>
+      <div class="title" id="title">ГЛАВНАЯ</div>
+      <div class="pager">
+        <button class="navbtn" id="prev" aria-label="Предыдущий раздел">‹</button>
+        <button class="navbtn" id="next" aria-label="Следующий раздел">›</button>
+      </div>
+      <div class="clock" id="clock">12:00</div>
+      <div class="lamp" id="lamp" title="Яркость"></div>
+    </div>
+    <div class="work">
+      <div class="main">
+        <div class="pin" id="pin"></div>
+        <div class="rows" id="rows"></div>
+      </div>
+      <div class="rail" id="rail">
+        <button id="up" aria-label="Вверх">▲</button>
+        <div class="track"><div class="thumb" id="thumb"></div></div>
+        <div class="counter" id="counter">1/1</div>
+        <button id="down" aria-label="Вниз">▼</button>
+      </div>
+    </div>
+    <div class="ftr" id="ftr">
+      <button class="fb back" id="back">НАЗАД</button>
+      <button class="fb exit" id="exit">ВЫХОД</button>
+      <button class="fb save" id="save">СОХРАНИТЬ</button>
+    </div>
+    <div class="toast" id="toast">Готово</div>
+  </div>
+</div>
+<div class="caption">▦ табло · ‹ › разделы · ▲ ▼ прокрутка · касание строки — правка</div>
+
+<script>
+const BASE_VISIBLE = 4;
+const state = {
+  screen: 0, scroll: 0, stack: [], dirty: false, running: false,
+  demo: false, brightness: 70, mqtt: true,
+  heater: 2000, booster: 3000, cube: 37, column: 1000, rpn: 3.5, submerge: 7.5,
+  pwm: false, pwmPeriod: 5, pwmDuty: 50, pwmStart: 40,
+  testHeater: 200, testPump: 0, testStirrer: 0, testPwm: 0,
+  runHeater: false, runPump: false, runStirrer: false, runPwm: false,
+  valveWater: false, valveHeads: false, valveBody: false,
+  bodyLevel: true, leak: false, ds2482: false,
+  clockH: 12, clockM: 0,
+  wifiOn: true, wifiSsid: 'Dom-5G', wifiPassword: 'kuban2024', wifiIp: '192.168.3.166',
+  safety: {pressure: 50, tsa: 55, waterOut: 70, waterRise: 8, pressureRise: 20},
+  mode: 'Ректификация', profile: 'Без профиля',
+  selection: {heater: 1850, takeoff: 850},
+  pickRole: 0, freeAddr: '',
+  time: '10:23:25',
+  sensors: [
+    {role:'Куб',         addr:'28-3A-9C', temp:82.4, offset:0.0,  on:true},
+    {role:'Царга низ',   addr:'28-3B-11', temp:78.1, offset:-0.1, on:true},
+    {role:'Царга верх',  addr:'28-3C-44', temp:77.6, offset:0.2,  on:true},
+    {role:'Дефлегматор', addr:'28-3D-07', temp:52.3, offset:0.0,  on:true},
+    {role:'ТСА',         addr:'28-3E-AB', temp:31.0, offset:0.0,  on:true},
+    {role:'Вода вход',   addr:'28-3F-12', temp:18.4, offset:0.0,  on:true},
+    {role:'Вода выход',  addr:'',        temp:null, offset:0.0,  on:false}
+  ],
+  bus: [
+    {addr:'28-3A-9C', temp:82.4}, {addr:'28-3B-11', temp:78.1},
+    {addr:'28-3C-44', temp:77.6}, {addr:'28-3D-07', temp:52.3},
+    {addr:'28-3E-AB', temp:31.0}, {addr:'28-3F-12', temp:18.4},
+    {addr:'28-41-77', temp:24.9}, {addr:'28-42-05', temp:25.1},
+    {addr:'28-43-1B', temp:26.3}, {addr:'28-44-90', temp:27.0}
+  ],
+  wifiList: ['Dom-5G','Dom-2.4','KubanWiFi','TP-LINK_4C21'],
+  pwmPullMs: 300,
+  pwmHold: 38,
+  dosingTargetMl: 500,
+  dosingRateMlH: 1200
+};
+
+const fmt = (v,d=0) => (v===null||v===undefined||Number.isNaN(Number(v))) ? '—' : Number(v).toFixed(d).replace('.', ',');
+const SECTIONS = ['ГЛАВНАЯ','РЕЖИМ','НАСТРОЙКИ 1/3','НАСТРОЙКИ 2/3','НАСТРОЙКИ 3/3','БЕЗОПАСНОСТЬ','СЕРВИС','ПРОЦЕСС'];
+
+function valueRow(label, get, set, o = {}) {
+  return {type:'value', label, sub:o.sub||'', unit:o.unit||'', get, set,
+          step:o.step===undefined?1:o.step, decimals:o.decimals||0, editor:o.editor!==false};
+}
+function boolRow(label, get, set, sub='') { return {type:'bool', label, sub, get, set}; }
+function linkRow(label, target, text='НАСТРОИТЬ', o={}) {
+  return {type:'link', label, sub:o.sub||'', target, text, danger:o.danger||false, action:o.action||null};
+}
+function noticeRow(text) { return {type:'notice', text}; }
+function actionRow(text, id, enabled=true) { return {type:'action', text, id, enabled}; }
+
+function rowsFor(index) {
+  switch (index) {
+    case 0: return [
+      linkRow('Режим', 'mode', 'ВЫБРАТЬ', {sub:state.mode}),
+      valueRow('Куб, °C', () => 82.4, null, {decimals:1, unit:'°C', editor:false}),
+      valueRow('Мощность, Вт', () => state.selection.heater, null, {unit:'Вт', editor:false}),
+      valueRow('Отбор, мл/ч', () => state.selection.takeoff, null, {unit:'мл/ч', editor:false}),
+      linkRow('Безопасность', 'safety', 'ОТКРЫТЬ', {sub:'НОРМА'}),
+      linkRow('Сервис', 'service', 'ОТКРЫТЬ')
+    ];
+    case 1: return [
+      {type:'choice', label:'Режим', options:['Ректификация','Дистилляция','НБК','Брожение','Термопауза','Автоклав'], get:()=>state.mode, set:v=>state.mode=v},
+      {type:'choice', label:'Профиль', options:['Без профиля','РК-40','НБК-20'], get:()=>state.profile, set:v=>state.profile=v},
+      linkRow('Параметры режима', 'modeParams', 'НАСТРОИТЬ'),
+      noticeRow('Перед стартом: проверка датчиков, безопасности и уставок'),
+      linkRow('Проверка', 'preflight', '5/5 OK'),
+      actionRow('СТАРТ ПРОЦЕССА', 'start')
+    ];
+    case 2: return [
+      valueRow('Мощн. ТЭНа', () => state.heater, v => state.heater = v, {step:50, unit:'Вт'}),
+      valueRow('Высота колл.', () => state.column, v => state.column = v, {step:50, unit:'мм'}),
+      valueRow('Объём куба', () => state.cube, v => state.cube = v, {step:1, unit:'л'}),
+      valueRow('Коэф. РПН', () => state.rpn, v => state.rpn = v, {step:0.1, decimals:1}),
+      valueRow('Мин. погр. ТЭНа', () => state.submerge, v => state.submerge = v, {step:0.5, decimals:1, unit:'л'}),
+      boolRow('Booster ТЭН', () => state.demo, v => state.demo = v),
+      valueRow('Booster', () => state.booster, v => state.booster = v, {step:100, unit:'Вт'})
+    ];
+    case 3: return [
+      linkRow('Назначение датчиков темп.', 'sensorAssign', 'ОТКРЫТЬ'),
+      linkRow('Калибр. датчиков темп.', 'sensorCal', 'ОТКРЫТЬ'),
+      linkRow('Калибр. насоса', 'pumpCal', 'ОТКРЫТЬ'),
+      boolRow('Датчик уровня тела', () => state.bodyLevel, v => state.bodyLevel = v),
+      boolRow('Датчик протечки', () => state.leak, v => state.leak = v),
+      boolRow('DS2482 для температур', () => state.ds2482, v => state.ds2482 = v),
+      boolRow('Клапан охлаждения', () => state.pwm, v => state.pwm = v, 'открыт / закрыт'),
+      valueRow('Втягивание', () => state.pwmPullMs, v => state.pwmPullMs = Math.max(50, Math.min(2000, v)), {step:50, unit:'мс'}),
+      valueRow('Удержание', () => state.pwmHold, v => state.pwmHold = Math.max(5, Math.min(100, v)), {step:5, unit:'%'}),
+      valueRow('Ток удержания', () => null, null, {editor:false,
+        sub: `втягивание ${fmt(state.pwmPullMs,0)} мс на 100 % → удержание ${fmt(state.pwmHold,0)} % (${Math.round(state.pwmHold*255/100)}/255), 20 кГц`})
+    ];
+    case 4: return [
+      linkRow('Wi-Fi', 'wifi', 'НАСТРОИТЬ', {sub:`${state.wifiSsid} · ${state.wifiIp}`}),
+      valueRow('Часы', () => state.clockH, v => state.clockH = Math.max(0, Math.min(23, v)), {step:1, unit:'ч'}),
+      valueRow('Минуты', () => state.clockM, v => state.clockM = Math.max(0, Math.min(55, v)), {step:5, unit:'мин'}),
+      valueRow('Яркость', () => state.brightness, v => state.brightness = v, {step:5, unit:'%'}),
+      boolRow('Демо-режим', () => state.demo, v => state.demo = v),
+      boolRow('MQTT', () => state.mqtt, v => state.mqtt = v),
+      linkRow('Сброс настроек', 'reset', 'СБРОС', {danger:true}),
+      {type:'read', label:'Версия ПО', value:'2.4.128', sub:'сборка 09.11.2026'}
+    ];
+    case 5: return [
+      valueRow('Давление макс.', () => state.safety.pressure, v => state.safety.pressure = v, {step:1, unit:'мм рт.ст.'}),
+      valueRow('TSA макс.', () => state.safety.tsa, v => state.safety.tsa = v, {step:1, unit:'°C'}),
+      valueRow('Вода выход макс.', () => state.safety.waterOut, v => state.safety.waterOut = v, {step:1, unit:'°C'}),
+      valueRow('Вода рост', () => state.safety.waterRise, v => state.safety.waterRise = v, {step:1, unit:'°C/мин'}),
+      valueRow('Давл. рост', () => state.safety.pressureRise, v => state.safety.pressureRise = v, {step:1, unit:'мм/мин'}),
+      linkRow('Проверка оборуд.', 'equipment', 'ОТКРЫТЬ'),
+      noticeRow('При аварии: сначала квитируйте, затем сбросьте защёлку')
+    ];
+    case 6: return [
+      linkRow('Все температуры', 'temps', 'ОТКРЫТЬ'),
+      linkRow('Проверка оборуд.', 'equipment', 'ОТКРЫТЬ'),
+      linkRow('Дозирование', 'dosing', 'ОТКРЫТЬ'),
+      linkRow('Журнал', 'journal', 'ОТКРЫТЬ'),
+      linkRow('Калибровка тача', 'touchCal', 'ОТКРЫТЬ'),
+      valueRow('Свободная RAM', () => 139, null, {unit:'КБ', editor:false}),
+      valueRow('RSSI', () => -77, null, {unit:'дБм', editor:false}),
+      {type:'read', label:'Версия ПО', value:'2.4.128', sub:'сборка 09.11.2026'}
+    ];
+    case 7: return [
+      valueRow('Режим / фаза', () => null, null, {sub:'Ректификация / ОТБОР ТЕЛА', editor:false}),
+      valueRow('Куб', () => 82.4, null, {decimals:1, unit:'°C', editor:false}),
+      valueRow('Низ колонны', () => 78.1, null, {decimals:1, unit:'°C', editor:false}),
+      valueRow('Мощность', () => state.selection.heater, null, {unit:'Вт', editor:false}),
+      valueRow('Отбор', () => state.selection.takeoff, null, {unit:'мл/ч', editor:false}),
+      linkRow('Параметры процесса', 'processParams', 'ОТКРЫТЬ'),
+      linkRow('Журнал', 'journal', 'ОТКРЫТЬ')
+    ];
+  }
+  if (index === 105) {
+    const free = state.bus.filter(b => !state.sensors.some(s2 => s2.addr === b.addr)).length;
+    return state.sensors.map(sensor => ({type:'sensor', label:sensor.role, sensor})).concat([
+      linkRow('Свободные на шине', 'sensorFree', `${free} из ${state.bus.length}`, {sub:'нажмите, чтобы назначить'}),
+      linkRow('Скан шины DS2482', 'scan', 'СКАН'),
+      noticeRow('Один датчик занимает одну роль; карта хранится в NVS')
+    ]);
+  }
+  if (index === 106) return state.sensors.map(sensor => valueRow(
+    sensor.role, () => sensor.offset, v => sensor.offset = v,
+    {step:0.1, decimals:1, unit:'°C', sub: sensor.on ? sensor.addr : 'не назначен'}
+  )).concat([noticeRow('Смещение прибавляется к измеренной температуре')]);
+
+  if (index === 107) {
+    const role = state.sensors[state.pickRole] || state.sensors[0];
+    return [noticeRow(`Выберите датчик для роли «${role.role}»`)].concat(
+      state.bus.map(entry => ({
+        type:'pick', label: entry.addr, value: entry.temp.toFixed(1) + ' °C',
+        taken: state.sensors.some(s2 => s2.addr === entry.addr && s2.role !== role.role),
+        onPick: () => assignSensor(state.pickRole, entry.addr)
+      }))
+    ).concat([
+      {type:'pick', label:'Отвязать датчик', value:'', danger:true, onPick: () => detachSensor()},
+      {type:'pick', label:'Автоназначение по порядку', value:'', onPick: () => autoAssign()}
+    ]);
+  }
+  if (index === 108) {
+    const freeEntries = state.bus.filter(b => !state.sensors.some(s2 => s2.addr === b.addr));
+    if (!freeEntries.length) return [noticeRow('Свободных датчиков нет — все назначены')];
+    return [noticeRow(`Свободно ${freeEntries.length} из ${state.bus.length}. Выберите датчик, затем роль`)].concat(
+      freeEntries.map(entry => ({
+        type:'pick', label: entry.addr, value: entry.temp.toFixed(1) + ' °C',
+        onPick: () => { state.freeAddr = entry.addr; pushSub('sensorRolePick'); }
+      }))
+    );
+  }
+  if (index === 109) return [noticeRow(`Датчик ${state.freeAddr} → выберите роль`)].concat(
+    state.sensors.map(sensor => ({
+      type:'pick', label: sensor.role, value: sensor.on ? 'занята' : 'свободна', taken: sensor.on,
+      onPick: () => {
+        if (sensor.on) { toast('Роль занята — сначала отвяжите датчик'); return; }
+        const entry = state.bus.find(b => b.addr === state.freeAddr);
+        sensor.addr = state.freeAddr; sensor.on = true; sensor.temp = entry ? entry.temp : null;
+        state.dirty = true; goBack(); toast('Назначено');
+      }
+    }))
+  );
+  if (index === 110) return [
+    boolRow('Wi-Fi включён', () => state.wifiOn, v => state.wifiOn = v),
+    linkRow('Сеть', 'wifiList', 'ВЫБРАТЬ', {sub: state.wifiSsid}),
+    linkRow('Пароль', 'wifiPass', 'ИЗМЕНИТЬ', {sub:'••••••••'}),
+    valueRow('IP-адрес', () => null, null, {sub: state.wifiIp, editor:false}),
+    linkRow('Скан сетей', 'wifiList', 'ОБНОВИТЬ', {sub:'найдено 4'}),
+    noticeRow('Пароль вводится экранной клавиатурой, раскладка EN')
+  ];
+  if (index === 111) return [noticeRow(`Сеть «${state.wifiSsid}»: введите пароль`)].concat(
+    state.wifiList.map(ssid => ({
+      type:'pick', label: ssid, value: ssid === state.wifiSsid ? 'текущая' : '',
+      onPick: () => { state.wifiSsid = ssid; goBack(); toast('Сеть: ' + ssid); }
+    }))
+  );
+  if (index === 112) return [ // журнал
+    {type:'log', time:'T+00:12:31', level:'info', text:'Процесс запущен'},
+    {type:'log', time:'T+00:14:02', level:'warn', text:'ПЗЭМ: нет ответа 3 раза'},
+    {type:'log', time:'T+00:14:05', level:'info', text:'ПЗЭМ восстановлен'},
+    {type:'log', time:'T+00:18:44', level:'info', text:'Фаза: отбор тела'},
+    {type:'log', time:'T+00:22:10', level:'warn', text:'Мощность ограничена 90%'},
+    {type:'log', time:'T+00:25:00', level:'info', text:'Температура стабилизирована'}
+  ];
+  if (index === 113) return [ // проверка оборудования
+    {type:'test', label:'ТЭН', get:()=>state.testHeater, set:v=>state.testHeater=v,
+     step:50, unit:'Вт', active:()=>state.runHeater, toggle:()=>state.runHeater=!state.runHeater},
+    {type:'test', label:'Насос', get:()=>state.testPump, set:v=>state.testPump=v,
+     step:100, unit:'мл/ч', active:()=>state.runPump, toggle:()=>state.runPump=!state.runPump},
+    {type:'test', label:'Мешалка', get:()=>state.testStirrer, set:v=>state.testStirrer=v,
+     step:5, unit:'%', active:()=>state.runStirrer, toggle:()=>state.runStirrer=!state.runStirrer},
+    {type:'valve', label:'Клапан воды', get:()=>state.valveWater, set:v=>state.valveWater=v},
+    {type:'valve', label:'Клапан голов', get:()=>state.valveHeads, set:v=>state.valveHeads=v},
+    {type:'valve', label:'Клапан тела', get:()=>state.valveBody, set:v=>state.valveBody=v},
+    {type:'test', label:'PWM охлаждения', get:()=>state.testPwm, set:v=>state.testPwm=v,
+     step:5, unit:'%', active:()=>state.runPwm, toggle:()=>state.runPwm=!state.runPwm},
+    {type:'read', label:'ПЗЭМ', value:'0 В · 0 А · 0 Вт'}
+  ];
+  if (index === 205) return [ // дозирование
+    valueRow('Целевой объём', () => state.dosingTargetMl, v => state.dosingTargetMl = v, {unit:'мл', step:10}),
+    valueRow('Скорость', () => state.dosingRateMlH, v => state.dosingRateMlH = v, {unit:'мл/ч', step:100}),
+    noticeRow('Прокачка не входит в целевой объём'),
+    {type:'read', label:'Маршрут', value:'отбор · клапаны вне маршрута закрыты'},
+    {type:'read', label:'Сессия', value:'ожидание · факт 0,0 мл'},
+    actionRow('ПОДТВЕРДИТЬ ПРОКАЧКУ', 'dosingStart')
+  ];
+
+  if (index === 117) return [ // калибровка тача
+    {type:'action', text:'НАЧАТЬ КАЛИБРОВКУ', id:'touchStart'},
+    noticeRow('Нажимайте на перекрестия по углам экрана'),
+    {type:'read', label:'Точка 1', value:'X 412 · Y 231'},
+    {type:'read', label:'Точка 2', value:'X 3988 · Y 244'},
+    {type:'read', label:'Точка 3', value:'X 4051 · Y 3810'},
+    {type:'read', label:'Точка 4', value:'X 366 · Y 3792'},
+    linkRow('Сброс калибровки', 'touchReset', 'СБРОС', {danger:true})
+  ];
+  if (index === 114) return [ // калибровка насоса
+    valueRow('Калибровка', () => 0.42, () => {}, {step:0.001, decimals:3, unit:'мл/об'}),
+    noticeRow('Прокачайте линию, затем введите фактический объём'),
+    valueRow('Фактический объём', () => 100, () => {}, {step:10, unit:'мл'}),
+    linkRow('Прокачать линию', 'prime', 'ПУСК'),
+    actionRow('СОХРАНИТЬ КАЛИБРОВКУ', 'savePump')
+  ];
+  if (index === 115) return [ // параметры процесса
+    valueRow('Мощность процесса', () => state.selection.heater, v => state.selection.heater = v, {step:50, unit:'Вт'}),
+    valueRow('Скорость отбора', () => state.selection.takeoff, v => state.selection.takeoff = v, {step:50, unit:'мл/ч'}),
+    noticeRow('Доступны только параметры, разрешённые для режима')
+  ];
+  if (index === 116) return [ // параметры режима
+    valueRow('Объём СС', () => 20, () => {}, {step:0.5, decimals:1, unit:'л'}),
+    valueRow('Крепость СС', () => 40, () => {}, {step:0.5, decimals:1, unit:'%'}),
+    valueRow('Головы', () => 8, () => {}, {step:0.5, decimals:1, unit:'%'}),
+    valueRow('Тело', () => 84, () => {}, {step:0.5, decimals:1, unit:'%'}),
+    valueRow('Хвосты', () => 8, () => {}, {step:0.5, decimals:1, unit:'%'}),
+    valueRow('Скорость голов', () => 300, () => {}, {step:10, unit:'мл/ч/кВт'}),
+    valueRow('Скорость тела', () => 600, () => {}, {step:50, unit:'мл/ч/кВт'})
+  ];
+  return [];
+}
+
+function assignSensor(roleIndex, addr) {
+  const entry = state.bus.find(b => b.addr === addr);
+  state.sensors.forEach(s2 => { if (s2.addr === addr) { s2.addr=''; s2.on=false; s2.temp=null; } });
+  const target = state.sensors[roleIndex];
+  target.addr = addr; target.on = true;
+  target.temp = entry ? entry.temp : target.temp;
+  state.dirty = true; goBack();
+}
+function detachSensor() {
+  const s2 = state.sensors[state.pickRole];
+  if (!s2) return;
+  s2.addr = ''; s2.on = false; s2.temp = null; state.dirty = true; goBack();
+}
+function autoAssign() {
+  state.sensors.forEach((s2, i) => {
+    if (!state.bus[i]) return;
+    s2.addr = state.bus[i].addr; s2.temp = state.bus[i].temp; s2.on = true;
+  });
+  state.dirty = true; goBack(); toast('Назначено по порядку');
+}
+
+const SUBS = {
+  mode:            {title:'ВЫБОР РЕЖИМА', parent:1, id:200},
+  safety:          {title:'БЕЗОПАСНОСТЬ', parent:5, id:201},
+  service:         {title:'СЕРВИС', parent:6, id:202},
+  modeParams:      {title:'ПАРАМЕТРЫ РЕЖИМА', parent:1, id:116},
+  preflight:       {title:'ПРОВЕРКА', parent:1, id:203},
+  sensorAssign:    {title:'ДАТЧИКИ: НАЗНАЧЕНИЕ', parent:3, id:105},
+  sensorCal:       {title:'КАЛИБР. ДАТЧИКОВ', parent:3, id:106},
+  sensorPick:      {title:'НАЗНАЧИТЬ ДАТЧИК', parent:3, id:107},
+  sensorFree:      {title:'СВОБОДНЫЕ ДАТЧИКИ', parent:3, id:108},
+  sensorRolePick:  {title:'ВЫБОР РОЛИ', parent:3, id:109},
+  wifi:            {title:'WI-FI', parent:4, id:110},
+  wifiList:        {title:'СЕТИ WI-FI', parent:4, id:111},
+  wifiPass:        {title:'ПАРОЛЬ WI-FI', parent:4, id:204, keyboard:true, footer:{back:'ОТМЕНА', save:'ГОТОВО'}},
+  equipment:       {title:'ПРОВЕРКА ОБОРУД.', parent:5, id:113},
+  journal:         {title:'ЖУРНАЛ', parent:6, id:112},
+  temps:           {title:'ВСЕ ТЕМПЕРАТУРЫ', parent:6, id:106},
+  processParams:   {title:'ПАРАМЕТРЫ ПРОЦЕССА', parent:7, id:115},
+  dosing:          {title:'ДОЗИРОВАНИЕ', parent:6, id:205},
+  pumpCal:         {title:'КАЛИБР. НАСОСА', parent:3, id:114},
+  touchCal:        {title:'КАЛИБРОВКА ТАЧА', parent:6, id:117},
+  prime:           {title:'ПРОКАЧКА', parent:3, id:206},
+  scan:            {title:'СКАН ШИНЫ', parent:3, id:207},
+  reset:           {title:'СБРОС НАСТРОЕК', parent:4, id:208},
+  wifiOn:          {title:'WI-FI', parent:4, id:110}
+};
+const INFO_ID = 210;
+
+function currentScreen() {
+  if (state.stack.length) return state.stack[state.stack.length - 1];
+  return {kind:'section'};
+}
+function currentDef() {
+  const s = currentScreen();
+  if (s.kind === 'sub') return Object.values(SUBS).find(d => d.id === s.id) || null;
+  return null;
+}
+function currentRows() {
+  const s = currentScreen();
+  if (s.kind === 'sub') {
+    const def = currentDef();
+    return def ? rowsFor(def.id) : [];
+  }
+  return rowsFor(state.screen);
+}
+function screenTitle() {
+  const def = currentDef();
+  if (def) return def.title;
+  return SECTIONS[state.screen];
+}
+
+/* ---------- info table ---------- */
+function infoPairs() {
+  const pairs = state.sensors.map(s2 => [s2.role, s2.on ? fmt(s2.temp, 1) + ' °C' : '—', !s2.on]);
+  pairs.push(['Давл. куб', '12 мм рт.ст.', false]);
+  pairs.push(['Атмосфера', '745 мм', false]);
+  pairs.push(['Отбор', fmt(state.selection.takeoff, 0) + ' мл/ч', false]);
+  pairs.push(['Мощность', fmt(state.selection.heater, 0) + ' Вт', false]);
+  return pairs;
+}
+function renderInfo() {
+  const pairs = infoPairs();
+  const perColumn = Math.ceil(pairs.length / 2);
+  const host = document.getElementById('rows');
+  host.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'table';
+  grid.style.gridTemplateRows = `repeat(${perColumn}, 1fr)`;
+  const rowH = 496 / perColumn;
+  const fontK = Math.max(20, Math.min(34, Math.round(rowH * 0.52)));
+  const fontV = Math.max(22, Math.min(38, Math.round(rowH * 0.58)));
+  pairs.forEach(([k, v, off]) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (off ? ' off' : '');
+    cell.innerHTML = `<span class="k" style="font-size:${fontK}px">${k}</span>` +
+                     `<span class="v" style="font-size:${fontV}px">${v}</span>`;
+    grid.appendChild(cell);
+  });
+  host.appendChild(grid);
+}
+
+/* ---------- keyboard ---------- */
+const KB_LETTERS = [
+  ['q','w','e','r','t','y','u','i','o','p'],
+  ['a','s','d','f','g','h','j','k','l'],
+  ['⇧','z','x','c','v','b','n','m','-','_'],
+  ['123','ПРОБЕЛ','⌫']
+];
+const KB_DIGITS = [
+  ['1','2','3','4','5','6','7','8','9','0'],
+  ['@','.','_','-','+','#','$','%','&','*'],
+  ['/',':',';',',','?','!','(',')','=','~'],
+  ['abc','ПРОБЕЛ','⌫']
+];
+state.layout = state.layout || 'abc';
+state.shift = false;
+
+function renderKeyboard() {
+  const host = document.getElementById('rows');
+  host.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'kbd';
+
+  const field = document.createElement('div');
+  field.className = 'pwd';
+  field.innerHTML = state.wifiPassword
+    ? '•'.repeat(state.wifiPassword.length) +
+      `<span class="hint" style="margin-left:14px">${state.wifiPassword.length} симв.</span>`
+    : '<span class="hint">введите пароль</span>';
+  wrap.appendChild(field);
+
+  const layoutRows = (state.layout === '123') ? KB_DIGITS : KB_LETTERS;
+  layoutRows.forEach(row => {
+    const line = document.createElement('div');
+    line.className = 'krow';
+    row.forEach(k => {
+      const b = document.createElement('button');
+      let label = k;
+      if (state.layout === 'abc' && k.length === 1 && /[a-z]/.test(k) && state.shift) {
+        label = k.toUpperCase();
+      }
+      b.className = 'key' + (k.length > 1 ? ' wide fn' : '');
+      if (k === '⇧' && state.shift) b.style.background = '#1d7a41';
+      b.textContent = label;
+      b.onclick = () => handleKey(k);
+      line.appendChild(b);
+    });
+    wrap.appendChild(line);
+  });
+  host.appendChild(wrap);
+}
+
+function handleKey(k) {
+  if (k === '123') { state.layout = '123'; render(); return; }
+  if (k === 'abc') { state.layout = 'abc'; render(); return; }
+  if (k === '⇧') { state.shift = !state.shift; render(); return; }
+  if (k === '⌫') { state.wifiPassword = state.wifiPassword.slice(0, -1); }
+  else if (k === 'ПРОБЕЛ') { state.wifiPassword += ' '; }
+  else if (k.length === 1) {
+    const ch = (state.layout === 'abc' && state.shift) ? k.toUpperCase() : k;
+    state.wifiPassword += ch;
+    if (state.shift) state.shift = false;   // shift — на один символ
+  }
+  state.dirty = true;
+  render();
+}
+
+/* ---------- render ---------- */
+function anyTestActive() {
+  return state.runHeater || state.runPump || state.runStirrer || state.runPwm ||
+         state.valveWater || state.valveHeads || state.valveBody;
+}
+function pinActive() { return state.running || anyTestActive(); }
+function visibleRows() { return pinActive() ? BASE_VISIBLE - 1 : BASE_VISIBLE; }
+
+function renderPin() {
+  const pin = document.getElementById('pin');
+  if (!pinActive()) { pin.classList.remove('on'); pin.innerHTML = ''; return; }
+  pin.classList.add('on');
+  pin.innerHTML = '<button id="pinStop">СТОП ВСЁ</button>';
+  pin.querySelector('#pinStop').onclick = () => {
+    state.running = false;
+    state.runHeater = state.runPump = state.runStirrer = state.runPwm = false;
+    state.valveWater = state.valveHeads = state.valveBody = false;
+    state.dirty = true; render(); toast('Все выходы сняты');
+  };
+}
+
+function render() {
+  const s = currentScreen();
+  const def = currentDef();
+  const isInfo = (s.kind === 'info');
+  document.getElementById('title').textContent = isInfo ? 'ТАБЛО' : screenTitle();
+  document.getElementById('infobtn').style.background = isInfo ? '#3a4a56' : '';
+
+  if (isInfo) {
+    renderInfo();
+  } else if (def && def.keyboard) {
+    renderKeyboard();
+  } else {
+    const rows = currentRows();
+    const visible = visibleRows();
+    const maxScroll = Math.max(0, rows.length - visible);
+    state.scroll = Math.max(0, Math.min(state.scroll, maxScroll));
+    const host = document.getElementById('rows');
+    host.innerHTML = '';
+    rows.slice(state.scroll, state.scroll + visible).forEach(row => host.appendChild(renderRow(row)));
+    while (host.children.length < visible) {
+      const filler = document.createElement('div');
+      filler.className = 'row';
+      host.appendChild(filler);
+    }
+    const rail = document.getElementById('rail');
+    rail.style.display = rows.length > visible ? 'flex' : 'none';
+    document.getElementById('up').disabled = state.scroll <= 0;
+    document.getElementById('down').disabled = state.scroll >= maxScroll;
+    const visibleCount = Math.min(visible, rows.length);
+    document.getElementById('counter').textContent = `${state.scroll + 1}–${state.scroll + visibleCount}/${rows.length}`;
+    const trackH = document.querySelector('.track').clientHeight - 12;
+    const thumb = document.getElementById('thumb');
+    thumb.style.height = Math.max(26, Math.round(trackH * (visible / Math.max(visible, rows.length)))) + 'px';
+    const pos = maxScroll ? state.scroll / maxScroll : 0;
+    thumb.style.top = Math.round((trackH - parseFloat(thumb.style.height)) * pos) + 'px';
+  }
+  if (isInfo || (def && def.keyboard)) document.getElementById('rail').style.display = 'none';
+  renderPin();
+  document.getElementById('clock').textContent = state.time;
+  renderFooter();
+}
+
+function renderFooter() {
+  const s = currentScreen();
+  const def = currentDef();
+  const back = document.getElementById('back');
+  const exit = document.getElementById('exit');
+  const save = document.getElementById('save');
+  const isInfo = (s.kind === 'info');
+  const cfg = (def && def.footer) || null;
+
+  if (isInfo) {
+    back.textContent = 'НАЗАД'; back.className = 'fb back'; back.disabled = false;
+    exit.style.display = 'none';
+    save.style.display = '';
+    save.textContent = 'СТОП'; save.className = 'fb stop save';
+    save.disabled = !state.running;
+    return;
+  }
+  exit.style.display = '';
+  save.className = 'fb save';
+  if (cfg) {
+    back.textContent = cfg.back || 'НАЗАД';
+    exit.textContent = cfg.exit || '';
+    exit.style.display = cfg.exit ? '' : 'none';
+    save.textContent = cfg.save || 'СОХРАНИТЬ';
+    back.disabled = false; save.disabled = false;
+    return;
+  }
+  back.textContent = state.running ? 'ПАУЗА' : 'НАЗАД';
+  back.disabled = !state.running && state.stack.length === 0;
+  if (state.running) {
+    exit.textContent = 'СТОП'; exit.className = 'fb stop'; save.textContent = 'СЕРВИС';
+    save.disabled = false;
+  } else {
+    exit.textContent = 'ВЫХОД'; exit.className = 'fb exit';
+    save.textContent = 'СОХРАНИТЬ'; save.disabled = !state.dirty;
+  }
+}
+
+function renderRow(row) {
+  const el = document.createElement('div');
+  el.className = 'row' + (row.type === 'notice' ? ' notice' : '') + (row.type === 'action' ? ' action' : '');
+  if (row.type === 'bool') {
+    const box = document.createElement('div');
+    box.className = 'box' + (row.get() ? ' on' : '');
+    box.textContent = row.get() ? '✓' : '';
+    const lbl = document.createElement('div');
+    lbl.className = 'lbl'; lbl.textContent = row.label;
+    if (row.sub) { const s2 = document.createElement('span'); s2.className = 'sub'; s2.textContent = row.sub; lbl.appendChild(s2); }
+    el.append(box, lbl);
+    el.onclick = () => { row.set(!row.get()); state.dirty = true; render(); };
+    return el;
+  }
+  if (row.type === 'notice') {
+    const w = document.createElement('div'); w.className = 'warn'; w.textContent = '!';
+    const t = document.createElement('div'); t.className = 'notice-txt'; t.textContent = row.text;
+    el.append(w, t);
+    return el;
+  }
+  if (row.type === 'link') {
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
+    if (row.sub) { const s2 = document.createElement('span'); s2.className = 'sub'; s2.textContent = row.sub; lbl.appendChild(s2); }
+    const btn = document.createElement('button');
+    btn.className = 'link' + (row.danger ? ' dangerlink' : '');
+    btn.textContent = row.text;
+    btn.onclick = (e) => { e.stopPropagation(); openLink(row); };
+    el.append(lbl, btn);
+    return el;
+  }
+  if (row.type === 'action') {
+    const btn = document.createElement('button');
+    btn.className = 'startbtn'; btn.textContent = row.text; btn.disabled = row.enabled === false;
+    btn.onclick = () => {
+      if (row.id === 'touchStart') { openTouchCal(); return; }
+      if (row.id === 'savePump') { toast('Калибровка насоса сохранена'); return; }
+      if (row.id === 'stopAll') {
+        state.runHeater = state.runPump = state.runStirrer = state.runPwm = false;
+        state.valveWater = state.valveHeads = state.valveBody = false;
+        state.dirty = true; render(); toast('Все выходы сняты');
+        return;
+      }
+      openStart();
+    };
+    el.appendChild(btn);
+    return el;
+  }
+  if (row.type === 'choice') {
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
+    const val = document.createElement('button'); val.className = 'valbtn val'; val.textContent = row.get();
+    val.onclick = () => {
+      const i = row.options.indexOf(row.get());
+      row.set(row.options[(i + 1) % row.options.length]); state.dirty = true; render();
+    };
+    el.append(lbl, val);
+    return el;
+  }
+  if (row.type === 'sensor') {
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.sensor.role;
+    const sub = document.createElement('span'); sub.className = 'sub';
+    sub.textContent = row.sensor.on ? `${row.sensor.addr} · ${fmt(row.sensor.temp, 1)} °C` : 'не назначен';
+    lbl.appendChild(sub);
+    const btn = document.createElement('button'); btn.className = 'link';
+    btn.textContent = row.sensor.on ? 'СМЕНИТЬ' : 'НАЗНАЧИТЬ';
+    btn.onclick = (e) => { e.stopPropagation(); state.pickRole = state.sensors.indexOf(row.sensor); pushSub('sensorPick'); };
+    el.append(lbl, btn);
+    return el;
+  }
+  if (row.type === 'pick') {
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
+    if (row.taken) { const s2 = document.createElement('span'); s2.className = 'sub'; s2.textContent = 'занято другой ролью'; lbl.appendChild(s2); }
+    const val = document.createElement('div'); val.className = 'val'; val.style.fontSize = '26px'; val.textContent = row.value || '';
+    const btn = document.createElement('button');
+    btn.className = 'link' + (row.danger ? ' dangerlink' : '');
+    btn.textContent = row.value ? 'ВЫБРАТЬ' : 'OK';
+    btn.onclick = (e) => { e.stopPropagation(); row.onPick(); };
+    el.append(lbl, val, btn);
+    return el;
+  }
+  if (row.type === 'test') {
+    const active = row.active ? row.active() : false;
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
+    const stepper = document.createElement('div'); stepper.className = 'stepper';
+    const minus = document.createElement('button'); minus.className = 'step'; minus.textContent = '−';
+    const val = document.createElement('button'); val.className = 'valbtn val';
+    val.innerHTML = `${fmt(row.get(), 0)}<span class="unit">${row.unit || ''}</span>`;
+    const plus = document.createElement('button'); plus.className = 'step'; plus.textContent = '+';
+    const apply = (dir) => {
+      if (active) { toast('Сначала остановите ' + row.label); return; }
+      row.set(Math.max(0, Number(row.get()) + dir * row.step)); state.dirty = true; render();
+    };
+    minus.onclick = (e) => { e.stopPropagation(); apply(-1); };
+    plus.onclick = (e) => { e.stopPropagation(); apply(1); };
+    minus.disabled = active; plus.disabled = active;
+    if (active) { minus.style.opacity = '.35'; plus.style.opacity = '.35'; }
+    stepper.append(minus, val, plus);
+    const btn = document.createElement('button');
+    btn.className = 'link ' + (active ? 'dangerlink' : '');
+    btn.textContent = active ? 'СТОП' : 'ПУСК';
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      if (row.toggle) row.toggle();
+      state.dirty = true; render();
+      toast(active ? `${row.label}: остановлен` : `${row.label}: ${fmt(row.get(),0)} ${row.unit||''}`);
+    };
+    el.append(lbl, stepper, btn);
+    return el;
+  }
+  if (row.type === 'valve') {
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
+    const val = document.createElement('div'); val.className = 'val'; val.style.fontSize = '26px';
+    val.textContent = row.get() ? 'открыт' : 'закрыт';
+    val.style.color = row.get() ? 'var(--green)' : 'var(--muted)';
+    const btn = document.createElement('button');
+    btn.className = 'link ' + (row.get() ? 'dangerlink' : '');
+    btn.textContent = row.get() ? 'ЗАКРЫТЬ' : 'ОТКРЫТЬ';
+    btn.onclick = (e) => { e.stopPropagation(); row.set(!row.get()); state.dirty = true; render(); };
+    el.append(lbl, val, btn);
+    return el;
+  }
+  if (row.type === 'read') {
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
+    const val = document.createElement('div'); val.className = 'val'; val.style.fontSize = '24px'; val.textContent = row.value;
+    el.append(lbl, val);
+    return el;
+  }
+  if (row.type === 'log') {
+    const t = document.createElement('div'); t.className = 'lbl'; t.style.fontSize = '21px';
+    t.innerHTML = `<span style="color:#7f8f9c">${row.time}</span> ` +
+                  `<span style="color:${row.level === 'warn' ? '#f2c14e' : '#9fb0be'}">${row.text}</span>`;
+    el.appendChild(t);
+    return el;
+  }
+  const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = row.label;
+  if (row.sub) { const s2 = document.createElement('span'); s2.className = 'sub'; s2.textContent = row.sub; lbl.appendChild(s2); }
+  const val = document.createElement('div'); val.className = 'val';
+  val.innerHTML = `${fmt(row.get(), row.decimals || 0)}<span class="unit">${row.unit || ''}</span>`;
+  el.appendChild(lbl);
+  if (row.set) {
+    const stepper = document.createElement('div'); stepper.className = 'stepper';
+    const minus = document.createElement('button'); minus.className = 'step'; minus.textContent = '−';
+    const plus = document.createElement('button'); plus.className = 'step'; plus.textContent = '+';
+    const apply = (dir) => { row.set(Number(row.get()) + dir * row.step); state.dirty = true; render(); };
+    minus.onclick = (e) => { e.stopPropagation(); apply(-1); };
+    plus.onclick = (e) => { e.stopPropagation(); apply(1); };
+    stepper.append(minus, val, plus);
+    el.appendChild(stepper);
+  } else {
+    el.appendChild(val);
+  }
+  if (row.editor && row.set) el.onclick = () => openEditor(row);
+  return el;
+}
+
+function openLink(row) {
+  if (row.action) return row.action();
+  if (row.target === 'preflight') return openPreflight();
+  if (row.target === 'scan') { toast('Скан шины: найдено ' + state.bus.length); return; }
+  if (row.target === 'reset') { toast('Сброс — подтверждение'); return; }
+  if (row.target === 'wifiPass') { state.pwdBackup = state.wifiPassword; pushSub('wifiPass'); return; }
+  if (row.target === 'prime') { toast('Прокачка 30 с'); return; }
+  if (SUBS[row.target]) { pushSub(row.target); return; }
+  toast('Раздел в разработке');
+}
+function pushSub(key) {
+  const def = SUBS[key];
+  if (!def) return;
+  state.stack.push({kind:'sub', key, id:def.id});
+  state.scroll = 0; render();
+}
+function goBack() {
+  if (!state.stack.length) return;
+  state.stack.pop(); state.scroll = 0; render();
+}
+function openInfo() {
+  state.stack.push({kind:'info'});
+  render();
+}
+function goSection(delta) {
+  if (state.stack.length) { state.stack = []; render(); return; }
+  state.screen = Math.max(0, Math.min(SECTIONS.length - 1, state.screen + delta));
+  state.scroll = 0; render();
+}
+function openEditor(row) {
+  const sheet = document.createElement('div');
+  sheet.className = 'kbd';
+  sheet.style.cssText = 'align-items:center;justify-content:center;gap:14px';
+  let draft = Number(row.get()) || 0;
+  const paint = () => {
+    sheet.innerHTML = `
+      <div style="font-size:30px;font-weight:700">${row.label}</div>
+      <div class="val" style="font-size:96px">${fmt(draft, row.decimals || 0)}<span class="unit" style="font-size:28px">${row.unit || ''}</span></div>
+      <div class="krow" style="gap:10px;width:100%">
+        <button class="step" data-m="-10" style="width:118px;height:82px;font-size:40px">−−</button>
+        <button class="step" data-m="-1" style="width:118px;height:82px;font-size:44px">−</button>
+        <button class="step" data-m="1" style="width:118px;height:82px;font-size:44px">+</button>
+        <button class="step" data-m="10" style="width:118px;height:82px;font-size:40px">++</button>
+      </div>
+      <div class="krow" style="gap:12px;width:100%">
+        <button class="key fn" data-x="1" style="height:82px;font-size:30px;flex:1">ОТМЕНА</button>
+        <button class="key" data-x="0" style="height:82px;font-size:30px;flex:1;background:#1d7a41">СОХРАНИТЬ</button>
+      </div>`;
+    sheet.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { draft += Number(b.dataset.m) * row.step; paint(); });
+    sheet.querySelectorAll('[data-x]').forEach(b => b.onclick = () => {
+      if (b.dataset.x === '0') { row.set(draft); state.dirty = true; }
+      render();
+    });
+  };
+  paint();
+  const host = document.getElementById('rows');
+  host.innerHTML = ''; host.appendChild(sheet);
+  document.getElementById('rail').style.display = 'none';
+}
+function openTouchCal() {
+  state.touchPoint = 1;
+  // Мишени по углам рабочей области, как в прошивке: ЛВ, ПВ, ПН, ЛН
+  const spots = [
+    {x: 14, y: 20, name: 'левый верх'},
+    {x: 86, y: 20, name: 'правый верх'},
+    {x: 86, y: 80, name: 'правый низ'},
+    {x: 14, y: 80, name: 'левый низ'}
+  ];
+  const paint = () => {
+    const host = document.getElementById('rows');
+    const done = state.touchPoint > 4;
+    const spot = spots[Math.min(state.touchPoint, 4) - 1];
+    host.innerHTML = `
+      <div class="kbd" style="align-items:center;justify-content:center;gap:10px">
+        <div style="font-size:28px;font-weight:700">КАЛИБРОВКА ТАЧА</div>
+        <div style="font-size:24px;color:#a9b8c4">${done ? 'Готово' : 'Точка ' + state.touchPoint + ' из 4 · ' + spot.name}</div>
+        <div id="cross" style="width:400px;height:190px;border:2px solid #33424d;border-radius:10px;
+             position:relative;background:#0a1218">
+          ${done ? '' : `
+          <div style="position:absolute;left:${spot.x}%;top:${spot.y}%;transform:translate(-50%,-50%);
+               width:64px;height:64px;border:2px solid #35b6c9;border-radius:6px;display:flex;
+               align-items:center;justify-content:center">
+            <div style="width:26px;height:26px;border:3px solid #f2c14e;border-radius:50%"></div>
+          </div>
+          <div style="position:absolute;left:${spot.x}%;top:${spot.y}%;transform:translate(-50%,-50%);
+               width:96px;height:2px;background:#35b6c9"></div>
+          <div style="position:absolute;left:${spot.x}%;top:${spot.y}%;transform:translate(-50%,-50%);
+               width:2px;height:96px;background:#35b6c9"></div>`}
+        </div>
+        <div style="font-size:22px;color:#7f8f9c">${done ? 'координаты сохранены' : 'нажмите в центр мишени, палец отпускайте'}</div>
+        <button class="key fn" style="height:70px;font-size:26px;width:320px" id="calCancel">ОТМЕНА</button>
+      </div>`;
+    host.querySelector('#calCancel').onclick = () => render();
+    if (!done) host.querySelector('#cross').onclick = () => { state.touchPoint++; paint(); };
+  };
+  paint();
+  document.getElementById('rail').style.display = 'none';
+}
+
+function openStart() {
+  const host = document.getElementById('rows');
+  host.innerHTML = `
+    <div class="kbd" style="align-items:center;justify-content:center;gap:12px">
+      <div style="font-size:30px;font-weight:700">ЗАПУСК: ${state.mode.toUpperCase()}</div>
+      <div style="font-size:24px;color:#a9b8c4;text-align:center;line-height:1.35">
+        Проверка пройдена: датчики, безопасность и уставки в норме.<br>ТЭН должен быть полностью погружён.
+      </div>
+      <div class="krow" style="gap:16px">
+        <button class="key fn" data-x="1" style="height:76px;font-size:26px">ОТМЕНА</button>
+        <button class="key" data-x="0" style="height:76px;font-size:26px;background:#1d7a41">ЗАПУСТИТЬ</button>
+      </div>
+    </div>`;
+  host.querySelectorAll('[data-x]').forEach(b => b.onclick = () => {
+    if (b.dataset.x === '0') { state.running = true; state.screen = 7; state.stack = []; render(); toast('Процесс запущен'); return; }
+    render();
+  });
+  document.getElementById('rail').style.display = 'none';
+}
+function openPreflight() {
+  const items = [['Процесс не идёт','OK'],['Датчики куба и колонны','OK'],['Безопасность','OK'],['Уставки в диапазоне','OK'],['Телеметрия ПЗЭМ','OK']];
+  const host = document.getElementById('rows');
+  host.innerHTML = `
+    <div class="kbd" style="gap:8px">
+      <div style="font-size:28px;font-weight:700;text-align:center;margin-bottom:6px">ПРОВЕРКА ПЕРЕД СТАРТОМ</div>
+      ${items.map(([a,b]) => `<div style="display:flex;justify-content:space-between;font-size:24px;border-bottom:1px solid #22303a;padding:7px 4px">
+        <span>${a}</span><b style="color:#35c46a">${b}</b></div>`).join('')}
+      <button class="key" style="height:64px;font-size:24px;background:#1d7a41;margin-top:8px" id="pfok">ПОНЯТНО</button>
+    </div>`;
+  host.querySelector('#pfok').onclick = () => render();
+  document.getElementById('rail').style.display = 'none';
+}
+let toastTimer = null;
+function toast(text) {
+  const t = document.getElementById('toast');
+  t.textContent = text; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1500);
+}
+
+document.getElementById('prev').onclick = () => goSection(-1);
+document.getElementById('next').onclick = () => goSection(1);
+document.getElementById('infobtn').onclick = () => openInfo();
+document.getElementById('up').onclick = () => { state.scroll--; render(); };
+document.getElementById('down').onclick = () => { state.scroll++; render(); };
+document.getElementById('back').onclick = () => {
+  const s = currentScreen();
+  if (s.kind === 'info') { goBack(); return; }
+  const def = currentDef();
+  if (def && def.keyboard) { state.wifiPassword = state.pwdBackup || ''; goBack(); toast('Ввод отменён'); return; }
+  if (state.running && !def) { toast('Пауза'); return; }
+  goBack();
+};
+document.getElementById('exit').onclick = () => {
+  if (state.running) { state.running = false; toast('Процесс остановлен'); }
+  state.stack = []; state.screen = 0; state.scroll = 0; render();
+};
+document.getElementById('save').onclick = () => {
+  const s = currentScreen();
+  if (s.kind === 'info') { state.running = false; toast('СТОП: процесс остановлен'); render(); return; }
+  const def = currentDef();
+  if (def && def.keyboard) { goBack(); toast('Пароль сохранён'); return; }
+  if (state.running) { state.stack = []; state.screen = 6; state.scroll = 0; render(); return; }
+  state.dirty = false; render(); toast('Сохранено');
+};
+document.getElementById('lamp').onclick = () => toast('Яркость ' + state.brightness + '%');
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft') goSection(-1);
+  if (e.key === 'ArrowRight') goSection(1);
+  if (e.key === 'ArrowUp') { state.scroll--; render(); }
+  if (e.key === 'ArrowDown') { state.scroll++; render(); }
+  if (e.key === 'Escape') goBack();
+});
+document.getElementById('device').addEventListener('wheel', (e) => {
+  e.preventDefault(); state.scroll += e.deltaY > 0 ? 1 : -1; render();
+}, {passive:false});
+
+render();
+</script>
+</body>
+</html>
