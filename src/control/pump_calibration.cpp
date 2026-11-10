@@ -76,6 +76,30 @@ bool stopMeasurement() {
   });
 }
 
+bool ensureMeasurementCaptured() {
+  const Snapshot before = getSnapshot();
+  if (before.phase == Phase::READY_TO_REVIEW || before.phase == Phase::REVIEW) {
+    return true;
+  }
+  setCalibrationPumpSpeed(0.0f);
+  const uint32_t steps = Pump::getTotalSteps();
+  return mutate([=](Snapshot &state) {
+    if (state.phase == Phase::MEASURING) {
+      return PumpCalibrationLogic::stopMeasurement(state, steps, millis());
+    }
+    if (state.phase == Phase::IDLE || state.phase == Phase::READY_TO_MEASURE) {
+      // Сессию потеряли (таймаут, safety, повторное открытие страницы):
+      // шаги с последнего сброса ещё в счётчике — замер восстанавливаем.
+      state.phase = Phase::READY_TO_REVIEW;
+      state.startSteps = 0;
+      state.stopSteps = steps;
+      state.stoppedAtMs = millis();
+      return steps > 0;
+    }
+    return false;
+  });
+}
+
 bool enterMeasuredVolume(float volumeMl) {
   return mutate([=](Snapshot &state) {
     return PumpCalibrationLogic::enterMeasuredVolume(

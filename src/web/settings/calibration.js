@@ -1356,12 +1356,6 @@ export async function stopCalibration(autoStop = false) {
     } catch {
         // ignore
     }
-    try {
-        await fetch('/api/pump/stop', { method: 'POST' });
-    } catch {
-        // ignore
-    }
-
     const stopBtn = byId('btn-stop-cal');
     const applyBtn = byId('btn-apply-cal');
     const manualWrap = byId('cal-manual-volume');
@@ -1396,13 +1390,21 @@ export async function applyCalibration() {
 
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.message || `HTTP ${response.status}`);
+            const detail =
+                errData.phase === undefined
+                    ? ''
+                    : ` (фаза ${errData.phase}, шаги ${errData.startSteps}→${errData.stopSteps})`;
+            throw new Error(`${errData.message || `HTTP ${response.status}`}${detail}`);
         }
         const data = await response.json();
         const mlPerRev = Number(data?.mlPerRev);
+        const method = String(data?.method || 'steps');
+        const methodNote = method === 'time'
+            ? ' — по времени и подаче: счётчик шагов не сработал'
+            : '';
 
         setMessage('pumpResult', Number.isFinite(mlPerRev)
-            ? `Калибровка применена: ${mlPerRev.toFixed(3)} мл/оборот`
+            ? `Калибровка применена: ${mlPerRev.toFixed(3)} мл/оборот${methodNote}`
             : 'Калибровка применена', 'success');
 
         addLog('Калибровка насоса применена', 'success');

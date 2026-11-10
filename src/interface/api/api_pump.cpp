@@ -5,6 +5,7 @@
 #include "control/power_command_gateway.h"
 #include "drivers/pump.h"
 #include "interface/webserver_shared.h"
+#include "storage/logger.h"
 #include "storage/nvs_manager.h"
 
 void registerPumpApiRoutes(AsyncWebServer &server) {
@@ -79,18 +80,66 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
           return;
         }
 
+        // Замер мог не зафиксироваться (лимит времени, safety, повторный вход) —
+        // восстанавливаем его по накопленным шагам, иначе объём не применить.
         if (PumpCalibrationSession::outputActive()) {
           (void)PumpCalibrationSession::stopMeasurement();
         }
-        if (!PumpCalibrationSession::enterMeasuredVolume(volume) ||
-            !PumpCalibrationSession::mayCommit()) {
-          request->send(
-              400, "application/json",
-              "{\"success\":false,\"message\":\"No valid measurement captured\"}");
+        (void)PumpCalibrationSession::ensureMeasurementCaptured();
+
+        const PumpCalibrationSession::Snapshot captured =
+            PumpCalibrationSession::getSnapshot();
+        float mlPerRev = 0.0f;
+        const char *method = "steps";
+        if (PumpCalibrationSession::enterMeasuredVolume(volume) &&
+            PumpCalibrationSession::mayCommit()) {
+          mlPerRev = PumpCalibrationSession::getCandidateMlPerRev();
+        } else {
+          // Счётчик шагов мог не набежать (сбой учёта или движение без
+          // счётчика). Тогда считаем по времени и заданной подаче: во сколько
+          // раз реальный объём отличается от ожидаемого.
+          const uint32_t now = millis();
+          const uint32_t elapsedMs =
+              (captured.stoppedAtMs > captured.startedAtMs)
+                  ? (captured.stoppedAtMs - captured.startedAtMs)
+                  : (now - captured.startedAtMs);
+          const float hours = static_cast<float>(elapsedMs) / 3600000.0f;
+          const float expectedMl = captured.speedMlH * hours;
+          if (hours > 0.0f && expectedMl > 0.0f &&
+              g_settings.pumpCal.mlPerRevolution > 0.0f) {
+            mlPerRev =
+                g_settings.pumpCal.mlPerRevolution * (volume / expectedMl);
+            method = "time";
+          }
+        }
+
+        if (mlPerRev <= 0.0f) {
+          char diag[224];
+          snprintf(diag, sizeof(diag),
+                   "{\"success\":false,\"message\":\"Замер не захвачен: шагов "
+                   "%lu→%lu, фаза %u\",\"phase\":%u,\"startSteps\":%lu,"
+                   "\"stopSteps\":%lu}",
+                   static_cast<unsigned long>(captured.startSteps),
+                   static_cast<unsigned long>(captured.stopSteps),
+                   static_cast<unsigned>(captured.phase),
+                   static_cast<unsigned>(captured.phase),
+                   static_cast<unsigned long>(captured.startSteps),
+                   static_cast<unsigned long>(captured.stopSteps));
+          Logger::logf(
+              1, "pump cal finish failed: phase=%u steps %lu->%lu vol=%.1f",
+              static_cast<unsigned>(captured.phase),
+              static_cast<unsigned long>(captured.startSteps),
+              static_cast<unsigned long>(captured.stopSteps),
+              static_cast<double>(volume));
+          request->send(400, "application/json", diag);
           return;
         }
 
-        const float mlPerRev = PumpCalibrationSession::getCandidateMlPerRev();
+        Logger::logf(
+            0, "pump cal committed: method=%s mlPerRev=%.4f vol=%.1f steps %lu->%lu",
+            method, static_cast<double>(mlPerRev), static_cast<double>(volume),
+            static_cast<unsigned long>(captured.startSteps),
+            static_cast<unsigned long>(captured.stopSteps));
 
         g_settings.pumpCal.mlPerRevolution = mlPerRev;
         NVSManager::saveSettings(g_settings);
@@ -107,10 +156,11 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
 
         PumpCalibrationSession::complete();
 
-        char response[160];
+        char response[192];
         snprintf(response, sizeof(response),
-                 "{\"success\":true,\"mlPerRev\":%.4f,\"calibrationFactor\":%.3f}",
-                 mlPerRev, calibrationFactor);
+                 "{\"success\":true,\"mlPerRev\":%.4f,"
+                 "\"calibrationFactor\":%.3f,\"method\":\"%s\"}",
+                 mlPerRev, calibrationFactor, method);
         request->send(200, "application/json", response);
       });
 
@@ -183,15 +233,21 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
       });
 
   server.on("/api/pump/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (PumpCalibrationSession::getSnapshot().phase !=
-        PumpCalibrationSession::Phase::IDLE) {
-      PumpCalibrationSession::cancel();
+    // Стоп насоса НЕ должен выбрасывать калибровочный замер: иначе связка
+    // /calibrate/stop + /pump/stop (её делает веб-страница) убивает сессию, и
+    // ввод объёма отвечает «No valid measurement captured».
+    const PumpCalibrationSession::Phase phase =
+        PumpCalibrationSession::getSnapshot().phase;
+    if (phase == PumpCalibrationSession::Phase::PRIMING ||
+        phase == PumpCalibrationSession::Phase::MEASURING) {
+      (void)PumpCalibrationSession::ensureMeasurementCaptured();
     } else {
-      PowerCommandGateway::setPumpSpeed(
-          PowerCommandGateway::Owner::MANUAL,
-          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0.0f);
+      PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::MANUAL,
+                                        PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
+                                        0.0f);
     }
-    LOG_I("Pump stopped via API");
+    LOG_I("Pump stopped via API (phase=%u)",
+          static_cast<unsigned>(phase));
     request->send(200, "application/json",
                   "{\"success\":true,\"message\":\"Pump stopped\"}");
   });
@@ -205,6 +261,9 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
     doc["totalVolume"] = Pump::getTotalVolume();
     doc["calibrationPhase"] = static_cast<uint8_t>(calibration.phase);
     doc["calibrationCandidateMlPerRev"] = calibration.candidateMlPerRev;
+    doc["calibrationStartSteps"] = calibration.startSteps;
+    doc["calibrationStopSteps"] = calibration.stopSteps;
+    doc["calibrationPumpSteps"] = Pump::getTotalSteps();
 
     String json;
     serializeJson(doc, json);
