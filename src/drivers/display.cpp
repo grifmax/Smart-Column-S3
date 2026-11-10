@@ -7115,7 +7115,7 @@ static const char *const kHmi2Sections[] = {
 static constexpr uint8_t kHmi2SectionCount =
     sizeof(kHmi2Sections) / sizeof(kHmi2Sections[0]);
 
-enum class Hmi2RowType : uint8_t { Link, Value, Bool, Notice };
+enum class Hmi2RowType : uint8_t { Link, Read, Value, Bool, Notice };
 
 struct Hmi2Row {
   Hmi2RowType type;
@@ -7168,13 +7168,13 @@ static uint8_t hmi2BuildRows() {
     hmi2Add(Hmi2RowType::Link, "Режим", getDisplayModeName(g_state.mode),
             nullptr, "ВЫБРАТЬ", COLOR_PRIMARY);
     snprintf(buf, sizeof(buf), "%.1f", g_state.temps.cube);
-    hmi2Add(Hmi2RowType::Value, "Куб", buf, "°C", nullptr, COLOR_INFO);
+    hmi2Add(Hmi2RowType::Read, "Куб", buf, "°C", nullptr, COLOR_INFO);
     snprintf(buf, sizeof(buf), "%u",
              static_cast<unsigned>(g_state.power.power));
-    hmi2Add(Hmi2RowType::Value, "Мощность", buf, "Вт", nullptr, COLOR_INFO);
+    hmi2Add(Hmi2RowType::Read, "Мощность", buf, "Вт", nullptr, COLOR_INFO);
     snprintf(buf, sizeof(buf), "%u",
              static_cast<unsigned>(g_state.pump.speedMlPerHour));
-    hmi2Add(Hmi2RowType::Value, "Отбор", buf, "мл/ч", nullptr, COLOR_INFO);
+    hmi2Add(Hmi2RowType::Read, "Отбор", buf, "мл/ч", nullptr, COLOR_INFO);
     const bool alarm = Safety::isLatched(g_state);
     hmi2Add(Hmi2RowType::Link, "Безопасность", alarm ? "АВАРИЯ" : "НОРМА",
             nullptr, "ОТКРЫТЬ", alarm ? COLOR_DANGER : COLOR_SUCCESS);
@@ -7261,29 +7261,32 @@ static void hmi2DrawRow(int16_t y, uint8_t index, const Hmi2Row &row) {
     rightEdge -= (bs + 8);
   }
 
-  if (row.type == Hmi2RowType::Value) {
-    const int16_t stepW = 44;
-    const int16_t stepH = 40;
-    const int16_t stepY = y + (h - stepH) / 2;
-    drawButton(rightEdge - stepW, stepY, stepW, stepH, "+", colorButtonBody(),
-               colorFg());
-    drawButton(rightEdge - 2 * stepW - 4, stepY, stepW, stepH, "-",
-               colorButtonBody(), colorFg());
-
-    char unitBuf[16];
-    snprintf(unitBuf, sizeof(unitBuf), "%s", row.unit);
-    tft.setTextSize(2);
-    tft.setTextColor(colorMuted());
-    tft.setTextDatum(middle_right);
-    const int16_t unitW = row.unit[0] != '\0' ? 46 : 0;
-    if (unitW > 0) {
-      drawDisplayString(unitBuf, rightEdge - 2 * stepW - 12, y + h / 2);
+  if (row.type == Hmi2RowType::Value || row.type == Hmi2RowType::Read) {
+    // Read — только значение (главный экран), Value — значение со степперами.
+    if (row.type == Hmi2RowType::Value) {
+      const int16_t stepW = 44;
+      const int16_t stepH = 40;
+      const int16_t stepY = y + (h - stepH) / 2;
+      drawButton(rightEdge - stepW, stepY, stepW, stepH, "+",
+                 colorButtonBody(), colorFg());
+      drawButton(rightEdge - 2 * stepW - 4, stepY, stepW, stepH, "-",
+                 colorButtonBody(), colorFg());
+      rightEdge -= (2 * stepW + 8);
     }
+
+    if (row.unit[0] != '\0') {
+      tft.setTextSize(2);
+      tft.setTextColor(colorMuted());
+      tft.setTextDatum(middle_right);
+      drawDisplayString(row.unit, rightEdge, y + h / 2);
+      rightEdge -= (displayTextWidth(row.unit) + 8);
+    }
+
     tft.setTextSize(3);
     tft.setTextColor(row.tone);
-    drawDisplayString(row.value, rightEdge - 2 * stepW - 18 - unitW,
-                      y + h / 2);
-    rightEdge -= (2 * stepW + 8);
+    tft.setTextDatum(middle_right);
+    drawDisplayString(row.value, rightEdge, y + h / 2);
+    rightEdge -= (displayTextWidth(row.value) + 12);
     tft.setTextDatum(top_left);
   }
 
