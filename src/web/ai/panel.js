@@ -219,17 +219,26 @@ async function handleSend() {
     sendMessage(text);
 }
 
+function syncAiFocus(active) {
+    // The AI tab hides the monitoring toolbar and footer on phones, so the
+    // chat owns the screen instead of sharing it with mode/KPI cards.
+    document.body.classList.toggle('ai-focus', Boolean(active));
+}
+
 function fitPanelHeight() {
     const section = byId('ai');
     const area = document.querySelector('.content-area');
     const panel = section?.querySelector('.ai-panel');
     if (!section || !area || !panel || !section.classList.contains('active')) return;
-    const bottom = area.getBoundingClientRect().bottom;
-    const top = section.getBoundingClientRect().top;
-    // The panel must fit the visible content area, not the viewport: on a
-    // phone the toolbar, KPI strip and status line take a large and variable
-    // share, and their height differs between tabs.
-    panel.style.height = `${Math.max(300, Math.floor(bottom - top - 12))}px`;
+    const viewport = window.visualViewport;
+    const areaBottom = area.getBoundingClientRect().bottom;
+    const visibleBottom = viewport
+        ? Math.min(areaBottom, viewport.offsetTop + viewport.height)
+        : areaBottom;
+    const top = panel.getBoundingClientRect().top;
+    // Fit the visible area, not 100vh: with the on-screen keyboard open the
+    // visual viewport shrinks and the composer has to stay reachable.
+    panel.style.height = `${Math.max(240, Math.floor(visibleBottom - top - 8))}px`;
 }
 
 function scheduleFitPanelHeight() {
@@ -286,7 +295,11 @@ export function initAiPanel() {
     });
     elements.input.addEventListener('input', () => autoGrow(elements.input));
 
-    byId('ai-clear')?.addEventListener('click', clearChat);
+    byId('ai-clear')?.addEventListener('click', () => {
+        const hasChat = document.getElementById('ai')?.classList.contains('ai-has-chat');
+        if (hasChat && !window.confirm('Очистить историю чата?')) return;
+        clearChat();
+    });
     byId('ai-settings-open')?.addEventListener('click', openAiSettings);
     byId('ai-save-settings')?.addEventListener('click', saveAiSettings);
     byId('ai-close-settings')?.addEventListener('click', closeAiSettings);
@@ -305,7 +318,9 @@ export function initAiPanel() {
     });
 
     document.addEventListener('app-tab-changed', (event) => {
-        if (event.detail?.tabId === 'ai') {
+        const isAi = event.detail?.tabId === 'ai';
+        syncAiFocus(isAi);
+        if (isAi) {
             const area = document.querySelector('.content-area');
             if (area) area.scrollTop = 0;
             scheduleFitPanelHeight();
@@ -313,10 +328,20 @@ export function initAiPanel() {
         }
     });
 
-    window.addEventListener('resize', fitPanelHeight);
+    syncAiFocus(section.classList.contains('active'));
+    // Layout settles a frame or two after a rotation/keyboard change; re-fit
+    // on the next frame and once more shortly after instead of trusting the
+    // first synchronous measurement.
+    window.addEventListener('resize', scheduleFitPanelHeight);
+    window.addEventListener('orientationchange', scheduleFitPanelHeight);
+    window.screen?.orientation?.addEventListener?.('change', scheduleFitPanelHeight);
+    window.visualViewport?.addEventListener('resize', scheduleFitPanelHeight);
+    window.visualViewport?.addEventListener('scroll', scheduleFitPanelHeight);
     const contentArea = document.querySelector('.content-area');
-    if (contentArea && typeof ResizeObserver === 'function') {
-        new ResizeObserver(fitPanelHeight).observe(contentArea);
+    if (typeof ResizeObserver === 'function') {
+        const observer = new ResizeObserver(scheduleFitPanelHeight);
+        if (contentArea) observer.observe(contentArea);
+        observer.observe(document.documentElement);
     }
     scheduleFitPanelHeight();
 

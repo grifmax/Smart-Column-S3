@@ -3334,18 +3334,18 @@
                                 <div class="ai-header-actions">
                                     <span id="ai-provider-label" class="ai-provider-badge">провайдер не настроен</span>
                                     <select id="ai-model-select" class="ai-model-select" title="Модель"></select>
-                                    <button class="btn" type="button" id="ai-settings-open">⚙️ Настройки</button>
-                                    <button class="btn" type="button" id="ai-clear">Очистить</button>
+                                    <button class="btn ai-icon-btn" type="button" id="ai-settings-open" title="Настройки ИИ" aria-label="Настройки ИИ"><span class="ai-btn-icon">⚙️</span><span class="ai-btn-label">Настройки</span></button>
+                                    <button class="btn ai-icon-btn" type="button" id="ai-clear" title="Очистить чат" aria-label="Очистить чат"><span class="ai-btn-icon">🗑</span><span class="ai-btn-label">Очистить</span></button>
                                 </div>
                             </div>
                             <div id="ai-messages" class="ai-messages"></div>
                             <div id="ai-typing" class="ai-typing" hidden><span></span><span></span><span></span></div>
                             <div id="ai-quick-prompts" class="ai-quick-prompts"></div>
                             <div class="ai-composer">
-                                <textarea id="ai-input" rows="2" placeholder="Спросите про текущий процесс, последний прогон или что улучшить…"></textarea>
+                                <textarea id="ai-input" rows="1" placeholder="Спросите про процесс…"></textarea>
                                 <div class="ai-composer-actions">
-                                    <button class="btn btn-primary" type="button" id="ai-send">Отправить</button>
-                                    <button class="btn" type="button" id="ai-stop">Стоп</button>
+                                    <button class="btn btn-primary ai-icon-btn" type="button" id="ai-send" title="Отправить" aria-label="Отправить"><span class="ai-btn-icon">➤</span><span class="ai-btn-label">Отправить</span></button>
+                                    <button class="btn ai-icon-btn" type="button" id="ai-stop" title="Остановить ответ" aria-label="Остановить ответ"><span class="ai-btn-icon">■</span><span class="ai-btn-label">Стоп</span></button>
                                 </div>
                             </div>
                             <div id="ai-status" class="ai-status"></div>

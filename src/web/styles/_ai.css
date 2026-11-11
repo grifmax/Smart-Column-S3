@@ -40,6 +40,17 @@
     justify-content: flex-end;
 }
 
+.ai-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.ai-btn-icon {
+    display: none;
+}
+
 .ai-provider-badge {
     font-size: 0.75rem;
     padding: 4px 8px;
@@ -63,9 +74,17 @@
     padding: 4px 6px;
 }
 
+.ai-messages::-webkit-scrollbar {
+    display: none;
+}
+
 .ai-messages {
     flex: 1 1 auto;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -142,6 +161,10 @@
     background: var(--bg-inset, rgba(0, 0, 0, 0.04));
     border-radius: 999px;
     padding: 3px 9px;
+}
+
+.ai-typing[hidden] {
+    display: none;
 }
 
 .ai-typing {
@@ -249,7 +272,8 @@
 .ai-proposal small {
     display: block;
     color: var(--text-secondary);
-    font-size: 0.74rem;
+    font-size: 0.8rem;
+    line-height: 1.35;
 }
 
 .ai-proposal {
@@ -308,26 +332,94 @@
     margin-bottom: 8px;
 }
 
-@media (max-width: 700px) {
-    .ai-panel {
-        height: calc(100vh - 340px);
-        gap: 8px;
-        padding: 4px 0 8px;
+/* On the AI tab the phone gets the whole screen: the workspace toolbar with
+   mode/KPI cards and the page footer belong to monitoring, not to the chat. */
+@media (max-width: 900px) {
+    body.ai-focus .toolbar,
+    body.ai-focus .content-body > footer,
+    body.ai-focus .titlebar-status {
+        display: none;
     }
 
-    .ai-bubble {
-        max-width: 94%;
+    body.ai-focus .content-area {
+        overflow: hidden;
+    }
+
+    body.ai-focus .content-body {
+        padding: 0;
+    }
+
+    body.ai-focus .ai-panel {
+        padding: 8px 8px 10px;
+    }
+}
+
+/* Phone in landscape: height is the scarce resource, so the header and the
+   composer go compact even though the width is above the phone breakpoint. */
+@media (max-height: 520px) {
+    .ai-panel {
+        gap: 6px;
+        padding: 6px 10px;
+    }
+
+    .ai-subtitle,
+    .ai-quick-prompts {
+        display: none;
+    }
+
+    .ai-composer-actions {
+        flex-direction: row;
+        gap: 6px;
+        align-items: center;
+    }
+
+    #ai-send,
+    #ai-stop {
+        width: 46px;
+        height: 46px;
+        min-width: 46px;
+        padding: 0;
+    }
+
+    .ai-btn-label {
+        display: none;
+    }
+
+    .ai-btn-icon {
+        display: inline;
+    }
+
+    .ai-composer textarea {
+        min-height: 46px;
+        font-size: 16px;
+    }
+}
+
+@media (max-width: 700px) {
+    .ai-panel {
+        height: calc(100dvh - 120px);
+        min-height: 0;
+        gap: 8px;
+        padding: 8px;
     }
 
     .ai-header {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 6px;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .ai-header > div:first-child {
+        flex: 1 1 auto;
+        min-width: 0;
     }
 
     .ai-header h2 {
-        font-size: 1rem;
-        margin-bottom: 0;
+        font-size: 0.95rem;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .ai-subtitle {
@@ -335,33 +427,123 @@
     }
 
     .ai-header-actions {
-        justify-content: flex-start;
-        gap: 6px;
-    }
-
-    .ai-provider-badge,
-    .ai-model-select {
-        max-width: 100%;
-        flex: 1 1 auto;
-    }
-
-    .ai-quick-prompts {
+        flex: 0 0 auto;
+        gap: 10px;
         flex-wrap: nowrap;
-        overflow-x: auto;
-        padding-bottom: 4px;
-        scrollbar-width: none;
     }
 
-    .ai-quick-prompts::-webkit-scrollbar {
+    .ai-provider-badge {
         display: none;
     }
 
-    .ai-quick-prompt {
-        white-space: nowrap;
-        flex: 0 0 auto;
+    .ai-model-select {
+        max-width: 128px;
+        font-size: 0.78rem;
+        height: 44px;
+        padding: 0 4px;
+    }
+
+    .ai-icon-btn {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        padding: 0;
+    }
+
+    .ai-btn-label {
+        display: none;
+    }
+
+    .ai-btn-icon {
+        display: inline;
+        font-size: 1rem;
+        line-height: 1;
+    }
+
+    .ai-messages {
+        padding: 10px;
+        gap: 8px;
+    }
+
+    .ai-bubble {
+        max-width: 100%;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        padding: 10px 12px;
+    }
+
+    .ai-quick-prompts {
+        display: none;
+    }
+
+    .ai-composer {
+        align-items: flex-end;
+        gap: 6px;
+    }
+
+    .ai-composer textarea {
+        min-height: 46px;
+        font-size: 16px; /* keeps iOS from zooming the page on focus */
+        padding: 12px;
+        overflow-y: auto;
+        scrollbar-width: none;
+    }
+
+    .ai-composer textarea::-webkit-scrollbar {
+        display: none;
+    }
+
+    .ai-accept {
+        width: 100%;
+        min-height: 44px;
+        font-size: 0.9rem;
+    }
+
+    .ai-panel {
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .ai-composer-actions {
+        flex-direction: row;
+        gap: 6px;
+        align-items: center;
+    }
+
+    #ai-send,
+    #ai-stop {
+        width: 46px;
+        height: 46px;
+        min-width: 46px;
+        padding: 0;
+        font-size: 1.05rem;
+    }
+
+    #ai-stop {
+        display: none;
+    }
+
+    #ai-stop.ai-stop-visible {
+        display: inline-flex;
+    }
+
+    .ai-status {
+        font-size: 0.72rem;
     }
 }
 
 #ai.ai-has-chat .ai-quick-prompts {
     display: none;
+}
+
+/* Very narrow phones: the header title is the first thing to give way so the
+   model picker and the two action buttons stay on one row. */
+@media (max-width: 380px) {
+    .ai-header h2 {
+        display: none;
+    }
+
+    .ai-model-select {
+        max-width: 150px;
+        flex: 1 1 auto;
+    }
 }

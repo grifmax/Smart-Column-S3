@@ -17,6 +17,11 @@ const SYSTEM_RULES = `Ты — технолог-аналитик установ�
 У тебя нет доступа к управлению: нельзя включать нагрев, насос, клапаны, менять уставки или запускать процесс. Ты только объясняешь, диагностируешь и предлагаешь изменения параметров оператору.
 Любые советы не должны противоречить safety-лимитам и логике preflight.
 Инструменты: get_status, get_health, list_processes, get_process, compare_runs, get_logs, get_live_chart. Вызывай их, когда нужны факты, и не повторяй один и тот же вызов без причины.
+Формат ответа для телефона:
+- начни с 1–3 предложений вывода, детали — ниже короткими пунктами;
+- не вставляй в текст служебные ключи (phasePowerPercent.body, saturationSec, floodRisk) — они живут в поле evidence;
+- секунды переводи в минуты/часы, Unix-время — в дату и время, дроби пиши с запятой (6,4 °C);
+- не противоречь себе: если предлагаешь поднять мощность, не пиши рядом, что фазу надо сократить, если это не одно и то же действие.
 Если предлагаешь изменить параметры, добавь в самый конец ответа ОДИН fenced-блок json строго такого вида:
 {"findings":[{"code":"...","detail":"...","evidence":"..."}],"proposals":[{"parameterKey":"...","previousValue":0,"suggestedValue":0,"expectedEffect":"...","confidence":0.0,"evidence":"..."}]}
 Без proposals блок можно не добавлять.`;
@@ -228,7 +233,7 @@ function renderProposals(parsed, sourceText) {
             card.appendChild(el('small', 'ai-confidence', `уверенность: ${Math.round(Number(proposal.confidence) * 100)} %`));
         }
 
-        const accept = el('button', 'btn btn-sm ai-accept', 'Принять в журнал');
+        const accept = el('button', 'btn btn-primary ai-accept', 'Принять в журнал');
         accept.type = 'button';
         accept.addEventListener('click', () => {
             const journal = loadProposalJournal();
@@ -257,6 +262,17 @@ function renderProposals(parsed, sourceText) {
     return container;
 }
 
+function scrollToMessageStart(node) {
+    const list = state.elements.messages;
+    if (!list || !node) return;
+    const listRect = list.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    // Bottom-anchored scrolling cuts the first line of a long answer on a
+    // phone; put the answer's top edge just below the list edge instead.
+    const delta = nodeRect.top - listRect.top - 8;
+    list.scrollTop += delta;
+}
+
 function renderToolNote(text) {
     const node = el('div', 'ai-tool-note', text);
     state.elements.messages.appendChild(node);
@@ -271,6 +287,7 @@ function setBusy(busy, label = '') {
     nodes.input.disabled = busy;
     nodes.status.textContent = label;
     nodes.status.classList.toggle('ai-status-active', busy);
+    nodes.stop?.classList.toggle('ai-stop-visible', busy);
     if (busy) {
         nodes.typing.hidden = false;
     } else {
@@ -316,7 +333,8 @@ async function requestAnswer(userText) {
                 const displayText = block
                     ? assistantMessage.content.replace(block.raw, '').trim()
                     : assistantMessage.content;
-                renderMessage('assistant', displayText, { proposalBlock: block?.parsed || null });
+                const answerNode = renderMessage('assistant', displayText, { proposalBlock: block?.parsed || null });
+                scrollToMessageStart(answerNode);
                 saveChat();
                 const tokens = usage ? ` · ${usage.total_tokens ?? usage.totalTokens ?? '?'} токенов` : '';
                 setBusy(false, `Готово${tokens}`);
