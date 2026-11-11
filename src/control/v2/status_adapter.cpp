@@ -11,6 +11,7 @@
 #include "../../storage/logger.h"
 #include "../fsm.h"
 #include "../fsm_utils.h"
+#include "../power_command_gateway.h"
 #include "../rect_takeoff.h"
 #include "safety_supervisor.h"
 #include "transition_logger.h"
@@ -486,6 +487,11 @@ TimeseriesPoint buildHistoryTimeseriesPoint(const SystemState& state,
     return point;
 }
 
+float getRepresentativePhaseTemp(const SystemState& state);
+ControlStatsLogic::Sample buildHistoryControlSample(
+    const SystemState& state, const Settings& settings,
+    const ProcessIndicatorsV2& indicators);
+
 void syncHistoryRecorder(const SystemState& state, const Settings& settings,
                          const ProcessIndicatorsV2& indicators, uint32_t nowMs,
                          bool completed = false) {
@@ -496,6 +502,93 @@ void syncHistoryRecorder(const SystemState& state, const Settings& settings,
     processRecorder.setParameters(buildHistoryParameters(state, settings));
     processRecorder.setResults(buildHistoryResults(state, completed));
     processRecorder.addTimeseriesPoint(buildHistoryTimeseriesPoint(state, indicators, nowMs));
+    processRecorder.addControlSample(
+        buildHistoryControlSample(state, settings, indicators), nowMs);
+}
+
+ControlStatsLogic::Sample buildHistoryControlSample(
+    const SystemState& state, const Settings& settings,
+    const ProcessIndicatorsV2& indicators) {
+    ControlStatsLogic::Sample sample;
+
+    // Heater: the driver keeps both the watts target and the duty actually
+    // applied, which is what saturation has to be judged on.
+    const Heater::Diagnostics heater = Heater::getDiagnostics();
+    sample.heaterCapacityW = static_cast<float>(settings.equipment.heaterPowerW);
+    sample.heaterRequestedW = static_cast<float>(heater.targetPowerWatts);
+    if (sample.heaterRequestedW <= 0.0f && heater.powerSetPercent > 0) {
+        // Percent-only paths (manual/TFT) still carry a useful request.
+        sample.heaterRequestedW =
+            sample.heaterCapacityW * heater.powerSetPercent / 100.0f;
+    }
+    sample.heaterAppliedPercent = static_cast<float>(heater.powerSetPercent);
+
+    // Pump: the requested rate lives in the gateway, the effective rate in
+    // the pump state (a safety stop zeroes the latter).
+    PowerCommandGateway::OutputState pumpState;
+    if (PowerCommandGateway::getOutputState(PowerCommandGateway::Target::PUMP,
+                                            pumpState)) {
+        sample.pumpRequestedMlH = pumpState.requestedValue;
+    }
+    sample.pumpActualMlH =
+        state.pump.running ? state.pump.speedMlPerHour : 0.0f;
+
+    sample.powerMeasuredW = state.power.power;
+    sample.powerValid = state.power.ok;
+
+    sample.tempC = getRepresentativePhaseTemp(state);
+    sample.tempValid = state.temps.valid[TEMP_CUBE] ||
+                       state.temps.valid[TEMP_COLUMN_TOP] ||
+                       state.temps.valid[TEMP_COLUMN_BOTTOM];
+    sample.tempBandC = 0.5f;
+    switch (state.mode) {
+        case Mode::HOLD:
+            sample.tempTargetC = state.hold.targetTemp;
+            sample.hasTempTarget = sample.tempTargetC > 0.0f;
+            break;
+        case Mode::MASHING:
+            sample.tempTargetC = state.mashing.targetTemp;
+            sample.hasTempTarget = sample.tempTargetC > 0.0f;
+            sample.tempBandC = 1.0f;
+            break;
+        case Mode::FERMENTATION:
+            sample.tempTargetC = settings.fermentation.targetTempC;
+            sample.hasTempTarget = sample.tempTargetC > 0.0f;
+            sample.tempBandC = settings.fermentation.hysteresisC > 0.0f
+                                   ? settings.fermentation.hysteresisC
+                                   : 0.5f;
+            break;
+        case Mode::AUTOCLAVE:
+            sample.tempTargetC = settings.autoclave.sterilizationTempC;
+            sample.hasTempTarget = sample.tempTargetC > 0.0f;
+            sample.tempBandC = settings.autoclave.temperatureBandC > 0.0f
+                                   ? settings.autoclave.temperatureBandC
+                                   : 1.0f;
+            break;
+        default:
+            break;
+    }
+
+    sample.coolingMarginC = indicators.coolingMarginC;
+    sample.coolingValid = indicators.coolingSensorAvailable;
+    sample.pressureValid = state.pressure.ok &&
+                           (state.mode == Mode::DISTILLATION ||
+                            state.mode == Mode::NBK);
+    sample.pressureRateMmHgPerMin = indicators.pressureRateMmHgPerMin;
+    sample.pressureMarginMmHg = state.mode == Mode::NBK
+                                    ? indicators.nbkPressureMargin
+                                    : indicators.distPressureMargin;
+
+    sample.floodRisk = indicators.floodRisk;
+    sample.stabilityIndex = indicators.stabilityIndex;
+    sample.processHealth = indicators.processHealth;
+    sample.heatingRateCPerMin = indicators.heatingRateCPerMin;
+
+    sample.paused = state.paused;
+    sample.safetyOk = state.safetyOk;
+    sample.degraded = indicators.degradedModeActive;
+    sample.takeoffAllowed = indicators.takeoffAllowed;
+    return sample;
 }
 
 float getRepresentativePhaseTemp(const SystemState& state) {

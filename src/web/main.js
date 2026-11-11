@@ -112,6 +112,7 @@ import { zoomScheme, syncSchemeZoomLayout } from './ui/scheme.js';
 
 // Функции для инициализации
 import { initTabs } from './core/tabs.js';
+import { initAiPanel } from './ai/panel.js';
 import { initTopMenu } from './core/top-menu.js';
 import { initOperatorViewToggle } from './ui/operator-view.js';
 import { initRuntimeMonitorUi } from './runtime/bars.js';
@@ -361,6 +362,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     updatePotentialAlcoholMode();
     updateFermentationMode();
     initToolsWorkbench();
+    initAiPanel();
     initEquipmentSettingsUi();
     initEquipmentTestingUi();
     initSettingsWorkbenchUi();

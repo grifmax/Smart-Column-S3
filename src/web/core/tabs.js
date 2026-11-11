@@ -13,7 +13,8 @@ const tabTitles = {
     equipment: 'Оборудование',
     safety: 'Безопасность',
     history: 'История',
-    tools: 'Инструменты'
+    tools: 'Инструменты',
+    ai: 'ИИ-ассистент'
 };
 
 function updateToolbarTitle(targetId) {

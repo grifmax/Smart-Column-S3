@@ -8,6 +8,117 @@
 ProcessRecorder processRecorder;
 
 // ============================================================================
+// Сериализация агрегатов управления (1 Гц)
+// ============================================================================
+
+namespace {
+
+float roundControlStat(float value) {
+    // Aggregate control numbers do not need more than two decimals; rounding
+    // keeps the per-phase blocks small in a 2 MB LittleFS history budget.
+    return roundf(value * 100.0f) / 100.0f;
+}
+
+void writeControlStats(JsonObject obj, const ControlStatsLogic::Stats& stats) {
+    obj["samples"] = stats.samples;
+    obj["durationSec"] = stats.durationSec;
+    obj["pausedSec"] = stats.pausedSec;
+    obj["degradedSec"] = stats.degradedSec;
+    obj["saturationSec"] = stats.saturationSec;
+    obj["unpoweredSec"] = stats.unpoweredSec;
+    obj["takeoffAllowedSec"] = stats.takeoffAllowedSec;
+    obj["inBandSec"] = stats.inBandSec;
+    obj["safetyTrips"] = stats.safetyTrips;
+
+    obj["heaterReqAvgW"] =
+        roundControlStat(ControlStatsLogic::heaterRequestedAvgW(stats));
+    obj["heaterReqMaxW"] = roundControlStat(stats.heaterRequestedMaxW);
+    obj["heaterAppliedAvgPct"] =
+        roundControlStat(ControlStatsLogic::heaterAppliedAvgPercent(stats));
+    obj["heaterAppliedMaxPct"] = roundControlStat(stats.heaterAppliedPercentMax);
+
+    obj["powerAvgW"] = roundControlStat(ControlStatsLogic::powerAvgW(stats));
+    obj["powerMaxW"] = roundControlStat(stats.powerMaxW);
+    obj["energyWh"] = roundControlStat(stats.energyWh);
+
+    obj["pumpAvgMlH"] = roundControlStat(ControlStatsLogic::pumpAvgMlH(stats));
+    obj["pumpMaxMlH"] = roundControlStat(stats.pumpMaxMlH);
+
+    obj["tempMinC"] = roundControlStat(stats.tempMinC);
+    obj["tempAvgC"] = roundControlStat(ControlStatsLogic::tempAvgC(stats));
+    obj["tempMaxC"] = roundControlStat(stats.tempMaxC);
+    obj["overshootMaxC"] = roundControlStat(stats.overshootMaxC);
+
+    obj["healthMin"] = roundControlStat(stats.healthMin);
+    obj["healthAvg"] = roundControlStat(ControlStatsLogic::healthAvg(stats));
+    obj["stabilityAvg"] =
+        roundControlStat(ControlStatsLogic::stabilityAvg(stats));
+    obj["floodRiskMax"] = roundControlStat(stats.floodRiskMax);
+    obj["coolingMarginMin"] = roundControlStat(stats.coolingMarginMin);
+
+    obj["pressureRateAvg"] =
+        roundControlStat(ControlStatsLogic::pressureRateAvg(stats));
+    obj["pressureRateMax"] = roundControlStat(stats.pressureRateAbsMax);
+    obj["pressureMarginMin"] = roundControlStat(stats.pressureMarginMin);
+}
+
+void readControlStats(JsonObjectConst obj, ControlStatsLogic::Stats& stats) {
+    if (obj.isNull()) {
+        return;
+    }
+
+    stats.samples = obj["samples"] | 0;
+    stats.durationSec = obj["durationSec"] | 0;
+    stats.pausedSec = obj["pausedSec"] | 0;
+    stats.degradedSec = obj["degradedSec"] | 0;
+    stats.saturationSec = obj["saturationSec"] | 0;
+    stats.unpoweredSec = obj["unpoweredSec"] | 0;
+    stats.takeoffAllowedSec = obj["takeoffAllowedSec"] | 0;
+    stats.inBandSec = obj["inBandSec"] | 0;
+    stats.safetyTrips = obj["safetyTrips"] | 0;
+
+    // Averages were flattened on write; restore them as sums so the derived
+    // getters keep working after a reload.
+    const float duration = static_cast<float>(stats.durationSec);
+    stats.heaterRequestedSumW = (obj["heaterReqAvgW"] | 0.0f) * duration;
+    stats.heaterRequestedMaxW = obj["heaterReqMaxW"] | 0.0f;
+    stats.heaterAppliedPercentSum =
+        (obj["heaterAppliedAvgPct"] | 0.0f) * duration;
+    stats.heaterAppliedPercentMax = obj["heaterAppliedMaxPct"] | 0.0f;
+    stats.powerSumW = (obj["powerAvgW"] | 0.0f) * duration;
+    stats.powerMaxW = obj["powerMaxW"] | 0.0f;
+    stats.energyWh = obj["energyWh"] | 0.0f;
+    stats.pumpSumMlH = (obj["pumpAvgMlH"] | 0.0f) * duration;
+    stats.pumpMaxMlH = obj["pumpMaxMlH"] | 0.0f;
+
+    stats.tempMinC = obj["tempMinC"] | 0.0f;
+    stats.tempMaxC = obj["tempMaxC"] | 0.0f;
+    stats.tempSamples = stats.durationSec;
+    stats.tempSumC =
+        (obj["tempAvgC"] | 0.0f) * static_cast<float>(stats.tempSamples);
+    stats.overshootMaxC = obj["overshootMaxC"] | 0.0f;
+
+    stats.healthMin = obj["healthMin"] | 0.0f;
+    stats.healthSamples = stats.durationSec;
+    stats.healthSum =
+        (obj["healthAvg"] | 0.0f) * static_cast<float>(stats.healthSamples);
+    stats.stabilitySamples = stats.durationSec;
+    stats.stabilitySum =
+        (obj["stabilityAvg"] | 0.0f) * static_cast<float>(stats.stabilitySamples);
+    stats.floodRiskMax = obj["floodRiskMax"] | 0.0f;
+    stats.coolingMarginMin = obj["coolingMarginMin"] | 0.0f;
+    stats.coolingSeen = obj.containsKey("coolingMarginMin");
+
+    stats.pressureRateAbsSum = obj["pressureRateAvg"] | 0.0f;
+    stats.pressureRateAbsMax = obj["pressureRateMax"] | 0.0f;
+    stats.pressureMarginMin = obj["pressureMarginMin"] | 0.0f;
+    stats.pressureSeen = obj.containsKey("pressureMarginMin");
+    stats.pressureSamples = stats.durationSec;
+}
+
+} // namespace
+
+// ============================================================================
 // Инициализация системы истории
 // ============================================================================
 
@@ -156,6 +267,7 @@ bool saveProcessHistory(const ProcessHistory& history) {
         p["endTemp"] = phase.endTemp;
         p["volume"] = phase.volume;
         p["avgSpeed"] = phase.avgSpeed;
+        writeControlStats(p["control"].to<JsonObject>(), phase.control);
         if (!phase.reasonCode.isEmpty()) {
             p["reasonCode"] = phase.reasonCode;
         }
@@ -265,6 +377,9 @@ bool saveProcessHistory(const ProcessHistory& history) {
 
     // Заметки
     doc["notes"] = history.notes;
+
+    // Агрегаты управления за весь прогон (1 Гц)
+    writeControlStats(doc["controlStats"].to<JsonObject>(), history.controlStats);
 
     // Сериализовать в файл
     if (serializeJson(doc, file) == 0) {
@@ -394,6 +509,7 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
         p.avgSpeed = phase["avgSpeed"];
         p.reasonCode = phase["reasonCode"].as<String>();
         p.operatorMessage = phase["operatorMessage"].as<String>();
+        readControlStats(phase["control"].as<JsonObjectConst>(), p.control);
         history.phases.push_back(p);
     }
 
@@ -482,6 +598,8 @@ bool loadProcessHistory(const String& id, ProcessHistory& history) {
     }
 
     history.notes = doc["notes"].as<String>();
+    readControlStats(doc["controlStats"].as<JsonObjectConst>(),
+                     history.controlStats);
 
     Serial.printf("Процесс загружен: %s\n", id.c_str());
     return true;
@@ -1058,6 +1176,7 @@ void appendProcessHistoryJson(JsonDocument& doc, const ProcessHistory& history) 
         p["endTemp"] = phase.endTemp;
         p["volume"] = phase.volume;
         p["avgSpeed"] = phase.avgSpeed;
+        writeControlStats(p["control"].to<JsonObject>(), phase.control);
         if (!phase.reasonCode.isEmpty()) {
             p["reasonCode"] = phase.reasonCode;
         }
@@ -1100,6 +1219,7 @@ void appendProcessHistoryJson(JsonDocument& doc, const ProcessHistory& history) 
     appendWarningJson(results["warnings"].to<JsonArray>(), history.results.warnings);
 
     appendAdvisorSnapshotJson(doc, history.advisorSnapshot);
+    writeControlStats(doc["controlStats"].to<JsonObject>(), history.controlStats);
     doc["notes"] = history.notes;
 }
 } // namespace
@@ -1154,13 +1274,17 @@ String exportProcessToJSON(const ProcessHistory& history) {
 // ProcessRecorder - класс для записи процесса в реальном времени
 // ============================================================================
 
-ProcessRecorder::ProcessRecorder() : recording(false), lastTimeseriesTime(0) {
+ProcessRecorder::ProcessRecorder()
+    : recording(false), lastTimeseriesTime(0), lastControlSampleTime(0) {
 }
 
 void ProcessRecorder::startRecording(const String& type, const String& mode) {
     currentHistory = ProcessHistory();
     recording = true;
     lastTimeseriesTime = 0;
+    lastControlSampleTime = 0;
+    runControlStats = ControlStatsLogic::Stats();
+    phaseControlStats = ControlStatsLogic::Stats();
 
     uint32_t now = millis() / 1000;  // или использовать NTP время
     currentHistory.id = String(now);
@@ -1180,6 +1304,9 @@ void ProcessRecorder::stopRecording(bool success) {
     currentHistory.metadata.duration = now - currentHistory.metadata.startTime;
     currentHistory.metadata.completedSuccessfully = success;
     currentHistory.results.status = success ? "completed" : "stopped";
+
+    // Агрегаты управления за весь прогон
+    currentHistory.controlStats = runControlStats;
 
     // Вычислить метрики
     calculateMetrics();
@@ -1204,11 +1331,34 @@ void ProcessRecorder::addTimeseriesPoint(const TimeseriesPoint& point) {
     }
 }
 
+void ProcessRecorder::addControlSample(const ControlStatsLogic::Sample& sample,
+                                       uint32_t nowMs) {
+    if (!recording) return;
+
+    // One sample per second, gated here so every caller can push at control
+    // loop speed without knowing the storage cadence.
+    uint32_t dtSec = 1;
+    if (lastControlSampleTime != 0) {
+        const uint32_t elapsedMs = nowMs - lastControlSampleTime;
+        if (elapsedMs < 1000UL) return;
+        dtSec = elapsedMs / 1000UL;
+    }
+    lastControlSampleTime = nowMs;
+
+    ControlStatsLogic::addSample(runControlStats, sample, dtSec);
+    ControlStatsLogic::addSample(phaseControlStats, sample, dtSec);
+}
+
 void ProcessRecorder::setParameters(const ProcessParameters& params) {
     currentHistory.parameters = params;
 }
 
-void ProcessRecorder::addPhase(const ProcessPhase& phase) {
+void ProcessRecorder::addPhase(ProcessPhase& phase) {
+    // The phase object is built by the caller at the moment the phase ends;
+    // attach the control aggregates accumulated since the previous boundary
+    // and start a fresh window for the next phase.
+    phase.control = phaseControlStats;
+    phaseControlStats = ControlStatsLogic::Stats();
     currentHistory.phases.push_back(phase);
 }
 

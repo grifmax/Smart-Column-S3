@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.137">
+    <link rel="stylesheet" href="style.css?v=2.4.138">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -72,6 +72,7 @@
                             <button class="tab" data-tab="tools">🧮 Инструменты</button>
                             <button class="tab" data-tab="settings">⚙️ Настройки</button>
                             <button class="tab" data-tab="wifi">📶 WiFi</button>
+                            <button class="tab" data-tab="ai">🤖 ИИ</button>
                             <button class="tab" data-tab="history">📚 История</button>
                         </nav>
                     </div>
@@ -112,6 +113,11 @@
                     <span class="icon">🛡️</span><span class="label">Безопасность</span>
                 </button>
                 <button class="sidebar-item tab" data-tab="tools">
+                    <span class="icon">🧮</span><span class="label">Инструменты</span>
+                </button>
+                <button class="sidebar-item tab" data-tab="ai">
+                    <span class="icon">🤖</span><span class="label">ИИ-ассистент</span>
+                </button>                <button class="sidebar-item tab" data-tab="tools">
                     <span class="icon">🧮</span><span class="label">Инструменты</span>
                 </button>
 
@@ -240,7 +246,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.137" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.138" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -3318,6 +3324,34 @@
                         </div>
                     </footer>
 
+                    <div id="ai" class="tab-content">
+                        <div class="ai-panel">
+                            <div class="ai-header">
+                                <div>
+                                    <h2>🤖 ИИ-ассистент</h2>
+                                    <p class="ai-subtitle">Читает состояние, историю прогонов и журнал. Управлять оборудованием не может — только объясняет и предлагает.</p>
+                                </div>
+                                <div class="ai-header-actions">
+                                    <span id="ai-provider-label" class="ai-provider-badge">провайдер не настроен</span>
+                                    <select id="ai-model-select" class="ai-model-select" title="Модель"></select>
+                                    <button class="btn" type="button" id="ai-settings-open">⚙️ Настройки</button>
+                                    <button class="btn" type="button" id="ai-clear">Очистить</button>
+                                </div>
+                            </div>
+                            <div id="ai-messages" class="ai-messages"></div>
+                            <div id="ai-typing" class="ai-typing" hidden><span></span><span></span><span></span></div>
+                            <div id="ai-quick-prompts" class="ai-quick-prompts"></div>
+                            <div class="ai-composer">
+                                <textarea id="ai-input" rows="2" placeholder="Спросите про текущий процесс, последний прогон или что улучшить…"></textarea>
+                                <div class="ai-composer-actions">
+                                    <button class="btn btn-primary" type="button" id="ai-send">Отправить</button>
+                                    <button class="btn" type="button" id="ai-stop">Стоп</button>
+                                </div>
+                            </div>
+                            <div id="ai-status" class="ai-status"></div>
+                        </div>
+                    </div>
+
                 </div><!-- /content-body -->
             </div><!-- /content-area -->
         </div><!-- /main-layout -->
@@ -3774,7 +3808,56 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.137"></script>
+    <div id="ai-settings-modal" class="modal-overlay" style="display: none; z-index: 10020;">
+        <div class="modal-content ai-settings-modal" style="max-width: 620px;">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title">Настройки ИИ</div>
+                    <div class="ai-subtitle">Ключ хранится только в этом браузере. На прибор не передаётся.</div>
+                </div>
+                <button class="modal-close" type="button" onclick="closeAiSettings()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="ai-preset-row">
+                    <button class="btn" type="button" data-ai-preset="deepseek">DeepSeek</button>
+                    <button class="btn" type="button" data-ai-preset="openai">OpenAI</button>
+                    <button class="btn" type="button" data-ai-preset="openrouter">OpenRouter</button>
+                    <button class="btn" type="button" data-ai-preset="local">Локальная</button>
+                </div>
+                <div class="form-group">
+                    <label>Адрес провайдера (OpenAI-совместимый)</label>
+                    <input type="text" id="ai-base-url" placeholder="https://api.deepseek.com/v1" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>API-ключ</label>
+                    <input type="password" id="ai-api-key" placeholder="sk-…" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>Модель</label>
+                    <input type="text" id="ai-model" list="ai-models-list" placeholder="deepseek-chat" autocomplete="off">
+                    <datalist id="ai-models-list"></datalist>
+                </div>
+                <div class="ai-inline-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label>Temperature</label>
+                        <input type="number" id="ai-temperature" min="0" max="2" step="0.1" value="0.2">
+                    </div>
+                    <div class="form-group">
+                        <label>Max tokens</label>
+                        <input type="number" id="ai-max-tokens" min="256" max="32000" step="128" value="2000">
+                    </div>
+                </div>
+                <div id="ai-settings-hint" class="ai-settings-hint"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" type="button" id="ai-load-models">Загрузить модели</button>
+                <button class="btn" type="button" id="ai-close-settings" onclick="closeAiSettings()">Отмена</button>
+                <button class="btn btn-success" type="button" id="ai-save-settings">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=2.4.138"></script>
 </body>
 
 </html>

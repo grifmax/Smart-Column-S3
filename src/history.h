@@ -6,6 +6,8 @@
 #include "fs_compat.h"
 #include <vector>
 
+#include "control/control_stats_logic.h"
+
 // Константы для истории
 #define MAX_HISTORY_FILES 50        // Максимум файлов истории
 #define MAX_HISTORY_SIZE  2097152    // Максимум 2 МБ общего размера
@@ -93,6 +95,7 @@ struct ProcessPhase {
     uint16_t avgSpeed;               // Средняя скорость насоса (мл/час)
     String reasonCode;               // Причина завершения фазы в терминах v2
     String operatorMessage;          // Дополнительное пояснение для оператора
+    ControlStatsLogic::Stats control; // Агрегаты управления за фазу (1 Гц)
 };
 
 // Точка временного ряда
@@ -168,6 +171,7 @@ struct ProcessHistory {
     std::vector<TimeseriesPoint> timeseries;
     ProcessResults results;
     ProcessAdvisorSnapshot advisorSnapshot;
+    ControlStatsLogic::Stats controlStats; // Агрегаты управления за весь прогон
     String notes;                    // Заметки пользователя
 };
 
@@ -266,11 +270,14 @@ public:
     // Добавить точку временного ряда
     void addTimeseriesPoint(const TimeseriesPoint& point);
 
+    // Накопить 1-герцовую статистику управления (гейт по времени внутри)
+    void addControlSample(const ControlStatsLogic::Sample& sample, uint32_t nowMs);
+
     // Установить параметры процесса
     void setParameters(const ProcessParameters& params);
 
     // Добавить фазу процесса
-    void addPhase(const ProcessPhase& phase);
+    void addPhase(ProcessPhase& phase);
 
     // Добавить предупреждение
     void addWarning(const String& message, const String& severity,
@@ -293,6 +300,9 @@ private:
     ProcessHistory currentHistory;
     bool recording;
     uint32_t lastTimeseriesTime;
+    uint32_t lastControlSampleTime;
+    ControlStatsLogic::Stats runControlStats;
+    ControlStatsLogic::Stats phaseControlStats;
 
     void calculateMetrics();
 };

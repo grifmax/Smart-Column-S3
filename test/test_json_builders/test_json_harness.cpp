@@ -10,6 +10,7 @@
 #include <../../src/interface/tft_service_test_logic.h>
 #include <../../src/control/service_test_session_logic.h>
 #include <../../src/control/service_test_audit_logic.h>
+#include <../../src/control/control_stats_logic.h>
 #include <../../src/control/dosing_session_logic.h>
 #include <../../src/control/autoclave_hardware_profile_logic.h>
 #include <../../src/control/autoclave_session_logic.h>
@@ -105,6 +106,13 @@ void test_autoclave_profile_requires_explicit_hardware_and_safety_approval();
 void test_autoclave_sterilization_timer_only_counts_in_temperature_band();
 void test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout();
 
+void test_control_stats_accumulates_heater_and_power();
+void test_control_stats_counts_saturation_and_unpowered_seconds();
+void test_control_stats_tracks_band_overshoot_pauses_and_degraded();
+void test_control_stats_counts_safety_trips_on_edges_only();
+void test_control_stats_clamps_long_gaps();
+void test_control_stats_ignores_absent_pressure_and_cooling_sensors();
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_json_harness_parses_and_asserts_contract_fields);
@@ -165,6 +173,12 @@ int main(int argc, char **argv) {
   RUN_TEST(test_autoclave_profile_requires_explicit_hardware_and_safety_approval);
   RUN_TEST(test_autoclave_sterilization_timer_only_counts_in_temperature_band);
   RUN_TEST(test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout);
+  RUN_TEST(test_control_stats_accumulates_heater_and_power);
+  RUN_TEST(test_control_stats_counts_saturation_and_unpowered_seconds);
+  RUN_TEST(test_control_stats_tracks_band_overshoot_pauses_and_degraded);
+  RUN_TEST(test_control_stats_counts_safety_trips_on_edges_only);
+  RUN_TEST(test_control_stats_clamps_long_gaps);
+  RUN_TEST(test_control_stats_ignores_absent_pressure_and_cooling_sensors);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>

@@ -219,6 +219,69 @@
 - `totalVolume` - общий объём отбора (мл)
 - `avgSpeed` - средняя скорость (мл/час)
 
+### Control (агрегаты управления, 1 Гц)
+
+Пишутся дважды: в каждой фазе (`phases[].control`) и за весь прогон
+(`controlStats`). Это не ряды, а накопленные счётчики и средние — их считает
+прошивка, поэтому история остаётся компактной при шаге ряда 60 с.
+
+```json
+"control": {
+  "samples": 2400,
+  "durationSec": 2400,
+  "pausedSec": 120,
+  "degradedSec": 0,
+  "saturationSec": 720,
+  "unpoweredSec": 0,
+  "takeoffAllowedSec": 1100,
+  "inBandSec": 0,
+  "safetyTrips": 0,
+  "heaterReqAvgW": 1180.5,
+  "heaterReqMaxW": 1500,
+  "heaterAppliedAvgPct": 59.2,
+  "heaterAppliedMaxPct": 100,
+  "powerAvgW": 1160.4,
+  "powerMaxW": 1512,
+  "energyWh": 773.6,
+  "pumpAvgMlH": 300.2,
+  "pumpMaxMlH": 400,
+  "tempMinC": 78.1,
+  "tempAvgC": 78.4,
+  "tempMaxC": 79.2,
+  "overshootMaxC": 0.6,
+  "healthMin": 0.62,
+  "healthAvg": 0.74,
+  "stabilityAvg": 0.81,
+  "floodRiskMax": 0.18,
+  "coolingMarginMin": 6.4,
+  "pressureRateAvg": 0.4,
+  "pressureRateMax": 1.6,
+  "pressureMarginMin": 22.0
+}
+```
+
+| Поле | Смысл |
+|---|---|
+| `samples` | сколько 1-герцовых выборок попало в окно |
+| `durationSec` | покрытое время; длинные пропуски цикла ограничены 5 с |
+| `pausedSec` / `degradedSec` | время паузы и degraded-режима |
+| `saturationSec` | нагрев держал ≥98 % доступной мощности |
+| `unpoweredSec` | мощность запрошена, но PZEM не видит отдачи |
+| `takeoffAllowedSec` | время, когда indicators разрешали отбор |
+| `inBandSec` | время в температурной полосе (только режимы с уставкой) |
+| `safetyTrips` | число фронтов `safetyOk=false` |
+| `heaterReqAvgW` / `heaterReqMaxW` | задание нагрева в ваттах |
+| `heaterAppliedAvgPct` / `MaxPct` | фактически применённый duty, % |
+| `powerAvgW` / `powerMaxW` / `energyWh` | измеренная мощность и энергия |
+| `pumpAvgMlH` / `pumpMaxMlH` | фактическая скорость насоса |
+| `tempMinC` / `tempAvgC` / `tempMaxC` / `overshootMaxC` | температура и перерегулирование |
+| `healthMin` / `healthAvg` / `stabilityAvg` | indicators процесса |
+| `floodRiskMax` / `coolingMarginMin` | риск захлёбывания и запас охлаждения |
+| `pressureRateAvg` / `pressureRateMax` / `pressureMarginMin` | давление для дистилляции/НБК |
+
+Для старых файлов блока может не быть — читатель обязан относиться к нему как
+к опциональному (`| 0` при разборе).
+
 ### Phases (Фазы)
 
 Массив фаз процесса с временными метками и параметрами.
