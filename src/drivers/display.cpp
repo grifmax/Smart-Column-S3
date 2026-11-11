@@ -7273,6 +7273,25 @@ static uint8_t hmi2BuildRows() {
             "ОТКРЫТЬ", COLOR_INFO);
     hmi2Add(Hmi2RowType::Link, "Журнал", "", nullptr, "ОТКРЫТЬ",
             COLOR_INFO);
+  } else if (hmi2Section == 6) { // СЕРВИС
+    hmi2Add(Hmi2RowType::Link, "Все температуры", "", nullptr,
+            "ОТКРЫТЬ", COLOR_INFO);
+    hmi2Add(Hmi2RowType::Link, "Проверка оборудования", "", nullptr,
+            "ОТКРЫТЬ", COLOR_WARNING);
+    hmi2Add(Hmi2RowType::Link, "Дозирование", "", nullptr, "ОТКРЫТЬ",
+            COLOR_PRIMARY);
+    hmi2Add(Hmi2RowType::Link, "Журнал", "", nullptr, "ОТКРЫТЬ", COLOR_INFO);
+    hmi2Add(Hmi2RowType::Link, "Калибровка тача", "", nullptr, "НАЧАТЬ",
+            COLOR_WARNING);
+    snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(ESP.getFreeHeap() / 1024));
+    hmi2Add(Hmi2RowType::Read, "Свободная RAM", buf, "кБ", nullptr,
+            COLOR_INFO);
+    snprintf(buf, sizeof(buf), "%d", static_cast<int>(WiFi.RSSI()));
+    hmi2Add(Hmi2RowType::Read, "RSSI", buf, "дБм", nullptr, COLOR_INFO);
+    char build[16];
+    FwBuildInfo::format(build, sizeof(build));
+    snprintf(buf, sizeof(buf), "%s · %s", FW_VERSION, build);
+    hmi2Add(Hmi2RowType::Read, "Версия", buf, nullptr, nullptr, COLOR_PRIMARY);
   } else {
     hmi2Add(Hmi2RowType::Notice, "Раздел в разработке",
             "строки появятся после переноса", nullptr, nullptr,
@@ -7548,6 +7567,22 @@ static bool hmi2HandleHomeTap(int16_t tx, int16_t ty,
         }
         if (strcmp(entry.label, "Журнал") == 0) {
           openProcessEvents();
+          return true;
+        }
+        if (strcmp(entry.label, "Все температуры") == 0) {
+          pushScreen(UI_ALL_TEMPS);
+          return true;
+        }
+        if (strcmp(entry.label, "Проверка оборудования") == 0) {
+          pushScreen(UI_SERVICE_TEST);
+          return true;
+        }
+        if (strcmp(entry.label, "Дозирование") == 0) {
+          pushScreen(UI_DOSING);
+          return true;
+        }
+        if (strcmp(entry.label, "Калибровка тача") == 0) {
+          Display::startTouchCalibration();
           return true;
         }
         if (strcmp(entry.label, "Безопасность") == 0) {
