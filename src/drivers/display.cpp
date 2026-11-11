@@ -6,6 +6,8 @@
  */
 
 #include "display.h"
+#include "control/cooling_pwm_logic.h"
+#include "control/control_command_queue.h"
 #include "control/equipment_testing_logic.h"
 #include "control/dosing_session.h"
 #include "control/pump_calibration.h"
@@ -29,6 +31,7 @@
 #include "interface/tft_operator_overlay_logic.h"
 #include "interface/tft_service_test_logic.h"
 #include "interface/webserver_shared.h"
+#include "ui/hmi_page_model.h"
 #include "profiles.h"
 #include "storage/logger.h"
 #include "storage/nvs_manager.h"
@@ -402,8 +405,7 @@ struct UiState {
   UiScreen currentScreen = UI_DASHBOARD;
   UiScreen rootScreen = UI_DASHBOARD;
   UiScreen returnScreen = UI_DASHBOARD;
-  UiScreen stack[6] = {};
-  uint8_t stackDepth = 0;
+  HmiPage::PageStack stack;
   bool needsRedraw = true;
   UiScreen lastRenderedScreen = UI_DASHBOARD;
   DisplayRedrawReason pendingRedrawReason = DisplayRedrawReason::SCREEN_ENTER;
@@ -641,9 +643,7 @@ static void requestRedraw(DisplayRedrawReason reason, bool forceFull = false) {
 static void pushScreen(UiScreen screen) {
   if (ui.currentScreen == screen)
     return;
-  if (ui.stackDepth < 6) {
-    ui.stack[ui.stackDepth++] = ui.currentScreen;
-  }
+  ui.stack.push(static_cast<uint8_t>(ui.currentScreen));
   ui.returnScreen = ui.currentScreen;
   ui.currentScreen = screen;
   requestRedraw(DisplayRedrawReason::SCREEN_ENTER);
@@ -652,13 +652,15 @@ static void pushScreen(UiScreen screen) {
 
 static void popScreen() {
   UiScreen target = ui.rootScreen;
-  if (ui.stackDepth > 0) {
-    target = ui.stack[--ui.stackDepth];
+  uint8_t stacked = 0;
+  if (ui.stack.pop(stacked)) {
+    target = static_cast<UiScreen>(stacked);
   }
   if (ui.currentScreen == target)
     return;
   ui.currentScreen = target;
-  ui.returnScreen = (ui.stackDepth > 0) ? ui.stack[ui.stackDepth - 1]
+  ui.returnScreen = (ui.stack.depth > 0)
+                        ? static_cast<UiScreen>(ui.stack.values[ui.stack.depth - 1])
                                         : ui.rootScreen;
   requestRedraw(DisplayRedrawReason::SCREEN_ENTER);
   armScreenSwitchGuard();
@@ -666,11 +668,11 @@ static void popScreen() {
 
 static void switchRoot(UiScreen screen) {
   const bool changed = (ui.rootScreen != screen) ||
-                       (ui.currentScreen != screen) || (ui.stackDepth != 0);
+                       (ui.currentScreen != screen) || (ui.stack.depth != 0);
   ui.rootScreen = screen;
   ui.currentScreen = screen;
   ui.returnScreen = screen;
-  ui.stackDepth = 0;
+  ui.stack.clear();
   ui.serviceSession = TftHmiPolicyLogic::transitionServiceSession(
       ui.serviceSession,
       screen == UI_SERVICE
@@ -1465,30 +1467,84 @@ static uint16_t dimmedButtonColor() {
                                  : tft.color565(126, 132, 138);
 }
 
-static void startModeFromControl(Mode mode) {
+static bool startModeFromControl(Mode mode) {
+  ControlCommandQueue::StartRequest request;
+  request.mode = mode;
   switch (mode) {
   case Mode::RECTIFICATION:
-  case Mode::DISTILLATION:
   case Mode::MANUAL_RECT:
   case Mode::NBK:
   case Mode::FERMENTATION:
-    if (mode == Mode::DISTILLATION) {
-      FSM::Distillation::setParams(distUi.speedMlH, distUi.headsVolumeMl,
-                                   distUi.targetVolumeMl, distUi.endTempC);
-      FSM::Distillation::setPowerPercent(
-          static_cast<uint8_t>(distUi.powerPercent));
-    }
-    FSM::startMode(g_state, g_settings, mode);
+    break;
+  case Mode::DISTILLATION:
+    request.payloadKind = ControlCommandQueue::PayloadKind::Distillation;
+    request.distillationUi = g_settings.distillationUi;
+    request.distillationUi.speedMlH = distUi.speedMlH;
+    request.distillationUi.headsVolumeMl = distUi.headsVolumeMl;
+    request.distillationUi.targetVolumeMl = distUi.targetVolumeMl;
+    request.distillationUi.tailsVolumeMl = distUi.tailsVolumeMl;
+    request.distillationUi.endTempC = distUi.endTempC;
+    request.distillationUi.powerPercent = distUi.powerPercent;
+    request.distillationUi.powerW =
+        static_cast<float>(g_settings.equipment.heaterPowerW > 0
+                               ? g_settings.equipment.heaterPowerW
+                               : DEFAULT_HEATER_POWER_W) *
+        distUi.powerPercent / 100.0f;
+    request.fractionProgram = g_settings.fractionProgram;
     break;
   case Mode::MASHING:
-    FSM::Mashing::start(g_state, &mashProfileDefault);
+    request.payloadKind = ControlCommandQueue::PayloadKind::Mashing;
+    request.mashProfile = mashProfileDefault;
     break;
   case Mode::HOLD:
-    FSM::Hold::start(g_state, holdStepsDefault, holdStepsCount);
+    request.payloadKind = ControlCommandQueue::PayloadKind::Hold;
+    request.holdStepCount = holdStepsCount;
+    memcpy(request.holdSteps, holdStepsDefault,
+           sizeof(TempStep) * holdStepsCount);
     break;
   default:
-    break;
+    return false;
   }
+
+  uint32_t commandId = 0;
+  ControlCommandQueue::Status status = ControlCommandQueue::Status::Unknown;
+  const auto result = ControlCommandQueue::enqueueStart(
+      ControlCommandQueue::Source::Tft, request, 0,
+      ControlCommandQueue::Reason::OperatorRequest, &commandId, &status);
+  if (result != ControlCommandQueue::EnqueueResult::Accepted &&
+      result != ControlCommandQueue::EnqueueResult::Duplicate) {
+    LOG_E("TFT process start could not be queued (mode=%u, status=%s)",
+          static_cast<unsigned>(mode), ControlCommandQueue::statusToken(status));
+    return false;
+  }
+  return true;
+}
+
+static bool enqueueTftProcessCommand(ControlCommandQueue::Type type,
+                                     ControlCommandQueue::Reason reason) {
+  const auto result = ControlCommandQueue::enqueue(
+      type, ControlCommandQueue::Source::Tft, Mode::IDLE, 0, reason);
+  if (result == ControlCommandQueue::EnqueueResult::Accepted ||
+      result == ControlCommandQueue::EnqueueResult::Duplicate) {
+    return true;
+  }
+  LOG_E("TFT process command could not be queued (type=%u)",
+        static_cast<unsigned>(type));
+  return false;
+}
+
+static bool enqueueTftAction(ControlCommandQueue::Type type,
+                             uint8_t argument, float numericValue) {
+  const auto result = ControlCommandQueue::enqueueAction(
+      type, ControlCommandQueue::Source::Tft, argument, numericValue, 0,
+      ControlCommandQueue::Reason::OperatorRequest);
+  if (result == ControlCommandQueue::EnqueueResult::Accepted ||
+      result == ControlCommandQueue::EnqueueResult::Duplicate) {
+    return true;
+  }
+  LOG_E("TFT state edit could not be queued (type=%u)",
+        static_cast<unsigned>(type));
+  return false;
 }
 
 // =============================================================================
@@ -1949,7 +2005,8 @@ static bool refreshTftPreflight() {
     params["profileId"] = ui.setupDraft.profileId;
   }
   if (!buildProcessPreflight(doc, ui.setupDraft.mode,
-                             getModeString(ui.setupDraft.mode), params)) {
+                             getModeString(ui.setupDraft.mode), params,
+                             g_state)) {
     snprintf(g_tftPreflight.title, sizeof(g_tftPreflight.title), "%s",
              (g_settings.language == 0) ? "Pre-flight недоступен"
                                         : "Pre-flight unavailable");
@@ -2181,9 +2238,14 @@ static void persistDistUi() {
 }
 
 static void applyDistUiRuntime() {
-  FSM::Distillation::setParams(distUi.speedMlH, distUi.headsVolumeMl,
-                               distUi.targetVolumeMl, distUi.endTempC);
-  FSM::Distillation::setPowerPercent(static_cast<uint8_t>(distUi.powerPercent));
+  const auto result = ControlCommandQueue::enqueueDistillationParameters(
+      ControlCommandQueue::Source::Tft, distUi.speedMlH,
+      distUi.headsVolumeMl, distUi.targetVolumeMl, distUi.endTempC,
+      static_cast<uint8_t>(distUi.powerPercent));
+  if (result != ControlCommandQueue::EnqueueResult::Accepted &&
+      result != ControlCommandQueue::EnqueueResult::Duplicate) {
+    LOG_E("TFT distillation parameters could not be queued");
+  }
 }
 
 static void saveDistSpeed(float val) {
@@ -2277,7 +2339,8 @@ static void saveMashStepTemp(float val) {
   mashProfileDefault.steps[g_editMashStepIdx].temperature = val;
   if (g_state.mode == Mode::MASHING &&
       g_state.mashing.currentStep == g_editMashStepIdx) {
-    g_state.mashing.targetTemp = val;
+    enqueueTftAction(ControlCommandQueue::Type::SetMashingStepTemperature,
+                     g_editMashStepIdx, val);
   }
 }
 static void saveMashStepDuration(float val) {
@@ -2289,9 +2352,8 @@ static void saveMashStepDuration(float val) {
       static_cast<uint16_t>(val);
   if (g_state.mode == Mode::MASHING &&
       g_state.mashing.currentStep == g_editMashStepIdx) {
-    g_state.mashing.stepDuration = static_cast<uint32_t>(val) * 60UL;
-    g_state.mashing.tempInRange = false;
-    g_state.mashing.inRangeStartTime = 0;
+    enqueueTftAction(ControlCommandQueue::Type::SetMashingStepDuration,
+                     g_editMashStepIdx, val);
   }
 }
 
@@ -2303,7 +2365,8 @@ static void saveHoldStepTemp(float val) {
   holdStepsDefault[g_editHoldStepIdx].temperature = val;
   if (g_state.mode == Mode::HOLD &&
       g_state.hold.currentStep == g_editHoldStepIdx) {
-    g_state.hold.targetTemp = val;
+    enqueueTftAction(ControlCommandQueue::Type::SetHoldStepTemperature,
+                     g_editHoldStepIdx, val);
   }
 }
 static void saveHoldStepDuration(float val) {
@@ -2314,9 +2377,8 @@ static void saveHoldStepDuration(float val) {
   holdStepsDefault[g_editHoldStepIdx].duration = static_cast<uint16_t>(val);
   if (g_state.mode == Mode::HOLD &&
       g_state.hold.currentStep == g_editHoldStepIdx) {
-    g_state.hold.steps[g_editHoldStepIdx].duration = static_cast<uint16_t>(val);
-    g_state.hold.tempInRange = false;
-    g_state.hold.inRangeStartTime = 0;
+    enqueueTftAction(ControlCommandQueue::Type::SetHoldStepDuration,
+                     g_editHoldStepIdx, val);
   }
 }
 
@@ -2640,18 +2702,6 @@ static void saveFermentationDuration(float val) {
   NVSManager::saveSettings(g_settings);
 }
 
-static void normalizeCoolingPwmSettings() {
-  if (g_settings.equipment.coolingPwmMinDuty >
-      g_settings.equipment.coolingPwmMaxDuty) {
-    g_settings.equipment.coolingPwmMinDuty =
-        g_settings.equipment.coolingPwmMaxDuty;
-  }
-  g_settings.equipment.coolingPwmStartupDuty = constrain(
-      g_settings.equipment.coolingPwmStartupDuty,
-      g_settings.equipment.coolingPwmMinDuty,
-      g_settings.equipment.coolingPwmMaxDuty);
-}
-
 static void saveStirrerDefaultSpeed(float val) {
   g_settings.stirrer.defaultSpeedPercent = static_cast<uint8_t>(
       EditableFields::normalize(EditableFields::Id::STIRRER_DEFAULT_SPEED_PERCENT,
@@ -2659,27 +2709,16 @@ static void saveStirrerDefaultSpeed(float val) {
   NVSManager::saveSettings(g_settings);
 }
 
-static void saveCoolingPwmMinDuty(float val) {
-  g_settings.equipment.coolingPwmMinDuty = static_cast<uint8_t>(
-      EditableFields::normalize(EditableFields::Id::COOLING_PWM_MIN_DUTY,
+static void saveCoolingPwmHoldPercent(float val) {
+  g_settings.equipment.coolingPwmHoldPercent = static_cast<uint8_t>(
+      EditableFields::normalize(EditableFields::Id::COOLING_PWM_HOLD_PERCENT,
                                 val));
-  normalizeCoolingPwmSettings();
   NVSManager::saveSettings(g_settings);
 }
 
-static void saveCoolingPwmMaxDuty(float val) {
-  g_settings.equipment.coolingPwmMaxDuty = static_cast<uint8_t>(
-      EditableFields::normalize(EditableFields::Id::COOLING_PWM_MAX_DUTY,
-                                val));
-  normalizeCoolingPwmSettings();
-  NVSManager::saveSettings(g_settings);
-}
-
-static void saveCoolingPwmStartupDuty(float val) {
-  g_settings.equipment.coolingPwmStartupDuty = static_cast<uint8_t>(
-      EditableFields::normalize(EditableFields::Id::COOLING_PWM_STARTUP_DUTY,
-                                val));
-  normalizeCoolingPwmSettings();
+static void saveCoolingPwmPullMs(float val) {
+  g_settings.equipment.coolingPwmPullMs = EditableFields::normalizeU16(
+      EditableFields::Id::COOLING_PWM_PULL_MS, val);
   NVSManager::saveSettings(g_settings);
 }
 
@@ -2748,8 +2787,8 @@ static bool getModeParameterField(Mode mode, uint8_t page, uint8_t slot,
   case Mode::IDLE:
     if (page == 0) {
       static constexpr Id kFields[] = {
-          Id::STIRRER_DEFAULT_SPEED_PERCENT, Id::COOLING_PWM_MIN_DUTY,
-          Id::COOLING_PWM_MAX_DUTY, Id::COOLING_PWM_STARTUP_DUTY};
+          Id::STIRRER_DEFAULT_SPEED_PERCENT, Id::COOLING_PWM_HOLD_PERCENT,
+          Id::COOLING_PWM_PULL_MS};
       if (slot < sizeof(kFields) / sizeof(kFields[0])) {
         field = kFields[slot];
         return true;
@@ -2786,12 +2825,10 @@ static float getModeParameterFieldValue(EditableFields::Id field) {
     return g_settings.fermentation.durationHours;
   case Id::STIRRER_DEFAULT_SPEED_PERCENT:
     return g_settings.stirrer.defaultSpeedPercent;
-  case Id::COOLING_PWM_MIN_DUTY:
-    return g_settings.equipment.coolingPwmMinDuty;
-  case Id::COOLING_PWM_MAX_DUTY:
-    return g_settings.equipment.coolingPwmMaxDuty;
-  case Id::COOLING_PWM_STARTUP_DUTY:
-    return g_settings.equipment.coolingPwmStartupDuty;
+  case Id::COOLING_PWM_HOLD_PERCENT:
+    return g_settings.equipment.coolingPwmHoldPercent;
+  case Id::COOLING_PWM_PULL_MS:
+    return g_settings.equipment.coolingPwmPullMs;
   case Id::MASH_STEP_TEMPERATURE_C:
     return ui.modeParametersStep < mashProfileDefault.stepCount
                ? mashProfileDefault.steps[ui.modeParametersStep].temperature
@@ -2838,12 +2875,10 @@ static ValueSaveCallback getModeParameterSaveCallback(EditableFields::Id field) 
     return saveFermentationDuration;
   case Id::STIRRER_DEFAULT_SPEED_PERCENT:
     return saveStirrerDefaultSpeed;
-  case Id::COOLING_PWM_MIN_DUTY:
-    return saveCoolingPwmMinDuty;
-  case Id::COOLING_PWM_MAX_DUTY:
-    return saveCoolingPwmMaxDuty;
-  case Id::COOLING_PWM_STARTUP_DUTY:
-    return saveCoolingPwmStartupDuty;
+  case Id::COOLING_PWM_HOLD_PERCENT:
+    return saveCoolingPwmHoldPercent;
+  case Id::COOLING_PWM_PULL_MS:
+    return saveCoolingPwmPullMs;
   case Id::MASH_STEP_TEMPERATURE_C:
     g_editMashStepIdx = ui.modeParametersStep;
     return saveMashStepTemp;
@@ -3225,14 +3260,11 @@ static bool handleControlScreenTap(int16_t tx, int16_t ty,
                      : "Process restore is available only through the service session.");
         return true;
       }
-      PowerCommandGateway::noteFsmSetpoint(
-          PowerCommandGateway::Target::ALL_OUTPUTS,
-          PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT, 1.0f);
-      FSM::resume(g_state);
+      enqueueTftProcessCommand(ControlCommandQueue::Type::Resume,
+                               ControlCommandQueue::Reason::ProcessAction);
     } else {
-      PowerCommandGateway::noteFsmSafeStop(
-          PowerCommandGateway::Reason::TFT_PROCESS_PAUSE);
-      FSM::pause(g_state);
+      enqueueTftProcessCommand(ControlCommandQueue::Type::Pause,
+                               ControlCommandQueue::Reason::ProcessAction);
     }
     return true;
   }
@@ -3272,18 +3304,17 @@ static bool handleSafetyViewScreenTap(int16_t tx, int16_t ty,
                           : "Acknowledge the alarm first; reset is blocked."));
       return true;
     }
-    char reason[128] = "";
-    if (Safety::reset(g_state, g_settings, reason, sizeof(reason))) {
+    if (enqueueTftProcessCommand(ControlCommandQueue::Type::ResetSafety,
+                                 ControlCommandQueue::Reason::SafetyRequest)) {
       snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
-               (g_settings.language == 0) ? "Safety-состояние сброшено."
-                                          : "Safety state has been reset.");
+               (g_settings.language == 0)
+                   ? "Команда сброса передана контроллеру."
+                   : "Safety reset command queued.");
     } else {
       snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
-               reason[0] != '\0'
-                   ? reason
-                   : ((g_settings.language == 0)
-                          ? "Сброс пока запрещён политикой safety."
-                          : "Safety policy does not allow reset yet."));
+               (g_settings.language == 0)
+                   ? "Не удалось поставить сброс в очередь."
+                   : "Could not queue the safety reset.");
     }
     return true;
   }
@@ -3442,7 +3473,18 @@ static bool handlePreflightScreenTap(int16_t tx, int16_t ty,
     if (!TftHmiPolicyLogic::mayStartFromTft(startRoute)) {
       return true;
     }
-    startModeFromControl(ui.setupDraft.mode);
+    if (!startModeFromControl(ui.setupDraft.mode)) {
+      snprintf(g_tftPreflight.title, sizeof(g_tftPreflight.title), "%s",
+               (g_settings.language == 0) ? "Очередь занята"
+                                          : "Command queue busy");
+      snprintf(g_tftPreflight.detail, sizeof(g_tftPreflight.detail), "%s",
+               (g_settings.language == 0)
+                   ? "Команда запуска не принята. Повторите после проверки состояния."
+                   : "Start command was not accepted. Check status and retry.");
+      g_tftPreflight.attempted = true;
+      g_tftPreflight.ready = false;
+      return true;
+    }
     switchRoot(UI_MODE_MONITOR);
     return true;
   }
@@ -4239,7 +4281,8 @@ static bool handleModeParametersScreenTap(int16_t tx, int16_t ty,
     if (hit(tx, ty, 10, 200, 225, 32)) {
       g_settings.stirrer.enabled = !g_settings.stirrer.enabled;
       if (!g_settings.stirrer.enabled) {
-        g_state.stirrer.autoMode = false;
+        enqueueTftAction(ControlCommandQueue::Type::SetStirrerAutoMode, 0,
+                         0.0f);
         PowerCommandGateway::stopStirrer(
             PowerCommandGateway::Owner::SERVICE,
             PowerCommandGateway::Reason::TFT_SERVICE_SETTING);
@@ -4855,14 +4898,16 @@ static void updatePumpCalibrationLifecycle(const SystemState &state) {
   }
 }
 
-static void updateDosingLifecycle(const SystemState &state) {
-  const DosingSession::Snapshot before = DosingSession::getSnapshot();
-  DosingSession::update(state);
+static void updateDosingLifecycle(const SystemState &) {
+  // Output supervision runs from main control loop. TFT only notices a newly
+  // finished session and updates its operator message.
+  static uint32_t lastDisplayedFinishMs = 0;
   const DosingSession::Snapshot after = DosingSession::getSnapshot();
-  if (!DosingSessionLogic::isOutputActive(before) ||
-      DosingSessionLogic::isOutputActive(after)) {
+  if (after.finishedAtMs == 0 ||
+      after.finishedAtMs == lastDisplayedFinishMs) {
     return;
   }
+  lastDisplayedFinishMs = after.finishedAtMs;
   const bool ru = g_settings.language == 0;
   if (after.phase == DosingSession::Phase::COMPLETED) {
     setDosingMessage(ru ? "Целевой объём достигнут; насос и клапаны закрыты."
@@ -4910,13 +4955,27 @@ static bool handleServiceScreenTap(int16_t tx, int16_t ty,
 static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
                                        const SystemState &state) {
   const int16_t pageY = UI_HEADER_H + 4;
-  const int16_t firstRowY = pageY + 38;
-  const int16_t rowH = 42;
-  const int16_t rowGap = 8;
+  const int16_t stopY = pageY + 32;
+  const int16_t firstRowY = pageY + 64;
+  const int16_t rowH = 38;
+  const int16_t rowGap = 4;
   const int16_t x1 = 10;
   const int16_t x2 = 245;
   const int16_t w = 225;
   const auto availability = getServiceTestAvailability(state);
+
+  if (hit(tx, ty, 10, stopY, TFT_WIDTH - 20, 28)) {
+    const ServiceTestSession::Snapshot session =
+        ServiceTestSession::getSnapshot();
+    if (session.phase == ServiceTestSession::Phase::SAFE_PAUSED ||
+        session.phase == ServiceTestSession::Phase::TEST_ACTIVE ||
+        session.phase == ServiceTestSession::Phase::STOPPING) {
+      stopServiceTestOutputs((g_settings.language == 0)
+                                 ? "Все сервисные выходы остановлены."
+                                 : "All service outputs have been stopped.");
+    }
+    return true;
+  }
 
   if (hit(tx, ty, x1, pageY, 96, 28) && ui.serviceTestPage > 0) {
     --ui.serviceTestPage;
@@ -5018,11 +5077,8 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
                     : "Process restore is safety-blocked.");
             return true;
           }
-          PowerCommandGateway::noteFsmSetpoint(
-              PowerCommandGateway::Target::ALL_OUTPUTS,
-              PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT, 1.0f);
-          FSM::resume(g_state);
-          ControlV2::updateRuntime(g_state, g_settings);
+          enqueueTftProcessCommand(ControlCommandQueue::Type::Resume,
+                                   ControlCommandQueue::Reason::ProcessAction);
           auditServiceTest(ServiceTestAudit::Event::RESTORED, getServiceTestAuditTarget(session),
                            "Only the original permitted FSM process was resumed.",
                            "success");
@@ -5151,7 +5207,8 @@ static bool handleServiceTestScreenTap(int16_t tx, int16_t ty,
                                   BOARD_SERVICE_TEST_PWM_TIMEOUT_MS)) {
         return true;
       }
-      const uint8_t duty = BOARD_SERVICE_TEST_PWM_DUTY;
+      const uint8_t duty = CoolingPwmLogic::percentToDuty(
+          g_settings.equipment.coolingPwmHoldPercent);
       PowerCommandGateway::setCoolingPwm(
           PowerCommandGateway::Owner::SERVICE,
           PowerCommandGateway::Reason::TFT_SERVICE_TEST, duty);
@@ -6501,13 +6558,6 @@ static void drawOperatorOverlay(const SystemState &state) {
   }
 }
 
-static void resumeProcessFromOperatorOverlay() {
-  PowerCommandGateway::noteFsmSetpoint(
-      PowerCommandGateway::Target::ALL_OUTPUTS,
-      PowerCommandGateway::Reason::TFT_RUNTIME_SETPOINT, 1.0f);
-  FSM::resume(g_state);
-}
-
 static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
                                      const SystemState &state) {
   using Action = TftOperatorOverlayLogic::Action;
@@ -6563,7 +6613,8 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
       PowerCommandGateway::safeStopAll(
           PowerCommandGateway::Owner::FSM,
           PowerCommandGateway::Reason::TFT_PROCESS_STOP);
-      FSM::stopMode(g_state);
+      enqueueTftProcessCommand(ControlCommandQueue::Type::Stop,
+                               ControlCommandQueue::Reason::ProcessAction);
       closeOperatorOverlay();
     }
     break;
@@ -6573,43 +6624,50 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
       closeOperatorOverlay();
       break;
     }
+    if (!enqueueTftProcessCommand(
+            ControlCommandQueue::Type::AcknowledgeSafety,
+            ControlCommandQueue::Reason::SafetyRequest)) {
+      snprintf(ui.operatorOverlayMessage, sizeof(ui.operatorOverlayMessage),
+               "%s", g_settings.language == 0
+                          ? "Не удалось поставить подтверждение в очередь."
+                          : "Could not queue the acknowledgement.");
+      break;
+    }
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
-      Safety::acknowledge(g_state);
       snprintf(ui.safetyActionMessage, sizeof(ui.safetyActionMessage), "%s",
-               (g_settings.language == 0) ? "Авария подтверждена оператором."
-                                          : "Alarm acknowledged by operator.");
+               (g_settings.language == 0)
+                   ? "Команда подтверждения передана контроллеру."
+                   : "Alarm acknowledgement queued.");
       closeOperatorOverlay();
     }
     break;
   case Action::MashOperatorWait:
-    if (!FSM::Mashing::requestManualAdvance(g_state)) {
+    if (!enqueueTftProcessCommand(
+            ControlCommandQueue::Type::MashingManualAdvance,
+            ControlCommandQueue::Reason::ProcessAction)) {
       snprintf(ui.operatorOverlayMessage, sizeof(ui.operatorOverlayMessage),
                "%s", g_settings.language == 0
-                         ? "Ожидание оператора уже не активно."
-                         : "Operator wait is no longer active.");
+                         ? "Не удалось поставить команду в очередь."
+                         : "Could not queue the process command.");
       break;
     }
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
-      resumeProcessFromOperatorOverlay();
       closeOperatorOverlay();
     }
     break;
   case Action::FractionConfirmation:
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
-      (void)FSM::Distillation::confirmFractionProgram(g_state, g_settings);
+      enqueueTftProcessCommand(
+          ControlCommandQueue::Type::ConfirmFractionProgram,
+          ControlCommandQueue::Reason::ProcessAction);
       closeOperatorOverlay();
     }
     break;
   case Action::ContainerChange:
-    if (!FSM::Rectification::confirmContainerChange(g_state, g_settings)) {
-      snprintf(ui.operatorOverlayMessage, sizeof(ui.operatorOverlayMessage),
-               "%s", g_settings.language == 0
-                         ? "Датчик уровня всё ещё активен: продолжение запрещено."
-                         : "Level sensor is still active: resume is blocked.");
-      break;
-    }
     if (TftOperatorOverlayLogic::claimAction(ui.operatorOverlay)) {
-      resumeProcessFromOperatorOverlay();
+      enqueueTftProcessCommand(
+          ControlCommandQueue::Type::ConfirmContainerChangeAndResume,
+          ControlCommandQueue::Reason::ProcessAction);
       closeOperatorOverlay();
     }
     break;
@@ -6665,9 +6723,8 @@ static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
         break;
       }
       if (!state.paused) {
-        PowerCommandGateway::noteFsmSafeStop(
-            PowerCommandGateway::Reason::TFT_PROCESS_PAUSE);
-        FSM::pause(g_state);
+        enqueueTftProcessCommand(ControlCommandQueue::Type::Pause,
+                                 ControlCommandQueue::Reason::ProcessAction);
       }
       PowerCommandGateway::safeStopAll(
           PowerCommandGateway::Owner::SERVICE,
@@ -7100,11 +7157,14 @@ static void renderRootFooter(
 // ============================================================================
 static constexpr int16_t HMI2_HEADER_H = 32;
 static constexpr int16_t HMI2_ROW_H = 60;
-static constexpr int16_t HMI2_ROW_GAP = 3;
+static constexpr int16_t HMI2_ROW_GAP = 0;
 static constexpr int16_t HMI2_FOOTER_H = 48;
-static constexpr uint8_t HMI2_VISIBLE_ROWS = 4;
-static constexpr int16_t HMI2_MARGIN_X = 8;
-static constexpr int16_t HMI2_RAIL_W = 18;
+static constexpr uint8_t HMI2_VISIBLE_ROWS = HmiPage::kVisibleRows;
+// Keep these coordinates identical to docs/prototype/tft-menu-v3.html.
+// The prototype is rendered at native 480x320, so every value here is a TFT
+// pixel rather than a scaled design unit.
+static constexpr int16_t HMI2_MARGIN_X = 0;
+static constexpr int16_t HMI2_RAIL_W = 48;
 
 static uint8_t hmi2Section = 0;
 static uint8_t hmi2Scroll = 0;
@@ -7180,6 +7240,39 @@ static uint8_t hmi2BuildRows() {
             nullptr, "ОТКРЫТЬ", alarm ? COLOR_DANGER : COLOR_SUCCESS);
     hmi2Add(Hmi2RowType::Link, "Сервис", "", nullptr, "ОТКРЫТЬ",
             COLOR_PRIMARY);
+  } else if (hmi2Section == 1) { // РЕЖИМ
+    hmi2Add(Hmi2RowType::Link, "Режим", getDisplayModeName(g_state.mode),
+            nullptr, "ВЫБРАТЬ", COLOR_PRIMARY);
+    static char profileBuf[28];
+    snprintf(profileBuf, sizeof(profileBuf), "%s",
+             getActiveProfileName().c_str());
+    hmi2Add(Hmi2RowType::Link, "Профиль", profileBuf, nullptr, "ВЫБРАТЬ",
+            COLOR_INFO);
+    hmi2Add(Hmi2RowType::Link, "Параметры режима", "", nullptr,
+            "НАСТРОИТЬ", COLOR_INFO);
+    hmi2Add(Hmi2RowType::Notice, "Перед стартом",
+            "проверка 5 пунктов", nullptr, nullptr, COLOR_WARNING);
+    hmi2Add(Hmi2RowType::Link, "Старт процесса", "", nullptr, "СТАРТ",
+            COLOR_SUCCESS);
+  } else if (hmi2Section == 7) { // ПРОЦЕСС
+    snprintf(buf, sizeof(buf), "%s%s", getDisplayModeName(g_state.mode),
+             g_state.paused ? " · ПАУЗА" : "");
+    hmi2Add(Hmi2RowType::Read, "Режим", buf, nullptr, nullptr, COLOR_INFO);
+    snprintf(buf, sizeof(buf), "%.1f", g_state.temps.cube);
+    hmi2Add(Hmi2RowType::Read, "Куб", buf, "°C", nullptr, COLOR_INFO);
+    snprintf(buf, sizeof(buf), "%.1f", g_state.temps.columnBottom);
+    hmi2Add(Hmi2RowType::Read, "Низ колонны", buf, "°C", nullptr,
+            COLOR_INFO);
+    snprintf(buf, sizeof(buf), "%u",
+             static_cast<unsigned>(g_state.power.power));
+    hmi2Add(Hmi2RowType::Read, "Мощность", buf, "Вт", nullptr, COLOR_INFO);
+    snprintf(buf, sizeof(buf), "%u",
+             static_cast<unsigned>(g_state.pump.speedMlPerHour));
+    hmi2Add(Hmi2RowType::Read, "Отбор", buf, "мл/ч", nullptr, COLOR_INFO);
+    hmi2Add(Hmi2RowType::Link, "Параметры процесса", "", nullptr,
+            "ОТКРЫТЬ", COLOR_INFO);
+    hmi2Add(Hmi2RowType::Link, "Журнал", "", nullptr, "ОТКРЫТЬ",
+            COLOR_INFO);
   } else {
     hmi2Add(Hmi2RowType::Notice, "Раздел в разработке",
             "строки появятся после переноса", nullptr, nullptr,
@@ -7195,6 +7288,8 @@ static void hmi2DrawHeader() {
   tft.drawFastHLine(0, HMI2_HEADER_H - 1, TFT_WIDTH, colorBorder());
 
   const uint16_t accent = colorAccent();
+  tft.setFont(&fonts::efontJA_16);
+  tft.setTextSize(1);
   tft.drawRect(6, 8, 16, 16, accent);
   tft.fillRect(9, 11, 4, 4, accent);
   tft.fillRect(15, 11, 4, 4, accent);
@@ -7203,20 +7298,22 @@ static void hmi2DrawHeader() {
 
   char title[24];
   copyFittedText(kHmi2Sections[hmi2Section], 150, title, sizeof(title));
-  tft.setTextSize(2);
+  tft.setTextSize(1);
   tft.setTextColor(colorFg());
   tft.setTextDatum(middle_left);
   drawDisplayString(title, 28, HMI2_HEADER_H / 2);
 
-  drawButton(200, 4, 34, 24, "<", colorButtonBody(), colorFg());
-  drawButton(238, 4, 34, 24, ">", colorButtonBody(), colorFg());
+  drawButton(267, 3, 48, 27, "<", COLOR_DANGER, TFT_WHITE);
+  drawButton(322, 3, 48, 27, ">", COLOR_DANGER, TFT_WHITE);
 
   char clock[8];
   hmi2FormatClock(clock, sizeof(clock));
-  tft.setTextSize(2);
+  tft.setTextSize(1);
   tft.setTextColor(colorFg());
   tft.setTextDatum(middle_right);
-  drawDisplayString(clock, TFT_WIDTH - 8, HMI2_HEADER_H / 2);
+  drawDisplayString(clock, TFT_WIDTH - 35, HMI2_HEADER_H / 2);
+  tft.drawCircle(TFT_WIDTH - 19, HMI2_HEADER_H / 2, 11, colorBorder());
+  tft.fillCircle(TFT_WIDTH - 19, HMI2_HEADER_H / 2, 7, COLOR_WARNING);
   tft.setTextDatum(top_left);
 }
 
@@ -7226,11 +7323,11 @@ static void hmi2DrawRow(int16_t y, uint8_t index, const Hmi2Row &row) {
   const int16_t h = HMI2_ROW_H - HMI2_ROW_GAP;
 
   // Чередование фона — как в макете, чтобы строки читались по отдельности.
-  tft.fillRoundRect(x, y, w, h, 5, (index & 1) ? colorCard() : colorNavBg());
-  tft.drawRoundRect(x, y, w, h, 5, colorBorder());
+  tft.fillRect(x, y, w, h, (index & 1) ? colorCard() : colorNavBg());
+  tft.drawFastHLine(x, y + h - 1, w, colorBorder());
 
   if (row.type == Hmi2RowType::Notice) {
-    tft.setTextSize(2);
+    tft.setTextSize(1);
     tft.setTextColor(row.tone);
     tft.setTextDatum(middle_left);
     drawDisplayString("!", x + 10, y + 20);
@@ -7275,14 +7372,14 @@ static void hmi2DrawRow(int16_t y, uint8_t index, const Hmi2Row &row) {
     }
 
     if (row.unit[0] != '\0') {
-      tft.setTextSize(2);
+      tft.setTextSize(1);
       tft.setTextColor(colorMuted());
       tft.setTextDatum(middle_right);
       drawDisplayString(row.unit, rightEdge, y + h / 2);
       rightEdge -= (displayTextWidth(row.unit) + 8);
     }
 
-    tft.setTextSize(3);
+    tft.setTextSize(1);
     tft.setTextColor(row.tone);
     tft.setTextDatum(middle_right);
     drawDisplayString(row.value, rightEdge, y + h / 2);
@@ -7292,7 +7389,7 @@ static void hmi2DrawRow(int16_t y, uint8_t index, const Hmi2Row &row) {
 
   char label[24];
   copyFittedText(row.label, rightEdge - x - 16, label, sizeof(label));
-  tft.setTextSize(3);
+  tft.setTextSize(1);
   tft.setTextColor(colorFg());
   tft.setTextDatum(middle_left);
   drawDisplayString(label, x + 10, y + h / 2);
@@ -7300,28 +7397,60 @@ static void hmi2DrawRow(int16_t y, uint8_t index, const Hmi2Row &row) {
 }
 
 static void hmi2DrawRail(uint8_t total) {
-  if (total <= HMI2_VISIBLE_ROWS) {
-    return;
-  }
   const int16_t x = TFT_WIDTH - HMI2_RAIL_W + 3;
-  const int16_t top = HMI2_HEADER_H + 4;
-  const int16_t height = HMI2_VISIBLE_ROWS * HMI2_ROW_H - 8;
-  tft.fillRoundRect(x, top, 12, height, 6, colorButtonBody());
-  const uint8_t maxFirst = static_cast<uint8_t>(total - HMI2_VISIBLE_ROWS);
-  const int16_t thumbH = height * HMI2_VISIBLE_ROWS / total;
-  const int16_t travel = height - thumbH;
-  const int16_t off =
-      (maxFirst == 0) ? 0
-                      : travel * static_cast<int16_t>(hmi2Scroll) / maxFirst;
-  tft.fillRoundRect(x, top + off, 12, thumbH, 6, colorAccent());
+  const int16_t top = HMI2_HEADER_H + 3;
+  const int16_t height = HMI2_VISIBLE_ROWS * HMI2_ROW_H - 6;
+  tft.fillRect(TFT_WIDTH - HMI2_RAIL_W, HMI2_HEADER_H, HMI2_RAIL_W,
+               HMI2_VISIBLE_ROWS * HMI2_ROW_H, colorNavBg());
+  drawButton(x, top, 42, 37, "▲", colorButtonBody(), colorFg());
+  drawButton(x, TFT_HEIGHT - HMI2_FOOTER_H - 42, 42, 37, "▼",
+             colorButtonBody(), colorFg());
+  const int16_t trackTop = top + 41;
+  const int16_t trackBottom = TFT_HEIGHT - HMI2_FOOTER_H - 54;
+  const int16_t trackH = trackBottom - trackTop;
+  tft.fillRoundRect(TFT_WIDTH - HMI2_RAIL_W + 21, trackTop, 7, trackH, 4,
+                    colorButtonBody());
+  if (total <= HMI2_VISIBLE_ROWS) {
+    tft.fillRoundRect(TFT_WIDTH - HMI2_RAIL_W + 21, trackTop, 7, trackH, 4,
+                      colorAccent());
+  } else {
+    const uint8_t maxFirst = static_cast<uint8_t>(total - HMI2_VISIBLE_ROWS);
+    const int16_t thumbH = trackH * HMI2_VISIBLE_ROWS / total;
+    const int16_t travel = trackH - thumbH;
+    const int16_t off =
+        (maxFirst == 0) ? 0
+                        : travel * static_cast<int16_t>(hmi2Scroll) / maxFirst;
+    tft.fillRoundRect(TFT_WIDTH - HMI2_RAIL_W + 21, trackTop + off, 7, thumbH,
+                      4, colorAccent());
+  }
+  char counter[12];
+  snprintf(counter, sizeof(counter), "%u-%u/%u",
+           static_cast<unsigned>(hmi2Scroll + 1),
+           static_cast<unsigned>(hmi2Scroll + HMI2_VISIBLE_ROWS > total
+                                     ? total
+                                     : hmi2Scroll + HMI2_VISIBLE_ROWS),
+           static_cast<unsigned>(total));
+  tft.setTextSize(1);
+  tft.setTextColor(colorFg());
+  tft.setTextDatum(middle_center);
+  drawDisplayString(counter, TFT_WIDTH - HMI2_RAIL_W / 2,
+                    TFT_HEIGHT - HMI2_FOOTER_H - 52);
+  tft.setTextDatum(top_left);
 }
 
-static void hmi2DrawFooter() {
+static void hmi2DrawFooter(bool running, bool paused) {
   const int16_t y = TFT_HEIGHT - HMI2_FOOTER_H;
   tft.fillRect(0, y, TFT_WIDTH, HMI2_FOOTER_H, colorNavBg());
   tft.drawFastHLine(0, y, TFT_WIDTH, colorBorder());
   const int16_t bh = 38;
   const int16_t by = y + (HMI2_FOOTER_H - bh) / 2;
+  if (running) {
+    drawButton(6, by, 152, bh, paused ? "ПРОДОЛЖИТЬ" : "ПАУЗА",
+               colorButtonBody(), colorFg());
+    drawButton(164, by, 152, bh, "СТОП", COLOR_DANGER, TFT_WHITE);
+    drawButton(322, by, 152, bh, "СЕРВИС", colorButtonBody(), colorFg());
+    return;
+  }
   drawButton(6, by, 152, bh, "НАЗАД", colorButtonBody(), colorFg());
   drawButton(164, by, 152, bh, "ВЫХОД", colorButtonBody(), colorFg());
   drawButton(322, by, 152, bh, "СОХРАНИТЬ", COLOR_DARK_GREY, colorMuted());
@@ -7340,6 +7469,10 @@ static void hmi2RenderHome(bool full) {
   if (hmi2Scroll > maxFirst) {
     hmi2Scroll = maxFirst;
   }
+  // При частичном обновлении очищаем только рабочую область. Иначе страница с
+  // меньшим числом строк оставит фрагменты предыдущего списка.
+  tft.fillRect(0, HMI2_HEADER_H, TFT_WIDTH,
+               HMI2_VISIBLE_ROWS * HMI2_ROW_H, colorBg());
   for (uint8_t i = 0; i < HMI2_VISIBLE_ROWS; ++i) {
     const int16_t y = HMI2_HEADER_H + i * HMI2_ROW_H;
     const uint8_t index = static_cast<uint8_t>(hmi2Scroll + i);
@@ -7348,36 +7481,73 @@ static void hmi2RenderHome(bool full) {
     }
   }
   hmi2DrawRail(total);
-  hmi2DrawFooter();
+  hmi2DrawFooter(isModeRunning(g_state), g_state.paused);
 }
 
 static bool hmi2HandleHomeTap(int16_t tx, int16_t ty,
                               const SystemState &state) {
   (void)state;
-  if (hit(tx, ty, 200, 4, 34, 24)) {
+  if (hit(tx, ty, 267, 3, 48, 27)) {
     hmi2Section = static_cast<uint8_t>(
         (hmi2Section + kHmi2SectionCount - 1) % kHmi2SectionCount);
     hmi2Scroll = 0;
     requestFullScreenRedraw();
     return true;
   }
-  if (hit(tx, ty, 238, 4, 34, 24)) {
+  if (hit(tx, ty, 322, 3, 48, 27)) {
     hmi2Section = static_cast<uint8_t>((hmi2Section + 1) % kHmi2SectionCount);
     hmi2Scroll = 0;
     requestFullScreenRedraw();
     return true;
   }
   const uint8_t total = hmi2BuildRows();
+  if (tx >= TFT_WIDTH - HMI2_RAIL_W &&
+      ty >= HMI2_HEADER_H &&
+      ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H) {
+    const uint8_t maxFirst =
+        (total > HMI2_VISIBLE_ROWS)
+            ? static_cast<uint8_t>(total - HMI2_VISIBLE_ROWS)
+            : static_cast<uint8_t>(0);
+    if (ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H / 2) {
+      hmi2Scroll = (hmi2Scroll > 0) ? static_cast<uint8_t>(hmi2Scroll - 1) : 0;
+    } else {
+      hmi2Scroll = (hmi2Scroll < maxFirst)
+                        ? static_cast<uint8_t>(hmi2Scroll + 1)
+                        : maxFirst;
+    }
+    requestFullScreenRedraw();
+    return true;
+  }
   if (ty >= HMI2_HEADER_H &&
       ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H) {
-    const uint8_t row =
-        static_cast<uint8_t>((ty - HMI2_HEADER_H) / HMI2_ROW_H);
-    const uint8_t index = static_cast<uint8_t>(hmi2Scroll + row);
+    const uint16_t index = HmiPage::rowIndexAt(
+        ty, HMI2_HEADER_H, HMI2_ROW_H, hmi2Scroll, total,
+        HMI2_VISIBLE_ROWS);
     if (index < total) {
       const Hmi2Row &entry = g_hmi2Rows[index];
-      if (hmi2Section == 0 && entry.type == Hmi2RowType::Link) {
+      if (entry.type == Hmi2RowType::Link) {
         if (strcmp(entry.label, "Режим") == 0) {
           pushScreen(UI_MODE_PICKER);
+          return true;
+        }
+        if (strcmp(entry.label, "Профиль") == 0) {
+          pushScreen(UI_PROFILE_PICKER);
+          return true;
+        }
+        if (strcmp(entry.label, "Параметры режима") == 0) {
+          pushScreen(UI_MODE_PARAMETERS);
+          return true;
+        }
+        if (strcmp(entry.label, "Старт процесса") == 0) {
+          pushScreen(UI_PREFLIGHT);
+          return true;
+        }
+        if (strcmp(entry.label, "Параметры процесса") == 0) {
+          pushScreen(UI_PROCESS_PARAMS);
+          return true;
+        }
+        if (strcmp(entry.label, "Журнал") == 0) {
+          openProcessEvents();
           return true;
         }
         if (strcmp(entry.label, "Безопасность") == 0) {
@@ -7392,23 +7562,28 @@ static bool hmi2HandleHomeTap(int16_t tx, int16_t ty,
     }
     return true;
   }
-  if (tx >= TFT_WIDTH - HMI2_RAIL_W) {
-    const uint8_t maxFirst =
-        (total > HMI2_VISIBLE_ROWS)
-            ? static_cast<uint8_t>(total - HMI2_VISIBLE_ROWS)
-            : static_cast<uint8_t>(0);
-    if (ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H / 2) {
-      hmi2Scroll =
-          (hmi2Scroll > 0) ? static_cast<uint8_t>(hmi2Scroll - 1) : 0;
-    } else {
-      hmi2Scroll = (hmi2Scroll < maxFirst)
-                       ? static_cast<uint8_t>(hmi2Scroll + 1)
-                       : maxFirst;
-    }
-    requestFullScreenRedraw();
-    return true;
-  }
   if (ty >= TFT_HEIGHT - HMI2_FOOTER_H) {
+    if (isModeRunning(g_state)) {
+      if (hit(tx, ty, 6, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
+        enqueueTftProcessCommand(
+            g_state.paused ? ControlCommandQueue::Type::Resume
+                           : ControlCommandQueue::Type::Pause,
+            ControlCommandQueue::Reason::ProcessAction);
+        requestFullScreenRedraw();
+        return true;
+      }
+      if (hit(tx, ty, 164, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
+        enqueueTftProcessCommand(ControlCommandQueue::Type::Stop,
+                                 ControlCommandQueue::Reason::ProcessAction);
+        requestFullScreenRedraw();
+        return true;
+      }
+      if (hit(tx, ty, 322, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
+        pushScreen(UI_SERVICE);
+        return true;
+      }
+      return true;
+    }
     if (hit(tx, ty, 6, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
       hmi2Section = static_cast<uint8_t>(
           (hmi2Section + kHmi2SectionCount - 1) % kHmi2SectionCount);
@@ -7429,11 +7604,10 @@ static bool hmi2HandleHomeTap(int16_t tx, int16_t ty,
 
 static void renderHome(const SystemState &state,
                                                  bool full) {
-                            if (!full) {
+                            if (!HMI_LEGACY) {
+                              hmi2RenderHome(full);
                               return;
                             }
-                            hmi2RenderHome(true);
-                            return;
 
                             const bool ru = (g_settings.language == 0);
                             tft.fillScreen(colorBg());
@@ -12404,9 +12578,10 @@ static void renderHome(const SystemState &state,
                                   const SystemState &state, bool full) {
                                 const bool ru = (g_settings.language == 0);
                                 const int16_t pageY = UI_HEADER_H + 4;
-                                const int16_t firstRowY = pageY + 38;
-                                const int16_t rowH = 42;
-                                const int16_t rowGap = 8;
+                                const int16_t stopY = pageY + 32;
+                                const int16_t firstRowY = pageY + 64;
+                                const int16_t rowH = 38;
+                                const int16_t rowGap = 4;
                                 const int16_t x1 = 10;
                                 const int16_t x2 = 245;
                                 const int16_t w = 225;
@@ -12482,6 +12657,19 @@ static void renderHome(const SystemState &state,
                                                   pageY + 15);
                                 tft.setTextDatum(top_left);
 
+                                // Equipment-test emergency action stays pinned
+                                // while switching any of the three test pages.
+                                const bool serviceOutputActive =
+                                    session.phase == ServiceTestSession::Phase::SAFE_PAUSED ||
+                                    session.phase == ServiceTestSession::Phase::TEST_ACTIVE ||
+                                    session.phase == ServiceTestSession::Phase::STOPPING;
+                                drawButton(10, stopY, TFT_WIDTH - 20, 28,
+                                           ru ? "СТОП ВСЕ ВЫХОДЫ"
+                                              : "STOP ALL OUTPUTS",
+                                           serviceOutputActive ? COLOR_DANGER
+                                                               : COLOR_DARK_GREY,
+                                           TFT_WHITE);
+
                                 if (ui.serviceTestPage == 0) {
                                   if (TftServiceTestLogic::isAvailable(
                                           TftServiceTestLogic::Device::Pump,
@@ -12540,9 +12728,16 @@ static void renderHome(const SystemState &state,
                                     sessionAction = ru ? "ЗАКРЫТЬ ПОСЛЕ SAFETY"
                                                        : "CLOSE AFTER SAFETY";
                                   }
-                                  drawButton(x2, firstRowY + rowH + rowGap, w,
-                                             rowH, sessionAction,
-                                             sessionActionTone, TFT_WHITE);
+                                  const bool showSessionAction =
+                                      session.phase ==
+                                          ServiceTestSession::Phase::RESTORE_READY ||
+                                      session.phase ==
+                                          ServiceTestSession::Phase::FAULTED;
+                                  if (showSessionAction) {
+                                    drawButton(x2, firstRowY + rowH + rowGap, w,
+                                               rowH, sessionAction,
+                                               sessionActionTone, TFT_WHITE);
+                                  }
                                   if (TftServiceTestLogic::isAvailable(
                                           TftServiceTestLogic::Device::Sensors,
                                           availability)) {
@@ -12757,10 +12952,10 @@ static void renderHome(const SystemState &state,
 
                                 char actual[96];
                                 snprintf(actual, sizeof(actual),
-                                         ru ? "%s | Факт %.1f ml | причина %s"
-                                            : "%s | Actual %.1f ml | reason %s",
+                                         ru ? "%s | Расчётно %.1f ml | причина %s"
+                                            : "%s | Estimated %.1f ml | reason %s",
                                          DosingSessionLogic::phaseToken(dosing.phase),
-                                         dosing.actualVolumeMl,
+                                         dosing.estimatedVolumeMl,
                                          DosingSessionLogic::finishReasonToken(
                                              dosing.finishReason));
                                 drawValueRow(242, ru ? "СЕССИЯ" : "SESSION",
@@ -13425,7 +13620,7 @@ static void renderHome(const SystemState &state,
 
                                   ui.currentScreen = UI_DASHBOARD;
                                   ui.rootScreen = UI_DASHBOARD;
-                                  ui.stackDepth = 0;
+                                  ui.stack.clear();
                                   requestRedraw(
                                       DisplayRedrawReason::SCREEN_ENTER, true);
                                   const bool forceCal =
@@ -13579,7 +13774,7 @@ static void renderHome(const SystemState &state,
 
                                 // Auto-select monitor root window: idle
                                 // overview vs active mode window.
-                                if (ui.stackDepth == 0 &&
+                                if (ui.stack.depth == 0 &&
                                     getUiScreenPolicy(ui.rootScreen)
                                         .autoMonitorRoot) {
                                   const UiScreen desiredMonitor =
