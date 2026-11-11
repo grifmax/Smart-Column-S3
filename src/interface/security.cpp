@@ -20,7 +20,10 @@ static const char* kContentSecurityPolicy =
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' data: https://fonts.gstatic.com; "
     "img-src 'self' data: blob:; "
-    "connect-src 'self' ws: wss:;";
+    // The AI assistant talks to an operator-selected OpenAI-compatible
+    // provider directly from the browser. Without https:/http: here the CSP
+    // blocks every call and the UI only sees an opaque "Failed to fetch".
+    "connect-src 'self' ws: wss: https: http:;";
 
 struct RateLimitEntry {
     IPAddress ip;
