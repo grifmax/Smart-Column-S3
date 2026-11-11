@@ -57,16 +57,6 @@
 - BMP280 / ADS1115 / PZEM
 - Wi‑Fi
 - heap / uptime / CPU temp
-  - `control.commands`: pending, dropped, cancelled, coalesced STOP и applied; `processCount`, `processed`, `lastProcessUs`, `maxProcessUs` описывают обработку очереди команд
-  - `control.outputs`: pending, dropped, cancelled/coalesced, owner/safety rejected, applied и safety-trip latch; `processCount`, `processed`, `lastProcessUs`, `maxProcessUs` описывают обработку очереди выходов. `lastCommand` содержит последний запрос, принятие, постановку в очередь, применение, значения и код отказа
-  - `control.cycle`: длительность и межцикловой интервал, накопительные buckets `le1Ms`/`le5Ms`/`le10Ms`/`gt10Ms`, а также длительность полного control batch
-  - `control.safetyTiming`: возраст валидной выборки и время применения безопасной остановки; `sampleAgeKnownCount` считает известные возраста, а `lastSampleAgeMs` равен `4294967295`, если для последней причины аварии нет валидной выборки
-  - `control.snapshotCopy`: число и длительность копирований; `control.stateSnapshot.ageMs` — возраст последней опубликованной копии
-
-  Для команд с `commandId`: `accepted` означает, что запрос принят или уже
-  применён; `queued` — ожидает управляющего цикла; `applied` и `success` становятся
-  `true` только после применения. Пока команда queued, API возвращает HTTP 202 и
-  `success: false`; итог можно получить через `/api/process/command-status`.
 
 #### `GET /api/version`
 
@@ -82,12 +72,7 @@
 
 Помимо параметров оборудования и списка модулей теперь возвращает `bootGpio`:
 - `completed`, `overallOk`, `checkedCount`, `timestampMs`, `boardRev`
-- `readbackType: "gpio_latch"`, `physicalFeedback: false`
 - `items[]` с полями `label`, `pin`, `mode`, `expectedLevel`, `actualLevel`, `ok`
-
-`actualLevel` — логический readback GPIO микроконтроллера после настройки
-режима/уровня. Это не измерение внешней линии, драйвера или состояния
-исполнительного механизма и не подтверждение физического safe-state.
 
 Также возвращает `boardProfile`:
 - `rev`, `name`, `code`
@@ -338,8 +323,9 @@
 - `packingType`
 - `packingCoeff`
 - `coolingPwmEnabled`
-- `coolingPwmHoldPercent` (5–100%, default 38%)
-- `coolingPwmPullMs` (100–10000 ms, default 300 ms)
+- `coolingPwmMinDuty`
+- `coolingPwmMaxDuty`
+- `coolingPwmStartupDuty`
 - `coolingPwmCurrentDuty` (`GET`, live state)
 - `useDs2482ForTemps`
 - `ds2482Address`
@@ -428,11 +414,11 @@
 `coolingMinOffSec` и `durationHours`. Значения нормализуются по тому же
 контракту `EditableFields`, что и на TFT.
 
-Поля `coolingPwmHoldPercent` и `coolingPwmPullMs` в
-`/api/settings/equipment`, а также `defaultSpeedPercent` в
-`/api/settings/stirrer` используют те же TFT/API границы. Процент удержания
-преобразуется в аппаратную скважность 0–255 только при управлении выходом;
-сервисная команда со скважностью `0` останавливает клапан, а `255` задаёт 100%.
+Поля `coolingPwmMinDuty`, `coolingPwmMaxDuty`,
+`coolingPwmStartupDuty` в `/api/settings/equipment`, а также
+`defaultSpeedPercent` в `/api/settings/stirrer` используют те же TFT/API
+границы. `coolingPwmStartupDuty` дополнительно ограничивается текущим
+интервалом minimum–maximum.
 
 Калибровочные scalar-поля `offset` DS18B20, `zeroOffsetMmHg`,
 `densityOffset`, `bodyLevelThresholdV` и `leakThresholdV` нормализуются
@@ -457,12 +443,6 @@
 - `POST /api/stirrer/stop`
 - `POST /api/stirrer/set`
 
-Эти маршруты возвращают статус output-команды gateway (`queued`, `applied` или
-`rejected`), `commandId` и флаги `accepted`/`queued`/`applied`. `success=true`
-выставляется только для применённой команды. Веб-интерфейс отдельно сообщает,
-когда команда лишь поставлена в очередь; статус конкретного output ID можно
-опросить через `GET /api/outputs/command?commandId=<id>`.
-
 ### Насос
 
 - `POST /api/pump/calibrate/start`
@@ -475,30 +455,6 @@
 - `GET /api/pump/status`
 - `GET /api/pump/diag`
 
-`POST /api/pump/start` и `/api/pump/stop` возвращают `commandId`, `accepted`,
-`queued`, `applied`, `success` и `status` (`queued`, `applied` или `rejected`).
-`success` означает, что gateway применил команду, а не только поставил её в
-очередь. Для отложенной команды ответ имеет HTTP 202; `/api/pump/status`
-показывает последнюю команду насоса в `lastOutputCommand`, если последняя
-команда gateway относится к насосу.
-
-`POST /api/manual/heater` и `/api/manual/pump` вне `MANUAL_RECT` также возвращают
-`commandType: "output"` и тот же контракт. В режиме `MANUAL_RECT` ручная скорость
-остаётся control-командой и возвращает `commandType: "control"`; для опроса её
-статуса используется `/api/process/command-status`. Клиенты выбирают endpoint
-по `commandType`, так как ID у очередей независимы.
-
-`GET /api/outputs/command?commandId=<id>` возвращает статус конкретной output-
-команды. Gateway хранит ограниченную историю из 32 команд; если ID уже вытеснен,
-endpoint возвращает 404. Отклонённая более приоритетной/замещающей командой
-команда получает `status: "rejected"` и `rejectReason: "superseded"`.
-
-`/api/health` → `control.outputs.targets` публикует последние запрошенное и
-применённое gateway/driver-call состояние каждого output-target, с отдельными
-ID команд и временными метками. `appliedValue` подтверждает вызов драйвера на
-уровне ПО, а не электрическую обратную связь от нагревателя, двигателя или
-клапана.
-
 Калибровка насоса — общая state machine TFT/Web: `prime → ready → measuring →
 review`. `finish` принимает `{ "volume": ... }`, рассчитывает кандидат
 `mlPerRev` и только затем записывает его в NVS. Обычный `/api/pump/start`
@@ -509,11 +465,6 @@ review`. `finish` принимает `{ "volume": ... }`, рассчитывае
 - `POST /api/manual/valves`
 - `GET /api/testing/status`
 - `POST /api/testing/valves`
-
-`POST /api/manual/valves` возвращает массив `commands` с отдельным ID/статусом
-для каждого заданного выхода (в том числе при `allOff`). Верхний `success=true`
-означает, что все команды применены; если команды queued, ответ HTTP 202 и
-клиенты опрашивают каждый ID через `/api/outputs/command`.
 
 Для `POST /api/manual/valves` дополнительно поддерживается:
 
@@ -537,8 +488,9 @@ guard (safety без latch/alarm, не demo) и показывает тольк�
 
 - `valves.startStopDuty`
 - `coolingSettings.enabled`
-- `coolingSettings.holdPercent`
-- `coolingSettings.pullMs`
+- `coolingSettings.minDuty`
+- `coolingSettings.maxDuty`
+- `coolingSettings.startupDuty`
 - `activeTests.startStopDuty`
 - `modules.*` — тот же снимок обязательных и опциональных модулей, что и в `GET /api/settings/equipment`, чтобы сервисный экран мог без второго запроса показать `BMP280`, оба `ADS1115`, `MCP4725` и `PZEM-004T`
 - `temperatureTopology.*` — та же схема физических ролей термодатчиков, что и в `GET /api/settings/equipment`
@@ -655,8 +607,7 @@ Testing/service pressure status also includes:
 
 Сессии локального TFT-дозирования возвращаются с `kind: "dosing"` и полями
 `dosingEvent`, `dosingRoute`, `requestedVolumeMl`, `requestedRateMlH`,
-`calibrationAtStart`, `estimatedVolumeMl`, `volumeBasis` (`step_estimate`),
-`startedAt`, `finishedAt` и
+`calibrationAtStart`, `actualVolumeMl`, `startedAt`, `finishedAt` и
 `finishReason`. CSV содержит те же значения в колонках `dosing_*`. Запуск
 возможен только через явно назначенный hardware-profile маршрут; V2.0 по
 умолчанию его не назначает.

@@ -162,7 +162,6 @@ struct TemperatureData {
   float waterIn = 0.0f;
   float waterOut = 0.0f;
   bool valid[8] = {false}; // Флаги валидности датчиков
-  uint32_t lastUpdateBySensor[8] = {0}; // Время последней выборки каждого канала
   uint32_t lastUpdate = 0; // Время последнего обновления
 };
 
@@ -596,8 +595,13 @@ struct EquipmentSettings {
   uint16_t boosterHeaterPowerW = 3000;
   float boosterHeaterStopCubeTempC = 78.0f;
   bool coolingPwmEnabled = false;
-  uint8_t coolingPwmHoldPercent = 38;
-  uint16_t coolingPwmPullMs = 300;
+  // Период медленного цикла клапана охлаждения. Скважность задаётся
+  // min/max/startup duty в 0..255, а период — здесь, в секундах: соленоид
+  // нельзя держать под быстрым PWM, катушка греется.
+  uint16_t coolingPwmPeriodSec = 5;
+  uint8_t coolingPwmMinDuty = 0;
+  uint8_t coolingPwmMaxDuty = 255;
+  uint8_t coolingPwmStartupDuty = 96;
   bool useDs2482ForTemps = false;
   uint8_t ds2482Address = 0x18;
   bool bodyLevelSensorEnabled = false;

@@ -8,7 +8,6 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 
-#include "../control/cooling_pwm_logic.h"
 #include "../interface/wifi_profiles.h"
 
 static Preferences prefs;
@@ -348,32 +347,29 @@ bool loadSettings(Settings& settings) {
         prefs.getUShort(NVS_KEY_BOOSTER_HEATER_POWER, DEFAULT_BOOSTER_HEATER_POWER_W);
     settings.equipment.boosterHeaterStopCubeTempC =
         prefs.getFloat(NVS_KEY_BOOSTER_STOP_TEMP, DEFAULT_BOOSTER_HEATER_STOP_CUBE_TEMP_C);
+    settings.equipment.coolingPwmPeriodSec = prefs.getUShort(
+        NVS_KEY_COOLING_PWM_PERIOD, DEFAULT_COOLING_PWM_PERIOD_SEC);
     settings.equipment.coolingPwmEnabled =
         prefs.getBool(NVS_KEY_COOLING_PWM_ENABLED, DEFAULT_COOLING_PWM_ENABLED != 0);
-    const bool hasCoolingPwmHoldPercent =
-        prefs.isKey(NVS_KEY_COOLING_PWM_HOLD_PERCENT);
-    settings.equipment.coolingPwmHoldPercent =
-        hasCoolingPwmHoldPercent
-            ? CoolingPwmLogic::clampHoldPercent(
-                  prefs.getUChar(NVS_KEY_COOLING_PWM_HOLD_PERCENT,
-                                 DEFAULT_COOLING_PWM_HOLD_PERCENT))
-            : CoolingPwmLogic::clampHoldPercent(CoolingPwmLogic::dutyToPercent(
-                  prefs.getUChar("cool_pwm_sta", 96)));
-    if (!hasCoolingPwmHoldPercent) {
-        prefs.putUChar(NVS_KEY_COOLING_PWM_HOLD_PERCENT,
-                       settings.equipment.coolingPwmHoldPercent);
-    }
-    settings.equipment.coolingPwmPullMs = CoolingPwmLogic::clampPullMs(
-        prefs.getUShort(NVS_KEY_COOLING_PWM_PULL_MS,
-                        DEFAULT_COOLING_PWM_PULL_MS));
+    settings.equipment.coolingPwmMinDuty =
+        prefs.getUChar(NVS_KEY_COOLING_PWM_MIN_DUTY, DEFAULT_COOLING_PWM_MIN_DUTY);
+    settings.equipment.coolingPwmMaxDuty =
+        prefs.getUChar(NVS_KEY_COOLING_PWM_MAX_DUTY, DEFAULT_COOLING_PWM_MAX_DUTY);
+    settings.equipment.coolingPwmStartupDuty =
+        prefs.getUChar(NVS_KEY_COOLING_PWM_STARTUP, DEFAULT_COOLING_PWM_STARTUP_DUTY);
     settings.equipment.useDs2482ForTemps =
         prefs.getBool(NVS_KEY_USE_DS2482_TEMPS, DEFAULT_USE_DS2482_FOR_TEMPS != 0);
     settings.equipment.ds2482Address =
         prefs.getUChar(NVS_KEY_DS2482_ADDRESS, DEFAULT_DS2482_ADDRESS);
-    prefs.remove("cool_pwm_per");
-    prefs.remove("cool_pwm_min");
-    prefs.remove("cool_pwm_max");
-    prefs.remove("cool_pwm_sta");
+    if (settings.equipment.coolingPwmMinDuty > settings.equipment.coolingPwmMaxDuty) {
+        settings.equipment.coolingPwmMinDuty = settings.equipment.coolingPwmMaxDuty;
+    }
+    if (settings.equipment.coolingPwmStartupDuty < settings.equipment.coolingPwmMinDuty) {
+        settings.equipment.coolingPwmStartupDuty = settings.equipment.coolingPwmMinDuty;
+    }
+    if (settings.equipment.coolingPwmStartupDuty > settings.equipment.coolingPwmMaxDuty) {
+        settings.equipment.coolingPwmStartupDuty = settings.equipment.coolingPwmMaxDuty;
+    }
     settings.equipment.bodyLevelSensorEnabled =
         prefs.getBool(NVS_KEY_BODY_LEVEL_ENABLED, DEFAULT_BODY_LEVEL_SENSOR_ENABLED != 0);
     settings.equipment.bodyLevelThresholdV =
@@ -791,12 +787,10 @@ bool saveSettings(const Settings& settings) {
     prefs.putUShort(NVS_KEY_BOOSTER_HEATER_POWER, settings.equipment.boosterHeaterPowerW);
     prefs.putFloat(NVS_KEY_BOOSTER_STOP_TEMP, settings.equipment.boosterHeaterStopCubeTempC);
     prefs.putBool(NVS_KEY_COOLING_PWM_ENABLED, settings.equipment.coolingPwmEnabled);
-    prefs.putUChar(NVS_KEY_COOLING_PWM_HOLD_PERCENT,
-                   CoolingPwmLogic::clampHoldPercent(
-                       settings.equipment.coolingPwmHoldPercent));
-    prefs.putUShort(NVS_KEY_COOLING_PWM_PULL_MS,
-                    CoolingPwmLogic::clampPullMs(
-                        settings.equipment.coolingPwmPullMs));
+    prefs.putUShort(NVS_KEY_COOLING_PWM_PERIOD, settings.equipment.coolingPwmPeriodSec);
+    prefs.putUChar(NVS_KEY_COOLING_PWM_MIN_DUTY, settings.equipment.coolingPwmMinDuty);
+    prefs.putUChar(NVS_KEY_COOLING_PWM_MAX_DUTY, settings.equipment.coolingPwmMaxDuty);
+    prefs.putUChar(NVS_KEY_COOLING_PWM_STARTUP, settings.equipment.coolingPwmStartupDuty);
     prefs.putBool(NVS_KEY_USE_DS2482_TEMPS, settings.equipment.useDs2482ForTemps);
     prefs.putUChar(NVS_KEY_DS2482_ADDRESS, settings.equipment.ds2482Address);
     prefs.putBool(NVS_KEY_BODY_LEVEL_ENABLED, settings.equipment.bodyLevelSensorEnabled);
