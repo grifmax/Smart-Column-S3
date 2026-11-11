@@ -95,6 +95,7 @@ void init() {
       .setTemplateProcessor(nullptr);
 
   registerStatusApiRoutes(server);
+  registerAiApiRoutes(server);
   registerChartsApiRoutes(server);
   registerHealthApiRoutes(server);
   registerLogsApiRoutes(server);

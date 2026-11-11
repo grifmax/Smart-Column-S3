@@ -17,6 +17,7 @@ typedef enum {
 
 #include <ESPAsyncWebServer.h>
 
+void registerAiApiRoutes(AsyncWebServer &server);
 void registerChartsApiRoutes(AsyncWebServer &server);
 void registerHealthApiRoutes(AsyncWebServer &server);
 void registerLogsApiRoutes(AsyncWebServer &server);

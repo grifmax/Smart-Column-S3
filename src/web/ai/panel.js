@@ -5,6 +5,8 @@
 import {
     loadProviderConfig,
     saveProviderConfig,
+    loadProviderConfigFromDevice,
+    persistProviderConfig,
     fetchModels,
     isProviderConfigured,
     describeProviderError,
@@ -180,7 +182,7 @@ export async function loadAiModels() {
     }
 }
 
-export function saveAiSettings() {
+export async function saveAiSettings() {
     const next = readSettingsForm();
     if (!next.baseUrl) {
         settingsHint('Адрес провайдера обязателен', 'error');
@@ -199,8 +201,14 @@ export function saveAiSettings() {
     updateChatConfig(config);
     syncHeader();
     fillModels(loadCachedModels());
+
+    const storedOnDevice = await persistProviderConfig(config);
+    if (!storedOnDevice) {
+        settingsHint('Сохранено только в этом браузере: прибор не принял настройки', 'warning');
+        return;
+    }
     closeAiSettings();
-    settingsHint('Настройки сохранены', 'ok');
+    settingsHint('Настройки сохранены в приборе', 'ok');
 }
 
 async function handleSend() {
@@ -282,6 +290,13 @@ export function initAiPanel() {
 
     initChat(elements, config);
     syncHeader();
+    loadProviderConfigFromDevice().then((deviceConfig) => {
+        if (!deviceConfig) return;
+        config = deviceConfig;
+        updateChatConfig(config);
+        syncHeader();
+        fillModels(loadCachedModels());
+    });
     fillModels(loadCachedModels());
     buildQuickPrompts();
 

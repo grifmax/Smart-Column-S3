@@ -162,6 +162,7 @@ struct TemperatureData {
   float waterIn = 0.0f;
   float waterOut = 0.0f;
   bool valid[8] = {false}; // Флаги валидности датчиков
+  uint32_t lastUpdateBySensor[8] = {0}; // Время последней выборки каждого канала
   uint32_t lastUpdate = 0; // Время последнего обновления
 };
 
@@ -595,13 +596,8 @@ struct EquipmentSettings {
   uint16_t boosterHeaterPowerW = 3000;
   float boosterHeaterStopCubeTempC = 78.0f;
   bool coolingPwmEnabled = false;
-  // Период медленного цикла клапана охлаждения. Скважность задаётся
-  // min/max/startup duty в 0..255, а период — здесь, в секундах: соленоид
-  // нельзя держать под быстрым PWM, катушка греется.
-  uint16_t coolingPwmPeriodSec = 5;
-  uint8_t coolingPwmMinDuty = 0;
-  uint8_t coolingPwmMaxDuty = 255;
-  uint8_t coolingPwmStartupDuty = 96;
+  uint8_t coolingPwmHoldPercent = 38;
+  uint16_t coolingPwmPullMs = 300;
   bool useDs2482ForTemps = false;
   uint8_t ds2482Address = 0x18;
   bool bodyLevelSensorEnabled = false;
@@ -833,6 +829,16 @@ struct DisplaySettings {
 };
 
 // Настройки (полная версия)
+// AI assistant provider (stored in NVS so every browser sees the same setup)
+struct AiSettings {
+  char baseUrl[128] = "";
+  char apiKey[192] = "";
+  char model[96] = "";
+  float temperature = 0.2f;
+  uint16_t maxTokens = 2000;
+  bool configured = false;
+};
+
 struct Settings {
   WiFiSettings wifi;
   PumpCalibration pumpCal;
@@ -854,6 +860,7 @@ struct Settings {
   FermentationSettings fermentation;
   AutoclaveSettings autoclave;
   StirrerSettings stirrer;
+  AiSettings ai;
 
   uint8_t language = 0; // 0=RU, 1=EN
   uint8_t theme = 0;    // 0=Light, 1=Dark

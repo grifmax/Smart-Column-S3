@@ -12,6 +12,8 @@
 
 #include "control/fsm.h"
 #include "control/fsm_utils.h"
+#include "control/autoclave_hardware_profile.h"
+#include "control/cooling_pwm_logic.h"
 #include "control/power_command_gateway.h"
 #include "control/rect_takeoff.h"
 #include "control/v2/reason_codes.h"
@@ -48,6 +50,8 @@ const char *getModeString(Mode mode) {
     return "nbk";
   case Mode::FERMENTATION:
     return "fermentation";
+  case Mode::AUTOCLAVE:
+    return "autoclave";
   default:
     return "unknown";
   }
@@ -454,14 +458,27 @@ void fillStirrerJson(JsonObject stirrer, const SystemState &state) {
 }
 
 void sendStirrerStateResponse(AsyncWebServerRequest *request, int statusCode,
-                              bool success, const char *message) {
-  syncStirrerState();
-
+                              bool success, const char *message,
+                              const SystemState &state,
+                              const PowerCommandGateway::Command *command) {
   JsonDocument doc;
-  doc["success"] = success;
+  doc["success"] = command != nullptr ? command->accepted && command->applied
+                                      : success;
   doc["message"] = message;
+  if (command != nullptr) {
+    doc["commandId"] = command->sequence;
+    doc["commandType"] = "output";
+    doc["accepted"] = command->accepted;
+    doc["queued"] = command->queued;
+    doc["applied"] = command->applied;
+    doc["status"] = !command->accepted ? "rejected"
+                     : command->applied ? "applied" : "queued";
+    doc["rejectReason"] =
+        PowerCommandGateway::rejectReasonString(command->rejectReason);
+    doc["rejectReasonCode"] = static_cast<uint8_t>(command->rejectReason);
+  }
   JsonObject stirrer = doc["stirrer"].to<JsonObject>();
-  fillStirrerJson(stirrer, g_state);
+  fillStirrerJson(stirrer, state);
 
   String json;
   serializeJson(doc, json);
@@ -494,33 +511,34 @@ void sendJsonError(AsyncWebServerRequest *request, int statusCode,
   request->send(statusCode, "application/json", json);
 }
 
-bool ensureStirrerReady(AsyncWebServerRequest *request) {
-  if (g_state.mode != Mode::IDLE) {
+bool ensureStirrerReady(AsyncWebServerRequest *request,
+                        const SystemState &state) {
+  if (state.mode != Mode::IDLE) {
     char reason[128];
     snprintf(reason, sizeof(reason),
-             g_state.paused
+             state.paused
                  ? "Manual stirrer control is unavailable while %s is paused"
                  : "Manual stirrer control is unavailable while %s is active",
-             getModeString(g_state.mode));
-    sendStirrerStateResponse(request, 409, false, reason);
+             getModeString(state.mode));
+    sendStirrerStateResponse(request, 409, false, reason, state);
     return false;
   }
 
   if (!g_settings.stirrer.enabled) {
     sendStirrerStateResponse(request, 409, false,
-                             "Stirrer is disabled in settings");
+                             "Stirrer is disabled in settings", state);
     return false;
   }
 
   if (!Stirrer::isAvailable()) {
     sendStirrerStateResponse(request, 503, false,
-                             "Stirrer DAC is not available");
+                             "Stirrer DAC is not available", state);
     return false;
   }
 
-  if (!g_state.safetyOk || Safety::isLatched(g_state)) {
+  if (!state.safetyOk || Safety::isLatched(state)) {
     sendStirrerStateResponse(request, 409, false,
-                             "Safety lockout is active");
+                             "Safety lockout is active", state);
     return false;
   }
 
@@ -804,6 +822,8 @@ bool parseRequestedMode(const char *modeStr, Mode &mode) {
     mode = Mode::NBK;
   } else if (strcmp(modeStr, "fermentation") == 0) {
     mode = Mode::FERMENTATION;
+  } else if (strcmp(modeStr, "autoclave") == 0) {
+    mode = Mode::AUTOCLAVE;
   } else {
     return false;
   }
@@ -820,9 +840,9 @@ static bool requiresAdaptiveColumnTopForMode(Mode mode) {
   return mode == Mode::RECTIFICATION || mode == Mode::MANUAL_RECT;
 }
 
-static bool isPressureStartupBlockingForMode(Mode mode) {
-  (void)mode;
-  return false;
+static bool isPressureStartupBlockingForMode(Mode mode,
+                                             const Settings &settings) {
+  return Safety::getRequiredSensorsForMode(mode, settings).pressure;
 }
 
 
@@ -1155,9 +1175,10 @@ void applyBoosterStartOverride(JsonObject params, Settings &settings) {
 }
 
 bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
-                           JsonObject params) {
-  ControlV2::updateRuntime(g_state, g_settings);
-  syncStirrerState();
+                           JsonObject params, const SystemState &state) {
+  // Keep the legacy local name so the builder body stays readable while
+  // ensuring this read-only path never aliases the live global state.
+  const SystemState &g_state = state;
 
   const auto &status = ControlV2::getLatestModeStatus();
   const auto &metrics = ControlV2::getLatestMetricsSnapshot();
@@ -1165,7 +1186,8 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
   const bool v2SnapshotReady = metrics.timestampMs > 0;
   const Safety::RequiredSensorsMask requiredSensors =
       Safety::getRequiredSensorsForMode(mode, g_settings);
-  const bool pressureStartupBlocking = isPressureStartupBlockingForMode(mode);
+  const bool pressureStartupBlocking =
+      isPressureStartupBlockingForMode(mode, g_settings);
   char topologyReason[160] = "";
   const bool topologySupported = Safety::isModeTemperatureTopologySupported(
       mode, g_settings.equipment, topologyReason, sizeof(topologyReason));
@@ -1194,6 +1216,8 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
   const bool recipeProfileRelevant =
       mode == Mode::RECTIFICATION || mode == Mode::MANUAL_RECT ||
       mode == Mode::DISTILLATION || mode == Mode::MASHING;
+  const bool autoclaveHardwareReady =
+      mode != Mode::AUTOCLAVE || AutoclaveHardwareProfile::isSteamAvailable();
   const bool expectsAutoStirrer = expectsAutoStirrerForMode(mode, g_settings);
   const bool waterTelemetryReady =
       g_state.temps.valid[TEMP_WATER_IN] && g_state.temps.valid[TEMP_WATER_OUT];
@@ -1235,6 +1259,12 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
 
   uint8_t blockingCount = 0;
   uint8_t warningCount = 0;
+  static constexpr uint8_t PREFLIGHT_SUMMARY_COUNT = 5;
+  static constexpr uint8_t SUMMARY_SEEN = 1U << 0;
+  static constexpr uint8_t SUMMARY_WARNING = 1U << 1;
+  static constexpr uint8_t SUMMARY_BLOCKING = 1U << 2;
+  uint8_t summaryFlags[PREFLIGHT_SUMMARY_COUNT] = {};
+  char summaryDetails[PREFLIGHT_SUMMARY_COUNT][144] = {{0}};
   String firstBlockingDetail;
   String firstWarningDetail;
 
@@ -1267,13 +1297,18 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
 
   setProcessPreflightCheck(
       checks, "profile",
-      recipeProfileRelevant
+      mode == Mode::AUTOCLAVE
+          ? (autoclaveHardwareReady ? "OK" : "Не подтверждён")
+          : recipeProfileRelevant
           ? (profileCategoryMatches ? "OK"
                                     : (activeProfileLoaded ? "Mismatch"
                                                            : "Не указан"))
           : "Опц.",
-      recipeProfileRelevant ? (profileCategoryMatches ? "good" : "warn")
-                            : "muted");
+      mode == Mode::AUTOCLAVE
+          ? (autoclaveHardwareReady ? "good" : "danger")
+          : (recipeProfileRelevant
+                 ? (profileCategoryMatches ? "good" : "warn")
+                 : "muted"));
   setProcessPreflightCheck(checks, "water",
                            coolingRelevant
                                ? (waterTelemetryReady ? "OK"
@@ -1297,6 +1332,43 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
                      const String &detail, bool blocking) {
     appendProcessPreflightItem(items, id, tone, title, detail, blocking,
                                blockingCount, warningCount);
+    if (tone != nullptr && strcmp(tone, "muted") != 0) {
+      uint8_t group = 3;
+      if (strcmp(id, "process-active") == 0 || strcmp(id, "v2") == 0 ||
+          strcmp(id, "logging") == 0) {
+        group = 0;
+      } else if (strcmp(id, "sensors") == 0 || strcmp(id, "pressure") == 0) {
+        group = 1;
+      } else if (strcmp(id, "safety") == 0 || strcmp(id, "alarm") == 0) {
+        group = 2;
+      } else if (strcmp(id, "water") == 0 || strcmp(id, "cooling") == 0 ||
+                 strcmp(id, "valves") == 0 || strcmp(id, "pump") == 0 ||
+                 strcmp(id, "stirrer") == 0 || strcmp(id, "takeoff") == 0 ||
+                 strcmp(id, "rect-takeoff") == 0 ||
+                 strcmp(id, "manual-takeoff") == 0 ||
+                 strcmp(id, "dist-backend") == 0 ||
+                 strcmp(id, "dist-safe-vent") == 0 ||
+                 strcmp(id, "pressure-control") == 0) {
+        group = 4;
+      }
+
+      uint8_t &flags = summaryFlags[group];
+      const bool first = (flags & SUMMARY_SEEN) == 0;
+      const bool firstBlocking = blocking && (flags & SUMMARY_BLOCKING) == 0;
+      const bool firstWarning = !blocking && strcmp(tone, "warn") == 0 &&
+                                (flags & (SUMMARY_BLOCKING | SUMMARY_WARNING)) == 0;
+      if ((first || firstBlocking || firstWarning) && !detail.isEmpty()) {
+        strncpy(summaryDetails[group], detail.c_str(),
+                sizeof(summaryDetails[group]) - 1);
+        summaryDetails[group][sizeof(summaryDetails[group]) - 1] = '\0';
+      }
+      flags |= SUMMARY_SEEN;
+      if (blocking) {
+        flags |= SUMMARY_BLOCKING;
+      } else if (strcmp(tone, "warn") == 0) {
+        flags |= SUMMARY_WARNING;
+      }
+    }
     if (blocking && firstBlockingDetail.isEmpty()) {
       firstBlockingDetail = detail;
     } else if (strcmp(tone, "warn") == 0 && firstWarningDetail.isEmpty()) {
@@ -1947,6 +2019,19 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
       addItem("fermentation-profile", "good", "Параметры ферментации",
               "Цель и гистерезис ферментации выглядят рабочими.", false);
     }
+  } else if (mode == Mode::AUTOCLAVE) {
+    if (!autoclaveHardwareReady) {
+      const char *reason = AutoclaveHardwareProfileLogic::validationToken(
+          AutoclaveHardwareProfile::validate());
+      addItem("autoclave-profile", "danger", "Аппаратный профиль автоклава",
+              String("Запуск заблокирован: ") +
+                  (reason != nullptr ? reason : "профиль не подтверждён"),
+              true);
+    } else {
+      addItem("autoclave-profile", "good", "Аппаратный профиль автоклава",
+              "Аппаратный и механический профили подтверждены для работы с паром.",
+              false);
+    }
   }
 
   if (mode == Mode::RECTIFICATION || mode == Mode::DISTILLATION ||
@@ -1975,6 +2060,40 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
     }
   }
 
+  static const char *const summaryIds[PREFLIGHT_SUMMARY_COUNT] = {
+      "process", "sensors", "safety", "settings", "equipment"};
+  static const char *const summaryTitles[PREFLIGHT_SUMMARY_COUNT] = {
+      "Состояние процесса", "Датчики режима", "Безопасность и аварии",
+      "Профиль и уставки", "Контуры и исполнители"};
+  JsonArray summaryChecks = doc["summaryChecks"].to<JsonArray>();
+  uint8_t summaryPassedCount = 0;
+  for (uint8_t i = 0; i < PREFLIGHT_SUMMARY_COUNT; ++i) {
+    const uint8_t flags = summaryFlags[i];
+    const bool seen = (flags & SUMMARY_SEEN) != 0;
+    const bool blocking = (flags & SUMMARY_BLOCKING) != 0;
+    const bool warning = (flags & SUMMARY_WARNING) != 0;
+    const char *tone = !seen ? "muted" : (blocking ? "danger"
+                                         : (warning ? "warn" : "good"));
+    const char *status = !seen ? "Не требуется"
+                               : (blocking ? "БЛОК"
+                                           : (warning ? "ПРОВЕРИТЬ" : "OK"));
+    JsonObject summary = summaryChecks.add<JsonObject>();
+    summary["id"] = summaryIds[i];
+    summary["title"] = summaryTitles[i];
+    summary["status"] = status;
+    summary["tone"] = tone;
+    summary["blocking"] = blocking;
+    if (seen && summaryDetails[i][0] != '\0') {
+      summary["detail"] = summaryDetails[i];
+    } else {
+      summary["detail"] = !seen ? "Для этого режима отдельная проверка не требуется."
+                                 : "Проверка пройдена.";
+    }
+    if (!seen || (!blocking && !warning)) {
+      ++summaryPassedCount;
+    }
+  }
+
   const bool ready = blockingCount == 0;
   doc["success"] = true;
   doc["mode"] = modeStr;
@@ -1983,6 +2102,7 @@ bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
   doc["ready"] = ready;
   doc["blockingCount"] = blockingCount;
   doc["warningCount"] = warningCount;
+  doc["summaryPassedCount"] = summaryPassedCount;
   const float processHealthPct =
       clampFloatRange(status.indicators.processHealth * 100.0f, 0.0f, 100.0f);
   const float stabilityPct =
@@ -2413,9 +2533,8 @@ void init() {
     equipment["boosterHeaterStopCubeTempC"] =
         g_settings.equipment.boosterHeaterStopCubeTempC;
     equipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
-    equipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
-    equipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
-    equipment["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+    equipment["coolingPwmHoldPercent"] = g_settings.equipment.coolingPwmHoldPercent;
+    equipment["coolingPwmPullMs"] = g_settings.equipment.coolingPwmPullMs;
     equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
     equipment["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
     equipment["ds2482Address"] = g_settings.equipment.ds2482Address;
@@ -2436,9 +2555,8 @@ void init() {
     doc["booster_heater_stop_cube_temp_c"] =
         g_settings.equipment.boosterHeaterStopCubeTempC;
     doc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
-    doc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
-    doc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
-    doc["cooling_pwm_startup_duty"] = g_settings.equipment.coolingPwmStartupDuty;
+    doc["cooling_pwm_hold_percent"] = g_settings.equipment.coolingPwmHoldPercent;
+    doc["cooling_pwm_pull_ms"] = g_settings.equipment.coolingPwmPullMs;
     doc["cooling_pwm_current_duty"] = Valves::getStartStop();
     doc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
     doc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
@@ -3299,9 +3417,8 @@ void init() {
     doc["boosterHeaterStopCubeTempC"] =
         g_settings.equipment.boosterHeaterStopCubeTempC;
     doc["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
-    doc["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
-    doc["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
-    doc["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+    doc["coolingPwmHoldPercent"] = g_settings.equipment.coolingPwmHoldPercent;
+    doc["coolingPwmPullMs"] = g_settings.equipment.coolingPwmPullMs;
     doc["coolingPwmCurrentDuty"] = Valves::getStartStop();
     doc["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
     doc["ds2482Address"] = g_settings.equipment.ds2482Address;
@@ -3349,6 +3466,8 @@ void init() {
     JsonObject bootGpio = doc["bootGpio"].to<JsonObject>();
     bootGpio["completed"] = g_bootGpioSelfTest.completed;
     bootGpio["overallOk"] = g_bootGpioSelfTest.overallOk;
+    bootGpio["readbackType"] = "gpio_latch";
+    bootGpio["physicalFeedback"] = false;
     bootGpio["checkedCount"] = g_bootGpioSelfTest.checkedCount;
     bootGpio["timestampMs"] = g_bootGpioSelfTest.timestampMs;
     bootGpio["boardRev"] = g_bootGpioSelfTest.boardRev;
@@ -3449,29 +3568,19 @@ void init() {
           g_settings.equipment.coolingPwmEnabled =
               doc["coolingPwmEnabled"].as<bool>();
         }
-        if (!doc["coolingPwmMinDuty"].isNull()) {
-          g_settings.equipment.coolingPwmMinDuty = clampU8Range(
-              doc["coolingPwmMinDuty"].as<uint32_t>(), 0, 255);
+        if (!doc["coolingPwmHoldPercent"].isNull()) {
+          g_settings.equipment.coolingPwmHoldPercent =
+              CoolingPwmLogic::clampHoldPercent(
+                  doc["coolingPwmHoldPercent"].as<uint32_t>());
+        } else if (!doc["coolingPwmStartupDuty"].isNull()) {
+          g_settings.equipment.coolingPwmHoldPercent =
+              CoolingPwmLogic::clampHoldPercent(CoolingPwmLogic::dutyToPercent(
+                  doc["coolingPwmStartupDuty"].as<uint32_t>()));
         }
-        if (!doc["coolingPwmMaxDuty"].isNull()) {
-          g_settings.equipment.coolingPwmMaxDuty = clampU8Range(
-              doc["coolingPwmMaxDuty"].as<uint32_t>(), 0, 255);
-        }
-        if (g_settings.equipment.coolingPwmMinDuty >
-            g_settings.equipment.coolingPwmMaxDuty) {
-          g_settings.equipment.coolingPwmMinDuty =
-              g_settings.equipment.coolingPwmMaxDuty;
-        }
-        if (!doc["coolingPwmStartupDuty"].isNull()) {
-          g_settings.equipment.coolingPwmStartupDuty = clampU8Range(
-              doc["coolingPwmStartupDuty"].as<uint32_t>(),
-              g_settings.equipment.coolingPwmMinDuty,
-              g_settings.equipment.coolingPwmMaxDuty);
-        } else {
-          g_settings.equipment.coolingPwmStartupDuty = clampU8Range(
-              g_settings.equipment.coolingPwmStartupDuty,
-              g_settings.equipment.coolingPwmMinDuty,
-              g_settings.equipment.coolingPwmMaxDuty);
+        if (!doc["coolingPwmPullMs"].isNull()) {
+          g_settings.equipment.coolingPwmPullMs =
+              CoolingPwmLogic::clampPullMs(
+                  doc["coolingPwmPullMs"].as<uint32_t>());
         }
         bool temperatureBusChanged = false;
         if (!doc["useDs2482ForTemps"].isNull()) {
@@ -4770,6 +4879,7 @@ void init() {
   registerPumpApiRoutes(server);
   registerTestingApiRoutes(server);
   registerEnergyApiRoutes(server);
+  registerAiApiRoutes(server);
 
   registerWifiApiRoutes(server);
   registerOtaApiRoutes(server);
@@ -4872,9 +4982,8 @@ void broadcastState(const SystemState &state) {
   fastEquipment["boosterHeaterStopCubeTempC"] =
       g_settings.equipment.boosterHeaterStopCubeTempC;
   fastEquipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
-  fastEquipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
-  fastEquipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
-  fastEquipment["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+  fastEquipment["coolingPwmHoldPercent"] = g_settings.equipment.coolingPwmHoldPercent;
+  fastEquipment["coolingPwmPullMs"] = g_settings.equipment.coolingPwmPullMs;
   fastEquipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
   fastEquipment["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
   fastEquipment["ds2482Address"] = g_settings.equipment.ds2482Address;
@@ -4894,9 +5003,8 @@ void broadcastState(const SystemState &state) {
   fastDoc["booster_heater_stop_cube_temp_c"] =
       g_settings.equipment.boosterHeaterStopCubeTempC;
   fastDoc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
-  fastDoc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
-  fastDoc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
-  fastDoc["cooling_pwm_startup_duty"] = g_settings.equipment.coolingPwmStartupDuty;
+  fastDoc["cooling_pwm_hold_percent"] = g_settings.equipment.coolingPwmHoldPercent;
+  fastDoc["cooling_pwm_pull_ms"] = g_settings.equipment.coolingPwmPullMs;
   fastDoc["cooling_pwm_current_duty"] = Valves::getStartStop();
   fastDoc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
   fastDoc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
@@ -5023,10 +5131,9 @@ void broadcastState(const SystemState &state) {
   equipment["boosterHeaterStopCubeTempC"] =
       g_settings.equipment.boosterHeaterStopCubeTempC;
   equipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
-  equipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
-  equipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
-  equipment["coolingPwmStartupDuty"] =
-      g_settings.equipment.coolingPwmStartupDuty;
+  equipment["coolingPwmHoldPercent"] =
+      g_settings.equipment.coolingPwmHoldPercent;
+  equipment["coolingPwmPullMs"] = g_settings.equipment.coolingPwmPullMs;
   equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
   equipment["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
   equipment["ds2482Address"] = g_settings.equipment.ds2482Address;
@@ -5048,10 +5155,8 @@ void broadcastState(const SystemState &state) {
   doc["booster_heater_stop_cube_temp_c"] =
       g_settings.equipment.boosterHeaterStopCubeTempC;
   doc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
-  doc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
-  doc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
-  doc["cooling_pwm_startup_duty"] =
-      g_settings.equipment.coolingPwmStartupDuty;
+  doc["cooling_pwm_hold_percent"] = g_settings.equipment.coolingPwmHoldPercent;
+  doc["cooling_pwm_pull_ms"] = g_settings.equipment.coolingPwmPullMs;
   doc["cooling_pwm_current_duty"] = Valves::getStartStop();
   doc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
   doc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;

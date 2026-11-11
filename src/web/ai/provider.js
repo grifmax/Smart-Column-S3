@@ -3,6 +3,7 @@
 // ============================================================================
 
 const PROVIDER_KEY = 'sc3.ai.provider';
+const DEVICE_CONFIG_URL = '/api/ai/config';
 
 export const DEFAULT_PROVIDER = {
     baseUrl: '',
@@ -56,6 +57,44 @@ export function saveProviderConfig(config) {
 
 export function isProviderConfigured(config) {
     return Boolean(config && config.baseUrl && config.model);
+}
+
+// The device keeps the provider settings in NVS, so the phone, the tablet and
+// the laptop all see the same assistant without retyping the key. The local
+// copy stays as an offline cache for the first paint.
+export async function loadProviderConfigFromDevice() {
+    try {
+        const response = await fetch(DEVICE_CONFIG_URL, { cache: 'no-store' });
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (!data?.configured) return null;
+        const config = {
+            baseUrl: normalizeBaseUrl(data.baseUrl || ''),
+            apiKey: String(data.apiKey || ''),
+            model: String(data.model || ''),
+            temperature: Number.isFinite(Number(data.temperature)) ? Number(data.temperature) : DEFAULT_PROVIDER.temperature,
+            maxTokens: Number.isFinite(Number(data.maxTokens)) ? Number(data.maxTokens) : DEFAULT_PROVIDER.maxTokens
+        };
+        if (!config.baseUrl || !config.model) return null;
+        localStorage.setItem(PROVIDER_KEY, JSON.stringify(config));
+        return config;
+    } catch (_) {
+        return null;
+    }
+}
+
+export async function persistProviderConfig(config) {
+    const saved = saveProviderConfig(config);
+    try {
+        const response = await fetch(DEVICE_CONFIG_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(saved)
+        });
+        return response.ok;
+    } catch (_) {
+        return false;
+    }
 }
 
 function buildHeaders(config) {

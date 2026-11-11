@@ -8,6 +8,7 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 
+#include "../control/cooling_pwm_logic.h"
 #include "../interface/wifi_profiles.h"
 
 static Preferences prefs;
@@ -314,6 +315,17 @@ bool loadSettings(Settings& settings) {
     prefs.getString(NVS_KEY_CLOUD_TOKEN, settings.cloud.token, sizeof(settings.cloud.token));
     prefs.getString(NVS_KEY_CLOUD_TOKEN_ID, settings.cloud.tokenId, sizeof(settings.cloud.tokenId));
 
+    // AI assistant provider (browser UI reads it back through /api/ai/config)
+    prefs.getString(NVS_KEY_AI_URL, settings.ai.baseUrl, sizeof(settings.ai.baseUrl));
+    prefs.getString(NVS_KEY_AI_KEY, settings.ai.apiKey, sizeof(settings.ai.apiKey));
+    prefs.getString(NVS_KEY_AI_MODEL, settings.ai.model, sizeof(settings.ai.model));
+    settings.ai.temperature = prefs.getFloat(NVS_KEY_AI_TEMP, 0.2f);
+    if (settings.ai.temperature < 0.0f) settings.ai.temperature = 0.0f;
+    if (settings.ai.temperature > 2.0f) settings.ai.temperature = 2.0f;
+    settings.ai.maxTokens = prefs.getUShort(NVS_KEY_AI_TOKENS, 2000);
+    if (settings.ai.maxTokens < 256) settings.ai.maxTokens = 256;
+    settings.ai.configured = prefs.getBool(NVS_KEY_AI_CONFIGURED, false);
+
     // Оборудование
     settings.equipment.columnHeightMm = prefs.getUShort(NVS_KEY_COLUMN_HEIGHT, DEFAULT_COLUMN_HEIGHT_MM);
     {
@@ -336,29 +348,32 @@ bool loadSettings(Settings& settings) {
         prefs.getUShort(NVS_KEY_BOOSTER_HEATER_POWER, DEFAULT_BOOSTER_HEATER_POWER_W);
     settings.equipment.boosterHeaterStopCubeTempC =
         prefs.getFloat(NVS_KEY_BOOSTER_STOP_TEMP, DEFAULT_BOOSTER_HEATER_STOP_CUBE_TEMP_C);
-    settings.equipment.coolingPwmPeriodSec = prefs.getUShort(
-        NVS_KEY_COOLING_PWM_PERIOD, DEFAULT_COOLING_PWM_PERIOD_SEC);
     settings.equipment.coolingPwmEnabled =
         prefs.getBool(NVS_KEY_COOLING_PWM_ENABLED, DEFAULT_COOLING_PWM_ENABLED != 0);
-    settings.equipment.coolingPwmMinDuty =
-        prefs.getUChar(NVS_KEY_COOLING_PWM_MIN_DUTY, DEFAULT_COOLING_PWM_MIN_DUTY);
-    settings.equipment.coolingPwmMaxDuty =
-        prefs.getUChar(NVS_KEY_COOLING_PWM_MAX_DUTY, DEFAULT_COOLING_PWM_MAX_DUTY);
-    settings.equipment.coolingPwmStartupDuty =
-        prefs.getUChar(NVS_KEY_COOLING_PWM_STARTUP, DEFAULT_COOLING_PWM_STARTUP_DUTY);
+    const bool hasCoolingPwmHoldPercent =
+        prefs.isKey(NVS_KEY_COOLING_PWM_HOLD_PERCENT);
+    settings.equipment.coolingPwmHoldPercent =
+        hasCoolingPwmHoldPercent
+            ? CoolingPwmLogic::clampHoldPercent(
+                  prefs.getUChar(NVS_KEY_COOLING_PWM_HOLD_PERCENT,
+                                 DEFAULT_COOLING_PWM_HOLD_PERCENT))
+            : CoolingPwmLogic::clampHoldPercent(CoolingPwmLogic::dutyToPercent(
+                  prefs.getUChar("cool_pwm_sta", 96)));
+    if (!hasCoolingPwmHoldPercent) {
+        prefs.putUChar(NVS_KEY_COOLING_PWM_HOLD_PERCENT,
+                       settings.equipment.coolingPwmHoldPercent);
+    }
+    settings.equipment.coolingPwmPullMs = CoolingPwmLogic::clampPullMs(
+        prefs.getUShort(NVS_KEY_COOLING_PWM_PULL_MS,
+                        DEFAULT_COOLING_PWM_PULL_MS));
     settings.equipment.useDs2482ForTemps =
         prefs.getBool(NVS_KEY_USE_DS2482_TEMPS, DEFAULT_USE_DS2482_FOR_TEMPS != 0);
     settings.equipment.ds2482Address =
         prefs.getUChar(NVS_KEY_DS2482_ADDRESS, DEFAULT_DS2482_ADDRESS);
-    if (settings.equipment.coolingPwmMinDuty > settings.equipment.coolingPwmMaxDuty) {
-        settings.equipment.coolingPwmMinDuty = settings.equipment.coolingPwmMaxDuty;
-    }
-    if (settings.equipment.coolingPwmStartupDuty < settings.equipment.coolingPwmMinDuty) {
-        settings.equipment.coolingPwmStartupDuty = settings.equipment.coolingPwmMinDuty;
-    }
-    if (settings.equipment.coolingPwmStartupDuty > settings.equipment.coolingPwmMaxDuty) {
-        settings.equipment.coolingPwmStartupDuty = settings.equipment.coolingPwmMaxDuty;
-    }
+    prefs.remove("cool_pwm_per");
+    prefs.remove("cool_pwm_min");
+    prefs.remove("cool_pwm_max");
+    prefs.remove("cool_pwm_sta");
     settings.equipment.bodyLevelSensorEnabled =
         prefs.getBool(NVS_KEY_BODY_LEVEL_ENABLED, DEFAULT_BODY_LEVEL_SENSOR_ENABLED != 0);
     settings.equipment.bodyLevelThresholdV =
@@ -756,6 +771,13 @@ bool saveSettings(const Settings& settings) {
     prefs.putString(NVS_KEY_CLOUD_TOKEN, settings.cloud.token);
     prefs.putString(NVS_KEY_CLOUD_TOKEN_ID, settings.cloud.tokenId);
 
+    prefs.putString(NVS_KEY_AI_URL, settings.ai.baseUrl);
+    prefs.putString(NVS_KEY_AI_KEY, settings.ai.apiKey);
+    prefs.putString(NVS_KEY_AI_MODEL, settings.ai.model);
+    prefs.putFloat(NVS_KEY_AI_TEMP, settings.ai.temperature);
+    prefs.putUShort(NVS_KEY_AI_TOKENS, settings.ai.maxTokens);
+    prefs.putBool(NVS_KEY_AI_CONFIGURED, settings.ai.configured);
+
     // Оборудование
     prefs.putUShort(NVS_KEY_COLUMN_HEIGHT, settings.equipment.columnHeightMm);
     prefs.putUChar(NVS_KEY_PACKING_TYPE,
@@ -769,10 +791,12 @@ bool saveSettings(const Settings& settings) {
     prefs.putUShort(NVS_KEY_BOOSTER_HEATER_POWER, settings.equipment.boosterHeaterPowerW);
     prefs.putFloat(NVS_KEY_BOOSTER_STOP_TEMP, settings.equipment.boosterHeaterStopCubeTempC);
     prefs.putBool(NVS_KEY_COOLING_PWM_ENABLED, settings.equipment.coolingPwmEnabled);
-    prefs.putUShort(NVS_KEY_COOLING_PWM_PERIOD, settings.equipment.coolingPwmPeriodSec);
-    prefs.putUChar(NVS_KEY_COOLING_PWM_MIN_DUTY, settings.equipment.coolingPwmMinDuty);
-    prefs.putUChar(NVS_KEY_COOLING_PWM_MAX_DUTY, settings.equipment.coolingPwmMaxDuty);
-    prefs.putUChar(NVS_KEY_COOLING_PWM_STARTUP, settings.equipment.coolingPwmStartupDuty);
+    prefs.putUChar(NVS_KEY_COOLING_PWM_HOLD_PERCENT,
+                   CoolingPwmLogic::clampHoldPercent(
+                       settings.equipment.coolingPwmHoldPercent));
+    prefs.putUShort(NVS_KEY_COOLING_PWM_PULL_MS,
+                    CoolingPwmLogic::clampPullMs(
+                        settings.equipment.coolingPwmPullMs));
     prefs.putBool(NVS_KEY_USE_DS2482_TEMPS, settings.equipment.useDs2482ForTemps);
     prefs.putUChar(NVS_KEY_DS2482_ADDRESS, settings.equipment.ds2482Address);
     prefs.putBool(NVS_KEY_BODY_LEVEL_ENABLED, settings.equipment.bodyLevelSensorEnabled);
