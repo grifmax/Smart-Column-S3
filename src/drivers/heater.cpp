@@ -227,11 +227,10 @@ static void IRAM_ATTR zero_cross_isr_handler() {
         return;
     }
 
-    if (currentPower == 100 && triac_delay_us <= TRIAC_MIN_ALPHA_US) {
-        // Мощность 100%, открываем симистор сразу
-        fireTriacPulse();
-        return;
-    }
+    // На 100% тоже соблюдаем triac_delay_us: фронт детектора не является
+    // гарантированным моментом отпирания силового симистора. Все ненулевые
+    // уставки должны идти через one-shot таймер, без немедленного импульса.
+
 
     // Заряжаем one-shot таймер от начала текущего полупериода
     timerAlarmDisable(triac_timer);

@@ -613,6 +613,42 @@ function setBadgeState(id, text, tone) {
     el.className = `equipment-status-badge ${tone}`;
 }
 
+const VALVE_TYPE_FIELDS = [
+    { key: 'water', id: 'valve-type-water' },
+    { key: 'heads', id: 'valve-type-heads' },
+    { key: 'body', id: 'valve-type-body' },
+    { key: 'tails', id: 'valve-type-tails' },
+    { key: 'uno', id: 'valve-type-uno' },
+    { key: 'startStop', id: 'valve-type-startStop' }
+];
+
+function normalizeValveType(value) {
+    return String(value).toLowerCase() === 'no' ? 'no' : 'nc';
+}
+
+function syncValveTypeUi(data = {}) {
+    const mask = Number.isFinite(Number(data.valveNormallyOpenMask))
+        ? Number(data.valveNormallyOpenMask)
+        : 0;
+    const types = data.valveTypes && typeof data.valveTypes === 'object' ? data.valveTypes : null;
+    VALVE_TYPE_FIELDS.forEach((field, bit) => {
+        const element = document.getElementById(field.id);
+        if (!element) return;
+        const type = types
+            ? normalizeValveType(types[field.key])
+            : (((mask >> bit) & 1) === 1 ? 'no' : 'nc');
+        element.value = type;
+    });
+}
+
+function collectValveTypes() {
+    return VALVE_TYPE_FIELDS.reduce((acc, field) => {
+        const element = document.getElementById(field.id);
+        acc[field.key] = normalizeValveType(element?.value);
+        return acc;
+    }, {});
+}
+
 function syncCoolingActuatorUi() {
     const equipment = runtimeMonitorState.equipment || {};
     const enabled = Boolean(equipment.coolingPwmEnabled);
@@ -982,6 +1018,7 @@ export async function loadEquipmentSettings() {
         setCheckboxValue('booster-heater-enabled', Boolean(data.boosterHeaterEnabled));
         setInputValue('booster-heater-power-w', clamp(data.boosterHeaterPowerW, 1000, 10000, 3000));
         setInputValue('booster-heater-stop-cube-temp', clamp(data.boosterHeaterStopCubeTempC, 20, 100, 78).toFixed(1));
+        syncValveTypeUi(data);
         setCheckboxValue('temp-bus-use-ds2482', Boolean(data.useDs2482ForTemps));
         setInputValue('temp-bus-ds2482-address', String(clamp(data.ds2482Address, 24, 27, 24)));
         syncAutonomyUi(data);
@@ -1156,6 +1193,7 @@ export async function saveEquipment() {
                 leakThresholdV,
                 leakTriggerAbove,
                 autonomyLevel,
+                valveTypes: collectValveTypes(),
                 temperatureTopology
             })
         });

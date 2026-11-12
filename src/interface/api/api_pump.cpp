@@ -278,6 +278,10 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
     doc["mutexReady"] = diag.mutexReady;
     doc["speedMlH"] = diag.speedMlH;
     doc["appliedSpeedMlH"] = diag.appliedSpeedMlH;
+    doc["requestedStepHz"] = diag.requestedStepHz;
+    doc["outputStepHz"] = diag.outputStepHz;
+    doc["stepsPerRevolution"] = diag.stepsPerRevolution;
+    doc["stepOutputOk"] = diag.stepOutputOk;
     doc["totalSteps"] = diag.totalSteps;
     doc["totalVolumeMl"] = diag.totalVolumeMl;
     doc["taskLoopCount"] = diag.taskLoopCount;

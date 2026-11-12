@@ -122,6 +122,15 @@ const PARAMETERS_CARD_DEFS = [
         description: 'Шаги, объём на оборот и базовые параметры дозирования для стабильной подачи.',
     },
     {
+        id: 'valve-settings',
+        selector: '#valve-type-water',
+        group: 'core',
+        icon: '🚰',
+        title: 'Клапаны',
+        shortTitle: 'Клапаны',
+        description: 'Тип НЗ или НО для воды, отбора голов, тела, хвостов, УНО и старт-стоп.',
+    },
+    {
         id: 'cube-settings',
         selector: '#heater-power-w',
         group: 'process',
@@ -1127,6 +1136,30 @@ function ensureParameterWorkbenchCards() {
         'pump-steps-per-rev',
     ]);
 
+    const valvesCard = buildEquipmentCard({
+        className: 'equipment-pane-card equipment-pane-card-parameters',
+        title: 'Клапаны',
+        subtitle: 'Тип НЗ или НО для каждого клапана.',
+        actionsHtml: `
+            <div class="controls equipment-actions">
+                <button class="btn btn-primary" type="button" onclick="saveEquipment()">Сохранить параметры</button>
+            </div>
+        `,
+    });
+    const valvesGrid = qs('.equipment-grid', valvesCard);
+    const valveTypeHint = findGroupByInputId(formGroups, 'valve-type-water')?.previousElementSibling;
+    if (valveTypeHint?.classList.contains('form-group') && valveTypeHint.querySelector('.equipment-hint')) {
+        valvesGrid.appendChild(valveTypeHint);
+    }
+    appendUniqueGroups(valvesGrid, formGroups, [
+        'valve-type-water',
+        'valve-type-heads',
+        'valve-type-body',
+        'valve-type-tails',
+        'valve-type-uno',
+        'valve-type-startStop',
+    ]);
+
     const cubeCard = buildEquipmentCard({
         className: 'equipment-pane-card equipment-pane-card-parameters',
         title: 'Куб, ТЭН и колонна',
@@ -1202,7 +1235,7 @@ function ensureParameterWorkbenchCards() {
     ]);
 
     cardsHost.innerHTML = '';
-    cardsHost.append(pumpCard, cubeCard, coolingCard, stirrerCard, hardwareCard);
+    cardsHost.append(pumpCard, valvesCard, cubeCard, coolingCard, stirrerCard, hardwareCard);
 }
 
 function readSavedWorkbenchCard(storageKey, defs, fallbackId) {

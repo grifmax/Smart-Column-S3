@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.138"
+#define FIRMWARE_VERSION "2.4.159"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -439,6 +439,8 @@
 #define NVS_KEY_LEAK_ENABLED "leak_en"
 #define NVS_KEY_LEAK_THRESHOLD "leak_th"
 #define NVS_KEY_LEAK_POLARITY "leak_pol"
+#define DEFAULT_VALVE_NO_MASK 0x00
+#define NVS_KEY_VALVE_NO_MASK "valve_no_mask"
 #define NVS_KEY_TEMP_TOPOLOGY "temp_topo"
 #define NVS_KEY_TEMP_OFFSETS "temp_offs"
 #define NVS_KEY_PUMP_ML_REV "pump_mlrev"

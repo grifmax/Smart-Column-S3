@@ -31,6 +31,13 @@ static bool valveStartStopOutput = false;
 
 static bool isDemoHardwareSuppressed();
 
+constexpr uint8_t VALVE_NO_MASK_BIT_START_STOP = 5;
+
+static bool isStartStopNormallyOpen() {
+    const uint8_t bit = static_cast<uint8_t>(1U << VALVE_NO_MASK_BIT_START_STOP);
+    return (g_settings.valves.normallyOpenMask & bit) != 0;
+}
+
 static void applyStartStopOutput(bool on) {
     valveStartStopOutput = on;
     if (isDemoHardwareSuppressed()) {
@@ -38,7 +45,8 @@ static void applyStartStopOutput(bool on) {
     }
     // Клапан либо полностью открыт, либо полностью закрыт: промежуточных
     // уровней у соленоида нет, скважность задаётся временем цикла.
-    ledcWrite(LEDC_CHANNEL_VALVE, on ? 255 : 0);
+    const bool level = (on != isStartStopNormallyOpen());
+    ledcWrite(LEDC_CHANNEL_VALVE, level ? 255 : 0);
 }
 
 struct ValvePulseState {
@@ -78,6 +86,19 @@ static bool isDiscreteValvePinAvailable(int pin) {
     return pin >= 0;
 }
 
+// Тип клапана: установленный бит — нормально открытый (НО). Такой клапан
+// открыт без питания, поэтому логическое "открыт" для него означает низкий
+// уровень на пине, а "закрыт" — запитанную катушку. Нормально закрытый (НЗ)
+// работает наоборот.
+static bool isValveNormallyOpen(Valves::ValveId valve) {
+    const uint8_t bit = static_cast<uint8_t>(1U << static_cast<uint8_t>(valve));
+    return (g_settings.valves.normallyOpenMask & bit) != 0;
+}
+
+static void writeValvePin(int pin, bool open, bool normallyOpen) {
+    digitalWrite(pin, (open != normallyOpen) ? HIGH : LOW);
+}
+
 static size_t getValvePulseIndex(Valves::ValveId valve) {
     return static_cast<size_t>(valve);
 }
@@ -100,7 +121,7 @@ static void applyWaterState(bool open) {
     if (isDemoHardwareSuppressed()) {
         return;
     }
-    digitalWrite(PIN_VALVE_WATER, open ? HIGH : LOW);
+    writeValvePin(PIN_VALVE_WATER, open, isValveNormallyOpen(Valves::ValveId::WATER));
 }
 
 static void applyHeadsState(bool open) {
@@ -108,7 +129,7 @@ static void applyHeadsState(bool open) {
     if (isDemoHardwareSuppressed()) {
         return;
     }
-    digitalWrite(PIN_VALVE_HEADS, open ? HIGH : LOW);
+    writeValvePin(PIN_VALVE_HEADS, open, isValveNormallyOpen(Valves::ValveId::HEADS));
 }
 
 static void applyBodyState(bool open) {
@@ -120,7 +141,7 @@ static void applyBodyState(bool open) {
         valveBody = false;
         return;
     }
-    digitalWrite(PIN_VALVE_BODY, open ? HIGH : LOW);
+    writeValvePin(PIN_VALVE_BODY, open, isValveNormallyOpen(Valves::ValveId::BODY));
 }
 
 static void applyTailsState(bool open) {
@@ -132,7 +153,7 @@ static void applyTailsState(bool open) {
         valveTails = false;
         return;
     }
-    digitalWrite(PIN_VALVE_TAILS, open ? HIGH : LOW);
+    writeValvePin(PIN_VALVE_TAILS, open, isValveNormallyOpen(Valves::ValveId::TAILS));
 }
 
 static void applyUnoState(bool open) {
@@ -140,7 +161,7 @@ static void applyUnoState(bool open) {
     if (isDemoHardwareSuppressed()) {
         return;
     }
-    digitalWrite(PIN_VALVE_UNO, open ? HIGH : LOW);
+    writeValvePin(PIN_VALVE_UNO, open, isValveNormallyOpen(Valves::ValveId::UNO));
 }
 
 static void setValveState(Valves::ValveId valve, bool open, bool cancelPulse) {
@@ -192,16 +213,17 @@ void init() {
     }
     pinMode(PIN_VALVE_UNO, OUTPUT);
 
-    // Начальное состояние - все закрыты
-    digitalWrite(PIN_VALVE_WATER, LOW);
-    digitalWrite(PIN_VALVE_HEADS, LOW);
+    // Начальное состояние - все закрыты. Для нормально открытого клапана
+    // "закрыт" означает запитанную катушку, поэтому уровень берём из полярности.
+    writeValvePin(PIN_VALVE_WATER, false, isValveNormallyOpen(ValveId::WATER));
+    writeValvePin(PIN_VALVE_HEADS, false, isValveNormallyOpen(ValveId::HEADS));
     if (isDiscreteValvePinAvailable(PIN_VALVE_BODY)) {
-        digitalWrite(PIN_VALVE_BODY, LOW);
+        writeValvePin(PIN_VALVE_BODY, false, isValveNormallyOpen(ValveId::BODY));
     }
     if (isDiscreteValvePinAvailable(PIN_VALVE_TAILS)) {
-        digitalWrite(PIN_VALVE_TAILS, LOW);
+        writeValvePin(PIN_VALVE_TAILS, false, isValveNormallyOpen(ValveId::TAILS));
     }
-    digitalWrite(PIN_VALVE_UNO, LOW);
+    writeValvePin(PIN_VALVE_UNO, false, isValveNormallyOpen(ValveId::UNO));
 
     // Настройка ШИМ для клапана старт-стоп
     ledcSetup(LEDC_CHANNEL_VALVE, PWM_FREQ_VALVE, PWM_RESOLUTION);
@@ -406,6 +428,21 @@ void setStartStop(uint8_t duty) {
 
 uint8_t getStartStop() {
     return valveStartStopDuty;
+}
+
+void refreshOutputs() {
+    // Повторно выдаём текущее логическое состояние на пины. Нужно после смены
+    // полярности: сама по себе маска не меняет уровень на выходе, и клапан
+    // остался бы в прежнем физическом положении.
+    if (isDemoHardwareSuppressed()) {
+        return;
+    }
+    applyWaterState(valveWater);
+    applyHeadsState(valveHeads);
+    applyBodyState(valveBody);
+    applyTailsState(valveTails);
+    applyUnoState(valveUno);
+    applyStartStopOutput(valveStartStopDuty > 0);
 }
 
 void closeAll() {

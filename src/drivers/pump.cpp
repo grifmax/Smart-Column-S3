@@ -36,7 +36,11 @@ static constexpr uint32_t kPumpCounterUpdateMs = 100;
 static constexpr TickType_t kPumpIdleDelayTicks = pdMS_TO_TICKS(20);
 static constexpr TickType_t kPumpRunDelayTicks = pdMS_TO_TICKS(10);
 static constexpr float kPumpSpeedRampStepsPerSec2 = 8000.0f;
-static constexpr uint8_t kPumpLedcResolutionBits = 8;
+// XTAL=40 MHz: 13 bits supports 5..4000 Hz without the 10-bit tone
+// helper's ~38 Hz floor. Never reconfigure an unchanged STEP frequency.
+static constexpr uint8_t kPumpLedcResolutionBits = 13;
+static uint32_t pumpLastRequestedStepHz = 0;
+static uint32_t pumpOutputStepHz = 0;
 
 static bool g_pumpPwmReady = false;
 
@@ -44,10 +48,18 @@ static bool isDemoHardwareSuppressed() {
     return g_settings.demoMode;
 }
 
+static uint32_t configuredStepsPerRevolution() {
+    const uint32_t steps = g_settings.pumpCal.stepsPerRevolution > 0
+        ? g_settings.pumpCal.stepsPerRevolution : PUMP_STEPS_PER_REV;
+    const uint32_t microsteps = g_settings.pumpCal.microsteps > 0
+        ? g_settings.pumpCal.microsteps : PUMP_MICROSTEPS;
+    return steps * microsteps;
+}
+
 static void updateTotalsFromExactSteps() {
     totalSteps = static_cast<int32_t>(totalStepsExact);
     const double revolutions =
-        totalStepsExact / static_cast<double>(PUMP_STEPS_PER_REV * PUMP_MICROSTEPS);
+        totalStepsExact / static_cast<double>(configuredStepsPerRevolution());
     totalVolumeMl = static_cast<float>(revolutions * mlPerRevolution);
 }
 
@@ -82,11 +94,11 @@ static float clampStepsPerSec(float stepsPerSec) {
 static float mlPerHourToStepsPerSec(float mlPerHour) {
     const float revPerHour = mlPerHour / mlPerRevolution;
     const float revPerSec = revPerHour / 3600.0f;
-    return revPerSec * PUMP_STEPS_PER_REV * PUMP_MICROSTEPS;
+    return revPerSec * configuredStepsPerRevolution();
 }
 
 static float stepsPerSecToMlPerHour(float stepsPerSec) {
-    const float revPerSec = stepsPerSec / (PUMP_STEPS_PER_REV * PUMP_MICROSTEPS);
+    const float revPerSec = stepsPerSec / configuredStepsPerRevolution();
     const float revPerHour = revPerSec * 3600.0f;
     return revPerHour * mlPerRevolution;
 }
@@ -113,8 +125,11 @@ static void stopPumpPulsesLocked() {
         return;
     }
 
-    ledcWriteTone(LEDC_CHANNEL_PUMP, 0);
-    ledcWrite(LEDC_CHANNEL_PUMP, 0);
+    if (pumpLastRequestedStepHz != 0 || pumpOutputStepHz != 0) {
+        ledcWrite(LEDC_CHANNEL_PUMP, 0);
+    }
+    pumpLastRequestedStepHz = 0;
+    pumpOutputStepHz = 0;
 }
 
 static void applyPumpPulsesLocked() {
@@ -128,7 +143,25 @@ static void applyPumpPulsesLocked() {
         return;
     }
 
-    ledcWriteTone(LEDC_CHANNEL_PUMP, stepRateHz);
+    if (stepRateHz == pumpLastRequestedStepHz) {
+        return;
+    }
+    pumpLastRequestedStepHz = stepRateHz;
+    const uint32_t actualHz = ledcChangeFrequency(
+        LEDC_CHANNEL_PUMP, stepRateHz, kPumpLedcResolutionBits);
+    if (actualHz == 0) {
+        // A failed frequency update can leave the previous wave active.
+        // Stop explicitly, and never integrate requested-but-missing pulses.
+        ledcWrite(LEDC_CHANNEL_PUMP, 0);
+        pumpOutputStepHz = 0;
+        appliedSpeedMlH = 0.0f;
+        LOG_E("Pump: STEP frequency %lu Hz unsupported; output stopped",
+              static_cast<unsigned long>(stepRateHz));
+        return;
+    }
+    pumpOutputStepHz = actualHz;
+    appliedSpeedMlH = stepsPerSecToMlPerHour(static_cast<float>(actualHz));
+    ledcWrite(LEDC_CHANNEL_PUMP, 1U << (kPumpLedcResolutionBits - 1));
 }
 
 static void syncMotionLocked(uint32_t nowUs) {
@@ -140,11 +173,11 @@ static void syncMotionLocked(uint32_t nowUs) {
     const uint32_t deltaUs = nowUs - pumpLastMotionUpdateUs;
     pumpLastMotionUpdateUs = nowUs;
 
-    if (deltaUs == 0 || appliedStepsPerSec <= 0.0f) {
+    if (deltaUs == 0 || pumpOutputStepHz == 0) {
         return;
     }
 
-    totalStepsExact += static_cast<double>(appliedStepsPerSec) *
+    totalStepsExact += static_cast<double>(pumpOutputStepHz) *
                        (static_cast<double>(deltaUs) / 1000000.0);
     updateTotalsFromExactSteps();
 }
@@ -177,8 +210,8 @@ static void updateAppliedSpeedLocked(uint32_t nowUs) {
     }
 
     appliedStepsPerSec = clampStepsPerSec(appliedStepsPerSec);
-    appliedSpeedMlH = stepsPerSecToMlPerHour(appliedStepsPerSec);
     applyPumpPulsesLocked();
+    appliedSpeedMlH = stepsPerSecToMlPerHour(static_cast<float>(pumpOutputStepHz));
 }
 
 static void pumpTask(void* pvParameters) {
@@ -427,6 +460,10 @@ Diagnostics getDiagnostics() {
     diagnostics.lastYieldAtMs = pumpLastYieldAtMs;
     diagnostics.speedMlH = currentSpeedMlH;
     diagnostics.appliedSpeedMlH = appliedSpeedMlH;
+    diagnostics.requestedStepHz = pumpLastRequestedStepHz;
+    diagnostics.outputStepHz = pumpOutputStepHz;
+    diagnostics.stepsPerRevolution = configuredStepsPerRevolution();
+    diagnostics.stepOutputOk = !running || pumpOutputStepHz > 0;
     diagnostics.totalSteps = static_cast<uint32_t>(totalSteps);
     diagnostics.totalVolumeMl = totalVolumeMl;
     return diagnostics;

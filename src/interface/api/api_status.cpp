@@ -332,6 +332,7 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     valves["tailsAvailable"] = Valves::hasTailsValve();
     valves["uno"] = Valves::getUno();
     valves["startStopDuty"] = Valves::getStartStop();
+    valves["normallyOpenMask"] = g_settings.valves.normallyOpenMask;
     valves["tails"] = Valves::getTails();
 
     JsonObject hydro = doc["hydrometer"].to<JsonObject>();

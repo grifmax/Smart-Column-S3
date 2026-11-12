@@ -104,6 +104,15 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
               doc["leakThresholdV"] = g_settings.equipment.leakThresholdV;
               doc["leakTriggerAbove"] =
                   g_settings.equipment.leakTriggerAbove;
+              doc["valveNormallyOpenMask"] = g_settings.valves.normallyOpenMask;
+              JsonObject valveTypes = doc["valveTypes"].to<JsonObject>();
+              static const char *const kValveKeys[6] = {"water", "heads", "body",
+                                                        "tails", "uno", "startStop"};
+              for (uint8_t bit = 0; bit < 6; ++bit) {
+                valveTypes[kValveKeys[bit]] =
+                    (g_settings.valves.normallyOpenMask & (1U << bit)) != 0 ? "no"
+                                                                            : "nc";
+              }
               doc["packingType"] =
                   getPackingTypeKey(g_settings.equipment.packingType);
               doc["packingCoeff"] = g_settings.equipment.packingCoeff;
@@ -365,6 +374,35 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
           }
         }
 
+        bool valveTypesChanged = false;
+        uint8_t valveMask = g_settings.valves.normallyOpenMask;
+        if (!doc["valveNormallyOpenMask"].isNull()) {
+          valveMask = static_cast<uint8_t>(
+              doc["valveNormallyOpenMask"].as<uint32_t>() & 0x3FU);
+        }
+        if (doc["valveTypes"].is<JsonObject>()) {
+          JsonObject types = doc["valveTypes"].as<JsonObject>();
+          static const char *const kKeys[6] = {"water", "heads", "body",
+                                               "tails", "uno", "startStop"};
+          for (uint8_t bit = 0; bit < 6; ++bit) {
+            if (types[kKeys[bit]].isNull()) {
+              continue;
+            }
+            const char *value = types[kKeys[bit]].as<const char *>();
+            const bool normallyOpen =
+                value != nullptr && (strcmp(value, "no") == 0 || strcmp(value, "НО") == 0);
+            if (normallyOpen) {
+              valveMask = static_cast<uint8_t>(valveMask | (1U << bit));
+            } else {
+              valveMask = static_cast<uint8_t>(valveMask & ~(1U << bit));
+            }
+          }
+        }
+        if (valveMask != g_settings.valves.normallyOpenMask) {
+          g_settings.valves.normallyOpenMask = valveMask;
+          valveTypesChanged = true;
+        }
+
         if (!NVSManager::saveSettings(g_settings)) {
           request->send(500, "application/json",
                         "{\"success\":false,\"error\":\"Failed to save settings\"}");
@@ -374,9 +412,13 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
         if (temperatureBusChanged) {
           Sensors::refreshTemperatureInventory();
         }
+        if (valveTypesChanged) {
+          Valves::refreshOutputs();
+        }
 
         JsonDocument resp;
         resp["success"] = true;
+        resp["valveNormallyOpenMask"] = g_settings.valves.normallyOpenMask;
         resp["packingType"] =
             getPackingTypeKey(g_settings.equipment.packingType);
         resp["packingCoeff"] = g_settings.equipment.packingCoeff;

@@ -409,6 +409,10 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   pump["speedMlH"] = Pump::getSpeed();
   pump["targetSpeedMlH"] = pumpDiag.speedMlH;
   pump["appliedSpeedMlH"] = pumpDiag.appliedSpeedMlH;
+  pump["requestedStepHz"] = pumpDiag.requestedStepHz;
+  pump["outputStepHz"] = pumpDiag.outputStepHz;
+  pump["stepsPerRevolution"] = pumpDiag.stepsPerRevolution;
+  pump["stepOutputOk"] = pumpDiag.stepOutputOk;
   pump["totalVolumeMl"] = Pump::getTotalVolume();
   pump["totalSteps"] = pumpDiag.totalSteps;
   pump["taskAlive"] = pumpDiag.taskAlive;

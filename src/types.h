@@ -843,6 +843,13 @@ struct AiSettings {
   bool configured = false;
 };
 
+// Тип дискретных клапанов: бит на канал (0 — вода, 1 — головы, 2 — тело,
+// 3 — хвосты, 4 — УНО, 5 — старт-стоп). Установленный бит — клапан нормально
+// открытый (НО): он открыт без питания, а для закрытия катушку надо запитать.
+struct ValveTypeSettings {
+  uint8_t normallyOpenMask = 0;
+};
+
 struct Settings {
   WiFiSettings wifi;
   PumpCalibration pumpCal;
@@ -853,6 +860,7 @@ struct Settings {
   MqttSettings mqtt;
   CloudSettings cloud;
   EquipmentSettings equipment;
+  ValveTypeSettings valves;
   FractionatorSettings fractionator;
   FractionProgram fractionProgram;
   DisplaySettings displaySettings; // Настройки дисплея

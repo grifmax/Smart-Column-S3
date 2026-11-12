@@ -24,6 +24,10 @@ namespace Pump {
         uint32_t lastYieldAtMs = 0;
         float speedMlH = 0.0f;
         float appliedSpeedMlH = 0.0f;
+        uint32_t requestedStepHz = 0;
+        uint32_t outputStepHz = 0;
+        uint32_t stepsPerRevolution = 0;
+        bool stepOutputOk = true;
         uint32_t totalSteps = 0;
         float totalVolumeMl = 0.0f;
     };
