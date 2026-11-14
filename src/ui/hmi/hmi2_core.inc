@@ -1445,7 +1445,6 @@ static void hmi2RenderRoot(const SystemState &state, bool full) {
 
 static bool hmi2HandleHomeTap(int16_t tx, int16_t ty,
                               const SystemState &state) {
-  if (HMI_LEGACY) return false;
   if (hmi2Subpage == Hmi2Subpage::WifiPassword) {
     HmiKeyboard::Result result = HmiKeyboard::applyAt(hmi2WifiKeyboard, tx, ty);
     if (ty < HMI2_HEADER_H &&

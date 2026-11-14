@@ -7,20 +7,26 @@ class HmiIntegrationContracts(unittest.TestCase):
  def setUpClass(cls):
   cls.display=(ROOT/'src/drivers/display.cpp').read_text(encoding='utf-8') + '\n' + (ROOT/'src/ui/hmi/hmi2_core.inc').read_text(encoding='utf-8')
   cls.main=(ROOT/'src/main.cpp').read_text(encoding='utf-8')
- def test_new_navigation_precedes_legacy_footer(self):
-  body=self.display[self.display.index('static bool handleNavigationTap('):self.display.index('static bool handleModeMonitorTap(')]
+  cls.config=(ROOT/'src/config.h').read_text(encoding='utf-8')
+  cls.widgets=(ROOT/'src/drivers/hmi_widgets.h').read_text(encoding='utf-8')
+ def test_new_navigation_consumes_root_taps_without_legacy_fallback(self):
+  body=self.display[self.display.index('static bool handleNavigationTap('):self.display.index('static bool handleModeConfigScreenTap(')]
   self.assertLess(body.index('hmi2OwnsScreen(ui.currentScreen)'),body.index('if (ty >= (TFT_HEIGHT - UI_FOOTER_H))'))
   self.assertLess(body.index('handleOperatorOverlayTap'),body.index('hmi2OwnsScreen(ui.currentScreen)'))
+  self.assertIn('(void)hmi2HandleHomeTap(tx, ty, state);\n    return true;',body)
  def test_new_renderer_does_not_fall_through_to_global_status(self):
   block=self.display[self.display.index('if (hmi2OwnsScreen(ui.currentScreen)) {\n                                    hmi2RenderRoot'):]
   prefix=block[:block.index('if (TftOperatorOverlayLogic::isActive')]
   self.assertIn('} else {',prefix)
   self.assertIn('drawGlobalStatusBar(state, false)',prefix.split('} else {',1)[1])
   self.assertNotIn('drawGlobalStatusBar',prefix.split('} else {',1)[0])
- def test_new_screen_does_not_inherit_sparkline_invalidation(self):
-  self.assertIn('if (HMI_LEGACY && now - lastSparklineUpdateMs >',self.display)
+ def test_legacy_root_renderer_and_sparklines_are_removed(self):
+  for symbol in ('HMI_LEGACY','renderDashboard','renderModeMonitorCustom','SparklineBuffer'):
+   self.assertNotIn(symbol,self.display)
+  self.assertNotIn('SparklineBuffer',self.widgets)
  def test_touch_poll_is_faster_than_value_presentation(self):
-  self.assertIn('HMI_LEGACY ? INTERVAL_DISPLAY_UPDATE : 25U',self.main)
+  self.assertIn('now - g_lastDisplayUpdate >= INTERVAL_DISPLAY_UPDATE',self.main)
+  self.assertIn('#define INTERVAL_DISPLAY_UPDATE 25',self.config)
   self.assertIn('now - uiLive.lastUpdateMs >= 250',self.display)
  def test_touch_read_does_not_depend_on_penirq_edge(self):
   body=self.display[self.display.index('bool touchReadRaw(int16_t *x, int16_t *y) {'):]

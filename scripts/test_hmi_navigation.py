@@ -16,7 +16,6 @@ class HmiNavigationRegression(unittest.TestCase):
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
-#define HMI_LEGACY 0
 #define TFT_WIDTH 480
 #define TFT_HEIGHT 320
 #define HMI2_HEADER_H 32

@@ -615,7 +615,7 @@ void loop() {
 
   // TFT actions enter the same queue as asynchronous interfaces, so handle the
   // display tick before draining commands and updating the FSM.
-  if (now - g_lastDisplayUpdate >= (HMI_LEGACY ? INTERVAL_DISPLAY_UPDATE : 25U)) {
+  if (now - g_lastDisplayUpdate >= INTERVAL_DISPLAY_UPDATE) {
     g_lastDisplayUpdate = now;
     Display::update(g_state);
   }

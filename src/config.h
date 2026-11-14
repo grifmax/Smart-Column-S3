@@ -11,15 +11,10 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.177"
+#define FIRMWARE_VERSION "2.4.178"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
-
-// HMI v2 is the default renderer; set to 1 only for legacy TFT rollback.
-#ifndef HMI_LEGACY
-#define HMI_LEGACY 0
-#endif
 
 // Включение функций
 #define DISPLAY_ENABLED // Включить поддержку дисплея
@@ -233,7 +228,7 @@
 #define INTERVAL_POWER_READ 1000    // Чтение мощности
 #define I2C_TRANSACTION_TIMEOUT_MS 20 // Ограничение ожидания одной транзакции
 #define ADS1115_CONVERSION_TIMEOUT_MS 40 // Ограничение ожидания выборки ADS1115
-#define INTERVAL_DISPLAY_UPDATE 200 // Обновление дисплея
+#define INTERVAL_DISPLAY_UPDATE 25 // Обновление дисплея, мс
 #define INTERVAL_WEB_BROADCAST 2000 // Отправка данных по WebSocket
 #define INTERVAL_WEB_BROADCAST_FULL 10000 // Полный пакет данных
 #define INTERVAL_LOG_WRITE 60000    // Запись в лог (1 мин)
