@@ -282,7 +282,7 @@ Owner ownerFloor() {
   return floor;
 }
 
-void applySafeStopAll();
+void applySafeStopAll(bool keepCoolingOpen);
 
 template <typename Apply>
 Command applyRequest(Owner owner, Target target, Reason reason,
@@ -313,7 +313,7 @@ Command applyRequest(Owner owner, Target target, Reason reason,
     // state before releasing ownership of the output bus.
     if (owner != Owner::SAFETY && tripLatched() &&
         !isDeenergizingRequest(target, requestedValue)) {
-      applySafeStopAll();
+      applySafeStopAll(true);
       accepted = false;
       applied = false;
       rejectReason = RejectReason::SAFETY_TRIP_LATCHED;
@@ -335,11 +335,18 @@ Command applyRequest(Owner owner, Target target, Reason reason,
   return result;
 }
 
-void applySafeStopAll() {
+void applySafeStopAll(bool keepCoolingOpen) {
   Heater::emergencyStop();
   Pump::stop();
   Stirrer::stop();
-  Valves::closeAll();
+  if (keepCoolingOpen) {
+    Valves::closeAllExceptWater();
+    // Открываем воду напрямую: после защёлкивания аварии шлюз отклоняет
+    // любые запитывающие команды, а конденсатор терять нельзя.
+    Valves::setWater(true);
+  } else {
+    Valves::closeAll();
+  }
   if (Valves::isFractionatorEnabled()) {
     Valves::setFractionAngle(Valves::getFractionAngle());
   }
@@ -565,7 +572,7 @@ void tripSafety(Reason reason) {
       ControlRuntimeMetrics::recordRepeatedSafetyTrip();
       return;
     }
-    applySafeStopAll();
+    applySafeStopAll(true);
     record(Owner::SAFETY, Target::ALL_OUTPUTS, reason, 0.0f, true, true,
            true);
     return;
@@ -587,7 +594,7 @@ void tripSafety(Reason reason) {
     xSemaphoreGive(g_outputMutex);
     return;
   }
-  applySafeStopAll();
+  applySafeStopAll(true);
   record(Owner::SAFETY, Target::ALL_OUTPUTS, reason, 0.0f, true, true, true);
   xSemaphoreGive(g_outputMutex);
   LOG_W("Power gateway: safety trip latched");
@@ -761,6 +768,11 @@ void closeProductRoutes(Owner owner, Reason reason) {
                []() { Valves::closeProductValves(); });
 }
 
+Command closeAllValvesExceptWater(Owner owner, Reason reason) {
+  return applyRequest(owner, Target::ALL_VALVES, reason, 0.0f, true,
+                      []() { Valves::closeAllExceptWater(); });
+}
+
 Command closeAllValves(Owner owner, Reason reason) {
   Command queuedCommand;
   if (queueIfOutsideControlTask(makePending(
@@ -851,12 +863,13 @@ Command safeStopAll(Owner owner, Reason reason) {
           Operation::SafeStopAll), &queuedCommand)) {
     return queuedCommand;
   }
+  const bool keepCooling = g_state.temps.cube >= 45.0f;
   if (g_outputMutex == nullptr ||
       xSemaphoreTake(g_outputMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-    applySafeStopAll();
+    applySafeStopAll(keepCooling);
     return record(owner, Target::ALL_OUTPUTS, reason, 0.0f, true, true, true);
   }
-  applySafeStopAll();
+  applySafeStopAll(keepCooling);
   Command command = record(owner, Target::ALL_OUTPUTS, reason, 0.0f, true,
                            true, true);
   xSemaphoreGive(g_outputMutex);

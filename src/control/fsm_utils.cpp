@@ -49,6 +49,25 @@ uint16_t getConfiguredHeaterPowerWatts(const Settings& settings) {
         : DEFAULT_HEATER_POWER_W;
 }
 
+uint32_t heatingTimeoutMs(const Settings& settings) {
+    float volumeL = settings.rectParams.feedVolumeL > 0.1f
+                        ? settings.rectParams.feedVolumeL
+                        : settings.equipment.cubeVolumeL;
+    volumeL = clampFloat(volumeL, 1.0f, 250.0f);
+    const float powerW = static_cast<float>(
+        fmaxf(500.0f, static_cast<float>(getConfiguredHeaterPowerWatts(settings))));
+    // Вода: 4186 Дж/(кг*К), плотность 1 кг/л, разогрев 15 -> 95 C.
+    const float deltaC = 80.0f;
+    const float eta = 0.90f;
+    const float seconds =
+        volumeL * 4186.0f * deltaC / (powerW * eta);
+    const float withMargin = seconds * 1.5f;
+    uint32_t ms = static_cast<uint32_t>(withMargin * 1000.0f);
+    if (ms < 30UL * 60UL * 1000UL) ms = 30UL * 60UL * 1000UL;
+    if (ms > 8UL * 60UL * 60UL * 1000UL) ms = 8UL * 60UL * 60UL * 1000UL;
+    return ms;
+}
+
 float getConfiguredHeaterPowerKw(uint16_t heaterPowerW) {
     const uint16_t configuredPowerW =
         heaterPowerW > 0 ? heaterPowerW : DEFAULT_HEATER_POWER_W;

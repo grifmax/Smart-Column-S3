@@ -294,13 +294,18 @@ void stepPrecheck(SystemState& state, const Settings& settings, uint32_t elapsed
     setWater(true);
     return;
   }
-  if (state.waterFlow.litersPerMin > 0.05f) {
+  if (!state.waterFlow.sensorSeen) {
+    // Датчик потока — опция: без него проток не контролируется, и это не
+    // провал прогона, а пропущенная проверка.
+    countSkip(step, "water_flow",
+              "датчик потока не обнаружен: проток не контролируется (опция)");
+  } else if (state.waterFlow.litersPerMin > 0.05f) {
     record(step, "water_flow", WaterTestVerdict::PASS, 0.05f,
            state.waterFlow.litersPerMin, "проток охлаждающей воды есть");
   } else {
     record(step, "water_flow", WaterTestVerdict::FAIL, 0.05f,
            state.waterFlow.litersPerMin,
-           "нет протока: проверьте кран, шланг и датчик потока");
+           "нет протока: проверьте кран и шланг");
     enterStep(state, WaterTestStep::FAULTED);
     return;
   }
@@ -371,10 +376,15 @@ void stepCooling(SystemState& state, const Settings& settings, uint32_t elapsed)
   state.waterTest.coolingCapacityW =
       WaterTestLogic::coolingCapacityW(state.waterFlow.litersPerMin, deltaT);
 
-  recordVerdict(step, "cooling_capacity",
-                WaterTestLogic::evaluateCooling(state.waterFlow.litersPerMin,
-                                                deltaT, heaterW),
-                "теплосъём дефлегматора против мощности ТЭНа");
+  if (!state.waterFlow.sensorSeen) {
+    countSkip(step, "cooling_capacity",
+              "нет датчика потока: теплосъём не измеряется (опция)");
+  } else {
+    recordVerdict(step, "cooling_capacity",
+                  WaterTestLogic::evaluateCooling(
+                      state.waterFlow.litersPerMin, deltaT, heaterW),
+                  "теплосъём дефлегматора против мощности ТЭНа");
+  }
 
   advance(state);
 }

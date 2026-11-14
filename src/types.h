@@ -523,6 +523,9 @@ struct WaterFlow {
   float totalVolume = 0.0f;  // л
   float totalLiters = 0.0f;  // Алиас
   bool flowing = false;      // Вода течёт
+  // Был ли хотя бы один импульс с момента загрузки. Датчик потока — опция:
+  // если импульсов не было ни разу, интерлоки на его показания не строим.
+  bool sensorSeen = false;
   uint32_t lastPulse = 0;    // Время последнего импульса
   bool ok = false;
 };

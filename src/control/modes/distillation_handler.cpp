@@ -8,6 +8,7 @@
 #include "../../drivers/buzzer.h"
 #include "../../drivers/pump.h"
 #include "../../drivers/sensors.h"
+#include "../safety.h"
 #include "../../drivers/valves.h"
 #include "../../interface/mqtt.h"
 #include "../../storage/logger.h"
@@ -27,6 +28,10 @@ struct ParamsRuntime {
 static ParamsRuntime g_params;
 
 namespace {
+
+// Время разогрева считаем только тиками, пока фаза действительно идёт.
+uint32_t heatingActiveMs = 0;
+uint32_t heatingLastTickMs = 0;
 
 constexpr float kVaporTempHysteresisC = 0.2f;
 constexpr uint8_t kVaporTempPowerStepPercent = 2;
@@ -494,6 +499,25 @@ void update(SystemState& state, const Settings& settings) {
         case RectPhase::HEATING: {
             applyBoosterHeater(state, settings, true);
             applyFullHeatPower(settings);
+            // Защита от бесконечного разогрева при недоливе или отказе датчика.
+            {
+                const uint32_t heatingDt =
+                    heatingLastTickMs == 0 ? 0 : now - heatingLastTickMs;
+                heatingLastTickMs = now;
+                if (heatingDt > 0 && heatingDt < 5000UL) {
+                    heatingActiveMs += heatingDt;
+                }
+                const uint32_t heatingLimit = heatingTimeoutMs(settings);
+                if (heatingActiveMs > heatingLimit) {
+                    char message[128];
+                    snprintf(message, sizeof(message),
+                             "Разогрев не завершён за %lu мин: проверьте объём над ТЭНом и датчик куба",
+                             static_cast<unsigned long>(heatingLimit / 60000UL));
+                    Safety::raiseAlarm(state, AlarmType::OVERHEAT,
+                                       AlarmLevel::CRITICAL, message);
+                    return;
+                }
+            }
             const bool programHeating = isFractionProgramEnabled(settings);
             const uint8_t heatingSensor = programHeating
                 ? settings.fractionProgram.heatingTemperatureSensorIndex

@@ -7,6 +7,7 @@
 #include "../../drivers/valves.h"
 #include "../../drivers/pump.h"
 #include "../../drivers/sensors.h"
+#include "../safety.h"
 #include "../watt_control.h"
 #include "../v2/reason_codes.h"
 #include "../v2/safety_policy.h"
@@ -27,6 +28,10 @@ static float tailsTargetMl = 0.0f;
 static bool bodyReferenceReady = false;
 static float bodyBaseTempC = 0.0f;
 static uint32_t bodyPressureConfirmStartMs = 0;
+// Время разогрева считаем только тиками, пока фаза действительно идёт:
+// длинная пауза на смену тары не должна съедать таймаут разогрева.
+static uint32_t heatingActiveMs = 0;
+static uint32_t heatingLastTickMs = 0;
 static ControlV2::RectificationPressureRuntimeV2 pressureControlRuntime;
 static bool pressureEmergencyStopActive = false;
 
@@ -384,6 +389,8 @@ void initSession(SystemState& state, const Settings& settings) {
     bodyReferenceReady = false;
     bodyBaseTempC = 0.0f;
     bodyPressureConfirmStartMs = 0;
+    heatingActiveMs = 0;
+    heatingLastTickMs = 0;
     pressureControlRuntime = ControlV2::RectificationPressureRuntimeV2{};
     pressureEmergencyStopActive = false;
     state.rectBodyContainerIndex = 0;
@@ -431,6 +438,27 @@ void update(SystemState& state, const Settings& settings) {
         case RectPhase::HEATING:
             applyBoosterHeater(state, settings, true);
             applyFullHeatPower(settings);
+            // Защита от бесконечного разогрева: недолив, отказ датчика низа
+            // колонны или пробитый симистор не должны греть куб часами.
+            {
+                const uint32_t heatingDt =
+                    heatingLastTickMs == 0 ? 0 : now - heatingLastTickMs;
+                heatingLastTickMs = now;
+                if (heatingDt > 0 && heatingDt < 5000UL) {
+                    heatingActiveMs += heatingDt;
+                }
+                const uint32_t heatingLimit = heatingTimeoutMs(settings);
+                if (heatingActiveMs > heatingLimit) {
+                    char message[128];
+                    snprintf(message, sizeof(message),
+                             "Разогрев не завершён за %lu мин: проверьте объём над ТЭНом и датчик низа колонны",
+                             static_cast<unsigned long>(heatingLimit / 60000UL));
+                    LOG_E("FSM: heating timeout after %lu ms", static_cast<unsigned long>(heatingActiveMs));
+                    Safety::raiseAlarm(state, AlarmType::OVERHEAT,
+                                       AlarmLevel::CRITICAL, message);
+                    return;
+                }
+            }
             if (state.temps.cube >= getWaterAutoStartTempC(settings)) {
                 PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,
                     PowerCommandGateway::Reason::FSM_CONTROL,

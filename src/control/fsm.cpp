@@ -154,9 +154,19 @@ void finalizeModeStop(SystemState& state) {
     RectTakeoff::stop();
     PowerCommandGateway::stopStirrer(PowerCommandGateway::Owner::FSM,
                                      PowerCommandGateway::Reason::FSM_CONTROL);
-    PowerCommandGateway::closeAllValves(
-        PowerCommandGateway::Owner::FSM,
-        PowerCommandGateway::Reason::FSM_CONTROL);
+    // Горячий куб без охлаждения — это пар в помещение. Воду не закрываем,
+    // пока куб не остыл; при невалидном датчике считаем куб горячим.
+    const bool keepCooling = !state.temps.valid[TEMP_CUBE] ||
+                             state.temps.cube >= 45.0f;
+    if (keepCooling) {
+        PowerCommandGateway::closeAllValvesExceptWater(
+            PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL);
+    } else {
+        PowerCommandGateway::closeAllValves(
+            PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL);
+    }
 
     state.mode = Mode::IDLE;
     state.rectPhase = RectPhase::IDLE;
@@ -214,6 +224,33 @@ void update(SystemState& state, const Settings& settings) {
 
 void startMode(SystemState& state, const Settings& settings, Mode mode) {
     LOG_I("FSM: Starting mode %s", getModeName(mode));
+
+    // Защита от оголения ТЭНа: объём загрузки должен перекрывать
+    // минимальный уровень над нагревателем.
+    if (mode == Mode::RECTIFICATION || mode == Mode::DISTILLATION ||
+        mode == Mode::MANUAL_RECT || mode == Mode::WATER_TEST) {
+        const float chargeL = settings.rectParams.feedVolumeL > 0.1f
+                                  ? settings.rectParams.feedVolumeL
+                                  : settings.equipment.cubeVolumeL;
+        const float minL = settings.equipment.minHeaterSubmergeL;
+        if (minL > 0.0f && chargeL + 0.01f < minL) {
+            Logger::logf(2,
+                         "start_rejected reason=heater_submerge charge_l=%.1f min_l=%.1f",
+                         chargeL, minL);
+            LOG_E("FSM: start rejected, charge %.1f L below submerge %.1f L",
+                  chargeL, minL);
+            MQTT::publishNotification(
+                "Запуск отклонён",
+                "Объём загрузки меньше минимального уровня над ТЭНом",
+                "error");
+            if (mode == Mode::WATER_TEST) {
+                strlcpy(state.waterTest.lastError,
+                        "объём ниже минимального уровня над ТЭНом",
+                        sizeof(state.waterTest.lastError));
+            }
+            return;
+        }
+    }
 
     if (mode == Mode::AUTOCLAVE &&
         !AutoclaveHardwareProfile::isSteamAvailable()) {

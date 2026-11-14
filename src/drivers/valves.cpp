@@ -449,6 +449,19 @@ void refreshOutputs() {
     applyStartStopOutput(valveStartStopDuty > 0);
 }
 
+void closeAllExceptWater() {
+    LOG_W("Valves: Closing all valves except cooling water");
+    clearValvePulse(ValveId::HEADS);
+    clearValvePulse(ValveId::BODY);
+    clearValvePulse(ValveId::TAILS);
+    clearValvePulse(ValveId::UNO);
+    setValveState(ValveId::HEADS, false, false);
+    setValveState(ValveId::BODY, false, false);
+    setValveState(ValveId::TAILS, false, false);
+    setValveState(ValveId::UNO, false, false);
+    setStartStop(0);
+}
+
 void closeAll() {
     LOG_I("Valves: Closing all valves");
     clearValvePulse(ValveId::WATER);

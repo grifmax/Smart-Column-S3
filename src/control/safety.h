@@ -25,6 +25,12 @@ extern SemaphoreHandle_t g_safetyMutex;
 void init();
 void check(SystemState& state, const Settings& settings);
 void acknowledge(SystemState& state);
+
+// Поднять аварию из логики режима (таймаут разогрева и т.п.).
+// Защёлкивает аварию, гасит выходы и останавливает режим так же,
+// как это делает плановая проверка Safety::check.
+void raiseAlarm(SystemState& state, AlarmType type, AlarmLevel level,
+                const char* message);
 bool reset(SystemState& state, const Settings& settings, char* reason = nullptr,
            size_t reasonSize = 0);
 bool isLatched(const SystemState& state);

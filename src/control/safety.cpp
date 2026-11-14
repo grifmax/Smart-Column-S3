@@ -713,6 +713,16 @@ void check(SystemState& state, const Settings& settings) {
     xSemaphoreGive(g_safetyMutex);
 }
 
+void raiseAlarm(SystemState& state, AlarmType type, AlarmLevel level,
+                const char* message) {
+    if (g_safetyMutex == nullptr ||
+        xSemaphoreTake(g_safetyMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return;
+    }
+    latchAlarm(state, type, level, message, millis());
+    xSemaphoreGive(g_safetyMutex);
+}
+
 void acknowledge(SystemState& state) {
     if (g_safetyMutex == nullptr || xSemaphoreTake(g_safetyMutex, pdMS_TO_TICKS(50)) != pdTRUE) {
         return;

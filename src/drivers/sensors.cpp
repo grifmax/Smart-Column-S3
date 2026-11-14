@@ -1126,6 +1126,9 @@ void readWaterFlow(WaterFlow& flow) {
 
         // Проверка потока
         flow.flowing = (pulses > 0);
+        if (pulses > 0) {
+            flow.sensorSeen = true;
+        }
 
         lastFlowCheck = now;
     }

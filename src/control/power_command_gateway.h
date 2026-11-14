@@ -251,6 +251,9 @@ void setProductRoute(Owner owner, Reason reason, RectTakeoffFraction fraction,
                      bool open);
 void closeProductRoutes(Owner owner, Reason reason);
 Command closeAllValves(Owner owner, Reason reason);
+// То же, но охлаждающая вода остаётся в текущем положении. Используется
+// аварийным остановом и остановом режима при горячем кубе.
+Command closeAllValvesExceptWater(Owner owner, Reason reason);
 Command pulseValve(Owner owner, Reason reason, Valve valve, uint32_t durationMs);
 Command setCoolingPwm(Owner owner, Reason reason, uint8_t duty);
 Command setFraction(Owner owner, Reason reason, Fraction fraction,

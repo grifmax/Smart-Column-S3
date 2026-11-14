@@ -12,6 +12,11 @@ namespace FSM {
     float pressureAdjustedCubeTemp(float baseTempC, const SystemState& state);
     float estimateChargeAbvPercent(const SystemState& state);
     uint16_t getConfiguredHeaterPowerWatts(const Settings& settings);
+
+// Верхняя граница разогрева куба: t = V*c*dT/(P*eta) с полуторакратным
+// запасом. Считается от объёма загрузки и паспортной мощности, а не
+// берётся константой: 37 л и 100 л при 3 кВт отличаются втрое.
+uint32_t heatingTimeoutMs(const Settings& settings);
     float getConfiguredHeaterPowerKw(uint16_t heaterPowerW);
     float getConfiguredHeaterPowerKw(const Settings& settings);
     float getRectificationColumnCapacityFactor(uint16_t columnHeightMm, float packingCoeff);
