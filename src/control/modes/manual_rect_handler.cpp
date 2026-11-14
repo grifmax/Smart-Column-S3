@@ -1,4 +1,5 @@
 #include "../fsm_utils.h"
+#include "../fsm.h"
 
 #include "../../drivers/heater.h"
 #include "../../drivers/pump.h"
@@ -23,24 +24,52 @@ uint32_t lastFloodTime = 0;
 float manualTakeoffRateMlH = 0.0f;
 
 uint8_t getManualPhasePowerPercent(const Settings& settings, RectPhase phase) {
+    // Используем новые настройки из ManualRectSettings
+    const float maxPowerW = settings.equipment.heaterPowerW > 0
+        ? settings.equipment.heaterPowerW
+        : 3000.0f;
+
+    float targetPowerW = 0.0f;
     switch (phase) {
         case RectPhase::STABILIZATION:
         case RectPhase::POST_HEADS_STABILIZATION:
         case RectPhase::PURGE:
-            return settings.rectParams.phasePowerPercent[RECT_POWER_STABILIZATION];
+            targetPowerW = settings.manualRect.headsPowerW * 0.8f; // Стабилизация 80% от голов
+            break;
         case RectPhase::HEADS:
-            return settings.rectParams.phasePowerPercent[RECT_POWER_HEADS];
+            targetPowerW = settings.manualRect.headsPowerW;
+            break;
         case RectPhase::BODY:
-            return settings.rectParams.phasePowerPercent[RECT_POWER_BODY];
+            targetPowerW = settings.manualRect.bodyPowerW;
+            break;
         case RectPhase::TAILS:
-            return settings.rectParams.phasePowerPercent[RECT_POWER_TAILS];
+            targetPowerW = settings.manualRect.tailsPowerW;
+            break;
         default:
             return 100;
     }
+
+    // Конвертируем в проценты
+    uint8_t powerPercent = static_cast<uint8_t>((targetPowerW / maxPowerW) * 100.0f);
+    if (powerPercent > 100) powerPercent = 100;
+    if (powerPercent < 10) powerPercent = 10;
+
+    return powerPercent;
 }
 
 float getDefaultTakeoffSpeedMlH(const Settings& settings, RectPhase phase) {
-    return getRectificationDirectTakeoffSpeedMlH(settings, phase);
+    // Используем новые настройки скорости из ManualRectSettings
+    switch (phase) {
+        case RectPhase::HEADS:
+            return settings.manualRect.headsSpeedMlH;
+        case RectPhase::BODY:
+            return settings.manualRect.bodySpeedMlH;
+        case RectPhase::TAILS:
+            // Для хвостов используем старую логику из rectParams
+            return getRectificationDirectTakeoffSpeedMlH(settings, phase);
+        default:
+            return 0.0f;
+    }
 }
 
 RectTakeoffFraction getTakeoffFractionForPhase(RectPhase phase) {
@@ -224,21 +253,66 @@ void update(SystemState& state, const Settings& settings) {
         collected = 0.0f;
     }
 
+    // Проверка автоматической смены фракций по объему
+    bool shouldChangeFraction = false;
+    RectPhase nextPhase = state.rectPhase;
+
     switch (state.rectPhase) {
         case RectPhase::HEADS:
             state.stats.headsVolume = collected;
-            if (state.stats.headsVolume > 0 && !alertSent) {
-                // Reserved for future operator notifications.
+            // Проверяем достижение целевого объема голов
+            if (settings.manualRect.headsTargetVolumeMl > 0.0f &&
+                collected >= settings.manualRect.headsTargetVolumeMl) {
+                shouldChangeFraction = true;
+                nextPhase = RectPhase::BODY;
             }
             break;
         case RectPhase::BODY:
             state.stats.bodyVolume = collected;
+            // Проверяем достижение целевого объема тела
+            if (settings.manualRect.bodyTargetVolumeMl > 0.0f &&
+                collected >= settings.manualRect.bodyTargetVolumeMl) {
+                shouldChangeFraction = true;
+                nextPhase = RectPhase::TAILS;
+            }
             break;
         case RectPhase::TAILS:
             state.stats.tailsVolume = collected;
+            // Проверяем достижение целевого объема хвостов
+            if (settings.manualRect.tailsTargetVolumeMl > 0.0f &&
+                collected >= settings.manualRect.tailsTargetVolumeMl) {
+                shouldChangeFraction = true;
+                nextPhase = RectPhase::FINISH;
+            }
             break;
         default:
             break;
+    }
+
+    // Если достигнут целевой объем - инициируем смену тары
+    if (shouldChangeFraction && !state.manualRectContainerChangePending) {
+        // Останавливаем отбор
+        RectTakeoff::stop();
+        PowerCommandGateway::setHeaterPower(
+            PowerCommandGateway::Owner::FSM,
+            PowerCommandGateway::Reason::FSM_CONTROL, 0);
+
+        // Устанавливаем флаг ожидания смены тары
+        state.manualRectContainerChangePending = true;
+        state.manualRectPendingPhase = nextPhase;
+
+        // Звуковой сигнал (если включен)
+        if (settings.manualRect.fractionChangeSoundEnabled && settings.soundEnabled) {
+            // Звуковой сигнал будет обработан в веб-интерфейсе через состояние
+            Logger::logf(0, "Manual rect: fraction change signal, %s -> %s",
+                         getPhaseName(state.rectPhase),
+                         getPhaseName(nextPhase));
+        }
+
+        MQTT::publishNotification(
+            "Смена фракции",
+            "Отбор остановлен. Смените тару и подтвердите продолжение.",
+            "info");
     }
 }
 
@@ -304,6 +378,31 @@ void setPhase(SystemState& state, RectPhase phase) {
 
 void setTakeoffRateMlH(float speedMlH) {
     manualTakeoffRateMlH = speedMlH > 0.0f ? speedMlH : 0.0f;
+}
+
+bool confirmContainerChange(SystemState& state, const Settings& settings) {
+    if (!state.manualRectContainerChangePending) {
+        return false;
+    }
+
+    // Сбрасываем флаг ожидания смены тары
+    state.manualRectContainerChangePending = false;
+
+    // Переходим к следующей фазе
+    const RectPhase nextPhase = state.manualRectPendingPhase;
+    state.manualRectPendingPhase = RectPhase::IDLE;
+
+    if (nextPhase != RectPhase::IDLE) {
+        setPhase(state, nextPhase);
+        Logger::logf(0, "Manual rect: container changed, starting %s",
+                     getPhaseName(nextPhase));
+        MQTT::publishNotification(
+            "Продолжение отбора",
+            "Смена тары подтверждена. Отбор возобновлён.",
+            "info");
+    }
+
+    return true;
 }
 
 } // namespace ManualRect

@@ -4,7 +4,7 @@
 
 /**
  * HMI v2 — чистая модель страницы: окно прокрутки, рельс, нижняя панель и
- * подбор размера шрифта для информационного табло.
+ * подбор размера шрифта для информационного табло и навигационный стек.
  *
  * Здесь нет ни LovyanGFX, ни обращений к g_state: только арифметика, которую
  * можно проверить host-тестами. Рендерер и обработчик касаний используют эти
@@ -14,7 +14,43 @@
 namespace HmiPage {
 
 /** Сколько строк помещается в рабочей области при 480×320. */
-static constexpr uint8_t kVisibleRows = 5;
+static constexpr uint8_t kVisibleRows = 4;
+
+/** История экранов каркаса; хранит не более восьми предыдущих страниц. */
+struct PageStack {
+  static constexpr uint8_t kCapacity = 8;
+  uint8_t values[kCapacity] = {0};
+  uint8_t depth = 0;
+
+  void clear() { depth = 0; }
+
+  bool push(uint8_t page) {
+    if (depth < kCapacity) {
+      values[depth++] = page;
+      return true;
+    }
+    for (uint8_t i = 1; i < kCapacity; ++i) {
+      values[i - 1] = values[i];
+    }
+    values[kCapacity - 1] = page;
+    return false;
+  }
+
+  bool pop(uint8_t &page) {
+    if (depth == 0) return false;
+    page = values[--depth];
+    return true;
+  }
+
+  bool replace(uint8_t page) {
+    if (depth == 0) {
+      values[depth++] = page;
+      return false;
+    }
+    values[depth - 1] = page;
+    return true;
+  }
+};
 
 /** Минимальная высота ползунка рельса прокрутки, px. */
 static constexpr uint16_t kMinThumbPx = 26;
@@ -72,6 +108,17 @@ inline Window windowFor(uint16_t scroll, uint16_t total, uint8_t visible) {
                                  : 0;
   window.count = remaining < visible ? static_cast<uint8_t>(remaining) : visible;
   return window;
+}
+
+/** Индекс строки под касанием, либо total если касание вне списка. */
+inline uint16_t rowIndexAt(int16_t y, int16_t headerY, int16_t rowHeight,
+                           uint16_t scroll, uint16_t total, uint8_t visible) {
+  if (y < headerY || rowHeight <= 0) return total;
+  const int32_t relative = static_cast<int32_t>(y) - headerY;
+  const uint16_t row = static_cast<uint16_t>(relative / rowHeight);
+  if (row >= visible) return total;
+  const uint16_t index = static_cast<uint16_t>(scroll + row);
+  return index < total ? index : total;
 }
 
 /** Нужен ли рельс прокрутки. */

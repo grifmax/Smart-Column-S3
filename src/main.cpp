@@ -35,9 +35,15 @@
 
 // Управление
 #include "control/demo_simulator.h"
+#include "control/control_command_queue.h"
+#include "control/dosing_session.h"
 #include "control/fsm.h"
+#include "control/power_command_gateway.h"
+#include "control/pump_calibration.h"
+#include "control/runtime_metrics.h"
 #include "control/rect_takeoff.h"
 #include "control/safety.h"
+#include "control/service_test_session.h"
 #include "control/state_snapshot.h"
 #include "control/v2/status_adapter.h"
 #include "control/watt_control.h"
@@ -273,6 +279,16 @@ void setup() {
   g_state.mode = Mode::IDLE;
   g_state.rectPhase = RectPhase::IDLE;
   g_state.safetyOk = true;
+  if (!StateSnapshot::init()) {
+    LOG_E("State snapshot mutex creation failed");
+  }
+  if (!PowerCommandGateway::init()) {
+    LOG_E("Power command gateway mutex creation failed; outputs remain denied");
+  }
+  PowerCommandGateway::setControlTaskToCurrent();
+  if (!ControlCommandQueue::init()) {
+    LOG_E("Control command queue creation failed");
+  }
   runBootGpioSelfTest();
   logOneWireBootCheckResult();
 
@@ -340,6 +356,12 @@ void setup() {
           g_settings.lastRebootReason, g_settings.rebootCountTotal,
           g_settings.rebootCountWdt, g_settings.rebootCountCrash,
           g_settings.rebootCountUser);
+  }
+
+  // Инициализировать snapshot до старта сетевых обработчиков. Публикации
+  // дальше выполняются управляющим циклом.
+  if (!StateSnapshot::publish(g_state)) {
+    LOG_W("Initial state snapshot publication skipped");
   }
 
   // 8. Инициализация железа
@@ -528,6 +550,7 @@ static void performSystemHealthCheck(uint32_t now) {
 }
 
 void loop() {
+  const uint32_t cycleStartedAtUs = micros();
   if (g_captivePortalActive) {
     g_dnsServer.processNextRequest();
   }
@@ -545,18 +568,13 @@ void loop() {
     // handler processes the incoming stream.
     esp_task_wdt_reset();
     yield();
+    ControlRuntimeMetrics::recordCycle(cycleStartedAtUs, micros());
     return;
   }
 
   // Демо-симулятор
   if (g_settings.demoMode) {
     DemoSimulator::update(g_state, g_settings);
-  }
-
-  // Безопасность
-  if (now - g_lastSafetyCheck >= INTERVAL_SAFETY_CHECK) {
-    g_lastSafetyCheck = now;
-    Safety::check(g_state, g_settings);
   }
 
   // Чтение сенсоров (только если не в демо-режиме)
@@ -579,7 +597,32 @@ void loop() {
     }
   }
 
+  // Оцениваем safety после опроса входов в этом цикле, чтобы использовать
+  // самую свежую доступную выборку каждого датчика.
+  now = millis();
+  if (now - g_lastSafetyCheck >= INTERVAL_SAFETY_CHECK) {
+    g_lastSafetyCheck = now;
+    Safety::check(g_state, g_settings);
+  }
+
+  // Service dosing must be supervised by the control loop, not by TFT frame
+  // cadence or panel health.
+  DosingSession::update(g_state);
+
+  // TFT actions enter the same queue as asynchronous interfaces, so handle the
+  // display tick before draining commands and updating the FSM.
+  if (now - g_lastDisplayUpdate >= (HMI_LEGACY ? INTERVAL_DISPLAY_UPDATE : 25U)) {
+    g_lastDisplayUpdate = now;
+    Display::update(g_state);
+  }
+
   // FSM - Логика режимов
+  const uint32_t controlBatchStartedAtUs = micros();
+  const uint32_t controlQueueStartedAtUs = micros();
+  const uint8_t controlCommandsProcessed =
+      ControlCommandQueue::process(g_state, g_settings);
+  ControlRuntimeMetrics::recordControlCommandBatch(
+      micros() - controlQueueStartedAtUs, controlCommandsProcessed);
   if (g_state.safetyOk && !g_state.paused) {
     FSM::update(g_state, g_settings);
   }
@@ -587,29 +630,42 @@ void loop() {
     DemoSimulator::syncHardware(g_state, g_settings);
   }
 
-  // Интерфейсы
-    if (now - g_lastDisplayUpdate >= INTERVAL_DISPLAY_UPDATE) {
-      g_lastDisplayUpdate = now;
-      Display::update(g_state);
-    }
+  const bool safetyLatched = Safety::isLatched(g_state) || !g_state.safetyOk;
+  const bool processOwnsOutputs =
+      g_state.mode != Mode::IDLE && !g_state.paused;
+  const bool serviceOwnsOutputs =
+      g_state.paused || ServiceTestSession::blocksProcessResume() ||
+      DosingSession::outputActive() || PumpCalibrationSession::outputActive();
+  const PowerCommandGateway::Owner ownerFloor =
+      safetyLatched ? PowerCommandGateway::Owner::SAFETY
+      : (processOwnsOutputs ? PowerCommandGateway::Owner::FSM
+         : (serviceOwnsOutputs ? PowerCommandGateway::Owner::SERVICE
+                               : PowerCommandGateway::Owner::MANUAL));
+  PowerCommandGateway::setOwnerFloor(ownerFloor);
+  const uint32_t outputQueueStartedAtUs = micros();
+  const uint8_t outputCommandsProcessed =
+      PowerCommandGateway::processPendingCommands();
+  ControlRuntimeMetrics::recordOutputCommandBatch(
+      micros() - outputQueueStartedAtUs, outputCommandsProcessed);
+  PumpCalibrationSession::update();
+  ControlRuntimeMetrics::recordControlBatch(
+      micros() - controlBatchStartedAtUs);
 
-    // Публикация согласованного снимка для HTTP/WebSocket-задач: они живут на
-    // другом ядре и не должны читать g_state, пока цикл его обновляет.
-    if (now - g_lastStateSnapshot >= STATE_SNAPSHOT_INTERVAL_MS) {
-      g_lastStateSnapshot = now;
-      StateSnapshot::publish(g_state);
-    }
+  // Публикация согласованного снимка для HTTP/WebSocket-задач: они живут на
+  // другом ядре и не должны читать g_state, пока цикл его обновляет.
+  if (now - g_lastStateSnapshot >= STATE_SNAPSHOT_INTERVAL_MS) {
+    g_lastStateSnapshot = now;
+    StateSnapshot::publish(g_state);
+  }
 
   #if WEB_SERVER_ENABLED
-    if (now - g_lastWebBroadcast >= INTERVAL_WEB_BROADCAST) {
-      g_lastWebBroadcast = now;
-      SystemState webSnapshot;
-      if (StateSnapshot::read(webSnapshot)) {
-        WebServer::broadcastState(webSnapshot);
-      } else {
-        WebServer::broadcastState(g_state);
-      }
+  if (now - g_lastWebBroadcast >= INTERVAL_WEB_BROADCAST) {
+    g_lastWebBroadcast = now;
+    SystemState webSnapshot;
+    if (StateSnapshot::read(webSnapshot)) {
+      WebServer::broadcastState(webSnapshot);
     }
+  }
   #endif
 
   CloudTunnel::loop();
@@ -662,6 +718,7 @@ void loop() {
       MQTT::publishHealth(g_state.health);
   }
 
+  ControlRuntimeMetrics::recordCycle(cycleStartedAtUs, micros());
   esp_task_wdt_reset();
   yield();
   delay(Pump::isRunning() ? 1 : 10);
@@ -690,6 +747,13 @@ void initHardware() {
   digitalWrite(PIN_BUZZER, LOW);
 }
 
+// Часы панели и имена лог-файлов используют time(); без источника времени
+// они остаются на --:-- и session_<millis>. SNTP запускается при подъёме сети.
+static void startNetworkTime() {
+  configTzTime("MSK-3", "pool.ntp.org", "time.google.com",
+               "time.windows.com");
+}
+
 void initNetwork() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
@@ -700,6 +764,8 @@ void initNetwork() {
     g_dnsServer.start(53, "*", WiFi.softAPIP());
     g_captivePortalActive = true;
   }
+
+  if (WiFi.status() == WL_CONNECTED) startNetworkTime();
 
   if (MDNS.begin("smart-column")) {
     MDNS.addService("http", "tcp", 80);

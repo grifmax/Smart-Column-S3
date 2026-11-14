@@ -10,6 +10,7 @@
  */
 
 #include "sensors.h"
+#include "control/ads1115_logic.h"
 #include "control/pzem_sample_policy.h"
 #include "control/safety.h"
 #include "ds2482_100.h"
@@ -48,6 +49,56 @@ static bool bmp2_ok = false;
 // ADS1115 (16-бит АЦП)
 static Adafruit_ADS1115 ads1115;
 static bool ads_ok = false;
+static constexpr uint8_t ADS1115_I2C_ADDRESS = I2C_ADDR_ADS1115;
+
+struct Ads1115WireBus {
+    bool readRegister(uint8_t reg, uint16_t &value) {
+        Wire.beginTransmission(ADS1115_I2C_ADDRESS);
+        if (Wire.write(reg) != 1 || Wire.endTransmission(false) != 0) {
+            return false;
+        }
+        if (Wire.requestFrom(ADS1115_I2C_ADDRESS, static_cast<uint8_t>(2)) != 2 ||
+            Wire.available() < 2) {
+            while (Wire.available()) (void)Wire.read();
+            return false;
+        }
+        const int high = Wire.read();
+        const int low = Wire.read();
+        if (high < 0 || low < 0) return false;
+        value = static_cast<uint16_t>((static_cast<uint16_t>(high) << 8) |
+                                      static_cast<uint16_t>(low));
+        return true;
+    }
+
+    bool writeRegister(uint8_t reg, uint16_t value) {
+        Wire.beginTransmission(ADS1115_I2C_ADDRESS);
+        if (Wire.write(reg) != 1 ||
+            Wire.write(static_cast<uint8_t>(value >> 8)) != 1 ||
+            Wire.write(static_cast<uint8_t>(value & 0xFF)) != 1) {
+            return false;
+        }
+        return Wire.endTransmission() == 0;
+    }
+};
+
+struct Ads1115SystemClock {
+    uint32_t nowMs() const { return millis(); }
+    void waitOneMs() const { delay(1); }
+};
+
+// Adafruit's blocking readADC_SingleEnded() has no conversion timeout. Keep
+// sensor failures from pinning the controller loop inside that library call.
+static bool readAds1115ChannelBounded(uint8_t channel, int16_t &adc,
+                                     float &voltage) {
+    adc = 0;
+    voltage = 0.0f;
+    if (!ads_ok || channel > 3) return false;
+
+    Ads1115WireBus bus;
+    Ads1115SystemClock clock;
+    return Ads1115Logic::readSingleEnded(
+        bus, clock, channel, ADS1115_CONVERSION_TIMEOUT_MS, adc, voltage);
+}
 
 // PZEM-004T v3.0 (измеритель мощности)
 static HardwareSerial pzemSerial(PZEM_UART_NUM);
@@ -189,13 +240,19 @@ static void invalidateTemperatureState(Temperatures& temps) {
     for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
         temps.valid[i] = false;
     }
-    temps.cube = 0.0f;
-    temps.columnBottom = 0.0f;
-    temps.columnTop = 0.0f;
-    temps.reflux = 0.0f;
-    temps.tsa = 0.0f;
-    temps.waterIn = 0.0f;
-    temps.waterOut = 0.0f;
+}
+
+static float lastTemperatureValue(const Temperatures& temps, uint8_t index) {
+    switch (index) {
+        case TEMP_CUBE: return temps.cube;
+        case TEMP_COLUMN_BOTTOM: return temps.columnBottom;
+        case TEMP_COLUMN_TOP: return temps.columnTop;
+        case TEMP_REFLUX: return temps.reflux;
+        case TEMP_TSA: return temps.tsa;
+        case TEMP_WATER_IN: return temps.waterIn;
+        case TEMP_WATER_OUT: return temps.waterOut;
+        default: return 0.0f;
+    }
 }
 
 static uint8_t sanitizeDs2482Address(uint8_t address) {
@@ -698,6 +755,8 @@ void init() {
 
     // Инициализация I2C
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+    Wire.setClock(400000);
+    Wire.setTimeOut(I2C_TRANSACTION_TIMEOUT_MS);
 
     ensureTemperatureBusConfigured(true);
 
@@ -800,6 +859,7 @@ void readTemperatures(Temperatures& temps) {
     float values[TEMP_COUNT];
     uint8_t validCount = 0;
     for (uint8_t i = 0; i < TEMP_COUNT; i++) {
+        values[i] = lastTemperatureValue(temps, i);
         if (ds18b20Found[i]) {
             float raw = DEVICE_DISCONNECTED_C;
             const bool readOk = backendReadTemperature(ds18b20Addresses[i], raw);
@@ -807,7 +867,6 @@ void readTemperatures(Temperatures& temps) {
             // Проверка валидности (-127 = ошибка)
             if (!readOk || !isValidDs18b20Reading(raw)) {
                 temps.valid[i] = false;
-                values[i] = 0;
                 // Инкремент счетчика ошибок конкретного датчика
                 if (i < 7 && Safety::isTempSensorInstalled(g_settings.equipment, i)) {
                     g_state.health.tempErrors[i]++;
@@ -815,11 +874,11 @@ void readTemperatures(Temperatures& temps) {
             } else {
                 temps.valid[i] = true;
                 values[i] = raw + tempCal.offsets[i];
+                temps.lastUpdateBySensor[i] = now;
                 validCount++;
             }
         } else {
             temps.valid[i] = false;
-            values[i] = 0;
             // Датчик не найден - тоже считаем ошибкой если он должен быть включен
             if (i < 7 && Safety::isTempSensorInstalled(g_settings.equipment, i)) {
                 g_state.health.tempErrors[i]++;
@@ -866,9 +925,9 @@ void readPressure(Pressure& pressure) {
     }
 
     // Давление в кубе (датчик на ADS1115 A1)
-    if (ads_ok) {
-        int16_t adc = ads1115.readADC_SingleEnded(ADS_CHANNEL_PRESSURE);
-        float voltage = ads1115.computeVolts(adc);
+    int16_t adc = 0;
+    float voltage = 0.0f;
+    if (readAds1115ChannelBounded(ADS_CHANNEL_PRESSURE, adc, voltage)) {
         pressure.sensorAdc = adc;
         pressure.sensorVoltage = voltage;
 
@@ -901,14 +960,13 @@ void readHydrometer(Hydrometer& hydro, float temperature, const HydrometerCalibr
     // Читаем дифференциальное давление ареометра через отдельный канал ADS1115 A0
     // Давление куба и ареометр разведены: A1 = pressure, A0 = hydrometer
 
-    if (!ads_ok) {
+    int16_t adc = 0;
+    float voltage = 0.0f;
+    if (!readAds1115ChannelBounded(ADS_CHANNEL_HYDROMETER, adc, voltage)) {
         hydro.ok = false;
         hydro.valid = false;
         return;
     }
-
-    int16_t adc = ads1115.readADC_SingleEnded(ADS_CHANNEL_HYDROMETER);
-    float voltage = ads1115.computeVolts(adc);
     float kPa = (voltage - MPX5010_OFFSET) / MPX5010_SENSITIVITY;
     if (kPa < 0.0f) {
         kPa = 0.0f;
@@ -1268,16 +1326,7 @@ const char* getTemperatureBusSourceLabel() {
 }
 
 bool readAds1115Channel(uint8_t channel, int16_t& adc, float& voltage) {
-    adc = 0;
-    voltage = 0.0f;
-
-    if (!ads_ok || channel > 3) {
-        return false;
-    }
-
-    adc = ads1115.readADC_SingleEnded(channel);
-    voltage = ads1115.computeVolts(adc);
-    return true;
+    return readAds1115ChannelBounded(channel, adc, voltage);
 }
 
 void readLeakSensor(LeakSensorData& leak,

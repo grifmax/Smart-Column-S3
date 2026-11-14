@@ -3,16 +3,153 @@
 #include <string.h>
 
 #include "config.h"
+#include "control/control_command_queue.h"
 #include "control/fsm.h"
 #include "control/power_command_gateway.h"
 #include "control/service_test_session.h"
 #include "control/safety.h"
+#include "control/state_snapshot.h"
 #include "control/v2/status_adapter.h"
 #include "drivers/stirrer.h"
 #include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
 #include "storage/logger.h"
 #include "storage/nvs_manager.h"
+
+namespace {
+
+uint32_t requestedCommandId(AsyncWebServerRequest *request) {
+  if (!request->hasParam("commandId")) return 0;
+  const long value = request->getParam("commandId")->value().toInt();
+  return value > 0 ? static_cast<uint32_t>(value) : 0;
+}
+
+bool controlCommandAccepted(ControlCommandQueue::EnqueueResult result) {
+  return result == ControlCommandQueue::EnqueueResult::Accepted ||
+         result == ControlCommandQueue::EnqueueResult::Duplicate;
+}
+
+void appendControlStatus(JsonObject item,
+                         ControlCommandQueue::EnqueueResult result,
+                         uint32_t commandId,
+                         ControlCommandQueue::Status status) {
+  const bool accepted = controlCommandAccepted(result);
+  const bool queued = status == ControlCommandQueue::Status::Queued ||
+                      status == ControlCommandQueue::Status::Processing;
+  const bool applied = status == ControlCommandQueue::Status::Applied;
+  item["commandType"] = "control";
+  item["commandId"] = commandId;
+  item["accepted"] = accepted;
+  item["queued"] = queued;
+  item["applied"] = applied;
+  item["success"] = accepted && applied;
+  item["status"] = ControlCommandQueue::statusToken(status);
+}
+
+void appendOutputStatus(JsonObject item,
+                        const PowerCommandGateway::Command &command) {
+  item["commandType"] = "output";
+  item["commandId"] = command.sequence;
+  item["accepted"] = command.accepted;
+  item["queued"] = command.queued;
+  item["applied"] = command.applied;
+  item["success"] = command.accepted && command.applied;
+  item["status"] = !command.accepted ? "rejected"
+                    : command.applied ? "applied" : "queued";
+  item["rejectReason"] =
+      PowerCommandGateway::rejectReasonString(command.rejectReason);
+}
+
+void sendManualStirrerCommandResponse(
+    AsyncWebServerRequest *request, const SystemState &state,
+    ControlCommandQueue::EnqueueResult controlResult,
+    uint32_t controlCommandId, ControlCommandQueue::Status controlStatus,
+    const PowerCommandGateway::Command *outputCommand,
+    const char *message) {
+  const bool controlAccepted = controlCommandAccepted(controlResult);
+  const bool controlQueued = controlStatus == ControlCommandQueue::Status::Queued ||
+                             controlStatus == ControlCommandQueue::Status::Processing;
+  const bool controlApplied = controlStatus == ControlCommandQueue::Status::Applied;
+  const bool outputAccepted = outputCommand == nullptr || outputCommand->accepted;
+  const bool outputQueued = outputCommand != nullptr && outputCommand->queued;
+  const bool outputApplied = outputCommand == nullptr || outputCommand->applied;
+  const bool accepted = controlAccepted && outputAccepted;
+  const bool queued = controlQueued || outputQueued;
+  const bool applied = controlApplied && outputApplied;
+
+  JsonDocument response;
+  response["commandType"] = "composite";
+  response["success"] = accepted && applied;
+  response["accepted"] = accepted;
+  response["queued"] = queued;
+  response["applied"] = applied;
+  response["status"] = !accepted ? "rejected" : applied ? "applied" : "queued";
+  response["message"] = message;
+  JsonArray commands = response["commands"].to<JsonArray>();
+  JsonObject control = commands.add<JsonObject>();
+  appendControlStatus(control, controlResult, controlCommandId, controlStatus);
+  if (outputCommand != nullptr) {
+    JsonObject output = commands.add<JsonObject>();
+    appendOutputStatus(output, *outputCommand);
+  }
+  JsonObject stirrer = response["stirrer"].to<JsonObject>();
+  fillStirrerJson(stirrer, state);
+
+  String json;
+  serializeJson(response, json);
+  int httpStatus = 200;
+  if (!accepted) {
+    httpStatus = controlResult == ControlCommandQueue::EnqueueResult::Full
+                     ? 429
+                     : controlResult == ControlCommandQueue::EnqueueResult::NotInitialized
+                           ? 503
+                           : 409;
+  } else if (queued) {
+    httpStatus = 202;
+  }
+  request->send(httpStatus, "application/json", json);
+}
+
+void sendControlCommandResponse(AsyncWebServerRequest *request,
+                                ControlCommandQueue::EnqueueResult result,
+                                uint32_t commandId,
+                                ControlCommandQueue::Status status,
+                                bool sensorsOk = true) {
+  const bool queued = status == ControlCommandQueue::Status::Queued;
+  const bool applied = status == ControlCommandQueue::Status::Applied;
+  const bool accepted = result == ControlCommandQueue::EnqueueResult::Accepted ||
+                        result == ControlCommandQueue::EnqueueResult::Duplicate;
+  const bool success = accepted && applied;
+
+  JsonDocument responseDoc;
+  responseDoc["success"] = success;
+  responseDoc["accepted"] = accepted;
+  responseDoc["applied"] = applied;
+  responseDoc["queued"] = queued;
+  responseDoc["commandId"] = commandId;
+  responseDoc["status"] = ControlCommandQueue::statusToken(status);
+  if (success && !sensorsOk) {
+    responseDoc["warning"] = "No temperature sensors detected";
+  }
+  if (!success) {
+    responseDoc["message"] =
+        result == ControlCommandQueue::EnqueueResult::Full
+            ? "Control command queue is full"
+            : "Control command was rejected or superseded";
+  }
+
+  String response;
+  serializeJson(responseDoc, response);
+  const int httpStatus = success ? (queued ? 202 : 200)
+                                 : (result == ControlCommandQueue::EnqueueResult::Full
+                                        ? 429
+                                        : result == ControlCommandQueue::EnqueueResult::NotInitialized
+                                              ? 503
+                                              : 409);
+  request->send(httpStatus, "application/json", response);
+}
+
+} // namespace
 
 void registerProcessApiRoutes(AsyncWebServer &server) {
   server.on(
@@ -42,8 +179,15 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
         }
 
         JsonObject params = doc["params"].as<JsonObject>();
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+          return;
+        }
         JsonDocument responseDoc;
-        buildProcessPreflight(responseDoc, mode, modeStr, params);
+        buildProcessPreflight(responseDoc, mode, modeStr, params,
+                              stateSnapshot);
 
         String response;
         serializeJson(responseDoc, response);
@@ -72,10 +216,18 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
 
         JsonObject params = doc["params"].as<JsonObject>();
 
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+          return;
+        }
+
         Mode mode = Mode::IDLE;
         if (parseRequestedMode(modeStr, mode)) {
           JsonDocument startCheckDoc;
-          if (!buildProcessPreflight(startCheckDoc, mode, modeStr, params)) {
+          if (!buildProcessPreflight(startCheckDoc, mode, modeStr, params,
+                                     stateSnapshot)) {
             String response;
             serializeJson(startCheckDoc, response);
             request->send(409, "application/json", response);
@@ -104,19 +256,19 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
 
         const bool allowDemoSensorFailure =
             g_settings.demoMode &&
-            g_state.currentAlarm.type == AlarmType::SENSOR_FAILURE;
+            stateSnapshot.currentAlarm.type == AlarmType::SENSOR_FAILURE;
 
-        if (Safety::isLatched(g_state) && !allowDemoSensorFailure) {
+        if (Safety::isLatched(stateSnapshot) && !allowDemoSensorFailure) {
           Logger::logf(1, "Process start rejected: safety alarm is latched (%s)",
-                       g_state.currentAlarm.message[0]
-                           ? g_state.currentAlarm.message
-                           : Safety::getAlarmTypeToken(g_state.currentAlarm.type));
+                       stateSnapshot.currentAlarm.message[0]
+                           ? stateSnapshot.currentAlarm.message
+                           : Safety::getAlarmTypeToken(stateSnapshot.currentAlarm.type));
           JsonDocument errorDoc;
           errorDoc["success"] = false;
           errorDoc["message"] =
               "Safety alarm is latched. Reset the alarm before starting.";
           JsonObject alarm = errorDoc["alarm"].to<JsonObject>();
-          fillAlarmJson(alarm, g_state, g_settings);
+          fillAlarmJson(alarm, stateSnapshot, g_settings);
 
           String response;
           serializeJson(errorDoc, response);
@@ -125,20 +277,17 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
         }
 
         bool sensorsOk =
-            g_state.health.tempSensorsTotal > 0 && g_state.health.tempSensorsOk;
+            stateSnapshot.health.tempSensorsTotal > 0 &&
+            stateSnapshot.health.tempSensorsOk;
 
         if (!sensorsOk) {
           LOG_W("Starting process without temperature sensors!");
         }
 
-        if (g_state.mode != Mode::IDLE) {
+        if (stateSnapshot.mode != Mode::IDLE) {
           request->send(409, "application/json",
                         "{\"success\":false,\"message\":\"Process already active\"}");
           return;
-        }
-
-        if (g_state.mode != Mode::IDLE) {
-          FSM::stopMode(g_state);
         }
 
         if (mode == Mode::RECTIFICATION || mode == Mode::DISTILLATION ||
@@ -146,6 +295,8 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
           applyBoosterStartOverride(params, g_settings);
         }
 
+        ControlCommandQueue::StartRequest startRequest;
+        startRequest.mode = mode;
         if (mode == Mode::DISTILLATION) {
           const float speed = EditableFields::normalize(
               EditableFields::Id::DIST_SPEED_ML_H,
@@ -236,9 +387,9 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
                           "{\"success\":false,\"message\":\"Failed to save settings\"}");
             return;
           }
-          FSM::Distillation::setParams(speed, headsVol, targetVol, endTemp);
-          FSM::Distillation::setPowerWatts(powerWatts);
-          FSM::startMode(g_state, g_settings, mode);
+          startRequest.payloadKind = ControlCommandQueue::PayloadKind::Distillation;
+          startRequest.distillationUi = g_settings.distillationUi;
+          startRequest.fractionProgram = g_settings.fractionProgram;
         } else if (mode == Mode::MASHING) {
           static MashProfile runtimeProfile;
           memset(&runtimeProfile, 0, sizeof(runtimeProfile));
@@ -306,7 +457,8 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
             }
           }
 
-          FSM::Mashing::start(g_state, &runtimeProfile);
+          startRequest.payloadKind = ControlCommandQueue::PayloadKind::Mashing;
+          startRequest.mashProfile = runtimeProfile;
         } else if (mode == Mode::HOLD) {
           static TempStep runtimeSteps[10];
           uint8_t count = 0;
@@ -328,39 +480,50 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
             count = 1;
           }
 
-          FSM::Hold::start(g_state, runtimeSteps, count);
-        } else if (mode == Mode::NBK || mode == Mode::FERMENTATION) {
-          FSM::startMode(g_state, g_settings, mode);
-        } else {
-          FSM::startMode(g_state, g_settings, mode);
+          startRequest.payloadKind = ControlCommandQueue::PayloadKind::Hold;
+          startRequest.holdStepCount = count;
+          memcpy(startRequest.holdSteps, runtimeSteps,
+                 sizeof(TempStep) * count);
         }
 
-        LOG_I("Process started: mode=%s, sensors=%s", modeStr,
-              sensorsOk ? "OK" : "WARNING");
-
-        String response = "{\"success\":true,\"message\":\"Process started\"";
-        if (!sensorsOk) {
-          response += ",\"warning\":\"No temperature sensors detected\"";
+        uint32_t commandId = requestedCommandId(request);
+        if (doc["commandId"].is<uint32_t>() && commandId == 0) {
+          commandId = doc["commandId"].as<uint32_t>();
         }
-        response += "}";
-
-        request->send(200, "application/json", response);
+        ControlCommandQueue::Status status =
+            ControlCommandQueue::Status::Unknown;
+        const auto result = ControlCommandQueue::enqueueStart(
+            ControlCommandQueue::Source::Api, startRequest, commandId,
+            ControlCommandQueue::Reason::OperatorRequest, &commandId, &status);
+        if (result == ControlCommandQueue::EnqueueResult::Accepted ||
+            result == ControlCommandQueue::EnqueueResult::Duplicate) {
+          LOG_I("Process start queued: mode=%s, sensors=%s, command=%lu",
+                modeStr, sensorsOk ? "OK" : "WARNING",
+                static_cast<unsigned long>(commandId));
+        }
+        sendControlCommandResponse(request, result, commandId, status,
+                                   sensorsOk);
       });
 
   server.on("/api/process/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
-    FSM::stopMode(g_state);
-    LOG_I("Process stopped via API");
-    request->send(200, "application/json",
-                  "{\"success\":true,\"message\":\"Process stopped\"}");
+    uint32_t commandId = requestedCommandId(request);
+    ControlCommandQueue::Status status = ControlCommandQueue::Status::Unknown;
+    const auto result = ControlCommandQueue::enqueue(
+        ControlCommandQueue::Type::Stop, ControlCommandQueue::Source::Api,
+        Mode::IDLE, commandId, ControlCommandQueue::Reason::OperatorRequest,
+        &commandId, &status);
+    sendControlCommandResponse(request, result, commandId, status);
   });
 
   server.on(
       "/api/process/pause", HTTP_POST, [](AsyncWebServerRequest *request) {
-        FSM::pause(g_state);
-        ControlV2::updateRuntime(g_state, g_settings);
-        LOG_I("Process paused via API");
-        request->send(200, "application/json",
-                      "{\"success\":true,\"message\":\"Process paused\"}");
+        uint32_t commandId = requestedCommandId(request);
+        ControlCommandQueue::Status status = ControlCommandQueue::Status::Unknown;
+        const auto result = ControlCommandQueue::enqueue(
+            ControlCommandQueue::Type::Pause,
+            ControlCommandQueue::Source::Api, Mode::IDLE, commandId,
+            ControlCommandQueue::Reason::OperatorRequest, &commandId, &status);
+        sendControlCommandResponse(request, result, commandId, status);
       });
 
   server.on(
@@ -371,12 +534,74 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
               "{\"success\":false,\"message\":\"Service test session must be closed before resume\"}");
           return;
         }
-        FSM::resume(g_state);
-        ControlV2::updateRuntime(g_state, g_settings);
-        LOG_I("Process resumed via API");
-        request->send(200, "application/json",
-                      "{\"success\":true,\"message\":\"Process resumed\"}");
+        uint32_t commandId = requestedCommandId(request);
+        ControlCommandQueue::Status status = ControlCommandQueue::Status::Unknown;
+        const auto result = ControlCommandQueue::enqueue(
+            ControlCommandQueue::Type::Resume,
+            ControlCommandQueue::Source::Api, Mode::IDLE, commandId,
+            ControlCommandQueue::Reason::OperatorRequest, &commandId, &status);
+        sendControlCommandResponse(request, result, commandId, status);
       });
+
+  auto registerProcessAction = [&](const char *path,
+                                   ControlCommandQueue::Type type) {
+    server.on(path, HTTP_POST, [type](AsyncWebServerRequest *request) {
+      uint32_t commandId = requestedCommandId(request);
+      ControlCommandQueue::Status status =
+          ControlCommandQueue::Status::Unknown;
+      const auto result = ControlCommandQueue::enqueueAction(
+          type, ControlCommandQueue::Source::Api, 0, 0.0f, commandId,
+          ControlCommandQueue::Reason::ProcessAction, &commandId, &status);
+      sendControlCommandResponse(request, result, commandId, status);
+    });
+  };
+  registerProcessAction("/api/fraction-program/next",
+                        ControlCommandQueue::Type::AdvanceFractionProgram);
+  registerProcessAction("/api/fraction-program/confirm",
+                        ControlCommandQueue::Type::ConfirmFractionProgram);
+  registerProcessAction("/api/mashing/next",
+                        ControlCommandQueue::Type::MashingManualAdvance);
+
+  server.on("/api/process/command-status", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              if (!request->hasParam("commandId")) {
+                request->send(400, "application/json",
+                              "{\"success\":false,\"message\":\"commandId required\"}");
+                return;
+              }
+              const long rawId =
+                  request->getParam("commandId")->value().toInt();
+              if (rawId <= 0) {
+                request->send(400, "application/json",
+                              "{\"success\":false,\"message\":\"Invalid commandId\"}");
+                return;
+              }
+              ControlCommandQueue::Status status =
+                  ControlCommandQueue::Status::Unknown;
+              if (!ControlCommandQueue::getStatus(
+                      ControlCommandQueue::Source::Api,
+                      static_cast<uint32_t>(rawId), status)) {
+                request->send(404, "application/json",
+                              "{\"success\":false,\"message\":\"Command result not found\"}");
+                return;
+              }
+              JsonDocument responseDoc;
+              responseDoc["success"] = true;
+              responseDoc["accepted"] =
+                  status == ControlCommandQueue::Status::Queued ||
+                  status == ControlCommandQueue::Status::Processing ||
+                  status == ControlCommandQueue::Status::Applied;
+              responseDoc["applied"] =
+                  status == ControlCommandQueue::Status::Applied;
+              responseDoc["queued"] =
+                  status == ControlCommandQueue::Status::Queued;
+              responseDoc["commandId"] = static_cast<uint32_t>(rawId);
+              responseDoc["status"] =
+                  ControlCommandQueue::statusToken(status);
+              String response;
+              serializeJson(responseDoc, response);
+              request->send(200, "application/json", response);
+            });
 
   server.on(
       "/api/stirrer/start", HTTP_POST,
@@ -385,22 +610,52 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        if (!ensureStirrerReady(request)) {
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+          return;
+        }
+        if (!ensureStirrerReady(request, stateSnapshot)) {
           return;
         }
 
         const uint8_t speed = g_settings.stirrer.defaultSpeedPercent;
-        g_state.stirrer.autoMode = false;
-        PowerCommandGateway::setStirrerSpeed(
+        uint32_t controlCommandId = 0;
+        ControlCommandQueue::Status controlStatus =
+            ControlCommandQueue::Status::Unknown;
+        const auto controlResult = ControlCommandQueue::enqueueAction(
+            ControlCommandQueue::Type::SetStirrerAutoMode,
+            ControlCommandQueue::Source::Api, 0, 0.0f, 0,
+            ControlCommandQueue::Reason::OperatorRequest, &controlCommandId,
+            &controlStatus);
+        if (!controlCommandAccepted(controlResult)) {
+          sendManualStirrerCommandResponse(request, stateSnapshot,
+                                           controlResult, controlCommandId,
+                                           controlStatus, nullptr,
+                                           "Stirrer start rejected");
+          return;
+        }
+        const PowerCommandGateway::Command outputCommand =
+            PowerCommandGateway::setStirrerSpeed(
             PowerCommandGateway::Owner::MANUAL,
             PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
-        LOG_I("Stirrer started via API at %u%%", speed);
-        sendStirrerStateResponse(request, 200, true, "Stirrer started");
+        if (outputCommand.applied) LOG_I("Stirrer started via API at %u%%", speed);
+        sendManualStirrerCommandResponse(request, stateSnapshot, controlResult,
+                                         controlCommandId, controlStatus,
+                                         &outputCommand,
+                                         "Stirrer start command");
       },
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (!ensureStirrerReady(request)) {
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+          return;
+        }
+        if (!ensureStirrerReady(request, stateSnapshot)) {
           return;
         }
 
@@ -425,24 +680,58 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
           }
         }
 
-        g_state.stirrer.autoMode = false;
-        PowerCommandGateway::setStirrerSpeed(
+        uint32_t controlCommandId = 0;
+        ControlCommandQueue::Status controlStatus =
+            ControlCommandQueue::Status::Unknown;
+        const auto controlResult = ControlCommandQueue::enqueueAction(
+            ControlCommandQueue::Type::SetStirrerAutoMode,
+            ControlCommandQueue::Source::Api, 0, 0.0f, 0,
+            ControlCommandQueue::Reason::OperatorRequest, &controlCommandId,
+            &controlStatus);
+        if (!controlCommandAccepted(controlResult)) {
+          sendManualStirrerCommandResponse(request, stateSnapshot,
+                                           controlResult, controlCommandId,
+                                           controlStatus, nullptr,
+                                           "Stirrer start rejected");
+          return;
+        }
+        const PowerCommandGateway::Command outputCommand =
+            PowerCommandGateway::setStirrerSpeed(
             PowerCommandGateway::Owner::MANUAL,
             PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
-        LOG_I("Stirrer started via API at %u%%", speed);
-        sendStirrerStateResponse(request, 200, true, "Stirrer started");
+        if (outputCommand.applied) LOG_I("Stirrer started via API at %u%%", speed);
+        sendManualStirrerCommandResponse(request, stateSnapshot, controlResult,
+                                         controlCommandId, controlStatus,
+                                         &outputCommand,
+                                         "Stirrer start command");
       });
 
   server.on("/api/stirrer/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
-    if (!ensureStirrerReady(request)) {
+    SystemState stateSnapshot;
+    if (!StateSnapshot::read(stateSnapshot)) {
+      request->send(503, "application/json",
+                    "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
       return;
     }
-    g_state.stirrer.autoMode = false;
-    PowerCommandGateway::stopStirrer(
+    if (!ensureStirrerReady(request, stateSnapshot)) {
+      return;
+    }
+    uint32_t controlCommandId = 0;
+    ControlCommandQueue::Status controlStatus =
+        ControlCommandQueue::Status::Unknown;
+    const auto controlResult = ControlCommandQueue::enqueueAction(
+        ControlCommandQueue::Type::SetStirrerAutoMode,
+        ControlCommandQueue::Source::Api, 0, 0.0f, 0,
+        ControlCommandQueue::Reason::OperatorRequest, &controlCommandId,
+        &controlStatus);
+    const PowerCommandGateway::Command outputCommand =
+        PowerCommandGateway::stopStirrer(
         PowerCommandGateway::Owner::MANUAL,
         PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
-    LOG_I("Stirrer stopped via API");
-    sendStirrerStateResponse(request, 200, true, "Stirrer stopped");
+    if (outputCommand.applied) LOG_I("Stirrer stopped via API");
+    sendManualStirrerCommandResponse(request, stateSnapshot, controlResult,
+                                     controlCommandId, controlStatus,
+                                     &outputCommand, "Stirrer stop command");
   });
 
   server.on(
@@ -456,13 +745,19 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
       NULL,
       [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
          size_t index, size_t total) {
-        if (!ensureStirrerReady(request)) {
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+          return;
+        }
+        if (!ensureStirrerReady(request, stateSnapshot)) {
           return;
         }
 
         if (!Stirrer::isRunning()) {
           sendStirrerStateResponse(request, 409, false,
-                                   "Stirrer is not running");
+                                   "Stirrer is not running", stateSnapshot);
           return;
         }
 
@@ -488,12 +783,62 @@ void registerProcessApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        g_state.stirrer.autoMode = false;
-        PowerCommandGateway::setStirrerSpeed(
+        uint32_t controlCommandId = 0;
+        ControlCommandQueue::Status controlStatus =
+            ControlCommandQueue::Status::Unknown;
+        const auto controlResult = ControlCommandQueue::enqueueAction(
+            ControlCommandQueue::Type::SetStirrerAutoMode,
+            ControlCommandQueue::Source::Api, 0, 0.0f, 0,
+            ControlCommandQueue::Reason::OperatorRequest, &controlCommandId,
+            &controlStatus);
+        if (!controlCommandAccepted(controlResult)) {
+          sendManualStirrerCommandResponse(request, stateSnapshot,
+                                           controlResult, controlCommandId,
+                                           controlStatus, nullptr,
+                                           "Stirrer speed change rejected");
+          return;
+        }
+        const PowerCommandGateway::Command outputCommand =
+            PowerCommandGateway::setStirrerSpeed(
             PowerCommandGateway::Owner::MANUAL,
             PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
             static_cast<uint8_t>(requestedSpeed));
-        LOG_I("Stirrer speed changed via API to %d%%", requestedSpeed);
-        sendStirrerStateResponse(request, 200, true, "Stirrer speed updated");
+        if (outputCommand.applied) LOG_I("Stirrer speed changed via API to %d%%", requestedSpeed);
+        sendManualStirrerCommandResponse(request, stateSnapshot, controlResult,
+                                         controlCommandId, controlStatus,
+                                         &outputCommand,
+                                         "Stirrer speed command");
       });
+
+  // Подтверждение смены тары в ручной ректификации
+  server.on("/api/process/manual-rect/confirm-container", HTTP_POST,
+            [](AsyncWebServerRequest *request) {
+              if (g_state.mode != Mode::MANUAL_RECT) {
+                sendJsonError(request, 400, "Not in manual rectification mode");
+                return;
+              }
+
+              if (!g_state.manualRectContainerChangePending) {
+                sendJsonError(request, 400, "No container change pending");
+                return;
+              }
+
+              const bool confirmed = FSM::ManualRect::confirmContainerChange(
+                  g_state, g_settings);
+
+              if (!confirmed) {
+                sendJsonError(request, 500, "Failed to confirm container change");
+                return;
+              }
+
+              JsonDocument response;
+              response["success"] = true;
+              response["message"] = "Container change confirmed";
+              response["newPhase"] = static_cast<uint8_t>(g_state.rectPhase);
+              response["containerChangePending"] = g_state.manualRectContainerChangePending;
+
+              String json;
+              serializeJson(response, json);
+              request->send(200, "application/json", json);
+            });
 }

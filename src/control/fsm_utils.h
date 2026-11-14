@@ -25,8 +25,8 @@ namespace FSM {
     float getRectificationTakeoffRateMlH(const Settings& settings, float speedMlHKw);
     float getRectificationDirectTakeoffSpeedMlH(const Settings& settings, RectPhase phase);
     uint16_t applyFullHeatPower(const Settings& settings);
-    uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent);
-    uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent);
+    uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent, bool allowPressureControl = true);
+    uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent, bool allowPressureControl = true);
     bool shouldRunBoosterHeater(const SystemState& state, const Settings& settings, bool heatingPhase);
     void applyBoosterHeater(const SystemState& state, const Settings& settings, bool heatingPhase);
     

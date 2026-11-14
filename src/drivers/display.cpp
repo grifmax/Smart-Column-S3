@@ -19,6 +19,7 @@
 #include "control/v2/status_adapter.h"
 #include "control/fsm.h"
 #include "control/power_command_gateway.h"
+#include "control/autoclave_hardware_profile.h"
 #include "drivers/heater.h"
 #include "drivers/hmi_widgets.h"
 #include "drivers/pump.h"
@@ -30,8 +31,14 @@
 #include "interface/tft_hmi_policy_logic.h"
 #include "interface/tft_operator_overlay_logic.h"
 #include "interface/tft_service_test_logic.h"
+#include "interface/tft_setpoint_guard_logic.h"
+#include "interface/tft_temps_focus_logic.h"
+#include "interface/wifi_profiles.h"
 #include "interface/webserver_shared.h"
 #include "ui/hmi_page_model.h"
+#include "ui/hmi/keyboard_model.h"
+#include "ui/hmi_touch_logic.h"
+#include "ui/hmi_touch_calibration_logic.h"
 #include "profiles.h"
 #include "storage/logger.h"
 #include "storage/nvs_manager.h"
@@ -109,16 +116,17 @@ static bool touch_ok = false;
 static SPIClass touchSpi(HSPI);
 static XPT2046_Touchscreen touch(TOUCH_CS, TOUCH_IRQ);
 
-bool touchReadRaw(int16_t *x, int16_t *y) {
-#ifndef TOUCH_IGNORE_IRQ
-  if (!touch.touched())
-    return false;
-#else
-  if (!touch.tirqTouched() && !touch.touched())
-    return false;
-#endif
+static constexpr int16_t TOUCH_Z_PRESSED = 300; // matches XPT2046 Z_THRESHOLD
 
-  TS_Point p = touch.getPoint();
+bool touchReadRaw(int16_t *x, int16_t *y) {
+  // Always poll the controller. The XPT2046 library reads only while isrWake is
+  // true and clears it when pressure drops, so a release observed while the pen
+  // is still down leaves PENIRQ low: no new falling edge ever arrives and every
+  // later read fails (touch works once, then stays dead until reboot).
+  touch.isrWake = true;
+  const TS_Point p = touch.getPoint();
+  if (p.z < TOUCH_Z_PRESSED)
+    return false;
   *x = p.x;
   *y = p.y;
 
@@ -133,6 +141,24 @@ bool touchReadRaw(int16_t *x, int16_t *y) {
 
   return true;
 }
+
+// Keep in sync with Display::kTapHistorySize (display.h).
+static constexpr uint8_t kTapHistorySize = 6;
+
+// Last raw and mapped touch coordinates; exposed through /api/status so a
+// calibration fault can be told apart from a dispatch fault.
+static int16_t g_touchRawX = 0;
+static int16_t g_touchRawY = 0;
+static int16_t g_touchTapRawX = 0;
+static int16_t g_touchTapRawY = 0;
+static int16_t g_touchTapX = 0;
+static int16_t g_touchTapY = 0;
+static int16_t g_tapHistoryRawX[kTapHistorySize] = {};
+static int16_t g_tapHistoryRawY[kTapHistorySize] = {};
+static int16_t g_tapHistoryX[kTapHistorySize] = {};
+static int16_t g_tapHistoryY[kTapHistorySize] = {};
+static uint8_t g_tapHistoryCount = 0;
+static uint8_t g_tapHistoryNext = 0;
 
 static void getTouchCalibration(int16_t *xMin, int16_t *xMax, int16_t *yMin,
                                 int16_t *yMax) {
@@ -156,12 +182,16 @@ bool touchRead(int16_t *sx, int16_t *sy) {
     return false;
   }
 
+  g_touchRawX = rawX;
+  g_touchRawY = rawY;
+
   int16_t xMin, xMax, yMin, yMax;
   getTouchCalibration(&xMin, &xMax, &yMin, &yMax);
 
   // Map to screen coordinates using calibration
-  *sx = map(rawX, xMin, xMax, 0, TFT_WIDTH);
-  *sy = map(rawY, yMin, yMax, 0, TFT_HEIGHT);
+  if (xMin == xMax || yMin == yMax) return false;
+  *sx = map(rawX, xMin, xMax, 0, TFT_WIDTH - 1);
+  *sy = map(rawY, yMin, yMax, 0, TFT_HEIGHT - 1);
 
   // Clamp to screen bounds
   *sx = constrain(*sx, 0, TFT_WIDTH - 1);
@@ -369,7 +399,7 @@ struct ModeSetupDraft {
   char profilePreview[112] = {0};
 };
 
-static constexpr uint8_t TFT_PREFLIGHT_MAX_ITEMS = 24;
+static constexpr uint8_t TFT_PREFLIGHT_MAX_ITEMS = 5;
 static constexpr uint8_t TFT_PREFLIGHT_ROWS_PER_PAGE = 3;
 
 struct TftPreflightSnapshot {
@@ -377,6 +407,7 @@ struct TftPreflightSnapshot {
   bool ready = false;
   uint8_t blockingCount = 0;
   uint8_t warningCount = 0;
+  uint8_t passedCount = 0;
   uint8_t itemCount = 0;
   uint32_t checkedAtMs = 0;
   char title[64] = {0};
@@ -469,6 +500,10 @@ struct UiState {
 };
 
 static UiState ui;
+static HmiTouch::State g_hmiTouchState;
+static uint32_t g_touchPollCount = 0;
+static uint32_t g_touchPressedCount = 0;
+static uint32_t g_touchTapCount = 0;
 static bool handleOperatorOverlayTap(int16_t tx, int16_t ty,
                                      const SystemState &state);
 static bool syncOperatorOverlay(const SystemState &state);
@@ -490,6 +525,9 @@ static SparklineBuffer<30> cubeTempHistory;
 static SparklineBuffer<30> topTempHistory;
 static uint32_t lastSparklineUpdateMs = 0;
 
+// Four settled samples are the minimum for a usable raw position.
+static const uint8_t UI_CAL_MIN_SAMPLES = 4;
+
 static const uint16_t UI_TAP_MOVE_TOLERANCE = 24;
 static const uint32_t UI_TAP_MAX_DURATION_MS = 700;
 static const uint32_t UI_TAP_MIN_INTERVAL_MS = 220;
@@ -504,54 +542,40 @@ struct TouchEvent {
 };
 
 static TouchEvent readTouchEvent() {
-  TouchEvent ev;
-  int16_t sx = 0;
-  int16_t sy = 0;
-  const uint32_t now = millis();
-  bool pressed = touch_ok && touchRead(&sx, &sy);
-  ev.pressed = pressed;
-  ev.x = sx;
-  ev.y = sy;
-
-  if (pressed && !ui.touchPressed) {
-    ui.touchDownX = sx;
-    ui.touchDownY = sy;
-    ui.touchLastX = sx;
-    ui.touchLastY = sy;
-    ui.touchDownMs = now;
-  } else if (pressed && ui.touchPressed) {
-    ui.touchLastX = sx;
-    ui.touchLastY = sy;
+  int16_t sx = 0, sy = 0;
+  const bool rawPressed = touch_ok && touchRead(&sx, &sy);
+  g_touchPollCount++;
+  if (rawPressed) g_touchPressedCount++;
+  const HmiTouch::Event sample = HmiTouch::update(
+      g_hmiTouchState, HmiTouch::Sample{rawPressed, sx, sy}, millis());
+  TouchEvent event;
+  event.pressed = sample.pressed;
+  event.tapped = sample.tapped;
+  event.released = sample.released;
+  event.x = sample.x;
+  event.y = sample.y;
+  if (sample.tapped) {
+    g_touchTapCount++;
+    g_touchTapRawX = g_touchRawX;
+    g_touchTapRawY = g_touchRawY;
+    g_touchTapX = sample.x;
+    g_touchTapY = sample.y;
+    g_tapHistoryRawX[g_tapHistoryNext] = g_touchTapRawX;
+    g_tapHistoryRawY[g_tapHistoryNext] = g_touchTapRawY;
+    g_tapHistoryX[g_tapHistoryNext] = g_touchTapX;
+    g_tapHistoryY[g_tapHistoryNext] = g_touchTapY;
+    g_tapHistoryNext =
+        static_cast<uint8_t>((g_tapHistoryNext + 1) % kTapHistorySize);
+    if (g_tapHistoryCount < kTapHistorySize) g_tapHistoryCount++;
   }
-
-  if (!pressed && ui.touchPressed) {
-    ev.released = true;
-    ev.x = ui.touchLastX;
-    ev.y = ui.touchLastY;
-
-    const uint32_t touchDurationMs = now - ui.touchDownMs;
-    const int32_t dx = static_cast<int32_t>(ui.touchLastX) -
-                       static_cast<int32_t>(ui.touchDownX);
-    const int32_t dy = static_cast<int32_t>(ui.touchLastY) -
-                       static_cast<int32_t>(ui.touchDownY);
-    const uint32_t move = static_cast<uint32_t>(abs(dx) + abs(dy));
-
-    if (now >= ui.ignoreTapUntilMs &&
-        touchDurationMs <= UI_TAP_MAX_DURATION_MS &&
-        move <= UI_TAP_MOVE_TOLERANCE &&
-        (now - ui.lastTapMs) > UI_TAP_MIN_INTERVAL_MS) {
-      ev.tapped = true;
-      ui.lastTapMs = now;
-    }
-  }
-
-  ui.touchPressed = pressed;
-  return ev;
+  ui.touchPressed = sample.pressed;
+  return event;
 }
 
 static void armScreenSwitchGuard() {
   const uint32_t now = millis();
   ui.ignoreTapUntilMs = now + UI_SCREEN_SWITCH_GUARD_MS;
+  HmiTouch::armScreenGuard(g_hmiTouchState, now, UI_SCREEN_SWITCH_GUARD_MS);
 }
 
 static const char *getDisplayRedrawReasonKey(DisplayRedrawReason reason) {
@@ -685,12 +709,15 @@ static void switchRoot(UiScreen screen) {
 }
 
 typedef void (*ValueSaveCallback)(float);
+static bool isTftSetpointLocked(EditableFields::Id field);
+
 struct ValueEditState {
   const EditableFields::Descriptor *descriptor = nullptr;
   float value;
   ValueSaveCallback onSave;
   bool returnToModeMonitor = false;
   bool returnToProcessParams = false;
+  bool lockedAtOpen = false;
 };
 static ValueEditState edit;
 
@@ -703,6 +730,7 @@ static void openValueEdit(EditableFields::Id field, float val,
   edit.onSave = cb;
   edit.returnToModeMonitor = returnToModeMonitor;
   edit.returnToProcessParams = returnToProcessParams;
+  edit.lockedAtOpen = isTftSetpointLocked(field);
   pushScreen(UI_VALUE_EDIT);
 }
 
@@ -1059,7 +1087,19 @@ static const UiScreenPolicy &getUiScreenPolicy(UiScreen screen) {
   return kUiScreenPolicies[0];
 }
 
+static bool hmi2OwnsScreen(UiScreen screen) {
+  if (HMI_LEGACY) return false;
+  return screen == UI_DASHBOARD || screen == UI_MODE_MONITOR ||
+      screen == UI_SETTINGS || screen == UI_SERVICE || screen == UI_CONTROL ||
+      screen == UI_ALL_TEMPS || screen == UI_MODE_PICKER ||
+      screen == UI_PROFILE_PICKER || screen == UI_MODE_SETUP ||
+      screen == UI_PROCESS_EVENTS || screen == UI_VALUE_EDIT;
+}
+static bool hmi2HandleHomeTap(int16_t tx, int16_t ty, const SystemState &state);
+static void hmi2RenderRoot(const SystemState &state, bool full);
+
 static UiScreen getMonitorRootScreenForState(const SystemState &state) {
+  if (!HMI_LEGACY) return UI_DASHBOARD;
   return isModeRunning(state) ? UI_MODE_MONITOR : UI_DASHBOARD;
 }
 
@@ -1250,6 +1290,62 @@ static bool isModeRunning(const SystemState &state) {
   return state.mode != Mode::IDLE;
 }
 
+static TftSetpointGuard::OutputActivity readOutputActivity() {
+  TftSetpointGuard::OutputActivity activity;
+  const ServiceTestSession::Snapshot session =
+      ServiceTestSession::getSnapshot();
+  activity.serviceTest =
+      ui.serviceTestOutputActive ||
+      session.phase == ServiceTestSession::Phase::SAFE_PAUSED ||
+      session.phase == ServiceTestSession::Phase::TEST_ACTIVE ||
+      session.phase == ServiceTestSession::Phase::STOPPING;
+  activity.heater = Heater::getDiagnostics().active;
+  activity.pump = Pump::isRunning();
+  activity.stirrer = Stirrer::isRunning();
+  activity.valve = Valves::getStartStop() > 0 || Valves::getWater() ||
+                   Valves::getHeads() || Valves::getBody() ||
+                   Valves::getTails() || Valves::getUno();
+  activity.dosing = DosingSession::outputActive();
+  activity.calibration = PumpCalibrationSession::outputActive();
+  activity.processRunning = isModeRunning(g_state);
+  return activity;
+}
+
+static TftSetpointGuard::SetpointClass classifySetpoint(
+    EditableFields::Id field) {
+  using Id = EditableFields::Id;
+  switch (field) {
+  case Id::EQUIPMENT_HEATER_POWER_W:
+  case Id::EQUIPMENT_BOOSTER_HEATER_POWER_W:
+  case Id::EQUIPMENT_MIN_HEATER_SUBMERGE_L:
+  case Id::COOLING_PWM_HOLD_PERCENT:
+  case Id::COOLING_PWM_PULL_MS:
+  case Id::PUMP_CALIBRATION_ML_PER_REV:
+  case Id::STIRRER_DEFAULT_SPEED_PERCENT:
+  case Id::SAFETY_PRESSURE_MAX_MMHG:
+  case Id::SAFETY_TSA_MAX_C:
+  case Id::SAFETY_WATER_OUT_MAX_C:
+  case Id::SAFETY_WATER_OUT_RISE_RATE_C_MIN:
+  case Id::SAFETY_PRESSURE_RISE_RATE_MMHG_MIN:
+    return TftSetpointGuard::SetpointClass::Actuator;
+  case Id::MANUAL_HEATER_POWER_PERCENT:
+  case Id::MANUAL_PUMP_SPEED_ML_H:
+  case Id::MANUAL_RECT_SPEED_ML_H:
+  case Id::MANUAL_RECT_POWER_PERCENT:
+  case Id::DIST_SPEED_ML_H:
+  case Id::DIST_POWER_PERCENT:
+  case Id::DIST_END_TEMPERATURE_C:
+    return TftSetpointGuard::SetpointClass::RuntimeAllowed;
+  default:
+    return TftSetpointGuard::SetpointClass::ProcessConstant;
+  }
+}
+
+static bool isTftSetpointLocked(EditableFields::Id field) {
+  return TftSetpointGuard::isLocked(classifySetpoint(field),
+                                    readOutputActivity());
+}
+
 static bool isMonitorRootScreen(UiScreen screen) {
   return getUiScreenPolicy(screen).autoMonitorRoot;
 }
@@ -1305,6 +1401,8 @@ static TftHmiPolicyLogic::RuntimeMode getTftHmiRuntimeMode(Mode mode) {
     return RuntimeMode::Nbk;
   case Mode::FERMENTATION:
     return RuntimeMode::Fermentation;
+  case Mode::AUTOCLAVE:
+    return RuntimeMode::Autoclave;
   case Mode::IDLE:
   default:
     return RuntimeMode::Idle;
@@ -1353,6 +1451,8 @@ static const char *getModeMonitorAccessHint(Mode mode) {
   case Mode::FERMENTATION:
     return ru ? "Брожение: только просмотр"
               : "Fermentation: view only";
+  case Mode::AUTOCLAVE:
+    return ru ? "Автоклав: только просмотр" : "Autoclave: view only";
   default:
     return ru ? "Монитор: только просмотр" : "Monitor: view only";
   }
@@ -1468,6 +1568,10 @@ static uint16_t dimmedButtonColor() {
 }
 
 static bool startModeFromControl(Mode mode) {
+  if (mode == Mode::AUTOCLAVE &&
+      !AutoclaveHardwareProfile::isSteamAvailable()) {
+    return false;
+  }
   ControlCommandQueue::StartRequest request;
   request.mode = mode;
   switch (mode) {
@@ -1475,6 +1579,7 @@ static bool startModeFromControl(Mode mode) {
   case Mode::MANUAL_RECT:
   case Mode::NBK:
   case Mode::FERMENTATION:
+  case Mode::AUTOCLAVE:
     break;
   case Mode::DISTILLATION:
     request.payloadKind = ControlCommandQueue::PayloadKind::Distillation;
@@ -2020,6 +2125,7 @@ static bool refreshTftPreflight() {
   g_tftPreflight.ready = doc["ready"] | false;
   g_tftPreflight.blockingCount = doc["blockingCount"] | 0;
   g_tftPreflight.warningCount = doc["warningCount"] | 0;
+  g_tftPreflight.passedCount = doc["summaryPassedCount"] | 0;
   const char *title = doc["title"] | "Pre-flight";
   const char *detail = doc["detail"] | "";
   strncpy(g_tftPreflight.title, title, sizeof(g_tftPreflight.title) - 1);
@@ -2027,17 +2133,24 @@ static bool refreshTftPreflight() {
   strncpy(g_tftPreflight.detail, detail, sizeof(g_tftPreflight.detail) - 1);
   g_tftPreflight.detail[sizeof(g_tftPreflight.detail) - 1] = '\0';
 
-  JsonArray items = doc["items"].as<JsonArray>();
+  JsonArray items = doc["summaryChecks"].as<JsonArray>();
   uint8_t index = 0;
   for (JsonObject item : items) {
     if (index >= TFT_PREFLIGHT_MAX_ITEMS) {
       break;
     }
     const char *itemTitle = item["title"] | "";
+    const char *itemStatus = item["status"] | "";
     const char *itemDetail = item["detail"] | "";
     const char *itemTone = item["tone"] | "muted";
-    strncpy(g_tftPreflight.itemTitle[index], itemTitle,
-            sizeof(g_tftPreflight.itemTitle[index]) - 1);
+    if (itemStatus[0] != '\0') {
+      snprintf(g_tftPreflight.itemTitle[index],
+               sizeof(g_tftPreflight.itemTitle[index]), "%s · %s", itemTitle,
+               itemStatus);
+    } else {
+      strncpy(g_tftPreflight.itemTitle[index], itemTitle,
+              sizeof(g_tftPreflight.itemTitle[index]) - 1);
+    }
     g_tftPreflight.itemTitle[index]
         [sizeof(g_tftPreflight.itemTitle[index]) - 1] = '\0';
     strncpy(g_tftPreflight.itemDetail[index], itemDetail,
@@ -2141,6 +2254,14 @@ static void formatSetupParameters(Mode mode, char *out, size_t outSize) {
              ru ? "Цель и длительность — в параметрах брожения"
                 : "Target and duration are in fermentation settings");
     break;
+  case Mode::AUTOCLAVE:
+    snprintf(out, outSize, "%s",
+             AutoclaveHardwareProfile::isSteamAvailable()
+                 ? (ru ? "Параметры автоклава доступны для просмотра"
+                       : "Autoclave settings are available for review")
+                 : (ru ? "Запуск закрыт: аппаратный профиль не подтверждён"
+                       : "Start blocked: hardware profile is not approved"));
+    break;
   default:
     snprintf(out, outSize, "%s", ru ? "Нет параметров" : "No parameters");
     break;
@@ -2172,6 +2293,17 @@ static void saveCubeVolume(float val) {
 static void savePackingCoeff(float val) {
   g_settings.equipment.packingCoeff = EditableFields::normalize(
       EditableFields::Id::EQUIPMENT_PACKING_COEFFICIENT, val);
+  NVSManager::saveSettings(g_settings);
+}
+static void saveMinHeaterSubmerge(float val) {
+  g_settings.equipment.minHeaterSubmergeL = EditableFields::normalize(
+      EditableFields::Id::EQUIPMENT_MIN_HEATER_SUBMERGE_L, val);
+  NVSManager::saveSettings(g_settings);
+}
+static void saveBoosterHeaterPower(float val) {
+  g_settings.equipment.boosterHeaterPowerW = EditableFields::normalizeU16(
+      EditableFields::Id::EQUIPMENT_BOOSTER_HEATER_POWER_W,
+      static_cast<uint32_t>(val + 0.5f));
   NVSManager::saveSettings(g_settings);
 }
 
@@ -2457,6 +2589,20 @@ static float getSensorTemperatureValue(uint8_t role,
   }
 }
 
+static void saveDisplayBrightness(float value) {
+  const uint8_t percent = static_cast<uint8_t>(
+      EditableFields::normalize(EditableFields::Id::DISPLAY_BRIGHTNESS_PERCENT,
+                                value));
+  const uint8_t previous = g_settings.displaySettings.brightness;
+  g_settings.displaySettings.brightness =
+      static_cast<uint8_t>((static_cast<uint16_t>(percent) * 255U + 50U) / 100U);
+  if (!NVSManager::saveSettings(g_settings)) {
+    g_settings.displaySettings.brightness = previous;
+    return;
+  }
+  Display::setBrightness(percent);
+}
+
 static void saveSensorTemperatureOffset(float value) {
   const uint8_t role = ui.sensorCalibrationTempRole < TEMP_COUNT
                            ? ui.sensorCalibrationTempRole
@@ -2722,6 +2868,36 @@ static void saveCoolingPwmPullMs(float val) {
   NVSManager::saveSettings(g_settings);
 }
 
+static void saveSafetyPressureMax(float val) {
+  g_settings.safety.pressureMaxMmHg = EditableFields::normalize(
+      EditableFields::Id::SAFETY_PRESSURE_MAX_MMHG, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveSafetyTsaMax(float val) {
+  g_settings.safety.tsaMaxC =
+      EditableFields::normalize(EditableFields::Id::SAFETY_TSA_MAX_C, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveSafetyWaterOutMax(float val) {
+  g_settings.safety.waterOutMaxC = EditableFields::normalize(
+      EditableFields::Id::SAFETY_WATER_OUT_MAX_C, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveSafetyWaterOutRiseRate(float val) {
+  g_settings.safety.waterOutRiseRateCMin = EditableFields::normalize(
+      EditableFields::Id::SAFETY_WATER_OUT_RISE_RATE_C_MIN, val);
+  NVSManager::saveSettings(g_settings);
+}
+
+static void saveSafetyPressureRiseRate(float val) {
+  g_settings.safety.pressureRiseRateMmHgMin = EditableFields::normalize(
+      EditableFields::Id::SAFETY_PRESSURE_RISE_RATE_MMHG_MIN, val);
+  NVSManager::saveSettings(g_settings);
+}
+
 static void setFractionProgramEnabled(bool enabled) {
   g_settings.fractionProgram.enabled = enabled;
   NVSManager::saveSettings(g_settings);
@@ -2923,6 +3099,10 @@ static bool handleNavigationTap(int16_t tx, int16_t ty,
   // normal Back/footer navigation gets a chance to act on the obscured screen.
   if (TftOperatorOverlayLogic::isActive(ui.operatorOverlay)) {
     return handleOperatorOverlayTap(tx, ty, state);
+  }
+
+  if (hmi2OwnsScreen(ui.currentScreen)) {
+    return hmi2HandleHomeTap(tx, ty, state);
   }
 
   // Value edit uses the full bottom area for the Save action.
@@ -3364,6 +3544,10 @@ static bool handleModePickerScreenTap(int16_t tx, int16_t ty,
     beginModeSetup(Mode::FERMENTATION);
     return true;
   }
+  if (hit(tx, ty, CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH)) {
+    beginModeSetup(Mode::AUTOCLAVE);
+    return true;
+  }
   return false;
 }
 
@@ -3636,6 +3820,14 @@ static bool handleValueEditScreenTap(int16_t tx, int16_t ty,
     return true;
   }
   const EditableFields::Id field = edit.descriptor->id;
+  const bool locked = isTftSetpointLocked(field);
+  if (locked) {
+    if (hit(tx, ty, 10, 202, 225, 44)) {
+      popScreen();
+      return true;
+    }
+    return true;
+  }
   if (hit(tx, ty, VALUE_EDIT_BTN_X1, VALUE_EDIT_BTN_Y, VALUE_EDIT_BTN_W,
           VALUE_EDIT_BTN_H)) {
     edit.value = EditableFields::normalize(field,
@@ -3660,7 +3852,11 @@ static bool handleValueEditScreenTap(int16_t tx, int16_t ty,
                                            edit.value + edit.descriptor->fastStep);
     return true;
   }
-  if (hit(tx, ty, 10, 202, TFT_WIDTH - 20, 44)) {
+  if (hit(tx, ty, 10, 202, 225, 44)) {
+    popScreen();
+    return true;
+  }
+  if (hit(tx, ty, 245, 202, 225, 44)) {
     if (edit.onSave)
       edit.onSave(EditableFields::normalize(field, edit.value));
     if (edit.returnToProcessParams && isModeRunning(g_state)) {
@@ -5533,6 +5729,8 @@ static const char *getDisplayModeName(Mode mode) {
     return "NBK";
   case Mode::FERMENTATION:
     return ru ? "Брожение" : "Ferment";
+  case Mode::AUTOCLAVE:
+    return ru ? "Автоклав" : "Autoclave";
   case Mode::IDLE:
   default:
     return ru ? "Ожидание" : "Idle";
@@ -7151,557 +7349,10 @@ static void renderRootFooter(
                           // second monitor. Runtime telemetry belongs to
                           // UI_MODE_MONITOR after a process starts.
                           // ============================================================================
-// HMI v2 — каркас главного экрана, геометрия «B» (согласована по макету):
-// шапка 32 px + 4 строки x 60 px + нижняя панель 48 px = 320 px ровно.
-// Остальные экраны пока остаются старыми.
-// ============================================================================
-static constexpr int16_t HMI2_HEADER_H = 32;
-static constexpr int16_t HMI2_ROW_H = 60;
-static constexpr int16_t HMI2_ROW_GAP = 0;
-static constexpr int16_t HMI2_FOOTER_H = 48;
-static constexpr uint8_t HMI2_VISIBLE_ROWS = HmiPage::kVisibleRows;
-// Keep these coordinates identical to docs/prototype/tft-menu-v3.html.
-// The prototype is rendered at native 480x320, so every value here is a TFT
-// pixel rather than a scaled design unit.
-static constexpr int16_t HMI2_MARGIN_X = 0;
-static constexpr int16_t HMI2_RAIL_W = 48;
+// HMI2 core is kept in its own translation-unit include because it shares
+// display.cpp's hardware globals and legacy callbacks during the migration.
+#include "ui/hmi/hmi2_core.inc"
 
-static uint8_t hmi2Section = 0;
-static uint8_t hmi2Scroll = 0;
-
-static const char *const kHmi2Sections[] = {
-    "ГЛАВНАЯ",   "РЕЖИМ",      "НАСТР. 1/3", "НАСТР. 2/3",
-    "НАСТР. 3/3", "БЕЗОП.",    "СЕРВИС",     "ПРОЦЕСС"};
-static constexpr uint8_t kHmi2SectionCount =
-    sizeof(kHmi2Sections) / sizeof(kHmi2Sections[0]);
-
-enum class Hmi2RowType : uint8_t { Link, Read, Value, Bool, Notice };
-
-struct Hmi2Row {
-  Hmi2RowType type;
-  const char *label;
-  char value[24];
-  char unit[10];
-  const char *linkText;
-  uint16_t tone;
-};
-
-static Hmi2Row g_hmi2Rows[8];
-static uint8_t g_hmi2RowCount = 0;
-
-static void hmi2Add(Hmi2RowType type, const char *label, const char *value,
-                    const char *unit, const char *linkText, uint16_t tone) {
-  if (g_hmi2RowCount >= (sizeof(g_hmi2Rows) / sizeof(g_hmi2Rows[0]))) {
-    return;
-  }
-  Hmi2Row &row = g_hmi2Rows[g_hmi2RowCount++];
-  row.type = type;
-  row.label = label;
-  row.linkText = linkText;
-  row.tone = tone;
-  row.value[0] = '\0';
-  row.unit[0] = '\0';
-  if (value != nullptr) {
-    strncpy(row.value, value, sizeof(row.value) - 1);
-    row.value[sizeof(row.value) - 1] = '\0';
-  }
-  if (unit != nullptr) {
-    strncpy(row.unit, unit, sizeof(row.unit) - 1);
-    row.unit[sizeof(row.unit) - 1] = '\0';
-  }
-}
-
-static void hmi2FormatClock(char *out, size_t size) {
-  time_t now = time(nullptr);
-  struct tm info;
-  if (now > 1600000000 && localtime_r(&now, &info) != nullptr) {
-    snprintf(out, size, "%02d:%02d", info.tm_hour, info.tm_min);
-  } else {
-    snprintf(out, size, "--:--");
-  }
-}
-
-static uint8_t hmi2BuildRows() {
-  g_hmi2RowCount = 0;
-  char buf[24];
-  if (hmi2Section == 0) {
-    hmi2Add(Hmi2RowType::Link, "Режим", getDisplayModeName(g_state.mode),
-            nullptr, "ВЫБРАТЬ", COLOR_PRIMARY);
-    snprintf(buf, sizeof(buf), "%.1f", g_state.temps.cube);
-    hmi2Add(Hmi2RowType::Read, "Куб", buf, "°C", nullptr, COLOR_INFO);
-    snprintf(buf, sizeof(buf), "%u",
-             static_cast<unsigned>(g_state.power.power));
-    hmi2Add(Hmi2RowType::Read, "Мощность", buf, "Вт", nullptr, COLOR_INFO);
-    snprintf(buf, sizeof(buf), "%u",
-             static_cast<unsigned>(g_state.pump.speedMlPerHour));
-    hmi2Add(Hmi2RowType::Read, "Отбор", buf, "мл/ч", nullptr, COLOR_INFO);
-    const bool alarm = Safety::isLatched(g_state);
-    hmi2Add(Hmi2RowType::Link, "Безопасность", alarm ? "АВАРИЯ" : "НОРМА",
-            nullptr, "ОТКРЫТЬ", alarm ? COLOR_DANGER : COLOR_SUCCESS);
-    hmi2Add(Hmi2RowType::Link, "Сервис", "", nullptr, "ОТКРЫТЬ",
-            COLOR_PRIMARY);
-  } else if (hmi2Section == 1) { // РЕЖИМ
-    hmi2Add(Hmi2RowType::Link, "Режим", getDisplayModeName(g_state.mode),
-            nullptr, "ВЫБРАТЬ", COLOR_PRIMARY);
-    static char profileBuf[28];
-    snprintf(profileBuf, sizeof(profileBuf), "%s",
-             getActiveProfileName().c_str());
-    hmi2Add(Hmi2RowType::Link, "Профиль", profileBuf, nullptr, "ВЫБРАТЬ",
-            COLOR_INFO);
-    hmi2Add(Hmi2RowType::Link, "Параметры режима", "", nullptr,
-            "НАСТРОИТЬ", COLOR_INFO);
-    hmi2Add(Hmi2RowType::Notice, "Перед стартом",
-            "проверка 5 пунктов", nullptr, nullptr, COLOR_WARNING);
-    hmi2Add(Hmi2RowType::Link, "Старт процесса", "", nullptr, "СТАРТ",
-            COLOR_SUCCESS);
-  } else if (hmi2Section == 7) { // ПРОЦЕСС
-    snprintf(buf, sizeof(buf), "%s%s", getDisplayModeName(g_state.mode),
-             g_state.paused ? " · ПАУЗА" : "");
-    hmi2Add(Hmi2RowType::Read, "Режим", buf, nullptr, nullptr, COLOR_INFO);
-    snprintf(buf, sizeof(buf), "%.1f", g_state.temps.cube);
-    hmi2Add(Hmi2RowType::Read, "Куб", buf, "°C", nullptr, COLOR_INFO);
-    snprintf(buf, sizeof(buf), "%.1f", g_state.temps.columnBottom);
-    hmi2Add(Hmi2RowType::Read, "Низ колонны", buf, "°C", nullptr,
-            COLOR_INFO);
-    snprintf(buf, sizeof(buf), "%u",
-             static_cast<unsigned>(g_state.power.power));
-    hmi2Add(Hmi2RowType::Read, "Мощность", buf, "Вт", nullptr, COLOR_INFO);
-    snprintf(buf, sizeof(buf), "%u",
-             static_cast<unsigned>(g_state.pump.speedMlPerHour));
-    hmi2Add(Hmi2RowType::Read, "Отбор", buf, "мл/ч", nullptr, COLOR_INFO);
-    hmi2Add(Hmi2RowType::Link, "Параметры процесса", "", nullptr,
-            "ОТКРЫТЬ", COLOR_INFO);
-    hmi2Add(Hmi2RowType::Link, "Журнал", "", nullptr, "ОТКРЫТЬ",
-            COLOR_INFO);
-  } else if (hmi2Section == 6) { // СЕРВИС
-    hmi2Add(Hmi2RowType::Link, "Все температуры", "", nullptr,
-            "ОТКРЫТЬ", COLOR_INFO);
-    hmi2Add(Hmi2RowType::Link, "Проверка оборудования", "", nullptr,
-            "ОТКРЫТЬ", COLOR_WARNING);
-    hmi2Add(Hmi2RowType::Link, "Дозирование", "", nullptr, "ОТКРЫТЬ",
-            COLOR_PRIMARY);
-    hmi2Add(Hmi2RowType::Link, "Журнал", "", nullptr, "ОТКРЫТЬ", COLOR_INFO);
-    hmi2Add(Hmi2RowType::Link, "Калибровка тача", "", nullptr, "НАЧАТЬ",
-            COLOR_WARNING);
-    snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(ESP.getFreeHeap() / 1024));
-    hmi2Add(Hmi2RowType::Read, "Свободная RAM", buf, "кБ", nullptr,
-            COLOR_INFO);
-    snprintf(buf, sizeof(buf), "%d", static_cast<int>(WiFi.RSSI()));
-    hmi2Add(Hmi2RowType::Read, "RSSI", buf, "дБм", nullptr, COLOR_INFO);
-    char build[16];
-    FwBuildInfo::format(build, sizeof(build));
-    snprintf(buf, sizeof(buf), "%s · %s", FW_VERSION, build);
-    hmi2Add(Hmi2RowType::Read, "Версия", buf, nullptr, nullptr, COLOR_PRIMARY);
-  } else {
-    hmi2Add(Hmi2RowType::Notice, "Раздел в разработке",
-            "строки появятся после переноса", nullptr, nullptr,
-            COLOR_WARNING);
-    hmi2Add(Hmi2RowType::Notice, "Макет",
-            "проверяем размеры строк", nullptr, nullptr, COLOR_INFO);
-  }
-  return g_hmi2RowCount;
-}
-
-static void hmi2DrawHeader() {
-  tft.fillRect(0, 0, TFT_WIDTH, HMI2_HEADER_H, colorNavBg());
-  tft.drawFastHLine(0, HMI2_HEADER_H - 1, TFT_WIDTH, colorBorder());
-
-  const uint16_t accent = colorAccent();
-  tft.setFont(&fonts::efontJA_16);
-  tft.setTextSize(1);
-  tft.drawRect(6, 8, 16, 16, accent);
-  tft.fillRect(9, 11, 4, 4, accent);
-  tft.fillRect(15, 11, 4, 4, accent);
-  tft.fillRect(9, 17, 4, 4, accent);
-  tft.fillRect(15, 17, 4, 4, accent);
-
-  char title[24];
-  copyFittedText(kHmi2Sections[hmi2Section], 150, title, sizeof(title));
-  tft.setTextSize(1);
-  tft.setTextColor(colorFg());
-  tft.setTextDatum(middle_left);
-  drawDisplayString(title, 28, HMI2_HEADER_H / 2);
-
-  drawButton(267, 3, 48, 27, "<", COLOR_DANGER, TFT_WHITE);
-  drawButton(322, 3, 48, 27, ">", COLOR_DANGER, TFT_WHITE);
-
-  char clock[8];
-  hmi2FormatClock(clock, sizeof(clock));
-  tft.setTextSize(1);
-  tft.setTextColor(colorFg());
-  tft.setTextDatum(middle_right);
-  drawDisplayString(clock, TFT_WIDTH - 35, HMI2_HEADER_H / 2);
-  tft.drawCircle(TFT_WIDTH - 19, HMI2_HEADER_H / 2, 11, colorBorder());
-  tft.fillCircle(TFT_WIDTH - 19, HMI2_HEADER_H / 2, 7, COLOR_WARNING);
-  tft.setTextDatum(top_left);
-}
-
-static void hmi2DrawRow(int16_t y, uint8_t index, const Hmi2Row &row) {
-  const int16_t x = HMI2_MARGIN_X;
-  const int16_t w = TFT_WIDTH - 2 * HMI2_MARGIN_X - HMI2_RAIL_W;
-  const int16_t h = HMI2_ROW_H - HMI2_ROW_GAP;
-
-  // Чередование фона — как в макете, чтобы строки читались по отдельности.
-  tft.fillRect(x, y, w, h, (index & 1) ? colorCard() : colorNavBg());
-  tft.drawFastHLine(x, y + h - 1, w, colorBorder());
-
-  if (row.type == Hmi2RowType::Notice) {
-    tft.setTextSize(1);
-    tft.setTextColor(row.tone);
-    tft.setTextDatum(middle_left);
-    drawDisplayString("!", x + 10, y + 20);
-    tft.setTextColor(colorFg());
-    drawDisplayString(row.label, x + 28, y + 20);
-    tft.setTextSize(1);
-    tft.setTextColor(colorMuted());
-    drawDisplayString(row.value, x + 28, y + 42);
-    tft.setTextDatum(top_left);
-    return;
-  }
-
-  int16_t rightEdge = x + w - 10;
-  if (row.type == Hmi2RowType::Link && row.linkText != nullptr) {
-    const int16_t bw = 104;
-    const int16_t bh = 40;
-    drawButton(rightEdge - bw, y + (h - bh) / 2, bw, bh, row.linkText, row.tone,
-               TFT_WHITE);
-    rightEdge -= (bw + 8);
-  } else if (row.type == Hmi2RowType::Bool) {
-    const int16_t bs = 30;
-    const int16_t bx = rightEdge - bs;
-    const int16_t by = y + (h - bs) / 2;
-    tft.drawRoundRect(bx, by, bs, bs, 5, colorBorder());
-    if (row.value[0] == '1') {
-      tft.fillRoundRect(bx + 5, by + 5, bs - 10, bs - 10, 3, row.tone);
-    }
-    rightEdge -= (bs + 8);
-  }
-
-  if (row.type == Hmi2RowType::Value || row.type == Hmi2RowType::Read) {
-    // Read — только значение (главный экран), Value — значение со степперами.
-    if (row.type == Hmi2RowType::Value) {
-      const int16_t stepW = 44;
-      const int16_t stepH = 40;
-      const int16_t stepY = y + (h - stepH) / 2;
-      drawButton(rightEdge - stepW, stepY, stepW, stepH, "+",
-                 colorButtonBody(), colorFg());
-      drawButton(rightEdge - 2 * stepW - 4, stepY, stepW, stepH, "-",
-                 colorButtonBody(), colorFg());
-      rightEdge -= (2 * stepW + 8);
-    }
-
-    if (row.unit[0] != '\0') {
-      tft.setTextSize(1);
-      tft.setTextColor(colorMuted());
-      tft.setTextDatum(middle_right);
-      drawDisplayString(row.unit, rightEdge, y + h / 2);
-      rightEdge -= (displayTextWidth(row.unit) + 8);
-    }
-
-    tft.setTextSize(1);
-    tft.setTextColor(row.tone);
-    tft.setTextDatum(middle_right);
-    drawDisplayString(row.value, rightEdge, y + h / 2);
-    rightEdge -= (displayTextWidth(row.value) + 12);
-    tft.setTextDatum(top_left);
-  }
-
-  char label[24];
-  copyFittedText(row.label, rightEdge - x - 16, label, sizeof(label));
-  tft.setTextSize(1);
-  tft.setTextColor(colorFg());
-  tft.setTextDatum(middle_left);
-  drawDisplayString(label, x + 10, y + h / 2);
-  tft.setTextDatum(top_left);
-}
-
-static void hmi2DrawRail(uint8_t total) {
-  const int16_t x = TFT_WIDTH - HMI2_RAIL_W + 3;
-  const int16_t top = HMI2_HEADER_H + 3;
-  const int16_t height = HMI2_VISIBLE_ROWS * HMI2_ROW_H - 6;
-  tft.fillRect(TFT_WIDTH - HMI2_RAIL_W, HMI2_HEADER_H, HMI2_RAIL_W,
-               HMI2_VISIBLE_ROWS * HMI2_ROW_H, colorNavBg());
-  drawButton(x, top, 42, 37, "▲", colorButtonBody(), colorFg());
-  drawButton(x, TFT_HEIGHT - HMI2_FOOTER_H - 42, 42, 37, "▼",
-             colorButtonBody(), colorFg());
-  const int16_t trackTop = top + 41;
-  const int16_t trackBottom = TFT_HEIGHT - HMI2_FOOTER_H - 54;
-  const int16_t trackH = trackBottom - trackTop;
-  tft.fillRoundRect(TFT_WIDTH - HMI2_RAIL_W + 21, trackTop, 7, trackH, 4,
-                    colorButtonBody());
-  if (total <= HMI2_VISIBLE_ROWS) {
-    tft.fillRoundRect(TFT_WIDTH - HMI2_RAIL_W + 21, trackTop, 7, trackH, 4,
-                      colorAccent());
-  } else {
-    const uint8_t maxFirst = static_cast<uint8_t>(total - HMI2_VISIBLE_ROWS);
-    const int16_t thumbH = trackH * HMI2_VISIBLE_ROWS / total;
-    const int16_t travel = trackH - thumbH;
-    const int16_t off =
-        (maxFirst == 0) ? 0
-                        : travel * static_cast<int16_t>(hmi2Scroll) / maxFirst;
-    tft.fillRoundRect(TFT_WIDTH - HMI2_RAIL_W + 21, trackTop + off, 7, thumbH,
-                      4, colorAccent());
-  }
-  char counter[12];
-  snprintf(counter, sizeof(counter), "%u-%u/%u",
-           static_cast<unsigned>(hmi2Scroll + 1),
-           static_cast<unsigned>(hmi2Scroll + HMI2_VISIBLE_ROWS > total
-                                     ? total
-                                     : hmi2Scroll + HMI2_VISIBLE_ROWS),
-           static_cast<unsigned>(total));
-  tft.setTextSize(1);
-  tft.setTextColor(colorFg());
-  tft.setTextDatum(middle_center);
-  drawDisplayString(counter, TFT_WIDTH - HMI2_RAIL_W / 2,
-                    TFT_HEIGHT - HMI2_FOOTER_H - 52);
-  tft.setTextDatum(top_left);
-}
-
-static void hmi2DrawFooter(bool running, bool paused) {
-  const int16_t y = TFT_HEIGHT - HMI2_FOOTER_H;
-  tft.fillRect(0, y, TFT_WIDTH, HMI2_FOOTER_H, colorNavBg());
-  tft.drawFastHLine(0, y, TFT_WIDTH, colorBorder());
-  const int16_t bh = 38;
-  const int16_t by = y + (HMI2_FOOTER_H - bh) / 2;
-  if (running) {
-    drawButton(6, by, 152, bh, paused ? "ПРОДОЛЖИТЬ" : "ПАУЗА",
-               colorButtonBody(), colorFg());
-    drawButton(164, by, 152, bh, "СТОП", COLOR_DANGER, TFT_WHITE);
-    drawButton(322, by, 152, bh, "СЕРВИС", colorButtonBody(), colorFg());
-    return;
-  }
-  drawButton(6, by, 152, bh, "НАЗАД", colorButtonBody(), colorFg());
-  drawButton(164, by, 152, bh, "ВЫХОД", colorButtonBody(), colorFg());
-  drawButton(322, by, 152, bh, "СОХРАНИТЬ", COLOR_DARK_GREY, colorMuted());
-}
-
-static void hmi2RenderHome(bool full) {
-  if (full) {
-    tft.fillScreen(colorBg());
-  }
-  hmi2DrawHeader();
-  const uint8_t total = hmi2BuildRows();
-  const uint8_t maxFirst =
-      (total > HMI2_VISIBLE_ROWS)
-          ? static_cast<uint8_t>(total - HMI2_VISIBLE_ROWS)
-          : static_cast<uint8_t>(0);
-  if (hmi2Scroll > maxFirst) {
-    hmi2Scroll = maxFirst;
-  }
-  // При частичном обновлении очищаем только рабочую область. Иначе страница с
-  // меньшим числом строк оставит фрагменты предыдущего списка.
-  tft.fillRect(0, HMI2_HEADER_H, TFT_WIDTH,
-               HMI2_VISIBLE_ROWS * HMI2_ROW_H, colorBg());
-  for (uint8_t i = 0; i < HMI2_VISIBLE_ROWS; ++i) {
-    const int16_t y = HMI2_HEADER_H + i * HMI2_ROW_H;
-    const uint8_t index = static_cast<uint8_t>(hmi2Scroll + i);
-    if (index < total) {
-      hmi2DrawRow(y, index, g_hmi2Rows[index]);
-    }
-  }
-  hmi2DrawRail(total);
-  hmi2DrawFooter(isModeRunning(g_state), g_state.paused);
-}
-
-static bool hmi2HandleHomeTap(int16_t tx, int16_t ty,
-                              const SystemState &state) {
-  (void)state;
-  if (hit(tx, ty, 267, 3, 48, 27)) {
-    hmi2Section = static_cast<uint8_t>(
-        (hmi2Section + kHmi2SectionCount - 1) % kHmi2SectionCount);
-    hmi2Scroll = 0;
-    requestFullScreenRedraw();
-    return true;
-  }
-  if (hit(tx, ty, 322, 3, 48, 27)) {
-    hmi2Section = static_cast<uint8_t>((hmi2Section + 1) % kHmi2SectionCount);
-    hmi2Scroll = 0;
-    requestFullScreenRedraw();
-    return true;
-  }
-  const uint8_t total = hmi2BuildRows();
-  if (tx >= TFT_WIDTH - HMI2_RAIL_W &&
-      ty >= HMI2_HEADER_H &&
-      ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H) {
-    const uint8_t maxFirst =
-        (total > HMI2_VISIBLE_ROWS)
-            ? static_cast<uint8_t>(total - HMI2_VISIBLE_ROWS)
-            : static_cast<uint8_t>(0);
-    if (ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H / 2) {
-      hmi2Scroll = (hmi2Scroll > 0) ? static_cast<uint8_t>(hmi2Scroll - 1) : 0;
-    } else {
-      hmi2Scroll = (hmi2Scroll < maxFirst)
-                        ? static_cast<uint8_t>(hmi2Scroll + 1)
-                        : maxFirst;
-    }
-    requestFullScreenRedraw();
-    return true;
-  }
-  if (ty >= HMI2_HEADER_H &&
-      ty < HMI2_HEADER_H + HMI2_VISIBLE_ROWS * HMI2_ROW_H) {
-    const uint16_t index = HmiPage::rowIndexAt(
-        ty, HMI2_HEADER_H, HMI2_ROW_H, hmi2Scroll, total,
-        HMI2_VISIBLE_ROWS);
-    if (index < total) {
-      const Hmi2Row &entry = g_hmi2Rows[index];
-      if (entry.type == Hmi2RowType::Link) {
-        if (strcmp(entry.label, "Режим") == 0) {
-          pushScreen(UI_MODE_PICKER);
-          return true;
-        }
-        if (strcmp(entry.label, "Профиль") == 0) {
-          pushScreen(UI_PROFILE_PICKER);
-          return true;
-        }
-        if (strcmp(entry.label, "Параметры режима") == 0) {
-          pushScreen(UI_MODE_PARAMETERS);
-          return true;
-        }
-        if (strcmp(entry.label, "Старт процесса") == 0) {
-          pushScreen(UI_PREFLIGHT);
-          return true;
-        }
-        if (strcmp(entry.label, "Параметры процесса") == 0) {
-          pushScreen(UI_PROCESS_PARAMS);
-          return true;
-        }
-        if (strcmp(entry.label, "Журнал") == 0) {
-          openProcessEvents();
-          return true;
-        }
-        if (strcmp(entry.label, "Все температуры") == 0) {
-          pushScreen(UI_ALL_TEMPS);
-          return true;
-        }
-        if (strcmp(entry.label, "Проверка оборудования") == 0) {
-          pushScreen(UI_SERVICE_TEST);
-          return true;
-        }
-        if (strcmp(entry.label, "Дозирование") == 0) {
-          pushScreen(UI_DOSING);
-          return true;
-        }
-        if (strcmp(entry.label, "Калибровка тача") == 0) {
-          Display::startTouchCalibration();
-          return true;
-        }
-        if (strcmp(entry.label, "Безопасность") == 0) {
-          pushScreen(UI_SAFETY_VIEW);
-          return true;
-        }
-        if (strcmp(entry.label, "Сервис") == 0) {
-          pushScreen(UI_SERVICE);
-          return true;
-        }
-      }
-    }
-    return true;
-  }
-  if (ty >= TFT_HEIGHT - HMI2_FOOTER_H) {
-    if (isModeRunning(g_state)) {
-      if (hit(tx, ty, 6, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
-        enqueueTftProcessCommand(
-            g_state.paused ? ControlCommandQueue::Type::Resume
-                           : ControlCommandQueue::Type::Pause,
-            ControlCommandQueue::Reason::ProcessAction);
-        requestFullScreenRedraw();
-        return true;
-      }
-      if (hit(tx, ty, 164, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
-        enqueueTftProcessCommand(ControlCommandQueue::Type::Stop,
-                                 ControlCommandQueue::Reason::ProcessAction);
-        requestFullScreenRedraw();
-        return true;
-      }
-      if (hit(tx, ty, 322, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
-        pushScreen(UI_SERVICE);
-        return true;
-      }
-      return true;
-    }
-    if (hit(tx, ty, 6, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
-      hmi2Section = static_cast<uint8_t>(
-          (hmi2Section + kHmi2SectionCount - 1) % kHmi2SectionCount);
-      hmi2Scroll = 0;
-      requestFullScreenRedraw();
-      return true;
-    }
-    if (hit(tx, ty, 164, TFT_HEIGHT - HMI2_FOOTER_H + 5, 152, 38)) {
-      hmi2Section = 0;
-      hmi2Scroll = 0;
-      requestFullScreenRedraw();
-      return true;
-    }
-    return true;
-  }
-  return true;
-}
-
-static void renderHome(const SystemState &state,
-                                                 bool full) {
-                            if (!HMI_LEGACY) {
-                              hmi2RenderHome(full);
-                              return;
-                            }
-
-                            const bool ru = (g_settings.language == 0);
-                            tft.fillScreen(colorBg());
-                            drawHeader(ru ? "ГЛАВНАЯ" : "HOME", false);
-                            drawTabs(UI_DASHBOARD);
-
-                            drawCard(HOME_TILE_MARGIN_X,
-                                     UI_GLOBAL_STATUS_H + 8,
-                                     TFT_WIDTH - HOME_TILE_MARGIN_X * 2, 34,
-                                     colorCard());
-                            tft.setTextSize(1);
-                            tft.setFont(&fonts::efontJA_16);
-                            tft.setTextColor(colorAccent());
-                            tft.setTextDatum(middle_left);
-                            drawDisplayString("SMART COLUMN S3",
-                                              HOME_TILE_MARGIN_X + 12,
-                                              UI_GLOBAL_STATUS_H + 19);
-                            tft.setTextColor(colorMuted());
-                            tft.setTextDatum(middle_left);
-                            drawDisplayString(
-                                ru ? "Локальная панель" : "Local HMI",
-                                HOME_TILE_MARGIN_X + 174,
-                                UI_GLOBAL_STATUS_H + 19);
-                            tft.setTextDatum(top_left);
-
-                            drawButton(
-                                HOME_SAFETY_X, HOME_SAFETY_Y, HOME_SAFETY_W,
-                                HOME_SAFETY_H,
-                                state.safetyOk && !Safety::isLatched(state)
-                                    ? (ru ? "SAFETY: OK" : "SAFETY: OK")
-                                    : (ru ? "SAFETY: ТРЕВОГА"
-                                          : "SAFETY: ALARM"),
-                                state.safetyOk && !Safety::isLatched(state)
-                                    ? COLOR_SUCCESS
-                                    : COLOR_DANGER,
-                                TFT_WHITE);
-
-                            drawButton(HOME_TILE_X1, HOME_TILE_Y1, HOME_TILE_W,
-                                       HOME_TILE_H,
-                                       ru ? "РЕЖИМЫ" : "MODES", colorAccent(),
-                                       TFT_WHITE);
-                            drawButton(HOME_TILE_X2, HOME_TILE_Y1, HOME_TILE_W,
-                                       HOME_TILE_H,
-                                       ru ? "НАСТРОЙКИ" : "SETTINGS", COLOR_INFO,
-                                       TFT_WHITE);
-                            drawButton(HOME_TILE_X1, HOME_TILE_Y2, HOME_TILE_W,
-                                       HOME_TILE_H,
-                                       ru ? "ТЕМПЕРАТУРЫ" : "TEMPERATURES",
-                                       COLOR_SUCCESS, TFT_WHITE);
-                            drawButton(HOME_TILE_X2, HOME_TILE_Y2, HOME_TILE_W,
-                                       HOME_TILE_H,
-                                       ru ? "СЕРВИС" : "SERVICE", COLOR_DARK_GREY,
-                                       TFT_WHITE);
-
-                            drawFooterHint(
-                                ru ? "Выберите раздел для работы с установкой"
-                                   : "Choose a section to operate the system",
-                                colorAccent());
-                          }
 
                           static void renderDashboard(const SystemState &state,
                                                       bool full) {
@@ -8555,361 +8206,6 @@ static void renderHome(const SystemState &state,
                           static void renderModeMonitorCustomHmi(
                               const SystemState &state, bool full);
 
-                          static void renderModeMonitor(
-                              const SystemState &state, bool full) {
-                            if (state.mode != Mode::RECTIFICATION) {
-                              renderModeMonitorCustomHmi(state, full);
-                              return;
-                            }
-
-                            const bool ru = (g_settings.language == 0);
-                            const ControlV2::ModeStatusV2 &modeStatus =
-                                ControlV2::getLatestModeStatus();
-                            const ControlV2::ProcessIndicatorsV2 &indicators =
-                                ControlV2::getLatestIndicators();
-                            RootHeaderState header =
-                                buildRootHeaderState(state);
-                            const int16_t panelY = ROOT_PANEL_Y;
-                            const int16_t panelH = ROOT_PANEL_H;
-                            const int16_t leftX = ROOT_LEFT_X;
-                            const int16_t leftW = ROOT_LEFT_W;
-                            const int16_t rightX = ROOT_RIGHT_X;
-                            const int16_t rightW = ROOT_RIGHT_W;
-                            const int16_t colGap = ROOT_GRID_COL_GAP;
-                            const int16_t rowGap = ROOT_GRID_ROW_GAP;
-                            const int16_t tileW = (rightW - colGap) / 2;
-                            const int16_t tileH = (panelH - rowGap * 2) / 3;
-                            const int16_t infoY = ROOT_INFO_Y;
-
-                            if (full) {
-                              drawRootScaffold(UI_MODE_MONITOR);
-                              drawCard(leftX, panelY, leftW, panelH,
-                                       colorCard());
-
-                              drawValueTileShell(rightX, panelY, tileW, tileH,
-                                                 msg(Msg::CUBE_TEMP));
-                              drawValueTileShell(rightX + tileW + colGap,
-                                                 panelY, tileW, tileH,
-                                                 msg(Msg::TOP_T));
-                              drawValueTileShell(rightX,
-                                                 panelY + tileH + rowGap, tileW,
-                                                 tileH, msg(Msg::REFLUX_T));
-                              drawValueTileShell(rightX + tileW + colGap,
-                                                 panelY + tileH + rowGap, tileW,
-                                                 tileH, msg(Msg::TSA_T));
-                              drawValueTileShell(
-                                  rightX, panelY + (tileH + rowGap) * 2, tileW,
-                                  tileH, ru ? "СТАБ." : "STAB");
-                              drawValueTileShell(
-                                  rightX + tileW + colGap,
-                                  panelY + (tileH + rowGap) * 2, tileW, tileH,
-                                  ru ? "РИСК" : "RISK");
-
-                              drawCard(ROOT_FRAME_X, infoY, ROOT_FRAME_W, 40,
-                                       colorCard());
-                              memset(&g_dashboardCache, 0,
-                                     sizeof(g_dashboardCache));
-                              g_dashboardCache.layoutKey = 0xEE;
-                            }
-
-                            renderRootStatusBar(header, full);
-
-                            char summaryBuf[96];
-                            if (ru) {
-                              snprintf(
-                                  summaryBuf, sizeof(summaryBuf),
-                                  "ОКНО РЕЖИМА\nГол %.0f  Тело %.0f  Хв %.0f",
-                                  state.stats.headsVolume,
-                                  state.stats.bodyVolume,
-                                  state.stats.tailsVolume);
-                            } else {
-                              snprintf(summaryBuf, sizeof(summaryBuf),
-                                       "MODE WINDOW\nH %.0f  B %.0f  T %.0f",
-                                       state.stats.headsVolume,
-                                       state.stats.bodyVolume,
-                                       state.stats.tailsVolume);
-                            }
-
-                            char val[16];
-                            char topLine[32];
-                            snprintf(topLine, sizeof(topLine), "V %.0f  P %.0f",
-                                     state.power.voltage, state.pressure.cube);
-                            if (full ||
-                                strcmp(g_dashboardCache.infoLine, summaryBuf) !=
-                                    0 ||
-                                strcmp(g_dashboardCache.ioLine, topLine) != 0) {
-                              if (!full) {
-                                tft.fillRect(leftX + 6, panelY + 8, leftW - 12,
-                                             panelH - 16, colorCard());
-                              }
-                              tft.setTextColor(colorFg());
-                              tft.setTextSize(1);
-                              tft.setTextDatum(top_left);
-                              drawDisplayString(ru ? "РЕЖИМНОЕ ОКНО"
-                                                : "MODE WINDOW",
-                                             leftX + 10, panelY + 10);
-                              tft.setTextColor(tft.color565(120, 130, 140));
-                              drawDisplayString(topLine, leftX + 10, panelY + 28);
-                              tft.setTextColor(colorFg());
-                              if (ru) {
-                                snprintf(val, sizeof(val), "Гол %.0f мл",
-                                         state.stats.headsVolume);
-                                drawDisplayString(val, leftX + 10, panelY + 52);
-                                snprintf(val, sizeof(val), "Тело %.0f мл",
-                                         state.stats.bodyVolume);
-                                drawDisplayString(val, leftX + 10, panelY + 72);
-                                snprintf(val, sizeof(val), "Хв %.0f мл",
-                                         state.stats.tailsVolume);
-                                drawDisplayString(val, leftX + 10, panelY + 92);
-                              } else {
-                                snprintf(val, sizeof(val), "Heads %.0f ml",
-                                         state.stats.headsVolume);
-                                drawDisplayString(val, leftX + 10, panelY + 52);
-                                snprintf(val, sizeof(val), "Body %.0f ml",
-                                         state.stats.bodyVolume);
-                                drawDisplayString(val, leftX + 10, panelY + 72);
-                                snprintf(val, sizeof(val), "Tails %.0f ml",
-                                         state.stats.tailsVolume);
-                                drawDisplayString(val, leftX + 10, panelY + 92);
-                              }
-
-                              const char *k1 = Valves::getWater() ? "ON" : "--";
-                              const char *k2 = Valves::getHeads() ? "ON" : "--";
-                              const char *k3 =
-                                  (Heater::getPower() > 0) ? "ON" : "--";
-                              snprintf(val, sizeof(val), "K1%s K2%s K3%s", k1,
-                                       k2, k3);
-                              tft.setTextColor(tft.color565(120, 130, 140));
-                              drawDisplayString(val, leftX + 10, panelY + 120);
-
-                              strncpy(g_dashboardCache.infoLine, summaryBuf,
-                                      sizeof(g_dashboardCache.infoLine));
-                              g_dashboardCache
-                                  .infoLine[sizeof(g_dashboardCache.infoLine) -
-                                            1] = '\0';
-                              strncpy(g_dashboardCache.ioLine, topLine,
-                                      sizeof(g_dashboardCache.ioLine));
-                              g_dashboardCache
-                                  .ioLine[sizeof(g_dashboardCache.ioLine) - 1] =
-                                  '\0';
-                            }
-
-                            {
-                              const int16_t summaryX = leftX + 8;
-                              const int16_t summaryW = leftW - 16;
-                              const int16_t heroY = panelY + 32;
-                              const int16_t heroH = 42;
-                              const int16_t rowY1 = panelY + 86;
-                              const int16_t rowY2 = panelY + 104;
-                              const int16_t rowY3 = panelY + 122;
-                              const char *k1 = Valves::getWater() ? "ON" : "--";
-                              const char *k2 = Valves::getHeads() ? "ON" : "--";
-                              const char *k3 =
-                                  (Heater::getPower() > 0) ? "ON" : "--";
-                              char rowBuf[24];
-                              drawCard(leftX, panelY, leftW, panelH,
-                                       colorCard());
-                              drawPanelHeader(leftX, panelY, leftW,
-                                              getDisplayPhaseName(state),
-                                              state.paused ? COLOR_WARNING
-                                                           : colorAccent());
-                              drawCompactKeyValueRow(
-                                  leftX + 8, panelY + 36, leftW - 16,
-                                  ru ? "РЕЖИМ" : "MODE",
-                                  getDisplayModeName(state.mode),
-                                  colorAccent());
-                              snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
-                                       state.stats.headsVolume,
-                                       ru ? "мл" : "ml");
-                              drawCompactKeyValueRow(leftX + 8, panelY + 58,
-                                                     leftW - 16,
-                                                     ru ? "ГОЛОВЫ" : "HEADS",
-                                                     rowBuf, COLOR_WARNING);
-                              snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
-                                       state.stats.bodyVolume,
-                                       ru ? "мл" : "ml");
-                              drawCompactKeyValueRow(
-                                  leftX + 8, panelY + 80, leftW - 16,
-                                  ru ? "ТЕЛО" : "BODY", rowBuf, COLOR_SUCCESS);
-                              snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
-                                       state.stats.tailsVolume,
-                                       ru ? "мл" : "ml");
-                              drawCompactKeyValueRow(leftX + 8, panelY + 102,
-                                                     leftW - 16,
-                                                     ru ? "ХВОСТЫ" : "TAILS",
-                                                     rowBuf, COLOR_DANGER);
-                              snprintf(rowBuf, sizeof(rowBuf), "K1%s K2%s K3%s",
-                                       k1, k2, k3);
-                              drawStateBadge(leftX + 8, panelY + panelH - 22,
-                                             leftW - 16, 14, rowBuf,
-                                             header.safetyColor);
-                              drawCard(leftX, panelY, leftW, panelH,
-                                       colorCard());
-                              drawPanelHeader(leftX, panelY, leftW,
-                                              getDisplayPhaseName(state),
-                                              state.paused ? COLOR_WARNING
-                                                           : colorAccent());
-                              snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
-                                       state.stats.bodyVolume,
-                                       ru ? "мл" : "ml");
-                              drawSummaryHeroBlock(summaryX, heroY, summaryW,
-                                                   heroH, ru ? "ТЕЛО" : "BODY",
-                                                   rowBuf, COLOR_SUCCESS);
-                              snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
-                                       state.stats.headsVolume,
-                                       ru ? "мл" : "ml");
-                              drawCompactKeyValueRow(summaryX, rowY1, summaryW,
-                                                     ru ? "ГОЛОВЫ" : "HEADS",
-                                                     rowBuf, COLOR_WARNING);
-                              snprintf(rowBuf, sizeof(rowBuf), "%.0f %s",
-                                       state.stats.tailsVolume,
-                                       ru ? "мл" : "ml");
-                              drawCompactKeyValueRow(summaryX, rowY2, summaryW,
-                                                     ru ? "ХВОСТЫ" : "TAILS",
-                                                     rowBuf, COLOR_DANGER);
-                              snprintf(rowBuf, sizeof(rowBuf), "%.1f C",
-                                       indicators.coolingMarginC);
-                              drawCompactKeyValueRow(summaryX, rowY3, summaryW,
-                                                     ru ? "ОХЛ." : "COOL",
-                                                     rowBuf,
-                                                     indicators.coolingMarginC >=
-                                                             5.0f
-                                                         ? COLOR_SUCCESS
-                                                         : (indicators
-                                                                    .coolingMarginC >
-                                                                0.0f
-                                                                ? COLOR_WARNING
-                                                                : COLOR_DANGER));
-                              drawStateBadge(summaryX, panelY + panelH - 22,
-                                             summaryW, 14, header.safetyState,
-                                             header.safetyColor);
-                            }
-
-                            snprintf(val, sizeof(val), "%.1f",
-                                     state.temps.cube);
-                            if (full ||
-                                strcmp(g_dashboardCache.cube, val) != 0) {
-                              drawValueTileValue(rightX, panelY, tileW, tileH,
-                                                 val, "°C", COLOR_DANGER);
-                              drawValueTileValue(rightX, panelY, tileW, tileH,
-                                                 val, "°C", COLOR_DANGER,
-                                                 &cubeTempHistory);
-                              strncpy(g_dashboardCache.cube, val,
-                                      sizeof(g_dashboardCache.cube));
-                              g_dashboardCache
-                                  .cube[sizeof(g_dashboardCache.cube) - 1] =
-                                  '\0';
-                            }
-                            snprintf(val, sizeof(val), "%.1f",
-                                     state.temps.columnTop);
-                            if (full ||
-                                strcmp(g_dashboardCache.top, val) != 0) {
-                              drawValueTileValue(rightX + tileW + colGap,
-                                                 panelY, tileW, tileH, val,
-                                                 "°C", colorAccent(),
-                                                 &topTempHistory);
-                       strncpy(g_dashboardCache.top, val,
-                               sizeof(g_dashboardCache.top));
-                       g_dashboardCache.top[sizeof(g_dashboardCache.top) - 1] =
-                           '\0';
-                            }
-                            snprintf(val, sizeof(val), "%.1f",
-                                     state.temps.reflux);
-                            if (full ||
-                                strcmp(g_dashboardCache.reflux, val) != 0) {
-                              drawValueTileValue(rightX,
-                                                 panelY + tileH + rowGap, tileW,
-                                                 tileH, val, "°C", COLOR_INFO);
-                              strncpy(g_dashboardCache.reflux, val,
-                                      sizeof(g_dashboardCache.reflux));
-                              g_dashboardCache
-                                  .reflux[sizeof(g_dashboardCache.reflux) - 1] =
-                                  '\0';
-                            }
-                            snprintf(val, sizeof(val), "%.1f", state.temps.tsa);
-                            if (full ||
-                                strcmp(g_dashboardCache.tsa, val) != 0) {
-                              drawValueTileValue(rightX + tileW + colGap,
-                                                 panelY + tileH + rowGap, tileW,
-                                                 tileH, val, "°C",
-                                                 COLOR_WARNING);
-                              strncpy(g_dashboardCache.tsa, val,
-                                      sizeof(g_dashboardCache.tsa));
-                              g_dashboardCache
-                                  .tsa[sizeof(g_dashboardCache.tsa) - 1] = '\0';
-                            }
-                            snprintf(val, sizeof(val), "%.0f",
-                                     indicators.stabilityIndex * 100.0f);
-                            if (full ||
-                                strcmp(g_dashboardCache.power, val) != 0) {
-                              drawValueTileValue(
-                                  rightX, panelY + (tileH + rowGap) * 2, tileW,
-                                  tileH, val, "%",
-                                  indicators.stabilityIndex >= 0.75f
-                                      ? COLOR_SUCCESS
-                                      : (indicators.stabilityIndex >= 0.45f
-                                             ? COLOR_WARNING
-                                             : COLOR_DANGER));
-                              strncpy(g_dashboardCache.power, val,
-                                      sizeof(g_dashboardCache.power));
-                              g_dashboardCache
-                                  .power[sizeof(g_dashboardCache.power) - 1] =
-                                  '\0';
-                            }
-                            snprintf(val, sizeof(val), "%.0f",
-                                     indicators.floodRisk * 100.0f);
-                            if (full ||
-                                strcmp(g_dashboardCache.pump, val) != 0) {
-                              drawValueTileValue(
-                                  rightX + tileW + colGap,
-                                  panelY + (tileH + rowGap) * 2, tileW, tileH,
-                                  val, "%",
-                                  indicators.floodRisk < 0.35f
-                                      ? COLOR_SUCCESS
-                                      : (indicators.floodRisk < 0.65f
-                                             ? COLOR_WARNING
-                                             : COLOR_DANGER));
-                              strncpy(g_dashboardCache.pump, val,
-                                      sizeof(g_dashboardCache.pump));
-                              g_dashboardCache
-                                  .pump[sizeof(g_dashboardCache.pump) - 1] =
-                                  '\0';
-                            }
-
-                            char upBuf[16];
-                            char footerHint[96];
-                            uint16_t footerTone = COLOR_INFO;
-                            setRectificationIndicatorHint(
-                                footerHint, sizeof(footerHint), footerTone,
-                                modeStatus, indicators);
-                            formatUptimeCompact(state.uptime, upBuf,
-                                                sizeof(upBuf));
-                            if (full ||
-                                strcmp(g_dashboardCache.uptime, upBuf) != 0) {
-                              if (!full) {
-                                tft.fillRect(14, infoY + 3, TFT_WIDTH - 28, 34,
-                                             colorCard());
-                              }
-                              char footerDrawBuf[96];
-                              copyFittedText(footerHint, 350, footerDrawBuf,
-                                             sizeof(footerDrawBuf));
-                              tft.setTextColor(footerTone);
-                              tft.setTextSize(1);
-                              tft.setTextDatum(middle_left);
-                              drawDisplayString(footerDrawBuf, 20, infoY + 20);
-                              tft.setTextColor(COLOR_PRIMARY);
-                              tft.setTextDatum(middle_right);
-                              drawDisplayString(upBuf, TFT_WIDTH - 18, infoY + 20);
-                              strncpy(g_dashboardCache.uptime, upBuf,
-                                      sizeof(g_dashboardCache.uptime));
-                              g_dashboardCache
-                                  .uptime[sizeof(g_dashboardCache.uptime) - 1] =
-                                  '\0';
-                            }
-
-                            tft.setFont(&fonts::efontJA_16);
-                            tft.setTextDatum(top_left);
-                          }
 
                           static void renderModeMonitorCustomHmi(
                               const SystemState &state, bool full) {
@@ -10225,189 +9521,7 @@ static void renderHome(const SystemState &state,
                         tft.setTextDatum(top_left);
                                   }
 
-                              static void
-                              renderControl(const SystemState &state,
-                                            bool full) {
-                                if (full) {
-                                  tft.fillScreen(colorBg());
-                                  drawHeader(msg(Msg::CONTROL), false);
-                                  drawTabs(UI_CONTROL);
-                                }
-                                const bool ru = (g_settings.language == 0);
 
-                                if (state.mode == Mode::IDLE) {
-                                  drawCard(10, UI_GLOBAL_STATUS_H + 12,
-                                           TFT_WIDTH - 20, 74, colorCard());
-                                  drawPanelHeader(
-                                      10, UI_GLOBAL_STATUS_H + 12,
-                                      TFT_WIDTH - 20,
-                                      ru ? "НЕТ АКТИВНОГО ПРОЦЕССА"
-                                         : "NO ACTIVE PROCESS",
-                                      colorAccent());
-                                  tft.setTextColor(colorMuted());
-                                  tft.setTextSize(1);
-                                  tft.setTextDatum(middle_center);
-                                  drawDisplayString(
-                                      ru ? "Для нового запуска откройте РЕЖИМЫ"
-                                         : "Open MODES to start a new process",
-                                      TFT_WIDTH / 2, UI_GLOBAL_STATUS_H + 58);
-                                  tft.setTextDatum(top_left);
-                                  drawFooterHint(
-                                      ru ? "Режимы → подготовка → pre-flight"
-                                         : "Modes → setup → pre-flight",
-                                      colorAccent());
-                                  return;
-                                }
-
-                                const uint16_t modeTone =
-                                    state.paused ? COLOR_WARNING : COLOR_SUCCESS;
-                                char modeBuf[96];
-                                snprintf(modeBuf, sizeof(modeBuf), "%s / %s",
-                                         getDisplayModeName(state.mode),
-                                         getDisplayPhaseName(state));
-                                drawCard(10, CTRL_STATUS_Y, TFT_WIDTH - 20,
-                                         CTRL_STATUS_H, colorCard());
-                                tft.fillRect(12, CTRL_STATUS_Y + 2, 7,
-                                             CTRL_STATUS_H - 4, modeTone);
-                                tft.setTextColor(colorFg());
-                                tft.setTextDatum(middle_left);
-                                tft.setTextSize(1);
-                                char modeLineBuf[96];
-                                copyFittedText(modeBuf, TFT_WIDTH - 70,
-                                               modeLineBuf,
-                                               sizeof(modeLineBuf));
-                                drawDisplayString(modeLineBuf, 26,
-                                               CTRL_STATUS_Y +
-                                                   CTRL_STATUS_H / 2);
-                                tft.setTextDatum(top_left);
-                                const ControlV2::ModeStatusV2 &modeStatus =
-                                    ControlV2::getLatestModeStatus();
-                                const char *guidance =
-                                    modeStatus.operatorMessage[0] != '\0'
-                                        ? modeStatus.operatorMessage
-                                        : (modeStatus.guidance.action[0] != '\0'
-                                               ? modeStatus.guidance.action
-                                               : getModeMonitorAccessHint(
-                                                     state.mode));
-                                drawCard(10, UI_GLOBAL_STATUS_H + 37,
-                                         TFT_WIDTH - 20, 36, colorCard());
-                                drawPanelHeader(
-                                    10, UI_GLOBAL_STATUS_H + 37,
-                                    TFT_WIDTH - 20,
-                                    modeStatus.guidance.title[0] != '\0'
-                                        ? modeStatus.guidance.title
-                                        : (ru ? "ДЕЙСТВИЕ ОПЕРАТОРА"
-                                              : "OPERATOR ACTION"),
-                                    modeTone);
-                                tft.setTextColor(colorFg());
-                                tft.setTextSize(1);
-                                tft.setTextDatum(middle_left);
-                                char guidanceBuf[128];
-                                copyFittedText(guidance, TFT_WIDTH - 44,
-                                               guidanceBuf,
-                                               sizeof(guidanceBuf));
-                                drawDisplayString(guidanceBuf, 18,
-                                                  UI_GLOBAL_STATUS_H + 63);
-                                tft.setTextDatum(top_left);
-
-                                const bool runtimeEdit =
-                                    isModeMonitorEditAllowed(state.mode);
-                                const bool safetyAlert =
-                                    !state.safetyOk || Safety::isLatched(state);
-                                drawButton(PROCESS_MENU_X1, PROCESS_MENU_Y1,
-                                           PROCESS_MENU_W, PROCESS_MENU_H,
-                                           ru ? "МОНИТОР" : "MONITOR",
-                                           colorAccent(), TFT_WHITE);
-                                drawButton(PROCESS_MENU_X2, PROCESS_MENU_Y1,
-                                           PROCESS_MENU_W, PROCESS_MENU_H,
-                                           ru ? "ПАРАМЕТРЫ" : "PARAMS",
-                                           runtimeEdit ? COLOR_INFO
-                                                       : dimmedButtonColor(),
-                                           TFT_WHITE);
-                                drawButton(PROCESS_MENU_X3, PROCESS_MENU_Y1,
-                                           PROCESS_MENU_W, PROCESS_MENU_H,
-                                           ru ? "SAFETY" : "SAFETY",
-                                           safetyAlert ? COLOR_DANGER
-                                                       : COLOR_WARNING,
-                                           TFT_WHITE);
-                                drawButton(PROCESS_MENU_X1, PROCESS_MENU_Y2,
-                                           PROCESS_MENU_W, PROCESS_MENU_H,
-                                           ru ? "СОБЫТИЯ" : "EVENTS",
-                                           COLOR_DARK_GREY, TFT_WHITE);
-                                drawButton(PROCESS_MENU_X2, PROCESS_MENU_Y2,
-                                           PROCESS_MENU_W, PROCESS_MENU_H,
-                                           state.paused ? msg(Msg::RESUME)
-                                                        : msg(Msg::PAUSE),
-                                           state.paused ? COLOR_SUCCESS
-                                                        : COLOR_WARNING,
-                                           TFT_WHITE);
-                                drawButton(PROCESS_MENU_X3, PROCESS_MENU_Y2,
-                                           PROCESS_MENU_W, PROCESS_MENU_H,
-                                           msg(Msg::STOP), COLOR_DANGER,
-                                           TFT_WHITE);
-                                drawFooterHint(
-                                    runtimeEdit
-                                        ? (ru ? "Параметры этого режима можно менять в Мониторе"
-                                              : "This mode allows runtime edits in Monitor")
-                                        : (ru ? "Параметры режима сейчас только для просмотра"
-                                              : "This mode parameters are view-only"),
-                                    modeTone);
-                              }
-
-                              static void renderModePicker(
-                                  const SystemState &, bool full) {
-                                if (!full) {
-                                  return;
-                                }
-                                const bool ru = (g_settings.language == 0);
-                                tft.fillScreen(colorBg());
-                                drawHeader(ru ? "ВЫБОР РЕЖИМА" : "MODE SELECT",
-                                           false);
-                                drawTabs(UI_MODE_PICKER);
-                                drawCard(10, CTRL_STATUS_Y, TFT_WIDTH - 20,
-                                         CTRL_STATUS_H, colorCard());
-                                tft.setTextColor(colorMuted());
-                                tft.setTextSize(1);
-                                tft.setTextDatum(middle_center);
-                                drawDisplayString(
-                                    ru ? "Выбор не запускает процесс: далее подготовка"
-                                       : "Selection does not start: setup follows",
-                                    TFT_WIDTH / 2,
-                                    CTRL_STATUS_Y + CTRL_STATUS_H / 2);
-                                tft.setTextDatum(top_left);
-                                drawButton(CTRL_X1, CTRL_Y1, CTRL_BW, CTRL_BH,
-                                           getDisplayModeName(Mode::RECTIFICATION),
-                                           colorAccent(), TFT_WHITE);
-                                drawButton(CTRL_X2, CTRL_Y1, CTRL_BW, CTRL_BH,
-                                           getDisplayModeName(Mode::DISTILLATION),
-                                           COLOR_INFO, TFT_WHITE);
-                                drawButton(CTRL_X1, CTRL_Y2, CTRL_BW, CTRL_BH,
-                                           getDisplayModeName(Mode::MANUAL_RECT),
-                                           tft.color565(128, 136, 144), TFT_WHITE);
-                                drawButton(CTRL_X2, CTRL_Y2, CTRL_BW, CTRL_BH,
-                                           getDisplayModeName(Mode::MASHING),
-                                           tft.color565(114, 170, 84), TFT_WHITE);
-                                drawButton(CTRL_X1, CTRL_Y3, CTRL_BW, CTRL_BH,
-                                           getDisplayModeName(Mode::HOLD),
-                                           tft.color565(210, 150, 56), TFT_WHITE);
-                                drawButton(CTRL_X2, CTRL_Y3, CTRL_BW, CTRL_BH,
-                                           getDisplayModeName(Mode::NBK),
-                                           tft.color565(80, 144, 214), TFT_WHITE);
-                                drawButton(CTRL_X1, CTRL_Y4, CTRL_BW, CTRL_BH,
-                                           getDisplayModeName(Mode::FERMENTATION),
-                                           tft.color565(72, 168, 152), TFT_WHITE);
-                                drawCard(CTRL_X2, CTRL_Y4, CTRL_BW, CTRL_BH,
-                                         colorCard());
-                                tft.setTextColor(colorMuted());
-                                tft.setTextSize(1);
-                                tft.setTextDatum(middle_center);
-                                drawDisplayString(
-                                    ru ? "7 поддерживаемых\nрежимов"
-                                       : "7 supported\nmodes",
-                                    CTRL_X2 + CTRL_BW / 2,
-                                    CTRL_Y4 + CTRL_BH / 2);
-                                tft.setTextDatum(top_left);
-                              }
 
                               static uint16_t preflightToneColor(
                                   const char *tone) {
@@ -10518,13 +9632,25 @@ static void renderHome(const SystemState &state,
                                 if (!hasField) {
                                   drawCard(10, 80, TFT_WIDTH - 20, 106,
                                            colorCard());
-                                  tft.setTextColor(colorMuted());
+                                  const bool autoclaveBlocked =
+                                      mode == Mode::AUTOCLAVE &&
+                                      !AutoclaveHardwareProfile::isSteamAvailable();
+                                  tft.setTextColor(autoclaveBlocked
+                                                       ? COLOR_DANGER
+                                                       : colorMuted());
                                   tft.setTextSize(1);
                                   tft.setTextDatum(middle_center);
+                                  const char *emptyMessage =
+                                      mode == Mode::AUTOCLAVE
+                                          ? (autoclaveBlocked
+                                                 ? (ru ? "Пуск закрыт: профиль не подтверждён"
+                                                       : "Start blocked: profile not approved")
+                                                 : (ru ? "Уставки автоклава — только просмотр"
+                                                       : "Autoclave settings are read-only"))
+                                          : (ru ? "Выберите совместимый профиль с шагами"
+                                                : "Choose a compatible profile with steps");
                                   drawDisplayString(
-                                      ru ? "Выберите совместимый профиль с шагами"
-                                         : "Choose a compatible profile with steps",
-                                      TFT_WIDTH / 2, 133);
+                                      emptyMessage, TFT_WIDTH / 2, 133);
                                   tft.setTextDatum(top_left);
                                 }
 
@@ -10612,115 +9738,6 @@ static void renderHome(const SystemState &state,
                                     colorAccent());
                               }
 
-                              static void renderModeSetup(const SystemState &state,
-                                                          bool full) {
-                                const bool ru = (g_settings.language == 0);
-                                const int16_t cardX = 10;
-                                const int16_t cardW = TFT_WIDTH - 20;
-                                const int16_t buttonY = TFT_HEIGHT - UI_FOOTER_H - 36;
-                                if (full) {
-                                  tft.fillScreen(colorBg());
-                                  drawHeader(ru ? "ПОДГОТОВКА" : "MODE SETUP", true);
-                                  drawTabs(UI_MODE_SETUP);
-                                }
-
-                                const Mode mode = ui.setupDraft.valid
-                                                      ? ui.setupDraft.mode
-                                                      : Mode::IDLE;
-                                drawCard(cardX, UI_HEADER_H + 4, cardW, 30,
-                                         colorCard());
-                                drawPanelHeader(cardX, UI_HEADER_H + 4, cardW,
-                                                getDisplayModeName(mode),
-                                                colorAccent());
-
-                                const uint16_t profileTone =
-                                    !ui.setupDraft.profileRelevant
-                                        ? COLOR_INFO
-                                        : (ui.setupDraft.profileCompatible
-                                               ? COLOR_SUCCESS
-                                               : COLOR_WARNING);
-                                char profileLine[96];
-                                if (!ui.setupDraft.profileRelevant) {
-                                  snprintf(profileLine, sizeof(profileLine), "%s",
-                                           ru ? "Профиль для этого режима необязателен"
-                                              : "Profile is optional for this mode");
-                                } else if (ui.setupDraft.profileName[0] == '\0') {
-                                  snprintf(profileLine, sizeof(profileLine), "%s",
-                                           ru ? "Не выбран: выберите в Web UI"
-                                              : "Not selected: choose in Web UI");
-                                } else {
-                                  snprintf(profileLine, sizeof(profileLine), "%s%s",
-                                           ui.setupDraft.profileName,
-                                           ui.setupDraft.profileCompatible
-                                               ? ""
-                                               : (ru ? " — другой режим" : " — wrong mode"));
-                                }
-                                drawCard(cardX, UI_HEADER_H + 38, cardW, 34,
-                                         colorCard());
-                                drawPanelHeader(cardX, UI_HEADER_H + 38, cardW,
-                                                ui.setupDraft.profileRelevant
-                                                    ? (ru ? "ПРОФИЛЬ · ВЫБРАТЬ"
-                                                          : "PROFILE · SELECT")
-                                                    : (ru ? "ПРОФИЛЬ" : "PROFILE"),
-                                                profileTone);
-                                tft.setTextColor(profileTone);
-                                tft.setTextSize(1);
-                                tft.setTextDatum(middle_left);
-                                char fittedProfile[96];
-                                copyFittedText(profileLine, cardW - 24,
-                                               fittedProfile, sizeof(fittedProfile));
-                                drawDisplayString(fittedProfile, cardX + 10,
-                                                  UI_HEADER_H + 62);
-
-                                char params[112];
-                                formatSetupParameters(mode, params, sizeof(params));
-                                drawCard(cardX, UI_HEADER_H + 76, cardW, 44,
-                                         colorCard());
-                                drawPanelHeader(cardX, UI_HEADER_H + 76, cardW,
-                                                ru ? "ОСНОВНЫЕ ПАРАМЕТРЫ"
-                                                   : "CORE PARAMETERS",
-                                                COLOR_INFO);
-                                tft.setTextColor(colorFg());
-                                char fittedParams[112];
-                                copyFittedText(params, cardW - 24, fittedParams,
-                                               sizeof(fittedParams));
-                                drawDisplayString(fittedParams, cardX + 10,
-                                                  UI_HEADER_H + 106);
-
-                                char sensors[144];
-                                formatSetupRequiredSensors(state, mode, sensors,
-                                                           sizeof(sensors));
-                                drawCard(cardX, UI_HEADER_H + 124, cardW, 42,
-                                         colorCard());
-                                drawPanelHeader(cardX, UI_HEADER_H + 124, cardW,
-                                                ru ? "ОБЯЗАТЕЛЬНЫЕ ДАТЧИКИ"
-                                                   : "REQUIRED SENSORS",
-                                                state.safetyOk ? COLOR_SUCCESS
-                                                               : COLOR_DANGER);
-                                tft.setTextColor(colorFg());
-                                char fittedSensors[144];
-                                copyFittedText(sensors, cardW - 24, fittedSensors,
-                                               sizeof(fittedSensors));
-                                drawDisplayString(fittedSensors, cardX + 10,
-                                                  UI_HEADER_H + 154);
-
-                                const uint16_t preflightTone =
-                                    g_tftPreflight.attempted
-                                        ? (g_tftPreflight.ready ? COLOR_SUCCESS
-                                                                : COLOR_DANGER)
-                                        : COLOR_INFO;
-                                drawButton(
-                                    cardX, buttonY, cardW, 32,
-                                    g_tftPreflight.attempted
-                                        ? (g_tftPreflight.ready
-                                               ? (ru ? "PREFLIGHT: ГОТОВО"
-                                                     : "PREFLIGHT: READY")
-                                               : (ru ? "PREFLIGHT: ЕСТЬ БЛОК"
-                                                     : "PREFLIGHT: BLOCKED"))
-                                        : (ru ? "ПРОВЕРИТЬ ПЕРЕД ЗАПУСКОМ"
-                                              : "CHECK BEFORE START"),
-                                    preflightTone, TFT_WHITE);
-                              }
 
                               static void renderModeConfig(const SystemState &,
                                                            bool full) {
@@ -10749,8 +9766,21 @@ static void renderHome(const SystemState &state,
                                               : "MODE NOT SELECTED"),
                                     dirty ? COLOR_WARNING : COLOR_SUCCESS);
 
+                                const bool autoclaveMode =
+                                    ui.setupDraft.valid &&
+                                    ui.setupDraft.mode == Mode::AUTOCLAVE;
+                                const bool autoclaveProfileReady =
+                                    !autoclaveMode ||
+                                    AutoclaveHardwareProfile::isSteamAvailable();
                                 char profileLine[112];
-                                if (!ui.setupDraft.profileRelevant) {
+                                if (autoclaveMode) {
+                                  snprintf(profileLine, sizeof(profileLine), "%s",
+                                           autoclaveProfileReady
+                                               ? (ru ? "Аппаратный профиль подтверждён"
+                                                     : "Hardware profile approved")
+                                               : (ru ? "Не подтверждён · запуск заблокирован"
+                                                     : "Not approved · start is blocked"));
+                                } else if (!ui.setupDraft.profileRelevant) {
                                   snprintf(profileLine, sizeof(profileLine), "%s",
                                            ru ? "Для этого режима профиль необязателен"
                                               : "A profile is optional for this mode");
@@ -10768,10 +9798,16 @@ static void renderHome(const SystemState &state,
                                 drawCard(cardX, UI_HEADER_H + 38, cardW, 44,
                                          colorCard());
                                 drawPanelHeader(cardX, UI_HEADER_H + 38, cardW,
-                                                ru ? "ВЫБРАННЫЙ ПРОФИЛЬ"
-                                                   : "SELECTED PROFILE",
+                                                autoclaveMode
+                                                    ? (ru ? "АППАРАТНЫЙ ПРОФИЛЬ"
+                                                          : "HARDWARE PROFILE")
+                                                    : (ru ? "ВЫБРАННЫЙ ПРОФИЛЬ"
+                                                          : "SELECTED PROFILE"),
                                                 dirty ? COLOR_WARNING
-                                                      : COLOR_SUCCESS);
+                                                      : (autoclaveMode &&
+                                                                 !autoclaveProfileReady
+                                                             ? COLOR_DANGER
+                                                             : COLOR_SUCCESS));
                                 tft.setTextColor(colorFg());
                                 tft.setTextSize(1);
                                 tft.setTextDatum(middle_left);
@@ -10824,263 +9860,7 @@ static void renderHome(const SystemState &state,
                                            TFT_WHITE);
                               }
 
-                              static void renderProfilePicker(
-                                  const SystemState &, bool full) {
-                                const bool ru = (g_settings.language == 0);
-                                const int16_t cardX = 10;
-                                const int16_t cardW = TFT_WIDTH - 20;
-                                const int16_t firstRowY = UI_HEADER_H + 38;
-                                const int16_t rowH = 34;
-                                const int16_t rowPitch = 39;
-                                const int16_t pagerY = TFT_HEIGHT - UI_FOOTER_H - 36;
-                                const uint8_t pageCount = getTftProfilePageCount();
-                                if (full) {
-                                  tft.fillScreen(colorBg());
-                                  drawHeader(ru ? "ВЫБОР ПРОФИЛЯ"
-                                                : "SELECT PROFILE",
-                                             true);
-                                  drawTabs(UI_PROFILE_PICKER);
-                                }
 
-                                drawCard(cardX, UI_HEADER_H + 4, cardW, 30,
-                                         colorCard());
-                                char title[96];
-                                snprintf(title, sizeof(title), "%u %s",
-                                         static_cast<unsigned>(
-                                             g_tftProfileOptionCount),
-                                         ru ? "совместимых профилей"
-                                            : "compatible profiles");
-                                drawPanelHeader(cardX, UI_HEADER_H + 4, cardW,
-                                                title, colorAccent());
-
-                                for (uint8_t row = 0;
-                                     row < TFT_PROFILE_ROWS_PER_PAGE; ++row) {
-                                  const uint8_t index =
-                                      ui.profilePickerPage *
-                                          TFT_PROFILE_ROWS_PER_PAGE +
-                                      row;
-                                  const int16_t rowY = firstRowY + row * rowPitch;
-                                  if (index >= g_tftProfileOptionCount) {
-                                    tft.fillRect(cardX, rowY, cardW, rowH,
-                                                 colorBg());
-                                    continue;
-                                  }
-                                  const TftProfileOption &option =
-                                      g_tftProfileOptions[index];
-                                  const bool selected =
-                                      strcmp(option.id,
-                                             ui.setupDraft.profileId) == 0;
-                                  const uint16_t tone = selected
-                                                            ? COLOR_SUCCESS
-                                                            : colorAccent();
-                                  drawCard(cardX, rowY, cardW, rowH,
-                                           selected ? colorButtonBody()
-                                                    : colorCard());
-                                  tft.fillRect(cardX + 2, rowY + 2, 7,
-                                               rowH - 4, tone);
-                                  tft.setTextColor(colorFg());
-                                  tft.setTextSize(1);
-                                  tft.setTextDatum(middle_left);
-                                  char name[64];
-                                  copyFittedText(option.name, cardW - 138, name,
-                                                 sizeof(name));
-                                  drawDisplayString(name, cardX + 16,
-                                                    rowY + rowH / 2);
-                                  char meta[40];
-                                  snprintf(meta, sizeof(meta), "%s · %u",
-                                           option.builtin
-                                               ? (ru ? "встр." : "built-in")
-                                               : (ru ? "польз." : "user"),
-                                           static_cast<unsigned>(option.useCount));
-                                  tft.setTextColor(selected ? COLOR_SUCCESS
-                                                            : colorMuted());
-                                  tft.setTextDatum(middle_right);
-                                  drawDisplayString(meta, cardX + cardW - 9,
-                                                    rowY + rowH / 2);
-                                }
-                                tft.setTextDatum(top_left);
-
-                                drawButton(10, pagerY, 132, 32,
-                                           ru ? "НАЗАД" : "PREV",
-                                           ui.profilePickerPage > 0
-                                               ? COLOR_INFO
-                                               : dimmedButtonColor(),
-                                           TFT_WHITE);
-                                drawCard(148, pagerY, TFT_WIDTH - 296, 32,
-                                         colorCard());
-                                tft.setTextColor(colorMuted());
-                                tft.setTextSize(1);
-                                tft.setTextDatum(middle_center);
-                                char page[20];
-                                snprintf(page, sizeof(page), "%u / %u",
-                                         static_cast<unsigned>(
-                                             ui.profilePickerPage + 1),
-                                         static_cast<unsigned>(pageCount));
-                                drawDisplayString(page, TFT_WIDTH / 2,
-                                                  pagerY + 16);
-                                tft.setTextDatum(top_left);
-                                drawButton(TFT_WIDTH - 142, pagerY, 132, 32,
-                                           ru ? "ДАЛЕЕ" : "NEXT",
-                                           ui.profilePickerPage + 1 < pageCount
-                                               ? COLOR_INFO
-                                               : dimmedButtonColor(),
-                                           TFT_WHITE);
-
-                                if (g_tftProfileOptionCount == 0) {
-                                  drawCard(cardX, firstRowY, cardW,
-                                           rowH * 2 + 5, colorCard());
-                                  tft.setTextColor(colorMuted());
-                                  tft.setTextSize(1);
-                                  tft.setTextDatum(middle_center);
-                                  drawDisplayString(
-                                      ru ? "Нет сохранённых совместимых профилей"
-                                         : "No compatible saved profiles",
-                                      TFT_WIDTH / 2, firstRowY + rowH);
-                                  tft.setTextDatum(top_left);
-                                }
-                              }
-
-                              static void renderSafetyView(
-                                  const SystemState &state, bool full) {
-                                const bool ru = (g_settings.language == 0);
-                                const int16_t cardX = 10;
-                                const int16_t cardW = TFT_WIDTH - 20;
-                                const int16_t actionY =
-                                    TFT_HEIGHT - UI_FOOTER_H - 36;
-                                const int16_t actionW = (TFT_WIDTH - 23) / 2;
-                                if (full) {
-                                  tft.fillScreen(colorBg());
-                                  drawHeader(ru ? "SAFETY" : "SAFETY", true);
-                                  drawTabs(UI_SAFETY_VIEW);
-                                }
-
-                                const bool alarmActive =
-                                    state.currentAlarm.type != AlarmType::NONE;
-                                const bool latched = Safety::isLatched(state);
-                                char resetReason[128] = "";
-                                const bool resetAvailable =
-                                    !latched || Safety::canResetNow(
-                                                    state, g_settings,
-                                                    resetReason,
-                                                    sizeof(resetReason));
-                                const TftHmiPolicyLogic::PostAlarmAction
-                                    safeAction =
-                                        TftHmiPolicyLogic::selectPostAlarmAction(
-                                            alarmActive,
-                                            state.currentAlarm.acknowledged,
-                                            resetAvailable);
-                                const uint16_t alarmTone =
-                                    latched ? COLOR_DANGER
-                                            : (alarmActive ? COLOR_WARNING
-                                                           : COLOR_SUCCESS);
-                                const char *alarmTitle =
-                                    latched ? (ru ? "ЗАЩЁЛКНУТАЯ АВАРИЯ"
-                                                  : "LATCHED ALARM")
-                                            : (alarmActive
-                                                   ? (ru ? "АКТИВНАЯ АВАРИЯ"
-                                                         : "ACTIVE ALARM")
-                                                   : (ru ? "SAFETY: НОРМА"
-                                                         : "SAFETY: NORMAL"));
-                                const char *alarmDetail =
-                                    alarmActive && state.currentAlarm.message[0] != '\0'
-                                        ? state.currentAlarm.message
-                                        : (ui.safetyActionMessage[0] != '\0'
-                                               ? ui.safetyActionMessage
-                                               : (latched
-                                                      ? resetReason
-                                                      : (ru ? "Критичных условий нет."
-                                                            : "No critical conditions.")));
-                                drawCard(cardX, UI_HEADER_H + 4, cardW, 44,
-                                         colorCard());
-                                drawPanelHeader(cardX, UI_HEADER_H + 4, cardW,
-                                                alarmTitle, alarmTone);
-                                tft.setTextColor(colorFg());
-                                tft.setTextSize(1);
-                                tft.setTextDatum(middle_left);
-                                char alarmText[144];
-                                copyFittedText(alarmDetail, cardW - 24,
-                                               alarmText, sizeof(alarmText));
-                                drawDisplayString(alarmText, cardX + 10,
-                                                  UI_HEADER_H + 36);
-
-                                char requiredSensors[144];
-                                formatSetupRequiredSensors(state, state.mode,
-                                                           requiredSensors,
-                                                           sizeof(requiredSensors));
-                                drawCard(cardX, UI_HEADER_H + 52, cardW, 36,
-                                         colorCard());
-                                drawPanelHeader(cardX, UI_HEADER_H + 52, cardW,
-                                                ru ? "ОБЯЗАТЕЛЬНЫЕ ДАТЧИКИ"
-                                                   : "REQUIRED SENSORS",
-                                                state.safetyOk ? COLOR_SUCCESS
-                                                               : COLOR_DANGER);
-                                tft.setTextColor(colorFg());
-                                char sensorText[144];
-                                copyFittedText(requiredSensors, cardW - 24,
-                                               sensorText, sizeof(sensorText));
-                                drawDisplayString(sensorText, cardX + 10,
-                                                  UI_HEADER_H + 79);
-
-                                drawCard(cardX, UI_HEADER_H + 92, cardW, 76,
-                                         colorCard());
-                                drawPanelHeader(cardX, UI_HEADER_H + 92, cardW,
-                                                ru ? "ПОРОГИ И КОНТУРЫ"
-                                                   : "LIMITS AND CHANNELS",
-                                                COLOR_INFO);
-                                char pressure[32], tsa[32], water[48], leak[64];
-                                snprintf(pressure, sizeof(pressure), "%.0f / %.0f mm",
-                                         state.pressure.cube,
-                                         g_settings.safety.pressureMaxMmHg);
-                                snprintf(tsa, sizeof(tsa), "%.1f / %.1f C",
-                                         state.temps.tsa,
-                                         g_settings.safety.tsaMaxC);
-                                snprintf(water, sizeof(water), "%.1f / %.0f C | in %.1f",
-                                         state.temps.waterOut,
-                                         g_settings.safety.waterOutMaxC,
-                                         state.temps.waterIn);
-                                if (g_settings.equipment.leakSensorEnabled) {
-                                  snprintf(leak, sizeof(leak), "%.2f / %.2f V%s",
-                                           state.leak.voltage,
-                                           g_settings.equipment.leakThresholdV,
-                                           state.leak.triggered
-                                               ? (ru ? " · ТРЕВОГА" : " · ALARM")
-                                               : "");
-                                } else {
-                                  snprintf(leak, sizeof(leak), "%s",
-                                           ru ? "не установлен" : "not installed");
-                                }
-                                drawCompactKeyValueRow(
-                                    cardX + 8, UI_HEADER_H + 123, cardW - 16,
-                                    ru ? "ДАВЛ." : "PRESS.", pressure,
-                                    COLOR_INFO);
-                                drawCompactKeyValueRow(
-                                    cardX + 8, UI_HEADER_H + 138, cardW - 16,
-                                    "TSA", tsa, COLOR_WARNING);
-                                drawCompactKeyValueRow(
-                                    cardX + 8, UI_HEADER_H + 153, cardW - 16,
-                                    ru ? "ВОДА" : "WATER", water, COLOR_INFO);
-                                drawCompactKeyValueRow(
-                                    cardX + 8, UI_HEADER_H + 168, cardW - 16,
-                                    ru ? "ПРОТЕЧКА" : "LEAK", leak,
-                                    state.leak.triggered ? COLOR_DANGER
-                                                         : COLOR_SUCCESS);
-                                tft.setTextDatum(top_left);
-
-                                drawButton(
-                                    10, actionY, actionW, 32,
-                                    ru ? "ПОДТВЕРДИТЬ" : "ACKNOWLEDGE",
-                                    safeAction == TftHmiPolicyLogic::PostAlarmAction::Acknowledge
-                                        ? COLOR_WARNING
-                                        : dimmedButtonColor(),
-                                    TFT_WHITE);
-                                drawButton(
-                                    13 + actionW, actionY, actionW, 32,
-                                    ru ? "СБРОСИТЬ" : "RESET",
-                                    safeAction == TftHmiPolicyLogic::PostAlarmAction::Reset
-                                        ? COLOR_SUCCESS
-                                        : dimmedButtonColor(),
-                                    TFT_WHITE);
-                              }
 
                               static uint16_t eventLevelColor(uint8_t level) {
                                 return level >= 2 ? COLOR_DANGER
@@ -11088,62 +9868,6 @@ static void renderHome(const SystemState &state,
                                                                 : COLOR_INFO);
                               }
 
-                              static void renderProcessEvents(
-                                  const SystemState &, bool full) {
-                                const bool ru = (g_settings.language == 0);
-                                const int16_t cardX = 10;
-                                const int16_t cardW = TFT_WIDTH - 20;
-                                const int16_t firstRowY = UI_HEADER_H + 38;
-                                const int16_t rowH = 29;
-                                const int16_t rowPitch = 33;
-                                if (full) {
-                                  tft.fillScreen(colorBg());
-                                  drawHeader(ru ? "СОБЫТИЯ" : "EVENTS", true);
-                                  drawTabs(UI_PROCESS_EVENTS);
-                                }
-
-                                char title[64];
-                                snprintf(title, sizeof(title), "%u %s",
-                                         static_cast<unsigned>(g_tftEvents.count),
-                                         ru ? "последних событий"
-                                            : "recent events");
-                                drawCard(cardX, UI_HEADER_H + 4, cardW, 30,
-                                         colorCard());
-                                drawPanelHeader(cardX, UI_HEADER_H + 4, cardW,
-                                                title, COLOR_INFO);
-                                for (uint8_t i = 0; i < 4; ++i) {
-                                  const int16_t rowY = firstRowY + i * rowPitch;
-                                  const bool present = i < g_tftEvents.count;
-                                  drawCard(cardX, rowY, cardW, rowH, colorCard());
-                                  const uint16_t tone = present
-                                                            ? eventLevelColor(
-                                                                  g_tftEvents.level[i])
-                                                            : colorNavInactive();
-                                  tft.fillRect(cardX + 2, rowY + 2, 6,
-                                               rowH - 4, tone);
-                                  tft.setTextColor(present ? colorFg()
-                                                           : colorMuted());
-                                  tft.setTextSize(1);
-                                  tft.setTextDatum(middle_left);
-                                  char eventText[128];
-                                  copyFittedText(
-                                      present ? g_tftEvents.message[i]
-                                              : (i == 0
-                                                     ? (ru ? "Событий пока нет"
-                                                           : "No events yet")
-                                                     : ""),
-                                      cardW - 24, eventText,
-                                      sizeof(eventText));
-                                  drawDisplayString(eventText, cardX + 15,
-                                                    rowY + rowH / 2);
-                                }
-                                tft.setTextDatum(top_left);
-                                drawButton(10, TFT_HEIGHT - UI_FOOTER_H - 36,
-                                           TFT_WIDTH - 20, 32,
-                                           ru ? "ОБНОВИТЬ СОБЫТИЯ"
-                                              : "REFRESH EVENTS",
-                                           COLOR_INFO, TFT_WHITE);
-                              }
 
                               static void renderProcessParams(
                                   const SystemState &state, bool full) {
@@ -11329,11 +10053,11 @@ static void renderHome(const SystemState &state,
                                 }
                                 char summaryTitle[96];
                                 snprintf(
-                                    summaryTitle, sizeof(summaryTitle), "%s · %u/%u",
-                                    g_tftPreflight.attempted
-                                        ? g_tftPreflight.title
-                                        : (ru ? "ПРОВЕРКА НЕ ВЫПОЛНЕНА"
-                                              : "CHECK NOT RUN"),
+                                    summaryTitle, sizeof(summaryTitle),
+                                    "%s · %u/5 OK · %u/%u",
+                                    ru ? "ПРОВЕРКА" : "PREFLIGHT",
+                                    static_cast<unsigned>(
+                                        g_tftPreflight.passedCount),
                                     static_cast<unsigned>(ui.preflightPage + 1),
                                     static_cast<unsigned>(pageCount));
                                 drawCard(cardX, UI_HEADER_H + 4, cardW, 46,
@@ -11434,210 +10158,6 @@ static void renderHome(const SystemState &state,
                                     TFT_WHITE);
                               }
 
-                              static void renderSettings(bool full) {
-                                if (full) {
-                                  tft.fillScreen(colorBg());
-                                  drawHeader(msg(Msg::SETTINGS), false);
-                                  drawTabs(UI_SETTINGS);
-                                }
-                                const bool ru = (g_settings.language == 0);
-
-                                // --- КАРТОЧКА 1: Оборудование ---
-                                drawCard(SETTINGS_CARD_X1, SETTINGS_CARD_Y1,
-                                         SETTINGS_CARD_W, SETTINGS_CARD_H,
-                                         colorCard());
-                                drawPanelHeader(
-                                    SETTINGS_CARD_X1, SETTINGS_CARD_Y1,
-                                    SETTINGS_CARD_W, msg(Msg::EQUIPMENT),
-                                    colorAccent());
-                                {
-                                  char b1[16], b2[20];
-                                  snprintf(b1, sizeof(b1), "%u %s",
-                                           g_settings.equipment.heaterPowerW,
-                                           msg(Msg::UNIT_W));
-                                  snprintf(b2, sizeof(b2), "%u %s",
-                                           g_settings.equipment.columnHeightMm,
-                                           msg(Msg::UNIT_MM));
-                                  drawCompactKeyValueRow(
-                                      SETTINGS_CARD_X1 + 8,
-                                      SETTINGS_CARD_Y1 + 34,
-                                      SETTINGS_CARD_W - 16,
-                                      tftText(TftTextId::PowerShort), b1,
-                                      COLOR_WARNING);
-                                  drawCompactKeyValueRow(
-                                      SETTINGS_CARD_X1 + 8,
-                                      SETTINGS_CARD_Y1 + 50,
-                                      SETTINGS_CARD_W - 16,
-                                      tftText(TftTextId::ColumnShort), b2,
-                                      COLOR_INFO);
-                                }
-
-                                // --- КАРТОЧКА 2: Параметры ректификации ---
-                                drawCard(SETTINGS_CARD_X2, SETTINGS_CARD_Y1,
-                                         SETTINGS_CARD_W, SETTINGS_CARD_H,
-                                         colorCard());
-                                drawPanelHeader(
-                                    SETTINGS_CARD_X2, SETTINGS_CARD_Y1,
-                                    SETTINGS_CARD_W, msg(Msg::RECT_PARAMS),
-                                    COLOR_INFO);
-                                {
-                                  char b1[24], b2[24];
-                                  snprintf(
-                                      b1, sizeof(b1), "%s",
-                                      rectFeedstockName(
-                                          g_settings.rectParams.feedstock, ru));
-                                  snprintf(b2, sizeof(b2), "%.0f/%.0f/%.0f%%",
-                                           g_settings.rectParams.headsPercent,
-                                           g_settings.rectParams.bodyPercent,
-                                           g_settings.rectParams.tailsPercent);
-                                  drawCompactKeyValueRow(
-                                      SETTINGS_CARD_X2 + 8,
-                                      SETTINGS_CARD_Y1 + 34,
-                                      SETTINGS_CARD_W - 16,
-                                      tftText(TftTextId::FeedShort), b1,
-                                      colorAccent());
-                                  drawCompactKeyValueRow(
-                                      SETTINGS_CARD_X2 + 8,
-                                      SETTINGS_CARD_Y1 + 50,
-                                      SETTINGS_CARD_W - 16,
-                                      tftText(TftTextId::CutsShort), b2,
-                                      COLOR_INFO);
-                                }
-
-                                // --- КАРТОЧКА 3: Параметры дистилляции ---
-                                drawCard(SETTINGS_CARD_X1, SETTINGS_CARD_Y2,
-                                         SETTINGS_CARD_W, SETTINGS_CARD_H,
-                                         colorCard());
-                                drawPanelHeader(
-                                    SETTINGS_CARD_X1, SETTINGS_CARD_Y2,
-                                    SETTINGS_CARD_W, msg(Msg::DIST_PARAMS),
-                                    COLOR_WARNING);
-                                {
-                                  char b1[16], b2[16];
-                                  snprintf(b1, sizeof(b1), "%.0f %s",
-                                           distUi.speedMlH,
-                                           msg(Msg::UNIT_ML_H));
-                                  snprintf(b2, sizeof(b2), "%.0f ml",
-                                           distUi.targetVolumeMl);
-                                  drawCompactKeyValueRow(
-                                      SETTINGS_CARD_X1 + 8,
-                                      SETTINGS_CARD_Y2 + 34,
-                                      SETTINGS_CARD_W - 16,
-                                      tftText(TftTextId::SpeedShort), b1,
-                                      COLOR_PRIMARY);
-                                  drawCompactKeyValueRow(
-                                      SETTINGS_CARD_X1 + 8,
-                                      SETTINGS_CARD_Y2 + 50,
-                                      SETTINGS_CARD_W - 16,
-                                      tftText(TftTextId::TargetShort), b2,
-                                      COLOR_SUCCESS);
-                                }
-
-                                // --- КАРТОЧКА 4: Калибровка ---
-                                drawCard(SETTINGS_CARD_X2, SETTINGS_CARD_Y2,
-                                         SETTINGS_CARD_W, SETTINGS_CARD_H,
-                                         colorCard());
-                                drawPanelHeader(
-                                    SETTINGS_CARD_X2, SETTINGS_CARD_Y2,
-                                    SETTINGS_CARD_W, msg(Msg::CALIBRATION),
-                                    COLOR_SUCCESS);
-                                {
-                                  char b1[20];
-                                  snprintf(b1, sizeof(b1), "%.3f %s",
-                                           g_settings.pumpCal.mlPerRevolution,
-                                           msg(Msg::UNIT_ML_R));
-                                  drawCompactKeyValueRow(SETTINGS_CARD_X2 + 8,
-                                                         SETTINGS_CARD_Y2 + 34,
-                                                         SETTINGS_CARD_W - 16,
-                                                         msg(Msg::PUMP), b1,
-                                                         COLOR_INFO);
-                                  drawCompactKeyValueRow(
-                                      SETTINGS_CARD_X2 + 8,
-                                      SETTINGS_CARD_Y2 + 50,
-                                      SETTINGS_CARD_W - 16,
-                                      tftText(TftTextId::TouchShort),
-                                      g_settings.touchCal.valid
-                                          ? tftText(TftTextId::CalDoneShort)
-                                          : tftText(TftTextId::CalRawShort),
-                                      g_settings.touchCal.valid
-                                          ? COLOR_SUCCESS
-                                          : COLOR_WARNING);
-                                }
-
-                                // --- СТРОКА БЫСТРЫХ ПЕРЕКЛЮЧАТЕЛЕЙ ---
-                                {
-                                  const bool dark = (g_settings.theme == 1);
-                                  char themeLabel[24];
-                                  snprintf(themeLabel, sizeof(themeLabel),
-                                           "%s:%s", msg(Msg::THEME),
-                                           dark ? (ru ? "Тмн" : "Drk")
-                                                : (ru ? "Свт" : "Lgt"));
-                                  drawButton(SETTINGS_TOGGLE_X1,
-                                             SETTINGS_TOGGLE_Y,
-                                             SETTINGS_TOGGLE_W,
-                                             SETTINGS_TOGGLE_H, themeLabel,
-                                             dark ? tft.color565(58, 64, 72)
-                                                  : tft.color565(160, 170, 178),
-                                             TFT_WHITE);
-                                }
-                                {
-                                  char soundLabel[20];
-                                  snprintf(soundLabel, sizeof(soundLabel),
-                                           "%s:%s", msg(Msg::SOUND),
-                                           g_settings.soundEnabled
-                                               ? (ru ? "ВКЛ" : "ON")
-                                               : (ru ? "ВЫКЛ" : "OFF"));
-                                  drawButton(
-                                      SETTINGS_TOGGLE_X2, SETTINGS_TOGGLE_Y,
-                                      SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H,
-                                      soundLabel,
-                                      g_settings.soundEnabled ? COLOR_SUCCESS
-                                                              : COLOR_DARK_GREY,
-                                      TFT_WHITE);
-                                }
-                                {
-                                  char langLabel[20];
-                                  snprintf(langLabel, sizeof(langLabel),
-                                           "%s:%s", msg(Msg::LANGUAGE),
-                                           g_settings.language == 0 ? "RU"
-                                                                    : "EN");
-                                  drawButton(
-                                      SETTINGS_TOGGLE_X3, SETTINGS_TOGGLE_Y,
-                                      SETTINGS_TOGGLE_W, SETTINGS_TOGGLE_H,
-                                      langLabel, COLOR_INFO, TFT_WHITE);
-                                }
-                                {
-                                  char refreshLabel[24];
-                                  snprintf(
-                                      refreshLabel, sizeof(refreshLabel),
-                                      "%s:%s", ru ? "Экран" : "Display",
-                                      getDisplayRefreshProfileCompactName(
-                                          g_settings.displaySettings
-                                              .refreshProfile));
-                                  drawButton(
-                                      SETTINGS_PROFILE_X, SETTINGS_PROFILE_Y,
-                                      SETTINGS_PROFILE_W, SETTINGS_PROFILE_H,
-                                      refreshLabel,
-                                      getDisplayRefreshProfileColor(
-                                          g_settings.displaySettings
-                                              .refreshProfile),
-                                      TFT_WHITE);
-                                }
-                                {
-                                  char stirrerLabel[24];
-                                  snprintf(stirrerLabel, sizeof(stirrerLabel),
-                                           "%s / PWM", ru ? "УЗЛЫ" : "AUX");
-                                  drawButton(SETTINGS_STIRRER_X,
-                                             SETTINGS_STIRRER_Y,
-                                             SETTINGS_STIRRER_W,
-                                             SETTINGS_STIRRER_H, stirrerLabel,
-                                             colorAccent(),
-                                             TFT_WHITE);
-                                }
-
-                                drawFooterHint(tftText(TftTextId::SettingsHint),
-                                               colorAccent());
-                              }
 
                               static void renderEquipment(bool full) {
                                 if (full) {
@@ -12455,56 +10975,6 @@ static void renderHome(const SystemState &state,
                                                colorAccent());
                               }
 
-                              static void renderValueEdit() {
-                                if (edit.descriptor == nullptr) {
-                                  return;
-                                }
-                                const EditableFields::Descriptor &descriptor =
-                                    *edit.descriptor;
-                                tft.fillScreen(colorBg());
-                                drawHeader(EditableFields::label(
-                                               descriptor.id,
-                                               g_settings.language == 0),
-                                           true);
-                                char buf[32];
-                                if (descriptor.decimals == 0)
-                                  snprintf(buf, sizeof(buf), "%.0f",
-                                           edit.value);
-                                else if (descriptor.decimals == 1)
-                                  snprintf(buf, sizeof(buf), "%.1f",
-                                           edit.value);
-                                else
-                                  snprintf(buf, sizeof(buf), "%.3f",
-                                           edit.value);
-                                drawValueTile(10, 48, TFT_WIDTH - 20, 78,
-                                              tftText(TftTextId::ValueTitle),
-                                              buf, descriptor.unit,
-                                              COLOR_PRIMARY);
-
-                                drawButton(VALUE_EDIT_BTN_X1, VALUE_EDIT_BTN_Y,
-                                           VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H,
-                                           "--", tft.color565(200, 50, 50),
-                                           TFT_WHITE);
-                                drawButton(VALUE_EDIT_BTN_X2, VALUE_EDIT_BTN_Y,
-                                           VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H,
-                                           "-", tft.color565(220, 100, 100),
-                                           TFT_WHITE);
-                                drawButton(VALUE_EDIT_BTN_X3, VALUE_EDIT_BTN_Y,
-                                           VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H,
-                                           "+", tft.color565(100, 200, 100),
-                                           TFT_WHITE);
-                                drawButton(VALUE_EDIT_BTN_X4, VALUE_EDIT_BTN_Y,
-                                           VALUE_EDIT_BTN_W, VALUE_EDIT_BTN_H,
-                                           "++", tft.color565(50, 180, 50),
-                                           TFT_WHITE);
-
-                                drawButton(10, 202, TFT_WIDTH - 20, 44,
-                                           msg(Msg::SAVE_AND_CLOSE),
-                                           COLOR_PRIMARY, TFT_WHITE);
-                                drawFooterHint(tftText(TftTextId::ValueHint),
-                                               colorAccent());
-                                tft.setTextDatum(top_left);
-                              }
 
                               static void renderService(
                                   const SystemState &state, bool full) {
@@ -13005,383 +11475,36 @@ static void renderHome(const SystemState &state,
                                         : COLOR_WARNING);
                               }
 
-                              static void renderAllTemps(
-                                  const SystemState &state, bool full) {
-                                const bool ru = (g_settings.language == 0);
-                                const uint8_t expectedCount =
-                                    countExpectedTempSensors();
-                                const char *busLabel =
-                                    Sensors::getTemperatureBusSourceLabel();
-                                const bool useDs2482 =
-                                    Sensors::isUsingDs2482ForTemps();
-                                const bool busReady =
-                                    useDs2482 ? Sensors::isDs2482Available()
-                                              : (state.health.tempSensorsOk > 0 ||
-                                                 state.health.tempSensorsTotal >
-                                                     0);
-                                if (full) {
-                                  tft.fillScreen(colorBg());
-                                  drawHeader(ru ? "ТЕМПЕРАТУРЫ"
-                                                : "TEMPERATURES",
-                                             true);
-                                  drawTabs(ui.rootScreen);
-                                  resetAllTempsCache();
-                                }
-
-                                const int16_t topY = 48;
-                                const int16_t topH = 24;
-                                const int16_t xStart = 10;
-                                const int16_t yStart = 78;
-                                const int16_t tileW = (TFT_WIDTH - 30) / 2;
-                                const int16_t tileH = 40;
-                                const int16_t gap = 6;
-
-                                const char *labels[TEMP_COUNT] = {
-                                    msg(Msg::CUBE_TEMP),
-                                    msg(Msg::COLUMN_BOTTOM),
-                                    msg(Msg::TOP_T),
-                                    msg(Msg::REFLUX_T),
-                                    msg(Msg::TSA_T),
-                                    g_settings.language == 0 ? "ОХЛ ВХОД"
-                                                             : "WATER IN",
-                                    g_settings.language == 0 ? "ОХЛ ВЫХОД"
-                                                             : "WATER OUT"};
-
-                                float values[TEMP_COUNT] = {
-                                    state.temps.cube,
-                                    state.temps.columnBottom,
-                                    state.temps.columnTop,
-                                    state.temps.reflux,
-                                    state.temps.tsa,
-                                    state.temps.waterIn,
-                                    state.temps.waterOut};
-
-                                uint8_t validCount = 0;
-                                for (uint8_t i = 0; i < TEMP_COUNT; i++) {
-                                  if (state.temps.valid[i]) {
-                                    validCount++;
-                                  }
-                                }
-
-                                char busBuf[48];
-                                snprintf(busBuf, sizeof(busBuf), "%s | %s",
-                                         busLabel,
-                                         busReady ? (ru ? "OK" : "READY")
-                                                  : (ru ? "ЖДЁМ" : "WAIT"));
-                                char countBuf[24];
-                                snprintf(countBuf, sizeof(countBuf), "%u/%u",
-                                         validCount,
-                                         expectedCount > 0 ? expectedCount
-                                                           : TEMP_COUNT);
-
-                                if (full ||
-                                    strcmp(g_dashboardCache.infoLine, busBuf) !=
-                                        0 ||
-                                    strcmp(g_dashboardCache.ioLine, countBuf) !=
-                                        0) {
-                                  if (!full) {
-                                    tft.fillRect(10, topY, TFT_WIDTH - 20, topH,
-                                                 colorBg());
-                                  }
-                                  const int16_t cardW =
-                                      (TFT_WIDTH - 26) / 2;
-                                  const int16_t countX = 10 + cardW + 6;
-                                  drawCard(10, topY, cardW, topH, colorCard());
-                                  drawCard(countX, topY, cardW, topH,
-                                           colorCard());
-                                  tft.setFont(&fonts::efontJA_16);
-                                  tft.setTextSize(1);
-                                  tft.setTextColor(colorMuted());
-                                  tft.setTextDatum(top_left);
-                                  drawDisplayString(
-                                      ru ? "Термошина" : "Temp bus", 14,
-                                      topY + 2);
-                                  drawDisplayString(ru ? "Датчики" : "Sensors",
-                                                    countX + 4, topY + 2);
-                                  tft.setTextColor(busReady ? colorAccent()
-                                                            : COLOR_WARNING);
-                                  tft.setTextDatum(top_right);
-                                  drawDisplayString(busBuf, 10 + cardW - 5,
-                                                    topY + 2);
-                                  tft.setTextColor(
-                                      validCount >= expectedCount &&
-                                              expectedCount > 0
-                                          ? COLOR_SUCCESS
-                                          : (validCount > 0 ? COLOR_WARNING
-                                                            : colorMuted()));
-                                  drawDisplayString(countBuf,
-                                                    countX + cardW - 5,
-                                                    topY + 2);
-                                  tft.setTextDatum(top_left);
-                                  strncpy(g_dashboardCache.infoLine, busBuf,
-                                          sizeof(g_dashboardCache.infoLine) -
-                                              1);
-                                  g_dashboardCache.infoLine
-                                      [sizeof(g_dashboardCache.infoLine) - 1] =
-                                      '\0';
-                                  strncpy(g_dashboardCache.ioLine, countBuf,
-                                          sizeof(g_dashboardCache.ioLine) - 1);
-                                  g_dashboardCache.ioLine
-                                      [sizeof(g_dashboardCache.ioLine) - 1] =
-                                      '\0';
-                                }
-
-                                for (uint8_t i = 0; i < TEMP_COUNT; i++) {
-                                  const int16_t x =
-                                      xStart + (i % 2) * (tileW + gap);
-                                  const int16_t y =
-                                      yStart + (i / 2) * (tileH + gap);
-                                  const bool roleEnabled =
-                                      isTempRoleEnabledByTopology(i);
-
-                                  char valBuf[20];
-                                  char statusBuf[12];
-                                  uint16_t valueColor = COLOR_PRIMARY;
-                                  if (state.temps.valid[i]) {
-                                    snprintf(valBuf, sizeof(valBuf), "%.2f",
-                                             values[i]);
-                                    snprintf(statusBuf, sizeof(statusBuf), "%s",
-                                             ru ? "OK" : "OK");
-                                    valueColor = COLOR_PRIMARY;
-                                  } else if (roleEnabled) {
-                                    snprintf(valBuf, sizeof(valBuf), "%s",
-                                             ru ? "---" : "---");
-                                    snprintf(statusBuf, sizeof(statusBuf), "%s",
-                                             ru ? "НЕТ" : "MISS");
-                                    valueColor = COLOR_WARNING;
-                                  } else {
-                                    snprintf(valBuf, sizeof(valBuf), "%s",
-                                             ru ? "ВЫКЛ" : "OFF");
-                                    snprintf(statusBuf, sizeof(statusBuf), "%s",
-                                             ru ? "LITE" : "LITE");
-                                    valueColor = colorMuted();
-                                  }
-
-                                  if (full) {
-                                    drawValueTileShell(x, y, tileW, tileH,
-                                                       labels[i]);
-                                  }
-                                  if (full ||
-                                      strcmp(g_allTempsValueCache[i], valBuf) !=
-                                          0 ||
-                                      strcmp(g_allTempsStatusCache[i],
-                                             statusBuf) != 0) {
-                                    if (!full) {
-                                      tft.fillRect(x + 3, y + 16, tileW - 6,
-                                                   tileH - 18, colorCard());
-                                    }
-                                    tft.setTextColor(valueColor);
-                                    tft.setTextSize(1);
-                                    tft.setFont(&fonts::efontJA_16);
-                                    tft.setTextDatum(middle_center);
-                                    drawDisplayString(valBuf, x + (tileW / 2),
-                                                      y + 28);
-                                    tft.setTextDatum(top_right);
-                                    tft.setTextColor(roleEnabled
-                                                         ? (state.temps.valid[i]
-                                                                ? COLOR_SUCCESS
-                                                                : COLOR_WARNING)
-                                                         : colorMuted());
-                                    drawDisplayString(statusBuf, x + tileW - 5,
-                                                      y + 3);
-                                    tft.setTextDatum(top_left);
-                                    strncpy(g_allTempsValueCache[i], valBuf,
-                                            sizeof(g_allTempsValueCache[i]) - 1);
-                                    g_allTempsValueCache[i]
-                                                       [sizeof(
-                                                            g_allTempsValueCache
-                                                                [i]) -
-                                                        1] = '\0';
-                                    strncpy(g_allTempsStatusCache[i], statusBuf,
-                                            sizeof(g_allTempsStatusCache[i]) -
-                                                1);
-                                    g_allTempsStatusCache[i]
-                                                        [sizeof(
-                                                             g_allTempsStatusCache
-                                                                 [i]) -
-                                                         1] = '\0';
-                                  }
-                                }
-
-                                char footerBuf[96];
-                                snprintf(
-                                    footerBuf, sizeof(footerBuf),
-                                    ru ? "Живых %u/%u | Профиль %s | Δ%lus"
-                                       : "Live %u/%u | Profile %s | Δ%lus",
-                                    validCount,
-                                    expectedCount > 0 ? expectedCount : TEMP_COUNT,
-                                    getDisplayRefreshProfileCompactName(
-                                        g_settings.displaySettings
-                                            .refreshProfile),
-                                    state.temps.lastUpdate > 0
-                                        ? static_cast<unsigned long>(
-                                              (millis() -
-                                               state.temps.lastUpdate) /
-                                              1000UL)
-                                        : 0UL);
-                                if (full ||
-                                    strcmp(g_allTempsSummaryCache, footerBuf) !=
-                                        0) {
-                                  drawFooterHint(
-                                      footerBuf,
-                                      validCount > 0 ? COLOR_INFO
-                                                     : COLOR_WARNING);
-                                  strncpy(g_allTempsSummaryCache, footerBuf,
-                                          sizeof(g_allTempsSummaryCache) - 1);
-                                  g_allTempsSummaryCache
-                                      [sizeof(g_allTempsSummaryCache) - 1] =
-                                      '\0';
-                                }
-                              }
 
                               static void renderTouchCalibration() {
-                                const bool ru = (g_settings.language == 0);
-                                const uint16_t tone = (ui.calSkip > 0)
-                                                          ? COLOR_WARNING
-                                                          : COLOR_INFO;
-                                const int16_t panelX = 18;
-                                const int16_t panelY = 18;
-                                const int16_t panelW = TFT_WIDTH - 36;
-                                const int16_t panelH = TFT_HEIGHT - 36;
-                                const int16_t infoX = panelX + 18;
-                                const int16_t infoY = panelY + 44;
-                                const int16_t infoW = panelW - 36;
-                                const int16_t infoH = 54;
-                                const int16_t targetX = panelX + 18;
-                                const int16_t targetY = infoY + infoH + 12;
-                                const int16_t targetW = panelW - 36;
-                                const int16_t targetH =
-                                    panelH - (targetY - panelY) - 18;
-
-                                tft.fillScreen(colorNavBg());
-                                tft.fillRect(0, 0, TFT_WIDTH, 6, tone);
-                                drawCard(panelX, panelY, panelW, panelH,
-                                         colorCard());
-                                drawPanelHeader(panelX, panelY, panelW,
-                                                msg(Msg::TOUCH_CAL_TITLE),
-                                                tone);
-                                drawCard(infoX, infoY, infoW, infoH, colorBg());
-                                tft.fillRect(infoX + 1, infoY + 1, 8, infoH - 2,
-                                             tone);
-
-                                for (uint8_t i = 0; i < 4; i++) {
-                                  const int16_t sx =
-                                      panelX + panelW - 138 + i * 30;
-                                  const int16_t sy = panelY + 8;
-                                  const bool done = (i < ui.calStep);
-                                  const bool current =
-                                      (!ui.calSkip && i == ui.calStep);
-                                  drawCard(sx, sy, 24, 16,
-                                           done ? colorButtonBody()
-                                                : colorBg());
-                                  tft.fillRect(
-                                      sx + 2, sy + 2, 20, 4,
-                                      done
-                                          ? COLOR_SUCCESS
-                                          : (current ? tone : colorSoftFill()));
-                                  tft.setTextColor(done ? COLOR_SUCCESS
-                                                        : (current
-                                                               ? colorFg()
-                                                               : colorMuted()));
-                                  tft.setTextSize(1);
-                                  tft.setTextDatum(middle_center);
-                                  char stepBuf[4];
-                                  snprintf(stepBuf, sizeof(stepBuf), "%u",
-                                           i + 1);
-                                  drawDisplayString(stepBuf, sx + 12, sy + 10);
-                                  tft.setTextDatum(top_left);
-                                }
-
-                                tft.setTextColor(colorFg());
-                                tft.setTextSize(1);
-                                tft.setTextDatum(top_center);
-                                if (ui.calSkip > 0) {
-                                  char buf[32];
-                                  snprintf(buf, sizeof(buf),
-                                           msg(Msg::TOUCH_CAL_TAP_N),
-                                           ui.calSkip);
-                                  drawDisplayString(buf, TFT_WIDTH / 2, infoY + 9);
-                                  tft.setTextColor(colorMuted());
-                                  drawDisplayString(
-                                      ru ? "Короткие нажатия перед замером"
-                                         : "Short taps before sampling",
-                                      TFT_WIDTH / 2, infoY + 28);
-                                } else {
-                                  char buf[32];
-                                  snprintf(buf, sizeof(buf), "%s  %d/4",
-                                           msg(Msg::TOUCH_CAL_TOUCH_TARGET),
-                                           ui.calStep + 1);
-                                  drawDisplayString(buf, TFT_WIDTH / 2, infoY + 9);
-                                  tft.setTextColor(colorMuted());
-                                  drawDisplayString(
-                                      ru ? "Отпускайте палец после каждого "
-                                           "касания"
-                                         : "Release finger after each target",
-                                      TFT_WIDTH / 2, infoY + 28);
-                                }
-                                tft.setTextDatum(top_left);
-
-                                drawCard(targetX, targetY, targetW, targetH,
-                                         colorBg());
-                                tft.fillRect(targetX + 1, targetY + 1, 8,
-                                             targetH - 2, tone);
-
-                                if (ui.calSkip > 0) {
-                                  char countBuf[8];
-                                  snprintf(countBuf, sizeof(countBuf), "%u",
-                                           ui.calSkip);
-                                  tft.setTextColor(tone);
-                                  tft.setTextSize(5);
-                                  tft.setTextDatum(middle_center);
-                                  drawDisplayString(countBuf, TFT_WIDTH / 2,
-                                                 targetY + (targetH / 2) - 6);
-                                  tft.setTextSize(1);
-                                  tft.setTextColor(colorMuted());
-                                  drawDisplayString(
-                                      ru ? "Подготовка тач-контроллера"
-                                         : "Preparing touch controller",
-                                      TFT_WIDTH / 2, targetY + targetH - 34);
-                                  tft.setTextDatum(top_left);
-                                } else {
-                                  const int16_t points[4][2] = {
-                                      {targetX + 34, targetY + 28},
-                                      {targetX + targetW - 34, targetY + 28},
-                                      {targetX + targetW - 34,
-                                       targetY + targetH - 28},
-                                      {targetX + 34, targetY + targetH - 28}};
-                                  const uint8_t stepIdx =
-                                      (ui.calStep < 4) ? ui.calStep : 3;
-                                  int16_t px = points[stepIdx][0];
-                                  int16_t py = points[stepIdx][1];
-                                  tft.drawRect(px - 18, py - 18, 36, 36, tone);
-                                  tft.drawRect(px - 10, py - 10, 20, 20, tone);
-                                  tft.fillRect(px - 3, py - 3, 6, 6, tone);
-                                  tft.drawFastHLine(px - 26, py, 52, tone);
-                                  tft.drawFastVLine(px, py - 26, 52, tone);
-                                  tft.setTextColor(colorMuted());
-                                  tft.setTextSize(1);
-                                  tft.setTextDatum(middle_center);
-                                  drawDisplayString(
-                                      ru ? "Коснитесь прямоугольной мишени"
-                                         : "Touch the rectangular target",
-                                      TFT_WIDTH / 2,
-                                      targetY + (targetH / 2) - 8);
-                                  drawDisplayString(
-                                      ru ? "Замер берется по среднему удержанию"
-                                         : "Sampling uses averaged hold data",
-                                      TFT_WIDTH / 2,
-                                      targetY + (targetH / 2) + 12);
-                                  tft.setTextDatum(top_left);
-                                }
-                              }
+  tft.fillScreen(colorBg());
+  tft.setFont(&fonts::efontJA_16_b);
+  tft.setTextSize(1);
+  tft.setTextColor(colorFg());
+  tft.setTextDatum(middle_center);
+  char text[64];
+  snprintf(text, sizeof(text), "КАЛИБРОВКА ТАЧА · %u/4", static_cast<unsigned>(ui.calStep + 1));
+  drawDisplayString(text, TFT_WIDTH / 2, 18);
+  drawDisplayString("Нажмите мишень и отпустите палец", TFT_WIDTH / 2, 145);
+  tft.setTextColor(colorMuted());
+  drawDisplayString("Четыре угла · удерживайте около секунды", TFT_WIDTH / 2, 169);
+  const int16_t points[4][2] = {
+    {HmiTouchCalibration::kLeft, HmiTouchCalibration::kTop},
+    {HmiTouchCalibration::kRight, HmiTouchCalibration::kTop},
+    {HmiTouchCalibration::kRight, HmiTouchCalibration::kBottom},
+    {HmiTouchCalibration::kLeft, HmiTouchCalibration::kBottom}};
+  const uint8_t index = ui.calStep < 4 ? ui.calStep : 3;
+  const int16_t x = points[index][0], y = points[index][1];
+  tft.drawRect(x - 18, y - 18, 36, 36, COLOR_INFO);
+  tft.drawCircle(x, y, 11, COLOR_INFO);
+  tft.drawFastHLine(x - 26, y, 52, COLOR_INFO);
+  tft.drawFastVLine(x, y - 26, 52, COLOR_INFO);
+  tft.setTextDatum(top_left);
+}
 
                               typedef void (*UiRenderHandler)(
                                   const SystemState &state, bool full);
 
-                              static void renderSettingsScreen(
-                                  const SystemState &, bool full) {
-                                renderSettings(full);
-                              }
 
                               static void renderEquipmentScreen(
                                   const SystemState &, bool full) {
@@ -13401,6 +11524,13 @@ static void renderHome(const SystemState &state,
                               static void renderCalibrationScreen(
                                   const SystemState &, bool full) {
                                 renderCalibration(full);
+                              }
+
+                              static void renderRemovedLegacyRoot(
+                                  const SystemState &state, bool full) {
+                                // HMI2 owns all root screens. This path only
+                                // protects an old compile-time HMI_LEGACY build.
+                                hmi2RenderRoot(state, true || full);
                               }
 
                               static void renderPumpCalibrationScreen(
@@ -13423,31 +11553,27 @@ static void renderHome(const SystemState &state,
                                 renderManual(state);
                               }
 
-                              static void renderValueEditScreen(
-                                  const SystemState &, bool) {
-                                renderValueEdit();
-                              }
 
                                   static constexpr UiRenderHandler
                                   kUiRenderDispatch[] = {
-                                      renderHome,            // UI_DASHBOARD / Home
-                                      renderControl,         // UI_CONTROL
-                                      renderSettingsScreen,  // UI_SETTINGS
+                                      renderRemovedLegacyRoot,            // UI_DASHBOARD / Home
+                                      renderRemovedLegacyRoot,         // UI_CONTROL
+                                      renderRemovedLegacyRoot,  // UI_SETTINGS
                                       renderService,         // UI_SERVICE
-                                      renderModeMonitor,     // UI_MODE_MONITOR
+                                      renderRemovedLegacyRoot,     // UI_MODE_MONITOR
                                       renderEquipmentScreen, // UI_EQUIPMENT
                                       renderRectParamsScreen, // UI_RECT_PARAMS
                                       renderDistParamsScreen, // UI_DIST_PARAMS
                                       renderCalibrationScreen, // UI_CALIBRATION
                                       renderManualScreen,      // UI_MANUAL
-                                      renderValueEditScreen,   // UI_VALUE_EDIT
-                                      renderAllTemps,          // UI_ALL_TEMPS
-                                      renderModePicker,        // UI_MODE_PICKER
-                                      renderModeSetup,         // UI_MODE_SETUP
+                                      renderRemovedLegacyRoot,   // UI_VALUE_EDIT
+                                      renderRemovedLegacyRoot,          // UI_ALL_TEMPS
+                                      renderRemovedLegacyRoot,        // UI_MODE_PICKER
+                                      renderRemovedLegacyRoot,         // UI_MODE_SETUP
                                       renderPreflight,         // UI_PREFLIGHT
-                                      renderProfilePicker,     // UI_PROFILE_PICKER
-                                      renderSafetyView,        // UI_SAFETY_VIEW
-                                      renderProcessEvents,     // UI_PROCESS_EVENTS
+                                      renderRemovedLegacyRoot,     // UI_PROFILE_PICKER
+                                      renderRemovedLegacyRoot,        // UI_SAFETY_VIEW
+                                      renderRemovedLegacyRoot,     // UI_PROCESS_EVENTS
                                       renderProcessParams,     // UI_PROCESS_PARAMS
                                       renderModeConfig,        // UI_MODE_CONFIG
                                       renderModeParameters,    // UI_MODE_PARAMETERS
@@ -13470,23 +11596,28 @@ static void renderHome(const SystemState &state,
                               }
 
                               static void applyTouchCalibration() {
-                                int16_t xLeft =
-                                    (ui.calRawX[0] + ui.calRawX[3]) / 2;
-                                int16_t xRight =
-                                    (ui.calRawX[1] + ui.calRawX[2]) / 2;
-                                int16_t yTop =
-                                    (ui.calRawY[0] + ui.calRawY[1]) / 2;
-                                int16_t yBottom =
-                                    (ui.calRawY[2] + ui.calRawY[3]) / 2;
-
-                                g_settings.touchCal.xMin = xLeft;
-                                g_settings.touchCal.xMax = xRight;
-                                g_settings.touchCal.yMin = yTop;
-                                g_settings.touchCal.yMax = yBottom;
-                                g_settings.touchCal.valid = true;
-
-                                NVSManager::saveSettings(g_settings);
-                              }
+  TouchCalibration candidate;
+  const int16_t left = (ui.calRawX[0] + ui.calRawX[3]) / 2;
+  const int16_t right = (ui.calRawX[1] + ui.calRawX[2]) / 2;
+  const int16_t top = (ui.calRawY[0] + ui.calRawY[1]) / 2;
+  const int16_t bottom = (ui.calRawY[2] + ui.calRawY[3]) / 2;
+  if (!HmiTouchCalibration::axis(left, right, HmiTouchCalibration::kLeft,
+          HmiTouchCalibration::kRight, TFT_WIDTH, candidate.xMin, candidate.xMax) ||
+      !HmiTouchCalibration::axis(top, bottom, HmiTouchCalibration::kTop,
+          HmiTouchCalibration::kBottom, TFT_HEIGHT, candidate.yMin, candidate.yMax)) {
+    snprintf(hmi2TouchCalibrationMessage, sizeof(hmi2TouchCalibrationMessage), "%s", "Неверные точки: повторите");
+    return;
+  }
+  candidate.valid = true;
+  const TouchCalibration previous = g_settings.touchCal;
+  g_settings.touchCal = candidate;
+  if (!NVSManager::saveSettings(g_settings)) {
+    g_settings.touchCal = previous;
+    snprintf(hmi2TouchCalibrationMessage, sizeof(hmi2TouchCalibrationMessage), "%s", "Ошибка записи координат");
+    return;
+  }
+  snprintf(hmi2TouchCalibrationMessage, sizeof(hmi2TouchCalibrationMessage), "%s", "Координаты сохранены");
+}
 
                               static bool initDisplayHardware(
                                   bool showBootSplash) {
@@ -13568,7 +11699,37 @@ static void renderHome(const SystemState &state,
 
 #endif // TFT_ENABLED
 
-                              namespace Display {
+                              static void updateTempsAutoFocus(const SystemState &state) {
+  if (HMI_LEGACY) return;
+  TftTempsFocusLogic::Inputs in;
+  in.processRunning = isModeRunning(state);
+  in.calibrationActive = PumpCalibrationSession::outputActive();
+  in.dosingActive = DosingSession::outputActive();
+  if (!TftTempsFocusLogic::evaluate(in, g_hmi2TempsFocus)) return;
+  if (hmi2TempsPage) return;
+  hmi2TempsReturnSection = hmi2Section;
+  hmi2TempsPage = true;
+  hmi2Scroll = 0;
+  if (ui.currentScreen != UI_DASHBOARD) {
+    ui.stack.clear();
+    switchRoot(UI_DASHBOARD);
+  }
+  requestFullScreenRedraw();
+}
+
+namespace Display {
+
+                              void setBrightness(uint8_t percent) {
+                                if (percent > 100) percent = 100;
+#if TFT_ENABLED
+                                if (tft_ok) {
+                                  tft.setBrightness(static_cast<uint8_t>(
+                                      (static_cast<uint16_t>(percent) * 255U +
+                                       50U) /
+                                      100U));
+                                }
+#endif
+                              }
 
                               void init() {
                                 LOG_I("Display: Initializing...");
@@ -13664,7 +11825,7 @@ static void renderHome(const SystemState &state,
                                   ui.calibrating =
                                       !g_settings.touchCal.valid || forceCal;
                                   ui.calStep = 0;
-                                  ui.calSkip = ui.calibrating ? 2 : 0;
+                                  ui.calSkip = 0;
                                 } else {
                                   LOG_E("Display: TFT init failed");
                                 }
@@ -13677,7 +11838,7 @@ static void renderHome(const SystemState &state,
 #if TFT_ENABLED
                                 const uint32_t now = millis();
 
-                                if (now - lastSparklineUpdateMs >
+                                if (HMI_LEGACY && now - lastSparklineUpdateMs >
                                     getSparklineRefreshIntervalMs()) {
                                   if (state.temps.valid[TEMP_CUBE]) {
                                     cubeTempHistory.push(state.temps.cube);
@@ -13722,6 +11883,7 @@ static void renderHome(const SystemState &state,
                                 updateServiceTestLifecycle(state);
                                 updatePumpCalibrationLifecycle(state);
                                 updateDosingLifecycle(state);
+                                updateTempsAutoFocus(state);
 
                                 if (!tft_ok) {
                                   attemptHardRecovery(now);
@@ -13765,6 +11927,21 @@ static void renderHome(const SystemState &state,
                                         ui.calSkip--;
                                         ui.calIsCollecting = false;
                                         ui.calSampleCount = 0;
+                                        requestRedraw(
+                                            DisplayRedrawReason::TAP_ACTION);
+                                      } else if (ui.calIsCollecting &&
+                                                 ui.calSampleCount > 0 &&
+                                                 ui.calSampleCount <
+                                                     UI_CAL_MIN_SAMPLES) {
+                                        // Too few settled samples: keep the
+                                        // previous calibration instead of
+                                        // storing a noisy corner.
+                                        ui.calIsCollecting = false;
+                                        ui.calSampleCount = 0;
+                                        snprintf(hmi2TouchCalibrationMessage,
+                                                 sizeof(hmi2TouchCalibrationMessage),
+                                                 "%s",
+                                                 "Держите палец около секунды");
                                         requestRedraw(
                                             DisplayRedrawReason::TAP_ACTION);
                                       } else if (ui.calIsCollecting &&
@@ -13822,7 +11999,11 @@ static void renderHome(const SystemState &state,
 
                                 syncOperatorOverlay(state);
 
-                                if (!ui.needsRedraw &&
+                                if (hmi2OwnsScreen(ui.currentScreen) && !ui.needsRedraw &&
+                                    now - uiLive.lastUpdateMs >= 250) {
+                                  requestRedraw(DisplayRedrawReason::LIVE_DATA_CHANGED);
+                                }
+                                if (!hmi2OwnsScreen(ui.currentScreen) && !ui.needsRedraw &&
                                     g_displayStats.lastFrameAtMs > 0 &&
                                     (now - g_displayStats.lastFrameAtMs) >
                                         getForceRefreshIntervalMs()) {
@@ -13920,8 +12101,12 @@ static void renderHome(const SystemState &state,
                                   UiRenderHandler renderHandler =
                                       getUiRenderHandler(ui.currentScreen);
                                   tft.startWrite();
-                                  renderHandler(state, full);
-                                  drawGlobalStatusBar(state, false);
+                                  if (hmi2OwnsScreen(ui.currentScreen)) {
+                                    hmi2RenderRoot(state, full);
+                                  } else {
+                                    renderHandler(state, full);
+                                    drawGlobalStatusBar(state, false);
+                                  }
                                   if (TftOperatorOverlayLogic::isActive(
                                           ui.operatorOverlay)) {
                                     drawOperatorOverlay(state);
@@ -14107,7 +12292,9 @@ static void renderHome(const SystemState &state,
                                   return;
                                 ui.calibrating = true;
                                 ui.calStep = 0;
-                                ui.calSkip = 2;
+                                ui.calSkip = 0;
+                                g_hmiTouchState = HmiTouch::State{};
+                                HmiTouch::armScreenGuard(g_hmiTouchState, millis(), 280);
                                 memset(ui.calRawX, 0, sizeof(ui.calRawX));
                                 memset(ui.calRawY, 0, sizeof(ui.calRawY));
                                 ui.calIsCollecting = false;
@@ -14160,6 +12347,32 @@ static void renderHome(const SystemState &state,
                                     g_displayStats.maxUpdateGapMs;
                                 stats.updateGapOverruns =
                                     g_displayStats.updateGapOverruns;
+                                stats.touchPolls = g_touchPollCount;
+                                stats.touchPressedReads = g_touchPressedCount;
+                                stats.touchTaps = g_touchTapCount;
+                                stats.touchCalValid =
+                                    g_settings.touchCal.valid ? 1 : 0;
+                                stats.touchCalXMin = g_settings.touchCal.xMin;
+                                stats.touchCalXMax = g_settings.touchCal.xMax;
+                                stats.touchCalYMin = g_settings.touchCal.yMin;
+                                stats.touchCalYMax = g_settings.touchCal.yMax;
+                                stats.lastTapRawX = g_touchTapRawX;
+                                stats.lastTapRawY = g_touchTapRawY;
+                                stats.lastTapX = g_touchTapX;
+                                stats.lastTapY = g_touchTapY;
+                                stats.tapHistoryCount = g_tapHistoryCount;
+                                for (uint8_t i = 0; i < kTapHistorySize; i++) {
+                                  const uint8_t slot = static_cast<uint8_t>(
+                                      (g_tapHistoryNext + kTapHistorySize -
+                                       g_tapHistoryCount + i) %
+                                      kTapHistorySize);
+                                  stats.tapHistoryRawX[i] =
+                                      g_tapHistoryRawX[slot];
+                                  stats.tapHistoryRawY[i] =
+                                      g_tapHistoryRawY[slot];
+                                  stats.tapHistoryX[i] = g_tapHistoryX[slot];
+                                  stats.tapHistoryY[i] = g_tapHistoryY[slot];
+                                }
                                 stats.redrawReasonScreenEnter =
                                     g_displayStats.redrawReasonScreenEnter;
                                 stats.redrawReasonTapAction =

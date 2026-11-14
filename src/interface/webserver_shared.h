@@ -8,6 +8,8 @@
 #include "../control/v2/status_adapter.h"
 #include "../types.h"
 
+namespace PowerCommandGateway { struct Command; }
+
 extern SystemState g_state;
 extern Settings g_settings;
 extern EnergyHistory g_energyHistory;
@@ -32,18 +34,21 @@ void appendTempSensorMeta(JsonObject obj, uint8_t index);
 void syncStirrerState();
 void fillStirrerJson(JsonObject stirrer, const SystemState &state);
 void sendStirrerStateResponse(AsyncWebServerRequest *request, int statusCode,
-                              bool success, const char *message);
+                              bool success, const char *message,
+                              const SystemState &state,
+                              const PowerCommandGateway::Command *command = nullptr);
 void sendJsonSuccess(AsyncWebServerRequest *request, int statusCode = 200,
                      const char *message = nullptr);
 void sendJsonError(AsyncWebServerRequest *request, int statusCode,
                    const char *error, bool includeSuccess = true);
-bool ensureStirrerReady(AsyncWebServerRequest *request);
+bool ensureStirrerReady(AsyncWebServerRequest *request,
+                        const SystemState &state);
 bool handleSecurityGate(AsyncWebServerRequest *request);
 void applySecuritySettings();
 bool parseRequestedMode(const char *modeStr, Mode &mode);
 void applyBoosterStartOverride(JsonObject params, Settings &settings);
 bool buildProcessPreflight(JsonDocument &doc, Mode mode, const char *modeStr,
-                           JsonObject params);
+                           JsonObject params, const SystemState &state);
 void fillAlarmJson(JsonObject alarm, const SystemState &state,
                    const Settings &settings);
 void fillV2StatusJson(JsonObject v2, const ControlV2::ModeStatusV2 &status,
@@ -64,7 +69,7 @@ void fillTemperatureTopologyJson(JsonObject topology,
 void fillTemperatureModeSupportJson(JsonObject modes,
                                     const Settings &settings);
 void fillEquipmentModulesJson(JsonObject modules);
-void fillSafetyChannelsJson(JsonObject channels);
+void fillSafetyChannelsJson(JsonObject channels, const SystemState &state);
 
 uint8_t clampU8Range(uint32_t value, uint8_t minValue, uint8_t maxValue);
 uint16_t clampU16Range(uint32_t value, uint16_t minValue, uint16_t maxValue);

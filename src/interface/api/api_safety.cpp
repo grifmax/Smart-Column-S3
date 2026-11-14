@@ -1,50 +1,69 @@
 #include "api_routes.h"
 
+#include "control/control_command_queue.h"
 #include "control/safety.h"
-#include "control/v2/status_adapter.h"
 #include "interface/cloud_tunnel.h"
 #include "interface/webserver_shared.h"
 #include "storage/nvs_manager.h"
 
+namespace {
+
+void sendSafetyCommandResponse(AsyncWebServerRequest *request,
+                               ControlCommandQueue::EnqueueResult result,
+                               uint32_t commandId,
+                               ControlCommandQueue::Status status) {
+  const bool accepted = result == ControlCommandQueue::EnqueueResult::Accepted ||
+                        result == ControlCommandQueue::EnqueueResult::Duplicate;
+  const bool queued = status == ControlCommandQueue::Status::Queued;
+  const bool applied = status == ControlCommandQueue::Status::Applied;
+  JsonDocument doc;
+  doc["success"] = accepted && applied;
+  doc["accepted"] = accepted;
+  doc["applied"] = applied;
+  doc["queued"] = queued;
+  doc["commandId"] = commandId;
+  doc["status"] = ControlCommandQueue::statusToken(status);
+  String response;
+  serializeJson(doc, response);
+  const int httpStatus = (accepted && queued) ? 202
+                         : (accepted && applied) ? 200
+                         : result == ControlCommandQueue::EnqueueResult::Full
+                             ? 429
+                             : result == ControlCommandQueue::EnqueueResult::NotInitialized
+                                 ? 503
+                                 : 409;
+  request->send(httpStatus, "application/json", response);
+}
+
+} // namespace
+
 void registerSafetyApiRoutes(AsyncWebServer &server) {
   server.on("/api/safety/ack", HTTP_POST, [](AsyncWebServerRequest *request) {
-    Safety::acknowledge(g_state);
-    ControlV2::updateRuntime(g_state, g_settings);
-
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["message"] = "Alarm acknowledged";
-    JsonObject alarm = doc["alarm"].to<JsonObject>();
-    fillAlarmJson(alarm, g_state, g_settings);
-    JsonObject v2 = doc["v2"].to<JsonObject>();
-    fillSafetyActionV2Json(v2, ControlV2::getLatestModeStatus(),
-                           ControlV2::getLatestMetricsSnapshot());
-
-    String response;
-    serializeJson(doc, response);
-    request->send(200, "application/json", response);
+    const long rawId = request->hasParam("commandId")
+                           ? request->getParam("commandId")->value().toInt()
+                           : 0;
+    uint32_t commandId = rawId > 0 ? static_cast<uint32_t>(rawId) : 0;
+    ControlCommandQueue::Status status =
+        ControlCommandQueue::Status::Unknown;
+    const auto result = ControlCommandQueue::enqueueAction(
+        ControlCommandQueue::Type::AcknowledgeSafety,
+        ControlCommandQueue::Source::Api, 0, 0.0f, commandId,
+        ControlCommandQueue::Reason::SafetyRequest, &commandId, &status);
+    sendSafetyCommandResponse(request, result, commandId, status);
   });
 
   server.on("/api/safety/reset", HTTP_POST, [](AsyncWebServerRequest *request) {
-    char reason[128] = "";
-    const bool ok = Safety::reset(g_state, g_settings, reason, sizeof(reason));
-    ControlV2::updateRuntime(g_state, g_settings);
-
-    JsonDocument doc;
-    doc["success"] = ok;
-    doc["message"] = ok ? "Safety alarm reset" : "Safety reset rejected";
-    if (!ok) {
-      doc["reason"] = reason;
-    }
-    JsonObject alarm = doc["alarm"].to<JsonObject>();
-    fillAlarmJson(alarm, g_state, g_settings);
-    JsonObject v2 = doc["v2"].to<JsonObject>();
-    fillSafetyActionV2Json(v2, ControlV2::getLatestModeStatus(),
-                           ControlV2::getLatestMetricsSnapshot());
-
-    String response;
-    serializeJson(doc, response);
-    request->send(ok ? 200 : 409, "application/json", response);
+    const long rawId = request->hasParam("commandId")
+                           ? request->getParam("commandId")->value().toInt()
+                           : 0;
+    uint32_t commandId = rawId > 0 ? static_cast<uint32_t>(rawId) : 0;
+    ControlCommandQueue::Status status =
+        ControlCommandQueue::Status::Unknown;
+    const auto result = ControlCommandQueue::enqueueAction(
+        ControlCommandQueue::Type::ResetSafety,
+        ControlCommandQueue::Source::Api, 0, 0.0f, commandId,
+        ControlCommandQueue::Reason::SafetyRequest, &commandId, &status);
+    sendSafetyCommandResponse(request, result, commandId, status);
   });
 
   server.on(

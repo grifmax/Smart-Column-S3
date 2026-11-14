@@ -1193,9 +1193,8 @@ function ensureParameterWorkbenchCards() {
     appendUniqueGroups(qs('.equipment-grid', coolingCard), formGroups, [
         'water-autostart-cube-temp',
         'cooling-pwm-enabled',
-        'cooling-pwm-min-duty',
-        'cooling-pwm-max-duty',
-        'cooling-pwm-startup-duty',
+        'cooling-pwm-hold-percent',
+        'cooling-pwm-pull-ms',
     ]);
 
     const stirrerCard = buildEquipmentCard({
@@ -3148,9 +3147,15 @@ function renderStartStopPwmStatus(valves, coolingSettings, testingAllowed, demoM
     const hint = byId('equipment-test-start-stop-hint');
 
     const enabled = Boolean(coolingSettings?.enabled);
-    const minDuty = clamp(coolingSettings?.minDuty, 0, 255, 0);
-    const maxDuty = clamp(coolingSettings?.maxDuty, minDuty, 255, 255);
-    const startupDuty = clamp(coolingSettings?.startupDuty, minDuty, maxDuty, minDuty);
+    const legacyHoldDuty = clamp(coolingSettings?.startupDuty, 0, 255, 96);
+    const holdPercent = clamp(
+        coolingSettings?.holdPercent,
+        5,
+        100,
+        Math.round(legacyHoldDuty * 100 / 255)
+    );
+    const holdDuty = Math.round(holdPercent * 255 / 100);
+    const pullMs = clamp(coolingSettings?.pullMs, 100, 10000, 300);
     const currentDuty = clamp(valves?.startStopDuty, 0, 255, 0);
     const active = currentDuty > 0;
 
@@ -3161,13 +3166,13 @@ function renderStartStopPwmStatus(valves, coolingSettings, testingAllowed, demoM
     );
 
     if (input && !input.matches(':focus')) {
-        input.value = String(active ? currentDuty : startupDuty);
+        input.value = String(active ? currentDuty : holdDuty);
     }
 
     if (hint) {
         hint.textContent = !enabled
             ? 'PWM-канал охлаждения отключен в параметрах оборудования.'
-            : `Рабочее окно ${minDuty}-${maxDuty}/255, стартовая подача ${startupDuty}/255.` +
+            : `Втягивание ${pullMs} мс, удержание ${holdPercent}% (${holdDuty}/255).` +
                 (active ? ` Сейчас ${demoMode ? 'симуляция' : 'подача'} ${currentDuty}/255.` : ' Канал на нуле.');
     }
 
@@ -3423,9 +3428,58 @@ function renderTestingStatus(status) {
 async function requestJson(url, options = {}) {
     const response = await fetch(url, options);
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-        const message = payload?.message || payload?.error || `HTTP ${response.status}`;
-        throw new Error(message);
+    const responseError = !response.ok
+        ? (payload?.message || payload?.error || `HTTP ${response.status}`)
+        : null;
+    const pendingCommands = (payload.commands || [])
+        .filter((command) => command.queued && command.commandId);
+    if (payload.commandId && payload.queued && pendingCommands.length === 0) {
+        pendingCommands.push(payload);
+    }
+    if (responseError && pendingCommands.length === 0) {
+        throw new Error(responseError);
+    }
+    for (const pendingCommand of pendingCommands) {
+        const commandId = pendingCommand.commandId;
+        const endpoint = pendingCommand.commandType === 'control'
+            ? '/api/process/command-status'
+            : '/api/outputs/command';
+        const deadline = Date.now() + 15000;
+        let applied = false;
+        while (Date.now() < deadline) {
+            await new Promise((resolve) => window.setTimeout(resolve, 150));
+            const commandResponse = await fetch(
+                `${endpoint}?commandId=${encodeURIComponent(commandId)}`,
+                { cache: 'no-store' }
+            );
+            const command = await commandResponse.json().catch(() => ({}));
+            if (!commandResponse.ok) {
+                throw new Error(command.message || `Command ${commandId} is no longer available`);
+            }
+            if (command.status === 'applied') {
+                applied = true;
+                break;
+            }
+            if (!['queued', 'processing'].includes(command.status)) {
+                throw new Error(command.rejectReason || `Output command ${command.status || 'failed'}`);
+            }
+        }
+        if (!applied) {
+            throw new Error(`Timed out waiting for output command ${commandId}`);
+        }
+    }
+    if (pendingCommands.length && payload.status !== 'rejected') {
+        payload.success = true;
+        payload.queued = false;
+        payload.applied = true;
+        payload.status = 'applied';
+    }
+    if (responseError || payload.status === 'rejected') {
+        const rejected = (payload.commands || [])
+            .filter((command) => command.status === 'rejected')
+            .map((command) => command.rejectReason)
+            .filter(Boolean);
+        throw new Error(rejected.length ? rejected.join(', ') : responseError || 'Output command rejected');
     }
     return payload;
 }
@@ -3768,7 +3822,15 @@ function bindTestingActions() {
         void handleStartStopDutySet(duty).catch((error) => addLog(`✗ PWM охлаждения: ${error.message}`, 'error'));
     });
     byId('equipment-test-start-stop-startup')?.addEventListener('click', () => {
-        const duty = clamp(state.lastStatus?.coolingSettings?.startupDuty, 0, 255, 0);
+        const settings = state.lastStatus?.coolingSettings;
+        const legacyDuty = clamp(settings?.startupDuty, 0, 255, 96);
+        const holdPercent = clamp(
+            settings?.holdPercent,
+            5,
+            100,
+            Math.round(legacyDuty * 100 / 255)
+        );
+        const duty = Math.round(holdPercent * 255 / 100);
         void handleStartStopDutySet(duty).catch((error) => addLog(`✗ PWM охлаждения: ${error.message}`, 'error'));
     });
     byId('equipment-test-start-stop-stop')?.addEventListener('click', () => {

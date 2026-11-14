@@ -9,6 +9,8 @@
 #include "valves.h"
 #include <ESP32Servo.h>
 
+#include "control/cooling_pwm_logic.h"
+
 // =============================================================================
 // ГЛОБАЛЬНЫЕ ОБЪЕКТЫ
 // =============================================================================
@@ -422,7 +424,9 @@ void setStartStop(uint8_t duty) {
     // Открытие: сначала полное напряжение, чтобы якорь притянулся, потом
     // удержание на пониженном заполнении (меньше ток и нагрев катушки).
     applyStartStopOutput(true);
-    valveStartStopPullMs = millis() + COOLING_PWM_PULL_MS;
+    const uint16_t pullMs = CoolingPwmLogic::clampPullMs(
+        g_settings.equipment.coolingPwmPullMs);
+    valveStartStopPullMs = millis() + pullMs;
     LOG_D("Valves: StartStop open, hold=%u/255", duty);
 }
 

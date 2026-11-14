@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <esp_system.h>
 
+#include "control/state_snapshot.h"
 #include "interface/webserver_shared.h"
 #include "storage/logger.h"
 
@@ -48,6 +49,12 @@ void registerSystemSettingsApiRoutes(AsyncWebServer &server) {
 
   server.on("/api/reboot/status", HTTP_GET,
             [](AsyncWebServerRequest *request) {
+              SystemState stateSnapshot;
+              if (!StateSnapshot::read(stateSnapshot)) {
+                request->send(503, "application/json",
+                              "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+                return;
+              }
               JsonDocument doc;
               const uint32_t totalReboots = g_rebootTracker.totalReboots;
               const uint32_t wdtReboots = g_rebootTracker.wdtReboots;
@@ -74,7 +81,7 @@ void registerSystemSettingsApiRoutes(AsyncWebServer &server) {
               doc["userReboots"] = userReboots;
               doc["otherReboots"] = otherReboots;
               doc["uptimeSec"] = millis() / 1000UL;
-              doc["healthOverall"] = g_state.health.overallHealth;
+              doc["healthOverall"] = stateSnapshot.health.overallHealth;
               doc["freeHeap"] = ESP.getFreeHeap();
               doc["lastReasonKind"] =
                   lastWasWdt ? "wdt"

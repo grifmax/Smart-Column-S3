@@ -31,6 +31,7 @@ enum class FinishReason : uint8_t {
   PAGE_EXIT,
   SAFETY,
   ROUTE_LOST,
+  PRIME_TIMEOUT,
   TIMEOUT,
   CONFIG_INVALID,
 };
@@ -42,7 +43,7 @@ struct State {
   float requestedRateMlH = 0.0f;
   float calibrationAtStart = 0.0f;
   float startPumpVolumeMl = 0.0f;
-  float actualVolumeMl = 0.0f;
+  float estimatedVolumeMl = 0.0f;
   uint32_t startedAtMs = 0;
   uint32_t finishedAtMs = 0;
   FinishReason finishReason = FinishReason::NONE;
@@ -94,6 +95,8 @@ inline const char *finishReasonToken(FinishReason reason) {
     return "safety";
   case FinishReason::ROUTE_LOST:
     return "route_lost";
+  case FinishReason::PRIME_TIMEOUT:
+    return "prime_timeout";
   case FinishReason::TIMEOUT:
     return "timeout";
   case FinishReason::CONFIG_INVALID:
@@ -136,7 +139,7 @@ inline bool beginPriming(State &state, float calibrationMlPerRev,
   state.phase = Phase::PRIME;
   state.calibrationAtStart = calibrationMlPerRev;
   state.startPumpVolumeMl = 0.0f;
-  state.actualVolumeMl = 0.0f;
+  state.estimatedVolumeMl = 0.0f;
   state.startedAtMs = nowMs;
   state.finishedAtMs = 0;
   state.finishReason = FinishReason::NONE;
@@ -159,22 +162,35 @@ inline bool beginDispensing(State &state, float calibrationMlPerRev,
   state.phase = Phase::DISPENSING;
   state.calibrationAtStart = calibrationMlPerRev;
   state.startPumpVolumeMl = startPumpVolumeMl;
-  state.actualVolumeMl = 0.0f;
+  state.estimatedVolumeMl = 0.0f;
   state.startedAtMs = nowMs;
   state.finishedAtMs = 0;
   state.finishReason = FinishReason::NONE;
   return true;
 }
 
-inline void updateActualVolume(State &state, float actualVolumeMl) {
-  if (state.phase != Phase::DISPENSING || actualVolumeMl < 0.0f) return;
-  state.actualVolumeMl = actualVolumeMl;
+inline void updateEstimatedVolume(State &state, float estimatedVolumeMl) {
+  if (state.phase != Phase::DISPENSING || estimatedVolumeMl < 0.0f) return;
+  state.estimatedVolumeMl = estimatedVolumeMl;
 }
 
 inline bool targetReached(const State &state) {
   return state.phase == Phase::DISPENSING &&
          state.requestedVolumeMl > 0.0f &&
-         state.actualVolumeMl >= state.requestedVolumeMl;
+         state.estimatedVolumeMl >= state.requestedVolumeMl;
+}
+
+inline bool timedOut(const State &state, uint32_t nowMs,
+                     uint32_t maxPrimeDurationMs,
+                     uint32_t maxDosingDurationMs) {
+  if (state.phase != Phase::PRIME && state.phase != Phase::DISPENSING) {
+    return false;
+  }
+  const uint32_t limit = state.phase == Phase::PRIME
+                             ? maxPrimeDurationMs
+                             : maxDosingDurationMs;
+  return limit > 0 &&
+         static_cast<uint32_t>(nowMs - state.startedAtMs) >= limit;
 }
 
 inline bool finish(State &state, FinishReason reason, uint32_t nowMs) {
@@ -185,6 +201,7 @@ inline bool finish(State &state, FinishReason reason, uint32_t nowMs) {
     state.phase = Phase::COMPLETED;
   } else if (reason == FinishReason::SAFETY ||
              reason == FinishReason::ROUTE_LOST ||
+             reason == FinishReason::PRIME_TIMEOUT ||
              reason == FinishReason::TIMEOUT ||
              reason == FinishReason::CONFIG_INVALID) {
     state.phase = Phase::FAULTED;

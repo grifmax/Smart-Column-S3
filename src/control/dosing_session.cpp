@@ -78,17 +78,22 @@ bool routeMatches(const Snapshot &snapshot) {
          Valves::getActiveProductValve() == fraction;
 }
 
-void applyRouteAndPump(const Snapshot &snapshot) {
-  PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::SERVICE,
-                                   PowerCommandGateway::Reason::TFT_DOSING);
+bool applyRouteAndPump(const Snapshot &snapshot) {
+  const PowerCommandGateway::Command stopped =
+      PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::SERVICE,
+                                       PowerCommandGateway::Reason::TFT_DOSING);
+  if (!stopped.accepted || !stopped.applied) return false;
   PowerCommandGateway::setProductRoute(
       PowerCommandGateway::Owner::SERVICE,
       PowerCommandGateway::Reason::TFT_DOSING,
       toProductFraction(snapshot.route), true);
-  if (!routeMatches(snapshot)) return;
-  PowerCommandGateway::setPumpSpeed(PowerCommandGateway::Owner::SERVICE,
-                                    PowerCommandGateway::Reason::TFT_DOSING,
-                                    snapshot.requestedRateMlH);
+  if (!routeMatches(snapshot)) return false;
+  const PowerCommandGateway::Command started =
+      PowerCommandGateway::setPumpSpeed(
+          PowerCommandGateway::Owner::SERVICE,
+          PowerCommandGateway::Reason::TFT_DOSING,
+          snapshot.requestedRateMlH);
+  return started.accepted && started.applied && Pump::isRunning();
 }
 
 void logSnapshot(const char *event, const Snapshot &snapshot,
@@ -96,13 +101,13 @@ void logSnapshot(const char *event, const Snapshot &snapshot,
   Logger::logf(
       tone != nullptr && strcmp(tone, "danger") == 0 ? 2
       : (tone != nullptr && strcmp(tone, "warning") == 0 ? 1 : 0),
-      "dosing e=%s r=%s v=%.1f q=%.1f c=%.3f a=%.1f s=%lu f=%lu x=%s",
+      "dosing e=%s r=%s v=%.1f q=%.1f c=%.3f est=%.1f s=%lu f=%lu x=%s",
       event != nullptr ? event : "unknown",
       DosingSessionLogic::routeToken(snapshot.route),
       static_cast<double>(snapshot.requestedVolumeMl),
       static_cast<double>(snapshot.requestedRateMlH),
       static_cast<double>(snapshot.calibrationAtStart),
-      static_cast<double>(snapshot.actualVolumeMl),
+      static_cast<double>(snapshot.estimatedVolumeMl),
       static_cast<unsigned long>(snapshot.startedAtMs),
       static_cast<unsigned long>(snapshot.finishedAtMs),
       DosingSessionLogic::finishReasonToken(snapshot.finishReason));
@@ -111,13 +116,22 @@ void logSnapshot(const char *event, const Snapshot &snapshot,
 bool finishActive(FinishReason reason) {
   const Snapshot before = getSnapshot();
   if (!DosingSessionLogic::isOutputActive(before)) return false;
-  PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::SERVICE,
-                                   PowerCommandGateway::Reason::TFT_DOSING);
-  const float actual = before.phase == Phase::DISPENSING
-                           ? Pump::getTotalVolume() - before.startPumpVolumeMl
-                           : 0.0f;
+  const PowerCommandGateway::Command stopped =
+      PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::SERVICE,
+                                       PowerCommandGateway::Reason::TFT_DOSING);
+  if (!stopped.accepted || !stopped.applied) {
+    Logger::logf(2,
+                 "dosing stop pending e=%s command=%lu accepted=%u applied=%u",
+                 DosingSessionLogic::finishReasonToken(reason),
+                 static_cast<unsigned long>(stopped.sequence),
+                 stopped.accepted ? 1U : 0U, stopped.applied ? 1U : 0U);
+    return false;
+  }
+  const float estimated = before.phase == Phase::DISPENSING
+                              ? Pump::getTotalVolume() - before.startPumpVolumeMl
+                              : 0.0f;
   mutate([=](Snapshot &state) {
-    DosingSessionLogic::updateActualVolume(state, actual);
+    DosingSessionLogic::updateEstimatedVolume(state, estimated);
     return DosingSessionLogic::finish(state, reason, millis());
   });
   const Snapshot after = getSnapshot();
@@ -224,8 +238,7 @@ bool beginPriming(const SystemState &state) {
   });
   if (!started) return false;
   const Snapshot snapshot = getSnapshot();
-  applyRouteAndPump(snapshot);
-  if (!routeMatches(snapshot) || !Pump::isRunning()) {
+  if (!applyRouteAndPump(snapshot)) {
     (void)finishActive(FinishReason::ROUTE_LOST);
     return false;
   }
@@ -236,8 +249,10 @@ bool beginPriming(const SystemState &state) {
 bool finishPriming() {
   const Snapshot before = getSnapshot();
   if (before.phase != Phase::PRIME) return false;
-  PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::SERVICE,
-                                   PowerCommandGateway::Reason::TFT_DOSING);
+  const PowerCommandGateway::Command stopped =
+      PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::SERVICE,
+                                       PowerCommandGateway::Reason::TFT_DOSING);
+  if (!stopped.accepted || !stopped.applied) return false;
   const bool finished = mutate([](Snapshot &session) {
     return DosingSessionLogic::finishPriming(session);
   });
@@ -259,8 +274,7 @@ bool beginDispensing(const SystemState &state) {
   });
   if (!started) return false;
   const Snapshot snapshot = getSnapshot();
-  applyRouteAndPump(snapshot);
-  if (!routeMatches(snapshot) || !Pump::isRunning()) {
+  if (!applyRouteAndPump(snapshot)) {
     (void)finishActive(FinishReason::ROUTE_LOST);
     return false;
   }
@@ -285,16 +299,19 @@ void update(const SystemState &state) {
     (void)finishActive(FinishReason::ROUTE_LOST);
     return;
   }
-  if (static_cast<int32_t>(millis() - before.startedAtMs) >=
-      static_cast<int32_t>(BOARD_DOSING_MAX_DURATION_MS)) {
-    (void)finishActive(FinishReason::TIMEOUT);
+  if (DosingSessionLogic::timedOut(
+          before, millis(), BOARD_DOSING_MAX_PRIME_DURATION_MS,
+          BOARD_DOSING_MAX_DURATION_MS)) {
+    (void)finishActive(before.phase == Phase::PRIME
+                           ? FinishReason::PRIME_TIMEOUT
+                           : FinishReason::TIMEOUT);
     return;
   }
   if (before.phase != Phase::DISPENSING) return;
 
-  const float actual = Pump::getTotalVolume() - before.startPumpVolumeMl;
+  const float estimated = Pump::getTotalVolume() - before.startPumpVolumeMl;
   mutate([=](Snapshot &session) {
-    DosingSessionLogic::updateActualVolume(session, actual);
+    DosingSessionLogic::updateEstimatedVolume(session, estimated);
     return true;
   });
   if (DosingSessionLogic::targetReached(getSnapshot())) {

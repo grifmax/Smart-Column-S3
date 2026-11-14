@@ -3,7 +3,10 @@
 #include <string.h>
 
 #include "config.h"
+#include "control/cooling_pwm_logic.h"
+#include "control/control_command_queue.h"
 #include "control/power_command_gateway.h"
+#include "control/state_snapshot.h"
 #include "drivers/sensors.h"
 #include "drivers/stirrer.h"
 #include "drivers/valves.h"
@@ -60,6 +63,12 @@ void fillStirrerSettingsJson(JsonObject settings, const Settings &source) {
 void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
   server.on("/api/settings/equipment", HTTP_GET,
             [](AsyncWebServerRequest *request) {
+              SystemState stateSnapshot;
+              if (!StateSnapshot::read(stateSnapshot)) {
+                request->send(503, "application/json",
+                              "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+                return;
+              }
               JsonDocument doc;
               doc["heaterPowerW"] = g_settings.equipment.heaterPowerW;
               doc["columnHeightMm"] = g_settings.equipment.columnHeightMm;
@@ -76,14 +85,10 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
                   g_settings.equipment.boosterHeaterStopCubeTempC;
               doc["coolingPwmEnabled"] =
                   g_settings.equipment.coolingPwmEnabled;
-              doc["coolingPwmMinDuty"] =
-                  g_settings.equipment.coolingPwmMinDuty;
-              doc["coolingPwmMaxDuty"] =
-                  g_settings.equipment.coolingPwmMaxDuty;
-              doc["coolingPwmStartupDuty"] =
-                  g_settings.equipment.coolingPwmStartupDuty;
-              doc["coolingPwmPeriodSec"] =
-                  g_settings.equipment.coolingPwmPeriodSec;
+              doc["coolingPwmHoldPercent"] =
+                  g_settings.equipment.coolingPwmHoldPercent;
+              doc["coolingPwmPullMs"] =
+                  g_settings.equipment.coolingPwmPullMs;
               doc["coolingPwmCurrentDuty"] = Valves::getStartStop();
               doc["useDs2482ForTemps"] =
                   g_settings.equipment.useDs2482ForTemps;
@@ -138,22 +143,24 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
               boardProfile["hasStartStopPwm"] = BOARD_HAS_STARTSTOP_PWM;
 
               JsonObject pzem = doc["pzem"].to<JsonObject>();
-              pzem["available"] = g_state.health.pzemOk;
+              pzem["available"] = stateSnapshot.health.pzemOk;
               pzem["uartNum"] = PZEM_UART_NUM;
               pzem["baudRate"] = PZEM_BAUD_RATE;
               pzem["rxPin"] = PIN_PZEM_RX;
               pzem["txPin"] = PIN_PZEM_TX;
-              pzem["voltage"] = g_state.power.voltage;
-              pzem["current"] = g_state.power.current;
-              pzem["power"] = g_state.power.power;
-              pzem["energy"] = g_state.power.energy;
-              pzem["frequency"] = g_state.power.frequency;
-              pzem["powerFactor"] = g_state.power.powerFactor;
-              pzem["lastUpdate"] = g_state.power.lastUpdate;
+              pzem["voltage"] = stateSnapshot.power.voltage;
+              pzem["current"] = stateSnapshot.power.current;
+              pzem["power"] = stateSnapshot.power.power;
+              pzem["energy"] = stateSnapshot.power.energy;
+              pzem["frequency"] = stateSnapshot.power.frequency;
+              pzem["powerFactor"] = stateSnapshot.power.powerFactor;
+              pzem["lastUpdate"] = stateSnapshot.power.lastUpdate;
 
               JsonObject bootGpio = doc["bootGpio"].to<JsonObject>();
               bootGpio["completed"] = g_bootGpioSelfTest.completed;
               bootGpio["overallOk"] = g_bootGpioSelfTest.overallOk;
+              bootGpio["readbackType"] = "gpio_latch";
+              bootGpio["physicalFeedback"] = false;
               bootGpio["checkedCount"] = g_bootGpioSelfTest.checkedCount;
               bootGpio["timestampMs"] = g_bootGpioSelfTest.timestampMs;
               bootGpio["boardRev"] = g_bootGpioSelfTest.boardRev;
@@ -193,7 +200,7 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
 
               JsonObject safetyChannels =
                   doc["safetyChannels"].to<JsonObject>();
-              fillSafetyChannelsJson(safetyChannels);
+              fillSafetyChannelsJson(safetyChannels, stateSnapshot);
 
               String json;
               serializeJson(doc, json);
@@ -242,8 +249,10 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
                   doc["cubeVolumeL"].as<float>());
         }
         if (!doc["minHeaterSubmergeL"].isNull()) {
-          g_settings.equipment.minHeaterSubmergeL = clampFloatRange(
-              doc["minHeaterSubmergeL"].as<float>(), 0.5f, 100.0f);
+          g_settings.equipment.minHeaterSubmergeL =
+              EditableFields::normalize(
+                  EditableFields::Id::EQUIPMENT_MIN_HEATER_SUBMERGE_L,
+                  doc["minHeaterSubmergeL"].as<float>());
         }
         if (!doc["waterAutoStartCubeTempC"].isNull()) {
           g_settings.equipment.waterAutoStartCubeTempC = clampFloatRange(
@@ -254,8 +263,10 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
               doc["boosterHeaterEnabled"].as<bool>();
         }
         if (!doc["boosterHeaterPowerW"].isNull()) {
-          g_settings.equipment.boosterHeaterPowerW = clampU16Range(
-              doc["boosterHeaterPowerW"].as<uint32_t>(), 1000, 10000);
+          g_settings.equipment.boosterHeaterPowerW =
+              EditableFields::normalizeU16(
+                  EditableFields::Id::EQUIPMENT_BOOSTER_HEATER_POWER_W,
+                  doc["boosterHeaterPowerW"].as<uint32_t>());
         }
         if (!doc["boosterHeaterStopCubeTempC"].isNull()) {
           g_settings.equipment.boosterHeaterStopCubeTempC = clampFloatRange(
@@ -265,37 +276,21 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
           g_settings.equipment.coolingPwmEnabled =
               doc["coolingPwmEnabled"].as<bool>();
         }
-        if (!doc["coolingPwmMinDuty"].isNull()) {
-          g_settings.equipment.coolingPwmMinDuty = static_cast<uint8_t>(
+        if (!doc["coolingPwmHoldPercent"].isNull()) {
+          g_settings.equipment.coolingPwmHoldPercent = static_cast<uint8_t>(
               EditableFields::normalize(
-                  EditableFields::Id::COOLING_PWM_MIN_DUTY,
-                  doc["coolingPwmMinDuty"].as<float>()));
+                  EditableFields::Id::COOLING_PWM_HOLD_PERCENT,
+                  doc["coolingPwmHoldPercent"].as<float>()));
+        } else if (!doc["coolingPwmStartupDuty"].isNull()) {
+          g_settings.equipment.coolingPwmHoldPercent =
+              CoolingPwmLogic::clampHoldPercent(CoolingPwmLogic::dutyToPercent(
+                  doc["coolingPwmStartupDuty"].as<uint32_t>()));
         }
-        if (!doc["coolingPwmMaxDuty"].isNull()) {
-          g_settings.equipment.coolingPwmMaxDuty = static_cast<uint8_t>(
-              EditableFields::normalize(
-                  EditableFields::Id::COOLING_PWM_MAX_DUTY,
-                  doc["coolingPwmMaxDuty"].as<float>()));
-        }
-        if (g_settings.equipment.coolingPwmMinDuty >
-            g_settings.equipment.coolingPwmMaxDuty) {
-          g_settings.equipment.coolingPwmMinDuty =
-              g_settings.equipment.coolingPwmMaxDuty;
-        }
-        if (!doc["coolingPwmStartupDuty"].isNull()) {
-          g_settings.equipment.coolingPwmStartupDuty = static_cast<uint8_t>(
-              EditableFields::normalize(
-                  EditableFields::Id::COOLING_PWM_STARTUP_DUTY,
-                  doc["coolingPwmStartupDuty"].as<float>()));
-          g_settings.equipment.coolingPwmStartupDuty = clampU8Range(
-              g_settings.equipment.coolingPwmStartupDuty,
-              g_settings.equipment.coolingPwmMinDuty,
-              g_settings.equipment.coolingPwmMaxDuty);
-        } else {
-          g_settings.equipment.coolingPwmStartupDuty = clampU8Range(
-              g_settings.equipment.coolingPwmStartupDuty,
-              g_settings.equipment.coolingPwmMinDuty,
-              g_settings.equipment.coolingPwmMaxDuty);
+        if (!doc["coolingPwmPullMs"].isNull()) {
+          g_settings.equipment.coolingPwmPullMs =
+              EditableFields::normalizeU16(
+                  EditableFields::Id::COOLING_PWM_PULL_MS,
+                  doc["coolingPwmPullMs"].as<float>());
         }
 
         bool temperatureBusChanged = false;
@@ -437,13 +432,18 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
 
   server.on("/api/settings/stirrer", HTTP_GET,
             [](AsyncWebServerRequest *request) {
-              syncStirrerState();
+              SystemState stateSnapshot;
+              if (!StateSnapshot::read(stateSnapshot)) {
+                request->send(503, "application/json",
+                              "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+                return;
+              }
 
               JsonDocument doc;
               fillStirrerSettingsJson(doc.to<JsonObject>(), g_settings);
-              doc["available"] = g_state.stirrer.available;
-              doc["running"] = g_state.stirrer.running;
-              doc["autoMode"] = g_state.stirrer.autoMode;
+              doc["available"] = stateSnapshot.stirrer.available;
+              doc["running"] = stateSnapshot.stirrer.running;
+              doc["autoMode"] = stateSnapshot.stirrer.autoMode;
 
               String json;
               serializeJson(doc, json);
@@ -471,6 +471,13 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
           return;
         }
 
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+          return;
+        }
+
         if (!doc["enabled"].isNull()) {
           g_settings.stirrer.enabled = doc["enabled"].as<bool>();
         }
@@ -491,12 +498,7 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
           g_settings.stirrer.autoNbk = doc["autoNbk"].as<bool>();
         }
 
-        if (!g_settings.stirrer.enabled) {
-          g_state.stirrer.autoMode = false;
-          PowerCommandGateway::stopStirrer(
-              PowerCommandGateway::Owner::MANUAL,
-              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
-        }
+        const bool stopStirrerAfterSave = !g_settings.stirrer.enabled;
 
         if (!NVSManager::saveSettings(g_settings)) {
           request->send(500, "application/json",
@@ -504,17 +506,84 @@ void registerEquipmentSettingsApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        syncStirrerState();
+        PowerCommandGateway::Command stopCommand;
+        ControlCommandQueue::EnqueueResult controlResult =
+            ControlCommandQueue::EnqueueResult::Accepted;
+        uint32_t controlCommandId = 0;
+        ControlCommandQueue::Status controlStatus =
+            ControlCommandQueue::Status::Applied;
+        if (stopStirrerAfterSave) {
+          controlStatus = ControlCommandQueue::Status::Unknown;
+          controlResult = ControlCommandQueue::enqueueAction(
+              ControlCommandQueue::Type::SetStirrerAutoMode,
+              ControlCommandQueue::Source::Api, 0, 0.0f, 0,
+              ControlCommandQueue::Reason::OperatorRequest,
+              &controlCommandId, &controlStatus);
+          stopCommand = PowerCommandGateway::stopStirrer(
+              PowerCommandGateway::Owner::MANUAL,
+              PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
+        }
 
         JsonDocument responseDoc;
-        responseDoc["success"] = true;
+        responseDoc["settingsSaved"] = true;
         JsonObject settingsJson = responseDoc["settings"].to<JsonObject>();
         fillStirrerSettingsJson(settingsJson, g_settings);
         JsonObject stirrer = responseDoc["stirrer"].to<JsonObject>();
-        fillStirrerJson(stirrer, g_state);
+        fillStirrerJson(stirrer, stateSnapshot);
+
+        int httpStatus = 200;
+        if (stopStirrerAfterSave) {
+          const bool controlAccepted =
+              controlResult == ControlCommandQueue::EnqueueResult::Accepted ||
+              controlResult == ControlCommandQueue::EnqueueResult::Duplicate;
+          const bool controlQueued =
+              controlStatus == ControlCommandQueue::Status::Queued ||
+              controlStatus == ControlCommandQueue::Status::Processing;
+          const bool controlApplied =
+              controlStatus == ControlCommandQueue::Status::Applied;
+          const bool accepted = controlAccepted && stopCommand.accepted;
+          const bool queued = controlQueued || stopCommand.queued;
+          const bool applied = controlApplied && stopCommand.applied;
+          responseDoc["commandType"] = "composite";
+          responseDoc["success"] = accepted && applied;
+          responseDoc["accepted"] = accepted;
+          responseDoc["queued"] = queued;
+          responseDoc["applied"] = applied;
+          responseDoc["status"] = !accepted ? "rejected"
+                                   : applied ? "applied" : "queued";
+          JsonArray commands = responseDoc["commands"].to<JsonArray>();
+          JsonObject control = commands.add<JsonObject>();
+          control["commandType"] = "control";
+          control["commandId"] = controlCommandId;
+          control["accepted"] = controlAccepted;
+          control["queued"] = controlQueued;
+          control["applied"] = controlApplied;
+          control["success"] = controlAccepted && controlApplied;
+          control["status"] = ControlCommandQueue::statusToken(controlStatus);
+          JsonObject output = commands.add<JsonObject>();
+          output["commandType"] = "output";
+          output["commandId"] = stopCommand.sequence;
+          output["accepted"] = stopCommand.accepted;
+          output["queued"] = stopCommand.queued;
+          output["applied"] = stopCommand.applied;
+          output["success"] = stopCommand.accepted && stopCommand.applied;
+          output["status"] = !stopCommand.accepted ? "rejected"
+                              : stopCommand.applied ? "applied" : "queued";
+          output["rejectReason"] = PowerCommandGateway::rejectReasonString(
+              stopCommand.rejectReason);
+          httpStatus = !accepted
+                           ? controlResult == ControlCommandQueue::EnqueueResult::Full
+                                 ? 429
+                                 : controlResult == ControlCommandQueue::EnqueueResult::NotInitialized
+                                       ? 503
+                                       : 409
+                       : queued ? 202 : 200;
+        } else {
+          responseDoc["success"] = true;
+        }
 
         String json;
         serializeJson(responseDoc, json);
-        request->send(200, "application/json", json);
+        request->send(httpStatus, "application/json", json);
       });
 }

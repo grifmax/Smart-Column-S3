@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.138">
+    <link rel="stylesheet" href="style.css?v=2.4.176">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -117,8 +117,6 @@
                 </button>
                 <button class="sidebar-item tab" data-tab="ai">
                     <span class="icon">🤖</span><span class="label">ИИ-ассистент</span>
-                </button>                <button class="sidebar-item tab" data-tab="tools">
-                    <span class="icon">🧮</span><span class="label">Инструменты</span>
                 </button>
 
                 <div class="sidebar-section-title">Система</div>
@@ -246,7 +244,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.138" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.176" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1133,12 +1131,85 @@
                                                             max="60" step="1" value="10">
                                                     </div>
                                                 </div>
+                                            </div>
+
+                                            <div class="control-subsection">
+                                                <div class="control-subsection-title">Мощность и скорость отбора</div>
+                                                <p class="control-inline-hint" style="margin-bottom: 12px;">
+                                                    Настройки мощности ТЭНа (Вт) и скорости насоса (мл/ч) для каждой фракции.
+                                                    При достижении целевого объема система остановит отбор и предложит сменить тару.
+                                                </p>
+                                                <div class="control-form-grid">
+                                                    <div class="form-group">
+                                                        <label for="mrect-heads-power">Головы: мощность, Вт</label>
+                                                        <input type="number" id="mrect-heads-power" min="100" max="10000" step="100" value="2500">
+                                                        <div class="control-inline-hint">Рекомендуется: 2000-2500 Вт</div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="mrect-heads-speed">Головы: скорость, мл/ч</label>
+                                                        <input type="number" id="mrect-heads-speed" min="10" max="5000" step="10" value="300">
+                                                        <div class="control-inline-hint">Рекомендуется: 200-400 мл/ч</div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="mrect-body-power">Тело: мощность, Вт</label>
+                                                        <input type="number" id="mrect-body-power" min="100" max="10000" step="100" value="2000">
+                                                        <div class="control-inline-hint">Рекомендуется: 1800-2200 Вт</div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="mrect-body-speed">Тело: скорость, мл/ч</label>
+                                                        <input type="number" id="mrect-body-speed" min="10" max="5000" step="10" value="600">
+                                                        <div class="control-inline-hint">Рекомендуется: 500-800 мл/ч</div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="mrect-tails-power">Хвосты: мощность, Вт</label>
+                                                        <input type="number" id="mrect-tails-power" min="100" max="10000" step="100" value="1500">
+                                                        <div class="control-inline-hint">Рекомендуется: 1200-1800 Вт</div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label>Хвосты: скорость</label>
+                                                        <div class="control-inline-hint" style="margin-top: 0;">
+                                                            Используется декремент из настроек выше
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="control-subsection">
+                                                <div class="control-subsection-title">Автоматическая смена фракций</div>
+                                                <p class="control-inline-hint" style="margin-bottom: 12px;">
+                                                    🔔 При достижении целевого объема отбор остановится, прозвучит сигнал и появится окно "Смена тары".
+                                                    Укажите 0, если хотите менять фракции вручную.
+                                                </p>
+                                                <div class="control-form-grid">
+                                                    <div class="form-group">
+                                                        <label for="mrect-heads-volume">Целевой объем голов, мл</label>
+                                                        <input type="number" id="mrect-heads-volume" min="0" max="50000" step="50" value="0">
+                                                        <div class="control-inline-hint">0 = ручная смена</div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="mrect-body-volume">Целевой объем тела, мл</label>
+                                                        <input type="number" id="mrect-body-volume" min="0" max="50000" step="50" value="0">
+                                                        <div class="control-inline-hint">0 = ручная смена</div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label for="mrect-tails-volume">Целевой объем хвостов, мл</label>
+                                                        <input type="number" id="mrect-tails-volume" min="0" max="50000" step="50" value="0">
+                                                        <div class="control-inline-hint">0 = ручная смена</div>
+                                                    </div>
+                                                    <div class="form-group control-checkbox-field">
+                                                        <label for="mrect-sound-enabled">🔊 Звуковой сигнал</label>
+                                                        <input type="checkbox" id="mrect-sound-enabled" checked>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="control-subsection">
                                                 <div class="controls control-inline-actions">
                                                     <button class="btn btn-primary" type="button"
-                                                        onclick="saveManualRectSettings()">💾 Сохранить
-                                                        параметры</button>
+                                                        onclick="saveManualRectSettings()">💾 Сохранить все параметры</button>
                                                     <button class="btn btn-secondary" type="button"
                                                         onclick="loadManualRectSettings()">🔄 Загрузить</button>
+                                                    <button class="btn btn-secondary" type="button" id="mrect-reset-btn">↺ Сбросить к умолчанию</button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1897,6 +1968,8 @@
                             </div>
                         </div>
                     </div>
+                        </div>
+                    </div>
 
                     <!-- Вкладка: WiFi -->
                     <div id="wifi" class="tab-content">
@@ -2020,9 +2093,23 @@
                                             placeholder="Загрузка...">
                                     </div>
                                     <div class="form-group">
-                                        <label>Шагов за полный оборот</label>
-                                        <input type="number" id="pump-steps-per-rev" min="1" step="1"
+                                        <label>Шагов за полный оборот (двигатель)</label>
+                                        <input type="number" id="pump-steps-per-rev" min="1" max="1000" step="1"
                                             placeholder="Загрузка...">
+                                        <small class="info-text">Без микрошагов: NEMA 17 — 200 шагов (1,8°).</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Микрошаги драйвера</label>
+                                        <select id="pump-microsteps">
+                                            <option value="1">1/1</option>
+                                            <option value="2">1/2</option>
+                                            <option value="4">1/4</option>
+                                            <option value="8">1/8</option>
+                                            <option value="16">1/16</option>
+                                            <option value="32">1/32</option>
+                                            <option value="64">1/64</option>
+                                        </select>
+                                        <small class="info-text">Должно совпадать с настройкой TMC2209 (MS1/MS2).</small>
                                     </div>
                                     <div class="form-group">
                                         <label>Мощность ТЭНа (Вт)</label>
@@ -3903,7 +3990,8 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.138"></script>
+    <script src="app.js?v=2.4.176"></script>
+    <script src="manual-rect-integration.js?v=2.4.175"></script>
 </body>
 
 </html>

@@ -162,6 +162,7 @@ struct TemperatureData {
   float waterIn = 0.0f;
   float waterOut = 0.0f;
   bool valid[8] = {false}; // Флаги валидности датчиков
+  uint32_t lastUpdateBySensor[8] = {0}; // Время последней выборки каждого канала
   uint32_t lastUpdate = 0; // Время последнего обновления
 };
 
@@ -486,6 +487,11 @@ struct SystemState {
   // A planned body-container rotation has no level-sensor latch of its own.
   // It stays set while the process is paused and awaits TFT/Web confirmation.
   bool rectBodyContainerChangePending = false;
+
+  // Ручная ректификация: смена тары и фракций
+  bool manualRectContainerChangePending = false;  // Ожидание смены тары
+  RectPhase manualRectPendingPhase = RectPhase::IDLE;  // Фаза после смены тары
+
   uint32_t uptime = 0;
 
   TemperatureData temps;
@@ -595,13 +601,8 @@ struct EquipmentSettings {
   uint16_t boosterHeaterPowerW = 3000;
   float boosterHeaterStopCubeTempC = 78.0f;
   bool coolingPwmEnabled = false;
-  // Период медленного цикла клапана охлаждения. Скважность задаётся
-  // min/max/startup duty в 0..255, а период — здесь, в секундах: соленоид
-  // нельзя держать под быстрым PWM, катушка греется.
-  uint16_t coolingPwmPeriodSec = 5;
-  uint8_t coolingPwmMinDuty = 0;
-  uint8_t coolingPwmMaxDuty = 255;
-  uint8_t coolingPwmStartupDuty = 96;
+  uint8_t coolingPwmHoldPercent = 38;
+  uint16_t coolingPwmPullMs = 300;
   bool useDs2482ForTemps = false;
   uint8_t ds2482Address = 0x18;
   bool bodyLevelSensorEnabled = false;
@@ -748,6 +749,25 @@ struct SafetySettings {
   float pressureRiseRateMmHgMin = 20.0f;
 };
 
+struct ManualRectSettings {
+  // Мощность ТЭНа для каждой фракции (Ватты)
+  float headsPowerW = 2500.0f;
+  float bodyPowerW = 2000.0f;
+  float tailsPowerW = 1500.0f;
+
+  // Скорость отбора для каждой фракции (мл/ч)
+  float headsSpeedMlH = 300.0f;
+  float bodySpeedMlH = 600.0f;
+
+  // Целевые объемы для автоматической смены фракций (мл, 0 = ручная смена)
+  float headsTargetVolumeMl = 0.0f;
+  float bodyTargetVolumeMl = 0.0f;
+  float tailsTargetVolumeMl = 0.0f;
+
+  // Звуковой сигнал при смене фракций
+  bool fractionChangeSoundEnabled = true;
+};
+
 struct NbkSettings {
   float powerW = 2500.0f;
   float pumpSpeedMlH = 20000.0f; // 20 л/ч
@@ -866,6 +886,7 @@ struct Settings {
   DisplaySettings displaySettings; // Настройки дисплея
   RectParams rectParams;
   DistillationUiSettings distillationUi;
+  ManualRectSettings manualRect;
   SecuritySettings security;
   SafetySettings safety;
   NbkSettings nbk;

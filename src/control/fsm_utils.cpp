@@ -120,9 +120,11 @@ uint16_t applyFullHeatPower(const Settings& settings) {
     return targetWatts;
 }
 
-uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent) {
+uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings,
+                              uint8_t fallbackPercent, bool allowPressureControl) {
     uint8_t requestedPower = fallbackPercent;
-    if (state.pressure.ok) {
+    if ((allowPressureControl && state.pressure.ok) ||
+        (!allowPressureControl && WattControl::isOverrideActive())) {
         requestedPower = WattControl::update(state, settings);
     }
 
@@ -134,7 +136,8 @@ uint8_t getProcessHeaterPower(const SystemState& state, const Settings& settings
     return requestedPower;
 }
 
-uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& settings, uint8_t fallbackPercent) {
+uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& settings,
+                                 uint8_t fallbackPercent, bool allowPressureControl) {
     if (WattControl::hasOverrideWatts()) {
         const int16_t overrideWatts = WattControl::getOverrideWatts();
         const uint16_t targetWatts = overrideWatts > 0 ? static_cast<uint16_t>(overrideWatts) : 0;
@@ -144,7 +147,8 @@ uint16_t applyProcessHeaterPower(const SystemState& state, const Settings& setti
         return targetWatts;
     }
 
-    const uint8_t requestedPercent = getProcessHeaterPower(state, settings, fallbackPercent);
+    const uint8_t requestedPercent = getProcessHeaterPower(
+        state, settings, fallbackPercent, allowPressureControl);
     const uint16_t heaterMaxW = getConfiguredHeaterPowerWatts(settings);
     const uint16_t targetWatts = static_cast<uint16_t>(
         (static_cast<uint32_t>(heaterMaxW) * requestedPercent) / 100U

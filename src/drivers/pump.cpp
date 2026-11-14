@@ -9,6 +9,7 @@
  */
 
 #include "pump.h"
+#include "../control/pump_steps_logic.h"
 
 #include <freertos/semphr.h>
 
@@ -49,11 +50,9 @@ static bool isDemoHardwareSuppressed() {
 }
 
 static uint32_t configuredStepsPerRevolution() {
-    const uint32_t steps = g_settings.pumpCal.stepsPerRevolution > 0
-        ? g_settings.pumpCal.stepsPerRevolution : PUMP_STEPS_PER_REV;
-    const uint32_t microsteps = g_settings.pumpCal.microsteps > 0
-        ? g_settings.pumpCal.microsteps : PUMP_MICROSTEPS;
-    return steps * microsteps;
+    return PumpSteps::pulsesPerRevolution(
+        g_settings.pumpCal.stepsPerRevolution, g_settings.pumpCal.microsteps,
+        PUMP_STEPS_PER_REV, PUMP_MICROSTEPS);
 }
 
 static void updateTotalsFromExactSteps() {
@@ -408,6 +407,10 @@ uint32_t getTotalSteps() {
     }
 
     return static_cast<uint32_t>(totalSteps);
+}
+
+uint32_t getStepsPerRevolution() {
+    return configuredStepsPerRevolution();
 }
 
 float getMaxSpeedMlH() {

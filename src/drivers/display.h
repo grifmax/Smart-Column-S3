@@ -12,7 +12,9 @@
 #include "types.h"
 
 namespace Display {
-    struct RuntimeStats {
+    static constexpr uint8_t DISPLAY_TAP_HISTORY = 6;
+
+struct RuntimeStats {
         uint32_t framesRendered = 0;
         uint32_t fullRedraws = 0;
         uint32_t partialRedraws = 0;
@@ -35,6 +37,24 @@ namespace Display {
         uint32_t redrawReasonLanguageChanged = 0;
         uint32_t redrawReasonLayoutChanged = 0;
         uint32_t redrawReasonRecovery = 0;
+        uint32_t touchPolls = 0;
+        uint32_t touchPressedReads = 0;
+        uint32_t touchTaps = 0;
+        uint8_t touchCalValid = 0;
+        int16_t touchCalXMin = 0;
+        int16_t touchCalXMax = 0;
+        int16_t touchCalYMin = 0;
+        int16_t touchCalYMax = 0;
+        int16_t lastTapRawX = 0;
+        int16_t lastTapRawY = 0;
+        int16_t lastTapX = 0;
+        int16_t lastTapY = 0;
+        // Oldest first; lets a burst of taps be inspected at once.
+        uint8_t tapHistoryCount = 0;
+        int16_t tapHistoryRawX[DISPLAY_TAP_HISTORY] = {};
+        int16_t tapHistoryRawY[DISPLAY_TAP_HISTORY] = {};
+        int16_t tapHistoryX[DISPLAY_TAP_HISTORY] = {};
+        int16_t tapHistoryY[DISPLAY_TAP_HISTORY] = {};
         char lastRedrawReason[24] = "";
     };
 

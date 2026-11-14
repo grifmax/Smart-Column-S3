@@ -39,7 +39,8 @@ bool isFreshPressureSignal(const SystemState& state, uint32_t nowMs) {
 } // namespace
 
 bool SafetyPolicyV2::isNbkPressurePowerLimitActive(const SystemState& state, const Settings& settings) {
-    return state.mode == Mode::NBK && state.pressure.ok &&
+    return state.mode == Mode::NBK && settings.rectParams.pressureControlEnabled &&
+           state.pressure.ok &&
            state.pressure.cube > settings.safety.pressureMaxMmHg * 0.85f;
 }
 
@@ -72,7 +73,9 @@ bool SafetyPolicyV2::isManualRectFloodPowerLimitActive(const SystemState& state,
     const float floodPressure = WattControl::calculateFloodPressure(settings.equipment.columnHeightMm,
                                                                     settings.equipment.packingCoeff);
     const float criticalPressure = floodPressure * PRESSURE_CRIT_MULT;
-    return state.mode == Mode::MANUAL_RECT && state.pressure.ok && state.pressure.cube >= criticalPressure;
+    return state.mode == Mode::MANUAL_RECT &&
+           settings.rectParams.pressureControlEnabled && state.pressure.ok &&
+           state.pressure.cube >= criticalPressure;
 }
 
 ManualRectFloodPolicyV2 SafetyPolicyV2::evaluateManualRectFloodPower(uint8_t requestedPowerPercent,
@@ -86,7 +89,9 @@ ManualRectFloodPolicyV2 SafetyPolicyV2::evaluateManualRectFloodPower(uint8_t req
     result.floodPressureMmHg = WattControl::calculateFloodPressure(settings.equipment.columnHeightMm,
                                                                    settings.equipment.packingCoeff);
     result.criticalPressureMmHg = result.floodPressureMmHg * PRESSURE_CRIT_MULT;
-    result.limitActive = state.mode == Mode::MANUAL_RECT && state.pressure.ok &&
+    result.limitActive = state.mode == Mode::MANUAL_RECT &&
+                         settings.rectParams.pressureControlEnabled &&
+                         state.pressure.ok &&
                          state.pressure.cube >= result.criticalPressureMmHg;
 
     if (!result.limitActive) {

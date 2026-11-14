@@ -521,4 +521,82 @@ void registerModeSettingsApiRoutes(AsyncWebServer &server) {
         serializeJson(out, json);
         request->send(200, "application/json", json);
       });
+
+  // Ручная ректификация
+  server.on("/api/settings/manual-rect", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              JsonDocument doc;
+              const ManualRectSettings &settings = g_settings.manualRect;
+
+              doc["headsPowerW"] = settings.headsPowerW;
+              doc["bodyPowerW"] = settings.bodyPowerW;
+              doc["tailsPowerW"] = settings.tailsPowerW;
+              doc["headsSpeedMlH"] = settings.headsSpeedMlH;
+              doc["bodySpeedMlH"] = settings.bodySpeedMlH;
+              doc["headsTargetVolumeMl"] = settings.headsTargetVolumeMl;
+              doc["bodyTargetVolumeMl"] = settings.bodyTargetVolumeMl;
+              doc["tailsTargetVolumeMl"] = settings.tailsTargetVolumeMl;
+              doc["fractionChangeSoundEnabled"] = settings.fractionChangeSoundEnabled;
+
+              String json;
+              serializeJson(doc, json);
+              request->send(200, "application/json", json);
+            });
+
+  server.on(
+      "/api/settings/manual-rect", HTTP_POST,
+      [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        JsonDocument doc;
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"success\":false,\"error\":\"Invalid JSON\"}")) {
+          return;
+        }
+
+        if (!doc["headsPowerW"].isNull()) {
+          float value = doc["headsPowerW"].as<float>();
+          g_settings.manualRect.headsPowerW = constrain(value, 100.0f, 10000.0f);
+        }
+        if (!doc["bodyPowerW"].isNull()) {
+          float value = doc["bodyPowerW"].as<float>();
+          g_settings.manualRect.bodyPowerW = constrain(value, 100.0f, 10000.0f);
+        }
+        if (!doc["tailsPowerW"].isNull()) {
+          float value = doc["tailsPowerW"].as<float>();
+          g_settings.manualRect.tailsPowerW = constrain(value, 100.0f, 10000.0f);
+        }
+        if (!doc["headsSpeedMlH"].isNull()) {
+          float value = doc["headsSpeedMlH"].as<float>();
+          g_settings.manualRect.headsSpeedMlH = constrain(value, 10.0f, 5000.0f);
+        }
+        if (!doc["bodySpeedMlH"].isNull()) {
+          float value = doc["bodySpeedMlH"].as<float>();
+          g_settings.manualRect.bodySpeedMlH = constrain(value, 10.0f, 5000.0f);
+        }
+        if (!doc["headsTargetVolumeMl"].isNull()) {
+          float value = doc["headsTargetVolumeMl"].as<float>();
+          g_settings.manualRect.headsTargetVolumeMl = constrain(value, 0.0f, 50000.0f);
+        }
+        if (!doc["bodyTargetVolumeMl"].isNull()) {
+          float value = doc["bodyTargetVolumeMl"].as<float>();
+          g_settings.manualRect.bodyTargetVolumeMl = constrain(value, 0.0f, 50000.0f);
+        }
+        if (!doc["tailsTargetVolumeMl"].isNull()) {
+          float value = doc["tailsTargetVolumeMl"].as<float>();
+          g_settings.manualRect.tailsTargetVolumeMl = constrain(value, 0.0f, 50000.0f);
+        }
+        if (!doc["fractionChangeSoundEnabled"].isNull()) {
+          g_settings.manualRect.fractionChangeSoundEnabled =
+              doc["fractionChangeSoundEnabled"].as<bool>();
+        }
+
+        if (!NVSManager::saveSettings(g_settings)) {
+          sendJsonError(request, 500, "Failed to save settings");
+          return;
+        }
+
+        sendJsonSuccess(request);
+      });
 }

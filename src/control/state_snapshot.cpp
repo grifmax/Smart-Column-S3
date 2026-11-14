@@ -1,78 +1,76 @@
 #include "control/state_snapshot.h"
 
 #include <Arduino.h>
+#include <atomic>
 #include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
+#include "runtime_metrics.h"
+#include "state_snapshot_logic.h"
 
 namespace {
 
-portMUX_TYPE sMux = portMUX_INITIALIZER_UNLOCKED;
-SystemState sBuffer;
-volatile uint32_t sSequence = 0;
-volatile bool sReady = false;
-volatile uint32_t sRetries = 0;
+class FreeRtosSnapshotMutex {
+public:
+    bool init() {
+        if (semaphore_ != nullptr) return true;
+        semaphore_ = xSemaphoreCreateMutex();
+        return semaphore_ != nullptr;
+    }
+    bool try_lock() {
+        return semaphore_ != nullptr && xSemaphoreTake(semaphore_, 0) == pdTRUE;
+    }
+    bool try_lock_for(uint32_t timeoutMs) {
+        return semaphore_ != nullptr &&
+               xSemaphoreTake(semaphore_, pdMS_TO_TICKS(timeoutMs)) == pdTRUE;
+    }
+    void unlock() { xSemaphoreGive(semaphore_); }
 
-inline uint32_t readSequence() {
-    uint32_t value;
-    portENTER_CRITICAL(&sMux);
-    value = sSequence;
-    portEXIT_CRITICAL(&sMux);
-    return value;
-}
+private:
+    SemaphoreHandle_t semaphore_ = nullptr;
+};
 
-inline void writeSequence(uint32_t value) {
-    portENTER_CRITICAL(&sMux);
-    sSequence = value;
-    portEXIT_CRITICAL(&sMux);
-}
+StateSnapshotLogic::Buffer<SystemState, FreeRtosSnapshotMutex> sSnapshot;
+std::atomic<uint32_t> sRetries{0};
+std::atomic<uint32_t> sPublishSkips{0};
 
 }  // namespace
 
 namespace StateSnapshot {
 
-void publish(const SystemState& state) {
-    // Нечётная последовательность = идёт запись, читатель обязан повторить.
-    writeSequence(readSequence() + 1);
-    __sync_synchronize();
+bool init() {
+    return sSnapshot.init();
+}
 
-    sBuffer = state;
-
-    __sync_synchronize();
-    writeSequence(readSequence() + 1);
-    sReady = true;
+bool publish(const SystemState& state) {
+    const uint32_t copyStartedAtUs = micros();
+    if (!sSnapshot.publish(state, millis())) {
+        sPublishSkips.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+    const uint32_t copyDurationUs = micros() - copyStartedAtUs;
+    ControlRuntimeMetrics::recordSnapshotCopy(copyDurationUs);
+    return true;
 }
 
 bool read(SystemState& out) {
-    if (!sReady) {
+    if (!sSnapshot.read(out, 20)) {
+        sRetries.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
-
-    for (uint8_t attempt = 0; attempt < 4; ++attempt) {
-        const uint32_t before = readSequence();
-        if ((before & 1U) != 0U) {
-            continue;  // публикация в процессе
-        }
-
-        out = sBuffer;
-
-        if (readSequence() == before) {
-            return true;
-        }
-        sRetries++;
-    }
-
-    return false;
+    return true;
 }
 
-void readOrLive(SystemState& out) {
-    if (!read(out)) {
-        out = g_state;
-    }
+bool isReady() { return sSnapshot.isReady(20); }
+
+uint32_t sequence() { return sSnapshot.sequence(20); }
+
+uint32_t ageMs(uint32_t nowMs) { return sSnapshot.ageMs(nowMs, 20); }
+
+uint32_t retryCount() { return sRetries.load(std::memory_order_relaxed); }
+
+uint32_t publishSkipCount() {
+    return sPublishSkips.load(std::memory_order_relaxed);
 }
-
-bool isReady() { return sReady; }
-
-uint32_t sequence() { return sSequence; }
-
-uint32_t retryCount() { return sRetries; }
 
 }  // namespace StateSnapshot

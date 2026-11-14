@@ -8,17 +8,21 @@
 #include <../../src/interface/tft_hmi_policy_logic.h>
 #include <../../src/interface/tft_operator_overlay_logic.h>
 #include <../../src/interface/tft_service_test_logic.h>
+#include <../../src/interface/tft_temps_focus_logic.h>
 #include <../../src/control/service_test_session_logic.h>
 #include <../../src/control/service_test_audit_logic.h>
-#include <../../src/control/control_stats_logic.h>
 #include <../../src/control/dosing_session_logic.h>
+#include <../../src/control/ads1115_logic.h>
 #include <../../src/control/autoclave_hardware_profile_logic.h>
 #include <../../src/control/autoclave_session_logic.h>
 #include <../../src/control/autoclave_safety_logic.h>
 #include <../../src/control/pump_calibration_logic.h>
+#include <../../src/control/runtime_metrics_logic.h>
+#include <../../src/control/control_stats_logic.h>
 #include <../../src/control/sensor_calibration_logic.h>
 #include <../../src/control/pzem_read_policy.h>
 #include <../../src/control/pzem_sample_policy.h>
+#include <../../src/control/sensor_freshness_logic.h>
 #include <../../src/control/slow_pwm_policy.h>
 #include <../../src/ui/hmi_page_model.h>
 #include <../../src/fw_build_date.h>
@@ -45,7 +49,74 @@ void test_json_harness_parses_and_asserts_contract_fields() {
   assertJsonIntEquals(parsed.as<JsonVariantConst>(), "code", 200);
 }
 
+void test_runtime_metrics_tracks_cycle_buckets_and_maxima() {
+  ControlRuntimeMetricsLogic::Snapshot snapshot;
+  ControlRuntimeMetricsLogic::recordCycle(snapshot, 1000, 1200);
+  ControlRuntimeMetricsLogic::recordCycle(snapshot, 1001, 2400);
+  ControlRuntimeMetricsLogic::recordCycle(snapshot, 5000, 700);
+  ControlRuntimeMetricsLogic::recordCycle(snapshot, 5001, 800);
+  ControlRuntimeMetricsLogic::recordCycle(snapshot, 10000, 900);
+  ControlRuntimeMetricsLogic::recordCycle(snapshot, 10001, 4000);
+
+  TEST_ASSERT_EQUAL_UINT32(6, snapshot.cycleCount);
+  TEST_ASSERT_EQUAL_UINT32(10001, snapshot.lastCycleUs);
+  TEST_ASSERT_EQUAL_UINT32(10001, snapshot.maxCycleUs);
+  TEST_ASSERT_EQUAL_UINT32(4000, snapshot.maxCycleGapUs);
+  TEST_ASSERT_EQUAL_UINT32(1, snapshot.cyclesLe1Ms);
+  TEST_ASSERT_EQUAL_UINT32(2, snapshot.cyclesLe5Ms);
+  TEST_ASSERT_EQUAL_UINT32(2, snapshot.cyclesLe10Ms);
+  TEST_ASSERT_EQUAL_UINT32(1, snapshot.cyclesGt10Ms);
+}
+
+void test_runtime_metrics_accumulates_command_batch_timings() {
+  ControlRuntimeMetricsLogic::Snapshot snapshot;
+  ControlRuntimeMetricsLogic::recordControlCommandBatch(snapshot, 300, 2);
+  ControlRuntimeMetricsLogic::recordControlCommandBatch(snapshot, 120, 0);
+  ControlRuntimeMetricsLogic::recordOutputCommandBatch(snapshot, 700, 1);
+  ControlRuntimeMetricsLogic::recordOutputCommandBatch(snapshot, 900, 3);
+
+  TEST_ASSERT_EQUAL_UINT32(2, snapshot.controlCommandBatchCount);
+  TEST_ASSERT_EQUAL_UINT32(2, snapshot.controlCommandsProcessed);
+  TEST_ASSERT_EQUAL_UINT32(120, snapshot.lastControlCommandBatchUs);
+  TEST_ASSERT_EQUAL_UINT32(300, snapshot.maxControlCommandBatchUs);
+  TEST_ASSERT_EQUAL_UINT32(2, snapshot.outputCommandBatchCount);
+  TEST_ASSERT_EQUAL_UINT32(4, snapshot.outputCommandsProcessed);
+  TEST_ASSERT_EQUAL_UINT32(900, snapshot.lastOutputCommandBatchUs);
+  TEST_ASSERT_EQUAL_UINT32(900, snapshot.maxOutputCommandBatchUs);
+}
+
+void test_runtime_metrics_tracks_safety_snapshot_and_unknown_sample_age() {
+  ControlRuntimeMetricsLogic::Snapshot snapshot;
+  ControlRuntimeMetricsLogic::recordSafetyTrip(snapshot, UINT32_MAX, 10);
+  ControlRuntimeMetricsLogic::recordSafetyTrip(snapshot, 25, 80);
+  ControlRuntimeMetricsLogic::recordSafetyTrip(snapshot, 60, 120);
+  ControlRuntimeMetricsLogic::recordRepeatedSafetyTrip(snapshot);
+  ControlRuntimeMetricsLogic::recordStaleSensorCheck(snapshot);
+  ControlRuntimeMetricsLogic::recordSnapshotCopy(snapshot, 45);
+  ControlRuntimeMetricsLogic::recordSnapshotCopy(snapshot, 30);
+
+  TEST_ASSERT_EQUAL_UINT32(3, snapshot.safetyTripCount);
+  TEST_ASSERT_EQUAL_UINT32(2, snapshot.safetySampleAgeKnownCount);
+  TEST_ASSERT_EQUAL_UINT32(60, snapshot.lastSafetySampleAgeMs);
+  TEST_ASSERT_EQUAL_UINT32(60, snapshot.maxSafetySampleAgeMs);
+  TEST_ASSERT_EQUAL_UINT32(120, snapshot.maxOutputStopUs);
+  TEST_ASSERT_EQUAL_UINT32(1, snapshot.repeatedSafetyTripCount);
+  TEST_ASSERT_EQUAL_UINT32(1, snapshot.staleSensorCheckCount);
+  TEST_ASSERT_EQUAL_UINT32(2, snapshot.snapshotCopyCount);
+  TEST_ASSERT_EQUAL_UINT32(30, snapshot.lastSnapshotCopyUs);
+  TEST_ASSERT_EQUAL_UINT32(45, snapshot.maxSnapshotCopyUs);
+  TEST_ASSERT_EQUAL_UINT32(
+      25, ControlRuntimeMetricsLogic::sampleAgeMs(125, 100, true));
+  TEST_ASSERT_EQUAL_UINT32(
+      20, ControlRuntimeMetricsLogic::sampleAgeMs(10, UINT32_MAX - 9, true));
+  TEST_ASSERT_EQUAL_UINT32(
+      UINT32_MAX, ControlRuntimeMetricsLogic::sampleAgeMs(125, 100, false));
+}
+
 void test_fraction_program_end_reason_returns_none_without_conditions();
+void test_runtime_metrics_tracks_cycle_buckets_and_maxima();
+void test_runtime_metrics_accumulates_command_batch_timings();
+void test_runtime_metrics_tracks_safety_snapshot_and_unknown_sample_age();
 void test_fraction_program_end_reason_detects_each_automatic_condition();
 void test_fraction_program_end_reason_uses_documented_or_priority();
 void test_pzem_fresh_sample_requires_valid_snapshot();
@@ -58,6 +129,7 @@ void test_hmi_rail_hidden_when_page_fits();
 void test_hmi_thumb_scales_with_scroll();
 void test_hmi_footer_variants();
 void test_hmi_table_font_shrinks_with_rows();
+void test_hmi_page_stack_and_row_hit_testing();
 void test_slow_pwm_splits_period_by_duty();
 void test_slow_pwm_is_on_respects_phase();
 void test_slow_pwm_clamps_period_and_duty();
@@ -66,6 +138,10 @@ void test_slow_pwm_converts_raw_duty_to_percent();
 void test_fw_build_date_is_valid();
 void test_fraction_program_manual_advance_has_priority();
 void test_fraction_program_route_gate_requires_ready_route_and_settle_delay();
+void test_optional_sensor_does_not_block_when_not_required();
+void test_required_sensor_blocks_when_missing_or_stale();
+void test_sensor_freshness_handles_millis_rollover();
+void test_sensor_safety_uses_last_successful_sample_until_timeout();
 
 void test_fraction_program_pause_shifts_step_timer();
 
@@ -81,8 +157,25 @@ void test_safety_proof_guard_blocks_unsafe_states();
 void test_safety_proof_guard_allows_only_idle_safe_hardware();
 void test_editable_field_descriptor_exposes_canonical_tft_metadata();
 void test_editable_field_normalization_clamps_and_snaps_to_step();
+void test_equipment_hmi_fields_expose_canonical_limits_and_steps();
+void test_safety_hmi_fields_match_api_limits_and_steps();
+void test_cooling_pwm_percent_conversion_handles_limits();
 void test_power_command_captures_owner_reason_timestamp_and_safe_stop();
+void test_power_gateway_reserves_safe_stop_when_normal_queue_is_full();
+void test_power_output_state_keeps_requested_and_applied_values_separate();
+void test_snapshot_buffer_is_coherent_under_concurrent_publish_and_read();
+void test_power_gateway_pump_stop_cancels_stale_starts_and_has_priority();
+void test_power_gateway_queue_clear_discards_all_pending_output_commands();
+void test_control_command_queue_prioritizes_stop_and_cancels_older_commands();
+void test_control_command_queue_reports_overflow_and_coalesces_stop();
+void test_control_command_queue_assigns_ids_and_returns_idempotent_results();
+void test_control_command_queue_preserves_heater_override_command();
+void test_control_command_queue_preserves_start_payload_bytes();
+void test_control_command_queue_validates_active_step_edits();
+void test_control_command_queue_safety_gate_allows_only_safety_overrides();
 void test_power_command_safe_stop_rules_match_output_semantics();
+void test_power_gateway_safety_trip_blocks_energizing_requests();
+void test_power_gateway_owner_priority_is_safety_then_fsm_service_manual();
 void test_power_command_pulse_contract_is_self_terminating();
 void test_power_command_service_safe_stop_keeps_all_outputs_auditable();
 void test_power_command_fsm_control_reason_covers_control_loop_outputs();
@@ -99,9 +192,17 @@ void test_tft_service_test_hides_unavailable_hardware();
 void test_service_test_session_requires_safe_pause_and_explicit_restore();
 void test_pump_calibration_requires_prime_measure_review_and_commit();
 void test_pump_calibration_cloud_measurement_skips_prime_but_keeps_review();
+void test_pump_calibration_time_fallback_requires_completed_zero_step_measurement();
+void test_pump_calibration_requires_confirmation_and_hard_bounds_large_changes();
 void test_sensor_calibration_keeps_ds18_mapping_unique();
 void test_service_test_audit_uses_stable_lifecycle_tokens();
 void test_dosing_session_requires_prime_then_tracks_only_target_volume();
+void test_dosing_session_finish_reasons_have_safe_terminal_phases();
+void test_dosing_session_has_independent_prime_and_dose_timeouts();
+void test_ads1115_single_ended_config_selects_channels_with_bounded_settings();
+void test_ads1115_conversion_math_and_timeout_handle_signed_values_and_rollover();
+void test_ads1115_read_single_ended_succeeds_after_conversion_ready();
+void test_ads1115_read_single_ended_fails_on_bus_error_or_conversion_timeout();
 void test_autoclave_profile_requires_explicit_hardware_and_safety_approval();
 void test_autoclave_sterilization_timer_only_counts_in_temperature_band();
 void test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout();
@@ -113,9 +214,19 @@ void test_control_stats_counts_safety_trips_on_edges_only();
 void test_control_stats_clamps_long_gaps();
 void test_control_stats_ignores_absent_pressure_and_cooling_sensors();
 
+void test_setpoint_guard_blocks_actuator_for_every_live_output();
+void test_setpoint_guard_keeps_runtime_and_constant_fields_editable();
+void test_setpoint_guard_reports_any_live_output_once();
+void test_temps_focus_fires_on_process_start_only_once();
+void test_temps_focus_fires_on_calibration_and_dosing_edges();
+void test_temps_focus_ignores_steady_state_and_combinations();
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_json_harness_parses_and_asserts_contract_fields);
+  RUN_TEST(test_runtime_metrics_tracks_cycle_buckets_and_maxima);
+  RUN_TEST(test_runtime_metrics_accumulates_command_batch_timings);
+  RUN_TEST(test_runtime_metrics_tracks_safety_snapshot_and_unknown_sample_age);
   RUN_TEST(test_fraction_program_end_reason_returns_none_without_conditions);
   RUN_TEST(test_fraction_program_end_reason_detects_each_automatic_condition);
   RUN_TEST(test_fraction_program_end_reason_uses_documented_or_priority);
@@ -130,6 +241,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_hmi_thumb_scales_with_scroll);
   RUN_TEST(test_hmi_footer_variants);
   RUN_TEST(test_hmi_table_font_shrinks_with_rows);
+  RUN_TEST(test_hmi_page_stack_and_row_hit_testing);
   RUN_TEST(test_slow_pwm_splits_period_by_duty);
   RUN_TEST(test_slow_pwm_is_on_respects_phase);
   RUN_TEST(test_slow_pwm_clamps_period_and_duty);
@@ -137,6 +249,10 @@ int main(int argc, char **argv) {
   RUN_TEST(test_slow_pwm_converts_raw_duty_to_percent);
   RUN_TEST(test_fw_build_date_is_valid);
   RUN_TEST(test_fraction_program_route_gate_requires_ready_route_and_settle_delay);
+  RUN_TEST(test_optional_sensor_does_not_block_when_not_required);
+  RUN_TEST(test_required_sensor_blocks_when_missing_or_stale);
+  RUN_TEST(test_sensor_freshness_handles_millis_rollover);
+  RUN_TEST(test_sensor_safety_uses_last_successful_sample_until_timeout);
   RUN_TEST(test_fraction_program_pause_shifts_step_timer);
   RUN_TEST(test_fraction_program_route_timeout_requires_missing_route);
   RUN_TEST(test_fraction_program_collection_gate_covers_route_level_emergency_and_resume);
@@ -149,8 +265,25 @@ int main(int argc, char **argv) {
   RUN_TEST(test_safety_proof_guard_allows_only_idle_safe_hardware);
   RUN_TEST(test_editable_field_descriptor_exposes_canonical_tft_metadata);
   RUN_TEST(test_editable_field_normalization_clamps_and_snaps_to_step);
+  RUN_TEST(test_equipment_hmi_fields_expose_canonical_limits_and_steps);
+  RUN_TEST(test_safety_hmi_fields_match_api_limits_and_steps);
+  RUN_TEST(test_cooling_pwm_percent_conversion_handles_limits);
   RUN_TEST(test_power_command_captures_owner_reason_timestamp_and_safe_stop);
+  RUN_TEST(test_power_gateway_reserves_safe_stop_when_normal_queue_is_full);
+  RUN_TEST(test_power_output_state_keeps_requested_and_applied_values_separate);
+  RUN_TEST(test_snapshot_buffer_is_coherent_under_concurrent_publish_and_read);
+  RUN_TEST(test_power_gateway_pump_stop_cancels_stale_starts_and_has_priority);
+  RUN_TEST(test_power_gateway_queue_clear_discards_all_pending_output_commands);
+  RUN_TEST(test_control_command_queue_prioritizes_stop_and_cancels_older_commands);
+  RUN_TEST(test_control_command_queue_reports_overflow_and_coalesces_stop);
+  RUN_TEST(test_control_command_queue_assigns_ids_and_returns_idempotent_results);
+  RUN_TEST(test_control_command_queue_preserves_heater_override_command);
+  RUN_TEST(test_control_command_queue_preserves_start_payload_bytes);
+  RUN_TEST(test_control_command_queue_validates_active_step_edits);
+  RUN_TEST(test_control_command_queue_safety_gate_allows_only_safety_overrides);
   RUN_TEST(test_power_command_safe_stop_rules_match_output_semantics);
+  RUN_TEST(test_power_gateway_safety_trip_blocks_energizing_requests);
+  RUN_TEST(test_power_gateway_owner_priority_is_safety_then_fsm_service_manual);
   RUN_TEST(test_power_command_pulse_contract_is_self_terminating);
   RUN_TEST(test_power_command_service_safe_stop_keeps_all_outputs_auditable);
   RUN_TEST(test_power_command_fsm_control_reason_covers_control_loop_outputs);
@@ -167,9 +300,17 @@ int main(int argc, char **argv) {
   RUN_TEST(test_service_test_session_requires_safe_pause_and_explicit_restore);
   RUN_TEST(test_pump_calibration_requires_prime_measure_review_and_commit);
   RUN_TEST(test_pump_calibration_cloud_measurement_skips_prime_but_keeps_review);
+  RUN_TEST(test_pump_calibration_time_fallback_requires_completed_zero_step_measurement);
+  RUN_TEST(test_pump_calibration_requires_confirmation_and_hard_bounds_large_changes);
   RUN_TEST(test_sensor_calibration_keeps_ds18_mapping_unique);
   RUN_TEST(test_service_test_audit_uses_stable_lifecycle_tokens);
   RUN_TEST(test_dosing_session_requires_prime_then_tracks_only_target_volume);
+  RUN_TEST(test_dosing_session_finish_reasons_have_safe_terminal_phases);
+  RUN_TEST(test_dosing_session_has_independent_prime_and_dose_timeouts);
+  RUN_TEST(test_ads1115_single_ended_config_selects_channels_with_bounded_settings);
+  RUN_TEST(test_ads1115_conversion_math_and_timeout_handle_signed_values_and_rollover);
+  RUN_TEST(test_ads1115_read_single_ended_succeeds_after_conversion_ready);
+  RUN_TEST(test_ads1115_read_single_ended_fails_on_bus_error_or_conversion_timeout);
   RUN_TEST(test_autoclave_profile_requires_explicit_hardware_and_safety_approval);
   RUN_TEST(test_autoclave_sterilization_timer_only_counts_in_temperature_band);
   RUN_TEST(test_autoclave_safety_faults_on_required_sensor_pressure_rate_and_timeout);
@@ -179,9 +320,113 @@ int main(int argc, char **argv) {
   RUN_TEST(test_control_stats_counts_safety_trips_on_edges_only);
   RUN_TEST(test_control_stats_clamps_long_gaps);
   RUN_TEST(test_control_stats_ignores_absent_pressure_and_cooling_sensors);
+  RUN_TEST(test_temps_focus_fires_on_process_start_only_once);
+  RUN_TEST(test_temps_focus_fires_on_calibration_and_dosing_edges);
+  RUN_TEST(test_temps_focus_ignores_steady_state_and_combinations);
+  RUN_TEST(test_setpoint_guard_blocks_actuator_for_every_live_output);
+  RUN_TEST(test_setpoint_guard_keeps_runtime_and_constant_fields_editable);
+  RUN_TEST(test_setpoint_guard_reports_any_live_output_once);
   return UNITY_END();
 }
 #include <../../src/control/fraction_program_logic.h>
+
+void test_ads1115_single_ended_config_selects_channels_with_bounded_settings() {
+  TEST_ASSERT_EQUAL_HEX16(0xC383, Ads1115Logic::singleEndedConfig(0));
+  TEST_ASSERT_EQUAL_HEX16(0xD383, Ads1115Logic::singleEndedConfig(1));
+  TEST_ASSERT_EQUAL_HEX16(0xE383, Ads1115Logic::singleEndedConfig(2));
+  TEST_ASSERT_EQUAL_HEX16(0xF383, Ads1115Logic::singleEndedConfig(3));
+  TEST_ASSERT_EQUAL_HEX16(0, Ads1115Logic::singleEndedConfig(4));
+  TEST_ASSERT_FALSE(Ads1115Logic::conversionReady(0x4383));
+  TEST_ASSERT_TRUE(Ads1115Logic::conversionReady(0xC383));
+}
+
+void test_ads1115_conversion_math_and_timeout_handle_signed_values_and_rollover() {
+  TEST_ASSERT_FLOAT_WITHIN(0.00001f, 0.0f,
+                           Ads1115Logic::voltsFromRaw(0));
+  TEST_ASSERT_FLOAT_WITHIN(0.00001f, 2.048f,
+                           Ads1115Logic::voltsFromRaw(16384));
+  TEST_ASSERT_FLOAT_WITHIN(0.00001f, -4.096f,
+                           Ads1115Logic::voltsFromRaw(-32768));
+  TEST_ASSERT_FALSE(Ads1115Logic::timedOut(3, UINT32_MAX - 5, 10));
+  TEST_ASSERT_TRUE(Ads1115Logic::timedOut(4, UINT32_MAX - 5, 10));
+}
+
+struct FakeAds1115Bus {
+  uint16_t writtenConfig = 0;
+  uint16_t conversion = 0x4000;
+  uint32_t notReadyReads = 0;
+  bool failWrite = false;
+  bool failStatusRead = false;
+  uint32_t configWrites = 0;
+
+  bool writeRegister(uint8_t reg, uint16_t value) {
+    if (failWrite || reg != 0x01) return false;
+    writtenConfig = static_cast<uint16_t>(value & ~Ads1115Logic::kOsStart);
+    ++configWrites;
+    return true;
+  }
+
+  bool readRegister(uint8_t reg, uint16_t &value) {
+    if (reg == 0x01) {
+      if (failStatusRead) return false;
+      if (notReadyReads > 0) {
+        --notReadyReads;
+        value = writtenConfig;
+      } else {
+        value = static_cast<uint16_t>(writtenConfig | Ads1115Logic::kOsStart);
+      }
+      return true;
+    }
+    if (reg != 0x00) return false;
+    value = conversion;
+    return true;
+  }
+};
+
+struct FakeAds1115Clock {
+  uint32_t now = 0;
+  uint32_t waits = 0;
+  uint32_t nowMs() const { return now; }
+  void waitOneMs() { ++now; ++waits; }
+};
+
+void test_ads1115_read_single_ended_succeeds_after_conversion_ready() {
+  FakeAds1115Bus bus;
+  bus.notReadyReads = 2;
+  FakeAds1115Clock clock;
+  int16_t raw = -1;
+  float volts = -1.0f;
+
+  TEST_ASSERT_TRUE(Ads1115Logic::readSingleEnded(bus, clock, 1, 40, raw, volts));
+  TEST_ASSERT_EQUAL_HEX16(0xD383, bus.writtenConfig | Ads1115Logic::kOsStart);
+  TEST_ASSERT_EQUAL_UINT32(1, bus.configWrites);
+  TEST_ASSERT_EQUAL_INT16(16384, raw);
+  TEST_ASSERT_FLOAT_WITHIN(0.00001f, 2.048f, volts);
+  TEST_ASSERT_EQUAL_UINT32(2, clock.waits);
+}
+
+void test_ads1115_read_single_ended_fails_on_bus_error_or_conversion_timeout() {
+  FakeAds1115Bus bus;
+  bus.notReadyReads = 100;
+  FakeAds1115Clock clock;
+  int16_t raw = 123;
+  float volts = 12.0f;
+
+  TEST_ASSERT_FALSE(Ads1115Logic::readSingleEnded(bus, clock, 0, 5, raw, volts));
+  TEST_ASSERT_EQUAL_INT16(0, raw);
+  TEST_ASSERT_FLOAT_WITHIN(0.00001f, 0.0f, volts);
+  TEST_ASSERT_EQUAL_UINT32(5, clock.waits);
+
+  bus = FakeAds1115Bus{};
+  bus.failStatusRead = true;
+  clock = FakeAds1115Clock{};
+  raw = 123;
+  volts = 12.0f;
+  TEST_ASSERT_FALSE(Ads1115Logic::readSingleEnded(bus, clock, 0, 40, raw, volts));
+  TEST_ASSERT_EQUAL_INT16(0, raw);
+  TEST_ASSERT_FLOAT_WITHIN(0.00001f, 0.0f, volts);
+  TEST_ASSERT_EQUAL_UINT32(0, clock.waits);
+}
 
 void test_pzem_fresh_sample_requires_valid_snapshot() {
   TEST_ASSERT_TRUE(PzemReadPolicy::isFreshSample(true, true, 5000, 4500, 2500));
@@ -220,8 +465,8 @@ void test_pzem_sample_policy_rejects_physical_violations() {
 void test_hmi_window_clamps_scroll_and_reports_count() {
   using namespace HmiPage;
   TEST_ASSERT_EQUAL_UINT16(0, maxScroll(4, kVisibleRows));
-  TEST_ASSERT_EQUAL_UINT16(5, maxScroll(10, kVisibleRows));
-  TEST_ASSERT_EQUAL_UINT16(5, clampScroll(99, 10, kVisibleRows));
+  TEST_ASSERT_EQUAL_UINT16(6, maxScroll(10, kVisibleRows));
+  TEST_ASSERT_EQUAL_UINT16(6, clampScroll(99, 10, kVisibleRows));
   TEST_ASSERT_EQUAL_UINT16(0, clampScroll(0, 10, kVisibleRows));
 
   const Window full = windowFor(0, 4, kVisibleRows);
@@ -230,14 +475,14 @@ void test_hmi_window_clamps_scroll_and_reports_count() {
   TEST_ASSERT_EQUAL_UINT16(4, full.total);
 
   const Window last = windowFor(99, 10, kVisibleRows);
-  TEST_ASSERT_EQUAL_UINT16(5, last.first);
-  TEST_ASSERT_EQUAL_UINT8(5, last.count);
+  TEST_ASSERT_EQUAL_UINT16(6, last.first);
+  TEST_ASSERT_EQUAL_UINT8(4, last.count);
 }
 
 void test_hmi_rail_hidden_when_page_fits() {
   using namespace HmiPage;
-  TEST_ASSERT_FALSE(railVisible(5, kVisibleRows));
-  TEST_ASSERT_TRUE(railVisible(6, kVisibleRows));
+  TEST_ASSERT_FALSE(railVisible(4, kVisibleRows));
+  TEST_ASSERT_TRUE(railVisible(5, kVisibleRows));
   TEST_ASSERT_FALSE(railVisible(0, kVisibleRows));
 }
 
@@ -245,11 +490,11 @@ void test_hmi_thumb_scales_with_scroll() {
   using namespace HmiPage;
   const Thumb top = thumbFor(200, 10, kVisibleRows, 0);
   TEST_ASSERT_EQUAL_UINT16(0, top.top);
-  TEST_ASSERT_EQUAL_UINT16(100, top.height);
+  TEST_ASSERT_EQUAL_UINT16(80, top.height);
 
-  const Thumb bottom = thumbFor(200, 10, kVisibleRows, 5);
-  TEST_ASSERT_EQUAL_UINT16(100, bottom.top);
-  TEST_ASSERT_EQUAL_UINT16(100, bottom.height);
+  const Thumb bottom = thumbFor(200, 10, kVisibleRows, 6);
+  TEST_ASSERT_EQUAL_UINT16(120, bottom.top);
+  TEST_ASSERT_EQUAL_UINT16(80, bottom.height);
 
   // Одна страница: ползунок занимает всю дорожку.
   const Thumb single = thumbFor(200, 3, kVisibleRows, 0);
@@ -542,6 +787,11 @@ void test_tft_field_visibility_is_explicit() {
       static_cast<uint8_t>(FieldVisibility::ReadOnly),
       static_cast<uint8_t>(resolveFieldVisibility(
           EditPolicy::ModeMonitorRuntime, true, RuntimeMode::Rectification)));
+  TEST_ASSERT_FALSE(isModeMonitorEditable(RuntimeMode::Autoclave));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(FieldVisibility::ReadOnly),
+      static_cast<uint8_t>(resolveFieldVisibility(
+          EditPolicy::ModeMonitorRuntime, true, RuntimeMode::Autoclave)));
   TEST_ASSERT_EQUAL_UINT8(
       static_cast<uint8_t>(FieldVisibility::ReadOnly),
       static_cast<uint8_t>(resolveFieldVisibility(
@@ -698,4 +948,35 @@ void test_safety_proof_guard_allows_only_idle_safe_hardware() {
       true, false, false, true, false));
   TEST_ASSERT_TRUE(EquipmentTestingLogic::isBlocked(
       false, false, false, true, true));
+}
+
+void test_optional_sensor_does_not_block_when_not_required() {
+  TEST_ASSERT_TRUE(SensorFreshnessLogic::isAvailableWhenRequired(
+      false, false, 0, 10000, 5000));
+  TEST_ASSERT_TRUE(SensorFreshnessLogic::isAvailableWhenRequired(
+      false, false, 1000, 10000, 5000));
+}
+
+void test_required_sensor_blocks_when_missing_or_stale() {
+  TEST_ASSERT_FALSE(SensorFreshnessLogic::isAvailableWhenRequired(
+      true, false, 1000, 2000, 5000));
+  TEST_ASSERT_FALSE(SensorFreshnessLogic::isAvailableWhenRequired(
+      true, true, 1000, 7001, 5000));
+  TEST_ASSERT_TRUE(SensorFreshnessLogic::isAvailableWhenRequired(
+      true, true, 1000, 6000, 5000));
+}
+
+void test_sensor_freshness_handles_millis_rollover() {
+  const uint32_t sampleMs = UINT32_MAX - 500;
+  const uint32_t nowMs = 250;
+  TEST_ASSERT_TRUE(SensorFreshnessLogic::isFresh(
+      true, sampleMs, nowMs, 1000));
+  TEST_ASSERT_FALSE(SensorFreshnessLogic::isFresh(
+      true, sampleMs, nowMs, 700));
+}
+
+void test_sensor_safety_uses_last_successful_sample_until_timeout() {
+  TEST_ASSERT_TRUE(SensorFreshnessLogic::isRecentSample(1000, 15000, 15000));
+  TEST_ASSERT_FALSE(SensorFreshnessLogic::isRecentSample(1000, 16001, 15000));
+  TEST_ASSERT_FALSE(SensorFreshnessLogic::isRecentSample(0, 15000, 15000));
 }

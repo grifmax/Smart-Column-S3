@@ -124,10 +124,10 @@ int main(int argc, char** argv) {
     def test_3500_w_always_schedules_minimum(self):
         self.assertEqual((0, 1, self.minimum, 1), self.watts_trace(3500, 230))
 
-    def test_3499_w_at_nominal_voltage_uses_nonzero_delay(self):
+    def test_3499_w_at_nominal_voltage_uses_minimum_delay(self):
         immediate, alarms, delay, count = self.watts_trace(3499, 230)
-        self.assertEqual((0, 1, 1), (immediate, alarms, count))
-        self.assertGreater(delay, self.minimum)
+        self.assertEqual((0, 1, self.minimum, 1),
+                         (immediate, alarms, delay, count))
 
     def test_3499_w_at_low_voltage_uses_minimum_not_immediate(self):
         self.assertEqual((0, 1, self.minimum, 1), self.watts_trace(3499, 220))

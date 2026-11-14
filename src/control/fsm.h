@@ -57,6 +57,7 @@ namespace FSM {
         void update(SystemState& state, const Settings& settings);
         void setPhase(SystemState& state, RectPhase phase);
         void setTakeoffRateMlH(float speedMlH);
+        bool confirmContainerChange(SystemState& state, const Settings& settings);
     }
     
     namespace Distillation {

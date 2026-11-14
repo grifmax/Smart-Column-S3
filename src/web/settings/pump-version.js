@@ -52,11 +52,9 @@ export async function loadPumpInfo() {
 
         if (stepsPerRevEl && data.pump && data.pump.stepsPerRev !== undefined && data.pump.stepsPerRev !== null) {
 
-            // Показываем общее количество шагов
+            // Поле хранит базовые шаги двигателя; микрошаги — отдельно.
 
-            const totalSteps = (data.pump.stepsPerRev || 0) * (data.pump.microsteps || 1);
-
-            stepsPerRevEl.value = totalSteps;
+            stepsPerRevEl.value = data.pump.stepsPerRev;
 
             stepsPerRevEl.placeholder = 'Загрузка...';
 

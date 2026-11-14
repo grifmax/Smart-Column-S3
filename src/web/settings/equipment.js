@@ -354,7 +354,7 @@ function syncBootGpioUi(bootGpio = null, boardProfile = null) {
                     <strong>Boot GPIO self-test недоступен</strong>
                     <span class="equipment-status-badge muted">Нет данных</span>
                 </div>
-                <div class="equipment-module-card-role">Контроллер ещё не отдал отчёт о безопасной стартовой инициализации пинов.</div>
+                <div class="equipment-module-card-role">Контроллер ещё не отдал отчёт о логическом readback стартовых уровней GPIO.</div>
             </div>
         `;
         hintEl.textContent = 'Если блок остаётся пустым, проверьте версию прошивки и payload /api/settings/equipment.';
@@ -404,15 +404,16 @@ function syncBootGpioUi(bootGpio = null, boardProfile = null) {
                     <span>ждём ${escapeHtml(expected)}</span>
                     <span>факт ${escapeHtml(actual)}</span>
                 </div>
-                <div class="equipment-module-card-role">${ok ? 'Линия на старте ушла в ожидаемое безопасное состояние.' : 'Фактический уровень не совпал с ожидаемым safe-state. Проверьте обвязку и подтяжки.'}</div>
+                <div class="equipment-module-card-role">${ok ? 'Логический readback GPIO совпал с ожидаемым уровнем.' : 'Логический readback GPIO не совпал с ожидаемым уровнем.'}</div>
             </div>
         `;
     }).join('');
 
     const profileHint = boardName ? ` Активный compile-time профиль: ${boardName}.` : '';
+    const readbackHint = 'Проверяется только логический readback вывода MCU; внешняя линия, драйвер и исполнительный механизм не измеряются. Физический safe-state требует проверки на стенде.';
     hintEl.textContent = overallOk
-        ? `Опасные линии на старте выставились корректно: силовой контур не должен самопроизвольно включаться до инициализации драйверов.${profileHint}`
-        : `Есть несовпадения safe-state на старте. Это не обязательно авария, но wiring и подтяжки лучше проверить до серьёзных прогонов.${profileHint}`;
+        ? `Стартовые latch-уровни GPIO совпали с ожидаемыми. ${readbackHint}${profileHint}`
+        : `Есть несовпадения логических latch-уровней GPIO. ${readbackHint}${profileHint}`;
 }
 
 function normalizeHardwareModules(modules = {}) {
@@ -652,22 +653,26 @@ function collectValveTypes() {
 function syncCoolingActuatorUi() {
     const equipment = runtimeMonitorState.equipment || {};
     const enabled = Boolean(equipment.coolingPwmEnabled);
-    const minDuty = clamp(equipment.coolingPwmMinDuty, 0, 255, 0);
-    const maxDuty = clamp(equipment.coolingPwmMaxDuty, minDuty, 255, 255);
-    const startupDuty = clamp(equipment.coolingPwmStartupDuty, minDuty, maxDuty, minDuty);
+    const legacyDuty = clamp(equipment.coolingPwmStartupDuty, 0, 255, 96);
+    const holdPercent = clamp(
+        equipment.coolingPwmHoldPercent ?? Math.round(legacyDuty * 100 / 255),
+        5,
+        100,
+        38
+    );
+    const pullMs = clamp(equipment.coolingPwmPullMs, 100, 10000, 300);
     const currentDuty = clamp(equipment.coolingPwmCurrentDuty, 0, 255, 0);
 
     setCheckboxValue('cooling-pwm-enabled', enabled);
-    setInputValue('cooling-pwm-min-duty', minDuty);
-    setInputValue('cooling-pwm-max-duty', maxDuty);
-    setInputValue('cooling-pwm-startup-duty', startupDuty);
+    setInputValue('cooling-pwm-hold-percent', holdPercent);
+    setInputValue('cooling-pwm-pull-ms', pullMs);
     setTextValue(
         'cooling-actuator-state',
-        `${enabled ? 'Автоконтур включён' : 'Автоконтур выключен'} • окно ${minDuty}-${maxDuty}/255 • сейчас ${currentDuty}/255`
+        `${enabled ? 'Автоконтур включён' : 'Автоконтур выключен'} • удержание ${holdPercent}% • сейчас ${currentDuty}/255`
     );
     setTextValue(
         'cooling-actuator-hint',
-        `Стартовая подача ${startupDuty}/255. Сервисный PWM-канал доступен в карточке клапанов.`
+        `Полное открытие ${pullMs} мс, затем удержание ${holdPercent}%. Проверка канала доступна в карточке клапанов.`
     );
 }
 
@@ -739,6 +744,49 @@ function saveCubeExtenderPreset(value) {
 function requestJson(url, options = {}) {
     return fetch(url, options).then(async (response) => {
         const payload = await response.json().catch(() => ({}));
+        const commands = Array.isArray(payload?.commands)
+            ? payload.commands
+            : payload?.commandId ? [payload] : [];
+        if (!response.ok && commands.length === 0) {
+            const message = payload?.message || payload?.error || `HTTP ${response.status}`;
+            throw new Error(message);
+        }
+        for (const command of commands) {
+            if (!command.queued || !command.commandId) continue;
+            const endpoint = command.commandType === 'control'
+                ? '/api/process/command-status'
+                : '/api/outputs/command';
+            const deadline = Date.now() + 15000;
+            let applied = false;
+            while (Date.now() < deadline) {
+                await new Promise((resolve) => window.setTimeout(resolve, 150));
+                const statusResponse = await fetch(
+                    `${endpoint}?commandId=${encodeURIComponent(command.commandId)}`,
+                    { cache: 'no-store' }
+                );
+                const status = await statusResponse.json().catch(() => ({}));
+                if (!statusResponse.ok) {
+                    throw new Error(status.message || status.error || 'Command status is unavailable');
+                }
+                if (status.status === 'applied') {
+                    Object.assign(command, status, { status: 'applied' });
+                    applied = true;
+                    break;
+                }
+                if (!['queued', 'processing'].includes(status.status)) {
+                    throw new Error(status.rejectReason || `Command ${status.status || 'failed'}`);
+                }
+            }
+            if (!applied) {
+                throw new Error(`Timed out waiting for command ${command.commandId}`);
+            }
+        }
+        if (commands.length && payload.status !== 'rejected') {
+            payload.success = true;
+            payload.queued = false;
+            payload.applied = true;
+            payload.status = 'applied';
+        }
         if (!response.ok) {
             const message = payload?.message || payload?.error || `HTTP ${response.status}`;
             throw new Error(message);
@@ -1016,7 +1064,10 @@ export async function loadEquipmentSettings() {
         setInputValue('cube-volume-l', clamp(data.cubeVolumeL, 5, 250, DEFAULT_CUBE_VOLUME_L).toFixed(1));
         setInputValue('water-autostart-cube-temp', clamp(data.waterAutoStartCubeTempC, 20, 60, 45).toFixed(1));
         setCheckboxValue('booster-heater-enabled', Boolean(data.boosterHeaterEnabled));
-        setInputValue('booster-heater-power-w', clamp(data.boosterHeaterPowerW, 1000, 10000, 3000));
+        const boosterHeaterPowerW = Math.round(
+            clamp(data.boosterHeaterPowerW, 1000, 10000, 3000) / 100
+        ) * 100;
+        setInputValue('booster-heater-power-w', boosterHeaterPowerW);
         setInputValue('booster-heater-stop-cube-temp', clamp(data.boosterHeaterStopCubeTempC, 20, 100, 78).toFixed(1));
         syncValveTypeUi(data);
         setCheckboxValue('temp-bus-use-ds2482', Boolean(data.useDs2482ForTemps));
@@ -1033,12 +1084,16 @@ export async function loadEquipmentSettings() {
             minHeaterSubmergeL: clamp(data.minHeaterSubmergeL, 0.5, 100, 7.5),
             waterAutoStartCubeTempC: clamp(data.waterAutoStartCubeTempC, 20, 60, 45),
             boosterHeaterEnabled: Boolean(data.boosterHeaterEnabled),
-            boosterHeaterPowerW: clamp(data.boosterHeaterPowerW, 1000, 10000, 3000),
+            boosterHeaterPowerW,
             boosterHeaterStopCubeTempC: clamp(data.boosterHeaterStopCubeTempC, 20, 100, 78),
             coolingPwmEnabled: Boolean(data.coolingPwmEnabled),
-            coolingPwmMinDuty: clamp(data.coolingPwmMinDuty, 0, 255, 0),
-            coolingPwmMaxDuty: clamp(data.coolingPwmMaxDuty, 0, 255, 255),
-            coolingPwmStartupDuty: clamp(data.coolingPwmStartupDuty, 0, 255, 96),
+            coolingPwmHoldPercent: clamp(
+                data.coolingPwmHoldPercent ?? Math.round(clamp(data.coolingPwmStartupDuty, 0, 255, 96) * 100 / 255),
+                5,
+                100,
+                38
+            ),
+            coolingPwmPullMs: clamp(data.coolingPwmPullMs, 100, 10000, 300),
             coolingPwmCurrentDuty: clamp(data.coolingPwmCurrentDuty, 0, 255, 0),
             useDs2482ForTemps: Boolean(data.useDs2482ForTemps),
             ds2482Address: clamp(data.ds2482Address, 24, 27, 24),
@@ -1114,17 +1169,13 @@ export async function saveEquipment() {
     const cubeVolume = clamp(getInputValue('cube-volume-l', DEFAULT_CUBE_VOLUME_L), 5, 250, DEFAULT_CUBE_VOLUME_L);
     const waterAutoStartCubeTempC = clamp(getInputValue('water-autostart-cube-temp', 45), 20, 60, 45);
     const boosterHeaterEnabled = getCheckboxValue('booster-heater-enabled', false);
-    const boosterHeaterPowerW = clamp(getInputValue('booster-heater-power-w', 3000), 1000, 10000, 3000);
+    const boosterHeaterPowerW = Math.round(
+        clamp(getInputValue('booster-heater-power-w', 3000), 1000, 10000, 3000) / 100
+    ) * 100;
     const boosterHeaterStopCubeTempC = clamp(getInputValue('booster-heater-stop-cube-temp', 78), 20, 100, 78);
     const coolingPwmEnabled = getCheckboxValue('cooling-pwm-enabled', false);
-    const coolingPwmMinDuty = clamp(getInputValue('cooling-pwm-min-duty', 0), 0, 255, 0);
-    const coolingPwmMaxDuty = clamp(getInputValue('cooling-pwm-max-duty', 255), coolingPwmMinDuty, 255, 255);
-    const coolingPwmStartupDuty = clamp(
-        getInputValue('cooling-pwm-startup-duty', 96),
-        coolingPwmMinDuty,
-        coolingPwmMaxDuty,
-        coolingPwmMinDuty
-    );
+    const coolingPwmHoldPercent = clamp(getInputValue('cooling-pwm-hold-percent', 38), 5, 100, 38);
+    const coolingPwmPullMs = clamp(getInputValue('cooling-pwm-pull-ms', 300), 100, 10000, 300);
     const useDs2482ForTemps = getCheckboxValue('temp-bus-use-ds2482', false);
     const ds2482Address = clamp(getInputValue('temp-bus-ds2482-address', 24), 24, 27, 24);
     const bodyLevelSensorEnabled = getCheckboxValue('body-level-enabled', false);
@@ -1143,12 +1194,15 @@ export async function saveEquipment() {
 
     const mlPerRev = toFiniteNumber(document.getElementById('pump-ml-per-rev')?.value, NaN);
     const stepsPerRev = toFiniteNumber(document.getElementById('pump-steps-per-rev')?.value, NaN);
+    const microsteps = toFiniteNumber(document.getElementById('pump-microsteps')?.value, NaN);
 
-    if ((Number.isFinite(mlPerRev) && mlPerRev > 0) || (Number.isFinite(stepsPerRev) && stepsPerRev > 0)) {
+    if ((Number.isFinite(mlPerRev) && mlPerRev > 0) || (Number.isFinite(stepsPerRev) && stepsPerRev > 0) ||
+        (Number.isFinite(microsteps) && microsteps > 0)) {
         try {
             const pumpData = {};
             if (Number.isFinite(mlPerRev) && mlPerRev > 0) pumpData.mlPerRev = mlPerRev;
             if (Number.isFinite(stepsPerRev) && stepsPerRev > 0) pumpData.stepsPerRev = Math.round(stepsPerRev);
+            if (Number.isFinite(microsteps) && microsteps > 0) pumpData.microsteps = Math.round(microsteps);
 
             const pumpResponse = await fetch('/api/calibration/pump', {
                 method: 'POST',
@@ -1181,9 +1235,8 @@ export async function saveEquipment() {
                 boosterHeaterPowerW: Math.round(boosterHeaterPowerW),
                 boosterHeaterStopCubeTempC,
                 coolingPwmEnabled,
-                coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
-                coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
-                coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty),
+                coolingPwmHoldPercent: Math.round(coolingPwmHoldPercent),
+                coolingPwmPullMs: Math.round(coolingPwmPullMs),
                 useDs2482ForTemps,
                 ds2482Address: Math.round(ds2482Address),
                 bodyLevelSensorEnabled,
@@ -1214,12 +1267,11 @@ export async function saveEquipment() {
             cubeVolumeL: cubeVolume,
             waterAutoStartCubeTempC,
             boosterHeaterEnabled,
-            boosterHeaterPowerW: Math.round(boosterHeaterPowerW),
+            boosterHeaterPowerW,
             boosterHeaterStopCubeTempC,
             coolingPwmEnabled,
-            coolingPwmMinDuty: Math.round(coolingPwmMinDuty),
-            coolingPwmMaxDuty: Math.round(coolingPwmMaxDuty),
-            coolingPwmStartupDuty: Math.round(coolingPwmStartupDuty),
+            coolingPwmHoldPercent: Math.round(coolingPwmHoldPercent),
+            coolingPwmPullMs: Math.round(coolingPwmPullMs),
             useDs2482ForTemps,
             ds2482Address: Math.round(ds2482Address),
             temperatureBusSource: useDs2482ForTemps ? 'ds2482' : 'gpio',
@@ -1303,6 +1355,27 @@ async function submitStirrerAction(url, payload, successMessage) {
     const data = await requestJson(url, options);
     updateStirrerState(data);
     syncStirrerUi({ syncSpeedInput: true });
+    if (data?.status === 'queued') {
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            const status = await requestJson(
+                `/api/outputs/command?commandId=${encodeURIComponent(data.commandId)}`,
+                { cache: 'no-store' }
+            );
+            if (status.status === 'applied') {
+                addLog(successMessage, 'success');
+                return;
+            }
+            if (status.status === 'rejected') {
+                throw new Error(status.rejectReason || 'Команда мешалки отклонена');
+            }
+        }
+        addLog(`Команда принята в очередь (ID ${data.commandId}); применение пока не подтверждено`, 'warning');
+        return;
+    }
+    if (data?.status === 'rejected' || data?.success === false) {
+        throw new Error(data?.message || 'Команда мешалки отклонена');
+    }
     addLog(successMessage, 'success');
 }
 

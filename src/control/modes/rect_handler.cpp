@@ -63,7 +63,8 @@ uint16_t applyRectificationHeaterPower(const SystemState& state,
         pressureEmergencyStopActive = false;
         return applyProcessHeaterPower(
             state, settings,
-            getPhasePowerPercent(settings.rectParams, phase, fallbackPercent));
+            getPhasePowerPercent(settings.rectParams, phase, fallbackPercent),
+            false);
     }
 
     const bool wasFallback = pressureControlRuntime.fallbackActive;
@@ -425,7 +426,7 @@ void update(SystemState& state, const Settings& settings) {
                     PowerCommandGateway::Valve::WATER, true);
             }
             if (state.temps.valid[TEMP_COLUMN_BOTTOM] &&
-                state.temps.columnBottom > 78.0f) {
+                state.temps.columnBottom > 72.0f) {
                 LOG_I("FSM: HEATING -> STABILIZATION");
                 ControlV2::notePhaseTransition(
                     Mode::RECTIFICATION,

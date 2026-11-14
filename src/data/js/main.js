@@ -1186,7 +1186,7 @@ function startRectification() {
             mode: 'rectification'
         }),
     })
-    .then(response => response.json())
+    .then(response => awaitProcessCommandResponse(response, 'start'))
     .then(data => {
         if (data.success) {
             // Закрываем модальное окно
@@ -1204,6 +1204,8 @@ function startRectification() {
             document.getElementById('stop-btn').disabled = false;
             
             showNotification('Процесс ректификации успешно запущен', 'success');
+        } else if (data.queued) {
+            showNotification('Команда запуска принята и ожидает применения контроллером', 'info');
         } else {
             showNotification('Ошибка при запуске ректификации: ' + data.message, 'error');
         }
@@ -1225,7 +1227,7 @@ function startDistillation() {
             mode: 'distillation'
         }),
     })
-    .then(response => response.json())
+    .then(response => awaitProcessCommandResponse(response, 'start'))
     .then(data => {
         if (data.success) {
             // Закрываем модальное окно
@@ -1243,6 +1245,8 @@ function startDistillation() {
             document.getElementById('stop-btn').disabled = false;
             
             showNotification('Процесс дистилляции успешно запущен', 'success');
+        } else if (data.queued) {
+            showNotification('Команда запуска принята и ожидает применения контроллером', 'info');
         } else {
             showNotification('Ошибка при запуске дистилляции: ' + data.message, 'error');
         }
@@ -1254,12 +1258,43 @@ function startDistillation() {
 }
 
 // Остановка процесса
+async function awaitProcessCommandResponse(response, action) {
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.accepted) return { ...data, success: false };
+    if (!data.queued || !data.commandId) return data;
+
+    const terminal = new Set(['applied', 'rejected', 'cancelled', 'superseded', 'queue_full']);
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const statusResponse = await fetch(
+            `/api/process/command-status?commandId=${encodeURIComponent(data.commandId)}`,
+            { cache: 'no-store' }
+        );
+        if (!statusResponse.ok) continue;
+        const statusData = await statusResponse.json().catch(() => ({}));
+        if (!terminal.has(statusData.status)) continue;
+        if (statusData.status !== 'applied') {
+            return { ...data, success: false, message: `Command ${action}: ${statusData.status}` };
+        }
+        return { ...data, success: true, accepted: true, applied: true, queued: false, status: 'applied' };
+    }
+    return { ...data, success: false, accepted: true, applied: false, queued: true, status: 'queued' };
+}
+
+async function submitProcessCommand(action) {
+    const response = await fetch(`/api/process/${action}`, { method: 'POST' });
+    return awaitProcessCommandResponse(response, action);
+}
+
 function stopProcess() {
-    fetch('/api/process/stop', {
-        method: 'POST'
-    })
-    .then(response => response.json())
+    submitProcessCommand('stop')
+    .then(data => data)
     .then(data => {
+        if (data.queued) {
+            showNotification('Stop command accepted; waiting for control loop', 'info');
+            return;
+        }
         if (data.success) {
             // Обновляем интерфейс
             isSystemRunning = false;
@@ -1286,11 +1321,13 @@ function stopProcess() {
 function togglePause() {
     const action = isSystemPaused ? 'resume' : 'pause';
     
-    fetch(`/api/process/${action}`, {
-        method: 'POST'
-    })
-    .then(response => response.json())
+    submitProcessCommand(action)
+    .then(data => data)
     .then(data => {
+        if (data.queued) {
+            showNotification('Process command accepted; waiting for control loop', 'info');
+            return;
+        }
         if (data.success) {
             // Обновляем интерфейс
             isSystemPaused = !isSystemPaused;
@@ -1404,14 +1441,20 @@ function startPumpCalibration() {
                 
                 if (remainingTime <= 0) {
                     clearInterval(timerInterval);
-                    timer.textContent = 'Калибровка завершена!';
-                    
-                    // Показываем следующий шаг
-                    document.getElementById('calibration-step-2').style.display = 'none';
-                    document.getElementById('calibration-step-3').style.display = 'block';
-                    
-                    // Отправляем запрос на остановку насоса
-                    fetch('/api/pump/calibrate/stop', { method: 'POST' });
+                    timer.textContent = 'Останавливаю насос...';
+                    fetch('/api/pump/calibrate/stop', { method: 'POST' })
+                    .then(async response => {
+                        const result = await response.json().catch(() => ({}));
+                        if (!response.ok) throw new Error(result.message || `HTTP ${response.status}`);
+                        await waitForCalibrationStop();
+                        timer.textContent = 'Калибровка завершена!';
+                        document.getElementById('calibration-step-2').style.display = 'none';
+                        document.getElementById('calibration-step-3').style.display = 'block';
+                    })
+                    .catch(error => {
+                        timer.textContent = `Останов не подтверждён: ${error.message}`;
+                        startBtn.disabled = false;
+                    });
                 } else {
                     remainingTime--;
                 }
@@ -1432,7 +1475,51 @@ function startPumpCalibration() {
     });
 }
 
+async function waitForCalibrationStop() {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+        const response = await fetch('/api/pump/status', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const status = await response.json();
+        const phase = Number(status.calibrationPhase);
+        if (!status.calibrationStopPending && phase !== 3) {
+            if (phase === 4 || phase === 5) return status;
+            throw new Error('Замер не завершён; проверьте, что насос успел запуститься');
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error('Истекло время ожидания остановки насоса');
+}
+
 // Завершение калибровки насоса
+async function submitPumpCalibration(volume, method = 'steps', confirmLargeChange = false) {
+    const response = await fetch('/api/pump/calibrate/finish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ volume, method, confirmLargeChange })
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (data.status === 'stopping') {
+        await waitForCalibrationStop();
+        return submitPumpCalibration(volume, method, confirmLargeChange);
+    }
+
+    if (data.code === 'TIME_FALLBACK_AVAILABLE' && method === 'steps' &&
+        data.fallbackAvailable && confirm(
+            'Шаги насоса не учтены. Подтверждаете, что насос действительно подавал жидкость и объём измерен отдельно? Использовать расчёт по времени?'
+        )) {
+        return submitPumpCalibration(volume, 'time', false);
+    }
+
+    if (data.code === 'CONFIRM_LARGE_CALIBRATION_CHANGE' && !confirmLargeChange &&
+        confirm(`Новый коэффициент ${Number(data.candidateMlPerRev).toFixed(3)} мл/оборот отличается от текущего более чем в 2 раза. Применить после проверки замера?`)) {
+        return submitPumpCalibration(volume, method, true);
+    }
+
+    if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+    return data;
+}
+
 function finishPumpCalibration() {
     const volume = parseFloat(document.getElementById('calibration-volume').value);
     
@@ -1441,19 +1528,9 @@ function finishPumpCalibration() {
         return;
     }
     
-    // Отправляем запрос на завершение калибровки
-    fetch('/api/pump/calibrate/finish', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            volume: volume
-        }),
-    })
-    .then(response => response.json())
+    submitPumpCalibration(volume)
     .then(data => {
-        if (data.success) {
+        if (data.success || data.accepted) {
             // Закрываем модальное окно
             document.getElementById('pump-calibration-modal').style.display = 'none';
             
@@ -1462,7 +1539,8 @@ function finishPumpCalibration() {
                 document.getElementById('pump-calibration-factor').value = data.calibrationFactor.toFixed(3);
             }
             
-            showNotification('Калибровка насоса успешно завершена', 'success');
+            const methodNote = data.method === 'time' ? ' (расчёт по времени)' : '';
+            showNotification('Калибровка насоса успешно завершена' + methodNote, 'success');
         } else {
             showNotification('Ошибка при завершении калибровки: ' + data.message, 'error');
         }

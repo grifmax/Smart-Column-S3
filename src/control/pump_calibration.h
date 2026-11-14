@@ -12,10 +12,11 @@ bool beginPriming(float speedMlH);
 bool finishPriming();
 bool beginMeasurement(float speedMlH, bool allowWithoutPrime = false);
 bool stopMeasurement();
+bool isStopPending();
+void update();
 /**
- * Гарантирует, что замер зафиксирован: глушит насос и переводит сессию в
- * READY_TO_REVIEW. Если сессия потерялась (фаза IDLE/READY_TO_MEASURE),
- * восстанавливает её по накопленным шагам, чтобы объём можно было применить.
+ * Stops and captures an active measurement. Does not reconstruct a measurement
+ * from the pump's cumulative step counter after the session was lost.
  */
 bool ensureMeasurementCaptured();
 bool enterMeasuredVolume(float volumeMl);

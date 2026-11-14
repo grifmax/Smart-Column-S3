@@ -1,11 +1,18 @@
 #include "api_routes.h"
 
 #include "../../live_chart_history.h"
+#include "control/state_snapshot.h"
 #include "control/safety.h"
 #include "interface/webserver_shared.h"
 
 void registerChartsApiRoutes(AsyncWebServer &server) {
   server.on("/api/charts/live", HTTP_GET, [](AsyncWebServerRequest *request) {
+    SystemState snapshot;
+    if (!StateSnapshot::read(snapshot)) {
+      request->send(503, "application/json",
+                    "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+      return;
+    }
     JsonDocument doc;
     doc["success"] = true;
 
@@ -21,7 +28,7 @@ void registerChartsApiRoutes(AsyncWebServer &server) {
     }
 
     JsonObject powerMeta = meta["power"].to<JsonObject>();
-    powerMeta["available"] = g_state.health.pzemOk;
+    powerMeta["available"] = snapshot.health.pzemOk;
 
     LiveChartHistory::fillJson(doc.as<JsonObject>());
 

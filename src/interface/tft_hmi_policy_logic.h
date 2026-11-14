@@ -24,6 +24,7 @@ enum class RuntimeMode : uint8_t {
   Hold,
   Nbk,
   Fermentation,
+  Autoclave,
 };
 
 enum class FieldVisibility : uint8_t { Hidden = 0, ReadOnly, Editable };

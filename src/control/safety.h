@@ -35,6 +35,12 @@ uint8_t getInstalledTempSensorCount(const EquipmentSettings& equipment);
 bool isModeTemperatureTopologySupported(Mode mode, const EquipmentSettings& equipment,
                                         char* reason = nullptr, size_t reasonSize = 0);
 RequiredSensorsMask getRequiredSensorsForMode(Mode mode, const Settings& settings);
+bool isTemperatureSampleFresh(const SystemState& state, uint8_t index,
+                              uint32_t nowMs);
+bool isPressureSampleFresh(const SystemState& state, uint32_t nowMs);
+bool areRequiredSensorsAvailable(const SystemState& state,
+                                 const RequiredSensorsMask& required,
+                                 uint32_t nowMs);
 
 const char* getAlarmTypeToken(AlarmType type);
 const char* getAlarmLevelToken(AlarmLevel level);

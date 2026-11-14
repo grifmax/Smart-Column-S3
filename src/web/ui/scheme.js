@@ -1071,9 +1071,33 @@ async function postJson(url, payload) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `HTTP ${response.status}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+    const commands = Array.isArray(data.commands) ? data.commands : data.commandId ? [data] : [];
+    for (const command of commands) {
+        if (command.status === 'rejected') {
+            throw new Error(command.rejectReason || 'Command rejected');
+        }
+        if (!command.queued || !command.commandId) continue;
+        const deadline = Date.now() + 2000;
+        let applied = false;
+        while (Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            const statusResponse = await fetch(
+                `/api/outputs/command?commandId=${encodeURIComponent(command.commandId)}`,
+                { cache: 'no-store' }
+            );
+            if (!statusResponse.ok) continue;
+            const status = await statusResponse.json().catch(() => ({}));
+            if (status.status === 'applied') { applied = true; break; }
+            if (status.status === 'rejected') {
+                throw new Error(status.rejectReason || 'Command rejected');
+            }
+        }
+        if (!applied) throw new Error(`Command ${command.commandId} is still queued`);
+    }
+    if (data.accepted === false || data.status === 'rejected') {
+        throw new Error(data.rejectReason || 'Command rejected');
     }
 }
 

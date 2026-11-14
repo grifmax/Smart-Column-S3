@@ -65,6 +65,9 @@ void resetIdleState(SystemState &state, uint32_t now) {
   state.temps.tsa = 24.0f + (random(0, 80) / 100.0f);
   state.temps.waterIn = 15.0f + (random(0, 50) / 100.0f);
   state.temps.waterOut = 18.0f + (random(0, 50) / 100.0f);
+  for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+    state.temps.lastUpdateBySensor[i] = now;
+  }
   state.temps.lastUpdate = now;
 
   state.pressure.cube = 0.5f + (random(0, 50) / 100.0f);
@@ -239,6 +242,9 @@ void update(SystemState &state, const Settings &settings) {
   }
 
   applyDemoHealth(state);
+  for (uint8_t i = 0; i < TEMP_COUNT; ++i) {
+    state.temps.lastUpdateBySensor[i] = now;
+  }
   state.temps.lastUpdate = now;
 
   state.pressure.cube = 1.0f + (sim.phase / 100.0f) * 8.0f +

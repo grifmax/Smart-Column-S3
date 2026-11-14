@@ -240,6 +240,7 @@
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/cores/esp32",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/variants/esp32s3",
                 "C:/distiller/Smart-Column-S3/.pio/libdeps/esp32s3/AsyncTCP/src",
+                "C:/distiller/Smart-Column-S3/.pio/libdeps/esp32s3/Unity/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/AsyncUDP/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                 "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/BluetoothSerial/src",
@@ -498,6 +499,7 @@
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/cores/esp32",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/variants/esp32s3",
                     "C:/distiller/Smart-Column-S3/.pio/libdeps/esp32s3/AsyncTCP/src",
+                    "C:/distiller/Smart-Column-S3/.pio/libdeps/esp32s3/Unity/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/AsyncUDP/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src",
                     "C:/Users/grif_/.platformio/packages/framework-arduinoespressif32/libraries/BluetoothSerial/src",
@@ -523,7 +525,7 @@
                 ]
             },
             "defines": [
-                "PLATFORMIO=60119",
+                "PLATFORMIO=60200",
                 "ARDUINO_ESP32S3_DEV",
                 "ARDUINO_USB_MODE=1",
                 "ARDUINO_RUNNING_CORE=1",
@@ -551,6 +553,7 @@
                 "ARDUINO_VARIANT=\"esp32s3\"",
                 "ARDUINO_BOARD=\"Espressif ESP32-S3-DevKitC-1-N16R8 (16 MB QD, 8 MB OPI PSRAM)\"",
                 "ARDUINO_PARTITION_partitions",
+                "UNITY_INCLUDE_CONFIG_H",
                 ""
             ],
             "cStandard": "gnu99",

@@ -57,7 +57,7 @@ struct ParsedDosingEvent {
   float requestedVolumeMl = 0.0f;
   float requestedRateMlH = 0.0f;
   float calibrationAtStart = 0.0f;
-  float actualVolumeMl = 0.0f;
+  float estimatedVolumeMl = 0.0f;
   uint32_t startedAtMs = 0;
   uint32_t finishedAtMs = 0;
   char finishReason[24] = "";
@@ -355,8 +355,9 @@ ParsedDosingEvent parseDosingEvent(const char* message) {
       parsed.requestedRateMlH = strtof(value, nullptr);
     } else if (strcmp(key, "c") == 0) {
       parsed.calibrationAtStart = strtof(value, nullptr);
-    } else if (strcmp(key, "a") == 0) {
-      parsed.actualVolumeMl = strtof(value, nullptr);
+    } else if (strcmp(key, "est") == 0 || strcmp(key, "a") == 0) {
+      // "a" is retained for parsing logs written by older firmware.
+      parsed.estimatedVolumeMl = strtof(value, nullptr);
     } else if (strcmp(key, "s") == 0) {
       parsed.startedAtMs = static_cast<uint32_t>(strtoul(value, nullptr, 10));
     } else if (strcmp(key, "f") == 0) {
@@ -668,7 +669,8 @@ String getRecentEventsJson(uint16_t limit, uint32_t sinceSequence) {
       item["requestedVolumeMl"] = dosing.requestedVolumeMl;
       item["requestedRateMlH"] = dosing.requestedRateMlH;
       item["calibrationAtStart"] = dosing.calibrationAtStart;
-      item["actualVolumeMl"] = dosing.actualVolumeMl;
+      item["estimatedVolumeMl"] = dosing.estimatedVolumeMl;
+      item["volumeBasis"] = "step_estimate";
       item["startedAt"] = dosing.startedAtMs;
       item["finishedAt"] = dosing.finishedAtMs;
       item["finishReason"] = dosing.finishReason;
@@ -700,7 +702,7 @@ String exportRecentEventsCsv(uint16_t limit) {
       "equipment_detail,service_event,service_target,service_tone,service_detail,"
       "dosing_event,dosing_route,dosing_requested_volume_ml,"
       "dosing_requested_rate_ml_h,dosing_calibration_at_start,"
-      "dosing_actual_volume_ml,dosing_started_at_ms,dosing_finished_at_ms,"
+      "dosing_estimated_volume_ml,dosing_volume_basis,dosing_started_at_ms,dosing_finished_at_ms,"
       "dosing_finish_reason\n";
   const size_t effectiveLimit =
       limit == 0 ? recentEventCount
@@ -791,8 +793,8 @@ String exportRecentEventsCsv(uint16_t limit) {
     csv += ",";
     csv += String(dosing.calibrationAtStart, 3);
     csv += ",";
-    csv += String(dosing.actualVolumeMl, 1);
-    csv += ",";
+    csv += String(dosing.estimatedVolumeMl, 1);
+    csv += ",\"step_estimate\",";
     csv += String(dosing.startedAtMs);
     csv += ",";
     csv += String(dosing.finishedAtMs);

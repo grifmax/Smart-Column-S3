@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "config.h"
+#include "control/control_command_queue.h"
 #include "control/equipment_testing_logic.h"
 #include "control/power_command_gateway.h"
 #include "control/safety.h"
@@ -30,6 +31,94 @@ static EquipmentTestingAction
     g_equipmentTestingActions[EQUIPMENT_TESTING_ACTION_CAPACITY];
 static uint8_t g_equipmentTestingActionCount = 0;
 static uint8_t g_equipmentTestingActionNext = 0;
+
+static void fillEquipmentTestingStatus(JsonDocument &doc);
+
+static void sendTestingStatusWithOutputCommands(
+    AsyncWebServerRequest *request,
+    const PowerCommandGateway::Command *commands, size_t count,
+    const ControlCommandQueue::EnqueueResult *controlResult = nullptr,
+    uint32_t controlCommandId = 0,
+    ControlCommandQueue::Status controlStatus =
+        ControlCommandQueue::Status::Unknown) {
+  JsonDocument resp;
+  fillEquipmentTestingStatus(resp);
+  const bool hasControlCommand = controlResult != nullptr;
+  const bool controlAccepted = !hasControlCommand ||
+      *controlResult == ControlCommandQueue::EnqueueResult::Accepted ||
+      *controlResult == ControlCommandQueue::EnqueueResult::Duplicate;
+  const bool controlApplied = !hasControlCommand ||
+      controlStatus == ControlCommandQueue::Status::Applied;
+  const bool controlQueued = hasControlCommand &&
+      (controlStatus == ControlCommandQueue::Status::Queued ||
+       controlStatus == ControlCommandQueue::Status::Processing);
+  bool accepted = controlAccepted && (count > 0 || hasControlCommand);
+  bool applied = controlApplied && (count > 0 || hasControlCommand);
+  bool queued = controlQueued;
+  JsonArray commandList = resp["commands"].to<JsonArray>();
+  if (hasControlCommand) {
+    JsonObject item = commandList.add<JsonObject>();
+    const bool commandAccepted = controlAccepted;
+    item["commandType"] = "control";
+    item["commandId"] = controlCommandId;
+    item["accepted"] = commandAccepted;
+    item["queued"] = controlQueued;
+    item["applied"] = controlApplied;
+    item["success"] = commandAccepted && controlApplied;
+    item["status"] = ControlCommandQueue::statusToken(controlStatus);
+  }
+  for (size_t i = 0; i < count; ++i) {
+    const auto &command = commands[i];
+    accepted = accepted && command.accepted;
+    applied = applied && command.applied;
+    queued = queued || command.queued;
+    JsonObject item = commandList.add<JsonObject>();
+    item["commandType"] = "output";
+    item["commandId"] = command.sequence;
+    item["accepted"] = command.accepted;
+    item["queued"] = command.queued;
+    item["applied"] = command.applied;
+    item["success"] = command.accepted && command.applied;
+    item["status"] = !command.accepted ? "rejected"
+                      : command.applied ? "applied" : "queued";
+    item["target"] = static_cast<uint8_t>(command.target);
+    item["rejectReason"] = PowerCommandGateway::rejectReasonString(
+        command.rejectReason);
+  }
+  resp["accepted"] = accepted;
+  resp["queued"] = queued;
+  resp["applied"] = applied;
+  resp["success"] = accepted && applied;
+  resp["status"] = !accepted ? "rejected" : applied ? "applied" : "queued";
+  if (count == 1) {
+    resp["commandId"] = commands[0].sequence;
+    resp["rejectReason"] = PowerCommandGateway::rejectReasonString(
+        commands[0].rejectReason);
+  }
+  const int httpStatus = !accepted
+                             ? hasControlCommand &&
+                                       *controlResult == ControlCommandQueue::EnqueueResult::Full
+                                   ? 429
+                                   : hasControlCommand &&
+                                             *controlResult == ControlCommandQueue::EnqueueResult::NotInitialized
+                                         ? 503
+                                         : 409
+                         : queued ? 202 : 200;
+  String json;
+  serializeJson(resp, json);
+  request->send(httpStatus, "application/json", json);
+}
+
+static void sendTestingStatusWithOutputCommand(
+    AsyncWebServerRequest *request,
+    const PowerCommandGateway::Command &command,
+    const ControlCommandQueue::EnqueueResult *controlResult = nullptr,
+    uint32_t controlCommandId = 0,
+    ControlCommandQueue::Status controlStatus =
+        ControlCommandQueue::Status::Unknown) {
+  sendTestingStatusWithOutputCommands(request, &command, 1, controlResult,
+                                      controlCommandId, controlStatus);
+}
 
 static const char *equipmentTestingToneToHistorySeverity(const char *tone) {
   if (!tone) {
@@ -122,11 +211,12 @@ static void recordEquipmentTestingAction(const char *tone, const char *title,
   appendEquipmentTestingHistoryAction(tone, title, detail);
 }
 
-static bool isEquipmentTestingBlocked(char *reason, size_t reasonSize) {
+static bool isEquipmentTestingBlocked(const SystemState &state, char *reason,
+                                     size_t reasonSize) {
   const EquipmentTestingLogic::BlockReason blockReason =
       EquipmentTestingLogic::evaluateGuard(
-          g_state.mode != Mode::IDLE, Safety::isLatched(g_state),
-          g_state.currentAlarm.type != AlarmType::NONE, g_state.safetyOk,
+          state.mode != Mode::IDLE, Safety::isLatched(state),
+          state.currentAlarm.type != AlarmType::NONE, state.safetyOk,
           g_settings.demoMode);
   switch (blockReason) {
     case EquipmentTestingLogic::BlockReason::PROCESS_ACTIVE:
@@ -139,7 +229,7 @@ static bool isEquipmentTestingBlocked(char *reason, size_t reasonSize) {
       break;
     case EquipmentTestingLogic::BlockReason::ALARM_ACTIVE:
       snprintf(reason, reasonSize, "Активна авария: %s",
-               g_state.currentAlarm.message);
+               state.currentAlarm.message);
       break;
     case EquipmentTestingLogic::BlockReason::SAFETY_NOT_OK:
       snprintf(reason, reasonSize,
@@ -155,6 +245,15 @@ static bool isEquipmentTestingBlocked(char *reason, size_t reasonSize) {
       return false;
   }
   return true;
+}
+
+static bool isEquipmentTestingBlocked(char *reason, size_t reasonSize) {
+  SystemState state;
+  if (!StateSnapshot::read(state)) {
+    snprintf(reason, reasonSize, "Снимок состояния недоступен");
+    return true;
+  }
+  return isEquipmentTestingBlocked(state, reason, reasonSize);
 }
 
 void fillEquipmentModulesJson(JsonObject modules) {
@@ -225,7 +324,7 @@ void fillEquipmentModulesJson(JsonObject modules) {
   pzemModule["txPin"] = PIN_PZEM_TX;
 }
 
-void fillSafetyChannelsJson(JsonObject channels) {
+void fillSafetyChannelsJson(JsonObject channels, const SystemState &state) {
   const bool adsOnline = Sensors::isAds1115Available();
   const float maxAdsVoltage = 4.096f;
 
@@ -239,10 +338,10 @@ void fillSafetyChannelsJson(JsonObject channels) {
            ? (bodyLevelVoltage >= g_settings.equipment.bodyLevelThresholdV)
            : (bodyLevelVoltage <= g_settings.equipment.bodyLevelThresholdV));
 
-  const int16_t leakAdc = g_state.leak.adc;
-  const float leakVoltage = g_state.leak.voltage;
-  const bool leakReadable = g_state.leak.valid;
-  const bool leakTriggered = g_state.leak.triggered;
+  const int16_t leakAdc = state.leak.adc;
+  const float leakVoltage = state.leak.voltage;
+  const bool leakReadable = state.leak.valid;
+  const bool leakTriggered = state.leak.triggered;
 
   JsonObject bodyLevel = channels["bodyLevel"].to<JsonObject>();
   bodyLevel["label"] = "Уровень банки тела";
@@ -305,14 +404,14 @@ void fillSafetyChannelsJson(JsonObject channels) {
   JsonObject vaporPrimary = channels["vaporPrimary"].to<JsonObject>();
   vaporPrimary["label"] = "Газ / пар #1";
   vaporPrimary["status"] = VAPOR_SENSOR_ENABLED
-      ? (g_state.vaporPrimary.valid
-             ? (g_state.vaporPrimary.triggered ? "triggered" : "armed")
+      ? (state.vaporPrimary.valid
+             ? (state.vaporPrimary.triggered ? "triggered" : "armed")
              : "no_signal")
       : "reserved";
   vaporPrimary["available"] = VAPOR_SENSOR_ENABLED != 0;
   vaporPrimary["expected"] = false;
   vaporPrimary["planned"] = true;
-  vaporPrimary["liveReadable"] = g_state.vaporPrimary.valid;
+  vaporPrimary["liveReadable"] = state.vaporPrimary.valid;
   vaporPrimary["bus"] = "ESP32 ADC";
   vaporPrimary["address"] = "GPIO1";
   vaporPrimary["role"] =
@@ -325,14 +424,14 @@ void fillSafetyChannelsJson(JsonObject channels) {
   JsonObject vaporSecondary = channels["vaporSecondary"].to<JsonObject>();
   vaporSecondary["label"] = "Газ / пар #2";
   vaporSecondary["status"] = VAPOR_SENSOR_ENABLED
-      ? (g_state.vaporSecondary.valid
-             ? (g_state.vaporSecondary.triggered ? "triggered" : "armed")
+      ? (state.vaporSecondary.valid
+             ? (state.vaporSecondary.triggered ? "triggered" : "armed")
              : "no_signal")
       : "reserved";
   vaporSecondary["available"] = VAPOR_SENSOR_ENABLED != 0;
   vaporSecondary["expected"] = false;
   vaporSecondary["planned"] = true;
-  vaporSecondary["liveReadable"] = g_state.vaporSecondary.valid;
+  vaporSecondary["liveReadable"] = state.vaporSecondary.valid;
   vaporSecondary["bus"] = "ESP32 ADC";
   vaporSecondary["address"] = "GPIO3";
   vaporSecondary["role"] =
@@ -343,20 +442,23 @@ void fillSafetyChannelsJson(JsonObject channels) {
   vaporSecondary["triggered"] = false;
 }
 
-static void fillEquipmentTestingHealthJson(JsonObject health) {
-  health["overall"] = g_state.health.overallHealth;
-  health["tempSensorsOk"] = g_state.health.tempSensorsOk;
-  health["tempSensorsTotal"] = g_state.health.tempSensorsTotal;
-  health["bmp280"] = g_state.health.bmp280Ok;
-  health["ads1115"] = g_state.health.ads1115Ok;
-  health["pzem"] = g_state.health.pzemOk;
-  health["wifiConnected"] = g_state.health.wifiConnected;
-  health["wifiRSSI"] = g_state.health.wifiRSSI;
-  health["freeHeap"] = g_state.health.freeHeap;
-  health["cpuTemp"] = g_state.health.cpuTemp;
-  health["pzemSpikes"] = g_state.health.pzemSpikeCount;
-  health["tempErrors"] = g_state.health.tempReadErrors;
-  health["lastUpdate"] = g_state.health.lastUpdate;
+static void fillEquipmentTestingHealthJson(JsonObject health,
+                                           const SystemState &state) {
+  const SystemHealth &status = state.health;
+  health["snapshotAvailable"] = true;
+  health["overall"] = status.overallHealth;
+  health["tempSensorsOk"] = status.tempSensorsOk;
+  health["tempSensorsTotal"] = status.tempSensorsTotal;
+  health["bmp280"] = status.bmp280Ok;
+  health["ads1115"] = status.ads1115Ok;
+  health["pzem"] = status.pzemOk;
+  health["wifiConnected"] = status.wifiConnected;
+  health["wifiRSSI"] = status.wifiRSSI;
+  health["freeHeap"] = status.freeHeap;
+  health["cpuTemp"] = status.cpuTemp;
+  health["pzemSpikes"] = status.pzemSpikeCount;
+  health["tempErrors"] = status.tempReadErrors;
+  health["lastUpdate"] = status.lastUpdate;
   health["rebootReason"] = g_rebootTracker.lastReason;
   health["rebootReasonStr"] = g_rebootTracker.lastReasonStr;
 }
@@ -364,11 +466,15 @@ static void fillEquipmentTestingHealthJson(JsonObject health) {
 static void fillEquipmentTestingStatus(JsonDocument &doc) {
   // Снимок состояния: главный цикл пишет g_state на другом ядре.
   SystemState snapshot;
-  StateSnapshot::readOrLive(snapshot);
+  if (!StateSnapshot::read(snapshot)) {
+    doc["snapshotAvailable"] = false;
+    return;
+  }
+  doc["snapshotAvailable"] = true;
   const SystemState &st = snapshot;
 
   char reason[160] = "";
-  const bool blocked = isEquipmentTestingBlocked(reason, sizeof(reason));
+  const bool blocked = isEquipmentTestingBlocked(st, reason, sizeof(reason));
   const bool processActive = st.mode != Mode::IDLE;
   const bool latched = Safety::isLatched(st);
   const bool alarmActive = (st.currentAlarm.type != AlarmType::NONE);
@@ -377,8 +483,6 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   const bool servoAvailable =
       g_settings.fractionator.enabled && Valves::isFractionatorEnabled();
   const Pump::Diagnostics pumpDiag = Pump::getDiagnostics();
-
-  syncStirrerState();
 
   doc["success"] = true;
   doc["mode"] = getModeString(st.mode);
@@ -423,7 +527,7 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   pump["fastYieldCount"] = pumpDiag.fastYieldCount;
 
   JsonObject stirrer = doc["stirrer"].to<JsonObject>();
-  fillStirrerJson(stirrer, g_state);
+  fillStirrerJson(stirrer, st);
   stirrer["enabled"] = g_settings.stirrer.enabled;
   stirrer["defaultSpeedPercent"] = g_settings.stirrer.defaultSpeedPercent;
 
@@ -459,9 +563,9 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   valves["startStopDuty"] = Valves::getStartStop();
   JsonObject coolingSettings = doc["coolingSettings"].to<JsonObject>();
   coolingSettings["enabled"] = g_settings.equipment.coolingPwmEnabled;
-  coolingSettings["minDuty"] = g_settings.equipment.coolingPwmMinDuty;
-  coolingSettings["maxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
-  coolingSettings["startupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+  coolingSettings["holdPercent"] =
+      g_settings.equipment.coolingPwmHoldPercent;
+  coolingSettings["pullMs"] = g_settings.equipment.coolingPwmPullMs;
   JsonObject waterPulse = valves["waterPulse"].to<JsonObject>();
   waterPulse["active"] = Valves::isPulseActive(Valves::ValveId::WATER);
   waterPulse["remainingMs"] =
@@ -573,10 +677,10 @@ static void fillEquipmentTestingStatus(JsonDocument &doc) {
   fillEquipmentModulesJson(modules);
 
   JsonObject safetyChannels = doc["safetyChannels"].to<JsonObject>();
-  fillSafetyChannelsJson(safetyChannels);
+  fillSafetyChannelsJson(safetyChannels, st);
 
   JsonObject health = doc["health"].to<JsonObject>();
-  fillEquipmentTestingHealthJson(health);
+  fillEquipmentTestingHealthJson(health, st);
 
   JsonArray recentActions = doc["recentActions"].to<JsonArray>();
   for (uint8_t i = 0; i < g_equipmentTestingActionCount; ++i) {
@@ -629,15 +733,26 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
 
   server.on("/api/testing/stop-all", HTTP_POST,
             [](AsyncWebServerRequest *request) {
-              g_state.stirrer.autoMode = false;
-              PowerCommandGateway::safeStopAll(
+              uint32_t controlCommandId = 0;
+              ControlCommandQueue::Status controlStatus =
+                  ControlCommandQueue::Status::Unknown;
+              const auto controlResult = ControlCommandQueue::enqueueAction(
+                  ControlCommandQueue::Type::SetStirrerAutoMode,
+                  ControlCommandQueue::Source::Api, 0, 0.0f, 0,
+                  ControlCommandQueue::Reason::OperatorRequest,
+                  &controlCommandId, &controlStatus);
+              const PowerCommandGateway::Command outputCommand =
+                  PowerCommandGateway::safeStopAll(
                   PowerCommandGateway::Owner::SERVICE,
                   PowerCommandGateway::Reason::TFT_SERVICE_TEST);
               recordEquipmentTestingAction(
                   "warning", "Остановить все тесты",
                   "Все ручные сервисные воздействия остановлены одной командой.");
-              request->send(200, "application/json",
-                            "{\"success\":true,\"message\":\"Все тесты остановлены\"}");
+              sendTestingStatusWithOutputCommand(request, outputCommand,
+                                                 &controlResult,
+                                                 controlCommandId,
+                                                 controlStatus);
+              return;
             });
 
   server.on(
@@ -659,6 +774,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           return;
         }
 
+        PowerCommandGateway::Command outputCommand;
         if (action == "start") {
           char reason[160] = "";
           if (isEquipmentTestingBlocked(reason, sizeof(reason))) {
@@ -679,7 +795,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
             return;
           }
 
-          PowerCommandGateway::setPumpSpeed(
+          outputCommand = PowerCommandGateway::setPumpSpeed(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST, speed);
           char detail[128];
@@ -687,18 +803,14 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
                    "Насос запущен вручную со скоростью %.1f мл/ч.", speed);
           recordEquipmentTestingAction("success", "Тест насоса", detail);
         } else {
-          PowerCommandGateway::setPumpSpeed(
+          outputCommand = PowerCommandGateway::setPumpSpeed(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST, 0.0f);
           recordEquipmentTestingAction("warning", "Тест насоса",
                                        "Насос остановлен из сервисного экрана.");
         }
 
-        JsonDocument resp;
-        fillEquipmentTestingStatus(resp);
-        String json;
-        serializeJson(resp, json);
-        request->send(200, "application/json", json);
+        sendTestingStatusWithOutputCommand(request, outputCommand);
       });
 
   server.on(
@@ -748,6 +860,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           }
         }
 
+        PowerCommandGateway::Command outputCommand;
         if (action == "start") {
           int speedPercent = g_settings.stirrer.defaultSpeedPercent;
           if (!doc["speedPercent"].isNull()) {
@@ -756,8 +869,23 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
             speedPercent = doc["speed"].as<int>();
           }
           speedPercent = clampU8Range(speedPercent, 1, 100);
-          g_state.stirrer.autoMode = false;
-          PowerCommandGateway::setStirrerSpeed(
+          uint32_t controlCommandId = 0;
+          ControlCommandQueue::Status controlStatus =
+              ControlCommandQueue::Status::Unknown;
+          const auto controlResult = ControlCommandQueue::enqueueAction(
+              ControlCommandQueue::Type::SetStirrerAutoMode,
+              ControlCommandQueue::Source::Api, 0, 0.0f, 0,
+              ControlCommandQueue::Reason::OperatorRequest,
+              &controlCommandId, &controlStatus);
+          if (controlResult != ControlCommandQueue::EnqueueResult::Accepted &&
+              controlResult != ControlCommandQueue::EnqueueResult::Duplicate) {
+            sendTestingStatusWithOutputCommands(request, nullptr, 0,
+                                                &controlResult,
+                                                controlCommandId,
+                                                controlStatus);
+            return;
+          }
+          outputCommand = PowerCommandGateway::setStirrerSpeed(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST,
               static_cast<uint8_t>(speedPercent));
@@ -766,6 +894,10 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           snprintf(detail, sizeof(detail),
                    "Мешалка запущена вручную на %d%%.", speedPercent);
           recordEquipmentTestingAction("success", "Тест мешалки", detail);
+          sendTestingStatusWithOutputCommand(request, outputCommand,
+                                             &controlResult,
+                                             controlCommandId,
+                                             controlStatus);
         } else if (action == "set") {
           if (!Stirrer::isRunning()) {
             request->send(
@@ -787,8 +919,23 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
             return;
           }
 
-          g_state.stirrer.autoMode = false;
-          PowerCommandGateway::setStirrerSpeed(
+          uint32_t controlCommandId = 0;
+          ControlCommandQueue::Status controlStatus =
+              ControlCommandQueue::Status::Unknown;
+          const auto controlResult = ControlCommandQueue::enqueueAction(
+              ControlCommandQueue::Type::SetStirrerAutoMode,
+              ControlCommandQueue::Source::Api, 0, 0.0f, 0,
+              ControlCommandQueue::Reason::OperatorRequest,
+              &controlCommandId, &controlStatus);
+          if (controlResult != ControlCommandQueue::EnqueueResult::Accepted &&
+              controlResult != ControlCommandQueue::EnqueueResult::Duplicate) {
+            sendTestingStatusWithOutputCommands(request, nullptr, 0,
+                                                &controlResult,
+                                                controlCommandId,
+                                                controlStatus);
+            return;
+          }
+          outputCommand = PowerCommandGateway::setStirrerSpeed(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST,
               static_cast<uint8_t>(speedPercent));
@@ -797,21 +944,30 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           snprintf(detail, sizeof(detail),
                    "Скорость мешалки изменена до %d%%.", speedPercent);
           recordEquipmentTestingAction("info", "Тест мешалки", detail);
+          sendTestingStatusWithOutputCommand(request, outputCommand,
+                                             &controlResult,
+                                             controlCommandId,
+                                             controlStatus);
         } else {
-          g_state.stirrer.autoMode = false;
-          PowerCommandGateway::stopStirrer(
+          uint32_t controlCommandId = 0;
+          ControlCommandQueue::Status controlStatus =
+              ControlCommandQueue::Status::Unknown;
+          const auto controlResult = ControlCommandQueue::enqueueAction(
+              ControlCommandQueue::Type::SetStirrerAutoMode,
+              ControlCommandQueue::Source::Api, 0, 0.0f, 0,
+              ControlCommandQueue::Reason::OperatorRequest,
+              &controlCommandId, &controlStatus);
+          outputCommand = PowerCommandGateway::stopStirrer(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST);
           recordEquipmentTestingAction(
               "warning", "Тест мешалки",
               "Мешалка остановлена из сервисного экрана.");
+          sendTestingStatusWithOutputCommand(request, outputCommand,
+                                             &controlResult,
+                                             controlCommandId,
+                                             controlStatus);
         }
-
-        JsonDocument resp;
-        fillEquipmentTestingStatus(resp);
-        String json;
-        serializeJson(resp, json);
-        request->send(200, "application/json", json);
       });
 
   server.on(
@@ -834,6 +990,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           return;
         }
 
+        PowerCommandGateway::Command outputCommand;
         if (action == "start") {
           char reason[160] = "";
           if (isEquipmentTestingBlocked(reason, sizeof(reason))) {
@@ -867,7 +1024,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
             powerWatts = static_cast<uint16_t>(
                 (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
           }
-          PowerCommandGateway::setHeaterPowerWatts(
+          outputCommand = PowerCommandGateway::setHeaterPowerWatts(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST, powerWatts);
           const unsigned power = powerWatts;
@@ -877,18 +1034,14 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
                    power);
           recordEquipmentTestingAction("danger", "Тест ТЭНа", detail);
         } else {
-          PowerCommandGateway::setHeaterPowerWatts(
+          outputCommand = PowerCommandGateway::setHeaterPowerWatts(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST, 0);
           recordEquipmentTestingAction("warning", "Тест ТЭНа",
                                        "ТЭН выключен из сервисного экрана.");
         }
 
-        JsonDocument resp;
-        fillEquipmentTestingStatus(resp);
-        String json;
-        serializeJson(resp, json);
-        request->send(200, "application/json", json);
+        sendTestingStatusWithOutputCommand(request, outputCommand);
       });
 
   server.on(
@@ -919,33 +1072,35 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
         const bool open = doc["open"] | false;
         uint32_t durationMs = doc["durationMs"] | 0;
         const uint8_t duty = clampU8Range(doc["duty"] | 0, 0, 255);
+        PowerCommandGateway::Command outputCommands[6];
+        size_t outputCommandCount = 0;
 
         if (target == "all") {
-          PowerCommandGateway::setValve(
+          outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST,
               PowerCommandGateway::Valve::WATER, false);
-          PowerCommandGateway::setValve(
+          outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST,
               PowerCommandGateway::Valve::HEADS, false);
           if (Valves::hasBodyValve()) {
-            PowerCommandGateway::setValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::BODY, false);
           }
           if (Valves::hasTailsValve()) {
-            PowerCommandGateway::setValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::TAILS, false);
           }
-          PowerCommandGateway::setValve(
+          outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST,
               PowerCommandGateway::Valve::UNO, false);
-          PowerCommandGateway::setCoolingPwm(
+          outputCommands[outputCommandCount++] = PowerCommandGateway::setCoolingPwm(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST, 0);
           recordEquipmentTestingAction("warning", "Клапаны",
@@ -954,7 +1109,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            PowerCommandGateway::pulseValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::pulseValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::WATER, durationMs);
@@ -963,7 +1118,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
                      (unsigned long)durationMs);
             recordEquipmentTestingAction("info", "Клапан воды", detail);
           } else {
-            PowerCommandGateway::setValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::WATER, open);
@@ -975,7 +1130,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            PowerCommandGateway::pulseValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::pulseValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::HEADS, durationMs);
@@ -984,7 +1139,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
                      (unsigned long)durationMs);
             recordEquipmentTestingAction("info", "Клапан голов", detail);
           } else {
-            PowerCommandGateway::setValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::HEADS, open);
@@ -1002,14 +1157,14 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            PowerCommandGateway::pulseValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::pulseValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::BODY, durationMs);
             recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С‚РµР»Р°",
                                          "РљР»Р°РїР°РЅ С‚РµР»Р° РїРѕР»СѓС‡РёР» СЃРµСЂРІРёСЃРЅС‹Р№ РёРјРїСѓР»СЊСЃ.");
           } else {
-            PowerCommandGateway::setValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::BODY, open);
@@ -1027,14 +1182,14 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            PowerCommandGateway::pulseValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::pulseValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::TAILS, durationMs);
             recordEquipmentTestingAction("info", "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ",
                                          "РљР»Р°РїР°РЅ С…РІРѕСЃС‚РѕРІ РїРѕР»СѓС‡РёР» СЃРµСЂРІРёСЃРЅС‹Р№ РёРјРїСѓР»СЊСЃ.");
           } else {
-            PowerCommandGateway::setValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::TAILS, open);
@@ -1046,7 +1201,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           if (action == "pulse") {
             if (durationMs < 100) durationMs = 100;
             if (durationMs > 10000) durationMs = 10000;
-            PowerCommandGateway::pulseValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::pulseValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::UNO, durationMs);
@@ -1055,7 +1210,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
                      (unsigned long)durationMs);
             recordEquipmentTestingAction("info", "УНО", detail);
           } else {
-            PowerCommandGateway::setValve(
+            outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
                 PowerCommandGateway::Owner::SERVICE,
                 PowerCommandGateway::Reason::TFT_SERVICE_TEST,
                 PowerCommandGateway::Valve::UNO, open);
@@ -1064,7 +1219,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
                                               : "УНО закрыто вручную.");
           }
         } else if (target == "startStop") {
-          PowerCommandGateway::setCoolingPwm(
+          outputCommands[outputCommandCount++] = PowerCommandGateway::setCoolingPwm(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST, duty);
           char detail[160];
@@ -1081,11 +1236,8 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        JsonDocument resp;
-        fillEquipmentTestingStatus(resp);
-        String json;
-        serializeJson(resp, json);
-        request->send(200, "application/json", json);
+        sendTestingStatusWithOutputCommands(request, outputCommands,
+                                            outputCommandCount);
       });
 
   server.on(
@@ -1158,6 +1310,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           return;
         }
 
+        PowerCommandGateway::Command outputCommand;
         if (action == "preset") {
           Fraction fraction = Fraction::UNKNOWN;
           if (!parseFractionPresetToken(doc["preset"] | "", fraction) ||
@@ -1167,7 +1320,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
                 "{\"success\":false,\"message\":\"Unknown servo preset\"}");
             return;
           }
-          PowerCommandGateway::setFraction(
+          outputCommand = PowerCommandGateway::setFraction(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST, fraction, true);
           char detail[128];
@@ -1178,7 +1331,7 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           int angle = doc["angle"] | 0;
           if (angle < 0) angle = 0;
           if (angle > 180) angle = 180;
-          PowerCommandGateway::setFractionAngle(
+          outputCommand = PowerCommandGateway::setFractionAngle(
               PowerCommandGateway::Owner::SERVICE,
               PowerCommandGateway::Reason::TFT_SERVICE_TEST,
               static_cast<uint8_t>(angle));
@@ -1193,10 +1346,6 @@ void registerTestingApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        JsonDocument resp;
-        fillEquipmentTestingStatus(resp);
-        String json;
-        serializeJson(resp, json);
-        request->send(200, "application/json", json);
+        sendTestingStatusWithOutputCommand(request, outputCommand);
       });
 }

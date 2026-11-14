@@ -1,4 +1,5 @@
 #include "process_indicators.h"
+#include "control/safety.h"
 #include "safety_policy.h"
 
 namespace ControlV2 {
@@ -74,9 +75,6 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
                                                         IndicatorRuntimeStateV2& runtime) {
     ProcessIndicatorsV2 out;
     const uint32_t now = millis();
-    const uint32_t ageMs =
-        (state.temps.lastUpdate > 0 && now >= state.temps.lastUpdate) ? (now - state.temps.lastUpdate)
-                                                                      : UINT32_MAX;
     const bool cubeSensorAvailable = hasTempSensor(state, TEMP_CUBE);
     const bool columnBottomAvailable = hasTempSensor(state, TEMP_COLUMN_BOTTOM);
     const bool columnTopAvailable = hasTempSensor(state, TEMP_COLUMN_TOP);
@@ -85,7 +83,8 @@ ProcessIndicatorsV2 ProcessIndicatorsEngineV2::evaluate(const SystemState& state
     const bool waterOutAvailable = hasTempSensor(state, TEMP_WATER_OUT);
     float waterOutRateCPerMin = 0.0f;
 
-    out.sensorFreshnessOk = state.temps.lastUpdate > 0 && ageMs <= SAFETY_SENSOR_TIMEOUT_MS;
+    out.sensorFreshnessOk = Safety::areRequiredSensorsAvailable(
+        state, Safety::getRequiredSensorsForMode(state.mode, settings), now);
     out.processHealth = clamp01(state.health.overallHealth / 100.0f);
     out.pressureSensorAvailable = state.pressure.ok;
     out.columnSensorsAvailable = columnBottomAvailable && columnTopAvailable;

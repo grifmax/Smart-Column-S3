@@ -1,3 +1,4 @@
 {
-    "chatgpt.openOnStartup": true
+    "chatgpt.openOnStartup": true,
+    "cmake.sourceDirectory": "C:/distiller/Smart-Column-S3/esp32_hd_ref/esp32_hd-master"
 }

@@ -1,12 +1,104 @@
 #include "settings_modules.h"
 
 #include "config.h"
+#include "control/control_command_queue.h"
 #include "control/fsm.h"
 #include "control/power_command_gateway.h"
 #include "control/rect_takeoff.h"
+#include "control/state_snapshot.h"
 #include "control/watt_control.h"
 #include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
+
+namespace {
+
+const char *outputStatus(const PowerCommandGateway::Command &command) {
+  if (!command.accepted) return "rejected";
+  return command.applied ? "applied" : "queued";
+}
+
+void appendOutputCommand(JsonObject response,
+                         const PowerCommandGateway::Command &command) {
+  response["commandId"] = command.sequence;
+  response["commandType"] = "output";
+  response["accepted"] = command.accepted;
+  response["queued"] = command.queued;
+  response["applied"] = command.applied;
+  response["success"] = command.accepted && command.applied;
+  response["status"] = outputStatus(command);
+  response["rejectReason"] =
+      PowerCommandGateway::rejectReasonString(command.rejectReason);
+}
+
+void sendOutputCommand(AsyncWebServerRequest *request,
+                       const PowerCommandGateway::Command &command,
+                       JsonDocument &response) {
+  appendOutputCommand(response.as<JsonObject>(), command);
+  String body;
+  serializeJson(response, body);
+  const int status = !command.accepted ? 409 : command.queued ? 202 : 200;
+  request->send(status, "application/json", body);
+}
+
+void sendOutputCommandBatch(AsyncWebServerRequest *request,
+                            const PowerCommandGateway::Command *commands,
+                            uint8_t count) {
+  bool accepted = count > 0;
+  bool applied = count > 0;
+  bool queued = false;
+  JsonDocument response;
+  response["commandType"] = "output";
+  JsonArray results = response["commands"].to<JsonArray>();
+  for (uint8_t i = 0; i < count; ++i) {
+    const auto &command = commands[i];
+    accepted = accepted && command.accepted;
+    applied = applied && command.applied;
+    queued = queued || command.queued;
+    JsonObject result = results.add<JsonObject>();
+    result["target"] = static_cast<uint8_t>(command.target);
+    appendOutputCommand(result, command);
+  }
+  response["accepted"] = accepted;
+  response["queued"] = queued;
+  response["applied"] = applied;
+  response["success"] = accepted && applied;
+  response["status"] = !accepted ? "rejected" : applied ? "applied" : "queued";
+  if (count == 1) response["commandId"] = commands[0].sequence;
+  String body;
+  serializeJson(response, body);
+  request->send(!accepted ? 409 : queued ? 202 : 200,
+                "application/json", body);
+}
+
+void sendQueuedRuntimeCommand(AsyncWebServerRequest *request,
+                              ControlCommandQueue::EnqueueResult result,
+                              uint32_t commandId,
+                              ControlCommandQueue::Status status) {
+  const bool accepted = result == ControlCommandQueue::EnqueueResult::Accepted ||
+                        result == ControlCommandQueue::EnqueueResult::Duplicate;
+  const bool queued = status == ControlCommandQueue::Status::Queued;
+  const bool applied = status == ControlCommandQueue::Status::Applied;
+  JsonDocument response;
+  response["success"] = accepted && applied;
+  response["accepted"] = accepted;
+  response["applied"] = applied;
+  response["queued"] = queued;
+  response["commandId"] = commandId;
+  response["commandType"] = "control";
+  response["status"] = ControlCommandQueue::statusToken(status);
+  String body;
+  serializeJson(response, body);
+  const int httpStatus = (accepted && queued) ? 202
+                         : (accepted && applied) ? 200
+                         : (result == ControlCommandQueue::EnqueueResult::Full)
+                             ? 429
+                             : (result == ControlCommandQueue::EnqueueResult::NotInitialized)
+                                 ? 503
+                                 : 409;
+  request->send(httpStatus, "application/json", body);
+}
+
+} // namespace
 
 void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
   server.on(
@@ -35,7 +127,8 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
           powerWatts = static_cast<uint16_t>(
               (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
         }
-        PowerCommandGateway::setHeaterPowerWatts(
+        const PowerCommandGateway::Command command =
+            PowerCommandGateway::setHeaterPowerWatts(
             PowerCommandGateway::Owner::MANUAL,
             PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, powerWatts);
 
@@ -46,11 +139,10 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
                        heaterMaxW / 2U) /
                       heaterMaxW)
                 : 0;
-        char resp[160];
-        snprintf(resp, sizeof(resp),
-                 "{\"success\":true,\"powerW\":%u,\"powerPercent\":%u}",
-                 powerWatts, powerPercent);
-        request->send(200, "application/json", resp);
+        JsonDocument response;
+        response["powerW"] = powerWatts;
+        response["powerPercent"] = powerPercent;
+        sendOutputCommand(request, command, response);
       });
 
   server.on(
@@ -88,12 +180,16 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
         if (powerWatts > heaterMaxW) {
           powerWatts = heaterMaxW;
         }
-        WattControl::setOverrideWatts(static_cast<int16_t>(powerWatts));
-
-        char resp[128];
-        snprintf(resp, sizeof(resp), "{\"success\":true,\"powerW\":%d}",
-                 powerWatts);
-        request->send(200, "application/json", resp);
+        uint32_t commandId = 0;
+        ControlCommandQueue::Status status =
+            ControlCommandQueue::Status::Unknown;
+        const auto result = ControlCommandQueue::enqueueAction(
+            ControlCommandQueue::Type::SetHeaterOverride,
+            ControlCommandQueue::Source::Api, 0,
+            static_cast<float>(powerWatts), 0,
+            ControlCommandQueue::Reason::OperatorRequest, &commandId,
+            &status);
+        sendQueuedRuntimeCommand(request, result, commandId, status);
       });
 
   server.on(
@@ -110,32 +206,45 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
         const float speed = EditableFields::normalize(
             EditableFields::Id::MANUAL_PUMP_SPEED_ML_H,
             doc["speed"] | 0.0f);
-        if (g_state.mode == Mode::MANUAL_RECT) {
-          FSM::ManualRect::setTakeoffRateMlH(speed);
-          char resp[128];
-          snprintf(resp, sizeof(resp),
-                   "{\"success\":true,\"manualRect\":true,\"speed\":%.1f}",
-                   speed > 0.0f ? speed : 0.0f);
-          request->send(200, "application/json", resp);
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          sendJsonError(request, 503, "State snapshot unavailable", false);
+          return;
+        }
+        if (stateSnapshot.mode == Mode::MANUAL_RECT) {
+          uint32_t commandId = doc["commandId"] | 0U;
+          ControlCommandQueue::Status status =
+              ControlCommandQueue::Status::Unknown;
+          const auto result = ControlCommandQueue::enqueueAction(
+              ControlCommandQueue::Type::SetManualRectRate,
+              ControlCommandQueue::Source::Api, 0, speed, commandId,
+              ControlCommandQueue::Reason::OperatorRequest, &commandId,
+              &status);
+          sendQueuedRuntimeCommand(request, result, commandId, status);
           return;
         }
 
         if (speed <= 0.0f) {
-          PowerCommandGateway::setPumpSpeed(
+          const PowerCommandGateway::Command command =
+              PowerCommandGateway::setPumpSpeed(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0.0f);
-          request->send(200, "application/json",
-                        "{\"success\":true,\"running\":false}");
+          JsonDocument response;
+          response["requestedRunning"] = false;
+          if (command.applied) response["running"] = false;
+          sendOutputCommand(request, command, response);
           return;
         }
 
-        PowerCommandGateway::setPumpSpeed(
+        const PowerCommandGateway::Command command =
+            PowerCommandGateway::setPumpSpeed(
             PowerCommandGateway::Owner::MANUAL,
             PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
-        char resp[128];
-        snprintf(resp, sizeof(resp),
-                 "{\"success\":true,\"running\":true,\"speed\":%.1f}", speed);
-        request->send(200, "application/json", resp);
+        JsonDocument response;
+        response["requestedRunning"] = speed > 0.0f;
+        if (command.applied) response["running"] = speed > 0.0f;
+        response["speed"] = speed;
+        sendOutputCommand(request, command, response);
       });
 
   server.on(
@@ -150,60 +259,62 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
         }
 
         const bool allOff = doc["allOff"] | false;
+        PowerCommandGateway::Command commands[6];
+        uint8_t commandCount = 0;
         if (allOff) {
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::WATER, false);
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::HEADS, false);
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::BODY, false);
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::TAILS, false);
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::UNO, false);
-          PowerCommandGateway::setCoolingPwm(
+          commands[commandCount++] = PowerCommandGateway::setCoolingPwm(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0);
-          sendJsonSuccess(request);
+          sendOutputCommandBatch(request, commands, commandCount);
           return;
         }
 
         if (!doc["water"].isNull()) {
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::WATER, doc["water"].as<bool>());
         }
         if (!doc["heads"].isNull()) {
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::HEADS, doc["heads"].as<bool>());
         }
         if (!doc["body"].isNull()) {
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::BODY, doc["body"].as<bool>());
         }
         if (!doc["tails"].isNull()) {
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::TAILS, doc["tails"].as<bool>());
         }
         if (!doc["uno"].isNull()) {
-          PowerCommandGateway::setValve(
+          commands[commandCount++] = PowerCommandGateway::setValve(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
               PowerCommandGateway::Valve::UNO, doc["uno"].as<bool>());
@@ -211,12 +322,16 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
         if (!doc["startStopDuty"].isNull()) {
           const uint8_t duty =
               clampU8Range(doc["startStopDuty"].as<uint32_t>(), 0, 255);
-          PowerCommandGateway::setCoolingPwm(
+          commands[commandCount++] = PowerCommandGateway::setCoolingPwm(
               PowerCommandGateway::Owner::MANUAL,
               PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, duty);
         }
 
-        sendJsonSuccess(request);
+        if (commandCount == 0) {
+          sendJsonError(request, 400, "At least one output field is required");
+          return;
+        }
+        sendOutputCommandBatch(request, commands, commandCount);
       });
 
   server.on(
@@ -230,7 +345,12 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        if (g_state.mode != Mode::MANUAL_RECT) {
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          sendJsonError(request, 503, "State snapshot unavailable", false);
+          return;
+        }
+        if (stateSnapshot.mode != Mode::MANUAL_RECT) {
           sendJsonError(request, 400, "Not in MANUAL_RECT mode", false);
           return;
         }
@@ -241,12 +361,20 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
         }
 
         const uint8_t phaseId = doc["phase"].as<uint8_t>();
-        FSM::ManualRect::setPhase(g_state, static_cast<RectPhase>(phaseId));
-
-        char resp[128];
-        snprintf(resp, sizeof(resp), "{\"success\":true,\"phase\":%d}",
-                 static_cast<int>(phaseId));
-        request->send(200, "application/json", resp);
+        if (phaseId == static_cast<uint8_t>(RectPhase::IDLE) ||
+            phaseId > static_cast<uint8_t>(RectPhase::COMPLETED)) {
+          sendJsonError(request, 400, "Invalid phase", false);
+          return;
+        }
+        uint32_t commandId = doc["commandId"] | 0U;
+        ControlCommandQueue::Status status =
+            ControlCommandQueue::Status::Unknown;
+        const auto result = ControlCommandQueue::enqueueAction(
+            ControlCommandQueue::Type::SetManualRectPhase,
+            ControlCommandQueue::Source::Api, phaseId, 0.0f, commandId,
+            ControlCommandQueue::Reason::OperatorRequest, &commandId,
+            &status);
+        sendQueuedRuntimeCommand(request, result, commandId, status);
       });
 
   server.on(
@@ -260,43 +388,35 @@ void registerRuntimeSettingsApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        bool changed = false;
+        uint8_t fieldMask = 0;
+        float headsMl = 0.0f;
+        float bodyMl = 0.0f;
+        float tailsMl = 0.0f;
         if (!doc["heads"].isNull()) {
-          const float v = doc["heads"].as<float>();
-          g_state.stats.headsVolume = (v < 0.0f) ? 0.0f : v;
-          changed = true;
+          headsMl = doc["heads"].as<float>();
+          fieldMask |= 0x01U;
         }
         if (!doc["body"].isNull()) {
-          const float v = doc["body"].as<float>();
-          g_state.stats.bodyVolume = (v < 0.0f) ? 0.0f : v;
-          changed = true;
+          bodyMl = doc["body"].as<float>();
+          fieldMask |= 0x02U;
         }
         if (!doc["tails"].isNull()) {
-          const float v = doc["tails"].as<float>();
-          g_state.stats.tailsVolume = (v < 0.0f) ? 0.0f : v;
-          changed = true;
+          tailsMl = doc["tails"].as<float>();
+          fieldMask |= 0x04U;
         }
 
-        if (!changed) {
+        if (fieldMask == 0) {
           sendJsonError(request, 400, "At least one field is required", false);
           return;
         }
 
         const bool syncTotal = doc["syncTotal"] | true;
-        if (syncTotal) {
-          g_state.pump.totalVolumeMl = g_state.stats.headsVolume +
-                                       g_state.stats.bodyVolume +
-                                       g_state.stats.tailsVolume;
-        }
-
-        JsonDocument out;
-        out["success"] = true;
-        out["heads"] = g_state.stats.headsVolume;
-        out["body"] = g_state.stats.bodyVolume;
-        out["tails"] = g_state.stats.tailsVolume;
-        out["totalMl"] = g_state.pump.totalVolumeMl;
-        String json;
-        serializeJson(out, json);
-        request->send(200, "application/json", json);
+        uint32_t commandId = doc["commandId"] | 0U;
+        ControlCommandQueue::Status status =
+            ControlCommandQueue::Status::Unknown;
+        const auto result = ControlCommandQueue::enqueueVolumes(
+            ControlCommandQueue::Source::Api, fieldMask, headsMl, bodyMl,
+            tailsMl, syncTotal, commandId, &commandId, &status);
+        sendQueuedRuntimeCommand(request, result, commandId, status);
       });
 }

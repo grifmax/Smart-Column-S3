@@ -1077,8 +1077,13 @@ export async function loadCalibrationData() {
 
         const stepsPerRevEl = byId('pump-steps-per-rev');
         if (stepsPerRevEl) {
-            const totalSteps = Number(pump.stepsPerRev || 0) * Number(pump.microsteps || 1);
-            if (Number.isFinite(totalSteps) && totalSteps > 0) stepsPerRevEl.value = String(totalSteps);
+            const baseSteps = Number(pump.stepsPerRev || 0);
+            if (Number.isFinite(baseSteps) && baseSteps > 0) stepsPerRevEl.value = String(baseSteps);
+        }
+        const microstepsEl = byId('pump-microsteps');
+        if (microstepsEl) {
+            const microsteps = Number(pump.microsteps || 1);
+            if (Number.isFinite(microsteps) && microsteps > 0) microstepsEl.value = String(microsteps);
         }
 
         const sensorList = byId('sensorList');
@@ -1352,9 +1357,14 @@ export async function stopCalibration(autoStop = false) {
 
     try {
         // Останавливаем насос и фиксируем конечные шаги в сессии калибровки
-        await fetch('/api/pump/calibrate/stop', { method: 'POST' });
-    } catch {
-        // ignore
+        const response = await fetch('/api/pump/calibrate/stop', { method: 'POST' });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || `HTTP ${response.status}`);
+        await waitForCalibrationStop();
+    } catch (error) {
+        calibrationState.running = true;
+        setMessage('pumpResult', `Останов насоса ещё не подтверждён: ${error.message}`, 'error');
+        return;
     }
     const stopBtn = byId('btn-stop-cal');
     const applyBtn = byId('btn-apply-cal');
@@ -1373,6 +1383,57 @@ export async function stopCalibration(autoStop = false) {
     }
 }
 
+async function waitForCalibrationStop() {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+        const response = await fetch('/api/pump/status', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const status = await response.json();
+        const phase = Number(status.calibrationPhase);
+        if (!status.calibrationStopPending && phase !== 3) {
+            if (phase === 4 || phase === 5) return status;
+            throw new Error('Замер не завершён; проверьте, что насос успел запуститься');
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error('Истекло время ожидания остановки насоса');
+}
+
+async function submitPumpCalibration(volume, method = 'steps', confirmLargeChange = false) {
+    const response = await fetch('/api/pump/calibrate/finish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ volume, method, confirmLargeChange })
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (data.status === 'stopping') {
+        await waitForCalibrationStop();
+        return submitPumpCalibration(volume, method, confirmLargeChange);
+    }
+
+    if (data.code === 'TIME_FALLBACK_AVAILABLE' && method === 'steps' &&
+        data.fallbackAvailable && window.confirm(
+            'Шаги насоса не учтены. Использовать расчёт по времени? Подтвердите, что насос действительно подавал жидкость, а фактический объём измерен отдельно.'
+        )) {
+        return submitPumpCalibration(volume, 'time', false);
+    }
+
+    if (data.code === 'CONFIRM_LARGE_CALIBRATION_CHANGE' && !confirmLargeChange &&
+        window.confirm(
+            `Новый коэффициент ${Number(data.candidateMlPerRev).toFixed(3)} мл/оборот отличается от текущего более чем в 2 раза. Применить его после проверки замера?`
+        )) {
+        return submitPumpCalibration(volume, method, true);
+    }
+
+    if (!response.ok) {
+        const detail = data.phase === undefined
+            ? ''
+            : ` (фаза ${data.phase}, шаги ${data.startSteps}→${data.stopSteps})`;
+        throw new Error(`${data.message || `HTTP ${response.status}`}${detail}`);
+    }
+    return data;
+}
+
 export async function applyCalibration() {
     const actualVolume = Number(byId('actual-volume')?.value);
     if (!Number.isFinite(actualVolume) || actualVolume <= 0) {
@@ -1381,22 +1442,7 @@ export async function applyCalibration() {
     }
 
     try {
-        // Используем /api/pump/calibrate/finish — он знает количество шагов из сессии
-        const response = await fetch('/api/pump/calibrate/finish', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ volume: actualVolume })
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            const detail =
-                errData.phase === undefined
-                    ? ''
-                    : ` (фаза ${errData.phase}, шаги ${errData.startSteps}→${errData.stopSteps})`;
-            throw new Error(`${errData.message || `HTTP ${response.status}`}${detail}`);
-        }
-        const data = await response.json();
+        const data = await submitPumpCalibration(actualVolume);
         const mlPerRev = Number(data?.mlPerRev);
         const method = String(data?.method || 'steps');
         const methodNote = method === 'time'

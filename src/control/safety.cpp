@@ -8,6 +8,8 @@
 
 #include "fsm.h"
 #include "power_command_gateway.h"
+#include "runtime_metrics.h"
+#include "sensor_freshness_logic.h"
 #include "v2/status_adapter.h"
 #include "../drivers/heater.h"
 #include "../drivers/pump.h"
@@ -44,8 +46,8 @@ void writeReason(char* reason, size_t reasonSize, const char* message) {
 }
 
 void forceSafeOutputs() {
-    PowerCommandGateway::safeStopAll(PowerCommandGateway::Owner::FSM,
-                                     PowerCommandGateway::Reason::FSM_CONTROL);
+    PowerCommandGateway::tripSafety(
+        PowerCommandGateway::Reason::SAFETY_TRIP);
 }
 
 const char* getTopologyRoleLabel(uint8_t index) {
@@ -112,25 +114,29 @@ RequiredSensorsMask buildRequiredSensorsMask(Mode mode, const Settings& settings
             required.columnBottomTemp = isInstalledByIndex(equipment, TEMP_COLUMN_BOTTOM);
             required.tsaTemp = isInstalledByIndex(equipment, TEMP_TSA);
             required.waterOutTemp = isInstalledByIndex(equipment, TEMP_WATER_OUT);
-            required.pressure = true;
+            required.pressure = settings.rectParams.pressureControlEnabled;
             break;
         case Mode::DISTILLATION:
             required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
             required.tsaTemp = isInstalledByIndex(equipment, TEMP_TSA);
             required.waterOutTemp = isInstalledByIndex(equipment, TEMP_WATER_OUT);
-            required.pressure = true;
+            required.pressure = settings.rectParams.pressureControlEnabled;
             break;
         case Mode::NBK:
             required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
             required.columnBottomTemp = isInstalledByIndex(equipment, TEMP_COLUMN_BOTTOM);
             required.tsaTemp = isInstalledByIndex(equipment, TEMP_TSA);
             required.waterOutTemp = isInstalledByIndex(equipment, TEMP_WATER_OUT);
-            required.pressure = true;
+            required.pressure = settings.rectParams.pressureControlEnabled;
             break;
         case Mode::MASHING:
         case Mode::HOLD:
         case Mode::FERMENTATION:
             required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
+            break;
+        case Mode::AUTOCLAVE:
+            required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
+            required.pressure = true;
             break;
         case Mode::IDLE:
         default:
@@ -139,16 +145,8 @@ RequiredSensorsMask buildRequiredSensorsMask(Mode mode, const Settings& settings
     return required;
 }
 
-bool isPressureSensorBlockingForMode(Mode mode) {
-    (void)mode;
-    return false;
-}
-
 RequiredSensorsMask buildBlockingSensorFailureMask(Mode mode, const Settings& settings) {
     RequiredSensorsMask required = buildRequiredSensorsMask(mode, settings);
-    if (!isPressureSensorBlockingForMode(mode)) {
-        required.pressure = false;
-    }
     return required;
 }
 
@@ -190,6 +188,9 @@ bool buildModeTopologySupport(Mode mode, const EquipmentSettings& equipment,
         case Mode::FERMENTATION:
             requireRole(TEMP_CUBE);
             break;
+        case Mode::AUTOCLAVE:
+            requireRole(TEMP_CUBE);
+            break;
         case Mode::IDLE:
         default:
             break;
@@ -208,18 +209,61 @@ bool buildModeTopologySupport(Mode mode, const EquipmentSettings& equipment,
     return false;
 }
 
-bool areRequiredSensorsAvailable(const SystemState& state,
-                                 const RequiredSensorsMask& required) {
-    if (required.cubeTemp && !state.temps.valid[TEMP_CUBE]) return false;
-    if (required.columnBottomTemp && !state.temps.valid[TEMP_COLUMN_BOTTOM]) return false;
-    if (required.tsaTemp && !state.temps.valid[TEMP_TSA]) return false;
-    if (required.waterOutTemp && !state.temps.valid[TEMP_WATER_OUT]) return false;
-    if (required.pressure && !state.pressure.ok) return false;
-    return true;
+bool isTemperatureFresh(const SystemState& state, uint8_t index,
+                        uint32_t now) {
+    if (index >= TEMP_COUNT) return false;
+    return SensorFreshnessLogic::isRecentSample(
+        state.temps.lastUpdateBySensor[index], now,
+        SAFETY_SENSOR_TIMEOUT_MS);
+}
+
+bool isPressureFresh(const SystemState& state, uint32_t now) {
+    return SensorFreshnessLogic::isFresh(
+        state.pressure.ok, state.pressure.lastUpdate, now,
+        SAFETY_SENSOR_TIMEOUT_MS);
+}
+
+bool areRequiredSensorsFresh(const SystemState& state,
+                             const RequiredSensorsMask& required,
+                             uint32_t now) {
+    return (!required.cubeTemp || isTemperatureFresh(state, TEMP_CUBE, now)) &&
+           (!required.columnBottomTemp ||
+            isTemperatureFresh(state, TEMP_COLUMN_BOTTOM, now)) &&
+           (!required.tsaTemp || isTemperatureFresh(state, TEMP_TSA, now)) &&
+           (!required.waterOutTemp ||
+            isTemperatureFresh(state, TEMP_WATER_OUT, now)) &&
+           SensorFreshnessLogic::isAvailableWhenRequired(
+               required.pressure, state.pressure.ok,
+               state.pressure.lastUpdate, now, SAFETY_SENSOR_TIMEOUT_MS);
+}
+
+uint8_t getMissingRequiredSensorsMask(const SystemState& state,
+                                     const RequiredSensorsMask& required,
+                                     uint32_t now) {
+    uint8_t missing = 0;
+    if (required.cubeTemp && !isTemperatureFresh(state, TEMP_CUBE, now)) {
+        missing |= 1U << 0;
+    }
+    if (required.columnBottomTemp &&
+        !isTemperatureFresh(state, TEMP_COLUMN_BOTTOM, now)) {
+        missing |= 1U << 1;
+    }
+    if (required.tsaTemp && !isTemperatureFresh(state, TEMP_TSA, now)) {
+        missing |= 1U << 2;
+    }
+    if (required.waterOutTemp &&
+        !isTemperatureFresh(state, TEMP_WATER_OUT, now)) {
+        missing |= 1U << 3;
+    }
+    if (required.pressure && !isPressureFresh(state, now)) {
+        missing |= 1U << 4;
+    }
+    return missing;
 }
 
 void appendMissingRequiredSensors(const SystemState& state,
                                   const RequiredSensorsMask& required,
+                                 uint32_t now,
                                   char* buffer,
                                   size_t bufferSize) {
     if (!buffer || bufferSize == 0) {
@@ -239,11 +283,12 @@ void appendMissingRequiredSensors(const SystemState& state,
         needComma = true;
     };
 
-    if (required.cubeTemp && !state.temps.valid[TEMP_CUBE]) appendToken("CUBE");
-    if (required.columnBottomTemp && !state.temps.valid[TEMP_COLUMN_BOTTOM]) appendToken("BASE");
-    if (required.tsaTemp && !state.temps.valid[TEMP_TSA]) appendToken("TSA");
-    if (required.waterOutTemp && !state.temps.valid[TEMP_WATER_OUT]) appendToken("WATER");
-    if (required.pressure && !state.pressure.ok) appendToken("PRESS");
+    const uint8_t missing = getMissingRequiredSensorsMask(state, required, now);
+    if (missing & (1U << 0)) appendToken("CUBE");
+    if (missing & (1U << 1)) appendToken("BASE");
+    if (missing & (1U << 2)) appendToken("TSA");
+    if (missing & (1U << 3)) appendToken("WATER");
+    if (missing & (1U << 4)) appendToken("PRESS");
 }
 
 void clearCurrentAlarm(SystemState& state) {
@@ -259,7 +304,36 @@ void latchAlarm(SystemState& state, AlarmType type, AlarmLevel level,
         Logger::writeData(state);
     }
 
+    uint32_t sampleAgeMs = UINT32_MAX;
+    switch (type) {
+        case AlarmType::COLUMN_FLOOD:
+        case AlarmType::PRESSURE_RISE_RATE:
+            sampleAgeMs = ControlRuntimeMetricsLogic::sampleAgeMs(
+                now, state.pressure.lastUpdate, state.pressure.ok);
+            break;
+        case AlarmType::WATER_OVERHEAT:
+        case AlarmType::WATER_RISE_RATE:
+            sampleAgeMs = ControlRuntimeMetricsLogic::sampleAgeMs(
+                now, state.temps.lastUpdateBySensor[TEMP_WATER_OUT],
+                state.temps.valid[TEMP_WATER_OUT]);
+            break;
+        case AlarmType::VAPOR_BREAKTHROUGH:
+            sampleAgeMs = ControlRuntimeMetricsLogic::sampleAgeMs(
+                now, state.temps.lastUpdateBySensor[TEMP_TSA],
+                state.temps.valid[TEMP_TSA]);
+            break;
+        default:
+            break;
+    }
+    const uint32_t outputStopStartedAtUs = micros();
     forceSafeOutputs();
+    const uint32_t outputStopUs = micros() - outputStopStartedAtUs;
+    ControlRuntimeMetrics::recordSafetyTrip(sampleAgeMs, outputStopUs);
+    Logger::logf(1,
+                 "Safety response timing: sample_age_ms=%lu, "
+                 "output_stop_us=%lu",
+                 static_cast<unsigned long>(sampleAgeMs),
+                 static_cast<unsigned long>(outputStopUs));
     state.safetyOk = false;
 
     state.currentAlarm.type = type;
@@ -274,39 +348,41 @@ void latchAlarm(SystemState& state, AlarmType type, AlarmLevel level,
     }
 }
 
-bool hasTempSensorTimeout(const SystemState& state, uint32_t now) {
-    if (state.temps.lastUpdate == 0) {
-        return now > TEMP_SENSOR_STARTUP_GRACE_MS;
-    }
-    return (now - state.temps.lastUpdate > SAFETY_SENSOR_TIMEOUT_MS);
-}
-
 bool canResetAlarm(const SystemState& state, const Settings& settings, uint32_t now,
                    char* reason, size_t reasonSize) {
     const float tsaMaxC = clampSafety(settings.safety.tsaMaxC, 35.0f, 120.0f);
     const float waterOutMaxC = clampSafety(settings.safety.waterOutMaxC, 30.0f, 120.0f);
     const float pressureMaxMmHg = clampSafety(settings.safety.pressureMaxMmHg, 5.0f, 200.0f);
 
-    if (hasTempSensorTimeout(state, now)) {
+    RequiredSensorsMask resetRequired;
+    resetRequired.cubeTemp = isInstalledByIndex(settings.equipment, TEMP_CUBE);
+    resetRequired.tsaTemp = isInstalledByIndex(settings.equipment, TEMP_TSA);
+    resetRequired.waterOutTemp = isInstalledByIndex(settings.equipment, TEMP_WATER_OUT);
+    resetRequired.pressure = settings.rectParams.pressureControlEnabled;
+    if (!areRequiredSensorsFresh(state, resetRequired, now) &&
+        now > TEMP_SENSOR_STARTUP_GRACE_MS) {
         writeReason(reason, reasonSize, "Temperature sensors are still offline or stale");
         return false;
     }
 
-    if (state.temps.valid[TEMP_TSA] && state.temps.tsa > tsaMaxC) {
+    if (isTemperatureFresh(state, TEMP_TSA, now) &&
+        state.temps.tsa > tsaMaxC) {
         char buffer[96];
         snprintf(buffer, sizeof(buffer), "TSA temperature is still too high: %.1fC", state.temps.tsa);
         writeReason(reason, reasonSize, buffer);
         return false;
     }
 
-    if (state.temps.valid[TEMP_WATER_OUT] && state.temps.waterOut > waterOutMaxC) {
+    if (isTemperatureFresh(state, TEMP_WATER_OUT, now) &&
+        state.temps.waterOut > waterOutMaxC) {
         char buffer[96];
         snprintf(buffer, sizeof(buffer), "Выход охлаждающей воды всё ещё слишком горячий: %.1f °C", state.temps.waterOut);
         writeReason(reason, reasonSize, buffer);
         return false;
     }
 
-    if (state.pressure.ok && state.pressure.cube > pressureMaxMmHg) {
+    if (settings.rectParams.pressureControlEnabled &&
+        isPressureFresh(state, now) && state.pressure.cube > pressureMaxMmHg) {
         char buffer[96];
         snprintf(buffer, sizeof(buffer), "Pressure is still above the safe limit: %.1f mmHg", state.pressure.cube);
         writeReason(reason, reasonSize, buffer);
@@ -340,6 +416,21 @@ bool isModeTemperatureTopologySupported(Mode mode, const EquipmentSettings& equi
 
 RequiredSensorsMask getRequiredSensorsForMode(Mode mode, const Settings& settings) {
     return buildRequiredSensorsMask(mode, settings);
+}
+
+bool isTemperatureSampleFresh(const SystemState& state, uint8_t index,
+                              uint32_t nowMs) {
+    return isTemperatureFresh(state, index, nowMs);
+}
+
+bool isPressureSampleFresh(const SystemState& state, uint32_t nowMs) {
+    return isPressureFresh(state, nowMs);
+}
+
+bool areRequiredSensorsAvailable(const SystemState& state,
+                                 const RequiredSensorsMask& required,
+                                 uint32_t nowMs) {
+    return areRequiredSensorsFresh(state, required, nowMs);
 }
 
 const char* getAlarmTypeToken(AlarmType type) {
@@ -386,14 +477,12 @@ void check(SystemState& state, const Settings& settings) {
         return;
     }
 
-    static bool riseBaselineReady = false;
     static float prevWaterOutC = 0.0f;
     static float prevPressureMmHg = 0.0f;
-    static uint32_t prevRiseTsMs = 0;
+    static uint32_t prevWaterOutSampleMs = 0;
+    static uint32_t prevPressureSampleMs = 0;
     static bool prevWaterOutValid = false;
     static bool prevPressureValid = false;
-    static bool waterRateArmed = false;
-    static bool pressureRateArmed = false;
 
     bool emergencyStop = false;
     AlarmType alarmType = AlarmType::NONE;
@@ -419,6 +508,7 @@ void check(SystemState& state, const Settings& settings) {
             LOG_I("SAFETY: Demo mode active, clearing sensor alarm");
             clearCurrentAlarm(state);
             state.safetyOk = true;
+            PowerCommandGateway::clearSafetyTrip();
             sensorAlarmLogged = false;
             xSemaphoreGive(g_safetyMutex);
             return;
@@ -429,6 +519,7 @@ void check(SystemState& state, const Settings& settings) {
             // но логируем это только один раз при возникновении.
             clearCurrentAlarm(state);
             state.safetyOk = true;
+            PowerCommandGateway::clearSafetyTrip();
             xSemaphoreGive(g_safetyMutex);
             return;
         }
@@ -437,8 +528,8 @@ void check(SystemState& state, const Settings& settings) {
         return;
     }
 
-    // Если ошибки нет - сбрасываем флаг логирования
-    if (areRequiredSensorsAvailable(state, blockingSensorFailure)) {
+    // Если ошибки нет - сбрасываем флаг логирования и счетчик отвалов
+    if (areRequiredSensorsAvailable(state, blockingSensorFailure, now)) {
         sensorAlarmLogged = false;
     }
 
@@ -447,55 +538,51 @@ void check(SystemState& state, const Settings& settings) {
     bool waterOutRateValid = false;
     bool pressureRateValid = false;
 
-    if (riseBaselineReady && prevRiseTsMs > 0 && now > prevRiseTsMs) {
-        const float dtMin = static_cast<float>(now - prevRiseTsMs) / 60000.0f;
-        if (dtMin >= 0.016f) {
-            if (prevWaterOutValid && state.temps.valid[TEMP_WATER_OUT]) {
-                const float currentWaterOutRiseRate = (state.temps.waterOut - prevWaterOutC) / dtMin;
-                if (waterRateArmed) {
-                    waterOutRiseRate = currentWaterOutRiseRate;
-                    waterOutRateValid = true;
-                } else {
-                    waterRateArmed = true;
-                }
-            } else {
-                waterRateArmed = false;
-            }
-
-            if (prevPressureValid && state.pressure.ok) {
-                const float currentPressureRiseRate = (state.pressure.cube - prevPressureMmHg) / dtMin;
-                if (pressureRateArmed) {
-                    pressureRiseRate = currentPressureRiseRate;
-                    pressureRateValid = true;
-                } else {
-                    pressureRateArmed = true;
-                }
-            } else {
-                pressureRateArmed = false;
+    const uint32_t waterOutSampleMs =
+        state.temps.lastUpdateBySensor[TEMP_WATER_OUT];
+    if (required.waterOutTemp &&
+        isTemperatureFresh(state, TEMP_WATER_OUT, now) &&
+        waterOutSampleMs != prevWaterOutSampleMs) {
+        if (prevWaterOutValid) {
+            const uint32_t sampleDeltaMs = waterOutSampleMs - prevWaterOutSampleMs;
+            if (sampleDeltaMs >= 960) {
+                waterOutRiseRate =
+                    (state.temps.waterOut - prevWaterOutC) * 60000.0f /
+                    static_cast<float>(sampleDeltaMs);
+                waterOutRateValid = true;
             }
         }
-    }
-
-    if (state.temps.valid[TEMP_WATER_OUT]) {
         prevWaterOutC = state.temps.waterOut;
+        prevWaterOutSampleMs = waterOutSampleMs;
         prevWaterOutValid = true;
-    } else {
+    } else if (required.waterOutTemp &&
+               !isTemperatureFresh(state, TEMP_WATER_OUT, now)) {
         prevWaterOutValid = false;
-        waterRateArmed = false;
+        prevWaterOutSampleMs = 0;
     }
 
-    if (state.pressure.ok) {
+    if (required.pressure && isPressureFresh(state, now) &&
+        state.pressure.lastUpdate != prevPressureSampleMs) {
+        if (prevPressureValid) {
+            const uint32_t sampleDeltaMs =
+                state.pressure.lastUpdate - prevPressureSampleMs;
+            if (sampleDeltaMs >= 960) {
+                pressureRiseRate =
+                    (state.pressure.cube - prevPressureMmHg) * 60000.0f /
+                    static_cast<float>(sampleDeltaMs);
+                pressureRateValid = true;
+            }
+        }
         prevPressureMmHg = state.pressure.cube;
+        prevPressureSampleMs = state.pressure.lastUpdate;
         prevPressureValid = true;
-    } else {
+    } else if (required.pressure && !isPressureFresh(state, now)) {
         prevPressureValid = false;
-        pressureRateArmed = false;
+        prevPressureSampleMs = 0;
     }
 
-    prevRiseTsMs = now;
-    riseBaselineReady = true;
-
-    if (required.tsaTemp && state.temps.valid[TEMP_TSA] && state.temps.tsa > tsaMaxC) {
+    if (required.tsaTemp && isTemperatureFresh(state, TEMP_TSA, now) &&
+        state.temps.tsa > tsaMaxC) {
         emergencyStop = true;
         alarmType = AlarmType::VAPOR_BREAKTHROUGH;
         alarmLevel = AlarmLevel::CRITICAL;
@@ -503,7 +590,8 @@ void check(SystemState& state, const Settings& settings) {
     }
 
     if (!emergencyStop && required.waterOutTemp &&
-        state.temps.valid[TEMP_WATER_OUT] && state.temps.waterOut > waterOutMaxC) {
+        isTemperatureFresh(state, TEMP_WATER_OUT, now) &&
+        state.temps.waterOut > waterOutMaxC) {
         emergencyStop = true;
         alarmType = AlarmType::WATER_OVERHEAT;
         alarmLevel = AlarmLevel::CRITICAL;
@@ -511,7 +599,7 @@ void check(SystemState& state, const Settings& settings) {
     }
 
     if (!emergencyStop && required.pressure &&
-        state.pressure.ok && state.pressure.cube > pressureMaxMmHg) {
+        isPressureFresh(state, now) && state.pressure.cube > pressureMaxMmHg) {
         emergencyStop = true;
         alarmType = AlarmType::COLUMN_FLOOD;
         alarmLevel = AlarmLevel::CRITICAL;
@@ -578,20 +666,21 @@ void check(SystemState& state, const Settings& settings) {
     // 6. Проверка обязательных датчиков по режиму
     if (!settings.demoMode) {
         char missingSensors[64] = "";
-        appendMissingRequiredSensors(state, blockingSensorFailure, missingSensors, sizeof(missingSensors));
+        appendMissingRequiredSensors(state, blockingSensorFailure, now,
+                                     missingSensors, sizeof(missingSensors));
 
-        if (!areRequiredSensorsAvailable(state, blockingSensorFailure)) {
+        if (!areRequiredSensorsAvailable(state, blockingSensorFailure, now)) {
+            ControlRuntimeMetrics::recordStaleSensorCheck();
             alarmType = AlarmType::SENSOR_FAILURE;
             alarmLevel = AlarmLevel::CRITICAL;
             snprintf(alarmMessage, sizeof(alarmMessage), "Критическая ошибка датчиков: %s",
                      missingSensors[0] != '\0' ? missingSensors : "обязательные датчики");
-             
+
             if (state.mode == Mode::IDLE) {
                 if (!sensorAlarmLogged) {
                     Logger::logf(2, "Защита: %s (подавлено в ожидании)", alarmMessage);
                     sensorAlarmLogged = true;
                 }
-                // В IDLE не переходим в состояние emergencyStop, чтобы не блокировать UI
             } else {
                 emergencyStop = true;
             }
@@ -635,6 +724,7 @@ bool reset(SystemState& state, const Settings& settings, char* reason, size_t re
     if (!isLatched(state)) {
         clearCurrentAlarm(state);
         state.safetyOk = true;
+        PowerCommandGateway::clearSafetyTrip();
         xSemaphoreGive(g_safetyMutex);
         return true;
     }
@@ -651,6 +741,7 @@ bool reset(SystemState& state, const Settings& settings, char* reason, size_t re
              state.currentAlarm.message);
     clearCurrentAlarm(state);
     state.safetyOk = true;
+    PowerCommandGateway::clearSafetyTrip();
     Logger::logf(0, "Авария защиты сброшена");
     ControlV2::noteSafetyOperatorAction(
         ControlV2::ReasonCodeV2::RC_SAFETY_RESET_COMPLETED,

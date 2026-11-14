@@ -46,4 +46,42 @@ bool clearAddress(uint8_t (&assigned)[Count][8], size_t role) {
   return true;
 }
 
+
+// Which role already owns this address (optionally ignoring one role).
+template <size_t Count>
+int8_t roleOwner(const uint8_t (&assigned)[Count][8], const uint8_t address[8],
+                 size_t exceptRole) {
+  if (address == nullptr) return -1;
+  for (size_t index = 0; index < Count; ++index) {
+    if (index == exceptRole) continue;
+    if (addressesEqual(assigned[index], address)) {
+      return static_cast<int8_t>(index);
+    }
+  }
+  return -1;
+}
+
+// Assign discovered addresses to empty roles in role order, never reusing an
+// address that already belongs to another role. Returns how many were set.
+template <size_t Count>
+uint8_t autoAssign(uint8_t (&assigned)[Count][8], const uint8_t discovered[][8],
+                   uint8_t discoveredCount) {
+  uint8_t next = 0;
+  uint8_t changes = 0;
+  for (size_t role = 0; role < Count; ++role) {
+    if (!isZeroAddress(assigned[role])) continue;
+    while (next < discoveredCount &&
+           (isZeroAddress(discovered[next]) ||
+            roleOwner(assigned, discovered[next], role) >= 0)) {
+      ++next;
+    }
+    if (next >= discoveredCount) break;
+    if (assignAddress(assigned, role, discovered[next])) {
+      ++changes;
+      ++next;
+    }
+  }
+  return changes;
+}
+
 } // namespace SensorCalibrationLogic

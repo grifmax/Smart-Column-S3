@@ -34,8 +34,6 @@ void broadcastState(const SystemState &state) {
     return;
   }
 
-  syncStirrerState();
-
   const uint32_t now = millis();
   const auto displayStats = Display::getRuntimeStats();
 
@@ -88,7 +86,7 @@ void broadcastState(const SystemState &state) {
   fastDoc["volume_body"] = state.stats.bodyVolume;
   fastDoc["volume_tails"] = state.stats.tailsVolume;
   JsonObject fastStirrer = fastDoc["stirrer"].to<JsonObject>();
-  fillStirrerJson(fastStirrer, g_state);
+  fillStirrerJson(fastStirrer, state);
   JsonObject fastEquipment = fastDoc["equipment"].to<JsonObject>();
   fastEquipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
   fastEquipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
@@ -106,12 +104,10 @@ void broadcastState(const SystemState &state) {
       g_settings.equipment.boosterHeaterStopCubeTempC;
   fastEquipment["coolingPwmEnabled"] =
       g_settings.equipment.coolingPwmEnabled;
-  fastEquipment["coolingPwmMinDuty"] =
-      g_settings.equipment.coolingPwmMinDuty;
-  fastEquipment["coolingPwmMaxDuty"] =
-      g_settings.equipment.coolingPwmMaxDuty;
-  fastEquipment["coolingPwmStartupDuty"] =
-      g_settings.equipment.coolingPwmStartupDuty;
+  fastEquipment["coolingPwmHoldPercent"] =
+      g_settings.equipment.coolingPwmHoldPercent;
+  fastEquipment["coolingPwmPullMs"] =
+      g_settings.equipment.coolingPwmPullMs;
   fastEquipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
   fastEquipment["useDs2482ForTemps"] =
       g_settings.equipment.useDs2482ForTemps;
@@ -139,10 +135,9 @@ void broadcastState(const SystemState &state) {
   fastDoc["booster_heater_stop_cube_temp_c"] =
       g_settings.equipment.boosterHeaterStopCubeTempC;
   fastDoc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
-  fastDoc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
-  fastDoc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
-  fastDoc["cooling_pwm_startup_duty"] =
-      g_settings.equipment.coolingPwmStartupDuty;
+  fastDoc["cooling_pwm_hold_percent"] =
+      g_settings.equipment.coolingPwmHoldPercent;
+  fastDoc["cooling_pwm_pull_ms"] = g_settings.equipment.coolingPwmPullMs;
   fastDoc["cooling_pwm_current_duty"] = Valves::getStartStop();
   fastDoc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
   fastDoc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
@@ -296,12 +291,10 @@ void broadcastState(const SystemState &state) {
       g_settings.equipment.boosterHeaterStopCubeTempC;
   equipment["coolingPwmEnabled"] =
       g_settings.equipment.coolingPwmEnabled;
-  equipment["coolingPwmMinDuty"] =
-      g_settings.equipment.coolingPwmMinDuty;
-  equipment["coolingPwmMaxDuty"] =
-      g_settings.equipment.coolingPwmMaxDuty;
-  equipment["coolingPwmStartupDuty"] =
-      g_settings.equipment.coolingPwmStartupDuty;
+  equipment["coolingPwmHoldPercent"] =
+      g_settings.equipment.coolingPwmHoldPercent;
+  equipment["coolingPwmPullMs"] =
+      g_settings.equipment.coolingPwmPullMs;
   equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
   equipment["useDs2482ForTemps"] =
       g_settings.equipment.useDs2482ForTemps;
@@ -329,10 +322,9 @@ void broadcastState(const SystemState &state) {
   doc["booster_heater_stop_cube_temp_c"] =
       g_settings.equipment.boosterHeaterStopCubeTempC;
   doc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
-  doc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
-  doc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
-  doc["cooling_pwm_startup_duty"] =
-      g_settings.equipment.coolingPwmStartupDuty;
+  doc["cooling_pwm_hold_percent"] =
+      g_settings.equipment.coolingPwmHoldPercent;
+  doc["cooling_pwm_pull_ms"] = g_settings.equipment.coolingPwmPullMs;
   doc["cooling_pwm_current_duty"] = Valves::getStartStop();
   doc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
   doc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
@@ -537,7 +529,7 @@ void broadcastState(const SystemState &state) {
   health["cpuTemp"] = state.health.cpuTemp;
 
   JsonObject stirrer = doc["stirrer"].to<JsonObject>();
-  fillStirrerJson(stirrer, g_state);
+  fillStirrerJson(stirrer, state);
 
   String json;
   serializeJson(doc, json);

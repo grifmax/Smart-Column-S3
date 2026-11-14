@@ -11,10 +11,15 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.4.159"
+#define FIRMWARE_VERSION "2.4.176"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
+
+// HMI v2 is the default renderer; set to 1 only for legacy TFT rollback.
+#ifndef HMI_LEGACY
+#define HMI_LEGACY 0
+#endif
 
 // Включение функций
 #define DISPLAY_ENABLED // Включить поддержку дисплея
@@ -146,7 +151,7 @@
 #define SAFETY_TEMP_WATER_OUT_MAX 70.0f // °C - перегрев воды
 #define SAFETY_VOLTAGE_MIN 190.0f       // V - низкое напряжение
 #define SAFETY_VOLTAGE_MAX 250.0f       // V - высокое напряжение
-#define SAFETY_SENSOR_TIMEOUT_MS 5000   // мс - таймаут датчика
+#define SAFETY_SENSOR_TIMEOUT_MS 15000  // мс - таймаут датчика (увеличен для фильтрации кратковременных отвалов)
 
 // Давление (множители от P_захлёб)
 #define PRESSURE_WORK_MULT 0.75f // Рабочее
@@ -179,13 +184,12 @@
 // Соленоид нельзя держать на 1 кГц — гудит и щёлкает. 20 кГц за пределами слуха,
 // катушка получает тот же ток удержания без акустического шума.
 #define PWM_FREQ_VALVE 20000  // Гц
-#define COOLING_PWM_PULL_MS 300UL  // 100 % на втягивание якоря, затем удержание
 #define PWM_RESOLUTION 8     // бит (0-255)
 
 // Настройки Phase Control (симистор)
 #define TRIAC_MAX_POWER_W 3000   // Максимальная мощность ТЭНа (Вт) для расчетов
 #define TRIAC_PULSE_WIDTH_US 150 // Длительность отпирающего импульса симистора (мкс)
-#define TRIAC_MIN_ALPHA_US 100   // Минимальная задержка от нуля (мкс)
+#define TRIAC_MIN_ALPHA_US 800   // Надёжное отпирание силового симистора после перехода через ноль (мкс)
 #define TRIAC_MAX_ALPHA_US 9500  // Максимальная задержка от нуля (мкс - почти выключено)
 #define TRIAC_ZERO_CROSS_LOCKOUT_US 3000 // Подавление второго фронта zero-cross в том же полупериоде
 
@@ -227,6 +231,8 @@
 #define INTERVAL_TEMP_READ 1000     // Чтение температур
 #define INTERVAL_PRESSURE_READ 2000 // Чтение давления
 #define INTERVAL_POWER_READ 1000    // Чтение мощности
+#define I2C_TRANSACTION_TIMEOUT_MS 20 // Ограничение ожидания одной транзакции
+#define ADS1115_CONVERSION_TIMEOUT_MS 40 // Ограничение ожидания выборки ADS1115
 #define INTERVAL_DISPLAY_UPDATE 200 // Обновление дисплея
 #define INTERVAL_WEB_BROADCAST 2000 // Отправка данных по WebSocket
 #define INTERVAL_WEB_BROADCAST_FULL 10000 // Полный пакет данных
@@ -257,11 +263,9 @@
 #define DEFAULT_BOOSTER_HEATER_ENABLED 0
 #define DEFAULT_BOOSTER_HEATER_POWER_W 3000
 #define DEFAULT_BOOSTER_HEATER_STOP_CUBE_TEMP_C 78.0f
-#define DEFAULT_COOLING_PWM_PERIOD_SEC 5
 #define DEFAULT_COOLING_PWM_ENABLED 0
-#define DEFAULT_COOLING_PWM_MIN_DUTY 0
-#define DEFAULT_COOLING_PWM_MAX_DUTY 255
-#define DEFAULT_COOLING_PWM_STARTUP_DUTY 96
+#define DEFAULT_COOLING_PWM_HOLD_PERCENT 38
+#define DEFAULT_COOLING_PWM_PULL_MS 300
 #define DEFAULT_USE_DS2482_FOR_TEMPS 0
 #define DEFAULT_DS2482_ADDRESS I2C_ADDR_DS2482_DEFAULT
 #define DEFAULT_BODY_LEVEL_SENSOR_ENABLED 0
@@ -270,6 +274,8 @@
 #define DEFAULT_LEAK_SENSOR_ENABLED 0
 #define DEFAULT_LEAK_THRESHOLD_V 1.5f
 #define DEFAULT_LEAK_TRIGGER_ABOVE 1
+// Битовая маска нормально открытых клапанов (1 — НО, 0 — НЗ).
+#define DEFAULT_VALVE_NO_MASK 0x00
 
 // Параметры насоса по умолчанию
 #define DEFAULT_PUMP_ML_PER_REV 0.5f // мл на оборот
@@ -426,11 +432,9 @@
 #define NVS_KEY_BOOSTER_HEATER_ENABLED "boost_en"
 #define NVS_KEY_BOOSTER_HEATER_POWER "boost_pwr"
 #define NVS_KEY_BOOSTER_STOP_TEMP "boost_stop"
-#define NVS_KEY_COOLING_PWM_PERIOD "cool_pwm_per"
 #define NVS_KEY_COOLING_PWM_ENABLED "cool_pwm_en"
-#define NVS_KEY_COOLING_PWM_MIN_DUTY "cool_pwm_min"
-#define NVS_KEY_COOLING_PWM_MAX_DUTY "cool_pwm_max"
-#define NVS_KEY_COOLING_PWM_STARTUP "cool_pwm_sta"
+#define NVS_KEY_COOLING_PWM_HOLD_PERCENT "cool_pwm_hold"
+#define NVS_KEY_COOLING_PWM_PULL_MS "cool_pwm_pull"
 #define NVS_KEY_USE_DS2482_TEMPS "temp_ds2482"
 #define NVS_KEY_DS2482_ADDRESS "ds2482_addr"
 #define NVS_KEY_BODY_LEVEL_ENABLED "body_lvl_en"
@@ -439,7 +443,6 @@
 #define NVS_KEY_LEAK_ENABLED "leak_en"
 #define NVS_KEY_LEAK_THRESHOLD "leak_th"
 #define NVS_KEY_LEAK_POLARITY "leak_pol"
-#define DEFAULT_VALVE_NO_MASK 0x00
 #define NVS_KEY_VALVE_NO_MASK "valve_no_mask"
 #define NVS_KEY_TEMP_TOPOLOGY "temp_topo"
 #define NVS_KEY_TEMP_OFFSETS "temp_offs"
@@ -499,6 +502,18 @@
 #define NVS_KEY_DIST_TAILS_VOL "dist_xvol"
 #define NVS_KEY_DIST_TAKEOFF_BACKEND "dist_tbk"
 #define NVS_KEY_DIST_SAFE_VENT "dist_vent"
+
+// Ручная ректификация
+#define NVS_KEY_MANUAL_RECT_HEADS_POWER "mrect_hpw"
+#define NVS_KEY_MANUAL_RECT_BODY_POWER "mrect_bpw"
+#define NVS_KEY_MANUAL_RECT_TAILS_POWER "mrect_tpw"
+#define NVS_KEY_MANUAL_RECT_HEADS_SPEED "mrect_hsp"
+#define NVS_KEY_MANUAL_RECT_BODY_SPEED "mrect_bsp"
+#define NVS_KEY_MANUAL_RECT_HEADS_VOL "mrect_hvol"
+#define NVS_KEY_MANUAL_RECT_BODY_VOL "mrect_bvol"
+#define NVS_KEY_MANUAL_RECT_TAILS_VOL "mrect_tvol"
+#define NVS_KEY_MANUAL_RECT_SOUND "mrect_snd"
+
 #define NVS_KEY_WEB_AUTH_ENABLED "web_auth"
 #define NVS_KEY_WEB_RATE_LIMIT "web_rate"
 #define NVS_KEY_WEB_USERNAME "web_user"
@@ -552,6 +567,12 @@
 #define NVS_KEY_TOUCH_YMAX "tch_ymax"
 #define NVS_KEY_TOUCH_VALID "tch_valid"
 #define NVS_KEY_DISPLAY_REFRESH "disp_refr"
+#define NVS_KEY_AI_URL "ai_url"
+#define NVS_KEY_AI_KEY "ai_key"
+#define NVS_KEY_AI_MODEL "ai_model"
+#define NVS_KEY_AI_TEMP "ai_temp"
+#define NVS_KEY_AI_TOKENS "ai_tokens"
+#define NVS_KEY_AI_CONFIGURED "ai_ready"
 #define NVS_KEY_LAST_REBOOT_REASON "boot_reason"
 #define NVS_KEY_REBOOT_TOTAL "boot_total"
 #define NVS_KEY_REBOOT_WDT "boot_wdt"

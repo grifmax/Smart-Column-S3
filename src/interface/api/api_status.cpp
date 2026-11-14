@@ -16,6 +16,7 @@ String buildBlockingRequiredSensorsList(
     const Safety::RequiredSensorsMask &required, const SystemState &state,
     bool includePressure) {
   String missing;
+  const uint32_t now = millis();
 
   auto appendMissing = [&](bool condition, const char *label) {
     if (!condition) {
@@ -27,14 +28,22 @@ String buildBlockingRequiredSensorsList(
     missing += label;
   };
 
-  appendMissing(required.cubeTemp && !state.temps.valid[TEMP_CUBE], "куб");
+  appendMissing(required.cubeTemp &&
+                    !Safety::isTemperatureSampleFresh(state, TEMP_CUBE, now),
+                "куб");
   appendMissing(required.columnBottomTemp &&
-                    !state.temps.valid[TEMP_COLUMN_BOTTOM],
+                    !Safety::isTemperatureSampleFresh(
+                        state, TEMP_COLUMN_BOTTOM, now),
                 "низ колонны");
-  appendMissing(required.tsaTemp && !state.temps.valid[TEMP_TSA], "TSA");
-  appendMissing(required.waterOutTemp && !state.temps.valid[TEMP_WATER_OUT],
+  appendMissing(required.tsaTemp &&
+                    !Safety::isTemperatureSampleFresh(state, TEMP_TSA, now),
+                "TSA");
+  appendMissing(required.waterOutTemp &&
+                    !Safety::isTemperatureSampleFresh(
+                        state, TEMP_WATER_OUT, now),
                 "выход воды");
-  appendMissing(includePressure && required.pressure && !state.pressure.ok,
+  appendMissing(includePressure && required.pressure &&
+                    !Safety::isPressureSampleFresh(state, now),
                 "давление куба");
 
   return missing;
@@ -45,6 +54,7 @@ String buildMissingRequiredSensorsList(Mode mode, const Settings &settings,
   const Safety::RequiredSensorsMask required =
       Safety::getRequiredSensorsForMode(mode, settings);
   String missing;
+  const uint32_t now = millis();
 
   auto appendMissing = [&](bool condition, const char *label) {
     if (!condition) {
@@ -56,14 +66,23 @@ String buildMissingRequiredSensorsList(Mode mode, const Settings &settings,
     missing += label;
   };
 
-  appendMissing(required.cubeTemp && !state.temps.valid[TEMP_CUBE], "куб");
+  appendMissing(required.cubeTemp &&
+                    !Safety::isTemperatureSampleFresh(state, TEMP_CUBE, now),
+                "куб");
   appendMissing(required.columnBottomTemp &&
-                    !state.temps.valid[TEMP_COLUMN_BOTTOM],
+                    !Safety::isTemperatureSampleFresh(
+                        state, TEMP_COLUMN_BOTTOM, now),
                 "низ колонны");
-  appendMissing(required.tsaTemp && !state.temps.valid[TEMP_TSA], "TSA");
-  appendMissing(required.waterOutTemp && !state.temps.valid[TEMP_WATER_OUT],
+  appendMissing(required.tsaTemp &&
+                    !Safety::isTemperatureSampleFresh(state, TEMP_TSA, now),
+                "TSA");
+  appendMissing(required.waterOutTemp &&
+                    !Safety::isTemperatureSampleFresh(state, TEMP_WATER_OUT,
+                                                     now),
                 "выход воды");
-  appendMissing(required.pressure && !state.pressure.ok, "давление куба");
+  appendMissing(required.pressure &&
+                    !Safety::isPressureSampleFresh(state, now),
+                "давление куба");
 
   return missing;
 }
@@ -72,6 +91,7 @@ String buildStartupMissingSensorsList(
     const Safety::RequiredSensorsMask &required, const SystemState &state,
     bool includePressure) {
   String missing;
+  const uint32_t now = millis();
 
   auto appendMissing = [&](bool condition, const char *label) {
     if (!condition) {
@@ -83,14 +103,22 @@ String buildStartupMissingSensorsList(
     missing += label;
   };
 
-  appendMissing(required.cubeTemp && !state.temps.valid[TEMP_CUBE], "куб");
+  appendMissing(required.cubeTemp &&
+                    !Safety::isTemperatureSampleFresh(state, TEMP_CUBE, now),
+                "куб");
   appendMissing(required.columnBottomTemp &&
-                    !state.temps.valid[TEMP_COLUMN_BOTTOM],
+                    !Safety::isTemperatureSampleFresh(
+                        state, TEMP_COLUMN_BOTTOM, now),
                 "низ колонны");
-  appendMissing(required.tsaTemp && !state.temps.valid[TEMP_TSA], "TSA");
-  appendMissing(required.waterOutTemp && !state.temps.valid[TEMP_WATER_OUT],
+  appendMissing(required.tsaTemp &&
+                    !Safety::isTemperatureSampleFresh(state, TEMP_TSA, now),
+                "TSA");
+  appendMissing(required.waterOutTemp &&
+                    !Safety::isTemperatureSampleFresh(state, TEMP_WATER_OUT,
+                                                     now),
                 "выход воды");
-  appendMissing(includePressure && required.pressure && !state.pressure.ok,
+  appendMissing(includePressure && required.pressure &&
+                    !Safety::isPressureSampleFresh(state, now),
                 "давление куба");
 
   return missing;
@@ -146,11 +174,12 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     // Снимок состояния: g_state обновляет главный цикл на другом ядре,
     // поэтому сетевой обработчик читает согласованную копию.
     SystemState snapshot;
-    StateSnapshot::readOrLive(snapshot);
+    if (!StateSnapshot::read(snapshot)) {
+      request->send(503, "application/json",
+                    "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+      return;
+    }
     const SystemState &st = snapshot;
-
-    ControlV2::updateRuntime(st, g_settings);
-    syncStirrerState();
 
     JsonDocument doc;
     const String activeProfileId = getActiveProfileId();
@@ -178,6 +207,15 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     doc["paused"] = st.paused;
     doc["safetyOk"] = st.safetyOk;
     doc["uptime"] = st.uptime;
+
+    // Ручная ректификация: смена тары
+    if (st.mode == Mode::MANUAL_RECT) {
+      doc["manualRectContainerChangePending"] = st.manualRectContainerChangePending;
+      if (st.manualRectContainerChangePending) {
+        doc["manualRectPendingPhase"] = static_cast<int>(st.manualRectPendingPhase);
+        doc["manualRectPendingPhaseStr"] = getPhaseString(st.manualRectPendingPhase);
+      }
+    }
     doc["deviceId"] = CloudTunnel::getDeviceId();
     JsonObject alarm = doc["alarm"].to<JsonObject>();
     fillAlarmJson(alarm, st, g_settings);
@@ -362,12 +400,10 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
         g_settings.equipment.boosterHeaterStopCubeTempC;
     equipment["coolingPwmEnabled"] =
         g_settings.equipment.coolingPwmEnabled;
-    equipment["coolingPwmMinDuty"] =
-        g_settings.equipment.coolingPwmMinDuty;
-    equipment["coolingPwmMaxDuty"] =
-        g_settings.equipment.coolingPwmMaxDuty;
-    equipment["coolingPwmStartupDuty"] =
-        g_settings.equipment.coolingPwmStartupDuty;
+    equipment["coolingPwmHoldPercent"] =
+        g_settings.equipment.coolingPwmHoldPercent;
+    equipment["coolingPwmPullMs"] =
+        g_settings.equipment.coolingPwmPullMs;
     equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
     equipment["useDs2482ForTemps"] =
         g_settings.equipment.useDs2482ForTemps;
@@ -396,10 +432,9 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     doc["booster_heater_stop_cube_temp_c"] =
         g_settings.equipment.boosterHeaterStopCubeTempC;
     doc["cooling_pwm_enabled"] = g_settings.equipment.coolingPwmEnabled;
-    doc["cooling_pwm_min_duty"] = g_settings.equipment.coolingPwmMinDuty;
-    doc["cooling_pwm_max_duty"] = g_settings.equipment.coolingPwmMaxDuty;
-    doc["cooling_pwm_startup_duty"] =
-        g_settings.equipment.coolingPwmStartupDuty;
+    doc["cooling_pwm_hold_percent"] =
+        g_settings.equipment.coolingPwmHoldPercent;
+    doc["cooling_pwm_pull_ms"] = g_settings.equipment.coolingPwmPullMs;
     doc["cooling_pwm_current_duty"] = Valves::getStartStop();
     doc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
     doc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
@@ -572,6 +607,28 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     display["lastGapMs"] = displayStats.lastUpdateGapMs;
     display["maxGapMs"] = displayStats.maxUpdateGapMs;
     display["gapOverruns"] = displayStats.updateGapOverruns;
+    display["touchPolls"] = displayStats.touchPolls;
+    display["touchPressedReads"] = displayStats.touchPressedReads;
+    display["touchTaps"] = displayStats.touchTaps;
+    JsonObject touchCal = display["touchCal"].to<JsonObject>();
+    touchCal["valid"] = displayStats.touchCalValid != 0;
+    touchCal["xMin"] = displayStats.touchCalXMin;
+    touchCal["xMax"] = displayStats.touchCalXMax;
+    touchCal["yMin"] = displayStats.touchCalYMin;
+    touchCal["yMax"] = displayStats.touchCalYMax;
+    JsonObject lastTap = display["lastTap"].to<JsonObject>();
+    lastTap["rawX"] = displayStats.lastTapRawX;
+    lastTap["rawY"] = displayStats.lastTapRawY;
+    lastTap["x"] = displayStats.lastTapX;
+    lastTap["y"] = displayStats.lastTapY;
+    JsonArray tapHistory = display["tapHistory"].to<JsonArray>();
+    for (uint8_t i = 0; i < displayStats.tapHistoryCount; i++) {
+      JsonObject entry = tapHistory.add<JsonObject>();
+      entry["rawX"] = displayStats.tapHistoryRawX[i];
+      entry["rawY"] = displayStats.tapHistoryRawY[i];
+      entry["x"] = displayStats.tapHistoryX[i];
+      entry["y"] = displayStats.tapHistoryY[i];
+    }
     display["lastReason"] = displayStats.lastRedrawReason;
     JsonObject redraw = display["reasons"].to<JsonObject>();
     redraw["screenEnter"] = displayStats.redrawReasonScreenEnter;

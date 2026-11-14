@@ -61,13 +61,38 @@ export async function acknowledgeSafety() {
             method: 'POST'
         });
         const payload = await response.json().catch(() => null);
+        if (response.ok && payload?.accepted && payload?.queued && payload?.commandId) {
+            const deadline = Date.now() + 2000;
+            while (Date.now() < deadline) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+                const statusResponse = await fetch(
+                    `/api/process/command-status?commandId=${encodeURIComponent(payload.commandId)}`,
+                    { cache: 'no-store' }
+                );
+                if (!statusResponse.ok) continue;
+                const statusPayload = await statusResponse.json().catch(() => ({}));
+                if (statusPayload.status === 'applied') {
+                    payload.status = 'applied';
+                    payload.success = true;
+                    payload.applied = true;
+                    payload.queued = false;
+                    break;
+                }
+                if (['rejected', 'cancelled', 'superseded', 'queue_full'].includes(statusPayload.status)) {
+                    payload.status = statusPayload.status;
+                    payload.accepted = false;
+                    payload.queued = false;
+                    break;
+                }
+            }
+        }
         if (payload) {
             updateRuntimeStateFromStatus(payload);
             updateSafetyModal(runtimeMonitorState);
         }
         const nextSafety = deriveSafetyUiState(runtimeMonitorState);
         
-        if (response.ok) {
+        if (response.ok && payload?.success) {
             if (endpoint === '/api/safety/reset') {
                 closeSafetyModal();
                 console.log("Safety alarm reset by user");
@@ -75,6 +100,8 @@ export async function acknowledgeSafety() {
                 closeSafetyModal();
                 console.log("Safety alarm acknowledged by user");
             }
+        } else if (response.ok && payload?.queued) {
+            alert("Команда принята, но контроллер ещё не подтвердил её применение. Обновите состояние и повторите проверку.");
         } else {
             const reason = payload?.reason || nextSafety.resetBlockedReason;
             alert(reason || "Операция безопасности отклонена. Проверьте состояние датчиков.");

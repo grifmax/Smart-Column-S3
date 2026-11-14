@@ -3,8 +3,11 @@
 #include <math.h>
 #include <string.h>
 
+#include "drivers/display.h"
+#include "ui/hmi_touch_calibration_logic.h"
 #include "drivers/pump.h"
 #include "drivers/sensors.h"
+#include "control/state_snapshot.h"
 #include "interface/editable_field_descriptors.h"
 #include "interface/webserver_shared.h"
 #include "storage/nvs_manager.h"
@@ -21,16 +24,50 @@ static bool isZeroTempAddressLocal(const uint8_t address[8]) {
   return true;
 }
 
+static float currentTempForRole(const SystemState &state, uint8_t index) {
+  switch (index) {
+  case TEMP_CUBE:
+    return state.temps.cube;
+  case TEMP_COLUMN_BOTTOM:
+    return state.temps.columnBottom;
+  case TEMP_COLUMN_TOP:
+    return state.temps.columnTop;
+  case TEMP_REFLUX:
+    return state.temps.reflux;
+  case TEMP_TSA:
+    return state.temps.tsa;
+  case TEMP_WATER_IN:
+    return state.temps.waterIn;
+  case TEMP_WATER_OUT:
+    return state.temps.waterOut;
+  default:
+    return 0.0f;
+  }
+}
+
 void registerCalibrationApiRoutes(AsyncWebServer &server) {
   server.on(
       "^\\/api\\/calibration$", HTTP_GET,
       [](AsyncWebServerRequest *request) {
+        SystemState snapshot;
+        if (!StateSnapshot::read(snapshot)) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+          return;
+        }
         JsonDocument doc;
 
         JsonObject pump = doc["pump"].to<JsonObject>();
         pump["mlPerRev"] = g_settings.pumpCal.mlPerRevolution;
         pump["stepsPerRev"] = g_settings.pumpCal.stepsPerRevolution;
         pump["microsteps"] = g_settings.pumpCal.microsteps;
+
+        JsonObject touch = doc["touch"].to<JsonObject>();
+        touch["valid"] = g_settings.touchCal.valid;
+        touch["xMin"] = g_settings.touchCal.xMin;
+        touch["xMax"] = g_settings.touchCal.xMax;
+        touch["yMin"] = g_settings.touchCal.yMin;
+        touch["yMax"] = g_settings.touchCal.yMax;
 
         JsonArray temps = doc["temperatures"].to<JsonArray>();
         for (uint8_t i = 0; i < TEMP_COUNT; i++) {
@@ -56,32 +93,9 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
           t["detectedAddress"] = detectedAddrStr;
           t["mappingMode"] = assignedAddrStr[0] != '\0' ? "manual" : "auto";
 
-          float currentTemp = 0;
-          switch (i) {
-          case TEMP_CUBE:
-            currentTemp = g_state.temps.cube;
-            break;
-          case TEMP_COLUMN_BOTTOM:
-            currentTemp = g_state.temps.columnBottom;
-            break;
-          case TEMP_COLUMN_TOP:
-            currentTemp = g_state.temps.columnTop;
-            break;
-          case TEMP_REFLUX:
-            currentTemp = g_state.temps.reflux;
-            break;
-          case TEMP_TSA:
-            currentTemp = g_state.temps.tsa;
-            break;
-          case TEMP_WATER_IN:
-            currentTemp = g_state.temps.waterIn;
-            break;
-          case TEMP_WATER_OUT:
-            currentTemp = g_state.temps.waterOut;
-            break;
-          }
+          const float currentTemp = currentTempForRole(snapshot, i);
           t["current"] = currentTemp;
-          t["valid"] = g_state.temps.valid[i];
+          t["valid"] = snapshot.temps.valid[i];
         }
 
         JsonObject pressureSensor = doc["pressureSensor"].to<JsonObject>();
@@ -95,12 +109,12 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
           pressureMmHgPoints.add(g_settings.pressureCal.pressurePoints[i]);
         }
         pressureSensor["zeroOffsetMmHg"] = g_settings.pressureCal.zeroOffsetMmHg;
-        pressureSensor["ads1115Available"] = g_state.health.ads1115Ok;
+        pressureSensor["ads1115Available"] = snapshot.health.ads1115Ok;
         pressureSensor["source"] = "ADS1115 A1 @ 0x48";
-        pressureSensor["currentVoltage"] = g_state.pressure.sensorVoltage;
-        pressureSensor["currentAdc"] = g_state.pressure.sensorAdc;
-        pressureSensor["currentPressure"] = g_state.pressure.cube;
-        pressureSensor["valid"] = g_state.pressure.ok;
+        pressureSensor["currentVoltage"] = snapshot.pressure.sensorVoltage;
+        pressureSensor["currentAdc"] = snapshot.pressure.sensorAdc;
+        pressureSensor["currentPressure"] = snapshot.pressure.cube;
+        pressureSensor["valid"] = snapshot.pressure.ok;
         pressureSensor["calibrated"] = g_settings.pressureCal.pointCount >= 2;
 
         JsonObject hydro = doc["hydrometer"].to<JsonObject>();
@@ -112,10 +126,10 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
           abvPoints.add(g_settings.hydroCal.abvPoints[i]);
           pressurePoints.add(g_settings.hydroCal.pressurePoints[i]);
         }
-        hydro["currentPressure"] = g_state.hydrometer.pressure;
-        hydro["currentDensity"] = g_state.hydrometer.density;
-        hydro["currentABV"] = g_state.hydrometer.abv;
-        hydro["valid"] = g_state.hydrometer.valid;
+        hydro["currentPressure"] = snapshot.hydrometer.pressure;
+        hydro["currentDensity"] = snapshot.hydrometer.density;
+        hydro["currentABV"] = snapshot.hydrometer.abv;
+        hydro["valid"] = snapshot.hydrometer.valid;
 
         String json;
         serializeJson(doc, json);
@@ -134,7 +148,29 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
           return;
         }
 
-        if (!doc["mlPerRev"].isNull() || !doc["stepsPerRev"].isNull()) {
+        const bool hasMicrosteps = !doc["microsteps"].isNull();
+        if (hasMicrosteps) {
+          const long microsteps = doc["microsteps"].as<long>();
+          if (microsteps < 1 || microsteps > 64 ||
+              (microsteps & (microsteps - 1)) != 0) {
+            request->send(400, "application/json",
+                          "{\"error\":\"microsteps must be 1,2,4,8,16,32 or 64\"}");
+            return;
+          }
+        }
+        if (!doc["stepsPerRev"].isNull()) {
+          const long stepsPerRev = doc["stepsPerRev"].as<long>();
+          // Base motor steps only; a value in the thousands means the caller
+          // sent steps already multiplied by microsteps.
+          if (stepsPerRev < 1 || stepsPerRev > 1000) {
+            request->send(400, "application/json",
+                          "{\"error\":\"stepsPerRev is motor steps, 1..1000\"}");
+            return;
+          }
+        }
+
+        if (!doc["mlPerRev"].isNull() || !doc["stepsPerRev"].isNull() ||
+            hasMicrosteps) {
           if (!doc["mlPerRev"].isNull()) {
             g_settings.pumpCal.mlPerRevolution = EditableFields::normalize(
                 EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
@@ -147,6 +183,11 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
                 doc["stepsPerRev"].as<uint16_t>();
             LOG_I("Pump stepsPerRev: %u",
                   g_settings.pumpCal.stepsPerRevolution);
+          }
+          if (hasMicrosteps) {
+            g_settings.pumpCal.microsteps =
+                doc["microsteps"].as<uint8_t>();
+            LOG_I("Pump microsteps: %u", g_settings.pumpCal.microsteps);
           }
           NVSManager::saveSettings(g_settings);
           request->send(200, "application/json",
@@ -189,6 +230,78 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
 
         request->send(400, "application/json",
                       "{\"error\":\"Missing parameters\"}");
+      });
+
+  // Touch panel recovery: "reset" drops the stored mapping and falls back to
+  // the compiled defaults; "start" opens the on-device four point calibration.
+  // Both only touch display settings and never actuator state.
+  server.on(
+      "/api/calibration/touch", HTTP_POST,
+      [](AsyncWebServerRequest *request) {},
+      NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        JsonDocument doc;
+        if (!deserializeRequestJsonBody(
+                request, data, len, index, total, doc,
+                "{\"error\":\"Invalid JSON\"}")) {
+          return;
+        }
+        const String action = doc["action"] | "";
+        if (action == "start") {
+          Display::startTouchCalibration();
+          request->send(200, "application/json",
+                        "{\"status\":\"ok\",\"action\":\"start\"}");
+          return;
+        }
+        if (action == "apply") {
+          const int16_t xMin = doc["xMin"] | 0;
+          const int16_t xMax = doc["xMax"] | 0;
+          const int16_t yMin = doc["yMin"] | 0;
+          const int16_t yMax = doc["yMax"] | 0;
+          const int32_t xSpan = (int32_t)xMax - xMin;
+          const int32_t ySpan = (int32_t)yMax - yMin;
+          if ((xSpan > -HmiTouchCalibration::kMinRawSpan &&
+               xSpan < HmiTouchCalibration::kMinRawSpan) ||
+              (ySpan > -HmiTouchCalibration::kMinRawSpan &&
+               ySpan < HmiTouchCalibration::kMinRawSpan)) {
+            request->send(400, "application/json",
+                          "{\"error\":\"Span too small\"}");
+            return;
+          }
+          const TouchCalibration previous = g_settings.touchCal;
+          g_settings.touchCal.xMin = xMin;
+          g_settings.touchCal.xMax = xMax;
+          g_settings.touchCal.yMin = yMin;
+          g_settings.touchCal.yMax = yMax;
+          g_settings.touchCal.valid = true;
+          if (!NVSManager::saveSettings(g_settings)) {
+            g_settings.touchCal = previous;
+            request->send(500, "application/json",
+                          "{\"error\":\"NVS write failed\"}");
+            return;
+          }
+          LOG_I("Touch calibration applied: x %d..%d y %d..%d", xMin, xMax,
+                yMin, yMax);
+          request->send(200, "application/json",
+                        "{\"status\":\"ok\",\"action\":\"apply\"}");
+          return;
+        }
+        if (action != "reset") {
+          request->send(400, "application/json",
+                        "{\"error\":\"Unknown action\"}");
+          return;
+        }
+        g_settings.touchCal = TouchCalibration{};
+        g_settings.touchCal.valid = false;
+        const bool saved = NVSManager::saveSettings(g_settings);
+        LOG_I("Touch calibration reset (saved=%d)", saved ? 1 : 0);
+        JsonDocument resp;
+        resp["status"] = saved ? "ok" : "error";
+        resp["action"] = "reset";
+        String json;
+        serializeJson(resp, json);
+        request->send(saved ? 200 : 500, "application/json", json);
       });
 
   server.on(
@@ -272,31 +385,13 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
 
         if (!doc["reference"].isNull()) {
           float reference = doc["reference"].as<float>();
-
-          float currentTemp = 0;
-          switch (sensorIndex) {
-          case TEMP_CUBE:
-            currentTemp = g_state.temps.cube;
-            break;
-          case TEMP_COLUMN_BOTTOM:
-            currentTemp = g_state.temps.columnBottom;
-            break;
-          case TEMP_COLUMN_TOP:
-            currentTemp = g_state.temps.columnTop;
-            break;
-          case TEMP_REFLUX:
-            currentTemp = g_state.temps.reflux;
-            break;
-          case TEMP_TSA:
-            currentTemp = g_state.temps.tsa;
-            break;
-          case TEMP_WATER_IN:
-            currentTemp = g_state.temps.waterIn;
-            break;
-          case TEMP_WATER_OUT:
-            currentTemp = g_state.temps.waterOut;
-            break;
+          SystemState snapshot;
+          if (!StateSnapshot::read(snapshot)) {
+            request->send(503, "application/json",
+                          "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+            return;
           }
+          const float currentTemp = currentTempForRole(snapshot, sensorIndex);
 
           float rawTemp = currentTemp - g_settings.tempCal.offsets[sensorIndex];
           g_settings.tempCal.offsets[sensorIndex] = EditableFields::normalize(

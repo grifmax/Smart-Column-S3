@@ -10,6 +10,7 @@
 #include <ArduinoJson.h>
 #include <limits.h>
 #include "config.h"
+#include "control/control_command_queue.h"
 #include "control/power_command_gateway.h"
 #include "storage/logger.h"
 
@@ -94,19 +95,56 @@ void init(const char* server, uint16_t port, const char* username, const char* p
             if (reqMode > 0 && reqMode <= static_cast<int>(Mode::FERMENTATION)) {
                 m = static_cast<Mode>(reqMode);
             } else {
-                // Если не указан - попробовать использовать текущий сохранённый (в UI это обычно не делается)
-                // Оставим IDLE, значит FSM::startMode просто включит IDLE. В идеале UI передает число.
-                LOG_W("MQTT: start without valid mode. Using IDLE.");
+                LOG_W("MQTT: start rejected: invalid mode %d", reqMode);
+                return;
             }
-            FSM::startMode(g_state, g_settings, m);
+            uint32_t commandId = 0;
+            ControlCommandQueue::Status status =
+                ControlCommandQueue::Status::Unknown;
+            const auto result = ControlCommandQueue::enqueue(
+                ControlCommandQueue::Type::StartMode,
+                ControlCommandQueue::Source::Mqtt, m, 0,
+                ControlCommandQueue::Reason::OperatorRequest, &commandId,
+                &status);
+            if (result != ControlCommandQueue::EnqueueResult::Accepted &&
+                result != ControlCommandQueue::EnqueueResult::Duplicate) {
+                LOG_E("MQTT: start command rejected (id=%lu, status=%s)",
+                      static_cast<unsigned long>(commandId),
+                      ControlCommandQueue::statusToken(status));
+            }
         } else if (cmd == "stop") {
-            FSM::stopMode(g_state);
+            const auto result = ControlCommandQueue::enqueue(
+                ControlCommandQueue::Type::Stop,
+                ControlCommandQueue::Source::Mqtt);
+            if (result != ControlCommandQueue::EnqueueResult::Accepted &&
+                result != ControlCommandQueue::EnqueueResult::Duplicate) {
+                LOG_E("MQTT: stop command could not be queued");
+            }
         } else if (cmd == "pause") {
-            FSM::pause(g_state);
+            const auto result = ControlCommandQueue::enqueue(
+                ControlCommandQueue::Type::Pause,
+                ControlCommandQueue::Source::Mqtt);
+            if (result != ControlCommandQueue::EnqueueResult::Accepted &&
+                result != ControlCommandQueue::EnqueueResult::Duplicate) {
+                LOG_E("MQTT: pause command could not be queued");
+            }
         } else if (cmd == "resume") {
-            FSM::resume(g_state);
+            const auto result = ControlCommandQueue::enqueue(
+                ControlCommandQueue::Type::Resume,
+                ControlCommandQueue::Source::Mqtt);
+            if (result != ControlCommandQueue::EnqueueResult::Accepted &&
+                result != ControlCommandQueue::EnqueueResult::Duplicate) {
+                LOG_E("MQTT: resume command could not be queued");
+            }
         } else if (cmd == "next") {
-            FSM::nextFraction(g_state, g_settings);
+            const auto result = ControlCommandQueue::enqueue(
+                ControlCommandQueue::Type::NextFraction,
+                ControlCommandQueue::Source::Mqtt, Mode::IDLE, 0,
+                ControlCommandQueue::Reason::ProcessAction);
+            if (result != ControlCommandQueue::EnqueueResult::Accepted &&
+                result != ControlCommandQueue::EnqueueResult::Duplicate) {
+                LOG_E("MQTT: next-fraction command could not be queued");
+            }
         }
         
         // Обработка управления железом (работает если FSM не заблокировал)

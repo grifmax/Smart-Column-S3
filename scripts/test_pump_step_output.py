@@ -73,6 +73,7 @@ unsigned ledcWriteTone(unsigned, unsigned hz) {
 }
 void ledcWrite(unsigned, unsigned value) { ++writes; duty=value; }
 '''
+        harness += (ROOT/'src/control/pump_steps_logic.h').read_text(encoding='utf-8') + '\n'
         harness += state + '\n' + functions
         harness += r'''
 int main(int argc,char** argv) {

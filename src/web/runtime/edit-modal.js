@@ -9,6 +9,38 @@ import { renderModeRuntimeCard } from './bars.js';
 import { addLog } from '../core/logs.js';
 import { loadStatus } from '../core/status.js';
 
+async function submitOutputResponse(response, actionLabel) {
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.accepted === false || data.status === 'rejected') {
+        throw new Error(data.message || `${actionLabel}: ${data.rejectReason || `HTTP ${response.status}`}`);
+    }
+    if (!data.queued || !data.commandId) return data;
+
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        let statusResponse;
+        if (data.commandType === 'control') {
+            statusResponse = await fetch(
+                `/api/process/command-status?commandId=${encodeURIComponent(data.commandId)}`,
+                { cache: 'no-store' }
+            );
+        } else {
+            statusResponse = await fetch(
+                `/api/outputs/command?commandId=${encodeURIComponent(data.commandId)}`,
+                { cache: 'no-store' }
+            );
+        }
+        if (!statusResponse.ok) continue;
+        const status = await statusResponse.json().catch(() => ({}));
+        if (status.status === 'applied') return status;
+        if (['rejected', 'cancelled', 'superseded', 'queue_full'].includes(status.status)) {
+            throw new Error(`${actionLabel}: ${status.rejectReason || status.status}`);
+        }
+    }
+    throw new Error(`${actionLabel}: command ${data.commandId} is still queued`);
+}
+
 function isRuntimeEditWattsMode(config) {
     if (!config?.supportsUnitToggle) return false;
     const cbWatts = document.getElementById('runtime-edit-unit-watts');
@@ -173,7 +205,7 @@ export function getRuntimeEditConfig(paramKey) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ powerW: normalized })
                 });
-                if (!resp.ok) throw new Error(await resp.text());
+                await submitOutputResponse(resp, 'Heater override');
             }
         },
         'manual-power': {
@@ -196,7 +228,7 @@ export function getRuntimeEditConfig(paramKey) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ powerW: normalized })
                 });
-                if (!resp.ok) throw new Error(await resp.text());
+                await submitOutputResponse(resp, 'Heater command');
             }
         },
         'planned-abv': {
@@ -233,7 +265,7 @@ export function getRuntimeEditConfig(paramKey) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ speed: Number(value) })
                 });
-                if (!resp.ok) throw new Error(await resp.text());
+                await submitOutputResponse(resp, 'Pump command');
             }
         },
         'water-autostart-cube-temp': {

@@ -21,6 +21,8 @@
 #include "../live_chart_history.h"
 #include "../profiles.h"
 #include "../types.h"
+#include "../control/control_command_queue.h"
+#include "../control/state_snapshot.h"
 #include "../control/fsm.h"
 #include "../control/pump_calibration.h"
 #include "../control/power_command_gateway.h"
@@ -40,7 +42,6 @@
 #include "security.h"
 #include "webserver_shared.h"
 
-extern SystemState g_state;
 extern Settings g_settings;
 
 namespace CloudTunnel {
@@ -232,20 +233,20 @@ static void formatTempAddress(const uint8_t address[8], char* buffer,
            address[5], address[6], address[7]);
 }
 
-static float getCurrentTempByIndex(uint8_t index) {
+static float getCurrentTempByIndex(const SystemState &state, uint8_t index) {
   switch (index) {
-    case TEMP_CUBE: return g_state.temps.cube;
-    case TEMP_COLUMN_BOTTOM: return g_state.temps.columnBottom;
-    case TEMP_COLUMN_TOP: return g_state.temps.columnTop;
-    case TEMP_REFLUX: return g_state.temps.reflux;
-    case TEMP_TSA: return g_state.temps.tsa;
-    case TEMP_WATER_IN: return g_state.temps.waterIn;
-    case TEMP_WATER_OUT: return g_state.temps.waterOut;
+    case TEMP_CUBE: return state.temps.cube;
+    case TEMP_COLUMN_BOTTOM: return state.temps.columnBottom;
+    case TEMP_COLUMN_TOP: return state.temps.columnTop;
+    case TEMP_REFLUX: return state.temps.reflux;
+    case TEMP_TSA: return state.temps.tsa;
+    case TEMP_WATER_IN: return state.temps.waterIn;
+    case TEMP_WATER_OUT: return state.temps.waterOut;
     default: return 0.0f;
   }
 }
 
-static void fillCalibrationJson(JsonObject root) {
+static void fillCalibrationJson(JsonObject root, const SystemState &state) {
   JsonObject pump = root["pump"].to<JsonObject>();
   pump["mlPerRev"] = g_settings.pumpCal.mlPerRevolution;
   pump["stepsPerRev"] = g_settings.pumpCal.stepsPerRevolution;
@@ -274,8 +275,8 @@ static void fillCalibrationJson(JsonObject root) {
     temp["assignedAddress"] = assignedAddrStr;
     temp["detectedAddress"] = detectedAddrStr;
     temp["mappingMode"] = assignedAddrStr[0] != '\0' ? "manual" : "auto";
-    temp["current"] = getCurrentTempByIndex(i);
-    temp["valid"] = g_state.temps.valid[i];
+    temp["current"] = getCurrentTempByIndex(state, i);
+    temp["valid"] = state.temps.valid[i];
   }
 
   JsonObject pressureSensor = root["pressureSensor"].to<JsonObject>();
@@ -287,12 +288,12 @@ static void fillCalibrationJson(JsonObject root) {
     pressureMmHgPoints.add(g_settings.pressureCal.pressurePoints[i]);
   }
   pressureSensor["zeroOffsetMmHg"] = g_settings.pressureCal.zeroOffsetMmHg;
-  pressureSensor["ads1115Available"] = g_state.health.ads1115Ok;
+  pressureSensor["ads1115Available"] = state.health.ads1115Ok;
   pressureSensor["source"] = "ADS1115 A1 @ 0x48";
-  pressureSensor["currentVoltage"] = g_state.pressure.sensorVoltage;
-  pressureSensor["currentAdc"] = g_state.pressure.sensorAdc;
-  pressureSensor["currentPressure"] = g_state.pressure.cube;
-  pressureSensor["valid"] = g_state.pressure.ok;
+  pressureSensor["currentVoltage"] = state.pressure.sensorVoltage;
+  pressureSensor["currentAdc"] = state.pressure.sensorAdc;
+  pressureSensor["currentPressure"] = state.pressure.cube;
+  pressureSensor["valid"] = state.pressure.ok;
   pressureSensor["calibrated"] = g_settings.pressureCal.pointCount >= 2;
 
   JsonObject hydro = root["hydrometer"].to<JsonObject>();
@@ -304,10 +305,10 @@ static void fillCalibrationJson(JsonObject root) {
     abvPoints.add(g_settings.hydroCal.abvPoints[i]);
     pressurePoints.add(g_settings.hydroCal.pressurePoints[i]);
   }
-  hydro["currentPressure"] = g_state.hydrometer.pressure;
-  hydro["currentDensity"] = g_state.hydrometer.density;
-  hydro["currentABV"] = g_state.hydrometer.abv;
-  hydro["valid"] = g_state.hydrometer.valid;
+  hydro["currentPressure"] = state.hydrometer.pressure;
+  hydro["currentDensity"] = state.hydrometer.density;
+  hydro["currentABV"] = state.hydrometer.abv;
+  hydro["valid"] = state.hydrometer.valid;
 }
 
 static void fillCloudStirrerJson(JsonObject stirrer, const SystemState& state) {
@@ -328,48 +329,191 @@ static void fillStirrerSettingsJson(JsonObject settings, const Settings& source)
 }
 
 static void sendStirrerHttpResponse(const char* requestId, int statusCode,
-                                    bool success, const char* message) {
-  syncStirrerState();
-
+                                    bool success, const char* message,
+                                    const SystemState &state,
+                                    const PowerCommandGateway::Command *outputCommand = nullptr) {
   JsonDocument doc;
-  doc["success"] = success;
+  doc["success"] = outputCommand
+                       ? outputCommand->accepted && outputCommand->applied
+                       : success;
   doc["message"] = message;
+  if (outputCommand) {
+    doc["commandType"] = "output";
+    doc["commandId"] = outputCommand->sequence;
+    doc["accepted"] = outputCommand->accepted;
+    doc["queued"] = outputCommand->queued;
+    doc["applied"] = outputCommand->applied;
+    doc["status"] = !outputCommand->accepted ? "rejected"
+                     : outputCommand->applied ? "applied" : "queued";
+    doc["rejectReason"] = PowerCommandGateway::rejectReasonString(
+        outputCommand->rejectReason);
+    statusCode = !outputCommand->accepted ? 409
+                 : outputCommand->queued ? 202 : 200;
+  }
   JsonObject stirrer = doc["stirrer"].to<JsonObject>();
-  fillCloudStirrerJson(stirrer, g_state);
+  fillCloudStirrerJson(stirrer, state);
 
   String out;
   serializeJson(doc, out);
   sendHttpResponse(requestId, statusCode, out,
-                   success ? nullptr : "stirrer_unavailable");
+                   outputCommand
+                       ? (!outputCommand->accepted ? "output_command_rejected" : nullptr)
+                       : success ? nullptr : "stirrer_unavailable");
 }
 
-static bool ensureStirrerReady(const char* requestId) {
-  if (g_state.mode != Mode::IDLE) {
+static void appendOutputCommandStatus(
+    JsonObject response, const PowerCommandGateway::Command &command) {
+  response["commandType"] = "output";
+  response["commandId"] = command.sequence;
+  response["accepted"] = command.accepted;
+  response["queued"] = command.queued;
+  response["applied"] = command.applied;
+  response["success"] = command.accepted && command.applied;
+  response["status"] = !command.accepted ? "rejected"
+                       : command.applied ? "applied" : "queued";
+  response["rejectReason"] =
+      PowerCommandGateway::rejectReasonString(command.rejectReason);
+}
+
+static bool cloudControlCommandAccepted(
+    ControlCommandQueue::EnqueueResult result) {
+  return result == ControlCommandQueue::EnqueueResult::Accepted ||
+         result == ControlCommandQueue::EnqueueResult::Duplicate;
+}
+
+static void appendCloudControlCommandStatus(
+    JsonObject item, ControlCommandQueue::EnqueueResult result,
+    uint32_t commandId, ControlCommandQueue::Status status) {
+  const bool accepted = cloudControlCommandAccepted(result);
+  item["commandType"] = "control";
+  item["commandId"] = commandId;
+  item["accepted"] = accepted;
+  item["queued"] = status == ControlCommandQueue::Status::Queued ||
+                    status == ControlCommandQueue::Status::Processing;
+  item["applied"] = status == ControlCommandQueue::Status::Applied;
+  item["success"] = accepted && status == ControlCommandQueue::Status::Applied;
+  item["status"] = ControlCommandQueue::statusToken(status);
+}
+
+static void sendCloudStirrerCompositeResponse(
+    const char *requestId, const SystemState &state,
+    ControlCommandQueue::EnqueueResult controlResult,
+    uint32_t controlCommandId, ControlCommandQueue::Status controlStatus,
+    const PowerCommandGateway::Command *outputCommand,
+    const char *message, bool includeSettings = false) {
+  const bool controlAccepted = cloudControlCommandAccepted(controlResult);
+  const bool controlQueued = controlStatus == ControlCommandQueue::Status::Queued ||
+                             controlStatus == ControlCommandQueue::Status::Processing;
+  const bool controlApplied = controlStatus == ControlCommandQueue::Status::Applied;
+  const bool outputAccepted = outputCommand == nullptr || outputCommand->accepted;
+  const bool outputQueued = outputCommand != nullptr && outputCommand->queued;
+  const bool outputApplied = outputCommand == nullptr || outputCommand->applied;
+  const bool accepted = controlAccepted && outputAccepted;
+  const bool queued = controlQueued || outputQueued;
+  const bool applied = controlApplied && outputApplied;
+  JsonDocument response;
+  response["commandType"] = "composite";
+  response["success"] = accepted && applied;
+  response["accepted"] = accepted;
+  response["queued"] = queued;
+  response["applied"] = applied;
+  response["status"] = !accepted ? "rejected" : applied ? "applied" : "queued";
+  response["message"] = message;
+  if (includeSettings) {
+    response["settingsSaved"] = true;
+    fillStirrerSettingsJson(response["settings"].to<JsonObject>(),
+                            g_settings);
+  }
+  JsonArray commands = response["commands"].to<JsonArray>();
+  JsonObject control = commands.add<JsonObject>();
+  appendCloudControlCommandStatus(control, controlResult, controlCommandId,
+                                  controlStatus);
+  if (outputCommand != nullptr) {
+    JsonObject output = commands.add<JsonObject>();
+    appendOutputCommandStatus(output, *outputCommand);
+  }
+  fillCloudStirrerJson(response["stirrer"].to<JsonObject>(), state);
+  String out;
+  serializeJson(response, out);
+  const int status = !accepted
+                         ? controlResult == ControlCommandQueue::EnqueueResult::Full
+                               ? 429
+                               : controlResult == ControlCommandQueue::EnqueueResult::NotInitialized
+                                     ? 503
+                                     : 409
+                     : queued ? 202 : 200;
+  sendHttpResponse(requestId, status, out,
+                   accepted ? nullptr : "stirrer_control_command_rejected");
+}
+
+static void sendOutputCommandHttpResponse(
+    const char *requestId, const PowerCommandGateway::Command &command,
+    JsonDocument &response) {
+  appendOutputCommandStatus(response.as<JsonObject>(), command);
+  String out;
+  serializeJson(response, out);
+  const int status = !command.accepted ? 409 : command.queued ? 202 : 200;
+  sendHttpResponse(requestId, status, out,
+                   command.accepted ? nullptr : "output_command_rejected");
+}
+
+static void sendOutputCommandBatchHttpResponse(
+    const char *requestId, const PowerCommandGateway::Command *commands,
+    uint8_t count, JsonDocument &response) {
+  bool accepted = count > 0;
+  bool applied = count > 0;
+  bool queued = false;
+  JsonArray list = response["commands"].to<JsonArray>();
+  for (uint8_t i = 0; i < count; ++i) {
+    const auto &command = commands[i];
+    accepted = accepted && command.accepted;
+    applied = applied && command.applied;
+    queued = queued || command.queued;
+    JsonObject item = list.add<JsonObject>();
+    item["target"] = static_cast<uint8_t>(command.target);
+    appendOutputCommandStatus(item, command);
+  }
+  response["commandType"] = "output";
+  response["accepted"] = accepted;
+  response["queued"] = queued;
+  response["applied"] = applied;
+  response["success"] = accepted && applied;
+  response["status"] = !accepted ? "rejected" : applied ? "applied" : "queued";
+  String out;
+  serializeJson(response, out);
+  const int status = !accepted ? 409 : queued ? 202 : 200;
+  sendHttpResponse(requestId, status, out,
+                   accepted ? nullptr : "output_command_rejected");
+}
+
+static bool ensureStirrerReady(const char* requestId,
+                              const SystemState &state) {
+  if (state.mode != Mode::IDLE) {
     char reason[128];
     snprintf(reason, sizeof(reason),
-             g_state.paused
+             state.paused
                  ? "Manual stirrer control is unavailable while %s is paused"
                  : "Manual stirrer control is unavailable while %s is active",
-             getModeToken(g_state.mode));
-    sendStirrerHttpResponse(requestId, 409, false, reason);
+             getModeToken(state.mode));
+    sendStirrerHttpResponse(requestId, 409, false, reason, state);
     return false;
   }
 
   if (!g_settings.stirrer.enabled) {
     sendStirrerHttpResponse(requestId, 409, false,
-                            "Stirrer is disabled in settings");
+                            "Stirrer is disabled in settings", state);
     return false;
   }
 
   if (!Stirrer::isAvailable()) {
     sendStirrerHttpResponse(requestId, 503, false,
-                            "Stirrer DAC is not available");
+                            "Stirrer DAC is not available", state);
     return false;
   }
 
-  if (!g_state.safetyOk || Safety::isLatched(g_state)) {
+  if (!state.safetyOk || Safety::isLatched(state)) {
     sendStirrerHttpResponse(requestId, 409, false,
-                            "Safety lockout is active");
+                            "Safety lockout is active", state);
     return false;
   }
 
@@ -421,9 +565,9 @@ static void fillEquipmentJson(JsonObject equipment) {
   equipment["boosterHeaterStopCubeTempC"] =
       g_settings.equipment.boosterHeaterStopCubeTempC;
   equipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
-  equipment["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
-  equipment["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
-  equipment["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+  equipment["coolingPwmHoldPercent"] =
+      g_settings.equipment.coolingPwmHoldPercent;
+  equipment["coolingPwmPullMs"] = g_settings.equipment.coolingPwmPullMs;
   equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
 }
 
@@ -504,11 +648,13 @@ static void sendHello() {
 static void sendHeartbeat() {
   if (!wsConnected) return;
   computeDeviceId();
+  SystemState stateSnapshot;
+  if (!StateSnapshot::read(stateSnapshot)) return;
 
   JsonDocument doc;
   doc["type"] = "heartbeat";
   doc["deviceId"] = deviceId;
-  doc["uptime"] = g_state.uptime;
+  doc["uptime"] = stateSnapshot.uptime;
   doc["rssi"] = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
   doc["ipInfo"] = WiFi.localIP().toString();
 
@@ -546,6 +692,34 @@ static void sendHttpResponse(const char* requestId, int status,
   ws.sendTXT(json);
 }
 
+static void sendQueuedControlCommandHttpResponse(
+    const char *requestId, ControlCommandQueue::EnqueueResult result,
+    uint32_t commandId, ControlCommandQueue::Status status,
+    JsonDocument &response) {
+  const bool accepted = result == ControlCommandQueue::EnqueueResult::Accepted ||
+                        result == ControlCommandQueue::EnqueueResult::Duplicate;
+  const bool queued = status == ControlCommandQueue::Status::Queued ||
+                      status == ControlCommandQueue::Status::Processing;
+  const bool applied = status == ControlCommandQueue::Status::Applied;
+  response["commandType"] = "control";
+  response["commandId"] = commandId;
+  response["accepted"] = accepted;
+  response["queued"] = queued;
+  response["applied"] = applied;
+  response["success"] = accepted && applied;
+  response["status"] = ControlCommandQueue::statusToken(status);
+  String out;
+  serializeJson(response, out);
+  const int httpStatus = (accepted && queued) ? 202
+                         : (accepted && applied) ? 200
+                         : result == ControlCommandQueue::EnqueueResult::Full ? 429
+                         : result == ControlCommandQueue::EnqueueResult::NotInitialized
+                             ? 503
+                             : 409;
+  sendHttpResponse(requestId, httpStatus, out,
+                   accepted ? nullptr : "control_command_rejected");
+}
+
 static void handleHttpRequest(JsonDocument& req) {
   const char* requestId = req["requestId"] | "";
   const char* method = req["method"] | "GET";
@@ -570,6 +744,12 @@ static void handleHttpRequest(JsonDocument& req) {
     return;
   }
 
+  SystemState stateSnapshot;
+  if (!StateSnapshot::read(stateSnapshot)) {
+    sendHttpResponse(requestId, 503, "", "state_snapshot_unavailable");
+    return;
+  }
+
   auto getQueryParam = [&](const char* key, String& valueOut) -> bool {
     if (!key || !key[0] || queryString.isEmpty()) return false;
 
@@ -587,6 +767,131 @@ static void handleHttpRequest(JsonDocument& req) {
       start = end + 1;
     }
     return false;
+  };
+
+  if (strcmp(method, "GET") == 0 &&
+      strcmp(path, "/api/outputs/command") == 0) {
+    String rawId;
+    if (!getQueryParam("commandId", rawId) || rawId.toInt() <= 0) {
+      sendHttpResponse(requestId, 400, "", "command_id_required");
+      return;
+    }
+    PowerCommandGateway::Command command;
+    if (!PowerCommandGateway::getCommandStatus(
+            static_cast<uint32_t>(rawId.toInt()), command)) {
+      sendHttpResponse(requestId, 404, "", "command_result_not_found");
+      return;
+    }
+    JsonDocument response;
+    response["commandType"] = "output";
+    appendOutputCommandStatus(response.as<JsonObject>(), command);
+    String out;
+    serializeJson(response, out);
+    sendHttpResponse(requestId, 200, out);
+    return;
+  }
+
+  auto enqueueProcessCommand = [&](ControlCommandQueue::Type type) {
+    uint32_t commandId = 0;
+    ControlCommandQueue::Status status = ControlCommandQueue::Status::Unknown;
+    const auto result = ControlCommandQueue::enqueue(
+        type, ControlCommandQueue::Source::Cloud, Mode::IDLE, 0,
+        ControlCommandQueue::Reason::OperatorRequest, &commandId, &status);
+    const bool accepted =
+        result == ControlCommandQueue::EnqueueResult::Accepted ||
+        result == ControlCommandQueue::EnqueueResult::Duplicate;
+    const bool applied = status == ControlCommandQueue::Status::Applied;
+    const bool queued = status == ControlCommandQueue::Status::Queued;
+    const bool pending = queued ||
+                         status == ControlCommandQueue::Status::Processing;
+    JsonDocument response;
+    response["success"] = accepted && applied;
+    response["accepted"] = accepted;
+    response["applied"] = applied;
+    response["queued"] = queued;
+    response["commandId"] = commandId;
+    response["status"] = ControlCommandQueue::statusToken(status);
+    String out;
+    serializeJson(response, out);
+    const int httpStatus = result == ControlCommandQueue::EnqueueResult::Full
+                               ? 429
+                           : result == ControlCommandQueue::EnqueueResult::NotInitialized
+                               ? 503
+                           : !accepted ? 409
+                           : pending ? 202
+                                      : 200;
+    sendHttpResponse(requestId, httpStatus, out);
+  };
+
+  auto enqueueStartCommand = [&](const ControlCommandQueue::StartRequest &start,
+                                 uint32_t requestedId) {
+    uint32_t commandId = requestedId;
+    ControlCommandQueue::Status status = ControlCommandQueue::Status::Unknown;
+    const auto result = ControlCommandQueue::enqueueStart(
+        ControlCommandQueue::Source::Cloud, start, requestedId,
+        ControlCommandQueue::Reason::OperatorRequest, &commandId, &status);
+    const bool accepted =
+        result == ControlCommandQueue::EnqueueResult::Accepted ||
+        result == ControlCommandQueue::EnqueueResult::Duplicate;
+    const bool applied = status == ControlCommandQueue::Status::Applied;
+    const bool queued = status == ControlCommandQueue::Status::Queued;
+    const bool pending = queued ||
+                         status == ControlCommandQueue::Status::Processing;
+    JsonDocument response;
+    response["success"] = accepted && applied;
+    response["accepted"] = accepted;
+    response["applied"] = applied;
+    response["queued"] = queued;
+    response["commandId"] = commandId;
+    response["status"] = ControlCommandQueue::statusToken(status);
+    String out;
+    serializeJson(response, out);
+    const int httpStatus = result == ControlCommandQueue::EnqueueResult::Full
+                               ? 429
+                           : result == ControlCommandQueue::EnqueueResult::NotInitialized
+                               ? 503
+                           : result == ControlCommandQueue::EnqueueResult::InvalidPayload
+                               ? 400
+                           : !accepted ? 409
+                           : pending ? 202
+                                     : 200;
+    sendHttpResponse(requestId, httpStatus, out);
+  };
+
+  auto enqueueVolumesCommand = [&](uint8_t fieldMask, float headsMl,
+                                    float bodyMl, float tailsMl,
+                                    bool syncTotal, uint32_t requestedId) {
+    uint32_t commandId = requestedId;
+    ControlCommandQueue::Status status = ControlCommandQueue::Status::Unknown;
+    const auto result = ControlCommandQueue::enqueueVolumes(
+        ControlCommandQueue::Source::Cloud, fieldMask, headsMl, bodyMl,
+        tailsMl, syncTotal, requestedId, &commandId, &status);
+    const bool applied = status == ControlCommandQueue::Status::Applied;
+    const bool queued = status == ControlCommandQueue::Status::Queued;
+    const bool pending = queued ||
+                         status == ControlCommandQueue::Status::Processing;
+    JsonDocument response;
+    const bool accepted =
+        result == ControlCommandQueue::EnqueueResult::Accepted ||
+        result == ControlCommandQueue::EnqueueResult::Duplicate;
+    response["success"] = accepted && applied;
+    response["accepted"] = accepted;
+    response["applied"] = applied;
+    response["queued"] = queued;
+    response["commandId"] = commandId;
+    response["status"] = ControlCommandQueue::statusToken(status);
+    String out;
+    serializeJson(response, out);
+    const int httpStatus = result == ControlCommandQueue::EnqueueResult::Full
+                               ? 429
+                           : result == ControlCommandQueue::EnqueueResult::NotInitialized
+                               ? 503
+                           : result == ControlCommandQueue::EnqueueResult::InvalidPayload
+                               ? 400
+                           : !accepted ? 409
+                           : pending ? 202
+                                     : 200;
+    sendHttpResponse(requestId, httpStatus, out);
   };
 
   auto isDigitsOnly = [&](const String& value) -> bool {
@@ -640,47 +945,45 @@ static void handleHttpRequest(JsonDocument& req) {
   };
 
   if (strcmp(method, "GET") == 0 && strcmp(path, "/api/status") == 0) {
-    ControlV2::updateRuntime(g_state, g_settings);
-
     JsonDocument doc;
-    doc["mode"] = static_cast<int>(g_state.mode);
-    doc["modeStr"] = getModeToken(g_state.mode);
-    doc["phase"] = static_cast<int>(g_state.rectPhase);
-    doc["phaseStr"] = getActivePhaseToken(g_state);
-    doc["paused"] = g_state.paused;
-    doc["safetyOk"] = g_state.safetyOk;
-    doc["uptime"] = g_state.uptime;
+    doc["mode"] = static_cast<int>(stateSnapshot.mode);
+    doc["modeStr"] = getModeToken(stateSnapshot.mode);
+    doc["phase"] = static_cast<int>(stateSnapshot.rectPhase);
+    doc["phaseStr"] = getActivePhaseToken(stateSnapshot);
+    doc["paused"] = stateSnapshot.paused;
+    doc["safetyOk"] = stateSnapshot.safetyOk;
+    doc["uptime"] = stateSnapshot.uptime;
     doc["deviceId"] = deviceId;
-    fillAlarmJson(doc["alarm"].to<JsonObject>(), g_state, g_settings);
+    fillAlarmJson(doc["alarm"].to<JsonObject>(), stateSnapshot, g_settings);
     fillV2StatusJson(doc["v2"].to<JsonObject>(), ControlV2::getLatestModeStatus(),
                      ControlV2::getLatestMetricsSnapshot());
 
     JsonObject temps = doc["temps"].to<JsonObject>();
-    temps["cube"] = g_state.temps.cube;
-    temps["columnBottom"] = g_state.temps.columnBottom;
-    temps["columnTop"] = g_state.temps.columnTop;
-    temps["reflux"] = g_state.temps.reflux;
-    temps["tsa"] = g_state.temps.tsa;
-    temps["waterIn"] = g_state.temps.waterIn;
-    temps["waterOut"] = g_state.temps.waterOut;
+    temps["cube"] = stateSnapshot.temps.cube;
+    temps["columnBottom"] = stateSnapshot.temps.columnBottom;
+    temps["columnTop"] = stateSnapshot.temps.columnTop;
+    temps["reflux"] = stateSnapshot.temps.reflux;
+    temps["tsa"] = stateSnapshot.temps.tsa;
+    temps["waterIn"] = stateSnapshot.temps.waterIn;
+    temps["waterOut"] = stateSnapshot.temps.waterOut;
 
     JsonObject pressure = doc["pressure"].to<JsonObject>();
-    pressure["available"] = g_state.pressure.ok;
-    pressure["cube"] = g_state.pressure.cube;
-    pressure["atm"] = g_state.pressure.atmosphere;
+    pressure["available"] = stateSnapshot.pressure.ok;
+    pressure["cube"] = stateSnapshot.pressure.cube;
+    pressure["atm"] = stateSnapshot.pressure.atmosphere;
 
     JsonObject power = doc["power"].to<JsonObject>();
-    power["available"] = g_state.power.ok;
-    power["voltage"] = g_state.power.voltage;
-    power["current"] = g_state.power.current;
-    power["power"] = g_state.power.power;
-    power["energy"] = g_state.power.energy;
-    power["frequency"] = g_state.power.frequency;
-    power["pf"] = g_state.power.powerFactor;
+    power["available"] = stateSnapshot.power.ok;
+    power["voltage"] = stateSnapshot.power.voltage;
+    power["current"] = stateSnapshot.power.current;
+    power["power"] = stateSnapshot.power.power;
+    power["energy"] = stateSnapshot.power.energy;
+    power["frequency"] = stateSnapshot.power.frequency;
+    power["pf"] = stateSnapshot.power.powerFactor;
 
     JsonObject pump = doc["pump"].to<JsonObject>();
-    pump["speedMlH"] = g_state.pump.speedMlPerHour;
-    pump["totalMl"] = g_state.pump.totalVolumeMl;
+    pump["speedMlH"] = stateSnapshot.pump.speedMlPerHour;
+    pump["totalMl"] = stateSnapshot.pump.totalVolumeMl;
 
     const RectTakeoffFeedback takeoffFeedback = RectTakeoff::getFeedback();
     JsonObject distillation = doc["distillation"].to<JsonObject>();
@@ -695,13 +998,13 @@ static void handleHttpRequest(JsonDocument& req) {
         distillation["fractionProgram"].to<JsonObject>(),
         g_settings.fractionProgram);
     fillFractionProgramRuntimeJson(
-        doc["fractionProgram"].to<JsonObject>(), g_state, g_settings,
+        doc["fractionProgram"].to<JsonObject>(), stateSnapshot, g_settings,
         takeoffFeedback);
 
     JsonObject volumes = doc["volumes"].to<JsonObject>();
-    volumes["heads"] = g_state.stats.headsVolume;
-    volumes["body"] = g_state.stats.bodyVolume;
-    volumes["tails"] = g_state.stats.tailsVolume;
+    volumes["heads"] = stateSnapshot.stats.headsVolume;
+    volumes["body"] = stateSnapshot.stats.bodyVolume;
+    volumes["tails"] = stateSnapshot.stats.tailsVolume;
 
     JsonObject valves = doc["valves"].to<JsonObject>();
     valves["water"] = Valves::getWater();
@@ -714,8 +1017,8 @@ static void handleHttpRequest(JsonDocument& req) {
     valves["tails"] = Valves::getTails();
 
     JsonObject hydrometer = doc["hydrometer"].to<JsonObject>();
-    hydrometer["abv"] = g_state.hydrometer.abv;
-    hydrometer["valid"] = g_state.hydrometer.valid;
+    hydrometer["abv"] = stateSnapshot.hydrometer.abv;
+    hydrometer["valid"] = stateSnapshot.hydrometer.valid;
 
     fillEquipmentJson(doc["equipment"].to<JsonObject>());
     fillCloudStatusJson(doc["cloud"].to<JsonObject>());
@@ -781,11 +1084,11 @@ static void handleHttpRequest(JsonDocument& req) {
       channel["assigned"] = !isZeroTempAddress(g_settings.tempCal.addresses[i]);
       uint8_t detectedAddress[8] = {0};
       channel["detected"] = Sensors::getDiscoveredTempAddress(i, detectedAddress);
-      channel["valid"] = g_state.temps.valid[i];
+      channel["valid"] = stateSnapshot.temps.valid[i];
     }
 
     JsonObject powerMeta = meta["power"].to<JsonObject>();
-    powerMeta["available"] = g_state.health.pzemOk;
+    powerMeta["available"] = stateSnapshot.health.pzemOk;
 
     LiveChartHistory::fillJson(doc.as<JsonObject>());
 
@@ -1121,7 +1424,7 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["userReboots"] = userReboots;
     doc["otherReboots"] = otherReboots;
     doc["uptimeSec"] = millis() / 1000UL;
-    doc["healthOverall"] = g_state.health.overallHealth;
+    doc["healthOverall"] = stateSnapshot.health.overallHealth;
     doc["freeHeap"] = ESP.getFreeHeap();
     doc["lastReasonKind"] =
         lastWasWdt ? "wdt" : lastWasCrash ? "crash" : lastWasUser ? "user" : "other";
@@ -1856,16 +2159,14 @@ static void handleHttpRequest(JsonDocument& req) {
   }
 
   if (strcmp(method, "GET") == 0 && strcmp(path, "/api/settings/stirrer") == 0) {
-    syncStirrerState();
-
     JsonDocument doc;
     fillStirrerSettingsJson(doc.to<JsonObject>(), g_settings);
-    doc["available"] = g_state.stirrer.available;
-    doc["running"] = g_state.stirrer.running;
-    doc["autoMode"] = g_state.stirrer.autoMode;
-    doc["speed"] = g_state.stirrer.speedPercent;
-    doc["speedPercent"] = g_state.stirrer.speedPercent;
-    doc["lastUpdate"] = g_state.stirrer.lastUpdate;
+    doc["available"] = stateSnapshot.stirrer.available;
+    doc["running"] = stateSnapshot.stirrer.running;
+    doc["autoMode"] = stateSnapshot.stirrer.autoMode;
+    doc["speed"] = stateSnapshot.stirrer.speedPercent;
+    doc["speedPercent"] = stateSnapshot.stirrer.speedPercent;
+    doc["lastUpdate"] = stateSnapshot.stirrer.lastUpdate;
 
     String out;
     serializeJson(doc, out);
@@ -1894,23 +2195,43 @@ static void handleHttpRequest(JsonDocument& req) {
       g_settings.stirrer.autoNbk = body["autoNbk"].as<bool>();
     }
 
-    if (!g_settings.stirrer.enabled) {
-      g_state.stirrer.autoMode = false;
-      PowerCommandGateway::stopStirrer(
-          PowerCommandGateway::Owner::MANUAL,
-          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
-    }
+    const bool stopStirrerAfterSave = !g_settings.stirrer.enabled;
 
     if (!NVSManager::saveSettings(g_settings)) {
       sendHttpResponse(requestId, 500, "", "save_failed");
       return;
     }
 
-    syncStirrerState();
+    PowerCommandGateway::Command stopCommand;
+    ControlCommandQueue::EnqueueResult controlResult =
+        ControlCommandQueue::EnqueueResult::Accepted;
+    uint32_t controlCommandId = 0;
+    ControlCommandQueue::Status controlStatus =
+        ControlCommandQueue::Status::Applied;
+    if (stopStirrerAfterSave) {
+      controlStatus = ControlCommandQueue::Status::Unknown;
+      controlResult = ControlCommandQueue::enqueueAction(
+          ControlCommandQueue::Type::SetStirrerAutoMode,
+          ControlCommandQueue::Source::Cloud, 0, 0.0f, 0,
+          ControlCommandQueue::Reason::OperatorRequest, &controlCommandId,
+          &controlStatus);
+      stopCommand = PowerCommandGateway::stopStirrer(
+          PowerCommandGateway::Owner::MANUAL,
+          PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
+    }
+
+    if (stopStirrerAfterSave) {
+      sendCloudStirrerCompositeResponse(
+          requestId, stateSnapshot, controlResult, controlCommandId,
+          controlStatus, &stopCommand, "Stirrer settings saved; stop queued",
+          true);
+      return;
+    }
     JsonDocument doc;
+    doc["settingsSaved"] = true;
     doc["success"] = true;
     fillStirrerSettingsJson(doc["settings"].to<JsonObject>(), g_settings);
-    fillCloudStirrerJson(doc["stirrer"].to<JsonObject>(), g_state);
+    fillCloudStirrerJson(doc["stirrer"].to<JsonObject>(), stateSnapshot);
     String out;
     serializeJson(doc, out);
     sendHttpResponse(requestId, 200, out);
@@ -1921,7 +2242,7 @@ static void handleHttpRequest(JsonDocument& req) {
     JsonDocument body;
     bool hasBody = bodyBase64 && bodyBase64[0];
     if (hasBody && !decodeBody(body)) return;
-    if (!ensureStirrerReady(requestId)) return;
+    if (!ensureStirrerReady(requestId, stateSnapshot)) return;
 
     uint8_t speed = g_settings.stirrer.defaultSpeedPercent;
     if (hasBody) {
@@ -1935,31 +2256,58 @@ static void handleHttpRequest(JsonDocument& req) {
       }
     }
 
-    g_state.stirrer.autoMode = false;
-    PowerCommandGateway::setStirrerSpeed(
+    uint32_t controlCommandId = 0;
+    ControlCommandQueue::Status controlStatus =
+        ControlCommandQueue::Status::Unknown;
+    const auto controlResult = ControlCommandQueue::enqueueAction(
+        ControlCommandQueue::Type::SetStirrerAutoMode,
+        ControlCommandQueue::Source::Cloud, 0, 0.0f, 0,
+        ControlCommandQueue::Reason::OperatorRequest, &controlCommandId,
+        &controlStatus);
+    if (!cloudControlCommandAccepted(controlResult)) {
+      sendCloudStirrerCompositeResponse(
+          requestId, stateSnapshot, controlResult, controlCommandId,
+          controlStatus, nullptr, "Stirrer start rejected");
+      return;
+    }
+    const PowerCommandGateway::Command outputCommand =
+        PowerCommandGateway::setStirrerSpeed(
         PowerCommandGateway::Owner::MANUAL,
         PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
-    sendStirrerHttpResponse(requestId, 200, true, "Stirrer started");
+    sendCloudStirrerCompositeResponse(
+        requestId, stateSnapshot, controlResult, controlCommandId,
+        controlStatus, &outputCommand, "Stirrer started");
     return;
   }
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/stirrer/stop") == 0) {
-    if (!ensureStirrerReady(requestId)) return;
-    g_state.stirrer.autoMode = false;
-    PowerCommandGateway::stopStirrer(
+    if (!ensureStirrerReady(requestId, stateSnapshot)) return;
+    uint32_t controlCommandId = 0;
+    ControlCommandQueue::Status controlStatus =
+        ControlCommandQueue::Status::Unknown;
+    const auto controlResult = ControlCommandQueue::enqueueAction(
+        ControlCommandQueue::Type::SetStirrerAutoMode,
+        ControlCommandQueue::Source::Cloud, 0, 0.0f, 0,
+        ControlCommandQueue::Reason::OperatorRequest, &controlCommandId,
+        &controlStatus);
+    const PowerCommandGateway::Command outputCommand =
+        PowerCommandGateway::stopStirrer(
         PowerCommandGateway::Owner::MANUAL,
         PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT);
-    sendStirrerHttpResponse(requestId, 200, true, "Stirrer stopped");
+    sendCloudStirrerCompositeResponse(
+        requestId, stateSnapshot, controlResult, controlCommandId,
+        controlStatus, &outputCommand, "Stirrer stopped");
     return;
   }
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/stirrer/set") == 0) {
     JsonDocument body;
     if (!decodeBody(body)) return;
-    if (!ensureStirrerReady(requestId)) return;
+    if (!ensureStirrerReady(requestId, stateSnapshot)) return;
 
     if (!Stirrer::isRunning()) {
-      sendStirrerHttpResponse(requestId, 409, false, "Stirrer is not running");
+      sendStirrerHttpResponse(requestId, 409, false,
+                              "Stirrer is not running", stateSnapshot);
       return;
     }
     if (body["speed"].isNull()) {
@@ -1973,12 +2321,28 @@ static void handleHttpRequest(JsonDocument& req) {
       return;
     }
 
-    g_state.stirrer.autoMode = false;
-    PowerCommandGateway::setStirrerSpeed(
+    uint32_t controlCommandId = 0;
+    ControlCommandQueue::Status controlStatus =
+        ControlCommandQueue::Status::Unknown;
+    const auto controlResult = ControlCommandQueue::enqueueAction(
+        ControlCommandQueue::Type::SetStirrerAutoMode,
+        ControlCommandQueue::Source::Cloud, 0, 0.0f, 0,
+        ControlCommandQueue::Reason::OperatorRequest, &controlCommandId,
+        &controlStatus);
+    if (!cloudControlCommandAccepted(controlResult)) {
+      sendCloudStirrerCompositeResponse(
+          requestId, stateSnapshot, controlResult, controlCommandId,
+          controlStatus, nullptr, "Stirrer speed update rejected");
+      return;
+    }
+    const PowerCommandGateway::Command outputCommand =
+        PowerCommandGateway::setStirrerSpeed(
         PowerCommandGateway::Owner::MANUAL,
         PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
         static_cast<uint8_t>(requestedSpeed));
-    sendStirrerHttpResponse(requestId, 200, true, "Stirrer speed updated");
+    sendCloudStirrerCompositeResponse(
+        requestId, stateSnapshot, controlResult, controlCommandId,
+        controlStatus, &outputCommand, "Stirrer speed updated");
     return;
   }
 
@@ -2228,7 +2592,7 @@ static void handleHttpRequest(JsonDocument& req) {
 
   if (strcmp(method, "GET") == 0 && strcmp(path, "/api/calibration") == 0) {
     JsonDocument doc;
-    fillCalibrationJson(doc.to<JsonObject>());
+    fillCalibrationJson(doc.to<JsonObject>(), stateSnapshot);
     String out;
     serializeJson(doc, out);
     sendHttpResponse(requestId, 200, out);
@@ -2294,7 +2658,7 @@ static void handleHttpRequest(JsonDocument& req) {
   }
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/pump/calibrate/start") == 0) {
-    if (g_state.mode != Mode::IDLE) {
+    if (stateSnapshot.mode != Mode::IDLE) {
       sendHttpResponse(requestId, 409, "",
                        "process_is_running");
       return;
@@ -2326,6 +2690,11 @@ static void handleHttpRequest(JsonDocument& req) {
       sendHttpResponse(requestId, 409, "", "calibration_already_active");
       return;
     }
+    if (!Pump::isRunning()) {
+      sendHttpResponse(requestId, 202,
+                       "{\"accepted\":true,\"status\":\"starting\"}");
+      return;
+    }
     sendHttpResponse(requestId, 200,
                      "{\"success\":true,\"running\":true}");
     return;
@@ -2338,10 +2707,15 @@ static void handleHttpRequest(JsonDocument& req) {
       return;
     }
 
-    // Keep the Cloud API response stable even when no steps were captured;
-    // finish then reports the invalid measurement to the caller.
-    (void)PumpCalibrationSession::stopMeasurement();
-
+    if (!PumpCalibrationSession::stopMeasurement()) {
+      sendHttpResponse(requestId, 409, "", "pump_stop_rejected");
+      return;
+    }
+    if (PumpCalibrationSession::isStopPending()) {
+      sendHttpResponse(requestId, 202,
+                       "{\"accepted\":true,\"status\":\"stopping\"}");
+      return;
+    }
     sendHttpResponse(requestId, 200,
                      "{\"success\":true,\"running\":false}");
     return;
@@ -2349,6 +2723,11 @@ static void handleHttpRequest(JsonDocument& req) {
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/pump/calibrate/cancel") == 0) {
     PumpCalibrationSession::cancel();
+    if (PumpCalibrationSession::isStopPending()) {
+      sendHttpResponse(requestId, 202,
+                       "{\"accepted\":true,\"status\":\"stopping\"}");
+      return;
+    }
     sendHttpResponse(requestId, 200,
                      "{\"success\":true,\"active\":false}");
     return;
@@ -2360,8 +2739,14 @@ static void handleHttpRequest(JsonDocument& req) {
 
     PumpCalibrationSession::Snapshot snapshot =
         PumpCalibrationSession::getSnapshot();
+    if (snapshot.phase == PumpCalibrationSession::Phase::PRIMING) {
+      PumpCalibrationSession::cancel();
+      sendHttpResponse(requestId, 409, "", "priming_is_not_a_measurement");
+      return;
+    }
     if (snapshot.phase != PumpCalibrationSession::Phase::MEASURING &&
-        snapshot.phase != PumpCalibrationSession::Phase::READY_TO_REVIEW) {
+        snapshot.phase != PumpCalibrationSession::Phase::READY_TO_REVIEW &&
+        snapshot.phase != PumpCalibrationSession::Phase::REVIEW) {
       sendHttpResponse(requestId, 409, "", "calibration_not_active");
       return;
     }
@@ -2372,44 +2757,147 @@ static void handleHttpRequest(JsonDocument& req) {
       return;
     }
 
-    if (snapshot.phase == PumpCalibrationSession::Phase::MEASURING) {
-      (void)PumpCalibrationSession::stopMeasurement();
-      snapshot = PumpCalibrationSession::getSnapshot();
-    }
-    if (snapshot.stopSteps <= snapshot.startSteps) {
-      sendHttpResponse(requestId, 400, "", "no_steps_captured");
-      return;
-    }
-    if (!PumpCalibrationSession::enterMeasuredVolume(volume) ||
-        !PumpCalibrationSession::mayCommit()) {
-      sendHttpResponse(requestId, 400, "", "invalid_calibration_result");
+    const char *requestedMethod = body["method"] | "steps";
+    if (strcmp(requestedMethod, "steps") != 0 &&
+        strcmp(requestedMethod, "time") != 0) {
+      sendHttpResponse(requestId, 400, "", "invalid_calibration_method");
       return;
     }
 
-    const float mlPerRev = EditableFields::normalize(
-        EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV,
-        PumpCalibrationSession::getCandidateMlPerRev());
+    if (snapshot.phase == PumpCalibrationSession::Phase::MEASURING) {
+      if (!PumpCalibrationSession::stopMeasurement()) {
+        sendHttpResponse(requestId, 409, "", "pump_stop_rejected");
+        return;
+      }
+      snapshot = PumpCalibrationSession::getSnapshot();
+      if (PumpCalibrationSession::isStopPending() ||
+          snapshot.phase == PumpCalibrationSession::Phase::MEASURING) {
+        sendHttpResponse(requestId, 202,
+                         "{\"accepted\":true,\"status\":\"stopping\"}");
+        return;
+      }
+    }
+    if ((snapshot.phase != PumpCalibrationSession::Phase::READY_TO_REVIEW &&
+         snapshot.phase != PumpCalibrationSession::Phase::REVIEW) ||
+        !snapshot.measurementCompleted) {
+      sendHttpResponse(requestId, 409, "", "measurement_not_completed");
+      return;
+    }
+
+    const float oldMlPerRev = g_settings.pumpCal.mlPerRevolution;
+    const bool confirmLargeChange = body["confirmLargeChange"] | false;
+    const uint32_t elapsedMs = snapshot.stoppedAtMs - snapshot.startedAtMs;
+    float mlPerRev = 0.0f;
+
+    if (strcmp(requestedMethod, "time") == 0) {
+      const PumpCalibrationLogic::TimeFallbackAssessment assessment =
+          PumpCalibrationLogic::assessTimeFallback(
+              snapshot, volume, oldMlPerRev, confirmLargeChange);
+      if (assessment.status ==
+          PumpCalibrationLogic::ChangeStatus::ConfirmationRequired) {
+        JsonDocument response;
+        response["success"] = false;
+        response["code"] = "CONFIRM_LARGE_CALIBRATION_CHANGE";
+        response["candidateMlPerRev"] = assessment.candidateMlPerRev;
+        response["changeRatio"] = assessment.changeRatio;
+        response["durationMs"] = assessment.durationMs;
+        String out;
+        serializeJson(response, out);
+        sendHttpResponse(requestId, 409, out.c_str(),
+                         "large_change_confirmation_required");
+        return;
+      }
+      if (assessment.status !=
+          PumpCalibrationLogic::ChangeStatus::Accepted) {
+        sendHttpResponse(requestId, 409, "", "time_fallback_unavailable");
+        return;
+      }
+      mlPerRev = assessment.candidateMlPerRev;
+    } else {
+      if (snapshot.phase == PumpCalibrationSession::Phase::REVIEW &&
+          PumpCalibrationSession::mayCommit()) {
+        if (fabsf(snapshot.measuredVolumeMl - volume) > 0.01f) {
+          sendHttpResponse(requestId, 409, "", "measured_volume_changed");
+          return;
+        }
+        mlPerRev = snapshot.candidateMlPerRev;
+      } else if (PumpCalibrationSession::enterMeasuredVolume(volume) &&
+                 PumpCalibrationSession::mayCommit()) {
+        snapshot = PumpCalibrationSession::getSnapshot();
+        mlPerRev = snapshot.candidateMlPerRev;
+      } else {
+        snapshot = PumpCalibrationSession::getSnapshot();
+        sendHttpResponse(requestId, 409, "",
+                         snapshot.stepCounterValid &&
+                                 snapshot.stopSteps == snapshot.startSteps
+                             ? "time_fallback_requires_explicit_method"
+                             : "no_steps_captured");
+        return;
+      }
+
+      const PumpCalibrationLogic::ChangeStatus changeStatus =
+          PumpCalibrationLogic::assessCalibrationChange(
+              oldMlPerRev, mlPerRev, confirmLargeChange);
+      if (changeStatus ==
+          PumpCalibrationLogic::ChangeStatus::ConfirmationRequired) {
+        JsonDocument response;
+        response["success"] = false;
+        response["code"] = "CONFIRM_LARGE_CALIBRATION_CHANGE";
+        response["candidateMlPerRev"] = mlPerRev;
+        response["changeRatio"] = mlPerRev / oldMlPerRev;
+        response["durationMs"] = elapsedMs;
+        String out;
+        serializeJson(response, out);
+        sendHttpResponse(requestId, 409, out.c_str(),
+                         "large_change_confirmation_required");
+        return;
+      }
+      if (changeStatus != PumpCalibrationLogic::ChangeStatus::Accepted) {
+        sendHttpResponse(requestId, 422, "", "calibration_change_out_of_range");
+        return;
+      }
+    }
+
+    if (elapsedMs == 0) {
+      sendHttpResponse(requestId, 409, "", "measurement_duration_invalid");
+      return;
+    }
+
     g_settings.pumpCal.mlPerRevolution = mlPerRev;
     if (!NVSManager::saveSettings(g_settings)) {
+      g_settings.pumpCal.mlPerRevolution = oldMlPerRev;
       sendHttpResponse(requestId, 500, "", "save_failed");
       return;
     }
     Pump::setCalibration(mlPerRev);
 
-    const uint32_t elapsedMs =
-        (snapshot.stoppedAtMs > snapshot.startedAtMs)
-            ? (snapshot.stoppedAtMs - snapshot.startedAtMs)
-            : 30000;
     const float elapsedSec = elapsedMs / 1000.0f;
     const float calibrationFactor =
         elapsedSec > 0.0f ? (volume / elapsedSec) : 0.0f;
+
+    Logger::logf(
+        0, "pump cal committed: method=%s phase=%u durationMs=%lu speed=%.1f volume=%.1f old=%.4f new=%.4f steps %lu->%lu",
+        requestedMethod, static_cast<unsigned>(snapshot.phase),
+        static_cast<unsigned long>(elapsedMs),
+        static_cast<double>(snapshot.speedMlH), static_cast<double>(volume),
+        static_cast<double>(oldMlPerRev), static_cast<double>(mlPerRev),
+        static_cast<unsigned long>(snapshot.startSteps),
+        static_cast<unsigned long>(snapshot.stopSteps));
 
     PumpCalibrationSession::complete();
 
     JsonDocument doc;
     doc["success"] = true;
     doc["mlPerRev"] = mlPerRev;
+    doc["oldMlPerRev"] = oldMlPerRev;
     doc["calibrationFactor"] = calibrationFactor;
+    doc["method"] = requestedMethod;
+    doc["phase"] = static_cast<uint8_t>(snapshot.phase);
+    doc["durationMs"] = elapsedMs;
+    doc["speedMlH"] = snapshot.speedMlH;
+    doc["measuredVolumeMl"] = volume;
+    doc["startSteps"] = snapshot.startSteps;
+    doc["stopSteps"] = snapshot.stopSteps;
     String out;
     serializeJson(doc, out);
     sendHttpResponse(requestId, 200, out);
@@ -2417,15 +2905,31 @@ static void handleHttpRequest(JsonDocument& req) {
   }
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/pump/stop") == 0) {
+    bool directOutputStop = false;
+    PowerCommandGateway::Command outputCommand;
     if (PumpCalibrationSession::getSnapshot().phase !=
         PumpCalibrationSession::Phase::IDLE) {
       PumpCalibrationSession::cancel();
     } else {
-      PowerCommandGateway::setPumpSpeed(
+      directOutputStop = true;
+      outputCommand = PowerCommandGateway::setPumpSpeed(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0.0f);
     }
     JsonDocument doc;
+    if (directOutputStop) {
+      doc["running"] = false;
+      sendOutputCommandHttpResponse(requestId, outputCommand, doc);
+      return;
+    }
+    if (PumpCalibrationSession::isStopPending() || Pump::isRunning()) {
+      doc["accepted"] = true;
+      doc["status"] = "stopping";
+      String out;
+      serializeJson(doc, out);
+      sendHttpResponse(requestId, 202, out);
+      return;
+    }
     doc["success"] = true;
     doc["running"] = Pump::isRunning();
     String out;
@@ -2435,59 +2939,51 @@ static void handleHttpRequest(JsonDocument& req) {
   }
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/process/stop") == 0) {
-    FSM::stopMode(g_state);
-    sendHttpResponse(requestId, 200, "{\"success\":true}");
+    enqueueProcessCommand(ControlCommandQueue::Type::Stop);
     return;
   }
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/process/pause") == 0) {
-    FSM::pause(g_state);
-    ControlV2::updateRuntime(g_state, g_settings);
-    sendHttpResponse(requestId, 200, "{\"success\":true}");
+    enqueueProcessCommand(ControlCommandQueue::Type::Pause);
     return;
   }
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/process/resume") == 0) {
-    FSM::resume(g_state);
-    ControlV2::updateRuntime(g_state, g_settings);
-    sendHttpResponse(requestId, 200, "{\"success\":true}");
+    enqueueProcessCommand(ControlCommandQueue::Type::Resume);
     return;
   }
-  if (strcmp(method, "POST") == 0 && strcmp(path, "/api/safety/ack") == 0) {
-    Safety::acknowledge(g_state);
-    ControlV2::updateRuntime(g_state, g_settings);
-
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["message"] = "Alarm acknowledged";
-    fillAlarmJson(doc["alarm"].to<JsonObject>(), g_state, g_settings);
-    fillSafetyActionV2Json(doc["v2"].to<JsonObject>(),
-                           ControlV2::getLatestModeStatus(),
-                           ControlV2::getLatestMetricsSnapshot());
-
+  if (strcmp(method, "GET") == 0 &&
+      strcmp(path, "/api/process/command-status") == 0) {
+    String rawId;
+    if (!getQueryParam("commandId", rawId) || rawId.toInt() <= 0) {
+      sendHttpResponse(requestId, 400, "", "command_id_required");
+      return;
+    }
+    ControlCommandQueue::Status status = ControlCommandQueue::Status::Unknown;
+    if (!ControlCommandQueue::getStatus(ControlCommandQueue::Source::Cloud,
+                                         static_cast<uint32_t>(rawId.toInt()),
+                                         status)) {
+      sendHttpResponse(requestId, 404, "", "command_result_not_found");
+      return;
+    }
+    JsonDocument response;
+    response["success"] = true;
+    response["accepted"] = status == ControlCommandQueue::Status::Queued ||
+                            status == ControlCommandQueue::Status::Processing ||
+                            status == ControlCommandQueue::Status::Applied;
+    response["applied"] = status == ControlCommandQueue::Status::Applied;
+    response["queued"] = status == ControlCommandQueue::Status::Queued;
+    response["commandId"] = static_cast<uint32_t>(rawId.toInt());
+    response["status"] = ControlCommandQueue::statusToken(status);
     String out;
-    serializeJson(doc, out);
+    serializeJson(response, out);
     sendHttpResponse(requestId, 200, out);
     return;
   }
+  if (strcmp(method, "POST") == 0 && strcmp(path, "/api/safety/ack") == 0) {
+    enqueueProcessCommand(ControlCommandQueue::Type::AcknowledgeSafety);
+    return;
+  }
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/safety/reset") == 0) {
-    char reason[128] = "";
-    const bool ok = Safety::reset(g_state, g_settings, reason, sizeof(reason));
-    ControlV2::updateRuntime(g_state, g_settings);
-
-    JsonDocument doc;
-    doc["success"] = ok;
-    doc["message"] = ok ? "Safety alarm reset" : "Safety reset rejected";
-    if (!ok) {
-      doc["reason"] = reason;
-    }
-    fillAlarmJson(doc["alarm"].to<JsonObject>(), g_state, g_settings);
-    fillSafetyActionV2Json(doc["v2"].to<JsonObject>(),
-                           ControlV2::getLatestModeStatus(),
-                           ControlV2::getLatestMetricsSnapshot());
-
-    String out;
-    serializeJson(doc, out);
-    sendHttpResponse(requestId, ok ? 200 : 409, out,
-                     ok ? nullptr : "unsafe_state");
+    enqueueProcessCommand(ControlCommandQueue::Type::ResetSafety);
     return;
   }
 
@@ -2504,9 +3000,9 @@ static void handleHttpRequest(JsonDocument& req) {
 
     const bool allowDemoSensorFailure =
         g_settings.demoMode &&
-        g_state.currentAlarm.type == AlarmType::SENSOR_FAILURE;
-    const bool safetyBlocked = Safety::isLatched(g_state) && !allowDemoSensorFailure;
-    const bool modeBlocked = g_state.mode != Mode::IDLE;
+        stateSnapshot.currentAlarm.type == AlarmType::SENSOR_FAILURE;
+    const bool safetyBlocked = Safety::isLatched(stateSnapshot) && !allowDemoSensorFailure;
+    const bool modeBlocked = stateSnapshot.mode != Mode::IDLE;
 
     JsonDocument doc;
     doc["success"] = true;
@@ -2573,13 +3069,13 @@ static void handleHttpRequest(JsonDocument& req) {
 
     const bool allowDemoSensorFailure =
         g_settings.demoMode &&
-        g_state.currentAlarm.type == AlarmType::SENSOR_FAILURE;
-    if (Safety::isLatched(g_state) && !allowDemoSensorFailure) {
+        stateSnapshot.currentAlarm.type == AlarmType::SENSOR_FAILURE;
+    if (Safety::isLatched(stateSnapshot) && !allowDemoSensorFailure) {
       JsonDocument doc;
       doc["success"] = false;
       doc["message"] =
           "Safety alarm is latched. Reset the alarm before starting.";
-      fillAlarmJson(doc["alarm"].to<JsonObject>(), g_state, g_settings);
+      fillAlarmJson(doc["alarm"].to<JsonObject>(), stateSnapshot, g_settings);
       String out;
       serializeJson(doc, out);
       sendHttpResponse(requestId, 409, out, "safety_latched");
@@ -2587,8 +3083,8 @@ static void handleHttpRequest(JsonDocument& req) {
     }
 
     const bool sensorsOk =
-        g_state.health.tempSensorsTotal > 0 && g_state.health.tempSensorsOk;
-    if (g_state.mode != Mode::IDLE) {
+        stateSnapshot.health.tempSensorsTotal > 0 && stateSnapshot.health.tempSensorsOk;
+    if (stateSnapshot.mode != Mode::IDLE) {
       sendHttpResponse(requestId, 409, "", "process_already_active");
       return;
     }
@@ -2598,6 +3094,8 @@ static void handleHttpRequest(JsonDocument& req) {
       applyBoosterStartOverride(params, g_settings);
     }
 
+    ControlCommandQueue::StartRequest startRequest;
+    startRequest.mode = mode;
     if (mode == Mode::RECTIFICATION) {
       if (!params.isNull()) {
         if (!params["feedstock"].isNull()) {
@@ -2685,7 +3183,6 @@ static void handleHttpRequest(JsonDocument& req) {
         }
         normalizeRectFractions(g_settings.rectParams);
       }
-      FSM::startMode(g_state, g_settings, mode);
     } else if (mode == Mode::DISTILLATION) {
       const float speed = EditableFields::normalize(
           EditableFields::Id::DIST_SPEED_ML_H, params["speed"] | 500.0f);
@@ -2711,9 +3208,19 @@ static void handleHttpRequest(JsonDocument& req) {
         powerWatts = static_cast<uint16_t>(
             (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
       }
-      FSM::Distillation::setParams(speed, headsVol, targetVol, endTemp);
-      FSM::Distillation::setPowerWatts(powerWatts);
-      FSM::startMode(g_state, g_settings, mode);
+      startRequest.payloadKind = ControlCommandQueue::PayloadKind::Distillation;
+      startRequest.distillationUi = g_settings.distillationUi;
+      startRequest.distillationUi.speedMlH = speed;
+      startRequest.distillationUi.headsVolumeMl = headsVol;
+      startRequest.distillationUi.targetVolumeMl = targetVol;
+      startRequest.distillationUi.endTempC = endTemp;
+      startRequest.distillationUi.powerW = powerWatts;
+      startRequest.distillationUi.powerPercent =
+          heaterMaxW > 0
+              ? (100.0f * static_cast<float>(powerWatts)) /
+                    static_cast<float>(heaterMaxW)
+              : 0.0f;
+      startRequest.fractionProgram = g_settings.fractionProgram;
     } else if (mode == Mode::MASHING) {
       static MashProfile runtimeProfile;
       memset(&runtimeProfile, 0, sizeof(runtimeProfile));
@@ -2768,7 +3275,8 @@ static void handleHttpRequest(JsonDocument& req) {
         strncpy(runtimeProfile.steps[4].name, "Mash out",
                 sizeof(runtimeProfile.steps[4].name) - 1);
       }
-      FSM::Mashing::start(g_state, &runtimeProfile);
+      startRequest.payloadKind = ControlCommandQueue::PayloadKind::Mashing;
+      startRequest.mashProfile = runtimeProfile;
     } else if (mode == Mode::HOLD) {
       static TempStep runtimeSteps[10];
       uint8_t count = 0;
@@ -2788,7 +3296,9 @@ static void handleHttpRequest(JsonDocument& req) {
         runtimeSteps[0].useCooling = false;
         count = 1;
       }
-      FSM::Hold::start(g_state, runtimeSteps, count);
+      startRequest.payloadKind = ControlCommandQueue::PayloadKind::Hold;
+      startRequest.holdStepCount = count;
+      memcpy(startRequest.holdSteps, runtimeSteps, sizeof(TempStep) * count);
     } else {
       if (mode == Mode::NBK && !params.isNull()) {
         if (!params["powerW"].isNull()) {
@@ -2816,18 +3326,13 @@ static void handleHttpRequest(JsonDocument& req) {
           g_settings.fermentation.useHeater = params["useHeater"].as<bool>();
         }
       }
-      FSM::startMode(g_state, g_settings, mode);
     }
 
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["message"] = "Process started";
-    if (!sensorsOk) {
-      doc["warning"] = "No temperature sensors detected";
+    uint32_t commandId = 0;
+    if (body["commandId"].is<uint32_t>()) {
+      commandId = body["commandId"].as<uint32_t>();
     }
-    String out;
-    serializeJson(doc, out);
-    sendHttpResponse(requestId, 200, out);
+    enqueueStartCommand(startRequest, commandId);
     return;
   }
 
@@ -2848,7 +3353,8 @@ static void handleHttpRequest(JsonDocument& req) {
       powerWatts = static_cast<uint16_t>(
           (static_cast<uint32_t>(heaterMaxW) * powerPercent) / 100U);
     }
-    PowerCommandGateway::setHeaterPowerWatts(
+    const PowerCommandGateway::Command outputCommand =
+        PowerCommandGateway::setHeaterPowerWatts(
         PowerCommandGateway::Owner::MANUAL,
         PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, powerWatts);
 
@@ -2861,9 +3367,7 @@ static void handleHttpRequest(JsonDocument& req) {
                                      heaterMaxW / 2U) /
                                     heaterMaxW)
                               : 0;
-    String out;
-    serializeJson(doc, out);
-    sendHttpResponse(requestId, 200, out);
+    sendOutputCommandHttpResponse(requestId, outputCommand, doc);
     return;
   }
 
@@ -2889,14 +3393,17 @@ static void handleHttpRequest(JsonDocument& req) {
     }
     if (powerWatts < -1) powerWatts = -1;
     if (powerWatts > heaterMaxW) powerWatts = heaterMaxW;
-    WattControl::setOverrideWatts(static_cast<int16_t>(powerWatts));
-
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["powerW"] = powerWatts;
-    String out;
-    serializeJson(doc, out);
-    sendHttpResponse(requestId, 200, out);
+    uint32_t commandId = 0;
+    ControlCommandQueue::Status status = ControlCommandQueue::Status::Unknown;
+    const auto result = ControlCommandQueue::enqueueAction(
+        ControlCommandQueue::Type::SetHeaterOverride,
+        ControlCommandQueue::Source::Cloud, 0,
+        static_cast<float>(powerWatts), 0,
+        ControlCommandQueue::Reason::OperatorRequest, &commandId, &status);
+    JsonDocument response;
+    response["powerW"] = powerWatts;
+    sendQueuedControlCommandHttpResponse(requestId, result, commandId, status,
+                                         response);
     return;
   }
 
@@ -2906,74 +3413,87 @@ static void handleHttpRequest(JsonDocument& req) {
 
     const float speed = body["speed"] | 0.0f;
     if (speed <= 0.0f) {
-      PowerCommandGateway::setPumpSpeed(
+      const PowerCommandGateway::Command outputCommand =
+          PowerCommandGateway::setPumpSpeed(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0.0f);
-      sendHttpResponse(requestId, 200, "{\"success\":true,\"running\":false}");
+      JsonDocument doc;
+      doc["running"] = false;
+      sendOutputCommandHttpResponse(requestId, outputCommand, doc);
       return;
     }
 
-    PowerCommandGateway::setPumpSpeed(
+    const PowerCommandGateway::Command outputCommand =
+        PowerCommandGateway::setPumpSpeed(
         PowerCommandGateway::Owner::MANUAL,
         PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, speed);
     JsonDocument doc;
     doc["success"] = true;
     doc["running"] = true;
     doc["speed"] = speed;
-    String out;
-    serializeJson(doc, out);
-    sendHttpResponse(requestId, 200, out);
+    sendOutputCommandHttpResponse(requestId, outputCommand, doc);
     return;
   }
 
   if (strcmp(method, "POST") == 0 && strcmp(path, "/api/manual/valves") == 0) {
     JsonDocument body;
     if (!decodeBody(body)) return;
+    PowerCommandGateway::Command outputCommands[4];
+    uint8_t outputCommandCount = 0;
 
     if (body["allOff"] | false) {
-      PowerCommandGateway::setValve(
+      outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
           PowerCommandGateway::Valve::WATER, false);
-      PowerCommandGateway::setValve(
+      outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
           PowerCommandGateway::Valve::HEADS, false);
-      PowerCommandGateway::setValve(
+      outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
           PowerCommandGateway::Valve::UNO, false);
-      PowerCommandGateway::setCoolingPwm(
+      outputCommands[outputCommandCount++] = PowerCommandGateway::setCoolingPwm(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT, 0);
-      sendHttpResponse(requestId, 200, "{\"success\":true}");
+      JsonDocument response;
+      sendOutputCommandBatchHttpResponse(requestId, outputCommands,
+                                         outputCommandCount, response);
       return;
     }
     if (!body["water"].isNull()) {
-      PowerCommandGateway::setValve(
+      outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
           PowerCommandGateway::Valve::WATER, body["water"].as<bool>());
     }
     if (!body["heads"].isNull()) {
-      PowerCommandGateway::setValve(
+      outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
           PowerCommandGateway::Valve::HEADS, body["heads"].as<bool>());
     }
     if (!body["uno"].isNull()) {
-      PowerCommandGateway::setValve(
+      outputCommands[outputCommandCount++] = PowerCommandGateway::setValve(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
           PowerCommandGateway::Valve::UNO, body["uno"].as<bool>());
     }
     if (!body["startStopDuty"].isNull()) {
-      PowerCommandGateway::setCoolingPwm(
+      outputCommands[outputCommandCount++] = PowerCommandGateway::setCoolingPwm(
           PowerCommandGateway::Owner::MANUAL,
           PowerCommandGateway::Reason::TFT_MANUAL_OUTPUT,
           clampU8Range(body["startStopDuty"].as<uint32_t>(), 0, 255));
     }
-    sendHttpResponse(requestId, 200, "{\"success\":true}");
+    if (outputCommandCount == 0) {
+      sendHttpResponse(requestId, 400, "{\"success\":false}",
+                       "no_output_command");
+      return;
+    }
+    JsonDocument response;
+    sendOutputCommandBatchHttpResponse(requestId, outputCommands,
+                                       outputCommandCount, response);
     return;
   }
 
@@ -2981,42 +3501,29 @@ static void handleHttpRequest(JsonDocument& req) {
     JsonDocument body;
     if (!decodeBody(body)) return;
 
-    bool changed = false;
+    uint8_t fieldMask = 0;
+    float headsMl = 0.0f;
+    float bodyMl = 0.0f;
+    float tailsMl = 0.0f;
     if (!body["heads"].isNull()) {
-      const float v = body["heads"].as<float>();
-      g_state.stats.headsVolume = v < 0.0f ? 0.0f : v;
-      changed = true;
+      headsMl = body["heads"].as<float>();
+      fieldMask |= 0x01U;
     }
     if (!body["body"].isNull()) {
-      const float v = body["body"].as<float>();
-      g_state.stats.bodyVolume = v < 0.0f ? 0.0f : v;
-      changed = true;
+      bodyMl = body["body"].as<float>();
+      fieldMask |= 0x02U;
     }
     if (!body["tails"].isNull()) {
-      const float v = body["tails"].as<float>();
-      g_state.stats.tailsVolume = v < 0.0f ? 0.0f : v;
-      changed = true;
+      tailsMl = body["tails"].as<float>();
+      fieldMask |= 0x04U;
     }
-    if (!changed) {
+    if (fieldMask == 0) {
       sendHttpResponse(requestId, 400, "", "at_least_one_field_required");
       return;
     }
-
-    if (body["syncTotal"] | true) {
-      g_state.pump.totalVolumeMl = g_state.stats.headsVolume +
-                                   g_state.stats.bodyVolume +
-                                   g_state.stats.tailsVolume;
-    }
-
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["heads"] = g_state.stats.headsVolume;
-    doc["body"] = g_state.stats.bodyVolume;
-    doc["tails"] = g_state.stats.tailsVolume;
-    doc["totalMl"] = g_state.pump.totalVolumeMl;
-    String out;
-    serializeJson(doc, out);
-    sendHttpResponse(requestId, 200, out);
+    const uint32_t commandId = body["commandId"] | 0U;
+    enqueueVolumesCommand(fieldMask, headsMl, bodyMl, tailsMl,
+                          body["syncTotal"] | true, commandId);
     return;
   }
 

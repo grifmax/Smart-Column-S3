@@ -168,9 +168,23 @@ function mergeEquipmentState(s, data) {
         'boosterHeaterStopCubeTempC',
         'booster_heater_stop_cube_temp_c'
     ]);
-    assign('coolingPwmMinDuty', ['coolingPwmMinDuty', 'cooling_pwm_min_duty']);
-    assign('coolingPwmMaxDuty', ['coolingPwmMaxDuty', 'cooling_pwm_max_duty']);
-    assign('coolingPwmStartupDuty', ['coolingPwmStartupDuty', 'cooling_pwm_startup_duty']);
+    const reportedHoldPercent = sources
+        .map((source) => readFiniteCandidate(source, [
+            'coolingPwmHoldPercent',
+            'cooling_pwm_hold_percent'
+        ]))
+        .find((value) => value !== undefined);
+    if (reportedHoldPercent !== undefined) {
+        s.equipment.coolingPwmHoldPercent = reportedHoldPercent;
+    } else {
+        for (const source of sources) {
+            const legacyDuty = Number(source.coolingPwmStartupDuty ?? source.cooling_pwm_startup_duty);
+            if (!Number.isFinite(legacyDuty)) continue;
+            s.equipment.coolingPwmHoldPercent = Math.max(5, Math.min(100, Math.round(legacyDuty * 100 / 255)));
+            break;
+        }
+    }
+    assign('coolingPwmPullMs', ['coolingPwmPullMs', 'cooling_pwm_pull_ms']);
     assign('coolingPwmCurrentDuty', ['coolingPwmCurrentDuty', 'cooling_pwm_current_duty']);
     assign('ds2482Address', ['ds2482Address']);
     assign('tempBusGpioPin', ['tempBusGpioPin']);

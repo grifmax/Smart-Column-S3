@@ -3,6 +3,7 @@
  */
 
 #include "profiles.h"
+#include "control/state_snapshot.h"
 #include "drivers/sensors.h"
 #include "history.h"
 #include "interface/webserver_shared.h"
@@ -759,7 +760,11 @@ void fillDefaultMashingSteps(MashingParams& mashing) {
 }
 
 float getCurrentAtmosphereMmHg() {
-    const float atmosphereHpa = g_state.pressure.atmosphere;
+    SystemState state;
+    if (!StateSnapshot::read(state)) {
+        return 0.0f;
+    }
+    const float atmosphereHpa = state.pressure.atmosphere;
     if (atmosphereHpa < 850.0f || atmosphereHpa > 1100.0f) {
         return 0.0f;
     }
@@ -767,6 +772,8 @@ float getCurrentAtmosphereMmHg() {
 }
 
 String buildValidationEquipmentSnapshotJson() {
+    SystemState state;
+    const bool stateAvailable = StateSnapshot::read(state);
     JsonDocument doc;
     doc["heaterPowerW"] = g_settings.equipment.heaterPowerW;
     doc["columnHeightMm"] = g_settings.equipment.columnHeightMm;
@@ -778,9 +785,9 @@ String buildValidationEquipmentSnapshotJson() {
     doc["boosterHeaterStopCubeTempC"] =
         g_settings.equipment.boosterHeaterStopCubeTempC;
     doc["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
-    doc["coolingPwmMinDuty"] = g_settings.equipment.coolingPwmMinDuty;
-    doc["coolingPwmMaxDuty"] = g_settings.equipment.coolingPwmMaxDuty;
-    doc["coolingPwmStartupDuty"] = g_settings.equipment.coolingPwmStartupDuty;
+    doc["coolingPwmHoldPercent"] =
+        g_settings.equipment.coolingPwmHoldPercent;
+    doc["coolingPwmPullMs"] = g_settings.equipment.coolingPwmPullMs;
     doc["useDs2482ForTemps"] = g_settings.equipment.useDs2482ForTemps;
     doc["ds2482Address"] = g_settings.equipment.ds2482Address;
     doc["tempBusGpioPin"] = PIN_ONEWIRE;
@@ -810,7 +817,10 @@ String buildValidationEquipmentSnapshotJson() {
     fillEquipmentModulesJson(modules);
 
     JsonObject safetyChannels = doc["safetyChannels"].to<JsonObject>();
-    fillSafetyChannelsJson(safetyChannels);
+    safetyChannels["snapshotAvailable"] = stateAvailable;
+    if (stateAvailable) {
+        fillSafetyChannelsJson(safetyChannels, state);
+    }
 
     String json;
     serializeJson(doc, json);
@@ -823,7 +833,9 @@ ProfileValidationSnapshot buildValidationSnapshot(const ProcessHistory& history)
                                ? history.metadata.endTime
                                : history.metadata.startTime;
     snapshot.sourceProcessId = history.id;
-    snapshot.atmosphereHpa = g_state.pressure.atmosphere;
+    SystemState state;
+    snapshot.atmosphereHpa =
+        StateSnapshot::read(state) ? state.pressure.atmosphere : 0.0f;
     snapshot.atmosphereMmHg = hpaToMmHg(snapshot.atmosphereHpa);
     snapshot.columnHeightMm = g_settings.equipment.columnHeightMm;
     snapshot.packingType = packingTypeToString(g_settings.equipment.packingType);
