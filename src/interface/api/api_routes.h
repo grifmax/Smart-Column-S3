@@ -34,3 +34,4 @@ void registerSafetyApiRoutes(AsyncWebServer &server);
 void registerSettingsApiRoutes(AsyncWebServer &server);
 void registerStatusApiRoutes(AsyncWebServer &server);
 void registerTestingApiRoutes(AsyncWebServer &server);
+void registerWaterTestApiRoutes(AsyncWebServer &server);

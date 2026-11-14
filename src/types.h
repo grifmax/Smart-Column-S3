@@ -8,6 +8,8 @@
 
 #include <Arduino.h>
 
+#include "control/water_test_logic.h"
+
 // Режимы работы
 enum class Mode : uint8_t {
   IDLE = 0,
@@ -18,7 +20,37 @@ enum class Mode : uint8_t {
   HOLD,       // Температурные ступени (Hold режим)
   NBK,        // Непрерывная бражная колонна
   FERMENTATION, // Ферментация (брожение)
-  AUTOCLAVE
+  AUTOCLAVE,
+  WATER_TEST  // Обкатка на воде: сценарий проверки узлов и защит
+};
+
+struct WaterTestState {
+  bool active = false;
+  WaterTestStep step = WaterTestStep::IDLE;
+  uint32_t stepStartedMs = 0;
+  uint32_t startedMs = 0;
+  bool waitingForOperator = false;   // Ждём замер/подтверждение от оператора
+  float measuredValue = 0.0f;        // Введённый оператором замер (мл)
+  bool injectionActive = false;
+  uint32_t injectionStartedMs = 0;
+  // Накопители по шагам
+  float heaterPowerAtFullW = 0.0f;
+  float heaterPowerAtLowW = 0.0f;
+  float heatRateCPerMin = 0.0f;
+  uint32_t zeroCrossAtFull = 0;
+  float coolingFlowLpm = 0.0f;
+  float coolingDeltaTC = 0.0f;
+  float coolingCapacityW = 0.0f;
+  float pressureAtLowW = 0.0f;
+  float pressureAtMidW = 0.0f;
+  float pressureAtFullW = 0.0f;
+  float suggestedPackingCoeff = 0.0f;
+  float commandedVolumeMl = 0.0f;
+  uint32_t checksPass = 0;
+  uint32_t checksWarn = 0;
+  uint32_t checksFail = 0;
+  uint32_t checksSkip = 0;
+  char lastError[64] = "";
 };
 
 // Фазы ректификации
@@ -484,6 +516,17 @@ struct AutoclaveRuntimeState {
   char faultReason[96] = {};
 };
 
+// Датчик потока воды (YF-S201) — объявлен до SystemState, т.к. входит в него
+struct WaterFlow {
+  float flowRate = 0.0f;     // л/мин
+  float litersPerMin = 0.0f; // Алиас
+  float totalVolume = 0.0f;  // л
+  float totalLiters = 0.0f;  // Алиас
+  bool flowing = false;      // Вода течёт
+  uint32_t lastPulse = 0;    // Время последнего импульса
+  bool ok = false;
+};
+
 // Состояние системы (полная версия)
 struct SystemState {
   Mode mode = Mode::IDLE;
@@ -512,6 +555,7 @@ struct SystemState {
   VaporSensorData vaporPrimary;
   VaporSensorData vaporSecondary;
   PowerData power;
+  WaterFlow waterFlow;
 
   SystemHealth health;
   PumpState pump;
@@ -528,6 +572,7 @@ struct SystemState {
   FermentationPhase fermPhase = FermentationPhase::IDLE;
   AutoclaveRuntimeState autoclave;
   FractionProgramRuntime fractionProgram;
+  WaterTestState waterTest;
 };
 
 // Структуры настроек (именованные для typedef)
@@ -934,15 +979,7 @@ typedef HydrometerData Hydrometer;
 typedef PowerData Power;
 
 // Дополнительные типы для драйверов
-struct WaterFlow {
-  float flowRate = 0.0f;     // л/мин
-  float litersPerMin = 0.0f; // Алиас
-  float totalVolume = 0.0f;  // л
-  float totalLiters = 0.0f;  // Алиас
-  bool flowing = false;      // Вода течёт
-  uint32_t lastPulse = 0;    // Время последнего импульса
-  bool ok = false;
-};
+// WaterFlow объявлен выше, до SystemState.
 
 // Фракции для фракционатора
 enum class Fraction : uint8_t {

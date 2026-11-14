@@ -5003,6 +5003,8 @@ static const char *getDisplayModeName(Mode mode) {
     return ru ? "Брожение" : "Ferment";
   case Mode::AUTOCLAVE:
     return ru ? "Автоклав" : "Autoclave";
+  case Mode::WATER_TEST:
+    return ru ? "Обкатка" : "Water test";
   case Mode::IDLE:
   default:
     return ru ? "Ожидание" : "Idle";

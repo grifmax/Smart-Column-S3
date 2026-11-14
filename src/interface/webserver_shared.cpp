@@ -4878,6 +4878,7 @@ void init() {
 
   registerPumpApiRoutes(server);
   registerTestingApiRoutes(server);
+  registerWaterTestApiRoutes(server);
   registerEnergyApiRoutes(server);
   registerAiApiRoutes(server);
 

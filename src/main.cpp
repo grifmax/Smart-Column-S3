@@ -598,6 +598,7 @@ void loop() {
     if (now - g_lastPowerRead >= INTERVAL_POWER_READ) {
       g_lastPowerRead = now;
       Sensors::readPower(g_state.power);
+      Sensors::readWaterFlow(g_state.waterFlow);
     }
   }
 

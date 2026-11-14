@@ -11,6 +11,7 @@
 #include "config.h"
 #include "types.h"
 #include "v2/reason_codes.h"
+#include "water_test.h"
 
 namespace ProcessResume {
 struct PersistedSnapshot;

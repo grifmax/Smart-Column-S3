@@ -138,6 +138,15 @@ RequiredSensorsMask buildRequiredSensorsMask(Mode mode, const Settings& settings
             required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
             required.pressure = true;
             break;
+        case Mode::WATER_TEST:
+            // Обкатка на воде проходит настоящие фазы ректификации, поэтому
+            // набор обязательных датчиков тот же: без него тест защит бессмыслен.
+            required.cubeTemp = isInstalledByIndex(equipment, TEMP_CUBE);
+            required.columnBottomTemp = isInstalledByIndex(equipment, TEMP_COLUMN_BOTTOM);
+            required.tsaTemp = isInstalledByIndex(equipment, TEMP_TSA);
+            required.waterOutTemp = isInstalledByIndex(equipment, TEMP_WATER_OUT);
+            required.pressure = settings.rectParams.pressureControlEnabled;
+            break;
         case Mode::IDLE:
         default:
             break;
@@ -190,6 +199,11 @@ bool buildModeTopologySupport(Mode mode, const EquipmentSettings& equipment,
             break;
         case Mode::AUTOCLAVE:
             requireRole(TEMP_CUBE);
+            break;
+        case Mode::WATER_TEST:
+            requireRole(TEMP_CUBE);
+            requireRole(TEMP_COLUMN_BOTTOM);
+            requireRole(TEMP_TSA);
             break;
         case Mode::IDLE:
         default:

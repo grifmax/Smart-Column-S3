@@ -60,6 +60,7 @@ const char* getOperatorStopMessage(Mode mode) {
         case Mode::NBK: return "НБК остановлена оператором";
         case Mode::FERMENTATION: return "Брожение остановлено оператором";
         case Mode::AUTOCLAVE: return "Автоклав остановлен оператором";
+        case Mode::WATER_TEST: return "Обкатка на воде остановлена оператором";
         case Mode::IDLE:
         default:
             return "Процесс остановлен оператором";
@@ -141,6 +142,9 @@ void noteModeExitTransition(const SystemState& state,
 }
 
 void finalizeModeStop(SystemState& state) {
+    if (state.mode == Mode::WATER_TEST) {
+        WaterTest::stop(state);
+    }
     PowerCommandGateway::setHeaterPower(
         PowerCommandGateway::Owner::FSM,
         PowerCommandGateway::Reason::FSM_CONTROL, 0);
@@ -197,6 +201,9 @@ void update(SystemState& state, const Settings& settings) {
                 break;
             case Mode::AUTOCLAVE:
                 Autoclave::update(state, settings);
+                break;
+            case Mode::WATER_TEST:
+                WaterTest::update(state, settings);
                 break;
             default:
                 break;
@@ -318,6 +325,9 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
             break;
         case Mode::AUTOCLAVE:
             Autoclave::start(state, settings);
+            break;
+        case Mode::WATER_TEST:
+            WaterTest::start(state, settings);
             break;
         default: break;
     }
@@ -531,6 +541,7 @@ const char* getModeName(Mode mode) {
         case Mode::NBK: return "НБК";
         case Mode::FERMENTATION: return "Ферментация";
         case Mode::AUTOCLAVE: return "Автоклав";
+        case Mode::WATER_TEST: return "Обкатка (вода)";
         default: return "???";
     }
 }

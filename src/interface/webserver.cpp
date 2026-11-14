@@ -108,6 +108,7 @@ void init() {
   registerCalibrationApiRoutes(server);
   registerPumpApiRoutes(server);
   registerTestingApiRoutes(server);
+  registerWaterTestApiRoutes(server);
   registerEnergyApiRoutes(server);
   registerWifiApiRoutes(server);
   registerOtaApiRoutes(server);

@@ -137,7 +137,7 @@ bool apply(const Command &command, SystemState &state, Settings &settings) {
   case Type::StartMode:
     if (state.mode != Mode::IDLE ||
         command.mode == static_cast<uint8_t>(Mode::IDLE) ||
-        command.mode > static_cast<uint8_t>(Mode::AUTOCLAVE)) {
+        command.mode > static_cast<uint8_t>(Mode::WATER_TEST)) {
       return false;
     }
     return applyStartPayload(command, state, settings);
