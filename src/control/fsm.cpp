@@ -18,7 +18,10 @@
 #include "fraction_program_logic.h"
 #include "autoclave_hardware_profile.h"
 #include "service_test_session.h"
+#include "process_resume.h"
+#include "process_resume_logic.h"
 #include "../storage/logger.h"
+#include <math.h>
 
 namespace FSM {
 
@@ -161,7 +164,9 @@ void finalizeModeStop(SystemState& state) {
     state.paused = false;
     state.fractionProgram = FractionProgramRuntime{};
     state.stirrer.autoMode = false;
+    state.rectResume = RectificationResumeState{};
     pauseStartTime = 0;
+    ProcessResume::clear();
 }
 
 } // namespace
@@ -214,6 +219,8 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
         LOG_W("FSM: Autoclave start rejected: %s", detail);
         return;
     }
+
+    ProcessResume::clear();
     
     // Сброс предыдущего состояния
     PowerCommandGateway::setHeaterPower(
@@ -229,6 +236,7 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
     
     state.mode = mode;
     state.paused = false;
+    state.rectResume = RectificationResumeState{};
     Pump::resetVolume();
     state.stats = ProcessStats{};
 
@@ -315,6 +323,115 @@ void startMode(SystemState& state, const Settings& settings, Mode mode) {
     }
     
     Logger::logf(0, "Mode started: %s", getModeName(mode));
+}
+
+bool resumeRectification(
+    SystemState& state, Settings& settings,
+    const ProcessResume::PersistedSnapshot& snapshot,
+    float extraHeadsTargetMl) {
+    if (state.mode != Mode::IDLE ||
+        Pump::isRunning() ||
+        snapshot.mode != static_cast<uint8_t>(Mode::RECTIFICATION) ||
+        !ProcessResumeLogic::isRecoverableRectificationPhase(snapshot.phase) ||
+        !isfinite(extraHeadsTargetMl) || extraHeadsTargetMl < 0.0f ||
+        extraHeadsTargetMl > 100.0f) {
+        return false;
+    }
+
+    const RectPhase savedPhase = static_cast<RectPhase>(snapshot.phase);
+    const RectPhase savedTargetPhase = snapshot.recoveryActive != 0
+        ? static_cast<RectPhase>(snapshot.recoveryTargetPhase)
+        : savedPhase;
+    if (snapshot.recoveryActive != 0 &&
+        !ProcessResumeLogic::isRecoverableRectificationPhase(
+            snapshot.recoveryTargetPhase)) {
+        return false;
+    }
+    const bool resumeExtraHeads =
+        snapshot.recoveryActive != 0 &&
+        snapshot.recoveryTargetPhase == static_cast<uint8_t>(RectPhase::BODY);
+    if (resumeExtraHeads &&
+        extraHeadsTargetMl < snapshot.recoveryHeadsCollectedMl) {
+        return false;
+    }
+    if (!resumeExtraHeads && savedPhase != RectPhase::BODY &&
+        extraHeadsTargetMl != 0.0f) {
+        return false;
+    }
+    if (!resumeExtraHeads && savedPhase == RectPhase::BODY &&
+        extraHeadsTargetMl > 0.0f &&
+        !ProcessResume::shouldOfferRecoveryHeads(snapshot)) {
+        return false;
+    }
+
+    PowerCommandGateway::setHeaterPower(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, 0);
+    PowerCommandGateway::setHeaterBoosterEnabled(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL, false);
+    RectTakeoff::stop();
+    PowerCommandGateway::stopStirrer(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL);
+    PowerCommandGateway::closeAllValves(
+        PowerCommandGateway::Owner::FSM,
+        PowerCommandGateway::Reason::FSM_CONTROL);
+
+    settings.rectParams = snapshot.rectParams;
+    state.stats.headsVolume = snapshot.headsVolumeMl;
+    state.stats.bodyVolume = snapshot.bodyVolumeMl;
+    state.stats.tailsVolume = snapshot.tailsVolumeMl;
+    Rectification::initSession(state, settings);
+    Rectification::restoreTargets(snapshot.headsTargetMl,
+                                  snapshot.bodyTargetMl,
+                                  snapshot.tailsTargetMl);
+
+    if (!Pump::restoreVolume(snapshot.totalVolumeMl) ||
+        !RectTakeoff::restoreSessionVolume(snapshot.totalVolumeMl)) {
+        return false;
+    }
+
+    state.rectBodyContainerIndex = snapshot.bodyContainerIndex;
+    state.rectBodyContainerLevelReached =
+        snapshot.bodyContainerLevelReached != 0;
+    state.rectHeadsContainerLevelReached =
+        snapshot.headsContainerLevelReached != 0;
+    state.rectBodyContainerChangePending =
+        snapshot.bodyContainerChangePending != 0;
+    state.rectBodyContainerVolumeMl = snapshot.bodyContainerVolumeMl;
+    state.rectBodyContainerStartVolumeMl =
+        snapshot.bodyContainerStartVolumeMl;
+    state.mode = Mode::RECTIFICATION;
+    state.rectPhase = RectPhase::HEATING;
+    state.paused = false;
+    state.rectResume.active = true;
+    state.rectResume.targetPhase = savedTargetPhase;
+    state.rectResume.pauseAfterTarget =
+        snapshot.bodyContainerChangePending != 0 ||
+        (snapshot.paused != 0 && snapshot.bodyContainerLevelReached != 0);
+    state.rectResume.extraHeadsTargetMl =
+        resumeExtraHeads ||
+                (snapshot.recoveryActive == 0 && savedPhase == RectPhase::BODY)
+            ? extraHeadsTargetMl
+            : 0.0f;
+    state.rectResume.extraHeadsCollectedMl =
+        resumeExtraHeads ? snapshot.recoveryHeadsCollectedMl : 0.0f;
+    state.rectResume.headsBeforeRecoveryMl =
+        resumeExtraHeads ? snapshot.recoveryHeadsBaseMl : snapshot.headsVolumeMl;
+    state.pump.totalVolumeMl = snapshot.totalVolumeMl;
+    setPhaseStartTime(millis());
+    setPhaseStartVolumeMl(snapshot.totalVolumeMl);
+    pauseStartTime = 0;
+    ControlV2::notePhaseTransition(
+        Mode::RECTIFICATION, static_cast<uint16_t>(RectPhase::IDLE),
+        static_cast<uint16_t>(RectPhase::HEATING),
+        ControlV2::ReasonCodeV2::RC_MODE_START_REQUEST,
+        "Р РµРєС‚РёС„РёРєР°С†РёСЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅР° РїРѕ РєРѕРјР°РЅРґРµ РѕРїРµСЂР°С‚РѕСЂР°");
+    LOG_I("FSM: Rectification recovery started phase=%u heads=%.1f body=%.1f tails=%.1f",
+          snapshot.phase, snapshot.headsVolumeMl, snapshot.bodyVolumeMl,
+          snapshot.tailsVolumeMl);
+    return true;
 }
 
 void stopMode(SystemState& state) {
@@ -524,9 +641,17 @@ uint8_t getPhaseProgressPercent(const SystemState& state, const Settings& settin
                 return (elapsed >= total) ? 100 : (uint8_t)(elapsed * 100 / total);
             }
             case RectPhase::HEADS: {
-                if (headsTarget <= 0) return 100;
+                const float activeHeadsTarget =
+                    state.rectResume.active &&
+                            state.rectResume.targetPhase == RectPhase::BODY &&
+                            state.rectResume.extraHeadsTargetMl > 0.0f
+                        ? state.rectResume.extraHeadsTargetMl
+                        : headsTarget;
+                if (activeHeadsTarget <= 0) return 100;
                 float current = state.pump.totalVolumeMl - getPhaseStartVolumeMl();
-                return (current >= headsTarget) ? 100 : (uint8_t)(current * 100 / headsTarget);
+                return (current >= activeHeadsTarget)
+                           ? 100
+                           : (uint8_t)(current * 100 / activeHeadsTarget);
             }
             case RectPhase::BODY: {
                 if (bodyTarget <= 0) return 100;

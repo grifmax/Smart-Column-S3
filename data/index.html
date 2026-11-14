@@ -10,7 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.176">
+    <link rel="stylesheet" href="style.css?v=2.4.177">
 <link rel="stylesheet" href="schemes-animation.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2196f3">
@@ -244,7 +244,7 @@
                                                     onclick="zoomScheme(-1)"
                                                     style="width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">-</button>
                                             </div>
-                                            <object data="schemes/column-tesla.svg?v=2.4.176" type="image/svg+xml"
+                                            <object data="schemes/column-tesla.svg?v=2.4.177" type="image/svg+xml"
                                                 class="operator-scheme" id="main-scheme-svg"
                                                 style="transition: transform 0.2s ease-out; transform-origin: center center;"></object>
                                         </div>
@@ -1968,8 +1968,6 @@
                             </div>
                         </div>
                     </div>
-                        </div>
-                    </div>
 
                     <!-- Вкладка: WiFi -->
                     <div id="wifi" class="tab-content">
@@ -3443,8 +3441,6 @@
                         </div>
                     </div><!-- Футер -->
                     <footer style="padding: 10px; text-align: center;">
-                        <p style="font-size: 0.8em; color: var(--text-tertiary);">Smart-Column S3 v<span id="footer-firmware-version">--</span> | ESP32-S3
-                            DevKitC-1 N16R8</p>
                         <div id="memory-stats"
                             style="display: none; margin-top: 10px; font-size: 0.75em; color: var(--text-secondary); line-height: 1.4;">
                             <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
@@ -3899,6 +3895,27 @@
         </div>
     </div>
 
+    <div id="process-resume-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="process-resume-title">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <div class="modal-title" id="process-resume-title">Продолжить прерванную ректификацию</div>
+            </div>
+            <div class="modal-body">
+                <p id="process-resume-summary"></p>
+                <div id="process-resume-heads-group" class="form-group" hidden>
+                    <label for="process-resume-heads-ml">Дополнительные головы после повторной стабилизации, мл</label>
+                    <input type="number" id="process-resume-heads-ml" min="0" max="100" step="1" value="0">
+                    <div id="process-resume-heads-hint" class="form-hint" style="color: var(--text-secondary); font-size: 0.92em;"></div>
+                </div>
+                <p id="process-resume-error" class="form-error" role="alert" style="color: var(--danger, #dc3545);" hidden></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" type="button" id="process-resume-discard">Не продолжать</button>
+                <button class="btn btn-success" type="button" id="process-resume-start">Восстановить прогон</button>
+            </div>
+        </div>
+    </div>
+
     <div id="mobile-diagnostics-modal" class="modal-overlay operator-mobile-diagnostics-modal">
         <div class="modal-content operator-mobile-diagnostics-dialog">
             <div class="modal-header">
@@ -3990,7 +4007,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2.4.176"></script>
+    <script src="app.js?v=2.4.177"></script>
     <script src="manual-rect-integration.js?v=2.4.175"></script>
 </body>
 

@@ -1,10 +1,13 @@
 #include "api_routes.h"
 
 #include <string.h>
+#include <math.h>
 
 #include "config.h"
 #include "control/control_command_queue.h"
 #include "control/fsm.h"
+#include "control/process_resume.h"
+#include "control/process_resume_logic.h"
 #include "control/power_command_gateway.h"
 #include "control/service_test_session.h"
 #include "control/safety.h"
@@ -152,6 +155,136 @@ void sendControlCommandResponse(AsyncWebServerRequest *request,
 } // namespace
 
 void registerProcessApiRoutes(AsyncWebServer &server) {
+  server.on("/api/process/resume-available", HTTP_GET,
+            [](AsyncWebServerRequest *request) {
+              JsonDocument response;
+              ProcessResume::PersistedSnapshot saved;
+              const bool available = ProcessResume::getPending(saved);
+              response["success"] = true;
+              response["available"] = available;
+              if (available) {
+                response["mode"] = "rectification";
+                response["phase"] = getPhaseString(
+                    static_cast<RectPhase>(saved.phase));
+                response["phaseId"] = saved.phase;
+                response["paused"] = saved.paused != 0;
+                JsonObject volumes = response["volumes"].to<JsonObject>();
+                volumes["heads"] = saved.headsVolumeMl;
+                volumes["body"] = saved.bodyVolumeMl;
+                volumes["tails"] = saved.tailsVolumeMl;
+                volumes["total"] = saved.totalVolumeMl;
+                JsonObject recoveryHeads =
+                    response["recoveryHeads"].to<JsonObject>();
+                const bool offered =
+                    ProcessResume::shouldOfferRecoveryHeads(saved);
+                recoveryHeads["offered"] = offered;
+                recoveryHeads["suggestedMl"] = offered
+                    ? ProcessResume::suggestedRecoveryHeadsMl(saved)
+                    : 0.0f;
+                recoveryHeads["selectedTargetMl"] =
+                    saved.recoveryActive != 0
+                        ? saved.recoveryHeadsTargetMl
+                        : offered
+                              ? ProcessResume::suggestedRecoveryHeadsMl(saved)
+                              : 0.0f;
+                recoveryHeads["collectedMl"] =
+                    saved.recoveryActive != 0
+                        ? saved.recoveryHeadsCollectedMl
+                        : 0.0f;
+              }
+              String json;
+              serializeJson(response, json);
+              request->send(200, "application/json", json);
+            });
+
+  server.on(
+      "/api/process/recover", HTTP_POST,
+      [](AsyncWebServerRequest *request) {}, NULL,
+      [](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+         size_t index, size_t total) {
+        if (index != 0 || len != total) return;
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+          return;
+        }
+        if (stateSnapshot.mode != Mode::IDLE || !stateSnapshot.safetyOk ||
+            Safety::isLatched(stateSnapshot) ||
+            ServiceTestSession::blocksProcessResume()) {
+          request->send(409, "application/json",
+                        "{\"success\":false,\"message\":\"Recovery requires an idle controller with safety clear\"}");
+          return;
+        }
+
+        ProcessResume::PersistedSnapshot saved;
+        if (!ProcessResume::getPending(saved)) {
+          request->send(404, "application/json",
+                        "{\"success\":false,\"message\":\"No process snapshot available\"}");
+          return;
+        }
+        JsonDocument doc;
+        const DeserializationError error = deserializeJson(doc, data, len);
+        if (error) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Invalid JSON body\"}");
+          return;
+        }
+        const bool offered = ProcessResume::shouldOfferRecoveryHeads(saved);
+        const float defaultTarget = offered
+            ? (saved.recoveryActive != 0
+                   ? saved.recoveryHeadsTargetMl
+                   : ProcessResume::suggestedRecoveryHeadsMl(saved))
+            : 0.0f;
+        const float targetMl = doc["additionalHeadsMl"].isNull()
+            ? defaultTarget
+            : doc["additionalHeadsMl"].as<float>();
+        if (!isfinite(targetMl) || targetMl < 0.0f || targetMl > 100.0f ||
+            (!offered && targetMl > 0.0f) ||
+            (saved.recoveryActive != 0 &&
+             targetMl < saved.recoveryHeadsCollectedMl)) {
+          request->send(400, "application/json",
+                        "{\"success\":false,\"message\":\"Additional heads must be 0-100 ml and cannot be below the amount already collected\"}");
+          return;
+        }
+
+        uint32_t commandId = requestedCommandId(request);
+        if (doc["commandId"].is<uint32_t>() && commandId == 0) {
+          commandId = doc["commandId"].as<uint32_t>();
+        }
+        ControlCommandQueue::Status status =
+            ControlCommandQueue::Status::Unknown;
+        const auto result = ControlCommandQueue::enqueueAction(
+            ControlCommandQueue::Type::RestoreRectification,
+            ControlCommandQueue::Source::Api, 0, targetMl, commandId,
+            ControlCommandQueue::Reason::OperatorRequest, &commandId, &status);
+        sendControlCommandResponse(request, result, commandId, status);
+      });
+
+  server.on(
+      "/api/process/resume/discard", HTTP_POST,
+      [](AsyncWebServerRequest *request) {
+        SystemState stateSnapshot;
+        if (!StateSnapshot::read(stateSnapshot)) {
+          request->send(503, "application/json",
+                        "{\"success\":false,\"message\":\"State snapshot unavailable\"}");
+          return;
+        }
+        if (stateSnapshot.mode != Mode::IDLE) {
+          request->send(409, "application/json",
+                        "{\"success\":false,\"message\":\"Stop the active process before discarding its snapshot\"}");
+          return;
+        }
+        uint32_t commandId = requestedCommandId(request);
+        ControlCommandQueue::Status status =
+            ControlCommandQueue::Status::Unknown;
+        const auto result = ControlCommandQueue::enqueueAction(
+            ControlCommandQueue::Type::DiscardRectificationResume,
+            ControlCommandQueue::Source::Api, 0, 0.0f, commandId,
+            ControlCommandQueue::Reason::OperatorRequest, &commandId, &status);
+        sendControlCommandResponse(request, result, commandId, status);
+      });
+
   server.on(
       "/api/process/preflight", HTTP_POST,
       [](AsyncWebServerRequest *request) {}, NULL,

@@ -8,6 +8,7 @@
 namespace RectTakeoff {
 
 void beginSession(const Settings& settings);
+bool restoreSessionVolume(float totalMl);
 void apply(const RectTakeoffCommand& command);
 void stop();
 RectTakeoffFeedback getFeedback();

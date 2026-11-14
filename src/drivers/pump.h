@@ -94,6 +94,7 @@ namespace Pump {
      * Сброс счётчика объёма
      */
     void resetVolume();
+    bool restoreVolume(float totalMl);
     
     /**
      * Установка калибровки

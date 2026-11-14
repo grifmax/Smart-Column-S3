@@ -41,6 +41,7 @@ import { showCreateProfileModal, showEditProfileModal, showDuplicateProfileModal
 import { exportProfile, exportAllProfiles, showImportModal, closeImportModal, doImportProfiles } from './profiles/import-export.js';
 import { loadProfilesList } from './profiles/list.js';
 import { renderAbvValue } from './runtime/abv.js';
+import { checkPendingProcessResume, initProcessResumeModal } from './runtime/process-resume-modal.js';
 import { openRuntimeEditModal, closeRuntimeEditModal, submitRuntimeEditModal, onRuntimeEditUnitToggle } from './runtime/edit-modal.js';
 import { toggleDemoMode, rebootController } from './settings/demo.js';
 import { saveEquipment, saveStirrerSettings, loadEquipmentSettings, initEquipmentSettingsUi, addCubeExtenderVolume } from './settings/equipment.js';
@@ -347,6 +348,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     initMashingHoldControls();
     initRectificationStartModal();
+    initProcessResumeModal();
     initManualRectSettings();
     await initControlModePanel();
 
@@ -380,6 +382,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     const cloudMode = await detectCloudProxyMode();
     setIsCloudProxyMode(cloudMode);
     setCloudOnlyUiVisible(cloudMode);
+
+    if (!cloudMode) checkPendingProcessResume();
 
     if (cloudMode) {
         loadUserInfo();

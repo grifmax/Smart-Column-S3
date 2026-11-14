@@ -402,6 +402,17 @@ struct ProcessStats {
   float tailsVolume = 0.0f;
 };
 
+// Runtime only. A resume snapshot persists the fields needed to rebuild this
+// state after a reboot; no output state is ever restored.
+struct RectificationResumeState {
+  bool active = false;
+  RectPhase targetPhase = RectPhase::IDLE;
+  bool pauseAfterTarget = false;
+  float extraHeadsTargetMl = 0.0f;
+  float extraHeadsCollectedMl = 0.0f;
+  float headsBeforeRecoveryMl = 0.0f;
+};
+
 // Шаг температурной программы (Hold)
 struct TempStep {
   float temperature = 0.0f;
@@ -507,6 +518,7 @@ struct SystemState {
   StirrerState stirrer;
   CurrentAlarm currentAlarm;
   ProcessStats stats;
+  RectificationResumeState rectResume;
   
   // Состояния режимов
   MashingState mashing;

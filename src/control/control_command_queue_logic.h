@@ -10,6 +10,8 @@ enum class Type : uint8_t {
   Stop,
   Pause,
   Resume,
+  RestoreRectification,
+  DiscardRectificationResume,
   NextFraction,
   AdvanceFractionProgram,
   ConfirmFractionProgram,

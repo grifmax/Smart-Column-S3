@@ -11,6 +11,10 @@
 #include "config.h"
 #include "types.h"
 
+namespace ProcessResume {
+struct PersistedSnapshot;
+}
+
 namespace NVSManager {
     /**
      * Инициализация NVS
@@ -56,6 +60,9 @@ namespace NVSManager {
     
     bool loadPumpCalibration(PumpCalibration& cal);
     bool savePumpCalibration(const PumpCalibration& cal);
+    bool loadProcessResumeSlot(uint8_t slot, ProcessResume::PersistedSnapshot& out);
+    bool saveProcessResumeSlot(uint8_t slot, const ProcessResume::PersistedSnapshot& snapshot);
+    void clearProcessResumeSlots();
 
     // PowerCalibration removed - not used in new architecture
     // bool loadPowerCalibration(PowerCalibration& cal);

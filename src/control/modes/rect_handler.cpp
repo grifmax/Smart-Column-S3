@@ -1,4 +1,5 @@
 #include "../fsm_utils.h"
+#include "../fsm.h"
 #include "../rect_takeoff.h"
 #include "../rect_takeoff_logic.h"
 #include "../power_command_gateway.h"
@@ -366,6 +367,16 @@ void getTargets(float& heads, float& body, float& tails) {
     tails = tailsTargetMl;
 }
 
+void restoreTargets(float heads, float body, float tails) {
+    if (!isfinite(heads) || !isfinite(body) || !isfinite(tails) ||
+        heads < 0.0f || body < 0.0f || tails < 0.0f) {
+        return;
+    }
+    headsTargetMl = heads;
+    bodyTargetMl = body;
+    tailsTargetMl = tails;
+}
+
 void initSession(SystemState& state, const Settings& settings) {
     headsTargetMl = 0.0f;
     bodyTargetMl = 0.0f;
@@ -457,16 +468,78 @@ void update(SystemState& state, const Settings& settings) {
             if (pressureEmergencyStopActive) break;
             if (!liveLimits.phaseAdvanceBlocked &&
                 elapsed > settings.rectParams.stabilizationMin * 60 * 1000UL) {
-                LOG_I("FSM: STABILIZATION -> HEADS");
+                RectPhase resumeTarget = RectPhase::HEADS;
+                const bool recoveryActive = state.rectResume.active;
+                if (recoveryActive) {
+                    switch (state.rectResume.targetPhase) {
+                        case RectPhase::HEADS:
+                            resumeTarget = RectPhase::HEADS;
+                            break;
+                        case RectPhase::BODY:
+                            resumeTarget =
+                                state.rectResume.extraHeadsTargetMl >
+                                        state.rectResume.extraHeadsCollectedMl
+                                    ? RectPhase::HEADS
+                                    : RectPhase::BODY;
+                            break;
+                        case RectPhase::TAILS:
+                            resumeTarget = RectPhase::TAILS;
+                            break;
+                        case RectPhase::POST_HEADS_STABILIZATION:
+                            resumeTarget = RectPhase::POST_HEADS_STABILIZATION;
+                            break;
+                        case RectPhase::PURGE:
+                            resumeTarget = RectPhase::PURGE;
+                            break;
+                        default:
+                            resumeTarget = RectPhase::HEADS;
+                            break;
+                    }
+                }
+                LOG_I("FSM: STABILIZATION -> phase %u after recovery",
+                      static_cast<unsigned>(resumeTarget));
                 ControlV2::notePhaseTransition(
                     Mode::RECTIFICATION,
                     static_cast<uint16_t>(RectPhase::STABILIZATION),
-                    static_cast<uint16_t>(RectPhase::HEADS),
+                    static_cast<uint16_t>(resumeTarget),
                     ControlV2::ReasonCodeV2::RC_STABILIZATION_TIMER_OK);
-                state.rectPhase = RectPhase::HEADS;
+                state.rectPhase = resumeTarget;
                 setPhaseStartTime(now);
-                setPhaseStartVolumeMl(
-                    getCurrentTakeoffTotalVolumeMl(state, settings));
+                const float totalVolume =
+                    getCurrentTakeoffTotalVolumeMl(state, settings);
+                if (resumeTarget == RectPhase::HEADS) {
+                    const float headsAlreadyCollected =
+                        recoveryActive &&
+                                state.rectResume.targetPhase == RectPhase::BODY
+                            ? state.rectResume.extraHeadsCollectedMl
+                            : state.stats.headsVolume;
+                    setPhaseStartVolumeMl(totalVolume - headsAlreadyCollected);
+                    if (recoveryActive &&
+                        state.rectResume.targetPhase != RectPhase::BODY) {
+                        state.rectResume = RectificationResumeState{};
+                    }
+                } else if (resumeTarget == RectPhase::BODY) {
+                    setPhaseStartVolumeMl(totalVolume - state.stats.bodyVolume);
+                    bodyReferenceReady = false;
+                    bodyPressureConfirmStartMs = 0;
+                    SmartDecrement::reset();
+                    const bool pauseForContainer =
+                        recoveryActive && state.rectResume.pauseAfterTarget &&
+                        state.rectBodyContainerChangePending;
+                    if (!recoveryActive ||
+                        state.rectResume.targetPhase != RectPhase::BODY) {
+                        state.rectResume = RectificationResumeState{};
+                    }
+                    if (pauseForContainer) {
+                        FSM::pause(state);
+                    }
+                } else if (resumeTarget == RectPhase::TAILS) {
+                    setPhaseStartVolumeMl(totalVolume - state.stats.tailsVolume);
+                    state.rectResume = RectificationResumeState{};
+                } else {
+                    setPhaseStartVolumeMl(totalVolume);
+                    state.rectResume = RectificationResumeState{};
+                }
                 bodyPressureConfirmStartMs = 0;
                 MQTT::publishNotification(
                     "Р¤Р°Р·Р°: РћС‚Р±РѕСЂ РіРѕР»РѕРІ",
@@ -501,10 +574,51 @@ void update(SystemState& state, const Settings& settings) {
             const float headsCollected =
                 getCurrentTakeoffTotalVolumeMl(state, settings) -
                 getPhaseStartVolumeMl();
-            state.stats.headsVolume = headsCollected;
-            if (headsTargetMl > 0.0f && headsCollected >= headsTargetMl) {
+            const bool recoveryHeads =
+                state.rectResume.active &&
+                state.rectResume.targetPhase == RectPhase::BODY &&
+                state.rectResume.extraHeadsTargetMl > 0.0f;
+            if (recoveryHeads) {
+                state.rectResume.extraHeadsCollectedMl = headsCollected;
+                state.stats.headsVolume =
+                    state.rectResume.headsBeforeRecoveryMl + headsCollected;
+            } else {
+                state.stats.headsVolume = headsCollected;
+            }
+            const float activeHeadsTarget =
+                recoveryHeads ? state.rectResume.extraHeadsTargetMl
+                              : headsTargetMl;
+            if (activeHeadsTarget > 0.0f &&
+                headsCollected >= activeHeadsTarget) {
+                if (recoveryHeads) {
+                    LOG_I("FSM: Recovery heads complete (%.1f/%.1f ml); returning to BODY",
+                          headsCollected, activeHeadsTarget);
+                    ControlV2::notePhaseTransition(
+                        Mode::RECTIFICATION,
+                        static_cast<uint16_t>(RectPhase::HEADS),
+                        static_cast<uint16_t>(RectPhase::BODY),
+                        ControlV2::ReasonCodeV2::RC_HEADS_VOLUME_REACHED);
+                    state.rectPhase = RectPhase::BODY;
+                    setPhaseStartTime(now);
+                    setPhaseStartVolumeMl(
+                        getCurrentTakeoffTotalVolumeMl(state, settings) -
+                        state.stats.bodyVolume);
+                    state.rectHeadsContainerLevelReached = false;
+                    bodyReferenceReady = false;
+                    bodyPressureConfirmStartMs = 0;
+                    SmartDecrement::reset();
+                    const bool pauseForContainer =
+                        state.rectResume.pauseAfterTarget &&
+                        state.rectBodyContainerChangePending;
+                    state.rectResume.extraHeadsCollectedMl = headsCollected;
+                    RectTakeoff::stop();
+                    if (pauseForContainer) {
+                        FSM::pause(state);
+                    }
+                    break;
+                }
                 LOG_I("FSM: HEADS -> POST_HEADS_STABILIZATION (%.0f/%.0f ml)",
-                      headsCollected, headsTargetMl);
+                      headsCollected, activeHeadsTarget);
                 ControlV2::notePhaseTransition(
                     Mode::RECTIFICATION,
                     static_cast<uint16_t>(RectPhase::HEADS),
@@ -683,6 +797,7 @@ void update(SystemState& state, const Settings& settings) {
                     Mode::RECTIFICATION, static_cast<uint16_t>(RectPhase::BODY),
                     static_cast<uint16_t>(RectPhase::TAILS), bodyExitReason);
                 state.rectPhase = RectPhase::TAILS;
+                state.rectResume = RectificationResumeState{};
                 setPhaseStartTime(now);
                 setPhaseStartVolumeMl(
                     getCurrentTakeoffTotalVolumeMl(state, settings));

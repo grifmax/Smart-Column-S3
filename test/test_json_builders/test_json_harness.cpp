@@ -3,6 +3,7 @@
 
 #include <string>
 #include <../../src/control/fraction_program_logic.h>
+#include <../../src/control/process_resume_logic.h>
 #include <../../src/control/equipment_testing_logic.h>
 #include <../../src/control/rect_takeoff_logic.h>
 #include <../../src/interface/tft_hmi_policy_logic.h>
@@ -33,6 +34,50 @@
 void setUp(void) {}
 
 void tearDown(void) {}
+
+void test_process_resume_heads_recommendation_scales_with_charge_volume() {
+  using namespace ProcessResumeLogic;
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 100.0f,
+                           suggestedRecoveryHeadsMl(37.0f, 37.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 50.0f,
+                           suggestedRecoveryHeadsMl(18.5f, 37.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 75.0f,
+                           suggestedRecoveryHeadsMl(27.75f, 37.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 50.0f,
+                           suggestedRecoveryHeadsMl(1.0f, 100.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 100.0f,
+                           suggestedRecoveryHeadsMl(100.0f, 1.0f));
+}
+
+void test_process_resume_heads_offer_is_limited_to_body_phase() {
+  using ProcessResumeLogic::shouldOfferRecoveryHeads;
+  TEST_ASSERT_FALSE(shouldOfferRecoveryHeads(4, 300.0f, false, 0, 0.0f));
+  TEST_ASSERT_TRUE(shouldOfferRecoveryHeads(5, 300.0f, false, 0, 0.0f));
+  TEST_ASSERT_FALSE(shouldOfferRecoveryHeads(5, 0.0f, false, 0, 0.0f));
+  TEST_ASSERT_FALSE(shouldOfferRecoveryHeads(6, 300.0f, false, 0, 0.0f));
+
+  // An interrupted extra-head recovery remains offerable only when it had
+  // originally collected heads and its saved target is still BODY.
+  TEST_ASSERT_TRUE(shouldOfferRecoveryHeads(1, 0.0f, true, 5, 300.0f));
+  TEST_ASSERT_FALSE(shouldOfferRecoveryHeads(1, 300.0f, true, 5, 0.0f));
+  TEST_ASSERT_FALSE(shouldOfferRecoveryHeads(1, 300.0f, true, 6, 300.0f));
+}
+
+void test_process_resume_phase_and_crc_validation_primitives() {
+  using namespace ProcessResumeLogic;
+  for (uint8_t phase = 1; phase <= 7; ++phase) {
+    TEST_ASSERT_TRUE(isRecoverableRectificationPhase(phase));
+  }
+  TEST_ASSERT_FALSE(isRecoverableRectificationPhase(0));
+  TEST_ASSERT_FALSE(isRecoverableRectificationPhase(8));
+  TEST_ASSERT_FALSE(isRecoverableRectificationPhase(9));
+
+  const uint8_t payload[] = {1, 2, 3, 4};
+  const uint32_t original = crc32(payload, sizeof(payload));
+  TEST_ASSERT_EQUAL_UINT32(original, crc32(payload, sizeof(payload)));
+  const uint8_t changed[] = {1, 2, 3, 5};
+  TEST_ASSERT_NOT_EQUAL(original, crc32(changed, sizeof(changed)));
+}
 
 void test_json_harness_parses_and_asserts_contract_fields() {
   JsonDocument doc;
@@ -224,6 +269,9 @@ void test_temps_focus_ignores_steady_state_and_combinations();
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_json_harness_parses_and_asserts_contract_fields);
+  RUN_TEST(test_process_resume_heads_recommendation_scales_with_charge_volume);
+  RUN_TEST(test_process_resume_heads_offer_is_limited_to_body_phase);
+  RUN_TEST(test_process_resume_phase_and_crc_validation_primitives);
   RUN_TEST(test_runtime_metrics_tracks_cycle_buckets_and_maxima);
   RUN_TEST(test_runtime_metrics_accumulates_command_batch_timings);
   RUN_TEST(test_runtime_metrics_tracks_safety_snapshot_and_unknown_sample_age);

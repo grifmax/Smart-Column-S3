@@ -9,6 +9,7 @@
 #include "control/power_command_gateway.h"
 #include "control/safety.h"
 #include "control/service_test_session.h"
+#include "control/process_resume.h"
 #include "control/watt_control.h"
 #include "storage/logger.h"
 
@@ -159,6 +160,20 @@ bool apply(const Command &command, SystemState &state, Settings &settings) {
         PowerCommandGateway::Reason::FSM_CONTROL, 1.0f);
     FSM::resume(state);
     return !state.paused;
+  case Type::RestoreRectification: {
+    if (state.mode != Mode::IDLE || !isfinite(command.numericValue) ||
+        ServiceTestSession::blocksProcessResume()) {
+      return false;
+    }
+    ProcessResume::PersistedSnapshot snapshot;
+    if (!ProcessResume::getPending(snapshot)) return false;
+    return FSM::resumeRectification(state, settings, snapshot,
+                                    command.numericValue);
+  }
+  case Type::DiscardRectificationResume:
+    if (state.mode != Mode::IDLE) return false;
+    ProcessResume::clear();
+    return true;
   case Type::NextFraction:
     if (state.mode != Mode::MANUAL_RECT) return false;
     {

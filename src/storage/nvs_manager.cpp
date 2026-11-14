@@ -8,6 +8,7 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 
+#include "../control/process_resume.h"
 #include "../control/cooling_pwm_logic.h"
 #include "../interface/wifi_profiles.h"
 
@@ -1028,6 +1029,38 @@ bool saveWiFi(const WiFiSettings& wifi) {
     saveWiFiProfilesToNvs(wifi);
     prefs.end();
     return true;
+}
+
+bool loadProcessResumeSlot(uint8_t slot,
+                           ProcessResume::PersistedSnapshot& out) {
+    if (slot > 1) return false;
+    const char* key = slot == 0 ? NVS_KEY_PROCESS_RESUME_A
+                                : NVS_KEY_PROCESS_RESUME_B;
+    if (!prefs.begin(NVS_NAMESPACE, true)) return false;
+    const size_t expected = sizeof(ProcessResume::PersistedSnapshot);
+    const bool present = prefs.getBytesLength(key) == expected;
+    const size_t read = present ? prefs.getBytes(key, &out, expected) : 0;
+    prefs.end();
+    return present && read == expected;
+}
+
+bool saveProcessResumeSlot(
+    uint8_t slot, const ProcessResume::PersistedSnapshot& snapshot) {
+    if (slot > 1) return false;
+    const char* key = slot == 0 ? NVS_KEY_PROCESS_RESUME_A
+                                : NVS_KEY_PROCESS_RESUME_B;
+    if (!prefs.begin(NVS_NAMESPACE, false)) return false;
+    const size_t written =
+        prefs.putBytes(key, &snapshot, sizeof(ProcessResume::PersistedSnapshot));
+    prefs.end();
+    return written == sizeof(ProcessResume::PersistedSnapshot);
+}
+
+void clearProcessResumeSlots() {
+    if (!prefs.begin(NVS_NAMESPACE, false)) return;
+    prefs.remove(NVS_KEY_PROCESS_RESUME_A);
+    prefs.remove(NVS_KEY_PROCESS_RESUME_B);
+    prefs.end();
 }
 
 } // namespace NVSManager

@@ -38,6 +38,7 @@
 #include "control/control_command_queue.h"
 #include "control/dosing_session.h"
 #include "control/fsm.h"
+#include "control/process_resume.h"
 #include "control/power_command_gateway.h"
 #include "control/pump_calibration.h"
 #include "control/runtime_metrics.h"
@@ -324,6 +325,9 @@ void setup() {
   // 7. NVS и Настройки
   NVSManager::init();
   loadSettings();
+  if (!ProcessResume::init()) {
+    LOG_E("Process resume snapshot initialization failed");
+  }
   LiveChartHistory::init();
   initHistory();
   initProfiles();
@@ -698,6 +702,8 @@ void loop() {
     g_state.pump.speedMlPerHour = takeoffFeedback.actualEquivalentRateMlH;
     g_state.pump.totalVolumeMl = takeoffFeedback.sessionVolumeMl;
   }
+
+  ProcessResume::update(g_state, g_settings);
 
   ControlV2::updateRuntime(g_state, g_settings);
   Buttons::update();

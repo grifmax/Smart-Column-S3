@@ -429,6 +429,20 @@ void resetVolume() {
     LOG_I("Pump: Volume reset");
 }
 
+bool restoreVolume(float totalMl) {
+    if (!isfinite(totalMl) || totalMl < 0.0f || running) return false;
+    if (!lockPump(portMAX_DELAY)) return false;
+    syncMotionLocked(micros());
+    const double stepsPerMl =
+        static_cast<double>(configuredStepsPerRevolution()) /
+        static_cast<double>(mlPerRevolution);
+    totalStepsExact = static_cast<double>(totalMl) * stepsPerMl;
+    updateTotalsFromExactSteps();
+    pumpLastMotionUpdateUs = micros();
+    unlockPump();
+    return true;
+}
+
 void setCalibration(float mlPerRev) {
     if (mlPerRev > 0.0f && mlPerRev < 10.0f) {
         if (lockPump(portMAX_DELAY)) {

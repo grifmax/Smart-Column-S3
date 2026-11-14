@@ -554,6 +554,17 @@ void beginSession(const Settings& settings) {
   finalizeFeedback();
 }
 
+bool restoreSessionVolume(float totalMl) {
+  if (!isfinite(totalMl) || totalMl < 0.0f || g_feedback.backendActive) {
+    return false;
+  }
+  g_sessionVolumeMl = totalMl;
+  g_lastVolumeUpdateMs = millis();
+  resetFeedback(g_feedback.backendType);
+  finalizeFeedback();
+  return true;
+}
+
 void apply(const RectTakeoffCommand& command) {
   integrateSessionVolume();
   const RectTakeoffBackendType backendType =
