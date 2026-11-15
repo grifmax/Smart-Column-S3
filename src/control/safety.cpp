@@ -9,6 +9,7 @@
 #include "fsm.h"
 #include "power_command_gateway.h"
 #include "runtime_metrics.h"
+#include "rate_estimator_logic.h"
 #include "sensor_freshness_logic.h"
 #include "v2/status_adapter.h"
 #include "../drivers/heater.h"
@@ -31,6 +32,13 @@ void init() {
 namespace {
 
 constexpr uint32_t TEMP_SENSOR_STARTUP_GRACE_MS = 15000;
+
+// Окно оценки скорости роста температуры воды. Первая разность по соседним
+// отсчётам при шаге DS18B20 0.0625 C и периоде 1 с даёт 3.75 C/мин шума
+// против порога 8 C/мин, поэтому считаем наклон по окну.
+constexpr uint32_t WATER_RATE_WINDOW_MS = 45000;
+constexpr uint32_t WATER_RATE_EVAL_MS = 5000;
+constexpr uint8_t WATER_RATE_MIN_POINTS = 10;
 
 float clampSafety(float value, float minValue, float maxValue) {
     if (value < minValue) return minValue;
@@ -491,11 +499,11 @@ void check(SystemState& state, const Settings& settings) {
         return;
     }
 
-    static float prevWaterOutC = 0.0f;
+    static RateEstimatorLogic::Estimator waterRateEstimator;
+    static uint32_t waterRateEvalMs = 0;
     static float prevPressureMmHg = 0.0f;
     static uint32_t prevWaterOutSampleMs = 0;
     static uint32_t prevPressureSampleMs = 0;
-    static bool prevWaterOutValid = false;
     static bool prevPressureValid = false;
 
     bool emergencyStop = false;
@@ -555,24 +563,28 @@ void check(SystemState& state, const Settings& settings) {
     const uint32_t waterOutSampleMs =
         state.temps.lastUpdateBySensor[TEMP_WATER_OUT];
     if (required.waterOutTemp &&
-        isTemperatureFresh(state, TEMP_WATER_OUT, now) &&
-        waterOutSampleMs != prevWaterOutSampleMs) {
-        if (prevWaterOutValid) {
-            const uint32_t sampleDeltaMs = waterOutSampleMs - prevWaterOutSampleMs;
-            if (sampleDeltaMs >= 960) {
-                waterOutRiseRate =
-                    (state.temps.waterOut - prevWaterOutC) * 60000.0f /
-                    static_cast<float>(sampleDeltaMs);
-                waterOutRateValid = true;
+        isTemperatureFresh(state, TEMP_WATER_OUT, now)) {
+        if (waterOutSampleMs != prevWaterOutSampleMs) {
+            prevWaterOutSampleMs = waterOutSampleMs;
+            RateEstimatorLogic::push(waterRateEstimator, waterOutSampleMs,
+                                     state.temps.waterOut);
+        }
+        if (now - waterRateEvalMs >= WATER_RATE_EVAL_MS) {
+            waterRateEvalMs = now;
+            float slope = 0.0f;
+            const bool estimated = RateEstimatorLogic::slopePerMin(
+                waterRateEstimator, now, WATER_RATE_WINDOW_MS,
+                WATER_RATE_MIN_POINTS, slope);
+            waterOutRateValid = estimated;
+            if (estimated) {
+                waterOutRiseRate = slope;
             }
         }
-        prevWaterOutC = state.temps.waterOut;
-        prevWaterOutSampleMs = waterOutSampleMs;
-        prevWaterOutValid = true;
-    } else if (required.waterOutTemp &&
-               !isTemperatureFresh(state, TEMP_WATER_OUT, now)) {
-        prevWaterOutValid = false;
+    } else if (required.waterOutTemp) {
+        RateEstimatorLogic::reset(waterRateEstimator);
+        waterRateEvalMs = 0;
         prevWaterOutSampleMs = 0;
+        waterOutRateValid = false;
     }
 
     if (required.pressure && isPressureFresh(state, now) &&

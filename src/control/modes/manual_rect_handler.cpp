@@ -216,6 +216,18 @@ void update(SystemState& state, const Settings& settings) {
     }
 
     const uint32_t now = millis();
+
+    // Ожидание смены тары: колонна работает на себя. Отбор стоит, мощность
+    // держим на уровне фазы — гасить ТЭН нельзя, иначе рассыпается профиль
+    // и на повторный выход на режим уходит больше двадцати минут.
+    if (state.manualRectContainerChangePending) {
+        RectTakeoff::stop();
+        applyProcessHeaterPower(
+            state, settings,
+            getManualPhasePowerPercent(settings, state.rectPhase));
+        return;
+    }
+
     const ControlV2::ManualRectFloodPolicyV2 floodPolicy =
         ControlV2::SafetyPolicyV2::evaluateManualRectFloodPower(
             Heater::getPower(), state, settings, now, lastFloodTime);
@@ -291,11 +303,9 @@ void update(SystemState& state, const Settings& settings) {
 
     // Если достигнут целевой объем - инициируем смену тары
     if (shouldChangeFraction && !state.manualRectContainerChangePending) {
-        // Останавливаем отбор
+        // Останавливаем отбор. Мощность не гасим: колонна остаётся на себя,
+        // этим управляет ветка удержания в начале update().
         RectTakeoff::stop();
-        PowerCommandGateway::setHeaterPower(
-            PowerCommandGateway::Owner::FSM,
-            PowerCommandGateway::Reason::FSM_CONTROL, 0);
 
         // Устанавливаем флаг ожидания смены тары
         state.manualRectContainerChangePending = true;
