@@ -5,6 +5,7 @@
  */
 
 #include "nvs_manager.h"
+#include <nvs.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
 
@@ -466,6 +467,11 @@ bool loadSettings(Settings& settings) {
 
     // Калибровка насоса
     settings.pumpCal.mlPerRevolution = prefs.getFloat(NVS_KEY_PUMP_ML_REV, DEFAULT_PUMP_ML_PER_REV);
+    // Шаги и микрошаги раньше не сохранялись вовсе: после перезагрузки
+    // возвращались умолчания (200 x 32), и калибровка, снятая на другой
+    // разрядности, переставала биться вдвое.
+    settings.pumpCal.stepsPerRevolution = prefs.getUShort(NVS_KEY_PUMP_STEPS_REV, 200);
+    settings.pumpCal.microsteps = prefs.getUChar(NVS_KEY_PUMP_MICROSTEPS, 32);
     loadPressureCalibrationFromNvs(settings.pressureCal);
     loadHydrometerCalibrationFromNvs(settings.hydroCal);
 
@@ -758,10 +764,28 @@ bool loadSettings(Settings& settings) {
     return true;
 }
 
+static void nvsStatsToLog() {
+    nvs_stats_t stats;
+    if (nvs_get_stats(nullptr, &stats) == ESP_OK) {
+        LOG_E("NVS: entries used=%u free=%u total=%u",
+              static_cast<unsigned>(stats.used_entries),
+              static_cast<unsigned>(stats.free_entries),
+              static_cast<unsigned>(stats.total_entries));
+    }
+}
+
 bool saveSettings(const Settings& settings) {
     LOG_I("NVS: Saving settings...");
 
-    prefs.begin(NVS_NAMESPACE, false); // Read-write
+    // Раньше результат begin() и put() не проверялся, и функция всегда
+    // возвращала true. При проблемах с разделом настройки молча не
+    // сохранялись: интерфейс рапортовал успех, а после перезагрузки
+    // возвращались старые значения.
+    if (!prefs.begin(NVS_NAMESPACE, false)) {
+        LOG_E("NVS: begin() failed, settings NOT saved");
+        nvsStatsToLog();
+        return false;
+    }
     prefs.putUShort(NVS_KEY_SETTINGS_SCHEMA, NVS_SETTINGS_SCHEMA_VERSION);
 
     // WiFi
@@ -837,7 +861,16 @@ bool saveSettings(const Settings& settings) {
     prefs.putUChar(NVS_KEY_DISPLAY_REFRESH, (uint8_t)settings.displaySettings.refreshProfile);
 
     // Калибровка насоса
-    prefs.putFloat(NVS_KEY_PUMP_ML_REV, settings.pumpCal.mlPerRevolution);
+    prefs.putUShort(NVS_KEY_PUMP_STEPS_REV,
+                    settings.pumpCal.stepsPerRevolution);
+    prefs.putUChar(NVS_KEY_PUMP_MICROSTEPS, settings.pumpCal.microsteps);
+    if (prefs.putFloat(NVS_KEY_PUMP_ML_REV,
+                       settings.pumpCal.mlPerRevolution) == 0) {
+        LOG_E("NVS: pump calibration write failed");
+        nvsStatsToLog();
+        prefs.end();
+        return false;
+    }
     savePressureCalibrationToNvs(settings.pressureCal);
     saveHydrometerCalibrationToNvs(settings.hydroCal);
 

@@ -1,5 +1,7 @@
 #include "api_routes.h"
 
+#include <nvs.h>
+
 #include "../../config.h"
 #include "../../fs_compat.h"
 #include <WiFi.h>
@@ -84,6 +86,16 @@ void registerHealthApiRoutes(AsyncWebServer &server) {
     JsonObject errors = doc["errors"].to<JsonObject>();
     errors["pzemSpikes"] = st.health.pzemSpikeCount;
     errors["tempErrors"] = st.health.tempReadErrors;
+
+    {
+      nvs_stats_t nvsStats;
+      if (nvs_get_stats(nullptr, &nvsStats) == ESP_OK) {
+        JsonObject nvs = doc["nvs"].to<JsonObject>();
+        nvs["used"] = nvsStats.used_entries;
+        nvs["free"] = nvsStats.free_entries;
+        nvs["total"] = nvsStats.total_entries;
+      }
+    }
 
     doc["overallHealth"] = st.health.overallHealth;
     doc["lastUpdate"] = st.health.lastUpdate;

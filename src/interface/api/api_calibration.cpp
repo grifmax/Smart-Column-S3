@@ -189,7 +189,14 @@ void registerCalibrationApiRoutes(AsyncWebServer &server) {
                 doc["microsteps"].as<uint8_t>();
             LOG_I("Pump microsteps: %u", g_settings.pumpCal.microsteps);
           }
-          NVSManager::saveSettings(g_settings);
+          // Без проверки результата интерфейс рапортовал успех даже когда
+          // запись в NVS не прошла, и после перезагрузки значение
+          // откатывалось. Теперь отказ виден вызывающему.
+          if (!NVSManager::saveSettings(g_settings)) {
+            request->send(500, "application/json",
+                          "{\"error\":\"Не удалось сохранить калибровку в NVS\"}");
+            return;
+          }
           request->send(200, "application/json",
                         "{\"status\":\"ok\",\"method\":\"direct\"}");
           return;
