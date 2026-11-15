@@ -59,6 +59,8 @@ namespace Pump {
      * @return Скорость в мл/час
      */
     float getSpeed();
+    // Фактическая подача с учётом разгона и ограничения частоты.
+    float getAppliedSpeedMlH();
     
     /**
      * Проверка работы

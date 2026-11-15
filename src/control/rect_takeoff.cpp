@@ -402,8 +402,12 @@ void applyPumpBackend(const RectTakeoffCommand &command) {
   resetFeedback(RectTakeoffBackendType::PUMP);
   g_feedback.backendActive = shouldPumpRun;
   g_feedback.routingReady = true;
+  // Раньше сюда писалось заданное значение: при ограничении по частоте
+  // телеметрия показывала недостижимую подачу.
   g_feedback.actualEquivalentRateMlH =
-      shouldPumpRun ? command.equivalentRateMlH : 0.0f;
+      shouldPumpRun ? Pump::getSpeed() : 0.0f;
+  g_feedback.appliedRateMlH =
+      shouldPumpRun ? Pump::getAppliedSpeedMlH() : 0.0f;
   g_feedback.actualDuty =
       shouldPumpRun ? 255 : (phaseTakeoffEnabled ? 1 : 0);
   g_feedback.requestedFraction =

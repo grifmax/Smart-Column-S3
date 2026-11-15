@@ -39,7 +39,10 @@ static constexpr TickType_t kPumpRunDelayTicks = pdMS_TO_TICKS(10);
 static constexpr float kPumpSpeedRampStepsPerSec2 = 8000.0f;
 // XTAL=40 MHz: 13 bits supports 5..4000 Hz without the 10-bit tone
 // helper's ~38 Hz floor. Never reconfigure an unchanged STEP frequency.
-static constexpr uint8_t kPumpLedcResolutionBits = 13;
+// Для STEP нужен чистый меандр, а не точная скважность. 13 бит упирали
+// потолок частоты в 80 МГц / 8192 = 9.7 кГц, из-за чего предел подачи
+// задавался константой, а не возможностями мотора.
+static constexpr uint8_t kPumpLedcResolutionBits = 10;
 static uint32_t pumpLastRequestedStepHz = 0;
 static uint32_t pumpOutputStepHz = 0;
 
@@ -381,6 +384,10 @@ void setSpeed(float mlPerHour) {
 
 float getSpeed() {
     return currentSpeedMlH;
+}
+
+float getAppliedSpeedMlH() {
+    return appliedSpeedMlH;
 }
 
 bool isRunning() {

@@ -204,6 +204,17 @@ RectTakeoffCommand buildTakeoffCommand(const Settings& settings,
     command.equivalentRateMlH = command.rateLimited
         ? pumpMaxRateMlH
         : command.requestedEquivalentRateMlH;
+    // Ограничение — это молчаливая потеря подачи: оператор видит заданную
+    // скорость, а насос идёт на пределе. Пишем один раз на переход.
+    static bool rateLimitLogged = false;
+    if (command.rateLimited != rateLimitLogged) {
+        rateLimitLogged = command.rateLimited;
+        if (command.rateLimited) {
+            LOG_W("Отбор: задано %.0f мл/ч, насос ограничен %.0f мл/ч (предел %.0f имп/с)",
+                  command.requestedEquivalentRateMlH, pumpMaxRateMlH,
+                  static_cast<float>(PUMP_MAX_SPEED));
+        }
+    }
     command.enabled = command.equivalentRateMlH > 0.0f;
     command.periodicTakeoff =
         settings.rectParams.refluxMode != RectRefluxMode::ML_H;

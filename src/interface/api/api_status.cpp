@@ -5,6 +5,7 @@
 #include "control/rect_takeoff.h"
 #include "drivers/display.h"
 #include "drivers/heater.h"
+#include "drivers/pump.h"
 #include "drivers/sensors.h"
 #include "drivers/valves.h"
 #include "interface/cloud_tunnel.h"
@@ -473,6 +474,8 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     rect["takeoffRequestedEquivalentRateMlH"] =
         takeoffFeedback.requestedEquivalentRateMlH;
     rect["takeoffRateLimited"] = takeoffFeedback.rateLimited;
+    rect["takeoffAppliedRateMlH"] = takeoffFeedback.appliedRateMlH;
+    rect["takeoffMaxRateMlH"] = Pump::getMaxSpeedMlH();
     rect["takeoffActualDuty"] = takeoffFeedback.actualDuty;
     rect["takeoffSessionVolumeMl"] = takeoffFeedback.sessionVolumeMl;
     rect["takeoffRequestedFraction"] =

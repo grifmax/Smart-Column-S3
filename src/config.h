@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.5.3"
+#define FIRMWARE_VERSION "2.5.4"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -276,7 +276,9 @@
 #define DEFAULT_PUMP_ML_PER_REV 0.5f // мл на оборот
 #define PUMP_STEPS_PER_REV 200       // Шагов на оборот
 #define PUMP_MICROSTEPS 16           // Микрошаги TMC2209
-#define PUMP_MAX_SPEED 4000          // Макс. шагов/сек (было 1000)
+// Предел частоты STEP. При 10-битном ШИМ потолок LEDC — 78 кГц, поэтому
+// ограничение задаёт механика: 20000 имп/с при 6400 имп/об — это ~188 об/мин.
+#define PUMP_MAX_SPEED 20000         // Макс. шагов/сек
 #define PUMP_ACCELERATION 500        // Ускорение
 
 // Серво фракционник

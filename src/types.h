@@ -106,6 +106,9 @@ struct RectTakeoffFeedback {
   bool routingReady = true;
   float requestedEquivalentRateMlH = 0.0f;
   float actualEquivalentRateMlH = 0.0f;
+  // Что насос реально выдаёт прямо сейчас: с учётом ограничения частоты,
+  // разгона и закрытого окна периодического отбора.
+  float appliedRateMlH = 0.0f;
   bool rateLimited = false;
   uint8_t actualDuty = 0;
   float sessionVolumeMl = 0.0f;
