@@ -862,10 +862,17 @@ void readTemperatures(Temperatures& temps) {
         values[i] = lastTemperatureValue(temps, i);
         if (ds18b20Found[i]) {
             float raw = DEVICE_DISCONNECTED_C;
-            const bool readOk = backendReadTemperature(ds18b20Addresses[i], raw);
+            // Одиночный сбой CRC от помехи симистора не должен стоить
+            // выборки: чтение скретчпада занимает около миллисекунды,
+            // поэтому пробуем трижды, прежде чем признать отказ.
+            bool readOk = false;
+            for (uint8_t attempt = 0; attempt < 3 && !readOk; ++attempt) {
+                readOk = backendReadTemperature(ds18b20Addresses[i], raw) &&
+                         isValidDs18b20Reading(raw);
+            }
 
             // Проверка валидности (-127 = ошибка)
-            if (!readOk || !isValidDs18b20Reading(raw)) {
+            if (!readOk) {
                 temps.valid[i] = false;
                 // Инкремент счетчика ошибок конкретного датчика
                 if (i < 7 && Safety::isTempSensorInstalled(g_settings.equipment, i)) {

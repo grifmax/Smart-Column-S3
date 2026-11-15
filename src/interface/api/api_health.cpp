@@ -54,6 +54,34 @@ void registerHealthApiRoutes(AsyncWebServer &server) {
               request->send(200, "application/json", json);
             });
 
+  // Диагностика раздела NVS: переполнение иначе проявляется только тем,
+  // что настройки молча перестают сохраняться.
+  server.on("/api/diag/nvs", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    nvs_stats_t stats;
+    if (nvs_get_stats(nullptr, &stats) == ESP_OK) {
+      doc["usedEntries"] = stats.used_entries;
+      doc["freeEntries"] = stats.free_entries;
+      doc["totalEntries"] = stats.total_entries;
+    } else {
+      doc["statsError"] = "nvs_get_stats failed";
+    }
+    nvs_handle_t handle;
+    const esp_err_t openErr = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    doc["open"] = esp_err_to_name(openErr);
+    if (openErr == ESP_OK) {
+      const uint32_t probeValue = static_cast<uint32_t>(millis());
+      doc["set"] = esp_err_to_name(nvs_set_u32(handle, "probe", probeValue));
+      doc["commit"] = esp_err_to_name(nvs_commit(handle));
+      doc["erase"] = esp_err_to_name(nvs_erase_key(handle, "probe"));
+      (void)nvs_commit(handle);
+      nvs_close(handle);
+    }
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
+  });
+
   server.on("/api/health", HTTP_GET, [](AsyncWebServerRequest *request) {
     SystemState snapshot;
     if (!StateSnapshot::read(snapshot)) {
@@ -86,6 +114,12 @@ void registerHealthApiRoutes(AsyncWebServer &server) {
     JsonObject errors = doc["errors"].to<JsonObject>();
     errors["pzemSpikes"] = st.health.pzemSpikeCount;
     errors["tempErrors"] = st.health.tempReadErrors;
+    // Разбивка по датчикам: видно, бьёт ли помеха по одному каналу
+    // или сыплется вся шина.
+    JsonArray perSensor = errors["tempErrorsBySensor"].to<JsonArray>();
+    for (int i = 0; i < 7; i++) {
+      perSensor.add(st.health.tempErrors[i]);
+    }
 
     {
       nvs_stats_t nvsStats;
