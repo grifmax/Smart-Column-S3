@@ -653,6 +653,18 @@ void loop() {
   ControlRuntimeMetrics::recordOutputCommandBatch(
       micros() - outputQueueStartedAtUs, outputCommandsProcessed);
   PumpCalibrationSession::update();
+  if (PumpCalibrationSession::outputActive() &&
+      PumpCalibrationSession::hasTimedOut(millis(),
+                                          PUMP_CALIBRATION_MAX_MS)) {
+    const PumpCalibrationSession::Phase calPhase =
+        PumpCalibrationSession::getSnapshot().phase;
+    if (calPhase == PumpCalibrationSession::Phase::MEASURING) {
+      (void)PumpCalibrationSession::stopMeasurement();
+    } else if (calPhase == PumpCalibrationSession::Phase::PRIMING) {
+      (void)PumpCalibrationSession::finishPriming();
+    }
+    LOG_W("Калибровка насоса остановлена по таймауту");
+  }
   ControlRuntimeMetrics::recordControlBatch(
       micros() - controlBatchStartedAtUs);
 

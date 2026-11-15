@@ -48,7 +48,10 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
                     "{\"success\":false,\"message\":\"Process is running\"}");
                 return;
               }
-              float speed = Pump::getMaxSpeedMlH();
+              // Без явной скорости раньше брался максимум насоса: с нынешним
+              // пределом это 77 л/ч и 187 об/мин на калибровке.
+              float speed = fminf(Pump::getMaxSpeedMlH(),
+                                  PUMP_CALIBRATION_DEFAULT_SPEED_MLH);
               if (request->hasParam("speed")) {
                 float reqSpeed = request->getParam("speed")->value().toFloat();
                 if (reqSpeed > 0) {
@@ -56,9 +59,18 @@ void registerPumpApiRoutes(AsyncWebServer &server) {
                 }
               }
               if (!PumpCalibrationSession::beginMeasurement(speed, true)) {
+                // Отказ бывает по двум разным причинам, и путать их нельзя:
+                // насос стоит, а сессия ждёт ввода объёма прошлого замера.
+                const PumpCalibrationSession::Phase phase =
+                    PumpCalibrationSession::getSnapshot().phase;
+                const bool awaitingReview =
+                    phase == PumpCalibrationSession::Phase::READY_TO_REVIEW ||
+                    phase == PumpCalibrationSession::Phase::REVIEW;
                 request->send(
                     409, "application/json",
-                    "{\"success\":false,\"message\":\"Calibration already active\"}");
+                    awaitingReview
+                        ? "{\"success\":false,\"phase\":\"review\",\"message\":\"Есть незавершённый замер: введите объём или отмените калибровку\"}"
+                        : "{\"success\":false,\"phase\":\"active\",\"message\":\"Калибровка уже идёт\"}");
                 return;
               }
               LOG_I("Pump calibration started at %.1f ml/h", speed);
