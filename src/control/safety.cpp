@@ -565,6 +565,17 @@ void check(SystemState& state, const Settings& settings) {
     bool waterOutRateValid = false;
     bool pressureRateValid = false;
 
+    // Скорость роста воды имеет смысл только на прогретом конденсаторе.
+    static bool waterWasOpen = false;
+    static uint32_t waterOpenedAtMs = 0;
+    const bool waterOpen = Valves::isWaterOpen();
+    if (waterOpen && !waterWasOpen) {
+        waterOpenedAtMs = now;
+    }
+    waterWasOpen = waterOpen;
+    const bool waterSettling =
+        waterOpen && (now - waterOpenedAtMs) < WATER_RATE_SETTLE_MS;
+
     const uint32_t waterOutSampleMs =
         state.temps.lastUpdateBySensor[TEMP_WATER_OUT];
     if (required.waterOutTemp &&
@@ -580,7 +591,9 @@ void check(SystemState& state, const Settings& settings) {
             const bool estimated = RateEstimatorLogic::slopePerMin(
                 waterRateEstimator, now, WATER_RATE_WINDOW_MS,
                 WATER_RATE_MIN_POINTS, slope);
-            waterOutRateValid = estimated;
+            // Пока конденсатор прогревается после открытия воды, наклон
+            // ничего не говорит о потере охлаждения.
+            waterOutRateValid = estimated && !waterSettling;
             if (estimated) {
                 waterOutRiseRate = slope;
             }

@@ -348,6 +348,8 @@ bool isProductValveAvailable(RectTakeoffFraction fraction) {
     }
 }
 
+bool isWaterOpen() { return valveWater; }
+
 bool isAnyTakeoffValveOpen() {
     return valveHeads || valveBody || valveTails || valveUno;
 }

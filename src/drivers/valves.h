@@ -76,6 +76,8 @@ namespace Valves {
     bool hasUnoValve();
     bool isProductValveAvailable(RectTakeoffFraction fraction);
     bool isAnyTakeoffValveOpen();
+    // Открыт ли клапан охлаждающей воды прямо сейчас.
+    bool isWaterOpen();
 
     /**
      * Управление продуктовым клапаном с гарантией взаимного исключения
