@@ -118,7 +118,10 @@ static void cancelValvePulse(Valves::ValveId valve) {
     clearValvePulse(valve);
 }
 
-static void applyWaterState(bool open) {
+static void applyWaterState(bool open, bool force = false) {
+    // Повторная запись того же состояния — это лишнее переключение катушки
+    // на каждом тике цикла: гул, нагрев и помеха по питанию.
+    if (!force && valveWater == open) return;
     valveWater = open;
     if (isDemoHardwareSuppressed()) {
         return;
@@ -126,7 +129,8 @@ static void applyWaterState(bool open) {
     writeValvePin(PIN_VALVE_WATER, open, isValveNormallyOpen(Valves::ValveId::WATER));
 }
 
-static void applyHeadsState(bool open) {
+static void applyHeadsState(bool open, bool force = false) {
+    if (!force && valveHeads == open) return;
     valveHeads = open;
     if (isDemoHardwareSuppressed()) {
         return;
@@ -134,7 +138,8 @@ static void applyHeadsState(bool open) {
     writeValvePin(PIN_VALVE_HEADS, open, isValveNormallyOpen(Valves::ValveId::HEADS));
 }
 
-static void applyBodyState(bool open) {
+static void applyBodyState(bool open, bool force = false) {
+    if (!force && valveBody == open) return;
     valveBody = open;
     if (isDemoHardwareSuppressed()) {
         return;
@@ -146,7 +151,8 @@ static void applyBodyState(bool open) {
     writeValvePin(PIN_VALVE_BODY, open, isValveNormallyOpen(Valves::ValveId::BODY));
 }
 
-static void applyTailsState(bool open) {
+static void applyTailsState(bool open, bool force = false) {
+    if (!force && valveTails == open) return;
     valveTails = open;
     if (isDemoHardwareSuppressed()) {
         return;
@@ -158,7 +164,8 @@ static void applyTailsState(bool open) {
     writeValvePin(PIN_VALVE_TAILS, open, isValveNormallyOpen(Valves::ValveId::TAILS));
 }
 
-static void applyUnoState(bool open) {
+static void applyUnoState(bool open, bool force = false) {
+    if (!force && valveUno == open) return;
     valveUno = open;
     if (isDemoHardwareSuppressed()) {
         return;
@@ -166,30 +173,31 @@ static void applyUnoState(bool open) {
     writeValvePin(PIN_VALVE_UNO, open, isValveNormallyOpen(Valves::ValveId::UNO));
 }
 
-static void setValveState(Valves::ValveId valve, bool open, bool cancelPulse) {
+static void setValveState(Valves::ValveId valve, bool open, bool cancelPulse,
+                          bool force = false) {
     if (cancelPulse) {
         cancelValvePulse(valve);
     }
 
     switch (valve) {
     case Valves::ValveId::WATER:
-        applyWaterState(open);
+        applyWaterState(open, force);
         LOG_D("Valves: Water %s", open ? "OPEN" : "CLOSED");
         break;
     case Valves::ValveId::HEADS:
-        applyHeadsState(open);
+        applyHeadsState(open, force);
         LOG_D("Valves: Heads %s", open ? "OPEN" : "CLOSED");
         break;
     case Valves::ValveId::BODY:
-        applyBodyState(open);
+        applyBodyState(open, force);
         LOG_D("Valves: Body %s", open ? "OPEN" : "CLOSED");
         break;
     case Valves::ValveId::TAILS:
-        applyTailsState(open);
+        applyTailsState(open, force);
         LOG_D("Valves: Tails %s", open ? "OPEN" : "CLOSED");
         break;
     case Valves::ValveId::UNO:
-        applyUnoState(open);
+        applyUnoState(open, force);
         LOG_D("Valves: UNO %s", open ? "OPEN" : "CLOSED");
         break;
     }
@@ -441,11 +449,13 @@ void refreshOutputs() {
     if (isDemoHardwareSuppressed()) {
         return;
     }
-    applyWaterState(valveWater);
-    applyHeadsState(valveHeads);
-    applyBodyState(valveBody);
-    applyTailsState(valveTails);
-    applyUnoState(valveUno);
+    // force: после смены полярности состояние не изменилось, но уровень
+    // на пине нужно выдать заново.
+    applyWaterState(valveWater, true);
+    applyHeadsState(valveHeads, true);
+    applyBodyState(valveBody, true);
+    applyTailsState(valveTails, true);
+    applyUnoState(valveUno, true);
     applyStartStopOutput(valveStartStopDuty > 0);
 }
 

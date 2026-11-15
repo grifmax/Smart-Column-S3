@@ -688,7 +688,10 @@ void update(SystemState& state, const Settings& settings) {
         case RectPhase::PURGE:
             applyBoosterHeater(state, settings, false);
             RectTakeoff::stop();
-            PowerCommandGateway::closeAllValves(
+            // Только продуктовые клапаны. closeAllValves закрывал и воду,
+            // а следующая строка открывала её обратно — на каждом тике
+            // цикла, то есть соленоид воды трещал всю продувку.
+            PowerCommandGateway::closeProductRoutes(
                 PowerCommandGateway::Owner::FSM,
                 PowerCommandGateway::Reason::FSM_CONTROL);
             PowerCommandGateway::setValve(PowerCommandGateway::Owner::FSM,

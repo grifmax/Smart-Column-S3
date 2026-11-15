@@ -63,6 +63,10 @@ void init(const char* server, uint16_t port, const char* username, const char* p
 
     mqttClient.setServer(server, port);
     mqttClient.setBufferSize(1024);  // Увеличенный буфер для Discovery
+    // По умолчанию сокет ждёт до 15 с. Публикация вызывается из
+    // управляющего цикла на смене фазы, и при «полуживом» Wi-Fi цикл
+    // встаёт на всё это время — датчики успевают стать «устаревшими».
+    mqttClient.setSocketTimeout(2);
 
     // Установка callback для входящих сообщений
     mqttClient.setCallback([](char* topic, byte* payload, unsigned int length) {
@@ -493,6 +497,9 @@ void setBaseTopic(const char* topic) {
 }
 
 void publishNotification(const char* title, const char* message, const char* level) {
+    if (WiFi.status() != WL_CONNECTED) {
+        return;
+    }
     if (!mqttClient.connected()) {
         LOG_W("MQTT: Cannot send notification - not connected");
         return;

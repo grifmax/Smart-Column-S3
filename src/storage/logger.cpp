@@ -496,8 +496,13 @@ void log(const LogEvent& event) {
     snprintf(line, sizeof(line), "%lu,,,,,,,,,,,,,%d,%s", timestamp,
              event.level, event.message);
     currentLogFile.println(line);
-    currentLogFile.flush();
-    lastFlushMs = millis();
+    // Флеш на каждое событие — это запись во флеш-память прямо в
+    // управляющем цикле. Копим и сбрасываем раз в секунду, аварии
+    // (level >= 1) пишем сразу.
+    if (event.level >= 1 || millis() - lastFlushMs >= 1000) {
+        currentLogFile.flush();
+        lastFlushMs = millis();
+    }
   }
 }
 

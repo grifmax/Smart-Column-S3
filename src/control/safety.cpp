@@ -46,6 +46,11 @@ float clampSafety(float value, float minValue, float maxValue) {
     return value;
 }
 
+uint32_t sampleAgeMs(uint32_t now, uint32_t lastUpdateMs) {
+    if (lastUpdateMs == 0) return UINT32_MAX;
+    return now - lastUpdateMs;
+}
+
 void writeReason(char* reason, size_t reasonSize, const char* message) {
     if (!reason || reasonSize == 0) {
         return;
@@ -708,6 +713,16 @@ void check(SystemState& state, const Settings& settings) {
                     sensorAlarmLogged = true;
                 }
             } else {
+                // Диагностика: возраст каждой обязательной выборки. Если
+                // все возраста близки к таймауту — цикл стоял; если один
+                // огромный — датчик не отвечает.
+                Logger::logf(1,
+                             "sensor freshness fail: cube=%lu base=%lu tsa=%lu water=%lu press=%lu (ms)",
+                             static_cast<unsigned long>(sampleAgeMs(now, state.temps.lastUpdateBySensor[TEMP_CUBE])),
+                             static_cast<unsigned long>(sampleAgeMs(now, state.temps.lastUpdateBySensor[TEMP_COLUMN_BOTTOM])),
+                             static_cast<unsigned long>(sampleAgeMs(now, state.temps.lastUpdateBySensor[TEMP_TSA])),
+                             static_cast<unsigned long>(sampleAgeMs(now, state.temps.lastUpdateBySensor[TEMP_WATER_OUT])),
+                             static_cast<unsigned long>(sampleAgeMs(now, state.pressure.lastUpdate)));
                 emergencyStop = true;
             }
         }
