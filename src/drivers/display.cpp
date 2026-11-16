@@ -200,27 +200,6 @@ bool touchRead(int16_t *sx, int16_t *sy) {
   return true;
 }
 
-static bool readTouchRawFiltered(int16_t *x, int16_t *y) {
-  int32_t sumX = 0;
-  int32_t sumY = 0;
-  uint8_t samples = 0;
-  for (uint8_t i = 0; i < 5; i++) {
-    int16_t rx = 0;
-    int16_t ry = 0;
-    if (touchReadRaw(&rx, &ry)) {
-      sumX += rx;
-      sumY += ry;
-      samples++;
-    }
-    delay(2);
-  }
-  if (samples == 0)
-    return false;
-  *x = sumX / samples;
-  *y = sumY / samples;
-  return true;
-}
-
 static bool detectCalibrationRequest() {
   const uint32_t start = millis();
   while (millis() - start < 800) {
@@ -3477,7 +3456,9 @@ static bool handleModeParametersScreenTap(int16_t tx, int16_t ty,
   }
 
   const int16_t row = ty >= 136 && ty < 186 ? 1 : 0;
-  if (ty >= 80 && ty < 130 || ty >= 136 && ty < 186) {
+  // Две строки кнопок: 80-130 и 136-186. Скобки явные, чтобы не читалось как
+  // «(ty>=80) && (ty<130 || ty>=136) && (ty<186)».
+  if ((ty >= 80 && ty < 130) || (ty >= 136 && ty < 186)) {
     const int16_t col = tx >= 245 ? 1 : 0;
     const int16_t x = col == 0 ? 10 : 245;
     const int16_t y = row == 0 ? 80 : 136;
@@ -4647,28 +4628,6 @@ static uint16_t colorButtonBody() {
 
 static void drawCard(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t bg);
 
-static void drawProgressBar(int16_t x, int16_t y, int16_t w, int16_t h,
-                            uint8_t percent, uint16_t fill) {
-  if (w <= 0 || h <= 0)
-    return;
-  tft.fillRect(x, y, w, h, colorNavInactive());
-  tft.drawRect(x, y, w, h, colorBorder());
-  if (w > 2 && h > 2) {
-    tft.drawRect(x + 1, y + 1, w - 2, h - 2, colorBg());
-  }
-  if (percent == 0)
-    return;
-  const int16_t innerW = (w > 4) ? (w - 4) : 0;
-  const int16_t innerH = (h > 4) ? (h - 4) : 0;
-  const uint8_t cappedPercent = (percent > 100) ? 100 : percent;
-  const int16_t fillW = (innerW * cappedPercent) / 100;
-  if (fillW > 0 && innerH > 0) {
-    tft.fillRect(x + 2, y + 2, fillW, innerH, fill);
-  }
-  HMIIndicators::drawProgressBar(tft, x, y, w, h, percent, colorNavInactive(),
-                                 fill, COLOR_WARNING);
-}
-
 static size_t utf8PrevCodepointStart(const char *text, size_t end) {
   if (text == nullptr || end == 0)
     return 0;
@@ -4815,20 +4774,6 @@ static const char *getDisplayFermPhaseName(FermentationPhase phase) {
   case FermentationPhase::IDLE:
   default:
     return ru ? "Ожид." : "Idle";
-  }
-}
-
-static const char *
-getDisplayRefreshProfileCompactName(DisplayRefreshProfile profile) {
-  const bool ru = (g_settings.language == 0);
-  switch (profile) {
-  case DisplayRefreshProfile::SAFE:
-    return ru ? "5с" : "5s";
-  case DisplayRefreshProfile::FAST:
-    return ru ? "0.5с" : "0.5s";
-  case DisplayRefreshProfile::NORMAL:
-  default:
-    return ru ? "1с" : "1s";
   }
 }
 
@@ -6002,21 +5947,6 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
   drawValueTileValue(x, y, w, h, value, unit, color);
 }
 
-                          static void formatDurationCompact(
-                              uint32_t sec, char *out, size_t outSize) {
-                            const uint32_t h = sec / 3600UL;
-                            const uint32_t m = (sec % 3600UL) / 60UL;
-                            const uint32_t s = sec % 60UL;
-                            if (h > 0) {
-                              snprintf(out, outSize, "%02lu:%02lu:%02lu",
-                                       (unsigned long)h, (unsigned long)m,
-                                       (unsigned long)s);
-                            } else {
-                              snprintf(out, outSize, "%02lu:%02lu",
-                                       (unsigned long)m, (unsigned long)s);
-                            }
-                          }
-
 // HMI v2 shares the display driver's hardware state and drawing helpers.
 #include "ui/hmi/hmi2_core.inc"
 
@@ -6359,12 +6289,6 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                               }
 
 
-
-                              static uint16_t eventLevelColor(uint8_t level) {
-                                return level >= 2 ? COLOR_DANGER
-                                                  : (level == 1 ? COLOR_WARNING
-                                                                : COLOR_INFO);
-                              }
 
 
                               static void renderProcessParams(
@@ -8267,10 +8191,10 @@ namespace Display {
                                     // Accumulate raw samples continuously while
                                     // the finger is held. This gives a stable
                                     // averaged position for each calibration
-                                    // point. We do NOT use readTouchRawFiltered
-                                    // after ev.tapped because by then the
-                                    // finger is already released and the
-                                    // controller has no data.
+                                    // point. Raw samples are read here, not
+                                    // after ev.tapped: by then the finger is
+                                    // already released and the controller has
+                                    // no data.
                                     if (ev.pressed) {
                                       int16_t rx = 0, ry = 0;
                                       if (touchReadRaw(&rx, &ry)) {
