@@ -893,16 +893,6 @@ inline const char* autonomyLevelToString(AutonomyLevel level) {
   }
 }
 
-inline AutonomyLevel autonomyLevelFromString(const char* value) {
-  if (value == nullptr) return AutonomyLevel::GUIDED;
-  if (strcmp(value, "manual") == 0) return AutonomyLevel::MANUAL;
-  if (strcmp(value, "adaptive") == 0) return AutonomyLevel::ADAPTIVE;
-  if (strcmp(value, "full-auto") == 0 || strcmp(value, "full_auto") == 0) {
-    return AutonomyLevel::FULL_AUTO;
-  }
-  return AutonomyLevel::GUIDED;
-}
-
 // Настройки дисплея
 struct DisplaySettings {
   bool enabled = true;      // Включен ли дисплей

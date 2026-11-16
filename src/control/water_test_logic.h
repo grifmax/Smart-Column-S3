@@ -73,10 +73,6 @@ struct Verdict {
   float actual = 0.0f;
 };
 
-inline WaterTestVerdict worst(WaterTestVerdict a, WaterTestVerdict b) {
-  return static_cast<uint8_t>(a) >= static_cast<uint8_t>(b) ? a : b;
-}
-
 inline const char* verdictToken(WaterTestVerdict verdict) {
   switch (verdict) {
     case WaterTestVerdict::PASS: return "pass";
@@ -371,17 +367,6 @@ inline InjectionExpectation injectionExpectation(WaterTestStep step) {
       return InjectionExpectation::PRESSURE_NO_LOAD_WARNING;
     default:
       return InjectionExpectation::NONE;
-  }
-}
-
-inline const char* injectionExpectationToken(InjectionExpectation expectation) {
-  switch (expectation) {
-    case InjectionExpectation::LOW_WATER: return "low_water";
-    case InjectionExpectation::SENSOR_FAILURE: return "sensor_failure";
-    case InjectionExpectation::PRESSURE_NO_LOAD_WARNING:
-      return "pressure_no_load_warning";
-    case InjectionExpectation::NONE:
-    default: return "none";
   }
 }
 
