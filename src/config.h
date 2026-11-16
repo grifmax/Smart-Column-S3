@@ -11,7 +11,7 @@
 // ВЕРСИЯ ПРОШИВКИ
 // =============================================================================
 
-#define FIRMWARE_VERSION "2.6.3"
+#define FIRMWARE_VERSION "2.6.4"
 #define FW_NAME "Smart-Column-S3"
 #define FW_VERSION FIRMWARE_VERSION
 #define FW_DATE __DATE__
@@ -133,10 +133,6 @@
 #define TEMP_WATER_IN 5      // Вода вход
 #define TEMP_WATER_OUT 6     // Вода выход
 #define TEMP_COUNT 7
-#define TEMP_PRODUCT TEMP_TSA // Алиас для совместимости
-
-// Для обратной совместимости
-#define MAX_TEMP_SENSORS TEMP_COUNT
 
 // =============================================================================
 // ПОРОГИ БЕЗОПАСНОСТИ
@@ -187,7 +183,6 @@
 #define PWM_RESOLUTION 8     // бит (0-255)
 
 // Настройки Phase Control (симистор)
-#define TRIAC_MAX_POWER_W 3000   // Максимальная мощность ТЭНа (Вт) для расчетов
 #define TRIAC_PULSE_WIDTH_US 150 // Длительность отпирающего импульса симистора (мкс)
 #define TRIAC_MIN_ALPHA_US 800   // Надёжное отпирание силового симистора после перехода через ноль (мкс)
 #define TRIAC_MAX_ALPHA_US 9500  // Максимальная задержка от нуля (мкс - почти выключено)

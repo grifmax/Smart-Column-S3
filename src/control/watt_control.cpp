@@ -133,18 +133,15 @@ uint16_t calculateTriacDelay(uint8_t targetPowerPercent, float currentVoltage) {
     if (targetPowerPercent == 0) return TRIAC_MAX_ALPHA_US;
     if (targetPowerPercent >= 100) return TRIAC_MIN_ALPHA_US;
 
-    const float targetPowerW =
-        (targetPowerPercent / 100.0f) * TRIAC_MAX_POWER_W;
-    const float heaterResistance =
-        (230.0f * 230.0f) / TRIAC_MAX_POWER_W;
-    const float maxPossiblePowerW =
-        (currentVoltage * currentVoltage) / heaterResistance;
-
-    if (targetPowerW >= maxPossiblePowerW) {
-        return TRIAC_MIN_ALPHA_US;
-    }
-
-    float powerRatio = targetPowerW / maxPossiblePowerW;
+    // Процент здесь — доля полной мощности ТЭНа при текущем напряжении, а не
+    // абсолютные ватты. Паспортная мощность и сопротивление ТЭНа из отношения
+    // сокращаются, поэтому в формулу не входят: иначе получился бы второй
+    // источник истины о мощности, и правка сопротивления на heaterPowerW
+    // сдвинула бы 100 % с полной мощности на 86 %.
+    const float nominalVoltage = 230.0f;
+    float powerRatio = (targetPowerPercent / 100.0f) *
+                       (nominalVoltage * nominalVoltage) /
+                       (currentVoltage * currentVoltage);
     if (powerRatio < 0.0f) powerRatio = 0.0f;
     if (powerRatio > 1.0f) powerRatio = 1.0f;
 

@@ -50,7 +50,7 @@ namespace WattControl {
 #if HEATER_CONTROL_MODE == HEATER_MODE_TRIAC
     /**
      * Расчет задержки отпирания симистора (Фазовое управление)
-     * @param targetPowerPercent Требуемая мощность 0-100% (от TRIAC_MAX_POWER_W)
+     * @param targetPowerPercent Требуемая мощность 0-100% от полной мощности ТЭНа
      * @param currentVoltage Текущее Vrms напряжение (измеряется PZEM)
      * @return Задержка в микросекундах (от TRIAC_MIN_ALPHA_US до TRIAC_MAX_ALPHA_US)
      */
