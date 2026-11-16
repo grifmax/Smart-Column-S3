@@ -7,6 +7,7 @@
 #include "../../interface/mqtt.h"
 #include "../../storage/logger.h"
 #include "../rect_takeoff.h"
+#include "../rect_takeoff_logic.h"
 #include "../power_command_gateway.h"
 #include "../v2/reason_codes.h"
 #include "../v2/safety_policy.h"
@@ -85,61 +86,22 @@ RectTakeoffFraction getTakeoffFractionForPhase(RectPhase phase) {
     }
 }
 
+static_assert(static_cast<uint8_t>(RectRefluxMode::ML_H) == 0 &&
+              static_cast<uint8_t>(RectRefluxMode::SR_RATIO) == 1 &&
+              static_cast<uint8_t>(RectRefluxMode::AUTONOMOUS) == 2,
+              "RectRefluxMode mapping changed");
+static_assert(RECT_SR_CONTROL_CYCLE_SEC > 0 &&
+              RECT_SR_CONTROL_CYCLE_SEC <= UINT32_MAX / 1000UL,
+              "invalid takeoff control cycle");
+
 bool isTakeoffWindowOpen(const RectParams& params, uint32_t elapsedMs,
                          uint32_t* cycleMsOut = nullptr,
                          uint32_t* openMsOut = nullptr) {
-    if (params.refluxMode == RectRefluxMode::ML_H) {
-        if (cycleMsOut) {
-            *cycleMsOut = 0;
-        }
-        if (openMsOut) {
-            *openMsOut = 0;
-        }
-        return true;
-    }
-
-    if (params.refluxMode == RectRefluxMode::SR_RATIO) {
-        const uint32_t cycleMs = RECT_SR_CONTROL_CYCLE_SEC * 1000UL;
-        if (params.srRatio <= 0.0f) {
-            if (cycleMsOut) {
-                *cycleMsOut = cycleMs;
-            }
-            if (openMsOut) {
-                *openMsOut = 0;
-            }
-            return false;
-        }
-
-        uint32_t openMs = static_cast<uint32_t>(
-            static_cast<float>(cycleMs) / (params.srRatio + 1.0f));
-        if (openMs == 0) {
-            openMs = 1;
-        }
-        if (cycleMsOut) {
-            *cycleMsOut = cycleMs;
-        }
-        if (openMsOut) {
-            *openMsOut = openMs;
-        }
-        return (elapsedMs % cycleMs) < openMs;
-    }
-
-    const uint32_t cycleSec =
-        params.autonomousCycleSec > 0 ? params.autonomousCycleSec : 1;
-    const uint32_t pauseSec =
-        params.autonomousPauseSec < cycleSec ? params.autonomousPauseSec
-                                             : (cycleSec - 1);
-    const uint32_t cycleMs = cycleSec * 1000UL;
-    const uint32_t openMs = (cycleSec - pauseSec) * 1000UL;
-    if (cycleMsOut) {
-        *cycleMsOut = cycleMs;
-    }
-    if (openMsOut) {
-        *openMsOut = openMs;
-    }
-    return (elapsedMs % cycleMs) < openMs;
+    return RectTakeoffLogic::isTakeoffWindowOpen(
+        static_cast<uint8_t>(params.refluxMode), params.srRatio,
+        params.autonomousCycleSec, params.autonomousPauseSec, elapsedMs,
+        RECT_SR_CONTROL_CYCLE_SEC, cycleMsOut, openMsOut);
 }
-
 RectTakeoffCommand buildManualTakeoffCommand(const Settings& settings,
                                              RectPhase phase,
                                              uint32_t elapsedMs) {
