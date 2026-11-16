@@ -1,6 +1,8 @@
 # Name,   Type, SubType, Offset,  Size, Flags
-nvs,      data, nvs,     0x9000,  0x5000,
-otadata,  data, ota,     0xe000,  0x2000,
-app0,     app,  ota_0,   0x10000, 0x3C0000,
-app1,     app,  ota_1,   0x3D0000,0x3C0000,
-spiffs,   data, spiffs,  0x790000,0x860000,
+# NVS увеличен с 20 до 64 КБ: на 20 КБ настройки переставали сохраняться.
+nvs,      data, nvs,     0x9000,  0x10000,
+otadata,  data, ota,     0x19000, 0x2000,
+# Слоты приложения по 4 МБ вместо 3.75: прошивка занимает 3.35 МБ.
+app0,     app,  ota_0,   0x20000, 0x400000,
+app1,     app,  ota_1,   0x420000,0x400000,
+spiffs,   data, spiffs,  0x820000,0x7E0000,
