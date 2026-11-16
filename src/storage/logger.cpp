@@ -491,7 +491,7 @@ void log(const LogEvent& event) {
   pushRecentEvent(event);
 
   if (currentLogFile) {
-    char line[128];
+    char line[160];
     const uint32_t timestamp = sessionStart > 0 ? millis() - sessionStart : 0;
     snprintf(line, sizeof(line), "%lu,,,,,,,,,,,,,%d,%s", timestamp,
              event.level, event.message);

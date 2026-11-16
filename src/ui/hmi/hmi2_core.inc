@@ -37,7 +37,7 @@ static uint8_t hmi2SensorRole = 0;
 static uint8_t g_hmi2ScanCount = 0;
 static uint8_t g_hmi2ScanAddresses[10][8] = {};
 static char g_hmi2ScanLabel[10][16] = {{0}};
-static char hmi2SensorMessage[64] = {0};
+static char hmi2SensorMessage[80] = {0};
 static char hmi2WifiSsid[64] = {0};
 static HmiKeyboard::State hmi2WifiKeyboard;
 static char hmi2WifiMessage[64] = {0};

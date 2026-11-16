@@ -511,7 +511,7 @@ void update(SystemState& state, const Settings& settings) {
                 if (heatingActiveMs > heatingLimit) {
                     char message[128];
                     snprintf(message, sizeof(message),
-                             "Разогрев не завершён за %lu мин: проверьте объём над ТЭНом и датчик куба",
+                             "Таймаут %lu мин: проверьте уровень над ТЭНом и датчик куба",
                              static_cast<unsigned long>(heatingLimit / 60000UL));
                     Safety::raiseAlarm(state, AlarmType::OVERHEAT,
                                        AlarmLevel::CRITICAL, message);

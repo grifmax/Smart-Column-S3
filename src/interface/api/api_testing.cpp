@@ -7,6 +7,7 @@
 #include "control/equipment_testing_logic.h"
 #include "control/power_command_gateway.h"
 #include "control/safety.h"
+#include "control/text_bounds.h"
 #include "control/v2/reason_codes.h"
 #include "drivers/heater.h"
 #include "drivers/pump.h"
@@ -144,15 +145,15 @@ static void sanitizeEquipmentTestingLogValue(char *dest, size_t destSize,
     return;
   }
 
-  size_t out = 0;
-  while (*src != '\0' && out + 1 < destSize) {
-    char ch = *src++;
-    if (ch == '"' || ch == '\r' || ch == '\n') {
-      ch = '\'';
+  // Границу по байтам держит общий помощник, он не разрывает UTF-8. Замена
+  // кавычек и переводов строк идёт после копирования и безопасна: эти символы
+  // однобайтовые, байт продолжения (>= 0x80) с ними совпасть не может.
+  TextBounds::copyUtf8(dest, destSize, src);
+  for (char *c = dest; *c != '\0'; ++c) {
+    if (*c == '"' || *c == '\r' || *c == '\n') {
+      *c = '\'';
     }
-    dest[out++] = ch;
   }
-  dest[out] = '\0';
 }
 
 static void appendEquipmentTestingHistoryAction(const char *tone,
@@ -185,9 +186,14 @@ static void appendEquipmentTestingSystemLog(const char *tone, const char *title,
   LogEvent event{};
   event.timestamp = millis();
   event.level = equipmentTestingToneToLogLevel(tone);
-  snprintf(event.message, sizeof(event.message),
+  char formatted[256];
+  snprintf(formatted, sizeof(formatted),
            "equipment_test tone=%s title=\"%s\" detail=\"%s\"", safeTone,
            safeTitle, safeDetail);
+  // Лог-кольцо держит 128 байт на запись, а формат с тремя полями может дать
+  // больше; усечение идёт по границе символа, иначе в кириллическом тексте
+  // остаётся половина буквы.
+  TextBounds::copyUtf8(event.message, sizeof(event.message), formatted);
   Logger::log(event);
 }
 

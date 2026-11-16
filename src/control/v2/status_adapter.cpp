@@ -221,7 +221,7 @@ void fillRuntimeGuidance(const SystemState& state,
 
         char detail[192];
         snprintf(detail, sizeof(detail),
-                 "Доверие %u%%: неполная телеметрия%s%s. Автоматика действует осторожно.",
+                 "Доверие %u%%: неполные данные%s%s. Автоматика осторожна.",
                  static_cast<unsigned>(indicators.decisionTrust * 100.0f),
                  missing[0] != '\0' ? ": " : "",
                  missing[0] != '\0' ? missing : "");

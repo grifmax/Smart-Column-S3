@@ -4679,7 +4679,7 @@ static void copyFittedText(const char *text, int16_t maxWidth, char *out,
     len = utf8PrevCodepointStart(scratch, len);
     scratch[len] = '\0';
 
-    char candidate[256];
+    char candidate[260];
     snprintf(candidate, sizeof(candidate), "%s%s", scratch, suffix);
     if (displayTextWidth(candidate) <= maxWidth) {
       strncpy(out, candidate, outSize - 1);
@@ -5353,7 +5353,7 @@ static int16_t drawWrappedTextBlock(int16_t x, int16_t y, int16_t w,
     char *wordCtx = nullptr;
     for (char *word = strtok_r(paragraphBuf, " ", &wordCtx); word != nullptr;
          word = strtok_r(nullptr, " ", &wordCtx)) {
-      char candidate[200];
+      char candidate[520];
       if (line[0] == '\0') {
         char fittedWord[128];
         copyFittedText(word, w - 4, fittedWord, sizeof(fittedWord));

@@ -230,7 +230,7 @@ bool buildModeTopologySupport(Mode mode, const EquipmentSettings& equipment,
 
     char buffer[160];
     snprintf(buffer, sizeof(buffer),
-             "Топология датчиков не подходит для режима: не отмечены %s",
+             "Нужны датчики: %s",
              missing[0] != '\0' ? missing : "обязательные роли");
     writeReason(reason, reasonSize, buffer);
     return false;

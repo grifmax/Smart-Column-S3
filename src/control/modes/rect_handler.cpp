@@ -462,7 +462,7 @@ void update(SystemState& state, const Settings& settings) {
                 if (heatingActiveMs > heatingLimit) {
                     char message[128];
                     snprintf(message, sizeof(message),
-                             "Разогрев не завершён за %lu мин: проверьте объём над ТЭНом и датчик низа колонны",
+                             "Таймаут %lu мин: проверьте уровень над ТЭНом и датчик низа колонны",
                              static_cast<unsigned long>(heatingLimit / 60000UL));
                     LOG_E("FSM: heating timeout after %lu ms", static_cast<unsigned long>(heatingActiveMs));
                     Safety::raiseAlarm(state, AlarmType::OVERHEAT,
