@@ -230,7 +230,7 @@ void formatTempAddress(const uint8_t address[8], char *buffer,
                        size_t bufferSize) {
   if (!buffer || bufferSize == 0) return;
   if (!address || isZeroTempAddress(address)) {
-    snprintf(buffer, bufferSize, "");
+    buffer[0] = '\0';
     return;
   }
   snprintf(buffer, bufferSize, "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",

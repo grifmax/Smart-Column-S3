@@ -493,7 +493,7 @@ void log(const LogEvent& event) {
   if (currentLogFile) {
     char line[160];
     const uint32_t timestamp = sessionStart > 0 ? millis() - sessionStart : 0;
-    snprintf(line, sizeof(line), "%lu,,,,,,,,,,,,,%d,%s", timestamp,
+    snprintf(line, sizeof(line), "%lu,,,,,,,,,,,,,%d,%s", static_cast<unsigned long>(timestamp),
              event.level, event.message);
     currentLogFile.println(line);
     // Флеш на каждое событие — это запись во флеш-память прямо в

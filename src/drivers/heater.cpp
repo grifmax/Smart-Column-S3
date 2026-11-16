@@ -456,7 +456,7 @@ void rampTo(uint8_t targetPercent, uint32_t rampTimeMs) {
     if (targetPercent > 100) targetPercent = 100;
 
     LOG_I("Heater: Ramping from %d%% to %d%% over %lu ms",
-          currentPower, targetPercent, rampTimeMs);
+          currentPower, targetPercent, static_cast<unsigned long>(rampTimeMs));
 
     rampStartPower = currentPower;  // BUG-2 fix: сохраняем стартовую мощность
     targetPower = targetPercent;
