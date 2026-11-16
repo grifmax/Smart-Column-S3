@@ -65,7 +65,7 @@ void recoverTempTopologyFromCalibration(Settings& settings) {
 void clearWiFiProfiles(WiFiSettings& wifi) {
     wifi.profileCount = 0;
     for (uint8_t i = 0; i < WIFI_MAX_PROFILES; ++i) {
-        memset(&wifi.profiles[i], 0, sizeof(WiFiProfile));
+        wifi.profiles[i] = WiFiProfile{};
         wifi.profiles[i].enabled = true;
         strlcpy(wifi.profiles[i].subnet, "255.255.255.0", sizeof(wifi.profiles[i].subnet));
     }
@@ -418,7 +418,7 @@ bool loadSettings(Settings& settings) {
         settings.equipment.leakThresholdV = 4.096f;
     }
 
-    memset(&settings.tempCal, 0, sizeof(settings.tempCal));
+    settings.tempCal = TempCalibration{};
     const size_t tempCalBytes = prefs.getBytesLength(NVS_KEY_TEMP_OFFSETS);
     if (tempCalBytes == sizeof(settings.tempCal)) {
         prefs.getBytes(NVS_KEY_TEMP_OFFSETS, &settings.tempCal, sizeof(settings.tempCal));

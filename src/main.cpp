@@ -218,6 +218,9 @@ static void registerBootInputCheck(const char *label, int16_t pin, bool pullup,
 }
 
 static void runBootGpioSelfTest() {
+  // Здесь нужен именно нулевой старт, а не BootGpioSelfTest{}: у элементов
+  // списка умолчания pin/expectedLevel/actualLevel = -1. Сохраняем
+  // исходное нулевое состояние до отдельной проверки всех потребителей.
   memset(&g_bootGpioSelfTest, 0, sizeof(g_bootGpioSelfTest));
   strlcpy(g_bootGpioSelfTest.boardRev, BOARD_REV_LABEL,
           sizeof(g_bootGpioSelfTest.boardRev));
@@ -276,6 +279,11 @@ void setup() {
   Serial.flush();
 
   // 1. Инициализация состояния (ОБЯЗАТЕЛЬНО ПЕРЕД ВСЕМ ОСТАЛЬНЫМ)
+  // memset, а не SystemState{}: у вложенных типов ненулевые умолчания —
+  // PressureData.pressure 101.325, atmosphere 1013.25, critThreshold 50,
+  // SystemHealth.overallHealth 100. Инициализация значением подставила бы их до
+  // первого чтения датчиков, и состояние на старте выглядело бы правдоподобным
+  // вместо «данных ещё нет». Ноль здесь — смысловое требование, не лень.
   memset(&g_state, 0, sizeof(g_state));
   g_state.mode = Mode::IDLE;
   g_state.rectPhase = RectPhase::IDLE;

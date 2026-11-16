@@ -694,7 +694,7 @@ FractionProgram parseFractionProgramJson(JsonObject json,
       break;
     }
     FractionProgramStep &step = program.steps[program.stepCount++];
-    memset(&step, 0, sizeof(step));
+    step = FractionProgramStep{};
     strlcpy(step.name, stepObj["name"] | "", sizeof(step.name));
     step.routeIndex = clampU8Range(stepObj["routeIndex"] | 0, 0, 4);
     step.pumpRateMlH =

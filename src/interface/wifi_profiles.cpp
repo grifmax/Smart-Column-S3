@@ -27,7 +27,7 @@ const WiFiProfile* firstEnabledProfile(const WiFiSettings& wifi) {
 }
 
 void clearProfile(WiFiProfile& profile) {
-  memset(&profile, 0, sizeof(profile));
+  profile = WiFiProfile{};
   profile.enabled = true;
   strlcpy(profile.subnet, "255.255.255.0", sizeof(profile.subnet));
 }

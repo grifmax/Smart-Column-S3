@@ -248,7 +248,7 @@ static void hmi2OpenWifiPassword(const char *ssid) {
 static void hmi2SaveWifiPassword() {
   WiFiProfile profile;
   if (!WiFiProfiles::getProfileBySsid(g_settings.wifi, hmi2WifiSsid, profile)) {
-    memset(&profile, 0, sizeof(profile));
+    profile = WiFiProfile{};
     profile.enabled = true;
     snprintf(profile.ssid, sizeof(profile.ssid), "%s", hmi2WifiSsid);
     snprintf(profile.subnet, sizeof(profile.subnet), "%s", "255.255.255.0");

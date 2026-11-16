@@ -3221,7 +3221,7 @@ static void handleHttpRequest(JsonDocument& req) {
       startRequest.fractionProgram = g_settings.fractionProgram;
     } else if (mode == Mode::MASHING) {
       static MashProfile runtimeProfile;
-      memset(&runtimeProfile, 0, sizeof(runtimeProfile));
+      runtimeProfile = MashProfile{};
       bool hasProfile = false;
       if (!params.isNull() && !params["profile"].isNull()) {
         JsonObject profileObj = params["profile"].as<JsonObject>();

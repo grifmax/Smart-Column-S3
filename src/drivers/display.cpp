@@ -1625,7 +1625,7 @@ static bool saveModeSetupDraft(char *reason, size_t reasonSize) {
 
   if (ui.setupDraft.mode == Mode::MASHING) {
     const size_t steps = profile.parameters.mashing.steps.size();
-    memset(&mashProfileDefault, 0, sizeof(mashProfileDefault));
+    mashProfileDefault = MashProfile{};
     strncpy(mashProfileDefault.name, profile.metadata.name.c_str(),
             sizeof(mashProfileDefault.name) - 1);
     mashProfileDefault.name[sizeof(mashProfileDefault.name) - 1] = '\0';
@@ -8052,8 +8052,7 @@ namespace Display {
                                   LOG_I("Display: TFT + Touch initialized");
 
                                   // Профиль затирки по умолчанию
-                                  memset(&mashProfileDefault, 0,
-                                         sizeof(mashProfileDefault));
+                                  mashProfileDefault = MashProfile{};
                                   strncpy(mashProfileDefault.name,
                                           "Default mash",
                                           sizeof(mashProfileDefault.name) - 1);
