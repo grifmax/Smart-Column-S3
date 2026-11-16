@@ -918,12 +918,6 @@ static_assert(sizeof(UiState) + sizeof(TftPreflightSnapshot) +
               ILI9488_UI_CACHE_BUDGET_BYTES,
               "TFT presenter cache exceeds the ILI9488 RAM budget");
 
-static void resetAllTempsCache() {
-  memset(g_allTempsValueCache, 0, sizeof(g_allTempsValueCache));
-  memset(g_allTempsStatusCache, 0, sizeof(g_allTempsStatusCache));
-  g_allTempsSummaryCache[0] = '\0';
-}
-
 struct DisplayRuntimeStatsInternal {
   uint32_t framesRendered = 0;
   uint32_t fullRedraws = 0;
@@ -1142,11 +1136,6 @@ static bool hit(int16_t x, int16_t y, int16_t rx, int16_t ry, int16_t rw,
   return (x >= rx && x <= (rx + rw) && y >= ry && y <= (ry + rh));
 }
 
-static bool hitPad(int16_t x, int16_t y, int16_t rx, int16_t ry, int16_t rw,
-                   int16_t rh, int16_t pad) {
-  return hit(x, y, rx - pad, ry - pad, rw + (pad * 2), rh + (pad * 2));
-}
-
 static bool isModeRunning(const SystemState &state) {
   return state.mode != Mode::IDLE;
 }
@@ -1205,10 +1194,6 @@ static TftSetpointGuard::SetpointClass classifySetpoint(
 static bool isTftSetpointLocked(EditableFields::Id field) {
   return TftSetpointGuard::isLocked(classifySetpoint(field),
                                     readOutputActivity());
-}
-
-static bool isMonitorRootScreen(UiScreen screen) {
-  return getUiScreenPolicy(screen).autoMonitorRoot;
 }
 
 static void requestFullScreenRedraw() {
@@ -1284,110 +1269,6 @@ static const char *getModeMonitorAccessHint(Mode mode) {
   default:
     return ru ? "Монитор: только просмотр" : "Monitor: view only";
   }
-}
-
-static void setRectificationIndicatorHint(
-    char *infoLine, size_t infoLineSize, uint16_t &tone,
-    const ControlV2::ModeStatusV2 &modeStatus,
-    const ControlV2::ProcessIndicatorsV2 &indicators) {
-  const bool ru = (g_settings.language == 0);
-  tone = COLOR_INFO;
-
-  if (modeStatus.safetyLatched) {
-    tone = COLOR_DANGER;
-    snprintf(infoLine, infoLineSize, "%s",
-             (modeStatus.operatorMessage[0] != '\0')
-                 ? modeStatus.operatorMessage
-                 : (ru ? "Safety удерживает процесс"
-                       : "Safety latch holds the process"));
-    return;
-  }
-
-  if (!indicators.sensorFreshnessOk) {
-    tone = COLOR_DANGER;
-    snprintf(infoLine, infoLineSize, "%s",
-             ru ? "Датчики неактуальны: автоматика снижает доверие"
-                : "Sensor data stale: automation confidence reduced");
-    return;
-  }
-
-  if (indicators.recoveryActive) {
-    tone = COLOR_WARNING;
-    snprintf(infoLine, infoLineSize, "%s",
-             (modeStatus.operatorMessage[0] != '\0')
-                 ? modeStatus.operatorMessage
-                 : (ru ? "Идёт восстановление после ограничения"
-                       : "Recovery is active after limiting"));
-    return;
-  }
-
-  if (indicators.floodRisk >= 0.65f) {
-    tone = COLOR_DANGER;
-    snprintf(infoLine, infoLineSize, "%s",
-             ru ? "Высокий риск захлёба: не ускоряйте отбор"
-                : "High flood risk: do not increase takeoff");
-    return;
-  }
-
-  if (indicators.coolingMarginC <= 0.0f) {
-    tone = COLOR_DANGER;
-    snprintf(infoLine, infoLineSize, "%s",
-             ru ? "Охлаждение на пределе: проверьте воду"
-                : "Cooling limit reached: check water");
-    return;
-  }
-
-  if (modeStatus.activeLimits.takeoffBlocked || !indicators.takeoffAllowed) {
-    tone = COLOR_WARNING;
-    snprintf(infoLine, infoLineSize, "%s",
-             ru ? "Отбор пока запрещён: ждём стабильности"
-                : "Takeoff blocked: waiting for stability");
-    return;
-  }
-
-  if (indicators.coolingMarginC < 5.0f) {
-    tone = COLOR_WARNING;
-    snprintf(infoLine, infoLineSize, "%s",
-             ru ? "Запас охлаждения мал: не форсируйте процесс"
-                : "Cooling margin low: avoid forcing the run");
-    return;
-  }
-
-  if (indicators.bodyEndScore >= 0.80f) {
-    tone = COLOR_WARNING;
-    snprintf(infoLine, infoLineSize, "%s",
-             ru ? "Конец тела вероятен: следите за качеством"
-                : "Body end likely: watch product quality");
-    return;
-  }
-
-  if (indicators.headsCompletionScore >= 0.80f) {
-    tone = COLOR_SUCCESS;
-    snprintf(infoLine, infoLineSize, "%s",
-             ru ? "Головы почти завершены: готовьтесь к телу"
-                : "Heads nearly complete: prepare for body");
-    return;
-  }
-
-  if (indicators.stabilityIndex < 0.45f) {
-    tone = COLOR_WARNING;
-    snprintf(infoLine, infoLineSize, "%s",
-             ru ? "Колонна стабилизируется: ждём спокойный верх"
-                : "Column stabilizing: wait for calm top temp");
-    return;
-  }
-
-  if (indicators.stabilityIndex >= 0.75f && indicators.takeoffAllowed) {
-    tone = COLOR_SUCCESS;
-    snprintf(infoLine, infoLineSize, "%s",
-             ru ? "Процесс устойчив: отбор разрешён"
-                : "Process stable: takeoff allowed");
-    return;
-  }
-
-  snprintf(infoLine, infoLineSize, "%s",
-           ru ? "Ректификация под наблюдением indicators"
-              : "Rectification monitored by indicators");
 }
 
 static uint16_t dimmedButtonColor() {
@@ -1633,13 +1514,6 @@ static void updateModeSetupDraftDirtyState() {
   TftHmiPolicyLogic::DraftState policy = getModeSetupDraftPolicyState();
   TftHmiPolicyLogic::refreshProfileDirty(policy);
   applyModeSetupDraftPolicyState(policy);
-}
-
-static uint8_t getTftProfilePageCount() {
-  return g_tftProfileOptionCount == 0
-             ? 1
-             : (g_tftProfileOptionCount + TFT_PROFILE_ROWS_PER_PAGE - 1) /
-                   TFT_PROFILE_ROWS_PER_PAGE;
 }
 
 static void loadTftProfileOptions(Mode mode) {
@@ -1995,107 +1869,6 @@ static bool refreshTftPreflight() {
   return true;
 }
 
-static void appendSetupSensorState(char *out, size_t outSize,
-                                   const char *label, bool required,
-                                   bool ready) {
-  if (!required || out == nullptr || outSize == 0) {
-    return;
-  }
-  const size_t used = strlen(out);
-  if (used >= outSize - 1) {
-    return;
-  }
-  snprintf(out + used, outSize - used, "%s%s %s", used ? " | " : "", label,
-           ready ? "OK" : "--");
-}
-
-static void formatSetupRequiredSensors(const SystemState &state, Mode mode,
-                                       char *out, size_t outSize) {
-  if (out == nullptr || outSize == 0) {
-    return;
-  }
-  out[0] = '\0';
-  const Safety::RequiredSensorsMask required =
-      Safety::getRequiredSensorsForMode(mode, g_settings);
-  const bool ru = (g_settings.language == 0);
-  appendSetupSensorState(out, outSize, ru ? "Куб" : "Cube", required.cubeTemp,
-                         state.temps.valid[TEMP_CUBE]);
-  appendSetupSensorState(out, outSize, ru ? "Низ" : "Bottom",
-                         required.columnBottomTemp,
-                         state.temps.valid[TEMP_COLUMN_BOTTOM]);
-  appendSetupSensorState(out, outSize, "TSA", required.tsaTemp,
-                         state.temps.valid[TEMP_TSA]);
-  appendSetupSensorState(out, outSize, ru ? "Вода" : "Water",
-                         required.waterOutTemp,
-                         state.temps.valid[TEMP_WATER_OUT]);
-  appendSetupSensorState(out, outSize, ru ? "Давл." : "Press.",
-                         required.pressure, state.pressure.ok);
-  if (out[0] == '\0') {
-    snprintf(out, outSize, "%s",
-             ru ? "Дополнительные датчики не требуются"
-                : "No additional sensors required");
-  }
-}
-
-static void formatSetupParameters(Mode mode, char *out, size_t outSize) {
-  if (out == nullptr || outSize == 0) {
-    return;
-  }
-  if (ui.setupDraft.profilePreview[0] != '\0' &&
-      ui.setupDraft.profileCompatible) {
-    strncpy(out, ui.setupDraft.profilePreview, outSize - 1);
-    out[outSize - 1] = '\0';
-    return;
-  }
-  const bool ru = (g_settings.language == 0);
-  switch (mode) {
-  case Mode::RECTIFICATION:
-    snprintf(out, outSize, "%.1f L  |  %.0f%%  |  %u W",
-             g_settings.rectParams.feedVolumeL,
-             g_settings.rectParams.feedAbvPercent,
-             g_settings.equipment.heaterPowerW);
-    break;
-  case Mode::DISTILLATION:
-    snprintf(out, outSize, "%.0f%%  |  %.0f ml/h  |  %.1f C",
-             distUi.powerPercent, distUi.speedMlH, distUi.endTempC);
-    break;
-  case Mode::MANUAL_RECT:
-    snprintf(out, outSize, "%s",
-             ru ? "Мощность и отбор задаются в процессе"
-                : "Power and takeoff are set during the process");
-    break;
-  case Mode::MASHING:
-    snprintf(out, outSize, "%u %s", mashProfileDefault.stepCount,
-             ru ? "шаг(ов) температуры" : "temperature step(s)");
-    break;
-  case Mode::HOLD:
-    snprintf(out, outSize, "%u %s", holdStepsCount,
-             ru ? "шаг(ов) удержания" : "hold step(s)");
-    break;
-  case Mode::NBK:
-    snprintf(out, outSize, "%s",
-             ru ? "Расход и мощность — в параметрах НБК"
-                : "Flow and power are in NBK parameters");
-    break;
-  case Mode::FERMENTATION:
-    snprintf(out, outSize, "%s",
-             ru ? "Цель и длительность — в параметрах брожения"
-                : "Target and duration are in fermentation settings");
-    break;
-  case Mode::AUTOCLAVE:
-    snprintf(out, outSize, "%s",
-             AutoclaveHardwareProfile::isSteamAvailable()
-                 ? (ru ? "Параметры автоклава доступны для просмотра"
-                       : "Autoclave settings are available for review")
-                 : (ru ? "Запуск закрыт: аппаратный профиль не подтверждён"
-                       : "Start blocked: hardware profile is not approved"));
-    break;
-  default:
-    snprintf(out, outSize, "%s", ru ? "Нет параметров" : "No parameters");
-    break;
-  }
-}
-
 // =============================================================================
 // Settings Callbacks
 // =============================================================================
@@ -2340,13 +2113,6 @@ static void saveHoldStepDuration(float val) {
     enqueueTftAction(ControlCommandQueue::Type::SetHoldStepDuration,
                      g_editHoldStepIdx, val);
   }
-}
-
-static void savePumpCal(float val) {
-  g_settings.pumpCal.mlPerRevolution = EditableFields::normalize(
-      EditableFields::Id::PUMP_CALIBRATION_ML_PER_REV, val);
-  NVSManager::saveSettings(g_settings);
-  Pump::setCalibration(g_settings.pumpCal.mlPerRevolution);
 }
 
 static void setPumpCalibrationMessage(const char *message) {
@@ -4879,10 +4645,6 @@ static uint16_t colorButtonBody() {
                                  : tft.color565(78, 84, 90);
 }
 
-static void clearRow(int16_t y, int16_t h = 24) {
-  tft.fillRect(10, y - 2, TFT_WIDTH - 20, h + 4, colorBg());
-}
-
 static void drawCard(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t bg);
 
 static void drawProgressBar(int16_t x, int16_t y, int16_t w, int16_t h,
@@ -4966,22 +4728,6 @@ static void copyFittedText(const char *text, int16_t maxWidth, char *out,
       return;
     }
   }
-}
-
-static void drawStateBadge(int16_t x, int16_t y, int16_t w, int16_t h,
-                           const char *label, uint16_t bg) {
-  tft.fillRect(x, y, w, h, bg);
-  tft.drawRect(x, y, w, h, colorBorder());
-  if (w > 8 && h > 4) {
-    tft.fillRect(x + 1, y + 1, 6, h - 2, colorNavBg());
-  }
-  tft.setTextColor(TFT_WHITE);
-  tft.setTextSize(1);
-  tft.setTextDatum(middle_center);
-  char labelBuf[32];
-  copyFittedText(label, w - 16, labelBuf, sizeof(labelBuf));
-  drawDisplayString(labelBuf, x + w / 2, y + h / 2);
-  tft.setTextDatum(top_left);
 }
 
 static const char *getDisplayModeName(Mode mode) {
@@ -5084,36 +4830,6 @@ getDisplayRefreshProfileCompactName(DisplayRefreshProfile profile) {
   default:
     return ru ? "1с" : "1s";
   }
-}
-
-static uint16_t getDisplayRefreshProfileColor(DisplayRefreshProfile profile) {
-  switch (profile) {
-  case DisplayRefreshProfile::SAFE:
-    return COLOR_WARNING;
-  case DisplayRefreshProfile::FAST:
-    return COLOR_SUCCESS;
-  case DisplayRefreshProfile::NORMAL:
-  default:
-    return COLOR_INFO;
-  }
-}
-
-static const char *getStirrerEnabledCompactName() {
-  const bool ru = (g_settings.language == 0);
-  if (!g_settings.stirrer.enabled) {
-    return ru ? "ВЫКЛ" : "OFF";
-  }
-  if (!g_state.stirrer.available) {
-    return ru ? "НЕТ" : "N/A";
-  }
-  return ru ? "ВКЛ" : "ON";
-}
-
-static uint16_t getStirrerEnabledColor() {
-  if (!g_settings.stirrer.enabled) {
-    return COLOR_DARK_GREY;
-  }
-  return g_state.stirrer.available ? COLOR_SUCCESS : COLOR_WARNING;
 }
 
 static const char *getDisplayPhaseName(const SystemState &state) {
@@ -5572,60 +5288,6 @@ static void drawPanelHeader(int16_t x, int16_t y, int16_t w, const char *title,
   char titleBuf[96];
   copyFittedText(title, w - 24, titleBuf, sizeof(titleBuf));
   drawDisplayString(titleBuf, x + 14, y + 12);
-  tft.setTextDatum(top_left);
-}
-
-static void drawCompactKeyValueRow(int16_t x, int16_t y, int16_t w,
-                                   const char *label, const char *value,
-                                   uint16_t valueColor = COLOR_PRIMARY) {
-  tft.setTextColor(colorMuted());
-  tft.setTextSize(1);
-  tft.setTextDatum(middle_left);
-  char labelBuf[64];
-  char valueBuf[48];
-  copyFittedText(label, (w / 2) - 8, labelBuf, sizeof(labelBuf));
-  copyFittedText(value, (w / 2) - 8, valueBuf, sizeof(valueBuf));
-  drawDisplayString(labelBuf, x, y);
-  tft.setTextColor(valueColor);
-  tft.setTextDatum(middle_right);
-  drawDisplayString(valueBuf, x + w, y);
-  tft.setTextDatum(top_left);
-}
-
-static void drawSummaryHeroBlock(int16_t x, int16_t y, int16_t w, int16_t h,
-                                 const char *label, const char *value,
-                                 uint16_t tone) {
-  drawCard(x, y, w, h, colorBg());
-  tft.fillRect(x + 1, y + 1, 6, h - 2, tone);
-  tft.drawFastHLine(x + 8, y + h - 1, w - 9, colorBorder());
-
-  tft.setTextColor(colorMuted());
-  tft.setTextSize(1);
-  tft.setTextDatum(top_left);
-  char labelBuf[40];
-  copyFittedText(label, w - 18, labelBuf, sizeof(labelBuf));
-  drawDisplayString(labelBuf, x + 12, y + 5);
-
-  uint8_t valueSize = (w >= 136 && h >= 42) ? 3 : 2;
-  while (valueSize > 1) {
-    tft.setTextSize(valueSize);
-    if (displayTextWidth(value) <= (w - 18)) {
-      break;
-    }
-    valueSize--;
-  }
-
-  tft.setTextColor(tone);
-  tft.setTextSize(valueSize);
-  tft.setTextDatum(middle_center);
-  const int16_t valueY =
-      y + ((h >= 42) ? (h / 2 + ((valueSize >= 3) ? 6 : 4)) : (h / 2 + 3));
-  drawDisplayString(value, x + (w / 2) + 2, valueY);
-  if (valueSize >= 3) {
-    drawDisplayString(value, x + (w / 2) + 3, valueY);
-  }
-
-  tft.setTextSize(1);
   tft.setTextDatum(top_left);
 }
 
