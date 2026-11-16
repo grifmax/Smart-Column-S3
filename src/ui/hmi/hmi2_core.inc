@@ -1044,7 +1044,6 @@ static void hmi2DrawRow(int16_t y, uint8_t index, const Hmi2Row &row) {
 static void hmi2DrawRail(uint8_t total) {
   const int16_t x = TFT_WIDTH - HMI2_RAIL_W + 3;
   const int16_t top = HMI2_HEADER_H + 3;
-  const int16_t height = HMI2_VISIBLE_ROWS * HMI2_ROW_H - 6;
   tft.fillRect(TFT_WIDTH - HMI2_RAIL_W, HMI2_HEADER_H, HMI2_RAIL_W,
                HMI2_VISIBLE_ROWS * HMI2_ROW_H, colorNavBg());
   drawButton(x, top, 42, 37, "▲", colorButtonBody(), colorFg());

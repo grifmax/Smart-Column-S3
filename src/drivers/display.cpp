@@ -6734,10 +6734,6 @@ static void drawValueTile(int16_t x, int16_t y, int16_t w, int16_t h,
                                      g_state.pressure.atmosphere < 1100.0f)
                                         ? g_state.pressure.atmosphere
                                         : RECT_PRESSURE_STD_HPA;
-                                const float bodyToTailsComp =
-                                    RECT_CUBE_BODY_TO_TAILS_BASE_C +
-                                    (atmHpaComp - RECT_PRESSURE_STD_HPA) *
-                                        RECT_TEMP_COMP_C_PER_HPA;
                                 const float finishComp =
                                     RECT_CUBE_FINISH_BASE_C +
                                     (atmHpaComp - RECT_PRESSURE_STD_HPA) *

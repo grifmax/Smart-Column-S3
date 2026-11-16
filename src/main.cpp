@@ -429,11 +429,12 @@ static void performSystemHealthCheck(uint32_t now) {
   uint32_t uptimeSec = now / 1000;
 
   // 2. Проверка датчиков температуры на стабильность
-  bool sensorsStable = true;
-  for (int i = 0; i < 7; i++) {
+  // Счётчик ошибок по датчику уже попадает в журнал и в /api/health, поэтому
+  // отдельный флаг «все стабильны» здесь не нужен: он вычислялся и ни на что
+  // не влиял.
+  for (int i = 0; i < TEMP_COUNT; i++) {
     if (Safety::isTempSensorInstalled(g_settings.equipment, i) &&
         g_state.health.tempErrors[i] > 50) {
-      sensorsStable = false;
       LOG_W("Health Check: Sensor %d unstable (%u errors)", i,
             g_state.health.tempErrors[i]);
     }

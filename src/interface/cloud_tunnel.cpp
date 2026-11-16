@@ -3082,8 +3082,6 @@ static void handleHttpRequest(JsonDocument& req) {
       return;
     }
 
-    const bool sensorsOk =
-        stateSnapshot.health.tempSensorsTotal > 0 && stateSnapshot.health.tempSensorsOk;
     if (stateSnapshot.mode != Mode::IDLE) {
       sendHttpResponse(requestId, 409, "", "process_already_active");
       return;
