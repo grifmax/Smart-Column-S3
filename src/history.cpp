@@ -1,5 +1,6 @@
 #include "history.h"
 #include "config.h"
+#include "control/history_json_keys.h"
 #include "profiles.h"
 #include <FS.h>
 #include <algorithm>
@@ -107,12 +108,12 @@ void readControlStats(JsonObjectConst obj, ControlStatsLogic::Stats& stats) {
         (obj["stabilityAvg"] | 0.0f) * static_cast<float>(stats.stabilitySamples);
     stats.floodRiskMax = obj["floodRiskMax"] | 0.0f;
     stats.coolingMarginMin = obj["coolingMarginMin"] | 0.0f;
-    stats.coolingSeen = obj.containsKey("coolingMarginMin");
+    stats.coolingSeen = HistoryJsonKeys::contains(obj, "coolingMarginMin");
 
     stats.pressureRateAbsSum = obj["pressureRateAvg"] | 0.0f;
     stats.pressureRateAbsMax = obj["pressureRateMax"] | 0.0f;
     stats.pressureMarginMin = obj["pressureMarginMin"] | 0.0f;
-    stats.pressureSeen = obj.containsKey("pressureMarginMin");
+    stats.pressureSeen = HistoryJsonKeys::contains(obj, "pressureMarginMin");
     stats.pressureSamples = stats.durationSec;
 }
 
