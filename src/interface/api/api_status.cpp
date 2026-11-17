@@ -1,3 +1,4 @@
+#include "../state_valves_driver_json.h"
 #include "../state_core_json.h"
 #include "../state_safety_settings_json.h"
 #include "api_routes.h"
@@ -364,13 +365,7 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     fillStirrerJson(stirrer, st);
 
     JsonObject valves = doc["valves"].to<JsonObject>();
-    valves["water"] = Valves::getWater();
-    valves["heads"] = Valves::getHeads();
-    valves["body"] = Valves::getBody();
-    valves["bodyAvailable"] = Valves::hasBodyValve();
-    valves["tailsAvailable"] = Valves::hasTailsValve();
-    valves["uno"] = Valves::getUno();
-    valves["startStopDuty"] = Valves::getStartStop();
+    StateValvesJson::fillCommon<StateValvesJson::DriverReader>(valves);
     valves["normallyOpenMask"] = g_settings.valves.normallyOpenMask;
     valves["tails"] = Valves::getTails();
 

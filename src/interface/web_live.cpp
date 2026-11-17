@@ -1,3 +1,4 @@
+#include "state_valves_driver_json.h"
 #include "state_core_json.h"
 #include "state_safety_settings_json.h"
 #include "web_live.h"
@@ -135,13 +136,7 @@ void broadcastState(const SystemState &state) {
   fastDoc["cooling_pwm_current_duty"] = Valves::getStartStop();
   StateSafetySettingsJson::fillAliases(fastDoc.as<JsonObject>(), g_settings.safety);
   JsonObject fastValves = fastDoc["valves"].to<JsonObject>();
-  fastValves["water"] = Valves::getWater();
-  fastValves["heads"] = Valves::getHeads();
-  fastValves["body"] = Valves::getBody();
-  fastValves["bodyAvailable"] = Valves::hasBodyValve();
-  fastValves["tailsAvailable"] = Valves::hasTailsValve();
-  fastValves["uno"] = Valves::getUno();
-  fastValves["startStopDuty"] = Valves::getStartStop();
+  StateValvesJson::fillCommon<StateValvesJson::DriverReader>(fastValves);
   fastValves["tails"] = Valves::getTails();
 
   fastDoc["abv"] = state.hydrometer.abv;
@@ -240,13 +235,7 @@ void broadcastState(const SystemState &state) {
   doc["volume_body"] = state.stats.bodyVolume;
   doc["volume_tails"] = state.stats.tailsVolume;
   JsonObject valves = doc["valves"].to<JsonObject>();
-  valves["water"] = Valves::getWater();
-  valves["heads"] = Valves::getHeads();
-  valves["body"] = Valves::getBody();
-  valves["bodyAvailable"] = Valves::hasBodyValve();
-  valves["tailsAvailable"] = Valves::hasTailsValve();
-  valves["uno"] = Valves::getUno();
-  valves["startStopDuty"] = Valves::getStartStop();
+  StateValvesJson::fillCommon<StateValvesJson::DriverReader>(valves);
   valves["tails"] = Valves::getTails();
 
   doc["abv"] = state.hydrometer.abv;
