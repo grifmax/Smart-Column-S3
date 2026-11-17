@@ -432,13 +432,7 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
         g_settings.equipment.coolingPwmHoldPercent;
     doc["cooling_pwm_pull_ms"] = g_settings.equipment.coolingPwmPullMs;
     doc["cooling_pwm_current_duty"] = Valves::getStartStop();
-    doc["safety_pressure_max_mmhg"] = g_settings.safety.pressureMaxMmHg;
-    doc["safety_tsa_max_c"] = g_settings.safety.tsaMaxC;
-    doc["safety_water_out_max_c"] = g_settings.safety.waterOutMaxC;
-    doc["safety_water_out_rise_rate_c_min"] =
-        g_settings.safety.waterOutRiseRateCMin;
-    doc["safety_pressure_rise_rate_mmhg_min"] =
-        g_settings.safety.pressureRiseRateMmHgMin;
+    StateSafetySettingsJson::fillAliases(doc.as<JsonObject>(), g_settings.safety);
 
     JsonObject rect = doc["rectification"].to<JsonObject>();
     const RectTakeoffFeedback takeoffFeedback = RectTakeoff::getFeedback();

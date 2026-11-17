@@ -14,4 +14,13 @@ inline void fill(JsonObject obj, const Safety& safety) {
   obj["pressureRiseRateMmHgMin"] = safety.pressureRiseRateMmHgMin;
 }
 
+template <typename Safety>
+inline void fillAliases(JsonObject obj, const Safety& safety) {
+  obj["safety_pressure_max_mmhg"] = safety.pressureMaxMmHg;
+  obj["safety_tsa_max_c"] = safety.tsaMaxC;
+  obj["safety_water_out_max_c"] = safety.waterOutMaxC;
+  obj["safety_water_out_rise_rate_c_min"] = safety.waterOutRiseRateCMin;
+  obj["safety_pressure_rise_rate_mmhg_min"] = safety.pressureRiseRateMmHgMin;
+}
+
 } // namespace StateSafetySettingsJson

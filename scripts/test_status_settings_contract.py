@@ -63,23 +63,28 @@ def assignment_map(text, names):
 
 def status_block(source, doc, equipment, safety):
     start = f'JsonObject {equipment} = {doc}["equipment"].to<JsonObject>();'
-    # The last alias has a wrapped right-hand side, so include its semicolon.
-    end_marker = f'{doc}["safety_pressure_rise_rate_mmhg_min"]'
+    end_marker = f'StateSafetySettingsJson::fillAliases({doc}.as<JsonObject>(), g_settings.safety);'
     if source.count(start) != 1:
         raise AssertionError(f'ambiguous start: {start}')
     begin = source.index(start)
-    end = source.index(';', source.index(end_marker, begin)) + 1
+    end = source.index(end_marker, begin) + len(end_marker)
     text = source[begin:end]
     result = assignment_map(text, {equipment: 'equipment', safety: 'safety', doc: 'alias'})
     call = f'StateSafetySettingsJson::fill({safety}, g_settings.safety);'
     if text.count(call) != 1:
         raise AssertionError(f'missing/duplicate shared safety builder: {call}')
     helper = (ROOT / 'src/interface/state_safety_settings_json.h').read_text(encoding='utf8')
-    safety_assignments = assignment_map(helper, {'obj': 'safety'})
-    for key, expression in safety_assignments.items():
-        if key in result:
-            raise AssertionError(f'duplicate assignment: {key}')
-        result[key] = expression.replace('safety.', 'g_settings.safety.', 1)
+    nested = block(helper, 'inline void fill(JsonObject obj, const Safety& safety)',
+                   'inline void fillAliases(')
+    flat = helper[helper.index('inline void fillAliases('):]
+    alias_call = f'StateSafetySettingsJson::fillAliases({doc}.as<JsonObject>(), g_settings.safety);'
+    if text.count(alias_call) != 1:
+        raise AssertionError(f'missing/duplicate safety aliases builder: {alias_call}')
+    for section, source_part in (('safety', nested), ('alias', flat)):
+        for key, expression in assignment_map(source_part, {'obj': section}).items():
+            if key in result:
+                raise AssertionError(f'duplicate assignment: {key}')
+            result[key] = expression.replace('safety.', 'g_settings.safety.', 1)
     return result
 
 
