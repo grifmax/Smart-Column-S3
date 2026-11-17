@@ -85,6 +85,19 @@ def status_block(source, doc, equipment, safety):
             if key in result:
                 raise AssertionError(f'duplicate assignment: {key}')
             result[key] = expression.replace('safety.', 'g_settings.safety.', 1)
+
+    equipment_call = (f'StateEquipmentJson::fillCommon<StateValvesJson::DriverReader>'
+                      f'({equipment}, g_settings.equipment);')
+    if text.count(equipment_call) != 1:
+        raise AssertionError(f'missing/duplicate equipment builder: {equipment_call}')
+    builder = (ROOT / 'src/interface/state_equipment_json.h').read_text(encoding='utf8')
+    for key, expression in assignment_map(builder, {'obj': 'equipment'}).items():
+        if key in result:
+            raise AssertionError(f'duplicate assignment: {key}')
+        expression = expression.replace('DutyReader::getStartStop()',
+                                        'Valves::getStartStop()')
+        expression = expression.replace('e.', 'g_settings.equipment.')
+        result[key] = expression
     return result
 
 
@@ -100,6 +113,14 @@ class StatusSettingsContractTest(unittest.TestCase):
         cloud_block = block(cloud, 'static void fillEquipmentJson(JsonObject equipment) {',
                             'static String base64Encode(')
         cls.cloud = assignment_map(cloud_block, {'equipment': 'equipment'})
+        call = 'StateEquipmentJson::fillCommon<StateValvesJson::DriverReader>(equipment, g_settings.equipment);'
+        if cloud_block.count(call) != 1:
+            raise AssertionError(f'missing cloud equipment builder: {call}')
+        builder = (ROOT / 'src/interface/state_equipment_json.h').read_text(encoding='utf8')
+        for key, expression in assignment_map(builder, {'obj': 'equipment'}).items():
+            expression = expression.replace('DutyReader::getStartStop()',
+                                            'Valves::getStartStop()')
+            cls.cloud[key] = expression.replace('e.', 'g_settings.equipment.')
 
     def test_rest_ws_key_sets_and_expressions(self):
         expected = ({('equipment', x) for x in EQUIPMENT} |

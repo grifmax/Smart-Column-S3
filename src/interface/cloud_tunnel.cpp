@@ -1,3 +1,4 @@
+#include "state_equipment_json.h"
 #include "state_valves_driver_json.h"
 #include "state_core_json.h"
 /**
@@ -559,18 +560,7 @@ static void fillCloudStatusJson(JsonObject cloud) {
 
 static void fillEquipmentJson(JsonObject equipment) {
   equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
-  equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
-  equipment["minHeaterSubmergeL"] = g_settings.equipment.minHeaterSubmergeL;
-  equipment["waterAutoStartCubeTempC"] = g_settings.equipment.waterAutoStartCubeTempC;
-  equipment["boosterHeaterEnabled"] = g_settings.equipment.boosterHeaterEnabled;
-  equipment["boosterHeaterPowerW"] = g_settings.equipment.boosterHeaterPowerW;
-  equipment["boosterHeaterStopCubeTempC"] =
-      g_settings.equipment.boosterHeaterStopCubeTempC;
-  equipment["coolingPwmEnabled"] = g_settings.equipment.coolingPwmEnabled;
-  equipment["coolingPwmHoldPercent"] =
-      g_settings.equipment.coolingPwmHoldPercent;
-  equipment["coolingPwmPullMs"] = g_settings.equipment.coolingPwmPullMs;
-  equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
+  StateEquipmentJson::fillCommon<StateValvesJson::DriverReader>(equipment, g_settings.equipment);
 }
 
 static String base64Encode(const uint8_t* data, size_t len) {

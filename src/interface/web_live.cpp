@@ -1,3 +1,4 @@
+#include "state_equipment_json.h"
 #include "state_valves_driver_json.h"
 #include "state_core_json.h"
 #include "state_safety_settings_json.h"
@@ -90,26 +91,9 @@ void broadcastState(const SystemState &state) {
   fillStirrerJson(fastStirrer, state);
   JsonObject fastEquipment = fastDoc["equipment"].to<JsonObject>();
   fastEquipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
+  StateEquipmentJson::fillCommon<StateValvesJson::DriverReader>(fastEquipment, g_settings.equipment);
   fastEquipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
   fastEquipment["packingCoeff"] = g_settings.equipment.packingCoeff;
-  fastEquipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
-  fastEquipment["minHeaterSubmergeL"] =
-      g_settings.equipment.minHeaterSubmergeL;
-  fastEquipment["waterAutoStartCubeTempC"] =
-      g_settings.equipment.waterAutoStartCubeTempC;
-  fastEquipment["boosterHeaterEnabled"] =
-      g_settings.equipment.boosterHeaterEnabled;
-  fastEquipment["boosterHeaterPowerW"] =
-      g_settings.equipment.boosterHeaterPowerW;
-  fastEquipment["boosterHeaterStopCubeTempC"] =
-      g_settings.equipment.boosterHeaterStopCubeTempC;
-  fastEquipment["coolingPwmEnabled"] =
-      g_settings.equipment.coolingPwmEnabled;
-  fastEquipment["coolingPwmHoldPercent"] =
-      g_settings.equipment.coolingPwmHoldPercent;
-  fastEquipment["coolingPwmPullMs"] =
-      g_settings.equipment.coolingPwmPullMs;
-  fastEquipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
   fastEquipment["useDs2482ForTemps"] =
       g_settings.equipment.useDs2482ForTemps;
   fastEquipment["ds2482Address"] = g_settings.equipment.ds2482Address;
@@ -251,26 +235,9 @@ void broadcastState(const SystemState &state) {
 
   JsonObject equipment = doc["equipment"].to<JsonObject>();
   equipment["heaterPowerW"] = g_settings.equipment.heaterPowerW;
+  StateEquipmentJson::fillCommon<StateValvesJson::DriverReader>(equipment, g_settings.equipment);
   equipment["columnHeightMm"] = g_settings.equipment.columnHeightMm;
   equipment["packingCoeff"] = g_settings.equipment.packingCoeff;
-  equipment["cubeVolumeL"] = g_settings.equipment.cubeVolumeL;
-  equipment["minHeaterSubmergeL"] =
-      g_settings.equipment.minHeaterSubmergeL;
-  equipment["waterAutoStartCubeTempC"] =
-      g_settings.equipment.waterAutoStartCubeTempC;
-  equipment["boosterHeaterEnabled"] =
-      g_settings.equipment.boosterHeaterEnabled;
-  equipment["boosterHeaterPowerW"] =
-      g_settings.equipment.boosterHeaterPowerW;
-  equipment["boosterHeaterStopCubeTempC"] =
-      g_settings.equipment.boosterHeaterStopCubeTempC;
-  equipment["coolingPwmEnabled"] =
-      g_settings.equipment.coolingPwmEnabled;
-  equipment["coolingPwmHoldPercent"] =
-      g_settings.equipment.coolingPwmHoldPercent;
-  equipment["coolingPwmPullMs"] =
-      g_settings.equipment.coolingPwmPullMs;
-  equipment["coolingPwmCurrentDuty"] = Valves::getStartStop();
   equipment["useDs2482ForTemps"] =
       g_settings.equipment.useDs2482ForTemps;
   equipment["ds2482Address"] = g_settings.equipment.ds2482Address;
