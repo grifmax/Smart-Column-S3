@@ -1,7 +1,6 @@
 #include "live_chart_history.h"
 
 #include <math.h>
-#include <string.h>
 
 #include "config.h"
 #include "control/v2/status_adapter.h"
@@ -54,6 +53,14 @@ struct LiveChartRingBuffer {
     LiveChartPoint points[Capacity] = {};
     size_t count = 0;
     size_t next = 0;
+
+    // Обнуление точек не требуется: при count == 0 обход не читает ни одного
+    // элемента, а appendPoint пишет слот до увеличения count. Поэтому сброс
+    // ограничен счётчиками и не создаёт временного буфера на стеке.
+    void reset() {
+        count = 0;
+        next = 0;
+    }
 };
 
 LiveChartRingBuffer<MINUTE_POINTS_CAPACITY> g_minuteBuffer;
@@ -62,8 +69,8 @@ uint32_t g_lastMinuteSampleMs = 0;
 uint32_t g_lastAggregateSampleMs = 0;
 
 void resetBufferState() {
-    memset(&g_minuteBuffer, 0, sizeof(g_minuteBuffer));
-    memset(&g_aggregateBuffer, 0, sizeof(g_aggregateBuffer));
+    g_minuteBuffer.reset();
+    g_aggregateBuffer.reset();
     g_lastMinuteSampleMs = 0;
     g_lastAggregateSampleMs = 0;
 }
