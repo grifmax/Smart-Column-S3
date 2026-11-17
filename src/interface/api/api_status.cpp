@@ -1,3 +1,4 @@
+#include "../state_safety_settings_json.h"
 #include "api_routes.h"
 
 #include "config.h"
@@ -416,13 +417,7 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
         Sensors::getTemperatureBusSourceLabel();
 
     JsonObject safetySettings = doc["safetySettings"].to<JsonObject>();
-    safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
-    safetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
-    safetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
-    safetySettings["waterOutRiseRateCMin"] =
-        g_settings.safety.waterOutRiseRateCMin;
-    safetySettings["pressureRiseRateMmHgMin"] =
-        g_settings.safety.pressureRiseRateMmHgMin;
+    StateSafetySettingsJson::fill(safetySettings, g_settings.safety);
     doc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
     doc["water_auto_start_cube_temp_c"] =
         g_settings.equipment.waterAutoStartCubeTempC;

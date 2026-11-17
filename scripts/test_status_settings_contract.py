@@ -69,8 +69,18 @@ def status_block(source, doc, equipment, safety):
         raise AssertionError(f'ambiguous start: {start}')
     begin = source.index(start)
     end = source.index(';', source.index(end_marker, begin)) + 1
-    return assignment_map(source[begin:end],
-                          {equipment: 'equipment', safety: 'safety', doc: 'alias'})
+    text = source[begin:end]
+    result = assignment_map(text, {equipment: 'equipment', safety: 'safety', doc: 'alias'})
+    call = f'StateSafetySettingsJson::fill({safety}, g_settings.safety);'
+    if text.count(call) != 1:
+        raise AssertionError(f'missing/duplicate shared safety builder: {call}')
+    helper = (ROOT / 'src/interface/state_safety_settings_json.h').read_text(encoding='utf8')
+    safety_assignments = assignment_map(helper, {'obj': 'safety'})
+    for key, expression in safety_assignments.items():
+        if key in result:
+            raise AssertionError(f'duplicate assignment: {key}')
+        result[key] = expression.replace('safety.', 'g_settings.safety.', 1)
+    return result
 
 
 class StatusSettingsContractTest(unittest.TestCase):

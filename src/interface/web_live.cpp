@@ -1,3 +1,4 @@
+#include "state_safety_settings_json.h"
 #include "web_live.h"
 
 #include <ArduinoJson.h>
@@ -118,13 +119,7 @@ void broadcastState(const SystemState &state) {
   fastEquipment["temperatureBusSourceLabel"] =
       Sensors::getTemperatureBusSourceLabel();
   JsonObject fastSafetySettings = fastDoc["safetySettings"].to<JsonObject>();
-  fastSafetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
-  fastSafetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
-  fastSafetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
-  fastSafetySettings["waterOutRiseRateCMin"] =
-      g_settings.safety.waterOutRiseRateCMin;
-  fastSafetySettings["pressureRiseRateMmHgMin"] =
-      g_settings.safety.pressureRiseRateMmHgMin;
+  StateSafetySettingsJson::fill(fastSafetySettings, g_settings.safety);
   fastDoc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
   fastDoc["water_auto_start_cube_temp_c"] =
       g_settings.equipment.waterAutoStartCubeTempC;
@@ -305,13 +300,7 @@ void broadcastState(const SystemState &state) {
   equipment["temperatureBusSourceLabel"] =
       Sensors::getTemperatureBusSourceLabel();
   JsonObject safetySettings = doc["safetySettings"].to<JsonObject>();
-  safetySettings["pressureMaxMmHg"] = g_settings.safety.pressureMaxMmHg;
-  safetySettings["tsaMaxC"] = g_settings.safety.tsaMaxC;
-  safetySettings["waterOutMaxC"] = g_settings.safety.waterOutMaxC;
-  safetySettings["waterOutRiseRateCMin"] =
-      g_settings.safety.waterOutRiseRateCMin;
-  safetySettings["pressureRiseRateMmHgMin"] =
-      g_settings.safety.pressureRiseRateMmHgMin;
+  StateSafetySettingsJson::fill(safetySettings, g_settings.safety);
   doc["min_heater_submerge_l"] = g_settings.equipment.minHeaterSubmergeL;
   doc["water_auto_start_cube_temp_c"] =
       g_settings.equipment.waterAutoStartCubeTempC;
