@@ -1,3 +1,4 @@
+#include "state_core_json.h"
 /**
  * Smart-Column S3 - Cloud Tunnel (IoT)
  */
@@ -950,9 +951,7 @@ static void handleHttpRequest(JsonDocument& req) {
     doc["modeStr"] = getModeToken(stateSnapshot.mode);
     doc["phase"] = static_cast<int>(stateSnapshot.rectPhase);
     doc["phaseStr"] = getActivePhaseToken(stateSnapshot);
-    doc["paused"] = stateSnapshot.paused;
-    doc["safetyOk"] = stateSnapshot.safetyOk;
-    doc["uptime"] = stateSnapshot.uptime;
+    StateCoreJson::fill(doc.as<JsonObject>(), stateSnapshot);
     doc["deviceId"] = deviceId;
     fillAlarmJson(doc["alarm"].to<JsonObject>(), stateSnapshot, g_settings);
     fillV2StatusJson(doc["v2"].to<JsonObject>(), ControlV2::getLatestModeStatus(),

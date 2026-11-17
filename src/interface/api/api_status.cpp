@@ -1,3 +1,4 @@
+#include "../state_core_json.h"
 #include "../state_safety_settings_json.h"
 #include "api_routes.h"
 
@@ -206,9 +207,7 @@ void registerStatusApiRoutes(AsyncWebServer &server) {
     doc["nbkPhaseStr"] = getNbkPhaseString(st.nbkPhase);
     doc["fermPhase"] = static_cast<int>(st.fermPhase);
     doc["fermPhaseStr"] = getFermPhaseString(st.fermPhase);
-    doc["paused"] = st.paused;
-    doc["safetyOk"] = st.safetyOk;
-    doc["uptime"] = st.uptime;
+    StateCoreJson::fill(doc.as<JsonObject>(), st);
 
     // Ручная ректификация: смена тары
     if (st.mode == Mode::MANUAL_RECT) {

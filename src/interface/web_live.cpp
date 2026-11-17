@@ -1,3 +1,4 @@
+#include "state_core_json.h"
 #include "state_safety_settings_json.h"
 #include "web_live.h"
 
@@ -43,9 +44,7 @@ void broadcastState(const SystemState &state) {
   fastDoc["modeStr"] = getModeString(state.mode);
   fastDoc["phase"] = static_cast<int>(state.rectPhase);
   fastDoc["phaseStr"] = getPhaseString(state.rectPhase);
-  fastDoc["paused"] = state.paused;
-  fastDoc["safetyOk"] = state.safetyOk;
-  fastDoc["uptime"] = state.uptime;
+  StateCoreJson::fill(fastDoc.as<JsonObject>(), state);
   JsonObject fastAlarm = fastDoc["alarm"].to<JsonObject>();
   fillAlarmJson(fastAlarm, state, g_settings);
   JsonObject fastV2 = fastDoc["v2"].to<JsonObject>();
@@ -199,9 +198,7 @@ void broadcastState(const SystemState &state) {
   doc["modeStr"] = getModeString(state.mode);
   doc["phase"] = static_cast<int>(state.rectPhase);
   doc["phaseStr"] = getPhaseString(state.rectPhase);
-  doc["paused"] = state.paused;
-  doc["safetyOk"] = state.safetyOk;
-  doc["uptime"] = state.uptime;
+  StateCoreJson::fill(doc.as<JsonObject>(), state);
   JsonObject alarm = doc["alarm"].to<JsonObject>();
   fillAlarmJson(alarm, state, g_settings);
   JsonObject v2 = doc["v2"].to<JsonObject>();
